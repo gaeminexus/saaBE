@@ -2000,3 +2000,71 @@ script que hoy es una fila inerte**, para que nadie la crea activa.
 
 **De trece: doce corridos, uno borrado.** Sólo quedan `e2-01` y `e2-02`, dos verificaciones de
 lectura de principios de mes que no bloquean nada. **El frente de scripts queda cerrado.**
+
+---
+
+## §29 — Ocho casos en tres días, y el aviso escrito no protegió en ninguno
+
+**Cierre conjunto con `omen-saa-1-arb`, 2026-09-07.** Es la conclusión que más se repitió esta
+semana, entre dos equipos que no estaban mirando lo mismo.
+
+**Ellos aportaron el caso que la vuelve indiscutible:** el defecto del catálogo de comandos de
+búsqueda **estaba predicho por escrito en `CLAUDE.md`**, en la sección del DAO genérico:
+
+> *«los strings de operadores (`and`, `like`, `between`, paréntesis, …) se leen de la base de datos.
+> La búsqueda por criterios **depende silenciosamente** de que existan las filas del catálogo.»*
+
+**Con la palabra «silenciosamente» y todo. Y aun así mordió en producción.** Y no era un aviso
+perdido: está en el `CLAUDE.md`, que es **lo primero que lee cualquiera que entra al repositorio**.
+
+> **La razón, y es de ellos:** *nadie va a leer una advertencia sobre un catálogo el día que le falta
+> una fila del catálogo* — **porque el error no llega hablando de catálogos**. Llega disfrazado de
+> `NoResultException` en una clase que se llama `DetalleRubroDaoServiceImpl`, disparada desde una
+> pantalla de otro módulo.
+
+### Los ocho, para que se vea que no es una anécdota
+
+| # | Caso | Dónde estaba el aviso | Por qué no protegió |
+|---|---|---|---|
+| 1 | `GRANT` comentado en `e2-06` | doc de pre-despliegue, 3 días antes | quien corre un script lee el script |
+| 2 | `GRANT` comentado en `e2-03` | ídem | ídem |
+| 3 | Comentarios de `rhh` sobre `POR_APROBAR` | citaban el §11 de este documento | **la cita les dio autoridad**: uno bien citado se cree |
+| 4 | `PRBRNMBR` inventado, 2ª vez | §9 de este documento, citado 3 veces | lo escribí yo y lo volví a cometer |
+| 5 | Catálogo de comandos de búsqueda | **`CLAUDE.md`**, con la palabra «silenciosamente» | el error no habla de catálogos |
+| 6 | Guarda de `aprobar` enumerando orígenes | §24, escrito el mismo día | sigue sin corregir |
+| 7 | `selectVigentesByOrigen` ciega a `POR_APROBAR` | §11, con las dos mitades **en el mismo párrafo** | no las junté |
+| 8 | Ausencias deliberadas de `crd` (mora, `+1`, reportes G) | sus propios documentos | mismo mecanismo, otro módulo |
+
+### La salida, que es la parte accionable
+
+De los ocho salieron tres remedios, y **ninguno es «documentar mejor»**:
+
+1. **La verificación va JUNTO al paso riesgoso**, no arriba ni en otro archivo. (`crd` ya lo hacía en
+   sus DDL; se lo copiamos a `e2-11` y `e2-12`.)
+2. **El comentario va donde alguien podría equivocarse**, no en un documento aparte.
+3. ⭐ **Y el que faltaba: convertir el aviso en algo que se ejecute.**
+
+### 🟡 Propuesta concreta que sale de esto — pendiente de decisión del usuario
+
+`DetalleRubroDaoServiceImpl.selectValorStringByRubAltDetAlt:77` termina en
+`query.getSingleResult()` **sin capturar nada**. Cuando falta la fila, Jakarta lanza
+`NoResultException` — **sin decir qué rubro ni qué detalle**.
+
+Envolverlo y relanzar con el dato convierte esto:
+
+    jakarta.ejb.EJBTransactionRolledbackException: No result found for query [...]
+
+en esto:
+
+    Falta la fila del catálogo: rubro alterno 71, detalle alterno 13. Parametrícela en SCP.PDTR.
+
+**Eso es exactamente el diagnóstico que nos costó un script y dos días.** No cambia el
+comportamiento —`IncomeException` ya es `rollback = true`, la transacción cae igual— sólo el
+mensaje.
+
+⛔ **NO se hizo:** `com.saa.basico` es **núcleo compartido por todos los módulos y todos los
+equipos**. Lo decide el usuario, y conviene avisarles a los otros árbitros antes de tocarlo.
+
+> **Es el remedio del tipo correcto:** en vez de escribir por novena vez que el catálogo puede
+> faltar, hacer que **el propio sistema lo diga cuando falta.** Un aviso que se ejecuta no depende de
+> que alguien lo haya leído antes.
