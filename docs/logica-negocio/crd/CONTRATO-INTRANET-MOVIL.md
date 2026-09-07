@@ -5,7 +5,8 @@
 > una **lista blanca cerrada** de consultas de un partícipe sobre sí mismo. Este documento es el
 > contrato entre los dos: lo que el borde puede pedir y lo que SaaBE le contesta.
 >
-> **Fecha:** 2026-09-07 · **Estado:** diseño congelado por el árbitro, pendiente de implementación.
+> **Fecha:** 2026-09-07 · **Estado:** IMPLEMENTADO y commiteado (`3666a6c`), salvo `/simulador/productos`.
+> La §5.4 lleva la forma real de las respuestas, medida sobre el código: es lo que el borde congela.
 > **Decidido por el usuario el 2026-09-07:** path `/movil` y clave compartida obligatoria.
 > Equipo: app móvil ASOPREP (`omen-app-1`). Ejecutor en SaaBE: `omen-app-1-saa-be-app`.
 
@@ -92,8 +93,14 @@ entero de intranet** (el SaaFE dejaría de funcionar).
 6. **Errores genéricos hacia afuera.** `{"mensaje": "..."}` sin `e.getMessage()`, sin stack, sin
    nombres de tabla. El detalle va al log del servidor, que se queda en la intranet.
 7. **Sin paginación no se sirve una colección que pueda crecer sin techo.** Movimientos y kardex
-   llevan rango de fechas o límite. `getAll` no se usa desde acá para nada: `CRD.APRT` tiene
-   ~980.000 filas y ya provocó `OutOfMemoryError` (ver el JavaDoc de `AporteRest`).
+   llevan rango de fechas o límite. **La regla es sobre las colecciones que crecen con la
+   operación**, no sobre la palabra `getAll`: `CRD.APRT` tiene ~980.000 filas y su `getAll` ya
+   provocó `OutOfMemoryError` (ver el JavaDoc de `AporteRest`), y el kardex o las cuotas de
+   *todos* los partícipes no pueden viajar al servidor expuesto para devolver las de uno. Un
+   **catálogo acotado** (`CRD.PRDC`, los productos) sí se puede listar entero y filtrar en el
+   recurso: no crece con la operación y no tiene datos de nadie. *(Precisado el 2026-09-07: la
+   redacción anterior decía "getAll no se usa para nada" y frenó de más — con razón — al
+   implementar `/simulador/productos`.)*
 8. **Cero lógica de negocio nueva.** Este path compone y recorta lo que ya calculan los
    `*Service`/`*DaoService` existentes. Si hace falta una regla nueva, no va acá.
 
@@ -132,7 +139,7 @@ solo en `/rest/usap`.
 | `/simulador/productos` | `prdc` | Solo los vigentes que la app puede simular, recortados |
 | `/simulador/simular` (POST) | `prst/simularCreditoNuevo` | No persiste nada. Único POST de datos, porque el cálculo necesita cuerpo |
 
-### 5.3 ⛔ Lo que falta en `saaBE` y hay que construir
+### 5.3 Lo que faltaba en `saaBE` — RESUELTO el 2026-09-07 (commit `3666a6c`)
 
 Tres de los apoyos de arriba **no existen hoy** (verificado contra el código el 2026-09-07):
 
@@ -153,6 +160,65 @@ de uno. `selectByCriteria` arma el JPQL leyendo los operadores **desde la base**
 para algo que tiene que funcionar siempre, y le da al borde un constructor de consultas genérico
 justo donde la regla es lista blanca.
 
+
+
+**Lo único que queda abierto: `/simulador/productos`.** `ProductoDaoService` no tiene ningún
+método de listado (solo `selectByCodigoPetro`/`selectAllByCodigoPetro`, que buscan un código
+Petro puntual). Se resuelve **sin tocar ese DAO**, que es de otro equipo: el recurso móvil usa
+el `selectAll` genérico que `EntityDao` ya le da, y filtra en el recurso por
+`Producto.estado == Estado.ACTIVO` (`PRDCESTD = 1`, el rubro `Estado` de siempre; lo confirma
+`ProductoServiceImpl`, que setea ese valor al crear). `CRD.PRDC` es un catálogo acotado, no una
+tabla transaccional — ver la regla 7 precisada. La respuesta va recortada a DTO: **nunca**
+`Producto` crudo, que tiene `@ManyToOne` a `Filial` y a `TipoPrestamo`.
+### 5.4 Forma real de las respuestas — medida sobre el código implementado (2026-09-07)
+
+**Esta es la referencia que el borde congela.** Salió de la implementación, no de una
+suposición: los campos son los que declaran los DTO de `com.saa.ws.movil.dto`. Todo lo marcado
+*(texto)* lleva `@JsonFormat` y viaja como cadena, nunca como arreglo Jackson.
+
+| DTO | Campos |
+|---|---|
+| `ParticipeMovilDTO` | `idEntidad:Long, identificacion:String, nombres:String, apellidos:String, correoPersonal:String, correoInstitucional:String, telefono:String, movil:String` |
+| `PrestamoMovilDTO` | `codigo:Long, idAsoprep:Long, idProducto:Long, nombreProducto:String, fecha *(texto)*, fechaInicio *(texto)*, fechaFin *(texto)*, plazo:Long, montoSolicitado:Double, valorCuota:Double, tasa:Double, totalPagado:Double, saldoCapital:Double, saldoInteres:Double, saldoPorVencer:Double, saldoVencido:Double, saldoTotal:Double, moraCalculada:Double, diasVencido:Long, idEstado:Long` |
+| `CuotaPrestamoMovilDTO` | `codigo:Long, numeroCuota:Double, fechaVencimiento *(texto)*, capital:Double, interes:Double, mora:Double, cuota:Double, saldoCapital:Double, saldo:Double, estado:Long, fechaPagado *(texto)*, capitalPagado:Double, interesPagado:Double, diasMora:Long` |
+| `SaldoTipoAporte` *(reutilizado tal cual)* | `idTipoAporte:Long, nombre:String, saldo:Double` |
+| `EstadoCuentaAportesMovilDTO` | `idEntidad:Long, identificacion:String, razonSocial:String, totalFaltante:Double, rangoPorDefectoAplicado:boolean, desdeAplicado:String (yyyy-MM), hastaAplicado:String (yyyy-MM), periodos:[...]` |
+| `PeriodoEstadoCuentaMovilDTO` | `periodo:String, idTipoAporte:Long, nombreTipoAporte:String, esperado:Double, aportado:Double, faltante:Double, estado:String, movimientos:[...]` |
+| `MovimientoEstadoCuentaMovilDTO` | `idAporte:Long, fechaTransaccion *(texto)*, valor:Double, tipoMovimiento:Long, tipoMovimientoTexto:String, glosa:String` |
+| `CuentaIndividualMovilDTO` | `idEntidad:Long, saldosAportes:[SaldoTipoAporte], prestamosConSaldo:[PrestamoMovilDTO], kardexCxc:[CxcKardexMovilDTO]` |
+| `CxcKardexMovilDTO` | `codigo:Long, totalDebito:Double, totalCredito:Double, saldoActual:Double, concepto:String, fechaCreado *(texto)*` |
+| `SimulacionCreditoMovilDTO` | `totalCapital:Double, totalInteres:Double, totalDesgravamen:Double, totalSeguro:Double, totalAPagar:Double, valorCuota:Double, tablaProyectada:[...]` |
+| `CuotaProyectadaMovilDTO` | `numeroCuota:Double, fechaVencimiento *(texto)*, capital:Double, interes:Double, cuota:Double, saldoCapital:Double, desgravamen:Double, seguroIncendio:Double, total:Double` |
+| `MensajeMovilDTO` | `mensaje:String` |
+
+Entrada del simulador: se reutiliza **`ParametrosAmortizacion`** tal cual (es un DTO plano de
+entrada, no una entidad). Su `fechaInicio` es `LocalDateTime`: el borde la manda como **ISO
+local sin zona**, nunca terminada en `Z` — Jackson descarta el offset en vez de convertirlo.
+
+**Decisiones de composición tomadas al implementar, y por qué:**
+
+- **`/aportes/{id}/movimientos` sin `desde`/`hasta`** aplica los últimos 24 meses y lo **declara
+  en la respuesta** (`rangoPorDefectoAplicado`, `desdeAplicado`, `hastaAplicado`). El endpoint
+  de `/rest` que hay debajo devuelve 400 si faltan, así que el rango por defecto es del path
+  móvil, no de él. Que venga declarado evita que la app muestre "todos tus movimientos" cuando
+  en realidad está mostrando dos años.
+- **"Préstamos con saldo" = `PrestamoDaoService.selectVigentesByEntidad`**, o sea los **no
+  terminales** (excluye CANCELADO, CANCELADO_ANTICIPADO y CANCELADO_POR_NOVACION, filtrando por
+  `PRSTIDST`), no un `saldoTotal > 0`. Es el mismo criterio que usa `dvap/deudaVigente`, y esa
+  consistencia con el resto del sistema vale más que una definición propia inventada para el
+  móvil. Los dos conjuntos son casi siempre el mismo.
+- **La respuesta del simulador tiene DTO propio** en vez de reutilizar
+  `ResultadoSimulacionCreditoNuevo`: ese es el contrato congelado de
+  `/rest/prst/simularCreditoNuevo` y anotarle `@JsonFormat` le habría cambiado el formato de
+  fecha a un consumidor existente.
+
+⚠️ **Hallazgo a tener presente, no es un defecto de este frente:**
+`selectVigentesByEntidad` **absorbe los errores de BD y devuelve lista vacía** — es el patrón
+deliberado de la casa para procesos por lotes (`docs/general/CORRECCION_MANEJO_EXCEPCIONES_DAO.md`),
+y ahí tiene sentido. En la app significa que, si esa consulta falla, el partícipe ve **"no tenés
+créditos" en vez de un error**. No se cambió, porque el método es de otro frente y el
+comportamiento es intencional; queda anotado para que nadie diagnostique dos veces el mismo
+"se ven bien pero salen vacíos".
 ## 6. Cómo se verifica que la lista blanca sigue siendo blanca
 
 Antes de cada despliegue, tres controles — dos se leen y uno se corre:
@@ -170,3 +236,4 @@ Antes de cada despliegue, tres controles — dos se leen y uno se corre:
 | Fecha | Cambio |
 |---|---|
 | 2026-09-07 | Creación. Path `/movil` y clave compartida decididos por el usuario; las dos trampas de JAX-RS y el cambio de la §3.4 del plan (fechas en el origen) los aporta el árbitro |
+| 2026-09-07 | Implementado (`3666a6c`) y revisado por el árbitro. Se agrega la §5.4 con la forma real de cada respuesta, se precisa la regla 7 (prohibía `getAll` por su nombre y no por su motivo, y frenó de más el endpoint de productos) y se anota que `selectVigentesByEntidad` absorbe errores y devuelve lista vacía |
