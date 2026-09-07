@@ -2931,3 +2931,141 @@ Por eso el arreglo del frontend salió como urgente y no como higiene.
    ⛔ Con un aviso explícito en el prompt: **no resolverlo sacando `tarjeta` del payload**, porque
    `EntityDaoImpl.save()` hace `merge()` desnudo y una clave ausente se graba `NULL` (§8.2 del
    registro) — sería el mismo borrado, más silencioso.
+
+---
+
+## §34 — El tipo de cuenta invertido: 159 transferencias, una constante que nadie midió
+
+**2026-09-07, tarde.** El usuario reportó que el archivo del Banco Internacional mandaba las cuentas
+de ahorro como corriente y las corrientes como ahorro. Lote 3: **159 pagos, $119.472,32.**
+
+### La causa
+
+`TipoCuentasBancarias` declaraba `CORRIENTE = 1` y `AHORROS = 2`. La base, medida:
+
+```
+rubro 23 "TIPO DE CUENTAS BANCARIAS":  alterno 1 = AHORRO · alterno 2 = CORRIENTE
+```
+
+**La constante estaba al revés.** Corregida en `5e344ae`.
+
+Se arregló **en la constante y no en los formateadores**: los dos mapean `CORRIENTE → "CTE"` y
+`AHORROS → "AHO"`, que es correcto contra el *nombre*. El defecto vivía una capa más abajo.
+Invertirlo en los formateadores habría dejado un `if (tipo == CORRIENTE) return "AHO"` ilegible y el
+defecto vivo para todo el resto.
+
+**Cómo se supo que era el código y no el dato:** el archivo salía invertido **al 100%** — 82 de
+ahorro como CTE y 77 de corriente como AHO, sin mezcla. Una inversión total significa **una sola**
+inversión en la cadena. Si los datos también hubieran estado mal, los dos errores se habrían
+cancelado y el archivo habría salido bien.
+
+### Alcance, y toca a otro equipo
+
+Sólo tres consumidores, y ninguno compensaba el error a mano:
+
+| Dónde | Efecto |
+|---|---|
+| Los dos formateadores (`tsr`) | El archivo del banco. Corregido |
+| **`CertificadoServiceImpl` (`crd`)** | Imprime «cuenta de ahorros»/«cuenta corriente» en los certificados. **Vienen saliendo mal desde siempre** y se arreglaron solos al corregir la constante |
+
+Más dos etiquetas invertidas en el frontend (`c150c52`), una de ellas —`etiquetaCuentaDestino` de
+anticipos a proveedores— **es el texto que la persona lee al elegir a qué cuenta manda la plata**.
+
+⚠️ **Pendiente: avisarle a `omen-saa-1`** que sus certificados venían mal y ya están corregidos, y
+que quedaron dos ocurrencias sin revisar en `crd` (`pago-cuotas` y `certificado-participe.service`,
+las dos sobre mocks).
+
+### 🔴 Y lo que dice de mí: cuatro columnas inventadas en una tarde
+
+Buscando ese defecto escribí consultas con **cuatro** nombres que no existen:
+
+| Escribí | Es |
+|---|---|
+| `PDTRNMBR` | `PDTRDSCR` |
+| `PRBRNMBR` | `PRBRDSCR` |
+| `SCP.EMPR` / `EMPRCDGO` | **`SCP.PJRQ` / `PJRQCDGO`** |
+| `SQ_CPNMCDGO.NEXTVAL` | `CPNMCDGO` es **IDENTITY** |
+
+El §28 ya registraba que había inventado `PRBRNMBR` **dos veces antes**. Van cuatro. **La regla
+escrita —abrir la entidad y copiar el nombre de ahí— no me protegió ninguna de las tres veces que
+la tenía escrita delante.**
+
+#### Lo que sí protegió, y hay que sacarle la conclusión
+
+**Que el usuario corriera el script y me trajera el `ORA-00904`.** Sin esa corrida, el `e2-18` se
+daba por bueno y el `e2-20` contestaba la pregunta equivocada.
+
+Y al ir a buscar el nombre real apareció **algo peor que el nombre**: el rubro se identifica por
+**código alterno (`PRBRALTR`)**, no por la PK. Su propia salida lo probó — el rubro con **PK 199**
+es «ESTADO DEL DESCUENTO RECURRENTE», mientras el de tipo de cuenta tiene **PK 200 y alterno 199**.
+
+> **Filtrar por PK no habría fallado: habría contestado.** Con el catálogo equivocado, una
+> conclusión falsa con cara de correcta, y un pago urgente esperando. **De los cuatro errores, el
+> único peligroso era el que no daba error.**
+
+**La conclusión operativa, y no es «tener más cuidado»:** en este esquema yo escribo el `.sql` y lo
+corre otro. **Esa corrida es la única verificación real que existe.** Los bloques de control previo
+dejan de ser formalidad y pasan a ser el mecanismo: si el bloque 0 no puede fallar de forma visible,
+el script no está terminado.
+
+---
+
+### §34bis — «Regenerar» el archivo: el script que no existía porque no hacía falta
+
+El usuario pidió *«el script para que se me habilite volverlo a generar»*. **No había nada que
+habilitar.**
+
+`obtenerArchivoLote` **no devuelve un archivo guardado: lo reformatea desde cero en cada llamada.**
+El archivo del banco no se persiste en ningún lado. Así que con el WAR corregido, volver a pedir el
+mismo lote ya devuelve el tipo de cuenta bien — sin reabrir el lote, sin revertir pagos, sin tocar
+`LTPGESTD` y sin volver a aprobar. **«Regenerar» y «volver a descargar» son la misma operación.**
+
+**El bloqueo no era de estados ni de permisos: era de navegación.** La pantalla sólo recuerda el
+lote de la sesión en curso, y no existía endpoint que los listara. Se llegaba al endpoint de
+descarga, pero no al `id`.
+
+> Si le hubiera escrito el script que pidió, habría tocado estados sin necesidad y con riesgo, para
+> resolver un problema que era de pantalla. **La pregunta correcta no era «cómo lo habilito» sino
+> «por qué cree que está bloqueado».**
+
+Se cerró con `dbf3ad3` (`GET /pgtr/lotes`), `0f0812c` (campo de N° de lote) y `355fb01` (bandeja con
+descarga por fila). Las **tres** entradas de descarga pasan por una sola implementación de la
+decodificación Base64 → bytes, que es la que preserva el ANSI del Internacional.
+
+---
+
+### §34ter — Anular un pago: otra vez, sólo faltaba el botón
+
+*«No hay un lugar donde anular un pago ingresado por CxP.»* `POST /pgtr/anular/{id}` existía hace
+tiempo, y el servicio del frontend también. **Cero backend** (`f4c23cf`).
+
+Y la segunda mitad del pedido —*«que se anule esa solicitud»*— **sale sola**, verificado antes de
+prometerlo: `selectVigentesByFactura` filtra por `POR_APROBAR`, `REGISTRADO`, `EN_ARCHIVO` y
+`CONFIRMADO`; `ANULADO` no está entre ellos, así que la factura vuelve a ofrecerse sin un paso más.
+Por eso el aviso va **visible en el diálogo y en el tooltip**: si no se dice, la persona busca un
+segundo paso que no existe.
+
+⛔ **No se duplicó en el frontend la regla de qué pagos admiten anulación.** El backend rechaza los
+`CONFIRMADO` y los pagados con cheque con mensaje propio, y ese mensaje se muestra tal cual. Es
+exactamente el error que costó el tipo de cuenta: **dos lugares diciendo lo mismo, uno
+desactualizado.**
+
+---
+
+### §34quater — Pago de planillas del SRI: NO EXISTE
+
+Medido. El módulo `sri` tiene **dos** cosas y ninguna es de pago:
+
+- `POST /rest/ats/generar` — el ATS
+- `GET /rest/cuadresri/103|104/{id}` — reportes de cuadre de los formularios
+
+**El sistema da los números para declarar y ahí se corta.** No hay nada que registre la obligación
+con el SRI, ni que la pague, ni que genere su contabilidad. Hoy se paga por el camino genérico —el
+SRI como titular y un pago normal de CxP— **sin ningún vínculo con la declaración**: nadie verifica
+que lo pagado coincida con lo que el cuadre dice que se debía.
+
+⚠️ Y «planilla» en el backend es **del IESS** (`PlanillaControlIess`), no del SRI. Conviene
+confirmar cuál de los dos se pidió.
+
+⚠️ El frente SRI arrastra además un bloqueante propio ya documentado: **el ATS nunca se validó
+contra el XSD ni el validador oficial**. Y `sri` **no tiene dueño** en el registro de reservas.
