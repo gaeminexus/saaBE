@@ -187,6 +187,35 @@ esperada:
 
 Conclusión: prellenar tasa/plazo por producto **no es superficie existente que se pueda
 exponer** — sería funcionalidad nueva, con DDL, y para todos los consumidores, no solo la app.
+
+#### Catálogo de estados de préstamo (`PRSTIDST`) — para el filtro de la lista
+
+Verificado el 2026-09-07 en `com.saa.rubros.EstadoPrestamo`. **Son constantes del código, no
+hay que ir a la BD a buscarlas.** ⚠️ El estado vigente es `PRSTIDST` (`idEstado`), **nunca**
+`ESPSCDGO` (`estadoPrestamo`), que es la FK al catálogo `CRD.ESPS` — trampa de `CLAUDE.md`.
+
+| Id | Constante | ¿Se le muestra al partícipe? |
+|---|---|---|
+| 1 | `GENERADO` | flujo interno de oficina |
+| 2 | `VIGENTE` | **sí** |
+| 3 | `CANCELADO` | **sí** |
+| 4 | `CANCELADO_ANTICIPADO` | **sí** |
+| 5 | `CANCELADO_POR_NOVACION` | **sí** |
+| 6 | `PENDIENTE_DE_APROBACION` | flujo interno de oficina |
+| 7 | `RECHAZADO` | flujo interno de oficina |
+| 8 | `DE_PLAZO_VENCIDO` | **sí** |
+| 9 | `CANCELADO_POR_REVISAR` | **sí** (es un cancelado) |
+| 10 | `VIGENTE_POR_REVISAR` | **sí** (es un vigente) |
+| 11 | `EN_MORA` | **sí** |
+
+**El endpoint devuelve el préstamo cualquiera sea su estado** — no se filtra nada del lado del
+servidor, para que un partícipe nunca deje de ver un crédito suyo por una clasificación de la
+que no sabe nada. La columna de arriba es para **agrupar el filtro de la app**, no para
+esconder filas:
+
+- **Vigentes** = 2, 8, 10, 11 · **Cancelados** = 3, 4, 5, 9
+- Los de flujo interno (1, 6, 7) no son una opción del filtro, pero si a un partícipe le
+  aparece uno, se lista igual bajo "otros". Ocultarlo sería peor: el crédito existe.
 ### 5.4 Forma real de las respuestas — medida sobre el código implementado (2026-09-07)
 
 **Esta es la referencia que el borde congela.** Salió de la implementación, no de una
@@ -256,3 +285,4 @@ Antes de cada despliegue, tres controles — dos se leen y uno se corre:
 | 2026-09-07 | Creación. Path `/movil` y clave compartida decididos por el usuario; las dos trampas de JAX-RS y el cambio de la §3.4 del plan (fechas en el origen) los aporta el árbitro |
 | 2026-09-07 | Implementado (`3666a6c`) y revisado por el árbitro. Se agrega la §5.4 con la forma real de cada respuesta, se precisa la regla 7 (prohibía `getAll` por su nombre y no por su motivo, y frenó de más el endpoint de productos) y se anota que `selectVigentesByEntidad` absorbe errores y devuelve lista vacía |
 | 2026-09-07 | Cerrado `/simulador/productos` (`48f8c2c`): la lista blanca queda completa. Se documenta que tasa y plazo por producto no existen hoy en `saaBE` para ningún consumidor |
+| 2026-09-07 | Se documenta el catálogo real de `PRSTIDST` (11 estados, de `com.saa.rubros.EstadoPrestamo`) y cómo se agrupa para el filtro de la app, que había quedado sin poder implementarse |
