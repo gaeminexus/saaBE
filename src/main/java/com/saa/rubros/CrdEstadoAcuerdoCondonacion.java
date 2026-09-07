@@ -14,7 +14,11 @@ package com.saa.rubros;
  *   VIGENTE   el acuerdo se confirmó (montos ya decididos) y su cobro en CBCR está
  *             registrado, esperando que se procese. Ningún préstamo/aporte afectado todavía.
  *   APLICADO  el PROCESO del cobro corrió: cierre de cuotas + condonación + préstamo
- *             CANCELADO (K11). Terminal — el reverso es anularOperacion, no un cambio acá.
+ *             CANCELADO (K11). No es terminal: si el cobro que lo aplicó se REVERSA (el
+ *             depósito sí llegó, se aplicó mal), vuelve a VIGENTE por
+ *             {@code AcuerdoCondonacionService#reabrirAcuerdoPorReverso}. Sí es terminal si el
+ *             cobro se ANULA en cambio (el depósito nunca llegó) — ese camino no existe porque
+ *             un cobro PROCESADO no se anula, se reversa.
  *   ANULADO   se anuló el CBCR del acuerdo ANTES de procesarlo (el depósito nunca llegó, o
  *             se corrigió por otra vía). CONSERVA su registro: sigue siendo cierto que
  *             alguien negoció perdonar dinero, aunque no se haya cobrado.

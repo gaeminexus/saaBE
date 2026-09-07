@@ -167,4 +167,31 @@ public interface AcuerdoCondonacionService {
      */
     void anularAcuerdoPorCobro(Long idAcuerdo, String usuario, java.time.LocalDateTime fecha, String motivo)
             throws Throwable;
+
+    /**
+     * Reabre un acuerdo APLICADO porque su cobro se REVERSÓ — el depósito SÍ llegó, se aplicó
+     * mal, y {@code CobroCreditoService#reversarProceso} ya reversó las cuotas condonadas y el
+     * único {@code PagoPrestamo} del acuerdo (mismo bucle que usa {@code anularCobro}, vía
+     * {@code ProcesoPagoPrestamoService#anularOperacion}). Este método solo actualiza el ACCN.
+     *
+     * ⚠️ «Reabrir» acá es DES-APLICAR, no resucitar un acuerdo ANULADO — son dos caminos
+     * distintos. {@link #anularAcuerdoPorCobro} sigue siendo el otro: ese es para cuando el
+     * CBCR se anuló ANTES de procesarse (el depósito nunca llegó); este es para cuando el CBCR
+     * se PROCESÓ y después se reversó (el depósito sí llegó, se aplicó mal).
+     *
+     * Deja el acuerdo en VIGENTE (1) — de donde salió al aplicarse con {@link #aplicarAcuerdo}
+     * — y lo DESENGANCHA de su {@code EventoPrestamo} ({@code aplicarAcuerdo} lo enlaza al
+     * aplicar): ese evento queda ANULADO por el reverso, y si el acuerdo siguiera apuntándolo,
+     * una aplicación posterior lo pisaría. Mismo razonamiento que el paso 6 del reverso de
+     * cobros: nunca dejar una referencia viva a un evento muerto.
+     *
+     * @param idAcuerdo  : Código del acuerdo
+     * @param usuario    : Usuario que reversa (el mismo que reversa el CBCR)
+     * @param fecha      : Fecha del reverso (copiada de {@code CBCR.fechaReverso})
+     * @param motivo     : Motivo del reverso (copiado de {@code CBCR.motivoReverso}). Obligatorio
+     * @throws Throwable : Si el acuerdo no existe, el motivo viene vacío, o el estado no es
+     *                     APLICADO
+     */
+    void reabrirAcuerdoPorReverso(Long idAcuerdo, String usuario, java.time.LocalDateTime fecha, String motivo)
+            throws Throwable;
 }

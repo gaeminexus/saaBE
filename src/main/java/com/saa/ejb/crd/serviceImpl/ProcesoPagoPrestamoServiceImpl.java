@@ -68,6 +68,7 @@ import com.saa.model.crd.PagoPrestamo;
 import com.saa.model.crd.Prestamo;
 import com.saa.model.crd.TipoAporte;
 import com.saa.rubros.CrdTipoMovimientoAporte;
+import com.saa.rubros.CrdTipoOperacionCobro;
 import com.saa.rubros.EstadoCuotaPrestamo;
 import com.saa.rubros.EstadoPrestamo;
 
@@ -1359,8 +1360,17 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
                 cuotasRecalculadas++;
             }
 
-            if (TIPO_PRECANCELACION.equals(tipo)) {
-                // Las cuotas que quedaron en 7 vuelven a PENDIENTE/EN_MORA según su vencimiento
+            if (TIPO_PRECANCELACION.equals(tipo) || CrdTipoOperacionCobro.ACUERDO_CONDONACION.equals(tipo)) {
+                // Las cuotas que quedaron en 7 vuelven a PENDIENTE/EN_MORA según su vencimiento.
+                // Extendido a ACUERDO_CONDONACION (2026-09-07, reverso de acuerdos de pago con
+                // condonación): AcuerdoCondonacionServiceImpl.aplicarAcuerdo cierra TODAS las
+                // cuotas pendientes en CANCELADA_ANTICIPADA(7) pero solo la cuota ancla recibe
+                // un PagoPrestamo — las demás nunca lo tuvieron. Sin este bloque, reversar un
+                // acuerdo anula el único PagoPrestamo y las demás cuotas condonadas quedan
+                // congeladas en 7 para siempre: el socio deja de deber, en silencio. Extensión
+                // NARROW a propósito: no se abre para PAGO_MANUAL/PAGO_APORTES/ABONO_CAPITAL,
+                // que podrían tener cuotas en 7 de una precancelación anterior que este evento
+                // nunca tocó.
                 List<DetallePrestamo> todas = detallePrestamoDaoService.selectByPrestamo(prestamo.getCodigo());
                 for (DetallePrestamo cuota : todas) {
                     if (cuota.getEstado() != null

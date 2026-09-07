@@ -607,22 +607,25 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
         if (motivo == null || motivo.trim().isEmpty()) {
             throw new IncomeException("El motivo del reverso es obligatorio");
         }
-        // ACUERDO_CONDONACION queda fuera a propósito (§8 del contrato): su reverso exigiría
-        // reabrir un acuerdo ya anulado (anularAcuerdoPorCobro), y esa operación inversa no
-        // existe. Inventarla acá, sobre un frente que este equipo no levantó, es exactamente
-        // cómo se rompe algo en silencio.
-        if (CrdTipoOperacionCobro.ACUERDO_CONDONACION.equals(cobro.getTipoOperacion())) {
-            throw new IncomeException("El cobro " + idCobro + " es de tipo ACUERDO_CONDONACION:"
-                    + " su reverso exige reabrir el acuerdo de condonación asociado, que hoy no"
-                    + " tiene operación inversa. Anule el acuerdo y regístrelo de nuevo.");
-        }
-
         String motivoTrim = motivo.trim();
         String motivoLinea = "Reverso del cobro " + idCobro + ": " + motivoTrim;
 
         // Paso 2 — reversar TODAS las líneas del detalle (mismo bucle que anularCobro, ver
         // reversarLineasProcesadas).
         reversarLineasProcesadas(cobro, usuario, motivoLinea);
+
+        // ACUERDO_CONDONACION (2026-09-07, CORRECCION-REVERSO-ACUERDO-CONDONACION.md): además
+        // del reverso de línea de arriba, el acuerdo mismo tiene que volver a VIGENTE, y
+        // desengancharse del EventoPrestamo que reversarLineasProcesadas acaba de anular —
+        // igual criterio que anularCobro:549-555 para su cascada a ACCN. Si el acuerdo no
+        // existe, no falla: sigue, igual que anularCobro.
+        if (CrdTipoOperacionCobro.ACUERDO_CONDONACION.equals(cobro.getTipoOperacion())) {
+            AcuerdoCondonacion acuerdo = acuerdoCondonacionDaoService.selectByCobroCredito(idCobro);
+            if (acuerdo != null) {
+                acuerdoCondonacionService.reabrirAcuerdoPorReverso(acuerdo.getCodigo(), usuario,
+                        LocalDateTime.now(), motivoLinea);
+            }
+        }
 
         // Paso 3 — borrar la distribución de bandas. Siempre corrió al procesar (procesarCobro),
         // así que un cobro PROCESADO siempre tiene algo que borrar acá.

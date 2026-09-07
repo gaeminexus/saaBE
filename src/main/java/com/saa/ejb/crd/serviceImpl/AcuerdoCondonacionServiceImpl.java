@@ -395,6 +395,35 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
         acuerdoCondonacionDaoService.save(acuerdo, acuerdo.getCodigo());
     }
 
+    @Override
+    public void reabrirAcuerdoPorReverso(Long idAcuerdo, String usuario, LocalDateTime fecha, String motivo)
+            throws Throwable {
+        System.out.println("AcuerdoCondonacionService.reabrirAcuerdoPorReverso - acuerdo: " + idAcuerdo);
+        if (usuario == null || usuario.trim().isEmpty()) {
+            throw new IncomeException("usuario es obligatorio para reabrir el acuerdo " + idAcuerdo);
+        }
+        if (motivo == null || motivo.trim().isEmpty()) {
+            throw new IncomeException("El motivo es obligatorio para reabrir el acuerdo " + idAcuerdo);
+        }
+        AcuerdoCondonacion acuerdo = buscarAcuerdo(idAcuerdo);
+        if (acuerdo.getEstado() == null || acuerdo.getEstado() != CrdEstadoAcuerdoCondonacion.APLICADO) {
+            throw new IncomeException("El acuerdo " + idAcuerdo + " está en estado "
+                    + textoEstado(acuerdo.getEstado()) + "; solo se puede reabrir un acuerdo APLICADO");
+        }
+        acuerdo.setEstado(Long.valueOf(CrdEstadoAcuerdoCondonacion.VIGENTE));
+        // Desenganchar el evento aplicado (aplicarAcuerdo:588 lo enlaza) — ese evento queda
+        // ANULADO por el reverso, y si el acuerdo siguiera apuntándolo, una aplicación
+        // posterior lo pisaría.
+        acuerdo.setEventoPrestamo(null);
+        // Misma huella que anularAcuerdoPorCobro: reusa ACCNUSRC/ACCNFCRC/ACCNMTRC, a
+        // propósito (ver el javadoc de la interfaz) — el acuerdo nunca pasó por ANULADO antes
+        // de esto, así que no hay huella previa que se pierda.
+        acuerdo.setUsuarioRechazo(usuario);
+        acuerdo.setFechaRechazo(fecha != null ? fecha : LocalDateTime.now());
+        acuerdo.setMotivoRechazo(motivo.trim());
+        acuerdoCondonacionDaoService.save(acuerdo, acuerdo.getCodigo());
+    }
+
     private double valorPorConcepto(DesgloseConceptosPrestamo desglose, Long concepto) {
         if (concepto == CrdConceptoPrestamo.CAPITAL) {
             return desglose.getCapitalPendiente();
