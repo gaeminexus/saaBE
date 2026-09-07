@@ -5,7 +5,7 @@
 > una **lista blanca cerrada** de consultas de un partícipe sobre sí mismo. Este documento es el
 > contrato entre los dos: lo que el borde puede pedir y lo que SaaBE le contesta.
 >
-> **Fecha:** 2026-09-07 · **Estado:** IMPLEMENTADO y commiteado (`3666a6c`), salvo `/simulador/productos`.
+> **Fecha:** 2026-09-07 · **Estado:** IMPLEMENTADO COMPLETO y commiteado (`3666a6c` + `48f8c2c`).
 > La §5.4 lleva la forma real de las respuestas, medida sobre el código: es lo que el borde congela.
 > **Decidido por el usuario el 2026-09-07:** path `/movil` y clave compartida obligatoria.
 > Equipo: app móvil ASOPREP (`omen-app-1`). Ejecutor en SaaBE: `omen-app-1-saa-be-app`.
@@ -170,6 +170,23 @@ el `selectAll` genérico que `EntityDao` ya le da, y filtra en el recurso por
 `ProductoServiceImpl`, que setea ese valor al crear). `CRD.PRDC` es un catálogo acotado, no una
 tabla transaccional — ver la regla 7 precisada. La respuesta va recortada a DTO: **nunca**
 `Producto` crudo, que tiene `@ManyToOne` a `Filial` y a `TipoPrestamo`.
+
+**Cerrado el 2026-09-07 (`48f8c2c`).** Y de paso quedó averiguado de dónde saldrían **tasa y
+plazo por producto**, si algún día la app quisiera prellenarlos — porque la respuesta no era la
+esperada:
+
+- `BandaProducto`/`ConfiguracionBandaProducto` **no son parámetros de crédito**: son la
+  clasificación de cartera vencida por antigüedad para provisión contable (`CRD.BNDP`: número de
+  banda, períodos, `PlanCuenta`). El árbitro sospechaba que ahí vivían la tasa y el plazo, y
+  estaba equivocado.
+- `TipoPrestamo.tasa` (`TPPRTSAA`) existe en la entidad pero **nadie la lee**: todos los
+  `getTasa()` del sistema son de `Prestamo` (`PRSTTSAA`). Es dato muerto.
+- `ParametrosAmortizacion`, la entrada del simulador, **no tiene `idProducto`**: recibe monto,
+  tasa y plazo como escalares sueltos. Hoy **hasta la pantalla de oficina simula con valores
+  tecleados a mano**; el producto es informativo, no alimenta el cálculo.
+
+Conclusión: prellenar tasa/plazo por producto **no es superficie existente que se pueda
+exponer** — sería funcionalidad nueva, con DDL, y para todos los consumidores, no solo la app.
 ### 5.4 Forma real de las respuestas — medida sobre el código implementado (2026-09-07)
 
 **Esta es la referencia que el borde congela.** Salió de la implementación, no de una
@@ -189,6 +206,7 @@ suposición: los campos son los que declaran los DTO de `com.saa.ws.movil.dto`. 
 | `CxcKardexMovilDTO` | `codigo:Long, totalDebito:Double, totalCredito:Double, saldoActual:Double, concepto:String, fechaCreado *(texto)*` |
 | `SimulacionCreditoMovilDTO` | `totalCapital:Double, totalInteres:Double, totalDesgravamen:Double, totalSeguro:Double, totalAPagar:Double, valorCuota:Double, tablaProyectada:[...]` |
 | `CuotaProyectadaMovilDTO` | `numeroCuota:Double, fechaVencimiento *(texto)*, capital:Double, interes:Double, cuota:Double, saldoCapital:Double, desgravamen:Double, seguroIncendio:Double, total:Double` |
+| `ProductoMovilDTO` | `codigo:Long, nombre:String, codigoSBS:String, idTipoPrestamo:Long, nombreTipoPrestamo:String` |
 | `MensajeMovilDTO` | `mensaje:String` |
 
 Entrada del simulador: se reutiliza **`ParametrosAmortizacion`** tal cual (es un DTO plano de
@@ -237,3 +255,4 @@ Antes de cada despliegue, tres controles — dos se leen y uno se corre:
 |---|---|
 | 2026-09-07 | Creación. Path `/movil` y clave compartida decididos por el usuario; las dos trampas de JAX-RS y el cambio de la §3.4 del plan (fechas en el origen) los aporta el árbitro |
 | 2026-09-07 | Implementado (`3666a6c`) y revisado por el árbitro. Se agrega la §5.4 con la forma real de cada respuesta, se precisa la regla 7 (prohibía `getAll` por su nombre y no por su motivo, y frenó de más el endpoint de productos) y se anota que `selectVigentesByEntidad` absorbe errores y devuelve lista vacía |
+| 2026-09-07 | Cerrado `/simulador/productos` (`48f8c2c`): la lista blanca queda completa. Se documenta que tasa y plazo por producto no existen hoy en `saaBE` para ningún consumidor |
