@@ -528,3 +528,85 @@ lo va a notificar. **No preguntar por una fecha ni proponer una.**
 
 Es la misma forma que el `PAGO_APORTES` sin rama del §3.0bis del diseño de cierre de apertura: **una
 ausencia deliberada que no se distingue de un olvido si nadie la escribe.**
+
+---
+
+## 11. Frente de caja chica — 2026-09-07
+
+Arrancó porque el usuario subió el tope de una caja desde parametrización y **la caja desapareció de
+la pantalla de gastos**. Lo que empezó como un síntoma destapó cuatro cosas, tres de ellas ya en
+producción.
+
+### 11.1 🔴 Editar una caja chica le borra el estado
+
+Es el §3ter de `BARRIDO-PAYLOADS-PARCIALES-LAP-1.md`, y lo que más vale registrar no es el defecto
+sino que **este mismo barrido lo había descartado**. Decía que la pantalla «no cuenta como hallazgo
+nuevo» porque su propio comentario ya advierte sobre `em.merge()`. El comentario advierte sobre
+`custodio`, que hoy no se usa; no vio que en el mismo payload falta `estado`, que sí se usa.
+
+Efecto: `CJCHESTD` queda NULL, `GET /cjch/activas` filtra `estado = 1`, y la caja sale de gastos,
+reposición, cierre y del semáforo de saldos — **pero no de la pantalla donde la editaste**, que
+lista con `getAll`. El daño aparece en otras tres pantallas, sin error.
+
+Dato recuperado con `sql/lap1-04`, corrido por el usuario con éxito. `CJCHFCRG`, `CJCHUSAR` y
+`CJCHUSCS` se perdieron en la misma edición y no son reconstruibles.
+
+Corrección despachada al BE el 2026-09-07 (preservar del lado servidor en `saveSingle`, patrón de
+`AnticipoClienteServiceImpl:212-225`).
+
+> **La lección de método:** un comentario en el código que dice «ojo con esto» **da falsa
+> tranquilidad sobre todo lo demás**. El barrido leyó la advertencia, la creyó completa y no
+> verificó campo por campo contra la entidad. Advertir sobre un campo hizo que nadie mirara los
+> otros tres.
+
+### 11.2 No existía forma de dar de baja una caja ni de anular una reposición
+
+Verificado: no hay endpoint ni botón para inactivar una caja, y la columna «ESTADO» de la tabla de
+parametrización **no muestra `CJCHESTD`** — su `matColumnDef` es `alerta` y muestra «Reponer / OK».
+El botón «Anular» de la grilla de movimientos exige `esGasto()`, y el backend rechaza el resto
+remitiendo a `pgtr/revertirConfirmado`, que vive en otro módulo.
+
+Decisiones del usuario, 2026-09-07: **la baja exige saldo cero y sin pendientes** (sin cascada sobre
+contabilidad ya emitida), y **el botón de anular va en caja chica**, delegando por debajo en el
+reverso del pago. Contrato congelado en `tsr/API-ANULACION-CAJA-CHICA.md`, DDL en `sql/lap1-06`
+(columna `CJCHMTAN`, va antes del WAR). Implementación pendiente.
+
+### 11.3 🔴 Un pago de caja chica `POR_APROBAR` queda atrapado
+
+Ninguna pantalla lo anula: la bandeja de aprobación solo aprueba, y pagos por transferencia no lista
+ese estado. El endpoint `POST /pgtr/anular/{id}` sí lo acepta, pero nadie lo llama.
+
+**Y el javadoc del backend afirma que ese camino es imposible.**
+`anularMovimientoCajaChicaSiAplica:2931-2941` dice que es «hoy inalcanzable en la práctica porque el
+pago de caja chica nace CONFIRMADO (sólo admite cheque o débito automático, nunca transferencia)».
+**Dejó de ser cierto el 2026-08-30**, cuando la cuenta bancaria de origen pasó a ser opcional: sin
+cuenta, el pago nace `POR_APROBAR`. El comentario describe una garantía que ya no existe, y por eso
+nadie buscó el agujero.
+
+Resuelto para el caso concreto con `sql/lap1-07` (corrido por el usuario, correcto). Es seguro por
+SQL **sólo** porque el pago nunca se aprobó: sin asiento, sin cheque, sin movimiento bancario. El
+script verifica esas tres cosas antes de tocar nada. **No generaliza.**
+
+### 11.4 ⚠️ Sin decidir — la reposición suma al saldo antes de que llegue el dinero
+
+El movimiento de reposición nace ACTIVO y entra al saldo **al registrarse**, sin esperar a que el
+pago se confirme (`registrarPagoBanco:502-512`), y `calcularSaldo` no mira el estado del pago. El
+control que impide gastar de más compara contra ese saldo inflado: **se pueden registrar gastos
+contra plata que no está en la caja.**
+
+Medido en la caja 1 «Caja Chica oficinas»: apertura 249.58, gastos activos 361.70, reposición 180.25
+con el pago nunca aprobado. Saldo en pantalla **68.13**; saldo real **−112.12**. Los vales de agosto
+se cargaron *después* de registrar la reposición de septiembre y el sistema los aceptó uno por uno.
+
+Tres salidas posibles en `API-ANULACION-CAJA-CHICA.md` §7.2. **Ninguna se implementa sin que el
+usuario elija**: la más chica de escribir cambia el saldo mostrado de toda caja con una reposición
+en curso, así que no es un ajuste silencioso.
+
+### 11.5 Nota de método — el síntoma no estaba donde estaba el daño
+
+Las cuatro cosas salieron de **una** pregunta de usuario sobre una pantalla que no mostraba una
+caja. Ninguna se habría encontrado leyendo el módulo de caja chica de arriba abajo: el defecto de
+§11.1 sólo se ve cruzando dos repositorios, y el de §11.3 sólo se ve contrastando un javadoc contra
+un cambio hecho ocho días después que él.
+
+**Lo que funcionó fue tirar del hilo del síntoma real en vez de auditar el módulo.**
