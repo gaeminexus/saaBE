@@ -1,4 +1,23 @@
 -- =====================================================================
+-- ⛔⛔ NO CORRER TODAVIA -- 2026-09-07, el mismo dia que se escribio.
+--
+--   El usuario respondio que TSR.BEXT **YA TIENE** los codigos de banco. Puede
+--   tener razon: la tabla tiene 389 filas, que es el sistema financiero
+--   ecuatoriano completo, o sea una carga desde una lista oficial.
+--
+--   Antes de agregar una columna que quiza sobra, hay que correr
+--       e2-15-verifica-si-bextcdgo-ya-es-el-codigo-bce.sql   (SOLO LECTURA)
+--   que contrasta la PK contra las dos anclas verificadas del manual del
+--   Pacifico (30 = Pacifico, 25 = Machala).
+--
+--   · Si coinciden -> la PK ES el codigo. ESTE SCRIPT SE DESCARTA.
+--   · Si no coinciden -> este script va tal como esta.
+--
+--   Se deja escrito y no se borra porque el analisis de POR QUE hace falta un
+--   codigo de institucion vale igual en los dos casos.
+-- =====================================================================
+
+-- =====================================================================
 -- CODIGO DE INSTITUCION FINANCIERA (BCE) EN TSR.BEXT
 -- Modulo: TSR  ·  Equipo: omen-saa-2  ·  Fecha: 2026-09-07
 --

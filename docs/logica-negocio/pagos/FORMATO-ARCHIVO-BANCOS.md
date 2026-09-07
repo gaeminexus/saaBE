@@ -145,14 +145,34 @@ Subtotales que muestra la macro: `USD · CU · CANT. 2 · TOTAL 300.00`.
 
 ---
 
-## 3. 🔴 El dato que NO tenemos, y sin él ninguno de los dos archivos sale bien
+## 3. 🔴 El código del banco del beneficiario — EN VERIFICACIÓN
 
 **Los dos formatos piden el código de la institución financiera del beneficiario** — campo 12 del
-Internacional, columna B del Pacífico. **Ese dato no existe en la base.**
+Internacional, columna B del Pacífico.
 
-`TSR.BEXT` (bancos externos, que es a donde apunta la cuenta del beneficiario) tiene exactamente
-cinco columnas: `BEXTCDGO` (PK), `BEXTNMBR`, `BEXTTRJT`, `BEXTESTD`, `BEXTFCIN`. **No hay código de
-institución.**
+### 3.0 ⚠️ CORRECCIÓN del 2026-09-07, el mismo día
+
+Este apartado decía, en absoluto, que **ese dato no existe en la base**. La entidad
+`BancoExterno.java` mapea cinco columnas —`BEXTCDGO` (PK), `BEXTNMBR`, `BEXTTRJT`, `BEXTESTD`,
+`BEXTFCIN`— y ninguna se llama «código de institución», así que di el hueco por probado.
+
+**El usuario avisó que la tabla ya tiene esos códigos, y hay un dato del propio repositorio que lo
+respalda:** `TSR.BEXT` tiene **389 bancos activos** (medido por el usuario el 2026-09-03, citado en
+`../rhh/sql/e2-06`). 389 no es un catálogo cargado a mano: es el sistema financiero ecuatoriano
+completo, o sea **una carga desde una lista oficial** — y una carga desde una lista oficial lo
+normal es que traiga los códigos de esa lista.
+
+> **Es la misma confusión del §8/§9 del estado del equipo, con el signo cambiado.** Ahí me equivoqué
+> suponiendo que la PK **no** era el código. Suponer ahora que **sí** lo es, sin medirlo, es el
+> mismo error. Por eso no se afirma ninguna de las dos cosas acá.
+
+**Lo resuelve `../tsr/sql/e2-15-verifica-si-bextcdgo-ya-es-el-codigo-bce.sql`, que es solo lectura**,
+contrastando la PK contra las **dos anclas verificadas** del manual del Pacífico: `30` = Banco del
+Pacífico y `25` = Banco de Machala. Si las dos dan, la PK es el código y no hace falta ninguna
+columna nueva.
+
+**Mientras tanto, el código lee el banco por un solo método** (`codigoBancoBeneficiario`), para que
+la respuesta del `e2-15` cambie una línea y no dos formateadores.
 
 ### 3.1 Y no es un hueco nuevo: RRHH ya choca contra él, hoy, en producción
 
@@ -172,10 +192,10 @@ código numérico.** Está escrito en el código y nadie lo levantó como defect
 > nunca es el único. Acá el arreglo —una columna en `TSR.BEXT`— **cierra tres agujeros a la vez**:
 > los dos formatos nuevos y el archivo de nómina que ya está saliendo mal.
 
-### 3.2 El arreglo
+### 3.2 El arreglo, si el `e2-15` dice que hace falta
 
-`docs/logica-negocio/tsr/sql/e2-14-codigo-institucion-banco-externo.sql` agrega
-**`TSR.BEXT.BEXTCDBC`** (código BCE de cámara).
+`../tsr/sql/e2-14-codigo-institucion-banco-externo.sql` agrega **`TSR.BEXT.BEXTCDBC`** (código BCE
+de cámara). ⛔ **No se corre hasta que el `e2-15` responda: puede sobrar entero.**
 
 ⛔ **La carga de valores NO se inventa.** De los dos documentos salen **dos códigos verificados**:
 
