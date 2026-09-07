@@ -820,9 +820,13 @@ public class AplicacionPagoCxcServiceImpl implements AplicacionPagoCxcService {
 		Map<String, Object> saldos = new HashMap<>();
 		saldos.put("facturaId", idFactura);
 		saldos.put("numeroFactura", factura.getNumero());
-		saldos.put("total", total);
-		saldos.put("totalAplicado", aplicado);
-		saldos.put("saldoPendiente", total - aplicado);
+		// Redondeado a 2 decimales: sin esto "total - aplicado" en double arrastra basura
+		// binaria (ej. 297.75 - 38.84 = 258.90999999999997) y el saldo exacto que la
+		// pantalla muestra redondeado deja de poder cobrarse, porque la comparación lo ve
+		// como que excede el pendiente real.
+		saldos.put("total", redondea(total));
+		saldos.put("totalAplicado", redondea(aplicado));
+		saldos.put("saldoPendiente", redondea(total - aplicado));
 		saldos.put("estadoPago", factura.getEstadoPago());
 		return saldos;
 	}
