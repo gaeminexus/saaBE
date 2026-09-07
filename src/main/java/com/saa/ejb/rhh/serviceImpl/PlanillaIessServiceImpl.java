@@ -501,11 +501,17 @@ public class PlanillaIessServiceImpl implements PlanillaIessService {
 	 * línea por el valor total de la planilla — los renglones que se hayan capturado ahí
 	 * son solo para la conciliación (#3.2), no participan del desglose contable.
 	 * <p>
-	 * Los cuatro productos (IESS-APER, IESS-APAT, IESS-PRST, IESS-FRES) son los cuatro de
-	 * la tabla de #2: CCC y el seguro de tiempo parcial se pliegan a IESS-APAT porque
-	 * {@code RhhLineaAsiento} todavía no les da línea propia (#2.2, pendiente de la
-	 * contadora); IESS-PRST cubre los dos préstamos porque comparten la única línea 12
-	 * (#2.1, mismo motivo).
+	 * Son seis productos (IESS-APER, IESS-APAT, IESS-CCC, IESS-STP, IESS-PRST, IESS-FRES),
+	 * mapeo 1:1 con {@code conceptoTipo} — nada se pliega en Java. Verificado el 2026-09-07
+	 * (corrección del ítem 6.d): la suposición original de que CCC y el seguro de tiempo
+	 * parcial "quedaban dentro del aporte patronal" era falsa —
+	 * {@code ContabilizacionNominaServiceImpl} no los contabiliza en ninguna línea, la
+	 * planilla de control solo los calcula—, así que plegarlos a IESS-APAT habría debitado
+	 * un pasivo que nunca se acreditó. Si dos conceptos alguna vez deben terminar en la
+	 * misma cuenta, eso se resuelve apuntando sus dos grupos a la misma cuenta en el .sql,
+	 * no con un switch acá. La única excepción real es IESS-PRST, que cubre los dos tipos
+	 * de préstamo porque {@code RhhLineaAsiento} solo tiene la línea 12 para los dos (#2.1)
+	 * — no es un pliegue de este código, es que hoy no existen dos líneas para separar.
 	 * @param planilla  : Planilla a pagar (con tipo y empresa resueltos)
 	 * @param renglones : Renglones ya cargados de la planilla
 	 * @return          : El desglose a pasar a {@code registrarPagoDeOrigenExterno}
@@ -563,9 +569,11 @@ public class PlanillaIessServiceImpl implements PlanillaIessService {
 			case RhhConceptoPlanillaIess.APORTE_PERSONAL:
 				return "IESS-APER";
 			case RhhConceptoPlanillaIess.APORTE_PATRONAL:
-			case RhhConceptoPlanillaIess.CONTRIBUCION_CCC:
-			case RhhConceptoPlanillaIess.SEGURO_SALUD_TIEMPO_PARCIAL:
 				return "IESS-APAT";
+			case RhhConceptoPlanillaIess.CONTRIBUCION_CCC:
+				return "IESS-CCC";
+			case RhhConceptoPlanillaIess.SEGURO_SALUD_TIEMPO_PARCIAL:
+				return "IESS-STP";
 			default:
 				// OTRO (5): sin producto, rechaza en armaDesgloseContable.
 				return null;
