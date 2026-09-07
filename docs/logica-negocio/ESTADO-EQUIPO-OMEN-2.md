@@ -1882,3 +1882,34 @@ arreglo mejor que el que había hecho**.
 > casos de `GRANT` y sus tres de ausencias deliberadas son la misma familia vista desde dos módulos.
 > **Una nota que vive lejos del código no protege — y ahora sé que un control que vive lejos del
 > paso riesgoso tampoco.**
+
+### §21bis — CERRADO el frente de las retenciones — 2026-09-07
+
+El usuario dio por **cerrado** el `e2-10`, que era el último cabo del §21. Con eso el frente queda
+completo de punta a punta:
+
+| Pieza | Estado |
+|---|---|
+| La cuenta del titular sale del rol **Cliente** en los dos generadores de asiento (V1 y V2) | ✅ `32cdede` |
+| El bloqueante pasa a `CLIENTE_SIN_CUENTA`, sólo en los dos métodos de retención | ✅ `32cdede` |
+| El titular emisor se auto-crea con rol **Cliente**, sin quitarle el de Proveedor | ✅ `32cdede` |
+| Las variables y comentarios invertidos del asiento, renombrados | ✅ `32cdede` |
+| La etiqueta del bloqueante nuevo en el frontend | ✅ `864a949` |
+| **`e2-10` — asientos viejos con la cuenta equivocada** | ✅ **cerrado por el usuario** |
+| **B1 — titulares sin cuenta de rol Cliente** | ⚪ descartado el 2026-09-04: se parametriza sobre la marcha |
+
+**Lo que quedó del frente, más allá del arreglo:**
+
+1. **El código se contradecía dentro del mismo método** — `obtenerOAutoCrearProveedor` + rol
+   `PROVEEDOR` estricto por un lado, y por el otro un comentario que decía *«la retención abona una
+   factura de VENTA (CXC)»* y una resolución del sustento contra `CBR.FCTR`. Lo detectó **una
+   persona que conoce el negocio, no el sistema**: ninguna validación podía marcarlo porque **las
+   dos mitades eran consistentes cada una por su lado**.
+
+2. **Yo reporté que el asiento estaba invertido y era falso.** Los lados siempre estuvieron bien;
+   sólo la cuenta salía del rol equivocado. Me equivoqué **leyendo los rótulos en vez de los
+   valores**, en un método donde la variable que va al haber se llamaba `debe`. **En un archivo con
+   los nombres invertidos, el comentario no es una pista débil: es una pista falsa.**
+
+3. **Inventé tres códigos de bloqueante que ya existían** con otro nombre, y lo cazó el agente al
+   reportar la discrepancia en vez de resolverla solo.
