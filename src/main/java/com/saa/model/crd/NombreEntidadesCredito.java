@@ -109,5 +109,6 @@ public interface NombreEntidadesCredito {
 	String DISTRIBUCION_BANDA = "DistribucionBanda";
 	String CONFIGURACION_CALIFICACION_RIESGO = "ConfiguracionCalificacionRiesgo";
 	String ESCALA_CALIFICACION_RIESGO = "EscalaCalificacionRiesgo";
+	String USUARIO_APP = "UsuarioApp";
 
 }
