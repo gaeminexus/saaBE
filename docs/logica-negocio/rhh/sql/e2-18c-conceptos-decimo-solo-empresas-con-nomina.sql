@@ -76,29 +76,59 @@ SELECT '0.3 - detalles del rubro' AS control, d.PDTRALTR, d.PDTRDSCR
 -- CPNMCDGO NO se pasa: es IDENTITY (verificado, e2-18 bloque 0.5).
 -- Los NOT EXISTS hacen que re-correr esto no duplique nada.
 
-INSERT INTO RHH.CPNM (PJRQCDGO, CPNMNMBR, CPNMABRV, CPNMALTR, CPNMTPCN, CPNMROLM, CPNMESTD)
-SELECT emp.PJRQCDGO,
+-- ⚠️ CORREGIDO el 2026-09-08: la primera version insertaba solo 7 columnas y
+--    RHH.CPNM.CPNMTPCL (tipo de calculo) es NOT NULL — ORA-01400, descubierto
+--    al correr el e2-26, que tenia el mismo hueco. Este script nunca se habia
+--    corrido, asi que aca no llego a fallar. Ahora el concepto se COPIA desde
+--    el decimo mensualizado de la misma empresa (rol 6 para el tercero, rol 7
+--    para el cuarto) y se sobrescribe solo lo que cambia: tipo INFORMATIVO,
+--    rol de motor, todas las banderas de base en 'N', sin RDEP ni codigo IESS.
+--    Ver el comentario largo del BLOQUE 5 del e2-26 para el porque de cada
+--    columna. Si una empresa no tuviera rol 6/7, no se le crea nada y el
+--    BLOQUE 2 lo muestra con menos filas: avisar.
+INSERT INTO RHH.CPNM (PJRQCDGO, CPNMNMBR, CPNMABRV, CPNMALTR, CPNMTPCN, CPNMTPCL, CPNMBSCL,
+                      CPNMTPRL, CPNMVLRR, CPNMPRCN, CPNMFRML, CPNMIMIE, CPNMIMIR, CPNMAPFR,
+                      CPNMBSDT, CPNMBSDC, CPNMBSVC, CPNMBSUT, CPNMPTRN, CPNMPRVS, CPNMOBLG,
+                      CPNMRCRT, CPNMRDEP, CPNMIESS, CPNMORDN, CPNMESTD, CPNMFCHR, CPNMUSRR, CPNMROLM)
+SELECT p.PJRQCDGO,
        'Decimo tercero acumulado pagado',
        'D3ACPG',
-       NVL((SELECT MAX(c.CPNMALTR) FROM RHH.CPNM c WHERE c.PJRQCDGO = emp.PJRQCDGO), 0) + 1,
-       5,    -- INFORMATIVO
-       32,   -- RhhRolConceptoMotor.DECIMO_TERCERO_ACUMULADO_PAGADO
-       1
-  FROM (SELECT DISTINCT PJRQCDGO FROM RHH.CPNM) emp
- WHERE NOT EXISTS (SELECT 1 FROM RHH.CPNM c2
-                    WHERE c2.PJRQCDGO = emp.PJRQCDGO AND c2.CPNMROLM = 32);
+       NVL((SELECT MAX(c.CPNMALTR) FROM RHH.CPNM c WHERE c.PJRQCDGO = p.PJRQCDGO), 0) + 1,
+       5,                                   -- INFORMATIVO
+       p.CPNMTPCL, p.CPNMBSCL, p.CPNMTPRL,  -- copiados del rol 6
+       0, 0, NULL,
+       'N', 'N', 'N', 'N', 'N', 'N', 'N',   -- ninguna base
+       'N', 'N', 'N', 'N',                  -- patronal, provisiona, obligatorio, recortable
+       NULL, NULL,                          -- RDEP del SRI y codigo IESS: NO
+       NVL((SELECT MAX(c.CPNMORDN) FROM RHH.CPNM c WHERE c.PJRQCDGO = p.PJRQCDGO), 0) + 1,
+       1, SYSTIMESTAMP, 'e2-18c',
+       32                                   -- RhhRolConceptoMotor.DECIMO_TERCERO_ACUMULADO_PAGADO
+  FROM RHH.CPNM p
+ WHERE p.CPNMROLM = 6
+   AND NOT EXISTS (SELECT 1 FROM RHH.CPNM c2
+                    WHERE c2.PJRQCDGO = p.PJRQCDGO AND c2.CPNMROLM = 32);
 
-INSERT INTO RHH.CPNM (PJRQCDGO, CPNMNMBR, CPNMABRV, CPNMALTR, CPNMTPCN, CPNMROLM, CPNMESTD)
-SELECT emp.PJRQCDGO,
+INSERT INTO RHH.CPNM (PJRQCDGO, CPNMNMBR, CPNMABRV, CPNMALTR, CPNMTPCN, CPNMTPCL, CPNMBSCL,
+                      CPNMTPRL, CPNMVLRR, CPNMPRCN, CPNMFRML, CPNMIMIE, CPNMIMIR, CPNMAPFR,
+                      CPNMBSDT, CPNMBSDC, CPNMBSVC, CPNMBSUT, CPNMPTRN, CPNMPRVS, CPNMOBLG,
+                      CPNMRCRT, CPNMRDEP, CPNMIESS, CPNMORDN, CPNMESTD, CPNMFCHR, CPNMUSRR, CPNMROLM)
+SELECT p.PJRQCDGO,
        'Decimo cuarto acumulado pagado',
        'D4ACPG',
-       NVL((SELECT MAX(c.CPNMALTR) FROM RHH.CPNM c WHERE c.PJRQCDGO = emp.PJRQCDGO), 0) + 1,
-       5,    -- INFORMATIVO
-       33,   -- RhhRolConceptoMotor.DECIMO_CUARTO_ACUMULADO_PAGADO
-       1
-  FROM (SELECT DISTINCT PJRQCDGO FROM RHH.CPNM) emp
- WHERE NOT EXISTS (SELECT 1 FROM RHH.CPNM c2
-                    WHERE c2.PJRQCDGO = emp.PJRQCDGO AND c2.CPNMROLM = 33);
+       NVL((SELECT MAX(c.CPNMALTR) FROM RHH.CPNM c WHERE c.PJRQCDGO = p.PJRQCDGO), 0) + 1,
+       5,
+       p.CPNMTPCL, p.CPNMBSCL, p.CPNMTPRL,  -- copiados del rol 7
+       0, 0, NULL,
+       'N', 'N', 'N', 'N', 'N', 'N', 'N',
+       'N', 'N', 'N', 'N',
+       NULL, NULL,
+       NVL((SELECT MAX(c.CPNMORDN) FROM RHH.CPNM c WHERE c.PJRQCDGO = p.PJRQCDGO), 0) + 1,
+       1, SYSTIMESTAMP, 'e2-18c',
+       33                                   -- RhhRolConceptoMotor.DECIMO_CUARTO_ACUMULADO_PAGADO
+  FROM RHH.CPNM p
+ WHERE p.CPNMROLM = 7
+   AND NOT EXISTS (SELECT 1 FROM RHH.CPNM c2
+                    WHERE c2.PJRQCDGO = p.PJRQCDGO AND c2.CPNMROLM = 33);
 
 COMMIT;
 

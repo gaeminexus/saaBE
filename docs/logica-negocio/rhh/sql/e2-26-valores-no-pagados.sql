@@ -215,35 +215,80 @@ SELECT 1510, r.PRBRCDGO, 'VALOR NO PAGADO RECUPERADO', 35, 1
 -- =====================================================================
 -- BLOQUE 5 — LOS DOS CONCEPTOS, uno por empresa que corre nomina
 -- =====================================================================
--- ⛔ FROM (SELECT DISTINCT PJRQCDGO FROM RHH.CPNM), NUNCA FROM SCP.PJRQ: esa
---    tabla son las personas juridicas (786 filas), no las empresas.
--- CPNMTPCN = 5 (INFORMATIVO) es lo que impide que entren al neto.
+-- ⚠️ CORREGIDO el 2026-09-08 tras un ORA-01400 en produccion: la primera
+--    version insertaba solo 7 columnas y RHH.CPNM.CPNMTPCL (tipo de calculo)
+--    es NOT NULL. El e2-18c tenia el mismo hueco y no se habia notado porque
+--    nunca se corrio. Ahora el concepto se COPIA desde uno existente de la
+--    misma empresa —el decimo tercero mensualizado, rol 6, que existe en toda
+--    empresa que corre nomina— y se sobrescribe solo lo que cambia. Asi toda
+--    columna obligatoria recibe un valor valido sin adivinar restricciones.
+--
+-- Lo que se sobrescribe, y por que:
+--   CPNMTPCN = 5 (INFORMATIVO): lo que impide que entre al neto.
+--   CPNMROLM = 34 / 35: el rol que el motor busca.
+--   Las siete banderas de base (IESS, IR, fondos, decimos, vacaciones,
+--     utilidades) en 'N': un informativo NO forma parte de ninguna base.
+--   CPNMPTRN 'N' (no es costo patronal), CPNMPRVS 'N' (no provisiona),
+--   CPNMOBLG 'N' (NO se aplica solo a todo contrato: lo dispara la novedad),
+--   CPNMRCRT 'N' (no se recorta ante neto negativo: no es un descuento).
+--   ⛔ CPNMRDEP y CPNMIESS en NULL a proposito: el casillero del anexo RDEP
+--     del SRI y el codigo de planilla del IESS. Un informativo no puede
+--     acumular en el SRI ni ir al IESS. Si la base los exigiera, es
+--     preferible que el INSERT falle visible a que reporte de mas.
+--   CPNMVLRR/CPNMPRCN en 0 y CPNMFRML en NULL: el valor lo pone la novedad
+--     (como en los decimos, roles 32/33), no una formula del concepto.
+--   CPNMORDN al final del rol de la empresa. CPNMALTR el siguiente libre.
+-- Lo que se copia del rol 6: CPNMTPCL, CPNMBSCL, CPNMTPRL (valores validos
+--   del catalogo, no se evaluan para un informativo).
+--
+-- ⛔ FROM (SELECT DISTINCT PJRQCDGO FROM RHH.CPNM), NUNCA FROM SCP.PJRQ.
 -- CPNMESTD = 1 es obligatorio: selectByRolMotor filtra por estado = 1.
--- CPNMCDGO no se pasa: es IDENTITY (verificado en e2-18, bloque 0.5).
--- Los NOT EXISTS hacen que re-correr esto no duplique.
-INSERT INTO RHH.CPNM (PJRQCDGO, CPNMNMBR, CPNMABRV, CPNMALTR, CPNMTPCN, CPNMROLM, CPNMESTD)
-SELECT emp.PJRQCDGO,
+-- CPNMCDGO no se pasa: es IDENTITY. Los NOT EXISTS hacen que re-correr esto
+-- no duplique. Si una empresa no tuviera rol 6, no se le crea nada y el
+-- BLOQUE 7 lo muestra con menos filas de las esperadas: avisar.
+INSERT INTO RHH.CPNM (PJRQCDGO, CPNMNMBR, CPNMABRV, CPNMALTR, CPNMTPCN, CPNMTPCL, CPNMBSCL,
+                      CPNMTPRL, CPNMVLRR, CPNMPRCN, CPNMFRML, CPNMIMIE, CPNMIMIR, CPNMAPFR,
+                      CPNMBSDT, CPNMBSDC, CPNMBSVC, CPNMBSUT, CPNMPTRN, CPNMPRVS, CPNMOBLG,
+                      CPNMRCRT, CPNMRDEP, CPNMIESS, CPNMORDN, CPNMESTD, CPNMFCHR, CPNMUSRR, CPNMROLM)
+SELECT p.PJRQCDGO,
        'Valor no pagado',
        'VNPGRT',
-       NVL((SELECT MAX(c.CPNMALTR) FROM RHH.CPNM c WHERE c.PJRQCDGO = emp.PJRQCDGO), 0) + 1,
-       5,    -- INFORMATIVO
-       34,   -- RhhRolConceptoMotor.VALOR_NO_PAGADO_RETENIDO
-       1
-  FROM (SELECT DISTINCT PJRQCDGO FROM RHH.CPNM) emp
- WHERE NOT EXISTS (SELECT 1 FROM RHH.CPNM c2
-                    WHERE c2.PJRQCDGO = emp.PJRQCDGO AND c2.CPNMROLM = 34);
+       NVL((SELECT MAX(c.CPNMALTR) FROM RHH.CPNM c WHERE c.PJRQCDGO = p.PJRQCDGO), 0) + 1,
+       5,                                   -- INFORMATIVO
+       p.CPNMTPCL, p.CPNMBSCL, p.CPNMTPRL,  -- copiados del rol 6
+       0, 0, NULL,                          -- valor fijo, porcentaje, formula
+       'N', 'N', 'N', 'N', 'N', 'N', 'N',   -- ninguna base: IESS, IR, fondos, D13, D14, vacaciones, utilidades
+       'N', 'N', 'N', 'N',                  -- patronal, provisiona, obligatorio, recortable
+       NULL, NULL,                          -- RDEP del SRI y codigo IESS: NO
+       NVL((SELECT MAX(c.CPNMORDN) FROM RHH.CPNM c WHERE c.PJRQCDGO = p.PJRQCDGO), 0) + 1,
+       1, SYSTIMESTAMP, 'e2-26',
+       34                                   -- RhhRolConceptoMotor.VALOR_NO_PAGADO_RETENIDO
+  FROM RHH.CPNM p
+ WHERE p.CPNMROLM = 6
+   AND NOT EXISTS (SELECT 1 FROM RHH.CPNM c2
+                    WHERE c2.PJRQCDGO = p.PJRQCDGO AND c2.CPNMROLM = 34);
 
-INSERT INTO RHH.CPNM (PJRQCDGO, CPNMNMBR, CPNMABRV, CPNMALTR, CPNMTPCN, CPNMROLM, CPNMESTD)
-SELECT emp.PJRQCDGO,
+INSERT INTO RHH.CPNM (PJRQCDGO, CPNMNMBR, CPNMABRV, CPNMALTR, CPNMTPCN, CPNMTPCL, CPNMBSCL,
+                      CPNMTPRL, CPNMVLRR, CPNMPRCN, CPNMFRML, CPNMIMIE, CPNMIMIR, CPNMAPFR,
+                      CPNMBSDT, CPNMBSDC, CPNMBSVC, CPNMBSUT, CPNMPTRN, CPNMPRVS, CPNMOBLG,
+                      CPNMRCRT, CPNMRDEP, CPNMIESS, CPNMORDN, CPNMESTD, CPNMFCHR, CPNMUSRR, CPNMROLM)
+SELECT p.PJRQCDGO,
        'Valor no pagado del mes anterior',
        'VNPGRC',
-       NVL((SELECT MAX(c.CPNMALTR) FROM RHH.CPNM c WHERE c.PJRQCDGO = emp.PJRQCDGO), 0) + 1,
-       5,    -- INFORMATIVO
-       35,   -- RhhRolConceptoMotor.VALOR_NO_PAGADO_RECUPERADO
-       1
-  FROM (SELECT DISTINCT PJRQCDGO FROM RHH.CPNM) emp
- WHERE NOT EXISTS (SELECT 1 FROM RHH.CPNM c2
-                    WHERE c2.PJRQCDGO = emp.PJRQCDGO AND c2.CPNMROLM = 35);
+       NVL((SELECT MAX(c.CPNMALTR) FROM RHH.CPNM c WHERE c.PJRQCDGO = p.PJRQCDGO), 0) + 1,
+       5,
+       p.CPNMTPCL, p.CPNMBSCL, p.CPNMTPRL,
+       0, 0, NULL,
+       'N', 'N', 'N', 'N', 'N', 'N', 'N',
+       'N', 'N', 'N', 'N',
+       NULL, NULL,
+       NVL((SELECT MAX(c.CPNMORDN) FROM RHH.CPNM c WHERE c.PJRQCDGO = p.PJRQCDGO), 0) + 1,
+       1, SYSTIMESTAMP, 'e2-26',
+       35                                   -- RhhRolConceptoMotor.VALOR_NO_PAGADO_RECUPERADO
+  FROM RHH.CPNM p
+ WHERE p.CPNMROLM = 6
+   AND NOT EXISTS (SELECT 1 FROM RHH.CPNM c2
+                    WHERE c2.PJRQCDGO = p.PJRQCDGO AND c2.CPNMROLM = 35);
 
 COMMIT;
 
