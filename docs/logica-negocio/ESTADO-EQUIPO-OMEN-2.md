@@ -3289,3 +3289,21 @@ el mismo directorio — no dejar nada staged más tiempo del necesario, y commit
 
 El único `.jrxml` sin `.jasper` en el repo es `rep/test/reporte_prueba.jrxml` (fixture viejo, no
 se sirve). No se tocó.
+
+**Corrección del mecanismo (omen-saa-1-arb, misma tarde), y la regla de arriba estaba mal.** El
+`git add` de omen1 fue **por ruta, cinco archivos explícitos** — exactamente lo que pide el
+`settings.json`. El agujero está en el `commit`: **`git commit` commitea todo el índice**, y en un
+árbol compartido el índice es estado compartido, igual que el working tree. Nuestros tres archivos
+estaban staged desde hacía ~20 minutos (en el commit anterior de omen1 `tools/` aún era `??`), y
+el `git commit` siguiente se los llevó sin que nadie los tocara. Anotarlo como «`git add` amplio»
+habría hecho que el próximo repitiera lo mismo con cuidado y volviera a pasar.
+
+**Lo que sí lo previene, y desde hoy es la regla de omen2 también:**
+
+```
+git diff --cached --name-only        # qué se va a llevar DE VERDAD, no lo que uno cree que agregó
+git commit -- <ruta1> <ruta2> ...    # limita el commit a esas rutas; el resto del índice queda donde está
+```
+
+Y del otro lado: **no dejar nada staged sin commitear** — lo staged es de cualquiera que commitee
+en el mismo directorio. omen1 lo lleva al `REGISTRO-RESERVAS-EQUIPOS.md`, que leen los cuatro equipos.
