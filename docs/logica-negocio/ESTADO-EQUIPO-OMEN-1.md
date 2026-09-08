@@ -1913,3 +1913,78 @@ compro nada y costo un viaje al usuario.
 Antes, el mismo dia, el `207` habia fallado por dos nombres de columna que escribi de memoria en
 vez de cotejarlos contra su `@Column`. Los dos errores son la misma familia: **deducir en vez de
 medir, pero en SQL, donde el costo lo paga el usuario y no yo.**
+
+---
+
+## ⛔ H53 — El informe CCPM no es reproducible: filtra por el estado de HOY, no por el del corte
+
+**2026-09-07.** El usuario pregunto si los reportes de *Reportes → Creditos → Informes mensuales*
+(CPRM · CJBM · CCPM) y los G calculan los saldos correctos **a la fecha de corte**. Medido:
+
+### Lo que SI esta bien
+
+| Reporte | Como saca el saldo | Veredicto |
+|---|---|---|
+| **CPRM** | `sum(aportes) where fechaTransaccion <= fechaCorte` | ✅ reconstruye a la fecha |
+| **CJBM** | mismo patron, aportes acumulados hasta el corte | ✅ reconstruye |
+| **CCPM** — mora | `calcularInteresMoraBatch(cuotas, fechaFin)` | ✅ calculada al corte, no a hoy |
+| **G40–G51** | reciben mes+anio y derivan con `YearMonth.lengthOfMonth()` | ✅ imposible pasarles media fecha |
+
+Los 8 generadores G que NO usan `lengthOfMonth` (G41, G45, G47, G50, G51 y los orquestadores) son
+de **padron o catalogo** —fecha de nacimiento, de ingreso, de novacion— y no filtran por fecha
+porque no tienen movimientos que cortar. Verificado en G41, G45 y G47.
+
+### ⛔ Lo que NO — `selectCuotasDelMesGlobal`
+
+```java
+where d.estado = 4                          // ← PAGADA, el estado de HOY
+  and d.fechaVencimiento >= :fechaInicio
+  and d.fechaVencimiento <= :fechaFin
+```
+
+**Filtra por el estado ACTUAL de la cuota, no por el que tenia al cierre.** Una cuota que vencia en
+agosto y se pago recien en septiembre figura hoy como PAGADA y **entra en el informe de agosto**.
+
+⇒ **El informe CCPM de un mes cerrado cambia segun cuando se genere.** No es reproducible, y es un
+reporte que va a la Superintendencia.
+
+⚠️ **Medido a medias, y hay que decirlo:** se verifico `selectCuotasDelMesGlobal`. La segunda
+consulta de seleccion, `selectMenorCuotaAnteriorAlMesGlobal`, **no se abrio** — CCPM combina las
+dos, asi que el alcance real puede ser mayor o compensarse. **No arreglar sin terminar de medir.**
+
+### La decision que falta, y es del usuario
+
+¿El informe de un mes debe ser **una foto congelada de ese mes** (reproducible) o **la situacion
+actual de las cuotas de ese mes**? Hoy es lo segundo **sin que nadie lo haya decidido** — puede
+incluso ser lo que siempre se quiso. No se toca hasta tenerlo definido: cambiar el criterio mueve
+numeros ya reportados a un ente de control.
+
+### Como medir el impacto de un mes antes de mandarlo
+
+```sql
+SELECT COUNT(*) AS CUOTAS_QUE_SE_COLARIAN, ROUND(SUM(NVL(d.DTPRCPTL,0)),2) AS CAPITAL
+  FROM CRD.DTPR d
+ WHERE d.DTPRESTD = 4
+   AND d.DTPRFCVN BETWEEN DATE '2026-08-01' AND DATE '2026-08-31'
+   AND EXISTS (SELECT 1 FROM CRD.PGPR g
+                WHERE g.DTPRCDGO = d.DTPRCDGO
+                  AND (g.PGPRANUL IS NULL OR g.PGPRANUL = 0)
+                  AND g.PGPRFCHA > DATE '2026-08-31');
+```
+
+Cero o casi cero ⇒ el defecto no muerde ese mes y el informe se puede mandar.
+
+---
+
+## H54 — El corte de los informes cierra en `23:59:59`, no en fin de dia
+
+`GeneracionCPRMServiceImpl:51`, `CJBM:57`, `CCPM:51` y `G48:64` arman el corte como
+`LocalDateTime.of(anio, mes, ultimoDia, 23, 59, 59)`. **Excluye el ultimo segundo del dia**: un
+movimiento con marca de tiempo dentro de `23:59:59.000000001`–`23:59:59.999999999` queda fuera.
+
+Es improbable que muerda, pero es **la misma familia** que los dos defectos que hoy costaron el
+centavo del cobro 54 y el cierre de cartera: un borde escrito con "casi" en vez de exacto. Lo
+correcto es `.atTime(LocalTime.MAX)`.
+
+**Autorizado por el usuario, pendiente de despachar**: va junto con H53 porque son los mismos
+archivos y no conviene tocarlos dos veces.
