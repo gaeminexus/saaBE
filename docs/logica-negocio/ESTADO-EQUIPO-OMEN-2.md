@@ -3176,3 +3176,69 @@ bloques `// ===== INICIO/FIN enganche valores no pagados =====`. **El `DELETE /r
 pasa por el servicio y rechaza órdenes confirmadas** — si algo suyo dependía del borrado directo,
 va a recibir un 409 con mensaje. Las sesiones de la laptop no son alcanzables por mensaje desde
 esta máquina; el aviso va por este documento y por el usuario.
+
+## §37 — Cierre de agosto: la provisión que «nunca se daba de baja» y las guardas sin puerta
+
+**2026-09-08, jornada completa.** Empezó como «el mayor analítico descuadra» y terminó cerrando
+agosto con dos asientos manuales y once commits. Lo que se aprendió vale más que lo que se corrigió.
+
+| Frente | Commit(s) | Qué |
+|---|---|---|
+| Baja de provisión del décimo ponía la provisión al HABER | `b4a66e8` | El lado se **impone**, no se hereda de la plantilla del devengo (1.285,44 = 2 × 642,72) |
+| Vacaciones gozadas debitan la provisión | `ce82f34` · `23bf796` (e2-29) | Rol de motor 36; **PDTR quedó en 1516, no 1511** |
+| previsualizar / validarCuentas no conocían la línea 42 | `663e428` | Centralizado en `extraeLineaFueraDePlantillaRol` |
+| Pago de décimos con período CALCULADO | `663e428` | Guard ABIERTO estricto = pared sin puerta |
+| Reversos peligrosos de e2-26/e2-29, e2-13 con secuencia inexistente | `663e428` | Ver §1bis del registro de reservas |
+| Sin tope contra PVNM (decisión «A») | `db91ceb` | Empresa migrada: el pasivo está en libros, PVNM no lo ve |
+| Descontabilizar período · guard centralizado · PUT no aprueba · reparación | `f4fd056` | `PeriodoModificableNomina`, `consumirSaldoSinNovedad` |
+| FE: aviso ámbar, botón gris explica, Descontabilizar, botones de vacaciones al ciclo real | `eab68ff` `048741d` `1e245d1` `9c451b9` `90d67c0` | |
+| Scripts de diagnóstico y salida | e2-30 · e2-31 · e2-32 · e2-33 | Todos solo-lectura salvo e2-31 |
+
+### Las tres cosas que hay que llevarse
+
+1. **Una guarda de estado sin camino de vuelta es una pared, no una guarda.** Tres métodos exigían
+   ABIERTO estricto (`crearNovedadesDecimoAcumulado`, `SolicitudVacaciones.aprobar`, y el original de
+   `ValorNoPagado`) y **nada en el sistema devuelve un período a ABIERTO**. Y `cerrarPeriodo` acepta
+   cerrar desde CONTABILIZADO sin pagar, mientras la orden de pago rechaza CERRADO: el sistema
+   produce estados desde los que después se niega a actuar. El usuario chocó con las tres el mismo
+   día. Ahora hay UN `PeriodoModificableNomina.exige` y existe `descontabilizarPeriodo`.
+2. **«Aprobada» no significaba aprobada.** El FE mandaba `PUT {estado:'APROBADA'}` y `saveSingle` lo
+   grababa. Seis solicitudes de agosto sin saldo descontado, sin DVAC, sin novedad — y por eso el
+   rol no tuvo renglón y «la provisión nunca se daba de baja». **No era la contabilidad: era que el
+   dato de entrada no existía.** Se midió con e2-30/e2-32 antes de tocar el contabilizador; si se
+   hubiera «arreglado» la baja de provisión primero, el asiento habría seguido igual.
+3. **El tope contra PVNM era correcto para la empresa equivocada.** Excluir períodos no productivos
+   protege de dar de baja un pasivo inexistente — pero en una empresa migrada el pasivo vive en el
+   saldo inicial de CNT y PVNM ve 1/8. Se quitó para décimos/FR/vacaciones; **se mantuvo para
+   jubilación/desahucio**, donde sin estudio actuarial cargado el pasivo de verdad no existe.
+
+### Lo que dice de mí
+
+- Le di al usuario la secuencia «aprobar → contabilizar → **cerrar**» — con el cierre antes de la
+  orden de pago. Lo mandé derecho a la pared del punto 1. El e2-31 deshace ese cierre.
+- Le ofrecí «cambiá la fecha de pago a un período ABIERTO» sin haber medido que **no existía ningún
+  período ABIERTO**. Retirado.
+- Cuatro intentos de `git add -A` contra una regla de `settings.json` que existe por buena razón
+  (varios equipos en el mismo directorio). Leer la regla antes de reintentar. Anotado en memoria.
+- Inventé columnas de `CNT.DTAS` (ORA-00904) y afirmé que `SQ_PDTRCDGO` existía porque un script mío
+  la usaba — el script era el que estaba mal. Dos veces el mismo error del §34: **verificar contra
+  la entidad, no contra la memoria.**
+
+### Lo que quedó abierto, y es del usuario
+
+- **¿Impedir cerrar un período sin pagar?** Preguntado tres veces, sin respuesta. Los históricos
+  quedarían exceptuados. Hasta que decida, el e2-31 es la salida.
+- **Reparar las seis de agosto**: correr `POST /slct/consumirSaldoSinNovedad/{1..6}` con el WAR
+  `f4fd056` arriba. Idempotente. Sin esto, esos seis empleados siguen con los días como disponibles.
+- **`RHH.PVNM` no lo consume nadie** para ningún beneficio. Sigue creciendo. Frente aparte.
+- Los $6.840,03 de vacaciones y las provisiones de ago-dic 2025 que la apertura no cargó.
+- `snackbar-warning` (con -ing) en `cxc`/`cnt` sin clase global detrás; Validar/Calcular sin pista.
+
+### ⚠️ Aviso a `lap-saa-1` — archivos compartidos tocados, ya en `main`
+
+`ContabilizacionNominaServiceImpl` (descontabilizar, sin tope, línea 42), `OrdenBeneficioSocialServiceImpl`,
+`SolicitudVacacionesServiceImpl` + `SolicitudVacacionesRest` (**`saveSingle` ahora rechaza cambios de
+estado por PUT** — cualquier cliente suyo que aprobara así va a recibir un 500 con mensaje),
+`ValorNoPagadoServiceImpl`, `PeriodoNominaRest`, `ProvisionNominaDaoService` (**`sumaValorByEmpleadosYTipo`
+eliminada**), nuevo `rhh/util/PeriodoModificableNomina`. Y `REGISTRO-RESERVAS-EQUIPOS.md`: la
+numeración real de PDTR 1500-1516 y la corrección de los reversos.
