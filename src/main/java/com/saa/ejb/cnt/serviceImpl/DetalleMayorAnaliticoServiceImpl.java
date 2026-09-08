@@ -99,23 +99,38 @@ public class DetalleMayorAnaliticoServiceImpl implements DetalleMayorAnaliticoSe
 	/* (non-Javadoc)
 	 * @see com.compuseg.income.contabilidad.ejb.service.DetalleMayorAnaliticoService#insertaDetalleSinCentro(com.compuseg.income.contabilidad.ejb.model.MayorAnalitico, java.util.LocalDate, java.util.LocalDate)
 	 */
-	public void insertaDetalleSinCentro(MayorAnalitico mayor, LocalDate fechaInicio, 
+	public void insertaDetalleSinCentro(MayorAnalitico mayor, LocalDate fechaInicio,
 			LocalDate fechaFin) throws Throwable {
 		System.out.println("Ingresa al insertaDetalleSinCentro de mayor analitico con secuencia = " + mayor.getSecuencial());
+		// Signo segun la naturaleza de la cuenta - misma formula canonica que
+		// DetalleAsientoServiceImpl.saldoCuentaFechasEmpresa:421-427 (1=deudora: debe-haber,
+		// 2=acreedora: haber-debe). Se resuelve UNA sola vez, no por fila: todo el detalle de
+		// este metodo es de la MISMA cuenta (mayor.getPlanCuenta()). mayor.getSaldoAnterior()
+		// ya viene firmado con este mismo signo desde MayorAnaliticoServiceImpl, así que acá
+		// solo hay que firmar el incremento de cada fila, no el arrastre otra vez.
+		Long tipoNaturaleza = mayor.getPlanCuenta().getNaturalezaCuenta().getTipo();
+		int signo;
+		if (Long.valueOf(1L).equals(tipoNaturaleza)) {
+			signo = 1;
+		} else if (Long.valueOf(2L).equals(tipoNaturaleza)) {
+			signo = -1;
+		} else {
+			throw new IncomeException("La naturaleza de la cuenta no tiene tipo para el calculo del saldo");
+		}
 		Double saldoActual = mayor.getSaldoAnterior();
 		DetalleMayorAnalitico detalleAnalitico = new DetalleMayorAnalitico();
-		List<DetalleAsiento> movimientosProcesar = 
-			detalleAsientoService.selectByEmpresaCuentaFechas(mayor.getEmpresa().getCodigo(), 
+		List<DetalleAsiento> movimientosProcesar =
+			detalleAsientoService.selectByEmpresaCuentaFechas(mayor.getEmpresa().getCodigo(),
 					mayor.getPlanCuenta().getCodigo(), fechaInicio, fechaFin);
 		if(!movimientosProcesar.isEmpty()){
 			for(DetalleAsiento detalle : movimientosProcesar){
 				detalleAnalitico = new DetalleMayorAnalitico();
 				if(
-				   (Long.valueOf(EstadoAsiento.ACTIVO).equals(detalle.getAsiento().getEstado())) || 
+				   (Long.valueOf(EstadoAsiento.ACTIVO).equals(detalle.getAsiento().getEstado())) ||
 				   (Long.valueOf(EstadoAsiento.REVERSADO).equals(detalle.getAsiento().getEstado()))
 				   )
 				{
-					saldoActual = saldoActual + detalle.getValorDebe() - detalle.getValorHaber();  
+					saldoActual = saldoActual + signo * (detalle.getValorDebe() - detalle.getValorHaber());
 				}
 				// INSERTA DETALLE
 				detalleAnalitico.setCodigo(null);
