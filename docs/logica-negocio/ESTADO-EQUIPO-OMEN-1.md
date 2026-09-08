@@ -2150,3 +2150,78 @@ por qué existía —"Jackson deserializa números JSON como Integer"— y ese j
 exactamente el subconjunto de casos que alguien había vivido. Los tipos cubiertos no eran un
 diseño: eran una lista de incidentes pasados. **Un `grep` de treinta segundos sobre los `.jrxml`
 daba el mapa completo de lo que el método tenía que soportar.** Nadie lo había corrido.
+
+---
+
+## ⛔ H56 — Leí la llamada y no lo que la llamada devuelve (2026-09-08)
+
+**El usuario está cuadrando el cierre de cartera de agosto contra contabilidad y pidió un select
+de pagos de préstamo sin asiento. El `sql/216` que le entregué listaba como huecos casi todos los
+pagos del mes. Su respuesta: «muchos de esos pagos sí tienen asiento contable, qué pasó».**
+
+Tenía razón. El defecto no estaba en el SQL: estaba en el mapa que construí leyendo el código.
+
+### Lo que hice mal, con nombre y apellido
+
+Para saber qué caminos estampan `PGPR.PGPRASNT` seguí los `setAsiento(...)` y llegué a esto:
+
+```java
+// ProcesoPagoPrestamoServiceImpl:216
+Long numeroAsiento = contabilidadPrestamoService.contabilizarPagoCuota(resultado, ctx);
+aplicarAsiento(evento, resultado, numeroAsiento);
+```
+
+Vi que `pagarCuota` llama a `aplicarAsiento`, anoté «pagarCuota **sí** estampa», y seguí. **Nunca
+abrí `contabilizarPagoCuota`.** Si lo hubiera abierto:
+
+```java
+// ContabilidadPrestamoServiceImpl:443
+public Long contabilizarPagoCuota(ResultadoAplicacionPago resultado, ContextoPago ctx) {
+    System.out.println("... diferido a Fase 1bis ...");
+    return null;              // SIEMPRE. Y a propósito.
+}
+```
+
+Devuelve `null` siempre, así que `aplicarAsiento` estampa `null`, así que **ningún pago de cuota
+tiene jamás `PGPRASNT`**. Y está bien que así sea: el asiento de esa plata es `CBCRASN2`, el
+definitivo **del cobro**, y encender el hook por pago la duplicaría. El comentario de doce líneas
+que hay justo encima del método lo explica entero. Lo mismo con `contabilizarPagoConAportes` y
+`contabilizarPrecancelacion` cuando la operación nació de un cobro (`ContextoPago.idCobroCredito`
+con valor): devuelven `null` sin tocar nada.
+
+**Seguí la cañería y no el agua.** Un `setAsiento(x)` no prueba nada si nunca miré qué es `x`.
+
+### El eslabón que faltaba
+
+```
+CRD.PGPR.EVPRCDGO  →  CRD.DCBC.EVPRCDGO  →  DCBC.CBCRCDGO  →  CRD.CBCR.CBCRASN2
+```
+
+El enlace lo escribe `CobroCreditoServiceImpl.enlazarEvento:1150`. Ahí está la plata de casi todo
+agosto, y mi select ni la miraba.
+
+### Los cinco lugares donde vive el asiento de un pago
+
+| # | Dónde | Qué origen |
+|---|---|---|
+| 1 | `PGPR.PGPRASNT` | abono a capital (asiento de **reclasificación de bandas**, no del dinero); pago con aportes / precancelación **directos**, sin cobro |
+| 2 | `EVPR.EVPRNMAS` | condonaciones |
+| 3 | **`CBCR.CBCRASN2`** vía `DCBC` | **todo lo que pasó por la pantalla de cobros** |
+| 4 | `ANCP` subproceso 3 | Petro: asiento agregado **por carga** |
+| 5 | ninguno, y está bien | `MIGRACION`: saldo histórico |
+
+### Lo que cambié en el método, no sólo en el script
+
+El `sql/217` abre con un **bloque 0 que muestra en cuál de los cinco lugares apareció el asiento
+de cada pago**, y dice explícitamente: *«si la mayoría no cae en "3 cobro CBCRASN2", avisame antes
+de seguir: querría decir que la corrección tampoco es la buena»*. Es decir, **la salida verifica mi
+diagnóstico antes de que el usuario le crea al resto del script.** Eso es lo que le faltaba al 216:
+entregué un mapa deducido sin ningún control que lo pudiera desmentir.
+
+**Es la misma lección de la jornada del cierre de cartera, otra vez y en otro disfraz:** las tres
+veces que fallé fue deduciendo del código, y las veces que acerté fue midiendo. Acá la medición
+barata existía y no la hice — bastaba abrir el método que devuelve el valor.
+
+**Y una segunda, aparte:** un `return null` deliberado con doce líneas de comentario explicando por
+qué, es exactamente el tipo de decisión que un lector apurado lee como «todavía no implementado».
+No lo era.
