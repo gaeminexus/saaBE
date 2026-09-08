@@ -105,9 +105,14 @@ public class DetalleMayorAnaliticoServiceImpl implements DetalleMayorAnaliticoSe
 		// Signo segun la naturaleza de la cuenta - misma formula canonica que
 		// DetalleAsientoServiceImpl.saldoCuentaFechasEmpresa:421-427 (1=deudora: debe-haber,
 		// 2=acreedora: haber-debe). Se resuelve UNA sola vez, no por fila: todo el detalle de
-		// este metodo es de la MISMA cuenta (mayor.getPlanCuenta()). mayor.getSaldoAnterior()
-		// ya viene firmado con este mismo signo desde MayorAnaliticoServiceImpl, así que acá
-		// solo hay que firmar el incremento de cada fila, no el arrastre otra vez.
+		// este metodo es de la MISMA cuenta (mayor.getPlanCuenta()).
+		// CORREGIDO el 2026-09-07: mayor.getSaldoAnterior() ya viene en la convencion correcta
+		// directamente de PlanCuentaService.saldoCuentaFechaEmpresa (que internamente suma
+		// DetalleAsientoService.recuperaSaldoCuentaEmpresaFechas, la misma formula de naturaleza
+		// de aca) - NO por ningun ajuste explicito en MayorAnaliticoServiceImpl, que no le aplica
+		// signo. Por eso el arrastre se usa tal cual abajo y solo se firma el incremento de cada
+		// fila: firmar tambien el arrastre (como se hizo por error y se revirtio) invierte las
+		// cuentas acreedoras contra el balance real.
 		Long tipoNaturaleza = mayor.getPlanCuenta().getNaturalezaCuenta().getTipo();
 		int signo;
 		if (Long.valueOf(1L).equals(tipoNaturaleza)) {

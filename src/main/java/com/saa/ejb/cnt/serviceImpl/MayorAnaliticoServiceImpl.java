@@ -251,14 +251,18 @@ public class MayorAnaliticoServiceImpl implements MayorAnaliticoService {
 					saldoAnteriorCuenta = 0D;
 				}else{
 					diaAnterior = fechaService.sumaRestaDiasLocal(fechaInicio, -1);
-					// saldoCuentaFechaEmpresa devuelve siempre debe-haber, sin ajustar por
-					// naturaleza (es la mayorizacion cruda). Se ajusta acá con el mismo signo
-					// que DetalleMayorAnaliticoServiceImpl.insertaDetalleSinCentro aplica al
-					// saldo corriente: si no quedan en la misma convención, el reporte muestra
-					// un salto imposible entre el saldo anterior de la cabecera y la primera
-					// línea de detalle.
+					// CORREGIDO el 2026-09-07: este comentario decía que saldoCuentaFechaEmpresa
+					// devuelve siempre debe-haber sin ajustar por naturaleza, y era al revés.
+					// El método suma detalleAsientoService.recuperaSaldoCuentaEmpresaFechas(...),
+					// que SÍ aplica la naturaleza (DetalleAsientoServiceImpl:421-427: debe-haber
+					// para deudora, haber-debe para acreedora). O sea que ya devuelve el saldo en
+					// la convención del balance -- por eso NO se le aplica ningún signo acá.
+					// Prueba: TempReportesServiceImpl:157 usa este mismo método para los balances,
+					// que el usuario confirmó correctos, sumándolo tal cual (sin invertir) al
+					// término de deudora y al de acreedora por igual (líneas 166-172 de ese
+					// archivo). Aplicarle un signo acá (como se hizo por error y se revirtió)
+					// invierte las cuentas acreedoras y descuadra el reporte contra el balance.
 					saldoAnteriorCuenta = planCuentaService.saldoCuentaFechaEmpresa(empresa, registro.getCodigo(), diaAnterior);
-					saldoAnteriorCuenta = signoPorNaturaleza(registro) * saldoAnteriorCuenta;
 				}
 				cabecera.setCodigo(null);
 				cabecera.setSecuencial(secuenciaReporte);
@@ -399,24 +403,4 @@ public class MayorAnaliticoServiceImpl implements MayorAnaliticoService {
 	    return mayorAnalitico;
 	}
 
-	/**
-	 * Signo para convertir un saldo "debe - haber" (la convencion cruda de
-	 * saldoCuentaFechaEmpresa) a la convencion correcta segun la naturaleza de la
-	 * cuenta: +1 para deudora (queda debe-haber), -1 para acreedora (haber-debe).
-	 * Formula canonica de DetalleAsientoServiceImpl.saldoCuentaFechasEmpresa:421-427,
-	 * que no se toca - esta es la misma regla, no una nueva.
-	 * @throws IncomeException : si la naturaleza no tiene tipo 1 o 2. No se asume
-	 *   deudora por defecto: un saldo con el signo cambiado que no avisa es peor
-	 *   que un reporte que no sale.
-	 */
-	private int signoPorNaturaleza(PlanCuenta cuenta) throws Throwable {
-		Long tipo = cuenta.getNaturalezaCuenta().getTipo();
-		if (Long.valueOf(1L).equals(tipo)) {
-			return 1;
-		} else if (Long.valueOf(2L).equals(tipo)) {
-			return -1;
-		} else {
-			throw new IncomeException("La naturaleza de la cuenta no tiene tipo para el calculo del saldo");
-		}
-	}
 }
