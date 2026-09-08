@@ -6,19 +6,8 @@ import java.util.List;
 
 import com.saa.ejb.rpr.service.DetalleEjecucionReporteService;
 import com.saa.ejb.rpr.service.EjecucionReporteService;
-import com.saa.ejb.rpr.service.GeneracionG40Service;
-import com.saa.ejb.rpr.service.GeneracionG41Service;
-import com.saa.ejb.rpr.service.GeneracionG42Service;
-import com.saa.ejb.rpr.service.GeneracionG43Service;
-import com.saa.ejb.rpr.service.GeneracionG44Service;
-import com.saa.ejb.rpr.service.GeneracionG45Service;
-import com.saa.ejb.rpr.service.GeneracionG46Service;
-import com.saa.ejb.rpr.service.GeneracionG47Service;
-import com.saa.ejb.rpr.service.GeneracionG48Service;
-import com.saa.ejb.rpr.service.GeneracionG49Service;
-import com.saa.ejb.rpr.service.GeneracionG50Service;
-import com.saa.ejb.rpr.service.GeneracionG51Service;
 import com.saa.ejb.rpr.service.GeneracionReportesService;
+import com.saa.ejb.rpr.service.GeneracionUnReporteService;
 import com.saa.model.rpr.DetalleEjecucionReporte;
 import com.saa.model.rpr.EjecucionReporte;
 
@@ -50,25 +39,10 @@ public class GeneracionReportesServiceImpl implements GeneracionReportesService 
 
     @EJB private EjecucionReporteService        ejrcService;
     @EJB private DetalleEjecucionReporteService ejrdService;
-    @EJB private GeneracionG40Service           g40Service;
-    @EJB private GeneracionG41Service           g41Service;
-    @EJB private GeneracionG42Service           g42Service;
-    @EJB private GeneracionG43Service           g43Service;
-    @EJB private GeneracionG44Service           g44Service;
-    @EJB private GeneracionG45Service           g45Service;
-    @EJB private GeneracionG46Service           g46Service;
-    @EJB private GeneracionG47Service           g47Service;
-    @EJB private GeneracionG48Service           g48Service;
-    @EJB private GeneracionG49Service           g49Service;
-    @EJB private GeneracionG50Service           g50Service;
-    @EJB private GeneracionG51Service           g51Service;
-
-    // -------------------------------------------------------
-    // TODO: agregar @EJB de cada GeneracionGxxService
-    // cuando el usuario vaya proporcionando la lógica de cada G.
-    // @EJB private GeneracionG41Service g41Service;
-    // ...
-    // -------------------------------------------------------
+    // 2026-09-08: ejecuta CADA reporte en su propia transacción (REQUIRES_NEW) — ver el
+    // javadoc de la interfaz para por qué esto ya no puede ser un método privado de esta
+    // misma clase. Reemplaza a los doce @EJB de GeneracionGxxService que vivían acá.
+    @EJB private GeneracionUnReporteService     unReporteService;
 
     @Override
     public EjecucionReporte ejecutarGeneracion(Long mes, Long anio, String usuario) throws Throwable {
@@ -144,6 +118,7 @@ public class GeneracionReportesServiceImpl implements GeneracionReportesService 
         // -------------------------------------------------------
         // 6. Ejecutar la lógica de generación por cada EJRD
         // -------------------------------------------------------
+        List<String> reportesConNovedades = new ArrayList<>();
         for (DetalleEjecucionReporte ejrd : ejrdsAProcesar) {
             System.out.println("Procesando reporte: " + ejrd.getTipoReporte());
 
@@ -153,38 +128,59 @@ public class GeneracionReportesServiceImpl implements GeneracionReportesService 
             }
 
             try {
-                long cantidadRegistros = ejecutarG(ejrd);
-
-                // Actualizar EJRD como OK
-                ejrd.setEstado(EJRD_OK);
-                ejrd.setFechaGeneracion(LocalDate.now());
-                ejrd.setCantidadRegistros(cantidadRegistros);
-                ejrd.setNovedades(null);
-                ejrdService.saveSingle(ejrd);
+                // 2026-09-08: generarUno y marcarResultado corren cada uno en su PROPIA
+                // transacción (REQUIRES_NEW, ver GeneracionUnReporteService) — si este reporte
+                // falla, su rollback no arrastra a los demás ni a lo que este orquestador ya
+                // grabó. Este método NO vuelve a llamar ejrdService.saveSingle por su cuenta en
+                // ningún caso: todo el grabado del EJRD pasa por marcarResultado.
+                long cantidadRegistros = unReporteService.generarUno(ejrd);
+                unReporteService.marcarResultado(ejrd.getCodigo(), EJRD_OK, cantidadRegistros, null);
                 System.out.println("Reporte " + ejrd.getTipoReporte() + " generado OK con " + cantidadRegistros + " registros");
 
             } catch (Throwable e) {
-                // Registrar el fallo en el EJRD sin detener los demás
+                // El log va PRIMERO, antes de cualquier intento de grabar: si marcarResultado
+                // también fallara, el log ya tiene el dato — antes el orden era al revés
+                // (grabar, después loguear) y el error real se perdía si el grabado explotaba
+                // (STATUS_MARKED_ROLLBACK tapando la causa real). e.printStackTrace() porque
+                // getMessage() solo, en un STATUS_MARKED_ROLLBACK, no dice nada.
                 String mensajeError = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
-                ejrd.setEstado(EJRD_CON_NOVEDADES);
-                ejrd.setFechaGeneracion(LocalDate.now());
-                ejrd.setNovedades("ERROR: " + mensajeError);
-                ejrdService.saveSingle(ejrd);
                 System.out.println("Reporte " + ejrd.getTipoReporte() + " fallo: " + mensajeError);
+                e.printStackTrace();
+                reportesConNovedades.add(ejrd.getTipoReporte() + ": " + mensajeError);
+
+                unReporteService.marcarResultado(ejrd.getCodigo(), EJRD_CON_NOVEDADES, null, "ERROR: " + mensajeError);
             }
         }
 
         // -------------------------------------------------------
         // 7. Evaluar estado final del EJRC
         // -------------------------------------------------------
-        List<DetalleEjecucionReporte> conProblemas = ejrdService.selectPendientesYNovedadesByEjecucion(ejrc.getCodigo());
-
-        if (conProblemas.isEmpty()) {
+        // 2026-09-08: NO se re-consulta ejrdService.selectPendientesYNovedadesByEjecucion acá
+        // a propósito. Este orquestador y ejrdService comparten el MISMO persistence context
+        // transaction-scoped (los dos son @Stateless REQUIRED, misma transacción JTA) — los
+        // EJRD de ejrdsAProcesar ya quedaron cacheados en ese contexto desde el paso 3/5, y
+        // una consulta JPQL nueva sobre las MISMAS filas le devuelve al ORM las instancias YA
+        // MANAGED (con su estado de ANTES del bucle), no lo que las transacciones REQUIRES_NEW
+        // de arriba acaban de confirmar en la base — exactamente la trampa de "copias viejas
+        // en el contexto de persistencia" que pisarían el resultado. reportesConNovedades ya
+        // tiene, en memoria y sin ese riesgo, la lista completa y correcta de lo que falló en
+        // ESTA corrida — es autoritativa: todo EJRD que no entró en ejrdsAProcesar ya estaba
+        // OK antes de esta llamada y sigue igual.
+        if (reportesConNovedades.isEmpty()) {
             ejrc.setEstado(EJRC_COMPLETO);
             ejrc.setObservaciones("Todos los reportes G40-G51 generados correctamente");
         } else {
             ejrc.setEstado(EJRC_CON_NOVEDADES);
-            ejrc.setObservaciones(conProblemas.size() + " reporte(s) con novedades: ver detalle en EJRD");
+            // Con nombre y mensaje — antes decía "N reporte(s) con novedades: ver detalle en
+            // EJRD" y obligaba a ir a buscar a otra tabla para saber qué pasó. Truncado
+            // defensivo (2026-09-08): con dos o tres reportes fallando el texto armado supera
+            // fácil el límite de la columna y el saveSingle de más abajo revienta con
+            // ORA-12899 — el mismo problema que este cambio vino a arreglar, un escalón más
+            // allá. El prefijo con la cantidad va PRIMERO a propósito: es el dato que no se
+            // puede perder, y al truncar desde el final siempre sobrevive.
+            String observaciones = reportesConNovedades.size() + " reporte(s) con novedades: "
+                    + String.join("; ", reportesConNovedades);
+            ejrc.setObservaciones(truncar(observaciones, LIMITE_OBSERVACIONES_EJRC));
         }
 
         ejrc = ejrcService.saveSingle(ejrc);
@@ -193,26 +189,23 @@ public class GeneracionReportesServiceImpl implements GeneracionReportesService 
         return ejrc;
     }
 
-    // -------------------------------------------------------
-    // Despachador — llama al service del G correspondiente
-    // Agregar cada caso conforme se vaya implementando la lógica
-    // -------------------------------------------------------
-    private long ejecutarG(DetalleEjecucionReporte ejrd) throws Throwable {
-        switch (ejrd.getTipoReporte()) {
-            case "G40": return g40Service.generar(ejrd);
-            case "G41": return g41Service.generar(ejrd);
-            case "G42": return g42Service.generar(ejrd);
-            case "G43": return g43Service.generar(ejrd);
-            case "G44": return g44Service.generar(ejrd);
-            case "G45": return g45Service.generar(ejrd);
-            case "G46": return g46Service.generar(ejrd);
-            case "G47": return g47Service.generar(ejrd);
-            case "G48": return g48Service.generar(ejrd);
-            case "G49": return g49Service.generar(ejrd);
-            case "G50": return g50Service.generar(ejrd);
-            case "G51": return g51Service.generar(ejrd);
-            default:
-                throw new Exception("Logica de generacion no implementada para: " + ejrd.getTipoReporte());
+    /**
+     * Límite de {@code EjecucionReporte.observaciones} — sale de {@code @Column(length = 500)}
+     * en la entidad (columna {@code EJRCOBSR}). Si esa columna se agranda algún día, este
+     * número también hay que tocarlo.
+     */
+    private static final int LIMITE_OBSERVACIONES_EJRC = 500;
+
+    /**
+     * Trunca {@code texto} a {@code limite} caracteres dejando el corte VISIBLE (termina en
+     * "...", nunca a la mitad de una palabra sin avisar) — 2026-09-08, defensivo contra
+     * ORA-12899 cuando varios reportes fallan a la vez y el mensaje concatenado supera la
+     * columna. {@code null} o ya corto se devuelve tal cual.
+     */
+    private String truncar(String texto, int limite) {
+        if (texto == null || texto.length() <= limite) {
+            return texto;
         }
+        return texto.substring(0, limite - 3) + "...";
     }
 }
