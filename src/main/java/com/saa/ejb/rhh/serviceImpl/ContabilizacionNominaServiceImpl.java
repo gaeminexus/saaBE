@@ -199,8 +199,29 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
 
         ConfiguracionNomina configuracion = recuperaConfiguracion(periodo);
         Map<Integer, Double> importes = importesDelRol(periodo);
-        List<DetalleAsiento> lineas = armaLineas(configuracion.getPlantillaRol(), importes,
-                configuracion, "rol de pagos");
+
+        // ===== INICIO baja de provision de vacaciones gozadas (equipo omen-saa-2, script e2-29) =====
+        // Esta linea NO sale de plantillaRol -no tiene por que tener esa cuenta configurada,
+        // nunca antes hizo falta ahi- sino de la MISMA plantilla que ya usa
+        // contabilizarProvisiones para darla de alta, igual que contabilizarBajaProvisionBeneficioSocial
+        // con decimos/FR. Y el lado se IMPONE (DEBE): esa linea, en la plantilla del devengo,
+        // va al HABER -correcto ahi-, y aca se esta dando de baja, direccion contraria. Mismo
+        // fix que descuadro el asiento del decimo cuarto esta manana si se hereda el lado.
+        Double totalProvisionVacaciones =
+                importes.remove(Integer.valueOf(RhhLineaAsiento.PROVISION_VACACIONES_POR_PAGAR));
+        List<DetalleAsiento> lineas = new ArrayList<DetalleAsiento>();
+        if (totalProvisionVacaciones != null && totalProvisionVacaciones.doubleValue() > 0D) {
+            Long idPlantillaProvision = resuelvePlantilla(configuracion.getPlantillaProvision(),
+                    "rol de pagos", periodo.getEmpresa().getCodigo());
+            Long marcadora = exigeCuentaMarcadora(configuracion);
+            DetallePlantilla lineaProvisionVacaciones = exigeLinea(idPlantillaProvision,
+                    RhhLineaAsiento.PROVISION_VACACIONES_POR_PAGAR, "rol de pagos");
+            exigeCuentaReal(lineaProvisionVacaciones, marcadora, "rol de pagos");
+            lineas.add(construyeLinea(lineaProvisionVacaciones, totalProvisionVacaciones, true));
+        }
+        // ===== FIN baja de provision de vacaciones gozadas =====
+
+        lineas.addAll(armaLineas(configuracion.getPlantillaRol(), importes, configuracion, "rol de pagos"));
         comprobarCuadre(lineas, configuracion, RhhLineaAsiento.SUELDOS_POR_PAGAR,
                 configuracion.getPlantillaRol());
 
@@ -926,9 +947,23 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
             if (renglones == null) {
                 continue;
             }
+            // ===== INICIO baja de provision de vacaciones gozadas (equipo omen-saa-2, script e2-29) =====
+            // Los renglones del rol VACACIONES_GOZADAS se sacan del clasificador generico y se
+            // suman aparte: hace falta el total POR EMPLEADO de este nomina, antes de tocar el
+            // mapa, para topearlo contra el saldo de ESE empleado (no el de todos juntos).
+            Double valorVacacionesGozadas = Double.valueOf(0D);
             for (ReglonNomina renglon : renglones) {
-                acumulaRenglon(importes, renglon);
+                if (esVacacionesGozadas(renglon)) {
+                    valorVacacionesGozadas = RedondeoNomina.suma(valorVacacionesGozadas, renglon.getValor());
+                } else {
+                    avisaSiConceptoVacacionesSinRol(renglon);
+                    acumulaRenglon(importes, renglon);
+                }
             }
+            if (valorVacacionesGozadas.doubleValue() > 0D) {
+                acumulaBajaProvisionVacaciones(importes, nomina.getEmpleado(), valorVacacionesGozadas);
+            }
+            // ===== FIN baja de provision de vacaciones gozadas =====
         }
 
         // El neto va siempre a la linea de sueldos por pagar: es la contrapartida de todo el
@@ -936,6 +971,92 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
         suma(importes, RhhLineaAsiento.SUELDOS_POR_PAGAR, neto);
         return sinCeros(importes);
     }
+
+    // ===== INICIO baja de provision de vacaciones gozadas (equipo omen-saa-2, script e2-29) =====
+    /**
+     * Indica si un renglon es de vacaciones gozadas (rol de motor 36).
+     *
+     * @param renglon	: Renglon a evaluar
+     * @return			: true si el concepto del renglon tiene el rol VACACIONES_GOZADAS
+     */
+    private boolean esVacacionesGozadas(ReglonNomina renglon) {
+        ConceptoNomina concepto = renglon.getConceptoNomina();
+        return concepto != null && esRol(concepto.getRolMotor(), RhhRolConceptoMotor.VACACIONES_GOZADAS)
+                && renglon.getValor() != null && renglon.getValor().doubleValue() != 0D;
+    }
+
+    /**
+     * Codigo alterno historico del concepto "Vacaciones pagadas" (RHH.CPNM.CPNMALTR = 12),
+     * el que crea {@code SolicitudVacacionesServiceImpl} al aprobar una solicitud. Solo se usa
+     * para el aviso de {@link #avisaSiConceptoVacacionesSinRol}, NUNCA para clasificar un
+     * renglon -esta clase clasifica siempre por {@code CPNMROLM} (ver el javadoc de
+     * {@link #importesDelRol}). Se compara aparte porque el rol de motor 36 (script e2-29)
+     * es una parametrizacion que puede faltar por empresa sin que sea un error de programa.
+     */
+    private static final Long CODIGO_ALTERNO_VACACIONES_PAGADAS = Long.valueOf(12L);
+
+    /**
+     * Deja traza si un renglon del concepto historico de vacaciones pagadas (alterno 12)
+     * todavia no tiene el rol de motor 36: sigue yendo a gasto de sueldos como siempre (no
+     * revienta, es una parametrizacion pendiente, no un error), pero sin la traza el
+     * descuadre de la provision vuelve a pasar en silencio -exactamente el defecto medido en
+     * produccion 2026-09-08 (164 filas, $6.840,03 en RHH.PVNM sin bajar nunca).
+     *
+     * @param renglon	: Renglon ya descartado por {@link #esVacacionesGozadas}
+     */
+    private void avisaSiConceptoVacacionesSinRol(ReglonNomina renglon) {
+        ConceptoNomina concepto = renglon.getConceptoNomina();
+        if (concepto != null && CODIGO_ALTERNO_VACACIONES_PAGADAS.equals(concepto.getCodigoAlterno())) {
+            System.out.println("⚠ Concepto '" + concepto.getNombre() + "' (alterno 12, vacaciones pagadas)"
+                    + " sin rol de motor " + RhhRolConceptoMotor.VACACIONES_GOZADAS + " en la empresa "
+                    + (concepto.getEmpresa() != null ? concepto.getEmpresa().getCodigo() : "?")
+                    + ": el renglon " + renglon.getCodigo() + " va a gasto de sueldos sin descargar la"
+                    + " provision. Falta el script e2-29 (UPDATE RHH.CPNM SET CPNMROLM="
+                    + RhhRolConceptoMotor.VACACIONES_GOZADAS + " WHERE CPNMALTR=12) para esta empresa.");
+        }
+    }
+
+    /**
+     * Reparte el valor de vacaciones gozadas de UN empleado entre la provision acumulada y el
+     * gasto, topeado por el saldo REAL de ESE empleado -no el de todos juntos-, para no
+     * reconocer el gasto dos veces (una al provisionar cada mes, otra al gozarse). Mismo
+     * patron que {@code descargaProvisionActuarial} (finiquito, tope por individuo via
+     * {@code sumaValorByEmpleadoYTipo}), NO el de {@code contabilizarBajaProvisionBeneficioSocial}
+     * (decimos/FR, tope agregado sobre un grupo de empleados): con un tope por grupo el
+     * faltante de un empleado se taparia con el sobrante de otro sin que nadie se entere.
+     *
+     * <p>No descuenta nada de {@code RHH.PVNM}: hoy nada la consume, para ningun beneficio
+     * (decimos, fondos de reserva ni finiquito) -el saldo es la suma completa de lo
+     * provisionado, ver el javadoc de {@code ProvisionNominaDaoService.sumaValorByEmpleadoYTipo}-,
+     * y este metodo sigue exactamente ese mismo comportamiento, no inventa uno nuevo.</p>
+     *
+     * @param importes			: Mapa que se va llenando
+     * @param empleado			: Empleado de la nomina
+     * @param valorVacaciones	: Valor total de vacaciones gozadas de este empleado en el periodo
+     * @throws Throwable		: Excepcion
+     */
+    private void acumulaBajaProvisionVacaciones(Map<Integer, Double> importes, Empleado empleado,
+            Double valorVacaciones) throws Throwable {
+        Long idEmpleado = empleado != null ? empleado.getCodigo() : null;
+        Double saldoProvision = idEmpleado != null
+                ? provisionNominaDaoService.sumaValorByEmpleadoYTipo(idEmpleado, Long.valueOf(RhhTipoProvision.VACACIONES))
+                : null;
+        double saldo = saldoProvision != null ? Math.max(saldoProvision.doubleValue(), 0D) : 0D;
+
+        Double valor = RedondeoNomina.redondea(valorVacaciones);
+        Double parteProvision = RedondeoNomina.redondea(Double.valueOf(Math.min(saldo, valor.doubleValue())));
+        Double parteGasto = RedondeoNomina.redondea(Double.valueOf(valor.doubleValue() - parteProvision.doubleValue()));
+
+        if (parteProvision.doubleValue() > 0D) {
+            suma(importes, RhhLineaAsiento.PROVISION_VACACIONES_POR_PAGAR, parteProvision);
+        }
+        if (parteGasto.doubleValue() > 0D) {
+            // Mismo destino que hoy para todo el renglon: no cambia de cuenta, solo se le
+            // resta la parte que ahora tiene provision detras.
+            suma(importes, RhhLineaAsiento.GASTO_SUELDOS_Y_SALARIOS, parteGasto);
+        }
+    }
+    // ===== FIN baja de provision de vacaciones gozadas =====
 
     /**
      * Clasifica un renglon en su linea del asiento de rol.

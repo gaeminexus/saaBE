@@ -99,4 +99,17 @@ public interface RhhRolConceptoMotor {
 	 */
 	public static final int VALOR_NO_PAGADO_RECUPERADO = 35;
 
+	/**
+	 * Vacaciones gozadas y pagadas en el rol (concepto de alterno historico 12,
+	 * "Vacaciones pagadas"). Antes de este rol el renglon se clasificaba solo por tipo
+	 * INGRESO y caia siempre en gasto de sueldos y salarios -el mismo gasto que ya habia
+	 * entrado por la provision mensual (rol 19, PROVISION_VACACIONES), asi que el gasto
+	 * quedaba contado dos veces y la provision nunca bajaba. Con este rol,
+	 * ContabilizacionNominaServiceImpl.importesDelRol debita RHH.PVNM tipo VACACIONES
+	 * (topeado por empleado) en vez de gasto, hasta el saldo real de cada uno; el excedente
+	 * sin provision detras sigue yendo a gasto, igual que antes. Medido en produccion
+	 * 2026-09-08: 164 filas, $6.840,03 acumulados en PVNM sin bajar nunca. Script e2-29.
+	 */
+	public static final int VACACIONES_GOZADAS = 36;
+
 }
