@@ -1,6 +1,8 @@
 package com.saa.ejb.rpr.serviceImpl;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.YearMonth;
 import java.util.List;
 
@@ -37,7 +39,10 @@ public class GeneracionG46ServiceImpl implements GeneracionG46Service {
         long anio = detalle.getEjecucionReporte().getAnio();
         int ultimoDia = YearMonth.of((int) anio, (int) mes).lengthOfMonth();
         LocalDateTime fechaInicio = LocalDateTime.of((int) anio, (int) mes, 1, 0, 0, 0);
-        LocalDateTime fechaFin    = LocalDateTime.of((int) anio, (int) mes, ultimoDia, 23, 59, 59);
+        // H54 (2026-09-08): fin de día REAL, no 23:59:59. fechaFin llega a
+        // PrestamoService.selectByRangoFechas -> PrestamoDaoServiceImpl, que filtra con
+        // "p.fecha <= :fechaFin" (límite inclusivo).
+        LocalDateTime fechaFin    = LocalDate.of((int) anio, (int) mes, ultimoDia).atTime(LocalTime.MAX);
         System.out.println("G46 - rango: " + fechaInicio + " a " + fechaFin);
 
         // -------------------------------------------------------

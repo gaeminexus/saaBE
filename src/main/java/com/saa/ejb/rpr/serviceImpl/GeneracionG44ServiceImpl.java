@@ -2,6 +2,7 @@ package com.saa.ejb.rpr.serviceImpl;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -50,7 +51,11 @@ public class GeneracionG44ServiceImpl implements GeneracionG44Service {
         long mes      = detalle.getEjecucionReporte().getMes();
         long anio     = detalle.getEjecucionReporte().getAnio();
         int ultimoDia = YearMonth.of((int) anio, (int) mes).lengthOfMonth();
-        LocalDateTime fechaCorte = LocalDateTime.of((int) anio, (int) mes, ultimoDia, 23, 59, 59);
+        // H54 (2026-09-08): fin de día REAL, no 23:59:59. Todas las consultas que usan
+        // fechaCorte filtran con "<=" (límite inclusivo): selectSumaSaldoCuentaJubilacionPorEntidad,
+        // selectCountImposicionesJubilacionPorEntidad, selectSumaAportesTipo23EnRango y
+        // selectSumaCuotasPagadasPorEntidad (las dos últimas la reciben como fechaFin del rango).
+        LocalDateTime fechaCorte = LocalDate.of((int) anio, (int) mes, ultimoDia).atTime(LocalTime.MAX);
         System.out.println("G44 - fechaCorte: " + fechaCorte);
 
         // -------------------------------------------------------

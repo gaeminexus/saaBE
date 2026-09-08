@@ -2,6 +2,7 @@ package com.saa.ejb.rpr.serviceImpl;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.List;
 
 import com.saa.ejb.rpr.dao.HistoricoG42DaoService;
@@ -109,7 +110,10 @@ public class GeneracionG43ServiceImpl implements GeneracionG43Service {
 
         // Rango del mes de ejecucion para calcular saldo cuenta individual
         LocalDateTime fechaInicioMes = LocalDate.of((int) anioActual, (int) mesActual, 1).atStartOfDay();
-        LocalDateTime fechaFinMes    = fechaLiquidacion.atTime(23, 59, 59);
+        // H54 (2026-09-08): fin de día REAL, no 23:59:59. fechaFinMes llega a
+        // AporteDaoServiceImpl.selectSumaAportesNegativosMesPorEntidad, que filtra con
+        // "a.fechaTransaccion <= :fechaFin" (límite inclusivo).
+        LocalDateTime fechaFinMes    = fechaLiquidacion.atTime(LocalTime.MAX);
 
         System.out.println("G43 - Fecha liquidacion: " + fechaLiquidacion
                 + " | Fecha terminacion laboral: " + fechaTerminacion);

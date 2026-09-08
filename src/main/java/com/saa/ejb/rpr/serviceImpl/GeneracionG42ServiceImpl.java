@@ -1,6 +1,8 @@
 package com.saa.ejb.rpr.serviceImpl;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.YearMonth;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -37,7 +39,12 @@ public class GeneracionG42ServiceImpl implements GeneracionG42Service {
         long mes  = detalle.getEjecucionReporte().getMes();
         long anio = detalle.getEjecucionReporte().getAnio();
         int ultimoDia = YearMonth.of((int) anio, (int) mes).lengthOfMonth();
-        LocalDateTime fechaCorte = LocalDateTime.of((int) anio, (int) mes, ultimoDia, 23, 59, 59);
+        // H54 (2026-09-08): fin de día REAL, no 23:59:59 — un movimiento con marca de tiempo
+        // en 23:59:59.000000001-23:59:59.999999999 quedaba fuera del corte. Todas las
+        // consultas que usan fechaCorte filtran con "<=" (límite inclusivo), verificado en
+        // AporteDaoServiceImpl: selectSumaRendimientoPorEntidad, selectSumaPatronalPorEntidad,
+        // selectSumaPersonalPorEntidad y selectTiposAportePorEntidad.
+        LocalDateTime fechaCorte = LocalDate.of((int) anio, (int) mes, ultimoDia).atTime(LocalTime.MAX);
         System.out.println("G42 - fechaCorte: " + fechaCorte);
 
         // -------------------------------------------------------

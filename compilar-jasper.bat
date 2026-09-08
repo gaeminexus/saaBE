@@ -1,6 +1,13 @@
 @echo off
-REM Compila todos los .jrxml de src\main\resources\rep\** a .jasper, fuera de WildFly.
+REM Compila .jrxml a .jasper, fuera de WildFly.
 REM Ver docs\logica-negocio\tsr\DISENO-REPORTES-CONCILIACION-BANCARIA.md #5 y CLAUDE.md ("Reportes").
+REM
+REM Uso:
+REM   compilar-jasper.bat                                  -> solo los .jrxml que NO tienen .jasper
+REM   compilar-jasper.bat ruta\al\REPORTE.jrxml [otro.jrxml ...]  -> recompila esos, siempre (caso real: lo acabas de editar)
+REM   compilar-jasper.bat --forzar                         -> recompila TODO bajo rep\ (cambio de version de Jasper/harness)
+REM No es por fecha de modificacion: despues de un git checkout todos los mtimes quedan iguales
+REM y comparar por fecha recompilaria de mas, metiendo .jasper ajenos (de otro equipo) en tu commit.
 REM
 REM No toca las dependencias del WAR de produccion: usa el pom.xml aparte de tools\jasper,
 REM que es el UNICO lugar del repo donde entra jasperreports-jdt.

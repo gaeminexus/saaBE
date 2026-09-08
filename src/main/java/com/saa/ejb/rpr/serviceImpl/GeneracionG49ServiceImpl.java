@@ -2,6 +2,7 @@ package com.saa.ejb.rpr.serviceImpl;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.YearMonth;
 import java.util.HashSet;
 import java.util.List;
@@ -46,7 +47,11 @@ public class GeneracionG49ServiceImpl implements GeneracionG49Service {
         int ultimoDia = YearMonth.of((int) anio, (int) mes).lengthOfMonth();
 
         LocalDateTime fechaInicio  = LocalDateTime.of((int) anio, (int) mes, 1, 0, 0, 0);
-        LocalDateTime fechaFin     = LocalDateTime.of((int) anio, (int) mes, ultimoDia, 23, 59, 59);
+        // H54 (2026-09-08): fin de día REAL, no 23:59:59. fechaFin llega a
+        // DetallePrestamoDaoServiceImpl.selectMaxCuotaPagadaDelMesGlobal y a
+        // selectMaxCuotaPagadaCanceladoAnticipadoDelMesGlobal, ambas con
+        // "d.fechaVencimiento <= :fechaFin" (límite inclusivo).
+        LocalDateTime fechaFin     = LocalDate.of((int) anio, (int) mes, ultimoDia).atTime(LocalTime.MAX);
         LocalDate     fechaCancelacion = LocalDate.of((int) anio, (int) mes, ultimoDia);
 
         System.out.println("G49 - Rango: " + fechaInicio + " a " + fechaFin);
