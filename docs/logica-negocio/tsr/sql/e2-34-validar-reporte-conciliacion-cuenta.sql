@@ -116,6 +116,41 @@ SELECT '4 - pendientes contabilidad' AS control,
 
 
 -- =====================================================================
+-- 5 — RPRT_CNCL_GNRL: una fila por cuenta activa DE LA EMPRESA. Copia literal
+--     de la consulta principal del .jrxml, con :empresa y :periodo.
+--     :empresa = SCP.PJRQ.PJRQCDGO (medido hoy: la que corre nomina es 1236).
+--     ESPERADO: tantas filas como cuentas bancarias activas tenga la empresa
+--     (las mismas que lista la pantalla de Conciliacion Contable en el resumen
+--     del periodo), ninguna repetida, ninguna de otra empresa.
+-- =====================================================================
+SELECT '5 - general por cuenta' AS control,
+       b.BNCONMBR AS banco, c.CNBCNMRO AS numero_cuenta, pc.PLNNCNTA AS cuenta_contable,
+       (CASE WHEN EXISTS (SELECT 1 FROM TSR.EXBC x
+                           WHERE x.CNBCCDGO = c.CNBCCDGO AND x.EXBCESTD = 1 AND x.EXBCESTP <> 4
+                             AND x.EXBCFDSD <= p.PRDOFNN AND x.EXBCFHST >= p.PRDOINCO)
+             THEN 'S' ELSE 'N' END) AS extracto_cargado,
+       ci.CNCLSLDF AS saldo_libros,
+       (NVL(ci.CNCLSLDF,0) - NVL(ci.CNCLDPTR,0) + NVL(ci.CNCLCHNC,0) + NVL(ci.CNCLNCTR,0) - NVL(ci.CNCLNDTR,0)) AS extracto_esperado,
+       ci.CNCLSLDE AS extracto_declarado,
+       cc.CNCTESTR AS estado_revision, cc.CNCTPDEX AS pend_extracto, cc.CNCTPDAS AS pend_asiento,
+       ct.CTEBCRRE AS mes_cerrado
+  FROM CNT.PRDO p
+  JOIN SCP.PJRQ e  ON e.PJRQCDGO = p.PJRQCDGO
+  JOIN TSR.BNCO b  ON b.PJRQCDGO = e.PJRQCDGO
+  JOIN TSR.CNBC c  ON c.BNCOCDGO = b.BNCOCDGO AND c.CNBCESTD = 1
+  JOIN CNT.PLNN pc ON pc.PLNNCDGO = c.PLNNCDGO
+  LEFT JOIN TSR.CNCL ci ON ci.CNCLCDGO = (
+      SELECT MAX(x.CNCLCDGO) KEEP (DENSE_RANK LAST ORDER BY x.CNCLFCCR)
+        FROM TSR.CNCL x
+       WHERE x.CNBCCDGO = c.CNBCCDGO AND x.CNCLPRDO = p.PRDOCDGO AND x.CNCLESTD = 2)
+  LEFT JOIN TSR.CNCT cc ON cc.CNBCCDGO = c.CNBCCDGO AND cc.PRDOCDGO = p.PRDOCDGO
+  LEFT JOIN TSR.CTEB ct ON ct.PJRQCDGO = p.PJRQCDGO AND ct.PRDOCDGO = p.PRDOCDGO
+ WHERE p.PRDOCDGO = :periodo
+   AND p.PJRQCDGO = :empresa
+ ORDER BY b.BNCONMBR, c.CNBCNMRO;
+
+
+-- =====================================================================
 -- QUE SIGUE, segun lo que devuelva
 -- =====================================================================
 -- - 1 devuelve 1 fila y diferencia_debe_ser_0 = 0 (o dentro de la tolerancia):
