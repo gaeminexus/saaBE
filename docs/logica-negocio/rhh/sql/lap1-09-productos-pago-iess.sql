@@ -267,3 +267,61 @@ SELECT c.CODIGO_ESPERADO,
   LEFT JOIN PGS.GRPP g  ON g.GRPPCDGO = p.GRUPOPRODUCTO
   LEFT JOIN CNT.PLNN pl ON pl.PLNNCDGO = g.PLNNCDGO
  ORDER BY c.CODIGO_ESPERADO;
+
+
+-- =====================================================================
+-- ACTUALIZACION 2026-09-07 (segunda) — LEER ANTES DE CORRER NADA
+-- =====================================================================
+-- Dos decisiones del usuario y un hallazgo cambian los productos de
+-- arriba. Esta seccion MANDA sobre lo anterior.
+--
+-- 1) PRESTAMOS: van a CUENTAS DIFERENTES (decision del usuario).
+--    El producto unico IESS-PRST se reemplaza por DOS:
+--      IESS-PRSQ  quirografarios  -> cuenta de la linea de asiento 12
+--      IESS-PRSH  hipotecarios    -> cuenta de la linea NUEVA (lap1-10)
+--    lap1-10 crea y parametriza esa linea nueva. CORRERLO ANTES que este
+--    bloque: sin la linea nueva no hay cuenta a la que apuntar.
+--
+-- 2) CCC: NO necesita cuenta propia.
+--    CCC = Contribucion de Fomento de Capacidades y Conocimientos
+--    Ciudadanos, 1% de la masa, que se reparte 0,5% IECE + 0,5% SECAP.
+--    El sistema YA lo provisiona con ese nombre: ContabilizacionNomina
+--    Servicelmpl:872-881 acredita IECE y SECAP a IESS_POR_PAGAR_APORTE_
+--    PATRONAL (11), la MISMA cuenta del aporte patronal.
+--    => El grupo de IESS-CCC apunta a la MISMA cuenta que IESS-APAT.
+--    Se mantiene como producto separado para que el desglose del pago
+--    muestre el concepto, no para que vaya a otra cuenta.
+--
+-- 3) SEGURO DE TIEMPO PARCIAL: sigue SIN provision.
+--    Verificado: no es concepto del motor de nomina ni aparece en la
+--    contabilizacion. Solo lo calcula la planilla de control.
+--    ⚠️ La cuenta de IESS-STP es DECISION CONTABLE PENDIENTE: gasto al
+--    pagar, o provisionarlo en la nomina. Mientras no se decida, dejar
+--    ese grupo SIN crear: el pago de una planilla de rol con un renglon
+--    de seguro TP se va a rechazar citando el renglon, que es correcto —
+--    mejor eso que debitar una cuenta elegida al azar.
+
+
+-- ---------------------------------------------------------------------
+-- CONTROL 8 — resumen de a que cuenta va cada producto, ya con las dos
+--             decisiones aplicadas. Es la foto que hay que revisar ANTES
+--             de dar por buena la parametrizacion.
+-- ---------------------------------------------------------------------
+SELECT p.CODIGO      AS PRODUCTO,
+       g.GRPPNMBR    AS GRUPO,
+       pl.PLNNCNTA   AS CUENTA,
+       pl.PLNNNMBR   AS NOMBRE_CUENTA
+  FROM PGS.PRDP p
+  JOIN PGS.GRPP g  ON g.GRPPCDGO = p.GRUPOPRODUCTO
+  LEFT JOIN CNT.PLNN pl ON pl.PLNNCDGO = g.PLNNCDGO
+ WHERE p.CODIGO IN ('IESS-APER','IESS-APAT','IESS-CCC','IESS-STP','IESS-PRSQ','IESS-PRSH','IESS-FRES')
+ ORDER BY p.CODIGO;
+
+-- Se espera:
+--   IESS-APER  -> cuenta de la linea 10
+--   IESS-APAT  -> cuenta de la linea 11
+--   IESS-CCC   -> LA MISMA cuenta que IESS-APAT
+--   IESS-PRSQ  -> cuenta de la linea 12
+--   IESS-PRSH  -> cuenta de la linea nueva (lap1-10)
+--   IESS-FRES  -> cuenta de la linea 16
+--   IESS-STP   -> puede no existir todavia; ver punto 3
