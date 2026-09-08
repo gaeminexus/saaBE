@@ -1316,15 +1316,19 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 				}
 
 			} else if (fp == FormaPagoProgramado.DEBITO_AUTOMATICO) {
+				// Desde el 2026-09-07 el debito automatico deja de contabilizarse acá:
+				// pasa por la bandeja de recepcion y confirmacion como cualquier otro pago
+				// REGISTRADO, para que se le pueda teclear la referencia bancaria y la
+				// fecha real de la contabilizacion sea la de esa confirmacion, no la de
+				// esta aprobacion. La marca debitoAutomatico=1 se conserva: sigue siendo
+				// lo que lo distingue (y lo que lo excluye de un lote de transferencias -
+				// generarLote ya rechaza cualquier pago con esta marca, antes de mirar
+				// siquiera el estado). Ver
+				// docs/logica-negocio/pagos/PLAN-DEBITO-AUTOMATICO-CONTABILIZA-AL-CONFIRMAR.md.
 				pago.setDebitoAutomatico(Long.valueOf(1));
-				pago.setFechaRespuesta(fecha);
-				pago.setEstado(Long.valueOf(EstadoPagoProgramado.CONFIRMADO));
+				pago.setEstado(Long.valueOf(EstadoPagoProgramado.REGISTRADO));
 				pago = saveSingle(pago);
-				em.flush();
-
-				contabilizarSegunOrigen(pago, idUsuario);
-				pagoProgramadoDaoService.save(pago, pago.getId());
-				confirmados.add(pago.getId());
+				registrados.add(pago.getId());
 
 			} else {
 				// Transferencia: sigue el circuito normal (lote -> archivo -> respuesta
@@ -2414,9 +2418,9 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		String observacionAsiento = "Pago egreso tesorería"
 				+ (cheque != null ? " (cheque)" : debitoAutomatico ? " (débito automático)" : " (transferencia)")
 				+ " | Concepto: " + egreso.getDescripcion()
-				+ " | Ref: " + nvl(pago.getReferenciaBanco(), "")
 				+ " | Valor: $" + String.format(java.util.Locale.US, "%.2f", pago.getValor())
 				+ notaCheque;
+		observacionAsiento = conReferenciaBanco(observacionAsiento, pago);
 
 		// 1. Asiento contable del egreso
 		Asiento asiento = asientoContableService.generarAsientoEgresoTesoreria(
@@ -2600,9 +2604,9 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		String observacionAsiento = descripcionBase
 				+ (cheque != null ? " (cheque)" : debitoAutomatico ? " (débito automático)" : " (transferencia)")
 				+ " | Beneficiario: " + nvl(pago.getBeneficiarioNombre(), "")
-				+ " | Ref: " + nvl(pago.getReferenciaBanco(), "")
 				+ " | Valor: $" + String.format(Locale.US, "%.2f", totalPago)
 				+ notaCheque;
+		observacionAsiento = conReferenciaBanco(observacionAsiento, pago);
 
 		Asiento asiento = asientoContableService.generarAsiento(idEmpresa,
 				TipoAsientos.PAGO_ORIGEN_EXTERNO, fecha, observacionAsiento,
@@ -2685,9 +2689,9 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 
 		String observacionAsiento = etiqueta + " caja chica " + caja.getNombre()
 				+ " | " + nvl(movimiento.getDescripcion(), "")
-				+ " | Ref: " + nvl(pago.getReferenciaBanco(), "")
 				+ " | Valor: $" + String.format(Locale.US, "%.2f", pago.getValor())
 				+ notaCheque;
+		observacionAsiento = conReferenciaBanco(observacionAsiento, pago);
 
 		Asiento asiento = asientoContableService.generarAsientoReposicionCajaChica(
 				caja.getPlanCuenta().getCodigo(), pago.getCuentaBancaria().getCodigo(), pago.getValor(),
@@ -2769,9 +2773,9 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 				: "";
 		String observacionAsiento = "Anticipo a colaborador " + nombreEmpleado
 				+ " | " + anticipo.getNumeroCuotas() + " cuotas"
-				+ " | Ref: " + nvl(pago.getReferenciaBanco(), "")
 				+ " | Valor: $" + String.format(Locale.US, "%.2f", pago.getValor())
 				+ notaCheque;
+		observacionAsiento = conReferenciaBanco(observacionAsiento, pago);
 
 		Asiento asiento = asientoContableService.generarAsientoAnticipoEmpleado(
 				empleado.getCodigo(), pago.getValor(), pago.getCuentaBancaria().getCodigo(),
@@ -3231,6 +3235,22 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 
 	private String nvl(String valor, String porDefecto) {
 		return (valor != null) ? valor : porDefecto;
+	}
+
+	/**
+	 * Agrega la referencia bancaria del pago al final de una observación de asiento, en un
+	 * formato único (<code>... | Ref. banco: 1009212</code>), si el pago la tiene. Único
+	 * punto de construcción para las cuatro rutas de {@code contabilizarSegunOrigen}
+	 * (egreso, origen externo genérico, caja chica, anticipo a empleado) — una variante
+	 * futura sólo tiene que llamar a este método, no repetir el formato.
+	 * Ver docs/logica-negocio/pagos/PLAN-DEBITO-AUTOMATICO-CONTABILIZA-AL-CONFIRMAR.md §3.
+	 */
+	private String conReferenciaBanco(String observacionBase, PagoProgramado pago) {
+		String referencia = pago.getReferenciaBanco();
+		if (referencia == null || referencia.trim().isEmpty()) {
+			return observacionBase;
+		}
+		return observacionBase + " | Ref. banco: " + referencia.trim();
 	}
 
 	/**
