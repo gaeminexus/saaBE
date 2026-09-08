@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Módulo standalone SOLO para compilar .jrxml a .jasper fuera de WildFly (ver
+  docs/logica-negocio/tsr/DISENO-REPORTES-CONCILIACION-BANCARIA.md §5 y el CLAUDE.md,
+  sección "Reportes"). NO es un módulo del reactor del WAR: no aparece en el pom.xml de
+  producción como <module>, no se instala, no se empaqueta con la app. `jasperreports-jdt`
+  entra SOLO aquí, nunca en el pom.xml del WAR.
+
+  Uso: compilar-jasper.bat en la raíz del repo, o a mano:
+    mvn -f tools/jasper/pom.xml -q dependency:build-classpath -Dmdep.outputFile=classpath.txt
+    javac -cp "target/classes;$(cat classpath.txt)" -d target/classes CompilarJasper.java
+    java  -cp "target/classes;$(cat classpath.txt)" tools.jasper.CompilarJasper
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>com.saa.tools</groupId>
+  <artifactId>jasper-compiler</artifactId>
+  <version>1.0.0</version>
+  <packaging>jar</packaging>
+
+  <properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <maven.compiler.source>21</maven.compiler.source>
+    <maven.compiler.target>21</maven.compiler.target>
+    <!-- Misma version que el WAR (pom.xml raiz, propiedad jasper.version) - mantener sincronizadas. -->
+    <jasper.version>7.0.3</jasper.version>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>net.sf.jasperreports</groupId>
+      <artifactId>jasperreports</artifactId>
+      <version>${jasper.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>net.sf.jasperreports</groupId>
+      <artifactId>jasperreports-pdf</artifactId>
+      <version>${jasper.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>net.sf.jasperreports</groupId>
+      <artifactId>jasperreports-fonts</artifactId>
+      <version>${jasper.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>net.sf.jasperreports</groupId>
+      <artifactId>jasperreports-functions</artifactId>
+      <version>${jasper.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>net.sf.jasperreports</groupId>
+      <artifactId>jasperreports-barcode4j</artifactId>
+      <version>${jasper.version}</version>
+      <exclusions>
+        <exclusion><groupId>xml-apis</groupId><artifactId>xml-apis</artifactId></exclusion>
+      </exclusions>
+    </dependency>
+    <!-- El compilador de expresiones que reemplaza a Studio: NO entra en el pom.xml del WAR. -->
+    <dependency>
+      <groupId>net.sf.jasperreports</groupId>
+      <artifactId>jasperreports-jdt</artifactId>
+      <version>${jasper.version}</version>
+    </dependency>
+  </dependencies>
+
+</project>
