@@ -108,17 +108,17 @@ SELECT '4 - provision de decimo cuarto, total' AS control,
 -- =====================================================================
 -- Reemplazar los codigos de cuenta si no son estos (salen de la captura del
 -- usuario: 2.5.09 decimo cuarto, 2.5.14 vacaciones). Solo asientos ACTIVOS.
+-- Columnas verificadas contra la entidad DetalleAsiento el 2026-09-08 (la primera
+-- version de este bloque las tenia inventadas y fallo con ORA-00904):
+--   DTASCNTA = numero de cuenta · DTASDBEE = debe · DTASHBRR = haber
 SELECT '5 - saldo contable de las cuentas de provision' AS control,
-       d.DTASNMCT AS cuenta,
-       SUM(NVL(d.DTASVLHB, 0)) - SUM(NVL(d.DTASVLDB, 0)) AS saldo_acreedor
+       d.DTASCNTA AS cuenta,
+       SUM(NVL(d.DTASHBRR, 0)) - SUM(NVL(d.DTASDBEE, 0)) AS saldo_acreedor
   FROM CNT.DTAS d
   JOIN CNT.ASNT a ON a.ASNTCDGO = d.ASNTCDGO
- WHERE d.DTASNMCT IN ('2.5.09', '2.5.14')
+ WHERE d.DTASCNTA IN ('2.5.09', '2.5.14')
    AND a.ASNTESTD = 1
- GROUP BY d.DTASNMCT;
--- ⚠️ Si este bloque falla por nombre de columna, avisar: los nombres de CNT.DTAS
---    se tomaron de memoria y NO se verificaron contra la entidad. Los puntos 1-4
---    si estan verificados contra las entidades de RHH.
+ GROUP BY d.DTASCNTA;
 
 
 -- =====================================================================
