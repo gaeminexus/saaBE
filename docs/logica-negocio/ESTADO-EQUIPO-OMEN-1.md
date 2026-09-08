@@ -2052,3 +2052,45 @@ le habria devuelto el dinero al socio por segunda vez. Lo detuvo que el usuario 
 bloque de control y devolviera cero filas.
 
 > **Un script que escribe sobre plata no se entrega sin haber leido el codigo que se afirma roto.**
+
+---
+
+## ⭐ 2026-09-07 — Apretar la guarda de cuadre destapo un defecto REAL en otro modulo
+
+`omen-saa-2` respondio al aviso y **fue a buscar y encontro**: `PagoProgramadoServiceImpl`, en el
+camino de contabilizacion de pagos de **origen externo** (anticipos a empleado, caja chica, debito
+automatico), arma las lineas del DEBE desde el desglose y la del HABER desde `pago.getValor()`.
+**Si difieren en un centavo, la guarda vieja lo toleraba y el asiento se grababa descuadrado** —
+exactamente el caso `1.487,02` contra `1.487,03` del cobro 29. Y `creaLineaAsiento` no redondea lo
+que recibe, asi que un decimal sucio entraba tal cual.
+
+Con la comparacion en centavos enteros eso pasa a **fallar**. Lo corrigen de su lado: la linea del
+HABER tiene que cuadrar exacta con el desglose redondeado, y si no cuadra que reviente **al
+registrar, no al contabilizar**.
+
+> ⭐ **El cambio convirtio un defecto silencioso en uno ruidoso, y esa era exactamente la
+> intencion.** No fue un falso positivo ni una molestia para otro equipo: fue encontrar algo que
+> llevaba tiempo grabando asientos mal sin que nadie lo viera.
+
+**Y valida el orden en que se hizo:** primero medir toda la base (cero descuadrados ⇒ nadie
+dependia de la tolerancia), despues apretar. Sin esa medicion previa el cambio habria sido una
+apuesta.
+
+### 🔧 Practica que adoptamos de ellos
+
+Antes de cada push: **`fetch` + `rebase` + RECOMPILAR sobre el codigo de los otros**, no solo sobre
+el propio. Es barato y evita el ida y vuelta de descubrir en el push que el arbol combinado no
+compila. Hoy nos cruzamos tres veces por esto.
+
+### Sobre el `equals()` de `validaDebeHaberAsientoContable`
+
+Los dos equipos coinciden en que es el **defecto espejo** —cero tolerancia, podria rechazar un
+asiento que cuadra en centavos— y **ninguno lo toca**: no hay evidencia de que dispare ni de que
+tenga llamadores activos. Si aparecen, se mira entre los dos.
+
+### La observacion de ellos que conviene no perder
+
+*«Los tres los encontro el usuario mirando la salida, no una revision de codigo.»* Dicho de su lado
+sobre sus tres defectos del dia — tipo de cuenta invertido, naturaleza del mayor, el centavo — y
+vale igual para los nuestros. **Es la misma conclusion a la que llego este tablero por separado
+(H52): la primera ejecucion real siempre es el usuario.**
