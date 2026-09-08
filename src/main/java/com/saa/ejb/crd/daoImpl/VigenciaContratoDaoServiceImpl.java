@@ -152,7 +152,7 @@ public class VigenciaContratoDaoServiceImpl extends EntityDaoImpl<VigenciaContra
             return new HashSet<>();
         }
 
-        // Mismo filtro que el subquery "ca" de selectVigentesPorFilial, SIN el join a VGCN:
+        // Mismo filtro que el subquery "ca" de selectVigentesPorFilial, SIN el join a VGCN
         // acá interesa la entidad aunque no tenga ninguna vigencia todavía.
         Query query = em.createNativeQuery(
             " SELECT DISTINCT c.ENTDCDGO "
