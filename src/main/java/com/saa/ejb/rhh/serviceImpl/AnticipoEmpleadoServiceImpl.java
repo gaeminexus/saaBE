@@ -11,10 +11,12 @@ import com.saa.basico.util.IncomeException;
 import com.saa.ejb.cxp.service.PagoProgramadoService;
 import com.saa.ejb.cxp.service.dto.BeneficiarioOcasional;
 import com.saa.ejb.rhh.dao.AnticipoEmpleadoDaoService;
+import com.saa.ejb.rhh.dao.CuentaBancariaEmpleadoDaoService;
 import com.saa.ejb.rhh.dao.EmpleadoDaoService;
 import com.saa.ejb.rhh.service.AnticipoEmpleadoService;
 import com.saa.ejb.rhh.util.RedondeoNomina;
 import com.saa.model.rhh.AnticipoEmpleado;
+import com.saa.model.rhh.CuentaBancariaEmpleado;
 import com.saa.model.rhh.Empleado;
 import com.saa.model.rhh.NombreEntidadesRhh;
 import com.saa.model.scp.Usuario;
@@ -44,6 +46,9 @@ public class AnticipoEmpleadoServiceImpl implements AnticipoEmpleadoService {
 
 	@EJB
 	private PagoProgramadoService pagoProgramadoService;
+
+	@EJB
+	private CuentaBancariaEmpleadoDaoService cuentaBancariaEmpleadoDaoService;
 
 	@PersistenceContext
 	private EntityManager em;
@@ -206,6 +211,33 @@ public class AnticipoEmpleadoServiceImpl implements AnticipoEmpleadoService {
 		BeneficiarioOcasional beneficiario = new BeneficiarioOcasional();
 		beneficiario.setNombre(nvl(empleado.getNombres(), nombreCompleto(empleado)));
 		beneficiario.setIdentificacion(empleado.getIdentificacion());
+
+		// CORREGIDO el 2026-09-07: el empleado SÍ puede tener su cuenta bancaria cargada en
+		// RHH.CBEM; antes nunca se leía y el anticipo quedaba sin datos bancarios pase lo que
+		// pase, bloqueando cualquier intento de pagarlo por transferencia en
+		// PagoProgramadoServiceImpl.aprobar. selectActivasByEmpleado ya filtra por activas y
+		// ordena la principal primero (CuentaBancariaEmpleadoDaoServiceImpl); acá sólo queda
+		// decidir cuál usar cuando hay más de una:
+		//   - ninguna activa            -> sin cuenta (como hoy)
+		//   - una sola activa           -> esa, aunque no esté marcada principal
+		//   - varias y una es principal -> la principal (ya viene primera por el order by)
+		//   - varias y ninguna principal -> AMBIGUO: no elegir. Elegir mal manda la plata a la
+		//     cuenta equivocada sin ningún error; se deja sin cuenta y que apruebe() rechace la
+		//     transferencia con mensaje claro (cheque/débito automático siguen disponibles).
+		List<CuentaBancariaEmpleado> cuentasActivas = cuentaBancariaEmpleadoDaoService
+				.selectActivasByEmpleado(empleado.getCodigo());
+		CuentaBancariaEmpleado cuentaElegida = null;
+		if (cuentasActivas.size() == 1) {
+			cuentaElegida = cuentasActivas.get(0);
+		} else if (cuentasActivas.size() > 1 && "S".equals(cuentasActivas.get(0).getPrincipal())) {
+			cuentaElegida = cuentasActivas.get(0);
+		}
+		if (cuentaElegida != null) {
+			beneficiario.setIdBancoExterno(cuentaElegida.getBanco() != null
+					? cuentaElegida.getBanco().getCodigo() : null);
+			beneficiario.setTipoCuenta(cuentaElegida.getTipoCuenta());
+			beneficiario.setNumeroCuenta(cuentaElegida.getNumeroCuenta());
+		}
 
 		Map<String, Object> resultadoPago = pagoProgramadoService.registrarPagoDeOrigenExterno(
 				OrigenPagoExterno.RHH_ANTICIPO_EMPLEADO, anticipo.getCodigo(), idEmpresa,

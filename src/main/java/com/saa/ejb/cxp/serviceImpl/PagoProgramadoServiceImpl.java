@@ -1185,22 +1185,33 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 				formaPago != null && formaPago.longValue() == FormaPagoProgramado.DEBITO_AUTOMATICO);
 		LocalDate fecha = parseFecha(fechaPago);
 
-		// Regla trasladada desde AnticipoEmpleadoServiceImpl y MovimientoCajaChicaServiceImpl
-		// (2026-08-30): antes se validaba al registrar; ahora la forma de pago la elige tesoreria
-		// al aprobar, asi que la restriccion tiene que vivir aqui o se vuelve un fallo silencioso.
+		// CORREGIDO el 2026-09-07: esta regla rechazaba por ORIGEN (anticipo a empleado o caja
+		// chica), no por si el pago de verdad tenía cuenta de destino cargada. Un anticipo con
+		// la cuenta del empleado cargada quedaba bloqueado igual, y a la inversa un pago de
+		// cualquier otro origen sin cuenta pasaba este control y reventaba recién en el banco.
+		// Ahora se mira el dato real: un pago tiene cuenta de destino si tiene un titular real
+		// con cuenta (cuentaDestino, TSR.CTBN — el camino de factura/egreso/anticipo a
+		// proveedor) O si tiene completo el beneficiario ocasional (banco + tipo de cuenta +
+		// número, PGTRBFBC/PGTRBFTP/PGTRBFCT — el camino de origen externo sin titular en el
+		// maestro, ver PagoProgramadoServiceImpl.registrarPagoDeOrigenExterno:954-960).
 		if (fp == FormaPagoProgramado.TRANSFERENCIA) {
 			List<Long> sinCuentaDestino = new ArrayList<>();
 			for (PagoProgramado pago : pagos) {
-				String origenExterno = pago.getOrigenExterno();
-				if (OrigenPagoExterno.RHH_ANTICIPO_EMPLEADO.equals(origenExterno)
-						|| OrigenPagoExterno.TSR_CAJA_CHICA.equals(origenExterno)) {
+				boolean tieneCuentaDestino = pago.getCuentaDestino() != null;
+				boolean tieneBeneficiarioOcasional = pago.getBeneficiarioBanco() != null
+						&& pago.getBeneficiarioTipoCuenta() != null
+						&& pago.getBeneficiarioCuenta() != null
+						&& !pago.getBeneficiarioCuenta().trim().isEmpty();
+				if (!tieneCuentaDestino && !tieneBeneficiarioOcasional) {
 					sinCuentaDestino.add(pago.getId());
 				}
 			}
 			if (!sinCuentaDestino.isEmpty()) {
-				throw new IncomeException("No se puede aprobar por transferencia: los pagos "
-						+ sinCuentaDestino + " son de anticipo a trabajador o caja chica y no tienen "
-						+ "cuenta bancaria de destino. Use cheque o débito automático.");
+				throw new IncomeException("No se puede aprobar por transferencia: a los pagos "
+						+ sinCuentaDestino + " les falta la cuenta bancaria de destino del beneficiario "
+						+ "(banco, tipo de cuenta y número). Para un anticipo a empleado, cárguela en la "
+						+ "cuenta bancaria del empleado (RHH.CBEM) antes de aprobar. Use cheque o débito "
+						+ "automático mientras tanto.");
 			}
 		}
 
