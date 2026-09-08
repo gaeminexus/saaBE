@@ -15,6 +15,19 @@ package com.saa.rubros;
  * @author GaemiSoft
  *         Interfaz del rubro RhhEstadoOrdenPago (208)
  *         Estado de la orden de pago de nomina (RDPGESTD)
+ *
+ *         <p><b>RECHAZADA_PARCIAL(4) y ANULADA(5) estan definidos en el catalogo y
+ *         NADIE LOS ASIGNA</b> en ningun punto del codigo (verificado 2026-09-08, grep de
+ *         {@code RhhEstadoOrdenPago.ANULADA}/{@code .RECHAZADA_PARCIAL} sin resultados). No
+ *         existe hoy ningun reverso para una {@code OrdenPagoNomina} ya confirmada:
+ *         {@code GeneracionOrdenPagoService} y {@code OrdenPagoNominaService} no tienen
+ *         metodo revertir/anular. Lo unico que hoy "deshace" una orden es el
+ *         {@code DELETE /rdpg/{id}} generico, con un guard minimo agregado en
+ *         {@code OrdenPagoNominaServiceImpl.exigeBorrable} (rechaza si ya se acredito o si
+ *         algun {@code RHH.VNPG} la referencia) -- no un reverso, solo evita el borrado
+ *         silencioso. Diseñar el reverso real (que devolveria estos dos estados a la vida,
+ *         mas anular el asiento, reabrir el periodo y devolver los VNPG afectados) es un
+ *         frente aparte. Ver docs/logica-negocio/rhh/PLAN-VALORES-NO-PAGADOS.md §7.4.</p>
  */
 public interface RhhEstadoOrdenPago {
 

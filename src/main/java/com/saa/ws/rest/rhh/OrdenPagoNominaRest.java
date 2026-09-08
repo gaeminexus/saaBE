@@ -1,10 +1,13 @@
 package com.saa.ws.rest.rhh;
 
 import java.time.LocalDate;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 import com.saa.basico.util.DatosBusqueda;
+import com.saa.basico.util.IncomeException;
 import com.saa.ejb.rhh.dao.OrdenPagoNominaDaoService;
 import com.saa.ejb.rhh.service.GeneracionOrdenPagoService;
 import com.saa.ejb.rhh.service.OrdenPagoNominaService;
@@ -118,9 +121,18 @@ public class OrdenPagoNominaRest {
     public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE - ORDEN_PAGO_NOMINA");
         try {
-            OrdenPagoNomina elimina = new OrdenPagoNomina();
-            ordenPagoNominaDaoService.remove(elimina, id);
+            // ===== INICIO enganche valores no pagados (script e2-26, equipo omen-saa-2) =====
+            // Antes iba directo al DAO, sin ningun guard. Ahora pasa por el service, que
+            // rechaza si la orden ya se acredito o si algun VNPG la referencia (§7.4 del
+            // plan) -- no es un reverso, solo evita el borrado silencioso.
+            ordenPagoNominaService.remove(Collections.singletonList(id));
+            // ===== FIN enganche valores no pagados =====
             return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (IncomeException e) {
+            Map<String, Object> cuerpo = new LinkedHashMap<String, Object>();
+            cuerpo.put("exito", Boolean.FALSE);
+            cuerpo.put("mensaje", e.getMessage());
+            return Response.status(Response.Status.CONFLICT).entity(cuerpo).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar registro: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }

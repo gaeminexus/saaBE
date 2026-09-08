@@ -58,4 +58,16 @@ public interface ValorNoPagadoDaoService extends EntityDao<ValorNoPagado> {
 	List<ValorNoPagado> selectListado(Long idEmpresa, Long idPeriodo, Long idEmpleado,
 			List<Long> estados) throws Throwable;
 
+	/**
+	 * Cuenta cuantos registros de valor no pagado referencian una orden de pago de nomina,
+	 * como retencion o como pago ({@code VNPGORRT}/{@code VNPGORPG}). Sirve para bloquear el
+	 * borrado fisico de una {@code OrdenPagoNomina} que dejaria esas FK apuntando a una fila
+	 * inexistente. Ver docs/logica-negocio/rhh/PLAN-VALORES-NO-PAGADOS.md §7.4.
+	 *
+	 * @param idOrdenPago	: Id de la orden de pago
+	 * @return				: Cantidad de registros que la referencian
+	 * @throws Throwable	: Excepcion
+	 */
+	long countByOrden(Long idOrdenPago) throws Throwable;
+
 }

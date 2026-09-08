@@ -125,4 +125,20 @@ public class ValorNoPagadoDaoServiceImpl extends EntityDaoImpl<ValorNoPagado>
 		return query.getResultList();
 	}
 
+	/* (non-Javadoc)
+	 * @see com.saa.ejb.rhh.dao.ValorNoPagadoDaoService#countByOrden(java.lang.Long)
+	 */
+	@Override
+	public long countByOrden(Long idOrdenPago) throws Throwable {
+		System.out.println("Ingresa al metodo countByOrden de ValorNoPagado, orden: " + idOrdenPago);
+		Query query = em.createQuery(
+				" select count(t) "
+				+ " from   ValorNoPagado t "
+				+ " where  t.ordenRetencion.codigo = :idOrdenPago "
+				+ "        or t.ordenPago.codigo = :idOrdenPago ");
+		query.setParameter("idOrdenPago", idOrdenPago);
+		Object resultado = query.getSingleResult();
+		return resultado != null ? ((Number) resultado).longValue() : 0L;
+	}
+
 }
