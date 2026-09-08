@@ -1,93 +1,147 @@
 -- =====================================================================
--- e2-24 — ¿El tipo de cuenta del empleado significa lo mismo que el del banco?
--- Modulo: RHH / PGS  ·  Equipo: omen-saa-2  ·  Fecha: 2026-09-07
+-- e2-24 — Unificar el tipo de cuenta bancaria: RHH usa OTRO rubro que TSR
+-- Modulo: RHH / TSR / PGS  ·  Equipo: omen-saa-2  ·  Fecha: 2026-09-07
 --
--- ✅ EL BLOQUE 0 ES SOLO LECTURA. El bloque 1 escribe y esta condicionado.
+-- ✅ SOLO LECTURA. No inserta, no borra, no hace COMMIT. Correr entero.
 --
--- 🔴 POR QUE EXISTE — LEER ESTO ANTES DE TRANSFERIR NADA
+-- 🔴 POR QUE EXISTE — LEER ANTES DE TRANSFERIR NADA
 --
---   Hoy se corrigio que el archivo del Banco Internacional mandaba las cuentas de
---   ahorro como corrientes y viceversa: 159 transferencias por $119.472,32 con la
---   institucion equivocada. La causa era que TipoCuentasBancarias tenia invertidos
---   los codigos alternos del rubro 23 (lo correcto: 1 = AHORRO, 2 = CORRIENTE).
+--   Pedido del usuario: «que el tipo de cuenta bancaria del empleado lea del mismo
+--   rubro que la de participes y que sea la misma que la de generar el archivo de
+--   tsr».
 --
---   Al hacer que el anticipo tome la cuenta bancaria del empleado (commit 6e646ea)
---   aparecio la MISMA trampa por otra puerta, y hay que medirla antes de usarla:
+--   Verificado en el codigo: HOY NO ES EL MISMO. Hay dos catalogos paralelos.
 --
---     PGS.PGTR.PGTRBFTP  -> la entidad dice: "codigoAlterno del DetalleRubro del
---                           rubro de tipo de cuenta bancaria". Los formateadores
---                           (Internacional, Pacifico, plano) lo leen asi, contra
---                           el RUBRO 23.
---     RHH.CBEM.CBEMTPCT  -> la entidad dice: "detalle del rubro
---                           RHH_TIPO_CUENTA_BANCARIA", que es el RUBRO 199
---                           (Rubros.java:202). OTRO catalogo.
+--     RUBRO 23  (com.saa.rubros.TipoCuentasBancarias)
+--       TSR.CTBN.CTBNTPCT   cuenta bancaria del titular / participe
+--       PGS.PGTR.PGTRBFTP   beneficiario ocasional del pago
+--       -> es el que leen InternacionalArchivoPagoFormateador:196-199 y
+--          PacificoArchivoPagoFormateador:135-138, y el que se corrigio hoy:
+--          alterno 1 = AHORRO, alterno 2 = CORRIENTE.
 --
---   O sea que se estaria copiando un valor del rubro 199 a un campo que el archivo
---   del banco interpreta contra el rubro 23. Si los dos catalogos no numeran igual,
---   la transferencia sale con el tipo de cuenta cambiado. Y NO DA NINGUN ERROR:
---   el archivo se genera, el banco lo recibe, y recien se nota cuando el dinero no
---   llega. Es exactamente lo de esta mañana.
+--     RUBRO 199 (Rubros.RHH_TIPO_CUENTA_BANCARIA, Rubros.java:202)
+--       RHH.CBEM.CBEMTPCT   cuenta bancaria del empleado
+--       RHH.DRPG.DRPGTPCT   snapshot del tipo de cuenta en la orden de pago
+--       RHH.FMBN.FMBNMPTC   mapa "alternoRubro199=codigoBanco;..." de los formatos
+--                           de archivo de nomina
+--       -> y el frontend lo confirma: RubrosRrh.TIPO_CUENTA_BANCARIA = 199.
 --
---   Peor: ni siquiera esta claro si CBEMTPCT guarda el CODIGO ALTERNO del detalle o
---   su PK. La entidad dice "detalle del rubro" sin precisar cual de los dos.
+--   Ya hay un puente entre los dos, y es el peligroso: el commit 6e646ea hace que
+--   el anticipo copie CBEMTPCT (rubro 199) a PGTRBFTP (rubro 23) TAL CUAL. Si los
+--   dos catalogos no numeran igual, la transferencia sale con el tipo de cuenta
+--   cambiado. Es LITERALMENTE el defecto de esta mañana —159 transferencias por
+--   $119.472,32 con la institucion equivocada— por otra puerta, y con la misma
+--   propiedad: no da ningun error, el archivo se genera y el banco lo acepta.
 --
---   Este script mide las dos cosas ANTES de que nadie transfiera.
+--   🔴 Y unificar NO es cambiar un numero. RHH.FMBN.FMBNMPTC guarda un mapa CON LAS
+--      CLAVES DEL RUBRO 199 (GeneracionOrdenPagoServiceImpl:502,590). Si se cambia
+--      el catalogo sin re-clavar esos mapas, el ARCHIVO DE NOMINA empieza a salir
+--      mal, tambien en silencio.
+--
+--   Este script mide todo el alcance antes de tocar nada.
 -- =====================================================================
 
 
 -- =====================================================================
--- BLOQUE 0 — MEDICION. Solo lectura. Correr entero y pegar el resultado.
+-- 1 — Los dos catalogos, lado a lado
 -- =====================================================================
 
--- 0.1 El catalogo que el ARCHIVO DEL BANCO da por cierto: rubro 23.
---     ESPERADO (ya verificado hoy): alterno 1 = AHORRO, alterno 2 = CORRIENTE.
-SELECT '0.1 - rubro 23 (el que usa el archivo)' AS control,
+-- 1.1 Rubro 23: el que manda, porque es el que lee el archivo del banco.
+--     ESPERADO (verificado hoy): alterno 1 = AHORRO, alterno 2 = CORRIENTE.
+SELECT '1.1 - rubro 23 (TSR, archivo banco)' AS control,
        r.PRBRCDGO AS rubro_pk, d.PDTRCDGO AS detalle_pk,
-       d.PDTRALTR AS alterno, d.PDTRDSCR AS descripcion
+       d.PDTRALTR AS alterno, d.PDTRDSCR AS descripcion, d.PDTRESTD AS estado
   FROM SCP.PDTR d JOIN SCP.PRBR r ON r.PRBRCDGO = d.PRBRCDGO
  WHERE r.PRBRALTR = 23
  ORDER BY d.PDTRALTR;
 
--- 0.2 El catalogo que usa la CUENTA DEL EMPLEADO: rubro 199.
---     🔴 Compara alterno y descripcion contra el 0.1. Si el 199 numera distinto
+-- 1.2 Rubro 199: el que usa RHH.
+--     🔴 Compara alterno + descripcion contra el 1.1. Si el 199 numera al reves
 --        —por ejemplo 1 = CORRIENTE— copiar el valor tal cual INVIERTE el tipo.
-SELECT '0.2 - rubro 199 (el que usa RHH.CBEM)' AS control,
+--        Si numeran IGUAL, la unificacion es solo de codigo y no hay migracion de
+--        datos, que seria el mejor escenario posible.
+SELECT '1.2 - rubro 199 (RHH)' AS control,
        r.PRBRCDGO AS rubro_pk, d.PDTRCDGO AS detalle_pk,
-       d.PDTRALTR AS alterno, d.PDTRDSCR AS descripcion
+       d.PDTRALTR AS alterno, d.PDTRDSCR AS descripcion, d.PDTRESTD AS estado
   FROM SCP.PDTR d JOIN SCP.PRBR r ON r.PRBRCDGO = d.PRBRCDGO
  WHERE r.PRBRALTR = 199
  ORDER BY d.PDTRALTR;
 
--- 0.3 🔴 ¿CBEMTPCT guarda el ALTERNO o la PK del detalle? Esto lo decide.
---     Muestra cada valor realmente almacenado y con que fila del rubro 199
---     coincidiria leyendolo de una forma y de la otra.
---     - Si "como_alterno" trae descripcion y "como_pk" viene vacio -> guarda alterno.
---     - Si es al reves -> guarda PK, y copiarlo al pago seria doblemente erroneo.
---     - Si las dos traen algo, mirar cual descripcion tiene sentido para esa cuenta.
-SELECT '0.3 - que guarda CBEMTPCT' AS control,
-       c.CBEMTPCT AS valor_guardado,
-       COUNT(*)   AS cuentas_con_ese_valor,
+
+-- =====================================================================
+-- 2 — ¿Que guardan realmente las columnas? ¿Alterno o PK?
+-- =====================================================================
+-- Las entidades de RHH dicen "detalle del rubro" sin precisar cual de los dos.
+-- Esa misma ambiguedad ya costo hoy una consulta equivocada (el rubro con PK 199
+-- es "ESTADO DEL DESCUENTO RECURRENTE", mientras el de tipo de cuenta tiene PK 200
+-- y alterno 199).
+--
+-- Lectura de cada bloque:
+--   - si "como_alterno" trae descripcion y "como_pk" viene vacio -> guarda ALTERNO
+--   - si es al reves -> guarda PK
+--   - si las dos traen algo, mirar cual descripcion tiene sentido
+
+-- 2.1 La cuenta del empleado.
+SELECT '2.1 - RHH.CBEM.CBEMTPCT' AS control,
+       c.CBEMTPCT AS valor_guardado, COUNT(*) AS cuentas,
        (SELECT MAX(d.PDTRDSCR) FROM SCP.PDTR d JOIN SCP.PRBR r ON r.PRBRCDGO = d.PRBRCDGO
-         WHERE r.PRBRALTR = 199 AND d.PDTRALTR = c.CBEMTPCT)  AS como_alterno,
+         WHERE r.PRBRALTR = 199 AND d.PDTRALTR = c.CBEMTPCT) AS como_alterno_199,
        (SELECT MAX(d.PDTRDSCR) FROM SCP.PDTR d JOIN SCP.PRBR r ON r.PRBRCDGO = d.PRBRCDGO
-         WHERE r.PRBRALTR = 199 AND d.PDTRCDGO = c.CBEMTPCT)  AS como_pk
+         WHERE r.PRBRALTR = 199 AND d.PDTRCDGO = c.CBEMTPCT) AS como_pk_199,
+       (SELECT MAX(d.PDTRDSCR) FROM SCP.PDTR d JOIN SCP.PRBR r ON r.PRBRCDGO = d.PRBRCDGO
+         WHERE r.PRBRALTR = 23  AND d.PDTRALTR = c.CBEMTPCT) AS si_fuera_alterno_23
   FROM RHH.CBEM c
  GROUP BY c.CBEMTPCT
  ORDER BY c.CBEMTPCT;
 
--- 0.4 Lo mismo para lo que ya esta guardado en los pagos, como contraste.
---     Estos SI son alternos del rubro 23 por contrato de la entidad.
-SELECT '0.4 - que hay hoy en PGTRBFTP' AS control,
+-- 2.2 La cuenta del titular / participe, que es la referencia correcta.
+SELECT '2.2 - TSR.CTBN.CTBNTPCT' AS control,
+       t.CTBNTPCT AS valor_guardado, COUNT(*) AS cuentas,
+       (SELECT MAX(d.PDTRDSCR) FROM SCP.PDTR d JOIN SCP.PRBR r ON r.PRBRCDGO = d.PRBRCDGO
+         WHERE r.PRBRALTR = 23 AND d.PDTRALTR = t.CTBNTPCT) AS como_alterno_23
+  FROM TSR.CTBN t
+ WHERE t.CTBNTPCT IS NOT NULL
+ GROUP BY t.CTBNTPCT
+ ORDER BY t.CTBNTPCT;
+
+-- 2.3 Lo que ya esta guardado en los pagos.
+SELECT '2.3 - PGS.PGTR.PGTRBFTP' AS control,
        p.PGTRBFTP AS valor_guardado, COUNT(*) AS pagos,
        (SELECT MAX(d.PDTRDSCR) FROM SCP.PDTR d JOIN SCP.PRBR r ON r.PRBRCDGO = d.PRBRCDGO
-         WHERE r.PRBRALTR = 23 AND d.PDTRALTR = p.PGTRBFTP) AS significado
+         WHERE r.PRBRALTR = 23 AND d.PDTRALTR = p.PGTRBFTP) AS como_alterno_23
   FROM PGS.PGTR p
  WHERE p.PGTRBFTP IS NOT NULL
  GROUP BY p.PGTRBFTP
  ORDER BY p.PGTRBFTP;
 
--- 0.5 La cuenta del empleado del anticipo 1, para ver el caso concreto.
-SELECT '0.5 - cuentas del empleado del anticipo 1' AS control,
+-- 2.4 El snapshot de las ordenes de pago de nomina.
+SELECT '2.4 - RHH.DRPG.DRPGTPCT' AS control,
+       o.DRPGTPCT AS valor_guardado, COUNT(*) AS detalles
+  FROM RHH.DRPG o
+ WHERE o.DRPGTPCT IS NOT NULL
+ GROUP BY o.DRPGTPCT
+ ORDER BY o.DRPGTPCT;
+
+
+-- =====================================================================
+-- 3 — 🔴 LOS MAPAS DE FORMATO BANCARIO. La trampa de la unificacion.
+-- =====================================================================
+-- FMBNMPTC es un texto del tipo "1=CTE;2=AHO" cuyas CLAVES son alternos del rubro
+-- 199 (GeneracionOrdenPagoServiceImpl:502 y 590). Si se cambia el catalogo de RHH
+-- al 23 sin re-clavar estos mapas, el archivo de nomina empieza a salir con el
+-- tipo de cuenta equivocado, en silencio.
+--
+-- Mira cada mapa y contrastalo con el 1.1 y el 1.2 antes de decidir nada.
+SELECT '3 - mapas de tipo de cuenta por formato' AS control,
+       f.FMBNCDGO AS formato, f.FMBNMPTC AS mapa_tipo_cuenta
+  FROM RHH.FMBN f
+ ORDER BY f.FMBNCDGO;
+
+
+-- =====================================================================
+-- 4 — El caso concreto que hay que destrabar
+-- =====================================================================
+SELECT '4 - cuentas del empleado del anticipo 1' AS control,
        c.CBEMCDGO, c.MPLDCDGO AS empleado, c.BEXTCDGO AS banco,
        c.CBEMTPCT AS tipo_cuenta, c.CBEMNMCT AS numero,
        c.CBEMPRCP AS principal, c.CBEMESTD AS estado
@@ -97,19 +151,24 @@ SELECT '0.5 - cuentas del empleado del anticipo 1' AS control,
 
 
 -- =====================================================================
--- BLOQUE 1 — ⛔ NO CORRER TODAVIA
+-- LO QUE VIENE DESPUES, segun lo que devuelva esto
 -- =====================================================================
--- Este bloque rellenaria la cuenta de destino del pago 322 desde la cuenta del
--- empleado, para no tener que anular y recrear el anticipo.
+-- CASO A — Los dos rubros numeran IGUAL (1 = AHORRO, 2 = CORRIENTE en ambos).
+--   Es el mejor caso: la unificacion es SOLO de codigo y documentacion. No hay
+--   migracion de datos, los mapas de FMBN siguen siendo validos y el commit
+--   6e646ea ya estaba copiando un valor correcto por casualidad. Igual conviene
+--   unificar para que deje de ser casualidad.
 --
--- 🔴 Esta deliberadamente SIN ESCRIBIR. Hasta saber que devuelve el BLOQUE 0 no se
---    sabe si CBEMTPCT se puede copiar tal cual a PGTRBFTP, o si hay que traducirlo
---    entre los dos catalogos. Escribirlo antes de medir seria repetir el error de
---    esta mañana con otro disfraz.
+-- CASO B — Numeran DISTINTO.
+--   Hay migracion de datos y son cuatro frentes, no uno:
+--     1. RHH.CBEM.CBEMTPCT      traducir
+--     2. RHH.DRPG.DRPGTPCT      traducir (es historico: evaluar si se toca)
+--     3. RHH.FMBN.FMBNMPTC      re-clavar los mapas
+--     4. Codigo: RubrosRrh.TIPO_CUENTA_BANCARIA en el front, y los javadoc de
+--        CuentaBancariaEmpleado / DetalleOrdenPagoNomina en el back
+--   Y hasta que eso este hecho, el anticipo NO debe copiar el valor tal cual:
+--   hay que traducirlo al vuelo o bloquear la transferencia.
 --
--- Pegame el resultado del BLOQUE 0 y lo completo con la traduccion correcta.
---
--- Recordatorio: rellenar el dato NO alcanza por si solo. El control que hoy esta
--- desplegado rechaza por ORIGEN, no por datos; hace falta el WAR con el commit
--- 6e646ea para que mire la cuenta de verdad.
+-- ⚠️ En los dos casos: mientras esto no se resuelva, NO generar archivo al banco
+--    con un anticipo a empleado.
 -- =====================================================================
