@@ -254,13 +254,9 @@ ORDER BY ORDEN_SECCION, BANCO, NUMERO_CUENTA, R_TIPO
 				scaleImage="RealSize" evaluationTime="Report" linkType="None" linkTarget="Self" lazy="true">
 			<expression><![CDATA[$P{P_IMAGEN}]]></expression>
 		</element>
-		<element kind="textField" uuid="a0000002-0001-0001-0001-000000000002"
+		<element kind="staticText" uuid="a0000002-0001-0001-0001-000000000002"
 				x="80" y="0" width="600" height="20" fontSize="13.0" bold="true" hTextAlign="Center">
-			<expression><![CDATA[$P{P_REPORTE}]]></expression>
-		</element>
-		<element kind="textField" uuid="a0000002-0001-0001-0001-000000000003"
-				x="0" y="45" width="400" height="13" fontSize="8.0" bold="true">
-			<expression><![CDATA[$P{P_PATH}]]></expression>
+			<text><![CDATA[CONCILIACIÓN BANCARIA GENERAL DEL PERÍODO]]></text>
 		</element>
 		<element kind="textField" uuid="a0000002-0001-0001-0001-000000000004"
 				x="0" y="58" width="300" height="12" fontSize="7.0">
@@ -311,7 +307,7 @@ ORDER BY ORDEN_SECCION, BANCO, NUMERO_CUENTA, R_TIPO
     : "ABIERTO"]]></expression>
 			</element>
 			<element kind="textField" uuid="b0000010-0001-0001-0001-000000000007"
-					x="420" y="14" width="382" height="13" fontName="Tahoma" fontSize="8.0" vTextAlign="Middle">
+					evaluationTime="Report" x="420" y="14" width="382" height="13" fontName="Tahoma" fontSize="8.0" vTextAlign="Middle">
 				<expression><![CDATA["Cuentas activas: " + $V{CUENTAS_ACTIVAS}
     + "   |   Verificadas: " + $V{CUENTAS_VERIFICADAS}
     + "   |   Con extracto cargado: " + $V{CUENTAS_CON_EXTRACTO}]]></expression>
