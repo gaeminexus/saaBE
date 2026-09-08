@@ -3116,3 +3116,63 @@ RECURRENTE» y una conclusión falsa con cara de correcta, con un pago urgente e
 
 **Es la misma lección desde el otro lado: lo que rompe fuerte se arregla; lo que contesta mal
 sobrevive.**
+
+---
+
+## §36 — Valores no pagados en nómina: un frente completo en una madrugada, y lo que costó
+
+**2026-09-08, 01:30 → 04:00.** Pedido urgente del usuario: registrar por empleado y período un
+valor que **no se le paga ese mes** y se le devuelve en el pago del siguiente, sin que la
+contabilidad del rol ni las provisiones se enteren. Diseño en `rhh/PLAN-VALORES-NO-PAGADOS.md`,
+DDL `rhh/sql/e2-26`. Seis decisiones cerradas con el usuario antes de escribir una línea.
+
+| Parte | Commit |
+|---|---|
+| Plan + reserva `RHH.VNPG` / rubro 311 | `74d4211` |
+| DDL `e2-26` (y la corrección de `CPNMTPCL`, que arregló también el `e2-18c`) | `d178efe` · `0d9f111` |
+| Entidad, DAO, servicio, REST | `42c6b96` |
+| Motor, orden de pago, confirmación | `916be5e` |
+| Finiquito | `1190466` |
+| Guarda al `DELETE` de órdenes | `51c326e` |
+| Pantalla (saaFE) | `c460ee1` · `fbe5bd8` |
+
+**Por qué el diseño fue chico**, verificado y no supuesto: el asiento del pago usa `orden.getTotal()`,
+así que ajustar la orden basta para que remuneraciones por pagar contra bancos se mueva por lo
+realmente pagado, sin tocar el contabilizador; y dos renglones INFORMATIVOS muestran −X/+X en el
+rol sin tocar neto ni bases — el mecanismo de los décimos. Los `.jrxml` del rol **no necesitaron
+cambios**: el individual ya imprimía todo renglón con su tipo y signo.
+
+### Lo que salió mal, y todo se atrapó antes de producción salvo uno
+
+1. **`CPNMTPCL` — ORA-01400 en producción.** Mi INSERT de conceptos nombraba 7 de 29 columnas. El
+   `e2-18c` tenía el mismo hueco y no había fallado porque nunca se corrió. Arreglo: **copiar el
+   concepto desde el décimo mensualizado de la misma empresa** y sobrescribir solo lo que cambia —
+   dejar de adivinar qué columnas son obligatorias. RDEP e IESS en NULL a propósito.
+2. **El finiquito sumaba X a la base del IESS.** X habría pagado aporte dos veces (ya lo pagó el mes
+   en que se devengó). Devuelto antes de commitear; X va como línea propia, que se paga y no es
+   base de nada.
+3. **Tres desajustes pantalla ↔ backend, ninguno daba error**: el registro se saltaba todas las
+   validaciones (usaba el guardado genérico), la anulación grababa `usuarioAnulacion = NULL`, y el
+   listado leía un campo con otro nombre. **El plan no es el contrato; el código lo es.** Los tres
+   contratos se releyeron del `.java` real.
+4. **`nvl` en JPQL** — reventó el primer clic de décimos (`f1347d5`) y por eso el `e2-26` y toda
+   consulta nueva van por rama `is null` / `= :param`.
+
+### Lo que quedó abierto, y es del usuario
+
+- **Reverso de una orden de pago confirmada: no existe.** Nadie asigna `ANULADA`/`RECHAZADA_PARCIAL`,
+  `reabrirPeriodo` rechaza un período PAGADO, y el `DELETE /rdpg/{id}` borraba físicamente sin
+  guard. Se puso la guarda mínima; el reverso real (asiento + período + VNPG) es frente aparte.
+- **«Neto a pagar» impreso en el rol**: hoy el rol muestra el neto de nómina y la línea −X; el
+  importe acreditado se ve en la orden. Agregar la línea exige `.jrxml` + `.jasper` compilado.
+- **Permiso 900**: lo dio de alta el usuario en el sistema de seguridades. Ningún script nuestro
+  lo crea: la verificación es un paquete PL/SQL (`scp.pc_crct_espc.pr_vrfc_prms_susr`).
+
+### ⚠️ Aviso a `lap-saa-1` — archivos compartidos tocados, ya en `main`
+
+`ProcesoNominaServiceImpl`, `GeneracionOrdenPagoServiceImpl`, `ContabilizacionNominaServiceImpl`,
+`LiquidacionHaberesServiceImpl`, `OrdenPagoNominaServiceImpl` y `OrdenPagoNominaRest`. Todo en
+bloques `// ===== INICIO/FIN enganche valores no pagados =====`. **El `DELETE /rdpg/{id}` ahora
+pasa por el servicio y rechaza órdenes confirmadas** — si algo suyo dependía del borrado directo,
+va a recibir un 409 con mensaje. Las sesiones de la laptop no son alcanzables por mensaje desde
+esta máquina; el aviso va por este documento y por el usuario.
