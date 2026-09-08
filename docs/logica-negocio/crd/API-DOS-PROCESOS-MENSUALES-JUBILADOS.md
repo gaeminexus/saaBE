@@ -227,3 +227,48 @@ Las filas sembradas llevan `CRJBCTSG` y `CRJBCTPN` con el conteo real de jubilad
 lector tiene que poder distinguirlas de una corrida hecha con el esquema nuevo**. Por eso el
 backfill las deja identificables: son las únicas con `CRJBIDSG IS NULL` y `CRJBVLCR IS NULL`
 teniendo `CRJBESSG = 1`. Queda dicho acá y en el encabezado del script.
+
+---
+
+## 9. Forma de respuesta de los dos POST — faltaba, y es un error del §4
+
+El §4 describía los pasos de los dos endpoints pero **no publicaba el cuerpo de respuesta**. El
+frontend tuvo que inferirlo. Su inferencia era la correcta y se canoniza acá:
+
+| Endpoint | Devuelve |
+|---|---|
+| `POST /pgpc/seguro/generar` | `{ jubilados, total, idOrdenPago, mensaje }` |
+| `POST /pgpc/pensiones/generar` | El **mismo `ResultadoGeneracionPagosPension`** que hoy devuelve `generarPagosDelMes`, más `totalSeguroRetroactivoNoPagado` y su conteo (§10) |
+
+⭐ **Y el frontend hizo algo mejor que adivinar bien: se blindó de la duda.** Después de cada
+generación vuelve a pedir `GET /corrida`, que **sí** tenía forma exacta, y repinta las dos tarjetas
+con eso. Si el JSON de los POST hubiera diferido, el único lugar a tocar era el tipo, no la lógica
+de la pantalla. **Ese es el patrón correcto cuando un contrato tiene un hueco: apoyarse en la parte
+que sí está congelada.**
+
+---
+
+## 10. Meses retroactivos — medido, decidido, y NO resuelto a propósito
+
+`generarMesesRetroactivos` recibe `valorSeguro` y lo aplica **mes a mes**: hoy cada mes retroactivo
+genera su fila con su `PGPCVLSG`, y todo eso entra en la orden única al proveedor.
+
+Con los dos procesos separados aparece un hueco: el proceso de inicio de mes paga **solo el mes
+corriente**, así que un mes retroactivo con seguro quedaría **descontado al jubilado y nunca pagado
+al proveedor**.
+
+**Decisión del usuario (2026-09-07), textual:** *«No van a existir esos casos, para eso es la opción
+de pagar seguro médico sin cuenta bancaria. Así que tranquilo, hasta el momento se han pagado los
+seguros.»*
+
+⇒ **No se genera ninguna orden adicional al proveedor.** El proceso de pensiones sigue sin emitir
+órdenes al proveedor (§4.2 punto 5).
+
+⚠️ **Pero no queda silencioso.** Que el caso «no vaya a existir» es una afirmación de negocio, y el
+camino de código sigue abierto. La corrida de pensiones **suma aparte** el seguro de los meses
+retroactivos que genere y lo devuelve en el resumen (`totalSeguroRetroactivoNoPagado` + conteo), sin
+fallar y sin bloquear.
+
+**Por qué así y no de otra forma:** si el caso nunca ocurre, el campo queda en cero y no molesta a
+nadie. Si ocurre, aparece **en el resultado de la corrida** en vez de descubrirse tres meses después
+conciliando con el proveedor. Es la diferencia entre un supuesto verificado y un supuesto olvidado.
