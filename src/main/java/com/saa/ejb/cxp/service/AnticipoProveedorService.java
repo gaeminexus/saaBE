@@ -142,20 +142,26 @@ public interface AnticipoProveedorService extends EntityService<AnticipoProveedo
     /**
      * Igual que {@link #revertirContabilidadAnticipo(Long, String)}, con la opción de
      * elegir cómo tratar el asiento (caso del pago rebotado por el banco, ver
-     * {@code PagoProgramadoService#revertirPagoConfirmado(Long, String, Long, Boolean)}).
+     * {@code PagoProgramadoService#revertirPagoConfirmado(Long, String, Long, Boolean, java.time.LocalDate)}).
      * Con {@code reversarAsiento=true} genera el asiento de contrapartida y un movimiento
-     * bancario nuevo (crédito) para que la conciliación pueda emparejarlo.
+     * bancario nuevo (crédito) para que la conciliación pueda emparejarlo, fechado con
+     * {@code fechaReverso} (2026-09-08, ya disponible en {@code AsientoService}).
+     *
+     * <p>⚠️ Si el período de {@code fechaReverso} no existe, o está MAYORIZADO o CERRADO,
+     * {@code AsientoService} lanza {@code IncomeException} tal cual, sin traducir.</p>
      *
      * @param idAnticipo      : Id del anticipo confirmado
      * @param motivo          : Motivo de la reversión
      * @param reversarAsiento : {@code true} para forzar la reversión con contrapartida
+     * @param fechaReverso    : Fecha real del hecho que origina el reverso; {@code null} = hoy
      * @param idEmpresa       : Id de la empresa, para el movimiento bancario del reverso
      * @param cuentaBancaria  : Cuenta bancaria del pago original
      * @param valor           : Valor del pago original
      * @throws Throwable      : Excepcion
      */
     void revertirContabilidadAnticipo(Long idAnticipo, String motivo, Boolean reversarAsiento,
-            Long idEmpresa, com.saa.model.tsr.CuentaBancaria cuentaBancaria, Double valor) throws Throwable;
+            java.time.LocalDate fechaReverso, Long idEmpresa, com.saa.model.tsr.CuentaBancaria cuentaBancaria,
+            Double valor) throws Throwable;
 
     /**
      * Anula un anticipo SIN aceptar la reversión de cruces con facturas.

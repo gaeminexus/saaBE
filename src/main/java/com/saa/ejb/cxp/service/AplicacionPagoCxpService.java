@@ -227,10 +227,20 @@ public interface AplicacionPagoCxpService extends EntityService<AplicacionPagoCx
 	 * el ciclo APLP → MVCH → PGTR → APLP, ver el javadoc del campo en la entidad), así que
 	 * el llamador que sí la tiene ({@code PagoProgramadoServiceImpl}) se la pasa.
 	 *
+	 * <p>{@code fechaReverso} (2026-09-08, ya disponible en
+	 * {@code AsientoService.reversionAsiento(Long, LocalDate)}): fecha real del hecho que
+	 * origina el reverso; {@code null} = hoy. Determina {@code fechaAsiento},
+	 * {@code numeroMes}/{@code numeroAnio} Y el {@code Periodo} del asiento de reverso, los
+	 * tres de la misma fecha. Sólo tiene efecto junto con {@code reversarAsiento=true}.</p>
+	 *
+	 * <p>⚠️ Si el período de {@code fechaReverso} no existe, o está MAYORIZADO o CERRADO,
+	 * {@code AsientoService} lanza {@code IncomeException} tal cual, sin traducir.</p>
+	 *
 	 * @param idAplicacion    : Id de la aplicación a reversar
 	 * @param motivo          : Motivo de la reversión
 	 * @param idUsuario       : Id del usuario que reversa
 	 * @param reversarAsiento : {@code true} para forzar la reversión con contrapartida
+	 * @param fechaReverso    : Fecha real del hecho que origina el reverso; {@code null} = hoy
 	 * @param idEmpresa       : Id de la empresa, para el movimiento bancario del reverso
 	 * @param cuentaBancaria  : Cuenta bancaria del pago original
 	 * @param valor           : Valor del pago original
@@ -238,8 +248,8 @@ public interface AplicacionPagoCxpService extends EntityService<AplicacionPagoCx
 	 * @throws Throwable      : Excepcion, o IncomeException si el origen es caja chica
 	 */
 	Map<String, Object> revertirAplicacion(Long idAplicacion, String motivo, Long idUsuario,
-			Boolean reversarAsiento, Long idEmpresa, com.saa.model.tsr.CuentaBancaria cuentaBancaria,
-			Double valor) throws Throwable;
+			Boolean reversarAsiento, java.time.LocalDate fechaReverso, Long idEmpresa,
+			com.saa.model.tsr.CuentaBancaria cuentaBancaria, Double valor) throws Throwable;
 
 	/**
 	 * Igual que {@link #revertirAplicacion(Long, String, Long)}, pero SIN el

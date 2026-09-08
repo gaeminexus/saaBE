@@ -1,5 +1,6 @@
 package com.saa.ws.rest.cxp;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -558,13 +559,19 @@ public class PagoProgramadoRest {
 
     /**
      * Reversa un pago ya confirmado por el banco.
-     * Body esperado: { "motivo": "...", "idUsuario": 5, "reversarAsiento": false }
+     * Body esperado: { "motivo": "...", "idUsuario": 5, "reversarAsiento": false, "fechaReverso": "2026-08-15" }
      *
      * <p>{@code reversarAsiento} (opcional, default {@code false}): caso del pago que el
      * banco rechaza y en el extracto aparece en menos y luego en más. Con {@code true} se
      * fuerza el asiento de contrapartida (y su movimiento bancario) en vez de la anulación
      * automática, para que la conciliación tenga con qué emparejar el {@code +X} del banco.
      * Omitido o {@code false} = comportamiento de siempre.</p>
+     *
+     * <p>{@code fechaReverso} (opcional, {@code yyyy-MM-dd}): fecha real en que el banco
+     * devolvió la plata, no la de hoy. Sólo tiene efecto junto con
+     * {@code reversarAsiento=true}. Si el período de esa fecha no existe, o está MAYORIZADO
+     * o CERRADO, el servidor devuelve el error correspondiente -pidiendo desmayorizar o
+     * reabrir- sin traducirlo.</p>
      */
     @POST
     @Path("/revertirConfirmado/{id}")
@@ -576,6 +583,9 @@ public class PagoProgramadoRest {
             String motivo  = (datos != null) ? (String) datos.get("motivo") : null;
             Long idUsuario = (datos != null) ? toLong(datos.get("idUsuario")) : null;
             Boolean reversarAsiento = (datos != null) ? toBoolean(datos.get("reversarAsiento")) : null;
+            String fechaReversoTexto = (datos != null) ? (String) datos.get("fechaReverso") : null;
+            LocalDate fechaReverso = (fechaReversoTexto != null && !fechaReversoTexto.trim().isEmpty())
+                    ? LocalDate.parse(fechaReversoTexto.trim()) : null;
 
             if (motivo == null || motivo.trim().isEmpty()) {
                 return Response.status(Response.Status.BAD_REQUEST)
@@ -583,8 +593,8 @@ public class PagoProgramadoRest {
                         .type(MediaType.APPLICATION_JSON).build();
             }
 
-            Map<String, Object> resultado =
-                    pagoProgramadoService.revertirPagoConfirmado(id, motivo, idUsuario, reversarAsiento);
+            Map<String, Object> resultado = pagoProgramadoService.revertirPagoConfirmado(id, motivo,
+                    idUsuario, reversarAsiento, fechaReverso);
             return Response.status(Response.Status.OK).entity(resultado)
                     .type(MediaType.APPLICATION_JSON).build();
         } catch (ConflictoNegocioException e) {

@@ -1,5 +1,6 @@
 package com.saa.ejb.cxp.service;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
@@ -418,11 +419,8 @@ public interface PagoProgramadoService extends EntityService<PagoProgramado> {
 	 * genera el asiento de contrapartida y un movimiento bancario nuevo (crédito) para que
 	 * la conciliación pueda emparejar el {@code +X} del extracto contra algo propio.</p>
 	 *
-	 * <p><b>Limitación conocida:</b> el asiento de reverso queda contabilizado con la fecha
-	 * de hoy, no con la fecha en que el banco devolvió la plata — {@code AsientoService}
-	 * (de otro equipo) no expone un parámetro de fecha, porque la fecha determina el número
-	 * y el período del asiento generado. Si el rebote real ocurrió en un mes ya cerrado, el
-	 * reverso cae igual en el mes actual.</p>
+	 * <p>Equivale a la sobrecarga de cinco argumentos con {@code fechaReverso=null}: el
+	 * reverso queda contabilizado con la fecha de hoy. Se conserva por retrocompatibilidad.</p>
 	 *
 	 * @param idPago          : Id del pago confirmado
 	 * @param motivo          : Motivo de la reversión
@@ -435,6 +433,30 @@ public interface PagoProgramadoService extends EntityService<PagoProgramado> {
 	 */
 	Map<String, Object> revertirPagoConfirmado(Long idPago, String motivo, Long idUsuario,
 			Boolean reversarAsiento) throws Throwable;
+
+	/**
+	 * Igual que la sobrecarga de cuatro argumentos, con la fecha real del reverso
+	 * (2026-09-08, ya disponible en {@code AsientoService.reversionAsiento(Long, LocalDate)}).
+	 *
+	 * <p>Sólo tiene efecto junto con {@code reversarAsiento=true}: determina
+	 * {@code fechaAsiento}, {@code numeroMes}/{@code numeroAnio} Y el {@code Periodo} del
+	 * asiento de reverso, los tres de la misma fecha. Si el rebote fue de un mes ya cerrado,
+	 * el reverso queda fechado en ESE mes, no en el de hoy.</p>
+	 *
+	 * <p>⚠️ Si el período de {@code fechaReverso} no existe, o está MAYORIZADO o CERRADO,
+	 * {@code AsientoService} lanza {@code IncomeException} pidiendo desmayorizar o reabrir.
+	 * Esa excepción llega tal cual, sin traducir ni envolver.</p>
+	 *
+	 * @param idPago          : Id del pago confirmado
+	 * @param motivo          : Motivo de la reversión
+	 * @param idUsuario       : Id del usuario que reversa
+	 * @param reversarAsiento : {@code true} para forzar el asiento de contrapartida
+	 * @param fechaReverso    : Fecha real del hecho que origina el reverso; {@code null} = hoy
+	 * @return                : Mapa con exito y mensaje
+	 * @throws Throwable      : Excepcion, tal cual la lanza {@code AsientoService}
+	 */
+	Map<String, Object> revertirPagoConfirmado(Long idPago, String motivo, Long idUsuario,
+			Boolean reversarAsiento, LocalDate fechaReverso) throws Throwable;
 
 	/**
 	 * Valida que el valor a pagar quepa en el saldo pendiente de la factura,

@@ -821,16 +821,16 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 	public Map<String, Object> revertirAplicacion(Long idAplicacion, String motivo, Long idUsuario)
 			throws Throwable {
 		return revertirAplicacionInterna(idAplicacion, motivo, idUsuario, false, Boolean.FALSE,
-				null, null, null);
+				null, null, null, null);
 	}
 
 	// ===== INICIO anular-vs-reversar pago rebotado (equipo omen-saa-2) =====
 	@Override
 	public Map<String, Object> revertirAplicacion(Long idAplicacion, String motivo, Long idUsuario,
-			Boolean reversarAsiento, Long idEmpresa, com.saa.model.tsr.CuentaBancaria cuentaBancaria,
-			Double valor) throws Throwable {
+			Boolean reversarAsiento, java.time.LocalDate fechaReverso, Long idEmpresa,
+			com.saa.model.tsr.CuentaBancaria cuentaBancaria, Double valor) throws Throwable {
 		return revertirAplicacionInterna(idAplicacion, motivo, idUsuario, false, reversarAsiento,
-				idEmpresa, cuentaBancaria, valor);
+				fechaReverso, idEmpresa, cuentaBancaria, valor);
 	}
 	// ===== FIN anular-vs-reversar pago rebotado (equipo omen-saa-2) =====
 
@@ -838,7 +838,7 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 	public Map<String, Object> revertirAplicacionOrigenCajaChica(Long idAplicacion, String motivo, Long idUsuario)
 			throws Throwable {
 		return revertirAplicacionInterna(idAplicacion, motivo, idUsuario, true, Boolean.FALSE,
-				null, null, null);
+				null, null, null, null);
 	}
 
 	/**
@@ -847,18 +847,19 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 	 * @param permiteOrigenCajaChica : false bloquea reversar una aplicación de
 	 *                                 origen caja chica (camino de abonos); true
 	 *                                 la permite (sólo la anulación del gasto)
-	 * @param reversarAsiento : ver {@link #revertirAplicacion(Long, String, Long, Boolean, Long, com.saa.model.tsr.CuentaBancaria, Double)}
+	 * @param reversarAsiento : ver {@link #revertirAplicacion(Long, String, Long, Boolean, java.time.LocalDate, Long, com.saa.model.tsr.CuentaBancaria, Double)}
+	 * @param fechaReverso    : idem
 	 * @param idEmpresa       : para el movimiento bancario del reverso (sólo si reversarAsiento=true)
 	 * @param cuentaBancaria  : idem
 	 * @param valor           : idem
 	 */
 	private Map<String, Object> revertirAplicacionInterna(Long idAplicacion, String motivo, Long idUsuario,
-			boolean permiteOrigenCajaChica, Boolean reversarAsiento, Long idEmpresa,
-			com.saa.model.tsr.CuentaBancaria cuentaBancaria, Double valor) throws Throwable {
+			boolean permiteOrigenCajaChica, Boolean reversarAsiento, java.time.LocalDate fechaReverso,
+			Long idEmpresa, com.saa.model.tsr.CuentaBancaria cuentaBancaria, Double valor) throws Throwable {
 
 		System.out.println("=== revertirAplicacion | aplicacion=" + idAplicacion
 				+ " | permiteOrigenCajaChica=" + permiteOrigenCajaChica
-				+ " | reversarAsiento=" + reversarAsiento + " ===");
+				+ " | reversarAsiento=" + reversarAsiento + " | fechaReverso=" + fechaReverso + " ===");
 
 		Map<String, Object> resultado = new HashMap<>();
 
@@ -882,7 +883,7 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 					+ ": anule el gasto en Tesorería → Caja chica, no la aplicación directamente.");
 		}
 
-		revierteUnaAplicacion(aplicacion, motivo, reversarAsiento, idEmpresa, cuentaBancaria, valor);
+		revierteUnaAplicacion(aplicacion, motivo, reversarAsiento, fechaReverso, idEmpresa, cuentaBancaria, valor);
 		em.flush();
 
 		resultado.put("exito", true);
@@ -911,7 +912,7 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 			revierteUnaAplicacion(aplicacion,
 					(motivo != null && !motivo.trim().isEmpty())
 							? motivo : "Anulación del documento de origen",
-					Boolean.FALSE, null, null, null);
+					Boolean.FALSE, null, null, null, null);
 			reversadas++;
 		}
 		System.out.println("✓ Aplicaciones reversadas: " + reversadas);
@@ -943,7 +944,7 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 				recalcularEstadoPago(idFactura);
 			}
 			if (idAsiento != null) {
-				anulaAsientoSeguro(idAsiento, Boolean.FALSE, null, null, null, null);
+				anulaAsientoSeguro(idAsiento, Boolean.FALSE, null, null, null, null, null);
 			}
 			eliminadas++;
 		}
@@ -1226,14 +1227,15 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 	 * @param aplicacion      : Aplicación a reversar
 	 * @param motivo          : Motivo de la reversión
 	 * @param reversarAsiento : ver {@link #anulaAsientoSeguro}
+	 * @param fechaReverso    : idem
 	 * @param idEmpresaMovimiento : para el movimiento bancario del reverso (sólo si reversarAsiento=true)
 	 * @param cuentaBancaria  : idem
 	 * @param valor           : idem
 	 * @throws Throwable : Excepcion
 	 */
 	private void revierteUnaAplicacion(AplicacionPagoCxp aplicacion, String motivo, Boolean reversarAsiento,
-			Long idEmpresaMovimiento, com.saa.model.tsr.CuentaBancaria cuentaBancaria, Double valor)
-			throws Throwable {
+			java.time.LocalDate fechaReverso, Long idEmpresaMovimiento,
+			com.saa.model.tsr.CuentaBancaria cuentaBancaria, Double valor) throws Throwable {
 
 		Long idAsiento = (aplicacion.getAsiento() != null)
 				? aplicacion.getAsiento().getCodigo() : null;
@@ -1332,8 +1334,8 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 
 		// 4. Anular / reversar el asiento contable
 		if (idAsiento != null) {
-			anulaAsientoSeguro(idAsiento, reversarAsiento, idEmpresaMovimiento, cuentaBancaria, valor,
-					"Reverso aplicación de pago " + aplicacion.getId() + " | " + motivo);
+			anulaAsientoSeguro(idAsiento, reversarAsiento, fechaReverso, idEmpresaMovimiento, cuentaBancaria,
+					valor, "Reverso aplicación de pago " + aplicacion.getId() + " | " + motivo);
 		}
 	}
 
@@ -1346,48 +1348,59 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 	 * {@code TRANSFERENCIAS_CREDITOS_EN_TRANSITO}) para que la conciliación pueda
 	 * emparejarlo. {@code false} o {@code null} es el comportamiento de siempre:
 	 * {@code AsientoService.anulaAsiento} decide solo entre anular o reversar según el
-	 * estado del período. No interrumpe el flujo si algo falla.
+	 * estado del período -no interrumpe el flujo si falla, igual que siempre-.
 	 *
-	 * <p><b>Limitación conocida:</b> el asiento de reverso queda con la fecha de hoy, no
-	 * con la del rebote real -- {@code AsientoService.generaCabeceraReversion} calcula el
-	 * número y el período del asiento a partir de esa fecha y no expone un parámetro propio;
-	 * pisarla después dejaría el asiento en un período y con un número que no le
-	 * corresponden. Pendiente de que el equipo dueño de {@code cnt} agregue esa fecha.</p>
+	 * <p>{@code fechaReverso} (2026-09-08, ya disponible en
+	 * {@code AsientoService.reversionAsiento(Long, LocalDate)}): determina
+	 * {@code fechaAsiento}, {@code numeroMes}/{@code numeroAnio} Y el {@code Periodo} del
+	 * asiento de reverso, los tres de la misma fecha. {@code null} = hoy.</p>
+	 *
+	 * <p>⚠️ En la rama de reversión NO se atrapa la excepción de {@code AsientoService}: si
+	 * el período de {@code fechaReverso} no existe, o está MAYORIZADO o CERRADO, tiene que
+	 * llegar tal cual a la pantalla del usuario, sin traducir -a diferencia de la rama de
+	 * anulación por defecto, que sí sigue sin interrumpir el flujo si falla.</p>
 	 *
 	 * @param idAsiento         : Id del asiento a anular
 	 * @param reversarAsiento   : {@code true} para forzar la reversión con contrapartida
+	 * @param fechaReverso      : Fecha real del hecho que origina el reverso; {@code null} = hoy
 	 * @param idEmpresa         : Id de la empresa, para el movimiento bancario del reverso
 	 * @param cuentaBancaria    : Cuenta bancaria del pago original
 	 * @param valor             : Valor del pago original
 	 * @param descripcionReverso: Descripción del movimiento bancario nuevo
+	 * @throws Throwable        : en la rama de reversión, tal cual la lanza {@code AsientoService}
 	 */
-	private void anulaAsientoSeguro(Long idAsiento, Boolean reversarAsiento, Long idEmpresa,
-			com.saa.model.tsr.CuentaBancaria cuentaBancaria, Double valor, String descripcionReverso) {
-		try {
-			if (Boolean.TRUE.equals(reversarAsiento)) {
-				com.saa.model.cnt.Asiento asientoOriginal = asientoService.reversionAsiento(idAsiento);
-				Long idAsientoReverso = asientoOriginal.getIdReversion();
-				System.out.println("✓ Asiento " + idAsiento + " reversado a pedido del usuario."
-						+ " Asiento de reverso: " + idAsientoReverso);
-				if (idAsientoReverso != null && idEmpresa != null && cuentaBancaria != null && valor != null) {
-					try {
-						com.saa.model.cnt.Asiento asientoReverso =
-								em.find(com.saa.model.cnt.Asiento.class, idAsientoReverso);
-						movimientoBancoService.creaMovimientoPorTransferencia(idEmpresa, descripcionReverso,
-								asientoReverso, cuentaBancaria, valor,
-								com.saa.rubros.TipoMovimientoConciliacion.TRANSFERENCIAS_CREDITOS_EN_TRANSITO,
-								com.saa.rubros.OrigenMovimientoConciliacion.PAGOS);
-					} catch (Exception e) {
-						System.err.println("⚠ No se pudo crear el movimiento bancario del reverso del"
-								+ " asiento " + idAsiento + ": " + e.getMessage());
-					}
+	private void anulaAsientoSeguro(Long idAsiento, Boolean reversarAsiento, java.time.LocalDate fechaReverso,
+			Long idEmpresa, com.saa.model.tsr.CuentaBancaria cuentaBancaria, Double valor,
+			String descripcionReverso) throws Throwable {
+		if (Boolean.TRUE.equals(reversarAsiento)) {
+			// Sin try/catch a proposito: ver el javadoc.
+			com.saa.model.cnt.Asiento asientoOriginal = (fechaReverso != null)
+					? asientoService.reversionAsiento(idAsiento, fechaReverso)
+					: asientoService.reversionAsiento(idAsiento);
+			Long idAsientoReverso = asientoOriginal.getIdReversion();
+			System.out.println("✓ Asiento " + idAsiento + " reversado a pedido del usuario."
+					+ " Asiento de reverso: " + idAsientoReverso
+					+ (fechaReverso != null ? " | fecha: " + fechaReverso : ""));
+			if (idAsientoReverso != null && idEmpresa != null && cuentaBancaria != null && valor != null) {
+				try {
+					com.saa.model.cnt.Asiento asientoReverso =
+							em.find(com.saa.model.cnt.Asiento.class, idAsientoReverso);
+					movimientoBancoService.creaMovimientoPorTransferencia(idEmpresa, descripcionReverso,
+							asientoReverso, cuentaBancaria, valor,
+							com.saa.rubros.TipoMovimientoConciliacion.TRANSFERENCIAS_CREDITOS_EN_TRANSITO,
+							com.saa.rubros.OrigenMovimientoConciliacion.PAGOS);
+				} catch (Exception e) {
+					System.err.println("⚠ No se pudo crear el movimiento bancario del reverso del"
+							+ " asiento " + idAsiento + ": " + e.getMessage());
 				}
-			} else {
+			}
+		} else {
+			try {
 				asientoService.anulaAsiento(idAsiento);
 				System.out.println("✓ Asiento " + idAsiento + " anulado / reversado.");
+			} catch (Throwable e) {
+				System.err.println("⚠ No se pudo anular el asiento " + idAsiento + ": " + e.getMessage());
 			}
-		} catch (Throwable e) {
-			System.err.println("⚠ No se pudo anular el asiento " + idAsiento + ": " + e.getMessage());
 		}
 	}
 	// ===== FIN anular-vs-reversar pago rebotado (equipo omen-saa-2) =====

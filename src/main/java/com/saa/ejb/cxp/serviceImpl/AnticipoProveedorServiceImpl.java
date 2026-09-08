@@ -395,16 +395,17 @@ public class AnticipoProveedorServiceImpl implements AnticipoProveedorService {
 
     @Override
     public void revertirContabilidadAnticipo(Long idAnticipo, String motivo) throws Throwable {
-        revertirContabilidadAnticipo(idAnticipo, motivo, Boolean.FALSE, null, null, null);
+        revertirContabilidadAnticipo(idAnticipo, motivo, Boolean.FALSE, null, null, null, null);
     }
 
     // ===== INICIO anular-vs-reversar pago rebotado (equipo omen-saa-2) =====
     @Override
     public void revertirContabilidadAnticipo(Long idAnticipo, String motivo, Boolean reversarAsiento,
-            Long idEmpresa, com.saa.model.tsr.CuentaBancaria cuentaBancaria, Double valor) throws Throwable {
+            java.time.LocalDate fechaReverso, Long idEmpresa, com.saa.model.tsr.CuentaBancaria cuentaBancaria,
+            Double valor) throws Throwable {
 
         System.out.println("=== revertirContabilidadAnticipo | anticipo=" + idAnticipo
-                + " | reversarAsiento=" + reversarAsiento + " ===");
+                + " | reversarAsiento=" + reversarAsiento + " | fechaReverso=" + fechaReverso + " ===");
 
         AnticipoProveedor anticipo = em.find(AnticipoProveedor.class, idAnticipo);
         if (anticipo == null) {
@@ -430,37 +431,42 @@ public class AnticipoProveedorServiceImpl implements AnticipoProveedorService {
         Long idAsiento = (anticipo.getAsiento() != null)
                 ? anticipo.getAsiento().getCodigo() : null;
         if (idAsiento != null) {
-            try {
-                if (Boolean.TRUE.equals(reversarAsiento)) {
-                    // Caso del pago rebotado por el banco: ver el javadoc de
-                    // PagoProgramadoServiceImpl.anulaOReversaAsiento -- misma limitación de
-                    // fecha (el reverso cae con la fecha de hoy, AsientoService no acepta otra).
-                    com.saa.model.cnt.Asiento asientoOriginal = asientoService.reversionAsiento(idAsiento);
-                    Long idAsientoReverso = asientoOriginal.getIdReversion();
-                    System.out.println("✓ Asiento " + idAsiento + " reversado a pedido del usuario."
-                            + " Asiento de reverso: " + idAsientoReverso);
-                    if (idAsientoReverso != null && idEmpresa != null && cuentaBancaria != null
-                            && valor != null) {
-                        try {
-                            com.saa.model.cnt.Asiento asientoReverso =
-                                    em.find(com.saa.model.cnt.Asiento.class, idAsientoReverso);
-                            movimientoBancoService.creaMovimientoPorTransferencia(idEmpresa,
-                                    "Reverso pago de anticipo " + idAnticipo + " | " + motivo,
-                                    asientoReverso, cuentaBancaria, valor,
-                                    com.saa.rubros.TipoMovimientoConciliacion.TRANSFERENCIAS_CREDITOS_EN_TRANSITO,
-                                    com.saa.rubros.OrigenMovimientoConciliacion.PAGOS);
-                        } catch (Exception e) {
-                            System.err.println("⚠ No se pudo crear el movimiento bancario del reverso"
-                                    + " del asiento " + idAsiento + ": " + e.getMessage());
-                        }
+            if (Boolean.TRUE.equals(reversarAsiento)) {
+                // Caso del pago rebotado por el banco. Sin try/catch a proposito: si el
+                // periodo de fechaReverso no existe, o esta MAYORIZADO o CERRADO,
+                // AsientoService lanza IncomeException y tiene que llegar tal cual al
+                // usuario -no se atrapa ni se traduce.
+                com.saa.model.cnt.Asiento asientoOriginal = (fechaReverso != null)
+                        ? asientoService.reversionAsiento(idAsiento, fechaReverso)
+                        : asientoService.reversionAsiento(idAsiento);
+                Long idAsientoReverso = asientoOriginal.getIdReversion();
+                System.out.println("✓ Asiento " + idAsiento + " reversado a pedido del usuario."
+                        + " Asiento de reverso: " + idAsientoReverso
+                        + (fechaReverso != null ? " | fecha: " + fechaReverso : ""));
+                if (idAsientoReverso != null && idEmpresa != null && cuentaBancaria != null
+                        && valor != null) {
+                    try {
+                        com.saa.model.cnt.Asiento asientoReverso =
+                                em.find(com.saa.model.cnt.Asiento.class, idAsientoReverso);
+                        movimientoBancoService.creaMovimientoPorTransferencia(idEmpresa,
+                                "Reverso pago de anticipo " + idAnticipo + " | " + motivo,
+                                asientoReverso, cuentaBancaria, valor,
+                                com.saa.rubros.TipoMovimientoConciliacion.TRANSFERENCIAS_CREDITOS_EN_TRANSITO,
+                                com.saa.rubros.OrigenMovimientoConciliacion.PAGOS);
+                    } catch (Exception e) {
+                        System.err.println("⚠ No se pudo crear el movimiento bancario del reverso"
+                                + " del asiento " + idAsiento + ": " + e.getMessage());
                     }
-                } else {
+                }
+            } else {
+                // Comportamiento de siempre: no interrumpe el flujo si falla.
+                try {
                     asientoService.anulaAsiento(idAsiento);
                     System.out.println("✓ Asiento " + idAsiento + " anulado / reversado.");
+                } catch (Throwable e) {
+                    System.err.println("⚠ No se pudo anular el asiento " + idAsiento
+                            + ": " + e.getMessage());
                 }
-            } catch (Throwable e) {
-                System.err.println("⚠ No se pudo anular el asiento " + idAsiento
-                        + ": " + e.getMessage());
             }
         }
 

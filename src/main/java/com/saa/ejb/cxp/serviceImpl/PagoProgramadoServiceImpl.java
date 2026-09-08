@@ -1811,6 +1811,7 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 
 		int confirmados = 0;
 		List<String> errores = new ArrayList<>();
+		List<String> advertencias = new ArrayList<>();
 		List<Long> lotesTocados = new ArrayList<>();
 
 		for (Long idPago : idsPagos) {
@@ -1851,13 +1852,32 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 				}
 
 				// Mismo camino contable que la respuesta del banco: el asiento
-				// depende del proceso que originó el pago; el retorno se
-				// descarta a propósito, la confirmación no depende de él.
-				contabilizarSegunOrigen(pago, idUsuario);
+				// depende del proceso que originó el pago. La confirmación no
+				// depende de él -null es un caso previsto, no un error-, pero
+				// SÍ hace falta saber si salió null para avisarlo (ver abajo):
+				// antes se descartaba y el usuario se enteraba mirando el log
+				// del servidor, no la pantalla.
+				Asiento asientoGenerado = contabilizarSegunOrigen(pago, idUsuario);
 
 				pago.setEstado(Long.valueOf(EstadoPagoProgramado.CONFIRMADO));
 				pagoProgramadoDaoService.save(pago, pago.getId());
 				confirmados++;
+
+				// ===== INICIO aviso "confirmado sin contabilidad" (equipo omen-saa-2) =====
+				// contabilizarSegunOrigen sólo devuelve null en un caso: pago.origenExterno
+				// != null sin desglose en PGS.DPGT (ver su javadoc). No es un error -el
+				// asiento lo genera el módulo de origen al confirmar su propio proceso-,
+				// pero hasta ahora sólo quedaba dicho en un System.out del servidor: el
+				// usuario veía "confirmado" en pantalla y no se enteraba de que la
+				// contabilidad seguía pendiente en otro lado. Caso real 2026-09-08: pago
+				// 348 de RHH_BENEFICIO_SOCIAL, décimos.
+				if (asientoGenerado == null && pago.getOrigenExterno() != null) {
+					advertencias.add("Pago " + idPago + ": quedó CONFIRMADO sin contabilidad. El asiento"
+							+ " lo genera el módulo de origen (" + pago.getOrigenExterno()
+							+ ", documento " + pago.getIdOrigen() + ") al confirmar su propio proceso allá"
+							+ " -no en tesorería-, así que hay que ir a ese módulo y confirmarlo también.");
+				}
+				// ===== FIN aviso "confirmado sin contabilidad" =====
 
 				if (pago.getLote() != null && !lotesTocados.contains(pago.getLote().getId())) {
 					lotesTocados.add(pago.getLote().getId());
@@ -1886,6 +1906,9 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		resultado.put("confirmados", confirmados);
 		if (!errores.isEmpty()) {
 			resultado.put("errores", errores);
+		}
+		if (!advertencias.isEmpty()) {
+			resultado.put("advertencias", advertencias);
 		}
 		return resultado;
 	}
@@ -1972,13 +1995,19 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		return revertirPagoConfirmado(idPago, motivo, idUsuario, Boolean.FALSE);
 	}
 
-	// ===== INICIO anular-vs-reversar pago rebotado (equipo omen-saa-2) =====
 	@Override
 	public Map<String, Object> revertirPagoConfirmado(Long idPago, String motivo, Long idUsuario,
 			Boolean reversarAsiento) throws Throwable {
+		return revertirPagoConfirmado(idPago, motivo, idUsuario, reversarAsiento, null);
+	}
+
+	// ===== INICIO anular-vs-reversar pago rebotado (equipo omen-saa-2) =====
+	@Override
+	public Map<String, Object> revertirPagoConfirmado(Long idPago, String motivo, Long idUsuario,
+			Boolean reversarAsiento, LocalDate fechaReverso) throws Throwable {
 
 		System.out.println("=== revertirPagoConfirmado | pago=" + idPago
-				+ " | reversarAsiento=" + reversarAsiento + " ===");
+				+ " | reversarAsiento=" + reversarAsiento + " | fechaReverso=" + fechaReverso + " ===");
 
 		if (motivo == null || motivo.trim().isEmpty()) {
 			throw new IncomeException("Debe indicar el motivo de la reversión.");
@@ -2021,22 +2050,22 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 			// bancario y el asiento que cuelga del propio pago. El documento origen
 			// NO se toca: CXP no lo conoce. Es el módulo origen el que consulta el
 			// estado del pago y reacciona (no hay callback desde CXP).
-			revertirContabilidadOrigenExterno(pago, motivo.trim(), reversarAsiento);
+			revertirContabilidadOrigenExterno(pago, motivo.trim(), reversarAsiento, fechaReverso);
 		} else if (pago.getAnticipo() != null) {
 			// Pago de un anticipo a proveedor: se anula el movimiento bancario
 			// y el asiento de anticipo, se descuenta el saldo de anticipos del
 			// proveedor, y el anticipo vuelve a quedar Ingresado.
-			revertirContabilidadAnticipoPago(pago, motivo.trim(), reversarAsiento);
+			revertirContabilidadAnticipoPago(pago, motivo.trim(), reversarAsiento, fechaReverso);
 		} else if (pago.getEgreso() != null) {
 			// Pago de un egreso de tesorería: no hay aplicación que reversar.
 			// Se anula el asiento y el movimiento bancario, y el egreso vuelve
 			// a quedar pendiente de pago.
-			revertirContabilidadEgreso(pago, motivo.trim(), reversarAsiento);
+			revertirContabilidadEgreso(pago, motivo.trim(), reversarAsiento, fechaReverso);
 		} else if (pago.getAplicacion() != null) {
 			// Reversa la aplicación: devuelve el saldo a la factura, anula el
 			// asiento y el movimiento bancario.
 			Map<String, Object> reversion = aplicacionPagoCxpService.revertirAplicacion(
-					pago.getAplicacion().getId(), motivo.trim(), idUsuario, reversarAsiento,
+					pago.getAplicacion().getId(), motivo.trim(), idUsuario, reversarAsiento, fechaReverso,
 					pago.getEmpresa() != null ? pago.getEmpresa().getCodigo() : null,
 					pago.getCuentaBancaria(), pago.getValor());
 			resultado.putAll(reversion);
@@ -2494,29 +2523,38 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	 * emparejar el {@code +X} del extracto. {@code false} o {@code null} es exactamente el
 	 * comportamiento de siempre: {@code AsientoService.anulaAsiento} decide solo.</p>
 	 *
-	 * <p><b>Limitación conocida:</b> el asiento de reverso queda con la fecha de hoy, no con
-	 * la del rebote real. {@code AsientoService.generaCabeceraReversion} calcula el número y
-	 * el período del asiento a partir de {@code LocalDate.now()} y no expone un parámetro de
-	 * fecha; pisarla después dejaría el asiento en un período y con un número que no le
-	 * corresponden, sin ningún error. Pendiente de que el equipo dueño de
-	 * {@code cnt}/{@code AsientoService} agregue esa fecha como parámetro. Si el rebote
-	 * ocurrió en un mes ya cerrado, el reverso cae igual en el mes actual.</p>
+	 * <p><b>La fecha del reverso ya se puede pedir</b> ({@code fechaReverso}, 2026-09-08):
+	 * {@code AsientoService.reversionAsiento(idAsiento, fechaReverso)} deriva de ella
+	 * {@code fechaAsiento}, {@code numeroMes}/{@code numeroAnio} Y el {@code Periodo} del
+	 * asiento de reverso, los tres de la misma fecha. Si esa fecha no tiene período, o el
+	 * período está MAYORIZADO o CERRADO, {@code AsientoService} lanza {@code IncomeException}
+	 * -y ESTE método NO la atrapa ni la traduce a propósito para la rama de reversión: tiene
+	 * que llegar tal cual a la pantalla del usuario, que es quien decide desmayorizar o
+	 * reabrir. {@code fechaReverso == null} usa la fecha de hoy (comportamiento de siempre).</p>
 	 *
 	 * @param idAsiento         : Id del asiento del pago
 	 * @param reversarAsiento   : {@code true} para forzar la reversión con contrapartida
+	 * @param fechaReverso      : Fecha real del hecho que origina el reverso; null = hoy
 	 * @param idEmpresa         : Id de la empresa, para el movimiento bancario nuevo
 	 * @param cuentaBancaria    : Cuenta bancaria del pago original, mismo destino del reverso
 	 * @param valor             : Valor del pago original, mismo importe del reverso
 	 * @param descripcionReverso: Descripción del movimiento bancario nuevo
-	 * @throws Throwable        : Excepcion
+	 * @throws Throwable        : Excepcion; en la rama de reversión, tal cual la lanza
+	 *                            {@code AsientoService}, sin atrapar
 	 */
-	private void anulaOReversaAsiento(Long idAsiento, Boolean reversarAsiento, Long idEmpresa,
-			CuentaBancaria cuentaBancaria, Double valor, String descripcionReverso) throws Throwable {
+	private void anulaOReversaAsiento(Long idAsiento, Boolean reversarAsiento, LocalDate fechaReverso,
+			Long idEmpresa, CuentaBancaria cuentaBancaria, Double valor, String descripcionReverso)
+			throws Throwable {
 		if (Boolean.TRUE.equals(reversarAsiento)) {
-			com.saa.model.cnt.Asiento asientoOriginal = asientoService.reversionAsiento(idAsiento);
+			// Sin try/catch a propósito: la excepcion de periodo (inexistente, MAYORIZADO o
+			// CERRADO) tiene que llegar tal cual al usuario, no quedar en el log del servidor.
+			com.saa.model.cnt.Asiento asientoOriginal = (fechaReverso != null)
+					? asientoService.reversionAsiento(idAsiento, fechaReverso)
+					: asientoService.reversionAsiento(idAsiento);
 			Long idAsientoReverso = asientoOriginal.getIdReversion();
 			System.out.println("✓ Asiento " + idAsiento + " reversado a pedido del usuario."
-					+ " Asiento de reverso: " + idAsientoReverso);
+					+ " Asiento de reverso: " + idAsientoReverso
+					+ (fechaReverso != null ? " | fecha: " + fechaReverso : ""));
 			if (idAsientoReverso != null && idEmpresa != null && cuentaBancaria != null && valor != null) {
 				try {
 					com.saa.model.cnt.Asiento asientoReverso =
@@ -2531,8 +2569,13 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 				}
 			}
 		} else {
-			asientoService.anulaAsiento(idAsiento);
-			System.out.println("✓ Asiento " + idAsiento + " anulado / reversado.");
+			// Comportamiento de siempre: no interrumpe el flujo si falla.
+			try {
+				asientoService.anulaAsiento(idAsiento);
+				System.out.println("✓ Asiento " + idAsiento + " anulado / reversado.");
+			} catch (Throwable e) {
+				System.err.println("⚠ No se pudo anular el asiento " + idAsiento + ": " + e.getMessage());
+			}
 		}
 	}
 	// ===== FIN anular-vs-reversar pago rebotado (equipo omen-saa-2) =====
@@ -2543,10 +2586,11 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	 * @param pago            : Pago confirmado del egreso
 	 * @param motivo          : Motivo de la reversión
 	 * @param reversarAsiento : Ver {@link #anulaOReversaAsiento}
+	 * @param fechaReverso    : Ver {@link #anulaOReversaAsiento}
 	 * @throws Throwable : Excepcion
 	 */
-	private void revertirContabilidadEgreso(PagoProgramado pago, String motivo, Boolean reversarAsiento)
-			throws Throwable {
+	private void revertirContabilidadEgreso(PagoProgramado pago, String motivo, Boolean reversarAsiento,
+			LocalDate fechaReverso) throws Throwable {
 
 		Egreso egreso = pago.getEgreso();
 		Long idAsiento = (egreso.getAsiento() != null) ? egreso.getAsiento().getCodigo() : null;
@@ -2559,14 +2603,11 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 				System.err.println("⚠ No se pudo anular el movimiento bancario del asiento "
 						+ idAsiento + ": " + e.getMessage());
 			}
-			try {
-				anulaOReversaAsiento(idAsiento, reversarAsiento,
-						pago.getEmpresa() != null ? pago.getEmpresa().getCodigo() : null,
-						pago.getCuentaBancaria(), pago.getValor(),
-						"Reverso egreso: " + egreso.getDescripcion() + " | " + motivo);
-			} catch (Throwable e) {
-				System.err.println("⚠ No se pudo anular el asiento " + idAsiento + ": " + e.getMessage());
-			}
+			// Sin try/catch aca: anulaOReversaAsiento ya decide por rama si atrapa o no.
+			anulaOReversaAsiento(idAsiento, reversarAsiento, fechaReverso,
+					pago.getEmpresa() != null ? pago.getEmpresa().getCodigo() : null,
+					pago.getCuentaBancaria(), pago.getValor(),
+					"Reverso egreso: " + egreso.getDescripcion() + " | " + motivo);
 		}
 
 		egreso.setEstado(Long.valueOf(EstadoEgresoTesoreria.PENDIENTE_PAGO));
@@ -3011,10 +3052,11 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	 * @param pago            : Pago confirmado de origen externo
 	 * @param motivo          : Motivo de la reversión
 	 * @param reversarAsiento : Ver {@link #anulaOReversaAsiento}
+	 * @param fechaReverso    : Ver {@link #anulaOReversaAsiento}
 	 * @throws Throwable : Excepcion
 	 */
 	private void revertirContabilidadOrigenExterno(PagoProgramado pago, String motivo,
-			Boolean reversarAsiento) throws Throwable {
+			Boolean reversarAsiento, LocalDate fechaReverso) throws Throwable {
 
 		Long idAsiento = (pago.getAsiento() != null) ? pago.getAsiento().getCodigo() : null;
 
@@ -3031,15 +3073,11 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 			System.err.println("⚠ No se pudo anular el movimiento bancario del asiento "
 					+ idAsiento + ": " + e.getMessage());
 		}
-		try {
-			anulaOReversaAsiento(idAsiento, reversarAsiento,
-					pago.getEmpresa() != null ? pago.getEmpresa().getCodigo() : null,
-					pago.getCuentaBancaria(), pago.getValor(),
-					"Reverso pago de origen externo | " + motivo);
-		} catch (Throwable e) {
-			System.err.println("⚠ No se pudo anular el asiento " + idAsiento + ": "
-					+ e.getMessage());
-		}
+		// Sin try/catch aca: anulaOReversaAsiento ya decide por rama si atrapa o no.
+		anulaOReversaAsiento(idAsiento, reversarAsiento, fechaReverso,
+				pago.getEmpresa() != null ? pago.getEmpresa().getCodigo() : null,
+				pago.getCuentaBancaria(), pago.getValor(),
+				"Reverso pago de origen externo | " + motivo);
 
 		pago.setAsiento(null);
 
@@ -3304,10 +3342,11 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	 * @param pago            : Pago confirmado del anticipo
 	 * @param motivo          : Motivo de la reversión
 	 * @param reversarAsiento : Ver {@link #anulaOReversaAsiento}
+	 * @param fechaReverso    : Ver {@link #anulaOReversaAsiento}
 	 * @throws Throwable : Excepcion
 	 */
 	private void revertirContabilidadAnticipoPago(PagoProgramado pago, String motivo,
-			Boolean reversarAsiento) throws Throwable {
+			Boolean reversarAsiento, LocalDate fechaReverso) throws Throwable {
 
 		AnticipoProveedor anticipo = pago.getAnticipo();
 		Long idAsiento = (anticipo.getAsiento() != null)
@@ -3324,7 +3363,7 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		}
 
 		anticipoProveedorService.revertirContabilidadAnticipo(anticipo.getId(), motivo, reversarAsiento,
-				pago.getEmpresa() != null ? pago.getEmpresa().getCodigo() : null,
+				fechaReverso, pago.getEmpresa() != null ? pago.getEmpresa().getCodigo() : null,
 				pago.getCuentaBancaria(), pago.getValor());
 	}
 
