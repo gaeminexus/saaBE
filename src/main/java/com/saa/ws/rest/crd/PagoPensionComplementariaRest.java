@@ -7,7 +7,9 @@ import java.util.Map;
 
 import com.saa.ejb.crd.service.PagoPensionComplementariaService;
 import com.saa.ejb.crd.service.dto.ResultadoGeneracionPagosPension;
+import com.saa.ejb.crd.service.dto.ResultadoGeneracionSeguroMedico;
 import com.saa.ejb.crd.service.dto.ResultadoPrevisualizacionCorrida;
+import com.saa.ejb.crd.service.dto.ResultadoSeguimientoCorridaJubilados;
 import com.saa.ejb.crd.service.dto.ResultadoSincronizacion;
 import com.saa.model.crd.PagoPensionComplementaria;
 
@@ -88,6 +90,120 @@ public class PagoPensionComplementariaRest {
             return Response.status(Response.Status.OK)
                     .entity(cuerpo).type(MediaType.APPLICATION_JSON).build();
 
+        } catch (Throwable e) {
+            return respuestaError(e);
+        }
+    }
+
+    /**
+     * SEGURO MÉDICO (inicio de mes) — API-DOS-PROCESOS-MENSUALES-JUBILADOS.md §4.1. Devuelve el
+     * objeto directo (forma canónica acordada con el frontend): {@code jubilados}, {@code total},
+     * {@code idOrdenPago}, {@code mensaje} (más diagnóstico adicional).
+     */
+    @POST
+    @Path("/seguro/generar")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response generarSeguroDelMes(
+            @QueryParam("idEmpresa") Long idEmpresa,
+            @QueryParam("anio") Integer anio,
+            @QueryParam("mes") Integer mes,
+            @QueryParam("usuario") String usuario) {
+        System.out.println("LLEGA AL SERVICIO GENERAR SEGURO MEDICO - Periodo: " + mes + "/" + anio);
+
+        if (idEmpresa == null) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(),
+                "Debe indicar idEmpresa", null);
+        }
+        if (anio == null || mes == null) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(),
+                "Debe indicar anio y mes", null);
+        }
+        if (usuario == null || usuario.trim().isEmpty()) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(),
+                "Debe indicar el usuario que dispara la generación", null);
+        }
+
+        try {
+            ResultadoGeneracionSeguroMedico resultado =
+                pagoPensionService.generarSeguroDelMes(idEmpresa, anio, mes, usuario);
+            return Response.status(Response.Status.OK)
+                    .entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return respuestaError(e);
+        }
+    }
+
+    /**
+     * PENSIONES (fin de mes) — API-DOS-PROCESOS-MENSUALES-JUBILADOS.md §4.2. Misma forma de
+     * respuesta que {@link #generarPagosDelMes}: {@code {exito, mensaje, resultado}}, con
+     * {@code resultado} en el mismo {@code ResultadoGeneracionPagosPension} de siempre, más
+     * {@code totalSeguroRetroactivoNoPagado}/{@code jubiladosConSeguroRetroactivoNoPagado}.
+     */
+    @POST
+    @Path("/pensiones/generar")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response generarPensionesDelMes(
+            @QueryParam("idEmpresa") Long idEmpresa,
+            @QueryParam("anio") Integer anio,
+            @QueryParam("mes") Integer mes,
+            @QueryParam("usuario") String usuario) {
+        System.out.println("LLEGA AL SERVICIO GENERAR PENSIONES - Periodo: " + mes + "/" + anio);
+
+        if (idEmpresa == null) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(),
+                "Debe indicar idEmpresa", null);
+        }
+        if (anio == null || mes == null) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(),
+                "Debe indicar anio y mes", null);
+        }
+        if (usuario == null || usuario.trim().isEmpty()) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(),
+                "Debe indicar el usuario que dispara la generación", null);
+        }
+
+        try {
+            ResultadoGeneracionPagosPension resultado =
+                pagoPensionService.generarPensionesDelMes(idEmpresa, anio, mes, usuario);
+
+            Map<String, Object> cuerpo = new LinkedHashMap<>();
+            cuerpo.put("exito", Boolean.TRUE);
+            cuerpo.put("mensaje", "Pensiones " + mes + "/" + anio + " - " + resultado.getGenerados()
+                + " pagos generados, " + resultado.getYaGenerados() + " ya existían, "
+                + resultado.getConError() + " con error, de " + resultado.getEvaluados() + " evaluados.");
+            cuerpo.put("resultado", resultado);
+
+            return Response.status(Response.Status.OK)
+                    .entity(cuerpo).type(MediaType.APPLICATION_JSON).build();
+
+        } catch (Throwable e) {
+            return respuestaError(e);
+        }
+    }
+
+    /**
+     * Seguimiento de la corrida de un período — API-DOS-PROCESOS-MENSUALES-JUBILADOS.md §4.3.
+     * SIEMPRE 200 (con los dos estados en 0 si el período nunca se corrió).
+     */
+    @GET
+    @Path("/corrida/{anio}/{mes}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response obtenerSeguimientoCorrida(
+            @PathParam("anio") Integer anio,
+            @PathParam("mes") Integer mes,
+            @QueryParam("idEmpresa") Long idEmpresa) {
+        System.out.println("LLEGA AL SERVICIO SEGUIMIENTO CORRIDA JUBILADOS - Periodo: " + mes + "/" + anio);
+
+        if (idEmpresa == null) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(),
+                "Debe indicar idEmpresa", null);
+        }
+
+        try {
+            ResultadoSeguimientoCorridaJubilados resultado =
+                pagoPensionService.obtenerSeguimientoCorrida(idEmpresa, anio, mes);
+            return Response.status(Response.Status.OK)
+                    .entity(resultado).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return respuestaError(e);
         }
