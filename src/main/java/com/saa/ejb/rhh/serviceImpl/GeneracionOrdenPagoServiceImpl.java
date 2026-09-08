@@ -22,6 +22,7 @@ import com.saa.ejb.rhh.dao.FormatoArchivoBancarioDaoService;
 import com.saa.ejb.rhh.dao.NominaDaoService;
 import com.saa.ejb.rhh.dao.OrdenPagoNominaDaoService;
 import com.saa.ejb.rhh.dao.PeriodoNominaDaoService;
+import com.saa.ejb.rhh.dao.ReglonNominaDaoService;
 import com.saa.ejb.rhh.dao.ValorNoPagadoDaoService;
 import com.saa.ejb.tsr.dao.EgresoDaoService;
 import com.saa.ejb.rhh.service.ContabilizacionNominaService;
@@ -37,6 +38,7 @@ import com.saa.model.rhh.NombreEntidadesRhh;
 import com.saa.model.rhh.Nomina;
 import com.saa.model.rhh.OrdenPagoNomina;
 import com.saa.model.rhh.PeriodoNomina;
+import com.saa.model.rhh.ReglonNomina;
 import com.saa.model.rhh.ValorNoPagado;
 import com.saa.model.cxp.ProductoPago;
 import com.saa.model.tsr.CuentaBancaria;
@@ -51,6 +53,7 @@ import com.saa.rubros.RhhEstadoValorNoPagado;
 import com.saa.rubros.RhhFormatoArchivoMarcacion;
 import com.saa.rubros.RhhEstadoPeriodoNomina;
 import com.saa.rubros.RhhModoPeriodoNomina;
+import com.saa.rubros.RhhRolConceptoMotor;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
@@ -148,6 +151,9 @@ public class GeneracionOrdenPagoServiceImpl implements GeneracionOrdenPagoServic
     // Ver docs/logica-negocio/rhh/PLAN-VALORES-NO-PAGADOS.md §7.2.
     @EJB
     private ValorNoPagadoDaoService valorNoPagadoDaoService;
+
+    @EJB
+    private ReglonNominaDaoService reglonNominaDaoService;
     // ===== FIN enganche valores no pagados =====
 
     /* (non-Javadoc)
@@ -222,8 +228,7 @@ public class GeneracionOrdenPagoServiceImpl implements GeneracionOrdenPagoServic
             }
 
             // ===== INICIO enganche valores no pagados (script e2-26, equipo omen-saa-2) =====
-            neto = ajustaNetoPorValorNoPagado(nomina.getEmpleado().getCodigo(), neto, periodo,
-                    periodoAnterior, orden);
+            neto = ajustaNetoPorValorNoPagado(nomina, neto, periodo, periodoAnterior, orden);
             // ===== FIN enganche valores no pagados =====
 
             List<DetalleOrdenPagoNomina> detalles = armaDetalle(orden, nomina, neto, usuario);
@@ -835,20 +840,40 @@ public class GeneracionOrdenPagoServiceImpl implements GeneracionOrdenPagoServic
      * jamas se genero), no se adivina: se rechaza nombrando el registro, tal como pide el
      * plan -es una inconsistencia que el usuario resuelve, no algo que el sistema decida.</p>
      *
-     * @param idEmpleado		: Id del empleado
+     * <p><b>Guarda de consistencia con el rol impreso.</b> Desde que registrar un valor no
+     * pagado se permite tambien con el periodo CALCULADO (no solo ABIERTO,
+     * {@code ValorNoPagadoServiceImpl.exigePeriodoModificable}), aparece un hueco: si nadie
+     * recalcula el rol despues de registrar, esta orden leeria el VNPG igual y pagaria
+     * {@code N - X}, pero el rol impreso seguiria mostrando N completo, sin la linea del
+     * renglon informativo -- y la validacion "X <= neto" del motor (§7.1.3) nunca habria
+     * corrido sobre este registro. Por eso, antes de aplicar cada ajuste, se exige que la
+     * nomina YA tenga el renglon del rol correspondiente (34 para la retencion de P, 35 para
+     * la recuperacion de P-1): si no lo tiene, el calculo esta desactualizado respecto del
+     * VNPG y se rechaza en vez de aplicarlo a ciegas.</p>
+     *
+     * @param nomina			: Nomina del empleado en el periodo P, ya calculada
      * @param netoOriginal		: Neto calculado por el motor (nomina.getNetoPagar())
      * @param periodo			: Periodo que se esta pagando (P)
      * @param periodoAnterior	: Periodo anterior (P-1), o null si no existe
      * @param orden				: Orden de pago en generacion, ya con codigo asignado
      * @return					: El neto ajustado a acreditar
-     * @throws Throwable		: IncomeException si el registro de P-1 nunca se retuvo
+     * @throws Throwable		: IncomeException si el registro de P-1 nunca se retuvo, o si la
+     *							  nomina no tiene el renglon del rol 34/35 que el VNPG exige
      */
-    private Double ajustaNetoPorValorNoPagado(Long idEmpleado, Double netoOriginal, PeriodoNomina periodo,
+    private Double ajustaNetoPorValorNoPagado(Nomina nomina, Double netoOriginal, PeriodoNomina periodo,
             PeriodoNomina periodoAnterior, OrdenPagoNomina orden) throws Throwable {
+        Long idEmpleado = nomina.getEmpleado().getCodigo();
         Double neto = netoOriginal;
+        List<ReglonNomina> renglones = reglonNominaDaoService.selectByNomina(nomina.getCodigo());
 
         ValorNoPagado retenidoEnP = valorNoPagadoDaoService.selectVivoByEmpleadoPeriodo(idEmpleado, periodo.getCodigo());
         if (retenidoEnP != null && retenidoEnP.getValor() != null && retenidoEnP.getValor().doubleValue() > 0D) {
+            if (!tieneRenglonConRol(renglones, RhhRolConceptoMotor.VALOR_NO_PAGADO_RETENIDO)) {
+                throw new IncomeException("El empleado " + idEmpleado + " tiene un valor no pagado"
+                        + " registrado (id " + retenidoEnP.getCodigo() + ") despues del ultimo calculo"
+                        + " del rol de " + periodo.getMes() + "/" + periodo.getAnio() + ": recalcule el"
+                        + " periodo antes de generar la orden de pago.");
+            }
             neto = RedondeoNomina.suma(neto, Double.valueOf(-retenidoEnP.getValor().doubleValue()));
             retenidoEnP.setEstado(Long.valueOf(RhhEstadoValorNoPagado.RETENIDO));
             retenidoEnP.setOrdenRetencion(orden);
@@ -860,6 +885,13 @@ public class GeneracionOrdenPagoServiceImpl implements GeneracionOrdenPagoServic
                     .selectVivoByEmpleadoPeriodo(idEmpleado, periodoAnterior.getCodigo());
             if (registroAnterior != null) {
                 if (Long.valueOf(RhhEstadoValorNoPagado.RETENIDO).equals(registroAnterior.getEstado())) {
+                    if (!tieneRenglonConRol(renglones, RhhRolConceptoMotor.VALOR_NO_PAGADO_RECUPERADO)) {
+                        throw new IncomeException("El empleado " + idEmpleado + " tiene un valor no"
+                                + " pagado RETENIDO del periodo anterior (id " + registroAnterior.getCodigo()
+                                + ") que la nomina de " + periodo.getMes() + "/" + periodo.getAnio()
+                                + " todavia no refleja: recalcule el periodo antes de generar la orden"
+                                + " de pago.");
+                    }
                     if (registroAnterior.getValor() != null) {
                         neto = RedondeoNomina.suma(neto, registroAnterior.getValor());
                     }
@@ -874,6 +906,19 @@ public class GeneracionOrdenPagoServiceImpl implements GeneracionOrdenPagoServic
         }
 
         return RedondeoNomina.redondea(neto);
+    }
+
+    /**
+     * Indica si algun renglon de la lista pertenece a un concepto con el rol de motor dado.
+     */
+    private boolean tieneRenglonConRol(List<ReglonNomina> renglones, int rolMotor) {
+        for (ReglonNomina renglon : renglones) {
+            if (renglon.getConceptoNomina() != null
+                    && Long.valueOf(rolMotor).equals(renglon.getConceptoNomina().getRolMotor())) {
+                return true;
+            }
+        }
+        return false;
     }
     // ===== FIN enganche valores no pagados =====
 

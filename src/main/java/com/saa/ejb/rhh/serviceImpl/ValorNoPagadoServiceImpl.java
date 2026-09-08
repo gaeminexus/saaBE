@@ -139,11 +139,7 @@ public class ValorNoPagadoServiceImpl implements ValorNoPagadoService {
         if (periodo == null) {
             throw new IncomeException("No existe el periodo de nomina " + idPeriodo + ".");
         }
-        if (periodo.getEstado() == null
-                || periodo.getEstado().intValue() > RhhEstadoPeriodoNomina.ABIERTO) {
-            throw new IncomeException("El periodo " + periodo.getMes() + "/" + periodo.getAnio()
-                    + " ya no esta ABIERTO: un valor no pagado solo se registra antes de procesar el rol.");
-        }
+        exigePeriodoModificable(periodo, "registrar un valor no pagado");
 
         ValorNoPagado vivo = valorNoPagadoDaoService.selectVivoByEmpleadoPeriodo(idEmpleado, idPeriodo);
         if (vivo != null) {
@@ -163,7 +159,11 @@ public class ValorNoPagadoServiceImpl implements ValorNoPagadoService {
         registro.setUsuarioRegistro(usuario);
         registro = valorNoPagadoDaoService.save(registro, registro.getCodigo());
 
-        String advertencia = advertenciaSiSuperaSalario(empleado, periodo, valor);
+        String advertenciaRecalculo = Long.valueOf(RhhEstadoPeriodoNomina.CALCULADO).equals(periodo.getEstado())
+                ? "El rol de este periodo ya esta calculado: recalculelo para que el valor aparezca en el rol."
+                : null;
+        String advertencia = combinaAdvertencias(advertenciaRecalculo,
+                advertenciaSiSuperaSalario(empleado, periodo, valor));
 
         Map<String, Object> resultado = new LinkedHashMap<String, Object>();
         resultado.put("exito", Boolean.TRUE);
@@ -192,6 +192,9 @@ public class ValorNoPagadoServiceImpl implements ValorNoPagadoService {
             throw new IncomeException("El registro " + idRegistro + " esta " + textoEstado(registro.getEstado())
                     + ", no REGISTRADO. Un valor RETENIDO ya afecto una orden de pago: revierta la orden"
                     + " en vez de anular el registro.");
+        }
+        if (registro.getPeriodoNomina() != null) {
+            exigePeriodoModificable(registro.getPeriodoNomina(), "anular un valor no pagado");
         }
 
         registro.setEstado(Long.valueOf(RhhEstadoValorNoPagado.ANULADO));
@@ -222,6 +225,79 @@ public class ValorNoPagadoServiceImpl implements ValorNoPagadoService {
     // =====================================================================
     // Helpers
     // =====================================================================
+
+    /**
+     * Exige que el periodo admita cambios de nomina (registrar o anular un valor no pagado).
+     * Corregido 2026-09-08 a pedido del usuario: registrar con el rol ya CALCULADO es seguro
+     * porque el motor limpia y regenera sus renglones automaticos al recalcular
+     * ({@code ReglonNominaDaoService.eliminaGeneradosByNomina}) -- la regla vieja
+     * ("solo antes de procesar el rol") era mas estricta de lo necesario.
+     *
+     * <ul>
+     * <li>{@code ABIERTO}(1) o {@code CALCULADO}(3): permitido.</li>
+     * <li>{@code EN_CALCULO}(2): rechazado -- registrar en medio de un calculo es una carrera
+     * contra el motor que esta leyendo/escribiendo esta misma nomina.</li>
+     * <li>Cualquier otro ({@code >= APROBADO}): rechazado, ya no admite cambios de nomina.</li>
+     * </ul>
+     *
+     * @param periodo		: Periodo de nomina
+     * @param operacion		: Texto de la operacion, para el mensaje
+     * @throws Throwable	: IncomeException si el periodo no admite la operacion
+     */
+    private void exigePeriodoModificable(PeriodoNomina periodo, String operacion) throws Throwable {
+        int estado = periodo.getEstado() != null ? periodo.getEstado().intValue() : -1;
+        if (estado == RhhEstadoPeriodoNomina.ABIERTO || estado == RhhEstadoPeriodoNomina.CALCULADO) {
+            return;
+        }
+        if (estado == RhhEstadoPeriodoNomina.EN_CALCULO) {
+            throw new IncomeException("El rol del periodo " + periodo.getMes() + "/" + periodo.getAnio()
+                    + " se esta calculando: espere a que termine antes de " + operacion + ".");
+        }
+        throw new IncomeException("El periodo " + periodo.getMes() + "/" + periodo.getAnio() + " esta "
+                + textoEstadoPeriodo(periodo.getEstado()) + ": ya no admite cambios de nomina.");
+    }
+
+    private String textoEstadoPeriodo(Long estado) {
+        if (estado == null) {
+            return "en un estado desconocido";
+        }
+        switch (estado.intValue()) {
+            case RhhEstadoPeriodoNomina.ABIERTO:
+                return "ABIERTO";
+            case RhhEstadoPeriodoNomina.EN_CALCULO:
+                return "EN_CALCULO";
+            case RhhEstadoPeriodoNomina.CALCULADO:
+                return "CALCULADO";
+            case RhhEstadoPeriodoNomina.APROBADO:
+                return "APROBADO";
+            case RhhEstadoPeriodoNomina.CONTABILIZADO:
+                return "CONTABILIZADO";
+            case RhhEstadoPeriodoNomina.PAGADO:
+                return "PAGADO";
+            case RhhEstadoPeriodoNomina.CERRADO:
+                return "CERRADO";
+            case RhhEstadoPeriodoNomina.ANULADO:
+                return "ANULADO";
+            default:
+                return "en estado " + estado;
+        }
+    }
+
+    /**
+     * Junta advertencias no nulas en un solo texto, o null si ninguna aplica.
+     */
+    private String combinaAdvertencias(String... advertencias) {
+        StringBuilder combinada = new StringBuilder();
+        for (String advertencia : advertencias) {
+            if (advertencia != null && !advertencia.trim().isEmpty()) {
+                if (combinada.length() > 0) {
+                    combinada.append(" | ");
+                }
+                combinada.append(advertencia.trim());
+            }
+        }
+        return combinada.length() > 0 ? combinada.toString() : null;
+    }
 
     /**
      * Validacion blanda (§8 del plan): si X supera el salario base del contrato vigente en el
