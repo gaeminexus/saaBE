@@ -123,6 +123,27 @@ public interface PagoProgramadoDaoService extends EntityDao<PagoProgramado> {
 	List<PagoProgramado> selectVigentesByOrigen(String origen, Long idOrigen) throws Throwable;
 
 	/**
+	 * Recupera los pagos cuyo {@code PGTRASNT} apunte a alguno de los asientos indicados. Sólo
+	 * devuelve pagos de ORIGEN EXTERNO: es el único camino donde {@code PagoProgramado.asiento}
+	 * se llena (factura y egreso directo cuelgan su asiento de otro documento). Pensado para
+	 * enriquecer un lote de filas (ej. la preparación del cierre de partidas en tránsito) sin
+	 * caer en un N+1 — un {@code selectById} por asiento.
+	 * <p>
+	 * La implementación parte {@code idsAsiento} en lotes de a lo sumo 900 antes de armar cada
+	 * {@code IN}: Oracle rechaza una lista literal de más de 1000 elementos con
+	 * {@code ORA-01795}, y el llamador de este método puede pasar un id por cada
+	 * {@code DetalleAsiento} de un período completo — fácil de superar 1000 en una cuenta con
+	 * movimiento. <b>El llamador NO necesita deduplicar ni acotar el tamaño de la lista</b>: eso
+	 * es responsabilidad del DAO, no de quien arma la lista de asientos a partir de sus propias
+	 * filas (que pueden repetir el mismo asiento varias veces, una por línea de detalle).
+	 * @param idsAsiento : Ids de CNT.ASNT a buscar; null o vacía devuelve lista vacía; puede
+	 *                     traer duplicados y ser de cualquier tamaño
+	 * @return           : Pagos encontrados, cero o uno por asiento en el caso normal
+	 * @throws Throwable : Excepcion
+	 */
+	List<PagoProgramado> selectByAsientos(List<Long> idsAsiento) throws Throwable;
+
+	/**
 	 * Recupera varios pagos por sus identificadores.
 	 * @param ids        : Identificadores de los pagos
 	 * @return           : Listado de pagos encontrados

@@ -387,15 +387,22 @@ Respuesta 200:
   ],
   "pendientesExtracto": [
     { "idDetalleExtracto": 201, "fecha": "2026-04-30", "descripcion": "DEPOSITO",
-      "valor": 100.00, "esArrastrada": false, "tipoSugerido": 3 }
+      "valor": 100.00, "esArrastrada": false, "tipoSugerido": 3,
+      "referencia": "TRX-88213" }
   ],
   "pendientesAsiento": [
     { "idDetalleAsiento": 550, "idAsiento": 9001, "idMovimientoBanco": 771,
       "fecha": "2026-04-30", "descripcion": "Cheque #123", "valor": 50.00,
-      "esArrastrada": false, "tipoSugerido": 2 },
+      "esArrastrada": false, "tipoSugerido": 2,
+      "numeroAlternoAsiento": "DI-2026-04-0088", "numeroAsiento": 9001,
+      "observacionAsiento": "Pago egreso tesorería (cheque) | Concepto: ... | Valor: $50.00 | Cheque N° 123 Cta 1234567",
+      "origen": null, "idOrigen": null, "referenciaBanco": null, "idPago": null },
     { "idDetalleAsiento": 551, "idAsiento": 9002, "idMovimientoBanco": null,
       "fecha": "2026-04-28", "descripcion": "Ajuste manual", "valor": 15.00,
-      "esArrastrada": false, "tipoSugerido": 1 }
+      "esArrastrada": false, "tipoSugerido": 1,
+      "numeroAlternoAsiento": null, "numeroAsiento": 8877,
+      "observacionAsiento": "Anticipo a colaborador PEREZ JUAN | 3 cuotas | Valor: $15.00 | Ref. banco: 1009212",
+      "origen": "RHH_ANTICIPO_EMPLEADO", "idOrigen": 340, "referenciaBanco": "1009212", "idPago": 4521 }
   ],
   "saldoLibros": 12345.67,
   "saldoExtractoSugerido": 12300.00,
@@ -408,6 +415,30 @@ del detalle (debe → 1, haber → 2). `idMovimientoBanco` sigue pudiendo venir 
 solo información adicional, nunca una condición para declarar. `saldoExtractoSugerido`/
 `diferenciaSugerida` pueden venir `null` si no hay ninguna fila de extracto en el período (nada
 de qué tomar el último saldo).
+
+**Agregado el 2026-09-07** (pedido del usuario: *«ver la referencia que originó dicho movimiento,
+desde el asiento contable hasta el origen real»*):
+
+- `pendientesExtracto[].referencia` — `TSR.DEXB.DEXBREFR`, la referencia o número de documento
+  que reporta el banco. Puede venir `null`: no todos los extractos la traen.
+- `pendientesAsiento[].numeroAlternoAsiento` (`CNT.ASNT.ASNTNMAL`) — el número con el que
+  contabilidad identifica el asiento. **Nulable**: los asientos viejos no lo tienen; por eso viaja
+  también `numeroAsiento` (`ASNTNMRO`), que el front puede usar como respaldo.
+- `pendientesAsiento[].observacionAsiento` (`ASNTOBSR`) — el texto que dejó
+  `contabilizarSegunOrigen` al generar el asiento, incluida la referencia bancaria cuando la
+  tiene (`... | Ref. banco: X`).
+- `pendientesAsiento[].origen` / `idOrigen` / `referenciaBanco` / `idPago` — resueltos desde
+  `PGS.PGTR` vía `PGTRASNT` (FK del pago al asiento), en una sola consulta para todo el lote de
+  pendientes, no una por fila. **Sólo vienen poblados si el asiento lo generó un pago de origen
+  externo** (anticipo a empleado, caja chica, u otro origen externo con desglose) — `PGTRASNT` es
+  el único camino donde `PagoProgramado.asiento` se llena; una factura de compra o un egreso
+  directo cuelgan su asiento de otro documento (la aplicación de pago, el propio egreso), así que
+  para esos casos los cuatro campos vienen `null`. **No es un error**, es que ese camino no pasa
+  por `PGTRASNT`.
+  - Si más de un `PagoProgramado` apuntara al mismo asiento (no debería pasar: cada pago genera su
+    propio asiento), el backend **no elige uno al azar** — deja los cuatro campos en `null` para
+    ese asiento y deja un aviso en el log del servidor, para no mostrar una referencia que no
+    corresponda.
 
 #### `POST /cnct/transito/cerrar`
 

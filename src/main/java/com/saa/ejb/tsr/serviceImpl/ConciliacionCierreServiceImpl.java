@@ -5,12 +5,15 @@ import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.cnt.service.PeriodoService;
 import com.saa.ejb.cnt.service.PlanCuentaService;
+import com.saa.ejb.cxp.dao.PagoProgramadoDaoService;
 import com.saa.ejb.tsr.dao.ConciliacionContableDaoService;
 import com.saa.ejb.tsr.dao.ConciliacionDaoService;
 import com.saa.ejb.tsr.dao.CuentaBancariaDaoService;
@@ -24,6 +27,7 @@ import com.saa.ejb.tsr.service.ControlExtractoBancarioService;
 import com.saa.ejb.tsr.service.GrupoConciliacionContableService;
 import com.saa.model.cnt.DetalleAsiento;
 import com.saa.model.cnt.Periodo;
+import com.saa.model.cxp.PagoProgramado;
 import com.saa.model.tsr.Conciliacion;
 import com.saa.model.tsr.ConciliacionContable;
 import com.saa.model.tsr.CuentaBancaria;
@@ -98,6 +102,9 @@ public class ConciliacionCierreServiceImpl implements ConciliacionCierreService 
     private GrupoConciliacionAsientoDaoService grupoConciliacionAsientoDaoService;
 
     @EJB
+    private PagoProgramadoDaoService pagoProgramadoDaoService;
+
+    @EJB
     private MovimientoBancoDaoService movimientoBancoDaoService;
 
     @EJB
@@ -142,6 +149,7 @@ public class ConciliacionCierreServiceImpl implements ConciliacionCierreService 
             dto.setValor(Math.abs(neto));
             dto.setEsArrastrada(detalle.isEsArrastrada());
             dto.setTipoSugerido(tipoSugerido);
+            dto.setReferencia(detalle.getReferencia());
             dtoExtracto.add(dto);
         }
         resultado.setPendientesExtracto(dtoExtracto);
@@ -149,6 +157,38 @@ public class ConciliacionCierreServiceImpl implements ConciliacionCierreService 
         List<DetalleAsiento> pendientesAsiento = grupoConciliacionAsientoDaoService.selectPendientes(
                 cuenta.getPlanCuenta().getCodigo(), periodo.getEmpresa().getCodigo(),
                 periodo.getPrimerDia(), periodo.getUltimoDia());
+
+        // Origen real de cada asiento (pedido del usuario: "ver la referencia que originó dicho
+        // movimiento, desde el asiento contable hasta el origen real"), resuelto en UNA consulta
+        // para todo el lote -- no un selectById por fila, que en un cierre de decenas de
+        // pendientes seria un N+1 sobre una pantalla que ya es pesada. Sólo hay pago para
+        // asientos de origen externo (PGTRASNT); factura/egreso directo cuelgan su asiento de
+        // otro documento y quedan sin entrada en el mapa, lo cual es esperado, no un error.
+        // LinkedHashSet, no List: un asiento tiene VARIAS lineas de DetalleAsiento, asi que
+        // recorrer pendientesAsiento repite el mismo idAsiento una vez por linea. Deduplicar
+        // aca reduce la lista a un tercio o menos antes de que llegue al DAO (que igual la
+        // parte en lotes de a 900, pero no hay motivo para mandarle duplicados de entrada).
+        Set<Long> idsAsiento = new LinkedHashSet<>();
+        for (DetalleAsiento detalle : pendientesAsiento) {
+            idsAsiento.add(detalle.getAsiento().getCodigo());
+        }
+        Map<Long, PagoProgramado> pagoPorAsiento = new HashMap<>();
+        for (PagoProgramado pago : pagoProgramadoDaoService.selectByAsientos(new ArrayList<>(idsAsiento))) {
+            Long idAsientoPago = pago.getAsiento().getCodigo();
+            if (pagoPorAsiento.containsKey(idAsientoPago)) {
+                // Mas de un pago apuntando al mismo asiento: no se puede saber cual es "el"
+                // origen sin adivinar, y una referencia que no corresponde es peor que ninguna.
+                // Se deja SIN pago para este asiento (los cuatro campos quedan null) y se avisa
+                // fuerte en el log en vez de elegir en silencio.
+                System.err.println("⚠ El asiento " + idAsientoPago + " tiene mas de un pago "
+                        + "programado apuntandole (" + pagoPorAsiento.get(idAsientoPago).getId()
+                        + " y " + pago.getId() + "): no se resuelve el origen para no adivinar.");
+                pagoPorAsiento.remove(idAsientoPago);
+            } else {
+                pagoPorAsiento.put(idAsientoPago, pago);
+            }
+        }
+
         List<PendienteAsientoTransito> dtoAsiento = new ArrayList<>();
         double sumaTipo1 = 0.0;
         double sumaTipo2 = 0.0;
@@ -159,6 +199,17 @@ public class ConciliacionCierreServiceImpl implements ConciliacionCierreService 
             dto.setFecha(detalle.getAsiento().getFechaAsiento());
             dto.setDescripcion(detalle.getDescripcion());
             dto.setEsArrastrada(detalle.isEsArrastrada());
+            dto.setNumeroAlternoAsiento(detalle.getAsiento().getNumeroAlterno());
+            dto.setNumeroAsiento(detalle.getAsiento().getNumero());
+            dto.setObservacionAsiento(detalle.getAsiento().getObservaciones());
+
+            PagoProgramado pagoOrigen = pagoPorAsiento.get(detalle.getAsiento().getCodigo());
+            if (pagoOrigen != null) {
+                dto.setOrigen(pagoOrigen.getOrigenExterno());
+                dto.setIdOrigen(pagoOrigen.getIdOrigen());
+                dto.setReferenciaBanco(pagoOrigen.getReferenciaBanco());
+                dto.setIdPago(pagoOrigen.getId());
+            }
 
             // El ancla de tipo 1/2 es el propio DetalleAsiento desde el 2026-08-27 (§7bis): toda
             // linea pendiente es declarable, tipoSugerido nunca viene null. MovimientoBanco, si

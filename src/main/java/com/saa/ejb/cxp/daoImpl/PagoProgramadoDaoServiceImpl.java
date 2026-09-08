@@ -275,6 +275,33 @@ public class PagoProgramadoDaoServiceImpl extends EntityDaoImpl<PagoProgramado>
         return query.getResultList();
     }
 
+    /**
+     * Tope de elementos por lote del {@code IN} de {@link #selectByAsientos(List)}. Oracle
+     * rechaza una lista literal de más de 1000 elementos con {@code ORA-01795}; se corta en 900,
+     * no en 1000, para dejar margen. Partir en lotes va DENTRO del DAO (no en el llamador) para
+     * que cualquier otro caller herede la protección sin tener que acordarse de hacerlo él mismo.
+     */
+    private static final int TAMANO_LOTE_IN = 900;
+
+    @Override
+    public List<PagoProgramado> selectByAsientos(List<Long> idsAsiento) throws Throwable {
+        System.out.println("Ingresa al metodo selectByAsientos con " + (idsAsiento != null ? idsAsiento.size() : 0) + " asientos");
+        if (idsAsiento == null || idsAsiento.isEmpty()) {
+            return new ArrayList<>();
+        }
+        List<PagoProgramado> resultado = new ArrayList<>();
+        for (int desde = 0; desde < idsAsiento.size(); desde += TAMANO_LOTE_IN) {
+            List<Long> lote = idsAsiento.subList(desde, Math.min(desde + TAMANO_LOTE_IN, idsAsiento.size()));
+            Query query = em.createQuery(
+                    " select p from PagoProgramado p " +
+                    " where  p.asiento.codigo in (:idsAsiento) " +
+                    " order by p.id");
+            query.setParameter("idsAsiento", lote);
+            resultado.addAll(query.getResultList());
+        }
+        return resultado;
+    }
+
     @Override
     public List<PagoProgramado> selectByIds(List<Long> ids) throws Throwable {
         System.out.println("Ingresa al metodo selectByIds con " + (ids != null ? ids.size() : 0) + " ids");
