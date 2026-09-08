@@ -243,9 +243,21 @@ public class DetalleAsientoServiceImpl implements DetalleAsientoService{
 		if(recuperados[1] != null){
 			haber = Double.valueOf(recuperados[1].toString());
 		}			
-		if(Math.abs(debe - haber) > 0.01){
-			igual = false;
-		}			
+		// Comparación en CENTAVOS ENTEROS, no en decimales (2026-09-07). Dos defectos de la
+		// versión anterior (`Math.abs(debe - haber) > 0.01`):
+		// 1. Toleraba hasta un centavo de descuadre — el usuario exige, textual, que "JAMÁS
+		//    el sistema debe permitir un asiento descuadrado en debe y haber". Pasó en
+		//    producción: asiento CRE-2026-08-0085 (cobro crédito 29), debe 1.487,03 vs
+		//    haber 1.487,02, se dio por cuadrado.
+		// 2. La comparación caía justo en el borde de la representación binaria de un
+		//    double: 171,86-171,85 = 0,010000000000005... (> 0.01, rechaza) pero
+		//    1487,03-1487,02 = 0,009999999999991... (no > 0.01, acepta) — el MISMO descuadre
+		//    de un centavo pasaba o se rechazaba según la magnitud de los números, no según
+		//    si de verdad cuadraba. Redondear a centavos y comparar como long es exacto y
+		//    determinista, sin depender de la magnitud.
+		long debeCentavos = Math.round(debe * 100d);
+		long haberCentavos = Math.round(haber * 100d);
+		igual = (debeCentavos == haberCentavos);
 		return igual;
 	}
 
