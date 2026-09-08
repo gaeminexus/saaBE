@@ -27,4 +27,16 @@ public interface CuotaDescuentoDaoService extends EntityDao<CuotaDescuento> {
 	 */
 	List<CuotaDescuento> selectPendientesPorVencer(Long idEmpleado, java.time.LocalDate desde,
 			java.time.LocalDate hasta) throws Throwable;
+
+	/**
+	 * Cuotas PENDIENTE/PARCIAL de un descuento recurrente, ordenadas por
+	 * vencimiento. Es sobre las que actúa una devolución de anticipo (ver
+	 * docs/logica-negocio/rhh/API-DEVOLUCION-ANTICIPO.md #4): las próximas por
+	 * vencer son las que dejan de descontarse, hasta cubrir el monto devuelto.
+	 *
+	 * @param idDescuentoRecurrente	: Id del descuento recurrente
+	 * @return						: Las cuotas PENDIENTE/PARCIAL, o lista vacia
+	 * @throws Throwable			: Excepcion
+	 */
+	List<CuotaDescuento> selectPendientesPorDescuento(Long idDescuentoRecurrente) throws Throwable;
 }

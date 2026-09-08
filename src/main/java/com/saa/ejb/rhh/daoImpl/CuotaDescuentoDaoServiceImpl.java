@@ -68,4 +68,23 @@ public class CuotaDescuentoDaoServiceImpl extends EntityDaoImpl<CuotaDescuento> 
 		query.setParameter("hasta", hasta);
 		return query.getResultList();
 	}
+
+	/* (non-Javadoc)
+	 * @see com.saa.ejb.rhh.dao.CuotaDescuentoDaoService#selectPendientesPorDescuento(java.lang.Long)
+	 */
+	@SuppressWarnings("unchecked")
+	@Override
+	public List<CuotaDescuento> selectPendientesPorDescuento(Long idDescuentoRecurrente) throws Throwable {
+		System.out.println("Ingresa al metodo selectPendientesPorDescuento de CuotaDescuento, descuento: "
+				+ idDescuentoRecurrente);
+		Query query = em.createQuery(" select   t "
+				+ " from     CuotaDescuento t "
+				+ " where    t.descuentoRecurrente.codigo = :idDescuento "
+				+ "          and t.estado in (:pendiente, :parcial) "
+				+ " order by t.fechaVencimiento, t.numeroCuota ");
+		query.setParameter("idDescuento", idDescuentoRecurrente);
+		query.setParameter("pendiente", Long.valueOf(RhhEstadoCuotaDescuento.PENDIENTE));
+		query.setParameter("parcial", Long.valueOf(RhhEstadoCuotaDescuento.PARCIAL));
+		return query.getResultList();
+	}
 }
