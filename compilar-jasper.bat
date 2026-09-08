@@ -28,7 +28,12 @@ if errorlevel 1 (
     echo jasperreports-jdt este disponible ^(mvn dependency:get -Dartifact=net.sf.jasperreports:jasperreports-jdt:7.0.3^).
     exit /b 1
 )
-set /p CLASSPATH=<"%CP_FILE%"
+REM "set /p VAR=<archivo" trunca en Windows cmd.exe alrededor de los 1024 caracteres --
+REM silenciosamente, sin error -- y este classpath supera los 3700. "for /f" no tiene ese
+REM limite (confirmado: 40 entradas completas vs 12 con set /p, 2026-09-08, ver el hallazgo
+REM completo en CLAUDE.md/"Reportes"). Con set /p, jasperreports-jdt y ecj -los ULTIMOS de la
+REM lista- quedaban afuera segun el momento, y el compilador JDT fallaba de forma intermitente.
+for /f "usebackq delims=" %%C in ("%CP_FILE%") do set "CLASSPATH=%%C"
 
 echo === 2/3: compilando el harness ===
 if not exist "%BUILD_DIR%" mkdir "%BUILD_DIR%"

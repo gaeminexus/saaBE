@@ -23,7 +23,13 @@ if errorlevel 1 (
     echo ERROR: no se pudo armar el classpath. Revisa que Maven este en el PATH ^(mvn -v^).
     exit /b 1
 )
-set /p CLASSPATH=<"%CP_FILE%"
+REM "set /p VAR=<archivo" trunca en Windows cmd.exe alrededor de los 1024 caracteres --
+REM silenciosamente, sin error -- y este classpath supera los 3700. "for /f" no tiene ese
+REM limite. Con set /p, esto era EXACTAMENTE la causa del "Class not found" intermitente en
+REM los RIDE y del fallo de UPPER() en RPRT_MVMN_APXT: jasperreports-functions, barcode4j,
+REM zxing y jasperreports-jdt son los ULTIMOS de la lista y quedaban afuera del classpath real
+REM sin ningun aviso -- no era un reporte roto, era la herramienta. Ver CLAUDE.md/"Reportes".
+for /f "usebackq delims=" %%C in ("%CP_FILE%") do set "CLASSPATH=%%C"
 
 echo === 2/3: compilando el verificador ===
 if not exist "%BUILD_DIR%" mkdir "%BUILD_DIR%"

@@ -94,8 +94,9 @@ public final class VerificarFill {
                 System.out.println("OK   " + nombre + "  (" + print.getPages().size() + " pagina(s))");
                 ok++;
             } catch (Throwable t) {
-                if (pareceFaltaDeConexion(t)) {
-                    System.out.println("SKIP " + nombre + "  -- NO VERIFICABLE (necesita conexión real): "
+                String razon = razonNoVerificable(t);
+                if (razon != null) {
+                    System.out.println("SKIP " + nombre + "  -- NO VERIFICABLE (" + razon + "): "
                             + t.getClass().getSimpleName() + ": " + t.getMessage());
                     noVerificable++;
                 } else {
@@ -106,7 +107,7 @@ public final class VerificarFill {
         }
 
         System.out.println();
-        System.out.println("OK: " + ok + " | NO VERIFICABLE (necesita conexión): " + noVerificable
+        System.out.println("OK: " + ok + " | NO VERIFICABLE: " + noVerificable
                 + " | FALLIDOS: " + fallidos + " | Total: " + jaspers.size());
         if (fallidos > 0) {
             System.exit(1);
@@ -114,26 +115,50 @@ public final class VerificarFill {
     }
 
     /**
-     * Heurística para distinguir "este reporte tiene un defecto real" de "este reporte necesita
-     * una conexión JDBC de verdad y acá no hay ninguna" (típico de un subreporte con
-     * {@code connectionExpression=$P{REPORT_CONNECTION}}, que aquí llega null). No es perfecta
-     * a propósito: ante la duda, mejor marcar de más como "no verificable" que dar un reporte
-     * roto por bueno -- eso lo decide un humano leyendo el mensaje completo, no este heurístico.
+     * Heurística para distinguir "este reporte tiene un defecto real" de "esto no prueba nada
+     * sobre el reporte, es una limitación de ESTE verificador". Dos categorías, no una sola:
+     *
+     * <p><b>Necesita conexión real:</b> típico de un subreporte con
+     * {@code connectionExpression=$P{REPORT_CONNECTION}}, que aquí llega null porque no hay
+     * Oracle detrás de {@link JREmptyDataSource}.</p>
+     *
+     * <p><b>Clase no encontrada al deserializar el .jasper:</b> el classpath de
+     * {@code tools/jasper/pom.xml} es DELIBERADAMENTE un subconjunto del classpath real del WAR
+     * en WildFly -- no declara cada dependencia que cada reporte de cada módulo pudiera llegar a
+     * usar (p. ej. una librería de firma electrónica para un RIDE). Un {@code
+     * ClassNotFoundException} acá no prueba que el reporte esté roto, prueba que esa clase no
+     * está en ESTE classpath angosto; puede estar perfectamente disponible en WildFly. Tratarlo
+     * como fallo sería exactamente el falso positivo que hace desconfiar de la herramienta
+     * (medido 2026-09-08: cinco RIDE + un reporte con función UPPER() fallaban así por un bug
+     * DISTINTO -truncamiento de <code>set /p</code> en el .bat, ya corregido- y ninguno de los
+     * seis estaba realmente roto). No es perfecta a propósito: ante la duda, mejor marcar de más
+     * como "no verificable" que acusar de roto un reporte ajeno -- eso lo decide un humano
+     * leyendo el mensaje completo, no este heurístico.</p>
+     *
+     * @return	: la razón como texto si parece no verificable aquí, o {@code null} si parece un
+     *			  defecto real del reporte
      */
-    private static boolean pareceFaltaDeConexion(Throwable t) {
+    private static String razonNoVerificable(Throwable t) {
         for (Throwable cur = t; cur != null; cur = cur.getCause()) {
             String msg = String.valueOf(cur.getMessage());
             if (msg.toLowerCase().contains("connection") || msg.contains("REPORT_CONNECTION")) {
-                return true;
+                return "necesita conexión real";
             }
             String clase = cur.getClass().getName();
             if (clase.contains("JRFillSubreport") || (cur instanceof NullPointerException
                     && Stream.of(cur.getStackTrace()).anyMatch(e -> e.getClassName().contains("Subreport")
                             || e.getClassName().contains("QueryExecuter")))) {
-                return true;
+                return "necesita conexión real";
+            }
+            if (cur instanceof ClassNotFoundException || cur instanceof NoClassDefFoundError
+                    || clase.contains("ClassNotFoundException")
+                    || msg.contains("Class not found")
+                    || msg.contains("ClassNotFoundException")
+                    || msg.contains("Error loading object from file")) {
+                return "clase ausente en el classpath angosto del harness, no necesariamente en WildFly";
             }
         }
-        return false;
+        return null;
     }
 
     @SuppressWarnings("unchecked")
