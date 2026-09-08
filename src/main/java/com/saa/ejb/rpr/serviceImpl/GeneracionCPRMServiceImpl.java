@@ -1,6 +1,8 @@
 package com.saa.ejb.rpr.serviceImpl;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -48,7 +50,11 @@ public class GeneracionCPRMServiceImpl implements GeneracionCPRMService {
         long mes  = ejecucion.getMes();
         long anio = ejecucion.getAnio();
         int ultimoDia = YearMonth.of((int) anio, (int) mes).lengthOfMonth();
-        LocalDateTime fechaCorte = LocalDateTime.of((int) anio, (int) mes, ultimoDia, 23, 59, 59);
+        // H54 (2026-09-07): fin de día REAL, no 23:59:59 — un movimiento con marca de tiempo
+        // en 23:59:59.000000001-23:59:59.999999999 quedaba fuera del corte. Misma familia que
+        // el centavo del cobro 54 y el descuadre del cierre de cartera: un borde escrito con
+        // "casi" en vez de exacto.
+        LocalDateTime fechaCorte = LocalDate.of((int) anio, (int) mes, ultimoDia).atTime(LocalTime.MAX);
         System.out.println("CPRM - fechaCorte: " + fechaCorte);
 
         // -------------------------------------------------------

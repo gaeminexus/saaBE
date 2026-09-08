@@ -2,6 +2,7 @@ package com.saa.ejb.rpr.serviceImpl;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.YearMonth;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -48,7 +49,11 @@ public class GeneracionCCPMServiceImpl implements GeneracionCCPMService {
         int ultimoDia = YearMonth.of((int) anio, (int) mes).lengthOfMonth();
 
         LocalDateTime fechaInicio = LocalDateTime.of((int) anio, (int) mes, 1, 0, 0, 0);
-        LocalDateTime fechaFin    = LocalDateTime.of((int) anio, (int) mes, ultimoDia, 23, 59, 59);
+        // H54 (2026-09-07): fin de día REAL, no 23:59:59 — un movimiento con marca de tiempo
+        // en 23:59:59.000000001-23:59:59.999999999 quedaba fuera del corte. Misma familia que
+        // el centavo del cobro 54 y el descuadre del cierre de cartera: un borde escrito con
+        // "casi" en vez de exacto.
+        LocalDateTime fechaFin    = LocalDate.of((int) anio, (int) mes, ultimoDia).atTime(LocalTime.MAX);
         LocalDate     fechaFinDate = fechaFin.toLocalDate();
 
         System.out.println("CCPM - Rango: " + fechaInicio + " a " + fechaFin);
