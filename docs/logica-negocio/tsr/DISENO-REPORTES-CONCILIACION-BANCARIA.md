@@ -386,9 +386,10 @@ SELECT e.PJRQNMBR   AS EMPRESA,
        ct.CTEBCRRE  AS MES_CERRADO, ct.CTEBUSCR AS MES_CERRADO_POR, ct.CTEBFCCR AS MES_CERRADO_EL,
        b.BNCONMBR   AS BANCO, c.CNBCNMRO AS NUMERO_CUENTA,
        pc.PLNNCNTA  AS CUENTA_CONTABLE, pc.PLNNNMBR AS NOMBRE_CUENTA,
-       CASE WHEN EXISTS (SELECT 1 FROM TSR.DEXB d WHERE d.CNBCCDGO = c.CNBCCDGO AND d.DEXBESTD = 1
-                            AND d.DEXBFTRN BETWEEN p.PRDOINCO AND p.PRDOFNN)
-            THEN 'S' ELSE 'N' END                    AS EXTRACTO_CARGADO,   -- ⚠️ VERIFICAR contra selectCuentasConCobertura
+       CASE WHEN EXISTS (SELECT 1 FROM TSR.EXBC x WHERE x.CNBCCDGO = c.CNBCCDGO
+                            AND x.EXBCESTD = 1 AND x.EXBCESTP <> 4
+                            AND x.EXBCFDSD <= p.PRDOFNN AND x.EXBCFHST >= p.PRDOINCO)
+            THEN 'S' ELSE 'N' END                    AS EXTRACTO_CARGADO,
        ci.CNCLSLDF  AS SALDO_LIBROS,
        ci.CNCLDPTR  AS DEPOSITOS_TRANSITO,
        ci.CNCLCHNC  AS CHEQUES_NO_COBRADOS,
@@ -402,10 +403,11 @@ SELECT e.PJRQNMBR   AS EMPRESA,
        cc.CNCTPDEX  AS PEND_EXTRACTO, cc.CNCTPDAS AS PEND_ASIENTO, cc.CNCTTTGR AS TOTAL_GRUPOS
   FROM CNT.PRDO p
   JOIN SCP.PJRQ e  ON e.PJRQCDGO = p.PJRQCDGO
-  JOIN TSR.CNBC c  ON c.CNBCESTD = 1                 -- ⚠️ VERIFICAR: replicar selectCuentasBancariasActivas(idEmpresa)
-  JOIN TSR.BNCO b  ON b.BNCOCDGO = c.BNCOCDGO
+  JOIN TSR.BNCO b  ON b.PJRQCDGO = e.PJRQCDGO        -- filtro de empresa (faltaba, ver #3.1bis)
+  JOIN TSR.CNBC c  ON c.BNCOCDGO = b.BNCOCDGO AND c.CNBCESTD = 1
   JOIN CNT.PLNN pc ON pc.PLNNCDGO = c.PLNNCDGO
-  LEFT JOIN TSR.CNCL ci ON ci.CNCLCDGO = (SELECT MAX(x.CNCLCDGO) FROM TSR.CNCL x
+  LEFT JOIN TSR.CNCL ci ON ci.CNCLCDGO = (SELECT MAX(x.CNCLCDGO) KEEP (DENSE_RANK LAST ORDER BY x.CNCLFCCR)
+                                          FROM TSR.CNCL x
                                           WHERE x.CNBCCDGO = c.CNBCCDGO AND x.CNCLPRDO = p.PRDOCDGO
                                             AND x.CNCLESTD = 2)
   LEFT JOIN TSR.CNCT cc ON cc.CNBCCDGO = c.CNBCCDGO AND cc.PRDOCDGO = p.PRDOCDGO
@@ -414,6 +416,40 @@ SELECT e.PJRQNMBR   AS EMPRESA,
    AND p.PJRQCDGO = $P{P_PJRQ_CODIGO}
  ORDER BY b.BNCONMBR, c.CNBCNMRO
 ```
+
+#### 3.1bis. Correcciones aplicadas (2026-09-08, al implementar)
+
+1. **Bug real, no solo `⚠️ VERIFICAR`: el `JOIN TSR.CNBC c ON c.CNBCESTD = 1` original no
+   filtraba por empresa en absoluto.** `TSR.CNBC` no tiene `PJRQCDGO` propio (confirmado, ver
+   §1); el vínculo real es `CNBC.BNCOCDGO → BNCO.PJRQCDGO`
+   (`ControlExtractoBancarioDaoService.selectCuentasBancariasActivas` usa exactamente
+   `c.banco.empresa.codigo`). Sin el `JOIN TSR.BNCO b ON b.PJRQCDGO = e.PJRQCDGO` agregado
+   arriba, este reporte habría mostrado **las cuentas bancarias de TODAS las empresas**, no solo
+   la de `P_PJRQ_CODIGO`. Corregido antes de compilar nada — no llegó a producción.
+2. **`EXTRACTO_CARGADO` usaba el criterio equivocado.** El original miraba si existía una fila de
+   `TSR.DEXB` con `DEXBFTRN` dentro del rango del período. La regla real
+   (`ExtractoBancarioDaoService.selectCuentasConCobertura`, la que usa el Tablero de
+   Cumplimiento) es *solapamiento de rango de la cabecera del archivo*:
+   `EXBCFDSD <= período.hasta AND EXBCFHST >= período.desde`, con `EXBCESTD = 1` (activo) y
+   `EXBCESTP <> 4` (no en estado ERROR). Corregido arriba.
+3. **`CNCLCDGO` vigente:** mismo ajuste que en §2.1 (`KEEP (DENSE_RANK LAST ORDER BY
+   fechaCierre)` en vez de `MAX(codigo)` a secas), por la misma razón: replicar
+   `selectCierreVigente` con exactitud.
+4. **Decisión tomada (el diseño la dejaba abierta):** `PEND_EXTRACTO`/`PEND_ASIENTO`/
+   `TOTAL_GRUPOS` usan los contadores **guardados** en `TSR.CNCT` (los que escribe
+   `recalcularContadores`), no el recálculo en vivo de las consultas §2.4/§2.5 replicado para
+   cada una de las N cuentas del período — sería mucho más lento y este reporte es "todas las
+   cuentas de un vistazo", no el detalle por cuenta (para eso está `RPRT_CNCL_CNTA`). Si algún
+   contador guardado queda desactualizado (no se corrió `recalcularContadores` después de un
+   cambio), la señal "Situación" de la fila puede no reflejar el estado más reciente — es un
+   trade-off aceptado, no un bug.
+5. **La etiqueta "PENDIENTES SIN DECLARAR" del diseño original se simplificó a "PENDIENTES"
+   en el `.jrxml`.** Con los contadores agregados de `CNCT` no se puede distinguir "declarada en
+   tránsito pero aún sin saldar" de "nunca declarada" (esa distinción solo existe a nivel de
+   línea, en las consultas §2.4/§2.5 de `RPRT_CNCL_CNTA`) — decir "SIN DECLARAR" en este reporte
+   sería una afirmación que la consulta no puede respaldar. "PENDIENTES", más general (con la
+   misma marca en rojo), evita reclamar una precisión que la fuente de datos no tiene a este
+   nivel de agregación.
 
 `CNCTPDEX/CNCTPDAS` son los contadores **guardados** en `CNCT` (los recalcula
 `recalcularContadores`). Si se quiere el dato vivo en vez del guardado, reemplazarlos por los
