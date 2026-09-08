@@ -1988,3 +1988,16 @@ correcto es `.atTime(LocalTime.MAX)`.
 
 **Autorizado por el usuario, pendiente de despachar**: va junto con H53 porque son los mismos
 archivos y no conviene tocarlos dos veces.
+
+### 📌 2026-09-07 — Se genero y ENVIO un informe con el comportamiento actual (H53 sin corregir)
+
+El usuario saco el informe y lo mando, sabiendo lo de H53. Queda registrado porque tiene una
+consecuencia que no se ve hoy:
+
+⚠️ **Si mas adelante se cambia el criterio de H53 —de "situacion actual" a "foto congelada del
+mes"— los informes dejarian de ser comparables entre si:** el ya enviado sigue la regla vieja y los
+siguientes seguirian la nueva. Al decidir el criterio hay que decidir tambien **desde cuando
+aplica** y si hace falta reemitir algo.
+
+**No es un problema hoy y no urge.** Se anota para que la decision se tome con este dato a la
+vista, y no se descubra cuando alguien compare dos periodos y no cuadren.
