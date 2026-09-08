@@ -3279,3 +3279,66 @@ explicación.
    `REF-06-inconsistencias.md` **antes** de citar cualquier cifra suya
 9. `ANALISIS-MODULO-RRHH.md` y `ORDENES-BACKEND-FASES-5-9.md` solo si hace falta el porqué de
    algo ya hecho
+
+---
+
+## Los días anteriores al sistema en el décimo cuarto — y por qué los otros dos beneficios no lo sufren
+
+**2026-09-08.** El usuario calculó el décimo cuarto 2026 de Sierra y ningún empleado pasaba de
+**210 días** con la ventana correcta en pantalla (01/08/2025 – 31/07/2026). 210 = 7 × 30 = enero a
+julio de 2026: sólo los meses procesados **dentro** del sistema. Corregido en `2b96c3b`.
+
+### Lo que NO era
+
+- **No era la ventana**: `calcularDecimoCuarto` arma bien agosto → julio según región.
+- **No era la consulta**: `sumaDiasRango` compara por `(anio*100+mes) BETWEEN`, que cruza
+  correctamente el cambio de año — el caso que rompe una comparación ingenua de año y mes por
+  separado.
+- **No faltaban datos**: los días de agosto–diciembre 2025 **ya estaban cargados**. Medido:
+  17 filas, `SUM(ACMNDIAS)=1.705`, mín 23, máx 150, ya reflejando la fecha de ingreso de cada uno.
+
+### Lo que era
+
+La apertura graba esos días en la fila del **propio décimo cuarto** (`ACMN` tipo 4,
+`BASE_DECIMO_CUARTO`), no en `DIAS_TRABAJADOS`, y lo hace **a propósito** —
+`MigracionRhhServiceImpl` lo dice: *«su fila de apertura aporta los días, no el valor»*.
+`calcularDecimoCuarto` sumaba **sólo el tipo 10**.
+
+Y el sistema **ya tenía la respuesta escrita**: `LiquidacionHaberesServiceImpl` hace exactamente
+esto para el finiquito, con el comentario *«los días salen de tres sitios y los tres hacen falta:
+los meses cerrados, la fila de apertura de la migración, y los días del mes que se liquida»*.
+
+> **Dos lectores del mismo dato, uno completo y otro a medias.** Al liquidar a alguien se le pagaba
+> bien; al cobrar el décimo cuarto normal se le pagaba de menos. Nadie lo notó porque los dos
+> caminos devuelven un número plausible.
+
+Efecto: quien trabajó el período completo pasa de **281,17 a 482,00** (360 días, el SBU entero).
+Sobre 17 personas, ~2.200 dólares que se pagaban de menos.
+
+### Por qué el décimo tercero y los fondos de reserva NO lo sufren — verificado, no supuesto
+
+| Beneficio | Qué lee | Dónde escribe la apertura | ¿Hueco? |
+|---|---|---|---|
+| **Décimo cuarto** | días de `DIAS_TRABAJADOS` | días en `BASE_DECIMO_CUARTO` | 🔴 **Sí** — tipos distintos |
+| **Décimo tercero** | valor de `BASE_DECIMO_TERCERO` | valor en `BASE_DECIMO_TERCERO` | ✅ No — **mismo tipo** |
+| **Fondos de reserva** | valor de `BASE_FONDOS_DE_RESERVA` | valor en `BASE_FONDOS_DE_RESERVA` | ✅ No — mismo tipo |
+
+El décimo tercero sí tiene una asimetría **de unidades** —`SLAP` trae el importe ya prorrateado
+(183,33 = 2.200/12) y las filas mensuales llevan la remuneración completa (2.200)— pero está
+resuelta: la apertura multiplica por 12 antes de guardar. Como es el mismo tipo, la consulta única
+que ya existe lo recoge sola.
+
+Los fondos de reserva usan **año calendario puro** (nunca cruzan a diciembre del año anterior), así
+que la fila de apertura anclada a 2025/12 queda fuera de la ventana de 2026 en adelante. Es
+correcto por diseño: no acumulan saldo entre años.
+
+⚠️ **Anotado, sin tocar:** si alguna vez se corriera `generarFondosReserva` para el **año de la
+migración** (2025), la fila de apertura sí caería dentro de esa ventana y podría mezclarse con
+filas mensuales de ese año. No se está dando —se genera 2026— pero conviene saberlo.
+
+### La lección, que es la misma de toda la semana
+
+**El defecto no estaba en el cálculo ni en los datos: estaba en que dos lectores del mismo dato
+miran lugares distintos.** Se encontró midiendo la base, no leyendo código: el número `210` dijo
+«siete meses de treinta días» y de ahí salió todo. Y la confirmación de que el arreglo era correcto
+vino de otro punto del propio sistema que ya lo hacía bien.
