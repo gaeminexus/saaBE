@@ -14,7 +14,7 @@ Y la precisión que cierra el diseño: *«la contabilidad del rol de ese mes sí
 |---|---|---|
 | 1 | ¿Se recupera siempre completo y al mes siguiente, automático? | **«sí, siempre»** |
 | 2 | Si el empleado sale antes de cobrarlo, ¿va al finiquito? | **«sí, al finiquito»** |
-| 3 | ¿El registro sólo antes de procesar el rol? | **«sí, antes de procesar el rol»** |
+| 3 | ¿El registro sólo antes de procesar el rol? | **«sí, antes de procesar el rol»** — **CORREGIDO por el usuario el 2026-09-08 al probar:** *«no me está dejando ingresar los valores en un período calculado. Sí debería, pero debería dejarme recalcular después»*. Regla vigente: se registra con el período **ABIERTO o CALCULADO**; nunca en `EN_CALCULO` (carrera) ni desde `APROBADO` en adelante. Registrar en un período calculado **obliga a recalcular el rol**, y la orden de pago se niega a generarse si encuentra un VNPG sin su renglón en la nómina (§7.2) |
 | 4 | ¿Puede superar el neto? | **«jamás superar el neto»** |
 | 5 | ¿Un solo valor por empleado y período, con motivo, anulable? | **«así es»** |
 | 6 | ¿Afecta IESS o impuesto a la renta? | **«no afecta»** |
@@ -174,10 +174,15 @@ y pasa a **`FINIQUITADO`** con `VNPGLQDC`. Decisión 2 del usuario.
 
 ## 8. Reglas de registro y anulación
 
-- **Registrar**: empleado activo de la empresa, período **ABIERTO** (estado ≤ `ABIERTO` de
-  `RhhEstadoPeriodoNomina`), valor > 0, motivo obligatorio, y **ningún otro registro vivo** para
-  ese (empleado, período). Si el período ya se procesó: **bloquear con mensaje claro**, no reabrir
-  nada por debajo (decisión 3).
+- **Registrar**: empleado activo de la empresa, período **ABIERTO o CALCULADO** (estados 1 ó 3 de
+  `RhhEstadoPeriodoNomina`; corrección del usuario del 2026-09-08, ver decisión 3), valor > 0,
+  motivo obligatorio, y **ningún otro registro vivo** para ese (empleado, período).
+  `EN_CALCULO` se rechaza (registrar en medio de un cálculo es una carrera); desde `APROBADO` en
+  adelante se rechaza con mensaje que nombre el estado. **Registrar en un período CALCULADO
+  obliga a recalcular el rol**: la respuesta lo advierte, y la orden de pago **se niega a
+  generarse** si encuentra un VNPG vivo cuya nómina no tiene el renglón de rol 34 (o 35 para el
+  del mes anterior) — sin eso pagaría `N − X` mientras el rol impreso dice `N`, y la validación
+  `X ≤ neto` del motor nunca habría corrido.
 - Validación blanda al registrar: si `X > salario base del contrato`, **avisar** (no bloquear —
   el neto real puede ser mayor por horas extra). La dura es la del motor (§7.1.3).
 - **Anular**: con motivo, **sólo desde `REGISTRADO`**. Un `RETENIDO` ya afectó una orden de pago:
