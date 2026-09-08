@@ -3069,3 +3069,50 @@ confirmar cuál de los dos se pidió.
 
 ⚠️ El frente SRI arrastra además un bloqueante propio ya documentado: **el ATS nunca se validó
 contra el XSD ni el validador oficial**. Y `sri` **no tiene dueño** en el registro de reservas.
+
+---
+
+## §35 — ✅ VERIFICADO EN PRODUCCIÓN: los tres defectos de dinero, confirmados corregidos
+
+**2026-09-07, cierre.** El usuario desplegó y **verificó los tres**. No es «compila» ni «lo revisé»:
+es la aplicación real dando el resultado correcto.
+
+| # | Defecto | Verificación |
+|---|---|---|
+| **1** | **Tipo de cuenta invertido** en el archivo del Banco Internacional | Lote 3 regenerado: **82 `AHO` y 77 `CTE`**, contra los 82/77 que la consulta predijo |
+| **2** | **Mayor analítico sin naturaleza de cuenta** — acreedoras con el signo invertido | Cuenta acreedora contrastada **contra el balance**: coinciden |
+| **3** | **El centavo del cobro** — el botón no se activaba con el saldo exacto | Cobro de **258,91** aceptado |
+
+**Los tres eran defectos de dinero, y los tres llevaban tiempo vivos.**
+
+### 🔴 Lo que hay que llevarse, y no es el código
+
+**Ninguno de los tres lo encontró una revisión nuestra. Los tres los encontró el usuario mirando la
+salida.**
+
+- El tipo de cuenta: 159 transferencias por $119.472,32 salieron con la institución equivocada, y se
+  descubrió porque **abrió el archivo**.
+- El mayor analítico: el saldo con el signo cambiado en toda cuenta acreedora, descubierto porque
+  **lo comparó con el balance**.
+- El centavo: descubierto porque **intentó cobrar el saldo exacto y el botón no se activó**.
+
+> **El patrón es el mismo en los tres: el sistema no fallaba.** Generaba el archivo, mostraba el
+> reporte, deshabilitaba el botón. **Ninguno producía un error**, y por eso ninguna revisión de
+> código, ninguna compilación y ningún agente los iba a encontrar solo. Hacía falta alguien que
+> supiera **qué número tenía que salir**.
+
+**Corolario operativo para este equipo:** la verificación que vale no es «compila» ni «leí el diff»
+—las dos se hicieron en los tres casos, y los tres defectos ya existían—. Es **contrastar la salida
+contra un valor conocido**. De ahí que en cada script y en cada entrega convenga dejar escrito
+*cuál es el número que tiene que dar*: el `82/77` no salió de la nada, salió de una consulta
+`GROUP BY` que se corrió **antes** de mandar el archivo al banco.
+
+### Y el que no falla es el peor
+
+De los cuatro nombres de columna que inventé ese día, **el único peligroso fue el que no daba
+error**: filtrar el rubro por PK en vez de por alterno habría devuelto «ESTADO DEL DESCUENTO
+RECURRENTE» y una conclusión falsa con cara de correcta, con un pago urgente esperando. El
+`ORA-00904` de los otros tres fue un regalo.
+
+**Es la misma lección desde el otro lado: lo que rompe fuerte se arregla; lo que contesta mal
+sobrevive.**
