@@ -23,6 +23,7 @@ import com.saa.ejb.rhh.dao.SaldoVacacionesDaoService;
 import com.saa.ejb.rhh.dao.SolicitudVacacionesDaoService;
 import com.saa.ejb.rhh.service.AcreditacionVacacionesService;
 import com.saa.ejb.rhh.service.SolicitudVacacionesService;
+import com.saa.ejb.rhh.util.PeriodoModificableNomina;
 import com.saa.ejb.rhh.util.RedondeoNomina;
 import com.saa.model.rhh.ConceptoNomina;
 import com.saa.model.rhh.DetalleConsumoVacaciones;
@@ -151,11 +152,66 @@ public class SolicitudVacacionesServiceImpl implements SolicitudVacacionesServic
 		return result;
 	}
 
+	/**
+	 * CRUD generico, para crear la solicitud y editar sus campos antes de que entre al
+	 * ciclo de aprobacion. No es la puerta para cambiar el estado.
+	 *
+	 * <p><b>2026-09-08, hallazgo de produccion:</b> el FE aprobaba solicitudes con
+	 * <code>PUT /slct</code> mandando <code>estado: 'APROBADA'</code> directo, y este metodo
+	 * lo grababa tal cual -- sin consumir saldo, sin fila en RHH.DVAC y sin
+	 * {@code NovedadNomina}. Seis solicitudes de agosto (empresa 1236) quedaron APROBADAS
+	 * sin haber pasado por {@link #aprobar}, y el rol de agosto nunca tuvo el renglon de
+	 * vacaciones que le correspondia. El FE ya corrigio para llamar a
+	 * <code>/slct/aprobar</code>, <code>/rechazar</code> o <code>/anularAprobacion</code>,
+	 * pero el guard queda aqui tambien: un cliente no deberia poder saltarse el ciclo real
+	 * solo porque el generico lo permite.</p>
+	 *
+	 * <p>Rechaza el <code>PUT</code> si el <code>estado</code> que llega es distinto del que
+	 * esta en la base y alguno de los dos (el actual o el entrante) es APROBADA, RECHAZADA o
+	 * ANULADA -- esos tres solo se alcanzan desde el ciclo real. Editar otros campos de una
+	 * solicitud sin tocar el estado (p.ej. la observacion de una PENDIENTE) sigue permitido
+	 * por este metodo.</p>
+	 *
+	 * <p>Los campos de auditoria de la aprobacion (<code>usuarioAprobacion</code>,
+	 * <code>fechaAprobacion</code>) no se aceptan por este metodo aunque el cliente los
+	 * mande: se ignoran en silencio y se conserva lo que ya estaba grabado, porque son
+	 * escritura exclusiva de {@link #aprobar}/{@link #rechazar}/{@link #anularAprobacion} y
+	 * un PUT generico no deberia poder falsificarlos.</p>
+	 */
 	@Override
 	public SolicitudVacaciones saveSingle(SolicitudVacaciones solicituVacaciones) throws Throwable {
-		System.out.println("Ingresa al metodo (selectByCriteria) SolicitudVacaciones");
+		System.out.println("Ingresa al metodo saveSingle de SolicitudVacaciones, solicitud: "
+				+ solicituVacaciones.getCodigo());
+
+		if (solicituVacaciones.getCodigo() != null) {
+			SolicitudVacaciones existente = em.find(SolicitudVacaciones.class, solicituVacaciones.getCodigo());
+			if (existente != null) {
+				String estadoActual = existente.getEstado();
+				String estadoEntrante = solicituVacaciones.getEstado();
+				boolean cambiaEstado = estadoEntrante != null && !estadoEntrante.equalsIgnoreCase(estadoActual);
+				boolean tocaEstadoControlado = esEstadoDelCiclo(estadoActual) || esEstadoDelCiclo(estadoEntrante);
+				if (cambiaEstado && tocaEstadoControlado) {
+					throw new IncomeException("El estado de la solicitud " + existente.getCodigo()
+							+ " es " + estadoActual + " y no se cambia editando el registro: use"
+							+ " /slct/aprobar, /slct/rechazar o /slct/anularAprobacion segun corresponda.");
+				}
+				solicituVacaciones.setUsuarioAprobacion(existente.getUsuarioAprobacion());
+				solicituVacaciones.setFechaAprobacion(existente.getFechaAprobacion());
+			}
+		}
+
 		solicituVacaciones = solicitudVacaciones.save(solicituVacaciones, solicituVacaciones.getCodigo());
 		return solicituVacaciones;
+	}
+
+	/**
+	 * True si el estado es uno de los tres que solo se alcanzan desde el ciclo real de
+	 * aprobacion (APROBADA, RECHAZADA, ANULADA); false para PENDIENTE, null, o cualquier
+	 * otro valor libre.
+	 */
+	private boolean esEstadoDelCiclo(String estado) {
+		return ESTADO_APROBADA.equalsIgnoreCase(estado) || ESTADO_RECHAZADA.equalsIgnoreCase(estado)
+				|| ESTADO_ANULADA.equalsIgnoreCase(estado);
 	}
 
 	// =====================================================================
@@ -208,12 +264,13 @@ public class SolicitudVacacionesServiceImpl implements SolicitudVacacionesServic
 			throw new IncomeException("No existe un periodo de nomina de la empresa " + idEmpresa
 					+ " que contenga la fecha " + solicitud.getFechaDesde() + ".");
 		}
-		if (!Long.valueOf(RhhEstadoPeriodoNomina.ABIERTO).equals(periodo.getEstado())) {
-			throw new IncomeException("El periodo de nomina " + periodo.getMes() + "/" + periodo.getAnio()
-					+ " (id " + periodo.getCodigo() + ") no esta abierto (estado " + periodo.getEstado()
-					+ "); no se puede generar la novedad de vacaciones. Apruebe la solicitud cuando el"
-					+ " periodo que contiene " + solicitud.getFechaDesde() + " este abierto.");
-		}
+		// Antes exigia ABIERTO estricto; relajado el 2026-09-08 a ABIERTO-o-CALCULADO (mismo
+		// criterio que ValorNoPagadoServiceImpl y OrdenBeneficioSocialServiceImpl, ver
+		// PeriodoModificableNomina): reabrirPeriodo deja el periodo en CALCULADO, nunca en
+		// ABIERTO, asi que el guard estricto era una pared sin puerta para aprobar una
+		// solicitud de vacaciones despues de una reapertura.
+		PeriodoModificableNomina.exige(periodo, "generar la novedad de vacaciones de la solicitud "
+				+ idSolicitud);
 
 		ConceptoNomina concepto = conceptoNominaDaoService.selectByCodigoAlterno(
 				CODIGO_ALTERNO_VACACIONES_PAGADAS, idEmpresa);
@@ -224,48 +281,7 @@ public class SolicitudVacacionesServiceImpl implements SolicitudVacacionesServic
 
 		String usuario = usuarioNombre(idUsuario);
 
-		// Consumo FIFO: del anio mas antiguo al mas reciente, saltando caducados. Se hace
-		// aqui mismo (no con AcreditacionVacacionesService.consumir, que hace exactamente
-		// esto pero no expone que anios toco) para poder grabar una fila de RHH.DVAC por
-		// cada SaldoVacaciones que se consume - es lo que permite que anularAprobacion
-		// devuelva los dias exactamente a esos anios. Ver
-		// docs/logica-negocio/rhh/CICLO-APROBACION-VACACIONES.md.
-		double porConsumir = dias.doubleValue();
-		for (SaldoVacaciones saldo : saldoVacacionesDaoService.selectDisponibles(idEmpleado)) {
-			if (porConsumir <= 0D) {
-				break;
-			}
-			double pendientes = saldo.getDiasPendientes() != null ? saldo.getDiasPendientes().doubleValue() : 0D;
-			double consume = Math.min(pendientes, porConsumir);
-			if (consume <= 0D) {
-				continue;
-			}
-			double usados = saldo.getDiasUsados() != null ? saldo.getDiasUsados().doubleValue() : 0D;
-			saldo.setDiasUsados(RedondeoNomina.redondeaCantidad(Double.valueOf(usados + consume)));
-			saldo.setDiasPendientes(RedondeoNomina.redondeaCantidad(Double.valueOf(pendientes - consume)));
-			saldo.setUsuarioRegistro(usuario);
-			saldoVacacionesDaoService.save(saldo, saldo.getCodigo());
-
-			DetalleConsumoVacaciones detalle = new DetalleConsumoVacaciones();
-			detalle.setSolicitud(solicitud);
-			detalle.setSaldo(saldo);
-			detalle.setDias(RedondeoNomina.redondeaCantidad(Double.valueOf(consume)));
-			detalle.setEstado(Long.valueOf(1L));
-			detalle.setFechaRegistro(LocalDateTime.now());
-			detalle.setUsuarioRegistro(usuario);
-			detalleConsumoVacacionesDaoService.save(detalle, null);
-
-			porConsumir = porConsumir - consume;
-		}
-		if (porConsumir > 0D) {
-			// No debería pasar: diasDisponibles ya validó arriba que alcanza. Si pasa,
-			// es una condición de carrera (otra aprobación consumió el saldo en el medio)
-			// y es mejor abortar la transacción entera que dejar la solicitud a medio
-			// aprobar.
-			throw new IncomeException("El saldo del empleado " + idEmpleado + " cambió mientras se "
-					+ "aprobaba la solicitud " + idSolicitud + ": faltan " + RedondeoNomina.redondeaCantidad(
-					Double.valueOf(porConsumir)) + " dia(s) por cubrir. Intente de nuevo.");
-		}
+		consumeSaldoFifo(idEmpleado, dias, solicitud, usuario);
 
 		Double valorDia = acreditacionVacacionesService.valorDiaVacaciones(idEmpleado, solicitud.getFechaDesde());
 		Double valorNovedad = RedondeoNomina.redondea(Double.valueOf(
@@ -337,78 +353,223 @@ public class SolicitudVacacionesServiceImpl implements SolicitudVacacionesServic
 		if (solicitud == null) {
 			throw new IncomeException("No existe la solicitud de vacaciones " + idSolicitud + ".");
 		}
-		if (!ESTADO_APROBADA.equalsIgnoreCase(solicitud.getEstado())) {
-			throw new IncomeException("La solicitud " + idSolicitud + " esta en estado "
-					+ solicitud.getEstado() + "; solo se puede anular la aprobacion de una solicitud"
-					+ " aprobada.");
-		}
 		if (motivo == null || motivo.trim().isEmpty()) {
 			throw new IncomeException("Debe indicar el motivo de la anulacion.");
 		}
 
-		Long idEmpleado = solicitud.getEmpleado().getCodigo();
-		Long idEmpresa = solicitud.getEmpleado().getEmpresa() != null
-				? solicitud.getEmpleado().getEmpresa().getCodigo() : null;
-
-		ConceptoNomina concepto = conceptoNominaDaoService.selectByCodigoAlterno(
-				CODIGO_ALTERNO_VACACIONES_PAGADAS, idEmpresa);
-		NovedadNomina novedad = concepto != null
-				? novedadNominaDaoService.selectPorDescripcion(idEmpleado, concepto.getCodigo(),
-						marcadorNovedad(idSolicitud))
-				: null;
-		if (novedad == null) {
-			throw new IncomeException("No se encontro la novedad de nomina que genero la aprobacion de"
-					+ " la solicitud " + idSolicitud + "; no se puede anular de forma automatica.");
-		}
-		PeriodoNomina periodoNovedad = novedad.getPeriodoNomina();
-		if (periodoNovedad != null && periodoNovedad.getEstado() != null
-				&& periodoNovedad.getEstado().longValue() >= RhhEstadoPeriodoNomina.PAGADO) {
-			throw new IncomeException("La novedad de la solicitud " + idSolicitud + " ya entro en un rol"
-					+ " del periodo " + periodoNovedad.getMes() + "/" + periodoNovedad.getAnio()
-					+ ", que esta en estado " + periodoNovedad.getEstado() + " (pagado o posterior); no"
-					+ " se puede anular una novedad que ya se pago.");
+		// ===== INICIO anular sin aprobar (equipo omen-saa-2, 2026-09-08) =====
+		// El FE no tiene (ni va a tener) un endpoint de proceso para cancelar una solicitud
+		// que nunca se aprobo -PENDIENTE/SOLICITADA-: para el usuario es el mismo boton
+		// "anular" en los dos casos, y forzarlo a saber en que estado esta la solicitud
+		// antes de elegir endpoint es la misma clase de acoplamiento que produjo el PUT
+		// directo que motivo el guard de saveSingle. Este metodo admite los dos origenes;
+		// RECHAZADA y ANULADA siguen sin admitir "anular" -ya son estados terminales.
+		boolean estabaAprobada = ESTADO_APROBADA.equalsIgnoreCase(solicitud.getEstado());
+		if (!estabaAprobada && (ESTADO_RECHAZADA.equalsIgnoreCase(solicitud.getEstado())
+				|| ESTADO_ANULADA.equalsIgnoreCase(solicitud.getEstado()))) {
+			throw new IncomeException("La solicitud " + idSolicitud + " esta en estado "
+					+ solicitud.getEstado() + "; no hay una aprobacion que anular ni una solicitud"
+					+ " pendiente que cancelar.");
 		}
 
 		String usuario = usuarioNombre(idUsuario);
 
-		// Devolucion EXACTA via RHH.DVAC: cada fila vigente dice de que anio salieron
-		// los dias de ESTA solicitud, asi que se devuelven a exactamente esos anios,
-		// sin importar que se haya consumido despues. Si la solicitud se aprobo antes
-		// de que existiera esta tabla (no hay backfill, a proposito - ver
-		// docs/logica-negocio/rhh/sql/03-detalle-consumo-vacaciones.sql), no hay filas
-		// y se cae al heuristico revertirConsumo, con su imprecision documentada.
-		List<DetalleConsumoVacaciones> consumos = detalleConsumoVacacionesDaoService
-				.selectVigentesPorSolicitud(idSolicitud);
-		if (!consumos.isEmpty()) {
-			for (DetalleConsumoVacaciones detalle : consumos) {
-				SaldoVacaciones saldo = detalle.getSaldo();
-				double pendientes = saldo.getDiasPendientes() != null ? saldo.getDiasPendientes().doubleValue() : 0D;
-				double usados = saldo.getDiasUsados() != null ? saldo.getDiasUsados().doubleValue() : 0D;
-				double dias = detalle.getDias().doubleValue();
-				saldo.setDiasPendientes(RedondeoNomina.redondeaCantidad(Double.valueOf(pendientes + dias)));
-				saldo.setDiasUsados(RedondeoNomina.redondeaCantidad(Double.valueOf(Math.max(0D, usados - dias))));
-				saldo.setUsuarioRegistro(usuario);
-				saldoVacacionesDaoService.save(saldo, saldo.getCodigo());
+		if (estabaAprobada) {
+			Long idEmpleado = solicitud.getEmpleado().getCodigo();
+			Long idEmpresa = solicitud.getEmpleado().getEmpresa() != null
+					? solicitud.getEmpleado().getEmpresa().getCodigo() : null;
 
-				detalle.setEstado(Long.valueOf(0L));
-				detalleConsumoVacacionesDaoService.save(detalle, detalle.getCodigo());
+			ConceptoNomina concepto = conceptoNominaDaoService.selectByCodigoAlterno(
+					CODIGO_ALTERNO_VACACIONES_PAGADAS, idEmpresa);
+			NovedadNomina novedad = concepto != null
+					? novedadNominaDaoService.selectPorDescripcion(idEmpleado, concepto.getCodigo(),
+							marcadorNovedad(idSolicitud))
+					: null;
+			if (novedad == null) {
+				throw new IncomeException("No se encontro la novedad de nomina que genero la aprobacion de"
+						+ " la solicitud " + idSolicitud + "; no se puede anular de forma automatica.");
 			}
-		} else {
-			System.out.println("⚠ Solicitud " + idSolicitud + " sin filas en RHH.DVAC (aprobada antes"
-					+ " de esa tabla): la devolucion usa el heuristico revertirConsumo, no exacto.");
-			acreditacionVacacionesService.revertirConsumo(idEmpleado, solicitud.getDiasSolicitados(), usuario);
-		}
+			PeriodoNomina periodoNovedad = novedad.getPeriodoNomina();
+			if (periodoNovedad != null && periodoNovedad.getEstado() != null
+					&& periodoNovedad.getEstado().longValue() >= RhhEstadoPeriodoNomina.PAGADO) {
+				throw new IncomeException("La novedad de la solicitud " + idSolicitud + " ya entro en un rol"
+						+ " del periodo " + periodoNovedad.getMes() + "/" + periodoNovedad.getAnio()
+						+ ", que esta en estado " + periodoNovedad.getEstado() + " (pagado o posterior); no"
+						+ " se puede anular una novedad que ya se pago.");
+			}
 
-		novedad.setAprobada("N");
-		novedad.setEstado(Long.valueOf(0L));
-		novedad.setDescripcion(nvl(novedad.getDescripcion()) + " | ANULADA: " + motivo.trim());
-		novedadNominaDaoService.save(novedad, novedad.getCodigo());
+			// Devolucion EXACTA via RHH.DVAC: cada fila vigente dice de que anio salieron
+			// los dias de ESTA solicitud, asi que se devuelven a exactamente esos anios,
+			// sin importar que se haya consumido despues. Si la solicitud se aprobo antes
+			// de que existiera esta tabla (no hay backfill, a proposito - ver
+			// docs/logica-negocio/rhh/sql/03-detalle-consumo-vacaciones.sql), no hay filas
+			// y se cae al heuristico revertirConsumo, con su imprecision documentada.
+			List<DetalleConsumoVacaciones> consumos = detalleConsumoVacacionesDaoService
+					.selectVigentesPorSolicitud(idSolicitud);
+			if (!consumos.isEmpty()) {
+				for (DetalleConsumoVacaciones detalle : consumos) {
+					SaldoVacaciones saldo = detalle.getSaldo();
+					double pendientes = saldo.getDiasPendientes() != null ? saldo.getDiasPendientes().doubleValue() : 0D;
+					double usados = saldo.getDiasUsados() != null ? saldo.getDiasUsados().doubleValue() : 0D;
+					double dias = detalle.getDias().doubleValue();
+					saldo.setDiasPendientes(RedondeoNomina.redondeaCantidad(Double.valueOf(pendientes + dias)));
+					saldo.setDiasUsados(RedondeoNomina.redondeaCantidad(Double.valueOf(Math.max(0D, usados - dias))));
+					saldo.setUsuarioRegistro(usuario);
+					saldoVacacionesDaoService.save(saldo, saldo.getCodigo());
+
+					detalle.setEstado(Long.valueOf(0L));
+					detalleConsumoVacacionesDaoService.save(detalle, detalle.getCodigo());
+				}
+			} else {
+				System.out.println("⚠ Solicitud " + idSolicitud + " sin filas en RHH.DVAC (aprobada antes"
+						+ " de esa tabla): la devolucion usa el heuristico revertirConsumo, no exacto.");
+				acreditacionVacacionesService.revertirConsumo(idEmpleado, solicitud.getDiasSolicitados(), usuario);
+			}
+
+			novedad.setAprobada("N");
+			novedad.setEstado(Long.valueOf(0L));
+			novedad.setDescripcion(nvl(novedad.getDescripcion()) + " | ANULADA: " + motivo.trim());
+			novedadNominaDaoService.save(novedad, novedad.getCodigo());
+		}
+		// Si no estaba aprobada (PENDIENTE/SOLICITADA): nunca se consumio saldo ni se genero
+		// novedad, asi que no hay nada que revertir -pasa directo a ANULADA.
+		// ===== FIN anular sin aprobar =====
 
 		solicitud.setEstado(ESTADO_ANULADA);
 		solicitud.setObservacion(nvl(solicitud.getObservacion()) + " | ANULACION: " + motivo.trim()
 				+ " (usuario: " + usuario + ", " + LocalDate.now() + ")");
 		return solicitudVacaciones.save(solicitud, solicitud.getCodigo());
 	}
+
+	// ===== INICIO consumo FIFO extraido + reparacion (equipo omen-saa-2, 2026-09-08) =====
+	/**
+	 * Consumo FIFO del saldo de vacaciones: del anio mas antiguo al mas reciente, saltando
+	 * caducados ({@link SaldoVacacionesDaoService#selectDisponibles(Long)}). No se hace con
+	 * {@code AcreditacionVacacionesService.consumir}, que hace exactamente esto pero no expone
+	 * que anios toco, para poder grabar una fila de RHH.DVAC por cada SaldoVacaciones que se
+	 * consume -es lo que permite que {@link #anularAprobacion} devuelva los dias exactamente a
+	 * esos anios. Ver docs/logica-negocio/rhh/CICLO-APROBACION-VACACIONES.md.
+	 *
+	 * <p>Extraido el 2026-09-08 de {@link #aprobar} (comportamiento identico, sin cambios) para
+	 * que {@link #consumirSaldoSinNovedad} lo pueda reusar sin duplicar la regla de caducidad
+	 * ni el redondeo -que es exactamente donde se meten diferencias si se reescribe aparte.</p>
+	 *
+	 * @param idEmpleado	: Id del empleado
+	 * @param dias			: Dias a consumir
+	 * @param solicitud		: Solicitud que motiva el consumo, para la fila de RHH.DVAC
+	 * @param usuario		: Usuario que ejecuta
+	 * @throws Throwable	: IncomeException si el saldo cambio en el medio y ya no alcanza
+	 */
+	private void consumeSaldoFifo(Long idEmpleado, Double dias, SolicitudVacaciones solicitud, String usuario)
+			throws Throwable {
+		double porConsumir = dias.doubleValue();
+		for (SaldoVacaciones saldo : saldoVacacionesDaoService.selectDisponibles(idEmpleado)) {
+			if (porConsumir <= 0D) {
+				break;
+			}
+			double pendientes = saldo.getDiasPendientes() != null ? saldo.getDiasPendientes().doubleValue() : 0D;
+			double consume = Math.min(pendientes, porConsumir);
+			if (consume <= 0D) {
+				continue;
+			}
+			double usados = saldo.getDiasUsados() != null ? saldo.getDiasUsados().doubleValue() : 0D;
+			saldo.setDiasUsados(RedondeoNomina.redondeaCantidad(Double.valueOf(usados + consume)));
+			saldo.setDiasPendientes(RedondeoNomina.redondeaCantidad(Double.valueOf(pendientes - consume)));
+			saldo.setUsuarioRegistro(usuario);
+			saldoVacacionesDaoService.save(saldo, saldo.getCodigo());
+
+			DetalleConsumoVacaciones detalle = new DetalleConsumoVacaciones();
+			detalle.setSolicitud(solicitud);
+			detalle.setSaldo(saldo);
+			detalle.setDias(RedondeoNomina.redondeaCantidad(Double.valueOf(consume)));
+			detalle.setEstado(Long.valueOf(1L));
+			detalle.setFechaRegistro(LocalDateTime.now());
+			detalle.setUsuarioRegistro(usuario);
+			detalleConsumoVacacionesDaoService.save(detalle, null);
+
+			porConsumir = porConsumir - consume;
+		}
+		if (porConsumir > 0D) {
+			// No debería pasar: el llamador ya valido que el saldo alcanza. Si pasa, es una
+			// condicion de carrera (otra aprobacion consumio el saldo en el medio) y es mejor
+			// abortar la transaccion entera que dejar el consumo a medias.
+			throw new IncomeException("El saldo del empleado " + idEmpleado + " cambió mientras se "
+					+ "procesaba la solicitud " + solicitud.getCodigo() + ": faltan "
+					+ RedondeoNomina.redondeaCantidad(Double.valueOf(porConsumir)) + " dia(s) por cubrir."
+					+ " Intente de nuevo.");
+		}
+	}
+
+	/**
+	 * <b>Endpoint de REPARACION, no parte del ciclo normal.</b> Existe solo para las
+	 * solicitudes que quedaron APROBADA por el camino viejo: hasta el 2026-09-08 el FE
+	 * aprobaba con <code>PUT /slct</code> mandando <code>estado: 'APROBADA'</code> directo, y
+	 * {@link #saveSingle} lo grababa tal cual -- sin pasar por {@link #aprobar}, sin consumir
+	 * saldo, sin fila en RHH.DVAC y sin {@code NovedadNomina}. Caso real: seis solicitudes de
+	 * agosto (SLCT 1-6, empresa 1236). El FE ya corrige llamando a <code>/slct/aprobar</code>,
+	 * y {@link #saveSingle} ahora rechaza ese PUT (ver su javadoc), asi que este caso no puede
+	 * volver a producirse -- el dia que las seis solicitudes viejas esten reparadas, este
+	 * endpoint no tiene mas trabajo pendiente.</p>
+	 *
+	 * <p>Descuenta el saldo (mismo {@link #consumeSaldoFifo} que usa <code>aprobar</code>, RHH.SLDV
+	 * + RHH.DVAC) para que esos dias dejen de aparecer como disponibles. <b>No genera
+	 * {@code NovedadNomina}</b>: el asiento contable de esos periodos ya se hizo a mano, y
+	 * generar la novedad ahora duplicaria el gasto si alguien recalcula.</p>
+	 *
+	 * <p>Guard de idempotencia: exige que la solicitud este ya APROBADA (no es un atajo para
+	 * aprobar sin pasar por {@code aprobar}, es solo para completar el descuento de saldo que
+	 * quedo pendiente) y que no tenga ya filas en RHH.DVAC -- si ya las tiene, es que se proceso
+	 * bien (por {@code aprobar} o por una corrida anterior de este mismo metodo) y no hay nada
+	 * que reparar; correrlo de nuevo por error no duplica el descuento.</p>
+	 *
+	 * @param idSolicitud	: Id de la solicitud APROBADA a reparar
+	 * @param idUsuario		: Usuario que ejecuta la reparacion
+	 * @param motivo		: Motivo/referencia de la reparacion, obligatorio, para la observacion
+	 * @return				: La solicitud actualizada
+	 * @throws Throwable	: IncomeException si la solicitud no existe, no esta APROBADA, ya
+	 *						  tiene consumo registrado, o falta el motivo
+	 */
+	@Override
+	public SolicitudVacaciones consumirSaldoSinNovedad(Long idSolicitud, Long idUsuario, String motivo)
+			throws Throwable {
+		System.out.println("Ingresa al metodo consumirSaldoSinNovedad (REPARACION) de SolicitudVacaciones,"
+				+ " solicitud: " + idSolicitud);
+
+		if (motivo == null || motivo.trim().isEmpty()) {
+			throw new IncomeException("Debe indicar el motivo de la reparacion.");
+		}
+		SolicitudVacaciones solicitud = em.find(SolicitudVacaciones.class, idSolicitud);
+		if (solicitud == null) {
+			throw new IncomeException("No existe la solicitud de vacaciones " + idSolicitud + ".");
+		}
+		if (!ESTADO_APROBADA.equalsIgnoreCase(solicitud.getEstado())) {
+			throw new IncomeException("La solicitud " + idSolicitud + " esta en estado "
+					+ solicitud.getEstado() + "; este endpoint solo repara solicitudes ya APROBADA"
+					+ " (por el camino viejo, sin consumo de saldo). Use /slct/aprobar para las demas.");
+		}
+		List<DetalleConsumoVacaciones> consumosPrevios = detalleConsumoVacacionesDaoService
+				.selectVigentesPorSolicitud(idSolicitud);
+		if (consumosPrevios != null && !consumosPrevios.isEmpty()) {
+			throw new IncomeException("La solicitud " + idSolicitud + " ya tiene " + consumosPrevios.size()
+					+ " fila(s) en RHH.DVAC: ya consumio saldo (por /slct/aprobar o por una reparacion"
+					+ " anterior). No hay nada que reparar.");
+		}
+		if (solicitud.getDiasSolicitados() == null || solicitud.getDiasSolicitados().doubleValue() <= 0D) {
+			throw new IncomeException("La solicitud " + idSolicitud + " no tiene dias solicitados"
+					+ " (" + solicitud.getDiasSolicitados() + "); no hay nada que descontar.");
+		}
+
+		Long idEmpleado = solicitud.getEmpleado().getCodigo();
+		String usuario = usuarioNombre(idUsuario);
+
+		consumeSaldoFifo(idEmpleado, solicitud.getDiasSolicitados(), solicitud, usuario);
+
+		solicitud.setObservacion(nvl(solicitud.getObservacion()) + " | REPARACION 2026-09: saldo descontado"
+				+ " sin novedad (aprobada por el camino viejo, sin pasar por /slct/aprobar). Motivo: "
+				+ motivo.trim() + " (usuario: " + usuario + ", " + LocalDate.now() + ")");
+		return solicitudVacaciones.save(solicitud, solicitud.getCodigo());
+	}
+	// ===== FIN consumo FIFO extraido + reparacion =====
 
 	// =====================================================================
 	// Apoyo

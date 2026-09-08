@@ -191,6 +191,34 @@ public class SolicitudVacacionesRest {
         }
     }
 
+    // ===== INICIO reparacion consumo sin novedad (equipo omen-saa-2, 2026-09-08) =====
+    /**
+     * Endpoint de REPARACION, no parte del ciclo normal. Descuenta el saldo de una solicitud
+     * que quedo APROBADA por el camino viejo (un PUT /slct directo, antes del fix del FE de
+     * 2026-09-08) sin generar novedad -el asiento contable de esos periodos ya se hizo a mano.
+     * Ver el javadoc de {@code SolicitudVacacionesServiceImpl#consumirSaldoSinNovedad}.
+     * Body: {"idUsuario": N, "motivo": "..." (obligatorio)}.
+     */
+    @POST
+    @Path("/consumirSaldoSinNovedad/{id}")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response consumirSaldoSinNovedad(@PathParam("id") Long id, Map<String, Object> datos) {
+        System.out.println("LLEGA AL SERVICIO POST /slct/consumirSaldoSinNovedad/" + id);
+        try {
+            Long idUsuario = (datos != null) ? toLong(datos.get("idUsuario")) : null;
+            String motivo = (datos != null && datos.get("motivo") != null)
+                    ? datos.get("motivo").toString() : null;
+            SolicitudVacaciones resultado = SolicitudVacacionesService.consumirSaldoSinNovedad(id, idUsuario, motivo);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("Error al reparar la solicitud: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+    // ===== FIN reparacion consumo sin novedad =====
+
     private Long toLong(Object valor) {
         if (valor == null) return null;
         if (valor instanceof Number) return ((Number) valor).longValue();

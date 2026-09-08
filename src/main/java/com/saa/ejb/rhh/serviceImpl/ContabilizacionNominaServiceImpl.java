@@ -9,6 +9,7 @@ import java.util.Map;
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.cnt.dao.DetallePlantillaDaoService;
 import com.saa.ejb.cnt.service.AsientoContableService;
+import com.saa.ejb.cnt.service.AsientoService;
 import com.saa.ejb.cnt.service.PlantillaService;
 import com.saa.ejb.rhh.dao.ConfiguracionNominaDaoService;
 import com.saa.ejb.rhh.dao.NominaDaoService;
@@ -39,6 +40,7 @@ import com.saa.model.rhh.PeriodoNomina;
 import com.saa.model.rhh.ProvisionNomina;
 import com.saa.model.rhh.ReglonNomina;
 import com.saa.model.rhh.ValorNoPagado;
+import com.saa.rubros.EstadoPeriodos;
 import com.saa.rubros.ModuloSistema;
 import com.saa.rubros.RhhEstadoLiquidacion;
 import com.saa.rubros.RhhEstadoPeriodoNomina;
@@ -130,6 +132,13 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
 
     @EJB
     private CierreCuotasDescuentoService cierreCuotasDescuentoService;
+
+    // ===== INICIO descontabilizar periodo (equipo omen-saa-2, 2026-09-08) =====
+    // AsientoService (cnt), no AsientoContableService: la generacion usa AsientoContableService,
+    // pero anular/consultar un asiento existente vive en AsientoService (selectById, anulaAsiento).
+    @EJB
+    private AsientoService asientoService;
+    // ===== FIN descontabilizar periodo =====
 
     // ===== INICIO enganche valores no pagados (script e2-26, equipo omen-saa-2) =====
     // Ver docs/logica-negocio/rhh/PLAN-VALORES-NO-PAGADOS.md §7.3.
@@ -310,6 +319,94 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
                 + " contabilizadas con el asiento " + asiento.getCodigo());
         return asiento;
     }
+
+    // ===== INICIO descontabilizar periodo (equipo omen-saa-2, 2026-09-08) =====
+    /* (non-Javadoc)
+     * @see com.saa.ejb.rhh.service.ContabilizacionNominaService#descontabilizarPeriodo(java.lang.Long, java.lang.String, java.lang.String)
+     */
+    @Override
+    @TransactionAttribute(TransactionAttributeType.REQUIRED)
+    public void descontabilizarPeriodo(Long idPeriodoNomina, String motivo, String usuario) throws Throwable {
+        System.out.println("Ingresa al metodo descontabilizarPeriodo de contabilizacionNomina service, periodo: "
+                + idPeriodoNomina);
+
+        if (motivo == null || motivo.trim().isEmpty()) {
+            throw new IncomeException("La descontabilizacion de un periodo exige un motivo.");
+        }
+
+        PeriodoNomina periodo = recuperaPeriodo(idPeriodoNomina);
+        if (!Long.valueOf(RhhEstadoPeriodoNomina.CONTABILIZADO).equals(periodo.getEstado())) {
+            throw new IncomeException("Solo se puede descontabilizar un periodo CONTABILIZADO ("
+                    + RhhEstadoPeriodoNomina.CONTABILIZADO + "). El periodo " + idPeriodoNomina
+                    + " esta en estado " + periodo.getEstado() + ".");
+        }
+
+        // Una orden de pago ya generada referencia este periodo (RHH.RDPG.PRDNCDGO). Recalcular
+        // por debajo la dejaria huerfana -sin la contabilidad que la origino- asi que el
+        // usuario tiene que anular o revertir esa orden primero.
+        List<OrdenPagoNomina> ordenes = ordenPagoNominaDaoService.selectByPeriodo(idPeriodoNomina);
+        if (ordenes != null && !ordenes.isEmpty()) {
+            throw new IncomeException("El periodo " + idPeriodoNomina
+                    + " ya tiene " + ordenes.size() + " orden(es) de pago generada(s)."
+                    + " Anule o revierta esas ordenes antes de descontabilizar.");
+        }
+
+        exigeAsientoAnulable(periodo.getAsientoRol(), "rol de pagos");
+        exigeAsientoAnulable(periodo.getAsientoProvisiones(), "provisiones");
+
+        if (periodo.getAsientoRol() != null) {
+            asientoService.anulaAsiento(periodo.getAsientoRol(), usuario, motivo);
+        }
+        if (periodo.getAsientoProvisiones() != null) {
+            asientoService.anulaAsiento(periodo.getAsientoProvisiones(), usuario, motivo);
+        }
+
+        periodo.setAsientoRol(null);
+        periodo.setAsientoProvisiones(null);
+        // Vuelve a CALCULADO, el mismo estado al que reabrirPeriodo lleva un periodo CERRADO:
+        // el flujo completo (descontabilizar -> aprobar novedades pendientes -> recalcular ->
+        // aprobar -> contabilizar) queda consistente con ese precedente.
+        periodo.setEstado(Long.valueOf(RhhEstadoPeriodoNomina.CALCULADO));
+        periodo.setObservaciones("Descontabilizado por " + usuario + ": " + motivo);
+        periodoNominaDaoService.save(periodo, periodo.getCodigo());
+
+        System.out.println("Periodo " + idPeriodoNomina + " descontabilizado, vuelve a CALCULADO.");
+    }
+
+    /**
+     * Verifica que un asiento se pueda anular de verdad antes de tocar nada. No delega esta
+     * verificacion en {@code asientoService.anulaAsiento}: si el periodo contable (CNT) del
+     * asiento esta MAYORIZADO, ese metodo no rechaza -reversa en silencio en su lugar-, lo que
+     * dejaria dos asientos en los libros en vez de cero. Y si esta CERRADO, {@code AsientoService}
+     * no lo valida en absoluto. Las dos cosas se comprueban aqui, antes de anular nada.
+     *
+     * @param idAsiento		: Codigo del asiento a verificar; si es null no hace nada (el
+     *						  periodo puede no tener ese asiento, p.ej. provisiones en un
+     *						  periodo sin base de vacaciones)
+     * @param etiqueta		: Nombre del asiento para el mensaje de error ("rol de pagos", "provisiones")
+     * @throws Throwable	: IncomeException si el asiento esta en un periodo contable
+     *						  MAYORIZADO o CERRADO
+     */
+    private void exigeAsientoAnulable(Long idAsiento, String etiqueta) throws Throwable {
+        if (idAsiento == null) {
+            return;
+        }
+        Asiento asiento = asientoService.selectById(idAsiento);
+        if (asiento == null || asiento.getPeriodo() == null) {
+            return;
+        }
+        Long estadoPeriodoContable = asiento.getPeriodo().getEstado();
+        if (Long.valueOf(EstadoPeriodos.MAYORIZADO).equals(estadoPeriodoContable)
+                || Long.valueOf(EstadoPeriodos.CERRADO).equals(estadoPeriodoContable)) {
+            boolean mayorizado = Long.valueOf(EstadoPeriodos.MAYORIZADO).equals(estadoPeriodoContable);
+            throw new IncomeException("El asiento de " + etiqueta + " (" + idAsiento
+                    + ") esta en un periodo contable " + (mayorizado ? "MAYORIZADO" : "CERRADO")
+                    + ": no se puede anular. " + (mayorizado
+                            ? "Desmayorice el periodo contable primero."
+                            : "Reabra el periodo contable primero."));
+        }
+    }
+    // ===== FIN descontabilizar periodo =====
 
     /* (non-Javadoc)
      * @see com.saa.ejb.rhh.service.ContabilizacionNominaService#contabilizarPago(java.lang.Long, java.time.LocalDate, java.lang.String)
@@ -641,6 +738,21 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
      * comportamiento anterior -todo a gasto-, que es lo que permite desplegar esto sin haber
      * medido antes si el estudio actuarial esta cargado (ver
      * docs/logica-negocio/rhh/PLAN-PAGO-BENEFICIOS-Y-SALIDA-POR-TESORERIA.md #4.1bis).</p>
+     *
+     * <p><b>Esta es LA EXCEPCION a la decision "A" (2026-09-08, sin tope contra RHH.PVNM en
+     * {@code contabilizarBajaProvisionBeneficioSocial} ni en
+     * {@code acumulaBajaProvisionVacaciones}).</b> Confirmada explicitamente por el usuario
+     * despues de que este metodo se paro a consultar antes de tocarla. La diferencia de fondo:
+     * decimos y vacaciones se devengan todos los meses via el motor -el pasivo real siempre
+     * existe, {@code RHH.PVNM} solo lo subreporta porque excluye periodos historicos (ver
+     * {@code ProvisionNominaDaoService#sumaValorByEmpleadoYTipo}), asi que quitarle el tope ahi
+     * solo deja de esconder un pasivo que de verdad esta en libros por saldos iniciales.
+     * Jubilacion patronal y desahucio son distintos: esa provision <b>solo existe si alguien
+     * cargo un estudio actuarial</b>, y puede no haberse cargado nunca en ninguno de los dos
+     * sistemas. Quitar el tope aqui no destaparia un pasivo subreportado -fabricaria uno donde
+     * el estudio nunca se cargo-, mandando todo el rubro a gasto sin ninguna provision que
+     * descargar seria, en ese caso, lo correcto. El tope protege exactamente esa distincion:
+     * mientras haya saldo actuarial cargado se descarga contra el, y el resto va a gasto.</p>
      *
      * <p>Se suma sin restar consumos porque hoy nada consume esas provisiones: la suma de
      * <code>PVNMVLOR</code> es el saldo completo. El dia que algo las consuma, esta cuenta deja

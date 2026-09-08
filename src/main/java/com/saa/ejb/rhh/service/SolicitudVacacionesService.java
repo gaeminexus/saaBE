@@ -62,8 +62,16 @@ public interface SolicitudVacacionesService extends EntityService<SolicitudVacac
 	SolicitudVacaciones rechazar(Long idSolicitud, Long idUsuario, String motivo) throws Throwable;
 
 	/**
-	 * Anula la aprobacion de una solicitud: devuelve los dias al saldo y anula la
-	 * novedad que la aprobacion habia creado.
+	 * Anula una solicitud de vacaciones. Admite dos origenes (2026-09-08, para que el FE
+	 * tenga un solo boton "anular" sin tener que saber en que estado esta la solicitud):
+	 *
+	 * <ul>
+	 * <li><b>Estaba APROBADA:</b> devuelve los dias al saldo y anula la novedad que la
+	 * aprobacion habia creado -- el comportamiento original de este metodo.</li>
+	 * <li><b>Nunca se aprobo (PENDIENTE/SOLICITADA):</b> no hay saldo consumido ni novedad
+	 * que retirar, pasa directo a ANULADA con el motivo. RECHAZADA y ANULADA no admiten
+	 * "anular" de nuevo: ya son estados terminales.</li>
+	 * </ul>
 	 *
 	 * <p><b>Nota de precision, pendiente de la tabla de detalle propuesta en
 	 * docs/logica-negocio/rhh/CICLO-APROBACION-VACACIONES.md:</b> hoy la devolucion usa
@@ -83,5 +91,26 @@ public interface SolicitudVacacionesService extends EntityService<SolicitudVacac
 	 */
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
 	SolicitudVacaciones anularAprobacion(Long idSolicitud, String motivo, Long idUsuario) throws Throwable;
+
+	// ===== INICIO reparacion consumo sin novedad (equipo omen-saa-2, 2026-09-08) =====
+	/**
+	 * <b>Endpoint de REPARACION, no parte del ciclo normal.</b> Descuenta el saldo (RHH.SLDV +
+	 * RHH.DVAC, mismo FIFO que {@code aprobar}) de una solicitud que quedo APROBADA por el
+	 * camino viejo -un <code>PUT /slct</code> que grababa el estado directo, sin pasar por
+	 * <code>aprobar</code>, sin consumir saldo y sin {@code NovedadNomina}- sin generar la
+	 * novedad: el asiento contable de esos periodos ya se hizo a mano. Ver el javadoc de la
+	 * implementacion para el detalle completo del caso (seis solicitudes de agosto 2026,
+	 * empresa 1236) y el guard de idempotencia.
+	 *
+	 * @param idSolicitud	: Id de la solicitud APROBADA a reparar
+	 * @param idUsuario		: Usuario que ejecuta la reparacion
+	 * @param motivo		: Motivo/referencia de la reparacion, obligatorio
+	 * @return				: La solicitud actualizada
+	 * @throws Throwable	: IncomeException si la solicitud no existe, no esta APROBADA, ya
+	 *						  tiene consumo registrado, o falta el motivo
+	 */
+	@TransactionAttribute(TransactionAttributeType.REQUIRED)
+	SolicitudVacaciones consumirSaldoSinNovedad(Long idSolicitud, Long idUsuario, String motivo) throws Throwable;
+	// ===== FIN reparacion consumo sin novedad =====
 
 }

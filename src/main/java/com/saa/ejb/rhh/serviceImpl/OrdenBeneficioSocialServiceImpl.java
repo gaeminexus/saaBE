@@ -21,6 +21,7 @@ import com.saa.ejb.rhh.dao.ReglonNominaDaoService;
 import com.saa.ejb.cnt.service.AsientoService;
 import com.saa.ejb.rhh.service.ContabilizacionNominaService;
 import com.saa.ejb.rhh.service.OrdenBeneficioSocialService;
+import com.saa.ejb.rhh.util.PeriodoModificableNomina;
 import com.saa.ejb.rhh.util.RedondeoNomina;
 import com.saa.model.cnt.Asiento;
 import com.saa.model.cxp.PagoProgramado;
@@ -534,20 +535,26 @@ public class OrdenBeneficioSocialServiceImpl implements OrdenBeneficioSocialServ
                 }
             }
             // ===== INICIO decimo acumulado en periodo CALCULADO (equipo omen-saa-2, bloqueo urgente 2026-09-08) =====
-            // Antes rechazaba con solo mirar el ESTADO del periodo (> ABIERTO). Eso ya no
-            // alcanza: confirmarPago ahora puede crear la novedad con el periodo en
-            // CALCULADO (mismo criterio que VNPG), asi que un periodo CALCULADO ya no
-            // implica que el rol haya absorbido la novedad -- puede que se haya creado
-            // DESPUES del ultimo calculo, y entonces no hay ningun renglon huerfano que
-            // proteger. Se verifica renglon por renglon (novedadAbsorbidaPorRol), no el
-            // estado del periodo: solo si el rol REALMENTE la consumio se rechaza.
+            // Version 2026-09-08 (descontabilizar periodo): el criterio ya no es "existe un
+            // renglon huerfano" -- desde que descontabilizarPeriodo existe, un renglon puede
+            // sobrevivir a un periodo que volvio a CALCULADO (esa operacion deliberadamente
+            // NO toca NMNA/RNGL/ACMN) sin que eso implique que el pago no se pueda revertir:
+            // justo al reves, es el caso que el flujo quiere destrabar. Lo que de verdad
+            // protege este guard es que el periodo YA ESTE CONTABILIZADO (o mas alla): ahi el
+            // renglon alimento un asiento real, y borrar la novedad sin mas dejaria ese
+            // asiento sin respaldo. Antes de CONTABILIZADO, cualquier renglon que exista es
+            // descartable -- lo borra el bloque de abajo -- porque el recalculo lo va a
+            // regenerar de todos modos.
             for (NovedadNomina novedad : novedades) {
                 PeriodoNomina periodoNovedad = novedad.getPeriodoNomina();
-                if (periodoNovedad != null && novedadAbsorbidaPorRol(novedad, periodoNovedad)) {
-                    throw new IncomeException("El rol del período " + periodoNovedad.getMes() + "/"
-                            + periodoNovedad.getAnio() + " ya calculó y absorbió la novedad de esta orden"
-                            + " (empleado " + novedad.getEmpleado().getCodigo() + "). Reabra o reprocese"
-                            + " el período antes de revertir el pago.");
+                if (periodoNovedad != null && periodoNovedad.getEstado() != null
+                        && periodoNovedad.getEstado().longValue() >= RhhEstadoPeriodoNomina.CONTABILIZADO) {
+                    throw new IncomeException("El período " + periodoNovedad.getMes() + "/"
+                            + periodoNovedad.getAnio() + " ya está "
+                            + PeriodoModificableNomina.textoEstado(periodoNovedad.getEstado())
+                            + ": no se puede revertir el pago de la orden " + idOrden
+                            + " (empleado " + novedad.getEmpleado().getCodigo() + ") sin descontabilizar"
+                            + " el período primero.");
                 }
             }
             // ===== FIN decimo acumulado en periodo CALCULADO =====
@@ -565,9 +572,19 @@ public class OrdenBeneficioSocialServiceImpl implements OrdenBeneficioSocialServ
             liquidacionBeneficioSocialDaoService.save(liquidacion, liquidacion.getCodigo());
         }
 
+        // ===== INICIO descontabilizar periodo (equipo omen-saa-2, 2026-09-08) =====
+        // Si el periodo ya paso por un calculo (CALCULADO o mas, pero por la validacion de
+        // arriba nunca CONTABILIZADO), puede haber quedado un renglon apuntando a esta
+        // novedad. Borrarla sin mas lo dejaria huerfano -sobreviviria a un recalculo
+        // posterior solo si nadie recalcula antes de aprobar de nuevo. Se elimina aqui, con
+        // la misma trazabilidad que usa el motor para escribirlo.
         for (NovedadNomina novedad : novedades) {
+            for (ReglonNomina renglon : renglonesDeNovedad(novedad, novedad.getPeriodoNomina())) {
+                reglonNominaDaoService.remove(new ReglonNomina(), renglon.getCodigo());
+            }
             novedadNominaDaoService.remove(new NovedadNomina(), novedad.getCodigo());
         }
+        // ===== FIN descontabilizar periodo =====
 
         orden.setEstado(Long.valueOf(RhhEstadoOrdenBeneficio.REVERTIDA));
         orden.setFechaPago(null);
@@ -682,7 +699,7 @@ public class OrdenBeneficioSocialServiceImpl implements OrdenBeneficioSocialServ
                     + " que contenga la fecha " + fecha + ": no se puede registrar la novedad del pago"
                     + " de la orden " + orden.getCodigo() + ".");
         }
-        exigePeriodoModificable(periodo, "registrar la novedad del pago de la orden " + orden.getCodigo());
+        PeriodoModificableNomina.exige(periodo, "registrar la novedad del pago de la orden " + orden.getCodigo());
 
         String descripcion = marcadorNovedadDecimo(tipoBeneficio, orden.getCodigo());
         for (LiquidacionBeneficioSocial liquidacion : liquidaciones) {
@@ -712,100 +729,46 @@ public class OrdenBeneficioSocialServiceImpl implements OrdenBeneficioSocialServ
         return null;
     }
 
-    // ===== INICIO decimo acumulado en periodo CALCULADO (equipo omen-saa-2, bloqueo urgente 2026-09-08) =====
-    /**
-     * Exige que el periodo admita cambios de nomina (registrar la novedad del decimo
-     * acumulado). Copiado de {@code ValorNoPagadoServiceImpl.exigePeriodoModificable} -mismo
-     * criterio, mismo texto de mensaje-, no extraido a un lugar compartido por el apuro del
-     * bloqueo: hay al menos tres clases con la misma pregunta (esta,
-     * {@code ValorNoPagadoServiceImpl}, {@code SolicitudVacacionesServiceImpl}) y mover eso
-     * ahora es mas alcance del que un arreglo urgente deberia llevar. Pendiente de
-     * centralizar.
-     *
-     * <ul>
-     * <li>{@code ABIERTO}(1) o {@code CALCULADO}(3): permitido.</li>
-     * <li>{@code EN_CALCULO}(2): rechazado -- registrar en medio de un calculo es una carrera
-     * contra el motor que esta leyendo/escribiendo esta misma nomina.</li>
-     * <li>Cualquier otro ({@code >= APROBADO}): rechazado, ya no admite cambios de nomina.</li>
-     * </ul>
-     *
-     * @param periodo		: Periodo de nomina
-     * @param operacion		: Texto de la operacion, para el mensaje
-     * @throws Throwable	: IncomeException si el periodo no admite la operacion
-     */
-    private void exigePeriodoModificable(PeriodoNomina periodo, String operacion) throws Throwable {
-        int estado = periodo.getEstado() != null ? periodo.getEstado().intValue() : -1;
-        if (estado == RhhEstadoPeriodoNomina.ABIERTO || estado == RhhEstadoPeriodoNomina.CALCULADO) {
-            return;
-        }
-        if (estado == RhhEstadoPeriodoNomina.EN_CALCULO) {
-            throw new IncomeException("El rol del periodo " + periodo.getMes() + "/" + periodo.getAnio()
-                    + " se esta calculando: espere a que termine antes de " + operacion + ".");
-        }
-        throw new IncomeException("El periodo " + periodo.getMes() + "/" + periodo.getAnio() + " esta "
-                + textoEstadoPeriodo(periodo.getEstado()) + ": ya no admite cambios de nomina.");
-    }
-
-    private String textoEstadoPeriodo(Long estado) {
-        if (estado == null) {
-            return "en un estado desconocido";
-        }
-        switch (estado.intValue()) {
-            case RhhEstadoPeriodoNomina.ABIERTO:
-                return "ABIERTO";
-            case RhhEstadoPeriodoNomina.EN_CALCULO:
-                return "EN_CALCULO";
-            case RhhEstadoPeriodoNomina.CALCULADO:
-                return "CALCULADO";
-            case RhhEstadoPeriodoNomina.APROBADO:
-                return "APROBADO";
-            case RhhEstadoPeriodoNomina.CONTABILIZADO:
-                return "CONTABILIZADO";
-            case RhhEstadoPeriodoNomina.PAGADO:
-                return "PAGADO";
-            case RhhEstadoPeriodoNomina.CERRADO:
-                return "CERRADO";
-            case RhhEstadoPeriodoNomina.ANULADO:
-                return "ANULADO";
-            default:
-                return "en estado " + estado;
-        }
-    }
+    // exigePeriodoModificable/textoEstadoPeriodo centralizados el 2026-09-08 en
+    // PeriodoModificableNomina (com.saa.ejb.rhh.util), junto con la copia de
+    // ValorNoPagadoServiceImpl y la nueva de SolicitudVacacionesServiceImpl.
 
     /**
-     * Indica si el rol ya calculo y absorbio esta novedad: existe un renglon de la nomina de
-     * ese empleado en ese periodo que la referencia (misma trazabilidad que usa el motor,
-     * {@code ProcesoNominaServiceImpl}, tabla "RHH.NVNM" + el codigo de la novedad). Distingue
-     * "la novedad existe" (el registro esta en RHH.NVNM, pero el rol no la vio -- se creo con
-     * el periodo ya CALCULADO, o se creo antes pero el rol no se ha vuelto a correr) de "el
-     * rol ya la absorbio" (se recalculo el periodo despues de que la novedad existiera): solo
-     * el segundo caso deja un renglon huerfano si se borra la novedad sin mas.
+     * Ubica los renglones de nomina que trazan hacia esta novedad: misma trazabilidad que
+     * escribe el motor al generarlos ({@code ProcesoNominaServiceImpl}, tabla "RHH.NVNM" + el
+     * codigo de la novedad). Antes de descontabilizar el periodo esto servia para distinguir
+     * "la novedad existe pero el rol no la vio" de "el rol ya la absorbio"; desde que
+     * {@code ContabilizacionNominaService#descontabilizarPeriodo} existe, el guard de
+     * {@code revertirPago} ya no depende de esto -- rechaza por el ESTADO del periodo, no por
+     * si hay un renglon-- y esta consulta pasa a usarse solo para encontrar y borrar esos
+     * renglones cuando la reversion procede, y asi no dejarlos huerfanos.
      *
-     * @param novedad	: Novedad a verificar
+     * @param novedad	: Novedad de nomina
      * @param periodo	: Periodo de la novedad
-     * @return			: true si ya hay un renglon que la referencia
+     * @return			: Renglones que la referencian; vacia si no hay
      * @throws Throwable	: Excepcion
      */
-    private boolean novedadAbsorbidaPorRol(NovedadNomina novedad, PeriodoNomina periodo) throws Throwable {
-        if (novedad.getEmpleado() == null) {
-            return false;
+    private List<ReglonNomina> renglonesDeNovedad(NovedadNomina novedad, PeriodoNomina periodo) throws Throwable {
+        List<ReglonNomina> encontrados = new ArrayList<ReglonNomina>();
+        if (novedad.getEmpleado() == null || periodo == null) {
+            return encontrados;
         }
         Nomina nomina = nominaDaoService.selectByPeriodoYEmpleado(periodo.getCodigo(),
                 novedad.getEmpleado().getCodigo());
         if (nomina == null) {
-            return false;
+            return encontrados;
         }
         List<ReglonNomina> renglones = reglonNominaDaoService.selectByNomina(nomina.getCodigo());
         if (renglones == null) {
-            return false;
+            return encontrados;
         }
         for (ReglonNomina renglon : renglones) {
             if ("RHH.NVNM".equals(renglon.getTablaReferencia())
                     && novedad.getCodigo().equals(renglon.getIdReferencia())) {
-                return true;
+                encontrados.add(renglon);
             }
         }
-        return false;
+        return encontrados;
     }
     // ===== FIN decimo acumulado en periodo CALCULADO =====
 

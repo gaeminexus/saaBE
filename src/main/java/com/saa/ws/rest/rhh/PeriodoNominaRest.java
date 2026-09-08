@@ -245,6 +245,27 @@ public class PeriodoNominaRest {
         }
     }
 
+    // ===== INICIO descontabilizar periodo (equipo omen-saa-2, 2026-09-08) =====
+    /**
+     * Deshace la contabilizacion: anula los asientos de rol y provisiones y devuelve el
+     * periodo a CALCULADO. Ver el javadoc de {@code ContabilizacionNominaService#descontabilizarPeriodo}.
+     */
+    @POST
+    @Path("/descontabilizar/{idPeriodo}")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response descontabilizar(@PathParam("idPeriodo") Long idPeriodo, Map<String, Object> datos) {
+        System.out.println("LLEGA AL SERVICIO DESCONTABILIZAR - PERIODONOMINA, periodo: " + idPeriodo);
+        try {
+            contabilizacionNominaService.descontabilizarPeriodo(idPeriodo, leeTexto(datos, "motivo"),
+                    leeTexto(datos, "usuarioRegistro"));
+            return Response.status(Response.Status.OK).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al descontabilizar el periodo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+    // ===== FIN descontabilizar periodo =====
+
     /**
      * Cierra el periodo y escribe los acumulados ACMN.
      */

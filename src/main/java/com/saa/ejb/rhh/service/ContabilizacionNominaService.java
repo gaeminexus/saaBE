@@ -88,6 +88,54 @@ public interface ContabilizacionNominaService {
     @TransactionAttribute(TransactionAttributeType.REQUIRED)
     Asiento contabilizarProvisiones(Long idPeriodoNomina, String usuario) throws Throwable;
 
+    // ===== INICIO descontabilizar periodo (equipo omen-saa-2, 2026-09-08) =====
+    /**
+     * Deshace la contabilizacion del rol de pagos: anula los dos asientos (rol y provisiones,
+     * los que no sean null), limpia <code>PRDNASNT</code>/<code>PRDNASPR</code> y devuelve el
+     * periodo a CALCULADO -- el mismo estado al que {@code ProcesoNominaService.reabrirPeriodo}
+     * lleva un periodo CERRADO, para que el flujo completo (descontabilizar → aprobar
+     * novedades pendientes → recalcular → aprobar → contabilizar) quede consistente.
+     *
+     * <p>Caso real, 2026-09-08: un periodo se contabilizo antes de que las vacaciones gozadas
+     * de agosto entraran como novedad aprobada (el defecto de la provision de vacaciones que
+     * nunca bajaba). El usuario prefiere descontabilizar y regenerar la contabilidad completa
+     * con la novedad ya aprobada, en vez de un asiento manual de reclasificacion.</p>
+     *
+     * <p><b>No toca</b> <code>NMNA</code>/<code>RNGL</code>/<code>ACMN</code>: solo deshace la
+     * contabilidad. El recalculo posterior (<code>ProcesoNominaService.recalcularPeriodo</code>
+     * o equivalente) es responsabilidad de quien orquesta el flujo completo, no de este
+     * metodo.</p>
+     *
+     * <p><b>Guardas:</b></p>
+     * <ul>
+     * <li>Solo desde <code>CONTABILIZADO</code>: cualquier otro estado se rechaza.</li>
+     * <li>Motivo obligatorio, mismo criterio que <code>reabrirPeriodo</code>.</li>
+     * <li>Rechaza si el periodo ya tiene una orden de pago generada (<code>RHH.RDPG</code> por
+     * <code>PRDNCDGO</code>): recalcular por debajo de una orden ya emitida la dejaria
+     * huerfana. El usuario tiene que anular o revertir esa orden primero.</li>
+     * <li>Rechaza si alguno de los dos asientos esta en un periodo CONTABLE (CNT, no RHH)
+     * MAYORIZADO o CERRADO. MAYORIZADO importa porque {@code AsientoService.anulaAsiento} no
+     * lo rechaza: en ese caso REVERSA en silencio en vez de anular -dejaria dos asientos en
+     * los libros en vez de cero, exactamente lo que este metodo no quiere. CERRADO no lo
+     * valida {@code AsientoService} en absoluto, asi que se valida aqui.</li>
+     * </ul>
+     *
+     * <p>Anula, no reversa: {@code asientoService.anulaAsiento(idAsiento, usuario, motivo)},
+     * el mismo metodo que ya usa {@code OrdenBeneficioSocialServiceImpl.revertirPago}. Aqui no
+     * hay conciliacion bancaria de por medio -a diferencia del pago rebotado del banco- asi
+     * que no hace falta la opcion de reversar con contrapartida.</p>
+     *
+     * @param idPeriodoNomina	: Id del periodo de nomina, debe estar CONTABILIZADO
+     * @param motivo			: Motivo de la descontabilizacion, obligatorio
+     * @param usuario			: Usuario que ejecuta
+     * @throws Throwable		: IncomeException si el periodo no esta CONTABILIZADO, si falta
+     *							  el motivo, si tiene una orden de pago generada, o si algun
+     *							  asiento esta en un periodo contable MAYORIZADO o CERRADO
+     */
+    @TransactionAttribute(TransactionAttributeType.REQUIRED)
+    void descontabilizarPeriodo(Long idPeriodoNomina, String motivo, String usuario) throws Throwable;
+    // ===== FIN descontabilizar periodo =====
+
     /**
      * Contabiliza el pago de una orden y registra la fecha de acreditacion.
      *
