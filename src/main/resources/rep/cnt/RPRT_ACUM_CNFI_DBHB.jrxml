@@ -10,14 +10,21 @@
 	<parameter name="P_IMAGEN" class="java.awt.Image"/>
 	<parameter name="P_FILTRO" class="java.lang.String"/>
 	<parameter name="P_MAYORIZADO" class="java.lang.String"/>
-	<query language="SQL"><![CDATA[SELECT  dtmtcdgo, dtmtscrp, plnncdgo, dtmtslan, dtmtdbee, dtmthbrr, dtmtslac, dtmtctcn, 
-       plnncdpd, plnnnmbr, plnntpoo, plnnnvll, myrzcdgo, 
+	<parameter name="P_PJRQ_CODIGO" class="java.lang.Long"/>
+	<parameter name="P_USUARIO" class="java.lang.String"/>
+	<parameter name="P_NIVEL_MAXIMO" class="java.lang.Integer">
+		<defaultValueExpression><![CDATA[6]]></defaultValueExpression>
+	</parameter>
+	<query language="SQL"><![CDATA[SELECT  dtmtcdgo, dtmtscrp, plnncdgo, dtmtslan, dtmtdbee, dtmthbrr, dtmtslac, dtmtctcn,
+       plnncdpd, plnnnmbr, plnntpoo, plnnnvll, myrzcdgo,
        decode(plnnnvll,1, dtmtslan, 0) SALDO_ANTERIOR,
-       decode(plnnnvll,1, dtmtdbee, 0) DEBE, 
+       decode(plnnnvll,1, dtmtdbee, 0) DEBE,
        decode(plnnnvll,1, dtmthbrr, 0) HABER ,
-       decode(plnnnvll,1, dtmtslac, 0) SALDO_ACTUAL
-FROM CNT.DTMT 
+       decode(plnnnvll,1, dtmtslac, 0) SALDO_ACTUAL,
+       (SELECT e.PJRQNMBR FROM SCP.PJRQ e WHERE e.PJRQCDGO = $P{P_PJRQ_CODIGO}) EMPRESA_NOMBRE
+FROM CNT.DTMT
 WHERE DTMTSCRP = $P{P_DTMTSCRP}
+AND LENGTH(REPLACE(DTMTCTCN,'.','')) <= $P{P_NIVEL_MAXIMO}
 ORDER BY DTMTCTCN]]></query>
 	<field name="DTMTCDGO" class="java.math.BigDecimal">
 		<description><![CDATA[]]></description>
@@ -62,6 +69,7 @@ ORDER BY DTMTCTCN]]></query>
 	<field name="DEBE" class="java.math.BigDecimal"/>
 	<field name="HABER" class="java.math.BigDecimal"/>
 	<field name="SALDO_ACTUAL" class="java.math.BigDecimal"/>
+	<field name="EMPRESA_NOMBRE" class="java.lang.String"/>
 	<variable name="SUMA_ANTERIOR" calculation="Sum" class="java.math.BigDecimal">
 		<expression><![CDATA[$F{SALDO_ANTERIOR}]]></expression>
 	</variable>
@@ -75,7 +83,7 @@ ORDER BY DTMTCTCN]]></query>
 		<expression><![CDATA[$F{SALDO_ACTUAL}]]></expression>
 	</variable>
 	<background splitType="Stretch"/>
-	<pageHeader height="88" splitType="Stretch">
+	<pageHeader height="98" splitType="Stretch">
 		<element kind="textField" uuid="3405d9c7-de92-48fc-a430-b69cd935bb6c" x="312" y="29" width="57" height="15" fontSize="8.0" pattern="dd-MMM-yyyy" bold="true">
 			<expression><![CDATA[$P{P_FECHAFINAL}]]></expression>
 		</element>
@@ -100,14 +108,17 @@ ORDER BY DTMTCTCN]]></query>
 		<element kind="textField" uuid="2a9c4f88-0d42-4350-8678-41214717908a" x="473" y="35" width="58" height="15" fontSize="8.0" pattern="K:mm a">
 			<expression><![CDATA[new java.util.Date()]]></expression>
 		</element>
-		<element kind="textField" uuid="4c9d0f3d-2339-4be1-a998-b5add84e8cf2" x="96" y="5" width="370" height="20" fontSize="13.0" bold="true" hTextAlign="Center">
-			<expression><![CDATA[$P{P_REPORTE}]]></expression>
+		<element kind="staticText" uuid="4c9d0f3d-2339-4be1-a998-b5add84e8cf2" x="96" y="5" width="370" height="20" fontSize="13.0" bold="true" hTextAlign="Center">
+			<text><![CDATA[ESTADO DE SITUACIÓN FINANCIERA — CON MOVIMIENTO DEL PERÍODO]]></text>
 		</element>
 		<element kind="image" uuid="96e7f90c-0706-4038-9b27-01c15e6a3e52" positionType="FixRelativeToBottom" x="10" y="5" width="80" height="40" scaleImage="RealSize" evaluationTime="Report" lazy="true">
 			<expression><![CDATA[$P{P_IMAGEN}]]></expression>
 		</element>
-		<element kind="textField" uuid="41358d06-139d-4309-8a9b-415a114d7466" x="10" y="51" width="332" height="15" fontSize="8.0" bold="true">
-			<expression><![CDATA[$P{P_PATH}]]></expression>
+		<element kind="staticText" uuid="a2b2c3d4-4001-0001-0001-000000000001" x="10" y="51" width="60" height="13" fontSize="8.0" bold="true">
+			<text><![CDATA[EMPRESA:]]></text>
+		</element>
+		<element kind="textField" uuid="a2b2c3d4-4001-0001-0001-000000000002" x="70" y="51" width="272" height="13" fontSize="8.0" blankWhenNull="true">
+			<expression><![CDATA[$F{EMPRESA_NOMBRE}]]></expression>
 		</element>
 		<element kind="textField" uuid="ccf46c2d-ae1b-4a53-9fa1-165d0ebf179c" x="10" y="67" width="539" height="15" fontSize="8.0" bold="true">
 			<expression><![CDATA[$P{P_FILTRO}]]></expression>
@@ -115,7 +126,10 @@ ORDER BY DTMTCTCN]]></query>
 		<element kind="textField" uuid="77b2e9ef-280c-4a37-8948-83299c3863f9" x="473" y="51" width="74" height="15" forecolor="#0000CC" fontName="SansSerif" fontSize="8.0" bold="true">
 			<expression><![CDATA[$P{P_MAYORIZADO}]]></expression>
 		</element>
-		<element kind="line" uuid="51a9cd74-7174-44c0-94d7-4610a05242dc" x="10" y="83" width="539" height="1"/>
+		<element kind="textField" uuid="a2b2c3d4-4001-0001-0001-000000000003" x="10" y="83" width="300" height="13" fontSize="7.0">
+			<expression><![CDATA["Impreso por: " + $P{P_USUARIO}]]></expression>
+		</element>
+		<element kind="line" uuid="51a9cd74-7174-44c0-94d7-4610a05242dc" x="10" y="94" width="539" height="1"/>
 	</pageHeader>
 	<columnHeader height="25" splitType="Stretch">
 		<element kind="staticText" uuid="26a503a3-4dcb-4b0a-a822-e2bd24a299d4" x="10" y="5" width="80" height="13" fontName="Tahoma" fontSize="9.0" bold="true">
@@ -161,7 +175,7 @@ ORDER BY DTMTCTCN]]></query>
 			</element>
 		</band>
 	</detail>
-	<summary height="50" splitType="Stretch">
+	<summary height="78" splitType="Stretch">
 		<element kind="staticText" uuid="fc7ef9f5-ccaf-4a9a-89ea-f4591842f717" x="241" y="10" width="40" height="15" fontName="Tahoma" fontSize="8.0" bold="true" hTextAlign="Right">
 			<text><![CDATA[TOTALES:]]></text>
 		</element>
@@ -178,5 +192,23 @@ ORDER BY DTMTCTCN]]></query>
 			<expression><![CDATA[$V{SUMA_SALDO}]]></expression>
 		</element>
 		<element kind="line" uuid="58247d51-f40d-4843-bea7-d4c0923dec01" x="241" y="7" width="308" height="1"/>
+		<element kind="line" uuid="a2b2c3d4-4002-0001-0001-000000000001" x="15" y="46" width="125" height="1"/>
+		<element kind="staticText" uuid="a2b2c3d4-4002-0001-0001-000000000002" x="15" y="49" width="125" height="24" fontSize="7.0" hTextAlign="Center">
+			<text><![CDATA[Presidente del Consejo
+de Administración]]></text>
+		</element>
+		<element kind="line" uuid="a2b2c3d4-4002-0001-0001-000000000003" x="150" y="46" width="125" height="1"/>
+		<element kind="staticText" uuid="a2b2c3d4-4002-0001-0001-000000000004" x="150" y="49" width="125" height="24" fontSize="7.0" hTextAlign="Center">
+			<text><![CDATA[Representante Legal]]></text>
+		</element>
+		<element kind="line" uuid="a2b2c3d4-4002-0001-0001-000000000005" x="285" y="46" width="125" height="1"/>
+		<element kind="staticText" uuid="a2b2c3d4-4002-0001-0001-000000000006" x="285" y="49" width="125" height="24" fontSize="7.0" hTextAlign="Center">
+			<text><![CDATA[Contador General
+Reg. CPA N° __________]]></text>
+		</element>
+		<element kind="line" uuid="a2b2c3d4-4002-0001-0001-000000000007" x="420" y="46" width="125" height="1"/>
+		<element kind="staticText" uuid="a2b2c3d4-4002-0001-0001-000000000008" x="420" y="49" width="125" height="24" fontSize="7.0" hTextAlign="Center">
+			<text><![CDATA[Auditor Interno]]></text>
+		</element>
 	</summary>
 </jasperReport>

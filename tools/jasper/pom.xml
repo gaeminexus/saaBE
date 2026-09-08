@@ -64,6 +64,21 @@
       <artifactId>jasperreports-jdt</artifactId>
       <version>${jasper.version}</version>
     </dependency>
+
+    <!-- Fijado a la MISMA version que resuelve el pom.xml del WAR (6.5.1): la resolucion
+         transitiva de este pom mas chico caia sola en 7.0.0. Se investigo como posible causa
+         de que un .jrxml de sintaxis clasica no compile (JRException "Unable to load report"
+         sin causa ni log), pero NO lo es: se confirmo leyendo el fuente de JRXmlLoader y el
+         contenido del jar que JasperReports 7.0.3 open-source no trae ningun ReportLoader
+         capaz de leer esa sintaxis, con cualquier version de woodstox (la unica implementacion
+         presente en el jar es JacksonReportLoader, que solo entiende la sintaxis compacta). El
+         fix real para esos reportes fue convertirlos a sintaxis compacta; este pin queda solo
+         por prolijidad, para que este pom resuelva la misma version que el WAR. -->
+    <dependency>
+      <groupId>com.fasterxml.woodstox</groupId>
+      <artifactId>woodstox-core</artifactId>
+      <version>6.5.1</version>
+    </dependency>
   </dependencies>
 
 </project>
