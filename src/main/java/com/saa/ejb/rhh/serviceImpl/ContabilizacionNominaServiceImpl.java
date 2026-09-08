@@ -819,8 +819,6 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
                 + ", " + (idsEmpleados != null ? idsEmpleados.size() : 0) + " empleado(s)");
 
         int lineaProvision = lineaProvisionPorPagarBeneficio(tipoBeneficio);
-        int lineaGasto = lineaGastoBeneficio(tipoBeneficio);
-        Long tipoProvision = Long.valueOf(tipoProvisionDeBeneficio(tipoBeneficio));
 
         ConfiguracionNomina configuracion = configuracionNominaDaoService.selectByEmpresa(idEmpresa);
         if (configuracion == null) {
@@ -830,59 +828,39 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
         Long marcadora = exigeCuentaMarcadora(configuracion);
         Double valor = RedondeoNomina.redondea(total);
 
-        // Tope contra la provision realmente contabilizada (2026-09-01, #4bis del plan):
-        // RHH.PVNM incluye periodos historicos que nunca generaron asiento -el DAO ya los
-        // excluye-, asi que sin este tope un decimo cuya provision nunca se contabilizo
-        // dejaria el pasivo en negativo y el gasto sin reconocer. Con saldo cero degrada a
-        // "todo a gasto", que es lo correcto: el gasto no se reconocio antes, se reconoce
-        // ahora. Mismo criterio que descargaProvisionActuarial (item 6).
-        Double saldoProvision = provisionNominaDaoService.sumaValorByEmpleadosYTipo(idsEmpleados, tipoProvision);
-        double saldo = saldoProvision != null ? Math.max(saldoProvision.doubleValue(), 0D) : 0D;
-        Double parteProvision = RedondeoNomina.redondea(Double.valueOf(Math.min(saldo, valor.doubleValue())));
-        Double parteGasto = RedondeoNomina.redondea(Double.valueOf(valor.doubleValue() - parteProvision.doubleValue()));
-
         List<DetalleAsiento> lineas = new ArrayList<DetalleAsiento>();
 
-        // DEBE: la parte cubierta por provision real, de la misma plantilla que ya usa
-        // contabilizarProvisiones para darla de alta.
+        // DEBE: la baja va INTEGRA contra la provision, sin tope contra RHH.PVNM (decision
+        // del usuario, 2026-09-08, "A" para las tres bajas de provision del sistema).
         //
-        // 🔴 EL LADO SE IMPONE, NO SE HEREDA DE LA PLANTILLA. Esa linea sale de la
-        // plantilla de PROVISION MENSUAL, donde el pasivo se acredita (HABER) al
-        // devengar -correcto ahi-. Aca se esta dando de BAJA el pasivo, que es lo
-        // contrario: hay que debitarlo. Usar construyeLinea(plantilla, valor) heredaba
-        // el HABER de la plantilla en silencio y el nombre de la variable
-        // ("lineaDebeProvision") no evitaba nada. Medido en produccion 2026-09-08:
-        // asiento del pago de decimo cuarto descuadrado por exactamente el doble del
-        // valor de la provision (642,72 x 2 = 1.285,44).
-        if (parteProvision.doubleValue() > 0D) {
-            Long idPlantillaProvision = resuelvePlantilla(configuracion.getPlantillaProvision(),
-                    "baja de provision", idEmpresa);
-            DetallePlantilla lineaDebeProvision = exigeLinea(idPlantillaProvision, lineaProvision,
-                    "baja de provision");
-            exigeCuentaReal(lineaDebeProvision, marcadora, "baja de provision");
-            lineas.add(construyeLinea(lineaDebeProvision, parteProvision, true));
-        }
-
-        // DEBE: el excedente sin provision real detras va a gasto -mismas lineas que usa el
-        // rol para el decimo/fondo de reserva mensualizado (GASTO_DECIMO_TERCERO=6,
-        // GASTO_DECIMO_CUARTO=7, GASTO_FONDOS_DE_RESERVA=5), resueltas contra
-        // plantillaRol: es la unica plantilla del sistema que hoy tiene esas cuentas
-        // configuradas (lineaDeIngreso las usa desde ahi en importesDelRol). NO son las
-        // lineas GASTO_PROVISION_* (30/31/33): esas representan el devengo mensual, un
-        // hecho contable distinto del gasto reconocido recien al pagar.
+        // Hasta esta version se topeaba contra sumaValorByEmpleadosYTipo, que excluye los
+        // periodos no productivos (RHH.PRDN.PRDNMODO<>1). En una empresa migrada eso es
+        // exactamente lo que descuadra: los meses previos a la puesta en marcha vinieron por
+        // saldos iniciales, el pasivo SI esta en libros (2.5.09/2.5.14), pero PVNM solo ve la
+        // porcion generada DENTRO de este sistema. Medido en produccion 2026-09-08 (script
+        // e2-30): el tope del decimo cuarto vio 682,89 de un pasivo real de 5.580,95, y
+        // 5.833,48 (de un pago de 6.476,20) cayeron a gasto en silencio -el "degrada a todo a
+        // gasto, que es lo correcto" que decia este comentario NO lo era para ese caso: el
+        // gasto ya estaba reconocido, en otro sistema, y el pasivo esta en la cuenta desde el
+        // saldo inicial.
         //
-        // Mismo lado impuesto que la linea de arriba: esta cuenta de gasto en
-        // plantillaRol esta pensada para el rol mensual (DEBE, correcto ahi tambien),
-        // asi que en este caso coincide -pero no se confia en la coincidencia, se
-        // impone igual para que un cambio futuro en la plantilla no vuelva a descuadrar
-        // esto en silencio.
-        if (parteGasto.doubleValue() > 0D) {
-            Long idPlantillaRol = resuelvePlantilla(configuracion.getPlantillaRol(),
-                    "baja de provision", idEmpresa);
-            DetallePlantilla lineaDebeGasto = exigeLinea(idPlantillaRol, lineaGasto, "baja de provision");
-            exigeCuentaReal(lineaDebeGasto, marcadora, "baja de provision");
-            lineas.add(construyeLinea(lineaDebeGasto, parteGasto, true));
-        }
+        // Consecuencia aceptada: si alguien cobra un beneficio que nunca se provisiono (ni
+        // aca ni en libros), esta cuenta queda en negativo por esa parte -es un ajuste de
+        // catalogo/carga que corrige el contador, no algo que este metodo pueda adivinar.
+        //
+        // EL LADO SE IMPONE, NO SE HEREDA DE LA PLANTILLA. Esa linea sale de la plantilla de
+        // PROVISION MENSUAL, donde el pasivo se acredita (HABER) al devengar -correcto ahi-.
+        // Aca se esta dando de BAJA el pasivo, que es lo contrario: hay que debitarlo. Usar
+        // construyeLinea(plantilla, valor) sin el tercer argumento heredaria el HABER de la
+        // plantilla en silencio. Medido en produccion 2026-09-08: asiento del pago de decimo
+        // cuarto descuadrado por exactamente el doble del valor de la provision (642,72 x 2 =
+        // 1.285,44) antes de este fix.
+        Long idPlantillaProvision = resuelvePlantilla(configuracion.getPlantillaProvision(),
+                "baja de provision", idEmpresa);
+        DetallePlantilla lineaDebeProvision = exigeLinea(idPlantillaProvision, lineaProvision,
+                "baja de provision");
+        exigeCuentaReal(lineaDebeProvision, marcadora, "baja de provision");
+        lineas.add(construyeLinea(lineaDebeProvision, valor, true));
 
         // HABER: banco, de la misma plantilla que ya usa contabilizarPago para esa linea.
         // Verificado, no supuesto: esta MISMA linea (plantillaPago, RhhLineaAsiento.BANCO) la
@@ -896,11 +874,8 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
         DetallePlantilla lineaHaber = exigeLinea(idPlantillaPago, RhhLineaAsiento.BANCO, "baja de provision");
         exigeCuentaReal(lineaHaber, marcadora, "baja de provision");
         lineas.add(construyeLinea(lineaHaber, valor));
-        // Sin comprobarCuadre: con las dos lineas de arriba ahora forzadas al DEBE (ver el fix
-        // 2026-09-08), parteGasto sale por diferencia de valor-parteProvision (las dos ya
-        // redondeadas), asi que DEBE (parteProvision + parteGasto) y HABER (valor) cuadran por
-        // construccion de verdad -antes del fix esta garantia era falsa: dependia de un lado
-        // que en realidad venia de la plantilla equivocada.
+        // Sin comprobarCuadre: una sola linea DEBE (provision = valor) y una sola HABER
+        // (banco = valor) cuadran trivialmente, por construccion.
 
         Asiento asiento = asientoContableService.generarAsiento(
                 idEmpresa,
@@ -912,7 +887,7 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
                 Long.valueOf(ModuloSistema.TESORERIA));
 
         System.out.println("Baja de provision de beneficio social contabilizada con el asiento "
-                + asiento.getCodigo() + " | provision: " + parteProvision + " | gasto: " + parteGasto);
+                + asiento.getCodigo() + " | provision: " + valor);
         return asiento;
     }
 
@@ -935,58 +910,6 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
                 throw new IncomeException("El tipo de beneficio " + tipoBeneficio + " no tiene linea de"
                         + " provision por pagar definida. La orden de beneficio social solo admite"
                         + " decimo tercero (1), decimo cuarto (2) o fondos de reserva (3).");
-        }
-    }
-
-    /**
-     * Linea de gasto (rubro 214) de un tipo de beneficio social acumulado, para el excedente
-     * sin provision real detras. Son las mismas lineas que usa <code>lineaDeIngreso</code>
-     * para el mensualizado dentro del rol -mismo gasto economico, reconocido en otro
-     * momento-, deliberadamente distintas de <code>GASTO_PROVISION_*</code> (30/31/33), que
-     * son el devengo mensual.
-     *
-     * @param tipoBeneficio	: Codigo alterno del detalle del rubro RHH_TIPO_BENEFICIO_SOCIAL
-     * @return				: Codigo de linea del rubro 214
-     * @throws Throwable	: IncomeException si el tipo no tiene linea de gasto
-     */
-    private int lineaGastoBeneficio(int tipoBeneficio) throws Throwable {
-        switch (tipoBeneficio) {
-            case RhhTipoBeneficioSocial.DECIMO_TERCERO:
-                return RhhLineaAsiento.GASTO_DECIMO_TERCERO;
-            case RhhTipoBeneficioSocial.DECIMO_CUARTO:
-                return RhhLineaAsiento.GASTO_DECIMO_CUARTO;
-            case RhhTipoBeneficioSocial.FONDOS_DE_RESERVA:
-                return RhhLineaAsiento.GASTO_FONDOS_DE_RESERVA;
-            default:
-                throw new IncomeException("El tipo de beneficio " + tipoBeneficio + " no tiene linea de"
-                        + " gasto definida. La orden de beneficio social solo admite decimo tercero (1),"
-                        + " decimo cuarto (2) o fondos de reserva (3).");
-        }
-    }
-
-    /**
-     * Traduce el codigo de RHH_TIPO_BENEFICIO_SOCIAL (1/2/3) al de RHH_TIPO_PROVISION
-     * (1/2/4) para consultar RHH.PVNM. <b>Los dos rubros numeran distinto</b> —
-     * RhhTipoProvision.FONDOS_DE_RESERVA es 4, no 3, porque VACACIONES ocupa el 3 ahi. Usar
-     * el codigo de un rubro para consultar el otro sin esta traduccion leeria la provision de
-     * vacaciones en vez de la de fondos de reserva.
-     *
-     * @param tipoBeneficio	: Codigo alterno del detalle del rubro RHH_TIPO_BENEFICIO_SOCIAL
-     * @return				: Codigo alterno del detalle del rubro RHH_TIPO_PROVISION
-     * @throws Throwable	: IncomeException si el tipo no tiene provision equivalente
-     */
-    private int tipoProvisionDeBeneficio(int tipoBeneficio) throws Throwable {
-        switch (tipoBeneficio) {
-            case RhhTipoBeneficioSocial.DECIMO_TERCERO:
-                return RhhTipoProvision.DECIMO_TERCERO;
-            case RhhTipoBeneficioSocial.DECIMO_CUARTO:
-                return RhhTipoProvision.DECIMO_CUARTO;
-            case RhhTipoBeneficioSocial.FONDOS_DE_RESERVA:
-                return RhhTipoProvision.FONDOS_DE_RESERVA;
-            default:
-                throw new IncomeException("El tipo de beneficio " + tipoBeneficio + " no tiene tipo de"
-                        + " provision equivalente. La orden de beneficio social solo admite decimo"
-                        + " tercero (1), decimo cuarto (2) o fondos de reserva (3).");
         }
     }
 
@@ -1066,7 +989,7 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
                 }
             }
             if (valorVacacionesGozadas.doubleValue() > 0D) {
-                acumulaBajaProvisionVacaciones(importes, nomina.getEmpleado(), valorVacacionesGozadas);
+                acumulaBajaProvisionVacaciones(importes, valorVacacionesGozadas);
             }
             // ===== FIN baja de provision de vacaciones gozadas =====
         }
@@ -1122,44 +1045,27 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
     }
 
     /**
-     * Reparte el valor de vacaciones gozadas de UN empleado entre la provision acumulada y el
-     * gasto, topeado por el saldo REAL de ESE empleado -no el de todos juntos-, para no
-     * reconocer el gasto dos veces (una al provisionar cada mes, otra al gozarse). Mismo
-     * patron que {@code descargaProvisionActuarial} (finiquito, tope por individuo via
-     * {@code sumaValorByEmpleadoYTipo}), NO el de {@code contabilizarBajaProvisionBeneficioSocial}
-     * (decimos/FR, tope agregado sobre un grupo de empleados): con un tope por grupo el
-     * faltante de un empleado se taparia con el sobrante de otro sin que nadie se entere.
+     * Acumula el valor de vacaciones gozadas de un empleado INTEGRO contra la provision
+     * acumulada (rubro 214, linea 42), sin tope contra {@code RHH.PVNM} (decision del
+     * usuario, 2026-09-08, "A" para las tres bajas de provision del sistema).
      *
-     * <p>No descuenta nada de {@code RHH.PVNM}: hoy nada la consume, para ningun beneficio
-     * (decimos, fondos de reserva ni finiquito) -el saldo es la suma completa de lo
-     * provisionado, ver el javadoc de {@code ProvisionNominaDaoService.sumaValorByEmpleadoYTipo}-,
-     * y este metodo sigue exactamente ese mismo comportamiento, no inventa uno nuevo.</p>
+     * <p>Hasta esta version se topeaba contra {@code sumaValorByEmpleadoYTipo} -el saldo
+     * REAL de ese empleado, no el de todos juntos, que es el patron correcto cuando SI hace
+     * falta topear (ver {@code descargaProvisionActuarial}, mas abajo)-, pero en una empresa
+     * migrada esa consulta excluye los periodos no productivos: el pasivo de vacaciones
+     * previo a la puesta en marcha SI esta en libros por saldo inicial, y {@code PVNM} solo
+     * ve la porcion generada dentro de este sistema. Medido en produccion 2026-09-08: el tope
+     * por empleado veia ~30 de ~230 acumulados reales.</p>
+     *
+     * <p>Consecuencia aceptada: si un empleado goza vacaciones sin tener provision real
+     * detras (ni aca ni en libros), esta cuenta queda en negativo por esa parte -lo ajusta el
+     * contador, este metodo no puede distinguir ese caso de una empresa migrada.</p>
      *
      * @param importes			: Mapa que se va llenando
-     * @param empleado			: Empleado de la nomina
      * @param valorVacaciones	: Valor total de vacaciones gozadas de este empleado en el periodo
-     * @throws Throwable		: Excepcion
      */
-    private void acumulaBajaProvisionVacaciones(Map<Integer, Double> importes, Empleado empleado,
-            Double valorVacaciones) throws Throwable {
-        Long idEmpleado = empleado != null ? empleado.getCodigo() : null;
-        Double saldoProvision = idEmpleado != null
-                ? provisionNominaDaoService.sumaValorByEmpleadoYTipo(idEmpleado, Long.valueOf(RhhTipoProvision.VACACIONES))
-                : null;
-        double saldo = saldoProvision != null ? Math.max(saldoProvision.doubleValue(), 0D) : 0D;
-
-        Double valor = RedondeoNomina.redondea(valorVacaciones);
-        Double parteProvision = RedondeoNomina.redondea(Double.valueOf(Math.min(saldo, valor.doubleValue())));
-        Double parteGasto = RedondeoNomina.redondea(Double.valueOf(valor.doubleValue() - parteProvision.doubleValue()));
-
-        if (parteProvision.doubleValue() > 0D) {
-            suma(importes, RhhLineaAsiento.PROVISION_VACACIONES_POR_PAGAR, parteProvision);
-        }
-        if (parteGasto.doubleValue() > 0D) {
-            // Mismo destino que hoy para todo el renglon: no cambia de cuenta, solo se le
-            // resta la parte que ahora tiene provision detras.
-            suma(importes, RhhLineaAsiento.GASTO_SUELDOS_Y_SALARIOS, parteGasto);
-        }
+    private void acumulaBajaProvisionVacaciones(Map<Integer, Double> importes, Double valorVacaciones) {
+        suma(importes, RhhLineaAsiento.PROVISION_VACACIONES_POR_PAGAR, RedondeoNomina.redondea(valorVacaciones));
     }
     // ===== FIN baja de provision de vacaciones gozadas =====
 

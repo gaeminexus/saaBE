@@ -144,27 +144,30 @@ public interface ContabilizacionNominaService {
      * decimo cuarto o fondos de reserva), al confirmar el pago de una orden
      * {@code RHH.ODBS} (frente 1, 2026-09-01).
      *
-     * <p><b>Tope contra la provision realmente contabilizada (2026-09-01, #4bis del plan).</b>
-     * {@code RHH.PVNM} incluye periodos historicos que nunca generaron asiento
-     * ({@code generaProvision} no respeta el interruptor de modo, {@link #contabilizarProvisiones}
-     * si) — descargar el total de la orden sin tope dejaria el pasivo en negativo. Se calcula
-     * {@code parteProvision = min(saldoProvision, total)} (saldo ya sin periodos historicos,
-     * ver {@code ProvisionNominaDaoService.sumaValorByEmpleadosYTipo}) y el excedente
-     * {@code parteGasto = total - parteProvision} va a la linea de gasto del tipo. Mismo
-     * criterio que {@code descargaProvisionActuarial} (frente 3-C, item 6): con saldo cero
-     * degrada a "todo a gasto", que es lo correcto para una provision nunca contabilizada.</p>
+     * <p><b>Sin tope contra {@code RHH.PVNM}: la baja va siempre INTEGRA contra la provision
+     * (decision del usuario, 2026-09-08, "A" para las tres bajas de provision del
+     * sistema).</b> Hasta el 2026-09-08 se topeaba contra la provision "realmente
+     * contabilizada" ({@code ProvisionNominaDaoService.sumaValorByEmpleadosYTipo}, que excluye
+     * los periodos historicos) y el excedente iba a gasto — pensado para el caso de una
+     * provision que nunca se contabilizo. Pero en una empresa migrada eso descuadra al reves:
+     * los periodos previos a la puesta en marcha vinieron por saldos iniciales, el pasivo SI
+     * esta en libros, y {@code PVNM} solo ve la porcion generada dentro de este sistema.
+     * Medido en produccion 2026-09-08 (script e2-30): el tope del decimo cuarto vio 682,89 de
+     * un pasivo real de 5.580,95, y 5.833,48 de un pago de 6.476,20 cayeron a gasto en
+     * silencio. Consecuencia aceptada de quitar el tope: si alguien cobra un beneficio que
+     * nunca se provisiono (ni aca ni en libros), la cuenta de provision queda en negativo por
+     * esa parte — es un ajuste de catalogo/carga que corrige el contador, no algo que este
+     * metodo pueda distinguir de una empresa migrada.</p>
      *
-     * <p>Hasta tres lineas: DEBE la provision por pagar que corresponda al tipo (40 decimo
-     * tercero, 41 decimo cuarto, 43 fondos de reserva — rubro 214, <code>RhhLineaAsiento</code>),
-     * resuelta contra <code>ConfiguracionNomina.plantillaProvision</code> —la misma plantilla
-     * que ya usa {@link #contabilizarProvisiones} para dar de alta esas mismas lineas—; DEBE
-     * el excedente a gasto (6 decimo tercero, 7 decimo cuarto, 5 fondos de reserva), resuelto
-     * contra <code>ConfiguracionNomina.plantillaRol</code> —la misma plantilla que ya usa esas
-     * lineas para el mensualizado dentro del rol—; HABER banco (linea 51), resuelta contra
+     * <p>Dos lineas: DEBE la provision por pagar que corresponda al tipo (40 decimo tercero,
+     * 41 decimo cuarto, 43 fondos de reserva — rubro 214, <code>RhhLineaAsiento</code>), por
+     * el total completo, resuelta contra <code>ConfiguracionNomina.plantillaProvision</code>
+     * —la misma plantilla que ya usa {@link #contabilizarProvisiones} para dar de alta esa
+     * misma linea, con el lado DEBE impuesto porque esa plantilla es la del devengo (HABER
+     * ahi)—; HABER banco (linea 51), resuelta contra
      * <code>ConfiguracionNomina.plantillaPago</code> —la misma que ya usa
-     * {@link #contabilizarPago}. Se reutilizan esas tres plantillas en vez de crear una nueva:
-     * son las que ya tienen esas cuentas configuradas para estas mismas lineas en otros
-     * asientos del modulo.</p>
+     * {@link #contabilizarPago}. Cuadra trivialmente: una linea DEBE y una HABER, ambas por
+     * el mismo total.</p>
      *
      * <p>Se emite con <code>ModuloSistema.TESORERIA</code>, igual que
      * {@link #contabilizarPago}: aqui tambien sale el dinero de tesoreria.</p>
@@ -176,15 +179,15 @@ public interface ContabilizacionNominaService {
      * @param idEmpresa			: Id de la empresa
      * @param tipoBeneficio		: Codigo alterno del detalle del rubro RHH_TIPO_BENEFICIO_SOCIAL
      *							  (1 decimo tercero, 2 decimo cuarto, 3 fondos de reserva)
-     * @param idsEmpleados		: Ids de los empleados cuyas liquidaciones paga la orden, para
-     *							  sumar el saldo de provision real que topea la baja
-     * @param total				: Total de la orden a dar de baja
+     * @param idsEmpleados		: Ids de los empleados cuyas liquidaciones paga la orden (solo
+     *							  para el log; ya no se usa para topear la baja)
+     * @param total				: Total de la orden a dar de baja, integro contra la provision
      * @param fecha				: Fecha del asiento
      * @param descripcion		: Descripcion del asiento
      * @param usuario			: Usuario que ejecuta
      * @return					: El asiento generado
-     * @throws Throwable		: IncomeException si el tipo no tiene linea de provision/gasto, o
-     *							  si falta la configuracion/plantilla/cuenta de la empresa
+     * @throws Throwable		: IncomeException si el tipo no tiene linea de provision, o si
+     *							  falta la configuracion/plantilla/cuenta de la empresa
      */
     @TransactionAttribute(TransactionAttributeType.REQUIRED)
     Asiento contabilizarBajaProvisionBeneficioSocial(Long idEmpresa, int tipoBeneficio,

@@ -62,18 +62,4 @@ public interface ProvisionNominaDaoService extends EntityDao<ProvisionNomina> {
 	 * @throws Throwable		: Excepcion
 	 */
 	Double sumaValorByEmpleadoYTipo(Long idEmpleado, Long tipoProvision) throws Throwable;
-
-	/**
-	 * Igual que {@link #sumaValorByEmpleadoYTipo}, pero agregada sobre varios empleados a la
-	 * vez — una sola consulta en vez de N. Pensada para el frente 1 (decimo acumulado /
-	 * fondos de reserva): la orden de beneficio social paga a muchos empleados con un unico
-	 * asiento consolidado, y el saldo de provision que lo topea es la suma de todos ellos.
-	 * Mismo criterio de exclusion de periodos historicos.
-	 *
-	 * @param idsEmpleados		: Ids de los empleados; vacio o null devuelve cero sin consultar
-	 * @param tipoProvision		: Codigo alterno del detalle del rubro RHH_TIPO_PROVISION
-	 * @return					: Suma de PVNMVLOR de periodos productivos; cero si no hay
-	 * @throws Throwable		: Excepcion
-	 */
-	Double sumaValorByEmpleadosYTipo(List<Long> idsEmpleados, Long tipoProvision) throws Throwable;
 }

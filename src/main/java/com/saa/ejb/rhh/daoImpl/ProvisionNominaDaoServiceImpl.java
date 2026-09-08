@@ -108,27 +108,4 @@ public class ProvisionNominaDaoServiceImpl extends EntityDaoImpl<ProvisionNomina
 		Object resultado = query.getSingleResult();
 		return resultado == null ? Double.valueOf(0D) : Double.valueOf(resultado.toString());
 	}
-
-	/* (non-Javadoc)
-	 * @see com.saa.ejb.rhh.dao.ProvisionNominaDaoService#sumaValorByEmpleadosYTipo(java.util.List, java.lang.Long)
-	 */
-	@Override
-	public Double sumaValorByEmpleadosYTipo(List<Long> idsEmpleados, Long tipoProvision) throws Throwable {
-		System.out.println("Ingresa al metodo sumaValorByEmpleadosYTipo de ProvisionNomina, "
-				+ (idsEmpleados != null ? idsEmpleados.size() : 0) + " empleado(s), tipo: " + tipoProvision);
-		if (idsEmpleados == null || idsEmpleados.isEmpty()) {
-			return Double.valueOf(0D);
-		}
-		// Mismo criterio que sumaValorByEmpleadoYTipo: excluye periodos historicos.
-		Query query = em.createQuery(" select   sum(t.valor) "
-				+ " from     ProvisionNomina t "
-				+ " where    t.empleado.codigo in (:idsEmpleados) "
-				+ "          and t.tipoProvision = :tipoProvision "
-				+ "          and t.periodoNomina.modo = :productivo ");
-		query.setParameter("idsEmpleados", idsEmpleados);
-		query.setParameter("tipoProvision", tipoProvision);
-		query.setParameter("productivo", Long.valueOf(RhhModoPeriodoNomina.PRODUCTIVO_CONTABILIZA));
-		Object resultado = query.getSingleResult();
-		return resultado == null ? Double.valueOf(0D) : Double.valueOf(resultado.toString());
-	}
 }
