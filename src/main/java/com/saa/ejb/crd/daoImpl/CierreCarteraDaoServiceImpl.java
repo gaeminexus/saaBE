@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import com.saa.ejb.crd.dao.CierreCarteraDaoService;
+import com.saa.rubros.CrdTipoMovimientoAporte;
 import com.saa.rubros.Estado;
 import com.saa.rubros.EstadoContrato;
 import com.saa.rubros.EstadoCuotaPrestamo;
@@ -201,12 +202,29 @@ public class CierreCarteraDaoServiceImpl implements CierreCarteraDaoService {
     public Object[] selectAportesRegistrados(LocalDate desde, LocalDate hasta) throws Throwable {
         System.out.println("Ingresa al metodo selectAportesRegistrados - desde: " + desde
                 + " hasta: " + hasta);
+        // Solo cuenta como cobranza de planilla el APORTE_MENSUAL y el EXCEDENTE_PETRO —
+        // decisión del usuario, 2026-09-07: los dos vienen del archivo Petro, que es lo que
+        // el neteo mide. MIGRADO(6), AJUSTE_MANUAL(2) y REVERSO(5) quedan fuera: ninguno es
+        // cobranza del mes, y sin este filtro tapaban un faltante real.
+        //
+        // Medido en producción, agosto 2026 (por qué importa, no un caso hipotético):
+        //   tipo 1 aporte mensual   2772 filas   116.804,80   <- la cobranza real
+        //   tipo 6 migrado             2 filas     5.183,30
+        //   tipo 2 ajuste manual      12 filas       849,73
+        //   tipo 5 reverso             1 fila         96,37
+        //   tipo 8 excedente Petro     1 fila         52,26
+        //                                          122.986,46  = "registrado" ANTES de este filtro
+        // Contra un esperado de 122.299,93 (sin el filtro): la planilla tenía un FALTANTE real
+        // de 5.495,13, pero migrado+ajuste+reverso lo tapaban y el sistema veía un exceso de
+        // 686,53 — el neteo daba CERO en vez de reversar un no-cobrado que existe.
         Query query = em.createNativeQuery(
                 " SELECT NVL(SUM(CASE WHEN a.TPAPCDGO = 9  THEN a.APRTVLRR ELSE 0 END),0), "
                 + "        NVL(SUM(CASE WHEN a.TPAPCDGO = 11 THEN a.APRTVLRR ELSE 0 END),0) "
                 + " FROM   CRD.APRT a "
                 + " WHERE  a.TPAPCDGO IN (9, 11) "
                 + " AND    a.APRTVLRR > 0 "
+                + " AND    a.APRTTPMV IN (" + CrdTipoMovimientoAporte.APORTE_MENSUAL + ", "
+                + CrdTipoMovimientoAporte.EXCEDENTE_PETRO + ") "
                 + " AND    TRUNC(a.APRTFCTR) BETWEEN :desde AND :hasta");
         query.setParameter("desde", Date.valueOf(desde));
         query.setParameter("hasta", Date.valueOf(hasta));
