@@ -15,6 +15,26 @@
 	<property name="com.jaspersoft.studio.unit.rightMargin" value="pixel"/>
 	<property name="com.jaspersoft.studio.unit.columnWidth" value="pixel"/>
 
+	<!-- Estilos con nombre a nivel de reporte, ver la nota en RPRT_CNCL_CNTA.jrxml: un <style>
+	     anónimo anidado dentro de <element> es una referencia sin nombre que revienta en el
+	     fill ("Could not resolve style(s): ."), no en el compile. -->
+	<style name="DiferenciaResaltada" mode="Opaque" backcolor="#FFFFFF">
+		<conditionalStyle>
+			<conditionExpression><![CDATA[$F{FECHA_CIERRE} != null
+    && $F{SALDO_EXTRACTO_ESPERADO}.subtract($F{SALDO_EXTRACTO}).abs().compareTo(new java.math.BigDecimal("0.01")) >= 0]]></conditionExpression>
+			<style backcolor="#FFC7CE"/>
+		</conditionalStyle>
+	</style>
+	<style name="SituacionResaltada" mode="Opaque" backcolor="#FFFFFF">
+		<conditionalStyle>
+			<conditionExpression><![CDATA[$F{FECHA_CIERRE} == null
+    || "N".equals($F{EXTRACTO_CARGADO})
+    || ($F{PEND_EXTRACTO} != null && $F{PEND_EXTRACTO}.intValue() > 0)
+    || ($F{PEND_ASIENTO} != null && $F{PEND_ASIENTO}.intValue() > 0)]]></conditionExpression>
+			<style backcolor="#FFC7CE"/>
+		</conditionalStyle>
+	</style>
+
 	<parameter name="P_PATH" class="java.lang.String"/>
 	<parameter name="P_REPORTE" class="java.lang.String"/>
 	<parameter name="P_PJRQ_CODIGO" class="java.lang.Long"/>
@@ -408,35 +428,19 @@ ORDER BY ORDEN_SECCION, BANCO, NUMERO_CUENTA, R_TIPO
 				<box rightPadding="3"/>
 			</element>
 			<element kind="textField" uuid="d0000010-0001-0001-0001-000000000010"
-					mode="Opaque" x="675" y="0" width="55" height="24" fontName="Tahoma" fontSize="7.0" bold="true"
+					style="DiferenciaResaltada" x="675" y="0" width="55" height="24" fontName="Tahoma" fontSize="7.0" bold="true"
 					pattern="#,##0.00" hTextAlign="Right" vTextAlign="Middle" blankWhenNull="true">
 				<expression><![CDATA[$F{FECHA_CIERRE} == null ? null : $F{SALDO_EXTRACTO_ESPERADO}.subtract($F{SALDO_EXTRACTO})]]></expression>
 				<box rightPadding="3"/>
-				<style backcolor="#FFFFFF">
-					<conditionalStyle>
-						<conditionExpression><![CDATA[$F{FECHA_CIERRE} != null
-    && $F{SALDO_EXTRACTO_ESPERADO}.subtract($F{SALDO_EXTRACTO}).abs().compareTo(new java.math.BigDecimal("0.01")) >= 0]]></conditionExpression>
-						<style backcolor="#FFC7CE"/>
-					</conditionalStyle>
-				</style>
 			</element>
 			<element kind="textField" uuid="d0000010-0001-0001-0001-000000000011"
-					mode="Opaque" x="730" y="0" width="72" height="24" fontName="Tahoma" fontSize="7.0" bold="true"
+					style="SituacionResaltada" x="730" y="0" width="72" height="24" fontName="Tahoma" fontSize="7.0" bold="true"
 					hTextAlign="Center" vTextAlign="Middle">
 				<expression><![CDATA[$F{FECHA_CIERRE} == null ? "SIN CIERRE"
     : ("N".equals($F{EXTRACTO_CARGADO}) ? "SIN EXTRACTO"
         : (( ($F{PEND_EXTRACTO} != null && $F{PEND_EXTRACTO}.intValue() > 0)
              || ($F{PEND_ASIENTO} != null && $F{PEND_ASIENTO}.intValue() > 0) )
             ? "PENDIENTES" : "OK"))]]></expression>
-				<style backcolor="#FFFFFF">
-					<conditionalStyle>
-						<conditionExpression><![CDATA[$F{FECHA_CIERRE} == null
-    || "N".equals($F{EXTRACTO_CARGADO})
-    || ($F{PEND_EXTRACTO} != null && $F{PEND_EXTRACTO}.intValue() > 0)
-    || ($F{PEND_ASIENTO} != null && $F{PEND_ASIENTO}.intValue() > 0)]]></conditionExpression>
-						<style backcolor="#FFC7CE"/>
-					</conditionalStyle>
-				</style>
 			</element>
 		</band>
 

@@ -19,6 +19,26 @@
 	<property name="com.jaspersoft.studio.unit.rightMargin" value="pixel"/>
 	<property name="com.jaspersoft.studio.unit.columnWidth" value="pixel"/>
 
+	<!-- Estilos con nombre a nivel de reporte (2026-09-08, corrigiendo: un <style> anónimo
+	     anidado dentro de <element> no es una definición, es una REFERENCIA sin nombre que el
+	     motor no puede resolver: "Could not resolve style(s): ." en el fill, no en el compile
+	     (el compilador no valida referencias de estilo). Único precedente del repo,
+	     RPRT_ASNT_CNTB.jrxml: estilos con name=, hijos directos de <jasperReport>, referenciados
+	     por los elementos via el atributo style="Nombre". -->
+	<style name="DiferenciaResaltada" mode="Opaque" backcolor="#FFFFFF">
+		<conditionalStyle>
+			<conditionExpression><![CDATA[$F{ID_CIERRE} != null
+    && $F{SALDO_EXTRACTO_ESPERADO}.subtract($F{SALDO_EXTRACTO}).abs().compareTo(new java.math.BigDecimal("0.01")) >= 0]]></conditionExpression>
+			<style backcolor="#FFC7CE"/>
+		</conditionalStyle>
+	</style>
+	<style name="PendienteSinDeclarar" mode="Opaque" backcolor="#FFFFFF">
+		<conditionalStyle>
+			<conditionExpression><![CDATA["SIN DECLARAR".equals($F{R_TEXTO_1})]]></conditionExpression>
+			<style backcolor="#FFC7CE"/>
+		</conditionalStyle>
+	</style>
+
 	<parameter name="P_PATH" class="java.lang.String"/>
 	<parameter name="P_REPORTE" class="java.lang.String"/>
 	<parameter name="P_CNBC_CODIGO" class="java.lang.Long"/>
@@ -603,17 +623,10 @@ ORDER BY ORDEN_SECCION, NVL(R_GRUPO,0), ORDEN_SUB, R_FECHA_1
 				<expression><![CDATA[$F{ID_CIERRE} == null ? "Cierre pendiente" : "Diferencia"]]></expression>
 			</element>
 			<element kind="textField" uuid="b0000003-0001-0001-0001-000000000018"
-					mode="Opaque" x="350" y="230" width="120" height="13" fontName="Tahoma" fontSize="8.0" bold="true"
+					style="DiferenciaResaltada" x="350" y="230" width="120" height="13" fontName="Tahoma" fontSize="8.0" bold="true"
 					pattern="#,##0.00" hTextAlign="Right" vTextAlign="Middle" blankWhenNull="true">
 				<expression><![CDATA[$F{ID_CIERRE} == null ? null
     : $F{SALDO_EXTRACTO_ESPERADO}.subtract($F{SALDO_EXTRACTO})]]></expression>
-				<style backcolor="#FFC7CE">
-					<conditionalStyle>
-						<conditionExpression><![CDATA[$F{ID_CIERRE} != null
-    && $F{SALDO_EXTRACTO_ESPERADO}.subtract($F{SALDO_EXTRACTO}).abs().compareTo(new java.math.BigDecimal("0.01")) >= 0]]></conditionExpression>
-						<style backcolor="#FFC7CE"/>
-					</conditionalStyle>
-				</style>
 			</element>
 	</title>
 
@@ -711,14 +724,8 @@ ORDER BY ORDEN_SECCION, NVL(R_GRUPO,0), ORDEN_SUB, R_FECHA_1
 				<box rightPadding="3"/>
 			</element>
 			<element kind="textField" uuid="d0000004-0001-0001-0001-000000000006"
-					mode="Opaque" x="440" y="0" width="95" height="12" fontName="Tahoma" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle" blankWhenNull="true">
+					style="PendienteSinDeclarar" x="440" y="0" width="95" height="12" fontName="Tahoma" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle" blankWhenNull="true">
 				<expression><![CDATA[$F{R_TEXTO_1}]]></expression>
-				<style backcolor="#FFFFFF">
-					<conditionalStyle>
-						<conditionExpression><![CDATA["SIN DECLARAR".equals($F{R_TEXTO_1})]]></conditionExpression>
-						<style backcolor="#FFC7CE"/>
-					</conditionalStyle>
-				</style>
 			</element>
 		</band>
 	</detail>
