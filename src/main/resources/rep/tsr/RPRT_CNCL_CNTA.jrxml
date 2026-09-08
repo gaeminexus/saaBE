@@ -1,0 +1,757 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Conciliación bancaria de una cuenta/período. Ver docs/logica-negocio/tsr/DISENO-REPORTES-CONCILIACION-BANCARIA.md.
+
+     DISEÑO: una sola consulta (UNION ALL) en vez de subdatasets/datasetRun: no hay ningún
+     .jrxml en este repo que use subDataset/datasetRun/kind="table"/kind="list" (verificado por
+     grep antes de escribir esto), y sí hay precedente probado de <group> + múltiples bandas de
+     detail con printWhenExpression (ver RPRT_ASNT_CNTB.jrxml). ORDEN_SECCION discrimina la
+     sección (1 partidas, 2 grupos+líneas, 3 pendientes extracto, 4 pendientes asiento);
+     TIPO_FILA discrimina qué banda de detail renderiza cada fila. La fila de ORDEN_SECCION=0
+     (cabecera/estado/ecuación, una sola fila, siempre primera por el ORDER BY) se lee en el
+     <title>, que JasperReports evalúa una sola vez con los valores del PRIMER registro. -->
+<jasperReport name="RPRT_CNCL_CNTA" language="java" pageWidth="595" pageHeight="842" columnWidth="535" leftMargin="40" rightMargin="20" topMargin="20" bottomMargin="20" uuid="f1a2b3c4-1111-2222-3333-444455556666">
+	<property name="com.jaspersoft.studio.unit." value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.pageHeight" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.pageWidth" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.topMargin" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.bottomMargin" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.leftMargin" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.rightMargin" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.columnWidth" value="pixel"/>
+
+	<parameter name="P_PATH" class="java.lang.String"/>
+	<parameter name="P_REPORTE" class="java.lang.String"/>
+	<parameter name="P_CNBC_CODIGO" class="java.lang.Long"/>
+	<parameter name="P_PRDO_CODIGO" class="java.lang.Long"/>
+	<parameter name="P_USUARIO" class="java.lang.String"/>
+	<parameter name="P_IMAGEN" class="java.awt.Image"/>
+
+	<query language="sql"><![CDATA[
+SELECT * FROM (
+  -- ===== SECCION 0: CABECERA + ESTADO + ECUACION (una sola fila) =====
+  SELECT
+    0 AS ORDEN_SECCION, 0 AS ORDEN_SUB, 0 AS TIPO_FILA,
+    e.PJRQNMBR AS EMPRESA,
+    p.PRDONMBR AS PERIODO, p.PRDOINCO AS DESDE, p.PRDOFNN AS HASTA,
+    b.BNCONMBR AS BANCO, c.CNBCNMRO AS NUMERO_CUENTA,
+    pc.PLNNCNTA AS CUENTA_CONTABLE, pc.PLNNNMBR AS NOMBRE_CUENTA,
+    ci.CNCLCDGO AS ID_CIERRE, ci.CNCLESTD AS ESTADO_CIERRE,
+    ci.CNCLFCCR AS FECHA_CIERRE, ci.CNCLUSCR AS USUARIO_CIERRE, ci.CNCLMTAN AS MOTIVO_ANULACION,
+    ci.CNCLSLDF AS SALDO_LIBROS, ci.CNCLDPTR AS DEPOSITOS_TRANSITO, ci.CNCLCHNC AS CHEQUES_NO_COBRADOS,
+    ci.CNCLNCTR AS NC_NO_REGISTRADAS, ci.CNCLNDTR AS ND_NO_REGISTRADAS,
+    (NVL(ci.CNCLSLDF,0) - NVL(ci.CNCLDPTR,0) + NVL(ci.CNCLCHNC,0) + NVL(ci.CNCLNCTR,0) - NVL(ci.CNCLNDTR,0)) AS SALDO_EXTRACTO_ESPERADO,
+    ci.CNCLSLDE AS SALDO_EXTRACTO,
+    cc.CNCTESTR AS ESTADO_REVISION, cc.CNCTUSVR AS VERIFICADO_POR, cc.CNCTFCVR AS FECHA_VERIFICACION,
+    cc.CNCTTTGR AS TOTAL_GRUPOS, cc.CNCTPDEX AS PEND_EXTRACTO, cc.CNCTPDAS AS PEND_ASIENTO,
+    ex.EXBCARCH AS EXTRACTO_ARCHIVO, ex.EXBCSLIN AS EXTRACTO_SALDO_INICIAL, ex.EXBCSLFN AS EXTRACTO_SALDO_FINAL,
+    ex.EXBCFCRG AS EXTRACTO_CARGADO_EL, ex.EXBCUSAR AS EXTRACTO_CARGADO_POR,
+    ct.CTEBCRRE AS MES_CERRADO, ct.CTEBUSCR AS MES_CERRADO_POR, ct.CTEBFCCR AS MES_CERRADO_EL,
+    CAST(NULL AS NUMBER) AS R_TIPO, CAST(NULL AS NUMBER) AS R_GRUPO,
+    CAST(NULL AS VARCHAR2(200)) AS R_TEXTO_1, CAST(NULL AS VARCHAR2(200)) AS R_TEXTO_2,
+    CAST(NULL AS VARCHAR2(500)) AS R_TEXTO_3, CAST(NULL AS VARCHAR2(500)) AS R_TEXTO_4,
+    CAST(NULL AS VARCHAR2(200)) AS R_TEXTO_5,
+    CAST(NULL AS DATE) AS R_FECHA_1, CAST(NULL AS DATE) AS R_FECHA_2,
+    CAST(NULL AS NUMBER) AS R_VALOR_1, CAST(NULL AS NUMBER) AS R_VALOR_2, CAST(NULL AS NUMBER) AS R_VALOR_3
+  FROM TSR.CNBC c
+  JOIN TSR.BNCO b   ON b.BNCOCDGO = c.BNCOCDGO
+  JOIN CNT.PLNN pc  ON pc.PLNNCDGO = c.PLNNCDGO
+  JOIN CNT.PRDO p   ON p.PRDOCDGO = $P{P_PRDO_CODIGO}
+  JOIN SCP.PJRQ e   ON e.PJRQCDGO = p.PJRQCDGO
+  LEFT JOIN TSR.CNCL ci ON ci.CNCLCDGO = (
+      SELECT MAX(x.CNCLCDGO) KEEP (DENSE_RANK LAST ORDER BY x.CNCLFCCR)
+        FROM TSR.CNCL x
+       WHERE x.CNBCCDGO = c.CNBCCDGO AND x.CNCLPRDO = p.PRDOCDGO AND x.CNCLESTD = 2)
+  LEFT JOIN TSR.CNCT cc ON cc.CNBCCDGO = c.CNBCCDGO AND cc.PRDOCDGO = p.PRDOCDGO
+  LEFT JOIN TSR.EXBC ex ON ex.EXBCCDGO = (
+      SELECT MAX(y.EXBCCDGO) FROM TSR.EXBC y
+       WHERE y.CNBCCDGO = c.CNBCCDGO AND y.PRDOCDGO = p.PRDOCDGO AND y.EXBCESTD = 1)
+  LEFT JOIN TSR.CTEB ct ON ct.PJRQCDGO = p.PJRQCDGO AND ct.PRDOCDGO = p.PRDOCDGO
+  WHERE c.CNBCCDGO = $P{P_CNBC_CODIGO}
+
+  UNION ALL
+
+  -- ===== SECCION 1: PARTIDAS EN TRANSITO (declaradas por el último cierre, con arrastre) =====
+  SELECT
+    1, 0, 1,
+    CAST(NULL AS VARCHAR2(200)) EMPRESA, CAST(NULL AS VARCHAR2(200)) PERIODO,
+    CAST(NULL AS DATE) DESDE, CAST(NULL AS DATE) HASTA,
+    CAST(NULL AS VARCHAR2(200)) BANCO, CAST(NULL AS VARCHAR2(60)) NUMERO_CUENTA,
+    CAST(NULL AS VARCHAR2(60)) CUENTA_CONTABLE, CAST(NULL AS VARCHAR2(200)) NOMBRE_CUENTA,
+    CAST(NULL AS NUMBER) ID_CIERRE, CAST(NULL AS NUMBER) ESTADO_CIERRE,
+    CAST(NULL AS DATE) FECHA_CIERRE, CAST(NULL AS VARCHAR2(60)) USUARIO_CIERRE, CAST(NULL AS VARCHAR2(500)) MOTIVO_ANULACION,
+    CAST(NULL AS NUMBER) SALDO_LIBROS, CAST(NULL AS NUMBER) DEPOSITOS_TRANSITO, CAST(NULL AS NUMBER) CHEQUES_NO_COBRADOS,
+    CAST(NULL AS NUMBER) NC_NO_REGISTRADAS, CAST(NULL AS NUMBER) ND_NO_REGISTRADAS,
+    CAST(NULL AS NUMBER) SALDO_EXTRACTO_ESPERADO, CAST(NULL AS NUMBER) SALDO_EXTRACTO,
+    CAST(NULL AS NUMBER) ESTADO_REVISION, CAST(NULL AS VARCHAR2(50)) VERIFICADO_POR, CAST(NULL AS DATE) FECHA_VERIFICACION,
+    CAST(NULL AS NUMBER) TOTAL_GRUPOS, CAST(NULL AS NUMBER) PEND_EXTRACTO, CAST(NULL AS NUMBER) PEND_ASIENTO,
+    CAST(NULL AS VARCHAR2(255)) EXTRACTO_ARCHIVO, CAST(NULL AS NUMBER) EXTRACTO_SALDO_INICIAL, CAST(NULL AS NUMBER) EXTRACTO_SALDO_FINAL,
+    CAST(NULL AS DATE) EXTRACTO_CARGADO_EL, CAST(NULL AS VARCHAR2(50)) EXTRACTO_CARGADO_POR,
+    CAST(NULL AS NUMBER) MES_CERRADO, CAST(NULL AS VARCHAR2(50)) MES_CERRADO_POR, CAST(NULL AS DATE) MES_CERRADO_EL,
+    dt.DTCNTPOO AS R_TIPO, CAST(NULL AS NUMBER) AS R_GRUPO,
+    CASE dt.DTCNTPOO WHEN 1 THEN 'Depósitos en tránsito'
+                     WHEN 2 THEN 'Cheques girados no cobrados'
+                     WHEN 3 THEN 'Notas de crédito del banco no registradas'
+                     WHEN 4 THEN 'Notas de débito del banco no registradas' END AS R_TEXTO_1,
+    a.ASNTNMAL AS R_TEXTO_2,
+    NVL(da.DTASDSCR, de.DEXBDSCR) AS R_TEXTO_3,
+    (CASE WHEN dt.DTCNESTD = 1 THEN 'Pendiente' ELSE 'Saldada en ' || ps.PRDONMBR END)
+      || (CASE WHEN ci.CNCLPRDO <> $P{P_PRDO_CODIGO} THEN ' (arrastrada de ' || po.PRDONMBR || ')' ELSE '' END)
+      || (CASE WHEN dt.DTCNOBSR IS NOT NULL THEN ' - ' || dt.DTCNOBSR ELSE '' END) AS R_TEXTO_4,
+    de.DEXBREFR AS R_TEXTO_5,
+    NVL(a.ASNTFCHA, de.DEXBFTRN) AS R_FECHA_1,
+    dt.DTCNFCRG AS R_FECHA_2,
+    dt.DTCNVLOR AS R_VALOR_1, CAST(NULL AS NUMBER) R_VALOR_2, CAST(NULL AS NUMBER) R_VALOR_3
+  FROM TSR.DTCN dt
+  JOIN TSR.CNCL ci ON ci.CNCLCDGO = dt.CNCLCDGO
+  JOIN CNT.PRDO po ON po.PRDOCDGO = ci.CNCLPRDO
+  LEFT JOIN TSR.CNCL cs ON cs.CNCLCDGO = dt.DTCNCNSL
+  LEFT JOIN CNT.PRDO ps ON ps.PRDOCDGO = cs.CNCLPRDO
+  LEFT JOIN CNT.DTAS da ON da.DTASCDGO = dt.DTCNDTAS
+  LEFT JOIN CNT.ASNT a  ON a.ASNTCDGO = da.ASNTCDGO
+  LEFT JOIN TSR.DEXB de ON de.DEXBCDGO = dt.DTCNIDEX
+  WHERE ci.CNBCCDGO = $P{P_CNBC_CODIGO}
+    AND ci.CNCLESTD = 2
+    AND (   ci.CNCLPRDO = $P{P_PRDO_CODIGO}
+         OR (dt.DTCNESTD = 1
+             AND po.PRDOFNN < (SELECT q.PRDOINCO FROM CNT.PRDO q WHERE q.PRDOCDGO = $P{P_PRDO_CODIGO})))
+
+  UNION ALL
+
+  -- ===== SECCION 2 (cabecera de grupo): MOVIMIENTOS CONCILIADOS DEL PERIODO =====
+  SELECT
+    2, 0, 2,
+    CAST(NULL AS VARCHAR2(200)), CAST(NULL AS VARCHAR2(200)), CAST(NULL AS DATE), CAST(NULL AS DATE),
+    CAST(NULL AS VARCHAR2(200)), CAST(NULL AS VARCHAR2(60)), CAST(NULL AS VARCHAR2(60)), CAST(NULL AS VARCHAR2(200)),
+    CAST(NULL AS NUMBER), CAST(NULL AS NUMBER), CAST(NULL AS DATE), CAST(NULL AS VARCHAR2(60)), CAST(NULL AS VARCHAR2(500)),
+    CAST(NULL AS NUMBER), CAST(NULL AS NUMBER), CAST(NULL AS NUMBER), CAST(NULL AS NUMBER), CAST(NULL AS NUMBER),
+    CAST(NULL AS NUMBER), CAST(NULL AS NUMBER),
+    CAST(NULL AS NUMBER), CAST(NULL AS VARCHAR2(50)), CAST(NULL AS DATE),
+    CAST(NULL AS NUMBER), CAST(NULL AS NUMBER), CAST(NULL AS NUMBER),
+    CAST(NULL AS VARCHAR2(255)), CAST(NULL AS NUMBER), CAST(NULL AS NUMBER),
+    CAST(NULL AS DATE), CAST(NULL AS VARCHAR2(50)),
+    CAST(NULL AS NUMBER), CAST(NULL AS VARCHAR2(50)), CAST(NULL AS DATE),
+    CAST(NULL AS NUMBER) R_TIPO, g.GRCCCDGO R_GRUPO,
+    'GRUPO #' || g.GRCCCDGO AS R_TEXTO_1,
+    'Conciliado por ' || NVL(g.GRCCUSCN,'?') AS R_TEXTO_2,
+    g.GRCCOBSR AS R_TEXTO_3,
+    'Tolerancia ' || NVL(TO_CHAR(g.GRCCTOLD),'0') || ' día(s)' AS R_TEXTO_4,
+    TO_CHAR(g.GRCCFCMN,'DD/MM/YYYY') || ' - ' || TO_CHAR(g.GRCCFCMX,'DD/MM/YYYY') AS R_TEXTO_5,
+    g.GRCCFCMN AS R_FECHA_1, g.GRCCFCCN AS R_FECHA_2,
+    g.GRCCVLEX AS R_VALOR_1, g.GRCCVLAS AS R_VALOR_2, g.GRCCDIFF AS R_VALOR_3
+  FROM TSR.GRCC g
+  JOIN TSR.CNCT cc ON cc.CNCTCDGO = g.CNCTCDGO
+  WHERE cc.CNBCCDGO = $P{P_CNBC_CODIGO} AND cc.PRDOCDGO = $P{P_PRDO_CODIGO} AND g.GRCCESTD = 1
+
+  UNION ALL
+
+  -- ===== SECCION 2 (línea, extracto): del mismo grupo, ORDEN_SUB=1 para ir después de su cabecera =====
+  SELECT
+    2, 1, 3,
+    CAST(NULL AS VARCHAR2(200)), CAST(NULL AS VARCHAR2(200)), CAST(NULL AS DATE), CAST(NULL AS DATE),
+    CAST(NULL AS VARCHAR2(200)), CAST(NULL AS VARCHAR2(60)), CAST(NULL AS VARCHAR2(60)), CAST(NULL AS VARCHAR2(200)),
+    CAST(NULL AS NUMBER), CAST(NULL AS NUMBER), CAST(NULL AS DATE), CAST(NULL AS VARCHAR2(60)), CAST(NULL AS VARCHAR2(500)),
+    CAST(NULL AS NUMBER), CAST(NULL AS NUMBER), CAST(NULL AS NUMBER), CAST(NULL AS NUMBER), CAST(NULL AS NUMBER),
+    CAST(NULL AS NUMBER), CAST(NULL AS NUMBER),
+    CAST(NULL AS NUMBER), CAST(NULL AS VARCHAR2(50)), CAST(NULL AS DATE),
+    CAST(NULL AS NUMBER), CAST(NULL AS NUMBER), CAST(NULL AS NUMBER),
+    CAST(NULL AS VARCHAR2(255)), CAST(NULL AS NUMBER), CAST(NULL AS NUMBER),
+    CAST(NULL AS DATE), CAST(NULL AS VARCHAR2(50)),
+    CAST(NULL AS NUMBER), CAST(NULL AS VARCHAR2(50)), CAST(NULL AS DATE),
+    CAST(NULL AS NUMBER) R_TIPO, g.GRCCCDGO R_GRUPO,
+    'Extracto' AS R_TEXTO_1, de.DEXBDSCR AS R_TEXTO_2, de.DEXBREFR AS R_TEXTO_3,
+    CAST(NULL AS VARCHAR2(500)) R_TEXTO_4, CAST(NULL AS VARCHAR2(200)) R_TEXTO_5,
+    de.DEXBFTRN AS R_FECHA_1, CAST(NULL AS DATE) R_FECHA_2,
+    de.DEXBDBTO AS R_VALOR_1, de.DEXBCRDT AS R_VALOR_2, CAST(NULL AS NUMBER) R_VALOR_3
+  FROM TSR.GCEX x
+  JOIN TSR.DEXB de  ON de.DEXBCDGO = x.DEXBCDGO
+  JOIN TSR.GRCC g   ON g.GRCCCDGO = x.GRCCCDGO
+  JOIN TSR.CNCT cc2 ON cc2.CNCTCDGO = g.CNCTCDGO
+  WHERE cc2.CNBCCDGO = $P{P_CNBC_CODIGO} AND cc2.PRDOCDGO = $P{P_PRDO_CODIGO} AND g.GRCCESTD = 1
+
+  UNION ALL
+
+  -- ===== SECCION 2 (línea, libro): del mismo grupo =====
+  SELECT
+    2, 1, 3,
+    CAST(NULL AS VARCHAR2(200)), CAST(NULL AS VARCHAR2(200)), CAST(NULL AS DATE), CAST(NULL AS DATE),
+    CAST(NULL AS VARCHAR2(200)), CAST(NULL AS VARCHAR2(60)), CAST(NULL AS VARCHAR2(60)), CAST(NULL AS VARCHAR2(200)),
+    CAST(NULL AS NUMBER), CAST(NULL AS NUMBER), CAST(NULL AS DATE), CAST(NULL AS VARCHAR2(60)), CAST(NULL AS VARCHAR2(500)),
+    CAST(NULL AS NUMBER), CAST(NULL AS NUMBER), CAST(NULL AS NUMBER), CAST(NULL AS NUMBER), CAST(NULL AS NUMBER),
+    CAST(NULL AS NUMBER), CAST(NULL AS NUMBER),
+    CAST(NULL AS NUMBER), CAST(NULL AS VARCHAR2(50)), CAST(NULL AS DATE),
+    CAST(NULL AS NUMBER), CAST(NULL AS NUMBER), CAST(NULL AS NUMBER),
+    CAST(NULL AS VARCHAR2(255)), CAST(NULL AS NUMBER), CAST(NULL AS NUMBER),
+    CAST(NULL AS DATE), CAST(NULL AS VARCHAR2(50)),
+    CAST(NULL AS NUMBER), CAST(NULL AS VARCHAR2(50)), CAST(NULL AS DATE),
+    CAST(NULL AS NUMBER) R_TIPO, g.GRCCCDGO R_GRUPO,
+    'Libro' AS R_TEXTO_1, a.ASNTNMAL AS R_TEXTO_2, da.DTASDSCR AS R_TEXTO_3,
+    CAST(NULL AS VARCHAR2(500)) R_TEXTO_4, CAST(NULL AS VARCHAR2(200)) R_TEXTO_5,
+    a.ASNTFCHA AS R_FECHA_1, CAST(NULL AS DATE) R_FECHA_2,
+    da.DTASDBEE AS R_VALOR_1, da.DTASHBRR AS R_VALOR_2, CAST(NULL AS NUMBER) R_VALOR_3
+  FROM TSR.GCAS y
+  JOIN CNT.DTAS da  ON da.DTASCDGO = y.DTASCDGO
+  JOIN CNT.ASNT a   ON a.ASNTCDGO = da.ASNTCDGO
+  JOIN TSR.GRCC g   ON g.GRCCCDGO = y.GRCCCDGO
+  JOIN TSR.CNCT cc3 ON cc3.CNCTCDGO = g.CNCTCDGO
+  WHERE cc3.CNBCCDGO = $P{P_CNBC_CODIGO} AND cc3.PRDOCDGO = $P{P_PRDO_CODIGO} AND g.GRCCESTD = 1
+
+  UNION ALL
+
+  -- ===== SECCION 3: PENDIENTES DEL EXTRACTO SIN CONCILIAR (misma regla que GrupoConciliacionExtractoDaoServiceImpl) =====
+  SELECT
+    3, 0, 4,
+    CAST(NULL AS VARCHAR2(200)), CAST(NULL AS VARCHAR2(200)), CAST(NULL AS DATE), CAST(NULL AS DATE),
+    CAST(NULL AS VARCHAR2(200)), CAST(NULL AS VARCHAR2(60)), CAST(NULL AS VARCHAR2(60)), CAST(NULL AS VARCHAR2(200)),
+    CAST(NULL AS NUMBER), CAST(NULL AS NUMBER), CAST(NULL AS DATE), CAST(NULL AS VARCHAR2(60)), CAST(NULL AS VARCHAR2(500)),
+    CAST(NULL AS NUMBER), CAST(NULL AS NUMBER), CAST(NULL AS NUMBER), CAST(NULL AS NUMBER), CAST(NULL AS NUMBER),
+    CAST(NULL AS NUMBER), CAST(NULL AS NUMBER),
+    CAST(NULL AS NUMBER), CAST(NULL AS VARCHAR2(50)), CAST(NULL AS DATE),
+    CAST(NULL AS NUMBER), CAST(NULL AS NUMBER), CAST(NULL AS NUMBER),
+    CAST(NULL AS VARCHAR2(255)), CAST(NULL AS NUMBER), CAST(NULL AS NUMBER),
+    CAST(NULL AS DATE), CAST(NULL AS VARCHAR2(50)),
+    CAST(NULL AS NUMBER), CAST(NULL AS VARCHAR2(50)), CAST(NULL AS DATE),
+    CAST(NULL AS NUMBER) R_TIPO, CAST(NULL AS NUMBER) R_GRUPO,
+    (CASE WHEN EXISTS (SELECT 1 FROM TSR.DTCN t WHERE t.DTCNIDEX = de.DEXBCDGO AND t.DTCNESTD = 1)
+          THEN 'Declarada en tránsito' ELSE 'SIN DECLARAR' END) AS R_TEXTO_1,
+    de.DEXBDSCR AS R_TEXTO_2, de.DEXBREFR AS R_TEXTO_3, pe.PRDONMBR AS R_TEXTO_4, CAST(NULL AS VARCHAR2(200)) R_TEXTO_5,
+    de.DEXBFTRN AS R_FECHA_1, CAST(NULL AS DATE) R_FECHA_2,
+    de.DEXBDBTO AS R_VALOR_1, de.DEXBCRDT AS R_VALOR_2, de.DEXBSLDO AS R_VALOR_3
+  FROM TSR.DEXB de
+  JOIN CNT.PRDO pe ON pe.PRDOCDGO = de.PRDOCDGO
+  WHERE de.CNBCCDGO = $P{P_CNBC_CODIGO}
+    AND de.DEXBESTD = 1
+    AND (   de.PRDOCDGO = $P{P_PRDO_CODIGO}
+         OR de.DEXBCDGO IN (SELECT t.DTCNIDEX FROM TSR.DTCN t WHERE t.DTCNTPOO IN (3,4) AND t.DTCNESTD = 1))
+    AND de.DEXBCDGO NOT IN (SELECT x.DEXBCDGO FROM TSR.GCEX x JOIN TSR.GRCC g ON g.GRCCCDGO = x.GRCCCDGO
+                             WHERE g.GRCCESTD = 1)
+
+  UNION ALL
+
+  -- ===== SECCION 4: PENDIENTES DE CONTABILIDAD SIN CONCILIAR =====
+  -- Arrastre corregido 2026-09-08 contra GrupoConciliacionAsientoDaoServiceImpl.selectPendientes
+  -- (la regla que usa hoy la pantalla de Conciliación Contable): ancla por TSR.MVCB->ASNT, NO por
+  -- DTCNDTAS. Ver la nota completa en DISENO-REPORTES-CONCILIACION-BANCARIA.md #7bis-report.
+  SELECT
+    4, 0, 5,
+    CAST(NULL AS VARCHAR2(200)), CAST(NULL AS VARCHAR2(200)), CAST(NULL AS DATE), CAST(NULL AS DATE),
+    CAST(NULL AS VARCHAR2(200)), CAST(NULL AS VARCHAR2(60)), CAST(NULL AS VARCHAR2(60)), CAST(NULL AS VARCHAR2(200)),
+    CAST(NULL AS NUMBER), CAST(NULL AS NUMBER), CAST(NULL AS DATE), CAST(NULL AS VARCHAR2(60)), CAST(NULL AS VARCHAR2(500)),
+    CAST(NULL AS NUMBER), CAST(NULL AS NUMBER), CAST(NULL AS NUMBER), CAST(NULL AS NUMBER), CAST(NULL AS NUMBER),
+    CAST(NULL AS NUMBER), CAST(NULL AS NUMBER),
+    CAST(NULL AS NUMBER), CAST(NULL AS VARCHAR2(50)), CAST(NULL AS DATE),
+    CAST(NULL AS NUMBER), CAST(NULL AS NUMBER), CAST(NULL AS NUMBER),
+    CAST(NULL AS VARCHAR2(255)), CAST(NULL AS NUMBER), CAST(NULL AS NUMBER),
+    CAST(NULL AS DATE), CAST(NULL AS VARCHAR2(50)),
+    CAST(NULL AS NUMBER), CAST(NULL AS VARCHAR2(50)), CAST(NULL AS DATE),
+    CAST(NULL AS NUMBER) R_TIPO, CAST(NULL AS NUMBER) R_GRUPO,
+    (CASE WHEN EXISTS (SELECT 1 FROM TSR.DTCN t WHERE t.DTCNDTAS = da.DTASCDGO AND t.DTCNESTD = 1)
+          THEN 'Declarada en tránsito' ELSE 'SIN DECLARAR' END) AS R_TEXTO_1,
+    a.ASNTNMAL AS R_TEXTO_2, da.DTASDSCR AS R_TEXTO_3, a.ASNTOBSR AS R_TEXTO_4, CAST(NULL AS VARCHAR2(200)) R_TEXTO_5,
+    a.ASNTFCHA AS R_FECHA_1, CAST(NULL AS DATE) R_FECHA_2,
+    da.DTASDBEE AS R_VALOR_1, da.DTASHBRR AS R_VALOR_2, CAST(NULL AS NUMBER) R_VALOR_3
+  FROM CNT.DTAS da
+  JOIN CNT.ASNT a  ON a.ASNTCDGO = da.ASNTCDGO
+  JOIN CNT.PRDO p2 ON p2.PRDOCDGO = $P{P_PRDO_CODIGO}
+  WHERE da.PLNNCDGO = (SELECT c2.PLNNCDGO FROM TSR.CNBC c2 WHERE c2.CNBCCDGO = $P{P_CNBC_CODIGO})
+    AND a.PJRQCDGO = p2.PJRQCDGO
+    AND a.ASNTESTD IN (1, 3)
+    AND (   a.ASNTFCHA BETWEEN p2.PRDOINCO AND p2.PRDOFNN
+         OR a.ASNTCDGO IN (SELECT m.ASNTCDGO FROM TSR.MVCB m JOIN TSR.DTCN t2 ON t2.MVCBCDGO = m.MVCBCDGO
+                            WHERE t2.DTCNTPOO IN (1,2) AND t2.DTCNESTD = 1))
+    AND da.DTASCDGO NOT IN (SELECT y2.DTASCDGO FROM TSR.GCAS y2 JOIN TSR.GRCC g2 ON g2.GRCCCDGO = y2.GRCCCDGO
+                             WHERE g2.GRCCESTD = 1)
+)
+ORDER BY ORDEN_SECCION, NVL(R_GRUPO,0), ORDEN_SUB, R_FECHA_1
+]]></query>
+
+	<field name="ORDEN_SECCION" class="java.math.BigDecimal"/>
+	<field name="ORDEN_SUB" class="java.math.BigDecimal"/>
+	<field name="TIPO_FILA" class="java.math.BigDecimal"/>
+	<field name="EMPRESA" class="java.lang.String"/>
+	<field name="PERIODO" class="java.lang.String"/>
+	<field name="DESDE" class="java.sql.Timestamp"/>
+	<field name="HASTA" class="java.sql.Timestamp"/>
+	<field name="BANCO" class="java.lang.String"/>
+	<field name="NUMERO_CUENTA" class="java.lang.String"/>
+	<field name="CUENTA_CONTABLE" class="java.lang.String"/>
+	<field name="NOMBRE_CUENTA" class="java.lang.String"/>
+	<field name="ID_CIERRE" class="java.math.BigDecimal"/>
+	<field name="ESTADO_CIERRE" class="java.math.BigDecimal"/>
+	<field name="FECHA_CIERRE" class="java.sql.Timestamp"/>
+	<field name="USUARIO_CIERRE" class="java.lang.String"/>
+	<field name="MOTIVO_ANULACION" class="java.lang.String"/>
+	<field name="SALDO_LIBROS" class="java.math.BigDecimal"/>
+	<field name="DEPOSITOS_TRANSITO" class="java.math.BigDecimal"/>
+	<field name="CHEQUES_NO_COBRADOS" class="java.math.BigDecimal"/>
+	<field name="NC_NO_REGISTRADAS" class="java.math.BigDecimal"/>
+	<field name="ND_NO_REGISTRADAS" class="java.math.BigDecimal"/>
+	<field name="SALDO_EXTRACTO_ESPERADO" class="java.math.BigDecimal"/>
+	<field name="SALDO_EXTRACTO" class="java.math.BigDecimal"/>
+	<field name="ESTADO_REVISION" class="java.math.BigDecimal"/>
+	<field name="VERIFICADO_POR" class="java.lang.String"/>
+	<field name="FECHA_VERIFICACION" class="java.sql.Timestamp"/>
+	<field name="TOTAL_GRUPOS" class="java.math.BigDecimal"/>
+	<field name="PEND_EXTRACTO" class="java.math.BigDecimal"/>
+	<field name="PEND_ASIENTO" class="java.math.BigDecimal"/>
+	<field name="EXTRACTO_ARCHIVO" class="java.lang.String"/>
+	<field name="EXTRACTO_SALDO_INICIAL" class="java.math.BigDecimal"/>
+	<field name="EXTRACTO_SALDO_FINAL" class="java.math.BigDecimal"/>
+	<field name="EXTRACTO_CARGADO_EL" class="java.sql.Timestamp"/>
+	<field name="EXTRACTO_CARGADO_POR" class="java.lang.String"/>
+	<field name="MES_CERRADO" class="java.math.BigDecimal"/>
+	<field name="MES_CERRADO_POR" class="java.lang.String"/>
+	<field name="MES_CERRADO_EL" class="java.sql.Timestamp"/>
+	<field name="R_TIPO" class="java.math.BigDecimal"/>
+	<field name="R_GRUPO" class="java.math.BigDecimal"/>
+	<field name="R_TEXTO_1" class="java.lang.String"/>
+	<field name="R_TEXTO_2" class="java.lang.String"/>
+	<field name="R_TEXTO_3" class="java.lang.String"/>
+	<field name="R_TEXTO_4" class="java.lang.String"/>
+	<field name="R_TEXTO_5" class="java.lang.String"/>
+	<field name="R_FECHA_1" class="java.sql.Timestamp"/>
+	<field name="R_FECHA_2" class="java.sql.Timestamp"/>
+	<field name="R_VALOR_1" class="java.math.BigDecimal"/>
+	<field name="R_VALOR_2" class="java.math.BigDecimal"/>
+	<field name="R_VALOR_3" class="java.math.BigDecimal"/>
+
+	<variable name="SUMA_TIPO" resetType="Group" resetGroup="TipoPartida" calculation="Sum" class="java.math.BigDecimal">
+		<expression><![CDATA[$F{TIPO_FILA}.intValue() == 1 ? $F{R_VALOR_1} : java.math.BigDecimal.ZERO]]></expression>
+	</variable>
+	<variable name="CUENTA_LINEAS_EXTRACTO" resetType="Report" calculation="Count" class="java.lang.Integer">
+		<expression><![CDATA[$F{ORDEN_SECCION}.intValue() == 3 ? $F{R_TEXTO_1} : null]]></expression>
+	</variable>
+	<variable name="CUENTA_LINEAS_ASIENTO" resetType="Report" calculation="Count" class="java.lang.Integer">
+		<expression><![CDATA[$F{ORDEN_SECCION}.intValue() == 4 ? $F{R_TEXTO_1} : null]]></expression>
+	</variable>
+	<variable name="CUENTA_SIN_DECLARAR_EXTRACTO" resetType="Report" calculation="Count" class="java.lang.Integer">
+		<expression><![CDATA[($F{ORDEN_SECCION}.intValue() == 3 && "SIN DECLARAR".equals($F{R_TEXTO_1})) ? $F{R_TEXTO_1} : null]]></expression>
+	</variable>
+	<variable name="CUENTA_SIN_DECLARAR_ASIENTO" resetType="Report" calculation="Count" class="java.lang.Integer">
+		<expression><![CDATA[($F{ORDEN_SECCION}.intValue() == 4 && "SIN DECLARAR".equals($F{R_TEXTO_1})) ? $F{R_TEXTO_1} : null]]></expression>
+	</variable>
+
+	<group name="Seccion">
+		<expression><![CDATA[$F{ORDEN_SECCION}]]></expression>
+		<groupHeader>
+			<band height="16" splitType="Stretch">
+				<element kind="textField" uuid="c0000001-0001-0001-0001-000000000001"
+						mode="Opaque" x="0" y="0" width="535" height="16"
+						backcolor="#5B7FA6" forecolor="#FFFFFF" fontName="Tahoma" fontSize="9.0" bold="true"
+						hTextAlign="Left" vTextAlign="Middle">
+					<expression><![CDATA[$F{ORDEN_SECCION}.intValue() == 1 ? "4. PARTIDAS EN TRÁNSITO"
+    : $F{ORDEN_SECCION}.intValue() == 2 ? "5. MOVIMIENTOS CONCILIADOS DEL PERÍODO"
+    : $F{ORDEN_SECCION}.intValue() == 3 ? "6. PENDIENTES DEL EXTRACTO SIN CONCILIAR"
+    : $F{ORDEN_SECCION}.intValue() == 4 ? "7. PENDIENTES DE CONTABILIDAD SIN CONCILIAR"
+    : ""]]></expression>
+					<box leftPadding="5"/>
+				</element>
+			</band>
+		</groupHeader>
+		<groupFooter>
+			<band height="14" splitType="Stretch">
+				<element kind="textField" uuid="c0000001-0001-0001-0001-000000000002"
+						x="0" y="0" width="535" height="14" fontName="Tahoma" fontSize="7.0" italic="true">
+					<expression><![CDATA[$F{ORDEN_SECCION}.intValue() == 3
+    ? ("Total pendientes de extracto: " + $V{CUENTA_LINEAS_EXTRACTO} + " (SIN DECLARAR: " + $V{CUENTA_SIN_DECLARAR_EXTRACTO} + ")")
+    : ($F{ORDEN_SECCION}.intValue() == 4
+        ? ("Total pendientes de contabilidad: " + $V{CUENTA_LINEAS_ASIENTO} + " (SIN DECLARAR: " + $V{CUENTA_SIN_DECLARAR_ASIENTO} + ")")
+        : "")]]></expression>
+					<box leftPadding="5"/>
+				</element>
+			</band>
+		</groupFooter>
+	</group>
+
+	<group name="TipoPartida">
+		<expression><![CDATA[$F{R_TIPO}]]></expression>
+		<groupFooter>
+			<band height="13" splitType="Stretch">
+				<element kind="textField" uuid="c0000002-0001-0001-0001-000000000001"
+						x="0" y="0" width="480" height="13" fontName="Tahoma" fontSize="7.0" bold="true" hTextAlign="Right">
+					<printWhenExpression><![CDATA[$F{ORDEN_SECCION}.intValue() == 1]]></printWhenExpression>
+					<expression><![CDATA["Subtotal:"]]></expression>
+				</element>
+				<element kind="textField" uuid="c0000002-0001-0001-0001-000000000002"
+						x="480" y="0" width="55" height="13" fontName="Tahoma" fontSize="7.0" bold="true"
+						pattern="#,##0.00" hTextAlign="Right">
+					<printWhenExpression><![CDATA[$F{ORDEN_SECCION}.intValue() == 1]]></printWhenExpression>
+					<expression><![CDATA[$V{SUMA_TIPO}]]></expression>
+					<box rightPadding="3"/>
+				</element>
+			</band>
+		</groupFooter>
+	</group>
+
+	<background splitType="Stretch"/>
+
+	<!-- ═══ PAGE HEADER ═══ -->
+	<pageHeader height="78" splitType="Stretch">
+		<element kind="image" uuid="a0000001-0001-0001-0001-000000000001"
+				positionType="FixRelativeToBottom" x="0" y="0" width="80" height="40"
+				scaleImage="RealSize" evaluationTime="Report" linkType="None" linkTarget="Self" lazy="true">
+			<expression><![CDATA[$P{P_IMAGEN}]]></expression>
+		</element>
+		<element kind="textField" uuid="a0000001-0001-0001-0001-000000000002"
+				x="80" y="0" width="370" height="20" fontSize="13.0" bold="true" hTextAlign="Center">
+			<expression><![CDATA[$P{P_REPORTE}]]></expression>
+		</element>
+		<element kind="staticText" uuid="a0000001-0001-0001-0001-000000000003"
+				x="80" y="20" width="70" height="15" fontName="Tahoma" fontSize="9.0" bold="true">
+			<text><![CDATA[EMPRESA:]]></text>
+		</element>
+		<element kind="textField" uuid="a0000001-0001-0001-0001-000000000004"
+				x="150" y="20" width="280" height="15" fontName="Tahoma" fontSize="9.0">
+			<expression><![CDATA[$F{EMPRESA}]]></expression>
+			<box leftPadding="3"/>
+		</element>
+		<element kind="textField" uuid="a0000001-0001-0001-0001-000000000005"
+				x="0" y="45" width="332" height="15" fontSize="8.0" bold="true">
+			<expression><![CDATA[$P{P_PATH}]]></expression>
+		</element>
+		<element kind="textField" uuid="a0000001-0001-0001-0001-000000000006"
+				x="460" y="5" width="51" height="15" fontSize="8.0" hTextAlign="Right">
+			<expression><![CDATA["Página "+$V{PAGE_NUMBER}+" de"]]></expression>
+		</element>
+		<element kind="textField" uuid="a0000001-0001-0001-0001-000000000007"
+				x="511" y="5" width="24" height="15" fontSize="8.0" evaluationTime="Report">
+			<expression><![CDATA[" " + $V{PAGE_NUMBER}]]></expression>
+		</element>
+		<element kind="textField" uuid="a0000001-0001-0001-0001-000000000008"
+				x="0" y="60" width="200" height="13" fontSize="7.0">
+			<expression><![CDATA["Impreso por: " + $P{P_USUARIO}]]></expression>
+		</element>
+		<element kind="textField" uuid="a0000001-0001-0001-0001-000000000009"
+				x="467" y="20" width="68" height="15" fontSize="8.0" pattern="dd-MMM-yyyy">
+			<expression><![CDATA[new java.util.Date()]]></expression>
+		</element>
+		<element kind="textField" uuid="a0000001-0001-0001-0001-000000000010"
+				x="467" y="35" width="68" height="15" fontSize="8.0" pattern="h:mm a">
+			<expression><![CDATA[new java.util.Date()]]></expression>
+		</element>
+	</pageHeader>
+
+	<!-- ═══ TITLE — Cabecera + Estado + Ecuación (una sola vez, valores de la 1ra fila) ═══ -->
+	<title height="255" splitType="Stretch">
+
+			<!-- 1. CABECERA -->
+			<element kind="staticText" uuid="b0000001-0001-0001-0001-000000000001"
+					mode="Opaque" x="0" y="0" width="535" height="13" backcolor="#D1D1D1"
+					fontName="Tahoma" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+				<text><![CDATA[1. CABECERA]]></text>
+			</element>
+			<element kind="staticText" uuid="b0000001-0001-0001-0001-000000000002"
+					x="0" y="13" width="80" height="13" fontName="Tahoma" fontSize="8.0" bold="true" vTextAlign="Middle">
+				<text><![CDATA[BANCO:]]></text>
+			</element>
+			<element kind="textField" uuid="b0000001-0001-0001-0001-000000000003"
+					x="80" y="13" width="180" height="13" fontName="Tahoma" fontSize="8.0" vTextAlign="Middle" blankWhenNull="true">
+				<expression><![CDATA[$F{BANCO}]]></expression>
+			</element>
+			<element kind="staticText" uuid="b0000001-0001-0001-0001-000000000004"
+					x="260" y="13" width="80" height="13" fontName="Tahoma" fontSize="8.0" bold="true" vTextAlign="Middle">
+				<text><![CDATA[Nº CUENTA:]]></text>
+			</element>
+			<element kind="textField" uuid="b0000001-0001-0001-0001-000000000005"
+					x="340" y="13" width="195" height="13" fontName="Tahoma" fontSize="8.0" vTextAlign="Middle" blankWhenNull="true">
+				<expression><![CDATA[$F{NUMERO_CUENTA}]]></expression>
+			</element>
+			<element kind="staticText" uuid="b0000001-0001-0001-0001-000000000006"
+					x="0" y="26" width="80" height="13" fontName="Tahoma" fontSize="8.0" bold="true" vTextAlign="Middle">
+				<text><![CDATA[CTA. CONTABLE:]]></text>
+			</element>
+			<element kind="textField" uuid="b0000001-0001-0001-0001-000000000007"
+					x="80" y="26" width="455" height="13" fontName="Tahoma" fontSize="8.0" vTextAlign="Middle" blankWhenNull="true">
+				<expression><![CDATA[$F{CUENTA_CONTABLE} + " - " + $F{NOMBRE_CUENTA}]]></expression>
+			</element>
+			<element kind="staticText" uuid="b0000001-0001-0001-0001-000000000008"
+					x="0" y="39" width="80" height="13" fontName="Tahoma" fontSize="8.0" bold="true" vTextAlign="Middle">
+				<text><![CDATA[PERÍODO:]]></text>
+			</element>
+			<element kind="textField" uuid="b0000001-0001-0001-0001-000000000009"
+					x="80" y="39" width="260" height="13" fontName="Tahoma" fontSize="8.0" vTextAlign="Middle" blankWhenNull="true">
+				<expression><![CDATA[$F{PERIODO} + "  (" + new java.text.SimpleDateFormat("dd/MM/yyyy").format($F{DESDE})
+    + " - " + new java.text.SimpleDateFormat("dd/MM/yyyy").format($F{HASTA}) + ")"]]></expression>
+			</element>
+			<element kind="staticText" uuid="b0000001-0001-0001-0001-000000000010"
+					x="0" y="52" width="120" height="13" fontName="Tahoma" fontSize="8.0" bold="true" vTextAlign="Middle">
+				<text><![CDATA[MES DE CONCILIACIÓN:]]></text>
+			</element>
+			<element kind="textField" uuid="b0000001-0001-0001-0001-000000000011"
+					x="120" y="52" width="415" height="13" fontName="Tahoma" fontSize="8.0" vTextAlign="Middle" blankWhenNull="true">
+				<expression><![CDATA[($F{MES_CERRADO} != null && $F{MES_CERRADO}.intValue() == 1)
+    ? ("CERRADO por " + $F{MES_CERRADO_POR} + " el "
+        + new java.text.SimpleDateFormat("dd/MM/yyyy").format($F{MES_CERRADO_EL}))
+    : "ABIERTO"]]></expression>
+			</element>
+
+			<!-- 2. ESTADO: tres tarjetas -->
+			<element kind="staticText" uuid="b0000002-0001-0001-0001-000000000001"
+					mode="Opaque" x="0" y="68" width="535" height="13" backcolor="#D1D1D1"
+					fontName="Tahoma" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+				<text><![CDATA[2. ESTADO]]></text>
+			</element>
+			<element kind="staticText" uuid="b0000002-0001-0001-0001-000000000002"
+					x="0" y="81" width="178" height="13" fontName="Tahoma" fontSize="7.0" bold="true" vTextAlign="Middle">
+				<text><![CDATA[Cierre partidas en tránsito:]]></text>
+			</element>
+			<element kind="textField" uuid="b0000002-0001-0001-0001-000000000003"
+					x="0" y="94" width="178" height="26" fontName="Tahoma" fontSize="7.0" vTextAlign="Top" blankWhenNull="true">
+				<expression><![CDATA[$F{ID_CIERRE} == null ? "SIN CIERRE"
+    : ($F{ESTADO_CIERRE}.intValue() == 3 ? ("ANULADO: " + $F{MOTIVO_ANULACION})
+        : ("CERRADO por " + $F{USUARIO_CIERRE} + " el "
+            + new java.text.SimpleDateFormat("dd/MM/yyyy").format($F{FECHA_CIERRE})))]]></expression>
+			</element>
+			<element kind="staticText" uuid="b0000002-0001-0001-0001-000000000004"
+					x="178" y="81" width="178" height="13" fontName="Tahoma" fontSize="7.0" bold="true" vTextAlign="Middle">
+				<text><![CDATA[Revisión contable:]]></text>
+			</element>
+			<element kind="textField" uuid="b0000002-0001-0001-0001-000000000005"
+					x="178" y="94" width="178" height="26" fontName="Tahoma" fontSize="7.0" vTextAlign="Top" blankWhenNull="true">
+				<expression><![CDATA[$F{ESTADO_REVISION} == null ? "PENDIENTE (sin verificar)"
+    : ($F{ESTADO_REVISION}.intValue() == 2
+        ? ("Verificado por " + $F{VERIFICADO_POR} + " el "
+            + new java.text.SimpleDateFormat("dd/MM/yyyy").format($F{FECHA_VERIFICACION}))
+        : ($F{ESTADO_REVISION}.intValue() == 3 ? "CON DIFERENCIAS" : "PENDIENTE"))]]></expression>
+			</element>
+			<element kind="staticText" uuid="b0000002-0001-0001-0001-000000000006"
+					x="356" y="81" width="179" height="13" fontName="Tahoma" fontSize="7.0" bold="true" vTextAlign="Middle">
+				<text><![CDATA[Extracto bancario:]]></text>
+			</element>
+			<element kind="textField" uuid="b0000002-0001-0001-0001-000000000007"
+					x="356" y="94" width="179" height="26" fontName="Tahoma" fontSize="7.0" vTextAlign="Top" blankWhenNull="true">
+				<expression><![CDATA[$F{EXTRACTO_ARCHIVO} == null ? "NO CARGADO"
+    : ($F{EXTRACTO_ARCHIVO} + " - cargado el "
+        + new java.text.SimpleDateFormat("dd/MM/yyyy").format($F{EXTRACTO_CARGADO_EL})
+        + " por " + $F{EXTRACTO_CARGADO_POR}
+        + " - saldo inicial " + $F{EXTRACTO_SALDO_INICIAL} + " / final " + $F{EXTRACTO_SALDO_FINAL})]]></expression>
+			</element>
+
+			<!-- 3. LA ECUACION -->
+			<element kind="staticText" uuid="b0000003-0001-0001-0001-000000000001"
+					mode="Opaque" x="0" y="124" width="535" height="13" backcolor="#D1D1D1"
+					fontName="Tahoma" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+				<text><![CDATA[3. LA ECUACIÓN DE CIERRE]]></text>
+			</element>
+
+			<element kind="staticText" uuid="b0000003-0001-0001-0001-000000000002"
+					x="0" y="137" width="350" height="12" fontName="Tahoma" fontSize="8.0" vTextAlign="Middle">
+				<text><![CDATA[Saldo según libros]]></text>
+			</element>
+			<element kind="textField" uuid="b0000003-0001-0001-0001-000000000003"
+					x="350" y="137" width="120" height="12" fontName="Tahoma" fontSize="8.0" pattern="#,##0.00" hTextAlign="Right" vTextAlign="Middle" blankWhenNull="true">
+				<expression><![CDATA[$F{SALDO_LIBROS}]]></expression>
+			</element>
+
+			<element kind="staticText" uuid="b0000003-0001-0001-0001-000000000004"
+					x="0" y="149" width="350" height="12" fontName="Tahoma" fontSize="8.0" vTextAlign="Middle">
+				<text><![CDATA[(−) Depósitos en tránsito]]></text>
+			</element>
+			<element kind="textField" uuid="b0000003-0001-0001-0001-000000000005"
+					x="350" y="149" width="120" height="12" fontName="Tahoma" fontSize="8.0" pattern="#,##0.00" hTextAlign="Right" vTextAlign="Middle" blankWhenNull="true">
+				<expression><![CDATA[$F{DEPOSITOS_TRANSITO}]]></expression>
+			</element>
+
+			<element kind="staticText" uuid="b0000003-0001-0001-0001-000000000006"
+					x="0" y="161" width="350" height="12" fontName="Tahoma" fontSize="8.0" vTextAlign="Middle">
+				<text><![CDATA[(+) Cheques girados no cobrados]]></text>
+			</element>
+			<element kind="textField" uuid="b0000003-0001-0001-0001-000000000007"
+					x="350" y="161" width="120" height="12" fontName="Tahoma" fontSize="8.0" pattern="#,##0.00" hTextAlign="Right" vTextAlign="Middle" blankWhenNull="true">
+				<expression><![CDATA[$F{CHEQUES_NO_COBRADOS}]]></expression>
+			</element>
+
+			<element kind="staticText" uuid="b0000003-0001-0001-0001-000000000008"
+					x="0" y="173" width="350" height="12" fontName="Tahoma" fontSize="8.0" vTextAlign="Middle">
+				<text><![CDATA[(+) Notas de crédito del banco no registradas]]></text>
+			</element>
+			<element kind="textField" uuid="b0000003-0001-0001-0001-000000000009"
+					x="350" y="173" width="120" height="12" fontName="Tahoma" fontSize="8.0" pattern="#,##0.00" hTextAlign="Right" vTextAlign="Middle" blankWhenNull="true">
+				<expression><![CDATA[$F{NC_NO_REGISTRADAS}]]></expression>
+			</element>
+
+			<element kind="staticText" uuid="b0000003-0001-0001-0001-000000000010"
+					x="0" y="185" width="350" height="12" fontName="Tahoma" fontSize="8.0" vTextAlign="Middle">
+				<text><![CDATA[(−) Notas de débito del banco no registradas]]></text>
+			</element>
+			<element kind="textField" uuid="b0000003-0001-0001-0001-000000000011"
+					x="350" y="185" width="120" height="12" fontName="Tahoma" fontSize="8.0" pattern="#,##0.00" hTextAlign="Right" vTextAlign="Middle" blankWhenNull="true">
+				<expression><![CDATA[$F{ND_NO_REGISTRADAS}]]></expression>
+			</element>
+
+			<element kind="line" uuid="b0000003-0001-0001-0001-000000000012" x="0" y="199" width="470" height="1"/>
+
+			<element kind="staticText" uuid="b0000003-0001-0001-0001-000000000013"
+					x="0" y="201" width="350" height="13" fontName="Tahoma" fontSize="8.0" bold="true" vTextAlign="Middle">
+				<text><![CDATA[Saldo según extracto esperado]]></text>
+			</element>
+			<element kind="textField" uuid="b0000003-0001-0001-0001-000000000014"
+					x="350" y="201" width="120" height="13" fontName="Tahoma" fontSize="8.0" bold="true" pattern="#,##0.00" hTextAlign="Right" vTextAlign="Middle" blankWhenNull="true">
+				<expression><![CDATA[$F{SALDO_EXTRACTO_ESPERADO}]]></expression>
+			</element>
+
+			<element kind="staticText" uuid="b0000003-0001-0001-0001-000000000015"
+					x="0" y="216" width="350" height="12" fontName="Tahoma" fontSize="8.0" vTextAlign="Middle">
+				<text><![CDATA[Saldo según extracto (declarado)]]></text>
+			</element>
+			<element kind="textField" uuid="b0000003-0001-0001-0001-000000000016"
+					x="350" y="216" width="120" height="12" fontName="Tahoma" fontSize="8.0" pattern="#,##0.00" hTextAlign="Right" vTextAlign="Middle" blankWhenNull="true">
+				<expression><![CDATA[$F{ID_CIERRE} == null ? null : $F{SALDO_EXTRACTO}]]></expression>
+			</element>
+
+			<element kind="textField" uuid="b0000003-0001-0001-0001-000000000017"
+					x="0" y="230" width="350" height="13" fontName="Tahoma" fontSize="8.0" bold="true" vTextAlign="Middle">
+				<expression><![CDATA[$F{ID_CIERRE} == null ? "Cierre pendiente" : "Diferencia"]]></expression>
+			</element>
+			<element kind="textField" uuid="b0000003-0001-0001-0001-000000000018"
+					mode="Opaque" x="350" y="230" width="120" height="13" fontName="Tahoma" fontSize="8.0" bold="true"
+					pattern="#,##0.00" hTextAlign="Right" vTextAlign="Middle" blankWhenNull="true">
+				<expression><![CDATA[$F{ID_CIERRE} == null ? null
+    : $F{SALDO_EXTRACTO_ESPERADO}.subtract($F{SALDO_EXTRACTO})]]></expression>
+				<style backcolor="#FFC7CE">
+					<conditionalStyle>
+						<conditionExpression><![CDATA[$F{ID_CIERRE} != null
+    && $F{SALDO_EXTRACTO_ESPERADO}.subtract($F{SALDO_EXTRACTO}).abs().compareTo(new java.math.BigDecimal("0.01")) >= 0]]></conditionExpression>
+						<style backcolor="#FFC7CE"/>
+					</conditionalStyle>
+				</style>
+			</element>
+	</title>
+
+	<!-- ═══ DETAIL — una banda por TIPO_FILA (0=cabecera ya usada en title, 1..5) ═══ -->
+	<detail>
+		<!-- TIPO_FILA=1: partida en tránsito -->
+		<band height="13" splitType="Stretch">
+			<printWhenExpression><![CDATA[$F{TIPO_FILA}.intValue() == 1]]></printWhenExpression>
+			<element kind="textField" uuid="d0000001-0001-0001-0001-000000000001"
+					x="0" y="0" width="115" height="13" fontName="Tahoma" fontSize="7.0" vTextAlign="Middle" blankWhenNull="true">
+				<expression><![CDATA[$F{R_TEXTO_1}]]></expression>
+			</element>
+			<element kind="textField" uuid="d0000001-0001-0001-0001-000000000002"
+					x="115" y="0" width="60" height="13" fontName="Tahoma" fontSize="7.0" pattern="dd/MM/yyyy" hTextAlign="Center" vTextAlign="Middle" blankWhenNull="true">
+				<expression><![CDATA[$F{R_FECHA_1}]]></expression>
+			</element>
+			<element kind="textField" uuid="d0000001-0001-0001-0001-000000000003"
+					x="175" y="0" width="215" height="13" fontName="Tahoma" fontSize="7.0" vTextAlign="Middle" blankWhenNull="true">
+				<expression><![CDATA[(($F{R_TEXTO_2} != null ? ("Asiento " + $F{R_TEXTO_2} + " - ") : "") + ($F{R_TEXTO_3} != null ? $F{R_TEXTO_3} : ""))]]></expression>
+			</element>
+			<element kind="textField" uuid="d0000001-0001-0001-0001-000000000004"
+					x="390" y="0" width="65" height="13" fontName="Tahoma" fontSize="7.0" pattern="#,##0.00" hTextAlign="Right" vTextAlign="Middle" blankWhenNull="true">
+				<expression><![CDATA[$F{R_VALOR_1}]]></expression>
+				<box rightPadding="3"/>
+			</element>
+			<element kind="textField" uuid="d0000001-0001-0001-0001-000000000005"
+					x="455" y="0" width="80" height="13" fontName="Tahoma" fontSize="7.0" vTextAlign="Middle" blankWhenNull="true">
+				<expression><![CDATA[$F{R_TEXTO_4}]]></expression>
+			</element>
+		</band>
+
+		<!-- TIPO_FILA=2: cabecera de grupo conciliado -->
+		<band height="15" splitType="Stretch">
+			<printWhenExpression><![CDATA[$F{TIPO_FILA}.intValue() == 2]]></printWhenExpression>
+			<element kind="textField" uuid="d0000002-0001-0001-0001-000000000001"
+					mode="Opaque" x="0" y="0" width="535" height="15" backcolor="#EAF0F7"
+					fontName="Tahoma" fontSize="7.0" bold="true" vTextAlign="Middle" blankWhenNull="true">
+				<expression><![CDATA[$F{R_TEXTO_1} + "  |  " + $F{R_TEXTO_2}
+    + "  |  " + $F{R_TEXTO_5}
+    + "  |  Val.extracto: " + $F{R_VALOR_1} + "  Val.asiento: " + $F{R_VALOR_2} + "  Dif: " + $F{R_VALOR_3}]]></expression>
+				<box leftPadding="3"/>
+			</element>
+		</band>
+
+		<!-- TIPO_FILA=3: línea de un grupo (extracto o libro) -->
+		<band height="12" splitType="Stretch">
+			<printWhenExpression><![CDATA[$F{TIPO_FILA}.intValue() == 3]]></printWhenExpression>
+			<element kind="textField" uuid="d0000003-0001-0001-0001-000000000001"
+					x="20" y="0" width="60" height="12" fontName="Tahoma" fontSize="7.0" vTextAlign="Middle" blankWhenNull="true">
+				<expression><![CDATA[$F{R_TEXTO_1}]]></expression>
+			</element>
+			<element kind="textField" uuid="d0000003-0001-0001-0001-000000000002"
+					x="80" y="0" width="55" height="12" fontName="Tahoma" fontSize="7.0" pattern="dd/MM/yyyy" hTextAlign="Center" vTextAlign="Middle" blankWhenNull="true">
+				<expression><![CDATA[$F{R_FECHA_1}]]></expression>
+			</element>
+			<element kind="textField" uuid="d0000003-0001-0001-0001-000000000003"
+					x="135" y="0" width="255" height="12" fontName="Tahoma" fontSize="7.0" vTextAlign="Middle" blankWhenNull="true">
+				<expression><![CDATA[$F{R_TEXTO_2} != null ? ($F{R_TEXTO_2} + " - " + ($F{R_TEXTO_3} != null ? $F{R_TEXTO_3} : "")) : ($F{R_TEXTO_3} != null ? $F{R_TEXTO_3} : "")]]></expression>
+			</element>
+			<element kind="textField" uuid="d0000003-0001-0001-0001-000000000004"
+					x="390" y="0" width="65" height="12" fontName="Tahoma" fontSize="7.0" pattern="#,##0.00" hTextAlign="Right" vTextAlign="Middle" blankWhenNull="true">
+				<expression><![CDATA[$F{R_VALOR_1}]]></expression>
+				<box rightPadding="3"/>
+			</element>
+			<element kind="textField" uuid="d0000003-0001-0001-0001-000000000005"
+					x="455" y="0" width="65" height="12" fontName="Tahoma" fontSize="7.0" pattern="#,##0.00" hTextAlign="Right" vTextAlign="Middle" blankWhenNull="true">
+				<expression><![CDATA[$F{R_VALOR_2}]]></expression>
+				<box rightPadding="3"/>
+			</element>
+		</band>
+
+		<!-- TIPO_FILA=4/5: pendiente de extracto o de asiento (mismo layout) -->
+		<band height="12" splitType="Stretch">
+			<printWhenExpression><![CDATA[$F{TIPO_FILA}.intValue() == 4 || $F{TIPO_FILA}.intValue() == 5]]></printWhenExpression>
+			<element kind="textField" uuid="d0000004-0001-0001-0001-000000000001"
+					x="0" y="0" width="60" height="12" fontName="Tahoma" fontSize="7.0" pattern="dd/MM/yyyy" hTextAlign="Center" vTextAlign="Middle" blankWhenNull="true">
+				<expression><![CDATA[$F{R_FECHA_1}]]></expression>
+			</element>
+			<element kind="textField" uuid="d0000004-0001-0001-0001-000000000002"
+					x="60" y="0" width="130" height="12" fontName="Tahoma" fontSize="7.0" vTextAlign="Middle" blankWhenNull="true">
+				<expression><![CDATA[$F{TIPO_FILA}.intValue() == 4 ? $F{R_TEXTO_2} : ($F{R_TEXTO_2} + " - " + ($F{R_TEXTO_3} != null ? $F{R_TEXTO_3} : ""))]]></expression>
+			</element>
+			<element kind="textField" uuid="d0000004-0001-0001-0001-000000000003"
+					x="190" y="0" width="140" height="12" fontName="Tahoma" fontSize="7.0" vTextAlign="Middle" blankWhenNull="true">
+				<expression><![CDATA[$F{TIPO_FILA}.intValue() == 4 ? $F{R_TEXTO_3} : $F{R_TEXTO_4}]]></expression>
+			</element>
+			<element kind="textField" uuid="d0000004-0001-0001-0001-000000000004"
+					x="330" y="0" width="55" height="12" fontName="Tahoma" fontSize="7.0" pattern="#,##0.00" hTextAlign="Right" vTextAlign="Middle" blankWhenNull="true">
+				<expression><![CDATA[$F{R_VALOR_1}]]></expression>
+				<box rightPadding="3"/>
+			</element>
+			<element kind="textField" uuid="d0000004-0001-0001-0001-000000000005"
+					x="385" y="0" width="55" height="12" fontName="Tahoma" fontSize="7.0" pattern="#,##0.00" hTextAlign="Right" vTextAlign="Middle" blankWhenNull="true">
+				<expression><![CDATA[$F{R_VALOR_2}]]></expression>
+				<box rightPadding="3"/>
+			</element>
+			<element kind="textField" uuid="d0000004-0001-0001-0001-000000000006"
+					mode="Opaque" x="440" y="0" width="95" height="12" fontName="Tahoma" fontSize="7.0" bold="true" hTextAlign="Center" vTextAlign="Middle" blankWhenNull="true">
+				<expression><![CDATA[$F{R_TEXTO_1}]]></expression>
+				<style backcolor="#FFFFFF">
+					<conditionalStyle>
+						<conditionExpression><![CDATA["SIN DECLARAR".equals($F{R_TEXTO_1})]]></conditionExpression>
+						<style backcolor="#FFC7CE"/>
+					</conditionalStyle>
+				</style>
+			</element>
+		</band>
+	</detail>
+
+	<!-- ═══ SUMMARY — Pie de control + firmas ═══ -->
+	<summary height="150" splitType="Stretch">
+			<element kind="staticText" uuid="e0000001-0001-0001-0001-000000000001"
+					mode="Opaque" x="0" y="0" width="535" height="13" backcolor="#D1D1D1"
+					fontName="Tahoma" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+				<text><![CDATA[8. TOTALES DE CONTROL]]></text>
+			</element>
+			<element kind="textField" uuid="e0000001-0001-0001-0001-000000000002"
+					x="0" y="13" width="535" height="13" fontName="Tahoma" fontSize="7.0">
+				<expression><![CDATA["Líneas de extracto pendientes: " + $V{CUENTA_LINEAS_EXTRACTO}
+    + "   |   Líneas de contabilidad pendientes: " + $V{CUENTA_LINEAS_ASIENTO}]]></expression>
+			</element>
+
+			<element kind="line" uuid="e0000001-0001-0001-0001-000000000003" x="0" y="60" width="535" height="1"/>
+			<element kind="line" uuid="e0000001-0001-0001-0001-000000000004" x="30" y="102" width="120" height="1"/>
+			<element kind="staticText" uuid="e0000001-0001-0001-0001-000000000005"
+					x="30" y="104" width="120" height="20" fontName="Tahoma" fontSize="8.0" hTextAlign="Center">
+				<text><![CDATA[Elaborado Por:]]></text>
+			</element>
+			<element kind="line" uuid="e0000001-0001-0001-0001-000000000006" x="208" y="102" width="120" height="1"/>
+			<element kind="staticText" uuid="e0000001-0001-0001-0001-000000000007"
+					x="208" y="104" width="120" height="20" fontName="Tahoma" fontSize="8.0" hTextAlign="Center">
+				<text><![CDATA[Revisado Por:]]></text>
+			</element>
+			<element kind="line" uuid="e0000001-0001-0001-0001-000000000008" x="386" y="102" width="120" height="1"/>
+			<element kind="staticText" uuid="e0000001-0001-0001-0001-000000000009"
+					x="386" y="104" width="120" height="20" fontName="Tahoma" fontSize="8.0" hTextAlign="Center">
+				<text><![CDATA[Aprobado Por:]]></text>
+			</element>
+	</summary>
+
+</jasperReport>

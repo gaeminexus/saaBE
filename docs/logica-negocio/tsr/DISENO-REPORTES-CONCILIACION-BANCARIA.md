@@ -12,13 +12,42 @@ Todas las columnas de este documento se leyeron de las entidades el 2026-09-08 (
 Las que **no** pude verificar están marcadas `⚠️ VERIFICAR` — el que implemente las confirma
 contra la entidad antes de usarlas, y si difieren, corrige acá.
 
+> **Actualización 2026-09-08 (equipo omen-saa-2, al implementar `RPRT_CNCL_CNTA`):** todos los
+> `⚠️ VERIFICAR` de este documento se revisaron contra las entidades/DAO reales (no de memoria).
+> La mayoría confirmó lo que ya decía el diseño; **dos NO** — corregidos en el `.jrxml` y
+> documentados en el §7bis-report, más abajo. Resumen:
+>
+> - `CuentaBancaria` → empresa: confirmado, **no** tiene `PJRQCDGO` propio; el vínculo es
+>   `TSR.CNBC.BNCOCDGO → TSR.BNCO.PJRQCDGO` (`ControlExtractoBancarioDaoService.selectCuentasBancariasActivas`
+>   usa exactamente `c.banco.empresa.codigo`). El `.jrxml` de `RPRT_CNCL_CNTA` no necesitaba este
+>   filtro (ya viene acotado por `P_CNBC_CODIGO`), pero **`RPRT_CNCL_GNRL` sí** — ver §3.1bis.
+> - `CNT.DTAS.PLNNCDGO` (cuenta) y `CNT.ASNT.PJRQCDGO` (empresa): **confirmados tal cual**, las
+>   dos FK existen exactamente como las usa §2.5. Sin cambios.
+> - `selectCierreVigente` (el "cierre CERRADO más reciente" de una cuenta/período): usa
+>   `ORDER BY fechaCierre DESC` + `LIMIT 1`, **no** `MAX(codigo)`. Con `CNCLCDGO` como secuencia
+>   normalmente da lo mismo, pero para replicar el criterio real y no solo "probablemente lo
+>   mismo", el `.jrxml` usa `MAX(x.CNCLCDGO) KEEP (DENSE_RANK LAST ORDER BY x.CNCLFCCR)` en vez
+>   de `MAX(x.CNCLCDGO)` a secas — mismo resultado en el caso normal, correcto también en el
+>   caso raro de un cierre cargado fuera de orden.
+> - `TSR.EXBC.EXBCESTD`: confirmado simple flag activo/inactivo (1/0, no un rubro). El `.jrxml`
+>   agrega `EXBCESTD = 1` al `LEFT JOIN` de §2.1 que antes no lo filtraba.
+> - **`EXTRACTO_CARGADO` de §3.1 (la señal Sí/No de la fila por cuenta) estaba MAL.** La regla
+>   real (`ExtractoBancarioDaoService.selectCuentasConCobertura`, la que usa el Tablero de
+>   Cumplimiento) es *solapamiento de rango*: `EXBCFDSD <= período.hasta AND EXBCFHST >=
+>   período.desde`, con `EXBCESTD=1` y `EXBCESTP <> ERROR(4)` — **no** mirar `DEXB.DEXBFTRN`
+>   como decía el borrador original de §3.1. Corregido, ver §3.1bis.
+> - **El arrastre de §2.5 (pendientes de contabilidad) ancla distinto de lo que decía el
+>   modelo.** Este es el hallazgo grande — ver §7bis-report completo más abajo.
+
+
+
 ---
 
 ## 1. Qué modelo hay detrás (para entender las consultas)
 
 | Tabla | Entidad | Qué es |
 |---|---|---|
-| `TSR.CNBC` | `CuentaBancaria` | La cuenta. `PLNNCDGO` → cuenta contable. `⚠️ VERIFICAR` cómo se liga a la empresa: **no tiene `PJRQCDGO`** — replicar la regla de `ControlExtractoBancarioDaoService.selectCuentasBancariasActivas(idEmpresa)`. |
+| `TSR.CNBC` | `CuentaBancaria` | La cuenta. `PLNNCDGO` → cuenta contable. Confirmado 2026-09-08: **no tiene `PJRQCDGO`**; el vínculo a empresa es `CNBC.BNCOCDGO → BNCO.PJRQCDGO` (igual que `ControlExtractoBancarioDaoService.selectCuentasBancariasActivas`). |
 | `TSR.CNCL` | `Conciliacion` | **El cierre con partidas en tránsito** de una cuenta/período. `CNCLESTD`: 1 BORRADOR, 2 CERRADO, 3 ANULADO. Guarda la ecuación tal como cuadró: `CNCLSLDF` saldo libros, `CNCLDPTR` depósitos en tránsito, `CNCLCHNC` cheques girados no cobrados, `CNCLNCTR` NC no registradas, `CNCLNDTR` ND no registradas, `CNCLSLDE` saldo según extracto. `CNCLFCCR/CNCLUSCR` cierre; `CNCLMTAN` motivo de anulación. |
 | `TSR.DTCN` | `DetalleTransito` | Cada partida declarada. `DTCNTPOO` tipo 1-4; `DTCNESTD` 1 PENDIENTE, 2 SALDADA; `CNCLCDGO` cierre que la declaró; `DTCNCNSL` cierre que la saldó; ancla: `DTCNDTAS` (línea de asiento, tipos 1/2) o `DTCNIDEX` (línea de extracto, tipos 3/4). |
 | `TSR.CNCT` | `ConciliacionContable` | La revisión de una cuenta/período. `CNCTESTR`: 1 PENDIENTE, 2 VERIFICADO, 3 CON_DIFERENCIAS. Contadores `CNCTTTGR/CNCTPDEX/CNCTPDAS`; `CNCTUSVR/CNCTFCVR` verificación. |
@@ -26,7 +55,7 @@ contra la entidad antes de usarlas, y si difieren, corrige acá.
 | `TSR.DEXB` / `EXBC` | extracto | Líneas y cabecera del estado de cuenta cargado. `DEXBESTR`: 1 PENDIENTE_REVISION, 2 CONCILIADA, 3 DESCARTADA. |
 | `TSR.CTEB` | `ControlExtractoBancario` | El período de conciliación **de toda la empresa**: `CTEBCRRE` 1 = mes cerrado, `CTEBUSCR/CTEBFCCR`. |
 | `CNT.PRDO` | `Periodo` | `PRDONMBR`, `PRDOINCO` primer día, `PRDOFNN` último día, `PJRQCDGO` empresa. |
-| `CNT.DTAS` / `ASNT` | asiento | `DTASDBEE/DTASHBRR`, `DTASDSCR`, `ASNTNMAL` número alterno, `ASNTFCHA`, `ASNTESTD` (1 y 3 cuentan como vivos, igual que el DAO). `⚠️ VERIFICAR` el nombre de la FK cuenta en `DTAS` (`d.planCuenta` → `PLNNCDGO`?) y de la FK empresa en `ASNT` (`d.asiento.empresa` → `PJRQCDGO`?). |
+| `CNT.DTAS` / `ASNT` | asiento | `DTASDBEE/DTASHBRR`, `DTASDSCR`, `ASNTNMAL` número alterno, `ASNTFCHA`, `ASNTESTD` (1 y 3 cuentan como vivos, igual que el DAO). Confirmado 2026-09-08: `DTAS.PLNNCDGO` (cuenta) y `ASNT.PJRQCDGO` (empresa) existen tal cual, sin alias raros. |
 
 **La ecuación** (`ConciliacionCierreServiceImpl.saldoExtractoEsperado`, línea 599):
 
@@ -42,14 +71,76 @@ control (debe dar 0,00 dentro de la tolerancia).
 **Pendientes con arrastre** (regla exacta de `GrupoConciliacion{Asiento,Extracto}DaoServiceImpl`):
 un movimiento cuenta como pendiente de este período si (a) cae en el período, **o** (b) está
 anclado por una partida en tránsito todavía PENDIENTE de un cierre anterior; y no está en ningún
-grupo activo. Las consultas de §3.3/§3.4 replican eso. `⚠️` El DAO de asiento ancla el arrastre por
-`dt.movimientoBanco.asiento`; este reporte ancla por `DTCNDTAS` (§7bis del diseño, la línea exacta).
-Si en producción hay partidas viejas con `DTCNDTAS` NULL y `MVCBCDGO` lleno, el reporte no las
-arrastra — decidir entonces si se agrega el `OR` por `MVCB`.
+grupo activo. Las consultas de §2.4/§2.5 replican eso — **el arrastre del lado extracto (§2.4,
+tipos 3/4) SÍ ancla por `DTCNIDEX`, confirmado igual que el DAO; el del lado asiento (§2.5,
+tipos 1/2) NO ancla como decía este borrador — ver §7bis-report, resuelto el 2026-09-08.**
+
+---
+
+## 7bis-report. El arrastre de §2.5 no ancla por `DTCNDTAS`: ancla por `MVCB` (2026-09-08)
+
+**Hallazgo al implementar `RPRT_CNCL_CNTA`.** El modelo de este documento (§1) decía que el
+arrastre de asiento debía anclar por `DTCNDTAS` (la corrección de §7bis de
+`DISENO-CONCILIACION-PARTIDAS-EN-TRANSITO.md`, que hizo de `DetalleAsiento` el ancla real de
+toda partida tipo 1/2 nueva, porque solo el 8% tenía fila en `TSR.MVCB`). Verificado el código
+real que corre HOY detrás de la pantalla **Conciliación Contable**
+(`ConciliacionContableMatchServiceImpl.obtenerPendientesAsiento` →
+`GrupoConciliacionAsientoDaoServiceImpl.selectPendientes`, leído línea por línea, no de memoria):
+esa consulta **sigue anclando el arrastre por `dt.movimientoBanco.asiento.codigo`** (`TSR.MVCB
+→ CNT.ASNT`), **no** por `DetalleAsiento`/`DTCNDTAS`. El código que sí migró a `DetalleAsiento`
+es el que marca una partida como Saldada/Pendiente al conciliar/desconciliar
+(`saldarPartidasTransitoDeclaradas`/`reabrirPartidasTransitoDeclaradas`, con el comentario
+explícito "se busca por asiento, no por MovimientoBanco") — pero **no** el que busca qué
+asiento arrastrar para ofrecerlo como pendiente. Es decir: la migración de §7bis quedó a medias
+en este archivo puntual.
+
+**Regla aplicada en el `.jrxml` (gana el código real que corre hoy, no el modelo "ideal"):**
+la sección "Pendientes de contabilidad sin conciliar" arrastra un asiento cuando su
+`ASNTCDGO` aparece como el asiento de un `TSR.MVCB` que a su vez es el origen de un `TSR.DTCN`
+tipo 1/2 todavía Pendiente — exactamente `GrupoConciliacionAsientoDaoServiceImpl.selectPendientes`.
+**No** se usa `DTCNDTAS` para esto (sí se sigue usando `DTCNDTAS` en §2.2 para mostrar de qué
+línea de asiento salió cada partida declarada — eso es solo lectura/display, no arrastre, y ahí
+`DTCNDTAS` es correcto y confiable).
+
+**Consecuencia práctica, para la verificación de §6:** si una partida tipo 1/2 se declaró en
+tránsito DESPUÉS del 2026-08-27 (o cualquier asiento contable directo que nunca generó fila en
+`TSR.MVCB`, que es el 92% medido en su momento), esta consulta **no la arrastrará** aunque la
+pantalla de conciliación contable —que usa el mismo DAO— tampoco lo haría. Ambas están
+igual de "incompletas" respecto al ideal de §7bis, así que el reporte y la pantalla van a
+coincidir (que es el criterio de aceptación de §6), aunque ninguna de las dos reglas sea la
+más correcta posible. **Arreglar `GrupoConciliacionAsientoDaoServiceImpl` para que ancle por
+`DetalleAsiento` como el resto del sistema es un cambio de comportamiento de la conciliación
+contable en sí, fuera del alcance de "hacer un reporte que muestre lo que la pantalla muestra"**
+— si se decide hacerlo, es un ticket aparte, y este reporte hereda la corrección automáticamente
+en cuanto se aplique (usa la misma regla, no una copia congelada).
 
 ---
 
 ## 2. `RPRT_CNCL_CNTA` — Conciliación de una cuenta bancaria
+
+> **Nota de implementación 2026-09-08 — desviación deliberada del diseño de subdatasets.** Este
+> documento pedía subdatasets con `<datasetRun>` para las secciones múltiples. Antes de
+> escribirlo se hizo `grep` de todo `src/main/resources/rep/**` buscando `subDataset`,
+> `datasetRun`, `kind="table"` y `kind="list"`: **cero resultados** — ningún `.jrxml` de este
+> repo usa esos componentes, todos los reportes multi-fila existentes (p. ej.
+> `RPRT_ASNT_CNTB.jrxml`) resuelven "cabecera + N filas repetidas" con un único `<group>` y una
+> sola banda de `<detail>`. Escribir a mano un componente sin ningún ejemplo local, en un dialecto
+> de JRXML "compacto" (`kind="..."`) que tampoco tiene ejemplos de `datasetRun` en internet para
+> esa sintaxis puntual, era el riesgo estructural más alto de esta entrega — y a diferencia del
+> riesgo de la consulta SQL (que de cualquier forma solo se valida en producción, elegir
+> subdatasets o no ELIMINA ese riesgo), el riesgo de sintaxis de JRXML SÍ es evitable si se usa
+> solo lo que ya está probado en este repo.
+>
+> **Solución aplicada:** una única consulta SQL con `UNION ALL` (`ORDEN_SECCION` discrimina la
+> sección del reporte, `TIPO_FILA` discrimina qué banda de `<detail>` renderiza cada fila —
+> `<detail>` admite varias `<band>` con `printWhenExpression`, mecanismo estándar de JRXML), más
+> dos `<group>` anidados (`Seccion` por `ORDEN_SECCION` para los títulos de sección y
+> subtotales; `TipoPartida` por `R_TIPO` para el subtotal por tipo de partida en tránsito). La
+> fila con `ORDEN_SECCION=0` (cabecera/estado/ecuación) es siempre la primera por el `ORDER BY`,
+> y se lee en el `<title>`, que JasperReports evalúa una sola vez con los valores del primer
+> registro — el mismo patrón de "1 fila = 1 reporte" que ya usa `RPRT_ANTC_CLNT.jrxml`, aplicado
+> aquí solo a esa primera fila en vez de a todo el reporte. Sin subreportes, sin `.jasper`
+> sueltos, sin `SUBREPORT_DIR` — el objetivo original de evitar subreportes se cumple igual.
 
 **Parámetros:** `P_CNBC_CODIGO` (Long), `P_PRDO_CODIGO` (Long), `P_USUARIO` (String), más
 `P_PATH`, `P_REPORTE`, `P_IMAGEN` como los demás (el backend inyecta el logo si no viene).
@@ -135,20 +226,24 @@ SELECT e.PJRQNMBR                                   AS EMPRESA,
   JOIN CNT.PLNN pc  ON pc.PLNNCDGO = c.PLNNCDGO
   JOIN CNT.PRDO p   ON p.PRDOCDGO = $P{P_PRDO_CODIGO}
   JOIN SCP.PJRQ e   ON e.PJRQCDGO = p.PJRQCDGO
-  LEFT JOIN TSR.CNCL ci ON ci.CNCLCDGO = (SELECT MAX(x.CNCLCDGO) FROM TSR.CNCL x
+  LEFT JOIN TSR.CNCL ci ON ci.CNCLCDGO = (SELECT MAX(x.CNCLCDGO) KEEP (DENSE_RANK LAST ORDER BY x.CNCLFCCR)
+                                          FROM TSR.CNCL x
                                           WHERE x.CNBCCDGO = c.CNBCCDGO AND x.CNCLPRDO = p.PRDOCDGO
                                             AND x.CNCLESTD = 2)
   LEFT JOIN TSR.CNCT cc ON cc.CNBCCDGO = c.CNBCCDGO AND cc.PRDOCDGO = p.PRDOCDGO
   LEFT JOIN TSR.EXBC ex ON ex.EXBCCDGO = (SELECT MAX(y.EXBCCDGO) FROM TSR.EXBC y
-                                          WHERE y.CNBCCDGO = c.CNBCCDGO AND y.PRDOCDGO = p.PRDOCDGO)
+                                          WHERE y.CNBCCDGO = c.CNBCCDGO AND y.PRDOCDGO = p.PRDOCDGO
+                                            AND y.EXBCESTD = 1)
   LEFT JOIN TSR.CTEB ct ON ct.PJRQCDGO = p.PJRQCDGO AND ct.PRDOCDGO = p.PRDOCDGO
  WHERE c.CNBCCDGO = $P{P_CNBC_CODIGO}
 ```
 
-Los `MAX(...)` en los `LEFT JOIN` son a propósito: garantizan **una sola fila** aunque haya un
-cierre anulado y otro vigente, o dos archivos de extracto cargados. `⚠️ VERIFICAR` que
-`selectCierreVigente` use el mismo criterio (CERRADO más reciente); si toma otro, replicarlo.
-`⚠️ VERIFICAR` si `EXBC` debe filtrarse por `EXBCESTD` (no sé qué valores toma).
+Los `MAX(...)`/`KEEP (DENSE_RANK LAST ...)` en los `LEFT JOIN` son a propósito: garantizan **una
+sola fila** aunque haya un cierre anulado y otro vigente, o dos archivos de extracto cargados.
+Confirmado 2026-09-08: `ConciliacionDaoServiceImpl.selectCierreVigente` usa `ORDER BY
+fechaCierre DESC` + `LIMIT 1` (no `MAX(codigo)`), replicado arriba con
+`KEEP (DENSE_RANK LAST ORDER BY x.CNCLFCCR)`. `EXBCESTD` confirmado: flag simple activo(1)/
+inactivo(0), no un rubro — agregado el filtro `EXBCESTD = 1` arriba.
 
 ### 2.2 Partidas en tránsito (subdataset)
 
@@ -245,11 +340,15 @@ SELECT a.ASNTNMAL AS ASIENTO, a.ASNTFCHA AS FECHA, da.DTASDSCR AS DESCRIPCION,
   FROM CNT.DTAS da
   JOIN CNT.ASNT a ON a.ASNTCDGO = da.ASNTCDGO
   JOIN CNT.PRDO p ON p.PRDOCDGO = $P{P_PRDO_CODIGO}
- WHERE da.PLNNCDGO = (SELECT c.PLNNCDGO FROM TSR.CNBC c WHERE c.CNBCCDGO = $P{P_CNBC_CODIGO})  -- ⚠️ VERIFICAR FK
-   AND a.PJRQCDGO = p.PJRQCDGO                                                                   -- ⚠️ VERIFICAR FK
+ WHERE da.PLNNCDGO = (SELECT c.PLNNCDGO FROM TSR.CNBC c WHERE c.CNBCCDGO = $P{P_CNBC_CODIGO})  -- FK confirmada
+   AND a.PJRQCDGO = p.PJRQCDGO                                                                   -- FK confirmada
    AND a.ASNTESTD IN (1, 3)
    AND (   a.ASNTFCHA BETWEEN p.PRDOINCO AND p.PRDOFNN
-        OR da.DTASCDGO IN (SELECT t.DTCNDTAS FROM TSR.DTCN t WHERE t.DTCNTPOO IN (1,2) AND t.DTCNESTD = 1))
+        -- Arrastre: NO por DTCNDTAS -- ver §7bis-report. La regla real
+        -- (GrupoConciliacionAsientoDaoServiceImpl.selectPendientes, la que usa hoy la pantalla
+        -- de Conciliación Contable) ancla por TSR.MVCB -> CNT.ASNT.
+        OR a.ASNTCDGO IN (SELECT m.ASNTCDGO FROM TSR.MVCB m JOIN TSR.DTCN t ON t.MVCBCDGO = m.MVCBCDGO
+                           WHERE t.DTCNTPOO IN (1,2) AND t.DTCNESTD = 1))
    AND da.DTASCDGO NOT IN (SELECT y.DTASCDGO FROM TSR.GCAS y JOIN TSR.GRCC g ON g.GRCCCDGO = y.GRCCCDGO
                             WHERE g.GRCCESTD = 1)
  ORDER BY a.ASNTFCHA, a.ASNTNMAL, da.DTASCDGO
