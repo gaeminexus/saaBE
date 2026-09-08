@@ -3242,3 +3242,68 @@ estado por PUT** — cualquier cliente suyo que aprobara así va a recibir un 50
 `ValorNoPagadoServiceImpl`, `PeriodoNominaRest`, `ProvisionNominaDaoService` (**`sumaValorByEmpleadosYTipo`
 eliminada**), nuevo `rhh/util/PeriodoModificableNomina`. Y `REGISTRO-RESERVAS-EQUIPOS.md`: la
 numeración real de PDTR 1500-1516 y la corrección de los reversos.
+
+## §38 — Reportes de conciliación bancaria, y un commit ajeno que se llevó lo nuestro
+
+**2026-09-08, tarde.** Pedido: *"No existe un reporte de conciliación de cuenta bancaria y de
+conciliación general. Crea el jasper súper completo."*
+
+| Entregable | Commit |
+|---|---|
+| Diseño con las consultas (`tsr/DISENO-REPORTES-CONCILIACION-BANCARIA.md`) | `20fc981` |
+| `compilar-jasper.bat` + `tools/jasper/` — el `.jasper` sin Jaspersoft Studio | `cd418b8` |
+| `RPRT_CNCL_CNTA` (una cuenta/período) `.jrxml` + `.jasper` | `2cb94ad` |
+| `RPRT_CNCL_GNRL` (general del período) `.jrxml` + `.jasper` | `02d2088` |
+| `e2-34` validación contra la base | `91e3764` · `186b0c4` |
+| Botones (saaFE) | `7e66cbc` |
+| Ajuste del harness: default solo faltantes, `--forzar`, rutas como argumento | **`ce3ce9bd`, commit de omen1** — ver abajo |
+
+**Lo que destrabó todo:** en la OMEN no hay Studio, pero `jasperreports-jdt:7.0.3` baja por Maven
+y el pom ya trae `ecj`. Un módulo aparte en `tools/jasper/` (nunca en el pom del WAR) compila igual
+que Studio. El CLAUDE.md ya no pide Studio. Los siete `.jrxml` de rhh que reventaron en producción
+fueron por no tener esto.
+
+**Lo que el BE corrigió de mi diseño al verificar contra el código, y valió la pena que lo hiciera:**
+el general **no filtraba por empresa** (`CNBC` no tiene `PJRQCDGO`; el vínculo es vía `BNCO`) —
+habría listado las cuentas de todas las empresas; "extracto cargado" usaba fechas de `DEXB` en vez de
+la regla del Tablero de Cumplimiento (`selectCuentasConCobertura`); el cierre vigente se elige por
+`fechaCierre`, no por `MAX(código)`. Y un hallazgo que no es del reporte: **el arrastre de pendientes
+de contabilidad en `GrupoConciliacionAsientoDaoServiceImpl.selectPendientes` sigue anclando por
+`MVCB`, no por `DetalleAsiento`** — la migración §7bis quedó a medias en ese DAO. El reporte replica
+la pantalla; arreglar el DAO es otro cambio. Pendiente.
+
+**Decisión de arquitectura del `.jrxml`:** una sola consulta `UNION ALL` con `ORDEN_SECCION`/`TIPO_FILA`
+y bandas de `detail` con `printWhenExpression`, en vez de subdatasets — ningún `.jrxml` del repo usa
+`subDataset`/`datasetRun`, y escribir esa sintaxis sin precedente era el riesgo más alto.
+
+### ⚠️ Un commit de omen1 se llevó tres archivos nuestros
+
+`ce3ce9bd` ("rpr(omen1): H54 tanda 2…"), ya en `origin/main`, incluye `CLAUDE.md`,
+`compilar-jasper.bat` y `tools/jasper/src/tools/jasper/CompilarJasper.java` — el ajuste del harness
+que omen2 tenía **staged sin commitear** en ese momento. El mensaje de ese commit no lo menciona.
+El código está bien y probado (`compilar-jasper.bat` sin argumentos: `Compilados: 0 | Al día: 57`),
+así que no se reescribe historia. Pero es exactamente el escenario que el `deny` de `git add -A`
+en `settings.json` existe para evitar, y aun así pasó. Avisado a `omen-saa-1-arb` por mensaje.
+**Regla que sale de esto:** lo staged sin commitear es de cualquiera que corra `git add` amplio en
+el mismo directorio — no dejar nada staged más tiempo del necesario, y commitear por ruta.
+
+El único `.jrxml` sin `.jasper` en el repo es `rep/test/reporte_prueba.jrxml` (fixture viejo, no
+se sirve). No se tocó.
+
+**Corrección del mecanismo (omen-saa-1-arb, misma tarde), y la regla de arriba estaba mal.** El
+`git add` de omen1 fue **por ruta, cinco archivos explícitos** — exactamente lo que pide el
+`settings.json`. El agujero está en el `commit`: **`git commit` commitea todo el índice**, y en un
+árbol compartido el índice es estado compartido, igual que el working tree. Nuestros tres archivos
+estaban staged desde hacía ~20 minutos (en el commit anterior de omen1 `tools/` aún era `??`), y
+el `git commit` siguiente se los llevó sin que nadie los tocara. Anotarlo como «`git add` amplio»
+habría hecho que el próximo repitiera lo mismo con cuidado y volviera a pasar.
+
+**Lo que sí lo previene, y desde hoy es la regla de omen2 también:**
+
+```
+git diff --cached --name-only        # qué se va a llevar DE VERDAD, no lo que uno cree que agregó
+git commit -- <ruta1> <ruta2> ...    # limita el commit a esas rutas; el resto del índice queda donde está
+```
+
+Y del otro lado: **no dejar nada staged sin commitear** — lo staged es de cualquiera que commitee
+en el mismo directorio. omen1 lo lleva al `REGISTRO-RESERVAS-EQUIPOS.md`, que leen los cuatro equipos.

@@ -2271,3 +2271,81 @@ que frene.
 agregó al `reversionAsiento(id)` de siempre. Por ahí ya pasa gente con períodos en cualquier estado;
 apretarlo como efecto colateral de otro pedido rompería producción sin que nadie lo hubiera
 decidido. Si algún día conviene, que sea medido y avisado.
+
+---
+
+## ⛔ H58 — El WAR subió sin su DDL: `CRD.CFCR`/`ESCR` no existen, y por eso no salen los Gs (2026-09-08)
+
+**Síntoma que veía el usuario** al generar los G40–G51 de agosto:
+
+    could not prepare statement [JI031070: Transaction cannot proceed:
+    STATUS_MARKED_ROLLBACK] [update RPR.EJRD set ... where EJRDCDGO=?]
+
+**Causa real, a dos capas de distancia:** `GeneracionG48ServiceImpl` consulta `CRD.CFCR`. Esa tabla
+**no existe en la base**. Oracle responde `ORA-00942`, el contenedor marca la transacción para
+rollback, y lo que explota es el `update` con que el orquestador intentaba dejar constancia del
+fallo — ver [[H-los-Gs-escondian-el-error]] (commit `0140477`).
+
+**Cómo pasó.** El otro equipo de `crd` parametrizó la calificación de riesgo del G48 el 2026-09-02:
+código en `e384000`, DDL en `crd/sql/177_PARAMETRIZACION_CALIFICACION_RIESGO.sql`. El script arranca
+con *«ESTE SCRIPT ESCRIBE (CREATE TABLE + INSERT). Correrlo ANTES de desplegar el WAR.»*
+**El código se desplegó. El script nunca corrió.**
+
+Es el mismo accidente que `CBCRASRP` el 2026-08-31, y el mismo que el `sql/212` de jubilados estuvo
+a punto de repetir. **Tercera vez en nueve días.** No es mala suerte: es que *«correr el script antes
+del WAR»* vive en un comentario dentro del script que sólo lee quien ya decidió correrlo.
+
+**Alcance mayor que el G48:** `ConfiguracionCalificacionRiesgoRest` y `EscalaCalificacionRiesgoRest`
+están expuestos y también fallan mientras las tablas no existan.
+
+**Se arregla corriendo el `177`, sin tocar código y sin esperar el WAR.** Pero los controles A.2/A.3
+del script piden ojo humano: los productos **7, 8 y 21** están cableados como hipotecarios y la carga
+inicial los congela. Si algún hipotecario quedó fuera de ese literal, hoy se califica mal y el script
+convertiría el error en parametrización — en un reporte **al regulador**.
+
+### La lección, y no es sobre este script
+
+**Mi diagnóstico previo tenía la forma equivocada.** Deduje del código que el G48 fallaba por
+«productos sin configuración vigente», y armé el `sql/219` para medir eso. El código nunca llega a
+esa comprobación: la consulta revienta antes. **La medición correcta la hizo el usuario en un
+segundo, corriendo el select y leyendo el error de Oracle** — otra vez, medir le ganó a deducir.
+
+Lo que sí funcionó del `219`: mandarlo a correr **antes** de tocar ningún generador. Si hubiera
+"arreglado" el G48 por mi hipótesis, habría cambiado código sano para un problema que era de DDL.
+
+---
+
+## ⛔ H59 — `git add` por ruta NO protege el árbol compartido: `git commit` se lleva todo el índice
+
+**El commit `ce3ce9bd`** (H54 tanda 2, cinco generadores) se llevó puestos **tres archivos de
+`omen-saa-2`** que no tienen nada que ver: `CLAUDE.md`, `compilar-jasper.bat` y
+`tools/jasper/src/tools/jasper/CompilarJasper.java` (87 líneas). Lo detectó su árbitro.
+
+**Lo que corrí fue correcto:**
+
+```
+git add src/.../GeneracionG42ServiceImpl.java  ... (cinco rutas explícitas)
+git commit -q -F <mensaje>
+```
+
+Nada de `-A`, ni `.`, ni `-u`, ni un directorio — exactamente lo que el `settings.json` exige.
+
+⭐ **El agujero está en el `commit`, no en el `add`. `git commit` commitea TODO EL ÍNDICE**, no lo
+que uno acaba de agregar. `omen2` tenía sus archivos staged, y mi commit se los llevó sin que yo
+tocara nada de ellos. **En un árbol compartido el índice es estado compartido, igual que el working
+tree.** Fechable: en mi commit anterior (`0140477`, veinte minutos antes) `tools/` figuraba como
+`??` untracked.
+
+**Lo que sí lo previene:**
+
+```
+git commit -- <las rutas>          # limita el commit a esas rutas, ignora el resto del índice
+git diff --cached --name-only      # control barato ANTES: qué se va a llevar de verdad
+```
+
+**Por qué importa la corrección:** su árbitro lo atribuyó a un `git add` de directorio. Si lo
+anotáramos así, el próximo haría exactamente lo que hice yo —con cuidado, por ruta— y volvería a
+pasar. Va al `REGISTRO-RESERVAS-EQUIPOS.md`, que lo leen los cuatro equipos.
+
+Historia no reescrita: los archivos ya están en `origin/main` y compilan. Lo único perdido es la
+trazabilidad del mensaje.
