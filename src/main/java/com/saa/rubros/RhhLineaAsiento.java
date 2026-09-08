@@ -28,6 +28,7 @@ public interface RhhLineaAsiento {
 	public static final int GASTO_DECIMO_CUARTO = 7;
 	public static final int IESS_POR_PAGAR_APORTE_PERSONAL = 10;
 	public static final int IESS_POR_PAGAR_APORTE_PATRONAL = 11;
+	/** Cuotas de préstamos quirografarios descontadas al empleado. La 19 es la hipotecaria. */
 	public static final int IESS_POR_PAGAR_PRESTAMOS = 12;
 	public static final int SRI_RETENCION_EN_LA_FUENTE_RD = 13;
 	public static final int CUENTAS_POR_COBRAR_EMPLEADOS = 14;
@@ -35,6 +36,8 @@ public interface RhhLineaAsiento {
 	public static final int FONDOS_DE_RESERVA_POR_PAGAR = 16;
 	public static final int DECIMOS_POR_PAGAR = 17;
 	public static final int SUELDOS_POR_PAGAR = 18;
+	/** Cuotas de préstamos hipotecarios descontadas al empleado. La 12 sigue siendo la quirografaria. */
+	public static final int IESS_POR_PAGAR_PRESTAMOS_HIPOTECARIOS = 19;
 	public static final int GASTO_PROVISION_DECIMO_TERCERO = 30;
 	public static final int GASTO_PROVISION_DECIMO_CUARTO = 31;
 	public static final int GASTO_PROVISION_VACACIONES = 32;

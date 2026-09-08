@@ -501,17 +501,14 @@ public class PlanillaIessServiceImpl implements PlanillaIessService {
 	 * línea por el valor total de la planilla — los renglones que se hayan capturado ahí
 	 * son solo para la conciliación (#3.2), no participan del desglose contable.
 	 * <p>
-	 * Son seis productos (IESS-APER, IESS-APAT, IESS-CCC, IESS-STP, IESS-PRST, IESS-FRES),
-	 * mapeo 1:1 con {@code conceptoTipo} — nada se pliega en Java. Verificado el 2026-09-07
-	 * (corrección del ítem 6.d): la suposición original de que CCC y el seguro de tiempo
-	 * parcial "quedaban dentro del aporte patronal" era falsa —
-	 * {@code ContabilizacionNominaServiceImpl} no los contabiliza en ninguna línea, la
-	 * planilla de control solo los calcula—, así que plegarlos a IESS-APAT habría debitado
-	 * un pasivo que nunca se acreditó. Si dos conceptos alguna vez deben terminar en la
-	 * misma cuenta, eso se resuelve apuntando sus dos grupos a la misma cuenta en el .sql,
-	 * no con un switch acá. La única excepción real es IESS-PRST, que cubre los dos tipos
-	 * de préstamo porque {@code RhhLineaAsiento} solo tiene la línea 12 para los dos (#2.1)
-	 * — no es un pliegue de este código, es que hoy no existen dos líneas para separar.
+	 * Son siete productos (IESS-APER, IESS-APAT, IESS-CCC, IESS-STP, IESS-PRSQ, IESS-PRSH,
+	 * IESS-FRES), mapeo 1:1 — nada se pliega en Java. Si dos conceptos alguna vez deben
+	 * terminar en la misma cuenta contable, eso se resuelve apuntando sus dos grupos de
+	 * producto a la misma cuenta en el .sql, no con un switch acá: es parametrización, no
+	 * código (lección del ítem 6.d, donde una suposición sobre el CCC resultó falsa).
+	 * Quirografarios e hipotecarios ya no comparten producto (ítem 7): {@code RhhLineaAsiento}
+	 * ganó la línea 19 propia para el hipotecario, y {@code ContabilizacionNominaServiceImpl}
+	 * los separa desde ahí.
 	 * @param planilla  : Planilla a pagar (con tipo y empresa resueltos)
 	 * @param renglones : Renglones ya cargados de la planilla
 	 * @return          : El desglose a pasar a {@code registrarPagoDeOrigenExterno}
@@ -551,7 +548,14 @@ public class PlanillaIessServiceImpl implements PlanillaIessService {
 			return desglose;
 		}
 
-		String codigoProducto = (tipo == RhhTipoPlanillaIess.FONDOS_DE_RESERVA) ? "IESS-FRES" : "IESS-PRST";
+		String codigoProducto;
+		if (tipo == RhhTipoPlanillaIess.FONDOS_DE_RESERVA) {
+			codigoProducto = "IESS-FRES";
+		} else if (tipo == RhhTipoPlanillaIess.PRESTAMOS_HIPOTECARIOS) {
+			codigoProducto = "IESS-PRSH";
+		} else {
+			codigoProducto = "IESS-PRSQ";
+		}
 		LineaContablePago linea = new LineaContablePago();
 		linea.setIdProductoPago(buscaProductoPago(codigoProducto, idEmpresa));
 		linea.setValor(planilla.getValorIess());

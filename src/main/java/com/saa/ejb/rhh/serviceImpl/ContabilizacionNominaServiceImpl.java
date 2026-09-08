@@ -934,9 +934,11 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
         if (esRol(rol, RhhRolConceptoMotor.IMPUESTO_A_LA_RENTA)) {
             return RhhLineaAsiento.SRI_RETENCION_EN_LA_FUENTE_RD;
         }
-        if (esRol(rol, RhhRolConceptoMotor.PRESTAMO_QUIROGRAFARIO)
-                || esRol(rol, RhhRolConceptoMotor.PRESTAMO_HIPOTECARIO)) {
+        if (esRol(rol, RhhRolConceptoMotor.PRESTAMO_QUIROGRAFARIO)) {
             return RhhLineaAsiento.IESS_POR_PAGAR_PRESTAMOS;
+        }
+        if (esRol(rol, RhhRolConceptoMotor.PRESTAMO_HIPOTECARIO)) {
+            return RhhLineaAsiento.IESS_POR_PAGAR_PRESTAMOS_HIPOTECARIOS;
         }
         if (esRol(rol, RhhRolConceptoMotor.RETENCION_JUDICIAL)) {
             return RhhLineaAsiento.RETENCIONES_JUDICIALES_POR_PAGAR;
