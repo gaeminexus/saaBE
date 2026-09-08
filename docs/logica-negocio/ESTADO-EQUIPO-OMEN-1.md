@@ -2094,3 +2094,59 @@ tenga llamadores activos. Si aparecen, se mira entre los dos.
 sobre sus tres defectos del dia — tipo de cuenta invertido, naturaleza del mayor, el centavo — y
 vale igual para los nuestros. **Es la misma conclusion a la que llego este tablero por separado
 (H52): la primera ejecucion real siempre es el usuario.**
+
+---
+
+## ✅ 2026-09-08 — H55: los reportes nunca supieron convertir un parámetro de fecha
+
+**Commit `2e866ae`.** El informe de devolución de pago (`RPRT_INFR_DVAP`) reventaba en producción:
+
+    ClassCastException: class java.lang.String cannot be cast to class java.util.Date
+        at JRJdbcQueryExecuter.setDate(JRJdbcQueryExecuter.java:886)
+
+`ReporteServiceImpl.convertirTiposParametros` existe justamente para coercionar los parámetros
+del JSON a los tipos que declara el `.jasper`. Cubría `Long`, `Integer`, `Double`, `Float`,
+`BigDecimal`, `Short` y `String`. **Ninguna rama de fecha.** La plantilla declara `P_FECHA_DESDE`
+como `java.sql.Date`, el JSON manda el String `"2026-01-01"`, nada lo convertía, y explotaba al
+ejecutar la consulta.
+
+Se agregaron las tres ramas (`java.util.Date`, `java.sql.Date`, `java.sql.Timestamp`) detrás de
+`isTipoFecha()`, con `parsearFechaParametro()` que acepta `yyyy-MM-dd` o ISO local con hora.
+
+**Dos decisiones que vale la pena no revertir:**
+
+- **Si el String no parsea, se deja tal cual y falla como antes.** No se inventa un valor por
+  defecto ni un "hoy". Un reporte financiero que sale con una fecha silenciosamente distinta de la
+  pedida es peor que uno que no sale: nadie lo revisa, y el número mal llega al informe.
+- **`java.sql.Date`/`Timestamp` usan `valueOf()`, que es literal.** Nada de desplazamiento de zona.
+  Es exactamente la trampa que el `CLAUDE.md` documenta con `LocalDateTime` y Jackson, donde la
+  fecha se corría un día sin ningún error.
+
+Es **puramente aditivo**: un parámetro de fecha declarado así ya fallaba siempre, así que la rama
+nueva no puede romper ningún reporte que hoy funcione.
+
+### ⚠️ Lo que queda medido y sin tocar: `Boolean`
+
+Inventario de los `<parameter class="...">` de **todos** los `.jrxml` de `src/main/resources/rep/`:
+
+| Tipo | Parámetros | Estado |
+|---|---:|---|
+| `java.lang.String` | 176 | cubierto |
+| `java.lang.Long` | 48 | cubierto |
+| `java.awt.Image` | 37 | se maneja aparte, no pasa por este método |
+| `java.lang.Double` | 26 | cubierto |
+| `java.lang.Integer` | 20 | cubierto |
+| **`java.lang.Boolean`** | **2** | **⚠️ SIN CUBRIR** |
+| `java.sql.Date` | 1 | cubierto hoy |
+
+Los dos `Boolean` son `P_RECIBIO_CESANTIA` y `P_JUB_SIN_MOVIMIENTOS`, los dos en
+**`RPRT_CRTF_PTRN.jrxml`**. **No está medido si falla hoy**, y depende enteramente de qué manda el
+frontend: si van como boolean JSON, Jackson los deserializa a `Boolean` y no rompe; si van como el
+String `"true"`, revientan con el mismo `ClassCastException`. **No se tocó** — el usuario no lo
+pidió y no hay reporte de falla. Queda anotado para cuando alguien ejecute ese certificado.
+
+**Lección, que es la misma de siempre en este archivo:** el método tenía un javadoc que explicaba
+por qué existía —"Jackson deserializa números JSON como Integer"— y ese javadoc describía
+exactamente el subconjunto de casos que alguien había vivido. Los tipos cubiertos no eran un
+diseño: eran una lista de incidentes pasados. **Un `grep` de treinta segundos sobre los `.jrxml`
+daba el mapa completo de lo que el método tenía que soportar.** Nadie lo había corrido.
