@@ -89,17 +89,31 @@ public class PagoProgramadoRest {
     }
 
     /**
-     * Listado de pagos para la pantalla de selección.
-     * @param idEmpresa : Id de la empresa (obligatorio)
-     * @param estado    : 1=Registrado 2=En archivo 3=Confirmado 4=Rechazado 5=Anulado (opcional)
-     * @param idTitular : Id del proveedor (opcional)
+     * Listado de pagos para la pantalla de selección, la de recepción y confirmación (T3) y
+     * la de consulta y gestión (T4). Ver
+     * docs/logica-negocio/pagos/API-BANDEJA-CONFIRMACION-FILTROS.md.
+     * @param idEmpresa        : Id de la empresa (obligatorio)
+     * @param estado           : 1=Registrado 2=En archivo 3=Confirmado 4=Rechazado 5=Anulado;
+     *                           repetible (?estado=1&estado=2), sin filtro si se omite
+     * @param idTitular        : Id del proveedor (opcional)
+     * @param idCuentaBancaria : Id de la cuenta bancaria de ORIGEN (opcional)
+     * @param origen           : OrigenPagoCxp u OrigenPagoExterno; repetible, sin filtro si se omite
+     * @param desde            : Fecha programada desde, yyyy-MM-dd (opcional)
+     * @param hasta            : Fecha programada hasta, yyyy-MM-dd (opcional)
+     * @param texto            : Coincidencia parcial contra la observación o el nombre del
+     *                           beneficiario (opcional)
      */
     @GET
     @Path("/listar")
     @Produces(MediaType.APPLICATION_JSON)
     public Response listar(@QueryParam("idEmpresa") Long idEmpresa,
-            @QueryParam("estado") Long estado,
-            @QueryParam("idTitular") Long idTitular) {
+            @QueryParam("estado") List<Long> estado,
+            @QueryParam("idTitular") Long idTitular,
+            @QueryParam("idCuentaBancaria") Long idCuentaBancaria,
+            @QueryParam("origen") List<String> origen,
+            @QueryParam("desde") String desde,
+            @QueryParam("hasta") String hasta,
+            @QueryParam("texto") String texto) {
         System.out.println("LLEGA AL SERVICIO GET /pgtr/listar");
         try {
             if (idEmpresa == null) {
@@ -107,7 +121,8 @@ public class PagoProgramadoRest {
                         .entity("Debe enviar idEmpresa.")
                         .type(MediaType.APPLICATION_JSON).build();
             }
-            List<PagoProgramado> lista = pagoProgramadoService.listar(idEmpresa, estado, idTitular);
+            List<PagoProgramado> lista = pagoProgramadoService.listar(idEmpresa, estado, idTitular,
+                    idCuentaBancaria, origen, desde, hasta, texto);
             return Response.status(Response.Status.OK).entity(lista)
                     .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {

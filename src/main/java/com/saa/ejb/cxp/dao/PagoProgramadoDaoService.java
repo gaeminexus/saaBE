@@ -12,16 +12,27 @@ import jakarta.ejb.Local;
 public interface PagoProgramadoDaoService extends EntityDao<PagoProgramado> {
 
 	/**
-	 * Recupera los pagos programados de una empresa, filtrando opcionalmente por
-	 * estado y por proveedor.
-	 * @param idEmpresa  : Id de la empresa
-	 * @param estado     : Estado del pago, null para todos
-	 * @param idTitular  : Id del proveedor, null para todos
-	 * @return           : Listado de pagos programados
-	 * @throws Throwable : Excepcion
+	 * Recupera los pagos programados de una empresa para la bandeja de recepción y
+	 * confirmación (T3) y la de consulta y gestión (T4), filtrando opcionalmente por
+	 * estado(s), proveedor, cuenta de origen, origen(es), fechas y texto libre.
+	 * @param idEmpresa         : Id de la empresa
+	 * @param estados           : Estados del pago; null, vacía o con sólo elementos null = todos
+	 * @param idTitular         : Id del proveedor; null para todos
+	 * @param idCuentaBancaria  : Id de la cuenta bancaria de ORIGEN (PGTRCNBC); null para todas
+	 * @param origenes          : {@link com.saa.rubros.OrigenPagoCxp} u
+	 *                            {@link com.saa.rubros.OrigenPagoExterno}; null, vacía o con sólo
+	 *                            cadenas en blanco = sin filtro (todos los orígenes)
+	 * @param desde             : Fecha programada desde (inclusive); null = sin límite inferior
+	 * @param hasta             : Fecha programada hasta (inclusive); null = sin límite superior
+	 * @param texto             : Coincidencia parcial (sin distinguir mayúsculas) contra la
+	 *                            observación o el nombre del beneficiario (denormalizado o del
+	 *                            titular); null o en blanco = sin filtro
+	 * @return                  : Listado de pagos programados
+	 * @throws Throwable        : Excepcion
 	 */
-	List<PagoProgramado> selectByEmpresaEstado(Long idEmpresa, Long estado, Long idTitular)
-			throws Throwable;
+	List<PagoProgramado> selectByEmpresaEstado(Long idEmpresa, List<Long> estados, Long idTitular,
+			Long idCuentaBancaria, List<String> origenes, java.time.LocalDate desde,
+			java.time.LocalDate hasta, String texto) throws Throwable;
 
 	/**
 	 * Recupera los pagos incluidos en un lote.

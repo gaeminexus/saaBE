@@ -196,14 +196,25 @@ public interface PagoProgramadoService extends EntityService<PagoProgramado> {
 			Long idUsuario, boolean debitoAutomatico, String referencia, Long formaPago) throws Throwable;
 
 	/**
-	 * Lista los pagos de una empresa para la pantalla de selección.
-	 * @param idEmpresa  : Id de la empresa
-	 * @param estado     : Estado a filtrar, null para todos
-	 * @param idTitular  : Id del proveedor, null para todos
-	 * @return           : Listado de pagos
-	 * @throws Throwable : Excepcion
+	 * Lista los pagos de una empresa para la pantalla de selección, la de recepción y
+	 * confirmación (T3) y la de consulta y gestión (T4). Ver
+	 * docs/logica-negocio/pagos/API-BANDEJA-CONFIRMACION-FILTROS.md.
+	 * @param idEmpresa         : Id de la empresa
+	 * @param estados           : Estados a filtrar; null, vacía o con sólo elementos null = todos
+	 * @param idTitular         : Id del proveedor; null para todos
+	 * @param idCuentaBancaria  : Id de la cuenta bancaria de origen; null para todas
+	 * @param origenes          : {@link com.saa.rubros.OrigenPagoCxp} o
+	 *                            {@link com.saa.rubros.OrigenPagoExterno}; null, vacía o con sólo
+	 *                            cadenas en blanco = sin filtro (todos los orígenes)
+	 * @param desde             : Fecha programada desde, yyyy-MM-dd (opcional)
+	 * @param hasta             : Fecha programada hasta, yyyy-MM-dd (opcional)
+	 * @param texto             : Coincidencia parcial contra la observación o el nombre del
+	 *                            beneficiario (opcional)
+	 * @return                  : Listado de pagos
+	 * @throws Throwable        : Excepcion
 	 */
-	List<PagoProgramado> listar(Long idEmpresa, Long estado, Long idTitular) throws Throwable;
+	List<PagoProgramado> listar(Long idEmpresa, List<Long> estados, Long idTitular, Long idCuentaBancaria,
+			List<String> origenes, String desde, String hasta, String texto) throws Throwable;
 
 	/**
 	 * Bandeja de pagos POR_APROBAR para la pantalla de aprobación (punto 14). Proyección,

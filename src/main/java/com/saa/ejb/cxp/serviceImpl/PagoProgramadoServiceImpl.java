@@ -1055,9 +1055,17 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	}
 
 	@Override
-	public List<PagoProgramado> listar(Long idEmpresa, Long estado, Long idTitular) throws Throwable {
-		System.out.println("=== listar pagos | empresa=" + idEmpresa + " | estado=" + estado + " ===");
-		return pagoProgramadoDaoService.selectByEmpresaEstado(idEmpresa, estado, idTitular);
+	public List<PagoProgramado> listar(Long idEmpresa, List<Long> estados, Long idTitular, Long idCuentaBancaria,
+			List<String> origenes, String desde, String hasta, String texto) throws Throwable {
+		System.out.println("=== listar pagos | empresa=" + idEmpresa + " | estados=" + estados
+				+ " | cuenta=" + idCuentaBancaria + " | origenes=" + origenes + " | desde=" + desde
+				+ " | hasta=" + hasta + " | texto=" + texto + " ===");
+		LocalDate fechaDesde = (desde != null && !desde.trim().isEmpty())
+				? LocalDate.parse(desde.trim()) : null;
+		LocalDate fechaHasta = (hasta != null && !hasta.trim().isEmpty())
+				? LocalDate.parse(hasta.trim()) : null;
+		return pagoProgramadoDaoService.selectByEmpresaEstado(idEmpresa, estados, idTitular,
+				idCuentaBancaria, origenes, fechaDesde, fechaHasta, texto);
 	}
 
 	// =====================================================================

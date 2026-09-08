@@ -61,29 +61,108 @@ public class PagoProgramadoDaoServiceImpl extends EntityDaoImpl<PagoProgramado>
     }
 
     @Override
-    public List<PagoProgramado> selectByEmpresaEstado(Long idEmpresa, Long estado, Long idTitular)
+    public List<PagoProgramado> selectByEmpresaEstado(Long idEmpresa, List<Long> estados, Long idTitular,
+            Long idCuentaBancaria, List<String> origenes, LocalDate desde, LocalDate hasta, String texto)
             throws Throwable {
         System.out.println("Ingresa al metodo selectByEmpresaEstado con empresa: " + idEmpresa
-                + " | estado: " + estado + " | titular: " + idTitular);
+                + " | estados: " + estados + " | titular: " + idTitular + " | cuenta: " + idCuentaBancaria
+                + " | origenes: " + origenes + " | desde: " + desde + " | hasta: " + hasta
+                + " | texto: " + texto);
+
+        List<Long> estadosFiltrados = new ArrayList<>();
+        if (estados != null) {
+            for (Long e : estados) {
+                if (e != null) {
+                    estadosFiltrados.add(e);
+                }
+            }
+        }
 
         StringBuilder jpql = new StringBuilder(
                 " select p from PagoProgramado p " +
+                " left join p.titular t " +
                 " where  p.empresa.codigo = :idEmpresa ");
-        if (estado != null) {
-            jpql.append(" and p.estado = :estado ");
+        if (!estadosFiltrados.isEmpty()) {
+            jpql.append(" and ( p.estado in :estados ) ");
         }
         if (idTitular != null) {
             jpql.append(" and p.titular.codigo = :idTitular ");
         }
+        if (idCuentaBancaria != null) {
+            jpql.append(" and p.cuentaBancaria.codigo = :idCuentaBancaria ");
+        }
+
+        // "origen" no es una columna (misma trampa que selectPorAprobar): tres valores se
+        // traducen a "is not null" sobre asociaciones propias de CXP y el resto compara
+        // origenExterno. El OR va en su propio parentesis, aparte del de estados.
+        List<String> externos = new ArrayList<>();
+        if (origenes != null && !origenes.isEmpty()) {
+            List<String> condiciones = new ArrayList<>();
+            for (String o : origenes) {
+                if (o == null || o.trim().isEmpty()) {
+                    continue;
+                }
+                String origen = o.trim();
+                if (OrigenPagoCxp.FACTURA_COMPRA.equals(origen)) {
+                    condiciones.add("p.facturaCompra is not null");
+                } else if (OrigenPagoCxp.EGRESO_TESORERIA.equals(origen)) {
+                    condiciones.add("p.egreso is not null");
+                } else if (OrigenPagoCxp.ANTICIPO_PROVEEDOR.equals(origen)) {
+                    condiciones.add("p.anticipo is not null");
+                } else {
+                    externos.add(origen);
+                }
+            }
+            if (!externos.isEmpty()) {
+                condiciones.add("p.origenExterno in :origenesExternos");
+            }
+            if (!condiciones.isEmpty()) {
+                jpql.append(" and ( ").append(String.join(" or ", condiciones)).append(" ) ");
+            }
+        }
+
+        if (desde != null) {
+            jpql.append(" and p.fechaProgramada >= :desde ");
+        }
+        if (hasta != null) {
+            jpql.append(" and p.fechaProgramada <= :hasta ");
+        }
+
+        // Texto: parcial, sin distinguir mayusculas, sobre observacion o el nombre del
+        // beneficiario -- denormalizado (PGTRBFNM, pagos sin titular en el maestro) o del
+        // titular (left join arriba: si no se hiciera left join, un pago sin titular
+        // desaparecería del resultado entero en cuanto se usara este filtro, sin error).
+        boolean hayTexto = texto != null && !texto.trim().isEmpty();
+        if (hayTexto) {
+            jpql.append(" and ( upper(p.observacion) like :texto "
+                    + "or upper(p.beneficiarioNombre) like :texto "
+                    + "or upper(t.nombre) like :texto ) ");
+        }
+
         jpql.append(" order by p.fechaProgramada, p.id");
 
         Query query = em.createQuery(jpql.toString());
         query.setParameter("idEmpresa", idEmpresa);
-        if (estado != null) {
-            query.setParameter("estado", estado);
+        if (!estadosFiltrados.isEmpty()) {
+            query.setParameter("estados", estadosFiltrados);
         }
         if (idTitular != null) {
             query.setParameter("idTitular", idTitular);
+        }
+        if (idCuentaBancaria != null) {
+            query.setParameter("idCuentaBancaria", idCuentaBancaria);
+        }
+        if (!externos.isEmpty()) {
+            query.setParameter("origenesExternos", externos);
+        }
+        if (desde != null) {
+            query.setParameter("desde", desde);
+        }
+        if (hasta != null) {
+            query.setParameter("hasta", hasta);
+        }
+        if (hayTexto) {
+            query.setParameter("texto", "%" + texto.trim().toUpperCase() + "%");
         }
         return query.getResultList();
     }
