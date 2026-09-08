@@ -5,6 +5,10 @@ import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.math.BigDecimal;
 import java.sql.Connection;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Map;
 import java.util.logging.Level;
@@ -299,10 +303,63 @@ public class ReporteServiceImpl implements ReporteService {
                     parametros.put(nombre, ((Number) valor).shortValue());
                 } else if (tipoEsperado == String.class && !(valor instanceof String)) {
                     parametros.put(nombre, valor.toString());
+                // 2026-09-08: sin esto, un parámetro de fecha declarado en el .jasper como
+                // java.util.Date/java.sql.Date/java.sql.Timestamp que llega como String del
+                // JSON (p.ej. RPRT_INFR_DVAP, P_FECHA_DESDE="2026-01-01") revienta con
+                // ClassCastException dentro de JasperFillManager — este método no tenía
+                // ninguna rama de fecha, solo números y String. Acepta "yyyy-MM-dd" y también
+                // ISO con hora sin zona, porque los dos circulan en el proyecto. Si el String
+                // no parsea con ninguno de los dos, se deja tal cual y falla como hoy: no se
+                // inventa un valor por defecto ni "hoy" — un reporte con una fecha
+                // silenciosamente distinta de la pedida es peor que uno que no sale.
+                } else if (isTipoFecha(tipoEsperado) && valor instanceof String && !((String) valor).isEmpty()) {
+                    LocalDateTime fecha = parsearFechaParametro((String) valor);
+                    if (fecha != null) {
+                        if (tipoEsperado == java.util.Date.class) {
+                            // LocalDate -> atStartOfDay() -> zona del sistema, NUNCA un
+                            // desplazamiento de zona horaria (CLAUDE.md: ya paso con
+                            // LocalDateTime y Jackson, corrio la fecha un dia sin error).
+                            parametros.put(nombre,
+                                    java.util.Date.from(fecha.atZone(ZoneId.systemDefault()).toInstant()));
+                        } else if (tipoEsperado == java.sql.Date.class) {
+                            // valueOf(LocalDate) es literal, sin conversion de zona.
+                            parametros.put(nombre, java.sql.Date.valueOf(fecha.toLocalDate()));
+                        } else if (tipoEsperado == java.sql.Timestamp.class) {
+                            // valueOf(LocalDateTime) es literal, sin conversion de zona.
+                            parametros.put(nombre, java.sql.Timestamp.valueOf(fecha));
+                        }
+                    }
                 }
             } catch (Exception e) {
                 LOGGER.log(Level.WARNING, "No se pudo convertir parámetro ''{0}'' al tipo {1}: {2}",
                         new Object[]{nombre, tipoEsperado.getSimpleName(), e.getMessage()});
+            }
+        }
+    }
+
+    /** {@code true} si el .jasper declara el parámetro como alguno de los tres tipos de fecha
+     * que JasperFillManager acepta ({@code java.util.Date}, {@code java.sql.Date} y
+     * {@code java.sql.Timestamp}) — ver el comentario de {@link #convertirTiposParametros}. */
+    private boolean isTipoFecha(Class<?> tipoEsperado) {
+        return tipoEsperado == java.util.Date.class
+                || tipoEsperado == java.sql.Date.class
+                || tipoEsperado == java.sql.Timestamp.class;
+    }
+
+    /**
+     * Parsea un parámetro de fecha que llegó como String del JSON: acepta {@code yyyy-MM-dd}
+     * o ISO local con hora (sin zona). {@code null} si no matchea ninguno de los dos formatos
+     * — el llamador deja el valor original tal cual en ese caso, para que falle exactamente
+     * como fallaba antes de esta corrección (nunca se inventa una fecha).
+     */
+    private LocalDateTime parsearFechaParametro(String valor) {
+        try {
+            return LocalDate.parse(valor).atStartOfDay();
+        } catch (DateTimeParseException eFecha) {
+            try {
+                return LocalDateTime.parse(valor);
+            } catch (DateTimeParseException eFechaHora) {
+                return null;
             }
         }
     }
