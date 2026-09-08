@@ -87,7 +87,11 @@ public class DetalleOrdenPagoNomina implements Serializable, EntidadAuditableFec
     private String numeroCuenta;
 
     /**
-     * Tipo de cuenta destino: detalle del rubro RHH_TIPO_CUENTA_BANCARIA. Snapshot.
+     * Tipo de cuenta destino: código alterno del detalle del rubro 23
+     * ({@code Rubros.TIPO_CUENTAS_BANCARIAS} / {@code com.saa.rubros.TipoCuentasBancarias}).
+     * Snapshot. Unificado el 2026-09-08 (e2-24): antes era el rubro propio de RRHH
+     * {@code RHH_TIPO_CUENTA_BANCARIA} (199), ya deprecado. Es el mismo catálogo que usan
+     * {@code TSR.CTBN.CTBNTPCT} y {@code PGS.PGTR.PGTRBFTP}.
      */
     @Basic
     @Column(name = "DRPGTPCT")

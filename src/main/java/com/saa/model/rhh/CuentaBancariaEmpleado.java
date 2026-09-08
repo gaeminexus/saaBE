@@ -54,7 +54,11 @@ public class CuentaBancariaEmpleado implements Serializable, EntidadAuditableFec
     private BancoExterno banco;
 
     /**
-     * Tipo de cuenta: detalle del rubro RHH_TIPO_CUENTA_BANCARIA.
+     * Tipo de cuenta: código alterno del detalle del rubro 23
+     * ({@code Rubros.TIPO_CUENTAS_BANCARIAS} / {@code com.saa.rubros.TipoCuentasBancarias}).
+     * Unificado el 2026-09-08 (e2-24): antes era el rubro propio de RRHH
+     * {@code RHH_TIPO_CUENTA_BANCARIA} (199), ya deprecado. Es el mismo catálogo que usan
+     * {@code TSR.CTBN.CTBNTPCT} y {@code PGS.PGTR.PGTRBFTP}.
      */
     @Basic
     @Column(name = "CBEMTPCT")

@@ -2587,7 +2587,7 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		BigDecimal suma = BigDecimal.ZERO;
 		for (DetallePagoOrigenExterno detalle : detalles) {
 			PlanCuenta cuenta = cuentaDelProducto(detalle.getProducto());
-			double valorLinea = (detalle.getValor() != null) ? detalle.getValor() : 0.0;
+			double valorLinea = redondea((detalle.getValor() != null) ? detalle.getValor() : 0.0);
 			lineas.add(creaLineaAsiento(cuenta,
 					(detalle.getConcepto() != null && !detalle.getConcepto().trim().isEmpty())
 							? detalle.getConcepto().trim() : descripcionBase,
@@ -2596,8 +2596,18 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		}
 
 		// ── Una sola línea HABER al banco, por el total ──────────────────────────
-		double totalPago = (pago.getValor() != null) ? pago.getValor() : 0.0;
-		if (Math.abs(suma.doubleValue() - totalPago) > TOLERANCIA) {
+		double totalPago = redondea((pago.getValor() != null) ? pago.getValor() : 0.0);
+		// Comparación en CENTAVOS ENTEROS, no en tolerancia de decimales (2026-09-08) — mismo
+		// criterio que DetalleAsientoServiceImpl.validaDebeHaber, que dejó de tolerar un
+		// centavo de descuadre. Antes de este cambio, el DEBE salía del desglose y el HABER de
+		// pago.getValor(): si diferían en un centavo, TOLERANCIA lo dejaba pasar y el asiento
+		// quedaba grabado descuadrado en silencio. No se absorbe la diferencia ajustando la
+		// línea del banco ni agregando una línea de redondeo: el HABER es la plata que de
+		// verdad sale del banco, y un desglose que no le cuadra es un problema de datos que
+		// tiene que fallar visible, no quedar tapado.
+		long sumaCentavos = Math.round(suma.doubleValue() * 100d);
+		long totalCentavos = Math.round(totalPago * 100d);
+		if (sumaCentavos != totalCentavos) {
 			throw new IncomeException("El desglose contable del pago " + pago.getId() + " suma $"
 					+ String.format(Locale.US, "%.2f", suma.doubleValue())
 					+ " y el pago es de $" + String.format(Locale.US, "%.2f", totalPago)
@@ -3123,13 +3133,22 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	 */
 	private DetalleAsiento creaLineaAsiento(PlanCuenta cuenta, String descripcion,
 			Double valor, boolean esDebe) {
+		// Redondeado a 2 decimales el 2026-09-08: un valor sucio (ej. de una division) entraba
+		// tal cual a DTASVLDB/DTASVLHB, y con la guarda de cuadre ahora exacta (centavos
+		// enteros, ver el comentario en la comparacion de contabilizarSegunOrigen) un asiento
+		// con lineas sin redondear se rechazaba por un descuadre que no era real, solo de
+		// representacion. Los dos unicos llamadores de este metodo estan en
+		// contabilizarSegunOrigen y ya redondean su propio valor antes de llamarlo; redondear
+		// aca de nuevo es defensivo, no un doble redondeo con efecto (redondear un valor ya
+		// redondeado a 2 decimales no lo cambia).
+		double valorRedondeado = redondea(valor);
 		DetalleAsiento linea = new DetalleAsiento();
 		linea.setPlanCuenta(cuenta);
 		linea.setNumeroCuenta(cuenta.getCuentaContable());
 		linea.setNombreCuenta(cuenta.getNombre());
 		linea.setDescripcion(descripcion);
-		linea.setValorDebe(esDebe  ? valor : 0.0);
-		linea.setValorHaber(esDebe ? 0.0   : valor);
+		linea.setValorDebe(esDebe  ? valorRedondeado : 0.0);
+		linea.setValorHaber(esDebe ? 0.0   : valorRedondeado);
 		return linea;
 	}
 

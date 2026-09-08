@@ -198,7 +198,17 @@ public interface Rubros {
 	int RHH_TIPO_DESCUENTO_RECURRENTE     = 197;
 	/** Estado del descuento recurrente (DSRCESTD) -> ver {@link RhhEstadoDescuentoRecurrente} */
 	int RHH_ESTADO_DESCUENTO_RECURRENTE   = 198;
-	/** Tipo de cuenta bancaria del empleado (CBEMTPCT) -> ver {@link RhhTipoCuentaBancaria} */
+	/**
+	 * @deprecated Unificado el 2026-09-08 (e2-24) al rubro {@link #TIPO_CUENTAS_BANCARIAS} (23):
+	 * los dos catálogos numeraban idéntico (1=Ahorro, 2=Corriente) y el frontend ya migró
+	 * (saaFE {@code 60adef2}). Nadie en este backend lee este rubro 199 -- verificado por grep
+	 * en todo {@code src/main/java} el 2026-09-08. El rubro sigue existiendo en la base
+	 * (RHH.CBEM.CBEMTPCT ya se leía por código alterno, mismo valor que el 23, así que no hizo
+	 * falta migrar datos), pero ningún código nuevo debe usar esta constante ni
+	 * {@link RhhTipoCuentaBancaria}: usar {@code Rubros.TIPO_CUENTAS_BANCARIAS} y
+	 * {@code com.saa.rubros.TipoCuentasBancarias}.
+	 */
+	@Deprecated
 	int RHH_TIPO_CUENTA_BANCARIA          = 199;
 	/** Parentesco de la carga familiar (CRGFPRNT) -> ver {@link RhhParentescoCarga} */
 	int RHH_PARENTESCO_CARGA              = 200;
