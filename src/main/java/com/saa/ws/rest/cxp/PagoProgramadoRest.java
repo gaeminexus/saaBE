@@ -558,7 +558,13 @@ public class PagoProgramadoRest {
 
     /**
      * Reversa un pago ya confirmado por el banco.
-     * Body esperado: { "motivo": "...", "idUsuario": 5 }
+     * Body esperado: { "motivo": "...", "idUsuario": 5, "reversarAsiento": false }
+     *
+     * <p>{@code reversarAsiento} (opcional, default {@code false}): caso del pago que el
+     * banco rechaza y en el extracto aparece en menos y luego en más. Con {@code true} se
+     * fuerza el asiento de contrapartida (y su movimiento bancario) en vez de la anulación
+     * automática, para que la conciliación tenga con qué emparejar el {@code +X} del banco.
+     * Omitido o {@code false} = comportamiento de siempre.</p>
      */
     @POST
     @Path("/revertirConfirmado/{id}")
@@ -569,6 +575,7 @@ public class PagoProgramadoRest {
         try {
             String motivo  = (datos != null) ? (String) datos.get("motivo") : null;
             Long idUsuario = (datos != null) ? toLong(datos.get("idUsuario")) : null;
+            Boolean reversarAsiento = (datos != null) ? toBoolean(datos.get("reversarAsiento")) : null;
 
             if (motivo == null || motivo.trim().isEmpty()) {
                 return Response.status(Response.Status.BAD_REQUEST)
@@ -577,7 +584,7 @@ public class PagoProgramadoRest {
             }
 
             Map<String, Object> resultado =
-                    pagoProgramadoService.revertirPagoConfirmado(id, motivo, idUsuario);
+                    pagoProgramadoService.revertirPagoConfirmado(id, motivo, idUsuario, reversarAsiento);
             return Response.status(Response.Status.OK).entity(resultado)
                     .type(MediaType.APPLICATION_JSON).build();
         } catch (ConflictoNegocioException e) {

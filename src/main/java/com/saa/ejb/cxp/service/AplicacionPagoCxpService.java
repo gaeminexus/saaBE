@@ -217,6 +217,31 @@ public interface AplicacionPagoCxpService extends EntityService<AplicacionPagoCx
 			throws Throwable;
 
 	/**
+	 * Igual que {@link #revertirAplicacion(Long, String, Long)}, con la opción de elegir
+	 * cómo tratar el asiento (caso del pago rebotado por el banco, ver
+	 * {@code PagoProgramadoService#revertirPagoConfirmado(Long, String, Long, Boolean)}).
+	 * Con {@code reversarAsiento=true} genera el asiento de contrapartida y un movimiento
+	 * bancario nuevo (crédito) para que la conciliación pueda emparejarlo. {@code false} o
+	 * {@code null} es el comportamiento de siempre.
+	 * {@code AplicacionPagoCxp} no guarda la cuenta bancaria del pago que la originó (evita
+	 * el ciclo APLP → MVCH → PGTR → APLP, ver el javadoc del campo en la entidad), así que
+	 * el llamador que sí la tiene ({@code PagoProgramadoServiceImpl}) se la pasa.
+	 *
+	 * @param idAplicacion    : Id de la aplicación a reversar
+	 * @param motivo          : Motivo de la reversión
+	 * @param idUsuario       : Id del usuario que reversa
+	 * @param reversarAsiento : {@code true} para forzar la reversión con contrapartida
+	 * @param idEmpresa       : Id de la empresa, para el movimiento bancario del reverso
+	 * @param cuentaBancaria  : Cuenta bancaria del pago original
+	 * @param valor           : Valor del pago original
+	 * @return                : Mapa con exito y mensaje
+	 * @throws Throwable      : Excepcion, o IncomeException si el origen es caja chica
+	 */
+	Map<String, Object> revertirAplicacion(Long idAplicacion, String motivo, Long idUsuario,
+			Boolean reversarAsiento, Long idEmpresa, com.saa.model.tsr.CuentaBancaria cuentaBancaria,
+			Double valor) throws Throwable;
+
+	/**
 	 * Igual que {@link #revertirAplicacion(Long, String, Long)}, pero SIN el
 	 * bloqueo de origen caja chica. Es el único camino válido para reversar una
 	 * aplicación que vino de un gasto de caja chica, y lo usa exclusivamente

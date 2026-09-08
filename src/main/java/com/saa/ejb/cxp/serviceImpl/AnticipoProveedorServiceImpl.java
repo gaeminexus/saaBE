@@ -395,8 +395,16 @@ public class AnticipoProveedorServiceImpl implements AnticipoProveedorService {
 
     @Override
     public void revertirContabilidadAnticipo(Long idAnticipo, String motivo) throws Throwable {
+        revertirContabilidadAnticipo(idAnticipo, motivo, Boolean.FALSE, null, null, null);
+    }
 
-        System.out.println("=== revertirContabilidadAnticipo | anticipo=" + idAnticipo + " ===");
+    // ===== INICIO anular-vs-reversar pago rebotado (equipo omen-saa-2) =====
+    @Override
+    public void revertirContabilidadAnticipo(Long idAnticipo, String motivo, Boolean reversarAsiento,
+            Long idEmpresa, com.saa.model.tsr.CuentaBancaria cuentaBancaria, Double valor) throws Throwable {
+
+        System.out.println("=== revertirContabilidadAnticipo | anticipo=" + idAnticipo
+                + " | reversarAsiento=" + reversarAsiento + " ===");
 
         AnticipoProveedor anticipo = em.find(AnticipoProveedor.class, idAnticipo);
         if (anticipo == null) {
@@ -423,8 +431,33 @@ public class AnticipoProveedorServiceImpl implements AnticipoProveedorService {
                 ? anticipo.getAsiento().getCodigo() : null;
         if (idAsiento != null) {
             try {
-                asientoService.anulaAsiento(idAsiento);
-                System.out.println("✓ Asiento " + idAsiento + " anulado / reversado.");
+                if (Boolean.TRUE.equals(reversarAsiento)) {
+                    // Caso del pago rebotado por el banco: ver el javadoc de
+                    // PagoProgramadoServiceImpl.anulaOReversaAsiento -- misma limitación de
+                    // fecha (el reverso cae con la fecha de hoy, AsientoService no acepta otra).
+                    com.saa.model.cnt.Asiento asientoOriginal = asientoService.reversionAsiento(idAsiento);
+                    Long idAsientoReverso = asientoOriginal.getIdReversion();
+                    System.out.println("✓ Asiento " + idAsiento + " reversado a pedido del usuario."
+                            + " Asiento de reverso: " + idAsientoReverso);
+                    if (idAsientoReverso != null && idEmpresa != null && cuentaBancaria != null
+                            && valor != null) {
+                        try {
+                            com.saa.model.cnt.Asiento asientoReverso =
+                                    em.find(com.saa.model.cnt.Asiento.class, idAsientoReverso);
+                            movimientoBancoService.creaMovimientoPorTransferencia(idEmpresa,
+                                    "Reverso pago de anticipo " + idAnticipo + " | " + motivo,
+                                    asientoReverso, cuentaBancaria, valor,
+                                    com.saa.rubros.TipoMovimientoConciliacion.TRANSFERENCIAS_CREDITOS_EN_TRANSITO,
+                                    com.saa.rubros.OrigenMovimientoConciliacion.PAGOS);
+                        } catch (Exception e) {
+                            System.err.println("⚠ No se pudo crear el movimiento bancario del reverso"
+                                    + " del asiento " + idAsiento + ": " + e.getMessage());
+                        }
+                    }
+                } else {
+                    asientoService.anulaAsiento(idAsiento);
+                    System.out.println("✓ Asiento " + idAsiento + " anulado / reversado.");
+                }
             } catch (Throwable e) {
                 System.err.println("⚠ No se pudo anular el asiento " + idAsiento
                         + ": " + e.getMessage());
@@ -446,6 +479,7 @@ public class AnticipoProveedorServiceImpl implements AnticipoProveedorService {
 
         System.out.println("✓ Anticipo " + idAnticipo + " vuelve a Ingresado.");
     }
+    // ===== FIN anular-vs-reversar pago rebotado (equipo omen-saa-2) =====
 
     // =========================================================================
     // Anulación

@@ -393,6 +393,13 @@ public interface PagoProgramadoService extends EntityService<PagoProgramado> {
 	/**
 	 * Reversa un pago ya confirmado: reversa su aplicación, anula el asiento y el
 	 * movimiento bancario, y deja el pago como rechazado para su seguimiento.
+	 *
+	 * <p>Equivale a llamar a la sobrecarga de cuatro argumentos con
+	 * {@code reversarAsiento=false}: el asiento se anula o reversa según lo decida
+	 * {@code AsientoService} por sí solo (según si el período está mayorizado), igual que
+	 * siempre. Se conserva por retrocompatibilidad con los llamadores que no conocen el
+	 * caso del pago rebotado por el banco.</p>
+	 *
 	 * @param idPago     : Id del pago confirmado
 	 * @param motivo     : Motivo de la reversión
 	 * @param idUsuario  : Id del usuario que reversa
@@ -401,6 +408,33 @@ public interface PagoProgramadoService extends EntityService<PagoProgramado> {
 	 */
 	Map<String, Object> revertirPagoConfirmado(Long idPago, String motivo, Long idUsuario)
 			throws Throwable;
+
+	/**
+	 * Reversa un pago ya confirmado, con la opción de elegir cómo tratar el asiento.
+	 *
+	 * <p>Caso real: un pago se envía y el banco lo rechaza, y en el extracto aparece el
+	 * movimiento en menos y luego en más. Si el asiento se ANULA, los libros quedan sin
+	 * ningún movimiento y no hay con qué conciliar los dos del banco. Si se REVERSA, se
+	 * genera el asiento de contrapartida y un movimiento bancario nuevo (crédito) para que
+	 * la conciliación pueda emparejar el {@code +X} del extracto contra algo propio.</p>
+	 *
+	 * <p><b>Limitación conocida:</b> el asiento de reverso queda contabilizado con la fecha
+	 * de hoy, no con la fecha en que el banco devolvió la plata — {@code AsientoService}
+	 * (de otro equipo) no expone un parámetro de fecha, porque la fecha determina el número
+	 * y el período del asiento generado. Si el rebote real ocurrió en un mes ya cerrado, el
+	 * reverso cae igual en el mes actual.</p>
+	 *
+	 * @param idPago          : Id del pago confirmado
+	 * @param motivo          : Motivo de la reversión
+	 * @param idUsuario       : Id del usuario que reversa
+	 * @param reversarAsiento : {@code true} para forzar el asiento de contrapartida (y su
+	 *                          movimiento bancario), sin importar el estado del período;
+	 *                          {@code false} o {@code null} = comportamiento de siempre
+	 * @return                : Mapa con exito y mensaje
+	 * @throws Throwable      : Excepcion
+	 */
+	Map<String, Object> revertirPagoConfirmado(Long idPago, String motivo, Long idUsuario,
+			Boolean reversarAsiento) throws Throwable;
 
 	/**
 	 * Valida que el valor a pagar quepa en el saldo pendiente de la factura,

@@ -128,11 +128,34 @@ public interface AnticipoProveedorService extends EntityService<AnticipoProveedo
      * descuenta el saldo de anticipos del proveedor y devuelve el anticipo a
      * Ingresado. Lo invoca el circuito de pagos al revertir el pago; el
      * movimiento bancario lo anula el circuito.
+     *
+     * <p>Equivale a la sobrecarga de seis argumentos con {@code reversarAsiento=false}:
+     * comportamiento de siempre, {@code AsientoService.anulaAsiento} decide solo. Se
+     * conserva por retrocompatibilidad.</p>
+     *
      * @param idAnticipo : Id del anticipo confirmado
      * @param motivo     : Motivo de la reversión
      * @throws Throwable : Excepcion
      */
     void revertirContabilidadAnticipo(Long idAnticipo, String motivo) throws Throwable;
+
+    /**
+     * Igual que {@link #revertirContabilidadAnticipo(Long, String)}, con la opción de
+     * elegir cómo tratar el asiento (caso del pago rebotado por el banco, ver
+     * {@code PagoProgramadoService#revertirPagoConfirmado(Long, String, Long, Boolean)}).
+     * Con {@code reversarAsiento=true} genera el asiento de contrapartida y un movimiento
+     * bancario nuevo (crédito) para que la conciliación pueda emparejarlo.
+     *
+     * @param idAnticipo      : Id del anticipo confirmado
+     * @param motivo          : Motivo de la reversión
+     * @param reversarAsiento : {@code true} para forzar la reversión con contrapartida
+     * @param idEmpresa       : Id de la empresa, para el movimiento bancario del reverso
+     * @param cuentaBancaria  : Cuenta bancaria del pago original
+     * @param valor           : Valor del pago original
+     * @throws Throwable      : Excepcion
+     */
+    void revertirContabilidadAnticipo(Long idAnticipo, String motivo, Boolean reversarAsiento,
+            Long idEmpresa, com.saa.model.tsr.CuentaBancaria cuentaBancaria, Double valor) throws Throwable;
 
     /**
      * Anula un anticipo SIN aceptar la reversión de cruces con facturas.
