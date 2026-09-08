@@ -55,8 +55,17 @@ SELECT 'BLOQUE 0.3 - conflicto' AS control, d.PDTRALTR, d.PDTRDSCR
   FROM SCP.PDTR d JOIN SCP.PRBR r ON r.PRBRCDGO = d.PRBRCDGO
  WHERE r.PRBRALTR = 221 AND d.PDTRALTR IN (32, 33);
 
--- 0.4 Las empresas (SCP.PJRQ). Dice cuantos conceptos se van a crear: dos por empresa.
-SELECT 'BLOQUE 0.4 - empresas' AS control, PJRQCDGO, PJRQNMBR FROM SCP.PJRQ ORDER BY PJRQCDGO;
+-- 0.4 🔴 ESTE CONTROL ESTABA MAL PLANTEADO Y CASI CUESTA CARO. Decia "dice cuantos
+--     conceptos se van a crear: dos por empresa". SCP.PJRQ NO son las empresas que
+--     corren nomina: es la tabla de PERSONAS JURIDICAS -- proveedores, clientes, todo.
+--     Medido el 2026-09-07: devuelve 786 filas. El BLOQUE 2 original hacia
+--     FROM SCP.PJRQ sin filtro y habria insertado 1572 conceptos SIN DAR NINGUN ERROR.
+--     Las empresas que de verdad corren nomina son las que ya tienen conceptos en
+--     RHH.CPNM (medido: solo la 1236). Ver e2-18c.
+SELECT 'BLOQUE 0.4 - empresas con nomina' AS control, c.PJRQCDGO, e.PJRQNMBR,
+       COUNT(*) AS conceptos_existentes
+  FROM RHH.CPNM c JOIN SCP.PJRQ e ON e.PJRQCDGO = c.PJRQCDGO
+ GROUP BY c.PJRQCDGO, e.PJRQNMBR ORDER BY c.PJRQCDGO;
 
 -- 0.5 ¿CPNMCDGO es realmente IDENTITY? Si NO lo fuera, los INSERT del bloque 2
 --     fallan por PK nula y hay que agregarle la secuencia que corresponda.
@@ -85,36 +94,25 @@ SELECT SCP.SQ_PDTRCDGO.NEXTVAL, r.PRBRCDGO, 33, 'DECIMO CUARTO ACUMULADO PAGADO'
 
 
 -- =====================================================================
--- BLOQUE 2 — Los dos conceptos, uno por empresa
+-- BLOQUE 2 — ⛔ ANULADO. NO CORRER. Reemplazado por e2-18c.
 -- =====================================================================
--- CPNMTPCN = 5 (INFORMATIVO) es lo que impide que entren al neto.
--- CPNMCDGO NO se pasa: es IDENTITY (ver bloque 0.5).
-
-INSERT INTO RHH.CPNM (PJRQCDGO, CPNMNMBR, CPNMABRV, CPNMALTR, CPNMTPCN, CPNMROLM, CPNMESTD)
-SELECT e.PJRQCDGO,
-       'Decimo tercero acumulado pagado',
-       'D3ACPG',
-       NVL((SELECT MAX(c.CPNMALTR) FROM RHH.CPNM c WHERE c.PJRQCDGO = e.PJRQCDGO), 0) + 1,
-       5,    -- INFORMATIVO
-       32,   -- RhhRolConceptoMotor.DECIMO_TERCERO_ACUMULADO_PAGADO
-       1
-  FROM SCP.PJRQ e
- WHERE NOT EXISTS (SELECT 1 FROM RHH.CPNM c2
-                    WHERE c2.PJRQCDGO = e.PJRQCDGO AND c2.CPNMROLM = 32);
-
-INSERT INTO RHH.CPNM (PJRQCDGO, CPNMNMBR, CPNMABRV, CPNMALTR, CPNMTPCN, CPNMROLM, CPNMESTD)
-SELECT e.PJRQCDGO,
-       'Decimo cuarto acumulado pagado',
-       'D4ACPG',
-       NVL((SELECT MAX(c.CPNMALTR) FROM RHH.CPNM c WHERE c.PJRQCDGO = e.PJRQCDGO), 0) + 1,
-       5,    -- INFORMATIVO
-       33,   -- RhhRolConceptoMotor.DECIMO_CUARTO_ACUMULADO_PAGADO
-       1
-  FROM SCP.PJRQ e
- WHERE NOT EXISTS (SELECT 1 FROM RHH.CPNM c2
-                    WHERE c2.PJRQCDGO = e.PJRQCDGO AND c2.CPNMROLM = 33);
-
-COMMIT;
+-- Este bloque hacia FROM SCP.PJRQ SIN FILTRO, creyendo que esa tabla eran las
+-- empresas. NO lo son: SCP.PJRQ es la tabla de PERSONAS JURIDICAS y el
+-- 2026-09-07 se midio que tiene 786 filas. Habria insertado 1572 conceptos de
+-- nomina, dos por cada proveedor y cada cliente del sistema.
+--
+-- Y no habria dado ningun error: los INSERT eran validos, el NOT EXISTS se
+-- cumplia para las 786 y el COMMIT habria pasado limpio. Se descubrio porque el
+-- control 0.4 devolvio 786 donde se esperaba un puñado, y porque los controles
+-- 4 y 5 del e2-18b mostraron que TODOS los conceptos que existen son de una
+-- sola empresa, la 1236.
+--
+-- El conjunto correcto son las empresas que ya corren nomina, es decir las que
+-- tienen conceptos en RHH.CPNM. Asi ademas se ajusta solo si mañana se da de
+-- alta otra. Esta en e2-18c, que es el que hay que correr.
+--
+-- El BLOQUE 1 de arriba SI es correcto y ya se corrio (los detalles 32 y 33 del
+-- rubro 221 existen). Es idempotente por su NOT EXISTS.
 
 
 -- =====================================================================
