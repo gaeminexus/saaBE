@@ -139,15 +139,25 @@ public class EgresoRest {
     }
 
     /**
-     * Listado de egresos por empresa, opcionalmente por estado.
+     * Listado de egresos por empresa, filtrando opcionalmente por estado, beneficiario,
+     * concepto y fecha. El tipo de pago NO se puede filtrar en este endpoint todavía: es un
+     * campo resuelto en memoria desde PagoProgramado, no una columna de TSR.EGRS.
      * @param idEmpresa : Id de la empresa (obligatorio)
      * @param estado    : 1=Pendiente 2=Pagado 3=Anulado (opcional)
+     * @param idTitular : Id del beneficiario (opcional)
+     * @param concepto  : Coincidencia parcial contra el concepto/descripción (opcional)
+     * @param desde     : Fecha desde, yyyy-MM-dd (opcional)
+     * @param hasta     : Fecha hasta, yyyy-MM-dd (opcional)
      */
     @GET
     @Path("/listar")
     @Produces(MediaType.APPLICATION_JSON)
     public Response listar(@QueryParam("idEmpresa") Long idEmpresa,
-            @QueryParam("estado") Long estado) {
+            @QueryParam("estado") Long estado,
+            @QueryParam("idTitular") Long idTitular,
+            @QueryParam("concepto") String concepto,
+            @QueryParam("desde") String desde,
+            @QueryParam("hasta") String hasta) {
         System.out.println("LLEGA AL SERVICIO GET /egrs/listar");
         try {
             if (idEmpresa == null) {
@@ -155,7 +165,7 @@ public class EgresoRest {
                         .entity("Debe enviar idEmpresa.")
                         .type(MediaType.APPLICATION_JSON).build();
             }
-            List<Egreso> lista = egresoService.listar(idEmpresa, estado);
+            List<Egreso> lista = egresoService.listar(idEmpresa, estado, idTitular, concepto, desde, hasta);
             return Response.status(Response.Status.OK).entity(lista)
                     .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {

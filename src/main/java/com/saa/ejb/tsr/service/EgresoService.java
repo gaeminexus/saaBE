@@ -74,11 +74,19 @@ public interface EgresoService extends EntityService<Egreso> {
 	Map<String, Object> anularEgreso(Long idEgreso, String motivo, Long idUsuario) throws Throwable;
 
 	/**
-	 * Lista los egresos de una empresa, opcionalmente por estado.
+	 * Lista los egresos de una empresa, filtrando opcionalmente por estado, beneficiario,
+	 * concepto y fecha. El tipo de pago NO se puede filtrar acá: es un campo {@code @Transient}
+	 * resuelto en memoria desde {@code PagoProgramado} (ver {@code completaFormaPago}), no una
+	 * columna de TSR.EGRS.
 	 * @param idEmpresa  : Id de la empresa
 	 * @param estado     : 1=Pendiente 2=Pagado 3=Anulado, null para todos
+	 * @param idTitular  : Id del beneficiario; null para todos
+	 * @param concepto   : Coincidencia parcial contra la descripción/concepto; opcional
+	 * @param desde      : Fecha desde, yyyy-MM-dd; opcional
+	 * @param hasta      : Fecha hasta, yyyy-MM-dd; opcional
 	 * @return           : Listado de egresos
 	 * @throws Throwable : Excepcion
 	 */
-	List<Egreso> listar(Long idEmpresa, Long estado) throws Throwable;
+	List<Egreso> listar(Long idEmpresa, Long estado, Long idTitular, String concepto, String desde,
+			String hasta) throws Throwable;
 }

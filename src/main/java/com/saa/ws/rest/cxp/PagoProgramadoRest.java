@@ -103,6 +103,8 @@ public class PagoProgramadoRest {
      * @param hasta            : Fecha programada hasta, yyyy-MM-dd (opcional)
      * @param texto            : Coincidencia parcial contra la observación o el nombre del
      *                           beneficiario (opcional)
+     * @param formaPago        : 1=Efectivo 2=Transferencia 3=Cheque 4=Débito automático
+     *                           (ver {@link com.saa.rubros.FormaPagoProgramado}); opcional
      */
     @GET
     @Path("/listar")
@@ -114,7 +116,8 @@ public class PagoProgramadoRest {
             @QueryParam("origen") List<String> origen,
             @QueryParam("desde") String desde,
             @QueryParam("hasta") String hasta,
-            @QueryParam("texto") String texto) {
+            @QueryParam("texto") String texto,
+            @QueryParam("formaPago") Long formaPago) {
         System.out.println("LLEGA AL SERVICIO GET /pgtr/listar");
         try {
             if (idEmpresa == null) {
@@ -123,7 +126,7 @@ public class PagoProgramadoRest {
                         .type(MediaType.APPLICATION_JSON).build();
             }
             List<PagoProgramado> lista = pagoProgramadoService.listar(idEmpresa, estado, idTitular,
-                    idCuentaBancaria, origen, desde, hasta, texto);
+                    idCuentaBancaria, origen, desde, hasta, texto, formaPago);
             return Response.status(Response.Status.OK).entity(lista)
                     .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {

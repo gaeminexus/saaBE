@@ -27,12 +27,13 @@ public interface PagoProgramadoDaoService extends EntityDao<PagoProgramado> {
 	 * @param texto             : Coincidencia parcial (sin distinguir mayúsculas) contra la
 	 *                            observación o el nombre del beneficiario (denormalizado o del
 	 *                            titular); null o en blanco = sin filtro
+	 * @param formaPago         : {@link com.saa.rubros.FormaPagoProgramado} (PGTRFPAG); null para todas
 	 * @return                  : Listado de pagos programados
 	 * @throws Throwable        : Excepcion
 	 */
 	List<PagoProgramado> selectByEmpresaEstado(Long idEmpresa, List<Long> estados, Long idTitular,
 			Long idCuentaBancaria, List<String> origenes, java.time.LocalDate desde,
-			java.time.LocalDate hasta, String texto) throws Throwable;
+			java.time.LocalDate hasta, String texto, Long formaPago) throws Throwable;
 
 	/**
 	 * Recupera los pagos incluidos en un lote.

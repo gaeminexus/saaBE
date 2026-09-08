@@ -270,12 +270,20 @@ public class EgresoServiceImpl implements EgresoService {
 	}
 
 	@Override
-	public List<Egreso> listar(Long idEmpresa, Long estado) throws Throwable {
-		System.out.println("=== listar egresos | empresa=" + idEmpresa + " | estado=" + estado + " ===");
+	public List<Egreso> listar(Long idEmpresa, Long estado, Long idTitular, String concepto, String desde,
+			String hasta) throws Throwable {
+		System.out.println("=== listar egresos | empresa=" + idEmpresa + " | estado=" + estado
+				+ " | titular=" + idTitular + " | concepto=" + concepto + " | desde=" + desde
+				+ " | hasta=" + hasta + " ===");
 		if (idEmpresa == null) {
 			throw new IncomeException("Debe indicar la empresa.");
 		}
-		List<Egreso> egresos = egresoDaoService.selectByEmpresaEstado(idEmpresa, estado);
+		LocalDate fechaDesde = (desde != null && !desde.trim().isEmpty())
+				? LocalDate.parse(desde.trim()) : null;
+		LocalDate fechaHasta = (hasta != null && !hasta.trim().isEmpty())
+				? LocalDate.parse(hasta.trim()) : null;
+		List<Egreso> egresos = egresoDaoService.selectByEmpresaEstado(idEmpresa, estado, idTitular,
+				concepto, fechaDesde, fechaHasta);
 		completaFormaPago(egresos);
 		return egresos;
 	}

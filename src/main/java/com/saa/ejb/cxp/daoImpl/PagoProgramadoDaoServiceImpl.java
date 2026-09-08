@@ -62,12 +62,12 @@ public class PagoProgramadoDaoServiceImpl extends EntityDaoImpl<PagoProgramado>
 
     @Override
     public List<PagoProgramado> selectByEmpresaEstado(Long idEmpresa, List<Long> estados, Long idTitular,
-            Long idCuentaBancaria, List<String> origenes, LocalDate desde, LocalDate hasta, String texto)
-            throws Throwable {
+            Long idCuentaBancaria, List<String> origenes, LocalDate desde, LocalDate hasta, String texto,
+            Long formaPago) throws Throwable {
         System.out.println("Ingresa al metodo selectByEmpresaEstado con empresa: " + idEmpresa
                 + " | estados: " + estados + " | titular: " + idTitular + " | cuenta: " + idCuentaBancaria
                 + " | origenes: " + origenes + " | desde: " + desde + " | hasta: " + hasta
-                + " | texto: " + texto);
+                + " | texto: " + texto + " | formaPago: " + formaPago);
 
         List<Long> estadosFiltrados = new ArrayList<>();
         if (estados != null) {
@@ -127,6 +127,9 @@ public class PagoProgramadoDaoServiceImpl extends EntityDaoImpl<PagoProgramado>
         if (hasta != null) {
             jpql.append(" and p.fechaProgramada <= :hasta ");
         }
+        if (formaPago != null) {
+            jpql.append(" and p.formaPago = :formaPago ");
+        }
 
         // Texto: parcial, sin distinguir mayusculas, sobre observacion o el nombre del
         // beneficiario -- denormalizado (PGTRBFNM, pagos sin titular en el maestro) o del
@@ -160,6 +163,9 @@ public class PagoProgramadoDaoServiceImpl extends EntityDaoImpl<PagoProgramado>
         }
         if (hasta != null) {
             query.setParameter("hasta", hasta);
+        }
+        if (formaPago != null) {
+            query.setParameter("formaPago", formaPago);
         }
         if (hayTexto) {
             query.setParameter("texto", "%" + texto.trim().toUpperCase() + "%");

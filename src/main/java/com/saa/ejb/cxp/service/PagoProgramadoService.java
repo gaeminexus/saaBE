@@ -210,11 +210,12 @@ public interface PagoProgramadoService extends EntityService<PagoProgramado> {
 	 * @param hasta             : Fecha programada hasta, yyyy-MM-dd (opcional)
 	 * @param texto             : Coincidencia parcial contra la observación o el nombre del
 	 *                            beneficiario (opcional)
+	 * @param formaPago         : {@link com.saa.rubros.FormaPagoProgramado}; null para todas
 	 * @return                  : Listado de pagos
 	 * @throws Throwable        : Excepcion
 	 */
 	List<PagoProgramado> listar(Long idEmpresa, List<Long> estados, Long idTitular, Long idCuentaBancaria,
-			List<String> origenes, String desde, String hasta, String texto) throws Throwable;
+			List<String> origenes, String desde, String hasta, String texto, Long formaPago) throws Throwable;
 
 	/**
 	 * Bandeja de pagos POR_APROBAR para la pantalla de aprobación (punto 14). Proyección,
