@@ -18,6 +18,7 @@ import com.saa.ejb.rhh.dao.OrdenPagoNominaDaoService;
 import com.saa.ejb.rhh.dao.PeriodoNominaDaoService;
 import com.saa.ejb.rhh.dao.ProvisionNominaDaoService;
 import com.saa.ejb.rhh.dao.ReglonNominaDaoService;
+import com.saa.ejb.rhh.dao.ValorNoPagadoDaoService;
 import com.saa.ejb.rhh.service.CierreCuotasDescuentoService;
 import com.saa.ejb.rhh.service.ContabilizacionNominaService;
 import com.saa.ejb.rhh.util.RedondeoNomina;
@@ -37,9 +38,11 @@ import com.saa.model.rhh.OrdenPagoNomina;
 import com.saa.model.rhh.PeriodoNomina;
 import com.saa.model.rhh.ProvisionNomina;
 import com.saa.model.rhh.ReglonNomina;
+import com.saa.model.rhh.ValorNoPagado;
 import com.saa.rubros.ModuloSistema;
 import com.saa.rubros.RhhEstadoLiquidacion;
 import com.saa.rubros.RhhEstadoPeriodoNomina;
+import com.saa.rubros.RhhEstadoValorNoPagado;
 import com.saa.rubros.RhhLineaAsiento;
 import com.saa.rubros.RhhModoPeriodoNomina;
 import com.saa.rubros.RhhRolConceptoMotor;
@@ -127,6 +130,12 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
 
     @EJB
     private CierreCuotasDescuentoService cierreCuotasDescuentoService;
+
+    // ===== INICIO enganche valores no pagados (script e2-26, equipo omen-saa-2) =====
+    // Ver docs/logica-negocio/rhh/PLAN-VALORES-NO-PAGADOS.md §7.3.
+    @EJB
+    private ValorNoPagadoDaoService valorNoPagadoDaoService;
+    // ===== FIN enganche valores no pagados =====
 
     /* (non-Javadoc)
      * @see com.saa.ejb.rhh.service.ContabilizacionNominaService#validarCuentasContables(java.lang.Long)
@@ -356,6 +365,15 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
         periodo.setEstado(Long.valueOf(RhhEstadoPeriodoNomina.PAGADO));
         periodoNominaDaoService.save(periodo, periodo.getCodigo());
 
+        // ===== INICIO enganche valores no pagados (script e2-26, equipo omen-saa-2) =====
+        // §7.3 del plan: esta orden acredita el periodo P; si algun empleado tenia un valor
+        // no pagado RETENIDO del periodo anterior (P-1) -recuperado en el neto de P por
+        // GeneracionOrdenPagoServiceImpl.ajustaNetoPorValorNoPagado, §7.2-, aqui se cierra:
+        // pasa a PAGADO con la orden y el periodo de recuperacion. La contabilidad no cambia,
+        // ya salio sola con orden.getTotal() en las lineas de arriba.
+        cierraValoresNoPagadosRecuperados(periodo, orden);
+        // ===== FIN enganche valores no pagados =====
+
         // T4: cierre del ciclo de descuentos recurrentes (incluye anticipos a empleados) en el
         // rol. Ver docs/logica-negocio/rhh/ANTICIPOS-TRABAJADORES.md #6. A partir de este punto
         // el pago YA esta contabilizado y el periodo YA quedo PAGADO -irreversible, reabrirPeriodo
@@ -382,6 +400,48 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
                 + asiento.getCodigo());
         return asiento;
     }
+
+    // ===== INICIO enganche valores no pagados (script e2-26, equipo omen-saa-2) =====
+    /**
+     * Cierra, para cada empleado pagado en esta orden, el valor no pagado RETENIDO del
+     * periodo anterior (P-1) que se recupero en el neto de este periodo (P). Ver §7.3 del
+     * plan. No hace nada si no hay periodo anterior o si el empleado no tenia ningun
+     * registro RETENIDO de ese periodo -el caso normal, sin valores no pagados pendientes.
+     *
+     * @param periodo	: Periodo que esta orden acredita (P)
+     * @param orden		: Orden de pago ya contabilizada
+     * @throws Throwable	: Excepcion
+     */
+    private void cierraValoresNoPagadosRecuperados(PeriodoNomina periodo, OrdenPagoNomina orden) throws Throwable {
+        if (periodo.getEmpresa() == null || periodo.getFechaInicio() == null) {
+            return;
+        }
+        PeriodoNomina periodoAnterior = periodoNominaDaoService.selectByFechaEmpresa(
+                periodo.getEmpresa().getCodigo(), periodo.getFechaInicio().minusDays(1));
+        if (periodoAnterior == null) {
+            return;
+        }
+
+        List<Nomina> nominas = nominaDaoService.selectByPeriodo(periodo.getCodigo());
+        for (Nomina nomina : nominas) {
+            if (nomina.getEmpleado() == null) {
+                continue;
+            }
+            ValorNoPagado registro = valorNoPagadoDaoService
+                    .selectVivoByEmpleadoPeriodo(nomina.getEmpleado().getCodigo(), periodoAnterior.getCodigo());
+            if (registro == null || !Long.valueOf(RhhEstadoValorNoPagado.RETENIDO).equals(registro.getEstado())) {
+                continue;
+            }
+            registro.setEstado(Long.valueOf(RhhEstadoValorNoPagado.PAGADO));
+            registro.setOrdenPago(orden);
+            registro.setPeriodoRecuperacion(periodo);
+            valorNoPagadoDaoService.save(registro, registro.getCodigo());
+            System.out.println("Valor no pagado " + registro.getCodigo() + " del empleado "
+                    + nomina.getEmpleado().getCodigo() + " recuperado y marcado PAGADO con la orden "
+                    + orden.getCodigo() + ".");
+        }
+    }
+    // ===== FIN enganche valores no pagados =====
 
     /* (non-Javadoc)
      * @see com.saa.ejb.rhh.service.ContabilizacionNominaService#contabilizarLiquidacion(java.lang.Long, java.lang.String)

@@ -21,6 +21,7 @@ import com.saa.ejb.rhh.dao.ProvisionNominaDaoService;
 import com.saa.ejb.rhh.dao.NovedadIessDaoService;
 import com.saa.ejb.rhh.dao.ReglonNominaDaoService;
 import com.saa.ejb.rhh.dao.ResumenNominaDaoService;
+import com.saa.ejb.rhh.dao.ValorNoPagadoDaoService;
 import com.saa.ejb.rhh.service.GeneracionRolPagoService;
 import com.saa.ejb.rhh.service.NovedadIessService;
 import com.saa.ejb.rhh.service.ProcesoNominaService;
@@ -44,9 +45,11 @@ import com.saa.model.rhh.ReglonNomina;
 import com.saa.model.rhh.RenglonCalculado;
 import com.saa.model.rhh.ResultadoCalculoNomina;
 import com.saa.model.rhh.ResultadoCalculoPeriodo;
+import com.saa.model.rhh.ValorNoPagado;
 import com.saa.rubros.RhhBaseCalculo;
 import com.saa.rubros.RhhEstadoNomina;
 import com.saa.rubros.RhhEstadoNovedadIess;
+import com.saa.rubros.RhhEstadoValorNoPagado;
 import com.saa.rubros.RhhEstadoPeriodoNomina;
 import com.saa.rubros.RhhModoPeriodoNomina;
 import com.saa.rubros.RhhModalidadDecimoCuarto;
@@ -190,6 +193,12 @@ public class ProcesoNominaServiceImpl implements ProcesoNominaService {
 
 	@EJB
 	private NovedadIessDaoService novedadIessDaoService;
+
+	// ===== INICIO enganche valores no pagados (script e2-26, equipo omen-saa-2) =====
+	// Ver docs/logica-negocio/rhh/PLAN-VALORES-NO-PAGADOS.md §7.1.
+	@EJB
+	private ValorNoPagadoDaoService valorNoPagadoDaoService;
+	// ===== FIN enganche valores no pagados =====
 
 	// =====================================================================
 	// Validacion
@@ -1074,6 +1083,14 @@ public class ProcesoNominaServiceImpl implements ProcesoNominaService {
 			neto = recortaDescuentos(renglones, neto, empleado);
 		}
 
+		// ===== INICIO enganche valores no pagados (script e2-26, equipo omen-saa-2) =====
+		// Renglones INFORMATIVOS (CPNMTPCN=5): no entran a calculaNeto/sumaPorTipo (solo
+		// suman INGRESO y EGRESO), asi que agregarlos aqui, despues del neto ya calculado,
+		// no lo altera -- el rol de este periodo se contabiliza por el neto completo (N),
+		// tal como pide el diseno. Ver docs/logica-negocio/rhh/PLAN-VALORES-NO-PAGADOS.md §7.1.
+		agregaRenglonesValorNoPagado(periodo, empleado, conceptos, nomina, renglones, neto);
+		// ===== FIN enganche valores no pagados =====
+
 		// --- Paso 15: persistir --------------------------------------------------------
 		Double ingresos = sumaPorTipo(renglones, RhhTipoConceptoNomina.INGRESO);
 		Double descuentos = sumaPorTipo(renglones, RhhTipoConceptoNomina.EGRESO);
@@ -1495,6 +1512,83 @@ public class ProcesoNominaServiceImpl implements ProcesoNominaService {
 		return RedondeoNomina.redondea(Double.valueOf(
 				ingresos.doubleValue() - egresos.doubleValue()));
 	}
+
+	// ===== INICIO enganche valores no pagados (script e2-26, equipo omen-saa-2) =====
+	/**
+	 * Agrega los dos renglones INFORMATIVOS del ciclo de valores no pagados (§7.1 del plan):
+	 * la retencion del periodo actual P (rol de motor 34, -X) y la recuperacion del periodo
+	 * anterior P-1 (rol de motor 35, +X). Idempotente por construccion: se llama siempre
+	 * despues de {@code eliminaGeneradosByNomina}, asi que reprocesar el rol no duplica nada.
+	 *
+	 * @param periodo		: Periodo que se esta calculando (P)
+	 * @param empleado		: Empleado
+	 * @param conceptos		: Catalogo activo de la empresa, para localizar los conceptos por rol
+	 * @param nomina		: Cabecera de la nomina en calculo
+	 * @param renglones		: Renglones ya generados; se les agregan los dos de este ciclo
+	 * @param neto			: Neto ya calculado del periodo P, para la validacion dura
+	 * @throws Throwable	: IncomeException si la retencion de P supera el neto de P
+	 */
+	private void agregaRenglonesValorNoPagado(PeriodoNomina periodo, Empleado empleado,
+			List<ConceptoNomina> conceptos, Nomina nomina, List<ReglonNomina> renglones, Double neto)
+			throws Throwable {
+		Long idEmpleado = empleado.getCodigo();
+
+		// Retencion del periodo P: REGISTRADO (recien creado) o RETENIDO (si el rol ya se
+		// habia procesado antes y se esta reprocesando).
+		ValorNoPagado vivoEnP = valorNoPagadoDaoService.selectVivoByEmpleadoPeriodo(idEmpleado, periodo.getCodigo());
+		if (vivoEnP != null) {
+			Double x = vivoEnP.getValor();
+			if (x != null && x.doubleValue() > 0D) {
+				if (neto != null && x.doubleValue() > neto.doubleValue()) {
+					throw new IncomeException("El valor no pagado " + vivoEnP.getCodigo() + " del empleado "
+							+ idEmpleado + " (" + x + ") supera el neto calculado del periodo "
+							+ periodo.getMes() + "/" + periodo.getAnio() + " (" + neto + "). Jamas puede"
+							+ " superar el neto: revise o anule el registro antes de procesar el rol.");
+				}
+				ConceptoNomina conceptoRetenido = conceptoPorRol(conceptos, RhhRolConceptoMotor.VALOR_NO_PAGADO_RETENIDO);
+				if (conceptoRetenido == null) {
+					throw new IncomeException("No existe en la empresa el concepto de nomina con rol de motor "
+							+ RhhRolConceptoMotor.VALOR_NO_PAGADO_RETENIDO + " (valor no pagado). Falta correr"
+							+ " el script que lo crea (rhh/sql/e2-26) antes de procesar el rol del empleado "
+							+ idEmpleado + ".");
+				}
+				renglones.add(nuevoRenglon(nomina, conceptoRetenido, null, Double.valueOf(-x.doubleValue()),
+						null, null, RhhOrigenRenglon.CALCULO_AUTOMATICO, "RHH.VNPG", vivoEnP.getCodigo()));
+			}
+		}
+
+		// Recuperacion del periodo P-1: solo si esta RETENIDO (si esta REGISTRADO, nunca se
+		// retuvo porque la orden de P-1 no se genero -- esa inconsistencia la rechaza
+		// GeneracionOrdenPagoServiceImpl §7.2, no el motor).
+		if (periodo.getEmpresa() == null || periodo.getFechaInicio() == null) {
+			return;
+		}
+		PeriodoNomina periodoAnterior = periodoNominaDaoService.selectByFechaEmpresa(
+				periodo.getEmpresa().getCodigo(), periodo.getFechaInicio().minusDays(1));
+		if (periodoAnterior == null) {
+			return;
+		}
+		ValorNoPagado retenidoEnPAnterior = valorNoPagadoDaoService
+				.selectVivoByEmpleadoPeriodo(idEmpleado, periodoAnterior.getCodigo());
+		if (retenidoEnPAnterior == null
+				|| !Long.valueOf(RhhEstadoValorNoPagado.RETENIDO).equals(retenidoEnPAnterior.getEstado())) {
+			return;
+		}
+		Double xAnterior = retenidoEnPAnterior.getValor();
+		if (xAnterior == null || xAnterior.doubleValue() <= 0D) {
+			return;
+		}
+		ConceptoNomina conceptoRecuperado = conceptoPorRol(conceptos, RhhRolConceptoMotor.VALOR_NO_PAGADO_RECUPERADO);
+		if (conceptoRecuperado == null) {
+			throw new IncomeException("No existe en la empresa el concepto de nomina con rol de motor "
+					+ RhhRolConceptoMotor.VALOR_NO_PAGADO_RECUPERADO + " (valor no pagado del mes anterior)."
+					+ " Falta correr el script que lo crea (rhh/sql/e2-26) antes de procesar el rol del"
+					+ " empleado " + idEmpleado + ".");
+		}
+		renglones.add(nuevoRenglon(nomina, conceptoRecuperado, null, xAnterior, null, null,
+				RhhOrigenRenglon.CALCULO_AUTOMATICO, "RHH.VNPG", retenidoEnPAnterior.getCodigo()));
+	}
+	// ===== FIN enganche valores no pagados =====
 
 	/**
 	 * Proteccion de neto negativo: recorta los descuentos recortables en orden

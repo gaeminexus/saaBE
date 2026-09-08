@@ -22,6 +22,7 @@ import com.saa.ejb.rhh.dao.FormatoArchivoBancarioDaoService;
 import com.saa.ejb.rhh.dao.NominaDaoService;
 import com.saa.ejb.rhh.dao.OrdenPagoNominaDaoService;
 import com.saa.ejb.rhh.dao.PeriodoNominaDaoService;
+import com.saa.ejb.rhh.dao.ValorNoPagadoDaoService;
 import com.saa.ejb.tsr.dao.EgresoDaoService;
 import com.saa.ejb.rhh.service.ContabilizacionNominaService;
 import com.saa.ejb.rhh.service.GeneracionOrdenPagoService;
@@ -36,6 +37,7 @@ import com.saa.model.rhh.NombreEntidadesRhh;
 import com.saa.model.rhh.Nomina;
 import com.saa.model.rhh.OrdenPagoNomina;
 import com.saa.model.rhh.PeriodoNomina;
+import com.saa.model.rhh.ValorNoPagado;
 import com.saa.model.cxp.ProductoPago;
 import com.saa.model.tsr.CuentaBancaria;
 import com.saa.model.tsr.Egreso;
@@ -45,6 +47,7 @@ import com.saa.rubros.EstadoPagoProgramado;
 import com.saa.rubros.OrigenPagoExterno;
 import com.saa.rubros.RhhCampoArchivoBancario;
 import com.saa.rubros.RhhEstadoOrdenPago;
+import com.saa.rubros.RhhEstadoValorNoPagado;
 import com.saa.rubros.RhhFormatoArchivoMarcacion;
 import com.saa.rubros.RhhEstadoPeriodoNomina;
 import com.saa.rubros.RhhModoPeriodoNomina;
@@ -141,6 +144,12 @@ public class GeneracionOrdenPagoServiceImpl implements GeneracionOrdenPagoServic
     @EJB
     private PagoProgramadoService pagoProgramadoService;
 
+    // ===== INICIO enganche valores no pagados (script e2-26, equipo omen-saa-2) =====
+    // Ver docs/logica-negocio/rhh/PLAN-VALORES-NO-PAGADOS.md §7.2.
+    @EJB
+    private ValorNoPagadoDaoService valorNoPagadoDaoService;
+    // ===== FIN enganche valores no pagados =====
+
     /* (non-Javadoc)
      * @see com.saa.ejb.rhh.service.GeneracionOrdenPagoService#generar(java.lang.Long, java.lang.Long, java.lang.String, java.lang.Long)
      */
@@ -190,6 +199,14 @@ public class GeneracionOrdenPagoServiceImpl implements GeneracionOrdenPagoServic
         orden = ordenPagoNominaDaoService.save(orden, orden.getCodigo());
         em.flush();
 
+        // ===== INICIO enganche valores no pagados (script e2-26, equipo omen-saa-2) =====
+        // Periodo P-1, calculado una sola vez fuera del bucle. Ver §7.2 del plan.
+        PeriodoNomina periodoAnterior = (periodo.getEmpresa() != null && periodo.getFechaInicio() != null)
+                ? periodoNominaDaoService.selectByFechaEmpresa(
+                        periodo.getEmpresa().getCodigo(), periodo.getFechaInicio().minusDays(1))
+                : null;
+        // ===== FIN enganche valores no pagados =====
+
         Double total = Double.valueOf(0D);
         int empleados = 0;
         for (Nomina nomina : nominas) {
@@ -203,6 +220,12 @@ public class GeneracionOrdenPagoServiceImpl implements GeneracionOrdenPagoServic
                         + " con neto " + neto + ": no entra en la orden de pago.");
                 continue;
             }
+
+            // ===== INICIO enganche valores no pagados (script e2-26, equipo omen-saa-2) =====
+            neto = ajustaNetoPorValorNoPagado(nomina.getEmpleado().getCodigo(), neto, periodo,
+                    periodoAnterior, orden);
+            // ===== FIN enganche valores no pagados =====
+
             List<DetalleOrdenPagoNomina> detalles = armaDetalle(orden, nomina, neto, usuario);
             for (DetalleOrdenPagoNomina detalle : detalles) {
                 detalleOrdenPagoNominaDaoService.save(detalle, detalle.getCodigo());
@@ -799,6 +822,60 @@ public class GeneracionOrdenPagoServiceImpl implements GeneracionOrdenPagoServic
     // =====================================================================
     // Piezas
     // =====================================================================
+
+    // ===== INICIO enganche valores no pagados (script e2-26, equipo omen-saa-2) =====
+    /**
+     * Ajusta el neto de un empleado por el ciclo de valores no pagados (§7.2 del plan):
+     * resta la retencion del periodo P (si hay una viva, REGISTRADO o RETENIDO) y suma la
+     * recuperacion del periodo P-1 (solo si esta RETENIDO). Marca el registro de P como
+     * RETENIDO con {@code ordenRetencion = orden} -- idempotente: regenerar la orden de P
+     * lo vuelve a marcar igual, sin duplicar nada porque el DAO reemplaza la fila.
+     *
+     * <p>Si el registro de P-1 esta en REGISTRADO (nunca se retuvo porque la orden de P-1
+     * jamas se genero), no se adivina: se rechaza nombrando el registro, tal como pide el
+     * plan -es una inconsistencia que el usuario resuelve, no algo que el sistema decida.</p>
+     *
+     * @param idEmpleado		: Id del empleado
+     * @param netoOriginal		: Neto calculado por el motor (nomina.getNetoPagar())
+     * @param periodo			: Periodo que se esta pagando (P)
+     * @param periodoAnterior	: Periodo anterior (P-1), o null si no existe
+     * @param orden				: Orden de pago en generacion, ya con codigo asignado
+     * @return					: El neto ajustado a acreditar
+     * @throws Throwable		: IncomeException si el registro de P-1 nunca se retuvo
+     */
+    private Double ajustaNetoPorValorNoPagado(Long idEmpleado, Double netoOriginal, PeriodoNomina periodo,
+            PeriodoNomina periodoAnterior, OrdenPagoNomina orden) throws Throwable {
+        Double neto = netoOriginal;
+
+        ValorNoPagado retenidoEnP = valorNoPagadoDaoService.selectVivoByEmpleadoPeriodo(idEmpleado, periodo.getCodigo());
+        if (retenidoEnP != null && retenidoEnP.getValor() != null && retenidoEnP.getValor().doubleValue() > 0D) {
+            neto = RedondeoNomina.suma(neto, Double.valueOf(-retenidoEnP.getValor().doubleValue()));
+            retenidoEnP.setEstado(Long.valueOf(RhhEstadoValorNoPagado.RETENIDO));
+            retenidoEnP.setOrdenRetencion(orden);
+            valorNoPagadoDaoService.save(retenidoEnP, retenidoEnP.getCodigo());
+        }
+
+        if (periodoAnterior != null) {
+            ValorNoPagado registroAnterior = valorNoPagadoDaoService
+                    .selectVivoByEmpleadoPeriodo(idEmpleado, periodoAnterior.getCodigo());
+            if (registroAnterior != null) {
+                if (Long.valueOf(RhhEstadoValorNoPagado.RETENIDO).equals(registroAnterior.getEstado())) {
+                    if (registroAnterior.getValor() != null) {
+                        neto = RedondeoNomina.suma(neto, registroAnterior.getValor());
+                    }
+                } else {
+                    throw new IncomeException("El valor no pagado " + registroAnterior.getCodigo()
+                            + " del empleado " + idEmpleado + " quedo REGISTRADO en el periodo anterior ("
+                            + periodoAnterior.getMes() + "/" + periodoAnterior.getAnio() + ") sin retenerse"
+                            + " nunca: no se genero la orden de pago de ese periodo. Anule el registro o"
+                            + " genere esa orden antes de emitir la de este periodo.");
+                }
+            }
+        }
+
+        return RedondeoNomina.redondea(neto);
+    }
+    // ===== FIN enganche valores no pagados =====
 
     /**
      * Arma el detalle de un empleado, repartiendo el neto entre sus cuentas activas.
