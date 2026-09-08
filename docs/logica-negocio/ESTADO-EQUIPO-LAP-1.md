@@ -610,3 +610,94 @@ caja. Ninguna se habría encontrado leyendo el módulo de caja chica de arriba a
 un cambio hecho ocho días después que él.
 
 **Lo que funcionó fue tirar del hilo del síntoma real en vez de auditar el módulo.**
+
+---
+
+## 12. Frente de planillas del IESS — 2026-09-07
+
+Encargo del usuario: «crear en el sistema todo lo que no está implementado para las planillas del
+IESS, incluyendo su pago». Entregado completo salvo dos decisiones contables.
+
+### 12.1 La brecha real era mucho menor que la documentada
+
+`NORMATIVA-IESS-NOVEDADES.md` (2026-08-21) lista una brecha grande. **Casi toda estaba cerrada** y
+medirla contra el código antes de planificar ahorró rehacer lo hecho: los once tipos de novedad, las
+once columnas nuevas de `NVIS`, la pantalla del mes, el exportador batch, la regla de no cerrar con
+pendientes y la planilla de control ya existían.
+
+Faltaban dos cosas, de tamaño muy distinto: la planilla de control **no tenía pantalla** (endpoint
+probado que nadie llamaba), y **el pago no existía en ningún módulo** — cero referencias a IESS en
+`cxp`, `tsr` y `cnt`; la nómina provisionaba las cuentas por pagar y nada las saldaba.
+
+> **Regla que esto confirma:** un documento de brecha envejece más rápido que el código que describe.
+> Medir contra el código antes de planificar no es desconfianza, es lo que evita construir dos veces.
+
+### 12.2 🔴 El CCC: dos correcciones, y la segunda fue peor que la primera
+
+**Qué es:** Contribución de Fomento de Capacidades y Conocimientos Ciudadanos, 1 % de la masa, que se
+reparte 0,5 % IECE + 0,5 % SECAP.
+
+| Versión | Qué dije | Estado |
+|---|---|---|
+| 1ª | «Queda dentro del aporte patronal» | Suposición sin verificar |
+| 2ª | «No se provisiona» — grep de `CCC`/`contribucion` dio cero | **Falso, y con aire de verificado** |
+| 3ª | **Sí se provisiona: se llama `IECE` y `SECAP`** | Verificado en `ContabilizacionNominaServiceImpl:872-881` |
+
+**La segunda es la que enseña algo.** Grepear el **acrónimo** y no el **concepto** produjo un «no
+existe» que parecía sólido —tenía un comando detrás— y era exactamente al revés. El sistema lo tenía,
+con el nombre de sus dos destinatarios legales.
+
+> **Un grep negativo no prueba ausencia: prueba que ese término no aparece.** Antes de escribir «no
+> existe», buscar cómo lo llamaría el código, que rara vez es como lo llama el documento.
+
+Efecto práctico: ninguno, porque se detectó antes de parametrizar. El agente de backend había
+propuesto plegar el CCC al aporte patronal —lo correcto— y yo se lo corregí sobre una premisa falsa;
+el diseño final (producto propio, misma cuenta por parametrización) llega al mismo lugar y además
+deja el concepto visible en el desglose.
+
+### 12.3 🔴 El seguro de tiempo parcial sí queda sin provisión
+
+Esto sobrevivió a la corrección: el 4,41 % sobre `SBU − sueldo real` **no se calcula ni se contabiliza
+en la nómina**. No es concepto del motor ni aparece en la contabilización; sólo lo calcula la planilla
+de control.
+
+Si el pago lo debitara contra el pasivo patronal, esa cuenta se iría a saldo deudor **todos los
+meses**, creciendo, invisible hasta un cierre. Es monto chico —sólo jornada parcial— y por eso pasaría
+inadvertido más tiempo.
+
+**Sin resolver: decisión contable del usuario** (gasto al pagar, o provisionarlo). Mientras tanto su
+grupo no se crea y el pago **rechaza el renglón citándolo**, que es preferible a debitar una cuenta
+elegida al azar.
+
+### 12.4 Préstamos: una cuenta para dos planillas
+
+Decisión del usuario: quirografarios e hipotecarios van a cuentas **diferentes**. Hasta hoy
+`lineaDeDescuento` mandaba los dos a la línea 12, así que sus dos pagos debitaban el mismo saldo y
+**una diferencia en uno se compensaba con el otro**. El motor ya los distinguía como conceptos; sólo
+los juntaba esa línea. Resuelto con la línea 19 y un `if` partido en dos.
+
+**Dos consecuencias que no se resuelven solas** y quedaron escritas para el usuario: cambia el asiento
+mensual de nómina —hay meses cerrados en producción, así que aplica desde un período nuevo— y el saldo
+histórico de la cuenta 12 queda mezclado; separar hacia adelante no separa lo anterior.
+
+### 12.5 La dependencia de orden que muerde en el peor momento
+
+`exigeLinea:1265-1274` lanza excepción si un período tiene valores para una línea que la plantilla no
+define. Entonces **el WAR con la línea 19 antes de `lap1-10` rompe la contabilización de nómina** —
+pero sólo en un período que tenga al menos un descuento hipotecario. **Un mes sin ninguno pasa
+limpio y da la impresión de que todo está bien.**
+
+Orden obligatorio en `rhh/sql/README-ORDEN-PLANILLAS-IESS.md`. Y ojo: **`lap1-10` va antes que
+`lap1-09`**, aunque el número diga lo contrario.
+
+### 12.6 Ir por tesorería no obligó a tocar el archivo compartido
+
+El usuario decidió que todo pago va por TSR, para conciliar contra el banco. Parecía forzar un método
+propio dentro de `PagoProgramadoServiceImpl` —el archivo que editan los otros dos equipos—, como
+tienen caja chica y anticipo a empleado. **No hizo falta:** `contabilizarPagoOrigenExterno` tiene un
+camino genérico por desglose (`PGS.DPGT`) que arma una línea DEBE por concepto, cierra contra el banco
+**y emite el movimiento bancario**. Los otros dos tienen método propio porque su DEBE es una cuenta
+fija; el del IESS es un desglose de verdad.
+
+**Verificar el mecanismo antes de aceptar el costo evitó una coordinación entre árbitros que no hacía
+falta.** Lo único agregado en `cxp` fue una constante.
