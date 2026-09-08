@@ -164,8 +164,24 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
         // Solo se validan las lineas que este periodo va a usar de verdad. Exigir cuenta a
         // una linea que suma cero bloquearia la contabilizacion por un rubro que la empresa
         // no aplica.
+        Map<Integer, Double> importesRol = importesDelRol(periodo);
+        // ===== INICIO baja de provision de vacaciones gozadas (equipo omen-saa-2, script e2-29) =====
+        // Se saca ANTES de revisaLineas(plantillaRol, ...): esa linea nunca vivio ahi, y
+        // dejarla adentro reporta un faltante inventado (ver LINEA_ROL_FUERA_DE_PLANTILLA_ROL).
+        // Se revisa aparte, contra plantillaProvision -la plantilla real de esa cuenta-, en
+        // vez de confiar en que importesDeProvisiones tambien la traiga este periodo (puede
+        // no traerla: un periodo sin devengo de vacaciones ese mes, pero con gozadas por
+        // saldos de meses anteriores, no tendria con que validarla si no se hace aparte).
+        Double totalProvisionVacaciones = extraeLineaFueraDePlantillaRol(importesRol);
+        // ===== FIN baja de provision de vacaciones gozadas =====
         revisaLineas(faltantes, configuracion.getPlantillaRol(), marcadora,
-                importesDelRol(periodo), "rol de pagos");
+                importesRol, "rol de pagos");
+        if (totalProvisionVacaciones != null && totalProvisionVacaciones.doubleValue() != 0D) {
+            Map<Integer, Double> importesVacaciones = new LinkedHashMap<Integer, Double>();
+            importesVacaciones.put(Integer.valueOf(LINEA_ROL_FUERA_DE_PLANTILLA_ROL), totalProvisionVacaciones);
+            revisaLineas(faltantes, configuracion.getPlantillaProvision(), marcadora,
+                    importesVacaciones, "baja de provision de vacaciones gozadas (rol de pagos)");
+        }
         revisaLineas(faltantes, configuracion.getPlantillaProvision(), marcadora,
                 importesDeProvisiones(periodo), "provisiones");
 
@@ -207,8 +223,7 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
         // con decimos/FR. Y el lado se IMPONE (DEBE): esa linea, en la plantilla del devengo,
         // va al HABER -correcto ahi-, y aca se esta dando de baja, direccion contraria. Mismo
         // fix que descuadro el asiento del decimo cuarto esta manana si se hereda el lado.
-        Double totalProvisionVacaciones =
-                importes.remove(Integer.valueOf(RhhLineaAsiento.PROVISION_VACACIONES_POR_PAGAR));
+        Double totalProvisionVacaciones = extraeLineaFueraDePlantillaRol(importes);
         List<DetalleAsiento> lineas = new ArrayList<DetalleAsiento>();
         if (totalProvisionVacaciones != null && totalProvisionVacaciones.doubleValue() > 0D) {
             Long idPlantillaProvision = resuelvePlantilla(configuracion.getPlantillaProvision(),
@@ -682,11 +697,18 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
 
         Map<Integer, Double> importes;
         Long codigoAlternoPlantilla;
+        // ===== INICIO baja de provision de vacaciones gozadas (equipo omen-saa-2, script e2-29) =====
+        Double totalProvisionVacaciones = null;
+        // ===== FIN baja de provision de vacaciones gozadas =====
         if (Long.valueOf(PREVISUALIZA_PROVISIONES).equals(tipoAsiento)) {
             importes = importesDeProvisiones(periodo);
             codigoAlternoPlantilla = configuracion.getPlantillaProvision();
         } else if (tipoAsiento == null || Long.valueOf(PREVISUALIZA_ROL).equals(tipoAsiento)) {
             importes = importesDelRol(periodo);
+            // Se saca ANTES de resolver el resto contra plantillaRol: esa linea nunca vivio
+            // ahi (ver LINEA_ROL_FUERA_DE_PLANTILLA_ROL), y dejarla adentro la mostraria con
+            // "la plantilla no define esta linea" en un asiento que en realidad cuadra bien.
+            totalProvisionVacaciones = extraeLineaFueraDePlantillaRol(importes);
             codigoAlternoPlantilla = configuracion.getPlantillaRol();
         } else {
             throw new IncomeException("Tipo de asiento a previsualizar no reconocido: " + tipoAsiento
@@ -698,6 +720,12 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
         Long marcadora = configuracion.getCuentaMarcadora();
 
         List<LineaAsientoNomina> resultado = new ArrayList<LineaAsientoNomina>();
+        // ===== INICIO baja de provision de vacaciones gozadas (equipo omen-saa-2, script e2-29) =====
+        if (totalProvisionVacaciones != null && totalProvisionVacaciones.doubleValue() != 0D) {
+            resultado.add(lineaPrevisualizacionProvisionVacaciones(configuracion, marcadora,
+                    totalProvisionVacaciones));
+        }
+        // ===== FIN baja de provision de vacaciones gozadas =====
         for (Map.Entry<Integer, Double> entrada : importes.entrySet()) {
             DetallePlantilla plantilla = detallePlantillaDaoService.selectByPlantillaYAuxiliar(
                     idPlantilla, entrada.getKey().intValue());
@@ -732,6 +760,51 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
         }
         return resultado;
     }
+
+    // ===== INICIO baja de provision de vacaciones gozadas (equipo omen-saa-2, script e2-29) =====
+    /**
+     * Linea de previsualizacion de la baja de provision de vacaciones gozadas (ver
+     * {@link #LINEA_ROL_FUERA_DE_PLANTILLA_ROL}), resuelta contra {@code plantillaProvision}
+     * -la plantilla real de esa cuenta, no {@code plantillaRol}- y con el DEBE impuesto: en
+     * {@code plantillaProvision} esa linea va al HABER porque esa plantilla es la del
+     * devengo mensual (se acredita el pasivo al provisionar), y aca se esta dando de baja,
+     * direccion contraria. Mismo defecto que descuadro el asiento del decimo cuarto por
+     * 1.285,44 si se hereda el lado de la plantilla en vez de imponerlo.
+     *
+     * @param configuracion	: Configuracion de nomina de la empresa
+     * @param marcadora		: PLNNCDGO de la cuenta marcadora
+     * @param valor			: Valor a debitar, ya positivo
+     * @return				: La linea de previsualizacion
+     * @throws Throwable	: Excepcion
+     */
+    private LineaAsientoNomina lineaPrevisualizacionProvisionVacaciones(ConfiguracionNomina configuracion,
+            Long marcadora, Double valor) throws Throwable {
+        Double valorRedondeado = RedondeoNomina.redondea(valor);
+        LineaAsientoNomina linea = new LineaAsientoNomina();
+        linea.setCodigoLinea(Long.valueOf(LINEA_ROL_FUERA_DE_PLANTILLA_ROL));
+        linea.setDebe(valorRedondeado);
+        linea.setHaber(Double.valueOf(0D));
+
+        Long idPlantillaProvision = resuelvePlantilla(configuracion.getPlantillaProvision(),
+                "previsualizacion", configuracion.getEmpresa() != null
+                        ? configuracion.getEmpresa().getCodigo() : null);
+        DetallePlantilla plantilla = detallePlantillaDaoService.selectByPlantillaYAuxiliar(
+                idPlantillaProvision, LINEA_ROL_FUERA_DE_PLANTILLA_ROL);
+        if (plantilla == null) {
+            linea.setDescripcion("(la plantilla de provisiones no define esta linea)");
+            return linea;
+        }
+        PlanCuenta cuenta = plantilla.getPlanCuenta();
+        if (cuenta != null) {
+            linea.setCuenta(cuenta.getCuentaContable());
+            linea.setNombreCuenta(esMarcadora(cuenta, marcadora)
+                    ? cuenta.getNombre() + "  (SIN CONFIGURAR: cuenta marcadora)"
+                    : cuenta.getNombre());
+        }
+        linea.setDescripcion(plantilla.getDescripcion());
+        return linea;
+    }
+    // ===== FIN baja de provision de vacaciones gozadas =====
 
     /* (non-Javadoc)
      * @see com.saa.ejb.rhh.service.ContabilizacionNominaService#contabilizarBajaProvisionBeneficioSocial(java.lang.Long, int, java.util.List, java.lang.Double, java.time.LocalDate, java.lang.String, java.lang.String)
@@ -920,6 +993,38 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
     // =====================================================================
     // Importes por linea del rubro 214
     // =====================================================================
+
+    // ===== INICIO baja de provision de vacaciones gozadas (equipo omen-saa-2, script e2-29) =====
+    /**
+     * Codigo de linea que {@link #importesDelRol} puede sumar pero que NO se resuelve contra
+     * {@code plantillaRol}: vive en {@code plantillaProvision} porque el asiento del rol la
+     * reutiliza en la direccion contraria a la que esa plantilla fue pensada (el pasivo se
+     * acredita, HABER, al devengar; aca se debita para darlo de baja).
+     *
+     * <p><b>Los tres consumidores de {@code importesDelRol} tienen que tratarla igual</b>
+     * ({@link #contabilizarRol}, {@link #previsualizar}, {@link #validarCuentasContables}):
+     * antes de este bloque solo uno la sacaba del mapa antes de resolverlo contra
+     * {@code plantillaRol}, y los otros dos se rompian -uno visible para el usuario
+     * (previsualizar mostraba "la plantilla no define esta linea" en un asiento que en
+     * realidad cuadra perfecto), el otro una validacion inventada (validarCuentasContables
+     * reportaba un faltante que no existe). Centralizado aca para que agregar el proximo caso
+     * igual no repita el problema.</p>
+     */
+    private static final int LINEA_ROL_FUERA_DE_PLANTILLA_ROL = RhhLineaAsiento.PROVISION_VACACIONES_POR_PAGAR;
+
+    /**
+     * Saca de {@code importes} la linea que no se resuelve contra {@code plantillaRol} (ver
+     * {@link #LINEA_ROL_FUERA_DE_PLANTILLA_ROL}) y devuelve su valor. El mapa queda
+     * modificado: lo que le quede adentro ya se puede resolver entero contra
+     * {@code plantillaRol}, sin excepciones ni casos especiales.
+     *
+     * @param importes	: Mapa de {@link #importesDelRol}, se modifica
+     * @return			: El valor extraido, o {@code null} si el periodo no tuvo ninguno
+     */
+    private Double extraeLineaFueraDePlantillaRol(Map<Integer, Double> importes) {
+        return importes.remove(Integer.valueOf(LINEA_ROL_FUERA_DE_PLANTILLA_ROL));
+    }
+    // ===== FIN baja de provision de vacaciones gozadas =====
 
     /**
      * Acumula los importes del asiento de rol por codigo de linea.

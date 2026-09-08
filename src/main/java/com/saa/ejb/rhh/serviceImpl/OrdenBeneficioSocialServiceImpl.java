@@ -13,9 +13,11 @@ import com.saa.ejb.cxp.service.PagoProgramadoService;
 import com.saa.ejb.cxp.service.dto.BeneficiarioOcasional;
 import com.saa.ejb.rhh.dao.ConceptoNominaDaoService;
 import com.saa.ejb.rhh.dao.LiquidacionBeneficioSocialDaoService;
+import com.saa.ejb.rhh.dao.NominaDaoService;
 import com.saa.ejb.rhh.dao.NovedadNominaDaoService;
 import com.saa.ejb.rhh.dao.OrdenBeneficioSocialDaoService;
 import com.saa.ejb.rhh.dao.PeriodoNominaDaoService;
+import com.saa.ejb.rhh.dao.ReglonNominaDaoService;
 import com.saa.ejb.cnt.service.AsientoService;
 import com.saa.ejb.rhh.service.ContabilizacionNominaService;
 import com.saa.ejb.rhh.service.OrdenBeneficioSocialService;
@@ -26,9 +28,11 @@ import com.saa.model.rhh.ConceptoNomina;
 import com.saa.model.rhh.LiquidacionBeneficioSocial;
 import com.saa.model.rhh.NombreEntidadesRhh;
 import com.saa.model.rhh.NovedadNomina;
+import com.saa.model.rhh.Nomina;
 import com.saa.model.rhh.OrdenBeneficioSocial;
 import com.saa.model.rhh.OrdenBeneficioSocialResumen;
 import com.saa.model.rhh.PeriodoNomina;
+import com.saa.model.rhh.ReglonNomina;
 import com.saa.model.scp.Empresa;
 import com.saa.model.scp.Usuario;
 import com.saa.rubros.EstadoPagoProgramado;
@@ -82,6 +86,14 @@ public class OrdenBeneficioSocialServiceImpl implements OrdenBeneficioSocialServ
 
     @EJB
     private AsientoService asientoService;
+
+    // ===== INICIO decimo acumulado en periodo CALCULADO (equipo omen-saa-2, bloqueo urgente 2026-09-08) =====
+    @EJB
+    private NominaDaoService nominaDaoService;
+
+    @EJB
+    private ReglonNominaDaoService reglonNominaDaoService;
+    // ===== FIN decimo acumulado en periodo CALCULADO =====
 
     // =====================================================================
     // EntityService — los seis de la casa
@@ -392,7 +404,7 @@ public class OrdenBeneficioSocialServiceImpl implements OrdenBeneficioSocialServ
                         + " orden " + orden.getNumero(),
                 usuario);
 
-        crearNovedadesDecimoAcumulado(orden, liquidaciones, fecha, usuario);
+        String advertenciaRecalculo = crearNovedadesDecimoAcumulado(orden, liquidaciones, fecha, usuario);
 
         orden.setEstado(Long.valueOf(RhhEstadoOrdenBeneficio.PAGADA));
         orden.setFechaPago(fecha);
@@ -407,9 +419,19 @@ public class OrdenBeneficioSocialServiceImpl implements OrdenBeneficioSocialServ
         resultado.put("numeroAsiento", asiento.getNumeroAlterno());
         resultado.put("liquidacionesPagadas", Integer.valueOf(liquidaciones.size()));
         resultado.put("total", orden.getTotal());
-        resultado.put("mensaje", "Pago confirmado y provisión dada de baja.");
+        // ===== INICIO decimo acumulado en periodo CALCULADO (equipo omen-saa-2, bloqueo urgente 2026-09-08) =====
+        // Si la novedad quedo en un periodo ya CALCULADO, el rol no la refleja hasta que se
+        // recalcule -y eso tiene que decirlo la respuesta, no solo el log del servidor.
+        String mensaje = "Pago confirmado y provisión dada de baja.";
+        if (advertenciaRecalculo != null) {
+            mensaje += " " + advertenciaRecalculo;
+            resultado.put("advertencia", advertenciaRecalculo);
+        }
+        resultado.put("mensaje", mensaje);
+        // ===== FIN decimo acumulado en periodo CALCULADO =====
         System.out.println("✓ Orden " + idOrden + " PAGADA | asiento=" + asiento.getCodigo()
-                + " | liquidaciones=" + liquidaciones.size());
+                + " | liquidaciones=" + liquidaciones.size()
+                + (advertenciaRecalculo != null ? " | ADVERTENCIA: " + advertenciaRecalculo : ""));
         return resultado;
     }
 
@@ -511,15 +533,24 @@ public class OrdenBeneficioSocialServiceImpl implements OrdenBeneficioSocialServ
                     }
                 }
             }
-            if (!novedades.isEmpty()) {
-                PeriodoNomina periodo = novedades.get(0).getPeriodoNomina();
-                if (periodo != null && periodo.getEstado() != null
-                        && periodo.getEstado().longValue() > RhhEstadoPeriodoNomina.ABIERTO) {
-                    throw new IncomeException("El rol del período " + periodo.getMes() + "/"
-                            + periodo.getAnio() + " ya fue procesado e incluye la novedad de esta orden."
-                            + " Reabra o reprocese el período antes de revertir el pago.");
+            // ===== INICIO decimo acumulado en periodo CALCULADO (equipo omen-saa-2, bloqueo urgente 2026-09-08) =====
+            // Antes rechazaba con solo mirar el ESTADO del periodo (> ABIERTO). Eso ya no
+            // alcanza: confirmarPago ahora puede crear la novedad con el periodo en
+            // CALCULADO (mismo criterio que VNPG), asi que un periodo CALCULADO ya no
+            // implica que el rol haya absorbido la novedad -- puede que se haya creado
+            // DESPUES del ultimo calculo, y entonces no hay ningun renglon huerfano que
+            // proteger. Se verifica renglon por renglon (novedadAbsorbidaPorRol), no el
+            // estado del periodo: solo si el rol REALMENTE la consumio se rechaza.
+            for (NovedadNomina novedad : novedades) {
+                PeriodoNomina periodoNovedad = novedad.getPeriodoNomina();
+                if (periodoNovedad != null && novedadAbsorbidaPorRol(novedad, periodoNovedad)) {
+                    throw new IncomeException("El rol del período " + periodoNovedad.getMes() + "/"
+                            + periodoNovedad.getAnio() + " ya calculó y absorbió la novedad de esta orden"
+                            + " (empleado " + novedad.getEmpleado().getCodigo() + "). Reabra o reprocese"
+                            + " el período antes de revertir el pago.");
                 }
             }
+            // ===== FIN decimo acumulado en periodo CALCULADO =====
         }
 
         Long idAsiento = orden.getAsiento();
@@ -610,13 +641,27 @@ public class OrdenBeneficioSocialServiceImpl implements OrdenBeneficioSocialServ
      * (tipoBeneficio=3) no lleva novedad: se saltea sin error. El enlace es por convencion de
      * descripcion, igual que SolicitudVacacionesServiceImpl (sin FK, decision del usuario —
      * ver docs/logica-negocio/rhh/PLAN-PAGO-DECIMOS-EN-EL-MES.md §7.C).
+     *
+     * <p><b>El periodo admite ABIERTO o CALCULADO</b> (bloqueo urgente 2026-09-08, mismo
+     * criterio que {@code ValorNoPagadoServiceImpl.exigePeriodoModificable}, decision del
+     * usuario: "Sí debería, pero debería dejarme recalcular después"). Antes exigia ABIERTO
+     * estricto, y {@code reabrirPeriodo} deja el periodo en CALCULADO, no en ABIERTO -no hay
+     * ningun camino en todo el proyecto que devuelva un periodo a ABIERTO desde CALCULADO-,
+     * asi que ese guard era una pared sin puerta. La novedad es INFORMATIVA: no suma al
+     * neto, no toca bases de IESS/IR ni contabilidad, asi que registrarla en un periodo ya
+     * calculado no corrompe nada, solo no se ve hasta recalcular -por eso este metodo
+     * devuelve una advertencia en vez de solo loguearla, para que confirmarPago se la pase
+     * al usuario en la respuesta.</p>
+     *
+     * @return	: Advertencia para el usuario si el periodo estaba CALCULADO (hay que
+     *			  recalcular el rol para ver el renglon), o null si estaba ABIERTO
      */
-    private void crearNovedadesDecimoAcumulado(OrdenBeneficioSocial orden,
+    private String crearNovedadesDecimoAcumulado(OrdenBeneficioSocial orden,
             List<LiquidacionBeneficioSocial> liquidaciones, LocalDate fecha, String usuario) throws Throwable {
         int tipoBeneficio = orden.getTipoBeneficio().intValue();
         if (tipoBeneficio != RhhTipoBeneficioSocial.DECIMO_TERCERO
                 && tipoBeneficio != RhhTipoBeneficioSocial.DECIMO_CUARTO) {
-            return;
+            return null;
         }
         int rolMotor = tipoBeneficio == RhhTipoBeneficioSocial.DECIMO_TERCERO
                 ? RhhRolConceptoMotor.DECIMO_TERCERO_ACUMULADO_PAGADO
@@ -637,11 +682,7 @@ public class OrdenBeneficioSocialServiceImpl implements OrdenBeneficioSocialServ
                     + " que contenga la fecha " + fecha + ": no se puede registrar la novedad del pago"
                     + " de la orden " + orden.getCodigo() + ".");
         }
-        if (!Long.valueOf(RhhEstadoPeriodoNomina.ABIERTO).equals(periodo.getEstado())) {
-            throw new IncomeException("El periodo de nomina " + periodo.getMes() + "/" + periodo.getAnio()
-                    + " (id " + periodo.getCodigo() + ") no esta ABIERTO (estado " + periodo.getEstado()
-                    + "): no se puede registrar la novedad del pago de la orden " + orden.getCodigo() + ".");
-        }
+        exigePeriodoModificable(periodo, "registrar la novedad del pago de la orden " + orden.getCodigo());
 
         String descripcion = marcadorNovedadDecimo(tipoBeneficio, orden.getCodigo());
         for (LiquidacionBeneficioSocial liquidacion : liquidaciones) {
@@ -662,7 +703,111 @@ public class OrdenBeneficioSocialServiceImpl implements OrdenBeneficioSocialServ
             novedad.setUsuarioRegistro(usuario);
             novedadNominaDaoService.save(novedad, null);
         }
+
+        if (Long.valueOf(RhhEstadoPeriodoNomina.CALCULADO).equals(periodo.getEstado())) {
+            return "El período " + periodo.getMes() + "/" + periodo.getAnio() + " ya estaba CALCULADO:"
+                    + " recalcule el rol para que el " + textoTipoBeneficio(orden.getTipoBeneficio())
+                    + " acumulado pagado se refleje.";
+        }
+        return null;
     }
+
+    // ===== INICIO decimo acumulado en periodo CALCULADO (equipo omen-saa-2, bloqueo urgente 2026-09-08) =====
+    /**
+     * Exige que el periodo admita cambios de nomina (registrar la novedad del decimo
+     * acumulado). Copiado de {@code ValorNoPagadoServiceImpl.exigePeriodoModificable} -mismo
+     * criterio, mismo texto de mensaje-, no extraido a un lugar compartido por el apuro del
+     * bloqueo: hay al menos tres clases con la misma pregunta (esta,
+     * {@code ValorNoPagadoServiceImpl}, {@code SolicitudVacacionesServiceImpl}) y mover eso
+     * ahora es mas alcance del que un arreglo urgente deberia llevar. Pendiente de
+     * centralizar.
+     *
+     * <ul>
+     * <li>{@code ABIERTO}(1) o {@code CALCULADO}(3): permitido.</li>
+     * <li>{@code EN_CALCULO}(2): rechazado -- registrar en medio de un calculo es una carrera
+     * contra el motor que esta leyendo/escribiendo esta misma nomina.</li>
+     * <li>Cualquier otro ({@code >= APROBADO}): rechazado, ya no admite cambios de nomina.</li>
+     * </ul>
+     *
+     * @param periodo		: Periodo de nomina
+     * @param operacion		: Texto de la operacion, para el mensaje
+     * @throws Throwable	: IncomeException si el periodo no admite la operacion
+     */
+    private void exigePeriodoModificable(PeriodoNomina periodo, String operacion) throws Throwable {
+        int estado = periodo.getEstado() != null ? periodo.getEstado().intValue() : -1;
+        if (estado == RhhEstadoPeriodoNomina.ABIERTO || estado == RhhEstadoPeriodoNomina.CALCULADO) {
+            return;
+        }
+        if (estado == RhhEstadoPeriodoNomina.EN_CALCULO) {
+            throw new IncomeException("El rol del periodo " + periodo.getMes() + "/" + periodo.getAnio()
+                    + " se esta calculando: espere a que termine antes de " + operacion + ".");
+        }
+        throw new IncomeException("El periodo " + periodo.getMes() + "/" + periodo.getAnio() + " esta "
+                + textoEstadoPeriodo(periodo.getEstado()) + ": ya no admite cambios de nomina.");
+    }
+
+    private String textoEstadoPeriodo(Long estado) {
+        if (estado == null) {
+            return "en un estado desconocido";
+        }
+        switch (estado.intValue()) {
+            case RhhEstadoPeriodoNomina.ABIERTO:
+                return "ABIERTO";
+            case RhhEstadoPeriodoNomina.EN_CALCULO:
+                return "EN_CALCULO";
+            case RhhEstadoPeriodoNomina.CALCULADO:
+                return "CALCULADO";
+            case RhhEstadoPeriodoNomina.APROBADO:
+                return "APROBADO";
+            case RhhEstadoPeriodoNomina.CONTABILIZADO:
+                return "CONTABILIZADO";
+            case RhhEstadoPeriodoNomina.PAGADO:
+                return "PAGADO";
+            case RhhEstadoPeriodoNomina.CERRADO:
+                return "CERRADO";
+            case RhhEstadoPeriodoNomina.ANULADO:
+                return "ANULADO";
+            default:
+                return "en estado " + estado;
+        }
+    }
+
+    /**
+     * Indica si el rol ya calculo y absorbio esta novedad: existe un renglon de la nomina de
+     * ese empleado en ese periodo que la referencia (misma trazabilidad que usa el motor,
+     * {@code ProcesoNominaServiceImpl}, tabla "RHH.NVNM" + el codigo de la novedad). Distingue
+     * "la novedad existe" (el registro esta en RHH.NVNM, pero el rol no la vio -- se creo con
+     * el periodo ya CALCULADO, o se creo antes pero el rol no se ha vuelto a correr) de "el
+     * rol ya la absorbio" (se recalculo el periodo despues de que la novedad existiera): solo
+     * el segundo caso deja un renglon huerfano si se borra la novedad sin mas.
+     *
+     * @param novedad	: Novedad a verificar
+     * @param periodo	: Periodo de la novedad
+     * @return			: true si ya hay un renglon que la referencia
+     * @throws Throwable	: Excepcion
+     */
+    private boolean novedadAbsorbidaPorRol(NovedadNomina novedad, PeriodoNomina periodo) throws Throwable {
+        if (novedad.getEmpleado() == null) {
+            return false;
+        }
+        Nomina nomina = nominaDaoService.selectByPeriodoYEmpleado(periodo.getCodigo(),
+                novedad.getEmpleado().getCodigo());
+        if (nomina == null) {
+            return false;
+        }
+        List<ReglonNomina> renglones = reglonNominaDaoService.selectByNomina(nomina.getCodigo());
+        if (renglones == null) {
+            return false;
+        }
+        for (ReglonNomina renglon : renglones) {
+            if ("RHH.NVNM".equals(renglon.getTablaReferencia())
+                    && novedad.getCodigo().equals(renglon.getIdReferencia())) {
+                return true;
+            }
+        }
+        return false;
+    }
+    // ===== FIN decimo acumulado en periodo CALCULADO =====
 
     /** Marcador de descripcion acordado en el §7.C del plan: "Décimo <tercero|cuarto> acumulado — orden #{idOrden}". */
     private String marcadorNovedadDecimo(int tipoBeneficio, Long idOrden) {

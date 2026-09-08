@@ -1,4 +1,24 @@
 -- =====================================================================
+-- CORRECCION 2026-09-08 -- LOS CODIGOS PDTR DE ABAJO NO SON LOS QUE QUEDARON
+-- =====================================================================
+-- Medido contra la base el 2026-09-08. Lo que este script escribe como
+-- 1504-1508 y 1509-1510 quedo en realidad en:
+--     rubro 311 REGISTRADO..FINIQUITADO  -> PDTR 1509-1513
+--     rubro 221 detalles 34 y 35         -> PDTR 1514-1515
+-- Corridos cinco lugares porque el e2-13 (tsr) tomo 1504-1506 con
+-- SCP.SQ_PDTRCDGO.NEXTVAL y el e2-18 tomo 1507-1508.
+--
+-- EL REVERSO DE ABAJO ESTABA MAL Y ERA PELIGROSO: borraba 1504-1510, o sea los
+-- tres comandos de busqueda del rubro 71 (parentesis e IS NULL) y los conceptos
+-- de decimo acumulado del e2-18. Habria roto la busqueda por criterios de TODO
+-- el sistema. Ya esta corregido.
+--
+-- ESTE SCRIPT YA NO ES REPLAYABLE TAL CUAL en otra base: los PK explicitos
+-- chocarian. Para volver a correrlo hay que usar SCP.SQ_PDTRCDGO.NEXTVAL, que
+-- SI EXISTE (el registro de reservas decia que no; era falso).
+-- =====================================================================
+
+-- =====================================================================
 -- e2-26 — RHH.VNPG: valores no pagados en nomina
 -- Modulo: RHH  ·  Equipo: omen-saa-2  ·  Fecha: 2026-09-08
 --
@@ -340,7 +360,7 @@ SELECT '7 - conceptos creados' AS control,
 --    WHERE c.CPNMROLM IN (34, 35);
 --
 -- DELETE FROM RHH.CPNM WHERE CPNMROLM IN (34, 35);
--- DELETE FROM SCP.PDTR WHERE PDTRCDGO BETWEEN 1504 AND 1510;
+-- DELETE FROM SCP.PDTR WHERE PDTRCDGO BETWEEN 1509 AND 1515;  -- CORREGIDO 2026-09-08, decia 1504-1510
 -- DELETE FROM SCP.PRBR WHERE PRBRCDGO = 311;
 -- DROP TABLE RHH.VNPG;
 -- DROP SEQUENCE RHH.SQ_VNPGCDGO;

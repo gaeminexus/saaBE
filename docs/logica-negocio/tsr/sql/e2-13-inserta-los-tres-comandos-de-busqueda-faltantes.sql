@@ -32,6 +32,19 @@
 --   ⇒ LAS QUE ARREGLAN EL ERROR SON LA 13 Y LA 14. Son las que usa cualquier
 --     pantalla que arme criterios con parentesis.
 --
+-- ⛔ CORRECCION 2026-09-08 — ESTE SCRIPT ESTABA MAL Y EL PARRAFO DE ABAJO TAMBIEN
+--   Decia "toma el PK de la secuencia. No consume ningun rango reservado y no
+--   puede colisionar con otro equipo". Las dos mitades son falsas:
+--     1. SCP.SQ_PDTRCDGO NO EXISTE -confirmado por el usuario el 2026-09-08:
+--        "la pdtr no usa secuencia ni la prbr"-, asi que el NEXTVAL original
+--        habria reventado con ORA-02289. Que las filas esten en la base prueba
+--        que esto NO se corrio como estaba commiteado.
+--     2. SI consume rango reservado: las tres filas quedaron en 1504-1506, o
+--        sea dentro del bloque 1500-1599 de este mismo equipo, y corrieron
+--        cinco lugares toda la numeracion posterior (e2-26, e2-29).
+--   Ya lleva los PK explicitos que quedaron en la base. La regla de la casa es
+--   PK explicita del rango propio, NUNCA una secuencia.
+--
 -- ⛔ ANTES DE CORRER: SCP.PRBR / SCP.PDTR es CATALOGO COMPARTIDO por todos los
 --   equipos (docs/logica-negocio/REGISTRO-RESERVAS-EQUIPOS.md). Este script NO
 --   crea rubros nuevos ni toma PRBRCDGO/PDTRCDGO fijos: agrega detalles a un
@@ -80,13 +93,13 @@ SELECT d.PDTRALTR, d.PDTRVLRV
 
 -- 13 -- ABRE_PARENTESIS -> "("   ⭐ una de las dos que arreglan el error
 INSERT INTO SCP.PDTR (PDTRCDGO, PRBRCDGO, PDTRALTR, PDTRVLRN, PDTRVLRV, PDTRDSCR, PDTRESTD)
-VALUES (SCP.SQ_PDTRCDGO.NEXTVAL,
+VALUES (1504,  -- CORREGIDO 2026-09-08: decia SCP.SQ_PDTRCDGO.NEXTVAL y esa secuencia NO EXISTE
         (SELECT PRBRCDGO FROM SCP.PRBR WHERE PRBRALTR = 71),
         13, 13, '(', 'Abre parentesis', 1);
 
 -- 14 -- CIERRA_PARENTESIS -> ")"   ⭐ la otra
 INSERT INTO SCP.PDTR (PDTRCDGO, PRBRCDGO, PDTRALTR, PDTRVLRN, PDTRVLRV, PDTRDSCR, PDTRESTD)
-VALUES (SCP.SQ_PDTRCDGO.NEXTVAL,
+VALUES (1505,  -- CORREGIDO 2026-09-08: decia SCP.SQ_PDTRCDGO.NEXTVAL y esa secuencia NO EXISTE
         (SELECT PRBRCDGO FROM SCP.PRBR WHERE PRBRALTR = 71),
         14, 14, ')', 'Cierra parentesis', 1);
 
@@ -96,7 +109,7 @@ VALUES (SCP.SQ_PDTRCDGO.NEXTVAL,
 --   dejar el catalogo completo respecto de TipoComandosBusqueda, no porque
 --   haga falta para que algo funcione.
 INSERT INTO SCP.PDTR (PDTRCDGO, PRBRCDGO, PDTRALTR, PDTRVLRN, PDTRVLRV, PDTRDSCR, PDTRESTD)
-VALUES (SCP.SQ_PDTRCDGO.NEXTVAL,
+VALUES (1506,  -- CORREGIDO 2026-09-08: decia SCP.SQ_PDTRCDGO.NEXTVAL y esa secuencia NO EXISTE
         (SELECT PRBRCDGO FROM SCP.PRBR WHERE PRBRALTR = 71),
         12, 12, 'IS NULL', 'Es nulo', 1);
 

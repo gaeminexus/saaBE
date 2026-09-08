@@ -1,4 +1,15 @@
 -- =====================================================================
+-- CORRECCION 2026-09-08 -- EL CODIGO PDTR NO ES EL 1511
+-- =====================================================================
+-- Medido contra la base: el detalle 36 del rubro 221 quedo en PDTR 1516, no en
+-- 1511. El 1511 lo tomo el estado PAGADO del rubro 311 (e2-26), que a su vez se
+-- corrio cinco lugares por el e2-13 y el e2-18.
+--
+-- EL REVERSO DE ABAJO BORRABA EL 1511, o sea el estado PAGADO de los valores no
+-- pagados, no esta linea. Ya esta corregido.
+-- =====================================================================
+
+-- =====================================================================
 -- e2-29 — Rol de motor 36 para el concepto de vacaciones gozadas
 -- Modulo: RHH  ·  Equipo: omen-saa-2  ·  Fecha: 2026-09-08
 --
@@ -137,7 +148,7 @@ SELECT '3.2 - concepto actualizado' AS control,
 -- BLOQUE 4 — REVERSO. COMENTADO A PROPOSITO.
 -- =====================================================================
 -- UPDATE RHH.CPNM SET CPNMROLM = NULL WHERE CPNMALTR = 12 AND CPNMROLM = 36;
--- DELETE FROM SCP.PDTR WHERE PDTRCDGO = 1511;
+-- DELETE FROM SCP.PDTR WHERE PDTRCDGO = 1516;  -- CORREGIDO 2026-09-08, decia 1511
 -- COMMIT;
 --
 -- Revertir devuelve el comportamiento de hoy: el renglon de vacaciones vuelve a
