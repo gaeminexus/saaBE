@@ -358,16 +358,23 @@ public class AsientoServiceImpl implements AsientoService {
 	 * @see com.compuseg.income.contabilidad.ejb.service.AsientoService#reversionAsiento(java.lang.Long)
 	 */
 	public Asiento reversionAsiento(Long idAsiento) throws Throwable {
-		System.out.println("Ingresa al metodo reversionAsiento con Id Asiento: " + idAsiento);
-		Asiento asientoReversion = new Asiento();		
+		return reversionAsiento(idAsiento, LocalDate.now());
+	}
+
+	/* (non-Javadoc)
+	 * @see com.saa.ejb.cnt.service.AsientoService#reversionAsiento(java.lang.Long, java.time.LocalDate)
+	 */
+	public Asiento reversionAsiento(Long idAsiento, LocalDate fechaReverso) throws Throwable {
+		System.out.println("Ingresa al metodo reversionAsiento con Id Asiento: " + idAsiento + ", fechaReverso: " + fechaReverso);
+		Asiento asientoReversion = new Asiento();
 		boolean permiteProceso = true;
 		Asiento asiento = asientoDaoService.selectById(idAsiento, NombreEntidadesContabilidad.ASIENTO);
 		permiteProceso = verificaAnulacionReversion(asiento, ProcesosAsiento.REVERSAR);
 		if(permiteProceso){
 			// INSERTA CABECERA REVERSION
-			asientoReversion = generaCabeceraReversion(asiento);			
+			asientoReversion = generaCabeceraReversion(asiento, fechaReverso);
 			// RECUPERA HIJOS DE ASIENTO A REVERSION
-			detalleAsientoService.generaDetalleReversion(asiento, asientoReversion);			
+			detalleAsientoService.generaDetalleReversion(asiento, asientoReversion);
 			// ACTULIZA ASIENTO ORIGINAL
 			asiento.setIdReversion(asientoReversion.getCodigo());
 			asiento.setEstado(Long.valueOf(EstadoAsiento.REVERSADO));
@@ -412,25 +419,54 @@ public class AsientoServiceImpl implements AsientoService {
 	 * @see com.compuseg.income.contabilidad.ejb.service.AsientoService#generaCabeceraReversion(com.compuseg.income.contabilidad.ejb.model.Asiento)
 	 */
 	public Asiento generaCabeceraReversion(Asiento asientoOriginal) throws Throwable {
-		System.out.println("Ingresa al metodo generaCabeceraReversion con Asiento: " + asientoOriginal.getCodigo());
+		return generaCabeceraReversion(asientoOriginal, LocalDate.now());
+	}
+
+	/* (non-Javadoc)
+	 * @see com.saa.ejb.cnt.service.AsientoService#generaCabeceraReversion(com.saa.model.cnt.Asiento, java.time.LocalDate)
+	 */
+	public Asiento generaCabeceraReversion(Asiento asientoOriginal, LocalDate fechaReverso) throws Throwable {
+		System.out.println("Ingresa al metodo generaCabeceraReversion con Asiento: " + asientoOriginal.getCodigo() + ", fechaReverso: " + fechaReverso);
 		Long numeroAsientoReversion = null;
-		Asiento asientoReversion = new Asiento();		
+		Asiento asientoReversion = new Asiento();
 		asientoReversion.setCodigo(null);
 		asientoReversion.setEmpresa(asientoOriginal.getEmpresa());
 		asientoReversion.setTipoAsiento(asientoOriginal.getTipoAsiento());
-		asientoReversion.setFechaAsiento(LocalDate.now());
+		// Las tres cosas de abajo (fechaAsiento, mes/anio y Periodo) salen de la MISMA
+		// fechaReverso — 2026-09-08. Antes salían de "ahora" por dos caminos distintos
+		// (un LocalDate.now() para fechaAsiento, un Calendar.getInstance() aparte para
+		// mes/anio) y por eso coincidían siempre; con la fecha parametrizada, sacar una de
+		// las tres por otro lado dejaría un asiento fechado en un mes y numerado/periodizado
+		// en otro, sin ningún error.
+		asientoReversion.setFechaAsiento(fechaReverso);
 		asientoReversion.setFechaIngreso((LocalDateTime.now()));
 		numeroAsientoReversion = siguienteNumeroAsiento(asientoReversion.getTipoAsiento().getCodigo(), asientoReversion.getEmpresa().getCodigo());
 		asientoReversion.setNumero(numeroAsientoReversion);
 		asientoReversion.setEstado(Long.valueOf(EstadoAsiento.ACTIVO));
 		asientoReversion.setObservaciones("ASIENTO DE REVERSION DE ASIENTO " + asientoOriginal.getNumero());
 		asientoReversion.setIdReversion(asientoOriginal.getCodigo());
-		Calendar calendario = Calendar.getInstance();
-		Long mes = Long.valueOf(calendario.get(Calendar.MONTH))+1;
-		Long anio = Long.valueOf(calendario.get(Calendar.YEAR));
+		Long mes = Long.valueOf(fechaReverso.getMonthValue());
+		Long anio = Long.valueOf(fechaReverso.getYear());
 		asientoReversion.setNumeroMes(mes);
 		asientoReversion.setNumeroAnio(anio);
 		Periodo periodo = periodoService.recuperaByMesAnioEmpresa(asientoReversion.getEmpresa().getCodigo(), mes, anio);
+		// 2026-09-08: con fecha libre, sin esta guarda alguien podía meter un reverso en un
+		// período MAYORIZADO o CERRADO y corromper un mes ya cuadrado — verificaAnulacionReversion
+		// solo valida mayorizado para ANULAR, nunca para REVERSAR. No se toca el camino viejo
+		// (fecha de hoy): esa fecha siempre cae en el período abierto, así que esta guarda no
+		// le agrega nada y sí podría romper algo que hoy funciona.
+		if (periodo == null) {
+			throw new IncomeException("No existe período contable para " + mes + "/" + anio
+					+ " en la empresa " + asientoReversion.getEmpresa().getCodigo()
+					+ "; no se puede reversar el asiento " + asientoOriginal.getNumero() + " con esa fecha.");
+		}
+		if (Long.valueOf(EstadoPeriodos.MAYORIZADO).equals(periodo.getEstado())
+				|| Long.valueOf(EstadoPeriodos.CERRADO).equals(periodo.getEstado())) {
+			throw new IncomeException("El período " + mes + "/" + anio + " está "
+					+ (Long.valueOf(EstadoPeriodos.MAYORIZADO).equals(periodo.getEstado()) ? "MAYORIZADO" : "CERRADO")
+					+ "; no se puede reversar contra un período mayorizado o cerrado. Desmayorice"
+					+ " o reabra el período antes de reversar el asiento " + asientoOriginal.getNumero() + ".");
+		}
 		asientoReversion.setPeriodo(periodo);
 		asientoReversion.setNombreUsuario(asientoOriginal.getNombreUsuario());
 		asientoReversion.setMoneda(asientoOriginal.getMoneda());

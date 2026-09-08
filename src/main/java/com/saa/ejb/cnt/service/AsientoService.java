@@ -1,5 +1,6 @@
 package com.saa.ejb.cnt.service;
 
+import java.time.LocalDate;
 import java.util.List;
 
 import com.saa.basico.util.EntityService;
@@ -128,11 +129,28 @@ public interface AsientoService extends EntityService<Asiento> {
 	 Asiento selectByNumeroEmpresaTipo(Long numero, Long empresa, Long tipo) throws Throwable;
 
 	/**
-	 * Revesa los datos de un Asiento 
+	 * Revesa los datos de un Asiento
 	 * @param idAsiento	: Id Asiento
 	 * @throws Throwable: Excepcion
 	 */
 	 Asiento reversionAsiento(Long idAsiento) throws Throwable;
+
+	/**
+	 * Reversa un asiento con la fecha en que ocurrió el hecho que lo origina, NO la de hoy —
+	 * 2026-09-08, pedido de tesorería. Caso real: un pago rebota en el banco; el extracto lo
+	 * muestra en menos y después en más, así que el asiento se REVERSA (no se anula) para que
+	 * los libros tengan las dos patas igual que el banco. Si el rebote fue de un mes anterior,
+	 * el reverso tiene que quedar fechado en ESE mes, no en el de hoy.
+	 *
+	 * {@link #reversionAsiento(Long)} delega acá con {@code LocalDate.now()} — retrocompatible,
+	 * ningún llamador existente cambia.
+	 *
+	 * @param idAsiento    : Id del asiento a reversar
+	 * @param fechaReverso : Fecha real del hecho que origina el reverso
+	 * @throws Throwable   : {@code IncomeException} si el período de esa fecha no existe, o si
+	 *                       está MAYORIZADO o CERRADO (hay que desmayorizar/reabrir primero)
+	 */
+	 Asiento reversionAsiento(Long idAsiento, LocalDate fechaReverso) throws Throwable;
 	 
 	 /**
 	 * Copia asiento 
@@ -167,6 +185,24 @@ public interface AsientoService extends EntityService<Asiento> {
 	 * @throws Throwable		: Excepcion
 	 */
 	 Asiento generaCabeceraReversion(Asiento asientoOriginal) throws Throwable;
+
+	/**
+	 * Igual que {@link #generaCabeceraReversion(Asiento)}, pero con la fecha del reverso
+	 * parametrizada (ver {@link #reversionAsiento(Long, LocalDate)}). {@code fechaAsiento},
+	 * {@code numeroMes}/{@code numeroAnio} Y el {@code Periodo} salen los TRES de la MISMA
+	 * {@code fechaReverso} — es el corazón del cambio: hoy los tres salen de "ahora" por
+	 * caminos distintos (un {@code LocalDate.now()} y un {@code Calendar} aparte) y por eso
+	 * siempre coinciden; con una fecha parametrizada, olvidar uno de los tres dejaría un
+	 * asiento fechado en un mes y numerado/periodizado en otro, sin ningún error que lo avise.
+	 *
+	 * @param asientoOriginal : Asiento original
+	 * @param fechaReverso    : Fecha real del hecho que origina el reverso
+	 * @return                : Asiento de reversión
+	 * @throws Throwable      : {@code IncomeException} si no existe período contable para
+	 *                          (empresa, mes, año) de {@code fechaReverso}, o si ese período
+	 *                          está MAYORIZADO o CERRADO
+	 */
+	 Asiento generaCabeceraReversion(Asiento asientoOriginal, LocalDate fechaReverso) throws Throwable;
 	
 	/**
 	 * Recupera por codigo de mayorizacion
