@@ -102,6 +102,38 @@ public class DevolucionAnticipo implements Serializable {
     private Long idIngreso;
 
     /**
+     * Ids de las {@code CuotaDescuento} que esta devolución canceló (estado
+     * ANULADA), separados por coma. Sin esto, anular la devolución no podría
+     * distinguir qué cuotas devolver a PENDIENTE cuando el anticipo tiene más
+     * de una devolución (decisión del usuario, #1 del contrato): dos
+     * devoluciones nunca tocan la misma cuota (una cuota ya ANULADA sale de
+     * {@code selectPendientesPorDescuento}), así que la lista identifica sin
+     * ambigüedad las de ESTA devolución. Columna propuesta, no está en la
+     * versión de {@code lap1-11} verificada contra el contrato original —
+     * ver el reporte del ítem 9.
+     */
+    @Basic
+    @Column(name = "DVANCUAN", length = 2000)
+    private String idsCuotasCanceladas;
+
+    /**
+     * Id de la {@code CuotaDescuento} que esta devolución dejó con un valor
+     * menor (siguió PENDIENTE), o null si no ajustó ninguna. Columna
+     * propuesta, mismo motivo que {@link #idsCuotasCanceladas}.
+     */
+    @Basic
+    @Column(name = "DVANCUAJ")
+    private Long idCuotaAjustada;
+
+    /**
+     * Valor de la cuota ajustada ANTES de esta devolución, para poder
+     * restaurarlo si se anula. Columna propuesta, mismo motivo.
+     */
+    @Basic
+    @Column(name = "DVANCVOR")
+    private Double valorOriginalCuotaAjustada;
+
+    /**
      * Asiento contable del ingreso.
      */
     @ManyToOne
@@ -199,6 +231,30 @@ public class DevolucionAnticipo implements Serializable {
 
     public void setIdIngreso(Long idIngreso) {
         this.idIngreso = idIngreso;
+    }
+
+    public String getIdsCuotasCanceladas() {
+        return idsCuotasCanceladas;
+    }
+
+    public void setIdsCuotasCanceladas(String idsCuotasCanceladas) {
+        this.idsCuotasCanceladas = idsCuotasCanceladas;
+    }
+
+    public Long getIdCuotaAjustada() {
+        return idCuotaAjustada;
+    }
+
+    public void setIdCuotaAjustada(Long idCuotaAjustada) {
+        this.idCuotaAjustada = idCuotaAjustada;
+    }
+
+    public Double getValorOriginalCuotaAjustada() {
+        return valorOriginalCuotaAjustada;
+    }
+
+    public void setValorOriginalCuotaAjustada(Double valorOriginalCuotaAjustada) {
+        this.valorOriginalCuotaAjustada = valorOriginalCuotaAjustada;
     }
 
     public Asiento getAsiento() {
