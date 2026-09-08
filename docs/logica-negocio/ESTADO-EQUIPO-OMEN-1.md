@@ -2225,3 +2225,49 @@ barata existía y no la hice — bastaba abrir el método que devuelve el valor.
 **Y una segunda, aparte:** un `return null` deliberado con doce líneas de comentario explicando por
 qué, es exactamente el tipo de decisión que un lector apurado lee como «todavía no implementado».
 No lo era.
+
+---
+
+## H57 — Un reverso de asiento saca "hoy" de TRES lugares distintos (2026-09-08)
+
+**Pedido de `omen-saa-2` (tesorería):** un pago que rebota en el banco hay que **reversarlo**, no
+anularlo — si se anula, en los libros no queda con qué conciliar el movimiento que el extracto
+muestra en menos y después en más. Eso ya funciona. Lo que faltaba es poder fechar el reverso el
+día del rebote y no hoy.
+
+`AsientoServiceImpl.generaCabeceraReversion:414` no deriva la fecha una vez: **la deriva tres veces
+por caminos distintos**, y sólo coinciden porque las tres dicen "ahora".
+
+```java
+asientoReversion.setFechaAsiento(LocalDate.now());          // (1) la fecha
+...
+Calendar calendario = Calendar.getInstance();               // (2) mes y año, por otro lado
+Long mes  = Long.valueOf(calendario.get(Calendar.MONTH)) + 1;
+Long anio = Long.valueOf(calendario.get(Calendar.YEAR));
+Periodo periodo = periodoService.recuperaByMesAnioEmpresa(..., mes, anio);   // (3) el período
+```
+
+**Por qué importa:** el agente de ellos había propuesto llamar `reversionAsiento` y después pisar
+`fechaAsiento` con un merge. Su árbitro lo frenó por instinto — «poco elegante». Es peor que eso:
+habría dejado el asiento **fechado en un mes y numerado y periodizado en otro, sin un solo error**.
+La familia de siempre en este archivo: el sistema no falla, contesta mal.
+
+Por eso la instrucción al agente dice explícitamente que las tres salen de la misma fecha y que el
+`Calendar` se va de la ruta nueva.
+
+### La guarda que el pedido no traía
+
+Hoy el reverso cae siempre en el período de hoy, que en la práctica está abierto. **Eso es lo único
+que protege los meses cerrados**, y es por accidente. Con fecha libre, un rebote de un mes ya
+mayorizado mete un asiento en un mes cuadrado — y `verificaAnulacionReversion:382` valida
+mayorizado **sólo para ANULAR, no para REVERSAR**: no hay nada que lo frene.
+
+La sobrecarga nueva lleva dos guardas: período inexistente → `IncomeException` (hoy sería un
+`setPeriodo(null)`), y período MAYORIZADO (2) o CERRADO (4) → `IncomeException` pidiendo
+desmayorizar. Tesorería confirmó que su caso normal ni las toca y que el caso mayorizado **quieren**
+que frene.
+
+**Lo que NO se hizo, y es tan importante como lo que sí:** la validación de período **no** se le
+agregó al `reversionAsiento(id)` de siempre. Por ahí ya pasa gente con períodos en cualquier estado;
+apretarlo como efecto colateral de otro pedido rompería producción sin que nadie lo hubiera
+decidido. Si algún día conviene, que sea medido y avisado.
