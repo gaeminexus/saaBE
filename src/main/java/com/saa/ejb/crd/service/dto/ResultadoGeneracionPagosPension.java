@@ -55,7 +55,39 @@ public class ResultadoGeneracionPagosPension {
     /** Un renglón por jubilado evaluado (generado, ya existía, o con error). */
     private List<DetallePagoPension> detalle = new ArrayList<>();
 
+    /**
+     * MEDIDO, NO RESUELTO (2026-09-07, API-DOS-PROCESOS-MENSUALES-JUBILADOS.md): si el proceso
+     * de PENSIONES generó algún mes RETROACTIVO (anterior al período de esta corrida) cuyo
+     * seguro fue &gt; 0, ese seguro se descontó del jubilado pero el proceso de pensiones NUNCA
+     * genera una orden al proveedor (§4.2 punto 5) — el único que paga al proveedor es el
+     * proceso de seguro, y solo por el mes corriente. Decisión del usuario 2026-09-07, textual:
+     * «No van a existir esos casos, para eso es la opción de pagar seguro médico sin cuenta
+     * bancaria. Así que tranquilo, hasta el momento se han pagado los seguros.» — el código
+     * sigue teniendo el camino abierto igual, así que esto lo hace VISIBLE en vez de fallar,
+     * bloquear o inventar una orden. Si el caso nunca ocurre, queda en 0 y no molesta a nadie.
+     */
+    private double totalSeguroRetroactivoNoPagado;
+
+    /** Cuántos jubilados distintos contribuyeron a {@link #totalSeguroRetroactivoNoPagado}. */
+    private int jubiladosConSeguroRetroactivoNoPagado;
+
     public ResultadoGeneracionPagosPension() {
+    }
+
+    public double getTotalSeguroRetroactivoNoPagado() {
+        return totalSeguroRetroactivoNoPagado;
+    }
+
+    public void setTotalSeguroRetroactivoNoPagado(double totalSeguroRetroactivoNoPagado) {
+        this.totalSeguroRetroactivoNoPagado = totalSeguroRetroactivoNoPagado;
+    }
+
+    public int getJubiladosConSeguroRetroactivoNoPagado() {
+        return jubiladosConSeguroRetroactivoNoPagado;
+    }
+
+    public void setJubiladosConSeguroRetroactivoNoPagado(int jubiladosConSeguroRetroactivoNoPagado) {
+        this.jubiladosConSeguroRetroactivoNoPagado = jubiladosConSeguroRetroactivoNoPagado;
     }
 
     public Integer getAnio() {

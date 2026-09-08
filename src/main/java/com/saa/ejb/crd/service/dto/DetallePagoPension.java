@@ -139,7 +139,41 @@ public class DetallePagoPension {
      */
     private String participacion = "BLOQUEADO";
 
+    /**
+     * {@code true} si AL MENOS uno de los meses generados en esta llamada no tenía fila de
+     * seguro del período (API-DOS-PROCESOS-MENSUALES-JUBILADOS.md §4.2, punto 3) — el jubilado
+     * entró al padrón después de que corrió el proceso de seguro de ese mes. Para esos meses la
+     * pensión se generó SIN descuento de seguro, nunca bloqueada y nunca con un seguro
+     * inventado. Solo tiene sentido cuando la llamada vino del proceso de PENSIONES; el proceso
+     * viejo ({@code generarPagoIndividual}) y el de SEGURO nunca lo ponen en {@code true}.
+     */
+    private boolean sinSeguroDelPeriodo;
+
+    /**
+     * Suma del seguro aplicado en meses RETROACTIVOS (anteriores al período de la corrida) de
+     * esta llamada — ver el javadoc de
+     * {@code ResultadoGeneracionPagosPension#totalSeguroRetroactivoNoPagado}. 0 en el caso
+     * normal (sin retroactivo, o retroactivo sin seguro).
+     */
+    private double seguroRetroactivoNoPagado;
+
     public DetallePagoPension() {
+    }
+
+    public boolean isSinSeguroDelPeriodo() {
+        return sinSeguroDelPeriodo;
+    }
+
+    public void setSinSeguroDelPeriodo(boolean sinSeguroDelPeriodo) {
+        this.sinSeguroDelPeriodo = sinSeguroDelPeriodo;
+    }
+
+    public double getSeguroRetroactivoNoPagado() {
+        return seguroRetroactivoNoPagado;
+    }
+
+    public void setSeguroRetroactivoNoPagado(double seguroRetroactivoNoPagado) {
+        this.seguroRetroactivoNoPagado = seguroRetroactivoNoPagado;
     }
 
     public Long getIdEntidad() {

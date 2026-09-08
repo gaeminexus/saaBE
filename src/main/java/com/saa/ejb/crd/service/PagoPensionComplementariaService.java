@@ -5,7 +5,9 @@ import java.util.List;
 import com.saa.basico.util.EntityService;
 import com.saa.ejb.crd.service.dto.DetallePagoPension;
 import com.saa.ejb.crd.service.dto.ResultadoGeneracionPagosPension;
+import com.saa.ejb.crd.service.dto.ResultadoGeneracionSeguroMedico;
 import com.saa.ejb.crd.service.dto.ResultadoPrevisualizacionCorrida;
+import com.saa.ejb.crd.service.dto.ResultadoSeguimientoCorridaJubilados;
 import com.saa.ejb.crd.service.dto.ResultadoSincronizacion;
 import com.saa.model.crd.PagoPensionComplementaria;
 
@@ -71,7 +73,15 @@ public interface PagoPensionComplementariaService extends EntityService<PagoPens
      * @param usuario   Usuario/proceso que dispara la generación
      * @return Resumen: evaluados, generados, ya generados, con error (y el detalle de cada error)
      * @throws Throwable Si ocurre un error
+     * @deprecated 2026-09-07 (API-DOS-PROCESOS-MENSUALES-JUBILADOS.md): reemplazado por DOS
+     *             procesos separados en el tiempo — {@link #generarSeguroDelMes} al inicio del
+     *             mes y {@link #generarPensionesDelMes} al final — porque el seguro médico se
+     *             descuenta de la pensión pero se paga a un proveedor aparte, y eso exige que
+     *             el valor del seguro se fije ANTES y la pensión lo descuente sin recalcular.
+     *             No se borra: sigue funcionando exactamente igual que siempre (un solo acto,
+     *             seguro y pensión juntos) para no dejar sin salida a quien todavía lo llame.
      */
+    @Deprecated
     ResultadoGeneracionPagosPension generarPagosDelMes(Long idEmpresa, Integer anio, Integer mes,
             String usuario) throws Throwable;
 
@@ -93,6 +103,81 @@ public interface PagoPensionComplementariaService extends EntityService<PagoPens
      */
     DetallePagoPension generarPagoIndividual(Long idEntidad, Long idEmpresa, Integer anio, Integer mes,
             String usuario, Long idUsuario) throws Throwable;
+
+    /**
+     * PENSIONES (fin de mes) — mismo comportamiento que {@link #generarPagoIndividual}, pero
+     * NO recalcula el seguro: lee {@code PGPCVLSG} de la fila que dejó
+     * {@link #generarSeguroIndividual} para este mismo (entidad, año, mes) y la completa (D1,
+     * API-DOS-PROCESOS-MENSUALES-JUBILADOS.md). Un mes sin esa fila (el jubilado entró al
+     * padrón después del proceso de seguro) genera la pensión SIN descuento de seguro —
+     * {@link DetallePagoPension#isSinSeguroDelPeriodo()} queda en {@code true} — nunca
+     * bloqueado ni con un seguro inventado.
+     *
+     * @throws Throwable {@code IncomeException} con el motivo si el jubilado no se puede pagar
+     *                    este período (sin VPPC, sin cuenta, sin saldo)
+     */
+    DetallePagoPension generarPensionIndividual(Long idEntidad, Long idEmpresa, Integer anio, Integer mes,
+            String usuario, Long idUsuario) throws Throwable;
+
+    /**
+     * SEGURO MÉDICO (inicio de mes, §4.1 de API-DOS-PROCESOS-MENSUALES-JUBILADOS.md). Recorre
+     * el padrón de jubilados VIGENTE a la fecha de ejecución (D4) y, para cada uno, calcula su
+     * seguro desde VPPC y fija {@code PGPCVLSG} en la fila del período — creándola si no
+     * existe, sin tocar pensión, cruce, orden individual ni devengo (eso lo hace
+     * {@link #generarPensionesDelMes}). Al final genera UNA orden agregada al proveedor por el
+     * total del período y sella la cabecera {@code CRD.CRJB}.
+     *
+     * <b>Guarda de idempotencia por CABECERA</b> ({@code CRJBESSG = 1}), no solo por fila:
+     * rechaza explícitamente una segunda corrida del mismo período, nombrando fecha y usuario
+     * de la primera.
+     *
+     * @param idEmpresa Empresa contable sobre la que se genera la orden al proveedor. Obligatorio
+     * @param anio      Año del período
+     * @param mes       Mes del período (1-12)
+     * @param usuario   Usuario/proceso que dispara la generación
+     * @return Resumen — forma canónica {@code {jubilados, total, idOrdenPago, mensaje}}, más
+     *         diagnóstico adicional
+     * @throws Throwable {@code IncomeException} si el seguro de ese período ya se generó, o si
+     *                    falla algún guard de precondición (proveedor, cuenta bancaria, producto
+     *                    de pago del seguro)
+     */
+    ResultadoGeneracionSeguroMedico generarSeguroDelMes(Long idEmpresa, Integer anio, Integer mes,
+            String usuario) throws Throwable;
+
+    /**
+     * Fija (o completa) {@code PGPCVLSG} de UN jubilado para un período — lo que
+     * {@link #generarSeguroDelMes} llama por cada uno, a través del proxy EJB para su propia
+     * transacción ({@code REQUIRES_NEW}), mismo criterio que {@link #generarPagoIndividual}.
+     *
+     * @return el valor de seguro fijado en esta llamada, o {@code null} si la fila del período
+     *         ya tenía el seguro fijado (idempotencia, no es error)
+     * @throws Throwable {@code IncomeException} si el jubilado no tiene VPPC activa
+     */
+    Double generarSeguroIndividual(Long idEntidad, Integer anio, Integer mes, String usuario) throws Throwable;
+
+    /**
+     * PENSIONES (fin de mes, §4.2 de API-DOS-PROCESOS-MENSUALES-JUBILADOS.md). Es
+     * {@link #generarPagosDelMes} de hoy MENOS el seguro (lo lee, no lo recalcula — D1) MÁS la
+     * guarda D2: rechaza de entrada si el seguro del período no está generado en
+     * {@code CRD.CRJB} — sin generar ni una orden. NO genera ninguna orden al proveedor (eso ya
+     * lo hizo {@link #generarSeguroDelMes}). Sella {@code CRJBESPN = 1} en la cabecera.
+     *
+     * @throws Throwable {@code IncomeException} con el mensaje de D2 si el seguro del período
+     *                    no se generó todavía, o si las pensiones de ese período ya se generaron
+     */
+    ResultadoGeneracionPagosPension generarPensionesDelMes(Long idEmpresa, Integer anio, Integer mes,
+            String usuario) throws Throwable;
+
+    /**
+     * Seguimiento de la corrida de un período — §4.3 del contrato. SIEMPRE 200 (con los dos
+     * estados en 0 si el período nunca se corrió): "este mes no se corrió nada" es una
+     * respuesta válida, nunca un error. {@code nombreEstado} y los dos {@code puedeGenerar*}
+     * los calcula el backend con la MISMA regla que aplican los dos endpoints de generación.
+     *
+     * @throws Throwable Si ocurre un error inesperado (no si el período no existe — eso es 200)
+     */
+    ResultadoSeguimientoCorridaJubilados obtenerSeguimientoCorrida(Long idEmpresa, Integer anio, Integer mes)
+            throws Throwable;
 
     /**
      * Reconciliador: lee el estado real de la orden de pago en CXP de cada PGPC pendiente

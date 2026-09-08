@@ -37,4 +37,14 @@ public interface EstadoPagoPensionComplementaria {
 	/** Anulado por el usuario antes de pagarse (requiere motivo). */
 	public static final int ANULADA = 5;
 
+	/**
+	 * Fila SEMBRADA por el proceso de SEGURO (inicio de mes, 2026-09-07,
+	 * API-DOS-PROCESOS-MENSUALES-JUBILADOS.md): {@code PGPCVLSG} ya está fijado, pero la
+	 * pensión ({@code PGPCVLPN}, el cruce, la orden de pago y el devengo) todavía no se generó
+	 * — eso lo completa el proceso de PENSIONES (fin de mes), que transiciona esta misma fila a
+	 * {@link #REGISTRADA}/{@link #EN_PAGO}/{@link #PAGADA} según corresponda, nunca inserta una
+	 * fila nueva para el mismo período.
+	 */
+	public static final int SEGURO_GENERADO = 6;
+
 }

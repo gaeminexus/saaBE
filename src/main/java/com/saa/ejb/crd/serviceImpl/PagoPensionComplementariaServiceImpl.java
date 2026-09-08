@@ -35,13 +35,17 @@ import com.saa.ejb.crd.service.ValorPagoPensionComplementariaService;
 import com.saa.ejb.crd.service.dto.DesgloseAporte;
 import com.saa.ejb.crd.service.dto.DetallePagoPension;
 import com.saa.ejb.crd.service.dto.DetallePrevisualizacionJubilado;
+import com.saa.ejb.crd.service.dto.EstadoProcesoJubilados;
 import com.saa.ejb.crd.service.dto.ResultadoAplicacionPago;
 import com.saa.ejb.crd.service.dto.ResultadoGeneracionPagosPension;
+import com.saa.ejb.crd.service.dto.ResultadoGeneracionSeguroMedico;
 import com.saa.ejb.crd.service.dto.ResultadoPagoConAportes;
 import com.saa.ejb.crd.service.dto.ResultadoPrevisualizacionCorrida;
+import com.saa.ejb.crd.service.dto.ResultadoSeguimientoCorridaJubilados;
 import com.saa.ejb.crd.service.dto.ResultadoSincronizacion;
 import com.saa.ejb.crd.service.dto.SaldosCuota;
 import com.saa.ejb.crd.service.dto.SolicitudPagoConAportes;
+import com.saa.model.crd.CorridaJubilados;
 import com.saa.ejb.cxp.dao.PagoProgramadoDaoService;
 import com.saa.ejb.cxp.service.PagoProgramadoService;
 import com.saa.ejb.cxp.service.dto.BeneficiarioOcasional;
@@ -272,6 +276,14 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
      */
     @EJB
     private PagoPensionComplementariaService self;
+
+    /** Cabecera de seguimiento de los dos procesos mensuales (CRD.CRJB), 2026-09-07. */
+    @EJB
+    private com.saa.ejb.crd.dao.CorridaJubiladosDaoService corridaJubiladosDaoService;
+
+    /** Solo para resolver la Empresa al sembrar/actualizar CRD.CRJB. */
+    @EJB
+    private com.saa.basico.ejb.EmpresaDaoService empresaDaoService;
 
     // ========================================================================
     // EntityService
@@ -697,6 +709,7 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
     // ========================================================================
 
     @Override
+    @Deprecated
     @TransactionAttribute(TransactionAttributeType.NOT_SUPPORTED)
     public ResultadoGeneracionPagosPension generarPagosDelMes(Long idEmpresa, Integer anio, Integer mes,
             String usuario) throws Throwable {
@@ -875,7 +888,35 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
             String usuario, Long idUsuario) throws Throwable {
         System.out.println("PagoPensionComplementariaService.generarPagoIndividual - Entidad: " + idEntidad
             + " - Período: " + mes + "/" + anio);
+        return generarPagoParaJubilado(idEntidad, idEmpresa, anio, mes, usuario, idUsuario, false);
+    }
 
+    /**
+     * PENSIONES (fin de mes, API-DOS-PROCESOS-MENSUALES-JUBILADOS.md §4.2) — MISMO circuito que
+     * {@link #generarPagoIndividual}, con {@code usarSeguroFijado=true}: no recalcula el
+     * seguro, lee {@code PGPCVLSG} de la fila que ya dejó el proceso de seguro (D1) y completa
+     * esa misma fila en vez de insertar una nueva. Ver {@link #generarPagoParaJubilado}.
+     */
+    @Override
+    @TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
+    public DetallePagoPension generarPensionIndividual(Long idEntidad, Long idEmpresa, Integer anio, Integer mes,
+            String usuario, Long idUsuario) throws Throwable {
+        System.out.println("PagoPensionComplementariaService.generarPensionIndividual - Entidad: " + idEntidad
+            + " - Período: " + mes + "/" + anio);
+        return generarPagoParaJubilado(idEntidad, idEmpresa, anio, mes, usuario, idUsuario, true);
+    }
+
+    /**
+     * Cuerpo compartido de {@link #generarPagoIndividual} (proceso único, DEPRECADO) y
+     * {@link #generarPensionIndividual} (proceso de pensiones nuevo) — el cálculo de VPPC, la
+     * fecha del hecho y la cuenta de salida son IDÉNTICOS en los dos; lo único que cambia es
+     * {@code usarSeguroFijado}, que se hunde hasta {@link #generarMesesRetroactivos} y
+     * {@link #registrarPgpcDelMes}. Extraído 2026-09-07 para que las dos rutas no puedan
+     * divergir en esta parte — exactamente el mismo motivo que documenta
+     * {@link #registrarPgpcDelMes}.
+     */
+    private DetallePagoPension generarPagoParaJubilado(Long idEntidad, Long idEmpresa, Integer anio, Integer mes,
+            String usuario, Long idUsuario, boolean usarSeguroFijado) throws Throwable {
         Entidad entidad = entidadDaoService.find(new Entidad(), idEntidad);
         if (entidad == null) {
             throw new IncomeException(ERR_ENTIDAD_NO_ENCONTRADA + ": no existe el partícipe " + idEntidad);
@@ -927,7 +968,394 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         // por saldo cuando no los hay.
         return generarMesesRetroactivos(entidad, idEntidad, valorPension, valorSeguro, valorTotal,
             idEmpresa, anio, mes, usuario, idUsuario, fecha, fechaHecho, fechaRegistro, finDeMes,
-            cuentaSalida);
+            cuentaSalida, usarSeguroFijado);
+    }
+
+    // =====================================================================
+    // Los dos procesos mensuales (2026-09-07) — API-DOS-PROCESOS-MENSUALES-JUBILADOS.md
+    // =====================================================================
+
+    @Override
+    @TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
+    public Double generarSeguroIndividual(Long idEntidad, Integer anio, Integer mes, String usuario)
+            throws Throwable {
+        System.out.println("PagoPensionComplementariaService.generarSeguroIndividual - Entidad: " + idEntidad
+            + " - Período: " + mes + "/" + anio);
+
+        Entidad entidad = entidadDaoService.find(new Entidad(), idEntidad);
+        if (entidad == null) {
+            throw new IncomeException(ERR_ENTIDAD_NO_ENCONTRADA + ": no existe el partícipe " + idEntidad);
+        }
+
+        List<ValorPagoPensionComplementaria> configuraciones =
+            valorPagoPensionComplementariaService.selectByEntidad(idEntidad);
+        ValorPagoPensionComplementaria vppc = unicaActiva(configuraciones, idEntidad);
+        if (vppc == null) {
+            throw new IncomeException(ERR_SIN_VALOR_PENSION + ": la entidad " + idEntidad
+                + " no tiene una configuración de pensión complementaria (VPPC) activa; no se"
+                + " puede fijar su seguro médico.");
+        }
+        double valorSeguro = redondear(vppc.getValorSeguro() != null ? vppc.getValorSeguro() : 0.0);
+
+        PagoPensionComplementaria existente = pagoPensionDaoService.selectByEntidadYPeriodo(
+            idEntidad, anio.longValue(), mes.longValue());
+        if (existente != null && existente.getValorSeguro() != null) {
+            System.out.println("  Entidad " + idEntidad + " ya tiene el seguro fijado ($"
+                + existente.getValorSeguro() + ") para " + mes + "/" + anio + " - se omite");
+            return null;
+        }
+
+        LocalDate finDeMes = YearMonth.of(anio, mes).atEndOfMonth();
+        LocalDate hoy = LocalDate.now();
+        LocalDate fecha = finDeMes.isAfter(hoy) ? hoy : finDeMes;
+
+        // filaExistente != null solo si algún camino ya la creó sin fijar valorSeguro (hoy no
+        // pasa, pero cubre el reintento sin arriesgar UK_PGPC_ENTD_ANIO_MES).
+        PagoPensionComplementaria pago = existente != null ? existente : new PagoPensionComplementaria();
+        pago.setEntidad(entidad);
+        pago.setFilial(entidad.getFilial());
+        pago.setAnio(anio.longValue());
+        pago.setMes(mes.longValue());
+        pago.setValorSeguro(valorSeguro);
+        // PGPCVLPN/PGPCVLRR quedan sin fijar (null) hasta que generarPensionIndividual complete
+        // esta misma fila — es la señal de "stub" que usa generarMesesRetroactivos.
+        pago.setEstado(Long.valueOf(EstadoPagoPensionComplementaria.SEGURO_GENERADO));
+        if (pago.getFecha() == null) {
+            pago.setFecha(fecha);
+        }
+        if (pago.getUsuarioRegistro() == null) {
+            pago.setUsuarioRegistro(usuario);
+            pago.setFechaRegistro(LocalDateTime.now());
+        }
+        pagoPensionDaoService.save(pago, pago.getCodigo());
+
+        System.out.println("  ✅ Seguro médico fijado - Entidad " + idEntidad + " - $" + valorSeguro
+            + " - " + mes + "/" + anio);
+        return valorSeguro;
+    }
+
+    @Override
+    @TransactionAttribute(TransactionAttributeType.NOT_SUPPORTED)
+    public ResultadoGeneracionSeguroMedico generarSeguroDelMes(Long idEmpresa, Integer anio, Integer mes,
+            String usuario) throws Throwable {
+        System.out.println("========================================");
+        System.out.println("GENERACIÓN DE SEGURO MÉDICO JUBILADOS - " + mes + "/" + anio);
+        System.out.println("========================================");
+
+        if (idEmpresa == null) {
+            throw new IncomeException("idEmpresa es obligatorio: es la empresa contable sobre la que"
+                + " se genera la orden de pago al proveedor.");
+        }
+        if (anio == null || mes == null || mes < 1 || mes > 12) {
+            throw new IncomeException("Debe indicar un año y un mes (1-12) válidos.");
+        }
+        if (usuario == null || usuario.trim().isEmpty()) {
+            throw new IncomeException("usuario es obligatorio");
+        }
+
+        com.saa.model.scp.Usuario usuarioRegistro = usuarioDaoService.selectByNombre(usuario);
+        if (usuarioRegistro == null) {
+            throw new IncomeException("USUARIO_NO_ENCONTRADO: no existe el usuario '" + usuario
+                + "' en el sistema; la orden de pago en Cuentas por Pagar necesita el usuario"
+                + " que la registra.");
+        }
+        Long idUsuario = usuarioRegistro.getCodigo();
+
+        CorridaJubilados corrida = corridaJubiladosDaoService.selectByPeriodo(
+            idEmpresa, anio.longValue(), mes.longValue());
+        if (corrida != null && corrida.getEstadoSeguro() != null && corrida.getEstadoSeguro() == 1L) {
+            throw new IncomeException("El seguro médico de " + mes + "/" + anio + " ya se generó el "
+                + corrida.getFechaSeguro() + " por " + corrida.getUsuarioSeguro()
+                + ". No se puede generar dos veces.");
+        }
+
+        Titular proveedorSeguro = titularDaoService.selectByIdentificacion(
+            RUC_PROVEEDOR_SEGURO_MEDICO, Long.valueOf(Estado.ACTIVO));
+        if (proveedorSeguro == null) {
+            throw new IncomeException("PROVEEDOR_SEGURO_NO_ENCONTRADO: no existe un titular activo"
+                + " con RUC '" + RUC_PROVEEDOR_SEGURO_MEDICO + "' (TSR.TTLR) — es el proveedor que"
+                + " recibe el pago del seguro médico de los jubilados. No se genera ningún seguro"
+                + " de este período sin él.");
+        }
+        verificarCuentaProductoPagoSeguroMedico(idEmpresa);
+        CuentaBancariaTitular cuentaBancariaProveedorSeguro = resolverCuentaBancariaProveedorSeguro(proveedorSeguro);
+
+        ResultadoGeneracionSeguroMedico resumen = new ResultadoGeneracionSeguroMedico();
+        resumen.setAnio(anio);
+        resumen.setMes(mes);
+
+        List<Entidad> jubilados = entidadDaoService.selectByIdEstado(
+            Long.valueOf(EstadoParticipeEntidad.JUBILADO_COMPLEMENTARIO));
+        int universo = (jubilados != null) ? jubilados.size() : 0;
+        System.out.println("Jubilados JUBILADO_COMPLEMENTARIO a evaluar: " + universo);
+
+        int evaluados = 0;
+        int generados = 0;
+        int yaGenerados = 0;
+        int conError = 0;
+        double totalSeguroGeneral = 0.0;
+
+        if (jubilados != null) {
+            for (Entidad jubilado : jubilados) {
+                evaluados++;
+                try {
+                    Double valorSeguro = self.generarSeguroIndividual(jubilado.getCodigo(), anio, mes, usuario);
+                    if (valorSeguro != null) {
+                        generados++;
+                        totalSeguroGeneral += valorSeguro;
+                    } else {
+                        yaGenerados++;
+                    }
+                } catch (Throwable e) {
+                    conError++;
+                    resumen.getErrores().add("Entidad " + jubilado.getCodigo() + ": " + e.getMessage());
+                    System.out.println("Error al fijar el seguro médico de la entidad "
+                        + jubilado.getCodigo() + ": " + e.getMessage());
+                }
+            }
+        }
+
+        resumen.setEvaluados(evaluados);
+        resumen.setJubilados(generados);
+        resumen.setYaGenerados(yaGenerados);
+        resumen.setConError(conError);
+        double totalSeguroPeriodo = redondear(totalSeguroGeneral);
+        resumen.setTotal(totalSeguroPeriodo);
+
+        Long idOrdenProveedor = generarOrdenPagoProveedorSeguro(idEmpresa, anio, mes, usuario, idUsuario,
+            proveedorSeguro, cuentaBancariaProveedorSeguro, totalSeguroPeriodo);
+        resumen.setIdOrdenPago(idOrdenProveedor);
+        resumen.setMensaje("Seguro médico " + mes + "/" + anio + " - " + generados + " jubilados, $"
+            + totalSeguroPeriodo + " generados hacia el proveedor"
+            + (idOrdenProveedor != null ? " (orden " + idOrdenProveedor + ")" : " (sin orden, total $0)")
+            + ", " + yaGenerados + " ya tenían el seguro fijado, " + conError + " con error, de "
+            + evaluados + " evaluados.");
+
+        if (corrida == null) {
+            corrida = new CorridaJubilados();
+            corrida.setEmpresa(empresaDaoService.selectById(idEmpresa,
+                com.saa.model.scp.NombreEntidadesSistema.EMPRESA));
+            corrida.setAnio(anio.longValue());
+            corrida.setMes(mes.longValue());
+        }
+        corrida.setEstadoSeguro(1L);
+        corrida.setFechaSeguro(LocalDateTime.now());
+        corrida.setUsuarioSeguro(usuario);
+        corrida.setTotalSeguro(totalSeguroPeriodo);
+        corrida.setIdOrdenPagoSeguro(idOrdenProveedor);
+        corrida.setCantidadJubiladosSeguro(Long.valueOf(generados));
+        corridaJubiladosDaoService.save(corrida, corrida.getCodigo());
+
+        System.out.println("GENERACIÓN DE SEGURO TERMINADA - Evaluados: " + evaluados + " - Jubilados: "
+            + generados + " - Ya generados: " + yaGenerados + " - Con error: " + conError
+            + " - Total: $" + totalSeguroPeriodo);
+
+        return resumen;
+    }
+
+    @Override
+    @TransactionAttribute(TransactionAttributeType.NOT_SUPPORTED)
+    public ResultadoGeneracionPagosPension generarPensionesDelMes(Long idEmpresa, Integer anio, Integer mes,
+            String usuario) throws Throwable {
+        System.out.println("========================================");
+        System.out.println("GENERACIÓN DE PENSIONES JUBILADOS - " + mes + "/" + anio);
+        System.out.println("========================================");
+
+        if (idEmpresa == null) {
+            throw new IncomeException("idEmpresa es obligatorio: es la empresa contable sobre la que"
+                + " se genera la orden de pago.");
+        }
+        if (anio == null || mes == null || mes < 1 || mes > 12) {
+            throw new IncomeException("Debe indicar un año y un mes (1-12) válidos.");
+        }
+        if (usuario == null || usuario.trim().isEmpty()) {
+            throw new IncomeException("usuario es obligatorio");
+        }
+
+        com.saa.model.scp.Usuario usuarioRegistro = usuarioDaoService.selectByNombre(usuario);
+        if (usuarioRegistro == null) {
+            throw new IncomeException("USUARIO_NO_ENCONTRADO: no existe el usuario '" + usuario
+                + "' en el sistema; la orden de pago en Cuentas por Pagar necesita el usuario"
+                + " que la registra.");
+        }
+        Long idUsuario = usuarioRegistro.getCodigo();
+
+        // ⛔ Guard D2, lo primero de todo: sin seguro generado del período, no se genera ni una
+        // orden.
+        CorridaJubilados corrida = corridaJubiladosDaoService.selectByPeriodo(
+            idEmpresa, anio.longValue(), mes.longValue());
+        if (corrida == null || corrida.getEstadoSeguro() == null || corrida.getEstadoSeguro() != 1L) {
+            throw new IncomeException("No se puede generar las pensiones de " + mes + "/" + anio
+                + ": el seguro médico de ese mes todavía no se ha generado. Ejecute primero el"
+                + " proceso de seguro médico.");
+        }
+        if (corrida.getEstadoPensiones() != null && corrida.getEstadoPensiones() == 1L) {
+            throw new IncomeException("Las pensiones de " + mes + "/" + anio + " ya se generaron el "
+                + corrida.getFechaPensiones() + " por " + corrida.getUsuarioPensiones()
+                + ". No se puede generar dos veces.");
+        }
+
+        verificarCuentaAporte23ParaCruce(idEmpresa);
+        verificarCuentaProductoPagoPensionJubilados(idEmpresa);
+
+        ResultadoGeneracionPagosPension resumen = new ResultadoGeneracionPagosPension();
+        resumen.setAnio(anio);
+        resumen.setMes(mes);
+
+        List<Entidad> jubilados = entidadDaoService.selectByIdEstado(
+            Long.valueOf(EstadoParticipeEntidad.JUBILADO_COMPLEMENTARIO));
+        int universo = (jubilados != null) ? jubilados.size() : 0;
+        System.out.println("Jubilados JUBILADO_COMPLEMENTARIO a evaluar: " + universo);
+
+        double totalPagado = 0.0;
+        double totalCruzado = 0.0;
+        double totalOrdenes = 0.0;
+        double totalSeguroRetroactivoNoPagado = 0.0;
+        int jubiladosConSeguroRetroactivoNoPagado = 0;
+
+        if (jubilados != null) {
+            for (Entidad jubilado : jubilados) {
+                resumen.setEvaluados(resumen.getEvaluados() + 1);
+                try {
+                    DetallePagoPension detalle = self.generarPensionIndividual(
+                        jubilado.getCodigo(), idEmpresa, anio, mes, usuario, idUsuario);
+                    resumen.getDetalle().add(detalle);
+
+                    if (detalle.getMesesAplicados() > 0) {
+                        resumen.setGenerados(resumen.getGenerados() + detalle.getMesesAplicados());
+                        totalPagado += nvl(detalle.getValorPension()) + nvl(detalle.getValorSeguroSalud());
+                        totalCruzado += nvl(detalle.getValorCruzadoAPrestamo());
+                        totalOrdenes += nvl(detalle.getValorOrdenPago());
+                        if (detalle.getSeguroRetroactivoNoPagado() > TOLERANCIA) {
+                            totalSeguroRetroactivoNoPagado += detalle.getSeguroRetroactivoNoPagado();
+                            jubiladosConSeguroRetroactivoNoPagado++;
+                        }
+                    } else {
+                        resumen.setYaGenerados(resumen.getYaGenerados() + 1);
+                    }
+                } catch (Throwable e) {
+                    resumen.setConError(resumen.getConError() + 1);
+                    resumen.getErrores().add("Entidad " + jubilado.getCodigo() + ": " + e.getMessage());
+                    System.out.println("Error al generar la pensión de la entidad "
+                        + jubilado.getCodigo() + ": " + e.getMessage());
+
+                    DetallePagoPension detalleError = new DetallePagoPension();
+                    detalleError.setIdEntidad(jubilado.getCodigo());
+                    detalleError.setNombre(jubilado.getRazonSocial());
+                    detalleError.setEstado("ERROR");
+                    detalleError.setParticipacion("BLOQUEADO");
+                    detalleError.setMensaje(e.getMessage());
+                    resumen.getDetalle().add(detalleError);
+                }
+            }
+        }
+
+        resumen.setTotalPagado(redondear(totalPagado));
+        resumen.setTotalCruzadoAPrestamos(redondear(totalCruzado));
+        resumen.setTotalOrdenesGeneradas(redondear(totalOrdenes));
+        resumen.setTotalSeguroRetroactivoNoPagado(redondear(totalSeguroRetroactivoNoPagado));
+        resumen.setJubiladosConSeguroRetroactivoNoPagado(jubiladosConSeguroRetroactivoNoPagado);
+        // NO genera ninguna orden al proveedor (§4.2 punto 5): eso ya lo hizo generarSeguroDelMes.
+        resumen.setIdPagoProveedorSeguro(null);
+        resumen.setTotalSeguroGeneral(0.0);
+
+        corrida.setEstadoPensiones(1L);
+        corrida.setFechaPensiones(LocalDateTime.now());
+        corrida.setUsuarioPensiones(usuario);
+        corrida.setTotalPensiones(resumen.getTotalOrdenesGeneradas());
+        corrida.setTotalCruzadoPrestamos(resumen.getTotalCruzadoAPrestamos());
+        corrida.setCantidadJubiladosPensiones(Long.valueOf(resumen.getGenerados()));
+        corridaJubiladosDaoService.save(corrida, corrida.getCodigo());
+
+        System.out.println("GENERACIÓN DE PENSIONES TERMINADA - Evaluados: " + resumen.getEvaluados()
+            + " - Generados: " + resumen.getGenerados() + " - Ya generados: " + resumen.getYaGenerados()
+            + " - Con error: " + resumen.getConError() + " - Total pagado: $" + resumen.getTotalPagado()
+            + " - Cruzado a préstamos: $" + resumen.getTotalCruzadoAPrestamos()
+            + " - Órdenes generadas: $" + resumen.getTotalOrdenesGeneradas()
+            + (totalSeguroRetroactivoNoPagado > TOLERANCIA
+                ? " - ⚠️ Seguro retroactivo SIN pagar al proveedor: $" + redondear(totalSeguroRetroactivoNoPagado)
+                    + " (" + jubiladosConSeguroRetroactivoNoPagado + " jubilado(s))"
+                : ""));
+
+        return resumen;
+    }
+
+    @Override
+    @TransactionAttribute(TransactionAttributeType.NOT_SUPPORTED)
+    public ResultadoSeguimientoCorridaJubilados obtenerSeguimientoCorrida(Long idEmpresa, Integer anio, Integer mes)
+            throws Throwable {
+        System.out.println("PagoPensionComplementariaService.obtenerSeguimientoCorrida - empresa: " + idEmpresa
+            + " - período: " + mes + "/" + anio);
+        if (idEmpresa == null) {
+            throw new IncomeException("idEmpresa es obligatorio");
+        }
+        if (anio == null || mes == null || mes < 1 || mes > 12) {
+            throw new IncomeException("Debe indicar un año y un mes (1-12) válidos.");
+        }
+
+        ResultadoSeguimientoCorridaJubilados resultado = new ResultadoSeguimientoCorridaJubilados();
+        resultado.setAnio(anio);
+        resultado.setMes(mes);
+        resultado.setIdEmpresa(idEmpresa);
+
+        CorridaJubilados corrida = corridaJubiladosDaoService.selectByPeriodo(
+            idEmpresa, anio.longValue(), mes.longValue());
+
+        EstadoProcesoJubilados seguro = new EstadoProcesoJubilados();
+        EstadoProcesoJubilados pensiones = new EstadoProcesoJubilados();
+
+        boolean seguroGenerado = corrida != null && corrida.getEstadoSeguro() != null
+            && corrida.getEstadoSeguro() == 1L;
+        boolean pensionesGeneradas = corrida != null && corrida.getEstadoPensiones() != null
+            && corrida.getEstadoPensiones() == 1L;
+
+        seguro.setEstado(seguroGenerado ? 1L : 0L);
+        seguro.setNombreEstado(seguroGenerado ? "GENERADO" : "PENDIENTE");
+        pensiones.setEstado(pensionesGeneradas ? 1L : 0L);
+        pensiones.setNombreEstado(pensionesGeneradas ? "GENERADO" : "PENDIENTE");
+
+        if (corrida != null) {
+            seguro.setFecha(corrida.getFechaSeguro());
+            seguro.setUsuario(corrida.getUsuarioSeguro());
+            seguro.setTotal(corrida.getTotalSeguro());
+            seguro.setJubilados(corrida.getCantidadJubiladosSeguro());
+            seguro.setIdOrdenPago(corrida.getIdOrdenPagoSeguro());
+
+            pensiones.setFecha(corrida.getFechaPensiones());
+            pensiones.setUsuario(corrida.getUsuarioPensiones());
+            pensiones.setTotal(corrida.getTotalPensiones());
+            pensiones.setJubilados(corrida.getCantidadJubiladosPensiones());
+            pensiones.setCruzadoAPrestamos(corrida.getTotalCruzadoPrestamos());
+        }
+
+        resultado.setSeguro(seguro);
+        resultado.setPensiones(pensiones);
+
+        // Misma regla que aplican los dos endpoints: seguro se puede generar si no está
+        // generado; pensiones se puede generar si el seguro SÍ está y pensiones NO (D2).
+        resultado.setPuedeGenerarSeguro(!seguroGenerado);
+        resultado.setPuedeGenerarPensiones(seguroGenerado && !pensionesGeneradas);
+
+        // D4: consecuencia visible de que cada proceso usa el padrón de su propia fecha.
+        List<PagoPensionComplementaria> pagosDelPeriodo = pagoPensionDaoService.selectByPeriodo(
+            anio.longValue(), mes.longValue());
+        long conSeguroSinPension = 0;
+        long conPensionSinSeguro = 0;
+        if (pagosDelPeriodo != null) {
+            for (PagoPensionComplementaria pago : pagosDelPeriodo) {
+                boolean tieneSeguro = pago.getValorSeguro() != null;
+                boolean tienePension = pago.getValorPension() != null;
+                if (tieneSeguro && !tienePension) {
+                    conSeguroSinPension++;
+                } else if (tienePension && !tieneSeguro) {
+                    conPensionSinSeguro++;
+                }
+            }
+        }
+        resultado.setConSeguroSinPension(conSeguroSinPension);
+        resultado.setConPensionSinSeguro(conPensionSinSeguro);
+
+        return resultado;
     }
 
     /**
@@ -977,7 +1405,7 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         PagoPensionComplementaria pago = registrarPgpcDelMes(entidad, idEntidad, anio.longValue(), mes.longValue(),
             valorPension, valorSeguro, valorTotal, 0.0, valorTotal, seguroInternoMes, fecha, fechaHecho,
             fechaRegistro, usuario, idUsuario, idEmpresa, cuentaSalida, glosa,
-            java.util.Collections.emptyList());
+            java.util.Collections.emptyList(), null);
 
         boolean generoOrden = pago.getIdPagoProgramado() != null;
         System.out.println("  ✅ Pago de pensión registrado - Entidad " + idEntidad + " - PGPC "
@@ -1022,11 +1450,22 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
      * cuotas futuras (§3bis: el motor no filtra por fecha, así que el tope de "cuánto es
      * exigible a la fecha de la corrida" lo calcula y aplica este método, no
      * {@code pagarConAportes}).
+     *
+     * @param usarSeguroFijado 2026-09-07 (API-DOS-PROCESOS-MENSUALES-JUBILADOS.md, D1): si es
+     *        {@code true} (proceso de PENSIONES), el seguro de CADA mes del bucle se lee de la
+     *        fila de {@code CRD.PGPC} que el proceso de SEGURO ya dejó para ese (entidad, año,
+     *        mes) — nunca se recalcula desde VPPC — y esa misma fila se COMPLETA en vez de
+     *        insertar una nueva. Un mes sin fila de seguro entra como
+     *        {@code SIN_SEGURO_DEL_PERIODO}: la pensión de ESE mes se genera sin ningún
+     *        descuento, nunca bloqueada. Si {@code false} (proceso único, deprecado), el
+     *        comportamiento es EXACTAMENTE el de siempre: {@code valorSeguro} es la misma
+     *        constante para todos los meses y cualquier fila existente hace saltar el mes
+     *        (idempotencia de toda la vida).
      */
     private DetallePagoPension generarMesesRetroactivos(Entidad entidad, Long idEntidad, double valorPension,
             double valorSeguro, double valorTotal, Long idEmpresa, Integer anio, Integer mes, String usuario,
             Long idUsuario, LocalDate fecha, LocalDateTime fechaHecho, LocalDateTime fechaRegistro,
-            LocalDate finDeMes, CuentaBancariaParticipe cuentaSalida) throws Throwable {
+            LocalDate finDeMes, CuentaBancariaParticipe cuentaSalida, boolean usarSeguroFijado) throws Throwable {
 
         DetallePagoPension resumen = new DetallePagoPension();
         resumen.setIdEntidad(idEntidad);
@@ -1116,6 +1555,8 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         Long ultimoIdAsientoDevengo = null;
         boolean algunaOrdenGenerada = false;
         boolean algunRemanenteRetenido = false;
+        boolean algunMesSinSeguro = false;
+        double totalSeguroRetroactivoNoPagado = 0.0;
         String motivoCorte = "MES_CORRIDA_ALCANZADO";
 
         for (YearMonth ym = desde; !ym.isAfter(corrida); ym = ym.plusMonths(1)) {
@@ -1127,11 +1568,43 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
             // práctica casi nunca dispara: el ancla ya avanza solo con cada corrida anterior.
             PagoPensionComplementaria existenteM = pagoPensionDaoService.selectByEntidadYPeriodo(
                 idEntidad, anioM, mesM);
-            if (existenteM != null) {
-                System.out.println("  Entidad " + idEntidad + " ya tiene PGPC " + existenteM.getCodigo()
-                    + " para " + mesM + "/" + anioM + " - se omite");
-                continue;
+
+            // 2026-09-07 (API-DOS-PROCESOS-MENSUALES-JUBILADOS.md, D1): con usarSeguroFijado, una
+            // fila existente puede ser el STUB que dejó el proceso de SEGURO (PGPCVLSG fijado,
+            // PGPCVLPN todavía null) — a esa NO se la salta, se COMPLETA. Solo se salta si ya
+            // está completa (la pensión de ese mes ya se generó). Sin usarSeguroFijado (proceso
+            // viejo, deprecado) el comportamiento es EXACTAMENTE el de siempre: cualquier fila
+            // existente hace saltar el mes.
+            PagoPensionComplementaria filaExistente = null;
+            double valorSeguroMes;
+            boolean sinSeguroEsteMes = false;
+            if (usarSeguroFijado) {
+                if (existenteM != null && existenteM.getValorPension() != null) {
+                    System.out.println("  Entidad " + idEntidad + " ya tiene PGPC " + existenteM.getCodigo()
+                        + " completo (pensión ya generada) para " + mesM + "/" + anioM + " - se omite");
+                    continue;
+                }
+                if (existenteM != null) {
+                    filaExistente = existenteM;
+                    valorSeguroMes = existenteM.getValorSeguro() != null ? existenteM.getValorSeguro() : 0.0;
+                } else {
+                    // Sin fila de seguro para este período: el jubilado entró al padrón después
+                    // de que corrió el proceso de seguro de ese mes (§4.2 punto 3). Su pensión
+                    // de ESTE mes se genera SIN descuento de seguro — nunca se le inventa uno ni
+                    // se le bloquea el pago.
+                    valorSeguroMes = 0.0;
+                    sinSeguroEsteMes = true;
+                    algunMesSinSeguro = true;
+                }
+            } else {
+                if (existenteM != null) {
+                    System.out.println("  Entidad " + idEntidad + " ya tiene PGPC " + existenteM.getCodigo()
+                        + " para " + mesM + "/" + anioM + " - se omite");
+                    continue;
+                }
+                valorSeguroMes = valorSeguro;
             }
+            double valorPensionMes = redondear(valorTotal - valorSeguroMes);
 
             // ⛔⛔ Corrección 2026-09-05 (hallazgo propio, auditando participacion, ANTES de la
             // corrida de agosto): "préstamo al día" YA NO CORTA el bucle. Antes de D4 sí tenía
@@ -1238,10 +1711,25 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
             double saldoTrasCruce = redondear(Math.max(0.0, saldoRestante - aplicadoEsteMes));
 
             // Prioridad 2 — seguro médico, SIEMPRE (cert o no): topado por lo nominal del mes,
-            // lo que queda de la olla, y lo que queda de saldo.
-            double seguroInternoMes = redondear(Math.min(valorSeguro, Math.min(ollaTrasCruce, saldoTrasCruce)));
+            // lo que queda de la olla, y lo que queda de saldo. valorSeguroMes en vez de
+            // valorSeguro: con usarSeguroFijado, cada mes trae SU PROPIO seguro (leído de su
+            // fila, o 0 si no la tiene) en vez de la misma constante para todos los meses.
+            double seguroInternoMes = redondear(Math.min(valorSeguroMes, Math.min(ollaTrasCruce, saldoTrasCruce)));
             double ollaTrasSeguro = redondear(ollaTrasCruce - seguroInternoMes);
             double saldoTrasSeguro = redondear(saldoTrasCruce - seguroInternoMes);
+
+            // MEDIDO, NO RESUELTO (2026-09-07): un mes RETROACTIVO (anterior al período de esta
+            // corrida) con seguro > 0 se descuenta acá pero esta corrida NUNCA genera una orden
+            // al proveedor (§4.2 punto 5) — ver el javadoc de
+            // ResultadoGeneracionPagosPension#totalSeguroRetroactivoNoPagado. Se acumula para
+            // hacerlo visible, no se bloquea ni se genera ninguna orden.
+            if (usarSeguroFijado && !ym.equals(corrida) && seguroInternoMes > TOLERANCIA) {
+                totalSeguroRetroactivoNoPagado = redondear(totalSeguroRetroactivoNoPagado + seguroInternoMes);
+                System.out.println("  ⚠️ MEDIDO: mes retroactivo " + mesM + "/" + anioM + " de la entidad "
+                    + idEntidad + " tiene seguro $" + seguroInternoMes + " descontado y SIN orden al"
+                    + " proveedor (el proceso de pensiones no genera esa orden) - ver"
+                    + " totalSeguroRetroactivoNoPagado en el resumen");
+            }
 
             // Prioridad 3 — pensión al jubilado: lo que sobra de la olla tras cruce y seguro. Ya
             // viene topada por saldo (saldoTrasSeguro >= ollaTrasSeguro siempre, porque el
@@ -1252,9 +1740,9 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
             String glosa = "PAGO PENSION COMPLEMENTARIA RETROACTIVO " + mesM + "/" + anioM
                 + " - Entidad " + idEntidad;
             PagoPensionComplementaria pago = registrarPgpcDelMes(entidad, idEntidad, anioM, mesM,
-                valorPension, valorSeguro, valorTotal, aplicadoEsteMes, remanenteMes, seguroInternoMes,
+                valorPensionMes, valorSeguroMes, valorTotal, aplicadoEsteMes, remanenteMes, seguroInternoMes,
                 fecha, fechaHecho, fechaRegistro, usuario, idUsuario, idEmpresa, cuentaSalida, glosa,
-                pagosDelMesParaDsbn);
+                pagosDelMesParaDsbn, filaExistente);
 
             boolean saleAlBancoEsteMes = pago.getIdPagoProgramado() != null;
             // El seguro SIEMPRE consume saldo del aporte 23 (se traspasa siempre), y la pensión
@@ -1303,6 +1791,8 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         resumen.setValorOrdenPago(totalOrden);
         resumen.setGeneroOrdenPago(algunaOrdenGenerada);
         resumen.setIdAsientoDevengo(ultimoIdAsientoDevengo);
+        resumen.setSinSeguroDelPeriodo(algunMesSinSeguro);
+        resumen.setSeguroRetroactivoNoPagado(totalSeguroRetroactivoNoPagado);
         // "AL_DIA" queda RESERVADO para el corte temprano de arriba (desde.isAfter(corrida)):
         // acá el bucle SÍ corrió. Si terminó con 0 meses (p.ej. SALDO_AGOTADO ya en el primer
         // mes elegible), no es "al día" — sigue debiendo, sólo que no se le pudo aplicar nada.
@@ -1368,12 +1858,18 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
      *                           préstamos (puede venir vacío: mes sin cruce, todo a remanente) —
      *                           API-AUDITORIA-BANDAS.md, origen PAGO_PENSION. Se registran acá,
      *                           recién con el código real del PGPC de este mes como idOrigen.
+     * @param filaExistente      2026-09-07: {@code null} para crear una fila nueva (comportamiento
+     *                           de siempre). Si viene NO null, es el STUB que dejó el proceso de
+     *                           SEGURO para este mismo (entidad, año, mes) — se COMPLETA esa
+     *                           misma fila en vez de insertar una segunda (violaría
+     *                           {@code UK_PGPC_ENTD_ANIO_MES}).
      */
     private PagoPensionComplementaria registrarPgpcDelMes(Entidad entidad, Long idEntidad, long anioM, long mesM,
             double valorPension, double valorSeguro, double valorTotal, double aplicadoAlPrestamo, double remanente,
             double seguroInterno, LocalDate fecha, LocalDateTime fechaHecho, LocalDateTime fechaRegistro,
             String usuario, Long idUsuario, Long idEmpresa, CuentaBancariaParticipe cuentaSalida,
-            String glosaMovimiento, List<PagoPrestamo> pagosParaDsbn) throws Throwable {
+            String glosaMovimiento, List<PagoPrestamo> pagosParaDsbn, PagoPensionComplementaria filaExistente)
+            throws Throwable {
 
         // ⛔⛔ REGLA NUEVA 2026-09-05: `remanente` ahora es EXCLUSIVAMENTE la porción PENSIÓN
         // (el llamador ya separó el seguro con prioridad 2, antes de esta llamada) y
@@ -1404,7 +1900,9 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
             aportePension = crearMovimientoNegativo(entidad, remanente, glosaMovimiento, fechaHecho, usuario);
         }
 
-        PagoPensionComplementaria pago = new PagoPensionComplementaria();
+        // filaExistente != null: es el stub que dejó el proceso de SEGURO — se completa esa
+        // misma fila (UK_PGPC_ENTD_ANIO_MES no admite una segunda para el mismo período).
+        PagoPensionComplementaria pago = filaExistente != null ? filaExistente : new PagoPensionComplementaria();
         pago.setEntidad(entidad);
         pago.setFilial(entidad.getFilial());
         pago.setAnio(anioM);
@@ -1460,7 +1958,9 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
             pago.setEstado(Long.valueOf(EstadoPagoPensionComplementaria.REGISTRADA));
         }
 
-        pago = pagoPensionDaoService.save(pago, null);
+        // pago.getCodigo() en vez de null: si "pago" es filaExistente (stub del seguro), ya
+        // tiene código real y esto tiene que ser un UPDATE, no un segundo INSERT.
+        pago = pagoPensionDaoService.save(pago, pago.getCodigo());
 
         if (saleAlBanco) {
             Long idPagoOrden;
