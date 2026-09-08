@@ -77,13 +77,13 @@ public abstract class AbstractExcelStatementParser implements BankStatementParse
         try {
             Sheet sheet = workbook.getSheetAt(0);
 
-            int primeraFilaDatos = getPrimeraFilaDatos();
-            Row filaEncabezado = sheet.getRow(primeraFilaDatos - 1);
-            if (filaEncabezado == null || !encabezadoValido(filaEncabezado)) {
+            int indiceEncabezado = buscarFilaEncabezado(sheet, getPrimeraFilaDatos() - 1);
+            if (indiceEncabezado < 0) {
                 throw new IncomeException("El archivo no corresponde al formato de "
                         + cuenta.getBanco().getNombre() + ". Verifique que haya seleccionado la cuenta "
                         + "bancaria correcta antes de subir el archivo.");
             }
+            int primeraFilaDatos = indiceEncabezado + 1;
 
             List<DetalleExtractoBancario> detalles = new ArrayList<>();
             int ultimaFila = sheet.getLastRowNum();
@@ -195,6 +195,46 @@ public abstract class AbstractExcelStatementParser implements BankStatementParse
      */
     protected boolean columnaContiene(Row fila, int columna, String fragmento) {
         return getCellString(fila, columna).toLowerCase().contains(fragmento.toLowerCase());
+    }
+
+    /**
+     * Offsets a probar alrededor del indice esperado del encabezado, en orden de prioridad.
+     * Se prueba primero el indice esperado (el caso normal, sin desplazamiento), despues +1 y
+     * +2 (una o dos filas EXTRA antes del encabezado -- el caso real medido: Banco Atlantida
+     * intercala a veces una fila "Nombre del Cliente :" entre el saldo inicial y el
+     * encabezado), y por ultimo -1/-2 por si algun banco alguna vez trae una fila de menos.
+     * Se prioriza +1/+2 sobre -1/-2 porque el caso real es contenido AGREGADO antes del
+     * encabezado, nunca quitado.
+     *
+     * <p><b>Por que esto no debilita la proteccion de "banco equivocado":</b> si NINGUNA fila
+     * de la ventana pasa {@link #encabezadoValido(Row)}, {@link #parse} lanza exactamente el
+     * mismo error de siempre -- la ventana solo tolera un desplazamiento vertical PEQUEÑO y
+     * conocido del layout del MISMO banco, no relaja lo que cuenta como encabezado valido.
+     * {@code encabezadoValido} sigue comparando por posicion exacta de columna (ver su
+     * javadoc), que es lo que de verdad distingue un banco de otro; ampliar la ventana no
+     * hace que un archivo de un banco distinto empiece a parecer valido, porque sus columnas
+     * en esas posiciones van a seguir sin decir "fecha"/"bito"/"dito" donde este banco los
+     * espera.</p>
+     */
+    private static final int[] OFFSETS_VENTANA_ENCABEZADO = {0, 1, 2, -1, -2};
+
+    /**
+     * Busca la fila de encabezado en una ventana alrededor del indice esperado (ver
+     * {@link #OFFSETS_VENTANA_ENCABEZADO}), devolviendo el indice (0-based) de la primera que
+     * pase {@link #encabezadoValido(Row)}, o -1 si ninguna la pasa.
+     */
+    private int buscarFilaEncabezado(Sheet sheet, int indiceEsperado) {
+        for (int offset : OFFSETS_VENTANA_ENCABEZADO) {
+            int indice = indiceEsperado + offset;
+            if (indice < 0) {
+                continue;
+            }
+            Row fila = sheet.getRow(indice);
+            if (fila != null && encabezadoValido(fila)) {
+                return indice;
+            }
+        }
+        return -1;
     }
 
     /**
@@ -410,8 +450,13 @@ public abstract class AbstractExcelStatementParser implements BankStatementParse
         return LocalDate.parse(soloFecha, DateTimeFormatter.ISO_LOCAL_DATE);
     }
 
-    private static final DateTimeFormatter FORMATO_MDY = DateTimeFormatter.ofPattern("MM/dd/yyyy");
-    private static final DateTimeFormatter FORMATO_DMY = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+    /**
+     * Expuestos como protected (no private) para que {@link #getCellFechaFlexible} pueda
+     * recibir el formato como parametro EXPLICITO desde la subclase -- nunca inferido de la
+     * forma del texto, ver el javadoc de {@link #parseFechaMDY}.
+     */
+    protected static final DateTimeFormatter FORMATO_MDY = DateTimeFormatter.ofPattern("MM/dd/yyyy");
+    protected static final DateTimeFormatter FORMATO_DMY = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
     /**
      * Fecha en texto mm/dd/yyyy - SIEMPRE hardcodeado para el banco que lo
@@ -446,5 +491,37 @@ public abstract class AbstractExcelStatementParser implements BankStatementParse
         double valor = cell.getNumericCellValue();
         LocalDateTime fechaHora = DateUtil.getLocalDateTime(valor);
         return fechaHora.toLocalDate();
+    }
+
+    /**
+     * Fecha de una celda que puede venir NATIVA (NUMERIC, con formato de fecha aplicado) o
+     * como TEXTO ("31/08/2026") -- medido en Banco Atlantida: la misma columna de fecha puede
+     * llegar de una forma u otra segun como se generó el archivo, incluso entre exportaciones
+     * del mismo banco.
+     *
+     * <p>El {@code formato} para el caso texto lo decide la SUBCLASE explicitamente
+     * ({@link #FORMATO_DMY} o {@link #FORMATO_MDY}), nunca se infiere de la forma del string:
+     * "03/06/2026" es ambiguo entre dd/mm y mm/dd, y una fecha mal interpretada no da error,
+     * da datos silenciosamente incorrectos -- ver el javadoc de {@link #parseFechaMDY}.</p>
+     *
+     * @param row		: Fila
+     * @param col		: Columna
+     * @param formato	: Formato a aplicar SI la celda llega como texto
+     * @return			: Fecha, o null si la celda esta vacia o en blanco
+     */
+    protected LocalDate getCellFechaFlexible(Row row, int col, DateTimeFormatter formato) {
+        Cell cell = row.getCell(col);
+        if (cell == null || cell.getCellType() == CellType.BLANK) {
+            return null;
+        }
+        if (cell.getCellType() == CellType.NUMERIC) {
+            LocalDateTime fechaHora = DateUtil.getLocalDateTime(cell.getNumericCellValue());
+            return fechaHora.toLocalDate();
+        }
+        String texto = getCellString(cell);
+        if (texto.isEmpty()) {
+            return null;
+        }
+        return LocalDate.parse(texto.trim(), formato);
     }
 }
