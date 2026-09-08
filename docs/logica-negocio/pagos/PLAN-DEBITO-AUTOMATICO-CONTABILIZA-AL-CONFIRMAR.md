@@ -84,6 +84,6 @@ ni con la del sistema. Es la mitad del pedido y es la que se nota en el balance 
 | # | Riesgo | Mitigación |
 |---|---|---|
 | 1 | 🔴 **Un débito automático `REGISTRADO` se cuela en un lote de transferencias** | Excluirlos explícitamente al armar el lote, por la marca `debitoAutomatico`, no por el estado |
-| 2 | 🔴 **Los débitos ya aprobados antes de este cambio** quedaron `CONFIRMADO` y contabilizados. **No hay que tocarlos ni re-contabilizarlos**: el cambio rige hacia adelante |
+| 2 | ✅ **RESUELTO — decisión del usuario, 2026-09-07.** Los débitos ya aprobados antes de este cambio quedaron `CONFIRMADO` y contabilizados. Textual: *«sí, esos quedan como están»*. **No se tocan, no se re-contabilizan y no se les agrega referencia.** El cambio rige **hacia adelante** |
 | 3 | 🟠 El mensaje de `anularPago` sobre débito automático puede quedar mintiendo | Revisarlo junto con el cambio |
 | 4 | 🟠 La bandeja de confirmación los excluye por código | Sacar ese filtro, y que la pantalla los muestre distinguidos |
