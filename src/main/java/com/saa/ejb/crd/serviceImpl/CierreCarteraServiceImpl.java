@@ -568,8 +568,8 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
      * corte anterior y hasta el corte actual, y sigue impago.
      *
      * @param filas  : {@code [idProducto, fechaVencimiento, capital, cantidad]}
-     * @param desde  : Corte anterior, exclusivo
-     * @param hasta  : Corte actual, inclusivo
+     * @param desde  : Corte anterior, INCLUSIVO
+     * @param hasta  : Corte actual, EXCLUSIVO
      * @return       : Capital por producto
      */
     private Map<Long, Double> calculaVencidosDelMes(List<Object[]> filas, LocalDate desde,
@@ -582,7 +582,17 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
             if (vencimiento == null || capital == null) {
                 continue;
             }
-            if (vencimiento.isAfter(desde) && !vencimiento.isAfter(hasta)) {
+            // Rango [desde, hasta), no (desde, hasta] — 2026-09-07, confirmado al centavo
+            // contra producción (cierre de agosto: par 31/08->30/09 daba $209.243,30 en vez
+            // de $60.779,06; par 31/07->31/08 daba $60.779,06 en vez de $45.909,37 — las dos
+            // diferencias, $148.464,24 y $14.869,69, son EXACTAMENTE los descuadres medidos
+            // línea por línea, y caen enteros en la banda 1 de cada producto). La razón es la
+            // regla ya fijada en distribuye/tipoCarteraYDias (commit 40dd5a0): "el día del
+            // vencimiento es POR VENCER, no VENCIDO". Con isAfter(desde) en vez de
+            // !isBefore(desde), una cuota que vence justo el día `desde` (ya clasificada
+            // POR VENCER en ese corte por la misma regla) volvía a contarse acá como si
+            // hubiera cruzado la frontera de nuevo el mes siguiente.
+            if (!vencimiento.isBefore(desde) && vencimiento.isBefore(hasta)) {
                 Double actual = porProducto.get(idProducto);
                 porProducto.put(idProducto, suma(actual, capital));
             }
