@@ -88,4 +88,7 @@ public interface NombreEntidadesRhh {
     String PLANILLA_IESS                 = "PlanillaIess";
     String DETALLE_PLANILLA_IESS         = "DetallePlanillaIess";
 
+    // ================= VALORES NO PAGADOS (script e2-26) =================
+    String VALOR_NO_PAGADO               = "ValorNoPagado";
+
 }

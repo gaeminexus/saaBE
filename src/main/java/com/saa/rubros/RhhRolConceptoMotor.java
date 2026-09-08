@@ -81,4 +81,22 @@ public interface RhhRolConceptoMotor {
 	 */
 	public static final int DECIMO_CUARTO_ACUMULADO_PAGADO = 33;
 
+	/**
+	 * Valor no pagado al empleado en el periodo P, registrado en RHH.VNPG. Concepto
+	 * INFORMATIVO (RhhTipoConceptoNomina.INFORMATIVO = 5) de signo -X en el rol de P: no
+	 * suma al neto, ni a bases de IESS/IR, ni a provisiones ni a la contabilidad -- solo la
+	 * orden de pago de P lo resta del neto real que se transfiere. Ver companero
+	 * VALOR_NO_PAGADO_RECUPERADO (35) y docs/logica-negocio/rhh/PLAN-VALORES-NO-PAGADOS.md.
+	 * Script e2-26.
+	 */
+	public static final int VALOR_NO_PAGADO_RETENIDO = 34;
+
+	/**
+	 * Devolucion del valor no pagado del periodo anterior (P-1), en el rol de P. Concepto
+	 * INFORMATIVO de signo +X: no confundir con VALOR_NO_PAGADO_RETENIDO (34), que es la
+	 * retencion del mes en curso -- usar el equivocado deja el valor sin devolver o lo
+	 * devuelve dos veces. Script e2-26.
+	 */
+	public static final int VALOR_NO_PAGADO_RECUPERADO = 35;
+
 }
