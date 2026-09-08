@@ -19,7 +19,8 @@ public class ContratoDaoServiceImpl extends EntityDaoImpl<Contrato> implements C
     @PersistenceContext
     EntityManager em;
 
-    @Override
+    @SuppressWarnings("unchecked")
+	@Override
     public List<Contrato> selectByEntidad(Long idEntidad) throws Throwable {
         System.out.println("Ingresa al metodo selectByEntidad de Contrato con idEntidad: " + idEntidad);
         Query query = em.createQuery(
@@ -42,7 +43,8 @@ public class ContratoDaoServiceImpl extends EntityDaoImpl<Contrato> implements C
             query.setParameter("idEntidad", idEntidad);
             query.setParameter("activo", Long.valueOf(EstadoContrato.ACTIVO));
             query.setMaxResults(1);
-            List<Contrato> resultado = query.getResultList();
+            @SuppressWarnings("unchecked")
+			List<Contrato> resultado = query.getResultList();
             return resultado.isEmpty() ? null : resultado.get(0);
         } catch (NoResultException e) {
             return null;

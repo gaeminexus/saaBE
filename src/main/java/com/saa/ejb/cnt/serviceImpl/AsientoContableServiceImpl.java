@@ -2579,7 +2579,6 @@ public class AsientoContableServiceImpl implements AsientoContableService {
      * diferencia contra la suma del DEBE resuelta por {@link #agregarDiferenciaRedondeoSri}
      * (docs/logica-negocio/cxp/DISENO-CUADRE-CONTRA-IMPORTE-TOTAL.md §3 y §6).
      */
-    @SuppressWarnings("unchecked")
     private com.saa.model.cnt.Asiento generarAsientoFacturaCompraReembolso(
             com.saa.model.cxp.FacturaCompra fc, Long idEmpresa, int codigoAltTipoAsiento,
             java.time.LocalDate fechaAsiento, String observaciones, String usuario) throws Throwable {

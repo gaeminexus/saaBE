@@ -46,7 +46,8 @@ public class VigenciaContratoDaoServiceImpl extends EntityDaoImpl<VigenciaContra
         };
     }
 
-    @Override
+    @SuppressWarnings("unchecked")
+	@Override
     public List<VigenciaContrato> selectByContrato(Long idContrato) throws Throwable {
         System.out.println("Ingresa al metodo selectByContrato de VigenciaContrato con idContrato: " + idContrato);
         Query query = em.createQuery(
@@ -144,7 +145,6 @@ public class VigenciaContratoDaoServiceImpl extends EntityDaoImpl<VigenciaContra
     }
 
     @Override
-    @SuppressWarnings("unchecked")
     public Set<Long> selectEntidadesConContratoActivoPorFilial(Long codigoFilial) throws Throwable {
         System.out.println("Ingresa al metodo selectEntidadesConContratoActivoPorFilial de VigenciaContrato"
             + " con codigoFilial: " + codigoFilial);

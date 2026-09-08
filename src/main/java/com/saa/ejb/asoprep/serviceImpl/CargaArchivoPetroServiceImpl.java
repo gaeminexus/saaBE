@@ -2644,6 +2644,7 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 	 * operador al guardar. Si se escribiera acá de nuevo, el día que cambie la tolerancia
 	 * divergirían y el proceso aceptaría lo que la pantalla rechaza.
 	 */
+	@SuppressWarnings("unused")
 	private void validarRepartoDeExcedentes(CargaArchivo cargaArchivo) throws Throwable {
 		System.out.println("=== VALIDANDO REPARTO DE EXCEDENTES (100%, tolerancia $0.01) ===");
 
@@ -2693,6 +2694,7 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 	 * decide. Acá SÍ hay una elección explícita (AVPC), así que hace falta validarla — pero
 	 * usando la MISMA fuente de "orden correcto" que esa cascada, no un criterio propio.</p>
 	 */
+	@SuppressWarnings("unused")
 	private void validarPrelacionReparto(CargaArchivo cargaArchivo) throws Throwable {
 		System.out.println("=== VALIDANDO PRELACIÓN DEL REPARTO (cuota más antigua primero) ===");
 

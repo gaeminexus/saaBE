@@ -171,7 +171,8 @@ public class PrestamoDaoServiceImpl extends EntityDaoImpl<Prestamo> implements P
         }
     }
 
-    @Override
+    @SuppressWarnings("unchecked")
+	@Override
     public List<Prestamo> selectByEntidad(Long codigoEntidad) throws Throwable {
         System.out.println("PrestamoDaoServiceImpl.selectByEntidad - Entidad: " + codigoEntidad);
 

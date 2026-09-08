@@ -978,6 +978,7 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 		}
 	}
 
+	@SuppressWarnings("unchecked")
 	@Override
 	public List<Object[]> sumValorPorTipoAporteByCarga(Long idCarga) throws Throwable {
 		System.out.println("AporteDaoServiceImpl.sumValorPorTipoAporteByCarga - Carga: " + idCarga);
