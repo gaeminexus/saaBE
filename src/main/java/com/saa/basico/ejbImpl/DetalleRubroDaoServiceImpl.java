@@ -12,6 +12,8 @@
 package com.saa.basico.ejbImpl;
 
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import com.saa.basico.ejb.DetalleRubroDaoService;
 import com.saa.basico.utilImpl.EntityDaoImpl;
@@ -36,9 +38,29 @@ public class DetalleRubroDaoServiceImpl extends EntityDaoImpl<DetalleRubro> impl
 	@PersistenceContext
 	EntityManager em;
 
+	/**
+	 * Cache exclusivo del rubro {@link Rubros#TIPO_COMANDOS_BUSQUEDA} — los operadores
+	 * (and/or/like/between/paréntesis) que arma {@code EntityDaoImpl.selectByCriteria}.
+	 * Son estructura del lenguaje de búsqueda, no dato de negocio: no cambian en runtime,
+	 * y si alguien los editara igual habría que reiniciar WildFly porque romperían el
+	 * JPQL generado en cualquier módulo. Verificado el 2026-09-07: una búsqueda de cinco
+	 * criterios disparaba diez o más consultas sólo para resolver estos operadores, cada
+	 * una un join contra el rubro por columnas alternas sin índice confirmado.
+	 * <p>
+	 * ⛔ Este cache es SOLO para este rubro. {@code selectValorStringByRubAltDetAlt} sirve
+	 * a otros rubros que sí son catálogo de negocio editable (ver los `@GET` de
+	 * `DetalleRubroRest`); cachearlos a todos dejaría un cambio de catálogo sin efecto
+	 * hasta el próximo despliegue, un defecto silencioso peor que la lentitud que esto
+	 * resuelve. {@code static} porque esta clase es {@code @Stateless} — el pool de
+	 * instancias no comparte campos de instancia — y {@code ConcurrentHashMap} porque el
+	 * mismo método se invoca desde varios hilos a la vez (confirmado en producción con
+	 * task-665/669/670 concurrentes).
+	 */
+	private static final Map<Integer, String> CACHE_COMANDOS_BUSQUEDA = new ConcurrentHashMap<>();
+
 	/*
 	 * (non-Javadoc)
-	 * 
+	 *
 	 * @see
 	 * com.gaemisoft.income.sistema.ejb.dao.DetalleRubroDaoService#obtieneCampos()
 	 */
@@ -67,6 +89,14 @@ public class DetalleRubroDaoServiceImpl extends EntityDaoImpl<DetalleRubro> impl
 		 * + codigoAlternoRubro
 		 * + " y codigoAlternoDetalle: " + codigoAlternoDetalle);
 		 */
+		boolean esComandoBusqueda = codigoAlternoRubro == Rubros.TIPO_COMANDOS_BUSQUEDA;
+		if (esComandoBusqueda) {
+			String valorCacheado = CACHE_COMANDOS_BUSQUEDA.get(Integer.valueOf(codigoAlternoDetalle));
+			if (valorCacheado != null) {
+				return valorCacheado;
+			}
+		}
+
 		Query query = em.createQuery(" select   t.valorAlfanumerico " +
 				" from     DetalleRubro t " +
 				" where    t.rubro.codigoAlterno = :codigoAlternoRubro " +
@@ -74,7 +104,14 @@ public class DetalleRubroDaoServiceImpl extends EntityDaoImpl<DetalleRubro> impl
 		query.setParameter("codigoAlternoRubro", Long.valueOf(codigoAlternoRubro));
 		query.setParameter("codigoAlternoDetalle", Long.valueOf(codigoAlternoDetalle));
 
-		return (String) query.getSingleResult();
+		String valor = (String) query.getSingleResult();
+		// Se cachea solo tras una lectura exitosa: si getSingleResult() falla (sin
+		// filas, o más de una), la excepcion sube igual que antes de este cambio y no
+		// queda nada cacheado para ese codigo -- el proximo intento vuelve a consultar.
+		if (esComandoBusqueda) {
+			CACHE_COMANDOS_BUSQUEDA.put(Integer.valueOf(codigoAlternoDetalle), valor);
+		}
+		return valor;
 	}
 
 	/*
