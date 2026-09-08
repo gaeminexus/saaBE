@@ -279,9 +279,29 @@ public class BeneficioSocialServiceImpl implements BeneficioSocialService {
 		// sumar el valor devolvia 0,00 y el decimo cuarto salia en cero PARA TODO EL MUNDO.
 		// Corregido el 2026-08-21. Misma familia que el ACMN tipo 7 de vacaciones: un lector
 		// apuntando a donde nadie escribe.
-		Double dias = acumuladoNominaDaoService.sumaDiasRango(idEmpleado,
+		Double diasCerrados = acumuladoNominaDaoService.sumaDiasRango(idEmpleado,
 				Long.valueOf(RhhTipoAcumulado.DIAS_TRABAJADOS),
 				Integer.valueOf(anioInicio), Integer.valueOf(mesInicio), anio, Integer.valueOf(mesFin));
+
+		// La apertura de la migracion carga los dias anteriores a la puesta en marcha del
+		// sistema en el acumulado del propio decimo cuarto (BASE_DECIMO_CUARTO), no en
+		// DIAS_TRABAJADOS -- exactamente el mismo dato y el mismo patron que ya usa el
+		// finiquito (LiquidacionHaberesServiceImpl.calculaFiniquito, bloque de vacaciones/
+		// decimo cuarto): "los dias salen de tres sitios y los tres hacen falta: los meses
+		// cerrados, la fila de apertura de la migracion, y los dias del mes que se liquida".
+		// Sin sumar esta fila, el calculo anual solo ve los meses ya cerrados DENTRO del
+		// sistema y nunca llega a los 360 dias para quien ingreso antes de la puesta en
+		// marcha. Medido en produccion 2026-09-08: ACMN tipo 10 (DIAS_TRABAJADOS) solo tenia
+		// filas de 2026/01 a 2026/07 (210 dias = 7 x 30), y los 150 dias de agosto a
+		// diciembre 2025 estaban en la fila de apertura de tipo 4 (17 filas, suma 1.705,
+		// minimo 23, maximo 150 -- ya reflejan la fecha de ingreso real de cada empleado).
+		Double diasApertura = acumuladoNominaDaoService.sumaDiasRango(idEmpleado,
+				Long.valueOf(RhhTipoAcumulado.BASE_DECIMO_CUARTO),
+				Integer.valueOf(anioInicio), Integer.valueOf(mesInicio), anio, Integer.valueOf(mesFin));
+
+		Double dias = Double.valueOf(
+				(diasCerrados != null ? diasCerrados.doubleValue() : 0D)
+				+ (diasApertura != null ? diasApertura.doubleValue() : 0D));
 
 		// SBU prorrateado por dias sobre los dias base del anio, con tope de un SBU.
 		Double sbu = prnm.getSbu();
