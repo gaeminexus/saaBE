@@ -17,6 +17,7 @@ import com.saa.ejb.rhh.dao.EmpleadoDaoService;
 import com.saa.ejb.rhh.dao.LiquidacionDaoService;
 import com.saa.ejb.rhh.dao.ParametroNominaDaoService;
 import com.saa.ejb.rhh.dao.SaldoVacacionesDaoService;
+import com.saa.ejb.rhh.dao.ValorNoPagadoDaoService;
 import com.saa.ejb.rhh.service.AcreditacionVacacionesService;
 import com.saa.ejb.rhh.service.LiquidacionHaberesService;
 import com.saa.ejb.rhh.service.NovedadIessService;
@@ -34,9 +35,11 @@ import com.saa.model.rhh.ParametroNomina;
 import com.saa.model.rhh.RenglonCalculado;
 import com.saa.model.rhh.ResultadoLiquidacion;
 import com.saa.model.rhh.SaldoVacaciones;
+import com.saa.model.rhh.ValorNoPagado;
 import com.saa.rubros.Estado;
 import com.saa.rubros.RhhEstadoEmpleado;
 import com.saa.rubros.RhhEstadoLiquidacion;
+import com.saa.rubros.RhhEstadoValorNoPagado;
 import com.saa.rubros.RhhRegionDecimoCuarto;
 import com.saa.rubros.RhhRolConceptoMotor;
 import com.saa.rubros.RhhTipoAcumulado;
@@ -159,6 +162,12 @@ public class LiquidacionHaberesServiceImpl implements LiquidacionHaberesService 
 
     @EJB
     private NovedadIessService novedadIessService;
+
+    // ===== INICIO enganche valores no pagados (script e2-26, equipo omen-saa-2) =====
+    // Ver docs/logica-negocio/rhh/PLAN-VALORES-NO-PAGADOS.md §7.5.
+    @EJB
+    private ValorNoPagadoDaoService valorNoPagadoDaoService;
+    // ===== FIN enganche valores no pagados =====
 
     /* (non-Javadoc)
      * @see com.saa.ejb.rhh.service.LiquidacionHaberesService#simular(java.lang.Long, java.time.LocalDate, java.lang.Long)
@@ -339,6 +348,49 @@ public class LiquidacionHaberesServiceImpl implements LiquidacionHaberesService 
         double diasTrabajados = Math.min(fechaSalida.getDayOfMonth(), diasBase);
         Double remuneracion = RedondeoNomina.redondea(Double.valueOf(
                 ultimaRemuneracion.doubleValue() * diasTrabajados / diasBase));
+
+        // ===== INICIO enganche valores no pagados (script e2-26, equipo omen-saa-2) =====
+        // §7.5 del plan: todo VNPG RETENIDO del empleado se paga en el finiquito, pero como
+        // LINEA PROPIA (concepto de rol 34, "Valor no pagado") -- NUNCA sumado a
+        // "remuneracion": esa variable es la BASE del aporte personal al IESS unas lineas mas
+        // abajo (y de los decimos proporcionales, RedondeoNomina.suma(baseAcumulada,
+        // remuneracion)), y X ya pago IESS/IR el mes P en que se devengo -- el rol de P
+        // devengo completo, solo se le retuvo el PAGO. Sumarlo aqui lo haria tributar dos
+        // veces, violando la decision 6 del usuario ("no afecta IESS ni impuesto a la renta").
+        // El concepto de rol 34 es INFORMATIVO (tipo 5) en el rol mensual, pero el totalizador
+        // de ESTE metodo (linea ~558) no filtra por tipo -solo separa EGRESO de "lo demas"-,
+        // asi que la linea SI entra al total a pagar del finiquito, que es lo correcto: aqui
+        // no hay mes siguiente que lo recupere, se paga ya. escribeAcumuladosDelFiniquito, en
+        // cambio, solo suma a gravadoIr las lineas con tipoConcepto==INGRESO exacto (no
+        // "distinto de EGRESO"): al ser tipo 5, esta linea queda afuera de esa acumulacion
+        // tambien, sin necesidad de tocar ese metodo.
+        List<ValorNoPagado> valoresNoPagadosRetenidos =
+                valorNoPagadoDaoService.selectRetenidosByEmpleado(empleado.getCodigo());
+        Double totalValorNoPagado = Double.valueOf(0D);
+        for (ValorNoPagado valorNoPagado : valoresNoPagadosRetenidos) {
+            if (valorNoPagado.getValor() != null) {
+                totalValorNoPagado = RedondeoNomina.suma(totalValorNoPagado, valorNoPagado.getValor());
+            }
+        }
+        if (totalValorNoPagado.doubleValue() > 0D) {
+            ConceptoNomina conceptoValorNoPagado = conceptoPorRol(conceptos,
+                    RhhRolConceptoMotor.VALOR_NO_PAGADO_RETENIDO);
+            if (conceptoValorNoPagado == null) {
+                // Igual criterio que FINIQUITO_APORTE_PERSONAL mas abajo: sin el concepto,
+                // agrega() lo etiquetaria INGRESO por defecto en vez de INFORMATIVO, y esa
+                // linea SI entraria a gravadoIr en escribeAcumuladosDelFiniquito. Mejor no
+                // generarla y dejar traza que generarla mal tipada.
+                throw new IncomeException("El empleado " + empleado.getIdentificacion() + " tiene "
+                        + valoresNoPagadosRetenidos.size() + " valor(es) no pagado(s) RETENIDO por "
+                        + totalValorNoPagado + " y la empresa no tiene un concepto de nomina con rol"
+                        + " de motor " + RhhRolConceptoMotor.VALOR_NO_PAGADO_RETENIDO + " (valor no"
+                        + " pagado). Ejecute el script rhh/sql/e2-26 antes de liquidar.");
+            }
+            agrega(rubros, conceptos, RhhRolConceptoMotor.VALOR_NO_PAGADO_RETENIDO,
+                    null, null, totalValorNoPagado);
+        }
+        // ===== FIN enganche valores no pagados =====
+
         agrega(rubros, conceptos, RhhRolConceptoMotor.FINIQUITO_REMUNERACION_PENDIENTE,
                 ultimaRemuneracion, diasTrabajados, remuneracion);
 
@@ -617,6 +669,19 @@ public class LiquidacionHaberesServiceImpl implements LiquidacionHaberesService 
                 detalle.setUsuarioRegistro(usuario);
                 detalleLiquidacionDaoService.save(detalle, detalle.getCodigo());
             }
+
+            // ===== INICIO enganche valores no pagados (script e2-26, equipo omen-saa-2) =====
+            for (ValorNoPagado valorNoPagado : valoresNoPagadosRetenidos) {
+                valorNoPagado.setEstado(Long.valueOf(RhhEstadoValorNoPagado.FINIQUITADO));
+                valorNoPagado.setLiquidacion(liquidacion);
+                valorNoPagadoDaoService.save(valorNoPagado, valorNoPagado.getCodigo());
+            }
+            if (!valoresNoPagadosRetenidos.isEmpty()) {
+                System.out.println(valoresNoPagadosRetenidos.size() + " valor(es) no pagado(s) del"
+                        + " empleado " + empleado.getCodigo() + " absorbido(s) por el finiquito "
+                        + liquidacion.getCodigo() + ".");
+            }
+            // ===== FIN enganche valores no pagados =====
         }
 
         return liquidacion;
