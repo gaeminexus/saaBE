@@ -6,6 +6,8 @@
  */
 package com.saa.ejb.tsr.parser;
 
+import java.time.LocalDate;
+
 import org.apache.poi.ss.usermodel.Row;
 
 import com.saa.model.tsr.DetalleExtractoBancario;
@@ -25,6 +27,27 @@ import com.saa.rubros.ASPEstadoRevisionExtracto;
  * tipo de movimiento ("TipoMov": "N/C" = credito, "N/D" = debito,
  * confirmado en la muestra real). No hay saldo inicial declarado en el
  * encabezado - se deriva de la primera fila.</p>
+ *
+ * <p><b>2026-09-08, decision explicita del usuario: la conciliacion de Pacifico va por
+ * FECHA CONTABLE, no por fecha real.</b> {@code fechaTransaccion} es el campo que lee TODO
+ * el motor de conciliacion -- el match por cercania de fechas
+ * ({@code ConciliacionContableMatchServiceImpl}), el rango min/max de un grupo, el DTO de
+ * partidas en transito ({@code ConciliacionCierreServiceImpl}) y la validacion de que el
+ * movimiento caiga dentro del periodo al importar
+ * ({@code ImportacionExtractoBancarioServiceImpl}) -- ninguno de esos lugares mira
+ * {@code fechaContable}. Antes de este cambio, Pacifico era el UNICO de los once bancos que
+ * poblaba fechaTransaccion con la fecha REAL (los otros diez ni siquiera tienen esa nocion
+ * distinta), lo que dejaba a Pacifico conciliando contra un campo que el motor no usa para
+ * decidir nada -- de ahi que apareciera con pendientes. No se toco el motor de conciliacion
+ * para "preferir fechaContable cuando exista": habria sido un cambio de comportamiento
+ * global disparado por un solo banco (afecta tambien la validacion de rango del import). El
+ * lugar correcto para esta decision es el parser, que es donde vive que significa la fecha
+ * de ESTE banco. La fecha real no se pierde: si difiere de la contable, se anexa a la
+ * descripcion ("Fecha real: dd/MM/yyyy") -- DEXB no tiene una columna aparte para guardarla
+ * ademas de {@code fechaContable} (que se sigue poblando igual que antes, sin cambios).</p>
+ *
+ * <p><b>Si estas por "corregir" esto porque parece un cruce de columnas: no lo es.</b> Es a
+ * proposito, medido y confirmado contra el motor real el 2026-09-08.</p>
  */
 public class PacificoStatementParser extends AbstractExcelStatementParser {
 
@@ -89,9 +112,18 @@ public class PacificoStatementParser extends AbstractExcelStatementParser {
                     + getCellString(row, COL_BANCO_ORDENANTE);
         }
 
+        LocalDate fechaContable = parseFechaDMY(fechaContableTexto);
+        LocalDate fechaReal = fechaRealSoloFecha.isBlank() ? null : parseFechaDMY(fechaRealSoloFecha);
+        // La conciliacion va por fecha contable (ver el javadoc de la clase) -- la fecha real
+        // no se pierde, se anexa a la descripcion, y solo cuando difiere de la contable para
+        // no ensuciar la mayoria de filas donde son iguales.
+        if (fechaReal != null && !fechaReal.equals(fechaContable)) {
+            descripcion += " | Fecha real: " + FORMATO_DMY.format(fechaReal);
+        }
+
         DetalleExtractoBancario d = new DetalleExtractoBancario();
-        d.setFechaTransaccion(parseFechaDMY(fechaRealSoloFecha));
-        d.setFechaContable(parseFechaDMY(fechaContableTexto));
+        d.setFechaTransaccion(fechaContable);
+        d.setFechaContable(fechaContable);
         d.setCodigoMovimiento(tipoMov);
         d.setDescripcion(descripcion);
         d.setReferencia(referencia);
