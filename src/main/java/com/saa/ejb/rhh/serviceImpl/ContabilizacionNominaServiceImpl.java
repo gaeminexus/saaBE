@@ -751,13 +751,22 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
 
         // DEBE: la parte cubierta por provision real, de la misma plantilla que ya usa
         // contabilizarProvisiones para darla de alta.
+        //
+        // 🔴 EL LADO SE IMPONE, NO SE HEREDA DE LA PLANTILLA. Esa linea sale de la
+        // plantilla de PROVISION MENSUAL, donde el pasivo se acredita (HABER) al
+        // devengar -correcto ahi-. Aca se esta dando de BAJA el pasivo, que es lo
+        // contrario: hay que debitarlo. Usar construyeLinea(plantilla, valor) heredaba
+        // el HABER de la plantilla en silencio y el nombre de la variable
+        // ("lineaDebeProvision") no evitaba nada. Medido en produccion 2026-09-08:
+        // asiento del pago de decimo cuarto descuadrado por exactamente el doble del
+        // valor de la provision (642,72 x 2 = 1.285,44).
         if (parteProvision.doubleValue() > 0D) {
             Long idPlantillaProvision = resuelvePlantilla(configuracion.getPlantillaProvision(),
                     "baja de provision", idEmpresa);
             DetallePlantilla lineaDebeProvision = exigeLinea(idPlantillaProvision, lineaProvision,
                     "baja de provision");
             exigeCuentaReal(lineaDebeProvision, marcadora, "baja de provision");
-            lineas.add(construyeLinea(lineaDebeProvision, parteProvision));
+            lineas.add(construyeLinea(lineaDebeProvision, parteProvision, true));
         }
 
         // DEBE: el excedente sin provision real detras va a gasto -mismas lineas que usa el
@@ -767,23 +776,37 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
         // configuradas (lineaDeIngreso las usa desde ahi en importesDelRol). NO son las
         // lineas GASTO_PROVISION_* (30/31/33): esas representan el devengo mensual, un
         // hecho contable distinto del gasto reconocido recien al pagar.
+        //
+        // Mismo lado impuesto que la linea de arriba: esta cuenta de gasto en
+        // plantillaRol esta pensada para el rol mensual (DEBE, correcto ahi tambien),
+        // asi que en este caso coincide -pero no se confia en la coincidencia, se
+        // impone igual para que un cambio futuro en la plantilla no vuelva a descuadrar
+        // esto en silencio.
         if (parteGasto.doubleValue() > 0D) {
             Long idPlantillaRol = resuelvePlantilla(configuracion.getPlantillaRol(),
                     "baja de provision", idEmpresa);
             DetallePlantilla lineaDebeGasto = exigeLinea(idPlantillaRol, lineaGasto, "baja de provision");
             exigeCuentaReal(lineaDebeGasto, marcadora, "baja de provision");
-            lineas.add(construyeLinea(lineaDebeGasto, parteGasto));
+            lineas.add(construyeLinea(lineaDebeGasto, parteGasto, true));
         }
 
         // HABER: banco, de la misma plantilla que ya usa contabilizarPago para esa linea.
+        // Verificado, no supuesto: esta MISMA linea (plantillaPago, RhhLineaAsiento.BANCO) la
+        // usa contabilizarPago() de HABER sin forzar nada -alli el dinero tambien SALE del
+        // banco, un pago normal-, y esta contabilizacion tambien es un pago saliendo del
+        // banco: la direccion coincide, a diferencia de la linea de provision de arriba (que
+        // venia de una plantilla pensada para el devengo, direccion opuesta a esta baja). Por
+        // eso esta linea SI puede heredar el lado de la plantilla sin forzarlo.
         Long idPlantillaPago = resuelvePlantilla(configuracion.getPlantillaPago(),
                 "baja de provision", idEmpresa);
         DetallePlantilla lineaHaber = exigeLinea(idPlantillaPago, RhhLineaAsiento.BANCO, "baja de provision");
         exigeCuentaReal(lineaHaber, marcadora, "baja de provision");
         lineas.add(construyeLinea(lineaHaber, valor));
-        // Sin comprobarCuadre: parteGasto sale por diferencia de valor-parteProvision (las
-        // dos ya redondeadas), asi que DEBE (parteProvision + parteGasto) y HABER (valor)
-        // cuadran por construccion.
+        // Sin comprobarCuadre: con las dos lineas de arriba ahora forzadas al DEBE (ver el fix
+        // 2026-09-08), parteGasto sale por diferencia de valor-parteProvision (las dos ya
+        // redondeadas), asi que DEBE (parteProvision + parteGasto) y HABER (valor) cuadran por
+        // construccion de verdad -antes del fix esta garantia era falsa: dependia de un lado
+        // que en realidad venia de la plantilla equivocada.
 
         Asiento asiento = asientoContableService.generarAsiento(
                 idEmpresa,
@@ -1141,13 +1164,40 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
      * @return			: La linea del asiento
      */
     private DetalleAsiento construyeLinea(DetallePlantilla plantilla, Double valor) {
+        return construyeLinea(plantilla, valor, esDebe(plantilla));
+    }
+
+    // ===== INICIO fix descuadre baja de provision (equipo omen-saa-2, 2026-09-08) =====
+    /**
+     * Igual que {@link #construyeLinea(DetallePlantilla, Double)}, pero con el lado
+     * (DEBE/HABER) impuesto por el llamador en vez de heredado de {@code plantilla}.
+     *
+     * <p>Hace falta cuando la linea de una plantilla se reutiliza para el asiento
+     * INVERSO al que esa plantilla fue pensada -por ejemplo, la linea de "provision por
+     * pagar" de la plantilla de PROVISION MENSUAL, donde el pasivo se acredita (HABER)
+     * al devengar, reutilizada para dar de BAJA esa misma provision, donde hay que
+     * debitarla. {@link #esDebe(DetallePlantilla)} en ese caso devuelve el lado
+     * correcto para el asiento de ALTA, no para este. Ver
+     * {@link #contabilizarBajaProvisionBeneficioSocial}, unico llamador hoy.</p>
+     *
+     * <p>⛔ No usar para ningun otro llamador de {@link #construyeLinea(DetallePlantilla, Double)}:
+     * el resto de las contabilizaciones de esta clase SI dependen del lado que trae su
+     * propia plantilla y funcionan bien con la sobrecarga de dos argumentos.</p>
+     *
+     * @param plantilla	: Linea de la plantilla, solo para la cuenta/descripcion
+     * @param valor		: Importe, ya redondeado
+     * @param forzarDebe: true = la linea va al DEBE; false = va al HABER; sin mirar el
+     *					  movimiento configurado en la plantilla
+     * @return			: La linea del asiento
+     */
+    private DetalleAsiento construyeLinea(DetallePlantilla plantilla, Double valor, boolean forzarDebe) {
         DetalleAsiento detalle = new DetalleAsiento();
         PlanCuenta cuenta = plantilla.getPlanCuenta();
         detalle.setPlanCuenta(cuenta);
         detalle.setNumeroCuenta(cuenta != null ? cuenta.getCuentaContable() : null);
         detalle.setNombreCuenta(cuenta != null ? cuenta.getNombre() : null);
         detalle.setDescripcion(plantilla.getDescripcion());
-        if (esDebe(plantilla)) {
+        if (forzarDebe) {
             detalle.setValorDebe(valor);
             detalle.setValorHaber(Double.valueOf(0D));
         } else {
@@ -1156,6 +1206,7 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
         }
         return detalle;
     }
+    // ===== FIN fix descuadre baja de provision (equipo omen-saa-2, 2026-09-08) =====
 
     /**
      * Comprueba el cuadre antes de llamar a generarAsiento y ajusta la diferencia por redondeo
