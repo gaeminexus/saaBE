@@ -1,6 +1,7 @@
 package com.saa.ws.rest.cxp;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -486,7 +487,10 @@ public class PagoProgramadoRest {
      * movimiento bancario.
      * Body esperado:
      *   { "idsPagos": [12, 13], "referencia": "TRX-9981",
+     *     "referenciasPorPago": {"12": "TRX-9981", "13": "TRX-9982"},
      *     "fechaPago": "2026-08-13", "observacion": "...", "idUsuario": 5 }
+     * "referenciasPorPago" es opcional: si trae una entrada para un pago, esa gana sobre
+     * "referencia"; si no, se usa "referencia" (comportamiento de siempre).
      */
     @POST
     @Path("/confirmarManual")
@@ -506,9 +510,10 @@ public class PagoProgramadoRest {
             String fechaPago   = (String) datos.get("fechaPago");
             String observacion = (String) datos.get("observacion");
             Long   idUsuario   = toLong(datos.get("idUsuario"));
+            Map<Long, String> referenciasPorPago = toLongStringMap(datos.get("referenciasPorPago"));
 
             Map<String, Object> resultado = pagoProgramadoService.confirmarPagosManual(
-                    idsPagos, referencia, fechaPago, observacion, idUsuario);
+                    idsPagos, referencia, referenciasPorPago, fechaPago, observacion, idUsuario);
             return Response.status(Response.Status.OK).entity(resultado)
                     .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
@@ -646,5 +651,25 @@ public class PagoProgramadoRest {
             }
         }
         return ids;
+    }
+
+    /**
+     * Convierte el objeto JSON {@code {"21": "1009212", ...}} a {@code Map<Long, String>}.
+     * Las claves de un objeto JSON siempre llegan como String; una clave que no se pueda
+     * convertir a Long se ignora en vez de reventar toda la confirmación.
+     */
+    private Map<Long, String> toLongStringMap(Object valor) {
+        Map<Long, String> resultado = new HashMap<>();
+        if (valor instanceof Map) {
+            for (Map.Entry<?, ?> entrada : ((Map<?, ?>) valor).entrySet()) {
+                Long idPago = toLong(entrada.getKey());
+                if (idPago == null) {
+                    continue;
+                }
+                Object refValor = entrada.getValue();
+                resultado.put(idPago, refValor != null ? refValor.toString() : null);
+            }
+        }
+        return resultado;
     }
 }

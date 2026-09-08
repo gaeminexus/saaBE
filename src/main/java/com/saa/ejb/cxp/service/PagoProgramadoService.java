@@ -360,8 +360,14 @@ public interface PagoProgramadoService extends EntityService<PagoProgramado> {
 	 * respuesta: mientras tanto la conciliación se hace contra el estado de
 	 * cuenta y se confirma a mano.
 	 *
-	 * @param idsPagos   : Ids de los pagos a confirmar (Registrado o En archivo)
-	 * @param referencia : Referencia o número de transacción del banco (opcional)
+	 * @param idsPagos           : Ids de los pagos a confirmar (Registrado o En archivo)
+	 * @param referencia         : Referencia o número de transacción del banco, para los
+	 *                             pagos que no tengan entrada en {@code referenciasPorPago}
+	 *                             (opcional)
+	 * @param referenciasPorPago : Referencia bancaria específica por pago (idPago → referencia),
+	 *                             para cuando cada pago del lote recibió una referencia distinta
+	 *                             del banco. Gana sobre {@code referencia} para el pago que tenga
+	 *                             entrada acá; null o vacío = se usa {@code referencia} para todos
 	 * @param fechaPago  : Fecha real del pago en formato yyyy-MM-dd; si viene
 	 *                     vacía se usa la fecha actual. Es la fecha del asiento.
 	 * @param observacion: Nota que se agrega a la observación del pago (opcional)
@@ -370,7 +376,8 @@ public interface PagoProgramadoService extends EntityService<PagoProgramado> {
 	 * @throws Throwable : Excepcion
 	 */
 	Map<String, Object> confirmarPagosManual(List<Long> idsPagos, String referencia,
-			String fechaPago, String observacion, Long idUsuario) throws Throwable;
+			Map<Long, String> referenciasPorPago, String fechaPago, String observacion, Long idUsuario)
+			throws Throwable;
 
 	/**
 	 * Anula un pago que aún no fue confirmado por el banco.

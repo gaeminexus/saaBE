@@ -1776,15 +1776,19 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 
 	@Override
 	public Map<String, Object> confirmarPagosManual(List<Long> idsPagos, String referencia,
-			String fechaPago, String observacion, Long idUsuario) throws Throwable {
+			Map<Long, String> referenciasPorPago, String fechaPago, String observacion, Long idUsuario)
+			throws Throwable {
 
-		System.out.println("=== confirmarPagosManual | pagos=" + idsPagos + " ===");
+		System.out.println("=== confirmarPagosManual | pagos=" + idsPagos
+				+ " | referenciasPorPago=" + referenciasPorPago + " ===");
 
 		if (idsPagos == null || idsPagos.isEmpty()) {
 			throw new IncomeException("Debe seleccionar al menos un pago para confirmar.");
 		}
 
 		LocalDate fecha = parseFecha(fechaPago);
+		// referencia (para todos) sigue funcionando igual que siempre - retrocompatible.
+		// referenciasPorPago, si trae una entrada para el pago, gana sobre esa.
 		String ref  = (referencia != null && !referencia.trim().isEmpty())
 				? referencia.trim() : null;
 		String nota = (observacion != null && !observacion.trim().isEmpty())
@@ -1814,9 +1818,16 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 			}
 
 			try {
+				// Resolucion de referencia, por pago: 1) referenciasPorPago si trae una
+				// entrada para este id, 2) si no, la referencia unica de siempre (ref),
+				// 3) si ninguna, no se toca referenciaBanco - igual que hoy.
+				String refEspecifica = (referenciasPorPago != null) ? referenciasPorPago.get(idPago) : null;
+				String refPago = (refEspecifica != null && !refEspecifica.trim().isEmpty())
+						? refEspecifica.trim() : ref;
+
 				pago.setFechaRespuesta(fecha);
-				if (ref != null) {
-					pago.setReferenciaBanco(ref);
+				if (refPago != null) {
+					pago.setReferenciaBanco(refPago);
 				}
 				if (nota != null) {
 					pago.setObservacion((pago.getObservacion() != null
