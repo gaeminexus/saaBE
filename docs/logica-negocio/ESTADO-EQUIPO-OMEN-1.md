@@ -2001,3 +2001,54 @@ aplica** y si hace falta reemitir algo.
 
 **No es un problema hoy y no urge.** Se anota para que la decision se tome con este dato a la
 vista, y no se descubra cuando alguien compare dos periodos y no cuadren.
+
+---
+
+## ✅ 2026-09-07 — CIERRE DE CARTERA DE AGOSTO EJECUTADO. "Salio muy bien"
+
+Confirmado por el usuario. Cerro el frente que ocupo toda la tarde y que arranco con dos asientos
+de reclasificacion descuadrados y la pregunta correcta: *«¿las bandas se generaron mal o el
+algoritmo de validacion esta equivocado?»*. **Ninguna de las dos.**
+
+Fueron dos defectos encadenados, los dos de borde:
+
+1. **`calculaVencidosDelMes` contaba `(desde, hasta]`** cuando lo que cruza la frontera es
+   `[desde, hasta)`. La distribucion clasifica con la regla del proyecto —el dia del vencimiento es
+   POR VENCER— y ese calculo no. Los dos extremos corridos un dia. Confirmado al centavo:
+   `209.243,30 − 60.779,06 = 148.464,24` y `60.779,06 − 45.909,37 = 14.869,69`, exactamente los dos
+   descuadres.
+2. **El neteo contaba como cobranza de planilla cualquier movimiento positivo de aportes**, sin
+   filtrar el tipo. Migrados, ajustes y reversos tapaban un faltante REAL de 5.495,13 y el sistema
+   veia un exceso falso de 686,53 y neteaba cero. Ahora cuentan solo aporte mensual y excedente
+   Petro, por decision del usuario, y el neteo reversa 5.442,87.
+
+⭐ **La leccion de metodo, y es la del dia entero:** falle DOS hipotesis antes de acertar —falta de
+parametrizacion, y despues un solo borde— y las dos veces por deducir leyendo codigo. **La tercera
+salio de SUMAR LAS LINEAS REALES de la previsualizacion**: ahi se vio que todo el descuadre caia en
+la banda 1 de cada producto —el unico lugar con tratamiento especial— y que las bandas 2 en
+adelante cuadraban en cero exacto en los cinco productos. De ahi fue aritmetica, no intuicion.
+
+**Y la validacion que rechazaba la ejecucion hizo exactamente lo que tenia que hacer.** Sin ella se
+habrian contabilizado dos asientos descuadrados.
+
+## ✅ 2026-09-07 — El acuerdo 43 SI reversaba los aportes. Cerrado sin defecto
+
+El usuario lo confirmo: *«fue un error mio, si se reversaban»*.
+
+**Queda cerrado el hilo entero que abrio ese reporte, y con el mi propio error:**
+
+- El `sql/207` daba por hecho que `AcuerdoCondonacionServiceImpl:566` dejaba la FK `PGAP.PGPRCDGO`
+  en NULL. **Era falso** — `EntityDaoImpl.save()` usa `persist()` para entidades nuevas, no
+  `merge()`, y `persist()` si escribe el id en el objeto que recibe. Ya estaba ANULADO en su
+  encabezado; **queda confirmado que ademas no habia nada que reparar**.
+- El cambio `pago = pagoPrestamoService.saveSingle(pago)` que quedo commiteado es **inofensivo pero
+  inerte**: alinea el estilo con el resto del proyecto y no arregla nada.
+- El `sql/208` (diagnostico) queda sin correr y sin necesidad.
+
+⭐ **Lo caro no fue el error del usuario sino el mio:** deduje la semantica de `save()` desde una
+nota del CLAUDE.md sobre el "merge desnudo" —que es real, pero para el caso de UPDATE— y la extendi
+al INSERT **sin abrir el archivo**. Escribi un script de REPARACION sobre esa deduccion. Correrlo
+le habria devuelto el dinero al socio por segunda vez. Lo detuvo que el usuario corriera primero el
+bloque de control y devolviera cero filas.
+
+> **Un script que escribe sobre plata no se entrega sin haber leido el codigo que se afirma roto.**
