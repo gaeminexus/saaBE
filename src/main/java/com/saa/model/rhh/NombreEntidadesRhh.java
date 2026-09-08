@@ -82,6 +82,7 @@ public interface NombreEntidadesRhh {
     // ================= ANTICIPOS A TRABAJADORES =================
     String ANTICIPO_EMPLEADO             = "AnticipoEmpleado";
     String DEVOLUCION_ANTICIPO           = "DevolucionAnticipo";
+    String DEVOLUCION_CUOTA_ANTICIPO     = "DevolucionCuotaAnticipo";
 
     // ================= PLANILLAS DEL IESS =================
     String PLANILLA_IESS                 = "PlanillaIess";

@@ -16,6 +16,7 @@ import com.saa.ejb.rhh.dao.AnticipoEmpleadoDaoService;
 import com.saa.ejb.rhh.dao.CuotaDescuentoDaoService;
 import com.saa.ejb.rhh.dao.DescuentoRecurrenteDaoService;
 import com.saa.ejb.rhh.dao.DevolucionAnticipoDaoService;
+import com.saa.ejb.rhh.dao.DevolucionCuotaAnticipoDaoService;
 import com.saa.ejb.rhh.dao.PeriodoNominaDaoService;
 import com.saa.ejb.rhh.service.DevolucionAnticipoService;
 import com.saa.ejb.tsr.service.IngresoService;
@@ -24,6 +25,7 @@ import com.saa.model.rhh.AnticipoEmpleado;
 import com.saa.model.rhh.CuotaDescuento;
 import com.saa.model.rhh.DescuentoRecurrente;
 import com.saa.model.rhh.DevolucionAnticipo;
+import com.saa.model.rhh.DevolucionCuotaAnticipo;
 import com.saa.model.rhh.Empleado;
 import com.saa.model.rhh.NombreEntidadesRhh;
 import com.saa.model.rhh.PeriodoNomina;
@@ -58,6 +60,9 @@ public class DevolucionAnticipoServiceImpl implements DevolucionAnticipoService 
 
 	@EJB
 	private DevolucionAnticipoDaoService devolucionAnticipoDaoService;
+
+	@EJB
+	private DevolucionCuotaAnticipoDaoService devolucionCuotaAnticipoDaoService;
 
 	@EJB
 	private AnticipoEmpleadoDaoService anticipoEmpleadoDaoService;
@@ -228,9 +233,12 @@ public class DevolucionAnticipoServiceImpl implements DevolucionAnticipoService 
 		DescuentoRecurrente descuento = anticipo.getDescuentoRecurrente();
 		List<Map<String, Object>> cuotasCanceladasDto = new ArrayList<>();
 		Map<String, Object> cuotaAjustadaDto = null;
-		List<Long> idsCuotasCanceladas = new ArrayList<>();
-		Long idCuotaAjustada = null;
-		Double valorOriginalCuotaAjustada = null;
+		// Efectos por cuota, para grabar como filas de DevolucionCuotaAnticipo una vez que
+		// la devolución tenga código — es lo que permite a anular() saber exactamente qué
+		// cuotas devolver, sin ambigüedad cuando el anticipo tiene más de una devolución.
+		List<CuotaDescuento> cuotasParaCancelar = new ArrayList<>();
+		CuotaDescuento cuotaParaAjustar = null;
+		Double valorAnteriorAjuste = null;
 		Set<String> avisosPeriodo = new LinkedHashSet<>();
 
 		if (descuento != null) {
@@ -247,7 +255,7 @@ public class DevolucionAnticipoServiceImpl implements DevolucionAnticipoService 
 					cuota.setEstado(Long.valueOf(RhhEstadoCuotaDescuento.ANULADA));
 					cuota = cuotaDescuentoDaoService.save(cuota, cuota.getCodigo());
 					restante -= totalCuota;
-					idsCuotasCanceladas.add(cuota.getCodigo());
+					cuotasParaCancelar.add(cuota);
 
 					Map<String, Object> item = new HashMap<>();
 					item.put("numero", cuota.getNumeroCuota());
@@ -257,10 +265,10 @@ public class DevolucionAnticipoServiceImpl implements DevolucionAnticipoService 
 				} else {
 					// Resto menor que la cuota siguiente: baja de valor y SIGUE PENDIENTE.
 					double nuevoValor = totalCuota - restante;
-					valorOriginalCuotaAjustada = Double.valueOf(totalCuota);
+					valorAnteriorAjuste = Double.valueOf(totalCuota);
 					cuota.setTotal(Double.valueOf(nuevoValor));
 					cuota = cuotaDescuentoDaoService.save(cuota, cuota.getCodigo());
-					idCuotaAjustada = cuota.getCodigo();
+					cuotaParaAjustar = cuota;
 
 					cuotaAjustadaDto = new HashMap<>();
 					cuotaAjustadaDto.put("numero", cuota.getNumeroCuota());
@@ -303,14 +311,34 @@ public class DevolucionAnticipoServiceImpl implements DevolucionAnticipoService 
 		devolucion.setReferencia(referencia);
 		devolucion.setObservacion(observacion);
 		devolucion.setIdIngreso(idIngreso);
-		devolucion.setIdsCuotasCanceladas(idsCuotasCanceladas.isEmpty() ? null : join(idsCuotasCanceladas));
-		devolucion.setIdCuotaAjustada(idCuotaAjustada);
-		devolucion.setValorOriginalCuotaAjustada(valorOriginalCuotaAjustada);
 		devolucion.setAsiento(idAsiento != null ? em.getReference(Asiento.class, idAsiento) : null);
 		devolucion.setEstado(Long.valueOf(EstadoDevolucionAnticipo.VIGENTE));
 		devolucion.setFechaRegistro(LocalDateTime.now());
 		devolucion.setUsuario(idUsuario);
 		devolucion = devolucionAnticipoDaoService.save(devolucion, null);
+
+		// Deja el rastro de qué cuotas tocó, ahora que la devolución ya tiene código
+		// (docs/logica-negocio/rhh/API-DEVOLUCION-ANTICIPO.md #2.2): es lo único que permite
+		// a anular() reversar exactamente estas cuotas y no las de otra devolución del mismo
+		// anticipo.
+		for (CuotaDescuento cuota : cuotasParaCancelar) {
+			DevolucionCuotaAnticipo detalle = new DevolucionCuotaAnticipo();
+			detalle.setDevolucion(devolucion);
+			detalle.setCuota(cuota);
+			detalle.setTipo(Long.valueOf(DevolucionCuotaAnticipo.CANCELADA));
+			detalle.setValorAplicado(cuota.getTotal());
+			detalle.setValorAnterior(null);
+			devolucionCuotaAnticipoDaoService.save(detalle, null);
+		}
+		if (cuotaParaAjustar != null) {
+			DevolucionCuotaAnticipo detalle = new DevolucionCuotaAnticipo();
+			detalle.setDevolucion(devolucion);
+			detalle.setCuota(cuotaParaAjustar);
+			detalle.setTipo(Long.valueOf(DevolucionCuotaAnticipo.AJUSTADA));
+			detalle.setValorAplicado(Double.valueOf(valorAnteriorAjuste.doubleValue() - cuotaParaAjustar.getTotal().doubleValue()));
+			detalle.setValorAnterior(valorAnteriorAjuste);
+			devolucionCuotaAnticipoDaoService.save(detalle, null);
+		}
 
 		System.out.println("✓ Devolución de anticipo registrada: id=" + devolucion.getCodigo()
 				+ " | anticipo=" + idAnticipo + " | cuotas canceladas=" + cuotasCanceladasDto.size());
@@ -372,30 +400,31 @@ public class DevolucionAnticipoServiceImpl implements DevolucionAnticipoService 
 
 		// 2. Devuelve a PENDIENTE las cuotas que había cancelado, y restaura el valor de
 		// la que hubiera ajustado — salvo que ya no siga en un estado tocable (ver abajo).
+		// Se recorren las filas de DevolucionCuotaAnticipo de ESTA devolución, no un texto
+		// parseado: es lo que evita reactivar la cuota equivocada cuando el anticipo tuvo
+		// más de una devolución.
 		StringBuilder avisoCuotasIntocadas = new StringBuilder();
-		String idsCanceladas = devolucion.getIdsCuotasCanceladas();
-		if (idsCanceladas != null && !idsCanceladas.trim().isEmpty()) {
-			for (String idTexto : idsCanceladas.split(",")) {
-				Long idCuota = Long.valueOf(idTexto.trim());
-				CuotaDescuento cuota = cuotaDescuentoDaoService.selectById(idCuota, NombreEntidadesRhh.CUOTA_DESCUENTO);
+		List<DevolucionCuotaAnticipo> detalles = devolucionCuotaAnticipoDaoService.selectByDevolucion(idDevolucion);
+		for (DevolucionCuotaAnticipo detalle : detalles) {
+			CuotaDescuento cuota = cuotaDescuentoDaoService.selectById(detalle.getCuota().getCodigo(),
+					NombreEntidadesRhh.CUOTA_DESCUENTO);
+			int tipoDetalle = (detalle.getTipo() != null) ? detalle.getTipo().intValue() : 0;
+			if (tipoDetalle == DevolucionCuotaAnticipo.CANCELADA) {
 				cuota.setEstado(Long.valueOf(RhhEstadoCuotaDescuento.PENDIENTE));
 				cuotaDescuentoDaoService.save(cuota, cuota.getCodigo());
-			}
-		}
-		if (devolucion.getIdCuotaAjustada() != null) {
-			CuotaDescuento cuota = cuotaDescuentoDaoService.selectById(devolucion.getIdCuotaAjustada(),
-					NombreEntidadesRhh.CUOTA_DESCUENTO);
-			// La cuota ajustada siguió PENDIENTE, así que en principio nadie más la tocó —
-			// salvo que la nómina ya la haya descontado con el valor reducido mientras tanto.
-			// Las cuotas DESCONTADA no se tocan (mismo criterio que registrar): se avisa en
-			// vez de pisar un descuento que ya ocurrió.
-			if (cuota.getEstado() != null && cuota.getEstado().intValue() == RhhEstadoCuotaDescuento.DESCONTADA) {
-				avisoCuotasIntocadas.append("La cuota N° ").append(cuota.getNumeroCuota())
-						.append(" ya se descontó con el valor reducido: no se restauró su valor original ($")
-						.append(fmt(devolucion.getValorOriginalCuotaAjustada())).append("); revísela a mano. ");
-			} else {
-				cuota.setTotal(devolucion.getValorOriginalCuotaAjustada());
-				cuotaDescuentoDaoService.save(cuota, cuota.getCodigo());
+			} else if (tipoDetalle == DevolucionCuotaAnticipo.AJUSTADA) {
+				// La cuota ajustada siguió PENDIENTE, así que en principio nadie más la tocó —
+				// salvo que la nómina ya la haya descontado con el valor reducido mientras
+				// tanto. Las cuotas DESCONTADA no se tocan (mismo criterio que registrar): se
+				// avisa en vez de pisar un descuento que ya ocurrió.
+				if (cuota.getEstado() != null && cuota.getEstado().intValue() == RhhEstadoCuotaDescuento.DESCONTADA) {
+					avisoCuotasIntocadas.append("La cuota N° ").append(cuota.getNumeroCuota())
+							.append(" ya se descontó con el valor reducido: no se restauró su valor original ($")
+							.append(fmt(detalle.getValorAnterior())).append("); revísela a mano. ");
+				} else {
+					cuota.setTotal(detalle.getValorAnterior());
+					cuotaDescuentoDaoService.save(cuota, cuota.getCodigo());
+				}
 			}
 		}
 
@@ -488,17 +517,6 @@ public class DevolucionAnticipoServiceImpl implements DevolucionAnticipoService 
 		String apellidos = (empleado.getApellidos() != null) ? empleado.getApellidos() : "";
 		String nombres = (empleado.getNombres() != null) ? empleado.getNombres() : "";
 		return (apellidos + " " + nombres).trim();
-	}
-
-	private String join(List<Long> ids) {
-		StringBuilder sb = new StringBuilder();
-		for (Long id : ids) {
-			if (sb.length() > 0) {
-				sb.append(",");
-			}
-			sb.append(id);
-		}
-		return sb.toString();
 	}
 
 	private String fmt(double valor) {
