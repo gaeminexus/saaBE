@@ -41,6 +41,7 @@
 | 2b ▸ | **Dos equipos escribiendo la misma idea no colisionan: se duplican**, y git no avisa |
 | **2c** | Plantillas contables: cómo se reserva un código alterno `PLNSCDAL` |
 | **2d** | Marcador de equipo en el prefijo de **todos** los commits, no sólo los de coordinación |
+| **2e** | **El índice de git también es estado compartido**: `git add` por ruta no alcanza, `git commit` se lleva todo lo staged |
 | **3** | Nombres de tabla de 4 letras: son únicos en **todo el proyecto**, no por esquema |
 | 3 ▸ | **Reservar un nombre ≠ autorizar a crear la tabla.** `reservada` no es `autorizada` |
 | **4** | Archivos con dueño exclusivo: pedírselo al dueño, no editarlo y avisar después |
@@ -479,6 +480,67 @@ rompe cuando ese estado se mueve.** Seis caracteres fijos no dependen de nada.
 ✅ **Los cuatro equipos adheridos al 2026-08-31.** El equipo A (`saabe-25`) confirmó tras verificar
 la premisa por su cuenta: los últimos 12 commits de `origin/main` son **todos** de `xeonpotato`, y
 ya hay commits con prefijo `crd:` que no son suyos. La ambigüedad no era hipotética, ya existía.
+
+---
+
+## 2e. ⛔ El índice de git también es estado compartido
+
+**Verificado el 2026-09-08 sobre un incidente real, entre los árbitros de `omen-saa-1` y
+`omen-saa-2`.** Los dos equipos lo adoptaron el mismo día.
+
+El commit **`ce3ce9b`** de `omen-saa-1` —cinco generadores de `rpr`— se llevó puestos **tres
+archivos de `omen-saa-2`** que no tenían nada que ver: `CLAUDE.md`, `compilar-jasper.bat` y
+`tools/jasper/src/tools/jasper/CompilarJasper.java`, 87 líneas del harness de compilación de
+`.jasper` que ese equipo estaba armando.
+
+### El `add` estuvo bien. El agujero está en el `commit`
+
+Lo que se corrió fue esto, y es exactamente lo que el `settings.json` del proyecto exige:
+
+```
+git add src/.../GeneracionG42ServiceImpl.java  ... (cinco rutas explícitas, archivo por archivo)
+git commit -q -F <mensaje>
+```
+
+Nada de `-A`, ni `.`, ni `-u`, ni un directorio.
+
+⭐ **`git commit` commitea TODO EL ÍNDICE, no lo que acabás de agregar.** El otro equipo tenía sus
+archivos staged en ese momento, y el commit se los llevó sin que nadie tocara nada ajeno.
+
+**En un árbol compartido, el índice es estado compartido igual que el working tree.** Es la parte
+que no se ve: uno mira `git status`, ve sus archivos, y no registra que la columna de la izquierda
+—lo staged— puede ser de cualquiera. Fechable en este caso: veinte minutos antes, en el commit
+anterior del mismo equipo, `tools/` figuraba todavía como `??` untracked.
+
+### Lo que sí lo previene
+
+```
+git commit -- <las rutas>          # limita el commit a esas rutas, ignora el resto del índice
+git diff --cached --name-only      # control barato ANTES: qué se va a llevar DE VERDAD
+```
+
+El segundo es el que importa cuando uno tiene dudas: muestra lo que se va a commitear, **no lo que
+uno cree que agregó**.
+
+### Dos cosas que hay que decir explícitamente
+
+1. **El `deny` de `-A` / `.` / `-u` del `settings.json` sigue siendo necesario, pero NO es
+   suficiente.** Quien lo lea como «ya está cubierto» va a hacer justo lo que se hizo acá —agregar
+   con cuidado, ruta por ruta— y le va a volver a pasar.
+2. **Quien deja algo staged sin commitear también tiene parte.** Lo staged queda al alcance del
+   próximo `commit` de cualquiera. Si vas a interrumpir un trabajo, dejalo como working tree sucio
+   o guardalo en un `stash`, no a medio camino en el índice.
+
+### Por qué esta sección existe con el mecanismo corregido
+
+La primera explicación del incidente fue *«usaron `git add` de directorio»*. **Era falsa**, y
+anotarla así habría sido peor que no anotar nada: el próximo equipo habría leído la advertencia, la
+habría cumplido al pie de la letra, y habría repetido el incidente. Una regla que describe mal la
+causa no protege de nada — sólo reparte culpa.
+
+⚠️ **No se reescribió historia.** Los archivos ya están en `origin/main` y compilan. Lo único que se
+perdió es la trazabilidad: quien mire el historial de `tools/jasper/` va a encontrar un commit de
+`rpr` tocándolo.
 
 ---
 
