@@ -59,19 +59,36 @@ public class OrdenBeneficioSocialDaoServiceImpl extends EntityDaoImpl<OrdenBenef
 				+ idEmpresa + ", tipo: " + tipoBeneficio + ", anio: " + anio + ", region: " + region);
 		// Misma logica que el indice funcional UQ_ODBS_VIVA del DDL: solo cuentan las
 		// ordenes en 1 GENERADA, 2 ENVIADA_A_TESORERIA o 3 PAGADA. Una ANULADA no bloquea
-		// generar otra. La region se compara con NVL a -1, igual que el indice, porque los
-		// tipos que no son decimo cuarto la llevan en null.
-		Query query = em.createQuery(" select   t "
+		// generar otra. La region va en null para los tipos que no son decimo cuarto, asi
+		// que la comparacion se arma por rama en vez de con nvl/coalesce:
+		// - nvl() no es JPQL estandar; este WildFly corre con cumplimiento estricto y lo
+		//   rechaza con StrictJpaComplianceViolation (medido el 2026-09-08, primer clic real
+		//   del ciclo ODBS). FUNCTION('nvl', ...) esquivaria la validacion pero atando el
+		//   JPQL a Oracle, y no es lo que se pidio.
+		// - coalesce(:region, -1) es JPQL estandar pero con el parametro en null le da
+		//   problemas de inferencia de tipo a Hibernate -- cambiar un error por otro mas raro.
+		// La rama "is null" tambien evita ligar el parametro "region" cuando no aplica: un
+		// setParameter de un nombre que no esta en el JPQL de esa rama fallaria en runtime.
+		StringBuilder jpql = new StringBuilder(
+				" select   t "
 				+ " from     OrdenBeneficioSocial t "
 				+ " where    t.empresa.codigo = :idEmpresa "
 				+ "          and t.tipoBeneficio = :tipoBeneficio "
 				+ "          and t.anio = :anio "
-				+ "          and nvl(t.region, -1) = nvl(:region, -1) "
 				+ "          and t.estado in (:generada, :enviada, :pagada) ");
+		if (region == null) {
+			jpql.append(" and t.region is null ");
+		} else {
+			jpql.append(" and t.region = :region ");
+		}
+
+		Query query = em.createQuery(jpql.toString());
 		query.setParameter("idEmpresa", idEmpresa);
 		query.setParameter("tipoBeneficio", tipoBeneficio);
 		query.setParameter("anio", anio);
-		query.setParameter("region", region);
+		if (region != null) {
+			query.setParameter("region", region);
+		}
 		query.setParameter("generada", Long.valueOf(RhhEstadoOrdenBeneficio.GENERADA));
 		query.setParameter("enviada", Long.valueOf(RhhEstadoOrdenBeneficio.ENVIADA_A_TESORERIA));
 		query.setParameter("pagada", Long.valueOf(RhhEstadoOrdenBeneficio.PAGADA));
