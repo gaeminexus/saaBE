@@ -192,6 +192,11 @@ y no aporta nada). La prelación del motor ya tiene el componente listo para cua
 - El timer atrapa `Throwable`: un fallo no deja el timer en error ni dispara reintentos
   automáticos de WildFly.
 
+> **Estuvo desactivado entre el 2026-08-31 y el 2026-09-09** (`@Schedule` comentado, a pedido
+> del usuario): se estaban cerrando pagos de agosto con fecha de fin de agosto y no se quería
+> generar mora sobre esas cuotas todavía. **Reactivado el 2026-09-09**, vuelve a correr a las
+> 02:00 tal como describe esta sección.
+
 ### Transaccionalidad
 
 Cada préstamo se procesa en **su propia transacción** (`REQUIRES_NEW`), invocada a través del
