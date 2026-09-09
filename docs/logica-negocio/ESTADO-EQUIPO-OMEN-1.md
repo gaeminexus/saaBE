@@ -2517,3 +2517,86 @@ enviarle los mensajes a tus agentes»*. Desde el 2026-09-09 el despacho a `omen-
 correr y el permiso para hablarle a otro árbitro — no el reparto de trabajo del propio equipo.
 **Es la misma corrección que el usuario ya le había hecho al árbitro de `omen-saa-2`** (su §31.3),
 o sea que no era una preferencia de esa sesión: es cómo quiere que funcione el esquema.
+
+---
+
+## ✅ 2026-09-09 — CCPM: tres columnas nuevas en el informe mensual de préstamos
+
+**Pedido del usuario, urgente:** agregar al informe financiero mensual de préstamos el nombre del
+partícipe (razón social), la fecha de vencimiento del préstamo y el monto original.
+
+| Pieza | Commit |
+|---|---|
+| DDL `crd/sql/220` + contrato `reportes/API-CCPM-COLUMNAS-NUEVAS.md` | `8bc41011` |
+| BE — entidad + generador + `reportes/CCPM.md` | `6bb7db5f` |
+| FE — modelo + columnas de la pantalla (saaFE) | `8729773` |
+
+### Cuál era el reporte, y por qué no era obvio
+
+Hay **tres** informes financieros mensuales y sólo uno es de préstamos: `CPRM` (aportes por
+partícipe), `CJBM` (jubilados) y **`CCPM` = Crédito Cuotas Préstamos Mensual**. Es el único que
+reporta operaciones de crédito. Tabla `RPR.CCPM`, generador `GeneracionCCPMServiceImpl`, pantalla
+`rpr/forms/informes-mensuales-credito`.
+
+⚠️ **El CCPM comparte lógica base con el G48 y NO es el G48.** El G48 es el reporte **regulatorio**,
+con estructura fija, que va a la Superintendencia; el CCPM es el informe **interno** con campos
+adicionales. Agregar columnas acá es seguro; replicarlas allá rompería una entrega al regulador.
+Quedó escrito en `CCPM.md` para que nadie los "sincronice".
+
+### ⛔ El dato que puede salir vacío, y es decisión tomada
+
+`montoSolicitado` (`PRST.PRSTMNSL`) **no lo escribe ninguna línea del backend**. Se buscó
+`setMontoSolicitado(` en todo `src/main/java`: aparece sólo en la entidad y en un mapper del app
+móvil que lo *lee*. Llega tal cual del JSON del frontend al dar de alta, y la cartera migrada entró
+por carga de Excel, que tampoco lo setea.
+
+**Se le ofrecieron al usuario cuatro opciones —incluida medir primero— y eligió `montoSolicitado`
+con la advertencia sobre la mesa.** Por eso el `sql/220` trae un **bloque 1 de medición** que
+cuenta, sobre los préstamos vivos (estados 2 y 11), cuántos lo tienen en NULL o en 0. **Pendiente
+de que el usuario lo corra.** Si sale mayoritariamente vacío, la decisión se revisa antes de que el
+informe salga con una columna en blanco.
+
+⭐ **Y por eso el null viaja como null hasta la pantalla, a propósito, en las dos puntas:** el
+generador setea sin guarda y sin convertir a `0.0`, y `getCellValue` corta en null antes de
+formatear. **Un cero en un informe financiero se lee como un dato real; un vacío se lee como un
+faltante.** Convertirlo "defensivamente" habría hecho que la cartera migrada informara préstamos
+solicitados por cero. Está anotado en el código de los dos lados.
+
+### Lo que verificó el árbitro y no los agentes (regla 11)
+
+- **Que el generador fuera el único punto que arma filas de CCPM.** Hay un segundo
+  `new CreditoCuotasPrestamosMensual()` en `CreditoCuotasPrestamosMensualServiceImpl:30`, pero es
+  un objeto vacío para el `remove` y no copia campos. Si hubiera sido un segundo camino real, el
+  informe habría salido con parte de las filas en blanco **y sin ningún error**.
+- **El manejo del null**, que el agente FE verificó sobre su propio código: `getCellValue:330-337`
+  corta en `null`/`undefined` antes de las ramas de `esFecha`/`esNumero`, y es el único camino de
+  la tabla (`html:242`) y de los dos exportadores a CSV (`:775`, `:810`). Correcto.
+- **La fecha de vencimiento sale de `PRSTFCFN`**, que `PrestamoServiceImpl:568-575` calcula como el
+  vencimiento de la **última cuota**, recorriendo los detalles. Se reescribe tanto en el alta como
+  en la carga por Excel, así que está poblada en la cartera migrada. Verificado, no deducido.
+- `mvn -q compile` exit 0 y `ng build --configuration development` limpio, corridos por el árbitro.
+
+### ⛔ Ahora son DOS scripts los que van antes del WAR
+
+`crd/sql/218` (control de 212/213, jubilados) **y** `crd/sql/220` (las tres columnas). El 220 no es
+opcional: Hibernate mete toda columna `@Column` en el `SELECT`, así que con el WAR arriba y la
+tabla sin las columnas se cae **la pantalla entera de informes mensuales** con `ORA-00904`, no sólo
+lo nuevo. Es el accidente de `CRD.CFCR` del 2026-09-08. Cuarta vez que este patrón aparece en diez
+días.
+
+### 🔧 Hallazgo de entorno — cómo se compila el frontend en esta máquina
+
+**El árbitro no pudo verificar el build hasta encontrar esto, y es transversal a todos los equipos.**
+
+`node` **no resuelve** en Git Bash en esta OMEN. Angular sólo compila con la v22 de nvm, cuya
+carpeta **no tiene `node.exe`: sólo `node64.exe`**. Por eso no alcanza con agregarla al `PATH` ni
+usar `npm.cmd`/`npx.cmd` de ahí — esos `.cmd` buscan `node` a secas, que resuelve al v12 global.
+Hay que invocar el binario directo contra el bin de la herramienta:
+
+```bash
+"/c/Users/xeonp/AppData/Roaming/nvm/v22.12.0/node64.exe" node_modules/@angular/cli/bin/ng.js build --configuration development
+```
+
+Vale la pena llevarlo al `CLAUDE.md` de `saaFE` o al §8 del registro compartido: cualquier árbitro
+que intente cumplir la regla de "verificar que compila antes de commitear" se traba en lo mismo.
+**No se toca desde acá sin consultar** — los dos son archivos compartidos.
