@@ -6,6 +6,8 @@
  */
 package com.saa.ejb.tsr.daoImpl;
 
+import java.util.List;
+
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.tsr.dao.DetalleExtractoBancarioDaoService;
 import com.saa.model.tsr.DetalleExtractoBancario;
@@ -21,6 +23,7 @@ import jakarta.persistence.Query;
  *
  * Implementacion DetalleExtractoBancarioDaoService.
  */
+@SuppressWarnings("unchecked")
 @Stateless
 public class DetalleExtractoBancarioDaoServiceImpl extends EntityDaoImpl<DetalleExtractoBancario>
         implements DetalleExtractoBancarioDaoService {
@@ -68,5 +71,16 @@ public class DetalleExtractoBancarioDaoServiceImpl extends EntityDaoImpl<Detalle
         } catch (NoResultException e) {
             return null;
         }
+    }
+
+    @Override
+    public List<DetalleExtractoBancario> selectByExtracto(Long idExtractoBancario) throws Throwable {
+        System.out.println("Ingresa al metodo selectByExtracto con idExtractoBancario: " + idExtractoBancario);
+        Query query = em.createQuery(
+            " select e from DetalleExtractoBancario e " +
+            " where e.extractoBancario.codigo = :idExtractoBancario " +
+            " order by e.numeroFila");
+        query.setParameter("idExtractoBancario", idExtractoBancario);
+        return query.getResultList();
     }
 }

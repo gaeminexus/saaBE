@@ -8,6 +8,8 @@
  */
 package com.saa.ejb.tsr.dao;
 
+import java.util.List;
+
 import com.saa.basico.util.EntityDao;
 import com.saa.model.tsr.DetalleExtractoBancario;
 
@@ -30,5 +32,16 @@ public interface DetalleExtractoBancarioDaoService extends EntityDao<DetalleExtr
      * @throws Throwable : Excepcion
      */
     DetalleExtractoBancario selectByCuentaYHash(Long idCuenta, String hash) throws Throwable;
+
+    /**
+     * Todas las filas de detalle de un extracto (cabecera EXBC), en el orden
+     * original de importacion. Usado por
+     * ImportacionExtractoBancarioServiceImpl.recargar para el borrado en
+     * cascada del extracto anterior.
+     * @param idExtractoBancario : Id de la cabecera ExtractoBancario (EXBC)
+     * @return                   : Filas de detalle de ese extracto
+     * @throws Throwable         : Excepcion
+     */
+    List<DetalleExtractoBancario> selectByExtracto(Long idExtractoBancario) throws Throwable;
 
 }

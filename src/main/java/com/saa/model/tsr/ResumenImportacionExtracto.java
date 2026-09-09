@@ -48,6 +48,10 @@ public class ResumenImportacionExtracto implements Serializable {
     // Solo se llena en la respuesta de /confirmar (idempotencia/auditoria):
     private Long idExtractoCreado;
 
+    // Solo se llena en la respuesta de /recargar: el extracto que se borro
+    // para reemplazarlo por idExtractoCreado (traza de la recarga).
+    private Long idExtractoAnterior;
+
     public Long getIdCuentaBancaria() {
         return idCuentaBancaria;
     }
@@ -206,5 +210,13 @@ public class ResumenImportacionExtracto implements Serializable {
 
     public void setIdExtractoCreado(Long idExtractoCreado) {
         this.idExtractoCreado = idExtractoCreado;
+    }
+
+    public Long getIdExtractoAnterior() {
+        return idExtractoAnterior;
+    }
+
+    public void setIdExtractoAnterior(Long idExtractoAnterior) {
+        this.idExtractoAnterior = idExtractoAnterior;
     }
 }

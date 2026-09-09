@@ -106,4 +106,28 @@ public interface DetalleTransitoDaoService extends EntityDao<DetalleTransito> {
      */
     List<DetalleTransito> selectPendientesAntiguas(Long idEmpresa, LocalDateTime diasCorte) throws Throwable;
 
+    /**
+     * Cuenta, de una lista de ids de DetalleExtractoBancario, cuántos tienen una partida en
+     * tránsito PENDIENTE que los declara como origen - usado por
+     * ImportacionExtractoBancarioServiceImpl.recargar para bloquear la recarga si borrar el
+     * extracto dejaría una partida pendiente apuntando a una fila que ya no existe.
+     * @param idsDetalleExtracto : Ids de TSR.DEXB a verificar
+     * @return                   : Cantidad de esas filas con una partida pendiente
+     * @throws Throwable         : Excepcion
+     */
+    long contarPendientesPorDetalleExtracto(List<Long> idsDetalleExtracto) throws Throwable;
+
+    /**
+     * Cuenta cuantas filas DTCN existen para una lista de ids de DetalleExtractoBancario, en
+     * CUALQUIER estado (a diferencia de {@link #contarPendientesPorDetalleExtracto}, que solo
+     * cuenta Pendientes). Una partida ya Saldada sigue existiendo y sigue siendo una FK hacia
+     * DEXB via DTCNIDEX. Usado por ImportacionExtractoBancarioServiceImpl.recargar como red de
+     * seguridad antes del borrado fisico: un DEXB con historial de transito (aunque ya este
+     * saldado) no se puede borrar sin perder ese historial.
+     * @param idsDetalleExtracto : Ids de TSR.DEXB a verificar
+     * @return                   : Cantidad de filas DTCN (cualquier estado) para esos ids
+     * @throws Throwable         : Excepcion
+     */
+    long contarPorDetalleExtracto(List<Long> idsDetalleExtracto) throws Throwable;
+
 }

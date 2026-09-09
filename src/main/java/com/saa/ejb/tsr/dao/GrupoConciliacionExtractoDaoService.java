@@ -59,4 +59,23 @@ public interface GrupoConciliacionExtractoDaoService extends EntityDao<GrupoConc
      */
     List<Long> selectIdsEnGrupoActivo(List<Long> idsDetalleExtracto) throws Throwable;
 
+    /**
+     * Todos los enlaces GCEX de una lista de ids de DetalleExtractoBancario, en CUALQUIER
+     * estado de su grupo (a diferencia de {@link #selectIdsEnGrupoActivo}, que solo mira
+     * grupos activos). GCEX no tiene su propio estado -- solo lo tiene GRCC, su padre -- asi
+     * que un enlace de un grupo ya DESHECHO sigue existiendo para siempre y sigue siendo una
+     * FK hacia DEXB ({@code ConciliacionContableMatchServiceImpl.deshacerGrupo} desactiva el
+     * GRCC pero nunca borra sus filas GCEX). Usado por
+     * ImportacionExtractoBancarioServiceImpl.recargar para borrar en cascada, ANTES del DEXB,
+     * los enlaces de grupos ya deshechos -- son peso muerto, no historia con valor: el GRCC
+     * inactivo ya queda como registro de que la conciliacion existio y se deshizo, sin
+     * necesidad de conservar el enlace puntual a una fila de extracto que el usuario decidio
+     * borrar. Los enlaces de un grupo ACTIVO nunca llegan a este metodo: ese caso ya lo
+     * bloquea {@link #selectIdsEnGrupoActivo} antes.
+     * @param idsDetalleExtracto : Ids de TSR.DEXB a verificar
+     * @return                   : Enlaces GCEX (cualquier estado de grupo) para esos ids
+     * @throws Throwable         : Excepcion
+     */
+    List<GrupoConciliacionExtracto> selectPorDetalleExtracto(List<Long> idsDetalleExtracto) throws Throwable;
+
 }

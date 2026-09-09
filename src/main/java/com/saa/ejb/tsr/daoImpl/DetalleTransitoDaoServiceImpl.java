@@ -145,4 +145,28 @@ public class DetalleTransitoDaoServiceImpl extends EntityDaoImpl<DetalleTransito
         }
         return query.getResultList();
     }
+
+    @Override
+    public long contarPendientesPorDetalleExtracto(List<Long> idsDetalleExtracto) throws Throwable {
+        if (idsDetalleExtracto == null || idsDetalleExtracto.isEmpty()) {
+            return 0L;
+        }
+        Query query = em.createQuery(
+                " select count(dt) from DetalleTransito dt "
+                        + " where dt.detalleExtracto.codigo in :ids and dt.estado = :pendiente ");
+        query.setParameter("ids", idsDetalleExtracto);
+        query.setParameter("pendiente", Long.valueOf(EstadoPartidaTransito.PENDIENTE));
+        return (Long) query.getSingleResult();
+    }
+
+    @Override
+    public long contarPorDetalleExtracto(List<Long> idsDetalleExtracto) throws Throwable {
+        if (idsDetalleExtracto == null || idsDetalleExtracto.isEmpty()) {
+            return 0L;
+        }
+        Query query = em.createQuery(
+                " select count(dt) from DetalleTransito dt where dt.detalleExtracto.codigo in :ids ");
+        query.setParameter("ids", idsDetalleExtracto);
+        return (Long) query.getSingleResult();
+    }
 }

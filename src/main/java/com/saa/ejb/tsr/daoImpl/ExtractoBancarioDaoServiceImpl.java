@@ -108,4 +108,22 @@ public class ExtractoBancarioDaoServiceImpl extends EntityDaoImpl<ExtractoBancar
         query.setParameter("estadoError", Long.valueOf(ASPEstadoCargaExtracto.ERROR));
         return query.getResultList();
     }
+
+    @Override
+    public ExtractoBancario selectByCuentaYPeriodo(Long idCuentaBancaria, Long idPeriodo) throws Throwable {
+        System.out.println("Ingresa al metodo selectByCuentaYPeriodo con idCuentaBancaria: " + idCuentaBancaria
+                + ", idPeriodo: " + idPeriodo);
+        Query query = em.createQuery(
+            " select e from ExtractoBancario e " +
+            " where e.cuentaBancaria.codigo = :idCuentaBancaria " +
+            " and e.periodo.codigo = :idPeriodo " +
+            " and e.estado = :estadoActivo " +
+            " order by e.codigo desc");
+        query.setParameter("idCuentaBancaria", idCuentaBancaria);
+        query.setParameter("idPeriodo", idPeriodo);
+        query.setParameter("estadoActivo", Long.valueOf(Estado.ACTIVO));
+        query.setMaxResults(1);
+        List<ExtractoBancario> encontrados = query.getResultList();
+        return encontrados.isEmpty() ? null : encontrados.get(0);
+    }
 }

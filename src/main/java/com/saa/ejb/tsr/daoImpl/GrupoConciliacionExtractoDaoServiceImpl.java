@@ -126,4 +126,16 @@ public class GrupoConciliacionExtractoDaoServiceImpl extends EntityDaoImpl<Grupo
         query.setParameter("estadoActivo", Long.valueOf(Estado.ACTIVO));
         return query.getResultList();
     }
+
+    @Override
+    public List<GrupoConciliacionExtracto> selectPorDetalleExtracto(List<Long> idsDetalleExtracto) throws Throwable {
+        if (idsDetalleExtracto == null || idsDetalleExtracto.isEmpty()) {
+            return List.of();
+        }
+        Query query = em.createQuery(
+            " select g from GrupoConciliacionExtracto g " +
+            " where g.detalleExtractoBancario.codigo in :ids ");
+        query.setParameter("ids", idsDetalleExtracto);
+        return query.getResultList();
+    }
 }

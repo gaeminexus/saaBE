@@ -270,6 +270,60 @@ public class ExtractoBancarioRest {
         }
     }
 
+    /**
+     * Reemplaza el extracto ya cargado de una cuenta/período por uno nuevo: borra la
+     * cabecera (EXBC) y el detalle (DEXB) anteriores y vuelve a cargar el archivo indicado,
+     * todo en una sola transaccion. Pedido del usuario: no existia forma de corregir un
+     * extracto mal cargado salvo el DELETE fisico sin guardas (ver
+     * {@link #delete(List)}, que sigue existiendo tal cual, sin tocar). Las guardas (extracto
+     * existente, sin conciliaciones activas, sin transito pendiente, periodo abierto,
+     * conciliacion no verificada) estan documentadas en
+     * {@link ImportacionExtractoBancarioService#recargar}.
+     */
+    @POST
+    @Path("/recargar/{idCuentaBancaria}/{idPeriodo}")
+    @Consumes(MediaType.MULTIPART_FORM_DATA)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response recargarImportacion(@PathParam("idCuentaBancaria") Long idCuentaBancaria,
+            @PathParam("idPeriodo") Long idPeriodo,
+            @FormParam("archivo") InputStream archivoInputStream,
+            @FormParam("archivoNombre") String archivoNombre,
+            @FormParam("idEmpresa") String idEmpresaParam,
+            @FormParam("usuarioCreacion") String usuarioCreacion) {
+        System.out.println("LLEGA AL SERVICIO RECARGAR IMPORTACION - EXTRACTO_BANCARIO, cuenta: " + idCuentaBancaria
+                + ", periodo: " + idPeriodo);
+        try {
+            if (archivoInputStream == null || archivoNombre == null || archivoNombre.trim().isEmpty()) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity("No se ha enviado el archivo").type(MediaType.APPLICATION_JSON).build();
+            }
+            if (idPeriodo == null) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity("El campo idPeriodo es obligatorio").type(MediaType.APPLICATION_JSON).build();
+            }
+            // Ver comentario equivalente en validarImportacion().
+            archivoNombre = URLDecoder.decode(archivoNombre, StandardCharsets.UTF_8);
+            Long idEmpresa;
+            try {
+                idEmpresa = (idEmpresaParam == null || idEmpresaParam.trim().isEmpty())
+                        ? null : Long.valueOf(idEmpresaParam.trim());
+            } catch (NumberFormatException nfe) {
+                idEmpresa = null;
+            }
+            if (idEmpresa == null) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity("El campo idEmpresa es obligatorio").type(MediaType.APPLICATION_JSON).build();
+            }
+            ResumenImportacionExtracto resultado = importacionExtractoBancarioService.recargar(archivoInputStream,
+                    archivoNombre, idCuentaBancaria, idPeriodo, idEmpresa, usuarioCreacion);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al recargar extracto bancario: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
     private Long parseIdPeriodo(String idPeriodoParam) {
         try {
             return (idPeriodoParam == null || idPeriodoParam.trim().isEmpty())

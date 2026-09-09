@@ -55,4 +55,17 @@ public interface ExtractoBancarioDaoService extends EntityDao<ExtractoBancario> 
      */
     List<Long> selectCuentasConCobertura(List<Long> idsCuenta, LocalDate primerDia, LocalDate ultimoDia) throws Throwable;
 
+    /**
+     * Busca el extracto ACTIVO de una cuenta bancaria y período exactos (por
+     * la FK a Periodo, no por solapamiento de fechas como
+     * {@link #selectByCuentaYCobertura}). Usado por
+     * ImportacionExtractoBancarioServiceImpl.recargar para la guarda "debe
+     * existir un extracto para poder recargarlo".
+     * @param idCuentaBancaria : Id de la cuenta bancaria
+     * @param idPeriodo        : Id del periodo contable
+     * @return                 : El extracto activo de esa cuenta/período, o null si no hay
+     * @throws Throwable       : Excepcion
+     */
+    ExtractoBancario selectByCuentaYPeriodo(Long idCuentaBancaria, Long idPeriodo) throws Throwable;
+
 }
