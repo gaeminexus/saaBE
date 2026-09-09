@@ -135,23 +135,23 @@ ORDER BY DTMTCTCN]]></query>
 		<element kind="textField" uuid="a1b2c3d4-2004-0001-0001-000000000003" x="394" y="5" width="70" height="15" fontName="Tahoma" fontSize="8.0" bold="true" pattern="#,##0.00;(-#,##0.00)" hTextAlign="Right">
 			<expression><![CDATA[$V{SUMA_MOVIMIENTO}]]></expression>
 		</element>
-		<element kind="line" uuid="a1b2c3d4-2004-0001-0001-000000000004" x="15" y="36" width="125" height="1"/>
-		<element kind="staticText" uuid="a1b2c3d4-2004-0001-0001-000000000005" x="15" y="39" width="125" height="24" fontSize="7.0" hTextAlign="Center">
-			<text><![CDATA[Presidente del Consejo
-de Administración]]></text>
+		<!-- Firmas: SOLO dos, Gerente General y Contador/a. La Resolucion SBS-2013-0507 nombra
+		     CUATRO responsables (Consejo de Administracion, representante legal, auditor
+		     interno, contador general) pero eso es quien RESPONDE, no quien FIRMA - lectura
+		     corregida el 2026-09-09 tras revisar un estado financiero real y publicado de otro
+		     FCPC del mismo perfil (FOJUPIN-FCPC, julio 2022, portal de transparencia del BIESS):
+		     firma con dos, GERENTE GENERAL y CONTADORA, igual en los cinco estados del
+		     documento. No volver a los cuatro leyendo solo la norma. -->
+		<element kind="line" uuid="a1b2c3d4-2004-0001-0001-000000000004" x="60" y="36" width="200" height="1"/>
+		<element kind="staticText" uuid="a1b2c3d4-2004-0001-0001-000000000005" x="60" y="39" width="200" height="15" fontSize="8.0" hTextAlign="Center">
+			<text><![CDATA[GERENTE GENERAL]]></text>
 		</element>
-		<element kind="line" uuid="a1b2c3d4-2004-0001-0001-000000000006" x="150" y="36" width="125" height="1"/>
-		<element kind="staticText" uuid="a1b2c3d4-2004-0001-0001-000000000007" x="150" y="39" width="125" height="24" fontSize="7.0" hTextAlign="Center">
-			<text><![CDATA[Representante Legal]]></text>
+		<element kind="line" uuid="a1b2c3d4-2004-0001-0001-000000000008" x="300" y="36" width="200" height="1"/>
+		<element kind="staticText" uuid="a1b2c3d4-2004-0001-0001-000000000009" x="300" y="39" width="200" height="15" fontSize="8.0" hTextAlign="Center">
+			<text><![CDATA[CONTADOR/A]]></text>
 		</element>
-		<element kind="line" uuid="a1b2c3d4-2004-0001-0001-000000000008" x="285" y="36" width="125" height="1"/>
-		<element kind="staticText" uuid="a1b2c3d4-2004-0001-0001-000000000009" x="285" y="39" width="125" height="24" fontSize="7.0" hTextAlign="Center">
-			<text><![CDATA[Contador General
-Reg. CPA N° __________]]></text>
-		</element>
-		<element kind="line" uuid="a1b2c3d4-2004-0001-0001-000000000010" x="420" y="36" width="125" height="1"/>
-		<element kind="staticText" uuid="a1b2c3d4-2004-0001-0001-000000000011" x="420" y="39" width="125" height="24" fontSize="7.0" hTextAlign="Center">
-			<text><![CDATA[Auditor Interno]]></text>
+		<element kind="staticText" uuid="a1b2c3d4-2004-0001-0001-000000000012" x="300" y="53" width="200" height="12" fontSize="7.0" hTextAlign="Center">
+			<text><![CDATA[Reg. CPA N° __________]]></text>
 		</element>
 	</summary>
 </jasperReport>
