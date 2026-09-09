@@ -2600,3 +2600,26 @@ Hay que invocar el binario directo contra el bin de la herramienta:
 Vale la pena llevarlo al `CLAUDE.md` de `saaFE` o al §8 del registro compartido: cualquier árbitro
 que intente cumplir la regla de "verificar que compila antes de commitear" se traba en lo mismo.
 **No se toca desde acá sin consultar** — los dos son archivos compartidos.
+
+### ✅ `crd/sql/220` CORRIDO Y SU CONTROL LEÍDO — 2026-09-09
+
+El usuario corrió el script y pasó la salida del **bloque 3**, que es el control que decide si se
+puede desplegar:
+
+```
+CCPMFCVN   DATE       7               Y
+CCPMMNSL   NUMBER    22    18    2    Y
+CCPMRZSC   VARCHAR2  2000            Y
+```
+
+**Las tres columnas, con el tipo esperado y todas nullable.** `RPR.CCPM` está lista.
+
+⇒ **El CCPM ya no bloquea el WAR.** El orden se respetó: DDL primero, despliegue después, que es
+justamente lo que falló el 2026-09-08 con `CRD.CFCR` y dejó los Gs de agosto sin salir.
+El `sql/218` (jubilados) **sigue pendiente** y va antes del mismo despliegue.
+
+⚠️ **El bloque 1 no se reportó.** Era la medición de cuántos préstamos vivos tienen `PRSTMNSL` en
+NULL o en 0 — no bloquea nada y el usuario ya confirmó el campo por segunda vez
+(*«usa el campo monto solicitado sin problema»*), así que la decisión está firme. Lo único que se
+pierde es saber de antemano cuántas celdas van a salir vacías cuando alguien abra el informe.
+Queda como dato disponible, no como pendiente.
