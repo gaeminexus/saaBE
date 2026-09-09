@@ -1055,7 +1055,104 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 		resultadoFinal.put("pdfBytes", pdfBytesGenerado);
 		return resultadoFinal;
 	}
-	
+
+	/**
+	 * ÍTEM 12 (docs/logica-negocio/cxc/API-REENVIAR-RETENCION-AL-SRI.md), encargo 2026-09-09.
+	 * Reenvía al SRI una retención V2 atascada en un estado intermedio, con el XML firmado que
+	 * ya existe en disco -- nunca lo regenera ni lo re-firma.
+	 */
+	@Override
+	public java.util.Map<String, Object> reenviarRetencionV2AlSri(Long idRetencion) throws Throwable {
+		System.out.println("=== reenviarRetencionV2AlSri | idRetencion=" + idRetencion + " ===");
+
+		// selectById usa getSingleResult(): si no existe, lanza NoResultException -- NUNCA
+		// devuelve null (CLAUDE.md, EntityDaoImpl.selectById). El 404 lo arma quien llama esto
+		// (RetencionV2Rest) capturando ese tipo de excepción, no un chequeo de null acá.
+		RetencionV2 retencion = retencionV2DaoService.selectById(idRetencion, NombreEntidadesCobro.RETENCION_V2);
+
+		// Guarda de estado (§3 del contrato). "estado" acá NO es el flag genérico -- es el
+		// flujo de emisión electrónica (mismo patrón que CriterioVentaVigente, com.saa.ejb.sri,
+		// commit 282c3361). Sólo se reenvían los tres estados que este mismo método escribe en
+		// el flujo normal: 3 (firmada), 4 (enviada), 6 (no autorizada, rechazada por el SRI).
+		Long estado = retencion.getEstado();
+		if (estado == null || estado.longValue() == 1L) {
+			throw new IncomeException("La retención V2 " + idRetencion + " nunca fue firmada (estado="
+					+ estado + "). No se puede reenviar: use el proceso de emisión completa "
+					+ "(POST /rtv2/procesarCompleta).");
+		}
+		if (estado.longValue() == 5L) {
+			throw new IncomeException("La retención V2 " + idRetencion + " ya está autorizada (Aut. "
+					+ nvl(retencion.getAutorizacion(), "") + "). No se reenvía.");
+		}
+		if (estado.longValue() != 3L && estado.longValue() != 4L && estado.longValue() != 6L) {
+			throw new IncomeException("La retención V2 " + idRetencion + " está en un estado (" + estado
+					+ ") que este reenvío no reconoce. No se reenvía.");
+		}
+
+		// XML FIRMADO ya existente (alterno=3) -- NUNCA se regenera ni se re-firma acá: es el
+		// que el SRI ya vio, y regenerarlo cambiaría la firma sin que nadie lo pida.
+		PathRetencionV2 pathFirmado = pathRetencionV2DaoService.selectUltimoFirmadoByRetencion(idRetencion);
+		if (pathFirmado == null) {
+			throw new IncomeException("La retención V2 " + idRetencion + " no tiene un XML firmado "
+					+ "registrado (PathRetencionV2 alterno=3). No se puede reenviar sin re-firmar, y "
+					+ "este endpoint no re-firma.");
+		}
+		String rutaAbsoluta = getBaseUploadDirectory() + pathFirmado.getPath();
+		byte[] bytesXml;
+		try {
+			bytesXml = Files.readAllBytes(Paths.get(rutaAbsoluta));
+		} catch (java.io.IOException e) {
+			throw new IncomeException("La retención V2 " + idRetencion + " tiene registrado el XML "
+					+ "firmado en '" + pathFirmado.getPath() + "' pero el archivo no está en disco ("
+					+ rutaAbsoluta + "): " + e.getMessage() + ". No se puede reenviar sin re-firmar.");
+		}
+		String xmlFirmado = new String(bytesXml, java.nio.charset.StandardCharsets.UTF_8);
+
+		// idFacturador, ambiente y clave SIEMPRE de la propia retención -- este endpoint no
+		// recibe body. El ambiente sale del facturador en base (línea ~131), igual que en
+		// saveSingle -- NO el 1L hardcodeado de RetencionV2Rest:161, que es otro defecto.
+		if (retencion.getFacturador() == null || retencion.getFacturador().getId() == null) {
+			throw new IncomeException("La retención V2 " + idRetencion + " no tiene facturador asociado.");
+		}
+		Long idFacturador = retencion.getFacturador().getId();
+		com.saa.model.cxc.Facturador facturadorDB = em.find(com.saa.model.cxc.Facturador.class, idFacturador);
+		Long ambiente;
+		if (facturadorDB != null && facturadorDB.getAmbiente() != null) {
+			ambiente = facturadorDB.getAmbiente();
+		} else {
+			ambiente = retencion.getAmbiente() != null ? retencion.getAmbiente() : 1L;
+		}
+		String clave = retencion.getClave();
+		if (clave == null || clave.trim().isEmpty()) {
+			throw new IncomeException("La retención V2 " + idRetencion + " no tiene clave de acceso.");
+		}
+
+		// self(): autorizarRetencionV2 está anotado REQUIRES_NEW -- una llamada directa
+		// (this.autorizarRetencionV2(...)) se saltaría los interceptores del contenedor y
+		// correría en la transacción de este método. Mismo mecanismo que ya usa
+		// procesarRetencionV2Completa (ver el comentario de self(), unas líneas más arriba).
+		java.util.Map<String, Object> resultadoAutorizacion = self().autorizarRetencionV2(
+				idFacturador, ambiente, 1L /* conectaSRI */, clave, idRetencion, xmlFirmado, null, null);
+		String mensaje = (String) resultadoAutorizacion.get("mensaje");
+
+		// El resultado real (exito, estado, autorizacion) se lee de la retención YA
+		// ACTUALIZADA por autorizarRetencionV2 en su propia transacción -- no se infiere del
+		// texto de "mensaje", que es sólo para mostrarle al usuario.
+		RetencionV2 retencionActualizada = retencionV2DaoService.selectById(idRetencion, NombreEntidadesCobro.RETENCION_V2);
+		Long estadoFinal = retencionActualizada.getEstado();
+		boolean exito = (estadoFinal != null) && (estadoFinal.longValue() == 5L);
+
+		java.util.Map<String, Object> resultado = new java.util.HashMap<>();
+		resultado.put("exito", exito);
+		resultado.put("estado", estadoFinal);
+		resultado.put("mensaje", mensaje);
+		resultado.put("clave", clave);
+		if (exito) {
+			resultado.put("autorizacion", retencionActualizada.getAutorizacion());
+		}
+		return resultado;
+	}
+
 	private String llamarRecepcionSRI(String url, byte[] xmlBytes, PrintWriter log) throws Exception {
 		try {
 			String xmlBase64 = java.util.Base64.getEncoder().encodeToString(xmlBytes);
@@ -1112,6 +1209,21 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 				}
 				return estado;
 			}
+			// ÍTEM 12 (2026-09-09): si no hay <estado>, puede ser un FAULT de la propia
+			// infraestructura del SRI (soap:Server / faultstring), no del comprobante --
+			// pasó el 2026-09-09 con "GenericJDBCException: Could not open connection". Antes
+			// esto se perdía como "SIN_RESPUESTA" y la causa real quedaba enterrada SOLO en
+			// el .txt de disco, mientras la pantalla mostraba una consecuencia ("No existen
+			// datos para los parámetros ingresados") sin ninguna pista de la causa real. Se
+			// propaga el faultstring si existe, para que el mensaje de reenvío lo muestre.
+			NodeList faultStringList = docEl.getElementsByTagNameNS("*", "faultstring");
+			if (faultStringList.getLength() == 0) faultStringList = docEl.getElementsByTagName("faultstring");
+			if (faultStringList.getLength() > 0) {
+				String faultstring = faultStringList.item(0).getTextContent();
+				System.err.println(">>> FAULT del servidor SRI (WS1/recepcion): " + faultstring);
+				log.println(">>> FAULT del servidor SRI (WS1/recepcion): " + faultstring);
+				return "FALLO_INFRAESTRUCTURA_SRI: " + faultstring;
+			}
 			System.err.println(">>> ADVERTENCIA: No se encontró <estado> en la respuesta WS1 (RTV2)");
 			return "SIN_RESPUESTA";
 		} catch (Exception e) {
@@ -1161,7 +1273,20 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 				resultado.estado = estadoList.item(0).getTextContent();
 				System.out.println(">>> Estado WS2: " + resultado.estado);
 			} else {
-				System.err.println(">>> ADVERTENCIA: No se encontró <estado> en respuesta WS2 (RTV2)");
+				// ÍTEM 12 (2026-09-09): mismo caso que en llamarRecepcionSRI -- sin <estado>
+				// puede ser un FAULT de infraestructura del SRI, no un rechazo del comprobante.
+				// Se deja constancia en resultado.mensaje para que autorizarRetencionV2 la
+				// arme en el mensaje final en vez de mostrar "Estado: null".
+				NodeList faultStringList = docEl.getElementsByTagNameNS("*", "faultstring");
+				if (faultStringList.getLength() == 0) faultStringList = docEl.getElementsByTagName("faultstring");
+				if (faultStringList.getLength() > 0) {
+					String faultstring = faultStringList.item(0).getTextContent();
+					System.err.println(">>> FAULT del servidor SRI (WS2/autorizacion): " + faultstring);
+					resultado.estado = "FALLO_INFRAESTRUCTURA_SRI";
+					resultado.mensaje = faultstring;
+				} else {
+					System.err.println(">>> ADVERTENCIA: No se encontró <estado> en respuesta WS2 (RTV2)");
+				}
 			}
 
 			NodeList numAutList = docEl.getElementsByTagNameNS("*", "numeroAutorizacion");

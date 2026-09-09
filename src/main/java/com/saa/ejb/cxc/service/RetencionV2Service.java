@@ -161,4 +161,25 @@ public interface RetencionV2Service extends EntityService<RetencionV2> {
 	 */
 	java.util.Map<String, Object> consultarYActualizarEstadoRetencionV2(Long idRetencion) throws Throwable;
 
+	/**
+	 * Reenvía al SRI una retención V2 que quedó atascada en un estado intermedio (FIRMADA,
+	 * ENVIADA o NO AUTORIZADA), usando el XML firmado que ya existe en disco -- nunca lo
+	 * regenera ni lo re-firma: el XML firmado es el que el SRI ya vio, y regenerarlo cambiaría
+	 * la firma sin que nadie lo pida. Ver
+	 * docs/logica-negocio/cxc/API-REENVIAR-RETENCION-AL-SRI.md (ÍTEM 12).
+	 * <p>
+	 * {@code idFacturador}, {@code ambiente} y {@code clave} se resuelven SIEMPRE de la propia
+	 * retención (nunca de un parámetro externo). No genera contabilidad ni aplica el pago
+	 * (eso ya se hizo cuando se emitió); no envía email.
+	 *
+	 * @param idRetencion : Id de la retención V2 a reenviar
+	 * @return : Mapa con exito (boolean), estado (Long, el de la retención tras el reenvío),
+	 *           mensaje (la causa real que devolvió el SRI, o el motivo del fallo), clave, y
+	 *           autorizacion (sólo si exito=true)
+	 * @throws IncomeException si no existe la retención, si su estado no es reenviable (1 o
+	 *         5), o si no hay XML firmado registrado o en disco (alterno=3)
+	 * @throws Throwable : cualquier otro error inesperado
+	 */
+	java.util.Map<String, Object> reenviarRetencionV2AlSri(Long idRetencion) throws Throwable;
+
 }

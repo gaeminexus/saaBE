@@ -404,6 +404,55 @@ public class RetencionV2Rest {
 		}
 	}
 
+	/**
+	 * ÍTEM 12 (encargo 2026-09-09). Reenvía al SRI una retención V2 que quedó atascada en un
+	 * estado intermedio (firmada, enviada o no autorizada), usando el XML firmado que ya
+	 * existe en disco -- nunca regenera ni re-firma. Ver
+	 * docs/logica-negocio/cxc/API-REENVIAR-RETENCION-AL-SRI.md.
+	 *
+	 * Sin cuerpo: idFacturador, ambiente y clave se resuelven de la propia retención.
+	 * ⚠️ 200 no significa autorizado -- el frontend debe mirar "exito"/"estado" en la respuesta,
+	 * nunca el código HTTP a secas (200 llega tanto si el SRI autorizó como si rechazó).
+	 *
+	 * POST /rtv2/reenviarSRI/{idRetencion}
+	 */
+	@POST
+	@Path("/reenviarSRI/{idRetencion}")
+	@Produces(MediaType.APPLICATION_JSON)
+	public Response reenviarSRI(@PathParam("idRetencion") Long idRetencion) {
+		System.out.println("LLEGA AL SERVICIO reenviarSRI RTV2 con id: " + idRetencion);
+		try {
+			java.util.Map<String, Object> resultado = retencionV2Service.reenviarRetencionV2AlSri(idRetencion);
+			return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+
+		} catch (jakarta.persistence.NoResultException e) {
+			// selectById usa getSingleResult(): una fila faltante lanza esto, NUNCA null
+			// (CLAUDE.md, EntityDaoImpl.selectById) -- por eso se distingue por tipo acá y no
+			// con un chequeo de null antes de llamar al servicio.
+			java.util.Map<String, Object> err = new java.util.HashMap<>();
+			err.put("exito", false);
+			err.put("mensaje", "No se encontró la retención V2 con ID: " + idRetencion);
+			return Response.status(Response.Status.NOT_FOUND).entity(err).type(MediaType.APPLICATION_JSON).build();
+
+		} catch (com.saa.basico.util.IncomeException e) {
+			// Estado no reenviable (1 o 5), o falta el XML firmado en base/disco.
+			java.util.Map<String, Object> err = new java.util.HashMap<>();
+			err.put("exito", false);
+			err.put("mensaje", e.getMessage());
+			return Response.status(Response.Status.CONFLICT).entity(err).type(MediaType.APPLICATION_JSON).build();
+
+		} catch (Throwable e) {
+			System.err.println("ERROR en reenviarSRI RTV2 REST: " + e.getMessage());
+			e.printStackTrace();
+			java.util.Map<String, Object> err = new java.util.HashMap<>();
+			err.put("exito", false);
+			err.put("mensaje", "Error inesperado al reenviar la retención al SRI: " + e.getMessage());
+			err.put("error", e.getMessage());
+			return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+					.entity(err).type(MediaType.APPLICATION_JSON).build();
+		}
+	}
+
 	@GET
 	@Path("/movimientosRelacionados/{id}")
 	@Produces(MediaType.APPLICATION_JSON)
