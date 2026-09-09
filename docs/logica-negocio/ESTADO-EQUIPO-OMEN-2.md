@@ -3307,3 +3307,93 @@ git commit -- <ruta1> <ruta2> ...    # limita el commit a esas rutas; el resto d
 
 Y del otro lado: **no dejar nada staged sin commitear** — lo staged es de cualquiera que commitee
 en el mismo directorio. omen1 lo lleva al `REGISTRO-RESERVAS-EQUIPOS.md`, que leen los cuatro equipos.
+
+## §39 — Extractos bancarios, balances formales y las cuatro decisiones del usuario
+
+**2026-09-08 tarde → 2026-09-09.** Cuatro frentes de tesorería y contabilidad, más el cierre de las
+decisiones que quedaban abiertas del §37.
+
+| Frente | Commits |
+|---|---|
+| Atlántida no cargaba: fila de más, saldo y fecha como texto | `e609e4e` |
+| Plantillas de extracto (Atlántida `.xlsx`, Policía y JEP `.xls`) | `fd14d00` `bc2d775` `5c9c479` |
+| Pacífico se concilia por fecha contable + `e2-35` para lo ya cargado | `7406fb8` `4331aa6` |
+| Recargar un extracto ya cargado, con guardas | `8edab19a` · FE `403f4d1` |
+| Balances en formato formal (SBS-2013-0507) | `0d25010` `bc9e0a1a` `ddfac05` `bbf817b` · FE `073ad7e` `6368fad` |
+| Nómina: no se cierra sin haberse pagado | `f6f0826` |
+
+### Lo que hay que llevarse
+
+1. **La normativa se lee, no se supone — y el precedente vale más que la norma.** El usuario pidió
+   los balances "ajustados a la normativa". Se descargó y leyó entera la **Resolución SBS-2013-0507**
+   (Marco Conceptual del Catálogo de Cuentas para FCPC, 24 pp): de ahí salen el nombre "ESTADO DE
+   SITUACIÓN FINANCIERA", la moneda, la periodicidad mensual y el **nivel de apertura de seis
+   dígitos** que ningún reporte contemplaba. Pero el árbitro **leyó mal la lista de responsables como
+   si fuera un pie de firmas** y especificó cuatro. Un juego completo **realmente publicado** por otro
+   FCPC (FOJUPIN, Petroecuador, vía portal del BIESS) mostró que firman **dos**: Gerente General y
+   Contador. Corregido en `ddfac05`, con la lección en un comentario dentro de los seis `.jrxml`.
+2. **La misma clase de trampa, tres veces en dos días: la guarda sin puerta.** `cerrarPeriodo`
+   aceptaba CONTABILIZADO, produciendo un período cerrado que la orden de pago después rechazaba.
+   Al angostarlo a PAGADO, lo que salvó el cambio fue **verificar antes** que existe exactamente una
+   línea en todo el repo que pone PAGADO (`ContabilizacionNominaServiceImpl:498`, vía confirmación de
+   la orden) y que los históricos **estructuralmente nunca pueden alcanzarlo** — sin la excepción
+   quedaban imposibles de cerrar para siempre. Regla: **antes de exigir un estado, comprobar que algo
+   lo produzca.**
+3. **Un bloqueo correcto puede inutilizar la función.** En `recargarExtracto`, el agente bloqueó por
+   enlaces `GCEX` "en cualquier estado" — técnicamente sólido, porque `GCEX` no tiene columna de
+   estado y `deshacerGrupo` no borra sus filas. Pero eso dejaba la recarga imposible **para siempre**
+   en cualquier cuenta conciliada una vez, que es justo el flujo del usuario (concilio → veo el error
+   → desconcilio → recargo). Se resolvió: enlaces de grupo **inactivo** se borran en cascada, los de
+   grupo **activo** bloquean.
+4. **`git commit -- <rutas>` no incluye archivos nuevos.** `073ad7e` dejó el FE **roto en `origin`**:
+   importaba `cnt/forms/descarga-reporte.ts`, que estaba sin trackear. Compilaba local porque el
+   archivo existe en disco. Corregido en `6368fad`. Complemento de la lección del §38: allá el índice
+   se llevó lo ajeno, acá dejó afuera lo propio. **Mirar los `??` de `git status`, no sólo los `M`.**
+
+### Herramientas que quedan para todos los equipos
+
+- **`verificar-fill-jasper.bat`** — llena cada `.jasper` con `JREmptyDataSource`: atrapa estilos sin
+  resolver, expresiones rotas y referencias muertas, que **compilar no valida**. Nació porque los dos
+  reportes de conciliación compilaron limpios y reventaron en la cara del usuario.
+- ⚠️ **Y su límite, aprendido el mismo día:** el fill vacío **no** detecta un `null` impreso — sin
+  filas es indistinguible de un reporte sin datos. Para eso hay que armar un `JRDataSource` a mano.
+  Los tres `null` de los reportes de conciliación y los seis de balances se atraparon así.
+- **`compilar-jasper.bat`** (§38) y el hallazgo de que **JasperReports 7.0.3 sólo trae
+  `JacksonReportLoader`**: ningún `.jrxml` en sintaxis clásica se puede volver a *cargar* para
+  editarlo. Los `.jasper` ya compilados siguen andando; el día que haya que tocar el fuente, primero
+  se convierte. Cinco de los seis balances estaban así.
+
+### Decisiones que el usuario cerró
+
+- **No se cierra un período de nómina sin pagarlo.** Históricos exceptuados.
+- **Pacífico por fecha contable**, y el `e2-35` ya corrido sobre lo cargado.
+- **Habilitadas las variantes "a fecha de corte"** del balance — las que corresponden al entregable
+  regulatorio, y que ningún estado de la pantalla podía pedir.
+- **El `DELETE /exbc` sin guardas se deja como está**: criterio del usuario, *"en producción todo está
+  conciliado y sólo se usaría para el siguiente período"*.
+
+### Abierto, y es del usuario
+
+- **De los cinco estados financieros que exige la norma, el sistema cubre uno.** Faltan estado de
+  cambios en el patrimonio, flujos de efectivo y notas: no existen ni como reporte ni como fuente de
+  datos. El documento de FOJUPIN (`fcpc_ejemplo.pdf`, entregado al usuario) trae los tres con su
+  estructura real, si se decide construirlos.
+- **`CÓDIGO DE LA ENTIDAD`** — la Superintendencia asigna uno a cada fondo (FOJUPIN es el 55). El de
+  ASOPREP no se conoce; el encabezado real lo lleva.
+- Columnas del cuerpo según FOJUPIN: `CÓDIGO | NOMBRE DE LA CUENTA | SALDO | NOTAS` — más austero que
+  el nuestro, y con una columna de referencia a las notas.
+- **`e2-36` pendiente de correr** antes de usar los balances para una entrega formal.
+- **`PRUEBA-MANUAL-RECARGAR-EXTRACTO.md`** pendiente de correr: no hay forma de verificar esa función
+  sin base, y es la única prueba real que va a tener.
+- Ocho bancos sin plantilla de extracto (Internacional, Pacífico, Austro, Guayaquil, Manabí, Alianza,
+  Amazonas, Mutualista Pichincha). Se hacen a pedido, con el mismo generador.
+- `P_MAYORIZADO` se manda vacío: **un balance sobre un período no mayorizado es provisional y debería
+  decirlo en la cara.** Falta decidir de dónde sale ese dato.
+
+### ⚠️ Aviso a `lap-saa-1` — archivos compartidos tocados, ya en `main`
+
+`AbstractExcelStatementParser` (búsqueda del encabezado por ventana + `getCellFechaFlexible`) y los
+parsers de Atlántida y Pacífico; `ImportacionExtractoBancarioServiceImpl` (nuevo `recargar`, y el
+cuerpo de `confirmar` extraído a `ejecutarImportacion` — sin cambio de firma ni de comportamiento);
+`ProcesoNominaServiceImpl.cerrarPeriodo`; los seis `.jrxml`/`.jasper` de `rep/cnt/`; y `CLAUDE.md`
+(sección de reportes). **El `DELETE /exbc` sigue sin guardas, a propósito.**
