@@ -701,3 +701,90 @@ fija; el del IESS es un desglose de verdad.
 
 **Verificar el mecanismo antes de aceptar el costo evitó una coordinación entre árbitros que no hacía
 falta.** Lo único agregado en `cxp` fue una constante.
+
+---
+
+## 13. Devolución de anticipos y auditoría de décimos — 2026-09-07/08
+
+### 13.1 Devolución de un anticipo a empleado — código completo
+
+Encargo: que un empleado pueda devolver el dinero de un anticipo depositándolo en la cuenta de la
+empresa, con cuenta, fecha, observación, contabilidad, y **que no se le descuente ese mes**.
+
+Lo que faltaba: si el empleado depositaba, no había dónde registrarlo, no se contabilizaba y **el
+descuento del rol se le aplicaba igual — se le cobraba dos veces**.
+
+Diseño: `rhh/API-DEVOLUCION-ANTICIPO.md`. Tablas `RHH.DVAN` + `RHH.DVCT` (`sql/lap1-11`).
+La contabilidad la hace el **ingreso de tesorería**, que ya emite el movimiento bancario para la
+conciliación; `rhh` no escribe ningún asiento a mano.
+
+**Decisiones del usuario:** devoluciones totales y parciales, varias por anticipo; las cuotas que
+dejan de descontarse son las próximas por vencer hasta cubrir el monto, y la que sobra baja de valor
+en vez de cancelarse.
+
+**La trampa que encontré al diseñarlo:** si el período del mes **ya está calculado**, anular la cuota
+no cambia ese rol — el cálculo ya la tomó. El endpoint no rechaza: **avisa**, porque nadie más se lo
+va a decir a quien registra la devolución, y la diferencia es que el empleado cobre bien ese mes o no.
+
+**Lo que levantó el ejecutor y yo no había visto:** pedí dejar constancia «en la observación de la
+cuota» y `RHH.CTDS` no tiene esa columna. El hueco real era mayor: **sin rastro de qué cuotas tocó
+cada devolución, anular reactivaría la cuota equivocada** cuando el anticipo tuvo varias. Su
+solución —lista de ids en una columna de texto— resolvía el anular y nada más; la cambié por tabla de
+detalle, que además responde *«¿por qué esta cuota no se descontó?»*, que es la pregunta real cuando
+el empleado reclama.
+
+### 13.2 🔴 Auditoría de décimos: el campo que nadie llena
+
+Pedido: revisar contra la normativa si el pago de décimos está correcto.
+Informe: `rhh/AUDITORIA-DECIMOS-CONTRA-NORMATIVA.md`. Verificación: `sql/lap1-12`.
+
+**Está bien construido.** Períodos, bases, prorrateo, tope, regiones y mensualización coinciden con
+los Arts. 95, 111 y 113, y ningún valor normativo está escrito en el código.
+
+**El defecto:** `calcularDecimoTercero` resta lo ya cobrado mensualizado leyendo `LQBSVLMN` — y ese
+campo **nunca se llena**. El único `setValorMensualizado` del proyecto es el `0D` de la creación. Y
+el generador filtra por la modalidad **actual** del contrato, no por la que tuvo cada mes. Quien pasó
+de mensualizado a acumulado **cobra dos veces**; quien pasó al revés **no cobra** los meses
+acumulados. Igual en el décimo cuarto.
+
+> **Por qué cuesta verlo, y es lo que vale registrar:** hay una línea de código que *parece*
+> resolverlo, con un comentario que describe correctamente lo que debería pasar. Un lector apuntando
+> a donde nadie escribe es el patrón de siempre; **un lector con una línea que finge escribir es
+> peor**, porque desactiva la sospecha.
+
+**Sin decidir:** si el caso ocurrió (lo mide el CONTROL 2 de `lap1-12`) y cómo corregir —
+reconstruir lo mensualizado desde los roles, que funciona hacia atrás, o llenar el campo, que sólo
+sirve de aquí en adelante.
+
+### 13.3 ⚠️ Siete scripts escritos y NINGUNO ejecutado
+
+Al cierre del 2026-09-08 hay tres frentes con el código completo y **nada probado**, porque la base
+no tiene sus tablas:
+
+| Script | Frente | Estado |
+|---|---|---|
+| `tsr/sql/lap1-06` | Caja chica — `CJCHMTAN` | corre de corrido |
+| `rhh/sql/lap1-08` | Planillas IESS — tablas y rubros | corre de corrido |
+| `rhh/sql/lap1-10` | Línea de asiento de hipotecarios | controles primero |
+| `rhh/sql/lap1-09` | Productos de pago del IESS | depende del 10 |
+| `rhh/sql/lap1-11` | Devolución de anticipos | controles primero |
+| `rhh/sql/lap1-12` | Verificación de décimos | sólo consultas |
+
+Más el `SELECT` de `CJCHUSCS` antes del WAR de caja chica, y el orden de
+`rhh/sql/README-ORDEN-PLANILLAS-IESS.md`, donde **`lap1-10` va antes que `lap1-09`** aunque el número
+diga lo contrario.
+
+**Nada de esto se puede probar hasta que la base tenga las tablas.** Es el cuello de botella del
+equipo al cierre de la jornada, y no es trabajo de un agente: son controles que el usuario corre y
+cuyo resultado hace falta para completar los `INSERT`.
+
+### 13.4 Nota de método sobre los ejecutores
+
+Dos veces (ítems 6.d y 9.e) mandé un mensaje que empezaba confirmando un commit y seguía con un
+encargo nuevo, y las dos veces el ejecutor lo leyó como informe. **La causa es del emisor, no del
+receptor.** Desde el 9.e: el commit por un lado y la tarea por otro, con `TAREA` adelante.
+
+Y tres veces un ejecutor levantó algo que yo había dado por resuelto —el matching por texto del
+comprobante, el pliegue del CCC, el rastro de cuotas— y **las tres veces tenía razón en levantarlo**,
+aunque la solución final fuera otra. Que paren y pregunten en vez de resolver por su cuenta es lo que
+hizo que ninguno de los tres llegara a la base.
