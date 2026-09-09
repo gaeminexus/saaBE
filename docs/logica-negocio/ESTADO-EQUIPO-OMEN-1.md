@@ -2349,3 +2349,101 @@ pasar. Va al `REGISTRO-RESERVAS-EQUIPOS.md`, que lo leen los cuatro equipos.
 
 Historia no reescrita: los archivos ya están en `origin/main` y compilan. Lo único perdido es la
 trazabilidad del mensaje.
+
+---
+
+## ✅ 2026-09-09 — Los Gs de agosto SALIERON. Cerrado H58
+
+**El usuario confirmó: «Ya salieron los Gs de agosto».**
+
+Secuencia completa del incidente, para que quede el hilo entero:
+
+1. La pantalla mostraba `STATUS_MARKED_ROLLBACK` sobre un `update RPR.EJRD`.
+2. Ese mensaje era el síntoma. La causa estaba **dos capas más abajo**: `CRD.CFCR` no existía.
+3. El DDL era `crd/sql/177`, del 2026-09-02, con *«correrlo ANTES de desplegar el WAR»* en la
+   primera línea. **El código se desplegó, el script no corrió.**
+4. El usuario corrió el `177` y después el `219` de control.
+
+**El control A.2 salió limpio, y era el riesgo real del script:** los productos cableados como
+hipotecarios —**7, 8 y 21**— resultaron ser exactamente HIPOTECARIO, HIPOTECARIO RESTRUCTURADO e
+HIPOTECARIO NOVACION. Ningún otro producto de los quince tiene naturaleza hipotecaria. **El literal
+del código estaba bien y la parametrización no congeló ningún error** — que era la única forma en
+que este script podía hacer daño, y en un reporte al regulador.
+
+Bloques 1 y 2 del `219`: vacíos. Quince productos configurados, todos vigentes al 2026-08-31.
+
+**Confirmación indirecta del diagnóstico:** el bloque 4 mostró que la última corrida exitosa era
+**julio 2026** (ejecución 522), y de agosto **no quedó ninguna fila** — porque la transacción se
+revirtió entera, exactamente como predecía el análisis. Y el 4b vacío: nunca quedó registrado el
+motivo de ningún fallo, que es el defecto que corrigió `0140477`.
+
+### Lo que se llevó puesto de paso
+
+En la misma jornada, y disparado por este incidente:
+
+- **`0140477`** — cada reporte en su propia transacción, el error visible, y el truncado defensivo
+  contra `ORA-12899`. Incluye el segundo defecto que encontró el agente: el paso 7 leía copias
+  viejas del persistence context y **toda corrida habría dicho «con novedades» aunque los doce
+  salieran OK**.
+- **`ce3ce9b`** — H54 tanda 2: cinco generadores más que cortaban el mes en `23:59:59`.
+- **`c651bbb`** — §2e del registro compartido: el índice de git también es estado compartido.
+
+**Nada de esto estaba desplegado cuando los Gs salieron.** Los Gs de agosto se destrabaron
+**sólo con el `177`**, sin WAR. Vale anotarlo: el arreglo de código es para la próxima vez, no fue
+lo que resolvió ésta.
+
+---
+
+## 📋 2026-09-09 — Revisión del frente de SEGUROS (a pedido del usuario)
+
+El usuario pidió revisar «todo el proceso y la pantalla de seguros» y **empezar las correcciones**.
+Este equipo toma el frente. Estado medido hoy, no heredado del `.md`:
+
+### ⚠️ Hay DOS cosas llamadas «seguros» y están en estados opuestos
+
+| | Estado |
+|---|---|
+| **Seguro médico de jubilados** | ✅ terminado (proceso dual, pantalla, scripts corridos). Sólo espera WAR |
+| **Seguros de préstamo** (desgravamen / incendio / prendario) | ⛔ diagnosticado, **cero construido** |
+
+La pantalla `asignacion-seguros` **no se toca desde el 2026-08-12**. Todos los commits con
+«seguro» posteriores son del seguro médico de jubilados, que es otro frente.
+
+### La corrección que el tablero de seguros NO tiene
+
+`ESTADO-EQUIPO-SEGUROS.md` §1.5 dice que el alta normal fija desgravamen **y** incendio en cero.
+**Ya no es cierto para el desgravamen**, y cambió por decisión del usuario (U1) el 2026-08-31,
+un día después de escrito ese tablero:
+
+`PrestamoServiceImpl:475-486` — el generador real ahora calcula el desgravamen **sobre el saldo**
+con `1.12/1000`, la misma fórmula del simulador, *«para que la tabla que el sistema genera coincida
+con la simulación que el socio firma»*. El seguro de incendio **sí** sigue en cero, y también por
+decisión explícita: *«no se cobra mientras no exista la póliza que lo respalde… No es un pendiente
+por implementar.»*
+
+**Lección de método, otra vez la misma:** un tablero de equipo de hace nueve días describía el
+código con precisión el día que se escribió y ya tenía un dato falso. Se verificó antes de
+resumírselo al usuario y por eso la corrección salió a tiempo. [[H56]] es la versión cara de esto.
+
+### Lo verificado hoy, que es lo que sostiene cualquier corrección
+
+- **Prelación de cobro** (`MotorPagoPrestamoServiceImpl:367-388`, confirmada por negocio 2026-08-14):
+  incendio → desgravamen → mora → interés vencido → interés ordinario → capital. **Los seguros se
+  cobran antes que la mora.**
+- **Asimetría del acumulado:** el desgravamen tiene `DTPRDSPG` en la cuota; el incendio **no tiene
+  campo pagado** y se reconstruye desde `PGPR.valorSeguroIncendio`. Dos caminos según el tipo.
+- **`PRSTVLAS` ya no está muerta:** `ContabilidadPrestamoServiceImpl:929` la lee. Como nadie la
+  escribe, un prendario o hipotecario **nunca registra su garantía en cuentas de orden y el asiento
+  cuadra igual**. Ya anotado en el propio código el 2026-09-01; sigue abierto.
+- **No existe póliza, aseguradora ni inscripción**: ni tabla, ni entidad, ni endpoint. Re-verificado
+  hoy, no heredado.
+
+### Pendiente del usuario — son de negocio, no se deducen
+
+Preguntas planteadas y **sin responder al cierre de esta entrada**: si el `1.12/1000` es tarifa
+negociada y cambia al renovar; quién decide qué préstamos entran al incendio y si los 131 del
+`sql/60` son una regla o una lista puntual; si la póliza es anual por cartera o una por préstamo;
+qué pasa hoy con el seguro no consumido cuando alguien precancela; y **si el `sql/60` llegó a
+correrse en producción**.
+
+Ofrecido y no pedido todavía: el script que mide cuánto seguro hay cargado hoy en la cartera.
