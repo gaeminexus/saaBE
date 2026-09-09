@@ -36,6 +36,7 @@ de cada uno.**
 | **e2-17** | **`tsr/sql/e2-17-es-bexttrjt-el-codigo-del-bce.sql`** | ¿`TSR.BEXT.BEXTTRJT` es el código del BCE? **Solo lectura** | ✅ **CORRIDO el 2026-09-07. Respuesta: SÍ.** 387 valores distintos de 389 filas (10 a 9997), las dos anclas OK (Machala 25, Pacífico 30) y `32` = `BANCO INTERNACIONAL`, que es lo que la especificación asume. **Cancela el `e2-14`.** El bloque 5 dio **cero daño**: nadie guardó nunca desde esa pantalla |
 | **e2-37** | **`sri/sql/e2-37-por-que-el-ats-de-agosto-salio-sin-ventas.sql`** | Por qué el ATS de agosto salió con CERO ventas, qué son los 18 `<anulados>` (4 de las 7 tablas que consulta son de COMPRA), y las retenciones de agosto que el ATS no declara. **Solo lectura** | 🔴 **PENDIENTE — urgente, 2026-09-09.** Bloquea la declaración de agosto |
 | **e2-38** | **`sri/sql/e2-38-las-retenciones-de-compra-estan-en-rcv2-o-en-rtcm.sql`** | El sistema tiene DOS juegos de tablas de retención de compra (`RTCM/DRCM` y `RCV2/DRC2`) y el ATS lee solo el segundo. Agosto: 71 compras y apenas 6 líneas de retención en `DRC2`. **Solo lectura** | 🔴 **PENDIENTE — urgente, 2026-09-09.** Decide si el ATS declara las retenciones reales o 761,58 |
+| **e2-39** | **`cxc/sql/e2-39-tipo-identificacion-sujeto-retenido.sql`** | Por qué la retención 216 salió declarando CÉDULA con un RUC de 13 dígitos y el SRI la rechazó (identificador 69). Mide el catálogo del rubro 36, el titular rechazado y cuántos más quedarían mal. **Solo lectura** | 🔴 **PENDIENTE — urgente, 2026-09-09** |
 
 ---
 
