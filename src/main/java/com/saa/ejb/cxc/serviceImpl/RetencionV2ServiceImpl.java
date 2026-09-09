@@ -22,6 +22,7 @@ import com.saa.model.cxc.RetencionV2;
 import com.saa.model.cxc.NombreEntidadesCobro;
 import com.saa.model.cxc.PathRetencionV2;
 import com.saa.rubros.Estado;
+import com.saa.rubros.Rubros;
 import com.saa.rubros.TipoAsientos;
 import jakarta.ejb.EJB;
 import jakarta.ejb.SessionContext;
@@ -357,21 +358,8 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 		if (f.getContribuyenteEspecial() != null && !f.getContribuyenteEspecial().isEmpty())
 			writeElement(writer, "contribuyenteEspecial", f.getContribuyenteEspecial(), 4);
 		writeElement(writer, "obligadoContabilidad", obligadoContabilidad, 4);
-		// Obtener tipoIdentificacionSujetoRetenido desde DetalleRubro (debe ser siempre 2 dígitos: "04"=RUC, "05"=Cédula, "06"=Pasaporte, "07"=Consumidor Final, "08"=ID Exterior)
-		String tipoIdentificacionSujetoRetenido = "05"; // valor por defecto: cédula
-		try {
-			if (pr != null && pr.getRubroTipoIdentificacionP() != null && pr.getRubroTipoIdentificacionH() != null) {
-				String valorAlfa = detalleRubroService.selectValorStringByRubAltDetAlt(
-						pr.getRubroTipoIdentificacionP().intValue(),
-						pr.getRubroTipoIdentificacionH().intValue());
-				if (valorAlfa != null && !valorAlfa.isEmpty()) {
-					tipoIdentificacionSujetoRetenido = valorAlfa.length() == 1 ? "0" + valorAlfa : valorAlfa;
-				}
-			}
-		} catch (Throwable e) {
-			System.err.println("⚠ Error al obtener tipoIdentificacionSujetoRetenido: " + e.getMessage());
-		}
-		writeElement(writer, "tipoIdentificacionSujetoRetenido", tipoIdentificacionSujetoRetenido, 4);
+		writeElement(writer, "tipoIdentificacionSujetoRetenido",
+				resolverTipoIdentificacionSujetoRetenido(pr), 4);
 		writeElement(writer, "parteRel", "NO", 4); // Tabla 14 ATS: NO = no vinculado
 		writeElement(writer, "razonSocialSujetoRetenido", pr != null ? nvl(pr.getNombre(), "") : "", 4);
 		writeElement(writer, "identificacionSujetoRetenido", pr != null ? nvl(pr.getIdentificacion(), "") : "", 4);
@@ -530,6 +518,92 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 		writer.writeCharacters("        ");
 		writer.writeEndElement();
 		writer.writeCharacters("\n");
+	}
+
+	/**
+	 * ÍTEM 13 (2026-09-09), caso real medido contra la base: retención 216, titular 152
+	 * (JARAMILLO MATIZ DIANA ELIZABETH). El catálogo de rubro 36 estaba PERFECTO y el titular
+	 * estaba BIEN clasificado ({@code rubroTipoIdentificacionH}=2=RUC, identificación de 13
+	 * dígitos) -- pero {@code rubroTipoIdentificacionP} venía NULL, y el código exigía las DOS
+	 * no nulas antes de leer la H. Resultado: cayó al default {@code "05"} (cédula) para un RUC,
+	 * y el SRI rechazó el comprobante: <i>"La longitud del número de cédula debe ser 10"</i>.
+	 *
+	 * <p><b>{@code rubroTipoIdentificacionP} (TTLRRYYB) vale SIEMPRE {@link Rubros#TIPO_IDENTIFICACION}
+	 * (36) para todos los titulares</b> -- es un literal sin información propia, y por lo tanto
+	 * NUNCA debe condicionar si se lee o no el detalle real ({@code rubroTipoIdentificacionH},
+	 * TTLRRZZB). Si P viene con un valor se usa igual (por si alguna vez llevara otro rubro);
+	 * si viene nulo, se usa la constante -- P nulo JAMÁS bloquea la lectura de H.
+	 *
+	 * <p>Nunca se emite un valor adivinado: si el catálogo resuelve cédula o RUC pero la
+	 * longitud de la identificación no acompaña, o si no hay catálogo NI longitud reconocible,
+	 * se lanza {@link IncomeException} en vez de forzar un valor. Es preferible no emitir a
+	 * emitir mal -- un comprobante que el SRI acepta con el tipo equivocado queda mal declarado
+	 * sin que nadie se entere. Esto es lo que distingue al caso real (RUC bien clasificado, 13
+	 * dígitos: pasa) de los dos titulares sucios conocidos y sin corregir -- id 92 "SUPER PACO"
+	 * con identificación "PA-CO COMERCIAL E IN", id 153 "CLIENTES A JULIO 2026" con "99999999":
+	 * los dos deben fallar claro, nunca emitirse a medias.
+	 */
+	private String resolverTipoIdentificacionSujetoRetenido(com.saa.model.tsr.Titular pr) {
+		if (pr == null) {
+			throw new IncomeException("La retención no tiene proveedor (sujeto retenido) asignado.");
+		}
+		String nombre = nvl(pr.getNombre(), "(sin nombre)");
+		String identificacion = nvl(pr.getIdentificacion(), "");
+		int largo = identificacion.replaceAll("\\D", "").length();
+
+		String porCatalogo = null;
+		if (pr.getRubroTipoIdentificacionH() != null) {
+			long rubroP = pr.getRubroTipoIdentificacionP() != null
+					? pr.getRubroTipoIdentificacionP().longValue() : Rubros.TIPO_IDENTIFICACION;
+			try {
+				String valorAlfa = detalleRubroService.selectValorStringByRubAltDetAlt(
+						(int) rubroP, pr.getRubroTipoIdentificacionH().intValue());
+				if (valorAlfa != null && !valorAlfa.isEmpty()) {
+					// SRI exige siempre 2 dígitos: "04", "05", "06", "08". Si el rubro devuelve
+					// "4" se convierte a "04".
+					porCatalogo = valorAlfa.length() == 1 ? "0" + valorAlfa : valorAlfa;
+				}
+			} catch (Throwable e) {
+				// No termina en un default silencioso: si falla el catálogo, cae al respaldo
+				// por longitud de más abajo, que a su vez lanza si tampoco puede resolver.
+				System.err.println("⚠ No se pudo resolver tipoIdentificacionSujetoRetenido por catálogo "
+						+ "para el proveedor " + pr.getCodigo() + " (" + nombre + "): " + e.getMessage());
+			}
+		}
+
+		// Coherencia (ÍTEM 13.4): si el catálogo dice cédula o RUC, la longitud tiene que
+		// acompañar. No se verifica pasaporte/exterior: no tienen un largo fijo conocido.
+		if ("05".equals(porCatalogo) && largo != 10) {
+			throw new IncomeException("El proveedor " + pr.getCodigo() + " (" + nombre + ") tiene tipo "
+					+ "de identificación CÉDULA según el catálogo, pero su identificación ('"
+					+ identificacion + "') tiene " + largo + " dígitos, no 10. No se emite el "
+					+ "comprobante: corrija el tipo de identificación o la identificación del "
+					+ "proveedor antes de reintentar.");
+		}
+		if ("04".equals(porCatalogo) && largo != 13) {
+			throw new IncomeException("El proveedor " + pr.getCodigo() + " (" + nombre + ") tiene tipo "
+					+ "de identificación RUC según el catálogo, pero su identificación ('"
+					+ identificacion + "') tiene " + largo + " dígitos, no 13. No se emite el "
+					+ "comprobante: corrija el tipo de identificación o la identificación del "
+					+ "proveedor antes de reintentar.");
+		}
+		if (porCatalogo != null) {
+			return porCatalogo;
+		}
+
+		// Respaldo por longitud, sólo si el catálogo no resolvió nada (H nulo, o la consulta
+		// falló). OJO EL SENTIDO, medido contra la respuesta real del SRI: 10 dígitos -> cédula
+		// "05"; 13 -> RUC "04". Ningún otro largo tiene respaldo -- se avisa, no se adivina.
+		if (largo == 10) {
+			return "05";
+		}
+		if (largo == 13) {
+			return "04";
+		}
+		throw new IncomeException("No se pudo determinar el tipo de identificación del proveedor "
+				+ pr.getCodigo() + " (" + nombre + ", identificación '" + identificacion + "'): el "
+				+ "catálogo no lo resolvió y la identificación no tiene la longitud de cédula (10) ni "
+				+ "de RUC (13). No se emite el comprobante con un valor adivinado.");
 	}
 
 	private String nvl(String value, String defaultValue) {
