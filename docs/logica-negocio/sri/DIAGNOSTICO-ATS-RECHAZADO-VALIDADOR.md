@@ -167,3 +167,95 @@ peor que uno que se rechaza: el rechazo avisa, esto no.
 de `omen-saa-3` / `lap-saa-1`). Este diagnóstico se hace por pedido directo del usuario. El paquete
 `com.saa.ejb.sri` no lo toca nadie desde el **2026-08-30** (`f08e92b2`), así que no hay riesgo de
 pisar trabajo ajeno — pero si el arreglo se implementa, conviene que los otros árbitros lo sepan.
+
+---
+
+# ANEXO — Especificación de implementación (2026-09-09, urgente)
+
+El usuario ordenó arrancar todo: **las declaraciones se suben hoy**. Este anexo es el contrato que
+implementa el BE; todo lo de acá está medido contra `AT-072026 ASoprep.xml`, no supuesto.
+
+## A.1 🔴 Dos hallazgos nuevos, posteriores al diagnóstico
+
+### A.1.1 En `<ventas>` la factura NO es `01`, es `18`
+
+El autorizado tiene **18 ventas con `tipoComprobante` = `18`** y **1 con `04`** (nota de crédito).
+Sus 79 compras usan `01`. Nuestro `acumularVenta()` pasa `f.getTipoComprobante()` **crudo**, o sea
+que emitiría `01` en ventas.
+
+**`CATALOGO-ATS.md` §4 no cubre esto**: su Tabla 4 documenta el lado compras. El archivo autorizado
+es la única evidencia que tenemos.
+
+**Mapeo a aplicar en `<ventas>` (y sólo ahí):** factura → `18`; nota de crédito → `04`; nota de
+débito → `05`. Cualquier otro valor: dejarlo como está **y emitir un aviso**, no inventar.
+
+### A.1.2 Las retenciones que nos practican en ventas no están en el modelo
+
+`<detalleVentas>` pide `valorRetIva` y `valorRetRenta` — la retención que **el cliente nos hizo**.
+En el autorizado no son cero: 3 ventas con retención de IVA (180 · 3.45 · 461.41) y 2 con retención
+de renta (11.50 · 66.38).
+
+`CBR.RTV2` **no sirve**: tiene `FACTURADOR` + `PROVEEDOR`, es una retención que **emitimos
+nosotros**, no una recibida. **Buscar primero** si existe otra tabla de retenciones recibidas sobre
+ventas. Si no existe: emitir `0.00`, **agregar un aviso por cada venta afectada** y **reportarlo** —
+no inventar el valor y no dejarlo silencioso.
+
+## A.2 De dónde sale cada dato que falta en `<compras>`
+
+Fuente: `PGS.RCV2` (`RetencionCompraV2`, el comprobante de retención que emitimos al proveedor) y
+`PGS.DRC2` (`DetalleRetencionCompraV2`, sus líneas).
+
+**Enlace documento ↔ retención:** `DRC2.DOCRESAUTORIZACION` contra la `AUTORIZACION` del documento
+de compra. Si un documento no tiene retención, todos los campos van en `0.00` y el bloque `air` y
+`estabRetencion1..fechaEmiRet1` **no se escriben** (así está en el autorizado).
+
+| Elemento ATS | Origen |
+|---|---|
+| `valRetBien10` `valRetServ20` `valorRetBienes` `valRetServ50` `valorRetServicios` `valRetServ100` | Líneas de `DRC2` con `CODIMPUESTO` = IVA, repartidas por `CODRETENCION` según la Tabla 11 (ver A.3). El resto en `0.00` |
+| `valorRetencionNc`, `totbasesImpReemb` | `0.00` — sin fuente hoy, igual que en el autorizado |
+| `pagoExterior` | Constante: `pagoLocExt`=`01`, `paisEfecPago`=`NA`, `aplicConvDobTrib`=`NA`, `pagExtSujRetNorLeg`=`NA`. Es así en las 79 compras del autorizado |
+| `formasDePago` / `formaPago` | `DRC2.DOCRESFORPAGO` (Tabla 13). En el autorizado aparece en 35 de 79: **si no hay dato, no se escribe el bloque** |
+| `air` / `detalleAir` (`codRetAir` `baseImpAir` `porcentajeAir` `valRetAir`) | Líneas de `DRC2` con `CODIMPUESTO` = RENTA → `CODRETENCION`, `BASEIMPONIBLE`, `PORCENTAJERETEN`, `VALORRETEN`. Una `<detalleAir>` por línea |
+| `estabRetencion1` `ptoEmiRetencion1` `secRetencion1` `autRetencion1` `fechaEmiRet1` | Cabecera `RCV2`: `NUMESTABLECIMIENTO`, `NUMPTOEMISION`, `SECUENCIAL`, `AUTORIZACION`, `FECHA` |
+
+## A.3 Tabla 11 — el reparto de la retención de IVA en seis campos
+
+| `CODRETENCION` | % | Campo ATS |
+|---|---|---|
+| 9 | 10% | `valRetBien10` |
+| 10 | 20% | `valRetServ20` |
+| 1 | 30% | `valorRetBienes` |
+| 11 | 50% | `valRetServ50` |
+| 2 | 70% | `valorRetServicios` |
+| 3 | 100% | `valRetServ100` |
+
+⚠️ **En el autorizado el único campo distinto de cero es `valRetServ100`** — ASOPREP retiene el
+100% del IVA. Los otros cinco existen y van en `0.00`. **Un `CODRETENCION` que no esté en esta tabla
+va a un aviso, no a un campo elegido a dedo.**
+
+## A.4 `<ventasEstablecimiento>` — estructura exacta
+
+```xml
+<ventasEstablecimiento><ventaEst>
+  <codEstab>001</codEstab><ventasEstab>26445.17</ventasEstab><ivaComp>0.00</ivaComp>
+</ventaEst></ventasEstablecimiento>
+```
+
+Va **después** de `</ventas>`. Un `<ventaEst>` por establecimiento activo. `ivaComp` en `0.00`.
+
+⚠️ En el autorizado `totalVentas` = `26445.16` y `ventasEstab` = `26445.17`: **difieren en un
+centavo**. Es redondeo del declarante, no una regla — calcular los dos del mismo total y no forzar
+que coincidan al centavo con el autorizado.
+
+## A.5 Decisiones que el usuario tomó al ordenar «arranca todo»
+
+| Campo | Valor | Reversible |
+|---|---|---|
+| `parteRel` / `parteRelFid` (compras) y `parteRelVtas` (ventas) | **`NO`** cuando el titular está en `NULL` | Sí — se cambia en `Titular.parteRelacionada` en cuanto contabilidad marque las excepciones |
+| `tipoEmision` (ventas) | **`F`**, como el autorizado (hoy el código fija `"E"`) | Sí |
+| `razonSocial` | `Facturador.nombreComercial` si no viene vacío; si viene vacío, `razonSocial` **truncada a 100 caracteres** y un aviso | Sí |
+| `<rendFinancieros>` | **NO entra hoy.** El dato (retenciones que los bancos nos practican sobre inversiones) no está en el modelo | Frente aparte |
+
+**El default `NO` de `parteRel` es una afirmación tributaria, no un default técnico.** Se aplica
+porque el archivo autorizado de julio declara `NO` en los 79 proveedores y los 19 clientes, y porque
+sin él no hay declaración hoy. Queda escrito acá para que contabilidad lo pueda desmentir.
