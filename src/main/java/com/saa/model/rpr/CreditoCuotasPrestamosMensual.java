@@ -205,6 +205,21 @@ public class CreditoCuotasPrestamosMensual implements Serializable {
     @Column(name = "CCPMFCPR")
     private LocalDate fechaPrestamo;
 
+    /** Razón social del sujeto (CRD.ENTD.ENTDRZNS). */
+    @Basic
+    @Column(name = "CCPMRZSC", length = 2000)
+    private String razonSocial;
+
+    /** Fecha de vencimiento de la última cuota del préstamo (CRD.PRST.PRSTFCFN). */
+    @Basic
+    @Column(name = "CCPMFCVN")
+    private LocalDate fechaVencimiento;
+
+    /** Monto solicitado del préstamo (CRD.PRST.PRSTMNSL). */
+    @Basic
+    @Column(name = "CCPMMNSL")
+    private Double montoSolicitado;
+
     /** FK al control de ejecución (RPR.EJCC) al que pertenece este registro. */
     @ManyToOne
     @JoinColumn(name = "CCPMEJCC", referencedColumnName = "EJCCCDGO")
@@ -315,6 +330,15 @@ public class CreditoCuotasPrestamosMensual implements Serializable {
 
     public LocalDate getFechaPrestamo() { return fechaPrestamo; }
     public void setFechaPrestamo(LocalDate fechaPrestamo) { this.fechaPrestamo = fechaPrestamo; }
+
+    public String getRazonSocial() { return razonSocial; }
+    public void setRazonSocial(String razonSocial) { this.razonSocial = razonSocial; }
+
+    public LocalDate getFechaVencimiento() { return fechaVencimiento; }
+    public void setFechaVencimiento(LocalDate fechaVencimiento) { this.fechaVencimiento = fechaVencimiento; }
+
+    public Double getMontoSolicitado() { return montoSolicitado; }
+    public void setMontoSolicitado(Double montoSolicitado) { this.montoSolicitado = montoSolicitado; }
 
     public EjecucionReporteCartera getEjecucionReporte() { return ejecucionReporte; }
     public void setEjecucionReporte(EjecucionReporteCartera ejecucionReporte) { this.ejecucionReporte = ejecucionReporte; }

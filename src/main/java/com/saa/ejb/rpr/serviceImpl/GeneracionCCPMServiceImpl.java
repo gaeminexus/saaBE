@@ -383,6 +383,7 @@ public class GeneracionCCPMServiceImpl implements GeneracionCCPMService {
                 ccpm.setTipoIdentificacion("C");
                 if (prestamo.getEntidad() != null) {
                     ccpm.setIdentificacion(prestamo.getEntidad().getNumeroIdentificacion());
+                    ccpm.setRazonSocial(prestamo.getEntidad().getRazonSocial());
                 }
 
                 ccpm.setNumeroOperacion(numeroOperacion);
@@ -431,6 +432,15 @@ public class GeneracionCCPMServiceImpl implements GeneracionCCPMService {
                 if (prestamo.getFecha() != null) {
                     ccpm.setFechaPrestamo(prestamo.getFecha().toLocalDate());
                 }
+
+                // Fecha de vencimiento de la última cuota (PRST.PRSTFCFN)
+                if (prestamo.getFechaFin() != null) {
+                    ccpm.setFechaVencimiento(prestamo.getFechaFin().toLocalDate());
+                }
+                // Monto solicitado (PRST.PRSTMNSL): sin guarda ni conversión a 0.0 a propósito
+                // — no lo escribe ninguna línea del backend, así que un null real tiene que
+                // llegar como null hasta el informe, no como un monto de cero.
+                ccpm.setMontoSolicitado(prestamo.getMontoSolicitado());
                 System.out.println("CCPM LLEGA 4 ");
                 // ** ASIGNAR NUEVOS CAMPOS: desgravamen e incendio **
                 ccpm.setValorDesgravamen(valorDesgravamen);

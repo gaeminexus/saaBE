@@ -22,10 +22,18 @@ Idéntica a G48. Ver `G48.md` y `_LOGICA_COMPARTIDA_CREDITO.md`.
 | `interesOrdinarioDelMes` | No existe | Interés de la cuota del mes (no acumulado) |
 | `interesMoraDelMes` | No existe | `max(0, interesMoraActual - interesMoraEjecucionAnterior)` |
 | `fechaPrestamo` | No existe | `Prestamo.fecha.toLocalDate()` |
+| `razonSocial` | No existe | `Prestamo.entidad.razonSocial` (`CRD.ENTD.ENTDRZNS`) |
+| `fechaVencimiento` | No existe | `Prestamo.fechaFin.toLocalDate()` (`CRD.PRST.PRSTFCFN`), última cuota de la tabla de amortización |
+| `montoSolicitado` | No existe | `Prestamo.montoSolicitado` (`CRD.PRST.PRSTMNSL`), sin guarda de null a propósito — ver contrato |
 | Desglose de capital | No existe | 5 bandas temporales (ver abajo) |
 | `provisionConstituida` | Lógica compleja (mes anterior + HM48) | Siempre `0` |
 | `tipoCredito` | Primera letra del producto (E→Q) | Nombre completo del producto |
 | Fuente `valorTotalCuentaIndividual` | `RPR.CG42` del mismo EJRC | `RPR.CPRM` del mismo EJCC (suma de todos los `total` por entidad) |
+
+> ⚠️ **`razonSocial`, `fechaVencimiento` y `montoSolicitado` (columnas `CCPMRZSC`, `CCPMFCVN`,
+> `CCPMMNSL`) son de las diferencias que el CCPM NO comparte con el G48.** El G48 es el reporte
+> regulatorio, con estructura fija — no replicar estas tres columnas ahí. Contrato completo en
+> `docs/logica-negocio/reportes/API-CCPM-COLUMNAS-NUEVAS.md`.
 
 ## Desglose de capital por vencer en 5 bandas
 
@@ -65,6 +73,7 @@ Si `suma(bandas) ≠ valorPorVencer` → la diferencia se absorbe en la banda de
 ## Historial de cambios
 | Fecha | Cambio |
 |---|---|
+| 2026-09-09 | Tres columnas nuevas: `razonSocial` (`CCPMRZSC`), `fechaVencimiento` (`CCPMFCVN`), `montoSolicitado` (`CCPMMNSL`). Cambio aditivo, contrato en `API-CCPM-COLUMNAS-NUEVAS.md`. DDL `crd/sql/220_DDL_CCPM_TRES_COLUMNAS.sql`, sin correr por este equipo. |
 | 2026-07 | Corrección Grupo 2: `valorVencido` excluye la cuota del mes (`fechaVencimiento < fechaInicio`). `valorPorVencer` usa `saldoInicialCapital` completo. Ver `_LOGICA_COMPARTIDA_CREDITO.md`. |
 | 2026-07 | Corrección bandas: Grupo 1 usa `selectCapitalCuotasFuturasBatch` (> fechaFin). Grupo 2 usa `selectCapitalCuotasDesdeInicioMesBatch` (>= fechaInicio) para que la cuota del mes caiga en `cv30`. |
 | 2026-07 | `selectSumaCapitalInteresGrupo2Batch` recibe `fechaInicio` además de `fechaFin`. |
