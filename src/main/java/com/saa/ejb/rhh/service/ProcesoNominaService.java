@@ -101,9 +101,14 @@ public interface ProcesoNominaService {
 	 * Cierra el periodo y escribe los acumulados ACMN. Es el unico punto donde se
 	 * escriben, precisamente para que los recalculos no los dupliquen.
 	 *
+	 * <p>Exige que el periodo este PAGADO (decision del usuario 2026-09-09: cerrar sin pagar
+	 * fabricaba un periodo CERRADO que despues la orden de pago rechazaba, sin salida - e2-31).
+	 * Excepcion: un periodo HISTORICO exige CONTABILIZADO en su lugar, porque nunca pasa por
+	 * pago en este sistema.</p>
+	 *
 	 * @param idPeriodoNomina	: Id del periodo de nomina
 	 * @param usuario			: Usuario que cierra
-	 * @throws Throwable		: Excepcion
+	 * @throws Throwable		: Excepcion (periodo no PAGADO / no CONTABILIZADO si es historico)
 	 */
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
 	void cerrarPeriodo(Long idPeriodoNomina, String usuario) throws Throwable;

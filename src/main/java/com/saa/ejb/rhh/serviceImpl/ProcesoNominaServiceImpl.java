@@ -693,11 +693,31 @@ public class ProcesoNominaServiceImpl implements ProcesoNominaService {
 		PeriodoNomina periodo = recuperaPeriodo(idPeriodoNomina);
 
 		Long estado = periodo.getEstado();
-		boolean contabilizadoOPagado = Long.valueOf(RhhEstadoPeriodoNomina.CONTABILIZADO).equals(estado)
-				|| Long.valueOf(RhhEstadoPeriodoNomina.PAGADO).equals(estado);
-		if (!contabilizadoOPagado) {
-			throw new IncomeException("El periodo debe estar CONTABILIZADO o PAGADO para cerrarse."
-					+ " Estado actual: " + estado);
+		// Decision del usuario 2026-09-09: cerrar sin haber pagado es lo que produjo el
+		// incidente que este cambio corrige (e2-31) - el periodo quedaba CERRADO habiendo
+		// saltado la orden de pago, y despues la orden de pago rechazaba un periodo CERRADO:
+		// una guarda que fabricaba un estado del que no se podia salir. Por eso ahora se exige
+		// PAGADO, no CONTABILIZADO o PAGADO como antes.
+		//
+		// Excepcion obligatoria: un periodo HISTORICO (PRDNMODO = HISTORICO_SIN_CONTABILIZAR,
+		// ver esHistorico()) nunca pasa por pago en este sistema - su nomina se pago en el
+		// sistema anterior, y contabilizarRol() lo deja en CONTABILIZADO como estado terminal
+		// (nunca en PAGADO: ContabilizacionNominaServiceImpl.contabilizarPago corta antes con
+		// un early-return para historicos y jamas escribe PAGADO sobre el periodo). Exigirle
+		// PAGADO a un historico repetiria el mismo error de diseño -una guarda sin salida-
+		// que este cambio viene a corregir. Confirmado antes de escribir esto: no existe hoy
+		// ningun otro camino para cerrar un historico salvo este mismo metodo.
+		boolean historico = esHistorico(periodo);
+		boolean estadoValido = historico
+				? (Long.valueOf(RhhEstadoPeriodoNomina.CONTABILIZADO).equals(estado)
+						|| Long.valueOf(RhhEstadoPeriodoNomina.PAGADO).equals(estado))
+				: Long.valueOf(RhhEstadoPeriodoNomina.PAGADO).equals(estado);
+		if (!estadoValido) {
+			String mensaje = historico
+					? "El periodo (historico) debe estar CONTABILIZADO para cerrarse. Estado actual: " + estado
+					: "El periodo debe estar PAGADO para cerrarse. Genere la orden de pago de nomina y confirme"
+							+ " la acreditacion antes de cerrar. Estado actual: " + estado;
+			throw new IncomeException(mensaje);
 		}
 
 		String avisoNovedades = exigeNovedadesIessReportadas(periodo);
