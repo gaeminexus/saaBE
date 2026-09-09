@@ -204,3 +204,97 @@ archivo existe para evitar.
 | Fecha | Qué |
 |---|---|
 | 2026-08-30 | Verificación del punto de partida contra el código. Sin plan todavía, sin prompts despachados, sin código ni SQL escrito |
+
+---
+
+## 5. Actualización 2026-09-09 — revisión completa y traspaso del frente
+
+> **Escrita por el árbitro de `omen-saa-1`, a pedido explícito del usuario** («revisa en qué estado
+> está» y después «empecemos con las correcciones»). Se respeta el §0: **no se reescribe nada de
+> las secciones 1 a 4**, que son el estado del equipo que las escribió. Esto es una capa nueva,
+> fechada, con lo que cambió y lo que se verificó de nuevo.
+
+**Diez días sin actividad.** La pantalla `asignacion-seguros` no se toca desde el **2026-08-12**; el
+último movimiento de este documento es del **2026-08-30**. Todos los commits con «seguro»
+posteriores pertenecen al **seguro médico de jubilados**, que es otro frente y está terminado.
+
+### 5.1 ⛔ CORRECCIÓN al §1.5 — el alta SÍ calcula desgravamen desde el 2026-08-31
+
+El §1.5 dice que `PrestamoServiceImpl.generarAmortizacion` fija **desgravamen y seguro de incendio
+en 0.0**. **Para el desgravamen ya no es cierto**, y cambió **un día después** de escribirse esta
+sección, por decisión del usuario (U1, `REVISION-MOTOR-ANTES-DE-OTORGAMIENTO.md` §8).
+
+`PrestamoServiceImpl:475-486`:
+
+```java
+// U1 (decisión del usuario, 2026-08-31): el desgravamen del generador real se calcula con la
+// misma fórmula que el simulador (saldo * 1.12/1000 antes de amortizar cada cuota), para que la
+// tabla que el sistema genera coincida con la simulación que el socio firma.
+params.setCalcularDesgravamenSobreSaldo(true);
+params.setDesgravamenPorCuota(0.0); // sin uso: el flag de arriba en true lo reemplaza
+// El seguro de incendio queda en 0 DELIBERADAMENTE: no se cobra mientras no exista la
+// póliza que lo respalde (decisión U1). No es un pendiente por implementar.
+params.setSeguroIncendioPorCuota(0.0);
+```
+
+**Dos consecuencias para el alcance de este equipo:**
+
+1. **El desgravamen ya tiene motor.** Lo que le falta no es cálculo: es **de dónde sale el
+   `1.12/1000`**, que sigue siendo una constante en Java (§1.4, esa parte sigue vigente).
+2. **El incendio en cero NO es un pendiente técnico**, es una decisión: no se cobra hasta que exista
+   la póliza. O sea que **la póliza es el desbloqueo**, no un adorno del modelo. Eso reordena la
+   prioridad del frente: sin `PLZA`/aseguradora/inscripción, el incendio no puede volver a cobrarse
+   en préstamos nuevos.
+
+Efecto aceptado y anotado en el propio código: **la cuota 0 de gracia cobra desgravamen sobre el
+capital completo**, porque durante la gracia el capital está íntegramente expuesto.
+
+### 5.2 Lo re-verificado hoy — sigue vigente
+
+- §1.1 **confirmado de nuevo**: cero entidades, cero DAOs, cero endpoints de póliza/aseguradora.
+  `grep` sobre `ws/` no devuelve nada de `poliza` ni `aseguradora`.
+- §1.7 **confirmado de nuevo**: la pantalla sigue siendo un cascarón. `TODO(pendiente-backend)` en
+  `asignacion-seguros.component.ts:305`, `console.warn('… Asignación simulada …')` en `:308`, y el
+  estado en un `signal` privado que **se pierde al recargar**.
+- §1.10 **confirmado**: prelación incendio → desgravamen → mora → interés vencido → interés
+  ordinario → capital, y la asimetría del acumulado (`DTPRDSPG` en la cuota para desgravamen, nada
+  para incendio).
+
+### 5.3 ⚠️ Cambio en el §1.3 — `PRSTVLAS` ya NO está muerta: la lee la contabilidad
+
+El §1.3 lista cuatro columnas de seguro de `CRD.PRST` que «nadie lee ni escribe». **Una de ellas ya
+tiene lector**: `ContabilidadPrestamoServiceImpl:929` usa `prestamo.getValorAsegurado()` para la
+línea del **bien en garantía** en cuentas de orden.
+
+**Nadie la escribe.** Así que `valorBien` siempre da 0, la línea nunca se genera, **un prendario o
+hipotecario queda sin registrar su garantía, y el asiento cuadra igual sin avisar de nada**. Está
+anotado en el propio método desde el 2026-09-01 y citando este documento. Sigue abierto.
+
+Es el mismo modo de falla que el resto del archivo persigue: **el sistema no falla, contesta mal.**
+
+### 5.4 Preguntas al usuario — planteadas el 2026-09-09, sin responder
+
+Son de negocio y no se deducen del repositorio. Ninguna corrección seria arranca sin ellas:
+
+1. ¿El `1.12/1000` es tarifa negociada con la aseguradora? ¿Cambia al renovar? ¿Es igual para todos
+   los productos?
+2. ¿Quién decide qué préstamos entran al seguro de incendio? Los **131** del `sql/60`, ¿son una
+   regla (hipotecarios y prendarios con bien asegurable) o una lista puntual?
+3. ¿Por qué el `sql/60` cubre **sólo sep-oct-nov 2026**? ¿La póliza vencía en noviembre?
+4. ¿La póliza es **anual por cartera** o **una por préstamo**? ¿Cómo factura la aseguradora?
+5. Cuando alguien **precancela o abona a capital**, ¿hoy se le devuelve el seguro no consumido? ¿Se
+   le reclama a la aseguradora? ¿Se hace a mano?
+6. **¿El `sql/60` llegó a correrse en producción?** (§3, sigue sin contestar desde el 2026-08-30)
+
+### 5.5 Lo ofrecido y no pedido todavía
+
+El script que contesta las preguntas de datos del §3: cuántos préstamos tienen hoy `DTPRVLSI > 0` y
+`DTPRDSGR > 0`, y si `PRSTVLAS`/`PRSTTSIN`/`PRSTPRIN` tienen datos o están en NULL.
+
+---
+
+## 6. Bitácora (continuación)
+
+| Fecha | Qué |
+|---|---|
+| 2026-09-09 | Revisión completa a pedido del usuario. Frente tomado por `omen-saa-1`. Corregido el §1.5 (el desgravamen sí se calcula desde U1) y el §1.3 (`PRSTVLAS` ya tiene lector). Sigue sin escribirse una línea de código ni de SQL de este frente |
