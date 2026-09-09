@@ -127,15 +127,25 @@ public class ReporteCuadreSriServiceImpl implements ReporteCuadreSriService {
         validarFacturadorPeriodo(idFacturador, mes);
         LocalDateTime[] rango = rangoPeriodo(anio, mes);
 
+        // ÍTEM 10 (encargo 2026-09-09): RetencionV2 es un documento que ASOPREP EMITE y somete al
+        // SRI -- mismo flujo de emisión electrónica que Factura/NotaCredito/NotaDebito, ver
+        // CriterioVentaVigente. "d.retencionV2.estado" (cabecera) usa el criterio nuevo;
+        // "d.estado" (el detalle, DetalleRetencionV2) sigue siendo el flag genérico de siempre
+        // (verificado: su javadoc dice "1=Activo, 0=Inactivo" y no tiene el patrón 3/4/5/6) --
+        // ese no se toca.
         @SuppressWarnings("unchecked")
         List<Object[]> filas = em.createQuery(
                 "select d.codRetencion, sum(d.baseImponible), sum(d.valorReten) "
                         + "from DetalleRetencionV2 d "
                         + "where d.retencionV2.facturador.id = :idFacturador "
-                        + "and d.retencionV2.estado = :activo and d.estado = :activo "
+                        + "and d.retencionV2.estado = :ventaAutorizada "
+                        + "and d.retencionV2.estadoEmision <> :ventaNoAnulada "
+                        + "and d.estado = :activo "
                         + "and d.retencionV2.fecha between :desde and :hasta "
                         + "group by d.codRetencion order by d.codRetencion")
                 .setParameter("idFacturador", idFacturador)
+                .setParameter("ventaAutorizada", CriterioVentaVigente.ESTADO_AUTORIZADA)
+                .setParameter("ventaNoAnulada", CriterioVentaVigente.ESTADO_EMISION_ANULADA)
                 .setParameter("activo", Long.valueOf(Estado.ACTIVO))
                 .setParameter("desde", rango[0])
                 .setParameter("hasta", rango[1])
@@ -181,12 +191,15 @@ public class ReporteCuadreSriServiceImpl implements ReporteCuadreSriService {
     private double[] sumarVentas(Long idEmpresa, LocalDateTime desde, LocalDateTime hasta) {
         double[] totales = new double[5];
 
+        // ÍTEM 10 (encargo 2026-09-09): las 3 de venta usan CriterioVentaVigente, no Estado.ACTIVO.
         TypedQuery<Factura> qf = em.createQuery(
                 "select f from Factura f where f.facturador.empresa.codigo = :idEmpresa "
-                        + "and f.estado = :activo and f.fecha between :desde and :hasta",
+                        + "and f.estado = :ventaAutorizada and f.estadoEmision <> :ventaNoAnulada "
+                        + "and f.fecha between :desde and :hasta",
                 Factura.class);
         qf.setParameter("idEmpresa", idEmpresa);
-        qf.setParameter("activo", Long.valueOf(Estado.ACTIVO));
+        qf.setParameter("ventaAutorizada", CriterioVentaVigente.ESTADO_AUTORIZADA);
+        qf.setParameter("ventaNoAnulada", CriterioVentaVigente.ESTADO_EMISION_ANULADA);
         qf.setParameter("desde", desde.toLocalDate());
         qf.setParameter("hasta", hasta.toLocalDate());
         for (Factura f : qf.getResultList()) {
@@ -199,10 +212,12 @@ public class ReporteCuadreSriServiceImpl implements ReporteCuadreSriService {
 
         TypedQuery<NotaCredito> qnc = em.createQuery(
                 "select n from NotaCredito n where n.facturador.empresa.codigo = :idEmpresa "
-                        + "and n.estado = :activo and n.fecha between :desde and :hasta",
+                        + "and n.estado = :ventaAutorizada and n.estadoEmision <> :ventaNoAnulada "
+                        + "and n.fecha between :desde and :hasta",
                 NotaCredito.class);
         qnc.setParameter("idEmpresa", idEmpresa);
-        qnc.setParameter("activo", Long.valueOf(Estado.ACTIVO));
+        qnc.setParameter("ventaAutorizada", CriterioVentaVigente.ESTADO_AUTORIZADA);
+        qnc.setParameter("ventaNoAnulada", CriterioVentaVigente.ESTADO_EMISION_ANULADA);
         qnc.setParameter("desde", desde);
         qnc.setParameter("hasta", hasta);
         for (NotaCredito n : qnc.getResultList()) {
@@ -214,10 +229,12 @@ public class ReporteCuadreSriServiceImpl implements ReporteCuadreSriService {
 
         TypedQuery<NotaDebito> qnd = em.createQuery(
                 "select n from NotaDebito n where n.facturador.empresa.codigo = :idEmpresa "
-                        + "and n.estado = :activo and n.fecha between :desde and :hasta",
+                        + "and n.estado = :ventaAutorizada and n.estadoEmision <> :ventaNoAnulada "
+                        + "and n.fecha between :desde and :hasta",
                 NotaDebito.class);
         qnd.setParameter("idEmpresa", idEmpresa);
-        qnd.setParameter("activo", Long.valueOf(Estado.ACTIVO));
+        qnd.setParameter("ventaAutorizada", CriterioVentaVigente.ESTADO_AUTORIZADA);
+        qnd.setParameter("ventaNoAnulada", CriterioVentaVigente.ESTADO_EMISION_ANULADA);
         qnd.setParameter("desde", desde);
         qnd.setParameter("hasta", hasta);
         for (NotaDebito n : qnd.getResultList()) {

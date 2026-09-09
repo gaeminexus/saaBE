@@ -335,13 +335,18 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
             List<String> avisos) {
         Map<String, LineaVenta> agrupado = new LinkedHashMap<String, LineaVenta>();
 
+        // ÍTEM 10 (encargo 2026-09-09, segunda tarea urgente): estas 3 son documentos de VENTA --
+        // ver CriterioVentaVigente, "vigente" = autorizado y no anulado después. NO usar
+        // Estado.ACTIVO acá.
         TypedQuery<Factura> qf = em.createQuery(
                 "select f from Factura f where f.facturador.empresa.codigo = :idEmpresa "
-                        + "and f.estado = :activo and f.titular is not null "
+                        + "and f.estado = :ventaAutorizada and f.estadoEmision <> :ventaNoAnulada "
+                        + "and f.titular is not null "
                         + "and f.fecha between :desde and :hasta order by f.titular.codigo",
                 Factura.class);
         qf.setParameter("idEmpresa", idEmpresa);
-        qf.setParameter("activo", Long.valueOf(Estado.ACTIVO));
+        qf.setParameter("ventaAutorizada", CriterioVentaVigente.ESTADO_AUTORIZADA);
+        qf.setParameter("ventaNoAnulada", CriterioVentaVigente.ESTADO_EMISION_ANULADA);
         qf.setParameter("desde", desdeDT.toLocalDate());
         qf.setParameter("hasta", hastaDT.toLocalDate());
         for (Factura f : qf.getResultList()) {
@@ -352,11 +357,13 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
 
         TypedQuery<NotaCredito> qnc = em.createQuery(
                 "select n from NotaCredito n where n.facturador.empresa.codigo = :idEmpresa "
-                        + "and n.estado = :activo and n.titular is not null "
+                        + "and n.estado = :ventaAutorizada and n.estadoEmision <> :ventaNoAnulada "
+                        + "and n.titular is not null "
                         + "and n.fecha between :desde and :hasta order by n.titular.codigo",
                 NotaCredito.class);
         qnc.setParameter("idEmpresa", idEmpresa);
-        qnc.setParameter("activo", Long.valueOf(Estado.ACTIVO));
+        qnc.setParameter("ventaAutorizada", CriterioVentaVigente.ESTADO_AUTORIZADA);
+        qnc.setParameter("ventaNoAnulada", CriterioVentaVigente.ESTADO_EMISION_ANULADA);
         qnc.setParameter("desde", desdeDT);
         qnc.setParameter("hasta", hastaDT);
         for (NotaCredito n : qnc.getResultList()) {
@@ -367,11 +374,13 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
 
         TypedQuery<NotaDebito> qnd = em.createQuery(
                 "select n from NotaDebito n where n.facturador.empresa.codigo = :idEmpresa "
-                        + "and n.estado = :activo and n.titular is not null "
+                        + "and n.estado = :ventaAutorizada and n.estadoEmision <> :ventaNoAnulada "
+                        + "and n.titular is not null "
                         + "and n.fecha between :desde and :hasta order by n.titular.codigo",
                 NotaDebito.class);
         qnd.setParameter("idEmpresa", idEmpresa);
-        qnd.setParameter("activo", Long.valueOf(Estado.ACTIVO));
+        qnd.setParameter("ventaAutorizada", CriterioVentaVigente.ESTADO_AUTORIZADA);
+        qnd.setParameter("ventaNoAnulada", CriterioVentaVigente.ESTADO_EMISION_ANULADA);
         qnd.setParameter("desde", desdeDT);
         qnd.setParameter("hasta", hastaDT);
         for (NotaDebito n : qnd.getResultList()) {
