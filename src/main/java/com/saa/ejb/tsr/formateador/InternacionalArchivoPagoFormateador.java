@@ -10,6 +10,7 @@ import com.saa.basico.util.IncomeException;
 import com.saa.model.cxp.LotePago;
 import com.saa.model.cxp.PagoProgramado;
 import com.saa.model.tsr.BancoExterno;
+import com.saa.model.tsr.Titular;
 import com.saa.rubros.TipoCuentasBancarias;
 import com.saa.rubros.TipoIdentificacion;
 
@@ -71,10 +72,23 @@ public class InternacionalArchivoPagoFormateador implements FormateadorArchivoPa
 		BancoExterno banco;
 
 		if (tieneCuentaTitular) {
-			identificacion = nvl(pago.getTitular() != null ? pago.getTitular().getIdentificacion() : null);
-			Long rubroTipoId = (pago.getTitular() != null) ? pago.getTitular().getRubroTipoIdentificacionP() : null;
-			tipoIdentificacion = (rubroTipoId != null)
-					? letraTipoIdentificacion(rubroTipoId.intValue(), pago)
+			Titular titular = pago.getTitular();
+			identificacion = nvl(titular != null ? titular.getIdentificacion() : null);
+			// ÍTEM 11 (2026-09-09): TSR.TTLR guarda el tipo de identificación en DOS columnas
+			// (Titular.java:110-122) -- rubroTipoIdentificacionP (TTLRRYYB) es el rubro PADRE
+			// (36, SIEMPRE ese valor para todos los titulares); el detalle real (1=CEDULA,
+			// 2=RUC, 3=PASAPORTE, 4=EXTERIOR) está en rubroTipoIdentificacionH (TTLRRZZB, el
+			// HIJO). Leer la P manda 36 a letraTipoIdentificacion(), que no lo reconoce: el
+			// archivo fallaba SIEMPRE (medido: los 110 titulares tienen TTLRRYYB=36). Mismo
+			// par P/H que ya resuelven bien FacturaServiceImpl:1076-1079,
+			// LiquidacionCompraServiceImpl:1769-1778 y NotaCreditoServiceImpl:276 -- exigir
+			// las DOS no nulas antes de confiar en la H; si falta cualquiera, respaldo por
+			// longitud.
+			boolean tipoIdentificacionConfiable = (titular != null)
+					&& (titular.getRubroTipoIdentificacionP() != null)
+					&& (titular.getRubroTipoIdentificacionH() != null);
+			tipoIdentificacion = tipoIdentificacionConfiable
+					? letraTipoIdentificacion(titular.getRubroTipoIdentificacionH().intValue(), pago)
 					: tipoIdentificacionPorLongitud(identificacion);
 			tipoCuentaRubro = pago.getCuentaDestino().getTipoCuenta();
 			numeroCuenta = nvl(pago.getCuentaDestino().getNumeroCuenta());
@@ -180,7 +194,8 @@ public class InternacionalArchivoPagoFormateador implements FormateadorArchivoPa
 	 */
 	private String valorEnCentavos(PagoProgramado pago) {
 		if (pago.getValor() == null || pago.getValor() <= 0) {
-			throw new IncomeException("El pago " + pago.getId() + " no tiene un valor mayor que cero.");
+			throw new IncomeException("El pago " + pago.getId() + " (beneficiario " + nombreBeneficiario(pago)
+					+ ") no tiene un valor mayor que cero.");
 		}
 		BigDecimal centavos = BigDecimal.valueOf(pago.getValor())
 				.setScale(2, RoundingMode.HALF_UP)
@@ -191,7 +206,8 @@ public class InternacionalArchivoPagoFormateador implements FormateadorArchivoPa
 
 	private String tipoCuenta(Long tipoCuentaRubro, PagoProgramado pago) {
 		if (tipoCuentaRubro == null) {
-			throw new IncomeException("El pago " + pago.getId() + " no tiene tipo de cuenta del beneficiario.");
+			throw new IncomeException("El pago " + pago.getId() + " (beneficiario " + nombreBeneficiario(pago)
+					+ ") no tiene tipo de cuenta del beneficiario.");
 		}
 		if (tipoCuentaRubro.intValue() == TipoCuentasBancarias.CORRIENTE) {
 			return "CTE";
@@ -199,8 +215,9 @@ public class InternacionalArchivoPagoFormateador implements FormateadorArchivoPa
 		if (tipoCuentaRubro.intValue() == TipoCuentasBancarias.AHORROS) {
 			return "AHO";
 		}
-		throw new IncomeException("El pago " + pago.getId() + " tiene un tipo de cuenta ("
-				+ tipoCuentaRubro + ") sin equivalente en el formato del Banco Internacional.");
+		throw new IncomeException("El pago " + pago.getId() + " (beneficiario " + nombreBeneficiario(pago)
+				+ ") tiene un tipo de cuenta (" + tipoCuentaRubro + ") sin equivalente en el formato del "
+				+ "Banco Internacional.");
 	}
 
 	/**
@@ -234,8 +251,8 @@ public class InternacionalArchivoPagoFormateador implements FormateadorArchivoPa
 						+ nombreBeneficiario(pago) + ") tiene identificacion del exterior, que no "
 						+ "tiene equivalente en el formato del Banco Internacional.");
 			default:
-				throw new IncomeException("El pago " + pago.getId() + " tiene un tipo de identificacion ("
-						+ rubro + ") no reconocido.");
+				throw new IncomeException("El pago " + pago.getId() + " (beneficiario " + nombreBeneficiario(pago)
+						+ ") tiene un tipo de identificacion (" + rubro + ") no reconocido.");
 		}
 	}
 
