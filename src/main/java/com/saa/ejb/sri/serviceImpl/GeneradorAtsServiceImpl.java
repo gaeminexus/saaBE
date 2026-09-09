@@ -22,14 +22,17 @@ import javax.xml.stream.XMLStreamWriter;
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.sri.service.GeneradorAtsService;
 import com.saa.ejb.sri.service.dto.ResultadoGeneracionAts;
+import com.saa.model.cxc.Establecimiento;
 import com.saa.model.cxc.Facturador;
 import com.saa.model.cxc.NotaCredito;
 import com.saa.model.cxc.NotaDebito;
 import com.saa.model.cxc.Factura;
+import com.saa.model.cxp.DetalleRetencionCompraV2;
 import com.saa.model.cxp.FacturaCompra;
 import com.saa.model.cxp.LiquidacionCompraCompra;
 import com.saa.model.cxp.NotaCreditoCompra;
 import com.saa.model.cxp.NotaDebitoCompra;
+import com.saa.model.cxp.RetencionCompraV2;
 import com.saa.model.tsr.Titular;
 import com.saa.rubros.Estado;
 import com.saa.rubros.TipoIdentificacion;
@@ -132,18 +135,29 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
 
         List<LineaVenta> ventas = agruparVentas(idEmpresa, desdeDT, hastaDT, avisos);
 
-        // Actualizado 2026-08-28 (ítem 12): las 4 entidades de <compras> ya tienen fechaAnulacion
-        // (motivoAnulacion/fechaAnulacion/usuarioAnulacion, mismo patrón que Factura/NotaCredito/
-        // NotaDebito de venta) -- se conecta aquí. Antes de este cambio no había forma de filtrar
-        // anulados de compra por período; ahora sí, exactamente igual que el lado venta.
+        // ÍTEM 5 del encargo 2026-09-09: retenciones de compra (PGS.RCV2/DRC2), enlazadas por
+        // autorización del documento. Se calcula ANTES de generarXml para que writeDetalleCompra
+        // sólo tenga que buscar en el mapa. Ver DIAGNOSTICO-ATS-RECHAZADO-VALIDADOR.md §A.2/§A.3.
+        java.util.Set<String> autorizacionesCompra = new java.util.HashSet<String>();
+        for (LineaCompra c : compras) {
+            if (c.autorizacion != null && !c.autorizacion.trim().isEmpty()) {
+                autorizacionesCompra.add(c.autorizacion);
+            }
+        }
+        Map<String, RetencionInfo> retencionesCompra = cargarRetencionesCompra(idEmpresa, autorizacionesCompra, avisos);
+
+        // ÍTEM 8 del encargo 2026-09-09: <anulados> declara los secuenciales que EMITIMOS
+        // NOSOTROS y anulamos -- nunca los de un documento que nos emitió un proveedor. Las 4
+        // entidades de compra (FacturaCompra, LiquidacionCompraCompra, NotaCreditoCompra,
+        // NotaDebitoCompra) NO van acá: eso es lo que hacía que AT082026 declarara 18 anulados con
+        // 8 de ellos con <autorizacion></autorizacion> vacía (inválido). Sólo las 3 de venta.
         List<LineaAnulado> anulados = new ArrayList<LineaAnulado>();
-        anulados.addAll(anuladosDe("FacturaCompra", "d.empresa.codigo", idEmpresa, desdeDT, hastaDT));
-        anulados.addAll(anuladosDe("LiquidacionCompraCompra", "d.empresa.codigo", idEmpresa, desdeDT, hastaDT));
-        anulados.addAll(anuladosDe("NotaCreditoCompra", "d.empresa.codigo", idEmpresa, desdeDT, hastaDT));
-        anulados.addAll(anuladosDe("NotaDebitoCompra", "d.empresa.codigo", idEmpresa, desdeDT, hastaDT));
-        anulados.addAll(anuladosDe("Factura", "d.facturador.empresa.codigo", idEmpresa, desdeDT, hastaDT));
-        anulados.addAll(anuladosDe("NotaCredito", "d.facturador.empresa.codigo", idEmpresa, desdeDT, hastaDT));
-        anulados.addAll(anuladosDe("NotaDebito", "d.facturador.empresa.codigo", idEmpresa, desdeDT, hastaDT));
+        anulados.addAll(anuladosDe("Factura", "d.facturador.empresa.codigo", idEmpresa, desdeDT, hastaDT,
+                "Factura", avisos));
+        anulados.addAll(anuladosDe("NotaCredito", "d.facturador.empresa.codigo", idEmpresa, desdeDT, hastaDT,
+                "Nota de crédito", avisos));
+        anulados.addAll(anuladosDe("NotaDebito", "d.facturador.empresa.codigo", idEmpresa, desdeDT, hastaDT,
+                "Nota de débito", avisos));
         if (!anulados.isEmpty()) {
             avisos.add("<anulados> incluye " + anulados.size() + " documento(s) anulados internamente "
                     + "en el sistema durante el período. NO se puede distinguir una anulación interna "
@@ -157,7 +171,8 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
             totalVentasDeclarado += v.baseGravada + v.base0 + v.baseNoObjeto;
         }
 
-        String xml = generarXml(facturador, periodo, compras, ventas, anulados, totalVentasDeclarado, avisos);
+        String xml = generarXml(facturador, periodo, compras, ventas, anulados, totalVentasDeclarado,
+                retencionesCompra, avisos);
         String nombreArchivoXml = String.format("AT%02d%04d.xml", mes, anio);
         String nombreArchivoZip = String.format("AT%02d%04d.zip", mes, anio);
         byte[] zip = empaquetar(nombreArchivoXml, xml);
@@ -330,7 +345,8 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         qf.setParameter("desde", desdeDT.toLocalDate());
         qf.setParameter("hasta", hastaDT.toLocalDate());
         for (Factura f : qf.getResultList()) {
-            acumularVenta(agrupado, f.getTitular(), f.getTipoComprobante(), nvl(f.getSubtotal(), 0.0),
+            String tipoVenta = mapearTipoComprobanteVenta(f.getTipoComprobante(), f.getId(), "Factura", avisos);
+            acumularVenta(agrupado, f.getTitular(), tipoVenta, nvl(f.getSubtotal(), 0.0),
                     nvl(f.getSubcero(), 0.0), nvl(f.getvIVA(), 0.0), nvl(f.getvICE(), 0.0));
         }
 
@@ -344,7 +360,8 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         qnc.setParameter("desde", desdeDT);
         qnc.setParameter("hasta", hastaDT);
         for (NotaCredito n : qnc.getResultList()) {
-            acumularVenta(agrupado, n.getTitular(), n.getTipoComprobante(), nvl(n.getSubtotal(), 0.0),
+            String tipoVenta = mapearTipoComprobanteVenta(n.getTipoComprobante(), n.getId(), "Nota de crédito", avisos);
+            acumularVenta(agrupado, n.getTitular(), tipoVenta, nvl(n.getSubtotal(), 0.0),
                     nvl(n.getSubcero(), 0.0), nvl(n.getvIVA(), 0.0), nvl(n.getvICE(), 0.0));
         }
 
@@ -358,14 +375,25 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         qnd.setParameter("desde", desdeDT);
         qnd.setParameter("hasta", hastaDT);
         for (NotaDebito n : qnd.getResultList()) {
-            acumularVenta(agrupado, n.getTitular(), n.getTipoComprobante(), nvl(n.getSubtotal(), 0.0),
+            String tipoVenta = mapearTipoComprobanteVenta(n.getTipoComprobante(), n.getId(), "Nota de débito", avisos);
+            acumularVenta(agrupado, n.getTitular(), tipoVenta, nvl(n.getSubtotal(), 0.0),
                     nvl(n.getSubcero(), 0.0), nvl(n.getvIVA(), 0.0), nvl(n.getvICE(), 0.0));
         }
 
         if (!agrupado.isEmpty()) {
-            avisos.add("<ventas> no incluye el bloque de retenciones que le practicaron al cliente "
-                    + "(no está modelado por documento de venta) ni la compensación (Tabla 21, sin "
-                    + "verificar) — ver §10.");
+            // ÍTEM 6 del encargo 2026-09-09: valorRetIva/valorRetRenta (la retención que el
+            // cliente nos practicó) se emiten en 0.00 para TODAS las líneas -- no hay tabla en el
+            // modelo que enlace una retención recibida a un documento de venta con su tipo de
+            // impuesto (ver comentario en writeDetalleVenta). El archivo autorizado de julio no
+            // era cero: 3 ventas con retención de IVA y 2 con retención de renta. Reportado al
+            // árbitro, no inventado.
+            avisos.add("<detalleVentas> declara valorRetIva=0.00 y valorRetRenta=0.00 en las " + agrupado.size()
+                    + " línea(s) del período: no existe en el modelo una tabla que enlace la retención que "
+                    + "el CLIENTE nos practica a un documento de venta con su tipo de impuesto (CBR.RTV2 es "
+                    + "la retención que emitimos NOSOTROS a un proveedor, no sirve). El archivo autorizado "
+                    + "de julio declaraba montos reales aquí (3 ventas con IVA, 2 con renta) -- revisar con "
+                    + "el usuario si hace falta modelar esto antes de declarar, o si por ahora se acepta en "
+                    + "0.00. No incluye tampoco la compensación (Tabla 21, sin verificar) — ver §10.");
         }
         return new ArrayList<LineaVenta>(agrupado.values());
     }
@@ -394,7 +422,7 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
 
     @SuppressWarnings("unchecked")
     private List<LineaAnulado> anuladosDe(String entidad, String campoEmpresa, Long idEmpresa,
-            LocalDateTime desdeDT, LocalDateTime hastaDT) {
+            LocalDateTime desdeDT, LocalDateTime hastaDT, String etiqueta, List<String> avisos) {
         // ANULADA = 3 en todos los rubros de estadoEmision de este grupo de documentos —
         // mismo código que usa FacturaServiceImpl.anular / LiquidacionCompraServiceImpl, etc.
         // campoEmpresa difiere entre compra (empresa directa) y venta (via facturador.empresa).
@@ -407,8 +435,17 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         q.setParameter("hasta", hastaDT);
         List<LineaAnulado> resultado = new ArrayList<LineaAnulado>();
         for (Object[] fila : (List<Object[]>) q.getResultList()) {
+            String autorizacion = (String) fila[4];
+            // ÍTEM 8: un <detalleAnulados> con <autorizacion></autorizacion> vacía es inválido --
+            // el AT082026 rechazado tenía 8 así. No se inventa el valor: se excluye y se avisa.
+            if (autorizacion == null || autorizacion.trim().isEmpty()) {
+                avisos.add(etiqueta + " " + fila[3] + " (secuencial) anulada en el período sin "
+                        + "número de autorización -- excluida de <anulados> porque un elemento vacío "
+                        + "ahí es inválido para el SRI. Revisar por qué no tiene autorización.");
+                continue;
+            }
             resultado.add(new LineaAnulado((String) fila[0], (String) fila[1], (String) fila[2],
-                    (String) fila[3], (String) fila[4]));
+                    (String) fila[3], autorizacion));
         }
         return resultado;
     }
@@ -418,21 +455,26 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
     // =====================================================================
 
     private String generarXml(Facturador facturador, YearMonth periodo, List<LineaCompra> compras,
-            List<LineaVenta> ventas, List<LineaAnulado> anulados, double totalVentas, List<String> avisos)
+            List<LineaVenta> ventas, List<LineaAnulado> anulados, double totalVentas,
+            Map<String, RetencionInfo> retencionesCompra, List<String> avisos)
             throws Exception {
         StringWriter sw = new StringWriter();
         XMLOutputFactory factory = XMLOutputFactory.newInstance();
         XMLStreamWriter w = factory.createXMLStreamWriter(sw);
+
+        List<Establecimiento> establecimientos = establecimientosActivos(facturador.getId());
 
         w.writeStartElement("iva");
         w.writeCharacters("\n");
 
         writeElement(w, "TipoIDInformante", "R", 2);
         writeElement(w, "IdInformante", nvl(facturador.getNumDoc(), ""), 2);
-        writeElement(w, "razonSocial", nvl(facturador.getRazonSocial(), ""), 2);
+        // ÍTEM 2 del encargo 2026-09-09: nombreComercial en vez de la razón social completa (148
+        // caracteres, rechazado por el validador) -- DIAGNOSTICO-ATS-RECHAZADO-VALIDADOR.md §A.5.
+        writeElement(w, "razonSocial", resolverRazonSocial(facturador, avisos), 2);
         writeElement(w, "Anio", String.valueOf(periodo.getYear()), 2);
         writeElement(w, "Mes", String.format("%02d", periodo.getMonthValue()), 2);
-        writeElement(w, "numEstabRuc", String.format("%03d", contarEstablecimientosActivos(facturador.getId())), 2);
+        writeElement(w, "numEstabRuc", String.format("%03d", establecimientos.size()), 2);
         writeElement(w, "totalVentas", formatDecimal(totalVentas), 2);
         writeElement(w, "codigoOperativo", "IVA", 2);
         // RegimenMicroempresa: SOLO RIMPE semestral (§3.2), y el modelo actual (Facturador.rimpe/
@@ -443,7 +485,7 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         w.writeStartElement("compras");
         w.writeCharacters("\n");
         for (LineaCompra c : compras) {
-            writeDetalleCompra(w, c);
+            writeDetalleCompra(w, c, retencionesCompra);
         }
         w.writeCharacters("  ");
         w.writeEndElement();
@@ -454,6 +496,42 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         w.writeCharacters("\n");
         for (LineaVenta v : ventas) {
             writeDetalleVenta(w, v);
+        }
+        w.writeCharacters("  ");
+        w.writeEndElement();
+        w.writeCharacters("\n");
+
+        // ÍTEM 7 del encargo 2026-09-09: sección entera que faltaba (0 ocurrencias antes de hoy).
+        // Estructura exacta en DIAGNOSTICO-ATS-RECHAZADO-VALIDADOR.md §A.4. No hay venta
+        // desagregada por establecimiento en el modelo -- con 1 solo establecimiento activo (caso
+        // real de ASOPREP) esto es exacto; con más de uno se declara el total bajo el primero y se
+        // avisa, en vez de inventar un reparto.
+        w.writeCharacters("  ");
+        w.writeStartElement("ventasEstablecimiento");
+        w.writeCharacters("\n");
+        if (establecimientos.isEmpty()) {
+            avisos.add("El facturador " + facturador.getId() + " no tiene establecimientos activos: "
+                    + "<ventasEstablecimiento> quedó vacío, revisar antes de enviar.");
+        } else {
+            if (establecimientos.size() > 1) {
+                avisos.add("El facturador tiene " + establecimientos.size() + " establecimientos activos "
+                        + "y no hay venta desagregada por establecimiento en el modelo -- se declaró el "
+                        + "total de ventas del período bajo el primero (código "
+                        + establecimientos.get(0).getCodigo() + "); revisar si corresponde repartirlo.");
+            }
+            for (int i = 0; i < establecimientos.size(); i++) {
+                Establecimiento est = establecimientos.get(i);
+                double ventasEst = (i == 0) ? totalVentas : 0.0;
+                w.writeCharacters("    ");
+                w.writeStartElement("ventaEst");
+                w.writeCharacters("\n");
+                writeElement(w, "codEstab", nvl(est.getCodigo(), ""), 6);
+                writeElement(w, "ventasEstab", formatDecimal(ventasEst), 6);
+                writeElement(w, "ivaComp", "0.00", 6);
+                w.writeCharacters("    ");
+                w.writeEndElement();
+                w.writeCharacters("\n");
+            }
         }
         w.writeCharacters("  ");
         w.writeEndElement();
@@ -475,7 +553,8 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         return sw.toString();
     }
 
-    private void writeDetalleCompra(XMLStreamWriter w, LineaCompra c) throws Exception {
+    private void writeDetalleCompra(XMLStreamWriter w, LineaCompra c, Map<String, RetencionInfo> retenciones)
+            throws Exception {
         w.writeCharacters("    ");
         w.writeStartElement("detalleCompras");
         w.writeCharacters("\n");
@@ -483,9 +562,13 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         writeElement(w, "tpIdProv", tipoIdentificacionCompra(c.titular), 6);
         writeElement(w, "idProv", nvl(c.titular.getIdentificacion(), ""), 6);
         writeElement(w, "tipoComprobante", nvl(c.tipoComprobante, ""), 6);
-        writeElement(w, "parteRel", nvl(c.titular.getParteRelacionada(), ""), 6);
-        writeElement(w, "tipoProv", nvl(c.titular.getTipoProveedorAts(), ""), 6);
-        writeElement(w, "denopr", nvl(nvl(c.titular.getNombre(), c.titular.getRazonSocial()), ""), 6);
+        // Decisión del usuario 2026-09-09 (DIAGNOSTICO-ATS-RECHAZADO-VALIDADOR.md §A.5): NULL ->
+        // "NO". Es una afirmación tributaria, no un default técnico -- el archivo autorizado de
+        // julio declara "NO" en los 79 proveedores; se revierte en Titular.parteRelacionada en
+        // cuanto contabilidad marque las excepciones. "tipoProv" y "denopr" NO van acá: no existen
+        // en el esquema real (0 ocurrencias en las 79 compras del autorizado) y eran justo lo que
+        // rompía la secuencia ante el validador ("se esperaba 'fechaRegistro'").
+        writeElement(w, "parteRel", nvl(c.titular.getParteRelacionada(), "NO"), 6);
         writeElement(w, "fechaRegistro", formatFecha(c.fechaRegistro != null ? c.fechaRegistro : c.fechaEmision), 6);
         writeElement(w, "establecimiento", nvl(c.establecimiento, ""), 6);
         writeElement(w, "puntoEmision", nvl(c.puntoEmision, ""), 6);
@@ -501,9 +584,74 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         writeElement(w, "baseImpExe", "0.00", 6);
         writeElement(w, "montoIce", formatDecimal(c.montoIce), 6);
         writeElement(w, "montoIva", formatDecimal(c.montoIva), 6);
-        // Retenciones de IVA/renta por documento, pago/exterior (Tabla 13), reembolsos
-        // detallados, banano, dividendos: fuera de alcance de esta ronda, ver §10 -- no se
-        // escriben (son opcionales cuando no aplican).
+
+        // Retenciones de IVA/renta, pagoExterior y formasDePago -- DIAGNOSTICO-ATS-RECHAZADO-
+        // VALIDADOR.md §A.2/§A.3. Sin retenciones.get(c.autorizacion) los 8 campos numéricos van
+        // en 0.00 y NI air NI el bloque estabRetencion1..fechaEmiRet1 se escriben, tal como está
+        // en el archivo autorizado para un documento sin retención.
+        RetencionInfo ret = (c.autorizacion != null && !c.autorizacion.trim().isEmpty())
+                ? retenciones.get(c.autorizacion) : null;
+        writeElement(w, "valRetBien10", formatDecimal(ret != null ? ret.valRetBien10 : 0.0), 6);
+        writeElement(w, "valRetServ20", formatDecimal(ret != null ? ret.valRetServ20 : 0.0), 6);
+        writeElement(w, "valorRetBienes", formatDecimal(ret != null ? ret.valorRetBienes : 0.0), 6);
+        writeElement(w, "valRetServ50", formatDecimal(ret != null ? ret.valRetServ50 : 0.0), 6);
+        writeElement(w, "valorRetServicios", formatDecimal(ret != null ? ret.valorRetServicios : 0.0), 6);
+        writeElement(w, "valRetServ100", formatDecimal(ret != null ? ret.valRetServ100 : 0.0), 6);
+        // valorRetencionNc, totbasesImpReemb: 0.00 -- sin fuente hoy, igual que en el autorizado.
+        writeElement(w, "valorRetencionNc", "0.00", 6);
+        writeElement(w, "totbasesImpReemb", "0.00", 6);
+
+        // Constante en las 79 compras del autorizado, con o sin retención.
+        w.writeCharacters("      ");
+        w.writeStartElement("pagoExterior");
+        w.writeCharacters("\n");
+        writeElement(w, "pagoLocExt", "01", 8);
+        writeElement(w, "paisEfecPago", "NA", 8);
+        writeElement(w, "aplicConvDobTrib", "NA", 8);
+        writeElement(w, "pagExtSujRetNorLeg", "NA", 8);
+        w.writeCharacters("      ");
+        w.writeEndElement();
+        w.writeCharacters("\n");
+
+        if (ret != null && ret.formaPago != null) {
+            w.writeCharacters("      ");
+            w.writeStartElement("formasDePago");
+            w.writeCharacters("\n");
+            writeElement(w, "formaPago", ret.formaPago, 8);
+            w.writeCharacters("      ");
+            w.writeEndElement();
+            w.writeCharacters("\n");
+        }
+
+        if (ret != null && !ret.airLineas.isEmpty()) {
+            w.writeCharacters("      ");
+            w.writeStartElement("air");
+            w.writeCharacters("\n");
+            for (DetalleAir a : ret.airLineas) {
+                w.writeCharacters("        ");
+                w.writeStartElement("detalleAir");
+                w.writeCharacters("\n");
+                writeElement(w, "codRetAir", a.codRetAir, 10);
+                writeElement(w, "baseImpAir", a.baseImpAir, 10);
+                writeElement(w, "porcentajeAir", a.porcentajeAir, 10);
+                writeElement(w, "valRetAir", a.valRetAir, 10);
+                w.writeCharacters("        ");
+                w.writeEndElement();
+                w.writeCharacters("\n");
+            }
+            w.writeCharacters("      ");
+            w.writeEndElement();
+            w.writeCharacters("\n");
+        }
+
+        if (ret != null) {
+            writeElement(w, "estabRetencion1", nvl(ret.estabRetencion1, ""), 6);
+            writeElement(w, "ptoEmiRetencion1", nvl(ret.ptoEmiRetencion1, ""), 6);
+            writeElement(w, "secRetencion1", nvl(ret.secRetencion1, ""), 6);
+            writeElement(w, "autRetencion1", nvl(ret.autRetencion1, ""), 6);
+            writeElement(w, "fechaEmiRet1", formatFecha(ret.fechaEmiRet1), 6);
+        }
+
         w.writeCharacters("    ");
         w.writeEndElement();
         w.writeCharacters("\n");
@@ -515,21 +663,33 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         w.writeCharacters("\n");
         writeElement(w, "tpIdCliente", tipoIdentificacionVenta(v.titular), 6);
         writeElement(w, "idCliente", nvl(v.titular.getIdentificacion(), ""), 6);
-        writeElement(w, "parteRel", nvl(v.titular.getParteRelacionada(), ""), 6);
-        writeElement(w, "tipoCliente", nvl(v.titular.getTipoProveedorAts(), ""), 6);
-        writeElement(w, "denoCli", nvl(nvl(v.titular.getNombre(), v.titular.getRazonSocial()), ""), 6);
+        // parteRelVtas (no "parteRel" -- nombre distinto del lado compras, DIAGNOSTICO-ATS-
+        // RECHAZADO-VALIDADOR.md §3). Mismo default "NO" que en compras y por la misma decisión
+        // del usuario (§A.5): NULL -> "NO", afirmación tributaria a revertir si contabilidad marca
+        // excepciones. "tipoCliente"/"denoCli" no van: no existen en el esquema real.
+        writeElement(w, "parteRelVtas", nvl(v.titular.getParteRelacionada(), "NO"), 6);
         writeElement(w, "tipoComprobante", nvl(v.tipoComprobante, ""), 6);
-        // Tabla 20 (CATALOGO-ATS.md §11): "E" facturación electrónica. Confirmado como default
-        // para esta empresa -- toda su emisión es electrónica, no hay comprobantes físicos.
-        writeElement(w, "tipoEm", "E", 6);
-        writeElement(w, "numeroComprob", String.valueOf(v.numeroComprob), 6);
+        // tipoEmision (no "tipoEm"): las 19 ventas del archivo autorizado de julio son "F", no
+        // "E" -- el comentario anterior que fijaba "E" como "confirmado para esta empresa" estaba
+        // equivocado, corregido por decisión del usuario 2026-09-09 (§A.5).
+        writeElement(w, "tipoEmision", "F", 6);
+        writeElement(w, "numeroComprobantes", String.valueOf(v.numeroComprob), 6);
         writeElement(w, "baseNoGraIva", "0.00", 6);
         writeElement(w, "baseImponible", formatDecimal(v.base0), 6);
         writeElement(w, "baseImpGrav", formatDecimal(v.baseGravada), 6);
         writeElement(w, "montoIva", formatDecimal(v.montoIva), 6);
         writeElement(w, "montoIce", formatDecimal(v.montoIce), 6);
-        // tipoEm (Tabla 20), tipoCompe/monto (Tabla 21), retenciones que le practicaron:
-        // catálogos sin verificar o sin fuente por documento -- ver §10, no se escriben.
+        // valorRetIva/valorRetRenta: retención que el CLIENTE nos practicó. CBR.RTV2 no sirve --
+        // tiene FACTURADOR+PROVEEDOR, es la retención que EMITIMOS nosotros (verificado contra
+        // RetencionV2.java). No se encontró ninguna tabla que enlace una retención recibida a un
+        // documento de venta puntual con su tipo de impuesto (candidato revisado: TSR.CRTN /
+        // CobroRetencion, ligada a Cobro+Plantilla, sin FK a Factura/NotaCredito/NotaDebito ni
+        // columna de tipo de impuesto) -- ver ítem 6 del encargo, reportado al árbitro sin inventar
+        // el valor.
+        writeElement(w, "valorRetIva", "0.00", 6);
+        writeElement(w, "valorRetRenta", "0.00", 6);
+        // formasDePago de venta: sin fuente por documento agrupado -- no se escribe, igual que
+        // antes (🟠 en el diagnóstico, no pedido en el encargo de hoy).
         w.writeCharacters("    ");
         w.writeEndElement();
         w.writeCharacters("\n");
@@ -551,13 +711,129 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         w.writeCharacters("\n");
     }
 
-    private int contarEstablecimientosActivos(Long idFacturador) {
-        Long total = (Long) em.createQuery(
-                "select count(e) from Establecimiento e where e.facturador.id = :idFacturador and e.estado = :activo")
+    @SuppressWarnings("unchecked")
+    private List<Establecimiento> establecimientosActivos(Long idFacturador) {
+        return em.createQuery(
+                "select e from Establecimiento e where e.facturador.id = :idFacturador and e.estado = :activo")
                 .setParameter("idFacturador", idFacturador)
                 .setParameter("activo", Long.valueOf(Estado.ACTIVO))
-                .getSingleResult();
-        return total != null ? total.intValue() : 0;
+                .getResultList();
+    }
+
+    /**
+     * ÍTEM 2 del encargo 2026-09-09. {@code nombreComercial} si no viene vacío; si viene vacío,
+     * {@code razonSocial} truncada a 100 caracteres, con aviso siempre que se use este segundo
+     * camino (DIAGNOSTICO-ATS-RECHAZADO-VALIDADOR.md §A.5 y §6.1.1).
+     */
+    private String resolverRazonSocial(Facturador facturador, List<String> avisos) {
+        String comercial = facturador.getNombreComercial();
+        if (comercial != null && !comercial.trim().isEmpty()) {
+            return comercial.trim();
+        }
+        String razonSocial = nvl(facturador.getRazonSocial(), "");
+        boolean seTrunca = razonSocial.length() > 100;
+        String resultado = seTrunca ? razonSocial.substring(0, 100) : razonSocial;
+        avisos.add("Facturador " + facturador.getId() + " sin NOMBRECOMERCIAL en la base: <razonSocial> "
+                + "se llenó con la razón social" + (seTrunca ? " truncada a 100 caracteres" : "")
+                + " ('" + resultado + "'). El validador del SRI rechazó la razón social completa (148 "
+                + "caracteres) -- confirmar con el usuario si conviene cargar NOMBRECOMERCIAL.");
+        return resultado;
+    }
+
+    /**
+     * Tabla 20 del lado ventas (ÍTEM 4, DIAGNOSTICO-ATS-RECHAZADO-VALIDADOR.md §A.1.1): medido
+     * contra el archivo autorizado, factura interno "01" viaja como "18"; nota de crédito "04" y
+     * nota de débito "05" viajan igual. Cualquier otro valor se deja tal cual y se avisa -- no se
+     * inventa un código nuevo.
+     */
+    private String mapearTipoComprobanteVenta(String tipoComprobante, Long idDocumento, String etiqueta,
+            List<String> avisos) {
+        if ("01".equals(tipoComprobante)) {
+            return "18";
+        }
+        if ("04".equals(tipoComprobante) || "05".equals(tipoComprobante)) {
+            return tipoComprobante;
+        }
+        avisos.add(etiqueta + " " + idDocumento + ": tipoComprobante '" + tipoComprobante + "' no está "
+                + "verificado contra el archivo autorizado para <ventas> (sólo factura/nota de crédito/"
+                + "nota de débito lo están) -- se dejó tal cual, revisar antes de enviar.");
+        return tipoComprobante;
+    }
+
+    /**
+     * ÍTEM 5 del encargo 2026-09-09. Carga las retenciones de compra (PGS.RCV2/DRC2) del período,
+     * agrupadas por la autorización del documento sustento (DRC2.docResAutorizacion), y las
+     * reparte según la Tabla 11 del anexo (DIAGNOSTICO-ATS-RECHAZADO-VALIDADOR.md §A.2/§A.3). Sólo
+     * consulta las autorizaciones que de verdad aparecen en las compras del período -- no hace
+     * selectAll() sobre PGS.DRC2.
+     */
+    private Map<String, RetencionInfo> cargarRetencionesCompra(Long idEmpresa,
+            java.util.Set<String> autorizacionesCompra, List<String> avisos) {
+        Map<String, RetencionInfo> resultado = new LinkedHashMap<String, RetencionInfo>();
+        if (autorizacionesCompra.isEmpty()) {
+            return resultado;
+        }
+        TypedQuery<DetalleRetencionCompraV2> q = em.createQuery(
+                "select d from DetalleRetencionCompraV2 d where d.retencionCompraV2.empresa.codigo = :idEmpresa "
+                        + "and d.estado = :activo and d.docResAutorizacion in :autorizaciones "
+                        + "order by d.docResAutorizacion",
+                DetalleRetencionCompraV2.class);
+        q.setParameter("idEmpresa", idEmpresa);
+        q.setParameter("activo", Long.valueOf(Estado.ACTIVO));
+        q.setParameter("autorizaciones", autorizacionesCompra);
+        for (DetalleRetencionCompraV2 d : q.getResultList()) {
+            String autorizacion = d.getDocResAutorizacion();
+            RetencionInfo info = resultado.get(autorizacion);
+            if (info == null) {
+                info = new RetencionInfo();
+                RetencionCompraV2 cabecera = d.getRetencionCompraV2();
+                if (cabecera != null) {
+                    info.estabRetencion1 = cabecera.getNumEstablecimiento();
+                    info.ptoEmiRetencion1 = cabecera.getNumPtoEmision();
+                    info.secRetencion1 = cabecera.getSecuencial();
+                    info.autRetencion1 = cabecera.getAutorizacion();
+                    info.fechaEmiRet1 = cabecera.getFecha() != null ? cabecera.getFecha().toLocalDate() : null;
+                }
+                resultado.put(autorizacion, info);
+            }
+            String codImpuesto = nvl(d.getCodImpuesto(), "");
+            double valor = nvl(d.getValorReten(), 0.0);
+            if ("2".equals(codImpuesto)) {
+                // IVA -- Tabla 11 (§A.3): reparto por CODRETENCION, nunca a un campo elegido a dedo.
+                String cod = nvl(d.getCodRetencion(), "");
+                if ("9".equals(cod)) {
+                    info.valRetBien10 += valor;
+                } else if ("10".equals(cod)) {
+                    info.valRetServ20 += valor;
+                } else if ("1".equals(cod)) {
+                    info.valorRetBienes += valor;
+                } else if ("11".equals(cod)) {
+                    info.valRetServ50 += valor;
+                } else if ("2".equals(cod)) {
+                    info.valorRetServicios += valor;
+                } else if ("3".equals(cod)) {
+                    info.valRetServ100 += valor;
+                } else {
+                    avisos.add("Retención de compra (autorización " + autorizacion + "): CODRETENCION '"
+                            + cod + "' de IVA no está en la Tabla 11 del anexo -- no se asignó a ningún "
+                            + "campo del ATS, revisar.");
+                }
+            } else if ("1".equals(codImpuesto)) {
+                info.airLineas.add(new DetalleAir(nvl(d.getCodRetencion(), ""),
+                        formatDecimal(nvl(d.getBaseImponible(), 0.0)),
+                        formatDecimal(nvl(d.getPorcentajeReten(), 0.0)), formatDecimal(valor)));
+            } else {
+                avisos.add("Retención de compra (autorización " + autorizacion + "): CODIMPUESTO '"
+                        + codImpuesto + "' no es '1' (renta) ni '2' (IVA) -- línea ignorada, revisar.");
+            }
+            if (info.formaPago == null) {
+                String forma = d.getDocResForPago();
+                if (forma != null && !forma.trim().isEmpty()) {
+                    info.formaPago = forma.trim();
+                }
+            }
+        }
+        return resultado;
     }
 
     // =====================================================================
@@ -728,5 +1004,31 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
             this.secuencial = secuencial;
             this.autorizacion = autorizacion;
         }
+    }
+
+    /** Una línea de {@code air/detalleAir} en {@code <detalleCompras>} (ÍTEM 5, §A.2 del anexo). */
+    private static class DetalleAir {
+        final String codRetAir, baseImpAir, porcentajeAir, valRetAir;
+
+        DetalleAir(String codRetAir, String baseImpAir, String porcentajeAir, String valRetAir) {
+            this.codRetAir = codRetAir;
+            this.baseImpAir = baseImpAir;
+            this.porcentajeAir = porcentajeAir;
+            this.valRetAir = valRetAir;
+        }
+    }
+
+    /**
+     * Retención de compra ya resuelta para un documento (clave: su autorización), lista para que
+     * {@code writeDetalleCompra} la escriba sin volver a tocar {@code RCV2}/{@code DRC2}. Ver
+     * {@code cargarRetencionesCompra} (ÍTEM 5 del encargo 2026-09-09).
+     */
+    private static class RetencionInfo {
+        double valRetBien10 = 0.0, valRetServ20 = 0.0, valorRetBienes = 0.0, valRetServ50 = 0.0,
+                valorRetServicios = 0.0, valRetServ100 = 0.0;
+        List<DetalleAir> airLineas = new ArrayList<DetalleAir>();
+        String formaPago;
+        String estabRetencion1, ptoEmiRetencion1, secRetencion1, autRetencion1;
+        LocalDate fechaEmiRet1;
     }
 }
