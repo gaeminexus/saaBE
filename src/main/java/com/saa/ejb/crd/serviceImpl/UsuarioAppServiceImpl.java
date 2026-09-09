@@ -11,7 +11,6 @@ import javax.crypto.spec.PBEKeySpec;
 
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.crd.dao.EntidadDaoService;
-import com.saa.ejb.crd.dao.PersonaNaturalDaoService;
 import com.saa.ejb.crd.dao.UsuarioAppDaoService;
 import com.saa.ejb.crd.service.UsuarioAppService;
 import com.saa.ejb.crd.service.ValidacionException;
@@ -23,8 +22,6 @@ import com.saa.ejb.crd.service.dto.SolicitudResetearClaveUsuarioApp;
 import com.saa.ejb.crd.service.dto.SolicitudValidarCredencial;
 import com.saa.ejb.crd.service.dto.ValidarCredencialResponse;
 import com.saa.model.crd.Entidad;
-import com.saa.model.crd.NombreEntidadesCredito;
-import com.saa.model.crd.PersonaNatural;
 import com.saa.model.crd.UsuarioApp;
 import com.saa.rubros.EstadoUsuarioApp;
 
@@ -32,7 +29,6 @@ import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
 import jakarta.ejb.TransactionAttribute;
 import jakarta.ejb.TransactionAttributeType;
-import jakarta.persistence.NoResultException;
 
 /**
  * @see UsuarioAppService
@@ -58,9 +54,6 @@ public class UsuarioAppServiceImpl implements UsuarioAppService {
     @EJB
     private EntidadDaoService entidadDaoService;
 
-    @EJB
-    private PersonaNaturalDaoService personaNaturalDaoService;
-
     @Override
     @TransactionAttribute(TransactionAttributeType.REQUIRED)
     public ValidarCredencialResponse validarCredencial(SolicitudValidarCredencial solicitud) throws Throwable {
@@ -80,18 +73,18 @@ public class UsuarioAppServiceImpl implements UsuarioAppService {
         respuesta.setIdentificacion(usap.getIdentificacion());
         respuesta.setDebeCambiarClave(Long.valueOf(1L).equals(usap.getDebeCambiarClave()));
 
-        // Nombres/apellidos viven en CRD.PRSN, que comparte PK con CRD.ENTD — no toda
-        // Entidad tiene fila PersonaNatural (podría ser persona jurídica); ausencia no es
-        // un error para este endpoint, solo viajan nombres/apellidos en null.
-        try {
-            PersonaNatural persona = personaNaturalDaoService.selectById(entidad.getCodigo(),
-                    NombreEntidadesCredito.PERSONA_NATURAL);
-            respuesta.setNombres(persona.getNombres());
-            respuesta.setApellidos(persona.getApellidos());
-        } catch (NoResultException e) {
-            System.out.println("UsuarioAppService.validarCredencial - entidad " + entidad.getCodigo()
-                    + " sin PersonaNatural asociada");
-        }
+        // El nombre del partícipe vive en CRD.ENTD.ENTDRZNS (razonSocial), no en CRD.PRSN:
+        // PRSN no es la fuente de datos del partícipe (ver CONTRATO-INTRANET-MOVIL.md).
+        // Antes se consultaba PersonaNatural acá — se sacó porque además de ser la tabla
+        // equivocada, PRSN.PRSNESCV (estado civil) está mapeado como Long pero la columna
+        // real es VARCHAR2(2000) (texto: "CASADO(A)"), y esa consulta reventaba con
+        // "Could not extract column [4]" / T4CVarcharAccessor.getLong en cualquier
+        // partícipe con estado civil cargado. Ese desajuste es de otro equipo (crd) y no
+        // se toca; acá alcanza con no depender de esa tabla. razonSocial es un campo único
+        // (nombre completo), por eso apellidos viaja en null — partirlo por espacios
+        // inventaría dónde terminan los apellidos.
+        respuesta.setNombres(entidad.getRazonSocial());
+        respuesta.setApellidos(null);
 
         return respuesta;
     }

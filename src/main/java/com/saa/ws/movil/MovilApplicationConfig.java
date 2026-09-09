@@ -37,6 +37,7 @@ public class MovilApplicationConfig extends Application {
         clases.add(AporteMovilRest.class);
         clases.add(CuentaIndividualMovilRest.class);
         clases.add(SimuladorMovilRest.class);
+        clases.add(EstadoMovilRest.class);
 
         return clases;
     }

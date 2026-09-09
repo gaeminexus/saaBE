@@ -2,10 +2,8 @@ package com.saa.ws.movil;
 
 import com.saa.ejb.crd.dao.EntidadDaoService;
 import com.saa.ejb.crd.dao.ParticipeDaoService;
-import com.saa.ejb.crd.dao.PersonaNaturalDaoService;
 import com.saa.model.crd.Entidad;
 import com.saa.model.crd.NombreEntidadesCredito;
-import com.saa.model.crd.PersonaNatural;
 import com.saa.ws.movil.dto.MensajeMovilDTO;
 import com.saa.ws.movil.dto.ParticipeMovilDTO;
 
@@ -33,9 +31,6 @@ public class ParticipeMovilRest {
     @EJB
     private ParticipeDaoService participeDaoService;
 
-    @EJB
-    private PersonaNaturalDaoService personaNaturalDaoService;
-
     @GET
     @Path("/{idEntidad}")
     @Produces(MediaType.APPLICATION_JSON)
@@ -62,17 +57,18 @@ public class ParticipeMovilRest {
             dto.setTelefono(entidad.getTelefono());
             dto.setMovil(entidad.getMovil());
 
-            // Nombres/apellidos viven en CRD.PRSN, que comparte PK con CRD.ENTD — no toda Entidad
-            // tiene fila PersonaNatural (persona jurídica); ausencia no es error, viajan null.
-            try {
-                PersonaNatural persona = personaNaturalDaoService.selectById(idEntidad,
-                        NombreEntidadesCredito.PERSONA_NATURAL);
-                dto.setNombres(persona.getNombres());
-                dto.setApellidos(persona.getApellidos());
-            } catch (NoResultException e) {
-                System.out.println("ParticipeMovilRest.porEntidad - entidad " + idEntidad
-                        + " sin PersonaNatural asociada");
-            }
+            // El nombre del partícipe vive en CRD.ENTD.ENTDRZNS (razonSocial), no en CRD.PRSN:
+            // PRSN no es la fuente de datos del partícipe (ver CONTRATO-INTRANET-MOVIL.md).
+            // Antes se consultaba PersonaNatural acá — se sacó porque, además de ser la tabla
+            // equivocada, PRSN.PRSNESCV (estado civil) está mapeado como Long pero la columna
+            // real es VARCHAR2(2000) (texto: "CASADO(A)"), y esa consulta reventaba con
+            // "Could not extract column [4]" / T4CVarcharAccessor.getLong en cualquier
+            // partícipe con estado civil cargado. Ese desajuste es de otro equipo (crd) y no
+            // se toca; acá alcanza con no depender de esa tabla. razonSocial es un campo único
+            // (nombre completo), por eso apellidos viaja en null — partirlo por espacios
+            // inventaría dónde terminan los apellidos.
+            dto.setNombres(entidad.getRazonSocial());
+            dto.setApellidos(null);
 
             return Response.status(Response.Status.OK).entity(dto).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
