@@ -1131,9 +1131,30 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 	}
 
 	/**
-	 * ÍTEM 12 (docs/logica-negocio/cxc/API-REENVIAR-RETENCION-AL-SRI.md), encargo 2026-09-09.
-	 * Reenvía al SRI una retención V2 atascada en un estado intermedio, con el XML firmado que
-	 * ya existe en disco -- nunca lo regenera ni lo re-firma.
+	 * ÍTEM 12/15 (docs/logica-negocio/cxc/API-REENVIAR-RETENCION-AL-SRI.md), encargo
+	 * 2026-09-09. Reenvía al SRI una retención V2 atascada en un estado intermedio.
+	 * <p>
+	 * ⛔ <b>El estado 6 se trata DISTINTO de 3/4, y no es un descuido -- es la corrección del
+	 * ítem 15 a un error del propio contrato del ítem 12.</b> No unificar las dos ramas:
+	 * <ul>
+	 * <li><b>3 (firmada) y 4 (enviada):</b> el comprobante NUNCA llegó a que el SRI opinara
+	 * sobre su CONTENIDO -- el XML firmado en disco no se puso a prueba (o la recepción quedó
+	 * en duda por un corte de transporte). Regenerarlo cambiaría el contenido, y por tanto la
+	 * firma, sin que nadie lo pida. Se REUSA tal cual está en {@code PathRetencionV2}
+	 * alterno=3.</li>
+	 * <li><b>6 (no autorizada):</b> el SRI YA opinó sobre el contenido y lo rechazó (ej. caso
+	 * real, retención 216: {@code identificador 69 -- ERROR EN LA IDENTIFICACION DEL RECEPTOR},
+	 * porque el XML llevaba cédula con un RUC de 13 dígitos). Ese XML tiene el defecto adentro:
+	 * reenviarlo tal cual es garantía de que lo rechacen igual. Se REGENERA y se RE-FIRMA --
+	 * pasando de nuevo por {@code generarXMLContentRetencionV2}, que ya aplica la validación
+	 * del ítem 13 ({@code resolverTipoIdentificacionSujetoRetenido}): si el defecto que causó
+	 * el rechazo ya se corrigió (como en la 216, donde el ítem 13 hace que ahora resuelva "04"
+	 * en vez de "05"), el reenvío sale bien solo, sin tocar un dato a mano. Si el defecto NO se
+	 * corrigió, la misma validación vuelve a lanzar y no se emite.</li>
+	 * </ul>
+	 * La clave de acceso no cambia en ningún caso (sale de la fecha de emisión y el
+	 * secuencial, que no se tocan), así que regenerar en la rama del 6 no quema ningún
+	 * secuencial nuevo.
 	 */
 	@Override
 	public java.util.Map<String, Object> reenviarRetencionV2AlSri(Long idRetencion) throws Throwable {
@@ -1163,25 +1184,6 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 					+ ") que este reenvío no reconoce. No se reenvía.");
 		}
 
-		// XML FIRMADO ya existente (alterno=3) -- NUNCA se regenera ni se re-firma acá: es el
-		// que el SRI ya vio, y regenerarlo cambiaría la firma sin que nadie lo pida.
-		PathRetencionV2 pathFirmado = pathRetencionV2DaoService.selectUltimoFirmadoByRetencion(idRetencion);
-		if (pathFirmado == null) {
-			throw new IncomeException("La retención V2 " + idRetencion + " no tiene un XML firmado "
-					+ "registrado (PathRetencionV2 alterno=3). No se puede reenviar sin re-firmar, y "
-					+ "este endpoint no re-firma.");
-		}
-		String rutaAbsoluta = getBaseUploadDirectory() + pathFirmado.getPath();
-		byte[] bytesXml;
-		try {
-			bytesXml = Files.readAllBytes(Paths.get(rutaAbsoluta));
-		} catch (java.io.IOException e) {
-			throw new IncomeException("La retención V2 " + idRetencion + " tiene registrado el XML "
-					+ "firmado en '" + pathFirmado.getPath() + "' pero el archivo no está en disco ("
-					+ rutaAbsoluta + "): " + e.getMessage() + ". No se puede reenviar sin re-firmar.");
-		}
-		String xmlFirmado = new String(bytesXml, java.nio.charset.StandardCharsets.UTF_8);
-
 		// idFacturador, ambiente y clave SIEMPRE de la propia retención -- este endpoint no
 		// recibe body. El ambiente sale del facturador en base (línea ~131), igual que en
 		// saveSingle -- NO el 1L hardcodeado de RetencionV2Rest:161, que es otro defecto.
@@ -1201,10 +1203,56 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 			throw new IncomeException("La retención V2 " + idRetencion + " no tiene clave de acceso.");
 		}
 
+		String xmlFirmado;
+		if (estado.longValue() == 6L) {
+			// ÍTEM 15: el SRI ya rechazó el CONTENIDO de esta retención -- reenviar el mismo
+			// XML es garantía de que lo rechacen igual. Se regenera y se re-firma, lo que pasa
+			// de nuevo por la validación del ítem 13 (generarXMLRetencionV2 ->
+			// generarXMLContentRetencionV2 -> resolverTipoIdentificacionSujetoRetenido): si el
+			// tipo de identificación sigue sin poder resolverse o sin concordar con la
+			// longitud, esto lanza IncomeException y NO se emite -- no se saltea la validación
+			// por ser un reenvío. Mismo patrón que procesarRetencionV2Completa PASO 2/3.
+			try {
+				String[] resultadoXML = self().generarXMLRetencionV2(clave, ambiente);
+				String xmlSinFirmar = new String(
+						Files.readAllBytes(Paths.get(resultadoXML[2])), java.nio.charset.StandardCharsets.UTF_8);
+				xmlFirmado = signatureService.firmarXMLFacturador(xmlSinFirmar, idFacturador);
+			} catch (IncomeException e) {
+				throw e;
+			} catch (Throwable e) {
+				throw new IncomeException("No se pudo regenerar o re-firmar el XML de la retención V2 "
+						+ idRetencion + " (estado NO AUTORIZADO) para reenviarla: " + e.getMessage());
+			}
+		} else {
+			// Estados 3 (firmada) y 4 (enviada): el contenido nunca se puso a prueba ante el
+			// SRI. Se REUSA el XML firmado tal cual está en disco (alterno=3) -- NUNCA se
+			// regenera ni se re-firma acá: regenerar cambiaría el contenido, y por tanto la
+			// firma, sin que nadie lo pida, sobre un documento que el SRI todavía no evaluó.
+			PathRetencionV2 pathFirmado = pathRetencionV2DaoService.selectUltimoFirmadoByRetencion(idRetencion);
+			if (pathFirmado == null) {
+				throw new IncomeException("La retención V2 " + idRetencion + " no tiene un XML firmado "
+						+ "registrado (PathRetencionV2 alterno=3). No se puede reenviar sin re-firmar, y "
+						+ "este endpoint no re-firma un documento en estado " + estado + ".");
+			}
+			String rutaAbsoluta = getBaseUploadDirectory() + pathFirmado.getPath();
+			byte[] bytesXml;
+			try {
+				bytesXml = Files.readAllBytes(Paths.get(rutaAbsoluta));
+			} catch (java.io.IOException e) {
+				throw new IncomeException("La retención V2 " + idRetencion + " tiene registrado el XML "
+						+ "firmado en '" + pathFirmado.getPath() + "' pero el archivo no está en disco ("
+						+ rutaAbsoluta + "): " + e.getMessage() + ". No se puede reenviar sin re-firmar.");
+			}
+			xmlFirmado = new String(bytesXml, java.nio.charset.StandardCharsets.UTF_8);
+		}
+
 		// self(): autorizarRetencionV2 está anotado REQUIRES_NEW -- una llamada directa
 		// (this.autorizarRetencionV2(...)) se saltaría los interceptores del contenedor y
 		// correría en la transacción de este método. Mismo mecanismo que ya usa
 		// procesarRetencionV2Completa (ver el comentario de self(), unas líneas más arriba).
+		// En la rama del 6, autorizarRetencionV2 vuelve a escribir el XML en disco e inserta
+		// una fila NUEVA de PathRetencionV2 alterno=3 (su paso 1-2, sin condición) -- el
+		// rastro del XML regenerado queda solo, sin que este método tenga que insertarlo.
 		java.util.Map<String, Object> resultadoAutorizacion = self().autorizarRetencionV2(
 				idFacturador, ambiente, 1L /* conectaSRI */, clave, idRetencion, xmlFirmado, null, null);
 		String mensaje = (String) resultadoAutorizacion.get("mensaje");

@@ -47,24 +47,41 @@ Sin cuerpo. Todo lo que hace falta se deriva de la retención.
 
 ### 2.1 Qué hace, en orden
 
+⚠️ **Corregido el 2026-09-09 (ítem 16). La versión anterior de este punto (3-4-5-6 abajo) decía
+que este endpoint "no regenera ni re-firma en ningún caso", y era falso para el estado 6.** Se
+escribió pensando sólo en el caso de una retención que nunca llegó al SRI (3/4); el caso real que
+lo destapó fue la retención 216, en estado 6 (no autorizada) — reenviar el mismo XML firmado que
+el SRI ya rechazó por contenido es garantía de que lo vuelva a rechazar. Queda así:
+
 1. Carga la `RetencionV2` por id. Si no existe → **404**.
 2. **Guarda de estado** (§3).
-3. Busca el **XML firmado** en `PathRetencionV2` con `alterno = 3`, y lo lee del disco.
-   - Si no hay fila `alterno = 3`, o el archivo no está en disco → **409** con mensaje explícito.
-     ⛔ **No regenerar ni re-firmar en este endpoint**: el XML firmado es el que el SRI ya vio, y
-     regenerarlo cambia la firma sin que nadie lo pida. Si falta, es otro frente.
-4. Resuelve `idFacturador`, `ambiente` y `clave` **de la propia retención**, nunca de parámetros
+3. Resuelve `idFacturador`, `ambiente` y `clave` **de la propia retención**, nunca de parámetros
    del cliente. El `ambiente` sale del facturador en base, como ya hace
    `RetencionV2ServiceImpl:131`.
+4. **El XML a enviar depende de POR QUÉ quedó atascada** (detalle y por qué en §3):
+   - **Estados 3 (firmada) y 4 (enviada):** el contenido nunca se puso a prueba ante el SRI.
+     Busca el **XML firmado** en `PathRetencionV2` con `alterno = 3` y lo lee del disco tal cual
+     está. Si no hay fila `alterno = 3`, o el archivo no está en disco → **409** con mensaje
+     explícito. ⛔ **No regenerar ni re-firmar en esta rama**: el contenido no se probó y la
+     firma vale; regenerarlo la cambiaría sin que nadie lo pida.
+   - **Estado 6 (no autorizada):** el SRI YA opinó sobre el contenido y lo rechazó. Se
+     **regenera** el XML (`generarXMLRetencionV2`, que reaplica la validación del tipo de
+     identificación del ítem 13) y se **re-firma** (`signatureService.firmarXMLFacturador`). Si
+     regenerar o firmar falla → **409** con el mensaje real, nunca un 500 genérico. La clave de
+     acceso no cambia (sale de fecha de emisión + secuencial, que no se tocan), así que
+     regenerar no quema ningún secuencial.
 5. Llama a `retencionV2Service.autorizarRetencionV2(idFacturador, ambiente, 1L /*conectaSRI*/,
-   clave, idRetencion, xmlFirmado, null, null)` — el método que ya existe y ya funciona.
+   clave, idRetencion, xmlFirmado, null, null)` — el método que ya existe y ya funciona. Esa
+   misma llamada inserta la fila nueva de `PathRetencionV2` alterno=3 (su paso 1-2, sin
+   condición), así que el XML regenerado de la rama del 6 queda registrado sin que este
+   endpoint tenga que hacerlo aparte.
 6. Devuelve el resultado (§4).
 
 ### 2.2 Lo que NO hace
 
 - No crea ni modifica detalles.
 - No vuelve a generar contabilidad ni a aplicar el pago: eso ya se hizo cuando se emitió.
-- No re-firma.
+- No re-firma **en la rama 3/4**. (En la rama 6 sí regenera y re-firma — ver §2.1 punto 4.)
 
 ---
 
@@ -73,21 +90,52 @@ Sin cuerpo. Todo lo que hace falta se deriva de la retención.
 `estado` en `RetencionV2` **no es el flag genérico**: es el flujo de emisión electrónica
 (ver `CriterioVentaVigente`, commit `282c3361`).
 
-| `estado` | Significa | ¿Reenviar? |
-|---|---|---|
-| 1 | creada | ❌ **409** — nunca se firmó; el camino es `procesarCompleta` |
-| **3** | firmada | ✅ **sí** |
-| **4** | enviada | ✅ **sí** — es el caso de este incidente |
-| 5 | **autorizada** | ❌ **409** — *"La retención ya está autorizada (Aut. XXX). No se reenvía."* |
-| **6** | no autorizada | ✅ **sí** — el SRI la rechazó; corregido el motivo, se reintenta |
+| `estado` | Significa | ¿Reenviar? | ¿Regenerar XML? |
+|---|---|---|---|
+| 1 | creada | ❌ **409** — nunca se firmó; el camino es `procesarCompleta` | — |
+| **3** | firmada | ✅ **sí** | ❌ **no** — reusa el firmado de disco |
+| **4** | enviada | ✅ **sí** | ❌ **no** — reusa el firmado de disco |
+| 5 | **autorizada** | ❌ **409** — *"La retención ya está autorizada (Aut. XXX). No se reenvía."* | — |
+| **6** | no autorizada | ✅ **sí** — el SRI la rechazó | ✅ **sí** — regenera y re-firma |
 
 ⛔ **El 5 se rechaza sin excepción.** Reenviar una autorizada no la duplica en el SRI (contestaría
 `CLAVE ACCESO REGISTRADA`), pero sí volvería a disparar el guardado de XML y la generación del
 RIDE sobre un comprobante cerrado. No hay razón para permitirlo.
 
+### 3.1 ⚠️ Por qué el 6 se regenera y el 3/4 no — no es lo mismo "no llegó" que "llegó y lo rechazaron"
+
+**3 y 4 son "el SRI todavía no dijo nada del contenido."** El XML pudo no haber llegado nunca
+(estado 3, nunca se intentó enviar), o haber llegado a recepción sin que autorización confirmara
+nada todavía (estado 4). En los dos casos el contenido nunca se sometió a juicio: regenerarlo
+podría cambiarlo (y cambiar la firma) sin que nadie lo pida, sobre un documento que quizás el SRI
+ya tiene tal cual está.
+
+**6 es "el SRI ya dijo que no."** El rechazo es sobre el CONTENIDO del XML que está en disco —
+caso real: retención 216, `identificador 69 — ERROR EN LA IDENTIFICACION DEL RECEPTOR`, porque el
+XML llevaba `tipoIdentificacionSujetoRetenido=05` (cédula) con una identificación de 13 dígitos
+(RUC). Ese XML **tiene el defecto adentro**. Reenviarlo tal cual es simplemente pedirle al SRI que
+lo rechace otra vez. La única forma de que un reenvío del estado 6 tenga sentido es que el
+contenido cambie — y el único contenido que puede cambiar sin que nadie toque un dato a mano es el
+que sale de una corrección de código ya aplicada (como el ítem 13: la 216 se arregla sola al
+regenerar, porque ahora `tipoIdentificacionSujetoRetenido` resuelve `04` en vez de `05`).
+
+⛔ **No unificar las dos ramas.** Es la corrección de un error del propio contrato original de
+este documento (que decía "no regenerar ni re-firmar" sin distinguir por qué estaba atascada):
+unificarlas de nuevo repite ese error.
+
 > **Regla que este equipo aprendió el 2026-09-08 (§37) y aplica acá:** antes de exigir un estado,
 > comprobar que algo lo produzca. Los tres estados permitidos (3, 4, 6) los escribe
 > `RetencionV2ServiceImpl` en el flujo de emisión — verificado en sus `setEstado`.
+
+### 3.2 Nota: un corte de transporte también puede terminar en estado 6
+
+Un fallo de RED al llamar al servicio de autorización (ej. `Connection reset`, no un rechazo del
+SRI) cae en el mismo `catch` que un rechazo real y también deja la retención en estado 6
+(`RetencionV2ServiceImpl`, alrededor de la línea 1093). Un reenvío posterior de esa retención
+entra igual por la rama de regeneración — no hace daño (el contenido se vuelve a armar igual si no
+había ningún defecto), pero vale saber que "estado 6" no siempre significa "el SRI juzgó el
+contenido y lo rechazó": a veces significa "no se supo qué contestó el SRI, y el sistema lo trató
+como rechazo por prudencia".
 
 ---
 
