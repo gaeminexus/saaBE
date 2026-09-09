@@ -1299,6 +1299,11 @@ inflados se reversan con asiento** — borrar filas de `CRD`/`PGS` no toca los l
 
 ### ⛔ H47 — la mora congelada NO es un defecto. NO LA "ARREGLEN"
 
+> ✅ **LEVANTADA el 2026-09-09 por orden directa del usuario**, no por el aviso de `lap-saa-1`
+> que esta sección esperaba. El timer volvió a las 02:00. Lo de abajo queda como registro de
+> **por qué estuvo apagada**, no como estado vigente. Ver la entrada del 2026-09-09 al final
+> de este documento.
+
 **Se reportó como defecto a `lap-saa-1` el 2026-09-05 y su usuario lo devolvió.** Textual:
 
 > *«dejemos la mora como está. Está desactivada de forma consciente y deliberada porque se sigue
@@ -2447,3 +2452,68 @@ qué pasa hoy con el seguro no consumido cuando alguien precancela; y **si el `s
 correrse en producción**.
 
 Ofrecido y no pedido todavía: el script que mide cuánto seguro hay cargado hoy en la cartera.
+
+---
+
+## ✅ 2026-09-09 — Reactivado el timer diario de mora. H47 levantada
+
+**Orden directa del usuario:** *«Necesito activar nuevamente para que el proceso de cálculo de
+mora se ejecute nuevamente a las 2am»*.
+
+`ProcesoMoraPrestamoTimer:71` — el `@Schedule(hour = "2", minute = "0", second = "0",
+persistent = false)` volvió a quedar descomentado. El cálculo (`ProcesoMoraPrestamoServiceImpl`)
+**no se tocó**: nunca estuvo roto, sólo apagado el disparador.
+
+### Lo que hay que entender antes de tocar esto de nuevo
+
+**El apagado no era un olvido ni un defecto.** Del 2026-08-31 al 2026-09-09 estuvo comentado a
+pedido del usuario porque *se seguían cerrando pagos de agosto con fecha de fin de agosto y no se
+quería generar mora sobre esas cuotas*. Eso está ahora escrito **dentro del propio javadoc del
+método**, que es donde lo va a leer quien tenga la mano encima del interruptor — no sólo acá.
+Es la lección convergente del 2026-09-07 aplicada a un caso nuevo: el aviso vive en el punto donde
+alguien se puede equivocar.
+
+**El mecanismo que se destapa al prenderlo, y que sigue vivo:** en cuanto corra, el proceso escribe
+`DTPRMRAA` en todas las cuotas vencidas con la fecha de esa corrida. `aplicarPagoACuota` **lee ese
+campo persistido y no lo recalcula a la fecha del pago** (sólo la precancelación y el acuerdo de
+condonación llaman a `recalcularMoraALaFecha`). Así que cualquier pago aplicado después cobra esa
+mora. **Si quedaba algo de agosto cerrándose con fecha de fin de agosto, se le cobra mora que no
+corresponde.** La causa de fondo está avisada a `lap-saa-1` desde el 2026-09-05 y sigue abierta.
+
+### Lo que se verificó antes, y por qué importaba
+
+**La mina del 2026-08-24 ya no está.** Ese día el proceso reclasificó a `EN_MORA(11)` todos los
+préstamos que estaban en `DE_PLAZO_VENCIDO(8)`, en producción. Se comprobó **contra el código, no
+contra el documento**, que la exclusión del 8 sigue puesta en los **dos** niveles:
+`DetallePrestamoDaoServiceImpl:841` (`idEstado IN (:vigente, :enMora)`) y la guarda de
+`ProcesoMoraPrestamoServiceImpl:207`. Prenderlo **no** repite aquello. La duplicación es
+deliberada: `POST /prst/calcularMora/{idPrestamo}` entra directo al método y se saltea la consulta
+del universo, así que sin la segunda guarda un préstamo en 8 invocado a mano se vuelve a romper.
+Se le dijo explícitamente al agente que **no la unifique**.
+
+### ⛔ No surte efecto hasta el próximo WAR
+
+`persistent = false` ⇒ el timer se reconstruye desde la anotación **en cada arranque**.
+Descomentar no prende nada por sí solo: queda enganchado al despliegue pendiente (otorgamiento,
+reverso de cobro, Gs en transacción propia, H54, calificación de riesgo), que además necesita el
+`crd/sql/218` corrido antes. **Mientras tanto, la mora se pone al día a mano** con
+`POST /SaaBE/rest/prst/calcularMora` (idempotente, acepta `?fecha=` y `?usuario=`).
+
+### Dos controles que quedan del lado del usuario
+
+1. **La zona horaria del servidor.** `hour = "2"` es la hora del reloj de la JVM, y `LocalDate.now()`
+   toma esa misma zona. Si WildFly corre en UTC, las 02:00 caen a las **21:00 de Ecuador del día
+   anterior** — dentro del día hábil y con la fecha corrida un día. Nunca se verificó; se planteó
+   hoy y está sin responder.
+2. **Avisarle a `lap-saa-1`.** Ellos pidieron el congelamiento y el acuerdo escrito era que
+   avisaran ellos cuando terminara el cuadre. El levantamiento vino por el otro lado. **Pendiente
+   de autorización del usuario** para escribirle a su árbitro.
+
+### Nota de proceso — modo directo autorizado
+
+El usuario cortó la costumbre de pasarle los prompts para que él los copiara: *«tu mismo debes
+enviarle los mensajes a tus agentes»*. Desde el 2026-09-09 el despacho a `omen-saa-1-be` y
+`omen-saa-1-fe` va por `SendMessage`. Al usuario se le llevan decisiones de negocio, scripts para
+correr y el permiso para hablarle a otro árbitro — no el reparto de trabajo del propio equipo.
+**Es la misma corrección que el usuario ya le había hecho al árbitro de `omen-saa-2`** (su §31.3),
+o sea que no era una preferencia de esa sesión: es cómo quiere que funcione el esquema.
