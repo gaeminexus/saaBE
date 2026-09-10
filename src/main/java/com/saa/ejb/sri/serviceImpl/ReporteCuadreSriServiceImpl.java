@@ -158,6 +158,43 @@ public class ReporteCuadreSriServiceImpl implements ReporteCuadreSriService {
         // "d.estado" (el detalle, DetalleRetencionV2) sigue siendo el flag genérico de siempre
         // (verificado: su javadoc dice "1=Activo, 0=Inactivo" y no tiene el patrón 3/4/5/6) --
         // ese no se toca.
+        //
+        // ÍTEM 25 (2026-09-10): un comprobante de retención lleva en la misma tabla las líneas
+        // de RENTA (codImpuesto='1') y las de IVA (codImpuesto='2'). El 103 es el formulario de
+        // retenciones en la fuente de RENTA -- las de IVA van al 104, casillas 721-731 (ítem 24,
+        // ReporteCuadreSriServiceImpl.sumarRetencionesIvaEmitidas). Sin este filtro, las líneas
+        // de IVA salían mezcladas acá agrupadas por codRetencion (1,2,3,9,10,11) junto a los
+        // códigos de renta (303, 304A, 320, 3440...), sin casillaSugerida por no estar en
+        // CASILLAS_103_SIN_AMBIGUEDAD -- declaradas en los dos formularios a la vez, sin avisar.
+        List<String> avisos = new ArrayList<String>();
+
+        // codImpuesto es String (verificado en DetalleRetencionV2.java antes de escribir esto,
+        // no asumido): '1' y '2', nunca 1/2 numéricos. Si hubiera líneas con codImpuesto NULL,
+        // el filtro de abajo las excluye de la comparación por semántica de NULL en SQL/JPQL --
+        // eso las sacaría de éste Y del 104 (ítem 24, que filtra '2') SIN avisar, que es
+        // exactamente lo que no hay que hacer: se cuentan aparte y se avisa si aparecen.
+        Long sinCodImpuesto = (Long) em.createQuery(
+                "select count(d) from DetalleRetencionV2 d "
+                        + "where d.retencionV2.facturador.id = :idFacturador "
+                        + "and d.retencionV2.estado = :ventaAutorizada "
+                        + "and d.retencionV2.estadoEmision <> :ventaNoAnulada "
+                        + "and d.estado = :activo "
+                        + "and d.codImpuesto is null "
+                        + "and d.retencionV2.fecha between :desde and :hasta")
+                .setParameter("idFacturador", idFacturador)
+                .setParameter("ventaAutorizada", CriterioVentaVigente.ESTADO_AUTORIZADA)
+                .setParameter("ventaNoAnulada", CriterioVentaVigente.ESTADO_EMISION_ANULADA)
+                .setParameter("activo", Long.valueOf(Estado.ACTIVO))
+                .setParameter("desde", rango[0])
+                .setParameter("hasta", rango[1])
+                .getSingleResult();
+        if (sinCodImpuesto != null && sinCodImpuesto.longValue() > 0) {
+            avisos.add("Hay " + sinCodImpuesto + " línea(s) de retención con CODIMPUESTO en NULL en "
+                    + "el período: no aparecen NI en este 103 NI en el 104 (casillas 721-731, ítem "
+                    + "24), porque no se puede saber si son renta o IVA sin revisarlas a mano. "
+                    + "Corríjalas antes de declarar -- el total no está completo mientras existan.");
+        }
+
         @SuppressWarnings("unchecked")
         List<Object[]> filas = em.createQuery(
                 "select d.codRetencion, sum(d.baseImponible), sum(d.valorReten) "
@@ -166,12 +203,14 @@ public class ReporteCuadreSriServiceImpl implements ReporteCuadreSriService {
                         + "and d.retencionV2.estado = :ventaAutorizada "
                         + "and d.retencionV2.estadoEmision <> :ventaNoAnulada "
                         + "and d.estado = :activo "
+                        + "and d.codImpuesto = :codRenta "
                         + "and d.retencionV2.fecha between :desde and :hasta "
                         + "group by d.codRetencion order by d.codRetencion")
                 .setParameter("idFacturador", idFacturador)
                 .setParameter("ventaAutorizada", CriterioVentaVigente.ESTADO_AUTORIZADA)
                 .setParameter("ventaNoAnulada", CriterioVentaVigente.ESTADO_EMISION_ANULADA)
                 .setParameter("activo", Long.valueOf(Estado.ACTIVO))
+                .setParameter("codRenta", "1")
                 .setParameter("desde", rango[0])
                 .setParameter("hasta", rango[1])
                 .getResultList();
@@ -187,7 +226,6 @@ public class ReporteCuadreSriServiceImpl implements ReporteCuadreSriService {
             porCodigo.add(item);
         }
 
-        List<String> avisos = new ArrayList<String>();
         avisos.add("El mapeo código de retención → casilla del 103 NO está confirmado contra una "
                 + "declaración real (advertencia explícita del levantamiento, §0 y §2.1): la "
                 + "resolución NAC-DGERCGC26-00000009 (vigente desde 1-mar-2026) cambió porcentajes "
