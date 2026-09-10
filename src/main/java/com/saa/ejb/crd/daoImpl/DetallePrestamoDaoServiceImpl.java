@@ -730,8 +730,8 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 
 	@SuppressWarnings("unchecked")
 	@Override
-	public List<DetallePrestamo> selectCuotasPendientesByPrestamos(List<Long> codigosPrestamo) throws Throwable {
-		System.out.println("DetallePrestamoDaoServiceImpl.selectCuotasPendientesByPrestamos - préstamos solicitados: "
+	public List<Object[]> selectDatosSaldoCuotasPendientes(List<Long> codigosPrestamo) throws Throwable {
+		System.out.println("DetallePrestamoDaoServiceImpl.selectDatosSaldoCuotasPendientes - préstamos solicitados: "
 				+ (codigosPrestamo != null ? codigosPrestamo.size() : 0));
 
 		if (codigosPrestamo == null || codigosPrestamo.isEmpty()) {
@@ -742,14 +742,22 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 		// selectCuotasPendientesByPrestamoOrdenadas: acá una sola consulta cubre TODO el lote
 		// de calcularSaldosEnLote, así que una falla acá es una falla real del lote entero
 		// (500 legítimo), no la fila mala de un bucle que no debe abortar el resto.
-		String jpql = "SELECT d FROM DetallePrestamo d " +
+		//
+		// Proyección ESCALAR a propósito: "SELECT d" instanciaba DetallePrestamo, y su
+		// @ManyToOne d.prestamo es EAGER (default de JPA) y arrastra en cascada Entidad,
+		// Producto, Filial, MotivoPrestamo y los EAGER de Entidad — Hibernate hidrataba el
+		// grafo completo de cada cuota. "d.prestamo.codigo" en JPQL usa la FK directa, sin
+		// join ni hidratación.
+		String jpql = "SELECT d.prestamo.codigo, d.codigo, d.desgravamen, d.mora, d.interesVencido, " +
+					 "       d.interes, d.capital, d.valorSeguroIncendio, d.total, d.fechaVencimiento " +
+					 "FROM DetallePrestamo d " +
 					 "WHERE d.prestamo.codigo IN :codigos " +
 					 "AND (d.estado IS NULL OR d.estado NOT IN (:estadoPagada, :estadoCanceladaAnticipada)) " +
 					 "ORDER BY d.prestamo.codigo, d.numeroCuota ASC";
 
 		// Fragmentado en bloques de 900: Oracle limita IN (...) a 1000 elementos (ORA-01795).
 		final int TAMANIO_BLOQUE = 900;
-		List<DetallePrestamo> resultados = new ArrayList<>();
+		List<Object[]> resultados = new ArrayList<>();
 		for (int inicio = 0; inicio < codigosPrestamo.size(); inicio += TAMANIO_BLOQUE) {
 			List<Long> bloque = codigosPrestamo.subList(inicio,
 					Math.min(inicio + TAMANIO_BLOQUE, codigosPrestamo.size()));

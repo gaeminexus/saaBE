@@ -1097,27 +1097,77 @@ public class PrestamoServiceImpl implements PrestamoService {
 
 		// EN LOTE, no préstamo por préstamo: MotorPagoPrestamoServiceImpl.calcularSaldosCuota
 		// de UN argumento (línea ~116) consulta los pagos vigentes POR CUOTA. Sobre una página
-		// de 100 préstamos eso eran miles de consultas donde antes había cien. Acá se trae
-		// TODO con 3 llamadas (dos de ellas fragmentadas por dentro) y se calcula en memoria
-		// con la variante PURA de 2 argumentos. NO volver a un bucle de una consulta por
-		// préstamo.
+		// de 100 préstamos eso eran miles de consultas donde antes había cien. Acá se trae TODO
+		// con 4 llamadas (fragmentadas por dentro): préstamos existentes, cuotas pendientes,
+		// pagos de esas cuotas, y capital pagado agrupado. Se calcula en memoria con la
+		// variante PURA de 2 argumentos, sobre objetos TRANSITORIOS (new + setters, nunca
+		// gestionados por el EntityManager). NO volver a un bucle de una consulta por préstamo
+		// NI a leer las cuotas/pagos como entidades: DetallePrestamo.prestamo y los @ManyToOne
+		// de PagoPrestamo son EAGER (default de JPA) y arrastran en cascada Entidad, Producto,
+		// Filial, MotivoPrestamo, etc. — Hibernate hidrataba el grafo completo de cada fila.
+		// Las consultas de abajo son proyecciones ESCALARES (Object[]) a propósito.
 		List<Long> existentes = prestamoDaoService.selectCodigosExistentes(codigosPrestamo);
 		Set<Long> existentesSet = new HashSet<>(existentes);
 
-		List<DetallePrestamo> todasLasCuotas = detallePrestamoDaoService.selectCuotasPendientesByPrestamos(existentes);
+		// Cuotas PENDIENTES escalares → saldoCapital/saldoTotal. d.prestamo.codigo en JPQL usa
+		// la FK directa, sin join ni hidratación.
+		List<Object[]> filasCuotas = detallePrestamoDaoService.selectDatosSaldoCuotasPendientes(existentes);
 		Map<Long, List<DetallePrestamo>> cuotasPorPrestamo = new LinkedHashMap<>();
-		List<Long> codigosCuota = new ArrayList<>();
-		for (DetallePrestamo cuota : todasLasCuotas) {
-			Long idPrestamoDeCuota = cuota.getPrestamo() != null ? cuota.getPrestamo().getCodigo() : null;
+		List<Long> codigosCuotaPendiente = new ArrayList<>();
+		for (Object[] fila : filasCuotas) {
+			Long idPrestamoDeCuota = fila[0] != null ? ((Number) fila[0]).longValue() : null;
+			Long idCuota = fila[1] != null ? ((Number) fila[1]).longValue() : null;
+
+			// Objeto TRANSITORIO: new + setters de SOLO lo que trajo la proyección. NUNCA se
+			// setea prestamo (queda null; el motor no lo usa) ni se persiste.
+			DetallePrestamo cuota = new DetallePrestamo();
+			cuota.setCodigo(idCuota);
+			cuota.setDesgravamen(fila[2] != null ? ((Number) fila[2]).doubleValue() : 0.0);
+			cuota.setMora(fila[3] != null ? ((Number) fila[3]).doubleValue() : 0.0);
+			cuota.setInteresVencido(fila[4] != null ? ((Number) fila[4]).doubleValue() : 0.0);
+			cuota.setInteres(fila[5] != null ? ((Number) fila[5]).doubleValue() : 0.0);
+			cuota.setCapital(fila[6] != null ? ((Number) fila[6]).doubleValue() : 0.0);
+			cuota.setValorSeguroIncendio(fila[7] != null ? ((Number) fila[7]).doubleValue() : 0.0);
+			// ⚠️ total (DTPRTTLL) NO se defaultea a 0.0: el motor decide con
+			// "cuota.getTotal() != null" si usa DTPRTTLL o el fallback de la suma de los 6
+			// componentes (cuota legacy sin DTPRTTLL). Convertir null a 0.0 acá cambiaría esa
+			// rama y el resultado, no solo la representación.
+			cuota.setTotal(fila[8] != null ? ((Number) fila[8]).doubleValue() : null);
+			cuota.setFechaVencimiento((LocalDateTime) fila[9]);
+
 			cuotasPorPrestamo.computeIfAbsent(idPrestamoDeCuota, k -> new ArrayList<>()).add(cuota);
-			codigosCuota.add(cuota.getCodigo());
+			codigosCuotaPendiente.add(idCuota);
 		}
 
-		List<PagoPrestamo> todosLosPagos = pagoPrestamoDaoService.selectVigentesByIdsDetallePrestamo(codigosCuota);
+		// Pagos vigentes escalares de las cuotas PENDIENTES → alimentan el motor para
+		// saldoCapital/saldoTotal por cuota. NO es el universo de capitalPagado (ver abajo):
+		// ese es el acumulado histórico de TODAS las cuotas, pagadas o no.
+		List<Object[]> filasPagos = pagoPrestamoDaoService.selectDatosPagosVigentes(codigosCuotaPendiente);
 		Map<Long, List<PagoPrestamo>> pagosPorCuota = new LinkedHashMap<>();
-		for (PagoPrestamo pago : todosLosPagos) {
-			Long idCuota = pago.getDetallePrestamo() != null ? pago.getDetallePrestamo().getCodigo() : null;
-			pagosPorCuota.computeIfAbsent(idCuota, k -> new ArrayList<>()).add(pago);
+		for (Object[] fila : filasPagos) {
+			Long idCuotaDelPago = fila[0] != null ? ((Number) fila[0]).longValue() : null;
+
+			// Objeto TRANSITORIO: solo los seis componentes que el motor acumula en su bucle.
+			PagoPrestamo pago = new PagoPrestamo();
+			pago.setDesgravamen(fila[1] != null ? ((Number) fila[1]).doubleValue() : 0.0);
+			pago.setMoraPagada(fila[2] != null ? ((Number) fila[2]).doubleValue() : 0.0);
+			pago.setInteresVencidoPagado(fila[3] != null ? ((Number) fila[3]).doubleValue() : 0.0);
+			pago.setInteresPagado(fila[4] != null ? ((Number) fila[4]).doubleValue() : 0.0);
+			pago.setCapitalPagado(fila[5] != null ? ((Number) fila[5]).doubleValue() : 0.0);
+			pago.setValorSeguroIncendio(fila[6] != null ? ((Number) fila[6]).doubleValue() : 0.0);
+			pagosPorCuota.computeIfAbsent(idCuotaDelPago, k -> new ArrayList<>()).add(pago);
+		}
+
+		// Capital pagado ACUMULADO por préstamo (TODAS sus cuotas, no solo las pendientes):
+		// un SOLO SUM agrupado en la base, una fila por préstamo — a pedido explícito del
+		// usuario, para no traer filas de pago a Java para este cálculo. SUM sobre solo nulos
+		// o préstamo sin pagos vigentes (sin fila) se tratan igual: 0.0, nunca null.
+		List<Object[]> filasCapitalPagado = pagoPrestamoDaoService.selectCapitalPagadoByPrestamos(existentes);
+		Map<Long, Double> capitalPagadoPorPrestamo = new LinkedHashMap<>();
+		for (Object[] fila : filasCapitalPagado) {
+			Long idPrestamoDelSuma = fila[0] != null ? ((Number) fila[0]).longValue() : null;
+			double suma = fila[1] != null ? ((Number) fila[1]).doubleValue() : 0.0;
+			capitalPagadoPorPrestamo.put(idPrestamoDelSuma, suma);
 		}
 
 		// Mismo corte que ProcesoMoraPrestamoServiceImpl.corteDelDia(LocalDate.now()): inicio
@@ -1128,8 +1178,8 @@ public class PrestamoServiceImpl implements PrestamoService {
 		for (Long idPrestamo : codigosPrestamo) {
 			// Un código que no existe en CRD.PRST no aparece en la respuesta (no es error).
 			// Un préstamo EXISTENTE en estado terminal (cancelado, etc.) sí aparece, con 0 en
-			// sus tres campos si no tiene cuotas pendientes — API-SALDOS-PRESTAMO.md §3,
-			// ejemplo del préstamo 8078.
+			// sus campos si no tiene cuotas/pagos — API-SALDOS-PRESTAMO.md §3, ejemplo del
+			// préstamo 8078.
 			if (!existentesSet.contains(idPrestamo)) {
 				continue;
 			}
@@ -1144,7 +1194,8 @@ public class PrestamoServiceImpl implements PrestamoService {
 					List<PagoPrestamo> pagosDeCuota =
 							pagosPorCuota.getOrDefault(cuota.getCodigo(), new ArrayList<>());
 					// Variante PURA de 2 argumentos: no consulta, no autocorrige ni persiste
-					// el estado de la cuota. Este endpoint es de solo lectura.
+					// el estado de la cuota. Este endpoint es de solo lectura. NO copiar la
+					// fórmula acá: la única fuente de la matemática es el motor.
 					SaldosCuota saldos = motorPagoPrestamoService.calcularSaldosCuota(cuota, pagosDeCuota);
 					saldoCapital += saldos.getSaldoCapital();
 					saldoTotal += saldos.getTotalPendiente();
@@ -1157,6 +1208,7 @@ public class PrestamoServiceImpl implements PrestamoService {
 				resumen.setIdPrestamo(idPrestamo);
 				resumen.setSaldoCapital(redondear(saldoCapital));
 				resumen.setSaldoTotal(redondear(saldoTotal));
+				resumen.setCapitalPagado(redondear(capitalPagadoPorPrestamo.getOrDefault(idPrestamo, 0.0)));
 				resumen.setCuotasEnMora(cuotasEnMora);
 				resultado.add(resumen);
 			} catch (Throwable e) {

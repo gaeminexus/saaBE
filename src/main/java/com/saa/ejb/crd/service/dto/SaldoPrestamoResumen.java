@@ -17,6 +17,13 @@ public class SaldoPrestamoResumen {
     /** Suma de SaldosCuota.totalPendiente sobre las cuotas pendientes. Redondeado a 2 decimales. */
     private Double saldoTotal;
 
+    /**
+     * Σ PGPRCPPG (solo el capital pagado, SIN sumar interés/mora/desgravamen/seguros) de
+     * TODOS los pagos vigentes del préstamo — acumulado histórico, no sólo de cuotas
+     * pendientes. "Capital Pagado" en pantalla. 0.0 si no tiene pagos vigentes, nunca null.
+     */
+    private Double capitalPagado;
+
     /** Cuotas pendientes con fechaVencimiento anterior al corte de hoy. */
     private Long cuotasEnMora;
 
@@ -45,6 +52,14 @@ public class SaldoPrestamoResumen {
 
     public void setSaldoTotal(Double saldoTotal) {
         this.saldoTotal = saldoTotal;
+    }
+
+    public Double getCapitalPagado() {
+        return capitalPagado;
+    }
+
+    public void setCapitalPagado(Double capitalPagado) {
+        this.capitalPagado = capitalPagado;
     }
 
     public Long getCuotasEnMora() {

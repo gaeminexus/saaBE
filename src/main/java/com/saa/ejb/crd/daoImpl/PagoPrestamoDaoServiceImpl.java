@@ -87,8 +87,8 @@ public class PagoPrestamoDaoServiceImpl extends EntityDaoImpl<PagoPrestamo> impl
 
 	@Override
 	@SuppressWarnings("unchecked")
-	public List<PagoPrestamo> selectVigentesByIdsDetallePrestamo(List<Long> codigosDetallePrestamo) throws Throwable {
-		System.out.println("PagoPrestamoDaoService.selectVigentesByIdsDetallePrestamo - cuotas solicitadas: "
+	public List<Object[]> selectDatosPagosVigentes(List<Long> codigosDetallePrestamo) throws Throwable {
+		System.out.println("PagoPrestamoDaoService.selectDatosPagosVigentes - cuotas solicitadas: "
 				+ (codigosDetallePrestamo != null ? codigosDetallePrestamo.size() : 0));
 
 		if (codigosDetallePrestamo == null || codigosDetallePrestamo.isEmpty()) {
@@ -97,15 +97,20 @@ public class PagoPrestamoDaoServiceImpl extends EntityDaoImpl<PagoPrestamo> impl
 
 		// anulado IS NULL cubre los pagos históricos anteriores al ALTER de CRD.PGPR. A
 		// propósito NO atrapa la excepción, ver javadoc de la interfaz.
-		String jpql = "SELECT p " +
+		//
+		// Proyección ESCALAR a propósito: "SELECT p" instanciaba PagoPrestamo, y sus tres
+		// @ManyToOne (prestamo, detallePrestamo, cargaArchivo) son EAGER (default de JPA), cada
+		// uno con lo suyo — Hibernate hidrataba el grafo completo de cada pago.
+		String jpql = "SELECT p.detallePrestamo.codigo, p.desgravamen, p.moraPagada, " +
+			"       p.interesVencidoPagado, p.interesPagado, p.capitalPagado, p.valorSeguroIncendio " +
 			"FROM PagoPrestamo p " +
 			"WHERE p.detallePrestamo.codigo IN :codigos " +
 			"AND (p.anulado IS NULL OR p.anulado = 0) " +
-			"ORDER BY p.detallePrestamo.codigo, p.codigo ASC";
+			"ORDER BY p.detallePrestamo.codigo";
 
 		// Fragmentado en bloques de 900: Oracle limita IN (...) a 1000 elementos (ORA-01795).
 		final int TAMANIO_BLOQUE = 900;
-		List<PagoPrestamo> resultados = new ArrayList<>();
+		List<Object[]> resultados = new ArrayList<>();
 		for (int inicio = 0; inicio < codigosDetallePrestamo.size(); inicio += TAMANIO_BLOQUE) {
 			List<Long> bloque = codigosDetallePrestamo.subList(inicio,
 					Math.min(inicio + TAMANIO_BLOQUE, codigosDetallePrestamo.size()));
@@ -116,6 +121,44 @@ public class PagoPrestamoDaoServiceImpl extends EntityDaoImpl<PagoPrestamo> impl
 		}
 
 		System.out.println("  Pagos vigentes encontrados: " + resultados.size());
+		return resultados;
+	}
+
+	@Override
+	@SuppressWarnings("unchecked")
+	public List<Object[]> selectCapitalPagadoByPrestamos(List<Long> codigosPrestamo) throws Throwable {
+		System.out.println("PagoPrestamoDaoService.selectCapitalPagadoByPrestamos - préstamos solicitados: "
+				+ (codigosPrestamo != null ? codigosPrestamo.size() : 0));
+
+		if (codigosPrestamo == null || codigosPrestamo.isEmpty()) {
+			return new ArrayList<>();
+		}
+
+		// SUM AGRUPADO en la base a propósito: una fila por préstamo, no una por pago — el
+		// usuario pidió explícitamente no traer filas de pago a Java para este cálculo, tras
+		// dos episodios de lentitud en este mismo endpoint por consultas por fila.
+		//
+		// Llega al préstamo por p.detallePrestamo.prestamo.codigo (navega por la cuota), NO por
+		// p.prestamo.codigo: esa FK directa puede venir NULL en pagos viejos.
+		String jpql = "SELECT p.detallePrestamo.prestamo.codigo, SUM(p.capitalPagado) " +
+			"FROM PagoPrestamo p " +
+			"WHERE p.detallePrestamo.prestamo.codigo IN :codigos " +
+			"AND (p.anulado IS NULL OR p.anulado = 0) " +
+			"GROUP BY p.detallePrestamo.prestamo.codigo";
+
+		// Fragmentado en bloques de 900: Oracle limita IN (...) a 1000 elementos (ORA-01795).
+		final int TAMANIO_BLOQUE = 900;
+		List<Object[]> resultados = new ArrayList<>();
+		for (int inicio = 0; inicio < codigosPrestamo.size(); inicio += TAMANIO_BLOQUE) {
+			List<Long> bloque = codigosPrestamo.subList(inicio,
+					Math.min(inicio + TAMANIO_BLOQUE, codigosPrestamo.size()));
+
+			Query query = em.createQuery(jpql);
+			query.setParameter("codigos", bloque);
+			resultados.addAll(query.getResultList());
+		}
+
+		System.out.println("  Préstamos con capital pagado: " + resultados.size());
 		return resultados;
 	}
 

@@ -34,10 +34,13 @@ public interface PagoPrestamoDaoService extends EntityDao<PagoPrestamo> {
 	List<PagoPrestamo> selectVigentesByIdDetallePrestamo(Long codigoDetallePrestamo);
 
 	/**
-	 * Pagos VIGENTES (anulado IS NULL OR anulado = 0) de VARIAS cuotas en una sola consulta,
-	 * mismo criterio que {@link #selectVigentesByIdDetallePrestamo(Long)}. Para calcular
-	 * saldos en lote sin el N+1 de pedir los pagos cuota por cuota
-	 * (docs/logica-negocio/crd/API-SALDOS-PRESTAMO.md).
+	 * Datos escalares (SIN instanciar entidades) de los pagos VIGENTES (anulado IS NULL OR
+	 * anulado = 0) de VARIAS cuotas en una sola consulta, mismo criterio que
+	 * {@link #selectVigentesByIdDetallePrestamo(Long)}. Para calcular saldos en lote sin el
+	 * N+1 de pedir los pagos cuota por cuota, y SIN la hidratación EAGER de
+	 * {@code PagoPrestamo.prestamo}/{@code detallePrestamo}/{@code cargaArchivo} (los tres
+	 * {@code @ManyToOne}, con lo suyo cada uno) que una consulta de entidades arrastra en
+	 * cascada (docs/logica-negocio/crd/API-SALDOS-PRESTAMO.md).
 	 *
 	 * <p>Fragmenta internamente en bloques de 900 para no chocar con el límite de Oracle de
 	 * 1000 elementos en {@code IN (...)} (ORA-01795).</p>
@@ -48,11 +51,43 @@ public interface PagoPrestamoDaoService extends EntityDao<PagoPrestamo> {
 	 * debe abortar el resto. Debe propagarse como un 500 legítimo.</p>
 	 *
 	 * @param codigosDetallePrestamo Códigos de cuota (DetallePrestamo)
-	 * @return Pagos vigentes de esas cuotas, ordenados por cuota y luego por código ASC; lista
+	 * @return Filas {@code Object[]{Long idDetallePrestamo, Double desgravamen,
+	 *         Double moraPagada, Double interesVencidoPagado, Double interesPagado,
+	 *         Double capitalPagado, Double valorSeguroIncendio}}, ordenadas por cuota; lista
 	 *         vacía si {@code codigosDetallePrestamo} es nulo o vacío
 	 * @throws Throwable Si ocurre algún error
 	 */
-	List<PagoPrestamo> selectVigentesByIdsDetallePrestamo(List<Long> codigosDetallePrestamo) throws Throwable;
+	List<Object[]> selectDatosPagosVigentes(List<Long> codigosDetallePrestamo) throws Throwable;
+
+	/**
+	 * Capital pagado ACUMULADO de VARIOS préstamos, con UN {@code SUM} AGRUPADO en la base —
+	 * una fila por préstamo, no una por pago (un préstamo con 200 pagos históricos aporta 1
+	 * fila). Es el acumulado histórico completo: de TODAS las cuotas del préstamo, no sólo las
+	 * pendientes (docs/logica-negocio/crd/API-SALDOS-PRESTAMO.md §3, columna
+	 * {@code capitalPagado}, «Capital Pagado» en pantalla).
+	 *
+	 * <p>Llega al préstamo por {@code p.detallePrestamo.prestamo.codigo} (navega por la cuota),
+	 * NO por {@code p.prestamo.codigo}: esa FK directa en {@code CRD.PGPR} puede venir
+	 * {@code NULL} en pagos viejos, mientras que todo {@code PagoPrestamo} tiene una cuota y
+	 * toda cuota tiene un préstamo.</p>
+	 *
+	 * <p>Mismo criterio de vigencia que {@link #selectVigentesByIdDetallePrestamo(Long)}.
+	 * Fragmenta internamente en bloques de 900 (ORA-01795).</p>
+	 *
+	 * <p>Un préstamo sin pagos vigentes NO genera fila (el {@code GROUP BY} no la produce); el
+	 * llamador debe tratar la ausencia como 0.0, igual que un {@code SUM} sobre solo nulos
+	 * (que Oracle devuelve como {@code NULL}, no como 0).</p>
+	 *
+	 * <p>A propósito y al REVÉS de la convención de sus vecinos en esta clase, <b>NO atrapa la
+	 * excepción</b>: ver {@link #selectDatosPagosVigentes(List)}.</p>
+	 *
+	 * @param codigosPrestamo Códigos de préstamo
+	 * @return Filas {@code Object[]{Long idPrestamo, Double sumaCapitalPagado}}; SIN fila para
+	 *         los préstamos sin pagos vigentes; {@code sumaCapitalPagado} puede venir
+	 *         {@code null} si todos los pagos del préstamo tienen el capital en null
+	 * @throws Throwable Si ocurre algún error
+	 */
+	List<Object[]> selectCapitalPagadoByPrestamos(List<Long> codigosPrestamo) throws Throwable;
 
 	/**
 	 * Pagos de un evento (para anulación/consulta), ordenados por código ASC.
