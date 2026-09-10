@@ -274,7 +274,75 @@ nodo `SAA` del árbol nuevo.
 
 ---
 
-## 6. ⚠️ Alcance compartido — esto toca territorio de los otros dos equipos
+## 6. El árbol: cómo se armó y qué quedó afuera — 2026-09-10
+
+**305 nodos, ids 1253 a 1557.** Script: `sql/lap1-15-arbol-permisos-saa.sql`.
+Mapa legible de códigos: `CODIGOS-PERMISOS-SAA.md`, espejado a `saaFE/docs/seguridad/`.
+
+| Nivel | Qué es | Nodos |
+|---|---|---|
+| 1 | `SAA` (padre = 93, la raíz que se conserva) | 1 |
+| 2 | Los 7 módulos | 7 |
+| 3 | Grupos del menú (Parametrización, Procesos, Reportes…) | 28 |
+| 4 | Pantallas y subgrupos | 142 |
+| 5 | Pantallas hijas y hojas profundas | 90 |
+| 6–7 | Diálogos de diálogos | 37 |
+
+### 6.1 Las cuatro reglas del árbol
+
+1. **Un nodo por pantalla, nunca por botón.** Excepción: un botón que **abre otra
+   pantalla** (diálogo con formulario, o `router.navigate` a otra ruta) — esa pantalla hija es nodo y
+   cuelga de la que la abre.
+2. **Una pantalla que ya está en el menú tiene UN solo nodo**, en su lugar del menú. Que otra
+   pantalla navegue hacia ella **no le crea un segundo nodo**. Sin esta regla el árbol tendría ~40
+   nodos duplicados: el inventario encontró 149 relaciones pantalla-a-pantalla y buena parte son
+   navegaciones entre dos opciones de menú (`PrestamoConsulta ⇄ PrestamoEdit`, `Marcaciones ⇄
+   ResumenDiario`).
+3. **Las rutas sin puerta de entrada no reciben nodo.** Ni menú, ni `navigate`: nadie puede llegar,
+   así que un permiso sobre ellas no protege nada. Están listadas en el §6.2 para que se les pueda
+   dar nodo el día que se les dé puerta.
+4. **Excluidos** los diálogos de confirmación, los selectores de un valor y los visores de PDF — el
+   mismo filtro que aplicó el barrido del frontend, de forma consistente en los cuatro módulos.
+
+### 6.2 Lo que deliberadamente NO entró, y por qué
+
+| Qué | Por qué |
+|---|---|
+| `PCC`, `CID`, `ACT` | Se borran: son sistemas ajenos a SAA |
+| Los 11 bloques de **Cobros** de `tsr` | Retirados del menú a propósito el 2026-09-07. Rutas y componentes vivos — si se reactivan, se agregan al árbol |
+| `/menutesoreria/parametrizacion/bancos` y `.../cajas/logicas` | `TsrPlaceholderComponent`: no hay pantalla detrás |
+| `/menurecursoshumanos/procesos/aportes` | Retirada el 2026-08-26: pantalla a medio construir, sin entidad en el backend |
+| `/menucuentaxpagar/pagos/transferencias-legacy` | Alcanzable sólo escribiendo la URL |
+| `/menucreditos/entidad` | Huérfana real: sin menú y sin nadie que navegue hacia ella |
+| `tsr/forms/movimientos-bancarios/{creditos,debitos,transferencias}` | Tres componentes completos **sin ninguna entrada en `app.routes.ts`** |
+| `asoprep` | No tiene ni un componente ni una ruta en `saaFE` |
+| «Archivos Descuentos» y «Dash» de `crd` | Las 2 opciones sin pantalla programada — **se comentan en el menú** (decisión 7) |
+
+### 6.3 Dos decisiones de modelado que conviene poder revertir
+
+- **Los diálogos repetidos son un solo nodo.** `ParticipeDashComponent` abre `AuditoriaDialog` desde
+  4 lugares distintos y `DetalleConsultaCarga` abre `CoincidenciasEntidad` desde 2. El `UNIQUE`
+  obligaba a elegir: cuatro nombres inventados, o uno solo. **Se eligió uno**, porque no sabemos si
+  las 4 llamadas son la misma acción o cuatro secciones distintas, y un nombre inventado sobre algo
+  que no se entendió es peor que un nodo de menos. Si resulta que hacen falta cuatro, se agregan.
+- **Una pantalla alcanzable desde varios padres cuelga del grupo donde conceptualmente pertenece**,
+  no del primero que la abre. `ParticipeDash` la abren `entidad-consulta`, `participe-inicial` y
+  `pago-jubilados`; queda como hija de `PARTICIPES`.
+
+### 6.4 Cómo se generó, y por qué no a mano
+
+El árbol se escribió como texto indentado y un generador emitió los `INSERT`, **validando antes de
+emitir**: que ningún padre falte, que el nivel del padre sea exactamente uno menos, que el padre
+tenga id menor que el hijo (para que el orden del `INSERT` funcione), que ningún nombre pase de 300
+caracteres, y que **no haya dos hermanos con el mismo nombre** — lo que exige `UN_PJRQ_01`.
+
+305 nodos con referencias `PJRQCDPD` cruzadas escritos a mano tienen una probabilidad muy alta de
+llevar al menos un padre mal. **La validación mecánica elimina esa clase de error entera**, y es
+barata: el generador está en el scratchpad, no en el repositorio, porque es de un solo uso.
+
+---
+
+## 7. ⚠️ Alcance compartido — esto toca territorio de los otros dos equipos
 
 El frente va a modificar **los 9 menús, `app.routes.ts` (archivo único) y los 9 módulos de `saaFE`**.
 `omen-saa-1` y `omen-saa-2` estaban commiteando sobre `crd`, `rpr`, `cxc`, `sri`, `tsr`, `cnt` y
