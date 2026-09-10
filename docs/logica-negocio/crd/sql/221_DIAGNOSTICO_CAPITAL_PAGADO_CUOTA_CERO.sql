@@ -198,3 +198,47 @@ SELECT grupo,
          WHERE p.PRSTIDST IN (2, 11))
  GROUP BY grupo
  ORDER BY grupo;
+
+
+-- =====================================================================================
+-- BLOQUE 5 — ⭐ AGREGADO 2026-09-10: ¿que estados de cuota tienen pagos registrados?
+--
+--   POR QUE: la regla acordada con el usuario reparte por estado —liquidada (4,7) aporta
+--   el capital de la cuota; parcial (6) y mora (5) aportan lo abonado en PGPR; PENDIENTE
+--   y el resto aportan 0 aunque tengan pagos—. Los estados 0, 2, 3, 8 (VENCIDA) y el
+--   NULO no los nombro el usuario: se resolvieron como 0 por criterio conservador.
+--
+--   Este bloque mide si ese supuesto es inocuo o si esta escondiendo plata.
+--
+--   QUE MIRAR:
+--     - Fila estado 1 (PENDIENTE) con CUOTAS_CON_PAGO alto -> confirma que existe el dato
+--       anomalo que el usuario decidio ignorar, y CAPITAL_ABONADO dice cuanto se ignora.
+--     - Filas 8 (VENCIDA) o NULL con CUOTAS_CON_PAGO alto -> ⚠️ el supuesto del arbitro
+--       las esta descartando y habria que revisarlo con el usuario.
+--     - Filas 8/NULL en cero -> el supuesto es inocuo y no hay nada que decidir.
+-- =====================================================================================
+SELECT NVL(TO_CHAR(d.DTPRESTD), 'NULL')                              AS estado_cuota,
+       CASE NVL(d.DTPRESTD, -1)
+            WHEN 0 THEN 'RAIZ'         WHEN 1 THEN 'PENDIENTE'
+            WHEN 2 THEN 'ACTIVA'       WHEN 3 THEN 'EMITIDA'
+            WHEN 4 THEN 'PAGADA'       WHEN 5 THEN 'EN_MORA'
+            WHEN 6 THEN 'PARCIAL'      WHEN 7 THEN 'CANCELADA_ANTICIPADA'
+            WHEN 8 THEN 'VENCIDA'      WHEN -1 THEN '(sin estado)'
+            ELSE '(desconocido)' END                                 AS nombre_estado,
+       COUNT(*)                                                      AS cuotas,
+       SUM(CASE WHEN g.capital_abonado IS NOT NULL THEN 1 ELSE 0 END) AS cuotas_con_pago,
+       ROUND(NVL(SUM(g.capital_abonado), 0), 2)                      AS capital_abonado,
+       CASE WHEN NVL(d.DTPRESTD, -1) IN (4, 7) THEN 'aporta DTPRCPTL'
+            WHEN NVL(d.DTPRESTD, -1) IN (5, 6) THEN 'aporta PGPR'
+            ELSE 'aporta 0' END                                      AS trato_en_el_calculo
+  FROM CRD.DTPR d
+  JOIN CRD.PRST p ON p.PRSTCDGO = d.PRSTCDGO
+  LEFT JOIN (SELECT x.DTPRCDGO, SUM(NVL(x.PGPRCPPG, 0)) AS capital_abonado
+               FROM CRD.PGPR x
+              WHERE NVL(x.PGPRANUL, 0) = 0
+              GROUP BY x.DTPRCDGO
+             HAVING SUM(NVL(x.PGPRCPPG, 0)) > 0) g
+    ON g.DTPRCDGO = d.DTPRCDGO
+ WHERE p.PRSTIDST IN (2, 11)
+ GROUP BY d.DTPRESTD
+ ORDER BY d.DTPRESTD NULLS LAST;
