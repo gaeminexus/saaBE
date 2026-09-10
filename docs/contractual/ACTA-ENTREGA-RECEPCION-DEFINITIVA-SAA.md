@@ -195,9 +195,10 @@ b) La creación en la base de datos de producción de la tabla de credenciales d
 **enrolamiento** de los partícipes, que se realiza exclusivamente desde el sistema de oficina
 conforme a la política que ASOPREP defina; y
 
-c) La **publicación** de la aplicación en las tiendas Google Play y App Store, que requiere las
-cuentas de desarrollador correspondientes a nombre de **[ASOPREP / NEXUS — confirmar]**, la
-política de privacidad de ASOPREP y la información que dichas tiendas exigen.
+c) La **publicación** de la aplicación en las tiendas Google Play y App Store, a través de las
+cuentas de desarrollador **de titularidad de ASOPREP**, cuyos accesos ASOPREP ha entregado a NEXUS
+para que ésta efectúe la carga y publicación; requiere además la política de privacidad de ASOPREP
+y la información que dichas tiendas exigen.
 
 9.4. NEXUS ejecutará, dentro del período de garantía y sin costo para ASOPREP, las actividades
 técnicas de su responsabilidad en los literales anteriores en cuanto se cumplan las condiciones
@@ -209,30 +210,32 @@ Las funcionalidades transaccionales desde la aplicación (solicitud o firma de c
 cambios de aporte y similares) no forman parte del alcance contratado y se regirán, de requerirse,
 por la cláusula Décima Primera del Contrato.
 
-## DÉCIMA. — ENTREGA DE FUENTES
+## DÉCIMA. — ENTREGA DE FUENTES Y MANUALES DE USUARIO
 
 10.1. De común acuerdo, y **sin que ello afecte la recepción definitiva ni el pago del saldo**
 previsto en la cláusula Décima Primera de esta Acta, las partes convienen en diferir la entrega
 física del código fuente prevista en la cláusula Tercera del Contrato y en el numeral 2.1 del
-Anexo 1, con el fin de que dicha entrega corresponda a la versión estabilizada del sistema al
-término de los ajustes de garantía.
+Anexo 1, así como la de los manuales de usuario a que se refiere el numeral 10.4, con el fin de
+que dicha entrega corresponda a la versión estabilizada del sistema al término de los ajustes de
+garantía.
 
 10.2. Para ello, durante el período de garantía las partes realizarán una **revisión mensual
 conjunta**, con la participación del Jefe de Sistemas y de los responsables de cada área de
 ASOPREP, a fin de determinar si existen cambios importantes pendientes en los módulos desarrollados.
 
 10.3. Cuando en una de dichas revisiones los responsables de cada área de ASOPREP ratifiquen por
-escrito que no existen cambios importantes pendientes, NEXUS entregará el código fuente dentro de
-los **quince (15) días hábiles** siguientes. En todo caso, la entrega se efectuará **a más tardar
-al vencimiento del período de garantía**.
+escrito que no existen cambios importantes pendientes, NEXUS entregará el código fuente y los
+manuales de usuario dentro de los **quince (15) días hábiles** siguientes. En todo caso, la entrega
+se efectuará **a más tardar al vencimiento del período de garantía**.
 
 10.4. La entrega comprenderá: (a) el código fuente del backend del sistema SAA (proyecto saaBE);
 (b) el código fuente del frontend del sistema SAA (proyecto saaFE); (c) el código fuente de la
 aplicación móvil ASOPREP CONTIGO (proyecto saaAPP) y de su capa intermedia de publicación (proyecto
-saaBEMobile); y (d) los scripts de estructura de la base de datos. La documentación técnica
-contenida en los propios repositorios de código forma parte de la entrega. No forma parte del
-alcance contractual la elaboración de manuales de usuario ni de documentación adicional a la
-indicada.
+saaBEMobile); (d) los scripts de estructura de la base de datos; y (e) **un manual de usuario por
+cada módulo** del sistema (Contabilidad, Tesorería, Cuentas por Cobrar, Cuentas por Pagar,
+Créditos, Recursos Humanos y Reportes), en formato electrónico, que describa la operación de las
+funcionalidades inventariadas en el Anexo A conforme a la versión estabilizada del sistema. La
+documentación técnica contenida en los propios repositorios de código forma parte de la entrega.
 
 10.5. La entrega de fuentes se efectuará en los términos de la cláusula Novena del Contrato sobre
 titularidad y propiedad intelectual.
@@ -244,8 +247,8 @@ desarrollo de software a la medida objeto del Contrato y su Adendum, y las parte
 **cumplido el objeto contractual**, en los términos de la cláusula Décima Quinta, literal a), del
 Contrato, con las salvedades de las obligaciones que por su naturaleza subsisten: la garantía
 (cláusula Décima Segunda del Contrato y cláusula Séptima de esta Acta), las actividades de puesta
-en producción de la aplicación móvil (cláusula Novena de esta Acta), la entrega de fuentes diferida
-(cláusula Décima de esta Acta), la confidencialidad (cláusula Décima Tercera del Contrato) y la
+en producción de la aplicación móvil (cláusula Novena de esta Acta), la entrega diferida de fuentes
+y manuales de usuario (cláusula Décima de esta Acta), la confidencialidad (cláusula Décima Tercera del Contrato) y la
 titularidad y propiedad intelectual (cláusula Novena del Contrato).
 
 11.2. En consecuencia, procede el pago por parte de ASOPREP del saldo del tercer y último pago,
@@ -623,7 +626,7 @@ Conforme a la cláusula Novena del Acta:
 |---|---|---|
 | Enrutamiento de la IP pública por el proveedor de internet e instalación del certificado TLS | Proveedor de internet de ASOPREP / NEXUS (configuración) | Pendiente del proveedor |
 | Creación de la tabla de credenciales en la base de producción y enrolamiento de los partícipes desde el sistema de oficina | NEXUS (creación) / ASOPREP (política y enrolamiento) | Pendiente |
-| Publicación en Google Play y App Store: cuentas de desarrollador, política de privacidad, información exigida por las tiendas, y clave de firma de la versión de publicación | ASOPREP (cuentas y política) / NEXUS (compilación y publicación) | Pendiente |
+| Publicación en Google Play y App Store: política de privacidad, información exigida por las tiendas, y clave de firma de la versión de publicación | ASOPREP (titular de las cuentas de desarrollador y política de privacidad) / NEXUS (compilación, carga y publicación con los accesos entregados por ASOPREP) | Pendiente |
 
 Nota: la versión para iOS requiere compilación en un equipo con macOS y Xcode y las cuentas de
 desarrollador de Apple correspondientes.
