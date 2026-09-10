@@ -2693,3 +2693,50 @@ contradicción.
 - **Asimetría abierta:** votar exige **cero** cuotas en mora; ser `elegibleMiembro` tolera **6**.
   Deliberado —el usuario no pidió tocar la elegibilidad— pero nadie lo decidió explícitamente.
 - El cambio **reduce** el padrón de votantes y puede reducirlo mucho. Sin medir todavía.
+
+---
+
+## 📄 2026-09-10 — Acta de entrega-recepción definitiva del SAA, redactada y entregada
+
+**Pedido del usuario:** el acta que cierra el contrato con ASOPREP y se firma hoy. Fuente:
+`docs/contractual/ACTA-ENTREGA-RECEPCION-DEFINITIVA-SAA.md` (`49de7df7` borrador, `36844093`
+final); el Word se generó desde ese `.md` con un conversor propio en el scratchpad y se le entregó
+al usuario por archivo.
+
+### Lo que gobierna el documento, verificado contra los cuatro instrumentos firmados
+
+- **Contrato 2025-10-13**, USD 132.000: la garantía de 6 meses corre desde el «Acta – Entrega
+  Recepción Definitiva» (Décima Segunda). Por eso el acta se titula exactamente así **y** se
+  declara también el acta del saldo del **adendum 2026-07-03** (USD 23.016 neto, plazo al
+  2026-09-16). Un solo documento, dos efectos.
+- **Anexo 1**: el único entregable exigible son las **fuentes**; no pide manuales ni
+  documentación. La arquitectura que enuncia (SQL Server / WildFly 32 / Angular 19) no es la
+  entregada; se fijó la real como «definitiva» apoyándose en que el informe
+  INF-ASOPREP-SRV-2025-01 (base del segundo pago) ya decía Oracle.
+- **La app ASOPREP CONTIGO es contractual** por el Anexo 1. Consultado `omen-app-1-arb` con
+  autorización del usuario: **no está en producción** (sin ISP ruteando la IP pública, sin
+  `CRD.USAP` en producción, sin usuarios, sin tiendas). Se puso como «desarrollada, integrada y
+  validada en pruebas» con tres hitos externos, por recomendación coincidente de los dos árbitros.
+  Verificadas sus dos correcciones: **13** endpoints (no 17 — yo conté rutas de clase) y tabla
+  **`CRD.USAP`**.
+
+### Decisiones del usuario que cambiaron el texto
+
+1. **No mencionar los ocho frentes** sin desplegar: «puntos de mejora normales», se prueban
+   mañana. Se eliminó el anexo de observaciones; la garantía cubre «cualquier corrección».
+2. **Incluir manuales de usuario** (había pedido el mínimo; cambió de idea). Compromiso voluntario
+   → acotado a **uno por módulo**, versión estabilizada, mismo mecanismo diferido que las fuentes,
+   con tope al vencimiento de la garantía.
+3. Cuentas de tiendas **de ASOPREP**, accesos entregados a NEXUS para la carga.
+
+### Hallazgos de método
+
+- ⭐ **Un `.docx` es un ZIP, y `ZipFile.CreateFromDirectory` de .NET Framework escribe las
+  entradas con barra invertida** (`word\document.xml`). Word lo abre como dañado. Hay que crear las
+  entradas a mano con `/`. Y en Windows PowerShell los `Add-Type` de `System.IO.Compression` van
+  **antes** de cualquier literal de tipo, porque los resuelve al analizar el script.
+- El lector de PDF de la máquina no renderiza escaneos (`pdftoppm` ausente); `pdfbox-app` por
+  Maven + `render` a PNG lo resolvió. El «52 páginas» que reportó la herramienta eran 4.
+- **Lo que se dejó fuera a propósito y por qué:** las mejoras identificadas por este equipo
+  (seguros por póliza, estados financieros SBS faltantes, asimetría voto/elegibilidad). En un acta,
+  listarlas las vuelve garantía gratuita; son Décima Primera.
