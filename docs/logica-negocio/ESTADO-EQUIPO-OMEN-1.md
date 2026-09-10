@@ -2623,3 +2623,73 @@ NULL o en 0 — no bloquea nada y el usuario ya confirmó el campo por segunda v
 (*«usa el campo monto solicitado sin problema»*), así que la decisión está firme. Lo único que se
 pierde es saber de antemano cuántas celdas van a salir vacías cuando alguien abra el informe.
 Queda como dato disponible, no como pendiente.
+
+---
+
+## ✅ 2026-09-09 — Padrón de partícipes: voto estricto y «Mantiene Calidad»
+
+**Pedido del usuario, urgente.** Especificación en `crd/ESPEC-PADRON-VOTO-Y-CALIDAD.md` (`1ac47c64`),
+escrita **antes** de despachar. BE `48135290`, FE `7982640` (saaFE).
+
+| | Antes | Ahora |
+|---|---|---|
+| `estadoMora` | EN MORA sólo a los 6 meses | **EN MORA con cualquier mes de atraso** |
+| `habilitadoVoto` | ACTIVO + al día + hasta 6 cuotas | **ACTIVO + 0 meses + 0 cuotas + sin préstamo marcado en mora** |
+| `mantieneCalidadParticipe` | — | **SI hasta 6 meses, NO desde 7** |
+
+**Sin DDL:** el padrón se calcula al vuelo, no se persiste. Es el primer frente de esta serie que
+no necesita un script antes del WAR.
+
+### El nombre, y por qué no es el que pidió el usuario
+
+Pidió llamarla «calidad de partícipe». **Ya existe una columna `calidadParticipe`** con valores
+`ACTIVO / CESANTE`. Dos columnas de nombre casi igual y contenido distinto en el mismo Excel es una
+confusión que después nadie desarma; se le ofrecieron alternativas y eligió **`Mantiene Calidad`**.
+⇒ Antes de agregar una columna, buscar si el nombre ya está tomado con otro significado.
+
+### ⛔ El defecto que el agente encontró sin que se lo pidieran, y que no compila mal
+
+Al reescribir `estado_mora`, el parámetro **`:primerMesAlDia` dejó de aparecer en el SQL**, pero
+su `setParameter` seguía ahí. **Hibernate lanza `IllegalArgumentException` al setear un parámetro
+que no está en el texto de la consulta**: el padrón entero habría devuelto **500 en toda llamada**,
+no sólo en los casos de mora. `mvn compile` no lo detecta — un SQL nativo es un `String`.
+
+⭐ **La familia del defecto, que es lo que hay que llevarse:** al cambiar una condición de un SQL
+nativo, el `setParameter` correspondiente queda huérfano y **rompe la consulta completa, no la
+condición que se tocó**. El error simétrico también existe: dejar un `:param` en el SQL sin su
+`setParameter`. Se verificó la otra punta —`:maxCuotasMoraElegible` sigue emparejado (SQL:538 ↔
+setParameter:556) porque `elegible_miembro` lo usa— y estaba bien.
+
+### Lo que verificó el árbitro y no el agente (regla 11)
+
+- **Los 15 índices.** Insertar una columna en medio del SELECT corre todos los `row[N]` siguientes
+  y **no da error de compilación**: daría un padrón con el correo en la columna del voto. Se contó
+  a mano: 15 columnas en el SELECT, 15 `row[N]` en el mismo orden, 15 parámetros del constructor en
+  ese orden. Es la misma familia que el `COLUMN_n` de los `.jrxml` que documenta `CLAUDE.md`.
+- **Las dos copias de `ROUND(MONTHS_BETWEEN(:mesReferencia, ap.ultimo_mes_aporte))`.** Oracle no
+  deja reusar un alias del mismo SELECT, así que la fórmula quedó duplicada: una para `estado_mora`,
+  otra para `meses_en_mora`. Se compararon: idénticas, así que las dos columnas no se pueden
+  contradecir. **Es deuda latente**: el día que alguien toque una sola de las dos, el padrón informa
+  «AL DIA» con meses de atraso a la vista, sin ningún error.
+- **Un comentario que quedó mintiendo.** Decía *«una fila puede estar AL DIA y aun así mostrar 1
+  mes»* — cierto con la regla vieja, falso con la nueva, y **pegado al código que lo cambió**. Se
+  devolvió al agente y se corrigió antes de commitear. Sin eso, el próximo lee el comentario,
+  concluye que `estado_mora` está mal calculado y lo «arregla».
+
+### Consecuencia visible que NO es un error
+
+Van a aparecer muchas filas con **`Estado Mora = EN MORA` y `Mantiene Calidad = SI`** a la vez. Se
+cae en mora con un mes; la calidad se pierde recién pasando los seis. Queda anotado en el código,
+en `REGLAS-PADRON-PARTICIPES.md` §7bis y en la especificación, porque desde afuera parece
+contradicción.
+
+### Pendientes que deja
+
+- ⛔ **Descargar el CSV de elegibles ANTES de desplegar.** Es la única foto del padrón con la regla
+  vieja; después del WAR deja de ser reproducible. Y con ese mismo CSV se mide el impacto sin
+  escribir SQL: filtrar `ACTIVO` + `Meses en Mora = 0` + `CUOTAS EN MORA = 0` +
+  `PRESTAMOS EN MORA = No` da los votantes de la regla nueva. **Avisado al usuario tres veces, sin
+  confirmar que lo haya hecho.**
+- **Asimetría abierta:** votar exige **cero** cuotas en mora; ser `elegibleMiembro` tolera **6**.
+  Deliberado —el usuario no pidió tocar la elegibilidad— pero nadie lo decidió explícitamente.
+- El cambio **reduce** el padrón de votantes y puede reducirlo mucho. Sin medir todavía.
