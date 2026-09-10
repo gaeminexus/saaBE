@@ -112,6 +112,31 @@ public class ReporteCuadreSriServiceImpl implements ReporteCuadreSriService {
         noDisponible(noDisponibles, "620", "Subtotal a pagar — depende de 605/606/609/621 y otros "
                 + "ajustes no disponibles; no se calcula para no dar una cifra final engañosa.");
 
+        // ── ÍTEM 24 (2026-09-10): Retenciones de IVA — agente de retención (721-731, 799) ────
+        // La 609 (arriba) son retenciones que le HACEN a la empresa; éstas son las que la
+        // empresa HACE a sus proveedores como agente de retención — mismo RTV2/DRV2 que ya usa
+        // calcularCuadre103, mismo CriterioVentaVigente del ítem 10, mismo mapeo Tabla 11 que
+        // GeneradorAtsServiceImpl.cargarRetencionesCompra (líneas ~810-822). Antes de este ítem
+        // la sección no se calculaba NI se listaba en noDisponibles: el usuario no tenía forma
+        // de saber que le faltaba declararla.
+        double[] retIva = sumarRetencionesIvaEmitidas(idFacturador, desde, hasta, avisos);
+        double r721 = retIva[0], r723 = retIva[1], r725 = retIva[2],
+                r727 = retIva[3], r729 = retIva[4], r731 = retIva[5];
+        // Las seis van aunque den 0.00: en el formulario real están las seis y se transcriben así.
+        agregarCasillaSimple(casillas, "721", "Retenciones IVA — Retención del 10%", r721);
+        agregarCasillaSimple(casillas, "723", "Retenciones IVA — Retención del 20%", r723);
+        agregarCasillaSimple(casillas, "725", "Retenciones IVA — Retención del 30%", r725);
+        agregarCasillaSimple(casillas, "727", "Retenciones IVA — Retención del 50%", r727);
+        agregarCasillaSimple(casillas, "729", "Retenciones IVA — Retención del 70%", r729);
+        agregarCasillaSimple(casillas, "731", "Retenciones IVA — Retención del 100%", r731);
+        double totalImpuestoRetenido = redondear(r721 + r723 + r725 + r727 + r729 + r731);
+        agregarCasillaSimple(casillas, "799",
+                "TOTAL IMPUESTO RETENIDO (= 721+723+725+727+729+731)", totalImpuestoRetenido);
+        noDisponible(noDisponibles, "801", "TOTAL IMPUESTO A PAGAR POR RETENCIÓN = (799-800-802). "
+                + "800 (saldo de retenciones no cobradas de períodos anteriores) y 802 (retenciones de "
+                + "este período no cobradas) no están en el sistema — no se inventan en 0.00. Si en la "
+                + "práctica los dos son cero, 801 = 799 (" + totalImpuestoRetenido + " para este período).");
+
         Map<String, Object> resultado = new LinkedHashMap<String, Object>();
         resultado.put("idFacturador", idFacturador);
         resultado.put("periodo", String.format("%04d-%02d", anio, mes));
@@ -315,6 +340,81 @@ public class ReporteCuadreSriServiceImpl implements ReporteCuadreSriService {
             totales[1] += base;
         }
         totales[2] += base0;
+    }
+
+    /**
+     * ÍTEM 24 (2026-09-10). {valRetBien10 (721), valRetServ20 (723), valorRetBienes (725),
+     * valRetServ50 (727), valorRetServicios (729), valRetServ100 (731)}: retenciones de IVA
+     * (codImpuesto=2) que la empresa practica a sus proveedores como agente de retención.
+     * <p>
+     * Fuente: {@code DetalleRetencionV2} + {@code RetencionV2} (CBR.DRV2/RTV2) -- la misma que
+     * ya usa {@code calcularCuadre103}, y determinada por lo que representa cada tabla, no sólo
+     * por consistencia con el 103: {@code RetencionV2ServiceImpl} (este paquete, cxc) es el
+     * servicio completo de emisión electrónica -- genera el XML v2.0.0, lo firma, lo somete al
+     * SRI por SOAP y sigue su estado 1-6 (ver {@code CriterioVentaVigente}); en cambio
+     * {@code RetencionCompraV2ServiceImpl} (cxp, PGS.RCV2/DRC2, usado en el bloque
+     * {@code <air>} del ATS) es un CRUD genérico de 45 líneas sin ninguna lógica de emisión ni
+     * de estado. Sólo CBR.RTV2/DRV2 representa comprobantes de retención efectivamente emitidos
+     * y autorizados por el SRI, que es lo único que el formulario 104 puede declarar.
+     * <p>
+     * Mismos filtros que {@code calcularCuadre103}: facturador, rango de fecha de la RETENCIÓN
+     * (no del documento sustento), y {@code CriterioVentaVigente} (autorizada y no anulada). A
+     * diferencia del 103, acá SÍ se filtra {@code codImpuesto='2'} explícitamente -- el 103 no
+     * lo filtra porque agrupa por {@code codRetencion} sin distinguir impuesto, cosa que no se
+     * tocó (fuera del alcance de este ítem) pero que conviene que quede escrita: los códigos de
+     * IVA (1,2,3,9,10,11) y de renta (303, 304, 312, 320, 3440...) no colisionan numéricamente
+     * en la práctica, pero la ausencia del filtro en el 103 es una omisión, no una decisión.
+     * <p>
+     * Mapeo Tabla 11 → casilla: idéntico al que ya usa
+     * {@code GeneradorAtsServiceImpl.cargarRetencionesCompra} (líneas ~810-822) -- reusado, no
+     * reescrito de memoria. Un {@code codRetencion} fuera de la tabla no se asigna a ninguna
+     * casilla: va a {@code avisos}.
+     */
+    private double[] sumarRetencionesIvaEmitidas(Long idFacturador, LocalDateTime desde, LocalDateTime hasta,
+            List<String> avisos) {
+        double[] totales = new double[6]; // 721, 723, 725, 727, 729, 731
+        @SuppressWarnings("unchecked")
+        List<Object[]> filas = em.createQuery(
+                "select d.codRetencion, sum(d.valorReten) "
+                        + "from DetalleRetencionV2 d "
+                        + "where d.retencionV2.facturador.id = :idFacturador "
+                        + "and d.retencionV2.estado = :ventaAutorizada "
+                        + "and d.retencionV2.estadoEmision <> :ventaNoAnulada "
+                        + "and d.estado = :activo "
+                        + "and d.codImpuesto = :iva "
+                        + "and d.retencionV2.fecha between :desde and :hasta "
+                        + "group by d.codRetencion")
+                .setParameter("idFacturador", idFacturador)
+                .setParameter("ventaAutorizada", CriterioVentaVigente.ESTADO_AUTORIZADA)
+                .setParameter("ventaNoAnulada", CriterioVentaVigente.ESTADO_EMISION_ANULADA)
+                .setParameter("activo", Long.valueOf(Estado.ACTIVO))
+                .setParameter("iva", "2")
+                .setParameter("desde", desde)
+                .setParameter("hasta", hasta)
+                .getResultList();
+        for (Object[] fila : filas) {
+            String cod = (String) fila[0];
+            double valor = fila[1] != null ? ((Number) fila[1]).doubleValue() : 0.0;
+            // Tabla 11, idéntica a GeneradorAtsServiceImpl.cargarRetencionesCompra.
+            if ("9".equals(cod)) {
+                totales[0] += valor;
+            } else if ("10".equals(cod)) {
+                totales[1] += valor;
+            } else if ("1".equals(cod)) {
+                totales[2] += valor;
+            } else if ("11".equals(cod)) {
+                totales[3] += valor;
+            } else if ("2".equals(cod)) {
+                totales[4] += valor;
+            } else if ("3".equals(cod)) {
+                totales[5] += valor;
+            } else {
+                avisos.add("Retención de IVA emitida con CODRETENCION '" + cod + "' no está en la "
+                        + "Tabla 11 del formulario 104 (casillas 721-731) -- no se asignó a ninguna "
+                        + "casilla, revisar.");
+            }
+        }
+        return totales;
     }
 
     // =====================================================================
