@@ -142,11 +142,30 @@ HAVING COUNT(*) > 1
 
 
 --------------------------------------------------------------------------------
--- CONTROL 4 — *** EL CHEQUEO QUE FALTA: quien apunta a lo que vamos a borrar ***
+-- CONTROL 4 — *** OBSOLETO. NO CORRER ESTO. USAR EL lap1-16. ***
 --
--- El CONTROL 10 del lap1-13 GENERABA ~90 sentencias sueltas para correr a mano.
--- Fue un mal diseño de mi parte: son 90 pegadas y 90 resultados que leer.
--- Esto hace lo mismo en un solo paso.
+-- Reemplazado el 2026-09-10 por
+-- docs/logica-negocio/seguridad/sql/lap1-16-control4-en-una-consulta.sql,
+-- que responde exactamente la misma pregunta en UNA sola sentencia, sin crear una
+-- tabla de trabajo y sin bloque PL/SQL.
+--
+-- Por que se reemplazo: el usuario reporto que "no hay bloque de control 4" — y
+-- tenia razon en lo que importa. El bloque estaba, pero era el UNICO control del
+-- archivo que no se podia seleccionar y ejecutar como los otros tres: entre su
+-- titulo y su primera sentencia hay 25 lineas de comentario, despues viene un
+-- CREATE TABLE, despues un bloque PL/SQL, y sus partes se llaman "PASO 1/2/3" en
+-- vez de seguir la numeracion de los CONTROL. Quien bajara buscando un bloque
+-- ejecutable como los anteriores no encontraba ninguno.
+--
+-- La leccion, que vale mas que el arreglo: un control que rompe el patron visual
+-- de los que lo rodean se lee como ausente. No alcanza con que este; tiene que
+-- parecerse a sus vecinos.
+--
+-- Lo de abajo se conserva como registro. NO CORRERLO: crea SCP.LAP1_CHK_REFS.
+--
+-- (El CONTROL 10 del lap1-13 GENERABA ~90 sentencias sueltas para correr a mano.
+--  Fue un mal diseño de mi parte: son 90 pegadas y 90 resultados que leer. Este
+--  bloque intentaba resolverlo y lo resolvio a medias; el lap1-16 lo cierra.)
 --
 -- Que hace: recorre TODAS las columnas numericas del diccionario que se llamen
 -- %PJRQ%, arma la consulta dinamicamente, y cuenta cuantas filas de cada una
