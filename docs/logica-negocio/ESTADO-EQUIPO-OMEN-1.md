@@ -2740,3 +2740,65 @@ al usuario por archivo.
 - **Lo que se dejó fuera a propósito y por qué:** las mejoras identificadas por este equipo
   (seguros por póliza, estados financieros SBS faltantes, asimetría voto/elegibilidad). En un acta,
   listarlas las vuelve garantía gratuita; son Décima Primera.
+
+---
+
+## ✅ 2026-09-10 — La consulta de préstamos mostraba un saldo muerto
+
+**Pedido del usuario, urgente:** «el valor del saldo capital que se muestra en la tabla al
+consultar no es correcto». Confirmado con él: el saldo **del préstamo**, no el de la cuota.
+
+| Pieza | Commit |
+|---|---|
+| Contrato `crd/API-SALDOS-PRESTAMO.md` (+ espejo `saaFE/docs/crd/`) | `c4cb4da4` · `336bbd2` |
+| BE — `POST /rest/prst/saldos` (`calcularSaldosEnLote`) | `20b10b49` |
+| FE — consulta, export CSV/PDF, diálogo de detalle y su PDF | `0c14e11` (saaFE) |
+
+### Qué era
+
+La pantalla leía **`Prestamo.saldoTotal` (`PRSTSLTT`)** en la tabla, en el export y en el diálogo.
+**Ninguna línea del backend escribe esa columna** (ni `saldoCapital`, `saldoPorVencer`,
+`saldoVencido`, `saldoInteres`, `totalPagado` de la cabecera): conservan el valor de la migración
+o del alta. Ya estaba documentado como «campo muerto» en `petro/REGLAS-GENERALES-PETRO.md` §10
+(2026-09-01, 28,5 M de saldo en cancelados) y `cobros-personales` lo esquivaba reconstruyendo desde
+las cuotas. **La consulta de préstamos era la pantalla que nadie había migrado.**
+
+### Dos hipótesis descartadas antes de despachar — vale registrarlas
+
+1. **La tabla de cuotas.** `DTPRSLCP` por cuota es coherente en todo el flujo vivo (generación,
+   Excel, motor, carga Petro productiva escriben `saldoInicialCapital − capitalPagado`).
+2. **`ProcesoCargaPetroServiceImpl.procesarPrestamo:373-388`**, que pone `saldoCapital = 0` en cuotas
+   pagadas — semántica *por cuota*, distinta del resto. Resultó ser la **vía alterna** de Petro,
+   sin llamadores, que el flujo productivo no usa. ⚠️ **Mina dormida:** si alguien la conecta,
+   corrompe `DTPRSLCP`. No se tocó (regla de los docs de Petro). Anotada acá.
+
+### Por qué no se «arregló» la columna
+
+Mantener `PRSTSLTT` viva exige tocar todos los caminos que mueven capital (motor, abono,
+precancelación, condonación, reversos, Petro, mora diaria) y el primero que se olvide la vuelve a
+congelar **sin ningún error**. Se expuso en lote el saldo calculado desde las cuotas con la lógica
+del motor, que es la autoritativa. Costo aceptado: una lectura de cuotas por préstamo por página.
+
+### Lo que verificó el árbitro y no los agentes
+
+- **Efecto colateral evitado.** `calcularSaldosRealesCuota` **corrige y persiste** el estado de
+  la cuota si la encuentra liquidada según los pagos. Una consulta no debe escribir: se exigió la
+  variante pura `calcularSaldosCuota` (javadoc: *«nunca modifica ni persiste»*) y se verificó en
+  el diff. Por lo mismo no se reusó `calcularTotalPendientePrestamo`, que llama a la impura.
+- **Mi prompt contradecía mi contrato** (ítem f: «sin cuotas → se omite» vs §3: «cancelado →
+  0,00»). El agente lo vio, resolvió a favor del contrato —que es lo que el FE consume— y lo
+  reportó. Correcto: el FE muestra la omisión como error, y un cancelado en 0,00 es un dato.
+- El FE **quitó el orden** por «Saldo Total» (ordenaría por la columna muerta con el valor
+  calculado a la vista) y **reportó** que el PDF del diálogo leía el mismo campo muerto en vez de
+  decidirlo solo. Se corrigió antes de commitear.
+
+### Lo que queda, y no es de este cambio
+
+- **`Prestamo.totalPagado`** tiene el mismo problema (cero escritores) y el diálogo de detalle lo
+  sigue mostrando en «Total Pagado». Misma familia, sin arreglar: el pedido fue el saldo.
+- El filtro **«Saldo desde/hasta»** sigue operando en el backend sobre `PRSTSLTT`. Documentado.
+- **La app móvil** sirve las cinco columnas muertas (`MovilMappers:34-38`). Avisado a
+  `omen-app-1-arb` con autorización del usuario, con el contrato del endpoint para reusar.
+- `PRSTSLTT`/`PRSTSLCP` siguen en la entidad. Cualquier pantalla que las lea es un defecto aparte;
+  una búsqueda `grep -rn "\.saldoTotal\|\.saldoCapital" saaFE/src` sobre `Prestamo` es la forma de
+  encontrar la próxima.
