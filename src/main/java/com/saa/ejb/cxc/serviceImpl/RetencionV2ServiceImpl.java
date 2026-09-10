@@ -1281,8 +1281,73 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 		resultado.put("clave", clave);
 		if (exito) {
 			resultado.put("autorizacion", retencionActualizada.getAutorizacion());
+
+			// ÍTEM 21 (2026-09-10), corrección del propio contrato del ítem 12/15. El §2.2
+			// original decía "no vuelve a generar contabilidad ni a aplicar el pago: eso ya se
+			// hizo cuando se emitió" -- FALSO en todos los casos que este método atiende.
+			// procesarRetencionV2Completa hace PASO 5 (asiento) y PASO 5.1 (cruce) DESPUÉS de
+			// autorizar y retorna temprano si el SRI no autoriza en el primer intento -- si
+			// autoriza recién en un reenvío (estados 3, 4 o 6, que es exactamente lo que este
+			// método atiende), esos dos pasos NUNCA corrieron. Sin esto, toda retención
+			// reenviada quedaba autorizada pero sin afectar el saldo de la factura.
+			cerrarContabilidadYCruceRetencionV2(idRetencion, resultado);
 		}
 		return resultado;
+	}
+
+	/**
+	 * PASO 5 + 5.1 del flujo de emisión de una retención V2 ya AUTORIZADA por el SRI: genera el
+	 * asiento contable y, si aplicó, registra el cruce con la factura de compra. Compartido por
+	 * {@code procesarRetencionV2Completa} (camino de emisión normal) y
+	 * {@code reenviarRetencionV2AlSri} (ítem 21, 2026-09-10) -- el SRI puede autorizar en el
+	 * primer intento o recién en un reenvío posterior, y en los dos casos hace falta cerrar el
+	 * mismo ciclo.
+	 * <p>
+	 * La retención ya está autorizada cuando esto corre: es irreversible ante el SRI, así que
+	 * <b>ningún error de acá tumba al llamador</b> -- se captura, se deja constancia en
+	 * {@code resultado} y se sigue. Muta {@code resultado} in situ (no hay valor de retorno)
+	 * para que los dos llamadores usen las mismas claves de siempre: {@code asiento},
+	 * {@code contabilidadPendiente}, {@code advertenciaAsiento}, {@code aplicacionPago},
+	 * {@code cruceFacturaPendiente}, {@code advertenciaAplicacion} -- así el que consuma la
+	 * respuesta (frontend o el propio usuario mirando el JSON) sabe explícitamente si el
+	 * asiento y el cruce quedaron hechos, sin tener que ir a mirar la factura a mano.
+	 */
+	private void cerrarContabilidadYCruceRetencionV2(Long idRetencion, java.util.Map<String, Object> resultado) {
+		boolean asientoOk = false;
+		System.out.println("Generando asiento contable de Retención V2 " + idRetencion + "...");
+		try {
+			java.util.Map<String, Object> resAsiento = self().generarContabilidadRetencionV2(idRetencion);
+			if (Boolean.TRUE.equals(resAsiento.get("aplica"))) {
+				asientoOk = true;
+				resultado.put("asiento", resAsiento.get("numeroAlterno"));
+			}
+		} catch (Throwable e) {
+			resultado.put("contabilidadPendiente", true);
+			resultado.put("advertenciaAsiento",
+					"Retención V2 autorizada pero ocurrió un error al generar el asiento contable: "
+					+ e.getMessage()
+					+ ". Genere el asiento desde Contabilidad o vuelva a consultar el estado de la retención.");
+			System.err.println("⚠ Error en asiento contable de Retención V2: " + e.getMessage());
+			e.printStackTrace();
+		}
+
+		if (asientoOk) {
+			System.out.println("Registrando el cruce con la factura de compra de la Retención V2 "
+					+ idRetencion + "...");
+			try {
+				java.util.Map<String, Object> resAplicacion = self().aplicarPagoRetencionV2(idRetencion);
+				resultado.put("aplicacionPago", resAplicacion.get("idAplicacion"));
+			} catch (Throwable e) {
+				resultado.put("cruceFacturaPendiente", true);
+				resultado.put("advertenciaAplicacion",
+						"Retención V2 autorizada y contabilizada, pero no se pudo registrar el cruce "
+						+ "con la factura de compra: " + e.getMessage()
+						+ ". El cruce queda PENDIENTE: corrija el problema y vuelva a consultar el "
+						+ "estado de la retención para completarlo.");
+				System.err.println("⚠ Error al registrar el cruce con la factura: " + e.getMessage());
+				e.printStackTrace();
+			}
+		}
 	}
 
 	private String llamarRecepcionSRI(String url, byte[] xmlBytes, PrintWriter log) throws Exception {
@@ -1796,46 +1861,11 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 			System.out.println("✓ Retención V2 AUTORIZADA por el SRI.");
 			resultado.put("estado", "AUTORIZADO");
 
-			// ── PASO 5: Generar asiento contable (transacción propia) ─────────
-			// La retención ya está autorizada por el SRI: nada de lo que pase
-			// aquí puede reversarla.
-			boolean asientoOk = false;
-			System.out.println("PASO 5: Generando asiento contable de Retención V2...");
-			try {
-				java.util.Map<String, Object> resAsiento = self().generarContabilidadRetencionV2(idRetencion);
-				if (Boolean.TRUE.equals(resAsiento.get("aplica"))) {
-					asientoOk = true;
-					resultado.put("asiento", resAsiento.get("numeroAlterno"));
-				}
-			} catch (Throwable e) {
-				resultado.put("contabilidadPendiente", true);
-				resultado.put("advertenciaAsiento",
-						"Retención V2 autorizada pero ocurrió un error al generar el asiento contable: "
-						+ e.getMessage()
-						+ ". Genere el asiento desde Contabilidad o vuelva a consultar el estado de la retención.");
-				System.err.println("⚠ Error en asiento contable de Retención V2: " + e.getMessage());
-				e.printStackTrace();
-			}
-
-			// ── PASO 5.1: Cruce con la factura de compra (transacción propia) ──
-			// Si falla, SÓLO el cruce queda pendiente: ni la retención ni el
-			// asiento se tocan.
-			if (asientoOk) {
-				System.out.println("PASO 5.1: Registrando el cruce con la factura de compra...");
-				try {
-					java.util.Map<String, Object> resAplicacion = self().aplicarPagoRetencionV2(idRetencion);
-					resultado.put("aplicacionPago", resAplicacion.get("idAplicacion"));
-				} catch (Throwable e) {
-					resultado.put("cruceFacturaPendiente", true);
-					resultado.put("advertenciaAplicacion",
-							"Retención V2 autorizada y contabilizada, pero no se pudo registrar el cruce "
-							+ "con la factura de compra: " + e.getMessage()
-							+ ". El cruce queda PENDIENTE: corrija el problema y vuelva a consultar el "
-							+ "estado de la retención para completarlo.");
-					System.err.println("⚠ Error al registrar el cruce con la factura: " + e.getMessage());
-					e.printStackTrace();
-				}
-			}
+			// ── PASO 5 + 5.1: asiento contable y cruce con la factura ─────────
+			// Extraído a cerrarContabilidadYCruceRetencionV2 (ítem 21, 2026-09-10): el mismo
+			// cierre lo necesita reenviarRetencionV2AlSri cuando el SRI autoriza recién en un
+			// reenvío, no en el primer intento -- ver el javadoc del método.
+			cerrarContabilidadYCruceRetencionV2(idRetencion, resultado);
 
 		// ── PASO 6: Enviar correo electrónico ─────────────────────────────
 		System.out.println("PASO 6: Enviando email al proveedor...");

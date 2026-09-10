@@ -77,11 +77,45 @@ el SRI ya rechazó por contenido es garantía de que lo vuelva a rechazar. Queda
    endpoint tenga que hacerlo aparte.
 6. Devuelve el resultado (§4).
 
-### 2.2 Lo que NO hace
+### 2.2 Lo que hace, y lo que NO — corregido el 2026-09-10 (ítem 23, segunda corrección de este documento)
 
+⚠️ **Este punto decía "no vuelve a generar contabilidad ni a aplicar el pago: eso ya se hizo
+cuando se emitió". Era falso en TODOS los casos que este endpoint atiende, no en uno.**
+`procesarRetencionV2Completa` genera el asiento contable (su PASO 5) y registra el cruce con la
+factura de compra (su PASO 5.1) **DESPUÉS** de autorizar ante el SRI, y **retorna temprano si el
+SRI no autoriza en el primer intento** — ninguno de los dos pasos corre. Los tres estados que
+este endpoint reenvía (3 firmada, 4 enviada, 6 no autorizada) son exactamente los tres casos en
+los que el SRI **todavía no autorizó** en el primer intento. Si el reenvío consigue la
+autorización, sin este punto corregido la retención quedaba autorizada ante el SRI pero **sin
+afectar el saldo de la factura relacionada** — el síntoma real que reportó el usuario.
+
+- **Si el reenvío termina en AUTORIZADO, SÍ genera el asiento contable y SÍ registra el cruce**
+  con la factura de compra — el mismo PASO 5 / 5.1 de `procesarRetencionV2Completa`, extraído a
+  `cerrarContabilidadYCruceRetencionV2` para que los dos caminos usen el mismo código. Los dos
+  pasos son idempotentes (si ya existe asiento o cruce, no se duplican).
+- **Un error en el asiento o en el cruce NUNCA tumba el reenvío** — el comprobante ya está
+  autorizado ante el SRI y eso es irreversible. Si falla, queda en `avisos`/`advertenciaAsiento`/
+  `advertenciaAplicacion` de la respuesta (§4), nunca como un 500.
+- La respuesta dice **explícitamente** si el asiento y el cruce quedaron hechos: `asiento`
+  (número alterno) y `aplicacionPago` (id) cuando salió bien; `contabilidadPendiente` +
+  `advertenciaAsiento`, o `cruceFacturaPendiente` + `advertenciaAplicacion`, cuando no.
 - No crea ni modifica detalles.
-- No vuelve a generar contabilidad ni a aplicar el pago: eso ya se hizo cuando se emitió.
 - No re-firma **en la rama 3/4**. (En la rama 6 sí regenera y re-firma — ver §2.1 punto 4.)
+
+### 2.3 Nota sobre el acoplamiento asiento↔cruce (ítem 22, 2026-09-10 — sin resolver, reportado)
+
+El cruce con la factura (`aplicarPagoRetencionV2`) exige que la retención ya tenga asiento
+contable, y `generarContabilidadRetencionV2` no genera asiento si el facturador tiene
+`generaConta ≠ 1` — con lo cual **un facturador que no genera contabilidad tampoco cruza la
+retención contra la factura**, aunque el cruce es un hecho de cuentas por pagar, no de
+contabilidad. Medido contra el código (no contra la base): la guarda es una decisión de diseño
+de `aplicarPagoRetencionV2` (línea propia, `if (retencion.getAsiento() == null) throw ...`), no
+una necesidad técnica de `AplicacionPagoCxpServiceImpl.aplicarRetencionEmitida` — ese método sólo
+guarda el asiento como referencia (`aplicacion.setAsiento(asiento)`), y la columna
+`PGS.APLP.APLPASNT` no está mapeada como `nullable=false` en la entidad. Si el cruce pudiera
+correr sin asiento previo (sujeto a que la columna en Oracle realmente admita `NULL`, no
+verificado desde código) es una decisión de negocio, pendiente de que el usuario la tome — no se
+tocó nada de esto.
 
 ---
 
