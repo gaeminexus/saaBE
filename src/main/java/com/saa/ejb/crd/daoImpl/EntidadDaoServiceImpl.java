@@ -406,25 +406,9 @@ public class EntidadDaoServiceImpl extends EntityDaoImpl<Entidad> implements Ent
 		//
 		// fechaEjecucion 2026-08-11  =>  mesReferencia   2026-07-01
 		//                                corte aportes   < 2026-08-01
-		//                                primerMesAlDia  2026-06-01
 		java.time.LocalDateTime mesReferencia = fechaEjecucion.toLocalDate()
 				.withDayOfMonth(1).atStartOfDay().minusMonths(1);
 		java.time.LocalDateTime corteAportes  = mesReferencia.plusMonths(1);
-
-		// Está AL DIA quien aportó en alguno de los últimos MESES_VENTANA_MORA meses
-		// contados hacia atrás desde el mes de referencia, ese mes incluido.
-		// Cae EN MORA al acumular MESES_VENTANA_MORA meses consecutivos sin aportar.
-		//
-		// Con ventana = 6 y referencia julio 2026, primerMesAlDia = febrero 2026:
-		//   último aporte julio -> 0 meses sin aportar            -> AL DIA
-		//   último aporte marzo -> 4 meses sin aportar (abr..jul) -> AL DIA
-		//   último aporte feb   -> 5 meses sin aportar (mar..jul) -> AL DIA
-		//   último aporte enero -> 6 meses sin aportar (feb..jul) -> EN MORA (6)
-		//
-		// El -1 es lo que hace que el borde caiga donde debe: sin él, quien lleva
-		// exactamente 5 meses sin aportar ya saldría EN MORA.
-		java.time.LocalDateTime primerMesAlDia = mesReferencia
-				.minusMonths(MESES_VENTANA_MORA - 1L);
 
 		// Las columnas de préstamos en mora NO se evalúan al cierre del mes anterior: el
 		// estado del préstamo (PRSTIDST) es un dato vivo, no hay forma de reconstruirlo al
@@ -488,14 +472,18 @@ public class EntidadDaoServiceImpl extends EntityDaoImpl<Entidad> implements Ent
 			"         NVL(TRIM(esp.ESPRNMBR), 'SIN ESTADO') AS calidad_nombre, " +
 			"         CASE WHEN e.ENTDIDST = :codigoEstadoActivo THEN 1 ELSE 0 END AS es_activo, " +
 			"         NVL(ap.numero_aportes, 0) AS numero_aportes, " +
-			// AL DIA si el último mes con aporte cae en [primerMesAlDia .. mesReferencia].
-			"         CASE WHEN ap.ultimo_mes_aporte IS NOT NULL " +
-			"                   AND ap.ultimo_mes_aporte >= :primerMesAlDia " +
-			"              THEN 'AL DIA' ELSE 'EN MORA' END AS estado_mora, " +
+			// EN MORA si el partícipe nunca aportó, o si meses_en_mora > 0 (decisión del
+			// usuario, 2026-09-09: cualquier atraso cuenta). Se repite el cálculo de
+			// MONTHS_BETWEEN de meses_en_mora (más abajo) porque un alias de SELECT no es
+			// visible para otra expresión del mismo SELECT en Oracle.
+			"         CASE WHEN ap.ultimo_mes_aporte IS NULL " +
+			"                   OR ROUND(MONTHS_BETWEEN(:mesReferencia, ap.ultimo_mes_aporte)) > 0 " +
+			"              THEN 'EN MORA' ELSE 'AL DIA' END AS estado_mora, " +
 			// Meses transcurridos desde el último aporte hasta el mes de referencia.
-			// Es el desfase REAL, no depende de la tolerancia: quien aportó en el mes
-			// de referencia da 0, el mes anterior da 1, y así. Por eso una fila puede
-			// estar AL DIA y aun así mostrar 1 mes.
+			// Es el desfase REAL: quien aportó en el mes de referencia da 0, el mes
+			// anterior da 1, y así. Desde el 2026-09-09 CUALQUIER valor mayor a 0 implica
+			// estado_mora = 'EN MORA' (arriba); la tolerancia de MESES_VENTANA_MORA ya no
+			// vive acá, ahora sólo gobierna mantiene_calidad_participe (más abajo).
 			// NULL cuando nunca aportó: no hay último aporte desde el cual contar.
 			"         CASE WHEN ap.ultimo_mes_aporte IS NULL THEN NULL " +
 			"              ELSE ROUND(MONTHS_BETWEEN(:mesReferencia, ap.ultimo_mes_aporte)) " +
@@ -521,11 +509,27 @@ public class EntidadDaoServiceImpl extends EntityDaoImpl<Entidad> implements Ent
 			"       b.numero_aportes, " +
 			"       b.estado_mora, " +
 			"       b.meses_en_mora, " +
-			// Habilitado para voto = ACTIVO + al día en aportes + no arrastrar más de
-			// MAXIMO_CUOTAS_MORA_ELEGIBLE cuotas en mora. Mismo tope que la elegibilidad:
-			// estar al día en aportes no alcanza si se deben 7 o más cuotas de préstamo.
-			"       CASE WHEN b.es_activo = 1 AND b.estado_mora = 'AL DIA' " +
-			"                 AND b.max_cuotas_mora <= :maxCuotasMoraElegible " +
+			// Mantiene Calidad = SI si meses_en_mora <= MESES_VENTANA_MORA (el 6 entra en el
+			// SI), NO si supera esa ventana o si nunca aportó (meses_en_mora NULL). Distinta
+			// de estado_mora: se cae en mora con 1 mes de atraso, pero la calidad de
+			// partícipe solo se pierde pasando los MESES_VENTANA_MORA meses. Ver
+			// ESPEC-PADRON-VOTO-Y-CALIDAD.md §1.3.
+			"       CASE WHEN b.meses_en_mora IS NULL THEN 'NO' " +
+			"                 WHEN b.meses_en_mora <= " + MESES_VENTANA_MORA + " THEN 'SI' " +
+			"            ELSE 'NO' END AS mantiene_calidad_participe, " +
+			// Habilitado para voto = ACTIVO + CERO meses de atraso en aportes + CERO cuotas
+			// de préstamo en mora + ningún préstamo marcado en mora (decisión del usuario,
+			// 2026-09-09: ya no se tolera ningún atraso, reemplaza el tope de
+			// MAXIMO_CUOTAS_MORA_ELEGIBLE que regía para el voto desde el 2026-08-17).
+			// meses_en_mora = 0 va explícito, no apoyado en estado_mora, para que un futuro
+			// cambio del umbral de estado_mora no mueva el voto por accidente. La condición
+			// de tiene_prestamo_mora NO es redundante con max_cuotas_mora = 0: hay préstamos
+			// marcados EN_MORA/DE_PLAZO_VENCIDO sin ninguna cuota vencida —dato inconsistente,
+			// ver REGLAS-PADRON-PARTICIPES.md §6— que saldrían con max_cuotas_mora = 0 igual.
+			"       CASE WHEN b.es_activo = 1 " +
+			"                 AND b.meses_en_mora = 0 " +
+			"                 AND b.max_cuotas_mora = 0 " +
+			"                 AND b.tiene_prestamo_mora = 'NO' " +
 			"            THEN 'SI' ELSE 'NO' END AS habilitado_voto, " +
 			// Elegible = ACTIVO + mínimo de aportes + no arrastrar más de
 			// MAXIMO_CUOTAS_MORA_ELEGIBLE cuotas en mora. El tercer requisito manda sobre
@@ -542,7 +546,6 @@ public class EntidadDaoServiceImpl extends EntityDaoImpl<Entidad> implements Ent
 		Query query = em.createNativeQuery(sql);
 		query.setParameter("tiposAporte", Arrays.asList(TIPO_APORTE_JUBILACION, TIPO_APORTE_CESANTIA));
 		query.setParameter("corteAportes", corteAportes);
-		query.setParameter("primerMesAlDia", primerMesAlDia);
 		query.setParameter("mesReferencia", mesReferencia);
 		query.setParameter("codigoEstadoActivo", CODIGO_ESTADO_ACTIVO);
 		query.setParameter("calidadId", calidadId);
@@ -566,16 +569,17 @@ public class EntidadDaoServiceImpl extends EntityDaoImpl<Entidad> implements Ent
 			Long   numeroAportes     = row[6]  != null ? ((Number) row[6]).longValue()  : 0L;
 			String estadoMora        = row[7]  != null ? row[7].toString()              : null;
 			Long   mesesEnMora       = row[8]  != null ? ((Number) row[8]).longValue()  : null;
-			String habilitadoVoto    = row[9]  != null ? row[9].toString()              : null;
-			String elegibleMiembro   = row[10] != null ? row[10].toString()             : null;
-			String correo            = row[11] != null ? row[11].toString()             : null;
-			String tienePrestamoMora = row[12] != null ? row[12].toString()             : "NO";
-			Long   cuotasMora        = row[13] != null ? ((Number) row[13]).longValue() : 0L;
+			String mantieneCalidad   = row[9]  != null ? row[9].toString()              : null;
+			String habilitadoVoto    = row[10] != null ? row[10].toString()             : null;
+			String elegibleMiembro   = row[11] != null ? row[11].toString()             : null;
+			String correo            = row[12] != null ? row[12].toString()             : null;
+			String tienePrestamoMora = row[13] != null ? row[13].toString()             : "NO";
+			Long   cuotasMora        = row[14] != null ? ((Number) row[14]).longValue() : 0L;
 
 			dtos.add(new com.saa.model.crd.dto.PadronParticipeDTO(
 				numero, entidadId, cedula, nombresApellidos, codigoCalidad, calidadParticipe,
-				numeroAportes, estadoMora, mesesEnMora, habilitadoVoto, elegibleMiembro, correo,
-				tienePrestamoMora, cuotasMora
+				numeroAportes, estadoMora, mesesEnMora, mantieneCalidad, habilitadoVoto,
+				elegibleMiembro, correo, tienePrestamoMora, cuotasMora
 			));
 		}
 

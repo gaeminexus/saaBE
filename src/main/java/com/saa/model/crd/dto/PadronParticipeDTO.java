@@ -40,8 +40,17 @@ public class PadronParticipeDTO implements Serializable {
     private Long mesesEnMora;
 
     /**
-     * "SI" o "NO". Requiere estado ACTIVO, estar AL DIA en aportes y no arrastrar más de
-     * 6 cuotas en mora: con 7 o más se pierde el voto aunque esté al día.
+     * "SI" si mesesEnMora &lt;= MESES_VENTANA_MORA (6, el 6 entra); "NO" si la supera o si
+     * nunca aportó (mesesEnMora null). Encabezado en el CSV: "Mantiene Calidad". Puede ser
+     * "SI" al mismo tiempo que estadoMora es "EN MORA": la mora empieza en 1 mes, la calidad
+     * de partícipe recién se pierde pasando los 6.
+     */
+    private String mantieneCalidadParticipe;
+
+    /**
+     * "SI" o "NO". Requiere estado ACTIVO, CERO meses de atraso en aportes, CERO cuotas de
+     * préstamo en mora y ningún préstamo marcado en mora: no se tolera ningún atraso (decisión
+     * del usuario, 2026-09-09; reemplaza el tope de 6 cuotas que regía desde el 2026-08-17).
      */
     private String habilitadoVoto;
 
@@ -76,8 +85,8 @@ public class PadronParticipeDTO implements Serializable {
 
     public PadronParticipeDTO(Long numero, Long entidadId, String cedula, String nombresApellidos,
                               Long calidadParticipeId, String calidadParticipe, Long numeroAportes,
-                              String estadoMora, Long mesesEnMora, String habilitadoVoto,
-                              String elegibleMiembro, String correo,
+                              String estadoMora, Long mesesEnMora, String mantieneCalidadParticipe,
+                              String habilitadoVoto, String elegibleMiembro, String correo,
                               String tienePrestamoMora, Long maximoCuotasMora) {
         this.numero = numero;
         this.entidadId = entidadId;
@@ -88,6 +97,7 @@ public class PadronParticipeDTO implements Serializable {
         this.numeroAportes = numeroAportes;
         this.estadoMora = estadoMora;
         this.mesesEnMora = mesesEnMora;
+        this.mantieneCalidadParticipe = mantieneCalidadParticipe;
         this.habilitadoVoto = habilitadoVoto;
         this.elegibleMiembro = elegibleMiembro;
         this.correo = correo;
@@ -166,6 +176,14 @@ public class PadronParticipeDTO implements Serializable {
 
     public void setMesesEnMora(Long mesesEnMora) {
         this.mesesEnMora = mesesEnMora;
+    }
+
+    public String getMantieneCalidadParticipe() {
+        return mantieneCalidadParticipe;
+    }
+
+    public void setMantieneCalidadParticipe(String mantieneCalidadParticipe) {
+        this.mantieneCalidadParticipe = mantieneCalidadParticipe;
     }
 
     public String getHabilitadoVoto() {

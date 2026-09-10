@@ -1,6 +1,6 @@
 # REGLAS DEL PADRÓN DE PARTÍCIPES
 
-**Vigente al 2026-08-17 · módulo CRD**
+**Vigente al 2026-09-09 · módulo CRD**
 
 Genera el listado de partícipes con su estado de aportes, si está habilitado para votar y si es
 elegible como miembro. Es la fuente para el padrón electoral de la asociación.
@@ -100,9 +100,15 @@ mes de caja, así que el histórico sin devengo no cambia de comportamiento.
 
 ## 5. Estado de mora de aportes
 
+**Cambio del 2026-09-09 — EN MORA con cualquier atraso.** Antes de esta fecha `estadoMora` solo
+pasaba a `EN MORA` al llegar a 6 meses sin aportar (comparaba contra `primerMesAlDia`, una fecha
+derivada que ya no existe en el código). Con 5 meses de atraso el padrón decía `AL DIA`, y el
+usuario pidió que la columna refleje cualquier atraso real:
+
 ```
-mesesEnMora = MONTHS_BETWEEN(mesReferencia, último mes con aporte)
-estadoMora  = 'EN MORA' si el último aporte es anterior a primerMesAlDia
+mesesEnMora = MONTHS_BETWEEN(mesReferencia, último mes con aporte)   (SIN CAMBIOS)
+estadoMora  = 'EN MORA'  si  mesesEnMora > 0  o el partícipe nunca aportó (mesesEnMora null)
+estadoMora  = 'AL DIA'   si  mesesEnMora = 0
 ```
 
 **"Último mes con aporte" también es el periodo efectivo de §4** (mismo cambio del
@@ -112,28 +118,27 @@ en que se procesó la carga. Esto NO cambia la regla de mora en sí — sigue si
 ese mes" (`SUM(valor) > 0`), nunca "cubrió lo esperado" — sólo corrige a qué mes se le
 atribuye ese aporte.
 
-La ventana es de **6 meses** (`MESES_VENTANA_MORA = 6`): se cae EN MORA al acumular **6 meses
-consecutivos sin aportar** respecto del mes de referencia.
+La ventana de **6 meses** (`MESES_VENTANA_MORA = 6`) ya **no** gobierna `estadoMora`. Sigue
+existiendo y sigue usándose, pero solo para `mantieneCalidadParticipe` (§7bis).
 
-Con referencia julio 2026 (`primerMesAlDia` = febrero 2026):
+Con referencia julio 2026:
 
 | Último aporte | Meses sin aportar | `estadoMora` | `mesesEnMora` |
 |---|---|---|---|
 | Julio 2026 | 0 | AL DIA | 0 |
-| Marzo 2026 | 4 | AL DIA | 4 |
-| Febrero 2026 | 5 | AL DIA | 5 |
-| Enero 2026 | **6** | **EN MORA** | 6 |
+| Junio 2026 | **1** | **EN MORA** | 1 |
+| Marzo 2026 | 4 | **EN MORA** | 4 |
+| Enero 2026 | 6 | **EN MORA** | 6 |
 | Nunca aportó | — | **EN MORA** | `null` |
 
 Dos detalles que confunden si no se tienen presentes:
 
-- **`mesesEnMora` es el desfase real, no la mora.** Una fila puede decir `AL DIA` y mostrar 5
-  meses: son cosas distintas, el campo no depende de la tolerancia.
+- **`mesesEnMora` es el desfase real.** Es el mismo campo de siempre y su cálculo no cambió; lo
+  que cambió es que `estadoMora` ahora lo refleja directo (`> 0` alcanza), en vez de tolerar hasta
+  5 meses antes de decir `EN MORA`.
 - **`mesesEnMora` viene `null` cuando el partícipe nunca aportó**, porque no hay un último aporte
   desde el cual contar. JSON-B omite los null, así que el campo **no aparece** en el JSON: el
   frontend debe tratar "ausente" como "nunca aportó", no como 0. El estado igual es `EN MORA`.
-- El `−1` de `mesReferencia.minusMonths(MESES_VENTANA_MORA − 1)` es lo que pone el borde donde
-  debe: sin él, quien lleva exactamente 5 meses sin aportar ya saldría EN MORA.
 
 ---
 
@@ -169,26 +174,75 @@ y el conteo se deriva aparte.
 
 ## 7. Habilitado para voto
 
+**Cambio del 2026-09-09 — cero atraso, sin tolerancia.** Decisión textual del usuario: *"para
+poder votar, tiene que estar activo y debe tener todas sus obligaciones al día. Si está atrasado
+en aportes o préstamo así sea un mes ya no puede votar"*. Esto **reemplaza** el tope de 6 cuotas
+que regía desde el 2026-08-17: antes se toleraban hasta 6 cuotas en mora para votar, ahora no se
+tolera ninguna.
+
 ```
 habilitadoVoto = SI  ⟺  calidad ACTIVO (ENTDIDST = 1)
-                     Y  estadoMora = 'AL DIA'
-                     Y  maximoCuotasMora <= 6
+                     Y  mesesEnMora = 0            (cero atraso en aportes, EXPLÍCITO)
+                     Y  maximoCuotasMora = 0        (cero cuotas de préstamo en mora)
+                     Y  tienePrestamoMora = 'NO'    (ningún préstamo marcado en mora)
 ```
 
 El `1` es el **código alterno** (`ESPRCDEX`), no el PK del catálogo (que para ACTIVO es 10). Ver
 §10 y `MIGRACION-ESTADO-PARTICIPE.md`.
 
-El tercer requisito se agregó el **2026-08-17**: estar al día en aportes no alcanza si se
-arrastran **más de 6 cuotas en mora** de préstamo. Es el mismo tope de la elegibilidad (§8), la
-misma constante `MAXIMO_CUOTAS_MORA_ELEGIBLE = 6`.
+Tres detalles del SQL que importa no deshacer:
 
-| `estadoMora` | `maximoCuotasMora` | Calidad | `habilitadoVoto` |
-|---|---|---|---|
-| AL DIA | 0 | ACTIVO | SI |
-| AL DIA | 6 | ACTIVO | SI |
-| AL DIA | 7 | ACTIVO | **NO** (por préstamos) |
-| EN MORA | 0 | ACTIVO | NO (por aportes) |
-| AL DIA | 0 | CESANTE | NO (por calidad) |
+- **La condición de aportes es `mesesEnMora = 0` explícito**, no `estadoMora = 'AL DIA'` — aunque
+  después del cambio de §5 sean equivalentes hoy. Si algún día vuelve a moverse el umbral de
+  `estadoMora`, el voto no tiene que moverse solo detrás sin que alguien lo decida.
+- **`maximoCuotasMora = 0` NO es redundante con `tienePrestamoMora = 'NO'`.** §6 documenta un
+  préstamo marcado `EN_MORA`/`DE_PLAZO_VENCIDO` **sin ninguna cuota vencida** (dato
+  inconsistente) que sale con `tienePrestamoMora = SI` y `maximoCuotasMora = 0` a la vez. Sin la
+  condición de `tienePrestamoMora`, ese partícipe votaría con un préstamo marcado en mora.
+- La constante `MAXIMO_CUOTAS_MORA_ELEGIBLE` **sigue existiendo y usándose**, pero solo para
+  `elegibleMiembro` (§8). Dejó de aplicar al voto.
+
+| `mesesEnMora` | `maximoCuotasMora` | `tienePrestamoMora` | Calidad | `habilitadoVoto` |
+|---|---|---|---|---|
+| 0 | 0 | NO | ACTIVO | **SI** |
+| 0 | 1 | SI | ACTIVO | **NO** (por préstamos) |
+| 0 | 0 | **SI** | ACTIVO | **NO** (préstamo en mora sin cuotas vencidas — ver §6) |
+| 1 | 0 | NO | ACTIVO | **NO** (por aportes) |
+| `null` (nunca aportó) | 0 | NO | ACTIVO | **NO** (por aportes) |
+| 0 | 0 | NO | CESANTE | NO (por calidad) |
+
+---
+
+## 7bis. Mantiene Calidad de Partícipe (columna nueva, 2026-09-09)
+
+Tercera columna del padrón, distinta de `estadoMora` y de `habilitadoVoto`. Encabezado en el CSV:
+**"Mantiene Calidad"**.
+
+```
+mantieneCalidadParticipe = SI  ⟺  mesesEnMora <= MESES_VENTANA_MORA (6, el 6 ENTRA en el SI)
+mantieneCalidadParticipe = NO  ⟺  mesesEnMora > 6  o nunca aportó (mesesEnMora null)
+```
+
+Reusa la constante `MESES_VENTANA_MORA = 6` que hasta el 2026-09-08 gobernaba `estadoMora`. Desde
+el cambio de §5, esta es la única columna que la constante sigue gobernando.
+
+**Por qué no se llama "Calidad de Partícipe":** ya existe `calidadParticipe` (`ACTIVO / CESANTE /
+…`, de `ESPRNMBR`) más `calidadParticipeId`. Dos columnas con nombres casi idénticos y contenidos
+distintos —una de catálogo, otra SI/NO— en el mismo Excel es una confusión que después nadie
+desarma. El usuario eligió "Mantiene Calidad" el 2026-09-09.
+
+⚠️ **Consecuencia visible, y NO es un error:** van a existir filas con `estadoMora = EN MORA` y
+`mantieneCalidadParticipe = SI` al mismo tiempo. Se cae en mora con **un mes** de atraso (§5),
+pero la calidad de partícipe recién se pierde pasando los **6 meses**. Quien lea el Excel
+esperando que las dos columnas digan lo mismo va a reportarlo como defecto y no lo es.
+
+| `mesesEnMora` | `estadoMora` | `mantieneCalidadParticipe` |
+|---|---|---|
+| 0 | AL DIA | SI |
+| 1 | EN MORA | **SI** (recién se cae en mora, la calidad se conserva) |
+| 6 | EN MORA | **SI** (el 6 entra) |
+| 7 | EN MORA | **NO** |
+| `null` (nunca aportó) | EN MORA | **NO** |
 
 ---
 
@@ -202,7 +256,11 @@ elegibleMiembro = SI  ⟺  calidad ACTIVO (ENTDIDST = 1)
 
 El tercer requisito se agregó el **2026-08-17** y **manda sobre el segundo**: quien cumple el
 mínimo de aportes pero arrastra **más de 6 cuotas en mora** (7 en adelante) deja de ser elegible.
-La elegibilidad se pierde por deuda, no solo por aportes. El mismo tope aplica al voto (§7).
+La elegibilidad se pierde por deuda, no solo por aportes.
+
+⚠️ **Desde el 2026-09-09 esto YA NO es el mismo tope que el voto (§7).** El voto pasó a exigir
+cero cuotas en mora; la elegibilidad **conserva** la tolerancia de hasta 6. Es una asimetría
+deliberada — el usuario no pidió tocar `elegibleMiembro` — no una inconsistencia para "emparejar".
 
 Tope en `MAXIMO_CUOTAS_MORA_ELEGIBLE = 6` (`EntidadDaoServiceImpl`), una sola constante para las
 dos columnas. Con exactamente 6 cuotas en mora **sigue siendo elegible**; el corte es estricto
@@ -234,6 +292,7 @@ dos columnas. Con exactamente 6 cuotas en mora **sigue siendo elegible**; el cor
 | `numeroAportes` | Long | §4 |
 | `estadoMora` | String | `AL DIA` / `EN MORA`, §5 |
 | `mesesEnMora` | Long | §5. **null si nunca aportó** |
+| `mantieneCalidadParticipe` | String | `SI` / `NO`, §7bis. CSV: "Mantiene Calidad" |
 | `habilitadoVoto` | String | `SI` / `NO`, §7 |
 | `elegibleMiembro` | String | `SI` / `NO`, §8 |
 | `correo` | String | `ENTDCRIN` y `ENTDCRPR` unidos por `"; "`, o el que exista |
@@ -253,6 +312,7 @@ Ejemplo (JSON-B ordena las propiedades alfabéticamente):
     "entidadId": 4521,
     "estadoMora": "AL DIA",
     "habilitadoVoto": "NO",
+    "mantieneCalidadParticipe": "SI",
     "maximoCuotasMora": 8,
     "mesesEnMora": 0,
     "nombresApellidos": "PEREZ LOPEZ JUAN CARLOS",
@@ -263,9 +323,11 @@ Ejemplo (JSON-B ordena las propiedades alfabéticamente):
 ]
 ```
 
-Esa fila resume el caso que más se pregunta: partícipe ACTIVO, al día en aportes y con 142
-aportes acumulados que, pese a todo eso, **ni vota ni es elegible**, porque arrastra 8 cuotas en
-mora (más de 6). El 8 sale del peor de sus préstamos, no de la suma.
+Esa fila resume el caso que más se pregunta: partícipe ACTIVO, al día en aportes (0 meses) y con
+142 aportes acumulados que, pese a todo eso, **ni vota ni es elegible**, porque arrastra 8 cuotas
+en mora (más de 6) y tiene un préstamo marcado en mora. El 8 sale del peor de sus préstamos, no de
+la suma. `mantieneCalidadParticipe` es `SI` porque, con 0 meses de atraso en aportes, ni se acerca
+a los 6 de la ventana — el voto y la calidad responden a cosas distintas (§7bis).
 
 ---
 
@@ -295,6 +357,9 @@ mora (más de 6). El 8 sale del peor de sus préstamos, no de la suma.
 
 | Fecha | Cambio |
 |---|---|
+| 2026-09-09 | `estadoMora` pasa a `EN MORA` con cualquier `mesesEnMora > 0` (antes: 6 meses), ver §5 |
+| 2026-09-09 | `habilitadoVoto` exige CERO cuotas en mora y ningún préstamo marcado en mora; ya no comparte tope con `elegibleMiembro` (§7) |
+| 2026-09-09 | Columna nueva `mantieneCalidadParticipe` ("Mantiene Calidad"), §7bis |
 | 2026-08-17 | `habilitadoVoto` pasa a `NO` con más de 6 cuotas en mora, mismo tope que la elegibilidad (§7) |
 | 2026-08-17 | `elegibleMiembro` pasa a `NO` con más de 6 cuotas en mora (§8) |
 | 2026-08-17 | Nuevas columnas `tienePrestamoMora` y `maximoCuotasMora` (§6) |
