@@ -350,6 +350,16 @@ public class RetencionServiceImpl implements RetencionService {
 		writer.writeCharacters(infoAdicionalTexto);
 		writer.writeEndElement();
 		writer.writeCharacters("\n");
+
+		// ÍTEM 17 (2026-09-10): Resolución NAC-DGERCGC26-00000027 -- obligatorio desde el
+		// 26-sep-2026 en TODO comprobante electrónico. Ver com.saa.ejb.cxc.util.ProveedorSistemaSri.
+		writer.writeCharacters("    ");
+		writer.writeStartElement("campoAdicional");
+		writer.writeAttribute("nombre", com.saa.ejb.cxc.util.ProveedorSistemaSri.CAMPO_RUC_PROVEEDOR);
+		writer.writeCharacters(com.saa.ejb.cxc.util.ProveedorSistemaSri.RUC_PROVEEDOR_SISTEMA);
+		writer.writeEndElement();
+		writer.writeCharacters("\n");
+
 		writer.writeCharacters("  ");
 		writer.writeEndElement();
 		writer.writeCharacters("\n");
