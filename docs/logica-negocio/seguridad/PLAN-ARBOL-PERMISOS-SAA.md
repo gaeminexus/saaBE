@@ -242,7 +242,7 @@ nodo `SAA` del árbol nuevo.
 | Barrido del frontend — ÍTEM 3 (149 relaciones pantalla-a-pantalla) | ✅ 2026-09-10 |
 | `sql/lap1-15` — `DELETE` de 666 nodos + `INSERT` de 305 | ✅ escrito. **Pendiente de que el usuario lo corra**, después del `lap1-14` |
 | `CODIGOS-PERMISOS-SAA.md` y `API-PERMISOS-FRONTEND.md` | ✅ escritos y espejados a `saaFE/docs/seguridad/` |
-| Cableado del frontend — menús **y botones** | 🔵 despachado a `lap-saa-1-fe` el 2026-09-10, en 7 ítems con dos puntos de control |
+| Cableado del frontend — menús **y botones** | ✅ **COMPLETO 2026-09-10.** Los 7 ítems, en `saaFE` `162103a` · `20d84e9` · `a990aff` · `8ec7064` · `3d8b98a`. Ver §8 |
 | Adelanto de la secuencia | ⛔ **no aplica, y está medido.** `SCP.SQ_PJRQCDGO` no existe, y SAA no podría insertar en `PJRQ` aunque existiera: `UsuarioRest` tiene siete métodos y los siete son `@GET`, y `EmpresaRest` no existe |
 
 ### 5.1 Lo que midió el barrido del frontend — 2026-09-10
@@ -341,6 +341,58 @@ caracteres, y que **no haya dos hermanos con el mismo nombre** — lo que exige 
 305 nodos con referencias `PJRQCDPD` cruzadas escritos a mano tienen una probabilidad muy alta de
 llevar al menos un padre mal. **La validación mecánica elimina esa clase de error entera**, y es
 barata: el generador está en el scratchpad, no en el repositorio, porque es de un solo uso.
+
+---
+
+## 8. El cableado del frontend — cerrado el 2026-09-10
+
+**97 archivos** de `saaFE`: el servicio, las 305 constantes, los 9 menús, los 3 `routerLink` de las
+plantillas de menú y **90 componentes** con sus `dialog.open` / `router.navigate`.
+
+### 8.1 Las tres clases de navegación que NO se verifican
+
+Cada una lleva su comentario en el código, porque las tres se ven desde afuera como un olvido.
+
+1. **VUELTA.** En cada par A ⇄ B se verifica **la ida, no el regreso**. Devolverte a donde ya
+   estabas no te da acceso a nada nuevo; verificarlo sólo consigue encerrar a alguien en un
+   formulario. Es el mismo criterio por el que los «Regresar» del menú no llevan código.
+2. **RESULTADO.** Se verifica lo que **abre** una funcionalidad, no lo que **muestra el resultado**
+   de una ya autorizada. Criterio mecánico, no por el nombre del componente: es resultado si el
+   método que lo abre **recibe los datos por parámetro y sólo los muestra** (`private mostrarX(datos)`,
+   sin backend propio); es puerta si consulta al backend para llenarse o si su `afterClosed()`
+   dispara una operación.
+3. **Pantallas inalcanzables** y la navegación rota de `plantilla-general`: verificar donde nadie
+   llega no protege nada.
+
+> ⛔ **Los diálogos de error son el caso que más importa de la clase 2.** Con verificación, un
+> registro que falla muestra *«no tiene permiso»* **en lugar del motivo real del fallo**. Se esconde
+> el diagnóstico detrás del permiso, y el que lo sufra no va a poder ni reportarlo bien.
+
+### 8.2 Tres cosas que enseñó la implementación
+
+**El enunciado de una regla puede describir la forma en vez de la función, y entonces no
+generaliza.** La excepción de los diálogos encadenados de `crd` se enunció como *«cadena de
+diálogos»* —su forma— cuando el criterio real era *«resultado de una operación ya autorizada»* —su
+función—. El ejecutor encontró tres diálogos de un solo nivel que la forma dejaba afuera y la
+función incluía, **y paró a preguntar en vez de estirar la regla o descartarla**. Reenunciada por
+función, la excepción de `crd` y esos tres caen del mismo lado sin necesidad de dos reglas.
+
+**Una regla nueva no se aplica sola a lo ya aprobado.** La regla de «vuelta» se dio *después* de
+aprobar la tabla de mapeo, así que ~7 filas aprobadas la contradecían. El ejecutor lo levantó. Al
+reenunciar la regla de «resultado» pasó lo mismo y esta vez barrió las filas ya cerradas por su
+cuenta: aparecieron **4 más**. **Cada vez que cambie un criterio, hay que barrer lo ya hecho con
+él** — no alcanza con aplicarlo de ahí en adelante.
+
+**El nombre de un método es evidencia que un inventario de origen-destino no puede tener.** Cuatro
+filas figuraban como cruces simétricos entre dos pantallas; `volverAAbonos` y `volverAConsulta`
+mostraron cuál de las dos direcciones era la puerta. El relevamiento miraba a dónde va cada
+navegación, no cómo se llama el método que la hace.
+
+### 8.3 Lo que queda del lado del frontend
+
+Nada. **Los 7 ítems están cerrados y el `ng build` corre limpio**, verificado por el árbitro y no
+sólo por el ejecutor. Lo que falta para que esto funcione es de la base: correr el `lap1-15` y
+recién después subir el interruptor a `1`.
 
 ---
 
