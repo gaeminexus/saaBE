@@ -98,29 +98,60 @@ atributo `nombre` como texto.** No es un catálogo ni un código: es esa cadena 
 
 ---
 
-## 4. El RIDE — decisión del usuario, NO se toca todavía
+## 4. El RIDE — decisión tomada el 2026-09-10: SE HACE (ítems 18-20)
 
-**Verificado hoy:** ninguno de los cinco RIDE imprime `infoAdicional`. Ni el campo nuevo, ni el
-`"Datos Adicionales"` que ya viaja en el XML desde siempre.
+⚠️ **Este §4 decía que el RIDE quedaba pendiente de decisión del usuario. Ya no es así: el usuario
+decidió que se hace, y se hizo el mismo día.** Lo que sigue es lo que efectivamente quedó, no un
+plan.
 
-```
-RPRT_RIDE_FACTURA.jrxml        → 0 coincidencias de infoAdicional
-RPRT_RIDE_LIQUIDACION.jrxml    → 0
-RPRT_RIDE_NOTA_CREDITO.jrxml   → 0
-RPRT_RIDE_NOTA_DEBITO.jrxml    → 0
-RPRT_RIDE_RETENCION_V2.jrxml   → 0
-```
+### 4.1 Qué se verificó antes de tocar nada (evitó trabajo de más)
 
-O sea que **agregarlo al RIDE no es "un campo más": es abrir una sección que hoy no existe** en
-cinco reportes. Y cada `.jrxml` tocado arrastra el ciclo completo de `CLAUDE.md`: verificar si está
-en sintaxis clásica (y convertirlo si lo está), `compilar-jasper.bat`, y `verificar-fill-jasper.bat`
-— que existe justamente porque dos reportes compilaron limpios y reventaron en producción.
+- **Los cinco `.jrxml` ya estaban en sintaxis COMPACTA** (`<element kind="...">`, sin `xmlns`).
+  No hizo falta convertir ninguno — eso es lo que hizo viable hacerlo el mismo día que se decidió.
+- **Ninguno de los cinco imprimía `infoAdicional`** antes de este cambio (0 coincidencias en los
+  cinco). No se agregó un campo a una sección existente: se creó la línea desde cero en cada uno.
 
-**Lo que la norma exige es el XML.** El RIDE es la representación impresa y hoy ya omite
-`infoAdicional` sin que nadie lo haya objetado en años de operación.
+### 4.2 Qué se agregó, en los cinco
 
-**Recomendación:** hacer el XML primero (tiene fecha), y decidir el RIDE aparte. Si se hace, va como
-frente propio con su compilación y su verificación de fill, no apurado contra el 26.
+1. **Un `<parameter name="P_RUC_PROVEEDOR" class="java.lang.String">` nuevo**, con
+   `defaultValueExpression` = `"1793228946001"`. Con el default, el reporte funciona aunque el
+   llamador no pase el parámetro — y hoy nadie lo pasa. Cada `.jrxml` lleva un comentario XML
+   explicando que la fuente de verdad sigue siendo
+   `com.saa.ejb.cxc.util.ProveedorSistemaSri.RUC_PROVEEDOR_SISTEMA` (ítem 17) y que si ese valor
+   cambia hay que tocar los cinco `.jrxml` a mano — Jasper no puede leer una constante de Java.
+   **El literal queda repetido en seis lugares (la clase + los cinco RIDE) a propósito**: es la
+   única forma de que un `.jrxml` compilado aparte siga funcionando sin depender del WAR.
+2. **Un `staticText` + `textField`** con la etiqueta "RUC Proveedor del Sistema:" y el valor del
+   parámetro, en fuente chica (`fontSize="6.0"`, entre el `5.0` de la clave de acceso y el `7.0`
+   del resto del pie del documento).
+3. **No se movió ni redimensionó nada existente.** Se usó el espacio libre que ya había al pie del
+   área de información adicional de cada reporte:
+   - `RPRT_RIDE_FACTURA` y `RPRT_RIDE_LIQUIDACION`: debajo del bloque "Formas de Pago"
+     (`x=0, y=126`, banda `summary` de 230pt — el contenido más bajo terminaba en `y=122`).
+   - `RPRT_RIDE_NOTA_CREDITO` y `RPRT_RIDE_NOTA_DEBITO`: debajo de "Información Adicional"
+     (`x=0, y=60` — esos dos RIDE no tienen bloque de "Formas de Pago").
+   - `RPRT_RIDE_RETENCION_V2`: debajo del texto de soporte/observación (`x=0, y=80`, banda
+     `summary` de 120pt — el contenido más bajo terminaba en `y=76`).
+
+### 4.3 Verificación — el ciclo completo, no sólo compilar
+
+Los diez archivos (`.jrxml` + `.jasper`) pasaron `compilar-jasper.bat` (con ruta explícita, para
+forzar la recompilación) y `verificar-fill-jasper.bat`. **Los cinco: OK, 1 página, 0 fallidos, 0 no
+verificables** — el detalle completo de cada corrida está en el reporte del ítem 19 al árbitro.
+
+⚠️ **Lo que el fill vacío NO prueba:** que el parámetro esté bien escrito en el `textField` (un
+`$P{...}` con el nombre mal tipeado imprime vacío y el verificador dice OK igual, porque
+`blankWhenNull` no está puesto ahí y un parámetro inexistente igual compila si el nombre coincide
+en los dos lugares). Se revisó a ojo, en los cinco, que el nombre del parámetro en la declaración y
+en la expresión del `textField` coincidan letra por letra (verificado por grep, no sólo a ojo).
+
+### 4.4 Lo que este frente NO hizo
+
+- No tocó ningún `.java`. El RUC que imprime el RIDE es el literal del `defaultValueExpression`,
+  no una llamada a la clase Java — Jasper no puede leerla.
+- No conectó el parámetro desde `ReporteServiceImpl` ni desde ningún llamador: nadie pasa
+  `P_RUC_PROVEEDOR` hoy, y no hace falta, porque el default ya tiene el valor correcto. Si algún
+  día alguien lo pasa explícitamente, gana el suyo.
 
 ---
 

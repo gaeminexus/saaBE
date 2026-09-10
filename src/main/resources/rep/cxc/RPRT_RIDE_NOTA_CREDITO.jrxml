@@ -3,6 +3,15 @@
 	<parameter name="P_ID_NOTA_CREDITO" class="java.lang.Long">
 		<defaultValueExpression><![CDATA[0L]]></defaultValueExpression>
 	</parameter>
+	<!-- ÍTEM 18 (2026-09-10), Resolución NAC-DGERCGC26-00000027: RUC del proveedor del sistema
+	     de facturación electrónica, obligatorio en TODO comprobante desde el 26-sep-2026.
+	     Fuente de verdad: com.saa.ejb.cxc.util.ProveedorSistemaSri.RUC_PROVEEDOR_SISTEMA — si
+	     ese valor cambia algún día, hay que tocar los cinco RIDE, no sólo la clase Java. El
+	     defaultValueExpression permite que el reporte funcione aunque el llamador no pase el
+	     parámetro (hoy nadie lo pasa); si algún día alguien lo manda, gana el suyo. -->
+	<parameter name="P_RUC_PROVEEDOR" class="java.lang.String">
+		<defaultValueExpression><![CDATA["1793228946001"]]></defaultValueExpression>
+	</parameter>
 	<query language="SQL"><![CDATA[
 		SELECT
 		    /* ── Cabecera de la nota de crédito ──────────────────── */
@@ -387,6 +396,14 @@
 			<box topPadding="2" leftPadding="3">
 				<pen lineWidth="0.3"/>
 			</box>
+		</element>
+		<!-- ÍTEM 18 (2026-09-10): RUC Proveedor del Sistema, Resolución NAC-DGERCGC26-00000027.
+		     No mueve ni redimensiona nada existente: usa el espacio libre bajo "Información Adicional". -->
+		<element kind="staticText" uuid="18000003-0000-0000-0000-000000000001" x="0" y="60" width="130" height="10" fontSize="6.0" bold="true">
+			<text><![CDATA[RUC Proveedor del Sistema:]]></text>
+		</element>
+		<element kind="textField" uuid="18000003-0000-0000-0000-000000000002" x="130" y="60" width="183" height="10" fontSize="6.0">
+			<expression><![CDATA[$P{P_RUC_PROVEEDOR}]]></expression>
 		</element>
 		<element kind="textField" uuid="f1b2c3d4-e5f6-7890-ab01-a1b2c3d4e5f4" x="336" y="4" width="143" height="12" backcolor="#F0F0F0" fontSize="7.0" bold="true" hTextAlign="Right">
 			<expression><![CDATA["SUBTOTAL " + $F{porcIva} + "%"]]></expression>
