@@ -22,9 +22,12 @@ import com.saa.ejb.crd.dao.PagoPrestamoDaoService;
 import com.saa.ejb.crd.dao.PrestamoDaoService;
 import com.saa.ejb.crd.service.CalculadoraAmortizacionService;
 import com.saa.ejb.crd.service.ContabilidadPrestamoService;
+import com.saa.ejb.crd.service.MotorPagoPrestamoService;
 import com.saa.ejb.crd.service.PrestamoService;
 import com.saa.ejb.crd.service.dto.CuotaProyectada;
 import com.saa.ejb.crd.service.dto.ParametrosAmortizacion;
+import com.saa.ejb.crd.service.dto.SaldoPrestamoResumen;
+import com.saa.ejb.crd.service.dto.SaldosCuota;
 import com.saa.ejb.cxp.service.PagoProgramadoService;
 import com.saa.ejb.cxp.service.dto.BeneficiarioOcasional;
 import com.saa.ejb.cxp.service.dto.LineaContablePago;
@@ -61,6 +64,9 @@ public class PrestamoServiceImpl implements PrestamoService {
 
     @EJB
     private ContabilidadPrestamoService contabilidadPrestamoService;
+
+    @EJB
+    private MotorPagoPrestamoService motorPagoPrestamoService;
 
     @Override
     public Prestamo selectById(Long id) throws Throwable {
@@ -1072,5 +1078,71 @@ public class PrestamoServiceImpl implements PrestamoService {
 	public long countPrestamosConUltimaCuotaEnPeriodoByEntidad(Long codigoEntidad,
 			java.time.LocalDateTime fechaInicio, java.time.LocalDateTime fechaFin) throws Throwable {
 		return prestamoDaoService.countPrestamosConUltimaCuotaEnPeriodoByEntidad(codigoEntidad, fechaInicio, fechaFin);
+	}
+
+	@Override
+	public List<SaldoPrestamoResumen> calcularSaldosEnLote(List<Long> codigosPrestamo) throws Throwable {
+		System.out.println("Ingresa al metodo calcularSaldosEnLote de PrestamoService con "
+				+ (codigosPrestamo != null ? codigosPrestamo.size() : 0) + " codigos");
+
+		if (codigosPrestamo == null || codigosPrestamo.isEmpty()) {
+			throw new IncomeException("Se requiere al menos un código de préstamo");
+		}
+		if (codigosPrestamo.size() > 500) {
+			throw new IncomeException("Máximo 500 préstamos por llamada");
+		}
+
+		// Mismo corte que ProcesoMoraPrestamoServiceImpl.corteDelDia(LocalDate.now()): inicio
+		// del día de hoy, hora del servidor. Una cuota que vence hoy todavía no está en mora.
+		LocalDateTime corteMora = LocalDate.now().atStartOfDay();
+
+		List<SaldoPrestamoResumen> resultado = new ArrayList<>();
+		for (Long idPrestamo : codigosPrestamo) {
+			try {
+				// Un código que no existe en CRD.PRST no aparece en la respuesta (no es
+				// error). Un préstamo EXISTENTE en estado terminal (cancelado, etc.) sí
+				// aparece, con 0 en sus tres campos si no tiene cuotas pendientes — API-
+				// SALDOS-PRESTAMO.md §3, ejemplo del préstamo 8078. selectById lanza
+				// NoResultException cuando el código no existe (CLAUDE.md).
+				try {
+					prestamoDaoService.selectById(idPrestamo, NombreEntidadesCredito.PRESTAMO);
+				} catch (jakarta.persistence.NoResultException nre) {
+					continue;
+				}
+
+				List<DetallePrestamo> cuotasPendientes =
+						detallePrestamoDaoService.selectCuotasPendientesByPrestamoOrdenadas(idPrestamo);
+
+				double saldoCapital = 0.0;
+				double saldoTotal = 0.0;
+				long cuotasEnMora = 0L;
+				if (cuotasPendientes != null) {
+					for (DetallePrestamo cuota : cuotasPendientes) {
+						// Variante PURA: no autocorrige ni persiste el estado de la cuota.
+						// Este endpoint es de solo lectura.
+						SaldosCuota saldos = motorPagoPrestamoService.calcularSaldosCuota(cuota);
+						saldoCapital += saldos.getSaldoCapital();
+						saldoTotal += saldos.getTotalPendiente();
+						if (cuota.getFechaVencimiento() != null && cuota.getFechaVencimiento().isBefore(corteMora)) {
+							cuotasEnMora++;
+						}
+					}
+				}
+
+				SaldoPrestamoResumen resumen = new SaldoPrestamoResumen();
+				resumen.setIdPrestamo(idPrestamo);
+				resumen.setSaldoCapital(redondear(saldoCapital));
+				resumen.setSaldoTotal(redondear(saldoTotal));
+				resumen.setCuotasEnMora(cuotasEnMora);
+				resultado.add(resumen);
+			} catch (Throwable e) {
+				System.err.println("calcularSaldosEnLote - Préstamo " + idPrestamo
+						+ " - error al calcular saldos: " + e.getMessage());
+			}
+		}
+
+		System.out.println("calcularSaldosEnLote - solicitados: " + codigosPrestamo.size()
+				+ " - calculados: " + resultado.size());
+		return resultado;
 	}
 }

@@ -109,4 +109,27 @@ public interface PrestamoService extends EntityService<Prestamo>{
 	 */
 	Prestamo rechazar(Long idPrestamo, String usuario, String observacion) throws Throwable;
 
+	/**
+	 * Saldo vigente de un lote de préstamos, calculado desde sus cuotas pendientes con la
+	 * misma lógica del motor de pagos (docs/logica-negocio/crd/API-SALDOS-PRESTAMO.md).
+	 * Reemplaza la lectura de {@code Prestamo.saldoTotal}/{@code saldoCapital}, columnas
+	 * muertas que ninguna línea del backend escribe.
+	 *
+	 * Por cada código: recorre {@code selectCuotasPendientesByPrestamoOrdenadas} y suma, por
+	 * cuota, {@code MotorPagoPrestamoService.calcularSaldosCuota} (la variante PURA, sin la
+	 * autocorrección que persiste estado). Un préstamo que falle al calcular no aborta el
+	 * lote: se omite de la respuesta y se registra en el log.
+	 *
+	 * <p>Un código que no existe en {@code CRD.PRST} no aparece en la respuesta (no es
+	 * error). Un préstamo EXISTENTE sin cuotas pendientes — por ejemplo, en estado terminal
+	 * (cancelado) — sí aparece, con sus tres campos en 0: no se filtra por estado del
+	 * préstamo, la pantalla ya lo muestra.</p>
+	 *
+	 * @param codigosPrestamo Códigos de préstamo a calcular, máximo 500
+	 * @return Un resumen por cada préstamo que se pudo calcular, en cualquier orden
+	 * @throws Throwable Si la lista viene nula, vacía o supera los 500 códigos
+	 */
+	java.util.List<com.saa.ejb.crd.service.dto.SaldoPrestamoResumen> calcularSaldosEnLote(
+			java.util.List<Long> codigosPrestamo) throws Throwable;
+
 }

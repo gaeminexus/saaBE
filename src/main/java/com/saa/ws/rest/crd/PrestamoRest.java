@@ -1376,6 +1376,37 @@ public class PrestamoRest {
         }
     }
 
+    /**
+     * Saldo vigente de un lote de préstamos, calculado desde sus cuotas pendientes.
+     * docs/logica-negocio/crd/API-SALDOS-PRESTAMO.md.
+     *
+     * @param codigos Códigos de préstamo (PRSTCDGO), máximo 500
+     * @return 200 con un {@code SaldoPrestamoResumen} por préstamo que se pudo calcular, en
+     *         cualquier orden; los códigos inexistentes simplemente no aparecen
+     */
+    @POST
+    @Path("/saldos")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response saldos(List<Long> codigos) {
+        System.out.println("LLEGA AL SERVICIO POST saldos - PRST - códigos: "
+            + (codigos != null ? codigos.size() : null));
+        try {
+            return Response.status(Response.Status.OK)
+                    .entity(prestamoService.calcularSaldosEnLote(codigos))
+                    .type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.IncomeException e) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
+                e.getMessage(), null);
+        } catch (Throwable e) {
+            System.err.println("ERROR al calcular saldos: " + e.getMessage());
+            e.printStackTrace();
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al calcular saldos: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
     // ------------------------------------------------------------------------
     // Sobre de respuesta y mapeo de errores de los procesos de pago (§8)
     // ------------------------------------------------------------------------
