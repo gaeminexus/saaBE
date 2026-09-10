@@ -240,6 +240,23 @@ public interface DetallePrestamoDaoService extends EntityDao<DetallePrestamo> {
 	List<DetallePrestamo> selectCuotasPendientesByPrestamoOrdenadas(Long codigoPrestamo) throws Throwable;
 
 	/**
+	 * Cuotas pendientes de VARIOS préstamos en una sola consulta, mismo criterio EXACTO que
+	 * {@link #selectCuotasPendientesByPrestamoOrdenadas(Long)}: estado IS NULL OR estado NOT
+	 * IN (4 PAGADA, 7 CANCELADA_ANTICIPADA). Para calcular saldos en lote sin el N+1 de pedir
+	 * las cuotas préstamo por préstamo (docs/logica-negocio/crd/API-SALDOS-PRESTAMO.md).
+	 *
+	 * <p>Fragmenta internamente en bloques de 900 para no chocar con el límite de Oracle de
+	 * 1000 elementos en {@code IN (...)} (ORA-01795).</p>
+	 *
+	 * @param codigosPrestamo Códigos de préstamo
+	 * @return Cuotas pendientes de esos préstamos, ordenadas por préstamo y luego por
+	 *         numeroCuota ASC; lista vacía si {@code codigosPrestamo} es nulo o vacío, o si no
+	 *         hay ninguna
+	 * @throws Throwable Si ocurre algún error
+	 */
+	List<DetallePrestamo> selectCuotasPendientesByPrestamos(List<Long> codigosPrestamo) throws Throwable;
+
+	/**
 	 * Cuotas del préstamo con numeroCuota &gt; :numeroCuotaExclusivo, de cualquier estado,
 	 * ordenadas por numeroCuota ASC. Se usa en la re-amortización del abono a capital.
 	 * @param codigoPrestamo       Código del préstamo

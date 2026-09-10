@@ -5,8 +5,11 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellType;
@@ -1092,40 +1095,61 @@ public class PrestamoServiceImpl implements PrestamoService {
 			throw new IncomeException("Máximo 500 préstamos por llamada");
 		}
 
+		// EN LOTE, no préstamo por préstamo: MotorPagoPrestamoServiceImpl.calcularSaldosCuota
+		// de UN argumento (línea ~116) consulta los pagos vigentes POR CUOTA. Sobre una página
+		// de 100 préstamos eso eran miles de consultas donde antes había cien. Acá se trae
+		// TODO con 3 llamadas (dos de ellas fragmentadas por dentro) y se calcula en memoria
+		// con la variante PURA de 2 argumentos. NO volver a un bucle de una consulta por
+		// préstamo.
+		List<Long> existentes = prestamoDaoService.selectCodigosExistentes(codigosPrestamo);
+		Set<Long> existentesSet = new HashSet<>(existentes);
+
+		List<DetallePrestamo> todasLasCuotas = detallePrestamoDaoService.selectCuotasPendientesByPrestamos(existentes);
+		Map<Long, List<DetallePrestamo>> cuotasPorPrestamo = new LinkedHashMap<>();
+		List<Long> codigosCuota = new ArrayList<>();
+		for (DetallePrestamo cuota : todasLasCuotas) {
+			Long idPrestamoDeCuota = cuota.getPrestamo() != null ? cuota.getPrestamo().getCodigo() : null;
+			cuotasPorPrestamo.computeIfAbsent(idPrestamoDeCuota, k -> new ArrayList<>()).add(cuota);
+			codigosCuota.add(cuota.getCodigo());
+		}
+
+		List<PagoPrestamo> todosLosPagos = pagoPrestamoDaoService.selectVigentesByIdsDetallePrestamo(codigosCuota);
+		Map<Long, List<PagoPrestamo>> pagosPorCuota = new LinkedHashMap<>();
+		for (PagoPrestamo pago : todosLosPagos) {
+			Long idCuota = pago.getDetallePrestamo() != null ? pago.getDetallePrestamo().getCodigo() : null;
+			pagosPorCuota.computeIfAbsent(idCuota, k -> new ArrayList<>()).add(pago);
+		}
+
 		// Mismo corte que ProcesoMoraPrestamoServiceImpl.corteDelDia(LocalDate.now()): inicio
 		// del día de hoy, hora del servidor. Una cuota que vence hoy todavía no está en mora.
 		LocalDateTime corteMora = LocalDate.now().atStartOfDay();
 
 		List<SaldoPrestamoResumen> resultado = new ArrayList<>();
 		for (Long idPrestamo : codigosPrestamo) {
+			// Un código que no existe en CRD.PRST no aparece en la respuesta (no es error).
+			// Un préstamo EXISTENTE en estado terminal (cancelado, etc.) sí aparece, con 0 en
+			// sus tres campos si no tiene cuotas pendientes — API-SALDOS-PRESTAMO.md §3,
+			// ejemplo del préstamo 8078.
+			if (!existentesSet.contains(idPrestamo)) {
+				continue;
+			}
 			try {
-				// Un código que no existe en CRD.PRST no aparece en la respuesta (no es
-				// error). Un préstamo EXISTENTE en estado terminal (cancelado, etc.) sí
-				// aparece, con 0 en sus tres campos si no tiene cuotas pendientes — API-
-				// SALDOS-PRESTAMO.md §3, ejemplo del préstamo 8078. selectById lanza
-				// NoResultException cuando el código no existe (CLAUDE.md).
-				try {
-					prestamoDaoService.selectById(idPrestamo, NombreEntidadesCredito.PRESTAMO);
-				} catch (jakarta.persistence.NoResultException nre) {
-					continue;
-				}
-
 				List<DetallePrestamo> cuotasPendientes =
-						detallePrestamoDaoService.selectCuotasPendientesByPrestamoOrdenadas(idPrestamo);
+						cuotasPorPrestamo.getOrDefault(idPrestamo, new ArrayList<>());
 
 				double saldoCapital = 0.0;
 				double saldoTotal = 0.0;
 				long cuotasEnMora = 0L;
-				if (cuotasPendientes != null) {
-					for (DetallePrestamo cuota : cuotasPendientes) {
-						// Variante PURA: no autocorrige ni persiste el estado de la cuota.
-						// Este endpoint es de solo lectura.
-						SaldosCuota saldos = motorPagoPrestamoService.calcularSaldosCuota(cuota);
-						saldoCapital += saldos.getSaldoCapital();
-						saldoTotal += saldos.getTotalPendiente();
-						if (cuota.getFechaVencimiento() != null && cuota.getFechaVencimiento().isBefore(corteMora)) {
-							cuotasEnMora++;
-						}
+				for (DetallePrestamo cuota : cuotasPendientes) {
+					List<PagoPrestamo> pagosDeCuota =
+							pagosPorCuota.getOrDefault(cuota.getCodigo(), new ArrayList<>());
+					// Variante PURA de 2 argumentos: no consulta, no autocorrige ni persiste
+					// el estado de la cuota. Este endpoint es de solo lectura.
+					SaldosCuota saldos = motorPagoPrestamoService.calcularSaldosCuota(cuota, pagosDeCuota);
+					saldoCapital += saldos.getSaldoCapital();
+					saldoTotal += saldos.getTotalPendiente();
+					if (cuota.getFechaVencimiento() != null && cuota.getFechaVencimiento().isBefore(corteMora)) {
+						cuotasEnMora++;
 					}
 				}
 

@@ -100,5 +100,21 @@ public interface PrestamoDaoService extends EntityDao<Prestamo> {
      * @throws Throwable Si ocurre algún error
      */
     List<Prestamo> selectByEntidad(Long codigoEntidad) throws Throwable;
+
+    /**
+     * De una lista de códigos, cuáles existen realmente en {@code CRD.PRST}. Reemplaza un
+     * {@code selectById} por código para saber si un préstamo existe sin traer la entidad
+     * completa ni lanzar {@code NoResultException} por cada código ausente
+     * (docs/logica-negocio/crd/API-SALDOS-PRESTAMO.md).
+     *
+     * <p>Fragmenta internamente en bloques de 900 para no chocar con el límite de Oracle de
+     * 1000 elementos en {@code IN (...)} (ORA-01795).</p>
+     *
+     * @param codigos Códigos a verificar
+     * @return Los códigos de {@code codigos} que existen, en cualquier orden; lista vacía si
+     *         {@code codigos} es nulo o vacío
+     * @throws Throwable Si ocurre algún error
+     */
+    List<Long> selectCodigosExistentes(List<Long> codigos) throws Throwable;
 }
 

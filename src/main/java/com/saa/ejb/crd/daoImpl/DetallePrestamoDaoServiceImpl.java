@@ -730,6 +730,44 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 
 	@SuppressWarnings("unchecked")
 	@Override
+	public List<DetallePrestamo> selectCuotasPendientesByPrestamos(List<Long> codigosPrestamo) throws Throwable {
+		System.out.println("DetallePrestamoDaoServiceImpl.selectCuotasPendientesByPrestamos - préstamos solicitados: "
+				+ (codigosPrestamo != null ? codigosPrestamo.size() : 0));
+
+		if (codigosPrestamo == null || codigosPrestamo.isEmpty()) {
+			return new ArrayList<>();
+		}
+
+		// A propósito NO absorbe errores de BD en una lista vacía, a diferencia de
+		// selectCuotasPendientesByPrestamoOrdenadas: acá una sola consulta cubre TODO el lote
+		// de calcularSaldosEnLote, así que una falla acá es una falla real del lote entero
+		// (500 legítimo), no la fila mala de un bucle que no debe abortar el resto.
+		String jpql = "SELECT d FROM DetallePrestamo d " +
+					 "WHERE d.prestamo.codigo IN :codigos " +
+					 "AND (d.estado IS NULL OR d.estado NOT IN (:estadoPagada, :estadoCanceladaAnticipada)) " +
+					 "ORDER BY d.prestamo.codigo, d.numeroCuota ASC";
+
+		// Fragmentado en bloques de 900: Oracle limita IN (...) a 1000 elementos (ORA-01795).
+		final int TAMANIO_BLOQUE = 900;
+		List<DetallePrestamo> resultados = new ArrayList<>();
+		for (int inicio = 0; inicio < codigosPrestamo.size(); inicio += TAMANIO_BLOQUE) {
+			List<Long> bloque = codigosPrestamo.subList(inicio,
+					Math.min(inicio + TAMANIO_BLOQUE, codigosPrestamo.size()));
+
+			Query query = em.createQuery(jpql);
+			query.setParameter("codigos", bloque);
+			query.setParameter("estadoPagada", (long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
+			query.setParameter("estadoCanceladaAnticipada", (long) com.saa.rubros.EstadoCuotaPrestamo.CANCELADA_ANTICIPADA);
+
+			resultados.addAll(query.getResultList());
+		}
+
+		System.out.println("  Cuotas pendientes encontradas: " + resultados.size());
+		return resultados;
+	}
+
+	@SuppressWarnings("unchecked")
+	@Override
 	public List<DetallePrestamo> selectCuotasByPrestamoDesdeNumero(Long codigoPrestamo, Double numeroCuotaExclusivo) throws Throwable {
 		System.out.println("DetallePrestamoDaoServiceImpl.selectCuotasByPrestamoDesdeNumero - Préstamo: " + codigoPrestamo
 			+ " - desde (exclusivo): " + numeroCuotaExclusivo);

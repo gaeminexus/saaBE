@@ -87,6 +87,40 @@ public class PagoPrestamoDaoServiceImpl extends EntityDaoImpl<PagoPrestamo> impl
 
 	@Override
 	@SuppressWarnings("unchecked")
+	public List<PagoPrestamo> selectVigentesByIdsDetallePrestamo(List<Long> codigosDetallePrestamo) throws Throwable {
+		System.out.println("PagoPrestamoDaoService.selectVigentesByIdsDetallePrestamo - cuotas solicitadas: "
+				+ (codigosDetallePrestamo != null ? codigosDetallePrestamo.size() : 0));
+
+		if (codigosDetallePrestamo == null || codigosDetallePrestamo.isEmpty()) {
+			return new ArrayList<>();
+		}
+
+		// anulado IS NULL cubre los pagos históricos anteriores al ALTER de CRD.PGPR. A
+		// propósito NO atrapa la excepción, ver javadoc de la interfaz.
+		String jpql = "SELECT p " +
+			"FROM PagoPrestamo p " +
+			"WHERE p.detallePrestamo.codigo IN :codigos " +
+			"AND (p.anulado IS NULL OR p.anulado = 0) " +
+			"ORDER BY p.detallePrestamo.codigo, p.codigo ASC";
+
+		// Fragmentado en bloques de 900: Oracle limita IN (...) a 1000 elementos (ORA-01795).
+		final int TAMANIO_BLOQUE = 900;
+		List<PagoPrestamo> resultados = new ArrayList<>();
+		for (int inicio = 0; inicio < codigosDetallePrestamo.size(); inicio += TAMANIO_BLOQUE) {
+			List<Long> bloque = codigosDetallePrestamo.subList(inicio,
+					Math.min(inicio + TAMANIO_BLOQUE, codigosDetallePrestamo.size()));
+
+			Query query = em.createQuery(jpql);
+			query.setParameter("codigos", bloque);
+			resultados.addAll(query.getResultList());
+		}
+
+		System.out.println("  Pagos vigentes encontrados: " + resultados.size());
+		return resultados;
+	}
+
+	@Override
+	@SuppressWarnings("unchecked")
 	public List<PagoPrestamo> selectByEvento(Long codigoEvento) {
 		System.out.println("PagoPrestamoDaoService.selectByEvento - Evento: " + codigoEvento);
 

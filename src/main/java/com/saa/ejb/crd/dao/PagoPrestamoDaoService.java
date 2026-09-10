@@ -34,6 +34,27 @@ public interface PagoPrestamoDaoService extends EntityDao<PagoPrestamo> {
 	List<PagoPrestamo> selectVigentesByIdDetallePrestamo(Long codigoDetallePrestamo);
 
 	/**
+	 * Pagos VIGENTES (anulado IS NULL OR anulado = 0) de VARIAS cuotas en una sola consulta,
+	 * mismo criterio que {@link #selectVigentesByIdDetallePrestamo(Long)}. Para calcular
+	 * saldos en lote sin el N+1 de pedir los pagos cuota por cuota
+	 * (docs/logica-negocio/crd/API-SALDOS-PRESTAMO.md).
+	 *
+	 * <p>Fragmenta internamente en bloques de 900 para no chocar con el límite de Oracle de
+	 * 1000 elementos en {@code IN (...)} (ORA-01795).</p>
+	 *
+	 * <p>A propósito y al REVÉS de la convención de sus vecinos en esta clase, <b>NO atrapa la
+	 * excepción</b>: una sola llamada cubre todo el lote de {@code calcularSaldosEnLote}, así
+	 * que una falla acá es una falla real del lote entero, no la fila mala de un bucle que no
+	 * debe abortar el resto. Debe propagarse como un 500 legítimo.</p>
+	 *
+	 * @param codigosDetallePrestamo Códigos de cuota (DetallePrestamo)
+	 * @return Pagos vigentes de esas cuotas, ordenados por cuota y luego por código ASC; lista
+	 *         vacía si {@code codigosDetallePrestamo} es nulo o vacío
+	 * @throws Throwable Si ocurre algún error
+	 */
+	List<PagoPrestamo> selectVigentesByIdsDetallePrestamo(List<Long> codigosDetallePrestamo) throws Throwable;
+
+	/**
 	 * Pagos de un evento (para anulación/consulta), ordenados por código ASC.
 	 *
 	 * @param codigoEvento Código del EventoPrestamo (EVPR)

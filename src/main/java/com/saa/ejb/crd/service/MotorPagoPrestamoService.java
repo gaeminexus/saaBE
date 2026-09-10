@@ -84,6 +84,22 @@ public interface MotorPagoPrestamoService {
     SaldosCuota calcularSaldosCuota(DetallePrestamo cuota) throws Throwable;
 
     /**
+     * Variante pura de {@link #calcularSaldosCuota(DetallePrestamo)} que recibe los pagos ya
+     * cargados: misma matemática, pero no consulta ni persiste. Para cuando el llamador ya
+     * trajo los {@code PagoPrestamo} vigentes de muchas cuotas en una sola consulta en lote
+     * (evita el N+1 de {@code pagoPrestamoDaoService.selectVigentesByIdDetallePrestamo} por
+     * cuota — ver {@code API-SALDOS-PRESTAMO.md}).
+     *
+     * @param cuota Cuota a evaluar
+     * @param pagosVigentes Pagos vigentes de esa cuota, ya cargados; {@code null} se trata
+     *                      igual que una lista vacía (cuota sin pagos)
+     * @return Saldos por componente y total pendiente; nunca modifica ni persiste {@code cuota}
+     * @throws Throwable Si ocurre un error
+     */
+    SaldosCuota calcularSaldosCuota(DetallePrestamo cuota, java.util.List<com.saa.model.crd.PagoPrestamo> pagosVigentes)
+            throws Throwable;
+
+    /**
      * Deuda total pendiente del préstamo: suma del totalPendiente de todas sus cuotas
      * pendientes. Es el tope que valida {@code pagarCuota} antes de aplicar (§7.1).
      *

@@ -99,6 +99,20 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
         System.out.println("MotorPagoPrestamoService.calcularSaldosCuota (solo lectura) - Cuota: "
             + (cuota != null ? cuota.getCodigo() : null));
 
+        if (cuota == null) {
+            return new SaldosCuota();
+        }
+
+        // ✅ PGPR es la fuente de verdad, y SOLO los pagos vigentes (los anulados no cuentan)
+        List<PagoPrestamo> pagos = pagoPrestamoDaoService.selectVigentesByIdDetallePrestamo(cuota.getCodigo());
+        return calcularSaldosCuota(cuota, pagos);
+    }
+
+    @Override
+    public SaldosCuota calcularSaldosCuota(DetallePrestamo cuota, List<PagoPrestamo> pagosVigentes) throws Throwable {
+        System.out.println("MotorPagoPrestamoService.calcularSaldosCuota (solo lectura, pagos en lote) - Cuota: "
+            + (cuota != null ? cuota.getCodigo() : null));
+
         SaldosCuota saldos = new SaldosCuota();
         if (cuota == null) {
             return saldos;
@@ -112,8 +126,7 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
         double capitalOriginal     = nullSafe(cuota.getCapital());
         double seguroOriginal      = nullSafe(cuota.getValorSeguroIncendio());
 
-        // ✅ PGPR es la fuente de verdad, y SOLO los pagos vigentes (los anulados no cuentan)
-        List<PagoPrestamo> pagos = pagoPrestamoDaoService.selectVigentesByIdDetallePrestamo(cuota.getCodigo());
+        List<PagoPrestamo> pagos = pagosVigentes;
 
         if (pagos == null || pagos.isEmpty()) {
             // Sin pagos: los saldos son los valores originales

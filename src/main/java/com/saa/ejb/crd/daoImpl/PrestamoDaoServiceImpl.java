@@ -224,4 +224,29 @@ public class PrestamoDaoServiceImpl extends EntityDaoImpl<Prestamo> implements P
         return ((Number) query.getSingleResult()).longValue();
     }
 
+    @Override
+    @SuppressWarnings("unchecked")
+    public List<Long> selectCodigosExistentes(List<Long> codigos) throws Throwable {
+        System.out.println("PrestamoDaoServiceImpl.selectCodigosExistentes - códigos solicitados: "
+            + (codigos != null ? codigos.size() : 0));
+
+        if (codigos == null || codigos.isEmpty()) {
+            return new java.util.ArrayList<>();
+        }
+
+        // Fragmentado en bloques de 900: Oracle limita IN (...) a 1000 elementos (ORA-01795).
+        final int TAMANIO_BLOQUE = 900;
+        List<Long> existentes = new java.util.ArrayList<>();
+        for (int inicio = 0; inicio < codigos.size(); inicio += TAMANIO_BLOQUE) {
+            List<Long> bloque = codigos.subList(inicio, Math.min(inicio + TAMANIO_BLOQUE, codigos.size()));
+
+            Query query = em.createQuery("SELECT p.codigo FROM Prestamo p WHERE p.codigo IN :codigos");
+            query.setParameter("codigos", bloque);
+            existentes.addAll(query.getResultList());
+        }
+
+        System.out.println("  Códigos existentes: " + existentes.size());
+        return existentes;
+    }
+
 }
