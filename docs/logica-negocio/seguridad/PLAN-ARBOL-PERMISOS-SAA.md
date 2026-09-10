@@ -38,7 +38,78 @@ del frontend es correcta tal como está escrita.
 Se anota porque desde afuera parece justo el caso que el filtro rompería, y el que lo mire de nuevo
 va a querer "arreglarlo".
 
-### 1.2 🔴 El interruptor puede no leerse de donde se cree
+### 1.0 ⛔⛔ `SCP.PJRQ` ES TAMBIÉN LA TABLA DE EMPRESAS Y DE USUARIOS
+
+**Medido el 2026-09-10 con `lap1-13`, y es lo más importante de todo este documento.**
+
+Verificado en las entidades JPA, no deducido:
+
+```
+com.saa.model.scp.Empresa  -> @Table(name = "PJRQ", schema = "SCP")
+com.saa.model.scp.Usuario  -> @Table(name = "PJRQ", schema = "SCP")
+```
+
+`SCP.PGSP` no es «la lista de jerarquías»: es **el árbol de pantallas del propio módulo de
+seguridades**, y cada una de sus hojas define **un tipo de jerarquía** que se guarda en `PJRQ`,
+discriminado por `PGSPCDGO`:
+
+| `PGSPCDGO` | Qué guarda |
+|---|---|
+| 5 | EMPRESA — estructura legal |
+| 6 | ESTRUCTURA ORGANIZACIONAL |
+| **9** | **USUARIO — los usuarios del sistema viven acá** |
+| **11** | **NIVELES DEL SISTEMA — el árbol de permisos. El nuestro** |
+| 12 | EMPRESA tal como se ingresó en el sistema |
+| 17 / 18 | ÁREA / NIVEL |
+
+786 filas en 8 jerarquías; **742 son del 11**.
+
+> ⛔ **Ningún `DELETE` sobre `SCP.PJRQ` puede escribirse sin `PGSPCDGO = 11`.** Uno más ancho no
+> borra «sistemas viejos de permisos»: borra **empresas y usuarios**, y con ellos revienta media
+> base por integridad referencial.
+
+Y explica de una las 48 FK que apuntan a `PJRQ`: se llaman `FK_..._EMPRESA` y `FK_..._USUARIO`
+porque **son la empresa y el usuario** de cada caja chica, cada pago, cada asiento. **No son
+asignaciones de permisos.** La pregunta original —«¿qué pasa con los permisos ya asignados?»— tiene
+otra respuesta de la que se esperaba: las asignaciones no están en ninguna de esas tablas.
+
+### 1.0bis ⛔ La secuencia SÍ existe, y la premisa de arranque era falsa
+
+Se arrancó bajo el supuesto de que *«la tabla `pjrq` no maneja secuencia en base»*. **No es así:**
+
+```
+Empresa.java:19   @SequenceGenerator(sequenceName = "SCP.SQ_PJRQCDGO")
+Usuario.java:29   @SequenceGenerator(sequenceName = "SCP.SQ_PJRQCDGO")
+```
+
+Los dos con `GenerationType.SEQUENCE`. Cada usuario o empresa que se crea desde SAA saca su id de
+`SCP.SQ_PJRQCDGO`.
+
+**Quemar ~700 ids desde el 1253 sin adelantar la secuencia la deja por debajo de lo usado, y
+entonces el próximo usuario o empresa que se cree muere con ORA-00001 — en una pantalla que no
+tiene nada que ver con permisos.** Es la regla 8 del esquema de trabajo, y acá aplica de lleno.
+
+⚠️ **Y no vale generalizar desde `[[secuencias-rubros-no-existen]]`:** para `PRBR`/`PDTR` las
+secuencias efectivamente no existen y la regla de sincronizarlas protegía contra algo imposible.
+Acá es al revés. **La misma tabla, la misma pregunta, la respuesta opuesta** — por eso se mide cada
+vez en vez de recordar.
+
+**El `lap1-15` tiene que adelantar la secuencia después del `INSERT`.**
+
+### 1.0ter La restricción que condiciona los nombres del árbol
+
+`UN_PJRQ_01` es **UNIQUE sobre `(PGSPCDGO, PJRQNMBR, PJRQCDPD)`**: **dos hermanos no pueden llamarse
+igual.**
+
+En SAA se repiten «CONSULTA», «INGRESO», «PARAMETRIZACIÓN» y «REPORTES» entre módulos. Entre padres
+distintos no hay problema; lo que hay que evitar al generar el árbol son dos hijos homónimos bajo el
+mismo padre.
+
+Además: `PJRQNMBR` es `VARCHAR2(300) NOT NULL`, y `PJRQCDPD` también es `NOT NULL` (la raíz usa `0`).
+**No hay ninguna columna oculta**: la tabla tiene exactamente las 6 del CSV, así que el `INSERT` de
+6 columnas es seguro. El ORA-01400 que se temía no aplica.
+
+### 1.2 🔴 El interruptor NO se lee de donde se cree — confirmado
 
 El pedido del usuario fue: *«si en la **descripción** tiene un 0 no se manejan permisos»*.
 
@@ -48,8 +119,19 @@ El único lector del backend es `DetalleRubroDaoServiceImpl:100-104`, y su JPQL 
 **Si el `0`/`1` está escrito en la descripción, el interruptor no funciona y no da ningún error:**
 lee vacío y sigue. Es la familia de fallo de siempre — el lector apuntando a donde nadie escribe.
 
-Lo mide el **CONTROL 9** de `sql/lap1-13`, que trae las dos columnas. **Decisión pendiente** según
-el resultado: mover el dato a `PDTRVLRV`, o cambiar qué columna lee el frontend.
+**Medido con el CONTROL 9 del `lap1-13`, y era exactamente así:**
+
+| `PRBRCDGO` | `PRBRALTR` | `PRBRDSCR` | `PDTRCDGO` | `PDTRALTR` | `PDTRDSCR` | `PDTRVLRV` | `PDTRESTD` |
+|---|---|---|---|---|---|---|---|
+| 7 | 7 | `MANEJA PERMISO (SI = 1, NO = 0)` | 23 | 1 | **`0`** | **(vacío)** | 1 |
+
+El valor vive en **`PDTRDSCR`**; **`PDTRVLRV` está vacío**. El único lector del backend devuelve
+`PDTRVLRV`. **El interruptor, tal como está, no se puede leer con lo que existe hoy.**
+
+🟡 **Decisión pendiente del usuario:** mover el `0` a `PDTRVLRV` (un `UPDATE` de una fila, no toca
+código), o leer `PDTRDSCR` desde el frontend con `GET /rest/pdtr/getRubros/7`, que devuelve la
+entidad completa y por lo tanto **ya trae las dos columnas**. La segunda no necesita ni `UPDATE` ni
+backend nuevo, y es la que recomiendo.
 
 ---
 
@@ -73,9 +155,11 @@ Tomadas por el usuario respondiendo a las ocho preguntas de arranque. **No se re
 - Los `INSERT` llevan **ids quemados**, sin secuencia, arrancando en **1253**.
 - El id quemado no es una comodidad: es lo que permite que un nodo referencie a su padre
   (`PJRQCDPD`) dentro del mismo script.
-- **El 1253 lo dio el usuario y hay que confirmarlo**: el CSV exportado llega a 1220, pero es sólo
-  `PGSPCDGO = 11`. Si otra jerarquía tiene códigos más altos, arrancar en 1253 pisa filas ajenas.
-  Lo mide el **CONTROL 6** de `sql/lap1-13`.
+- ✅ **El 1253 está confirmado.** El CONTROL 6 del `lap1-13` midió `MAX(PJRQCDGO) = 1252` sobre
+  **toda** la tabla (no sólo `PGSPCDGO = 11`, cuyo máximo es 1220). El número que dio el usuario es
+  el correcto.
+- ⛔ **Pero hay que adelantar `SCP.SQ_PJRQCDGO` después del `INSERT`** — ver §1.0bis. Ese paso no
+  estaba en el pedido original y es el que evita un ORA-00001 al crear el próximo usuario.
 
 ### 2.2 Granularidad — la regla que gobierna todo el árbol
 
@@ -122,7 +206,7 @@ Dos consecuencias, y la segunda es peor:
 **Hay que reasignar las 47 al árbol nuevo en el mismo movimiento.** Lo inventaría el ÍTEM 4 del
 barrido de frontend.
 
-### 4.2 El permiso de ingreso quemado en un rubro — trampa dormida
+### 4.2 El permiso de ingreso quemado en un rubro — y el rubro NO EXISTE
 
 `UsuarioDaoServiceImpl:151`, dentro de `validaUsuarioSucursal`, lee el rubro `MODULO_SISTEMA`
 (alterno **15**) / detalle `INGRESO` (alterno **99**) y usa ese valor **como `PJRQCDGO`** para
@@ -131,9 +215,17 @@ preguntarle al SP si el usuario tiene permiso de ingreso al sistema.
 **Hoy no rompe nada**: el frontend hace login con `validaUsuario` (el simple), no con
 `validaUsuarioSucursal` — verificado en `login.component.ts:190` y `usuario.service.ts:90-91`.
 
-**Pero es una trampa dormida.** El día que se active el login por sucursal —que es exactamente el
-tipo de cosa que se activa junto con el módulo de seguridades—, si ese código apunta a un nodo que
-borramos, **nadie entra al sistema**. Lo mide el CONTROL 9.
+**Y el CONTROL 9 del `lap1-13` devolvió una sola fila: la del rubro 7. La del rubro alterno 15 /
+detalle alterno 99 NO EXISTE.**
+
+Eso cambia el diagnóstico y lo empeora un poco: `selectValorStringByRubAltDetAlt` termina en
+`getSingleResult()`, así que sin fila **lanza `NoResultException`**. `validaUsuarioSucursal` no está
+«esperando a que le borren el nodo»: **ya está roto hoy**, y falla antes de llegar al SP.
+
+Nuestro `DELETE` no lo empeora ni lo mejora — no lo toca. Pero queda escrito acá porque **el día que
+alguien active el login por sucursal se va a encontrar con esto y va a creer que lo rompimos
+nosotros.** Si se quiere usar ese camino, primero hay que crear el detalle rubro 15/99 apuntando al
+nodo `SAA` del árbol nuevo.
 
 ---
 
@@ -142,12 +234,43 @@ borramos, **nadie entra al sistema**. Lo mide el CONTROL 9.
 | Paso | Estado |
 |---|---|
 | Preguntas de arranque respondidas (§2) | ✅ 2026-09-10 |
-| `sql/lap1-13` — diagnóstico | ✅ escrito y commiteado (`a9069fea`). **Pendiente de que el usuario lo corra** |
-| Barrido de pantallas del frontend (4 ítems) | 🔵 despachado a `lap-saa-1-fe` el 2026-09-10 |
-| `lap1-14` — `DELETE` de PCC/CID/ACT y sus permisos | ⛔ bloqueado por los CONTROLES 2, 4/5 y 6 |
-| `lap1-15` — `INSERT` del árbol de SAA desde el 1253 | ⛔ bloqueado por lo anterior + el barrido |
+| `sql/lap1-13` — diagnóstico | ✅ **corrido por el usuario el 2026-09-10.** Resultados analizados en §1.0, §1.0bis, §1.0ter, §1.2 y §4.2 |
+| `sql/lap1-14` — chequeo referencial consolidado + secuencia | ✅ escrito. **Pendiente de que el usuario lo corra** |
+| Barrido del frontend — ÍTEM 1 (los 9 menús) | ✅ 2026-09-10, en `saaFE/docs/seguridad/INVENTARIO-PANTALLAS-SAA.md` |
+| Barrido del frontend — ÍTEM 2 (rutas) e ÍTEM 4 (`PermisosRrh`) | ✅ 2026-09-10 |
+| Barrido del frontend — ÍTEM 3 (pantallas hijas) | 🔵 en curso |
+| `lap1-15` — `DELETE` + `INSERT` + adelanto de secuencia | ⛔ bloqueado por el CONTROL 4 del `lap1-14` y por el ÍTEM 3 |
 | Conexión en los menús (descomentar + códigos reales + interruptor) | ⛔ bloqueado por `lap1-15` |
-| Comentar las opciones sin pantalla programada (decisión 7) | ⛔ bloqueado por el ÍTEM 2 del barrido |
+| Comentar las opciones sin pantalla programada (decisión 7) | 🟡 desbloqueado: son **2 casos**, los dos en `crd` |
+
+### 5.1 Lo que midió el barrido del frontend — 2026-09-10
+
+- **Opciones de menú sin pantalla programada: sólo 2**, de ~140 opciones activas en los 9 menús, y
+  las dos en `crd` («Archivos Descuentos», sin `route`; «Dash» bajo Cobros, con el `route`
+  comentado aunque el destino exista). `cnt`, `cxc`, `cxp`, `rpr`, `rrh` y `tsr` no tienen ninguna.
+  **La decisión 7 resultó mucho más chica de lo que parecía.**
+- **~35 rutas a las que ningún menú llega**, repartidas en `crd`(11), `tsr`(14), `rrh`(6),
+  `cnt`(4), `cxc`(4), `cxp`(3). Dos de `tsr` son placeholders de verdad
+  (`TsrPlaceholderComponent` en `parametrizacion/bancos` y `parametrizacion/cajas/logicas`). Buena
+  parte llevan `:id`/`:codigo`, así que son destinos de `router.navigate` y no huérfanas — lo
+  confirma el ÍTEM 3.
+- **Tres componentes completos sin ninguna ruta**: `tsr/forms/movimientos-bancarios/{creditos,
+  debitos,transferencias}`. No aparecen en el cruce porque no hay `path:` que cruzar. **Inalcanzables
+  hoy por cualquier camino.**
+- **`PermisosRrh`**: de las 47 constantes, 44 están en un nodo visible del menú, 1
+  (`APORTES_RETENCIONES` = 882) en un nodo comentado, y **2 no se usan en ningún lado**
+  (`FICHA_COLABORADOR` = 871, `NOMINA` = 880).
+- **`tsr/menu/menucreditos.component.ts` es un archivo muerto**: clase vacía, nadie lo importa, su
+  selector no aparece en ningún template, y la única ruta a `MenucreditosComponent` apunta al de
+  `crd`. **No se borra** — se deja anotado.
+- **`dash/menu/menu.component.ts` NO es un `NavItem[]`**: son **7 botones hardcodeados en el HTML**
+  que llaman `navigate('...')`, sin modelo de datos y sin `idPermiso`. Son justo los **nodos de
+  nivel 2 del árbol** (los 7 módulos). ⚠️ **No hay que migrarlo a `NavItem[]`** —eso lo pasaría a
+  renderizarse por `menu-list` y le cambiaría la cara a la pantalla de entrada—: alcanza con meter
+  la verificación dentro de `navigate(ruta)`, con un mapa `ruta → idPermiso`. Es lo mismo que hace
+  el menú lateral y no toca el diseño.
+- **`asoprep` no tiene ni un componente ni una ruta en `saaFE`.** No entra al árbol: es backend puro
+  (la carga de archivos Petro), operado desde otras pantallas.
 
 ---
 
