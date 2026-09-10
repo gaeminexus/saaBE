@@ -222,7 +222,8 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
             resultado.add(new LineaCompra(f.getTipoComprobante(), f.getNumEstablecimiento(),
                     f.getNumPtoEmision(), f.getSecuencial(), f.getFecha() != null ? f.getFecha().toLocalDate() : null,
                     f.getAutorizacion(), f.getTitular(), f.getSustentoTributario(), f.getFechaRegistroContable(),
-                    nvl(f.getSubtotal(), 0.0), nvl(f.getSubcero(), 0.0), nvl(f.getvIVA(), 0.0), nvl(f.getvICE(), 0.0)));
+                    nvl(f.getSubtotal(), 0.0), nvl(f.getSubcero(), 0.0), nvl(f.getvIVA(), 0.0), nvl(f.getvICE(), 0.0),
+                    formasPagoFacturaCompra(f.getId())));
             if (f.getSustentoTributario() == null) {
                 avisos.add("Factura de compra " + f.getId() + " sin codSustento resuelto — no debería "
                         + "pasar (fase 2/6 lo resuelve siempre), revisar.");
@@ -256,7 +257,8 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
             resultado.add(new LineaCompra(l.getTipoComprobante(), l.getNumEstablecimiento(),
                     l.getNumPtoEmision(), l.getSecuencial(), l.getFecha() != null ? l.getFecha().toLocalDate() : null,
                     l.getAutorizacion(), l.getTitular(), l.getSustentoTributario(), l.getFechaRegistroContable(),
-                    nvl(l.getSubtotal(), 0.0), nvl(l.getSubcero(), 0.0), nvl(l.getvIVA(), 0.0), nvl(l.getvICE(), 0.0)));
+                    nvl(l.getSubtotal(), 0.0), nvl(l.getSubcero(), 0.0), nvl(l.getvIVA(), 0.0), nvl(l.getvICE(), 0.0),
+                    formasPagoLiquidacionCompra(l.getId())));
             if (l.getFechaRegistroContable() == null) {
                 avisos.add("Liquidación de compra " + l.getId() + " sin fechaRegistro contable capturada: "
                         + "se usó la fecha de emisión como aproximación.");
@@ -283,10 +285,14 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         q.setParameter("hastaDT", hastaDT);
         List<LineaCompra> resultado = new ArrayList<LineaCompra>();
         for (NotaCreditoCompra n : q.getResultList()) {
+            // ÍTEM 28 (2026-09-10): NotaCreditoCompra no tiene tabla de formas de pago propia
+            // (verificado: no existe FormaPagoNotaCreditoCompra en com.saa.model.cxp) -- lista
+            // vacía, cae al respaldo de DRC2 en writeDetalleCompra.
             resultado.add(new LineaCompra(n.getTipoComprobante(), n.getNumEstablecimiento(),
                     n.getNumPtoEmision(), n.getSecuencial(), n.getFecha() != null ? n.getFecha().toLocalDate() : null,
                     n.getAutorizacion(), n.getTitular(), n.getSustentoTributario(), n.getFechaRegistroContable(),
-                    nvl(n.getSubtotal(), 0.0), nvl(n.getSubcero(), 0.0), nvl(n.getvIVA(), 0.0), nvl(n.getvICE(), 0.0)));
+                    nvl(n.getSubtotal(), 0.0), nvl(n.getSubcero(), 0.0), nvl(n.getvIVA(), 0.0), nvl(n.getvICE(), 0.0),
+                    java.util.Collections.<String>emptyList()));
             if (n.getFechaRegistroContable() == null) {
                 avisos.add("Nota de crédito de compra " + n.getId() + " sin fechaRegistro contable "
                         + "capturada: se usó la fecha de emisión como aproximación.");
@@ -313,10 +319,14 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         q.setParameter("hastaDT", hastaDT);
         List<LineaCompra> resultado = new ArrayList<LineaCompra>();
         for (NotaDebitoCompra n : q.getResultList()) {
+            // ÍTEM 28 (2026-09-10): NotaDebitoCompra tampoco tiene tabla de formas de pago propia
+            // (verificado: no existe FormaPagoNotaDebitoCompra) -- lista vacía, cae al respaldo
+            // de DRC2 en writeDetalleCompra.
             resultado.add(new LineaCompra(n.getTipoComprobante(), n.getNumEstablecimiento(),
                     n.getNumPtoEmision(), n.getSecuencial(), n.getFecha() != null ? n.getFecha().toLocalDate() : null,
                     n.getAutorizacion(), n.getTitular(), n.getSustentoTributario(), n.getFechaRegistroContable(),
-                    nvl(n.getSubtotal(), 0.0), nvl(n.getSubcero(), 0.0), nvl(n.getvIVA(), 0.0), nvl(n.getvICE(), 0.0)));
+                    nvl(n.getSubtotal(), 0.0), nvl(n.getSubcero(), 0.0), nvl(n.getvIVA(), 0.0), nvl(n.getvICE(), 0.0),
+                    java.util.Collections.<String>emptyList()));
             if (n.getFechaRegistroContable() == null) {
                 avisos.add("Nota de débito de compra " + n.getId() + " sin fechaRegistro contable "
                         + "capturada: se usó la fecha de emisión como aproximación.");
@@ -325,6 +335,45 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
                     n.getId(), "Nota de débito de compra", avisos);
         }
         return resultado;
+    }
+
+    /**
+     * ÍTEM 28 (2026-09-10), ERROR 1 del validador: "no ha reportado las FORMAS DE PAGO... aun
+     * cuando la suma... excede USD 500". Hoy se sacaba de {@code DRC2.docResForPago} (la línea de
+     * la RETENCIÓN), que es de origen equivocado -- la forma de pago es del documento de compra,
+     * no de la retención que eventualmente le practicamos. La fuente real, medida contra el
+     * código (no contra la sugerencia del encargo): {@code FacturaCompra.formaPago} (el campo
+     * {@code Long} de cabecera, línea 132) <b>nunca se escribe</b> para documentos ingresados por
+     * el proceso normal de carga SRI -- verificado con grep sobre {@code com.saa.ejb.cxp}: ningún
+     * {@code facturaCompra.setFormaPago(...)}. Lo que SÍ se puebla, directo desde el XML del SRI
+     * y ya en formato de 2 dígitos, es {@code FormaPagoFacturaCompra} (tabla {@code PGS.FPFM}) --
+     * ver {@code ProcesoCargaDocumentosServiceImpl:1686-1696}, que arma una fila por cada
+     * {@code <pago>} del XML ingresado. Se usa esa, no el campo Long de cabecera.
+     */
+    @SuppressWarnings("unchecked")
+    private List<String> formasPagoFacturaCompra(Long idFacturaCompra) {
+        List<String> codigos = em.createQuery(
+                "select distinct fp.formaPago from FormaPagoFacturaCompra fp "
+                        + "where fp.factura.id = :id and fp.formaPago is not null")
+                .setParameter("id", idFacturaCompra)
+                .getResultList();
+        return codigos;
+    }
+
+    /**
+     * Mismo criterio que {@link #formasPagoFacturaCompra}, para liquidación de compra: la tabla
+     * dedicada es {@code FormaPagoLiquidacionCompraCompra} (PGS.FPLM), no un campo de cabecera --
+     * verificado que {@code LiquidacionCompraCompra} tampoco tiene un campo {@code formaPago}
+     * propio (grep sin resultados).
+     */
+    @SuppressWarnings("unchecked")
+    private List<String> formasPagoLiquidacionCompra(Long idLiquidacion) {
+        List<String> codigos = em.createQuery(
+                "select distinct fp.formaPago from FormaPagoLiquidacionCompraCompra fp "
+                        + "where fp.liquidacion.id = :id and fp.formaPago is not null")
+                .setParameter("id", idLiquidacion)
+                .getResultList();
+        return codigos;
     }
 
     // =====================================================================
@@ -351,7 +400,7 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         qf.setParameter("hasta", hastaDT.toLocalDate());
         for (Factura f : qf.getResultList()) {
             String tipoVenta = mapearTipoComprobanteVenta(f.getTipoComprobante(), f.getId(), "Factura", avisos);
-            acumularVenta(agrupado, f.getTitular(), tipoVenta, nvl(f.getSubtotal(), 0.0),
+            acumularVenta(agrupado, f.getTitular(), tipoVenta, f.getId(), nvl(f.getSubtotal(), 0.0),
                     nvl(f.getSubcero(), 0.0), nvl(f.getvIVA(), 0.0), nvl(f.getvICE(), 0.0));
         }
 
@@ -368,7 +417,7 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         qnc.setParameter("hasta", hastaDT);
         for (NotaCredito n : qnc.getResultList()) {
             String tipoVenta = mapearTipoComprobanteVenta(n.getTipoComprobante(), n.getId(), "Nota de crédito", avisos);
-            acumularVenta(agrupado, n.getTitular(), tipoVenta, nvl(n.getSubtotal(), 0.0),
+            acumularVenta(agrupado, n.getTitular(), tipoVenta, n.getId(), nvl(n.getSubtotal(), 0.0),
                     nvl(n.getSubcero(), 0.0), nvl(n.getvIVA(), 0.0), nvl(n.getvICE(), 0.0));
         }
 
@@ -385,7 +434,7 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         qnd.setParameter("hasta", hastaDT);
         for (NotaDebito n : qnd.getResultList()) {
             String tipoVenta = mapearTipoComprobanteVenta(n.getTipoComprobante(), n.getId(), "Nota de débito", avisos);
-            acumularVenta(agrupado, n.getTitular(), tipoVenta, nvl(n.getSubtotal(), 0.0),
+            acumularVenta(agrupado, n.getTitular(), tipoVenta, n.getId(), nvl(n.getSubtotal(), 0.0),
                     nvl(n.getSubcero(), 0.0), nvl(n.getvIVA(), 0.0), nvl(n.getvICE(), 0.0));
         }
 
@@ -408,7 +457,7 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
     }
 
     private void acumularVenta(Map<String, LineaVenta> agrupado, Titular titular, String tipoComprobante,
-            double baseGravada, double base0, double montoIva, double montoIce) {
+            Long idDocumento, double baseGravada, double base0, double montoIva, double montoIce) {
         if (titular == null) {
             return;
         }
@@ -423,6 +472,9 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         linea.base0 += base0;
         linea.montoIva += montoIva;
         linea.montoIce += montoIce;
+        if (idDocumento != null) {
+            linea.idsDocumento.add(idDocumento);
+        }
     }
 
     // =====================================================================
@@ -494,7 +546,7 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         w.writeStartElement("compras");
         w.writeCharacters("\n");
         for (LineaCompra c : compras) {
-            writeDetalleCompra(w, c, retencionesCompra);
+            writeDetalleCompra(w, c, retencionesCompra, avisos);
         }
         w.writeCharacters("  ");
         w.writeEndElement();
@@ -504,7 +556,7 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         w.writeStartElement("ventas");
         w.writeCharacters("\n");
         for (LineaVenta v : ventas) {
-            writeDetalleVenta(w, v);
+            writeDetalleVenta(w, v, avisos);
         }
         w.writeCharacters("  ");
         w.writeEndElement();
@@ -562,8 +614,8 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         return sw.toString();
     }
 
-    private void writeDetalleCompra(XMLStreamWriter w, LineaCompra c, Map<String, RetencionInfo> retenciones)
-            throws Exception {
+    private void writeDetalleCompra(XMLStreamWriter w, LineaCompra c, Map<String, RetencionInfo> retenciones,
+            List<String> avisos) throws Exception {
         w.writeCharacters("    ");
         w.writeStartElement("detalleCompras");
         w.writeCharacters("\n");
@@ -622,14 +674,38 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         w.writeEndElement();
         w.writeCharacters("\n");
 
-        if (ret != null && ret.formaPago != null) {
+        // ÍTEM 28 (2026-09-10), ERROR 1: la forma de pago es del DOCUMENTO, no de la retención.
+        // Primaria: c.formasPagoPrimario (FormaPagoFacturaCompra/FormaPagoLiquidacionCompraCompra,
+        // ya en 2 dígitos). Respaldo: DRC2.docResForPago (la línea de la retención), sólo si la
+        // primaria vino vacía -- NotaCreditoCompra/NotaDebitoCompra no tienen tabla propia, así
+        // que para esas dos el respaldo es la única fuente, igual que antes.
+        List<String> formasPago = !c.formasPagoPrimario.isEmpty()
+                ? c.formasPagoPrimario
+                : (ret != null && ret.formaPago != null
+                        ? java.util.Collections.singletonList(ret.formaPago)
+                        : java.util.Collections.<String>emptyList());
+        if (!formasPago.isEmpty()) {
             w.writeCharacters("      ");
             w.writeStartElement("formasDePago");
             w.writeCharacters("\n");
-            writeElement(w, "formaPago", ret.formaPago, 8);
+            for (String fp : formasPago) {
+                writeElement(w, "formaPago", fp, 8);
+            }
             w.writeCharacters("      ");
             w.writeEndElement();
             w.writeCharacters("\n");
+        } else {
+            // No hay forma de pago de ningún origen. Si el documento supera USD 500, el SRI lo
+            // rechaza por esto exacto (medido: 15 compras > 500 sin formasDePago) -- no se deja
+            // pasar mudo.
+            double totalDocumento = c.base0 + c.baseGravada + c.montoIva + c.montoIce;
+            if (totalDocumento > 500.0) {
+                avisos.add("Compra " + nvl(c.tipoComprobante, "") + " " + nvl(c.establecimiento, "") + "-"
+                        + nvl(c.puntoEmision, "") + "-" + nvl(c.secuencial, "") + " (autorización "
+                        + nvl(c.autorizacion, "") + "), total " + formatDecimal(totalDocumento) + ": sin "
+                        + "forma de pago en ningún origen (documento ni retención) y supera USD 500 -- "
+                        + "el SRI va a rechazar el ATS por esto. Revisar el documento antes de declarar.");
+            }
         }
 
         if (ret != null && !ret.airLineas.isEmpty()) {
@@ -666,17 +742,37 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         w.writeCharacters("\n");
     }
 
-    private void writeDetalleVenta(XMLStreamWriter w, LineaVenta v) throws Exception {
+    private void writeDetalleVenta(XMLStreamWriter w, LineaVenta v, List<String> avisos) throws Exception {
         w.writeCharacters("    ");
         w.writeStartElement("detalleVentas");
         w.writeCharacters("\n");
-        writeElement(w, "tpIdCliente", tipoIdentificacionVenta(v.titular), 6);
+        String tpIdCliente = tipoIdentificacionVenta(v.titular);
+        writeElement(w, "tpIdCliente", tpIdCliente, 6);
         writeElement(w, "idCliente", nvl(v.titular.getIdentificacion(), ""), 6);
         // parteRelVtas (no "parteRel" -- nombre distinto del lado compras, DIAGNOSTICO-ATS-
         // RECHAZADO-VALIDADOR.md §3). Mismo default "NO" que en compras y por la misma decisión
         // del usuario (§A.5): NULL -> "NO", afirmación tributaria a revertir si contabilidad marca
-        // excepciones. "tipoCliente"/"denoCli" no van: no existen en el esquema real.
+        // excepciones. "denoCli" no va: no existe en el esquema real.
         writeElement(w, "parteRelVtas", nvl(v.titular.getParteRelacionada(), "NO"), 6);
+        // ÍTEM 28 (2026-09-10), ERROR 3 -- corrección de un error del ítem 3: "tipoCliente" SÍ
+        // existe en el esquema, condicional: sólo cuando tpIdCliente="06" (pasaporte). Julio no
+        // tenía ningún cliente con pasaporte, así que el campo nunca se emitió en el archivo
+        // autorizado -- su ausencia ahí no probaba que no existiera, sólo que no aplicaba ese mes.
+        // Valor: Tabla 14 del catálogo ("01"=Persona natural, "02"=Sociedad), la misma que ya usa
+        // el lado compras -- Titular.tipoProveedorAts (TTLRTPAT), cuyo propio javadoc lo dice
+        // explícito: "ATS (campo tipoProv, Tabla 14...)". Si el pasaporte no tiene el campo
+        // capturado, no se inventa: aviso y se sigue sin escribir el elemento.
+        if ("06".equals(tpIdCliente)) {
+            String tipoCliente = v.titular.getTipoProveedorAts();
+            if (tipoCliente != null && !tipoCliente.trim().isEmpty()) {
+                writeElement(w, "tipoCliente", tipoCliente, 6);
+            } else {
+                avisos.add("Cliente " + v.titular.getCodigo() + " (" + nvl(v.titular.getNombre(), "")
+                        + ") tiene tpIdCliente=06 (pasaporte) pero no tiene tipoProveedorAts (Tabla 14: "
+                        + "persona natural/sociedad) capturado -- el SRI exige 'tipoCliente' para ese "
+                        + "caso y no se escribió. Configure el dato en el titular antes de declarar.");
+            }
+        }
         writeElement(w, "tipoComprobante", nvl(v.tipoComprobante, ""), 6);
         // tipoEmision (no "tipoEm"): las 19 ventas del archivo autorizado de julio son "F", no
         // "E" -- el comentario anterior que fijaba "E" como "confirmado para esta empresa" estaba
@@ -697,11 +793,61 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         // el valor.
         writeElement(w, "valorRetIva", "0.00", 6);
         writeElement(w, "valorRetRenta", "0.00", 6);
-        // formasDePago de venta: sin fuente por documento agrupado -- no se escribe, igual que
-        // antes (🟠 en el diagnóstico, no pedido en el encargo de hoy).
+
+        // ÍTEM 28 (2026-09-10), ERROR 2: nunca se emitía. Fuente: FormaPagoFactura -- se prefiere
+        // sobre Factura.getFormaPago() (Long, cabecera) porque FacturaServiceImpl garantiza que
+        // SIEMPRE queda al menos una fila ahí tras emitir (si la lista venía vacía, sintetiza una
+        // desde la cabecera y la persiste -- ver FacturaServiceImpl:463-480/1220-1245), así que es
+        // la fuente que de verdad tiene dato, no la que podría estar en null igual. Sólo aplica a
+        // facturas (tipoComprobante="18"): NotaCredito/NotaDebito de venta no tienen tabla de
+        // formas de pago propia (verificado: no existe FormaPagoNotaCredito/FormaPagoNotaDebito).
+        // Decisión documentada (no elegida en silencio): una línea de <detalleVentas> puede venir
+        // de VARIAS facturas agrupadas por (titular, tipoComprobante) -- se emite la UNIÓN de los
+        // códigos distintos de todas ellas, un <formaPago> por código, en vez de quedarse con uno
+        // solo o repetir. Es la lectura más fiel: todas esas formas de pago se usaron de verdad en
+        // el período para ese cliente.
+        if ("18".equals(v.tipoComprobante) && !v.idsDocumento.isEmpty()) {
+            List<String> formasPago = resolverFormasDePagoVenta(v.idsDocumento);
+            if (!formasPago.isEmpty()) {
+                w.writeCharacters("      ");
+                w.writeStartElement("formasDePago");
+                w.writeCharacters("\n");
+                for (String fp : formasPago) {
+                    writeElement(w, "formaPago", fp, 8);
+                }
+                w.writeCharacters("      ");
+                w.writeEndElement();
+                w.writeCharacters("\n");
+            } else {
+                double totalLinea = v.base0 + v.baseGravada + v.montoIva + v.montoIce;
+                if (totalLinea > 500.0) {
+                    avisos.add("Ventas de " + v.titular.getCodigo() + " (" + nvl(v.titular.getNombre(), "")
+                            + "), tipoComprobante=" + v.tipoComprobante + ", total " + formatDecimal(totalLinea)
+                            + ": sin forma de pago en ninguna de las " + v.idsDocumento.size()
+                            + " factura(s) agrupadas, y supera USD 500 -- el SRI va a rechazar el ATS por "
+                            + "esto. Revisar antes de declarar.");
+                }
+            }
+        }
+
         w.writeCharacters("    ");
         w.writeEndElement();
         w.writeCharacters("\n");
+    }
+
+    /**
+     * Une las formas de pago (ya en 2 dígitos) de todas las facturas agrupadas en una línea de
+     * {@code <detalleVentas>}, sin repetir código. Ver el comentario de {@link #writeDetalleVenta}
+     * sobre por qué se usa {@code FormaPagoFactura} y no {@code Factura.getFormaPago()}.
+     */
+    @SuppressWarnings("unchecked")
+    private List<String> resolverFormasDePagoVenta(List<Long> idsFactura) {
+        List<String> codigos = em.createQuery(
+                "select distinct fp.formaPago from FormaPagoFactura fp "
+                        + "where fp.factura.id in :ids and fp.formaPago is not null")
+                .setParameter("ids", idsFactura)
+                .getResultList();
+        return codigos;
     }
 
     private void writeDetalleAnulado(XMLStreamWriter w, LineaAnulado a) throws Exception {
@@ -970,10 +1116,14 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         final LocalDate fechaEmision, fechaRegistro;
         final Titular titular;
         final double baseGravada, base0, montoIva, montoIce;
+        /** ÍTEM 28 (2026-09-10): formas de pago DEL DOCUMENTO (no de la retención) -- vacía si el
+         *  tipo de documento no tiene tabla propia (NotaCreditoCompra/NotaDebitoCompra). */
+        final List<String> formasPagoPrimario;
 
         LineaCompra(String tipoComprobante, String establecimiento, String puntoEmision, String secuencial,
                 LocalDate fechaEmision, String autorizacion, Titular titular, String codSustento,
-                LocalDate fechaRegistro, double baseGravada, double base0, double montoIva, double montoIce) {
+                LocalDate fechaRegistro, double baseGravada, double base0, double montoIva, double montoIce,
+                List<String> formasPagoPrimario) {
             this.tipoComprobante = tipoComprobante;
             this.establecimiento = establecimiento;
             this.puntoEmision = puntoEmision;
@@ -987,6 +1137,7 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
             this.base0 = base0;
             this.montoIva = montoIva;
             this.montoIce = montoIce;
+            this.formasPagoPrimario = formasPagoPrimario;
         }
     }
 
@@ -995,6 +1146,10 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         final String tipoComprobante;
         int numeroComprob = 0;
         double baseGravada = 0.0, base0 = 0.0, baseNoObjeto = 0.0, montoIva = 0.0, montoIce = 0.0;
+        /** ÍTEM 28 (2026-09-10): ids de los documentos agrupados en esta línea -- sólo se usan
+         *  para resolver formasDePago cuando tipoComprobante="18" (factura); ver
+         *  resolverFormasDePagoVenta(). NC/ND no tienen tabla de formas de pago propia. */
+        final List<Long> idsDocumento = new ArrayList<Long>();
 
         LineaVenta(Titular titular, String tipoComprobante) {
             this.titular = titular;

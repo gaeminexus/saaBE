@@ -259,3 +259,83 @@ que coincidan al centavo con el autorizado.
 **El default `NO` de `parteRel` es una afirmación tributaria, no un default técnico.** Se aplica
 porque el archivo autorizado de julio declara `NO` en los 79 proveedores y los 19 clientes, y porque
 sin él no hay declaración hoy. Queda escrito acá para que contabilidad lo pueda desmentir.
+
+---
+
+# ANEXO B — La corrida contra el validador oficial (2026-09-10)
+
+El usuario generó el ATS de agosto con el WAR corregido y lo pasó por el validador del SRI.
+**Las ventas ya salen** — el arreglo del `estado = 5` (commit `282c3361`) funcionó: antes el anexo
+iba con `<ventas>` vacío. Quedaron **1 error de estructura, 38 errores de contenido y 19
+advertencias**, y de ahí salieron tres correcciones y dos lecciones.
+
+## B.1 ⛔ Las 19 advertencias NO son nuestras — no tocar ningún importe
+
+```
+El MONTO DE IVA [224.68] es diferente al producto de la BASE IMPONIBLE GRAVADA
+[1497.87] y el PORCENTAJE IVA [0.12] del PERIODO [8/2026]
+```
+
+**Medido: `1497.87 × 0.15 = 224.68`.** Nuestros valores están bien, al **15%**. El validador usa una
+tabla con el IVA al **12%**, que es exactamente lo que `CATALOGO-ATS.md` §7 ya documentaba como
+desactualizado en el catálogo oficial.
+
+Son **advertencias**, no errores: el anexo se presenta igual. ⛔ **Ajustar un importe para que deje
+de quejarse sería declarar mal de verdad para conformar a una tabla vencida.**
+
+## B.2 Los tres errores
+
+| # | Qué | Causa |
+|---|---|---|
+| 1 | 15 compras > USD 500 sin `<formasDePago>` | La forma de pago se sacaba de la **línea de la retención** (`DRC2.docResForPago`), que suele venir vacía. Es un dato del **documento de compra**, no de la retención |
+| 2 | Las 19 ventas sin `<formasDePago>` | **Nunca se emitió.** Ya estaba anotado como faltante en el §3 de este documento y quedó sin hacer |
+| 3 | `tipoCliente` ausente con `tpIdCliente = 06` | Ver §B.3 — **error del árbitro** |
+
+## B.3 🔴 La lección: un ejemplar autorizado prueba lo que ESTÁ, no lo que falta
+
+Toda esta semana aplicamos bien una regla: *una especificación no reemplaza un ejemplar aceptado*.
+El archivo autorizado de julio nos dio la forma correcta de `<detalleVentas>` y con eso se corrigió
+el generador.
+
+**Y en un punto la regla se aplicó de más.** El árbitro vio que `tipoCliente` no aparecía en el
+autorizado y mandó **borrarlo**. Lo que pasaba es que **julio no tuvo ningún cliente con pasaporte**,
+así que ese campo nunca se emitió ese mes. Su ausencia no probaba nada.
+
+La regla real es **condicional**: `tipoCliente` va **sólo cuando `tpIdCliente = 06`**. En agosto
+apareció un cliente con pasaporte (`C05580508`) y el validador lo reclamó.
+
+> **El corolario, para la próxima:** un ejemplar aceptado es prueba de **lo que contiene**. Para lo
+> que no contiene no dice nada — puede ser que el campo no exista, o que ese mes no se diera la
+> condición que lo exige. **Cuando un campo desaparece de la comparación, hay que preguntarse si el
+> caso que lo dispara estaba presente en la muestra.**
+
+El valor sale de `Titular.tipoProveedorAts` (`TTLRTPAT`), cuyo javadoc lo declara como Tabla 14
+(`01` persona natural, `02` sociedad) — el mismo campo que ya se usaba para `tipoProv` del lado
+compras, pese al nombre.
+
+## B.4 Y una corrección del árbitro que el ejecutor evitó a tiempo
+
+Para el error 1 el árbitro indicó usar **`FacturaCompra.getFormaPago()`** (la columna `FORMAPAGO` de
+cabecera). El ejecutor **no la usó, y avisó por qué**: `grep` sobre todo `com.saa.ejb.cxp` muestra
+que **ese campo `Long` no lo escribe nadie**. Lo que sí se puebla, directo desde el `<pago>` del XML
+del SRI y ya en dos dígitos, es la tabla dedicada **`PGS.FPFM` (`FormaPagoFacturaCompra`)`**
+(`ProcesoCargaDocumentosServiceImpl:1686-1696`).
+
+**Seguir la instrucción al pie habría producido exactamente el mismo defecto**: leer un campo
+siempre nulo y caer siempre al respaldo. Verificado por el árbitro después del aviso.
+
+Del lado ventas pasa lo contrario y también se midió: `FacturaServiceImpl` garantiza que **siempre**
+queda al menos una fila en `FormaPagoFactura` tras emitir —si la lista venía vacía, la sintetiza
+desde la cabecera y la persiste—, así que ahí la fuente con garantía de dato es la tabla, no el campo.
+
+**Nota de método:** las dos correcciones de este anexo salieron de que el ejecutor midiera antes de
+obedecer. Un encargo preciso no vuelve cierta una premisa falsa del que lo escribe.
+
+## B.5 Lo que sigue sin fuente
+
+- `NotaCreditoCompra` y `NotaDebitoCompra` **no tienen ningún campo ni tabla de forma de pago**
+  (medido). Para esas dos, `DRC2.docResForPago` es la única fuente posible.
+- Las notas de crédito y débito **de venta** tampoco tienen tabla propia: si una línea agrupada es
+  de NC o ND, el bloque no se escribe.
+- Cuando no hay forma de pago de ningún origen y el documento supera los USD 500, **se emite un
+  aviso explícito** con el documento y el total. No se deja pasar mudo.
