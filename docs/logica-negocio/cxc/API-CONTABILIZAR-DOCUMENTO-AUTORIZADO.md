@@ -1,7 +1,7 @@
 # Contabilizar un documento ya autorizado — el botón que repara
 
 **Equipo:** `omen-saa-2` · **Fecha:** 2026-09-10 · **Encargo:** el usuario.
-**Módulo:** `cxc`. **Alcance de esta primera entrega: retención V2.**
+**Módulo:** `cxc`. **Alcance: los CINCO documentos electrónicos** — decisión del usuario, 2026-09-10.
 
 ---
 
@@ -119,16 +119,54 @@ no perderlo es la mitad del valor de este botón.
 
 ---
 
-## 5. Lo que esta entrega NO hace
+## 5. Alcance: los cinco documentos — ampliado el 2026-09-10
 
-- **Sólo retención V2.** Factura, nota de crédito, nota de débito y liquidación de compra pueden
-  quedar autorizadas sin asiento por el mismo motivo, y cada una tiene su propio método de
-  contabilización. Extenderlo es el paso siguiente y el endpoint queda con forma de poder hacerlo.
-- **No toca la guarda que ata el cruce al asiento.** Hoy `aplicarPagoRetencionV2` exige que exista
-  el asiento, y el asiento se salta entero cuando `facturador.getGeneraConta() != 1`. Medido que el
-  acoplamiento **no es técnico** (`aplicarRetencionEmitida` sólo guarda el asiento como referencia y
-  la FK no exige no-nulo en el mapeo), pero soltarlo es decisión de negocio del usuario y está
-  pendiente. **Mientras siga así, un facturador sin contabilidad no va a poder cruzar ni con este
-  botón.**
+⚠️ **Este §5 decía "sólo retención V2, las otras cuatro se extienden después". El usuario decidió
+que el botón va en TODOS los documentos, y así quedó.**
+
+### 5.1 Qué método corresponde a cada uno — medido, no supuesto
+
+| Documento | Contabilidad | Aplicación de pago | Endpoint |
+|---|---|---|---|
+| **Factura** | `generarContabilidadFactura(id)` | — *(no tiene)* | `POST /rest/fctr/contabilizar/{id}` |
+| **Nota de crédito** | `generarContabilidadNotaCredito(id)` | `aplicarPagoNotaCredito(id)` | `POST /rest/ntcr/contabilizar/{id}` |
+| **Nota de débito** | `generarContabilidadNotaDebito(id)` | `aplicarPagoNotaDebito(id)` | `POST /rest/ntdb/contabilizar/{id}` |
+| **Retención V2** | `generarContabilidadRetencionV2(id)` | `aplicarPagoRetencionV2(id)` | `POST /rest/rtv2/contabilizar/{id}` |
+| **Liquidación de compra** | ⚠️ **`generarAsientoLiquidacionCompraCompra` NO está expuesto** en `LiquidacionCompraService` | — | `POST /rest/lqcs/contabilizar/{id}` |
+
+**La factura no tiene aplicación de pago y no es un olvido:** una factura de venta genera su
+cuenta por cobrar al emitirse, no una aplicación contra otro documento. Para ella el botón hace
+sólo el asiento. Lo mismo para la liquidación de compra.
+
+⛔ **La liquidación es la excepción que hay que resolver antes de cablearla:** su método de asiento
+existe pero es interno. Hay que exponerlo en la interfaz `LiquidacionCompraService` siguiendo el
+patrón de las otras cuatro (`Map<String,Object> generarContabilidadX(Long id) throws Throwable`),
+**sin cambiar su comportamiento** — es un método que ya corre en la emisión y funciona.
+
+### 5.2 Un endpoint por recurso, no uno genérico
+
+Se sigue la convención del repositorio (un recurso REST por entidad) y el patrón que la pantalla
+**ya usa**: `consulta-documentos-electronicos` tiene un `switch` por tipo para
+`consultarYActualizarEstado`, con un servicio distinto por documento. Un endpoint genérico obligaría
+a inventar un discriminador de tipo que hoy no existe en ninguna ruta.
+
+**Los cinco responden con la misma forma** (§3), para que el frontend tenga un solo manejador.
+
+### 5.3 La guarda de estado, por documento
+
+`estado = 5` (autorizado) en los cinco. Es el mismo campo sobrecargado de `CriterioVentaVigente`
+(commit `282c3361`): en estas entidades `estado` **no** es el flag genérico, es el flujo de emisión
+electrónica. **No usar `Estado.ACTIVO`.**
+
+---
+
+## 6. Lo que esta entrega NO hace
+
 - **No repara en lote.** Es de a un documento. Si aparecen muchos, se decide si vale un proceso
   masivo.
+- **No toca la guarda que ata el cruce al asiento.** `aplicarPagoRetencionV2` exige que exista el
+  asiento, y el asiento se salta cuando `facturador.getGeneraConta() != 1`. **Medido el 2026-09-10:
+  el facturador de ASOPREP tiene `GENERACONTA = 1`**, así que hoy esto no le afecta — el asiento
+  siempre aplica. Queda anotado como deuda, no como bloqueo.
+- **No cambia el camino de emisión.** Los métodos que llama son los mismos que ya usa cada
+  `procesarCompleta`, y son idempotentes.
