@@ -239,9 +239,11 @@ nodo `SAA` del árbol nuevo.
 | Barrido del frontend — ÍTEM 1 (los 9 menús) | ✅ 2026-09-10, en `saaFE/docs/seguridad/INVENTARIO-PANTALLAS-SAA.md` |
 | Barrido del frontend — ÍTEM 2 (rutas) e ÍTEM 4 (`PermisosRrh`) | ✅ 2026-09-10 |
 | Barrido del frontend — ÍTEM 3 (pantallas hijas) | 🔵 en curso |
-| `lap1-15` — `DELETE` + `INSERT` + adelanto de secuencia | ⛔ bloqueado por el CONTROL 4 del `lap1-14` y por el ÍTEM 3 |
-| Conexión en los menús (descomentar + códigos reales + interruptor) | ⛔ bloqueado por `lap1-15` |
-| Comentar las opciones sin pantalla programada (decisión 7) | 🟡 desbloqueado: son **2 casos**, los dos en `crd` |
+| Barrido del frontend — ÍTEM 3 (149 relaciones pantalla-a-pantalla) | ✅ 2026-09-10 |
+| `sql/lap1-15` — `DELETE` de 666 nodos + `INSERT` de 305 | ✅ escrito. **Pendiente de que el usuario lo corra**, después del `lap1-14` |
+| `CODIGOS-PERMISOS-SAA.md` y `API-PERMISOS-FRONTEND.md` | ✅ escritos y espejados a `saaFE/docs/seguridad/` |
+| Cableado del frontend — menús **y botones** | 🔵 despachado a `lap-saa-1-fe` el 2026-09-10, en 7 ítems con dos puntos de control |
+| Adelanto de la secuencia | ⛔ **no aplica, y está medido.** `SCP.SQ_PJRQCDGO` no existe, y SAA no podría insertar en `PJRQ` aunque existiera: `UsuarioRest` tiene siete métodos y los siete son `@GET`, y `EmpresaRest` no existe |
 
 ### 5.1 Lo que midió el barrido del frontend — 2026-09-10
 
