@@ -453,6 +453,46 @@ public class RetencionV2Rest {
 		}
 	}
 
+	/**
+	 * ÍTEM 26 (encargo 2026-09-10). Contabiliza (asiento + cruce) una retención V2 YA
+	 * AUTORIZADA a la que no se le completó el cierre. Sin cuerpo.
+	 * Ver docs/logica-negocio/cxc/API-CONTABILIZAR-DOCUMENTO-AUTORIZADO.md.
+	 *
+	 * POST /rtv2/contabilizar/{idRetencion}
+	 */
+	@POST
+	@Path("/contabilizar/{idRetencion}")
+	@Produces(MediaType.APPLICATION_JSON)
+	public Response contabilizar(@PathParam("idRetencion") Long idRetencion) {
+		System.out.println("LLEGA AL SERVICIO contabilizar RTV2 con id: " + idRetencion);
+		try {
+			java.util.Map<String, Object> resultado = retencionV2Service.contabilizarRetencionV2(idRetencion);
+			return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+
+		} catch (jakarta.persistence.NoResultException e) {
+			java.util.Map<String, Object> err = new java.util.HashMap<>();
+			err.put("exito", false);
+			err.put("mensaje", "No se encontró la retención V2 con ID: " + idRetencion);
+			return Response.status(Response.Status.NOT_FOUND).entity(err).type(MediaType.APPLICATION_JSON).build();
+
+		} catch (com.saa.basico.util.IncomeException e) {
+			java.util.Map<String, Object> err = new java.util.HashMap<>();
+			err.put("exito", false);
+			err.put("mensaje", e.getMessage());
+			return Response.status(Response.Status.CONFLICT).entity(err).type(MediaType.APPLICATION_JSON).build();
+
+		} catch (Throwable e) {
+			System.err.println("ERROR en contabilizar RTV2 REST: " + e.getMessage());
+			e.printStackTrace();
+			java.util.Map<String, Object> err = new java.util.HashMap<>();
+			err.put("exito", false);
+			err.put("mensaje", "Error inesperado al contabilizar la retención V2: " + e.getMessage());
+			err.put("error", e.getMessage());
+			return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+					.entity(err).type(MediaType.APPLICATION_JSON).build();
+		}
+	}
+
 	@GET
 	@Path("/movimientosRelacionados/{id}")
 	@Produces(MediaType.APPLICATION_JSON)

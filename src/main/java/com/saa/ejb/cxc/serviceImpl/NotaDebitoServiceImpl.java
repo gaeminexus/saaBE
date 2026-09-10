@@ -1468,7 +1468,83 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 		}
 		return resultado;
 	}
-	
+
+	/**
+	 * ÍTEM 26, encargo 2026-09-10. Contabiliza una nota de débito YA AUTORIZADA a la que no se
+	 * le completó el cierre. No escribe lógica nueva: reusa {@code generarContabilidadNotaDebito}
+	 * y, si aplicó, {@code aplicarPagoNotaDebito}. Mismo patrón que la nota de crédito y
+	 * {@code cerrarContabilidadYCruceRetencionV2}.
+	 */
+	@Override
+	public java.util.Map<String, Object> contabilizarNotaDebito(Long idNotaDebito) throws Throwable {
+		System.out.println("=== contabilizarNotaDebito | idNotaDebito=" + idNotaDebito + " ===");
+
+		// selectById lanza NoResultException si no existe -- nunca null.
+		NotaDebito notaDebito = notaDebitoDaoService.selectById(idNotaDebito, NombreEntidadesCobro.NOTA_DEBITO);
+
+		Long estado = notaDebito.getEstado();
+		if (estado == null || estado.longValue() != 5L) {
+			throw new IncomeException("La nota de débito " + idNotaDebito + " no está autorizada (estado="
+					+ estado + "). Sólo se puede contabilizar un documento autorizado.");
+		}
+
+		boolean teniaAsientoAntes = (notaDebito.getAsiento() != null);
+		List<com.saa.model.cxc.AplicacionPagoCxc> aplicacionesAntes =
+				aplicacionPagoCxcDaoService.selectActivasByDocumento("NOTA_DEBITO", idNotaDebito);
+		boolean teniaCruceAntes = aplicacionesAntes != null && !aplicacionesAntes.isEmpty();
+
+		java.util.Map<String, Object> resultado = new java.util.HashMap<>();
+		boolean asientoOk = false;
+		String advertenciaAsiento = null;
+		try {
+			java.util.Map<String, Object> resAsiento = self().generarContabilidadNotaDebito(idNotaDebito);
+			if (Boolean.TRUE.equals(resAsiento.get("aplica"))) {
+				asientoOk = true;
+				resultado.put("asiento", resAsiento.get("numeroAlterno"));
+			}
+		} catch (Throwable e) {
+			advertenciaAsiento = "No se pudo generar el asiento contable: " + e.getMessage();
+			System.err.println("⚠ Error en asiento contable de la ND " + idNotaDebito + ": " + e.getMessage());
+			e.printStackTrace();
+			try {
+				if (notaDebito.getFacturador() != null && notaDebito.getFacturador().getEmpresa() != null) {
+					Long idEmpresa = notaDebito.getFacturador().getEmpresa().getCodigo();
+					java.util.List<String> erroresContables =
+							asientoContableService.validarCuentasContablesND(notaDebito, idEmpresa);
+					resultado.put("erroresContables", erroresContables);
+				}
+			} catch (Throwable ve) {
+				System.err.println("⚠ No se pudo detallar erroresContables: " + ve.getMessage());
+			}
+		}
+
+		String advertenciaAplicacion = null;
+		if (asientoOk) {
+			try {
+				java.util.Map<String, Object> resAplicacion = self().aplicarPagoNotaDebito(idNotaDebito);
+				resultado.put("aplicacionPago", resAplicacion.get("idAplicacion"));
+			} catch (Throwable e) {
+				advertenciaAplicacion = "El asiento se generó, pero no se pudo registrar el movimiento "
+						+ "sobre la factura: " + e.getMessage();
+				System.err.println("⚠ Error al registrar el movimiento de la ND " + idNotaDebito + ": " + e.getMessage());
+				e.printStackTrace();
+			}
+		}
+
+		boolean exito = (advertenciaAsiento == null) && (advertenciaAplicacion == null);
+		boolean yaEstabaCompleto = teniaAsientoAntes && teniaCruceAntes;
+		resultado.put("exito", exito);
+		resultado.put("yaEstabaCompleto", yaEstabaCompleto);
+		if (exito) {
+			resultado.put("mensaje", yaEstabaCompleto
+					? "La nota de débito ya tenía asiento y movimiento sobre la factura."
+					: "Asiento y movimiento sobre la factura registrados.");
+		} else {
+			resultado.put("mensaje", advertenciaAsiento != null ? advertenciaAsiento : advertenciaAplicacion);
+		}
+		return resultado;
+	}
+
 	private String llamarRecepcionSRI(String url, byte[] xmlBytes, PrintWriter log) throws Exception {
 		try {
 			String xmlBase64 = java.util.Base64.getEncoder().encodeToString(xmlBytes);

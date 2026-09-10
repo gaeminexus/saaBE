@@ -914,7 +914,63 @@ public class FacturaServiceImpl implements FacturaService {
 		}
 		return resultado;
 	}
-	
+
+	/**
+	 * ÍTEM 26, encargo 2026-09-10. Contabiliza una factura YA AUTORIZADA a la que no se le
+	 * completó el asiento. No escribe lógica nueva: reusa {@code generarContabilidadFactura}.
+	 * Sin aplicación de pago -- ver javadoc de la interfaz.
+	 */
+	@Override
+	public java.util.Map<String, Object> contabilizarFactura(Long idFactura) throws Throwable {
+		System.out.println("=== contabilizarFactura | idFactura=" + idFactura + " ===");
+
+		// selectById lanza NoResultException si no existe -- nunca null.
+		Factura factura = facturaDaoService.selectById(idFactura, NombreEntidadesCobro.FACTURA);
+
+		Long estado = factura.getEstado();
+		if (estado == null || estado.longValue() != 5L) {
+			throw new IncomeException("La factura " + idFactura + " no está autorizada (estado="
+					+ estado + "). Sólo se puede contabilizar un documento autorizado.");
+		}
+
+		boolean teniaAsientoAntes = (factura.getAsiento() != null);
+
+		java.util.Map<String, Object> resultado = new java.util.HashMap<>();
+		boolean exito = true;
+		String mensaje;
+		try {
+			java.util.Map<String, Object> resAsiento = self().generarContabilidadFactura(idFactura);
+			if (Boolean.TRUE.equals(resAsiento.get("aplica"))) {
+				resultado.put("asiento", resAsiento.get("numeroAlterno"));
+			}
+			mensaje = teniaAsientoAntes ? "La factura ya tenía asiento contable." : "Asiento registrado.";
+		} catch (Throwable e) {
+			exito = false;
+			System.err.println("⚠ Error en asiento contable de la factura " + idFactura + ": " + e.getMessage());
+			e.printStackTrace();
+			mensaje = "No se pudo generar el asiento contable: " + e.getMessage();
+			try {
+				if (factura.getFacturador() != null && factura.getFacturador().getEmpresa() != null) {
+					Long idEmpresa = factura.getFacturador().getEmpresa().getCodigo();
+					@SuppressWarnings("unchecked")
+					java.util.List<DetalleFactura> detalles = em.createQuery(
+							"select d from DetalleFactura d where d.factura.id = :id")
+							.setParameter("id", idFactura).getResultList();
+					java.util.List<String> erroresContables = asientoContableService.validarCuentasContables(
+							factura.getTitular(), detalles, idEmpresa);
+					resultado.put("erroresContables", erroresContables);
+				}
+			} catch (Throwable ve) {
+				System.err.println("⚠ No se pudo detallar erroresContables: " + ve.getMessage());
+			}
+		}
+
+		resultado.put("exito", exito);
+		resultado.put("yaEstabaCompleto", teniaAsientoAntes);
+		resultado.put("mensaje", mensaje);
+		return resultado;
+	}
+
 	@Override
 	public String[] generarXMLFactura(String clave, Long ambiente) throws Throwable {
 		System.out.println("Ingresa al metodo generarXMLFactura con clave: " + clave + " y ambiente: " + ambiente);

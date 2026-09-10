@@ -275,6 +275,46 @@ public class FacturaRest {
 		}
 	}
 
+	/**
+	 * ÍTEM 26 (encargo 2026-09-10). Contabiliza una factura YA AUTORIZADA a la que no se le
+	 * completó el asiento. Sin cuerpo.
+	 * Ver docs/logica-negocio/cxc/API-CONTABILIZAR-DOCUMENTO-AUTORIZADO.md.
+	 *
+	 * POST /fctr/contabilizar/{idFactura}
+	 */
+	@POST
+	@Path("/contabilizar/{idFactura}")
+	@Produces(MediaType.APPLICATION_JSON)
+	public Response contabilizar(@PathParam("idFactura") Long idFactura) {
+		System.out.println("LLEGA AL SERVICIO contabilizar Factura con id: " + idFactura);
+		try {
+			java.util.Map<String, Object> resultado = facturaService.contabilizarFactura(idFactura);
+			return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+
+		} catch (jakarta.persistence.NoResultException e) {
+			java.util.Map<String, Object> err = new java.util.HashMap<>();
+			err.put("exito", false);
+			err.put("mensaje", "No se encontró la factura con ID: " + idFactura);
+			return Response.status(Response.Status.NOT_FOUND).entity(err).type(MediaType.APPLICATION_JSON).build();
+
+		} catch (com.saa.basico.util.IncomeException e) {
+			java.util.Map<String, Object> err = new java.util.HashMap<>();
+			err.put("exito", false);
+			err.put("mensaje", e.getMessage());
+			return Response.status(Response.Status.CONFLICT).entity(err).type(MediaType.APPLICATION_JSON).build();
+
+		} catch (Throwable e) {
+			System.err.println("ERROR en contabilizar Factura REST: " + e.getMessage());
+			e.printStackTrace();
+			java.util.Map<String, Object> err = new java.util.HashMap<>();
+			err.put("exito", false);
+			err.put("mensaje", "Error inesperado al contabilizar la factura: " + e.getMessage());
+			err.put("error", e.getMessage());
+			return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+					.entity(err).type(MediaType.APPLICATION_JSON).build();
+		}
+	}
+
 	@DELETE
 	@Path("/{id}")
 	@Produces(MediaType.APPLICATION_JSON)

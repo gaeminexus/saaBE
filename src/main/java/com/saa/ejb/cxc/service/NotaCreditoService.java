@@ -141,4 +141,18 @@ public interface NotaCreditoService extends EntityService<NotaCredito> {
      */
     java.util.Map<String, Object> consultarYActualizarEstadoNotaCredito(Long idNotaCredito) throws Throwable;
 
+    /**
+     * ÍTEM 26 (docs/logica-negocio/cxc/API-CONTABILIZAR-DOCUMENTO-AUTORIZADO.md), encargo
+     * 2026-09-10. Genera el asiento contable y el abono a la factura de una nota de crédito YA
+     * AUTORIZADA por el SRI a la que no se le completó el cierre. No escribe lógica nueva:
+     * reusa {@code generarContabilidadNotaCredito} y, si aplicó, {@code aplicarPagoNotaCredito}.
+     *
+     * @param idNotaCredito : Id de la nota de crédito, debe estar en estado 5 (autorizada)
+     * @return : Mapa con exito, asiento, aplicacionPago, yaEstabaCompleto, erroresContables,
+     *           mensaje
+     * @throws IncomeException si no existe la nota de crédito, o si su estado no es 5
+     * @throws Throwable : cualquier otro error inesperado
+     */
+    java.util.Map<String, Object> contabilizarNotaCredito(Long idNotaCredito) throws Throwable;
+
 }

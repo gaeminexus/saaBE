@@ -182,4 +182,20 @@ public interface RetencionV2Service extends EntityService<RetencionV2> {
 	 */
 	java.util.Map<String, Object> reenviarRetencionV2AlSri(Long idRetencion) throws Throwable;
 
+	/**
+	 * ÍTEM 26 (docs/logica-negocio/cxc/API-CONTABILIZAR-DOCUMENTO-AUTORIZADO.md), encargo
+	 * 2026-09-10. Genera el asiento contable y el cruce con la factura de compra de una
+	 * retención V2 YA AUTORIZADA por el SRI a la que, por cualquier motivo, no se le completó
+	 * el cierre (base caída, cuenta contable borrada entre validación y emisión, etc.). No
+	 * escribe lógica nueva: reusa {@code cerrarContabilidadYCruceRetencionV2}, el mismo método
+	 * que ya usan la emisión y el reenvío.
+	 *
+	 * @param idRetencion : Id de la retención V2, debe estar en estado 5 (autorizada)
+	 * @return : Mapa con exito, asiento, aplicacionPago, yaEstabaCompleto, erroresContables,
+	 *           mensaje
+	 * @throws IncomeException si no existe la retención, o si su estado no es 5
+	 * @throws Throwable : cualquier otro error inesperado
+	 */
+	java.util.Map<String, Object> contabilizarRetencionV2(Long idRetencion) throws Throwable;
+
 }

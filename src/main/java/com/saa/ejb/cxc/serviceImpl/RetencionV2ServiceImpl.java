@@ -1350,6 +1350,94 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 		}
 	}
 
+	/**
+	 * ÍTEM 26, encargo 2026-09-10. Contabiliza (asiento + cruce) una retención V2 YA
+	 * AUTORIZADA a la que no se le completó el cierre. No escribe lógica nueva: reusa
+	 * {@code cerrarContabilidadYCruceRetencionV2}. Si el asiento no se pudo generar, agrega
+	 * {@code erroresContables} con el detalle que ya produce {@code validarCuentasContablesRetencion}
+	 * -- mismo validador que usa el PASO 0 de la emisión, para no obligar al usuario a adivinar
+	 * qué cuenta falta.
+	 */
+	@Override
+	public java.util.Map<String, Object> contabilizarRetencionV2(Long idRetencion) throws Throwable {
+		System.out.println("=== contabilizarRetencionV2 | idRetencion=" + idRetencion + " ===");
+
+		// selectById lanza NoResultException si no existe -- nunca null (ver ítem 12).
+		RetencionV2 retencion = retencionV2DaoService.selectById(idRetencion, NombreEntidadesCobro.RETENCION_V2);
+
+		Long estado = retencion.getEstado();
+		if (estado == null || estado.longValue() != 5L) {
+			throw new IncomeException("La retención V2 " + idRetencion + " no está autorizada (estado="
+					+ estado + "). Sólo se puede contabilizar un documento autorizado.");
+		}
+
+		boolean teniaAsientoAntes = (retencion.getAsiento() != null);
+		List<com.saa.model.cxp.AplicacionPagoCxp> aplicacionesAntes =
+				aplicacionPagoCxpDaoService.selectActivasByDocumento("RETENCION_V2", idRetencion);
+		boolean teniaCruceAntes = aplicacionesAntes != null && !aplicacionesAntes.isEmpty();
+
+		java.util.Map<String, Object> resultado = new java.util.HashMap<>();
+		cerrarContabilidadYCruceRetencionV2(idRetencion, resultado);
+
+		if (Boolean.TRUE.equals(resultado.get("contabilidadPendiente"))) {
+			agregarErroresContablesRetencionV2(retencion, resultado);
+		}
+
+		boolean exito = !Boolean.TRUE.equals(resultado.get("contabilidadPendiente"))
+				&& !Boolean.TRUE.equals(resultado.get("cruceFacturaPendiente"));
+		boolean yaEstabaCompleto = teniaAsientoAntes && teniaCruceAntes;
+
+		resultado.put("exito", exito);
+		resultado.put("yaEstabaCompleto", yaEstabaCompleto);
+		if (exito) {
+			resultado.put("mensaje", yaEstabaCompleto
+					? "La retención ya tenía asiento y cruce."
+					: "Asiento y cruce registrados.");
+		} else if (Boolean.TRUE.equals(resultado.get("contabilidadPendiente"))) {
+			resultado.put("mensaje", nvl((String) resultado.get("advertenciaAsiento"),
+					"No se pudo generar el asiento contable."));
+		} else {
+			resultado.put("mensaje", nvl((String) resultado.get("advertenciaAplicacion"),
+					"El asiento se generó, pero no se pudo registrar el cruce con la factura."));
+		}
+		return resultado;
+	}
+
+	/**
+	 * Arma {@code erroresContables} igual que el PASO 0 de la emisión: convierte los detalles
+	 * V2 a {@code DetalleRetencion} (V1) para reusar {@code validarCuentasContablesRetencion}
+	 * sin duplicar la lógica de validación. Si esto mismo falla, no tumba la respuesta del
+	 * botón -- sólo se queda sin la lista detallada.
+	 */
+	private void agregarErroresContablesRetencionV2(RetencionV2 retencion, java.util.Map<String, Object> resultado) {
+		try {
+			if (retencion.getFacturador() == null || retencion.getFacturador().getEmpresa() == null) {
+				return;
+			}
+			Long idEmpresa = retencion.getFacturador().getEmpresa().getCodigo();
+			@SuppressWarnings("unchecked")
+			List<DetalleRetencionV2> detalles = em.createQuery(
+					"select d from DetalleRetencionV2 d where d.retencionV2.id = :id")
+					.setParameter("id", retencion.getId()).getResultList();
+			java.util.List<com.saa.model.cxc.DetalleRetencion> detallesParaValidar = new java.util.ArrayList<>();
+			for (DetalleRetencionV2 d : detalles) {
+				com.saa.model.cxc.DetalleRetencion dr = new com.saa.model.cxc.DetalleRetencion();
+				dr.setCodImpuesto(d.getCodImpuesto());
+				dr.setCodRetencion(d.getCodRetencion());
+				dr.setValorReten(d.getValorReten());
+				detallesParaValidar.add(dr);
+			}
+			com.saa.model.cxc.Retencion retencionDummy = new com.saa.model.cxc.Retencion();
+			retencionDummy.setProveedor(retencion.getProveedor());
+			java.util.List<String> erroresContables = asientoContableService.validarCuentasContablesRetencion(
+					retencionDummy, detallesParaValidar, idEmpresa);
+			resultado.put("erroresContables", erroresContables);
+		} catch (Throwable e) {
+			System.err.println("⚠ No se pudo detallar erroresContables de la retención V2 "
+					+ retencion.getId() + ": " + e.getMessage());
+		}
+	}
+
 	private String llamarRecepcionSRI(String url, byte[] xmlBytes, PrintWriter log) throws Exception {
 		try {
 			String xmlBase64 = java.util.Base64.getEncoder().encodeToString(xmlBytes);

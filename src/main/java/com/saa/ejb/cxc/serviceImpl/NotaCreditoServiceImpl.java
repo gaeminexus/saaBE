@@ -1477,7 +1477,89 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 		}
 		return resultado;
 	}
-	
+
+	/**
+	 * ÍTEM 26, encargo 2026-09-10. Contabiliza una nota de crédito YA AUTORIZADA a la que no se
+	 * le completó el cierre. No escribe lógica nueva: reusa {@code generarContabilidadNotaCredito}
+	 * y, si aplicó, {@code aplicarPagoNotaCredito}. Mismo patrón que
+	 * {@code cerrarContabilidadYCruceRetencionV2} (RetencionV2ServiceImpl): un error en
+	 * cualquiera de los dos pasos no tumba la respuesta, y si falta una cuenta contable se
+	 * detalla en {@code erroresContables}.
+	 */
+	@Override
+	public java.util.Map<String, Object> contabilizarNotaCredito(Long idNotaCredito) throws Throwable {
+		System.out.println("=== contabilizarNotaCredito | idNotaCredito=" + idNotaCredito + " ===");
+
+		// selectById lanza NoResultException si no existe -- nunca null.
+		NotaCredito notaCredito = notaCreditoDaoService.selectById(idNotaCredito, NombreEntidadesCobro.NOTA_CREDITO);
+
+		Long estado = notaCredito.getEstado();
+		if (estado == null || estado.longValue() != 5L) {
+			throw new IncomeException("La nota de crédito " + idNotaCredito + " no está autorizada (estado="
+					+ estado + "). Sólo se puede contabilizar un documento autorizado.");
+		}
+
+		boolean teniaAsientoAntes = (notaCredito.getAsiento() != null);
+		List<com.saa.model.cxc.AplicacionPagoCxc> aplicacionesAntes =
+				aplicacionPagoCxcDaoService.selectActivasByDocumento("NOTA_CREDITO", idNotaCredito);
+		boolean teniaCruceAntes = aplicacionesAntes != null && !aplicacionesAntes.isEmpty();
+
+		java.util.Map<String, Object> resultado = new java.util.HashMap<>();
+		boolean asientoOk = false;
+		String advertenciaAsiento = null;
+		try {
+			java.util.Map<String, Object> resAsiento = self().generarContabilidadNotaCredito(idNotaCredito);
+			if (Boolean.TRUE.equals(resAsiento.get("aplica"))) {
+				asientoOk = true;
+				resultado.put("asiento", resAsiento.get("numeroAlterno"));
+			}
+		} catch (Throwable e) {
+			advertenciaAsiento = "No se pudo generar el asiento contable: " + e.getMessage();
+			System.err.println("⚠ Error en asiento contable de la NC " + idNotaCredito + ": " + e.getMessage());
+			e.printStackTrace();
+			try {
+				if (notaCredito.getFacturador() != null && notaCredito.getFacturador().getEmpresa() != null) {
+					Long idEmpresa = notaCredito.getFacturador().getEmpresa().getCodigo();
+					@SuppressWarnings("unchecked")
+					java.util.List<com.saa.model.cxc.DetalleNotaCredito> detalles = em.createQuery(
+							"select d from DetalleNotaCredito d where d.notaCredito.id = :id")
+							.setParameter("id", idNotaCredito).getResultList();
+					java.util.List<String> erroresContables = asientoContableService.validarCuentasContablesNC(
+							notaCredito.getTitular(), detalles, idEmpresa);
+					resultado.put("erroresContables", erroresContables);
+				}
+			} catch (Throwable ve) {
+				System.err.println("⚠ No se pudo detallar erroresContables: " + ve.getMessage());
+			}
+		}
+
+		String advertenciaAplicacion = null;
+		if (asientoOk) {
+			try {
+				java.util.Map<String, Object> resAplicacion = self().aplicarPagoNotaCredito(idNotaCredito);
+				resultado.put("aplicacionPago", resAplicacion.get("idAplicacion"));
+			} catch (Throwable e) {
+				advertenciaAplicacion = "El asiento se generó, pero no se pudo registrar el abono a la "
+						+ "factura: " + e.getMessage();
+				System.err.println("⚠ Error al registrar el abono de la NC " + idNotaCredito + ": " + e.getMessage());
+				e.printStackTrace();
+			}
+		}
+
+		boolean exito = (advertenciaAsiento == null) && (advertenciaAplicacion == null);
+		boolean yaEstabaCompleto = teniaAsientoAntes && teniaCruceAntes;
+		resultado.put("exito", exito);
+		resultado.put("yaEstabaCompleto", yaEstabaCompleto);
+		if (exito) {
+			resultado.put("mensaje", yaEstabaCompleto
+					? "La nota de crédito ya tenía asiento y abono a la factura."
+					: "Asiento y abono a la factura registrados.");
+		} else {
+			resultado.put("mensaje", advertenciaAsiento != null ? advertenciaAsiento : advertenciaAplicacion);
+		}
+		return resultado;
+	}
+
 	// =========================================================================
 	// anularNotaCredito
 	// =========================================================================

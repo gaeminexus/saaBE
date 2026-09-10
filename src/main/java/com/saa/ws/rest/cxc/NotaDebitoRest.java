@@ -166,6 +166,46 @@ public class NotaDebitoRest {
 		return mapper;
 	}
 	
+	/**
+	 * ÍTEM 26 (encargo 2026-09-10). Contabiliza una nota de débito YA AUTORIZADA a la que no se
+	 * le completó el cierre. Sin cuerpo.
+	 * Ver docs/logica-negocio/cxc/API-CONTABILIZAR-DOCUMENTO-AUTORIZADO.md.
+	 *
+	 * POST /ntdb/contabilizar/{idNotaDebito}
+	 */
+	@POST
+	@Path("/contabilizar/{idNotaDebito}")
+	@Produces(MediaType.APPLICATION_JSON)
+	public Response contabilizar(@PathParam("idNotaDebito") Long idNotaDebito) {
+		System.out.println("LLEGA AL SERVICIO contabilizar NotaDebito con id: " + idNotaDebito);
+		try {
+			java.util.Map<String, Object> resultado = notaDebitoService.contabilizarNotaDebito(idNotaDebito);
+			return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+
+		} catch (jakarta.persistence.NoResultException e) {
+			java.util.Map<String, Object> err = new java.util.HashMap<>();
+			err.put("exito", false);
+			err.put("mensaje", "No se encontró la nota de débito con ID: " + idNotaDebito);
+			return Response.status(Response.Status.NOT_FOUND).entity(err).type(MediaType.APPLICATION_JSON).build();
+
+		} catch (com.saa.basico.util.IncomeException e) {
+			java.util.Map<String, Object> err = new java.util.HashMap<>();
+			err.put("exito", false);
+			err.put("mensaje", e.getMessage());
+			return Response.status(Response.Status.CONFLICT).entity(err).type(MediaType.APPLICATION_JSON).build();
+
+		} catch (Throwable e) {
+			System.err.println("ERROR en contabilizar NotaDebito REST: " + e.getMessage());
+			e.printStackTrace();
+			java.util.Map<String, Object> err = new java.util.HashMap<>();
+			err.put("exito", false);
+			err.put("mensaje", "Error inesperado al contabilizar la nota de débito: " + e.getMessage());
+			err.put("error", e.getMessage());
+			return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+					.entity(err).type(MediaType.APPLICATION_JSON).build();
+		}
+	}
+
 	@DELETE
 	@Path("/{id}")
 	@Produces(MediaType.APPLICATION_JSON)

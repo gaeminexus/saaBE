@@ -139,4 +139,18 @@ public interface NotaDebitoService extends EntityService<NotaDebito> {
      */
     java.util.Map<String, Object> consultarYActualizarEstadoNotaDebito(Long idNotaDebito) throws Throwable;
 
+    /**
+     * ÍTEM 26 (docs/logica-negocio/cxc/API-CONTABILIZAR-DOCUMENTO-AUTORIZADO.md), encargo
+     * 2026-09-10. Genera el asiento contable y el movimiento sobre la factura de una nota de
+     * débito YA AUTORIZADA por el SRI a la que no se le completó el cierre. No escribe lógica
+     * nueva: reusa {@code generarContabilidadNotaDebito} y, si aplicó, {@code aplicarPagoNotaDebito}.
+     *
+     * @param idNotaDebito : Id de la nota de débito, debe estar en estado 5 (autorizada)
+     * @return : Mapa con exito, asiento, aplicacionPago, yaEstabaCompleto, erroresContables,
+     *           mensaje
+     * @throws IncomeException si no existe la nota de débito, o si su estado no es 5
+     * @throws Throwable : cualquier otro error inesperado
+     */
+    java.util.Map<String, Object> contabilizarNotaDebito(Long idNotaDebito) throws Throwable;
+
 }

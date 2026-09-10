@@ -172,4 +172,19 @@ public interface FacturaService extends EntityService<Factura> {
          */
         java.util.List<java.util.Map<String, Object>> movimientosRelacionadosFactura(Long idFactura)
                         throws Throwable;
+
+        /**
+         * ÍTEM 26 (docs/logica-negocio/cxc/API-CONTABILIZAR-DOCUMENTO-AUTORIZADO.md), encargo
+         * 2026-09-10. Genera el asiento contable de una factura YA AUTORIZADA por el SRI a la
+         * que no se le completó el asiento (base caída, cuenta borrada entre validación y
+         * emisión, etc.). No escribe lógica nueva: reusa {@code generarContabilidadFactura}. La
+         * factura no tiene aplicación de pago -- genera su cuenta por cobrar al emitirse, no
+         * una aplicación contra otro documento.
+         *
+         * @param idFactura : Id de la factura, debe estar en estado 5 (autorizada)
+         * @return : Mapa con exito, asiento, yaEstabaCompleto, erroresContables, mensaje
+         * @throws IncomeException si no existe la factura, o si su estado no es 5
+         * @throws Throwable : cualquier otro error inesperado
+         */
+        java.util.Map<String, Object> contabilizarFactura(Long idFactura) throws Throwable;
 }
