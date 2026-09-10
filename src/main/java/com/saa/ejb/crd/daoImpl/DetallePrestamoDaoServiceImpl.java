@@ -776,6 +776,49 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 
 	@SuppressWarnings("unchecked")
 	@Override
+	public List<Object[]> selectCapitalCuotasByPrestamos(List<Long> codigosPrestamo) throws Throwable {
+		System.out.println("DetallePrestamoDaoServiceImpl.selectCapitalCuotasByPrestamos - préstamos solicitados: "
+				+ (codigosPrestamo != null ? codigosPrestamo.size() : 0));
+
+		if (codigosPrestamo == null || codigosPrestamo.isEmpty()) {
+			return new ArrayList<>();
+		}
+
+		// SUM AGRUPADO en la base a propósito: una fila por préstamo, no una por cuota — mismo
+		// requisito de rendimiento del resto de este endpoint. Trae las DOS sumas de una vez
+		// (capital liquidado y capital total) para no duplicar la consulta: el llamador decide
+		// cuál usar según el estado del PRÉSTAMO (no de la cuota) — ver javadoc de la interfaz.
+		// Mismas constantes de estado que selectCuotasPendientesByPrestamoOrdenadas (PAGADA,
+		// CANCELADA_ANTICIPADA), acá con IN en vez de NOT IN: son las complementarias exactas.
+		String jpql = "SELECT d.prestamo.codigo, " +
+					 "       SUM(CASE WHEN d.estado IN (:estadoPagada, :estadoCanceladaAnticipada) " +
+					 "                THEN d.capital ELSE 0 END), " +
+					 "       SUM(d.capital) " +
+					 "FROM DetallePrestamo d " +
+					 "WHERE d.prestamo.codigo IN :codigos " +
+					 "GROUP BY d.prestamo.codigo";
+
+		// Fragmentado en bloques de 900: Oracle limita IN (...) a 1000 elementos (ORA-01795).
+		final int TAMANIO_BLOQUE = 900;
+		List<Object[]> resultados = new ArrayList<>();
+		for (int inicio = 0; inicio < codigosPrestamo.size(); inicio += TAMANIO_BLOQUE) {
+			List<Long> bloque = codigosPrestamo.subList(inicio,
+					Math.min(inicio + TAMANIO_BLOQUE, codigosPrestamo.size()));
+
+			Query query = em.createQuery(jpql);
+			query.setParameter("codigos", bloque);
+			query.setParameter("estadoPagada", (long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
+			query.setParameter("estadoCanceladaAnticipada", (long) com.saa.rubros.EstadoCuotaPrestamo.CANCELADA_ANTICIPADA);
+
+			resultados.addAll(query.getResultList());
+		}
+
+		System.out.println("  Préstamos con cuotas: " + resultados.size());
+		return resultados;
+	}
+
+	@SuppressWarnings("unchecked")
+	@Override
 	public List<DetallePrestamo> selectCuotasByPrestamoDesdeNumero(Long codigoPrestamo, Double numeroCuotaExclusivo) throws Throwable {
 		System.out.println("DetallePrestamoDaoServiceImpl.selectCuotasByPrestamoDesdeNumero - Préstamo: " + codigoPrestamo
 			+ " - desde (exclusivo): " + numeroCuotaExclusivo);

@@ -60,34 +60,50 @@ public interface PagoPrestamoDaoService extends EntityDao<PagoPrestamo> {
 	List<Object[]> selectDatosPagosVigentes(List<Long> codigosDetallePrestamo) throws Throwable;
 
 	/**
-	 * Capital pagado ACUMULADO de VARIOS préstamos, con UN {@code SUM} AGRUPADO en la base —
-	 * una fila por préstamo, no una por pago (un préstamo con 200 pagos históricos aporta 1
-	 * fila). Es el acumulado histórico completo: de TODAS las cuotas del préstamo, no sólo las
-	 * pendientes (docs/logica-negocio/crd/API-SALDOS-PRESTAMO.md §3, columna
-	 * {@code capitalPagado}, «Capital Pagado» en pantalla).
+	 * Capital ABONADO (Σ {@code PGPRCPPG} de pagos vigentes) de las cuotas EN_MORA (5) o
+	 * PARCIAL (6) de VARIOS préstamos, con UN {@code SUM} AGRUPADO en la base — una fila por
+	 * préstamo, no una por pago. Tercio «en mora/parcial» de {@code capitalPagado}
+	 * (docs/logica-negocio/crd/API-SALDOS-PRESTAMO.md §3bis): decisión del usuario 2026-09-10
+	 * — de una cuota PAGADA o CANCELADA_ANTICIPADA se confía en {@code DTPRCPTL}, no en
+	 * {@code PGPR} (la migración no siempre dejó completo el registro de pago de una cuota ya
+	 * liquidada); ESE otro tercio sale de
+	 * {@code DetallePrestamoDaoService#selectCapitalCuotasByPrestamos}.
+	 *
+	 * <p>⚠️ <b>PENDIENTE (1) NO entra acá, aunque tenga pagos vigentes registrados.</b> Segunda
+	 * decisión del usuario, textual: <i>«para el caso de cuotas en estado pendientes, ahí
+	 * aunque exista un valor de pago, se debe asumir que todo el capital de esa cuota no fue
+	 * pagado»</i>. Una cuota PENDIENTE aporta 0 a {@code capitalPagado} sin importar qué diga
+	 * {@code PGPR}. Tabla completa en §3bis: 4/7 → {@code d.capital}; 5/6 → esta consulta;
+	 * 1 y cualquier otro estado (incluido {@code NULL}) → 0.</p>
+	 *
+	 * <p>La condición de estado {@code IN (:estadoEnMora, :estadoParcial)} NO es un detalle:
+	 * sin ella se contaría capital que no corresponde (PENDIENTE) o dos veces el de las
+	 * liquidadas, y {@code capitalPagado} dejaría de significar lo que pide el usuario.</p>
 	 *
 	 * <p>Llega al préstamo por {@code p.detallePrestamo.prestamo.codigo} (navega por la cuota),
 	 * NO por {@code p.prestamo.codigo}: esa FK directa en {@code CRD.PGPR} puede venir
 	 * {@code NULL} en pagos viejos, mientras que todo {@code PagoPrestamo} tiene una cuota y
 	 * toda cuota tiene un préstamo.</p>
 	 *
-	 * <p>Mismo criterio de vigencia que {@link #selectVigentesByIdDetallePrestamo(Long)}.
+	 * <p>Mismo criterio de vigencia que {@link #selectVigentesByIdDetallePrestamo(Long)}, y
+	 * las constantes de {@code EstadoCuotaPrestamo} (EN_MORA, PARCIAL) — no literales 5/6.
 	 * Fragmenta internamente en bloques de 900 (ORA-01795).</p>
 	 *
-	 * <p>Un préstamo sin pagos vigentes NO genera fila (el {@code GROUP BY} no la produce); el
-	 * llamador debe tratar la ausencia como 0.0, igual que un {@code SUM} sobre solo nulos
-	 * (que Oracle devuelve como {@code NULL}, no como 0).</p>
+	 * <p>Un préstamo sin pagos vigentes de cuotas EN_MORA/PARCIAL NO genera fila (el
+	 * {@code GROUP BY} no la produce); el llamador debe tratar la ausencia como 0.0, igual que
+	 * un {@code SUM} sobre solo nulos (que Oracle devuelve como {@code NULL}, no como 0).</p>
 	 *
 	 * <p>A propósito y al REVÉS de la convención de sus vecinos en esta clase, <b>NO atrapa la
 	 * excepción</b>: ver {@link #selectDatosPagosVigentes(List)}.</p>
 	 *
 	 * @param codigosPrestamo Códigos de préstamo
-	 * @return Filas {@code Object[]{Long idPrestamo, Double sumaCapitalPagado}}; SIN fila para
-	 *         los préstamos sin pagos vigentes; {@code sumaCapitalPagado} puede venir
-	 *         {@code null} si todos los pagos del préstamo tienen el capital en null
+	 * @return Filas {@code Object[]{Long idPrestamo, Double sumaCapitalAbonado}}; SIN fila para
+	 *         los préstamos sin pagos vigentes de cuotas EN_MORA/PARCIAL;
+	 *         {@code sumaCapitalAbonado} puede venir {@code null} si todos esos pagos tienen el
+	 *         capital en null
 	 * @throws Throwable Si ocurre algún error
 	 */
-	List<Object[]> selectCapitalPagadoByPrestamos(List<Long> codigosPrestamo) throws Throwable;
+	List<Object[]> selectCapitalAbonadoEnMoraOParcialByPrestamos(List<Long> codigosPrestamo) throws Throwable;
 
 	/**
 	 * Pagos de un evento (para anulación/consulta), ordenados por código ASC.

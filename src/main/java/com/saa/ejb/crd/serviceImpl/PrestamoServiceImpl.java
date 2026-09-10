@@ -1098,16 +1098,27 @@ public class PrestamoServiceImpl implements PrestamoService {
 		// EN LOTE, no préstamo por préstamo: MotorPagoPrestamoServiceImpl.calcularSaldosCuota
 		// de UN argumento (línea ~116) consulta los pagos vigentes POR CUOTA. Sobre una página
 		// de 100 préstamos eso eran miles de consultas donde antes había cien. Acá se trae TODO
-		// con 4 llamadas (fragmentadas por dentro): préstamos existentes, cuotas pendientes,
-		// pagos de esas cuotas, y capital pagado agrupado. Se calcula en memoria con la
-		// variante PURA de 2 argumentos, sobre objetos TRANSITORIOS (new + setters, nunca
-		// gestionados por el EntityManager). NO volver a un bucle de una consulta por préstamo
-		// NI a leer las cuotas/pagos como entidades: DetallePrestamo.prestamo y los @ManyToOne
-		// de PagoPrestamo son EAGER (default de JPA) y arrastran en cascada Entidad, Producto,
-		// Filial, MotivoPrestamo, etc. — Hibernate hidrataba el grafo completo de cada fila.
-		// Las consultas de abajo son proyecciones ESCALARES (Object[]) a propósito.
-		List<Long> existentes = prestamoDaoService.selectCodigosExistentes(codigosPrestamo);
-		Set<Long> existentesSet = new HashSet<>(existentes);
+		// con 5 llamadas (fragmentadas por dentro): préstamos existentes + su idEstado, cuotas
+		// pendientes, pagos de esas cuotas, capital de cuotas por préstamo (liquidado y total,
+		// agrupados en una sola consulta), y capital abonado en mora/parcial agrupado. Se
+		// calcula en memoria con la variante PURA de 2 argumentos, sobre objetos TRANSITORIOS
+		// (new + setters, nunca gestionados por el EntityManager). NO volver a un bucle de una
+		// consulta por préstamo NI a leer las cuotas/pagos como entidades: DetallePrestamo
+		// .prestamo y los @ManyToOne de PagoPrestamo son EAGER (default de JPA) y arrastran en
+		// cascada Entidad, Producto, Filial, MotivoPrestamo, etc. — Hibernate hidrataba el
+		// grafo completo de cada fila. Las consultas de abajo son proyecciones ESCALARES
+		// (Object[]) a propósito.
+		List<Object[]> filasExistentes = prestamoDaoService.selectCodigosYEstadoExistentes(codigosPrestamo);
+		Set<Long> existentesSet = new HashSet<>();
+		Map<Long, Long> estadoPrestamoPorId = new LinkedHashMap<>();
+		List<Long> existentes = new ArrayList<>();
+		for (Object[] fila : filasExistentes) {
+			Long idP = fila[0] != null ? ((Number) fila[0]).longValue() : null;
+			Long idEstadoP = fila[1] != null ? ((Number) fila[1]).longValue() : null;
+			existentesSet.add(idP);
+			existentes.add(idP);
+			estadoPrestamoPorId.put(idP, idEstadoP);
+		}
 
 		// Cuotas PENDIENTES escalares → saldoCapital/saldoTotal. d.prestamo.codigo en JPQL usa
 		// la FK directa, sin join ni hidratación.
@@ -1158,16 +1169,44 @@ public class PrestamoServiceImpl implements PrestamoService {
 			pagosPorCuota.computeIfAbsent(idCuotaDelPago, k -> new ArrayList<>()).add(pago);
 		}
 
-		// Capital pagado ACUMULADO por préstamo (TODAS sus cuotas, no solo las pendientes):
-		// un SOLO SUM agrupado en la base, una fila por préstamo — a pedido explícito del
-		// usuario, para no traer filas de pago a Java para este cálculo. SUM sobre solo nulos
-		// o préstamo sin pagos vigentes (sin fila) se tratan igual: 0.0, nunca null.
-		List<Object[]> filasCapitalPagado = pagoPrestamoDaoService.selectCapitalPagadoByPrestamos(existentes);
-		Map<Long, Double> capitalPagadoPorPrestamo = new LinkedHashMap<>();
-		for (Object[] fila : filasCapitalPagado) {
+		// capitalPagado — regla en TRES niveles (usuario, 2026-09-10, API-SALDOS-PRESTAMO.md
+		// §3bis), el primero manda sobre los otros dos:
+		//   0) Préstamo en estado TERMINAL (CANCELADO 3, CANCELADO_ANTICIPADO 4,
+		//      CANCELADO_POR_NOVACION 5 — los mismos tres que
+		//      MotorPagoPrestamoServiceImpl.esEstadoTerminalPrestamo, método privado del Impl,
+		//      por eso se repiten las tres constantes acá en vez de llamarlo) → TODO su capital
+		//      se da por pagado, sin mirar el estado de cada cuota (hay cuotas mal marcadas en
+		//      préstamos precancelados, defecto P21). Un préstamo cancelado tiene saldo 0; si
+		//      capitalPagado no fuera el total, la fila mostraría Monto $10.000, Capital
+		//      Pagado $0 y Saldo $0 — no cierra. Con esto, Monto − Capital Pagado = Saldo
+		//      Capital se sostiene también en los cancelados.
+		//   Para cualquier otro préstamo, por estado de CUOTA:
+		//   1) LIQUIDADA (PAGADA o CANCELADA_ANTICIPADA) → aporta d.capital (DTPRCPTL): la
+		//      migración no siempre dejó completo el registro de pago de una cuota ya
+		//      liquidada, así que PGPR no es confiable ahí.
+		//   2) EN_MORA o PARCIAL → aporta SUM(PGPRCPPG) de sus pagos vigentes.
+		//   3) PENDIENTE (o cualquier otro estado, incluido NULL) → aporta 0, AUNQUE tenga
+		//      pagos vigentes registrados (para PENDIENTE se asume que el capital no se pagó).
+		// Los datos de cuotas y de pagos son agregados en la base (2 consultas), una fila por
+		// préstamo cada una — nunca se trae una fila de pago o de cuota a Java para este
+		// cálculo.
+		List<Object[]> filasCapitalCuotas = detallePrestamoDaoService.selectCapitalCuotasByPrestamos(existentes);
+		Map<Long, Double> capitalLiquidadoPorPrestamo = new LinkedHashMap<>();
+		Map<Long, Double> capitalTotalPorPrestamo = new LinkedHashMap<>();
+		for (Object[] fila : filasCapitalCuotas) {
+			Long idPrestamoDeCuotas = fila[0] != null ? ((Number) fila[0]).longValue() : null;
+			capitalLiquidadoPorPrestamo.put(idPrestamoDeCuotas,
+					fila[1] != null ? ((Number) fila[1]).doubleValue() : 0.0);
+			capitalTotalPorPrestamo.put(idPrestamoDeCuotas,
+					fila[2] != null ? ((Number) fila[2]).doubleValue() : 0.0);
+		}
+		List<Object[]> filasCapitalAbonado =
+				pagoPrestamoDaoService.selectCapitalAbonadoEnMoraOParcialByPrestamos(existentes);
+		Map<Long, Double> capitalAbonadoPorPrestamo = new LinkedHashMap<>();
+		for (Object[] fila : filasCapitalAbonado) {
 			Long idPrestamoDelSuma = fila[0] != null ? ((Number) fila[0]).longValue() : null;
-			double suma = fila[1] != null ? ((Number) fila[1]).doubleValue() : 0.0;
-			capitalPagadoPorPrestamo.put(idPrestamoDelSuma, suma);
+			capitalAbonadoPorPrestamo.put(idPrestamoDelSuma,
+					fila[1] != null ? ((Number) fila[1]).doubleValue() : 0.0);
 		}
 
 		// Mismo corte que ProcesoMoraPrestamoServiceImpl.corteDelDia(LocalDate.now()): inicio
@@ -1204,11 +1243,27 @@ public class PrestamoServiceImpl implements PrestamoService {
 					}
 				}
 
+				// Nivel 0 de capitalPagado: préstamo en estado TERMINAL (CANCELADO,
+				// CANCELADO_ANTICIPADO o CANCELADO_POR_NOVACION) da por pagado TODO su capital
+				// (capitalTotalPorPrestamo), sin mirar el estado de cada cuota. Para cualquier
+				// otro préstamo: liquidado (nivel 1) + abonado en mora/parcial (nivel 2);
+				// PENDIENTE y el resto ya aportan 0 porque no están en ninguno de los dos
+				// mapas.
+				Long idEstadoPrestamo = estadoPrestamoPorId.get(idPrestamo);
+				boolean prestamoTerminal = idEstadoPrestamo != null
+						&& (idEstadoPrestamo.longValue() == EstadoPrestamo.CANCELADO
+								|| idEstadoPrestamo.longValue() == EstadoPrestamo.CANCELADO_ANTICIPADO
+								|| idEstadoPrestamo.longValue() == EstadoPrestamo.CANCELADO_POR_NOVACION);
+				double capitalPagado = prestamoTerminal
+						? capitalTotalPorPrestamo.getOrDefault(idPrestamo, 0.0)
+						: capitalLiquidadoPorPrestamo.getOrDefault(idPrestamo, 0.0)
+								+ capitalAbonadoPorPrestamo.getOrDefault(idPrestamo, 0.0);
+
 				SaldoPrestamoResumen resumen = new SaldoPrestamoResumen();
 				resumen.setIdPrestamo(idPrestamo);
 				resumen.setSaldoCapital(redondear(saldoCapital));
 				resumen.setSaldoTotal(redondear(saldoTotal));
-				resumen.setCapitalPagado(redondear(capitalPagadoPorPrestamo.getOrDefault(idPrestamo, 0.0)));
+				resumen.setCapitalPagado(redondear(capitalPagado));
 				resumen.setCuotasEnMora(cuotasEnMora);
 				resultado.add(resumen);
 			} catch (Throwable e) {

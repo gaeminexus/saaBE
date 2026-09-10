@@ -264,6 +264,43 @@ public interface DetallePrestamoDaoService extends EntityDao<DetallePrestamo> {
 	List<Object[]> selectDatosSaldoCuotasPendientes(List<Long> codigosPrestamo) throws Throwable;
 
 	/**
+	 * Para VARIOS préstamos, en UNA consulta agregada (una fila por préstamo, no una por
+	 * cuota): el capital de las cuotas LIQUIDADAS y el capital de TODAS las cuotas. Las dos
+	 * mitades de {@code capitalPagado} que dependen de cuotas, no de pagos
+	 * (docs/logica-negocio/crd/API-SALDOS-PRESTAMO.md §3bis):
+	 *
+	 * <ul>
+	 *   <li><b>capitalLiquidado</b> (Σ {@code DTPRCPTL} donde la cuota está PAGADA o
+	 *       CANCELADA_ANTICIPADA): decisión del usuario 2026-09-10 — de una cuota liquidada se
+	 *       confía en {@code DTPRCPTL}, no en sus pagos (la base viene de una migración y
+	 *       {@code CRD.PGPR} no siempre está completo para cuotas ya liquidadas). Se usa para
+	 *       TODO préstamo salvo el caso de abajo.</li>
+	 *   <li><b>capitalTotal</b> (Σ {@code DTPRCPTL} de TODAS las cuotas, sin filtrar por
+	 *       estado): segunda decisión del usuario — un préstamo con {@code idEstado}
+	 *       CANCELADO_ANTICIPADO (4) da por pagado TODO su capital, sin mirar el estado de cada
+	 *       cuota (hay cuotas mal marcadas en préstamos precancelados, defecto P21). Se usa
+	 *       SÓLO cuando el préstamo está en ese estado — el llamador decide cuál de las dos
+	 *       columnas usar, esta consulta trae ambas siempre.</li>
+	 * </ul>
+	 *
+	 * <p>El tercio restante de {@code capitalPagado} (cuotas EN_MORA/PARCIAL) sale de
+	 * {@code PagoPrestamoDaoService#selectCapitalAbonadoEnMoraOParcialByPrestamos}.</p>
+	 *
+	 * <p>Mismo par de estados de cuota que {@link #selectCuotasPendientesByPrestamoOrdenadas(Long)}
+	 * (PAGADA, CANCELADA_ANTICIPADA) para {@code capitalLiquidado} — reusadas, no literales.</p>
+	 *
+	 * <p>Fragmenta internamente en bloques de 900 (ORA-01795). Un préstamo sin ninguna cuota
+	 * NO genera fila (el {@code GROUP BY} no la produce); el llamador trata la ausencia como
+	 * 0.0 en las dos columnas.</p>
+	 *
+	 * @param codigosPrestamo Códigos de préstamo
+	 * @return Filas {@code Object[]{Long idPrestamo, Double capitalLiquidado, Double
+	 *         capitalTotal}}; SIN fila para los préstamos sin ninguna cuota
+	 * @throws Throwable Si ocurre algún error
+	 */
+	List<Object[]> selectCapitalCuotasByPrestamos(List<Long> codigosPrestamo) throws Throwable;
+
+	/**
 	 * Cuotas del préstamo con numeroCuota &gt; :numeroCuotaExclusivo, de cualquier estado,
 	 * ordenadas por numeroCuota ASC. Se usa en la re-amortización del abono a capital.
 	 * @param codigoPrestamo       Código del préstamo

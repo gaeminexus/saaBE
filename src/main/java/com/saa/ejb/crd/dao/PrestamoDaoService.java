@@ -102,19 +102,26 @@ public interface PrestamoDaoService extends EntityDao<Prestamo> {
     List<Prestamo> selectByEntidad(Long codigoEntidad) throws Throwable;
 
     /**
-     * De una lista de códigos, cuáles existen realmente en {@code CRD.PRST}. Reemplaza un
-     * {@code selectById} por código para saber si un préstamo existe sin traer la entidad
-     * completa ni lanzar {@code NoResultException} por cada código ausente
-     * (docs/logica-negocio/crd/API-SALDOS-PRESTAMO.md).
+     * De una lista de códigos, cuáles existen realmente en {@code CRD.PRST}, con su
+     * {@code idEstado} (PRSTIDST). Reemplaza un {@code selectById} por código para saber si un
+     * préstamo existe sin traer la entidad completa ni lanzar {@code NoResultException} por
+     * cada código ausente. El estado del préstamo lo necesita {@code capitalPagado}: un
+     * préstamo {@code CANCELADO_ANTICIPADO} (4) da por pagado TODO su capital sin mirar el
+     * estado de cada cuota — decisión del usuario, 2026-09-10
+     * (docs/logica-negocio/crd/API-SALDOS-PRESTAMO.md §3bis).
+     *
+     * <p>Único llamador: {@code PrestamoServiceImpl.calcularSaldosEnLote}. No hay otro
+     * consumidor de "sólo códigos existentes" en el repo; por eso este método reemplaza al
+     * antiguo {@code selectCodigosExistentes} en vez de agregarse al lado.</p>
      *
      * <p>Fragmenta internamente en bloques de 900 para no chocar con el límite de Oracle de
      * 1000 elementos en {@code IN (...)} (ORA-01795).</p>
      *
      * @param codigos Códigos a verificar
-     * @return Los códigos de {@code codigos} que existen, en cualquier orden; lista vacía si
-     *         {@code codigos} es nulo o vacío
+     * @return Filas {@code Object[]{Long idPrestamo, Long idEstado}} de los códigos que
+     *         existen, en cualquier orden; lista vacía si {@code codigos} es nulo o vacío
      * @throws Throwable Si ocurre algún error
      */
-    List<Long> selectCodigosExistentes(List<Long> codigos) throws Throwable;
+    List<Object[]> selectCodigosYEstadoExistentes(List<Long> codigos) throws Throwable;
 }
 

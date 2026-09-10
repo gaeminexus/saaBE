@@ -126,8 +126,8 @@ public class PagoPrestamoDaoServiceImpl extends EntityDaoImpl<PagoPrestamo> impl
 
 	@Override
 	@SuppressWarnings("unchecked")
-	public List<Object[]> selectCapitalPagadoByPrestamos(List<Long> codigosPrestamo) throws Throwable {
-		System.out.println("PagoPrestamoDaoService.selectCapitalPagadoByPrestamos - préstamos solicitados: "
+	public List<Object[]> selectCapitalAbonadoEnMoraOParcialByPrestamos(List<Long> codigosPrestamo) throws Throwable {
+		System.out.println("PagoPrestamoDaoService.selectCapitalAbonadoEnMoraOParcialByPrestamos - préstamos solicitados: "
 				+ (codigosPrestamo != null ? codigosPrestamo.size() : 0));
 
 		if (codigosPrestamo == null || codigosPrestamo.isEmpty()) {
@@ -140,10 +140,16 @@ public class PagoPrestamoDaoServiceImpl extends EntityDaoImpl<PagoPrestamo> impl
 		//
 		// Llega al préstamo por p.detallePrestamo.prestamo.codigo (navega por la cuota), NO por
 		// p.prestamo.codigo: esa FK directa puede venir NULL en pagos viejos.
+		//
+		// SOLO EN_MORA (5) y PARCIAL (6), no "cualquier no liquidada": PENDIENTE (1) aporta 0
+		// aunque tenga pagos vigentes — segunda decisión del usuario, 2026-09-10 (ver javadoc
+		// de la interfaz y API-SALDOS-PRESTAMO.md §3bis). Constantes de EstadoCuotaPrestamo,
+		// no literales.
 		String jpql = "SELECT p.detallePrestamo.prestamo.codigo, SUM(p.capitalPagado) " +
 			"FROM PagoPrestamo p " +
 			"WHERE p.detallePrestamo.prestamo.codigo IN :codigos " +
 			"AND (p.anulado IS NULL OR p.anulado = 0) " +
+			"AND p.detallePrestamo.estado IN (:estadoEnMora, :estadoParcial) " +
 			"GROUP BY p.detallePrestamo.prestamo.codigo";
 
 		// Fragmentado en bloques de 900: Oracle limita IN (...) a 1000 elementos (ORA-01795).
@@ -155,10 +161,12 @@ public class PagoPrestamoDaoServiceImpl extends EntityDaoImpl<PagoPrestamo> impl
 
 			Query query = em.createQuery(jpql);
 			query.setParameter("codigos", bloque);
+			query.setParameter("estadoEnMora", (long) com.saa.rubros.EstadoCuotaPrestamo.EN_MORA);
+			query.setParameter("estadoParcial", (long) com.saa.rubros.EstadoCuotaPrestamo.PARCIAL);
 			resultados.addAll(query.getResultList());
 		}
 
-		System.out.println("  Préstamos con capital pagado: " + resultados.size());
+		System.out.println("  Préstamos con capital abonado en cuotas EN_MORA/PARCIAL: " + resultados.size());
 		return resultados;
 	}
 
