@@ -2802,3 +2802,20 @@ del motor, que es la autoritativa. Costo aceptado: una lectura de cuotas por pr�
 - `PRSTSLTT`/`PRSTSLCP` siguen en la entidad. Cualquier pantalla que las lea es un defecto aparte;
   una búsqueda `grep -rn "\.saldoTotal\|\.saldoCapital" saaFE/src` sobre `Prestamo` es la forma de
   encontrar la próxima.
+
+### ⛔ 2026-09-10, tarde — la primera versión de `/prst/saldos` dejó la consulta inusable
+
+**Error del árbitro.** El contrato decía «una lectura de cuotas por préstamo, aceptado a
+propósito». Verifiqué que `calcularSaldosCuota` no escribía nada —leí la javadoc y la firma— y
+**no leí dos líneas más abajo**: consulta los pagos de **cada cuota** (`MotorPago:116`). Una
+página de 100 préstamos eran miles de consultas. El usuario lo vio en minutos.
+
+⭐ **Lección:** «reusar la lógica existente» no exime de leer el cuerpo de lo que se reusa. La
+firma dice qué devuelve; el costo está adentro. Y un costo escrito en un contrato con la palabra
+«aceptado» es una afirmación que otros construyen encima.
+
+**Arreglo:** tres consultas en lote (existentes, cuotas, pagos; `IN` de a 900) + sobrecarga pura
+`calcularSaldosCuota(cuota, pagosVigentes)` extraída mecánicamente del motor — verificado con el
+diff que ninguna línea aritmética cambió. Los tres DAO nuevos **no** atrapan excepciones, a
+diferencia de sus vecinos: una falla real de base sale como 500, no como ceros silenciosos.
+Contrato actualizado en `6bcb84d9` para que nadie vuelva al bucle.
