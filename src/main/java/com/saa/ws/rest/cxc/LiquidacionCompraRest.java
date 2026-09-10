@@ -381,6 +381,108 @@ public class LiquidacionCompraRest {
 	}
 
 	/**
+	 * ÍTEM 29 (docs/logica-negocio/cxc/API-CONTABILIZAR-DOCUMENTO-AUTORIZADO.md), encargo
+	 * 2026-09-10. Envoltorio delgado sobre {@code crearDocumentoCxp} -- NO un paso de asiento
+	 * propio para la liquidación.
+	 * <p>
+	 * Por qué: el ítem 27 midió que {@code generarAsientoLiquidacionCompraCompra} no genera el
+	 * asiento de la {@code LiquidacionCompra} (cxc) en aislado -- vive DENTRO de
+	 * {@code crearDocumentoCxp}, que en una sola transacción crea el documento CXP
+	 * ({@code LiquidacionCompraCompra}), sus detalles, sus formas de pago y el path del XML, y
+	 * recién ahí, si el facturador genera contabilidad, el asiento (colgado del documento CXP,
+	 * no de la liquidación electrónica). El usuario decidió la <b>opción A</b>: este botón llama
+	 * a ese mismo método atómico, sin partirlo -- separar "sólo el asiento" costaría más riesgo
+	 * (dos transacciones donde hoy hay una) que el beneficio de que el nombre del botón quede
+	 * prolijo. <b>No "arreglar" esto partiendo la transacción</b> -- es la decisión, no un
+	 * descuido.
+	 * <p>
+	 * {@code crearDocumentoCxp} no devuelve {@code erroresContables} como lista estructurada en
+	 * ningún camino (verificado en {@code LiquidacionCompraServiceImpl}, no se reimplementa
+	 * nada): si falta una cuenta contable, el asiento lanza una excepción con un único mensaje.
+	 * Ese mensaje se mapea a un {@code erroresContables} de un solo elemento -- llamar al
+	 * validador por separado para desglosarlo habría sido tocar lógica de negocio que el alcance
+	 * de este ítem no incluye.
+	 */
+	@POST
+	@Path("/contabilizar/{idLiquidacion}")
+	@Produces(MediaType.APPLICATION_JSON)
+	public Response contabilizar(@PathParam("idLiquidacion") Long idLiquidacion) {
+		System.out.println("LLEGA AL SERVICIO contabilizar LiquidacionCompra con id: " + idLiquidacion);
+		try {
+			// selectById lanza NoResultException si no existe -- nunca null.
+			LiquidacionCompra liquidacion = liquidacionCompraDaoService.selectById(idLiquidacion,
+					NombreEntidadesCobro.LIQUIDACION_COMPRA);
+
+			Long estado = liquidacion.getEstado();
+			if (estado == null || estado.longValue() != 5L) {
+				java.util.Map<String, Object> err = new java.util.HashMap<>();
+				err.put("exito", false);
+				err.put("mensaje", "La liquidación de compra " + idLiquidacion + " no está autorizada (estado="
+						+ estado + "). Sólo se puede contabilizar un documento autorizado.");
+				return Response.status(Response.Status.CONFLICT).entity(err).type(MediaType.APPLICATION_JSON).build();
+			}
+
+			java.util.Map<String, Object> resultado = new java.util.HashMap<>();
+			try {
+				java.util.Map<String, Object> raw = liquidacionCompraService.crearDocumentoCxp(idLiquidacion);
+
+				boolean yaExistia = Boolean.TRUE.equals(raw.get("yaExistia"));
+				Object idDocumentoCxp = raw.get("idDocumentoCxp");
+				Object numeroAlterno = raw.get("numeroAlterno");
+
+				resultado.put("exito", true);
+				resultado.put("yaEstabaCompleto", yaExistia);
+				resultado.put("documentoCxp", idDocumentoCxp);
+				if (numeroAlterno != null) {
+					resultado.put("asiento", numeroAlterno);
+				}
+
+				// El mensaje dice la verdad de lo que pasó, no sólo "contabilizado" -- este botón
+				// puede crear todo un documento CXP nuevo, no sólo un asiento.
+				String mensaje;
+				if (yaExistia) {
+					mensaje = "El documento CXP ya existía (" + idDocumentoCxp + ")"
+							+ (numeroAlterno != null ? ", con asiento contable " + numeroAlterno + "." : ".");
+				} else if (numeroAlterno != null) {
+					mensaje = "Documento CXP generado (" + idDocumentoCxp + ") y asiento contable "
+							+ "registrado (" + numeroAlterno + ").";
+				} else {
+					mensaje = "Documento CXP generado (" + idDocumentoCxp + "). El facturador no genera "
+							+ "contabilidad: sin asiento.";
+				}
+				resultado.put("mensaje", mensaje);
+
+			} catch (com.saa.basico.util.IncomeException ie) {
+				// Falla de cuentas contables (u otra validación de negocio) dentro de
+				// crearDocumentoCxp -- no hay lista estructurada que mapear, se usa el mensaje
+				// único que ya trae la excepción. Ver javadoc de este método.
+				resultado.put("exito", false);
+				resultado.put("contabilidadPendiente", true);
+				resultado.put("erroresContables", java.util.Collections.singletonList(ie.getMessage()));
+				resultado.put("mensaje", ie.getMessage());
+			}
+
+			return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+
+		} catch (jakarta.persistence.NoResultException e) {
+			java.util.Map<String, Object> err = new java.util.HashMap<>();
+			err.put("exito", false);
+			err.put("mensaje", "No se encontró la liquidación de compra con ID: " + idLiquidacion);
+			return Response.status(Response.Status.NOT_FOUND).entity(err).type(MediaType.APPLICATION_JSON).build();
+
+		} catch (Throwable e) {
+			System.err.println("ERROR en contabilizar LiquidacionCompra REST: " + e.getMessage());
+			e.printStackTrace();
+			java.util.Map<String, Object> err = new java.util.HashMap<>();
+			err.put("exito", false);
+			err.put("mensaje", "Error inesperado al contabilizar la liquidación de compra: " + e.getMessage());
+			err.put("error", e.getMessage());
+			return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+					.entity(err).type(MediaType.APPLICATION_JSON).build();
+		}
+	}
+
+	/**
 	 * Convierte un Map a objeto LiquidacionCompra.
 	 */
 	private LiquidacionCompra convertMapToLiquidacionCompra(java.util.Map<String, Object> map) {
