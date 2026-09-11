@@ -1585,6 +1585,15 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         }
         factura = facturaCompraDaoService.save(factura, null);
 
+        // ── Reparto de bases por tarifa (ATS ítem 36) ─────────────────────────
+        // El detalle ya trae codigoIVASRI por linea: se acumula aca la base de
+        // las lineas al 0% para volcarla a la cabecera despues del bucle, ANTES
+        // del bloque de terceros de mas abajo (linea ~1675) -si corriera despues,
+        // el "+= totalTerceros" de ese bloque sumaria dos veces las lineas de
+        // terceros, que tambien son codigoIVASRI=0 pero todavia no existen aca-.
+        double base0Detalle = 0.0;
+        List<String> lineasCodigoEspecial = new ArrayList<>();
+
         for (int i = 0; i < detallesXml.getLength(); i++) {
             Element el = (Element) detallesXml.item(i);
             double cantidad    = parseDouble(getElementValue(el, "cantidad"));
@@ -1603,6 +1612,18 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                 porcIVA = parseLong(getElementValue(impEl, "tarifa"));
                 valIVA  = parseDouble(getElementValue(impEl, "valor"));
             }
+            if (codigoIVASRI != null) {
+                if (codigoIVASRI.longValue() == 0L) {
+                    base0Detalle += precioTotal;
+                } else if (codigoIVASRI.longValue() == 6L || codigoIVASRI.longValue() == 7L) {
+                    // Tabla 17 SRI: 6=No objeto de IVA, 7=Exento. El ATS los declara en
+                    // baseNoGraIva/baseImpExe, pero DetalleFacturaCompra no tiene columnas
+                    // para esos casilleros -no se inventan-: se deja la base donde cae hoy
+                    // (dentro de subtotal) y se avisa para revision manual.
+                    lineasCodigoEspecial.add("detalle " + i + " (codigoPorcentaje=" + codigoIVASRI
+                            + ", base " + String.format(java.util.Locale.US, "%.2f", precioTotal) + ")");
+                }
+            }
             DetalleFacturaCompra df = new DetalleFacturaCompra();
             df.setFactura(factura);
             df.setDescripcion(getElementValue(el, "descripcion"));
@@ -1618,6 +1639,11 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
             df.setProducto(productosDetalle.get(i).getId());
             df.setEstado(Long.valueOf(Estado.ACTIVO));
             detalleFacturaCompraDaoService.save(df, null);
+        }
+
+        if (base0Detalle > 0.0) {
+            factura.setSubcero(nvlDouble(factura.getSubcero()) + base0Detalle);
+            factura = facturaCompraDaoService.save(factura, factura.getId());
         }
 
         // ══════════════════════════════════════════════════════════════════
@@ -1729,6 +1755,14 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         r.put("productosPendientes", new ArrayList<>());
         r.put("pendienteClasificacion", false);
         if (observacionTerceros != null) r.put("valoresTerceros", observacionTerceros);
+        if (!lineasCodigoEspecial.isEmpty()) {
+            r.put("advertenciaCodigoPorcentajeEspecial", "La factura " + factura.getId() + " tiene "
+                    + lineasCodigoEspecial.size() + " linea(s) con codigoPorcentaje 6 (No objeto de IVA) o "
+                    + "7 (Exento): " + lineasCodigoEspecial + ". El ATS los declara en baseNoGraIva/"
+                    + "baseImpExe, pero la entidad no tiene columnas para esos casilleros: quedan dentro "
+                    + "de subtotal sin mover a subcero. Revisar manualmente.");
+            System.out.println("⚠ " + r.get("advertenciaCodigoPorcentajeEspecial"));
+        }
         if (sustentoPendiente) {
             r.put("sustentoTributarioPendiente", true);
             r.put("advertenciaSustentoTributario", "La factura " + factura.getId() + " quedo sin"
@@ -2171,6 +2205,42 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
 
         if (!hayIva) return null;
         return new Double[] { Math.round(valorTotal * 100.0) / 100.0, tarifa };
+    }
+
+    /**
+     * Suma la base imponible de tarifa 0% (codigoPorcentaje=0) declarada en el
+     * bloque de impuestos de CABECERA del XML -ATS ítem 36-. Pensado para
+     * NotaDebitoCompra: su detalle son <motivo><razon/><valor/></motivo>, sin
+     * ningun <impuesto> por linea (a diferencia de factura/NC/liquidación, que
+     * sí lo traen y por eso reparten a nivel de detalle), así que la única base
+     * por tarifa disponible en el XML de una ND es esta, la de cabecera. Es el
+     * mismo bloque que ya lee {@link #leerIvaCabecera}, aquí se usa además el
+     * campo <baseImponible> que ese método no expone (solo agrega el <valor>).
+     * @param xmlDoc           : XML ya parseado del comprobante
+     * @param tagImpuesto      : Nombre del tag de cada grupo ("totalImpuesto" o "impuesto")
+     * @param lineasEspeciales : Lista de salida con los grupos codigoPorcentaje 6/7 encontrados
+     *                           (No objeto de IVA / Exento) -no se suman a subcero, no hay
+     *                           columna para baseNoGraIva/baseImpExe; solo se reportan-
+     * @return                 : Suma de baseImponible de los grupos con codigoPorcentaje=0
+     */
+    private double sumarBase0Cabecera(Document xmlDoc, String tagImpuesto, List<String> lineasEspeciales) {
+        NodeList grupos = xmlDoc.getElementsByTagName(tagImpuesto);
+        double base0 = 0.0;
+        for (int i = 0; i < grupos.getLength(); i++) {
+            Element g = (Element) grupos.item(i);
+            String codigoImp = getElementValue(g, "codigo");
+            if (!codigoImp.isEmpty() && !"2".equals(codigoImp)) continue; // solo IVA, mismo criterio que leerIvaCabecera
+            Long codigoPorcentaje = parseLong(getElementValue(g, "codigoPorcentaje"));
+            if (codigoPorcentaje == null) continue;
+            double base = parseDouble(getElementValue(g, "baseImponible"));
+            if (codigoPorcentaje.longValue() == 0L) {
+                base0 += base;
+            } else if (codigoPorcentaje.longValue() == 6L || codigoPorcentaje.longValue() == 7L) {
+                lineasEspeciales.add("grupo cabecera " + i + " (codigoPorcentaje=" + codigoPorcentaje
+                        + ", base " + String.format(java.util.Locale.US, "%.2f", base) + ")");
+            }
+        }
+        return base0;
     }
 
     /**
@@ -2666,29 +2736,54 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
 
         nc = notaCreditoCompraDaoService.save(nc, null);
 
+        // ── Reparto de bases por tarifa (ATS ítem 36) ─────────────────────────
+        // DetalleNotaCreditoCompra NO tiene columna codigoIVASRI (verificado: a
+        // diferencia de DetalleFacturaCompra, esta entidad nunca la tuvo), asi
+        // que se lee codigoPorcentaje del mismo <impuesto> por linea que ya se
+        // consulta abajo para tarifa/valor -mismo bloque XML, un campo mas- solo
+        // para decidir el reparto; no se persiste (no hay donde). Antes del
+        // bloque de terceros: esta entidad no tiene ese mecanismo, no aplica.
+        double base0DetalleNc = 0.0;
+        List<String> lineasCodigoEspecialNc = new ArrayList<>();
+
         NodeList detallesXml = xmlDoc.getElementsByTagName("detalle");
         for (int i = 0; i < detallesXml.getLength(); i++) {
             Element el = (Element) detallesXml.item(i);
-            Long porcIVA = null; double valIVA = 0.0;
+            Long porcIVA = null; double valIVA = 0.0; Long codigoIVASRINc = null;
+            double precioTotalNc = parseDouble(getElementValue(el, "precioTotalSinImpuesto"));
             NodeList impDet = el.getElementsByTagName("impuesto");
             if (impDet.getLength() > 0) {
                 Element impEl = (Element) impDet.item(0);
+                codigoIVASRINc = parseLong(getElementValue(impEl, "codigoPorcentaje"));
                 porcIVA = parseLong(getElementValue(impEl, "tarifa"));
                 valIVA  = parseDouble(getElementValue(impEl, "valor"));
+            }
+            if (codigoIVASRINc != null) {
+                if (codigoIVASRINc.longValue() == 0L) {
+                    base0DetalleNc += precioTotalNc;
+                } else if (codigoIVASRINc.longValue() == 6L || codigoIVASRINc.longValue() == 7L) {
+                    lineasCodigoEspecialNc.add("detalle " + i + " (codigoPorcentaje=" + codigoIVASRINc
+                            + ", base " + String.format(java.util.Locale.US, "%.2f", precioTotalNc) + ")");
+                }
             }
             DetalleNotaCreditoCompra d = new DetalleNotaCreditoCompra();
             d.setNotaCredito(nc);
             d.setDescripcion(getElementValue(el, "descripcion"));
             d.setCantidad(parseDouble(getElementValue(el, "cantidad")));
             d.setValor(parseDouble(getElementValue(el, "precioUnitario")));
-            d.setSubTotal(parseDouble(getElementValue(el, "precioTotalSinImpuesto")));
+            d.setSubTotal(precioTotalNc);
             d.setDescuento(parseDouble(getElementValue(el, "descuento")));
-            d.setBaseImponible(parseDouble(getElementValue(el, "precioTotalSinImpuesto")));
+            d.setBaseImponible(precioTotalNc);
             d.setPorcentajeIVA(porcIVA);
             d.setValorIVA(valIVA);
-            d.setTotal(parseDouble(getElementValue(el, "precioTotalSinImpuesto")) + valIVA);
+            d.setTotal(precioTotalNc + valIVA);
             d.setEstado(Long.valueOf(Estado.ACTIVO));
             detalleNotaCreditoCompraDaoService.save(d, null);
+        }
+
+        if (base0DetalleNc > 0.0) {
+            nc.setSubcero(nvlDouble(nc.getSubcero()) + base0DetalleNc);
+            nc = notaCreditoCompraDaoService.save(nc, nc.getId());
         }
 
         PathNotaCreditoCompra path = new PathNotaCreditoCompra();
@@ -2712,6 +2807,13 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         r.put("idDocumentoBD", nc.getId());
         r.put("tipoTablaDestino", "NOTA_CREDITO_COMPRA");
         r.put("mensaje", "NotaCreditoCompra registrada con id=" + nc.getId());
+        if (!lineasCodigoEspecialNc.isEmpty()) {
+            r.put("advertenciaCodigoPorcentajeEspecial", "La nota de credito " + nc.getId() + " tiene "
+                    + lineasCodigoEspecialNc.size() + " linea(s) con codigoPorcentaje 6 (No objeto de IVA) "
+                    + "o 7 (Exento): " + lineasCodigoEspecialNc + ". Quedan dentro de subtotal sin mover a "
+                    + "subcero -la entidad no tiene columnas para baseNoGraIva/baseImpExe-. Revisar manualmente.");
+            System.out.println("⚠ " + r.get("advertenciaCodigoPorcentajeEspecial"));
+        }
         if (sustentoPendienteNc) {
             r.put("sustentoTributarioPendiente", true);
             r.put("advertenciaSustentoTributario", "La nota de credito " + nc.getId() + " quedo sin"
@@ -2804,6 +2906,17 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
             detalleNotaDebitoCompraDaoService.save(d, null);
         }
 
+        // ── Reparto de bases por tarifa (ATS ítem 36) ─────────────────────────
+        // La ND no tiene <impuesto> por linea (ver javadoc de sumarBase0Cabecera):
+        // se reparte desde el bloque de impuestos de cabecera, el mismo que ya
+        // usa leerIvaCabecera para el IVA total de arriba.
+        List<String> lineasCodigoEspecialNd = new ArrayList<>();
+        double base0Nd = sumarBase0Cabecera(xmlDoc, "impuesto", lineasCodigoEspecialNd);
+        if (base0Nd > 0.0) {
+            nd.setSubcero(nvlDouble(nd.getSubcero()) + base0Nd);
+            nd = notaDebitoCompraDaoService.save(nd, nd.getId());
+        }
+
         PathNotaDebitoCompra path = new PathNotaDebitoCompra();
         path.setNotaDebito(nd);
         path.setPath(doc.getPathXml());
@@ -2826,6 +2939,14 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         r.put("idDocumentoBD", nd.getId());
         r.put("tipoTablaDestino", "NOTA_DEBITO_COMPRA");
         r.put("mensaje", "NotaDebitoCompra registrada con id=" + nd.getId());
+        if (!lineasCodigoEspecialNd.isEmpty()) {
+            r.put("advertenciaCodigoPorcentajeEspecial", "La nota de debito " + nd.getId() + " tiene "
+                    + lineasCodigoEspecialNd.size() + " grupo(s) de cabecera con codigoPorcentaje 6 (No "
+                    + "objeto de IVA) o 7 (Exento): " + lineasCodigoEspecialNd + ". Quedan dentro de "
+                    + "subtotal sin mover a subcero -la entidad no tiene columnas para baseNoGraIva/"
+                    + "baseImpExe-. Revisar manualmente.");
+            System.out.println("⚠ " + r.get("advertenciaCodigoPorcentajeEspecial"));
+        }
         if (sustentoPendienteNd) {
             r.put("sustentoTributarioPendiente", true);
             r.put("advertenciaSustentoTributario", "La nota de debito " + nd.getId() + " quedo sin"
@@ -2889,27 +3010,49 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         lq.setEstadoEmision(2L);
         lq = liquidacionCompraCompraDaoService.save(lq, null);
 
+        // ── Reparto de bases por tarifa (ATS ítem 36) ─────────────────────────
+        // Mismo caso que NotaCreditoCompra: DetalleLiquidacionCompraCompra no
+        // tiene columna codigoIVASRI, se lee codigoPorcentaje del <impuesto> por
+        // linea solo para decidir el reparto, sin persistirlo.
+        double base0DetalleLq = 0.0;
+        List<String> lineasCodigoEspecialLq = new ArrayList<>();
+
         NodeList detallesXml = xmlDoc.getElementsByTagName("detalle");
         for (int i = 0; i < detallesXml.getLength(); i++) {
             Element el = (Element) detallesXml.item(i);
-            Long porcIVA = null; double valIVA = 0.0;
+            Long porcIVA = null; double valIVA = 0.0; Long codigoIVASRILq = null;
+            double precioTotalLq = parseDouble(getElementValue(el, "precioTotalSinImpuesto"));
             NodeList impDet = el.getElementsByTagName("impuesto");
             if (impDet.getLength() > 0) {
                 Element impEl = (Element) impDet.item(0);
+                codigoIVASRILq = parseLong(getElementValue(impEl, "codigoPorcentaje"));
                 porcIVA = parseLong(getElementValue(impEl, "tarifa"));
                 valIVA  = parseDouble(getElementValue(impEl, "valor"));
+            }
+            if (codigoIVASRILq != null) {
+                if (codigoIVASRILq.longValue() == 0L) {
+                    base0DetalleLq += precioTotalLq;
+                } else if (codigoIVASRILq.longValue() == 6L || codigoIVASRILq.longValue() == 7L) {
+                    lineasCodigoEspecialLq.add("detalle " + i + " (codigoPorcentaje=" + codigoIVASRILq
+                            + ", base " + String.format(java.util.Locale.US, "%.2f", precioTotalLq) + ")");
+                }
             }
             DetalleLiquidacionCompraCompra d = new DetalleLiquidacionCompraCompra();
             d.setLiquidacion(lq);
             d.setDescripcion(getElementValue(el, "descripcion"));
             d.setCantidad(parseDouble(getElementValue(el, "cantidad")));
             d.setValor(parseDouble(getElementValue(el, "precioUnitario")));
-            d.setSubTotal(parseDouble(getElementValue(el, "precioTotalSinImpuesto")));
+            d.setSubTotal(precioTotalLq);
             d.setPorcentajeIVA(porcIVA);
             d.setValorIVA(valIVA);
-            d.setTotal(parseDouble(getElementValue(el, "precioTotalSinImpuesto")) + valIVA);
+            d.setTotal(precioTotalLq + valIVA);
             d.setEstado(Long.valueOf(Estado.ACTIVO));
             detalleLiquidacionCompraCompraDaoService.save(d, null);
+        }
+
+        if (base0DetalleLq > 0.0) {
+            lq.setSubcero(nvlDouble(lq.getSubcero()) + base0DetalleLq);
+            lq = liquidacionCompraCompraDaoService.save(lq, lq.getId());
         }
 
         PathLiquidacionCompraCompra path = new PathLiquidacionCompraCompra();
@@ -2935,6 +3078,13 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         r.put("idDocumentoBD", lq.getId());
         r.put("tipoTablaDestino", "LIQUIDACION_COMPRA_COMPRA");
         r.put("mensaje", "LiquidacionCompraCompra registrada con id=" + lq.getId());
+        if (!lineasCodigoEspecialLq.isEmpty()) {
+            r.put("advertenciaCodigoPorcentajeEspecial", "La liquidacion " + lq.getId() + " tiene "
+                    + lineasCodigoEspecialLq.size() + " linea(s) con codigoPorcentaje 6 (No objeto de IVA) "
+                    + "o 7 (Exento): " + lineasCodigoEspecialLq + ". Quedan dentro de subtotal sin mover a "
+                    + "subcero -la entidad no tiene columnas para baseNoGraIva/baseImpExe-. Revisar manualmente.");
+            System.out.println("⚠ " + r.get("advertenciaCodigoPorcentajeEspecial"));
+        }
         if (sustentoPendienteLq) {
             r.put("sustentoTributarioPendiente", true);
             r.put("advertenciaSustentoTributario", "La liquidacion " + lq.getId() + " quedo sin"
