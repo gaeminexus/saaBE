@@ -210,6 +210,34 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
     // <compras> — una consulta por tabla, unificadas en LineaCompra
     // =====================================================================
 
+    /**
+     * ÍTEM 34 (2026-09-11). SUBTOTAL de las cuatro entidades de compra es {@code <totalSinImpuestos>}
+     * del XML del SRI -- confirmado en {@code ProcesoCargaDocumentosServiceImpl} para las cuatro
+     * (líneas 1546 FacturaCompra, 2646 NotaCreditoCompra, 2770 NotaDebitoCompra, 2878
+     * LiquidacionCompraCompra: las cuatro llaman a {@code setSubtotal} con el mismo valor
+     * {@code totalSinImpuestos}, misma semántica -- no se asumió, se verificó antes de aplicar el
+     * arreglo en bloque). Ese total YA INCLUYE la porción al 0%; SUBCERO no es un monto aparte
+     * que se suma, es esa misma porción que hay que RESTAR para aislar la base gravada. El
+     * defecto: se usaba SUBTOTAL entero como base gravada y SUBCERO aparte, contando el 0% dos
+     * veces. Medido en las 8 facturas de Empresa Eléctrica Quito (1790053881001, agosto 2026):
+     * diferencia de <b>+7,23 exacta en las ocho</b> contra su propia columna Base IVA 0% (ver
+     * DIAGNOSTICO-ATS-BASES-Y-RETENCIONES.md §2). <b>Base gravada correcta = SUBTOTAL − SUBCERO.</b>
+     * <p>
+     * Si SUBCERO &gt; SUBTOTAL (dato inconsistente), no se emite una base negativa: se avisa con
+     * el documento y los dos valores, y la gravada queda en 0.00.
+     */
+    private double baseGravadaCompra(double subtotal, double subcero, String etiquetaDocumento,
+            Long idDocumento, List<String> avisos) {
+        double base = subtotal - subcero;
+        if (base < 0.0) {
+            avisos.add(etiquetaDocumento + " " + idDocumento + ": SUBCERO (" + formatDecimal(subcero)
+                    + ") es mayor que SUBTOTAL (" + formatDecimal(subtotal) + ") -- dato inconsistente. "
+                    + "No se emite una base gravada negativa; se dejó en 0.00. Revisar el documento.");
+            return 0.0;
+        }
+        return base;
+    }
+
     private List<LineaCompra> comprasFacturaCompra(Long idEmpresa, LocalDate desde, LocalDate hasta,
             LocalDateTime desdeDT, LocalDateTime hastaDT, List<String> avisos) {
         TypedQuery<FacturaCompra> q = em.createQuery(
@@ -226,10 +254,12 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         q.setParameter("hastaDT", hastaDT);
         List<LineaCompra> resultado = new ArrayList<LineaCompra>();
         for (FacturaCompra f : q.getResultList()) {
+            double subtotal = nvl(f.getSubtotal(), 0.0), subcero = nvl(f.getSubcero(), 0.0);
             resultado.add(new LineaCompra(f.getTipoComprobante(), f.getNumEstablecimiento(),
                     f.getNumPtoEmision(), f.getSecuencial(), f.getFecha() != null ? f.getFecha().toLocalDate() : null,
                     f.getAutorizacion(), f.getTitular(), f.getSustentoTributario(), f.getFechaRegistroContable(),
-                    nvl(f.getSubtotal(), 0.0), nvl(f.getSubcero(), 0.0), nvl(f.getvIVA(), 0.0), nvl(f.getvICE(), 0.0),
+                    baseGravadaCompra(subtotal, subcero, "Factura de compra", f.getId(), avisos), subcero,
+                    nvl(f.getvIVA(), 0.0), nvl(f.getvICE(), 0.0),
                     formasPagoFacturaCompra(f.getId())));
             if (f.getSustentoTributario() == null) {
                 avisos.add("Factura de compra " + f.getId() + " sin codSustento resuelto — no debería "
@@ -261,10 +291,12 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         q.setParameter("hastaDT", hastaDT);
         List<LineaCompra> resultado = new ArrayList<LineaCompra>();
         for (LiquidacionCompraCompra l : q.getResultList()) {
+            double subtotal = nvl(l.getSubtotal(), 0.0), subcero = nvl(l.getSubcero(), 0.0);
             resultado.add(new LineaCompra(l.getTipoComprobante(), l.getNumEstablecimiento(),
                     l.getNumPtoEmision(), l.getSecuencial(), l.getFecha() != null ? l.getFecha().toLocalDate() : null,
                     l.getAutorizacion(), l.getTitular(), l.getSustentoTributario(), l.getFechaRegistroContable(),
-                    nvl(l.getSubtotal(), 0.0), nvl(l.getSubcero(), 0.0), nvl(l.getvIVA(), 0.0), nvl(l.getvICE(), 0.0),
+                    baseGravadaCompra(subtotal, subcero, "Liquidación de compra", l.getId(), avisos), subcero,
+                    nvl(l.getvIVA(), 0.0), nvl(l.getvICE(), 0.0),
                     formasPagoLiquidacionCompra(l.getId())));
             if (l.getFechaRegistroContable() == null) {
                 avisos.add("Liquidación de compra " + l.getId() + " sin fechaRegistro contable capturada: "
@@ -295,10 +327,12 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
             // ÍTEM 28 (2026-09-10): NotaCreditoCompra no tiene tabla de formas de pago propia
             // (verificado: no existe FormaPagoNotaCreditoCompra en com.saa.model.cxp) -- lista
             // vacía, cae al respaldo de DRC2 en writeDetalleCompra.
+            double subtotal = nvl(n.getSubtotal(), 0.0), subcero = nvl(n.getSubcero(), 0.0);
             resultado.add(new LineaCompra(n.getTipoComprobante(), n.getNumEstablecimiento(),
                     n.getNumPtoEmision(), n.getSecuencial(), n.getFecha() != null ? n.getFecha().toLocalDate() : null,
                     n.getAutorizacion(), n.getTitular(), n.getSustentoTributario(), n.getFechaRegistroContable(),
-                    nvl(n.getSubtotal(), 0.0), nvl(n.getSubcero(), 0.0), nvl(n.getvIVA(), 0.0), nvl(n.getvICE(), 0.0),
+                    baseGravadaCompra(subtotal, subcero, "Nota de crédito de compra", n.getId(), avisos), subcero,
+                    nvl(n.getvIVA(), 0.0), nvl(n.getvICE(), 0.0),
                     java.util.Collections.<String>emptyList()));
             if (n.getFechaRegistroContable() == null) {
                 avisos.add("Nota de crédito de compra " + n.getId() + " sin fechaRegistro contable "
@@ -329,10 +363,12 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
             // ÍTEM 28 (2026-09-10): NotaDebitoCompra tampoco tiene tabla de formas de pago propia
             // (verificado: no existe FormaPagoNotaDebitoCompra) -- lista vacía, cae al respaldo
             // de DRC2 en writeDetalleCompra.
+            double subtotal = nvl(n.getSubtotal(), 0.0), subcero = nvl(n.getSubcero(), 0.0);
             resultado.add(new LineaCompra(n.getTipoComprobante(), n.getNumEstablecimiento(),
                     n.getNumPtoEmision(), n.getSecuencial(), n.getFecha() != null ? n.getFecha().toLocalDate() : null,
                     n.getAutorizacion(), n.getTitular(), n.getSustentoTributario(), n.getFechaRegistroContable(),
-                    nvl(n.getSubtotal(), 0.0), nvl(n.getSubcero(), 0.0), nvl(n.getvIVA(), 0.0), nvl(n.getvICE(), 0.0),
+                    baseGravadaCompra(subtotal, subcero, "Nota de débito de compra", n.getId(), avisos), subcero,
+                    nvl(n.getvIVA(), 0.0), nvl(n.getvICE(), 0.0),
                     java.util.Collections.<String>emptyList()));
             if (n.getFechaRegistroContable() == null) {
                 avisos.add("Nota de débito de compra " + n.getId() + " sin fechaRegistro contable "
