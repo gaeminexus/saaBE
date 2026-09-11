@@ -870,6 +870,8 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
             return directo.trim();
         }
         if (titular.getRubroTipoPersonaH() != null) {
+            // 1) Intento por catálogo (PDTRVLRV) -- gana si algún día se llena. Ver punto 2 más
+            // abajo para por qué hoy nunca resuelve.
             try {
                 long rubroP = titular.getRubroTipoPersonaP() != null
                         ? titular.getRubroTipoPersonaP().longValue() : Rubros.TIPO_PERSONA;
@@ -892,6 +894,38 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
                 System.err.println("⚠ No se pudo derivar tipoCliente desde el rubro 35 para el titular "
                         + titular.getCodigo() + ": " + e.getMessage());
             }
+
+            // 2) ÍTEM 32 (2026-09-11). Medido por el usuario contra la base, no supuesto:
+            //      select d.PDTRALTR, d.PDTRDSCR, d.PDTRVLRV
+            //        from SCP.PDTR d join SCP.PRBR r on r.PRBRCDGO = d.PRBRCDGO
+            //       where r.PRBRALTR = 35;
+            //      1  NATURAL   (PDTRVLRV = NULL)
+            //      2  JURIDICO  (PDTRVLRV = NULL)
+            // El valor alfanumérico del rubro 35 está vacío en las DOS únicas filas que existen,
+            // así que el intento por catálogo de arriba nunca va a resolver mientras siga así --
+            // no es un caso raro, es el estado permanente de este rubro hoy. Se deriva del
+            // ALTERNO directo. No es una correspondencia elegida a dedo: "NATURAL"/"JURIDICO" son
+            // las dos únicas descripciones que tiene el rubro, y la Tabla 14 del ATS
+            // (01=Persona natural, 02=Sociedad -- javadoc de Titular.tipoProveedorAts,
+            // CATALOGO-ATS.md §9) es exactamente esa distinción: biunívoca contra las dos filas
+            // medidas, no una elección.
+            //
+            // Es RESPALDO, no reemplazo: si algún día alguien llena PDTRVLRV con "01"/"02", el
+            // intento por catálogo de arriba gana y este bloque no se alcanza. No se actualizó
+            // SCP.PDTR hoy -- es catálogo compartido entre todos los equipos, y un UPDATE ahí no
+            // se mete apurado el mismo día que el usuario tiene que declarar.
+            long alterno = titular.getRubroTipoPersonaH().longValue();
+            if (alterno == 1L) {
+                return "01";
+            }
+            if (alterno == 2L) {
+                return "02";
+            }
+            avisos.add("Titular " + titular.getCodigo() + " (" + nvl(titular.getNombre(), "")
+                    + "): rubroTipoPersonaH=" + alterno + " no es 1 (NATURAL) ni 2 (JURIDICO) -- son "
+                    + "las únicas dos filas que tiene el rubro 35 hoy (medido 2026-09-11). No se "
+                    + "derivó tipoCliente sin inventar el mapeo para un alterno nuevo.");
+            return null;
         }
         // ÍTEM 31 punto 3: el texto anterior pedía "configure el dato en el titular" -- imposible,
         // tipoProveedorAts no está en ninguna pantalla. El campo visible es el Tipo de Persona.
