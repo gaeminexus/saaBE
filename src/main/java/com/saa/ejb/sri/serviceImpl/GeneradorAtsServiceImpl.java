@@ -24,15 +24,15 @@ import com.saa.ejb.sri.service.GeneradorAtsService;
 import com.saa.ejb.sri.service.dto.ResultadoGeneracionAts;
 import com.saa.model.cxc.Establecimiento;
 import com.saa.model.cxc.Facturador;
+import com.saa.model.cxc.DetalleRetencionV2;
 import com.saa.model.cxc.NotaCredito;
 import com.saa.model.cxc.NotaDebito;
 import com.saa.model.cxc.Factura;
-import com.saa.model.cxp.DetalleRetencionCompraV2;
+import com.saa.model.cxc.RetencionV2;
 import com.saa.model.cxp.FacturaCompra;
 import com.saa.model.cxp.LiquidacionCompraCompra;
 import com.saa.model.cxp.NotaCreditoCompra;
 import com.saa.model.cxp.NotaDebitoCompra;
-import com.saa.model.cxp.RetencionCompraV2;
 import com.saa.model.tsr.Titular;
 import com.saa.rubros.Estado;
 import com.saa.rubros.Rubros;
@@ -151,7 +151,7 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
                 autorizacionesCompra.add(c.autorizacion);
             }
         }
-        Map<String, RetencionInfo> retencionesCompra = cargarRetencionesCompra(idEmpresa, autorizacionesCompra, avisos);
+        Map<String, RetencionInfo> retencionesCompra = cargarRetencionesCompra(idFacturador, autorizacionesCompra, avisos);
 
         // ÍTEM 8 del encargo 2026-09-09: <anulados> declara los secuenciales que EMITIMOS
         // NOSOTROS y anulamos -- nunca los de un documento que nos emitió un proveedor. Las 4
@@ -1017,32 +1017,49 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
     }
 
     /**
-     * ÍTEM 5 del encargo 2026-09-09. Carga las retenciones de compra (PGS.RCV2/DRC2) del período,
-     * agrupadas por la autorización del documento sustento (DRC2.docResAutorizacion), y las
-     * reparte según la Tabla 11 del anexo (DIAGNOSTICO-ATS-RECHAZADO-VALIDADOR.md §A.2/§A.3). Sólo
-     * consulta las autorizaciones que de verdad aparecen en las compras del período -- no hace
-     * selectAll() sobre PGS.DRC2.
+     * ÍTEM 33 (2026-09-11), corrige el ítem 5. La fuente estaba equivocada: antes consultaba
+     * {@code PGS.RCV2}/{@code DRC2} ({@code RetencionCompraV2}) -- medido el 2026-09-10 al
+     * construir el cuadre 104: ese {@code ServiceImpl} son 45 líneas de CRUD genérico, sin ciclo
+     * de vida ante el SRI. Las retenciones que ASOPREP REALMENTE emite (XML firmado, sometido al
+     * SRI, estado 1-6) viven en {@code CBR.RTV2}/{@code DRV2} ({@code RetencionV2}) -- la misma
+     * fuente que ya usa {@code calcularCuadre103}/{@code 104}. Confirmado con la contradicción
+     * que lo destapó: el cuadre 104 sumaba 4.642,52 de retención IVA del período desde
+     * {@code DRV2}, y este método declaraba 0,00 leyendo {@code DRC2} -- dos reportes del mismo
+     * sistema sobre el mismo período no podían ser ciertos los dos.
+     * <p>
+     * Mismo criterio que {@code calcularCuadre103}, reusado tal cual (no reescrito): filtro por
+     * {@code facturador.id} (RetencionV2 no tiene columna EMPRESA propia, sólo vía facturador) y
+     * {@link CriterioVentaVigente} (estado=5 autorizada, estadoEmision&lt;&gt;3 no anulada).
+     * <p>
+     * Enlace documento↔retención: {@code DetalleRetencionV2.docResAutorizacion} -- confirmado en
+     * la entidad (mismo nombre de campo que tenía {@code DetalleRetencionCompraV2}), contra la
+     * {@code AUTORIZACION} del documento de compra. Sólo cambió la tabla de origen, no el
+     * mecanismo de enlace ni el reparto por Tabla 11.
      */
-    private Map<String, RetencionInfo> cargarRetencionesCompra(Long idEmpresa,
+    private Map<String, RetencionInfo> cargarRetencionesCompra(Long idFacturador,
             java.util.Set<String> autorizacionesCompra, List<String> avisos) {
         Map<String, RetencionInfo> resultado = new LinkedHashMap<String, RetencionInfo>();
         if (autorizacionesCompra.isEmpty()) {
             return resultado;
         }
-        TypedQuery<DetalleRetencionCompraV2> q = em.createQuery(
-                "select d from DetalleRetencionCompraV2 d where d.retencionCompraV2.empresa.codigo = :idEmpresa "
+        TypedQuery<DetalleRetencionV2> q = em.createQuery(
+                "select d from DetalleRetencionV2 d where d.retencionV2.facturador.id = :idFacturador "
+                        + "and d.retencionV2.estado = :ventaAutorizada "
+                        + "and d.retencionV2.estadoEmision <> :ventaNoAnulada "
                         + "and d.estado = :activo and d.docResAutorizacion in :autorizaciones "
                         + "order by d.docResAutorizacion",
-                DetalleRetencionCompraV2.class);
-        q.setParameter("idEmpresa", idEmpresa);
+                DetalleRetencionV2.class);
+        q.setParameter("idFacturador", idFacturador);
+        q.setParameter("ventaAutorizada", CriterioVentaVigente.ESTADO_AUTORIZADA);
+        q.setParameter("ventaNoAnulada", CriterioVentaVigente.ESTADO_EMISION_ANULADA);
         q.setParameter("activo", Long.valueOf(Estado.ACTIVO));
         q.setParameter("autorizaciones", autorizacionesCompra);
-        for (DetalleRetencionCompraV2 d : q.getResultList()) {
+        for (DetalleRetencionV2 d : q.getResultList()) {
             String autorizacion = d.getDocResAutorizacion();
             RetencionInfo info = resultado.get(autorizacion);
             if (info == null) {
                 info = new RetencionInfo();
-                RetencionCompraV2 cabecera = d.getRetencionCompraV2();
+                RetencionV2 cabecera = d.getRetencionV2();
                 if (cabecera != null) {
                     info.estabRetencion1 = cabecera.getNumEstablecimiento();
                     info.ptoEmiRetencion1 = cabecera.getNumPtoEmision();
