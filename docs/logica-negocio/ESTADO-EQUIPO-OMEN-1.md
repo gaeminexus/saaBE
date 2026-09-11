@@ -2819,3 +2819,54 @@ firma dice qué devuelve; el costo está adentro. Y un costo escrito en un contr
 diff que ninguna línea aritmética cambió. Los tres DAO nuevos **no** atrapan excepciones, a
 diferencia de sus vecinos: una falla real de base sale como 500, no como ceros silenciosos.
 Contrato actualizado en `6bcb84d9` para que nadie vuelva al bucle.
+
+---
+
+## ⛔ 2026-09-11 — Los tres saldos que el motor pone en cero al cobrar (y la pantalla creía)
+
+**Reportado por el usuario con captura**, cuota #36 del préstamo 70226: cuota PARCIAL con un pago
+de $2,93 que sólo alcanzó al desgravamen, y el diálogo mostraba **Interés: pactado 29,60, pagado
+0,00, pendiente 0,00**, con saldo de la cuota $68,08 en vez de $97,68 (= 100,61 − 2,93).
+Arreglado en `saaFE 9f7f938`.
+
+### La causa, y es una trampa para cualquier pantalla
+
+`MotorPagoPrestamoServiceImpl:242-244`, dentro de la aplicación de un pago:
+
+```java
+// saldoCapital = saldoInicialCapital − capitalPagado (NO se pone en 0)
+cuota.setSaldoCapital(Math.max(0, redondear(nullSafe(cuota.getSaldoInicialCapital()) - capitalPagado)));
+cuota.setSaldoInteres(0.0);
+cuota.setSaldoMora(0.0);
+cuota.setSaldoInteresVencido(0.0);
+```
+
+⇒ **En cuanto una cuota recibe CUALQUIER pago, `DTPRSLIN`, `DTPRSLMR` y `DTPRSLIV` quedan en 0 en
+la base, aunque esos conceptos no se hayan cobrado.** Sólo `saldoCapital` se calcula de verdad —y
+el comentario de esa línea, «NO se pone en 0», está justo encima de las tres que sí lo hacen.
+
+El diálogo leía esos tres campos como «lo que falta de esta cuota». La **Mora se salvaba de
+casualidad**: en el caso reportado su saldo venía nulo (se acumuló después del pago) y el código
+caía al cálculo correcto. Por eso el defecto se veía en el interés y no en la mora, lo que lo hacía
+parecer un caso puntual.
+
+### El arreglo, y por qué no fue en el backend
+
+El pendiente de un concepto pasa a ser **siempre `pactado − pagado`**. No depende de campos que el
+backend deja inconsistentes, y la tarjeta de saldo cuadra **por construcción**: Σpactado − Σpagado
+= total de la cuota − total cobrado.
+
+**No se tocó el motor a propósito:** ese comportamiento lo consumen los procesos de pago, y
+cambiarlo tendría un alcance enorme comparado con el defecto. Queda anotado en el código del
+diálogo, citando la línea, para que nadie vuelva a conectar esos campos.
+
+⚠️ **Deuda abierta:** cualquier otra pantalla o proceso que lea `DTPRSLIN` / `DTPRSLMR` / `DTPRSLIV`
+de una cuota **con pagos** está leyendo un cero que no significa «no se debe». En el frontend se
+barrió y no hay otra que los use para mostrar un pendiente; **en el backend no se barrió**.
+
+### Patrón que ya va tres veces en dos días
+
+`PRSTSLTT`/`PRSTSLCP` (nadie las escribe), `PRSTTTPG` (ídem), y ahora `DTPRSLIN`/`DTPRSLMR`/
+`DTPRSLIV` (se escriben mal). ⭐ **Un campo de saldo persistido en este sistema no es confiable
+hasta que se demuestre quién lo escribe y con qué criterio.** Lo confiable es reconstruirlo desde
+las cuotas y los pagos, que es lo que ya hacían `SaldoPrestamoService` y el motor.
