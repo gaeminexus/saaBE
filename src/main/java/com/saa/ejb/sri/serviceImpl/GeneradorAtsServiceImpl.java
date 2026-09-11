@@ -35,8 +35,10 @@ import com.saa.model.cxp.NotaDebitoCompra;
 import com.saa.model.cxp.RetencionCompraV2;
 import com.saa.model.tsr.Titular;
 import com.saa.rubros.Estado;
+import com.saa.rubros.Rubros;
 import com.saa.rubros.TipoIdentificacion;
 
+import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -62,6 +64,11 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
 
     @PersistenceContext
     private EntityManager em;
+
+    // ÍTEM 31 (2026-09-11): para derivar tipoCliente desde el rubro 35 (Tipo de Persona) cuando
+    // tipoProveedorAts (Tabla 14) está vacío -- ver resolverTipoClienteVenta.
+    @EJB
+    private com.saa.basico.ejb.DetalleRubroService detalleRubroService;
 
     private static final int MAX_BYTES_ZIP = 8 * 1024 * 1024;
 
@@ -765,19 +772,12 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         // existe en el esquema, condicional: sólo cuando tpIdCliente="06" (pasaporte). Julio no
         // tenía ningún cliente con pasaporte, así que el campo nunca se emitió en el archivo
         // autorizado -- su ausencia ahí no probaba que no existiera, sólo que no aplicaba ese mes.
-        // Valor: Tabla 14 del catálogo ("01"=Persona natural, "02"=Sociedad), la misma que ya usa
-        // el lado compras -- Titular.tipoProveedorAts (TTLRTPAT), cuyo propio javadoc lo dice
-        // explícito: "ATS (campo tipoProv, Tabla 14...)". Si el pasaporte no tiene el campo
-        // capturado, no se inventa: aviso y se sigue sin escribir el elemento.
+        // Valor: Tabla 14 ("01"=Persona natural, "02"=Sociedad) -- ver resolverTipoClienteVenta
+        // para de dónde sale (ítem 31, corrigió el ítem 28: no basta con tipoProveedorAts).
         if ("06".equals(tpIdCliente)) {
-            String tipoCliente = v.titular.getTipoProveedorAts();
-            if (tipoCliente != null && !tipoCliente.trim().isEmpty()) {
+            String tipoCliente = resolverTipoClienteVenta(v.titular, avisos);
+            if (tipoCliente != null) {
                 writeElement(w, "tipoCliente", tipoCliente, 6);
-            } else {
-                avisos.add("Cliente " + v.titular.getCodigo() + " (" + nvl(v.titular.getNombre(), "")
-                        + ") tiene tpIdCliente=06 (pasaporte) pero no tiene tipoProveedorAts (Tabla 14: "
-                        + "persona natural/sociedad) capturado -- el SRI exige 'tipoCliente' para ese "
-                        + "caso y no se escribió. Configure el dato en el titular antes de declarar.");
             }
         }
         writeElement(w, "tipoComprobante", nvl(v.tipoComprobante, ""), 6);
@@ -840,6 +840,66 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         w.writeCharacters("    ");
         w.writeEndElement();
         w.writeCharacters("\n");
+    }
+
+    /**
+     * ÍTEM 31 (2026-09-11), corrige un diagnóstico propio del ítem 28. {@code Titular} tiene DOS
+     * campos que parecen decir lo mismo ("tipo de persona") y NO son intercambiables -- medido
+     * contra el caso real (titular AGHAYAR SEYIDOV, pasaporte, rechazado por el SRI):
+     * <ul>
+     * <li>{@code tipoProveedorAts} (TTLRTPAT, Tabla 14 ATS): la fuente que el ítem 28 leía sola.
+     * Se ESCRIBE sólo si alguien la carga a mano por fuera de la pantalla -- verificado con grep
+     * sobre TODO {@code saaFE}: cero apariciones, no está en ninguna pantalla. El usuario no
+     * puede cargarla aunque quiera, y decirle "configure el dato" (como hacía el aviso del ítem
+     * 28) era pedirle algo imposible.</li>
+     * <li>{@code rubroTipoPersonaH} (TTLRRZZA, rubro 35 "Tipo de Persona"): SÍ está en la
+     * pantalla de titulares y el usuario SÍ la carga -- AGHAYAR SEYIDOV la tiene en "NATURAL".
+     * Pero ningún proceso de negocio la lee (ver el hallazgo aparte reportado al árbitro):
+     * escrita y nunca consumida, mientras la otra se consume y nunca se escribe.</li>
+     * </ul>
+     * Por eso la resolución deriva del rubro 35 cuando la Tabla 14 está vacía, con el mismo
+     * mecanismo por catálogo que ya usa {@code resolverTipoIdentificacionSujetoRetenido}
+     * (RetencionV2ServiceImpl, ítem 13): P nulo no bloquea la lectura de H, cae a
+     * {@link Rubros#TIPO_PERSONA} (35). <b>Si el catálogo devuelve un texto en vez de "01"/"02"
+     * directo (ej. "NATURAL"/"JURIDICA"), NO se inventa el mapeo</b> -- es una decisión
+     * tributaria, se avisa y se deja sin escribir el elemento.
+     */
+    private String resolverTipoClienteVenta(Titular titular, List<String> avisos) {
+        String directo = titular.getTipoProveedorAts();
+        if (directo != null && !directo.trim().isEmpty()) {
+            return directo.trim();
+        }
+        if (titular.getRubroTipoPersonaH() != null) {
+            try {
+                long rubroP = titular.getRubroTipoPersonaP() != null
+                        ? titular.getRubroTipoPersonaP().longValue() : Rubros.TIPO_PERSONA;
+                String valorAlfa = detalleRubroService.selectValorStringByRubAltDetAlt(
+                        (int) rubroP, titular.getRubroTipoPersonaH().intValue());
+                if (valorAlfa != null && !valorAlfa.trim().isEmpty()) {
+                    String candidato = valorAlfa.trim();
+                    String normalizado = candidato.length() == 1 ? "0" + candidato : candidato;
+                    if ("01".equals(normalizado) || "02".equals(normalizado)) {
+                        return normalizado;
+                    }
+                    avisos.add("Titular " + titular.getCodigo() + " (" + nvl(titular.getNombre(), "")
+                            + "): el catálogo del rubro 35 (Tipo de Persona) devolvió '" + candidato
+                            + "', que no es '01' (natural) ni '02' (sociedad) directo -- no se derivó "
+                            + "tipoCliente sin inventar el mapeo. Revisar el catálogo (PGS.LSRI/TSRI) "
+                            + "antes de declarar.");
+                    return null;
+                }
+            } catch (Throwable e) {
+                System.err.println("⚠ No se pudo derivar tipoCliente desde el rubro 35 para el titular "
+                        + titular.getCodigo() + ": " + e.getMessage());
+            }
+        }
+        // ÍTEM 31 punto 3: el texto anterior pedía "configure el dato en el titular" -- imposible,
+        // tipoProveedorAts no está en ninguna pantalla. El campo visible es el Tipo de Persona.
+        avisos.add("Titular " + titular.getCodigo() + " (" + nvl(titular.getNombre(), "")
+                + ") no tiene Tipo de Persona capturado (ni tipoProveedorAts ni el rubro 35) -- el "
+                + "SRI exige 'tipoCliente' para tpIdCliente=06 (pasaporte) y no se pudo escribir. "
+                + "Cargue el Tipo de Persona del titular (pantalla de Titulares) antes de declarar.");
+        return null;
     }
 
     /**
