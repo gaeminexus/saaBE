@@ -288,3 +288,71 @@ Antes de cada despliegue, tres controles — dos se leen y uno se corre:
 | 2026-09-07 | Implementado (`3666a6c`) y revisado por el árbitro. Se agrega la §5.4 con la forma real de cada respuesta, se precisa la regla 7 (prohibía `getAll` por su nombre y no por su motivo, y frenó de más el endpoint de productos) y se anota que `selectVigentesByEntidad` absorbe errores y devuelve lista vacía |
 | 2026-09-07 | Cerrado `/simulador/productos` (`48f8c2c`): la lista blanca queda completa. Se documenta que tasa y plazo por producto no existen hoy en `saaBE` para ningún consumidor |
 | 2026-09-07 | Se documenta el catálogo real de `PRSTIDST` (11 estados, de `com.saa.rubros.EstadoPrestamo`) y cómo se agrupa para el filtro de la app, que había quedado sin poder implementarse |
+
+---
+
+## 8. ⛔ Los saldos del préstamo salen del motor, NO de las columnas de `PRST`
+
+> Diseño del árbitro, 2026-09-11. **Pendiente de implementación.** Aviso original de
+> `omen-saa-1-arb`, verificado contra el código antes de aceptarlo.
+
+### El defecto
+
+`Prestamo.saldoTotal` (`PRST.PRSTSLTT`) y `Prestamo.saldoCapital` (`PRST.PRSTSLCP`) —y con ellos
+`saldoPorVencer`, `saldoVencido` y `saldoInteres`— **no los escribe ninguna línea del backend**.
+Verificado: ningún `setSaldoTotal`/`setSaldoCapital` del proyecto opera sobre la entidad `Prestamo`
+(todos son sobre `DetallePrestamo` o sobre DTOs). Conservan el valor que dejó la migración y **no
+se mueven con ningún pago**. Medido en producción el 2026-09-01: 28,5 millones de «saldo» en
+préstamos ya cancelados.
+
+`MovilMappers` los copia tal cual al `PrestamoMovilDTO`, y **la app los muestra en cuatro lugares**:
+la lista de créditos, el detalle, la cuenta individual por préstamo, y —el peor— una **suma
+consolidada** de todos los `saldoTotal` como deuda total del partícipe. Un partícipe con un préstamo
+migrado ya cancelado ve una deuda que no existe.
+
+### La fuente correcta
+
+`PrestamoService.calcularSaldosEnLote(List<Long>)` → `List<SaldoPrestamoResumen>`, que calcula desde
+las cuotas con la lógica del motor de pago, que es la autoritativa. Ya está en `origin/main`
+(`130f2d45`). Devuelve `idPrestamo`, `saldoCapital`, `saldoTotal`, `capitalPagado` y `cuotasEnMora`.
+
+**No replicar la fórmula** en el mapper ni en Dart: en créditos migrados el `capitalPagado` de la
+cuota no es confiable y el saldo se reconstruye desde los pagos (`PGPR`); el motor ya encapsula eso.
+Dos fórmulas darían dos saldos distintos en dos pantallas.
+
+### Los tres puntos a corregir
+
+| Archivo | Línea | Qué mapea |
+|---|---|---|
+| `PrestamoMovilRest` | ~49 | la lista de préstamos de la entidad |
+| `PrestamoMovilRest` | ~69 | el detalle de un préstamo |
+| `CuentaIndividualMovilRest` | ~63 | los préstamos vigentes de la cuenta individual |
+
+### Cómo
+
+`MovilMappers` es una clase de utilidad estática y no puede inyectar EJB, así que **el cálculo va en
+el recurso REST**, que sí puede: inyectar `PrestamoService`, resolver los saldos **en un solo
+llamado en lote** con todos los códigos de la página, y pasárselos al mapper.
+
+Guardas obligatorias, las dos por contrato del propio motor:
+
+- **Lista vacía → no llamarlo.** Lanza `IncomeException("Se requiere al menos un código")`.
+- **Máximo 500 por llamada.** Lanza `IncomeException` por encima. Hoy ninguna entidad se acerca,
+  pero la guarda va igual.
+
+**Uno solo en lote, nunca uno por préstamo.** El propio motor lo advierte en su comentario: préstamo
+por préstamo son miles de consultas donde en lote hay una.
+
+### Qué pasa con los campos que el motor no calcula
+
+`saldoInteres`, `saldoPorVencer` y `saldoVencido` **no los devuelve el motor** y no tienen otra
+fuente confiable. **Van en `null`, no con el valor de la columna muerta.** Un `null` es honesto; un
+número inventado miente, y es exactamente el defecto que estamos corrigiendo. La app no los usa en
+ninguna pantalla — solo usa `saldoTotal` y, en modelos, `saldoCapital`.
+
+### Y no usar la variante con efecto colateral
+
+`MotorPagoPrestamoService` expone dos formas de calcular. **`calcularSaldosRealesCuota` corrige y
+persiste el estado de la cuota** cuando detecta inconsistencia: una consulta desde el teléfono no
+debe escribir en la base. `calcularSaldosEnLote` del `PrestamoService` es la variante pura y es la
+que va — verificado que no llama a `save`/`merge`/`persist`.
