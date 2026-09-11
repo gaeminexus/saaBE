@@ -136,3 +136,49 @@ lista.
 
 **Lo que NO es decisión y se corrige igual:** la tabla de retenciones (§1) y el doble conteo (§2).
 Los dos son defectos con una única lectura correcta.
+
+---
+
+# ANEXO A — El §3, medido sobre TODO el repositorio (2026-09-11)
+
+El §3 decía que `SUBCERO` sólo se llena con los valores de terceros. Se midió sobre el repositorio
+completo y **es peor de lo que decía**: no hay, en ningún servicio, un camino que reparta la base
+al 0% leyendo la tarifa del XML.
+
+## A.1 Los tres únicos `setSubcero` del sistema
+
+`grep -rn "\.setSubcero(" src/main/java` → **3 resultados en todo el backend**:
+
+| Archivo:línea | Qué hace | ¿Reparte la base 0% real? |
+|---|---|---|
+| `ProcesoCargaDocumentosServiceImpl:1675` | `+ totalTerceros` (bomberos/basura) | ❌ sólo terceros |
+| `FacturaCompraServiceImpl:444` | Nota de Venta manual: toma `solicitud.getSubcero()` **tal cual del payload** | ❌ sin cómputo: depende de lo que mande el frontend |
+| `LiquidacionCompraServiceImpl:814` | `crearDocumentoCxp` copia `subcero` de `cxc.LiquidacionCompra` a `cxp.LiquidacionCompraCompra` | ❌ propagación, no cálculo |
+
+**Ninguno lee `<totalConImpuestos><totalImpuesto codigoPorcentaje=…>`.** El dato está en el XML y el
+cargador ya lo lee (línea 1601) para resolver el código de IVA — **lo que falta no es obtener un
+dato nuevo, es repartir las bases por tarifa con uno que ya se tiene.**
+
+## A.2 Nota de crédito, nota de débito y liquidación de compra: peor que la factura
+
+`setSubcero` **no aparece ni una vez** para `NotaCreditoCompra`, `NotaDebitoCompra` ni
+`LiquidacionCompraCompra`. Tras la carga automática su `subcero` queda **siempre en 0**.
+
+Consecuencia doble:
+- El arreglo del doble conteo (`subtotal − subcero`) es **inocuo** para las tres: resta cero. Queda
+  puesto igual, correcto para el día en que el campo se llene.
+- Pero **toda su base al 0% se declara como gravada**, sin siquiera el atenuante parcial que la
+  factura tiene por los terceros.
+
+## A.3 Y el lado ventas no se puede medir desde el backend
+
+`FacturaServiceImpl`: **cero** `setSubtotal`/`setSubcero`. `Factura.subtotal` y `Factura.subcero`
+**llegan tal cual del payload del frontend** al emitir. El mecanismo de doble conteo del lado
+compra no está replicado en el backend de ventas.
+
+O sea: **si el problema existe en ventas, está en qué manda `saaFE` al crear la factura**, y eso se
+mide del otro lado. Para agosto no se nota — la base 0% de ventas del talón es `0,00`.
+
+> **Lo que este anexo cambia respecto del §3:** deja de ser "un detalle de los servicios básicos" y
+> pasa a ser **el reparto de bases por tarifa, que no existe en ninguna parte del sistema**. Sigue
+> siendo decisión del usuario (§6-A) porque tocar la carga no corrige lo ya cargado.
