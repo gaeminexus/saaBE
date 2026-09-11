@@ -684,7 +684,16 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
                 : (ret != null && ret.formaPago != null
                         ? java.util.Collections.singletonList(ret.formaPago)
                         : java.util.Collections.<String>emptyList());
-        if (!formasPago.isEmpty()) {
+        // ÍTEM 30 (2026-09-11): UNA sola fórmula del umbral, usada por las dos ramas -- el ítem 28
+        // la tenía duplicada en potencia (sólo en el "falta"), y el SRI reveló el reverso: exige
+        // <formasDePago> cuando el documento supera USD 500 (confirmado, no de este mensaje --
+        // medido en el .txt de Recibidos: SETEL 035949972, 124.71+18.71=143.42, misma fórmula) Y
+        // se queja si aparece en un documento que NO supera. "> 500.00" estricto (el texto del SRI
+        // dice "exceden"): un documento en exactamente 500.00 no la lleva hasta que se mida lo
+        // contrario -- no se adivina el borde.
+        double totalDocumento = c.base0 + c.baseGravada + c.montoIva + c.montoIce;
+        boolean superaUmbral = totalDocumento > 500.0;
+        if (superaUmbral && !formasPago.isEmpty()) {
             w.writeCharacters("      ");
             w.writeStartElement("formasDePago");
             w.writeCharacters("\n");
@@ -694,18 +703,16 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
             w.writeCharacters("      ");
             w.writeEndElement();
             w.writeCharacters("\n");
-        } else {
-            // No hay forma de pago de ningún origen. Si el documento supera USD 500, el SRI lo
+        } else if (superaUmbral) {
+            // No hay forma de pago de ningún origen, y el documento supera USD 500: el SRI lo
             // rechaza por esto exacto (medido: 15 compras > 500 sin formasDePago) -- no se deja
-            // pasar mudo.
-            double totalDocumento = c.base0 + c.baseGravada + c.montoIva + c.montoIce;
-            if (totalDocumento > 500.0) {
-                avisos.add("Compra " + nvl(c.tipoComprobante, "") + " " + nvl(c.establecimiento, "") + "-"
-                        + nvl(c.puntoEmision, "") + "-" + nvl(c.secuencial, "") + " (autorización "
-                        + nvl(c.autorizacion, "") + "), total " + formatDecimal(totalDocumento) + ": sin "
-                        + "forma de pago en ningún origen (documento ni retención) y supera USD 500 -- "
-                        + "el SRI va a rechazar el ATS por esto. Revisar el documento antes de declarar.");
-            }
+            // pasar mudo. Si NO supera el umbral, no se escribe el bloque Y no hace falta avisar
+            // nada: es exactamente lo que corresponde (el SRI se queja si aparece de más).
+            avisos.add("Compra " + nvl(c.tipoComprobante, "") + " " + nvl(c.establecimiento, "") + "-"
+                    + nvl(c.puntoEmision, "") + "-" + nvl(c.secuencial, "") + " (autorización "
+                    + nvl(c.autorizacion, "") + "), total " + formatDecimal(totalDocumento) + ": sin "
+                    + "forma de pago en ningún origen (documento ni retención) y supera USD 500 -- "
+                    + "el SRI va a rechazar el ATS por esto. Revisar el documento antes de declarar.");
         }
 
         if (ret != null && !ret.airLineas.isEmpty()) {
