@@ -3063,3 +3063,24 @@ de `max(0, …)` y el seguro ya viene topado por él), y los dos únicos llamado
 es la red. `mvn -q compile` → exit 0 (árbitro). **Surte efecto con el próximo WAR: no correr la
 pensión de septiembre antes.** Queda abierto: el seguro al proveedor (decisión A/B/C del usuario), el
 reverso de aportes, y qué hacer con lo ya sobrepagado (`sql/222`).
+
+## 2026-09-14 — Seguro: opción A decidida, y lo que el ítem 4 midió
+
+**Decisión del usuario:** opción **A** — seguro topado por saldo al fijarlo, y descontado PRIMERO en la
+corrida (seguro → cruce → pensión). Diseño completo en `crd/API-DOS-PROCESOS-MENSUALES-JUBILADOS.md`
+§11, escrito antes de despachar.
+
+**Ítem 4 del ejecutor, contrastado por el árbitro:**
+- (a) confirmado: `generarSeguroIndividual:1001,1022` fija el nominal y `generarSeguroDelMes:1125-1129`
+  paga la suma, sin saldo.
+- (b) `sincronizarPagos` y `generarContraMovimiento` sin riesgo; `generarUnMesSinPrestamo` muerto y con
+  guarda. **Pero el ejecutor afirmó que `generarPagosDelMes` (deprecado) tiene el mismo defecto, y no
+  es así:** su `totalSeguro` suma `seguroInternoMes`, que ya viene topado, y la orden al proveedor sale
+  DESPUÉS de los descuentos (`:827-829`, `:873-875`). Lo que engaña es el comentario «NOMINAL» de
+  `:826`, que quedó viejo. Leyó el comentario y no la variable: el mismo error de H56.
+
+**Un agujero más que apareció al diseñar la A, y que nadie había medido:** el proceso de seguro fija
+seguro a todo `JUBILADO_COMPLEMENTARIO`, pero la corrida de pensiones sale temprano como `SIN_ANCLA` o
+`AL_DIA` sin descontar nada. Ese seguro se paga al proveedor y no sale de la cuenta de nadie. Cerrado
+en el diseño (§11.1: seguro fijado 0 en esos casos). El bloque 4 del `sql/222` lo muestra como filas
+con `PGPCVLPN` nulo en períodos cuya pensión ya corrió.

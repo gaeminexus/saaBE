@@ -484,6 +484,10 @@ absoluto.
 > *«por esta razón es que no es necesario el certificado bancario para poder descontar a un
 > jubilado su seguro»* — confirmación del usuario, 2026-09-05.
 
+> ⛔ **REEMPLAZADO el 2026-09-14 (H60, opción A del usuario): el orden vigente es SEGURO → CRUCE →
+> PENSIÓN**, con el seguro topado por saldo desde que se fija. Ver
+> `crd/API-DOS-PROCESOS-MENSUALES-JUBILADOS.md` §11. El bloque de abajo queda como historia.
+
 ```
 olla = pensión + seguro del período (lo mismo que antes se llamaba "remanente nominal")
 

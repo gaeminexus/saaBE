@@ -272,3 +272,83 @@ fallar y sin bloquear.
 **Por qué así y no de otra forma:** si el caso nunca ocurre, el campo queda en cero y no molesta a
 nadie. Si ocurre, aparece **en el resultado de la corrida** en vez de descubrirse tres meses después
 conciliando con el proveedor. Es la diferencia entre un supuesto verificado y un supuesto olvidado.
+
+---
+
+## 11. ⛔⛔ H60 — el seguro se paga al proveedor sólo por lo que el jubilado TIENE (opción A, 2026-09-14)
+
+**Decisión del usuario, 2026-09-14:** opción **A**. El seguro se fija ya topado por el saldo, y en la
+corrida de pensiones se descuenta **PRIMERO**, porque su orden al proveedor ya salió. Regla madre del
+usuario: *«el sistema no debe permitir devolver más dinero o cruzarlo con préstamos del que un
+partícipe tenga»*.
+
+**Por qué hacía falta.** El proceso 4.1 fijaba el seguro **nominal** del VPPC y pagaba al proveedor
+por la suma, sin mirar nada. Después la corrida de pensiones lo descontaba topado por el saldo que
+quedaba **tras el cruce**. Resultado: al proveedor se le pagaba más de lo que salía de la cuenta del
+jubilado. Y un segundo agujero del mismo tipo: 4.1 fija seguro a **todo** `JUBILADO_COMPLEMENTARIO`,
+pero la corrida de pensiones sale temprano como `SIN_ANCLA` o `AL_DIA` **sin descontar nada** → seguro
+pagado al proveedor que no sale de la cuenta de nadie.
+
+### 11.1 Proceso de seguro (`generarSeguroIndividual`)
+
+```
+seguroPendientePrevio = Σ PGPCVLSG de las filas del jubilado con PGPCVLPN nulo, de períodos
+                        ANTERIORES al que se fija (stubs cuyo seguro ya se pagó y aún no se descontó)
+saldoLibre            = max(0, saldo aporte 23 − seguroPendientePrevio)
+seguroFijado          = min(nominal VPPC, saldoLibre)
+```
+
+Y además `seguroFijado = 0` cuando la corrida de pensiones **no lo descontaría**:
+- **sin ancla** (`resolverAnclaRetroactivo == null`), o
+- **al día** para ese período (`YearMonth(ancla) + 1 > período`).
+
+La fila se graba **igual**, con el valor topado (puede ser `0.0`): así la corrida de pensiones la
+reconoce como fijada y no la trata como `SIN_SEGURO_DEL_PERIODO`. El total de la orden al proveedor es
+la suma de lo **fijado**, no de lo nominal. El `mensaje` del resumen dice cuántos quedaron topados y
+cuánto seguro nominal no se cobró. **Sin cambios de forma** en la respuesta.
+
+### 11.2 Corrida de pensiones (`generarMesesRetroactivos`) — orden SEGURO → CRUCE → PENSIÓN
+
+1. **Reserva al empezar**, antes del bucle: `seguroReservado` = Σ `PGPCVLSG` de las filas stub
+   (`PGPCVLPN` nulo) del jubilado en los meses `[desde, corrida]`. Si
+   `saldo < seguroReservado − TOLERANCIA` → `IncomeException(ERR_SALDO_INSUFICIENTE)` con un mensaje que
+   diga que ese seguro **ya se pagó al proveedor** y cuánto falta. Es una carrera (algo movió el saldo
+   entre los dos procesos) y tiene que verse, no taparse.
+   `saldoLibre = saldo − seguroReservado`.
+2. **Por mes:**
+   - `seguroMes` = el `PGPCVLSG` **exacto** del stub del mes si existe (ya reservado: no se vuelve a
+     restar de `saldoLibre`); si el mes no tiene stub, `0` con `usarSeguroFijado`. Sin
+     `usarSeguroFijado` (camino deprecado): `min(valorSeguro, saldoLibre)`, y ése sí se resta de
+     `saldoLibre`.
+   - `ollaTrasSeguro = valorTotal − seguroMes`.
+   - **Cruce:** `disponibleMes = min(ollaTrasSeguro, deudaExigible si hay préstamo, saldoLibre)`.
+   - **Pensión:** `remanenteMes = max(0, min(ollaTrasSeguro − cruce, saldoLibre − cruce))`.
+   - `saldoLibre −= cruce + (remanenteMes si sale al banco)`.
+3. **Corte `SALDO_AGOTADO`:** sólo si `saldoLibre <= TOLERANCIA` **y no quedan** stubs con seguro > 0
+   en los meses que faltan. Si quedan, el mes se procesa igual con cruce 0 y pensión 0 para que el
+   seguro ya pagado se descuente.
+4. Los cortes tempranos `SIN_ANCLA` y `AL_DIA` quedan como están: con 11.1, un jubilado en esos casos
+   ya no tiene seguro fijado > 0 en el período.
+
+### 11.3 Prevuelo (`previsualizarJubilado`) — mismo orden
+
+```
+montoSeguro   = min(seguroAcumulado, saldo)
+montoACruzar  = min(pensionesAcumuladas − montoSeguro, deudaExigible, saldo − montoSeguro)
+pension       = max(0, min(pensionesAcumuladas − montoSeguro − montoACruzar, saldo − montoSeguro − montoACruzar))
+```
+
+Sigue siendo una aproximación sobre el nominal (no lee los stubs), igual que antes.
+
+### 11.4 Invariantes que la implementación tiene que cumplir
+
+- Σ seguro fijado a un jubilado y aún no descontado **≤** su saldo del aporte 23.
+- En la corrida: `seguro + cruce + pensión al banco ≤ saldo` al empezar, siempre.
+- Orden al proveedor = Σ seguro fijado = Σ seguro que la corrida de pensiones descuenta (salvo los
+  jubilados que fallen, que quedan en `errores` con su stub para el mes siguiente).
+- `crearMovimientoNegativo` sigue revalidando el saldo (H60, despacho 1): es la red, no el control.
+
+### 11.5 Lo ya pagado no se toca
+
+Esto rige desde el próximo WAR. Agosto 2026 y anteriores se miden con `crd/sql/222` (bloque 4) y lo
+que haya se decide aparte.
