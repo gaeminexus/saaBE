@@ -3690,3 +3690,56 @@ usuario lo cazó preguntando «¿por qué empezó a fallar si antes funcionaba?�
 marcaciones, descuentos recurrentes, períodos, novedades) están bien. `ServiceLocatorRrhService.ejecutaServicio`
 es solo passthrough (verificado por el árbitro, `:128-142`), y las transformaciones vivían en el
 `onBeforeSave` de cada componente, que sí se copió. Barrido de `omen-saa-2-fe`.
+
+## §43 — Cuentas bancarias: un banco sin cuentas mostraba las del anterior (2026-09-14, noche)
+
+**Arbitro nuevo, memoria limpia.** Reporte del usuario con captura: en Tesoreria → Cuentas Bancarias,
+al elegir un banco sin cuentas la tabla seguia con las del banco anterior. Arreglado en FE `17cf124`.
+
+**Mecanismo, que es el §8.4 del registro de reservas en su forma de pantalla:** `selectByCriteria`
+de `CNBC` responde «sin filas» con un **400** que `MensajeErrorJsonFilter` envuelve como
+`{mensaje: "...no devolvio ningun registro"}`. La rama `next` de `cargarCuentasPorBanco` si
+reseteaba las señales; la rama `error` solo fijaba el mensaje. **Un dato normal («no hay filas») se
+trataba como un error, y el error no limpiaba nada.** El formulario si se limpiaba porque
+`seleccionarBanco` lo hace antes de consultar, y eso ocultaba que la tabla no.
+
+**Arreglo:** vaciar tabla y buscador ANTES de consultar; «sin filas» = vacio sin error (patron de
+`esErrorPagosSinRegistros` de `crd`, adaptado a `HttpErrorResponse.error.mensaje`); un fallo real
+sigue mostrandose.
+
+### Lo que hay que llevarse
+
+1. **La revision del arbitro atrapo un defecto nuevo que el propio agente habia anotado como
+   «preexistente».** Limpiar la señal `filtroCuentas` con un `<input>` no enlazado dejaba el texto
+   visible y el filtro vacio. Antes del cambio texto y señal coincidian siempre: **el caveat era
+   preexistente, el desajuste lo creaba el cambio.** Se corrigio con `[value]="filtroCuentas()"`.
+2. **Un fork de solo lectura reporto como propio un trabajo que no hizo — y el arbitro casi lo
+   registra como hecho.** El FE lanzo un fork para el barrido. Su reporte llego al arbitro con una
+   narrativa en primera persona: que habia escrito el arreglo del `.ts` sin permiso, con un bug, y
+   que lo habia corregido. **Falso**: el fork heredo el contexto del padre y conto las acciones del
+   padre como suyas. El FE lo desmintio con `git status --porcelain` (solo los dos archivos del
+   encargo) y el arbitro, que ya habia revisado el diff final, lo tenia correcto en el codigo y mal
+   en esta seccion — la primera version de este punto afirmaba el incidente como cierto. **Lo que
+   hay que llevarse:** el reporte de un fork no es evidencia de lo que paso en el arbol; el
+   `git diff` si. Regla dada al FE: para investigacion de solo lectura, sin fork.
+3. La cita «§8.3/§8.4 del REGISTRO» no la encontro el FE porque busco en `saaFE/docs/`, cuya copia
+   no tiene esa seccion. **El vigente es el de `saaBE/docs/logica-negocio/`.**
+
+### Abierto — la familia, contada por `omen-saa-2-fe` y SIN tocar (decision del usuario)
+
+Mismo patron (seleccion → `selectByCriteria` del detalle → la rama `error` no limpia el detalle):
+
+| Pantalla | Donde |
+|---|---|
+| Cierre de caja | `tsr/forms/cobros/cierre-caja/cierre-caja.component.ts:102-143` — no resetea los montos |
+| Conciliacion contable | `tsr/forms/generales/conciliacion-contable/conciliacion-contable.component.ts:349-366` — no llama `limpiarVistaCuenta()` |
+| Anticipos a clientes | `tsr/forms/anticipos/anticipos-clientes/anticipos-clientes.component.ts:196-229` |
+| Anticipos a proveedores | `tsr/forms/anticipos/anticipos-proveedores/anticipos-proveedores.component.ts:246-278` |
+| Titulares (huerfano, sin ruta) | `tsr/forms/titulares/titulares.component.ts:885-931`, `:1015-1044` — ademas su deteccion de «sin registros» usa `err?.toString()` → `"[object Object]"`, nunca coincide |
+
+Caso **inverso**: `titulares-v2.component.ts` `cargarCuentasBancariasDelTitular` se traga TODO error
+como lista vacia (el §8.1: un fallo se lee como «no hay datos»).
+
+Descartadas por el barrido (limpian bien o no son maestro-detalle): `cuentas-bancarias-listado`,
+`bancos`, `bancos-nacionales-extranjeros`, `registro-egreso`, `chequera`, `solicitud-chequera`,
+`detalle-extracto-bancario`, `conciliacion-cierre`, `consulta-extractos-bancarios`.
