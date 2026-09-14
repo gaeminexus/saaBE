@@ -3192,3 +3192,22 @@ rige al último día del mes, con cuatro estados visibles (monto / Sin vigencia 
 disponible). Revisado por el árbitro sobre el diff, cinco casos recorridos, `ng build` limpio
 (árbitro). **Queda del usuario:** confirmar si el flag del rubro 242 está encendido. Si no lo está, el
 archivo Petro sigue saliendo de `HSTR`.
+
+## 2026-09-14 — H63 y H64: el lápiz de contratos y el interruptor del rubro 242
+
+**H63 — el lápiz de «Consulta de contratos» manda al menú principal.** Reportado por el usuario.
+Causa: las seis navegaciones del módulo de contratos del frontend apuntan a
+`/menucontabilidad/menucreditos/...`, pero `menucreditos` es una ruta **hermana** de
+`menucontabilidad`, no hija. La URL no existe y el comodín `**` la manda a la raíz sin ningún error.
+**Por qué costaba verlo:** un comentario en `contrato-edit.component.ts:193` afirma que la ida «ya se
+verifica». Se verificó leyendo el `navigate`, no navegando. Es otro caso de verificar por lectura lo
+que sólo se verifica ejecutando.
+**Consecuencia de negocio:** el usuario tenía **apagado el rubro 242 porque la pantalla de contratos
+no funcionaba**. Sin poder revisar las vigencias, no podía encender la generación por contratos.
+
+**H64 — interruptor del rubro 242.** Pedido del usuario: en la misma pantalla que el de contabilidad.
+El backend ya lo tenía completo (`GET/PUT /rest/cnfg/generacionPorFaltanteAh`, misma forma que
+`contabilidadCrd`). Sólo faltaba el frontend. Trampa registrada y no corregida: con el catálogo del
+rubro ausente, el `GET` de **los dos** flags responde «apagado» en vez de fallar.
+
+Contrato de los dos: `crd/API-INTERRUPTOR-GENERACION-POR-FALTANTE.md`. Despachado a `omen-saa-1-fe`.
