@@ -73,6 +73,12 @@ distintas y confundirlas es peor que la deuda.
 | **e2-38** | `sri/sql/e2-38-las-retenciones-de-compra-estan-en-rcv2-o-en-rtcm.sql` | ¿Las retenciones de compra están en `PGS.RTCM` o en `PGS.RCV2`? El ATS leía sólo la segunda. **Solo lectura** | ⛔ **NUNCA SE CORRIÓ, y la pregunta se contestó igual — por el camino caro.** El 2026-09-11 el contador reportó el talón con las retenciones en 0,00, y ahí se midió que **ninguna de las dos era**: las que ASOPREP emite viven en `CBR.RTV2`/`DRV2`. Corregido en `fd3265a8`. **Se conserva como registro de que un script escrito y no corrido no ahorra el problema, sólo lo demora** |
 | **e2-39** | `cxc/sql/e2-39-tipo-identificacion-sujeto-retenido.sql` | Por qué la retención 216 declaró CÉDULA con un RUC de 13 dígitos, y cuántos titulares más tienen el tipo incoherente con la longitud. **Solo lectura** | ✅ **CORRIDO el 2026-09-09.** El catálogo del rubro 36 está **impecable** (01-04 con sus códigos SRI) y la titular estaba **bien clasificada**: lo que fallaba era que el código exigía el rubro **padre** —que vale 36 para todos y venía NULL— para leer el hijo. Y sólo **2 titulares** de 110 tienen el tipo incoherente, los dos marcadores de migración ya conocidos (`SUPER PACO`, `CLIENTES A JULIO 2026`) |
 
+## Scripts de pagos a liquidaciones y notas de venta (2026-09-14 →)
+
+| # | Ruta completa | Qué hace | Estado |
+|---|---|---|---|
+| **e2-40** | `cxp/sql/e2-40-liquidaciones-y-notas-de-venta-por-pagar.sql` | Antes de diseñar el pago de liquidaciones desde Solicitud de pago: forma de `PGS.PGTR` (¿existe `PGTRLQCC`?), liquidaciones emitidas con/sin documento CXP, `PGS.LQCC` por estado y con saldo, y las notas de venta (`FCTC` tipo `02`). **Solo lectura** | 🔴 **PENDIENTE de correr** — bloquea el diseño |
+
 ### Consulta suelta que quedó sin script y vale anotarla
 
 El **catálogo del rubro 35** (tipo de persona) se consultó el 2026-09-11 sin escribir un `e2-*`,
