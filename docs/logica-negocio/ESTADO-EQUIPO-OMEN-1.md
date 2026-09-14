@@ -3145,3 +3145,28 @@ el árbitro sobre el diff**:
   `participe-dash` sigue pasando porque reenvía el mismo valor.
 
 `mvn -q compile` del árbol completo → exit 0 (árbitro). Surte efecto con el próximo WAR.
+
+## 2026-09-14 — H62: «Cobros personales» muestra el valor mensual de aportes de una tabla congelada
+
+**Reportado por el usuario:** un socio con **129,95** en `CRD.CNTR` y en `CRD.HSTR`, y la pantalla
+mostrando **51,98**.
+
+**Causa, verificada en el código:** `cobros-personales.component.ts:668-672` (desde `saaFE 438f3e7`,
+2026-08-01) lee el valor mensual de **`CRD.HDAP`** (`HistoricoDesgloseAporteParticipe`), buscando por
+cédula y tomando el registro de mayor `idCarga`. **Nadie escribe `HDAP`**: ni el backend (el único
+`new HistoricoDesgloseAporteParticipe()` está en `remove`) ni el frontend (ninguna pantalla llama a su
+`POST`/`PUT`). Es una foto cargada desde afuera, por migración o SQL, y nunca se actualiza. Cualquier
+cambio de sueldo o de porcentaje posterior a esa carga no aparece.
+
+**La fuente que usa el resto del sistema** es `CRD.HSTR` con `estado = 99`, el más reciente por
+`fechaIngreso` (`HistorialSueldoDaoServiceImpl.selectByEntidadYEstadoActivo`). La usan la carga Petro
+(`CargaArchivoPetroServiceImpl:4462`, `:4913`) y la generación del archivo
+(`GeneracionArchivoPetroServiceImpl:1115`).
+
+**Impacto:** sólo visual. El valor se muestra en la columna «Valor mensual» y alimenta el mensaje de
+cobertura («este pago cubre N meses», `:1174`). No entra en el monto cobrado ni en el devengo que
+registra el backend. Pero el operador decide cuánto cobrar mirando ese número.
+
+**Corrección propuesta (sólo FE, sin tocar el backend):** leer `/rest/hstr/selectByCriteria` por
+`entidad.codigo` y `estado = 99`, el más reciente por `fechaIngreso`, y usar `montoCesantia` /
+`montoJubilacion`. **Sin despachar**: espera el visto bueno del usuario.
