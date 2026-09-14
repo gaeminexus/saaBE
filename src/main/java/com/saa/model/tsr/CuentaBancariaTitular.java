@@ -84,6 +84,33 @@ public class CuentaBancariaTitular implements Serializable {
     private String numeroCuenta;
 
     /**
+     * Tipo de identificación con la que se ABRIÓ la cuenta en el banco: código
+     * ALTERNO del detalle del rubro 36 (com.saa.rubros.TipoIdentificacion),
+     * 1 = cédula, 2 = RUC, 3 = pasaporte. NULL = usar la identificación del titular.
+     * <p>
+     * Un solo número, a propósito: NO es el par P/H de {@link Titular}
+     * (rubroTipoIdentificacionP/H) — el padre vale 36 siempre en todos los
+     * titulares, y leerlo en vez del hijo rompió el archivo del banco una vez
+     * (ítem 11, 2026-09-09; ver docs/logica-negocio/tsr/
+     * API-IDENTIFICACION-CUENTA-BANCARIA.md §2.1).
+     * <p>
+     * Junto con {@link #identificacion}, los dos o ninguno (CK_CTBN_IDENTIFICACION).
+     */
+    @Basic
+    @Column(name = "CTBNTPID")
+    private Long tipoIdentificacion;
+
+    /**
+     * Identificación con la que se ABRIÓ la cuenta en el banco. Va al archivo de
+     * pagos en lugar de la identificación del titular (una persona natural puede
+     * facturar con RUC y haber abierto la cuenta con cédula). NULL = usar la del
+     * titular.
+     */
+    @Basic
+    @Column(name = "CTBNIDNT", length = 20)
+    private String identificacion;
+
+    /**
      * Observaciones adicionales sobre la cuenta.
      */
     @Basic
@@ -193,6 +220,38 @@ public class CuentaBancariaTitular implements Serializable {
      */
     public void setNumeroCuenta(String numeroCuenta) {
         this.numeroCuenta = numeroCuenta;
+    }
+
+    /**
+     * Devuelve tipoIdentificacion
+     * @return tipoIdentificacion (rubro 36: 1=cédula, 2=RUC, 3=pasaporte; null = del titular)
+     */
+    public Long getTipoIdentificacion() {
+        return tipoIdentificacion;
+    }
+
+    /**
+     * Asigna tipoIdentificacion
+     * @param tipoIdentificacion Nuevo valor de tipoIdentificacion
+     */
+    public void setTipoIdentificacion(Long tipoIdentificacion) {
+        this.tipoIdentificacion = tipoIdentificacion;
+    }
+
+    /**
+     * Devuelve identificacion
+     * @return identificacion
+     */
+    public String getIdentificacion() {
+        return identificacion;
+    }
+
+    /**
+     * Asigna identificacion
+     * @param identificacion Nuevo valor de identificacion
+     */
+    public void setIdentificacion(String identificacion) {
+        this.identificacion = identificacion;
     }
 
     /**

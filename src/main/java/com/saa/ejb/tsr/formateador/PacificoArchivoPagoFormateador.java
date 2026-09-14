@@ -12,9 +12,7 @@ import com.saa.basico.util.IncomeException;
 import com.saa.model.cxp.LotePago;
 import com.saa.model.cxp.PagoProgramado;
 import com.saa.model.tsr.BancoExterno;
-import com.saa.model.tsr.Titular;
 import com.saa.rubros.TipoCuentasBancarias;
-import com.saa.rubros.TipoIdentificacion;
 
 /**
  * Data para pegar en la hoja de detalle de la macro BizBank Light v2.1 del
@@ -74,37 +72,23 @@ public class PacificoArchivoPagoFormateador implements FormateadorArchivoPagos {
 					+ "Registre la cuenta del beneficiario antes de generar el archivo.");
 		}
 
-		String identificacion;
-		String tipoIdentificacion;
+		// Tipo/numero de identificacion -- de la cuenta si la tiene propia, si no
+		// del titular (o del beneficiario ocasional); ver docs/logica-negocio/tsr/
+		// API-IDENTIFICACION-CUENTA-BANCARIA.md §2.2.
+		IdentificacionBeneficiarioResolver.Resultado identificacionResuelta =
+				IdentificacionBeneficiarioResolver.resolver(pago, "Banco del Pacifico");
+		String tipoIdentificacion = identificacionResuelta.getTipo();
+		String numeroId = identificacionResuelta.getIdentificacion();
+
 		Long tipoCuentaRubro;
 		String numeroCuenta;
 		BancoExterno banco;
 
 		if (tieneCuentaTitular) {
-			Titular titular = pago.getTitular();
-			identificacion = nvl(titular != null ? titular.getIdentificacion() : null);
-			// ÍTEM 11 (2026-09-09): TSR.TTLR guarda el tipo de identificación en DOS columnas
-			// (Titular.java:110-122) -- rubroTipoIdentificacionP (TTLRRYYB) es el rubro PADRE
-			// (36, SIEMPRE ese valor para todos los titulares); el detalle real (1=CEDULA,
-			// 2=RUC, 3=PASAPORTE, 4=EXTERIOR) está en rubroTipoIdentificacionH (TTLRRZZB, el
-			// HIJO). Leer la P manda 36 a letraTipoIdentificacion(), que no lo reconoce: el
-			// archivo fallaba SIEMPRE (medido: los 110 titulares tienen TTLRRYYB=36). Mismo
-			// par P/H que ya resuelven bien FacturaServiceImpl:1076-1079,
-			// LiquidacionCompraServiceImpl:1769-1778 y NotaCreditoServiceImpl:276 -- exigir
-			// las DOS no nulas antes de confiar en la H; si falta cualquiera, respaldo por
-			// longitud.
-			boolean tipoIdentificacionConfiable = (titular != null)
-					&& (titular.getRubroTipoIdentificacionP() != null)
-					&& (titular.getRubroTipoIdentificacionH() != null);
-			tipoIdentificacion = tipoIdentificacionConfiable
-					? letraTipoIdentificacion(titular.getRubroTipoIdentificacionH().intValue(), pago)
-					: tipoIdentificacionPorLongitud(identificacion);
 			tipoCuentaRubro = pago.getCuentaDestino().getTipoCuenta();
 			numeroCuenta = nvl(pago.getCuentaDestino().getNumeroCuenta());
 			banco = pago.getCuentaDestino().getBanco();
 		} else {
-			identificacion = nvl(pago.getBeneficiarioIdentificacion());
-			tipoIdentificacion = tipoIdentificacionPorLongitud(identificacion);
 			tipoCuentaRubro = pago.getBeneficiarioTipoCuenta();
 			numeroCuenta = nvl(pago.getBeneficiarioCuenta());
 			banco = pago.getBeneficiarioBanco();
@@ -124,7 +108,7 @@ public class PacificoArchivoPagoFormateador implements FormateadorArchivoPagos {
 		fila.createCell(4).setCellValue(valorEnDolares(pago));         // E: Valor
 		// F: Identificacion -- vacia, solo obligatoria en ordenes de cobro
 		celda(fila, 6, tipoIdentificacion);                            // G: Tip.Doc
-		celda(fila, 7, soloDigitosYLetras(identificacion));            // H: NUC
+		celda(fila, 7, numeroId);                                      // H: NUC
 		celda(fila, 8, nombreBeneficiario(pago));                      // I: Beneficiario
 		// J: Telefono -- vacia
 		celda(fila, 10, sanearReferencia(nvl(pago.getObservacion()))); // K: Referencia
@@ -157,45 +141,6 @@ public class PacificoArchivoPagoFormateador implements FormateadorArchivoPagos {
 		throw new IncomeException("El pago " + pago.getId() + " (beneficiario " + nombreBeneficiario(pago)
 				+ ") tiene un tipo de cuenta (" + tipoCuentaRubro + ") sin equivalente en el formato del "
 				+ "Banco del Pacifico.");
-	}
-
-	/**
-	 * Deducción por longitud para el BENEFICIARIO OCASIONAL: 10 dígitos ⇒ C,
-	 * 13 ⇒ R, cualquier otra cosa ⇒ P. Misma regla que usa el propio Banco
-	 * Internacional para validar su campo 10
-	 * (FORMATO-ARCHIVO-BANCOS.md §4.1), no una invención nuestra.
-	 */
-	private String tipoIdentificacionPorLongitud(String identificacion) {
-		String soloDigitos = identificacion.replaceAll("\\D", "");
-		if (soloDigitos.length() == 10) {
-			return "C";
-		}
-		if (soloDigitos.length() == 13) {
-			return "R";
-		}
-		return "P";
-	}
-
-	private String letraTipoIdentificacion(int rubro, PagoProgramado pago) {
-		switch (rubro) {
-			case TipoIdentificacion.CEDULA_IDENTIDAD:
-				return "C";
-			case TipoIdentificacion.RUC:
-				return "R";
-			case TipoIdentificacion.PASAPORTE:
-				return "P";
-			case TipoIdentificacion.IDENTIFICACION_DEL_EXTERIOR:
-				throw new IncomeException("El pago " + pago.getId() + " (beneficiario "
-						+ nombreBeneficiario(pago) + ") tiene identificacion del exterior, que no "
-						+ "tiene equivalente en el formato del Banco del Pacifico.");
-			default:
-				throw new IncomeException("El pago " + pago.getId() + " (beneficiario " + nombreBeneficiario(pago)
-						+ ") tiene un tipo de identificacion (" + rubro + ") no reconocido.");
-		}
-	}
-
-	private String soloDigitosYLetras(String identificacion) {
-		return identificacion.replaceAll("\\s+", "");
 	}
 
 	/**

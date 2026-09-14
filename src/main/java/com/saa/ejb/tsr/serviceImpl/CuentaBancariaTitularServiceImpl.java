@@ -14,6 +14,7 @@ import com.saa.ejb.tsr.dao.CuentaBancariaTitularDaoService;
 import com.saa.ejb.tsr.service.CuentaBancariaTitularService;
 import com.saa.model.tsr.CuentaBancariaTitular;
 import com.saa.model.tsr.NombreEntidadesTesoreria;
+import com.saa.rubros.TipoIdentificacion;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
@@ -81,6 +82,64 @@ public class CuentaBancariaTitularServiceImpl implements CuentaBancariaTitularSe
         if (cuentaBancariaTitular.getCodigo() != null && cuentaBancariaTitular.getCodigo() == 0L) {
             cuentaBancariaTitular.setCodigo(null);
         }
+        validaIdentificacion(cuentaBancariaTitular);
         return cuentaBancariaTitularDaoService.save(cuentaBancariaTitular, cuentaBancariaTitular.getCodigo());
+    }
+
+    /**
+     * Valida el tipo y la identificación con la que se abrió la cuenta (docs/
+     * logica-negocio/tsr/API-IDENTIFICACION-CUENTA-BANCARIA.md §2.3/§3). Los dos
+     * vacíos es válido -- la cuenta usa la identificación del titular, como hoy.
+     * Deja {@code identificacion} ya recortada y sin espacios antes de grabar.
+     * <p>
+     * Valida SOLO longitud (no que el contenido sea numérico/alfanumérico): es la
+     * misma regla con la que {@code InternacionalArchivoPagoFormateador.
+     * validarLongitudIdentificacion} valida el archivo del banco, y esa tampoco
+     * filtra el contenido -- sólo compara largo. Si el usuario quiere una
+     * validación de contenido más estricta, es una regla nueva a decidir, no lo
+     * que pide este ítem.
+     * @param cuentaBancariaTitular : Cuenta a validar antes de grabar
+     * @throws Throwable            : IncomeException si la regla no se cumple
+     */
+    private void validaIdentificacion(CuentaBancariaTitular cuentaBancariaTitular) throws Throwable {
+        Long tipo = cuentaBancariaTitular.getTipoIdentificacion();
+        String identificacion = cuentaBancariaTitular.getIdentificacion();
+        if (identificacion != null) {
+            identificacion = identificacion.trim();
+            if (identificacion.isEmpty()) {
+                identificacion = null;
+            }
+        }
+        cuentaBancariaTitular.setIdentificacion(identificacion);
+
+        if (tipo == null && identificacion == null) {
+            return;
+        }
+        if (tipo == null || identificacion == null) {
+            throw new IncomeException("Debe indicar el tipo de identificación y la identificación "
+                    + "de la cuenta, o dejar los dos vacíos.");
+        }
+
+        int tipoInt = tipo.intValue();
+        if (tipoInt != TipoIdentificacion.CEDULA_IDENTIDAD && tipoInt != TipoIdentificacion.RUC
+                && tipoInt != TipoIdentificacion.PASAPORTE) {
+            throw new IncomeException("Tipo de identificación de la cuenta no válido: " + tipo
+                    + ". Use 1 (cédula), 2 (RUC) o 3 (pasaporte).");
+        }
+
+        // "sin espacios" -- se limpia y se graba ya limpia (§2.3).
+        String limpia = identificacion.replaceAll("\\s+", "");
+        cuentaBancariaTitular.setIdentificacion(limpia);
+
+        if (tipoInt == TipoIdentificacion.CEDULA_IDENTIDAD && limpia.length() != 10) {
+            throw new IncomeException("La cédula de la cuenta debe tener 10 dígitos: '" + limpia + "'.");
+        }
+        if (tipoInt == TipoIdentificacion.RUC && limpia.length() != 13) {
+            throw new IncomeException("El RUC de la cuenta debe tener 13 dígitos: '" + limpia + "'.");
+        }
+        if (tipoInt == TipoIdentificacion.PASAPORTE && (limpia.length() < 5 || limpia.length() > 15)) {
+            throw new IncomeException("El pasaporte de la cuenta debe tener entre 5 y 15 caracteres: '"
+                    + limpia + "'.");
+        }
     }
 }
