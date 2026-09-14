@@ -3052,3 +3052,14 @@ Sin cambios de contrato de forma, sin DDL, sin frontend. Contrato actualizado co
 El dinero de agosto **ya salió**. Recuperarlo (descontar de la pensión futura, pedir devolución,
 asumirlo) es una decisión de negocio. Mientras tanto el saldo negativo **frena solo** al jubilado en
 las próximas corridas (`saldoRestante <= TOLERANCIA → SALDO_AGOTADO`): no se le vuelve a pagar.
+
+## ✅ Despacho 1 entregado — 2026-09-14
+
+Ítems 1-3 aplicados por `omen-saa-1-be` en `PagoPensionComplementariaServiceImpl` (corrida, prevuelo
+y guardarraíl en `crearMovimientoNegativo`). **Revisado por el árbitro sobre el diff**, no sobre el
+reporte: `saldoTrasSeguro` no puede ser negativo en ninguno de los dos puntos (`saldoTrasCruce` sale
+de `max(0, …)` y el seguro ya viene topado por él), y los dos únicos llamadores del guardarraíl
+(`:1904` seguro, `:1909` pensión) reciben montos ya topados, así que en operación normal no dispara:
+es la red. `mvn -q compile` → exit 0 (árbitro). **Surte efecto con el próximo WAR: no correr la
+pensión de septiembre antes.** Queda abierto: el seguro al proveedor (decisión A/B/C del usuario), el
+reverso de aportes, y qué hacer con lo ya sobrepagado (`sql/222`).

@@ -669,12 +669,15 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         double ollaTrasSeguro = redondear(ollaTrasCruce - montoSeguro);
         double saldoTrasSeguro = redondear(saldoTrasCruce - montoSeguro);
 
-        // Prioridad 3 — pensión al jubilado. Es lo que queda de la olla tras cruce y seguro; el
-        // saldo ya la topa por construcción (ollaTrasSeguro <= saldoTrasSeguro siempre, porque
-        // montoSeguro ya se topó por saldoTrasCruce). Sólo sale al banco si hay certificado —
-        // si no, esta porción queda RETENIDA en el aporte 23 del jubilado, no se consume ni se
+        // Prioridad 3 — pensión al jubilado. Es lo que queda de la olla tras cruce y seguro.
+        // ⛔⛔ H60 (2026-09-14): el comentario anterior decía "el saldo ya la topa por
+        // construcción" y es falso — ollaTrasCruce nunca se topó contra el saldo, solo el
+        // cruce y el seguro. Misma regresión de a18b1b80 (2026-09-04) que en
+        // generarMesesRetroactivos: acá vuelve el min contra saldoTrasSeguro (invariante H60 de
+        // crd/API-PAGO-PENSION-COMPLEMENTARIA.md). Sólo sale al banco si hay certificado — si
+        // no, esta porción queda RETENIDA en el aporte 23 del jubilado, no se consume ni se
         // envía (D2, sin cambios).
-        double pensionNominal = ollaTrasSeguro;
+        double pensionNominal = redondear(Math.max(0.0, Math.min(ollaTrasSeguro, saldoTrasSeguro)));
         double montoADinero = tieneCertificado ? pensionNominal : 0.0;
 
         double total = redondear(montoACruzar + montoSeguro + pensionNominal);
@@ -1731,11 +1734,17 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
                     + " totalSeguroRetroactivoNoPagado en el resumen");
             }
 
-            // Prioridad 3 — pensión al jubilado: lo que sobra de la olla tras cruce y seguro. Ya
-            // viene topada por saldo (saldoTrasSeguro >= ollaTrasSeguro siempre, porque el
-            // seguro ya se topó por saldoTrasCruce). Sólo sale al banco con certificado; si no,
-            // queda RETENIDA en el aporte 23 del jubilado (D2, sin cambios).
-            double remanenteMes = ollaTrasSeguro;
+            // Prioridad 3 — pensión al jubilado: lo que sobra de la olla tras cruce y seguro.
+            // ⛔⛔ H60 (2026-09-14): esto NO viene topado por saldo. ollaTrasCruce (la base de la
+            // olla) nunca se topó contra el saldo — solo el cruce y el seguro se calcularon con
+            // min(..., saldoTrasCruce). El comentario anterior afirmaba "saldoTrasSeguro >=
+            // ollaTrasSeguro siempre" y es falso apenas el saldo es menor que la olla: es la
+            // regresión de a18b1b80 (2026-09-04), que reordenó cruce → seguro → pensión y dejó
+            // la pensión sin su propio tope. Con esto vuelve el min contra saldoTrasSeguro, que
+            // el contrato (crd/API-PAGO-PENSION-COMPLEMENTARIA.md, invariante H60) exige. Sólo
+            // sale al banco con certificado; si no, queda RETENIDA en el aporte 23 del jubilado
+            // (D2, sin cambios).
+            double remanenteMes = redondear(Math.max(0.0, Math.min(ollaTrasSeguro, saldoTrasSeguro)));
 
             String glosa = "PAGO PENSION COMPLEMENTARIA RETROACTIVO " + mesM + "/" + anioM
                 + " - Entidad " + idEntidad;
@@ -2886,6 +2895,24 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         if (tipo == null) {
             throw new IncomeException("No existe el tipo de aporte " + TIPO_APORTE_PENSION_COMPLEMENTARIA
                 + " (pensión complementaria) en el catálogo CRD.TPAP.");
+        }
+
+        // ⛔⛔ H60 (2026-09-14): guardarraíl anti-carrera, revalidado DENTRO de la transacción —
+        // mismo criterio que ProcesoPagoPrestamoServiceImpl.consumirAportes:716-727. Este era el
+        // único camino que restaba de un aporte sin volver a comprobar el saldo antes de
+        // escribir (ver la tabla de "Verificado que el resto de caminos sí respeta el saldo" en
+        // ESTADO-EQUIPO-OMEN-1.md §H60). saldoAporteService.saldoPorEntidadYTipo es un wrapper
+        // directo de AporteDaoServiceImpl.sumValorByEntidadYTipo (mismo SUM JPQL sobre Aporte);
+        // ve los negativos ya persistidos en esta misma transacción (el seguro del mismo mes,
+        // los cruces de pagarConAportes) porque el flush de JPA es AUTO en todo el proyecto —
+        // no hay ningún FlushModeType.COMMIT (verificado, ver el javadoc de
+        // ProcesoPagoPrestamoService#precancelar).
+        double saldoActual = saldoAporteService.saldoPorEntidadYTipo(entidad.getCodigo(),
+            TIPO_APORTE_PENSION_COMPLEMENTARIA);
+        if (saldoActual < valor - TOLERANCIA) {
+            throw new IncomeException(ERR_SALDO_INSUFICIENTE + ": el saldo de pensión complementaria"
+                + " (aporte 23) de la entidad " + entidad.getCodigo() + " es $" + redondear(saldoActual)
+                + " y se intentó descontar $" + redondear(valor) + " (\"" + glosa + "\").");
         }
 
         Aporte aporte = new Aporte();
