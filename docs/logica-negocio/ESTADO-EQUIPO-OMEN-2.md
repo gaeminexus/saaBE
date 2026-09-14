@@ -3672,3 +3672,21 @@ cuentas (el botón no espera). Salida: anular y volver a registrar.
 - **Decisión del usuario:** cerrar el hueco del 394 (no registrar mientras cargan las cuentas + botón
   para asignar cuenta en la bandeja).
 - Bloque 4 del `e2-42`: cuentas de titulares con RUC a revisar a mano.
+
+### §42bis — Crear un banco: dije «venía de antes» y lo había roto este equipo
+
+**2026-09-14.** `POST /bnco` rechazaba `empresa: 1236` (número donde va un objeto). Afirmé que el
+defecto era anterior a la migración porque el componente viejo mandaba el mismo número. **Falso**: la
+tabla genérica pasaba el cuerpo por `ServiceLocatorTsrService`, cuya rama `BANCO` convertía la empresa
+a `{ codigo }`, ponía `estado ?? 1` y llenaba `rubroTipoBancoP`. La migración `9f36695` (nuestra,
+2026-09-01) llamó al servicio directo y perdió las tres. Arreglado en FE `2d1d65e` + `56b0012`. El
+usuario lo cazó preguntando «¿por qué empezó a fallar si antes funcionaba?».
+
+> **Lo que hay que llevarse:** leí el emisor y no el camino. Un valor que sale de un componente y pasa
+> por una capa genérica puede llegar transformado; **migrar fuera de esa capa exige inventariar lo que
+> hacía, no solo lo que se le pasaba.**
+
+**La familia, contada:** las otras seis pantallas migradas (rrh: datos bancarios, colaboradores,
+marcaciones, descuentos recurrentes, períodos, novedades) están bien. `ServiceLocatorRrhService.ejecutaServicio`
+es solo passthrough (verificado por el árbitro, `:128-142`), y las transformaciones vivían en el
+`onBeforeSave` de cada componente, que sí se copió. Barrido de `omen-saa-2-fe`.
