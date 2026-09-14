@@ -3183,3 +3183,12 @@ archivo pueden diferir.
 Contrato: `crd/API-VALOR-MENSUAL-APORTE-COBROS-PERSONALES.md`. Se usa la **vigencia que rige al último
 día del mes**, no el espejo `CNTRMNAC`/`CNTRMNAJ`: el espejo toma la vigencia abierta aunque arranque en
 un mes futuro. Despachado a `omen-saa-1-fe`.
+
+### ✅ H62 entregado — `saaFE 79e75a3`
+
+`omen-saa-1-fe` contrastó el contrato contra el backend antes de programar y no halló discrepancias.
+La pantalla ya no lee `HDAP`: consulta `/rest/cntr/porEntidad` y aplica la regla de la vigencia que
+rige al último día del mes, con cuatro estados visibles (monto / Sin vigencia / Sin contrato / No
+disponible). Revisado por el árbitro sobre el diff, cinco casos recorridos, `ng build` limpio
+(árbitro). **Queda del usuario:** confirmar si el flag del rubro 242 está encendido. Si no lo está, el
+archivo Petro sigue saliendo de `HSTR`.
