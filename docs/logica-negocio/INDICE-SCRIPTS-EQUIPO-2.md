@@ -7,7 +7,7 @@ archivo**, y buscar «e2-08» en `rhh/sql/` no lo encuentra porque vive en `tsr/
 Eso hizo perder tiempo el 2026-09-07. Este índice lo arregla: **una sola tabla con la ruta completa
 de cada uno.**
 
-> Última actualización: **2026-09-07** (e2-10 cerrado). Al agregar un `e2-*` nuevo, agregar la fila acá **en el mismo
+> Última actualización: **2026-09-14** (e2-39). Al agregar un `e2-*` nuevo, agregar la fila acá **en el mismo
 > commit**.
 
 ---
@@ -40,6 +40,56 @@ de cada uno.**
 
 ---
 
+
+---
+
+## ⚠️ DEUDA DE ESTE ÍNDICE — 20 scripts sin fila (medido el 2026-09-14)
+
+La convención #2 de más abajo dice *«agregar la fila a este índice en el MISMO commit que el
+script»*, y **se rompió veinte veces seguidas**. La tabla de arriba documenta hasta el `e2-18`; en
+disco hay **37 scripts**.
+
+**Sin registrar:** `e2-18b` · `e2-18c` · `e2-19` a `e2-25` · `e2-26` a `e2-36`.
+
+**Lo que hace cara esta deuda no es el desorden.** De los sin registrar, casi todos son de lectura
+—se identifican por su cabecera `SOLO LECTURA`— pero **`e2-23` (`borrar-anticipo-huerfano`) es un
+borrado y no hay rastro en ningún lado de si se corrió o no**. Un script que escribe y cuya
+ejecución nadie anotó es exactamente el caso que este índice existe para evitar.
+
+**Los que sí tienen constancia, por el documento de estado:** `e2-26` y `e2-29` (corridos, §36 y
+§37), `e2-31` (corrido, §37), `e2-35` (corrido, §39).
+
+⛔ **Al retomar este índice: no inventar el estado de ninguno.** Si no hay constancia escrita de que
+se corrió, la fila dice *«sin constancia»*, no *«pendiente»* ni *«corrido»* — son tres cosas
+distintas y confundirlas es peor que la deuda.
+
+---
+
+## Scripts del frente tributario (2026-09-09 → 09-14)
+
+| # | Ruta completa | Qué hace | Estado |
+|---|---|---|---|
+| **e2-37** | `sri/sql/e2-37-por-que-el-ats-de-agosto-salio-sin-ventas.sql` | Por qué el ATS de agosto salió con CERO ventas, qué son los 18 `<anulados>` y las retenciones del mes. **Solo lectura** | ✅ **CORRIDO el 2026-09-09.** Contestó las tres: agosto tenía **20 facturas en estado 5** (autorizadas) por 24.423,19 y 13 anuladas; **julio no tiene ni una factura** en `CBR.FCTR` —el sistema empezó a emitir en agosto, y por eso el ATS de julio se armó por fuera—; y las retenciones de agosto en `PGS.DRC2` eran apenas 6 líneas por 761,58, que fue la pista del `e2-38` |
+| **e2-38** | `sri/sql/e2-38-las-retenciones-de-compra-estan-en-rcv2-o-en-rtcm.sql` | ¿Las retenciones de compra están en `PGS.RTCM` o en `PGS.RCV2`? El ATS leía sólo la segunda. **Solo lectura** | ⛔ **NUNCA SE CORRIÓ, y la pregunta se contestó igual — por el camino caro.** El 2026-09-11 el contador reportó el talón con las retenciones en 0,00, y ahí se midió que **ninguna de las dos era**: las que ASOPREP emite viven en `CBR.RTV2`/`DRV2`. Corregido en `fd3265a8`. **Se conserva como registro de que un script escrito y no corrido no ahorra el problema, sólo lo demora** |
+| **e2-39** | `cxc/sql/e2-39-tipo-identificacion-sujeto-retenido.sql` | Por qué la retención 216 declaró CÉDULA con un RUC de 13 dígitos, y cuántos titulares más tienen el tipo incoherente con la longitud. **Solo lectura** | ✅ **CORRIDO el 2026-09-09.** El catálogo del rubro 36 está **impecable** (01-04 con sus códigos SRI) y la titular estaba **bien clasificada**: lo que fallaba era que el código exigía el rubro **padre** —que vale 36 para todos y venía NULL— para leer el hijo. Y sólo **2 titulares** de 110 tienen el tipo incoherente, los dos marcadores de migración ya conocidos (`SUPER PACO`, `CLIENTES A JULIO 2026`) |
+
+### Consulta suelta que quedó sin script y vale anotarla
+
+El **catálogo del rubro 35** (tipo de persona) se consultó el 2026-09-11 sin escribir un `e2-*`,
+porque eran cuatro líneas. Resultado, y de ahí salió el mapeo del `tipoCliente` del ATS:
+
+```sql
+select d.PDTRALTR, d.PDTRDSCR, d.PDTRVLRV
+  from SCP.PDTR d join SCP.PRBR r on r.PRBRCDGO = d.PRBRCDGO
+ where r.PRBRALTR = 35;
+--  1  NATURAL    (PDTRVLRV = NULL)
+--  2  JURIDICO   (PDTRVLRV = NULL)
+```
+
+**Las dos filas con el `valorAlfanumerico` vacío**, que es por lo que el ATS deriva el `01`/`02`
+desde el alterno. Llenar esas dos celdas con `'01'`/`'02'` haría innecesario el mapeo en código —
+**pendiente, y es un `UPDATE` a un catálogo compartido entre los cuatro equipos**, así que no se
+metió el día de una declaración.
 ## Lo que queda pendiente de correr
 
 De los quince scripts: **catorce corridos**, uno borrado (`e2-09`), **uno cancelado** (`e2-14`) y

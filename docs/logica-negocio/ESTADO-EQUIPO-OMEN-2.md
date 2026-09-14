@@ -3397,3 +3397,193 @@ parsers de Atlántida y Pacífico; `ImportacionExtractoBancarioServiceImpl` (nue
 cuerpo de `confirmar` extraído a `ejecutarImportacion` — sin cambio de firma ni de comportamiento);
 `ProcesoNominaServiceImpl.cerrarPeriodo`; los seis `.jrxml`/`.jasper` de `rep/cnt/`; y `CLAUDE.md`
 (sección de reportes). **El `DELETE /exbc` sigue sin guardas, a propósito.**
+
+## §40 — Cinco días de SRI: el ATS que declaraba en cero, y cuatro veces que un ejecutor me corrigió
+
+**2026-09-09 → 2026-09-14.** Empezó como *«¿en qué pantallas están el 102, el 103 y el ATS?»* y
+terminó con el anexo de agosto validando limpio, dos formularios de cuadre corregidos, un cambio
+normativo implementado y una decisión de datos que el usuario tomó con el número a la vista.
+
+| Frente | Commits |
+|---|---|
+| ATS: el generador escrito contra la ficha y no contra un ejemplar | `a5ef6697` `ba773ac8` `3b73eb14` `38707475` |
+| El `estado` sobrecargado — ventas en cero en ATS y cuadres | `282c3361` |
+| Cuadre 104: faltaba la sección entera de retenciones | `f68d7edd` |
+| Cuadre 103: sumaba las líneas de IVA dentro del formulario de renta | `d82d9aa6` |
+| Reenviar al SRI una retención atascada (BE+FE) | `ac8685f2` `1261dadf` `18a37d2b` · FE `35d4523` |
+| Botón Contabilizar en los cinco documentos (BE+FE) | `134c2fc2` `0d5c99eb` · FE `55d9e57` `cade28b` |
+| RUC Proveedor (Res. NAC-DGERCGC26-00000027) en XML y los 5 RIDE | `29b602ec` `bdb0fa50` |
+| El archivo del banco: el rubro padre tapando al hijo | `050a8000` |
+| Talón del ATS: retenciones en cero y bases infladas | `fd3265a8` `e30cfa39` `d9359a00` `774dc0e0` |
+| Notas de venta consultables | FE `5934454` |
+
+---
+
+### 40.1 ⛔ La regla que ordenó toda la semana, y su límite
+
+**Una especificación no reemplaza un ejemplar aceptado.** El generador del ATS se había escrito
+contra la ficha técnica de 93 páginas y **nunca contra un archivo que el SRI hubiera aprobado**.
+Cuando el usuario entregó uno real (`AT-072026`, autorizado), aparecieron **tres elementos que no
+existen** en el esquema y **cuatro con otro nombre**. Ninguna lectura de la ficha lo habría
+detectado.
+
+**Y el límite, que costó un error mío:** mandé borrar `tipoCliente` porque no estaba en el
+autorizado — y julio simplemente **no tuvo ningún cliente con pasaporte**. La regla real era
+condicional.
+
+> **Un ejemplar aceptado prueba lo que CONTIENE. De lo que no contiene no dice nada:** puede ser que
+> el campo no exista, o que ese mes no se diera la condición que lo exige. **Cuando un campo
+> desaparece de la comparación, preguntarse si el caso que lo dispara estaba en la muestra.**
+
+Y lo repetí en chico el 11: di por limpio un anexo leyendo un pegado **sin la línea de cabecera**,
+que decía `ERR:1`. **Concluí de una ausencia, otra vez, el mismo día que lo escribí como lección.**
+
+---
+
+### 40.2 🔴 El `estado` sobrecargado: un campo, tres síntomas sin relación aparente
+
+En `Factura`, `NotaCredito`, `NotaDebito` y `RetencionV2` la columna `estado` **no es el flag
+genérico** del resto del sistema: guarda el flujo de emisión electrónica — 1 creada, 3 firmada,
+4 enviada, **5 autorizada**, 6 no autorizada.
+
+Filtrar por `Estado.ACTIVO` (=1) **nunca encuentra un documento autorizado**. Eso explicaba, de una
+sola vez:
+
+- el ATS de agosto con `<ventas>` vacío y `totalVentas` 0.00;
+- el cuadre del **104** dando cero del lado ventas;
+- el cuadre del **103** dando cero, porque `RetencionV2` arrastra el mismo patrón.
+
+**El lado COMPRA de los mismos procesos sí usa el flag genérico**, y por eso las 71 compras salían
+bien y nadie lo notaba. El criterio quedó en **una sola clase** (`CriterioVentaVigente`) con el
+porqué y las líneas citadas: un `5` suelto repetido en cuatro JPQL es exactamente cómo se llega a
+este defecto.
+
+---
+
+### 40.3 🔴 Cuatro veces un ejecutor midió una premisa mía y era falsa
+
+**Lo más valioso de la semana, y no es código.** Las cuatro veces el BE paró antes de obedecer:
+
+| Lo que indiqué | Lo que midió | Qué habría pasado |
+|---|---|---|
+| Usar `FacturaCompra.formaPago` | **Nadie escribe ese campo** en todo el backend | El arreglo habría leído un nulo permanente: las 15 compras seguirían fallando |
+| «`crearDocumentoCxp` ya devuelve `erroresContables`» | No la construye — esa lista se arma en otro método | Habría reenviado una lista inexistente |
+| Leer `resp.estado` como el numérico (FE) | Es un **texto** de negocio; el número vive en `resp.retencion.estado` | El botón habría aparecido o no al azar |
+| «Las cuatro entidades de compra tienen el mismo detalle con `codigoIVASRI`» | **Falsa en tres**: sólo `DetalleFacturaCompra` tiene esa columna | Tres de cuatro documentos sin reparto |
+
+> **Un encargo preciso no vuelve cierta una premisa falsa del que lo escribe.** El valor de pedir
+> «medí antes de aplicar» no está en la prolijidad: está en que **el que despacha se equivoca sobre
+> el código tanto como el que ejecuta**, y sólo uno de los dos lo tiene abierto.
+
+---
+
+### 40.4 La familia que apareció seis veces: el valor adivinado
+
+Seis defectos distintos, el mismo mecanismo — **no se pudo resolver un valor y se puso uno
+inventado en vez de detener el proceso**:
+
+| Dónde | Qué inventaba |
+|---|---|
+| `RetencionV2ServiceImpl:361` | `"05"` (cédula) por defecto → el SRI rechazó por RUC de 13 dígitos |
+| Los dos formateadores de banco | leían el rubro **padre** (36, constante) en vez del hijo |
+| `bandeja-electronica.component.ts:67` (FE) | `idUsuario` con respaldo a `1` → `ORA-01400` |
+| `RetencionV2Rest:161` | ambiente fijo en `1L` (**pruebas**), tapado por el valor del facturador |
+| `llamarAutorizacionSRI` | sin `<estado>` dejaba `null` → *«Estado: null Id: Mensaje: /»* |
+| El generador del ATS | `subtotal` como base gravada, contando dos veces la porción al 0% |
+
+**El más caro fue el primero**, porque su `catch (Throwable)` sólo imprimía: cualquier fallo
+terminaba en un comprobante enviado al SRI con un dato adivinado.
+
+---
+
+### 40.5 🔴 Y la otra familia: la función sin puerta, tres veces más
+
+Ya estaba registrada en el §37 y volvió a aparecer:
+
+- **Reenviar al SRI**: el backend tenía `/rtv2/autorizar` y **ninguna pantalla lo llamaba**. Una
+  retención que el SRI no recibió quedaba atascada para siempre.
+- **Contabilizar**: la validación de cuentas corre **antes de grabar** y el asiento se genera
+  **después de autorizar**. Entre los dos está el punto de no retorno: un fallo ahí deja el
+  documento autorizado, sin asiento y sin cruce, y **ninguna pantalla podía completarlo**.
+- **Notas de venta**: se registran por una pantalla y **no existían en la tabla que alimenta la
+  consulta**. Agregar la opción al combo no habría mostrado nada nunca.
+
+> **Con el SRI de por medio siempre hace falta una puerta de reparación**, porque la autorización no
+> se deshace. Ninguna validación previa cubre un fallo posterior al punto irreversible.
+
+---
+
+### 40.6 Dos correcciones a contratos que yo mismo había escrito
+
+`API-REENVIAR-RETENCION-AL-SRI.md` se corrigió **dos veces**, las dos por el mismo error de
+razonamiento: **asumir que reenviar era reintentar el transporte de una emisión ya completa**,
+cuando la emisión **sólo se completa si el SRI autoriza**.
+
+1. *«No regenerar ni re-firmar»* — falso para una rechazada por contenido: su XML tiene el defecto
+   adentro y reenviarlo es pedir que la rechacen otra vez.
+2. *«No vuelve a generar contabilidad ni a aplicar el pago»* — falso en los **tres** estados que el
+   reenvío atiende, no en uno. Por eso las retenciones se autorizaban sin tocar el saldo de la
+   factura.
+
+---
+
+### 40.7 Lo que el usuario decidió
+
+- **`parteRel` = `NO`** por defecto, y `tipoEmision` = `F`, copiados del archivo autorizado.
+- **El RUC Proveedor va también en los cinco RIDE**, no sólo en el XML.
+- **El botón Contabilizar cubre los cinco documentos.** Para la liquidación apunta al
+  `crearDocumentoCxp` existente **y el botón se llama distinto**, porque hace más que contabilizar:
+  partir una transacción atómica para que un nombre quede prolijo no valía el riesgo.
+- **SÍ se arregla el reparto de bases por tarifa** en la carga.
+- **NO se recalculan las compras ya cargadas.**
+- **El ATS de agosto ya se presentó.**
+
+---
+
+### 40.8 Lo que quedó abierto, y es del usuario
+
+- 🔴 **El ATS presentado de agosto declara `0,00` de retenciones** cuando se retuvieron **4.642,52**,
+  y con las bases infladas. **Está dicho, y la sustitutiva es criterio del contador.**
+- **La clasificación 0% vs gravada de lo ya cargado sigue mal** — consecuencia directa de la
+  decisión de no recalcular. Ofrecí un `.sql` de sólo lectura para medir cuántos documentos son
+  antes de cerrarla; sin respuesta.
+- **Los cuadres 103 y 104 nunca se contrastaron** contra los formularios reales. El `799` debe dar
+  **4.642,52**.
+- **Códigos 6 (no objeto) y 7 (exento)**: tienen campo en el ATS y **no hay columna** en la entidad.
+  Se avisan, no se reparten.
+- **Del lado ventas no se puede medir el reparto desde el backend**: `Factura.subtotal`/`subcero`
+  llegan del payload del frontend.
+
+### 40.9 Deuda técnica levantada y no tocada
+
+`rubroTipoPersonaH` **no lo consume nadie** (la pantalla guarda un dato muerto) · el cruce con la
+factura **depende del asiento** sin necesidad técnica · `eliminarRetencionV2NoEmitida` **borra sin
+comprobar estado** · un corte de red deja la retención en estado 6 como si el SRI la hubiera
+rechazado · `estado = 4` se graba aunque recepción falle · el respaldo a `1` del `idUsuario` en
+cuatro componentes de `cxp` · el ambiente fijo en `1L` · `snackbar-warning` en tres pantallas más ·
+`PDTRVLRV` del rubro 35 vacío · los cuatro `selectByCriteria` con **500** (`/fctr`, `/ntcr`,
+`/ntdb`, `/lqcs`), **que no son nuestros** · el `e2-38`, escrito y nunca corrido — su pregunta se
+contestó igual, por el camino caro.
+
+### 40.10 ⚙️ Dos cosas del entorno que costaron tiempo
+
+- **`node` sí existe en la OMEN**: `nvm/v22.12.0/`**`node64.exe`** — el binario no se llama
+  `node.exe` y por eso nunca resolvía por PATH. **Con eso el árbitro ya compila el frontend él
+  mismo**, y se acabó el punto ciego del §30.9.
+- **El fuente correcto en disco no garantiza que el binario que corre sea ése.** Dos días se
+  perdieron redesplegando EAR viejos: el `git log` daba bien y el comportamiento era el de antes.
+  **Antes de tocar el SRI, mirar el log del despliegue, no el `git log`** — y `mvn clean package`,
+  con `clean`. La sospecha abierta: el EAR puede armarse desde un clon distinto del que se pullea.
+
+### 40.11 ⚠️ Aviso a los otros equipos — archivos compartidos tocados, ya en `main`
+
+`ProcesoCargaDocumentosServiceImpl` (reparto de bases al 0% en la carga: **cambia cómo se graba
+`subcero` en las cuatro entidades de compra de aquí en adelante**) · `FacturaServiceImpl`,
+`NotaCreditoServiceImpl`, `NotaDebitoServiceImpl`, `LiquidacionCompraServiceImpl`,
+`RetencionServiceImpl`, `RetencionV2ServiceImpl` (el `RUC Proveedor` en `infoAdicional` de los seis)
+· los dos formateadores de `tsr` · los cinco `.jrxml`/`.jasper` de RIDE ·
+`ReporteCuadreSriServiceImpl` · `GeneradorAtsServiceImpl`.
+
+**El índice de git volvió a probar su regla:** al ir a commitear había **8 archivos de `crd` staged
+que no eran míos**. `git commit -- <rutas>` se llevó sólo el mío, y `omen1` los commiteó ellos
+minutos después. La regla del §38 funcionó.
