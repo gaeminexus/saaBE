@@ -77,7 +77,8 @@ distintas y confundirlas es peor que la deuda.
 
 | # | Ruta completa | Qué hace | Estado |
 |---|---|---|---|
-| **e2-40** | `cxp/sql/e2-40-liquidaciones-y-notas-de-venta-por-pagar.sql` | Antes de diseñar el pago de liquidaciones desde Solicitud de pago: forma de `PGS.PGTR` (¿existe `PGTRLQCC`?), liquidaciones emitidas con/sin documento CXP, `PGS.LQCC` por estado y con saldo, y las notas de venta (`FCTC` tipo `02`). **Solo lectura** | 🔴 **PENDIENTE de correr** — bloquea el diseño |
+| **e2-40** | `cxp/sql/e2-40-liquidaciones-y-notas-de-venta-por-pagar.sql` | Antes de diseñar el pago de liquidaciones desde Solicitud de pago: forma de `PGS.PGTR` (¿existe `PGTRLQCC`?), liquidaciones emitidas con/sin documento CXP, `PGS.LQCC` por estado y con saldo, y las notas de venta (`FCTC` tipo `02`). **Solo lectura** | ⚪ opcional — el usuario confirmó que las columnas no existían y pidió avanzar; el `e2-41` repite los controles que importan |
+| **e2-41** | `cxp/sql/e2-41-pago-programado-a-liquidacion-de-compra.sql` | ⚠️ **NO es lectura.** `PGS.PGTR.PGTRLQCC` + `FK_PGTR_LQCC` + índice: un pago programado puede pagar una liquidación de compra (`PGS.LQCC`). **Va ANTES del WAR** — si no, `ORA-00904` en todo el circuito de pagos | 🔴 **PENDIENTE — urgente, 2026-09-14** |
 
 ### Consulta suelta que quedó sin script y vale anotarla
 
