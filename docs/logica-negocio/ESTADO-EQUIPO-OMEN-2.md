@@ -3628,3 +3628,47 @@ circuito de pagos con `ORA-00904`.
 
 - Pantalla legado `pagos/transferencias-legacy`: su `conceptoPago()` no muestra la liquidación.
 - Probar en producción las 3 liquidaciones, y un reverso de una.
+
+## §42 — La identificación con la que se abrió la cuenta bancaria, y un contrato que afirmé sin medir
+
+**2026-09-14, tarde.** Pedido: el archivo del banco manda la identificación del titular, pero una
+persona natural factura con RUC y abre la cuenta con cédula.
+
+| Parte | Commit |
+|---|---|
+| Diseño, contrato y DDL `e2-42` (`TSR.CTBN.CTBNTPID`/`CTBNIDNT`) | `fa68f977` · FE `939f134` |
+| Corrección del contrato (orden FE/WAR) | `6c4be5a3` · FE `772a624` |
+| Frontend (ficha del titular) | FE `04f964a` |
+| Backend (entidad, validación, `IdentificacionBeneficiarioResolver`) | `66ac1fc9` |
+
+### Lo que hay que llevarse
+
+1. **Afirmé en el contrato que «un FE nuevo con WAR viejo ignora los campos».** Falso: `POST/PUT /ctbn`
+   deserializan la entidad y Jackson rechaza propiedades desconocidas por defecto — no hay
+   configuración global y `cxc` lo desactiva a mano en su `ObjectMapper`. En `/pgtr` era cierto porque
+   ese REST lee un `Map`. **La misma frase vale o no según cómo lee el body cada endpoint.**
+2. **Un tipo de identificación, no el par P/H.** `TTLR` guarda padre (36, constante) e hijo; leer el
+   padre ya rompió el archivo una vez (§40.4). La columna nueva guarda solo el alterno.
+3. **La regla de qué identificación sale al banco estaba copiada en los dos formateadores.** Ahora vive
+   en un solo resolver. El BE no le agregó al Pacífico la validación de largo que solo tenía el
+   Internacional: consolidar no debía cambiar comportamiento.
+4. **Dos defectos de la pantalla, encontrados al tocarla:** editar una cuenta borraba `CTBNFCRG` (el
+   `PUT` hace merge y la fecha no viajaba) y un rechazo del backend se mostraba como éxito
+   (`catchError(() => of(null))` + `res !== undefined`). La cuenta 188 del pago 394 ya estaba sin
+   fecha: por eso no se pudo saber si la cuenta se cargó antes o después del pago.
+5. **`RHH.CBEM` ya resolvía lo mismo** para nómina (`getIdentificacionTitular` con respaldo al
+   empleado), por separado. Anotado, no unificado.
+
+### El pago 394 (liquidación de Scarleth Mora)
+
+Registrado a las 14:00:10 sin cuenta destino, aunque el proveedor tiene una. Dos hipótesis sin
+decidir: la cuenta se cargó/editó después, o se pulsó Registrar mientras la pantalla consultaba las
+cuentas (el botón no espera). Salida: anular y volver a registrar.
+
+### Abierto
+
+- **Desplegar:** `e2-42` → WAR → FE, estricto. Los dos commits subieron antes del SQL por decisión
+  del usuario.
+- **Decisión del usuario:** cerrar el hueco del 394 (no registrar mientras cargan las cuentas + botón
+  para asignar cuenta en la bandeja).
+- Bloque 4 del `e2-42`: cuentas de titulares con RUC a revisar a mano.
