@@ -17,6 +17,9 @@ public class CuotaPrestamoMovilDTO {
     private Double interes;
     private Double mora;
     private Double cuota;
+    private Double desgravamen;
+    private Double seguroIncendio;
+    private Double total;
     private Double saldoCapital;
     private Double saldo;
     private Long estado;
@@ -82,6 +85,30 @@ public class CuotaPrestamoMovilDTO {
 
     public void setCuota(Double cuota) {
         this.cuota = cuota;
+    }
+
+    public Double getDesgravamen() {
+        return desgravamen;
+    }
+
+    public void setDesgravamen(Double desgravamen) {
+        this.desgravamen = desgravamen;
+    }
+
+    public Double getSeguroIncendio() {
+        return seguroIncendio;
+    }
+
+    public void setSeguroIncendio(Double seguroIncendio) {
+        this.seguroIncendio = seguroIncendio;
+    }
+
+    public Double getTotal() {
+        return total;
+    }
+
+    public void setTotal(Double total) {
+        this.total = total;
     }
 
     public Double getSaldoCapital() {

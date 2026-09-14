@@ -65,6 +65,9 @@ final class MovilMappers {
         dto.setInteres(cuota.getInteres());
         dto.setMora(cuota.getMora());
         dto.setCuota(cuota.getCuota());
+        dto.setDesgravamen(cuota.getDesgravamen());
+        dto.setSeguroIncendio(cuota.getValorSeguroIncendio());
+        dto.setTotal(cuota.getTotal());
         dto.setSaldoCapital(cuota.getSaldoCapital());
         dto.setSaldo(cuota.getSaldo());
         dto.setEstado(cuota.getEstado());
