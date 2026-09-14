@@ -1753,26 +1753,43 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
             // natural del for) y SALDO_AGOTADO. "PRESTAMO_AL_DIA" ya no es alcanzable como
             // motivoCorte final — una vez que la deuda exigible llega a 0, el resto de los
             // meses simplemente sigue procesándose 100% como remanente (ver disponibleMes).
-            // §11.2 punto 3: el corte por saldo agotado YA NO es incondicional. Si algún mes
-            // desde ÉSTE en adelante todavía tiene un stub de seguro pendiente de descontar
-            // (ya pagado al proveedor), ese mes se tiene que seguir procesando —con cruce 0 y
-            // pensión 0, que es lo que dan los min() de abajo cuando saldoLibre ~ 0— para que el
-            // seguro ya pagado quede reflejado en su PGPC. Sólo se corta cuando de verdad no
-            // queda nada más por descontar.
+            // §11.2 punto 3 (corregido 2026-09-14 — la primera redacción, del árbitro, estaba
+            // mal: procesaba el mes ACTUAL en $0 aun sin nada propio que descontar, dejando un
+            // PGPC PAGADA por $0 con un asiento de devengo sin líneas). El corte por saldo
+            // agotado ya no es incondicional, y distingue TRES casos:
             if (saldoLibre <= TOLERANCIA) {
-                boolean quedanStubsConSeguro = false;
-                for (YearMonth futuro = ym; !futuro.isAfter(corrida); futuro = futuro.plusMonths(1)) {
-                    PagoPensionComplementaria stubFuturo = stubsEnRango.get(futuro);
-                    if (stubFuturo != null && stubFuturo.getValorSeguro() != null
-                            && stubFuturo.getValorSeguro() > TOLERANCIA) {
-                        quedanStubsConSeguro = true;
-                        break;
+                PagoPensionComplementaria stubEsteMes = stubsEnRango.get(ym);
+                boolean esteMesConSeguro = stubEsteMes != null && stubEsteMes.getValorSeguro() != null
+                    && stubEsteMes.getValorSeguro() > TOLERANCIA;
+                if (!esteMesConSeguro) {
+                    // Este mes no tiene stub propio — ¿queda alguno con seguro > 0 en un mes
+                    // POSTERIOR? El lookahead empieza en ym.plusMonths(1), no en ym: ya se sabe
+                    // que ESTE mes no tiene.
+                    boolean quedanStubsConSeguroPosterior = false;
+                    for (YearMonth futuro = ym.plusMonths(1); !futuro.isAfter(corrida);
+                            futuro = futuro.plusMonths(1)) {
+                        PagoPensionComplementaria stubFuturo = stubsEnRango.get(futuro);
+                        if (stubFuturo != null && stubFuturo.getValorSeguro() != null
+                                && stubFuturo.getValorSeguro() > TOLERANCIA) {
+                            quedanStubsConSeguroPosterior = true;
+                            break;
+                        }
                     }
-                }
-                if (!quedanStubsConSeguro) {
+                    if (quedanStubsConSeguroPosterior) {
+                        // Nada que descontar ni pagar este mes (sin stub propio, sin saldo): NO
+                        // se genera. El seguro que sí quedó reservado para el mes posterior se
+                        // descuenta cuando le toque su turno; este mes queda sin PGPC y no se
+                        // vuelve a pagar después (el movimiento posterior mueve el ancla igual).
+                        System.out.println("  Entidad " + idEntidad + " - mes " + mesM + "/" + anioM
+                            + " SALTEADO (saldo agotado, sin seguro propio este mes) - queda"
+                            + " seguro reservado para un mes posterior");
+                        continue;
+                    }
                     motivoCorte = "SALDO_AGOTADO";
                     break;
                 }
+                // Este mes SÍ tiene stub con seguro > 0: se procesa igual — seguro exacto,
+                // cruce y pensión salen en 0 de los min() de abajo, porque saldoLibre ~ 0.
             }
 
             // D4: con préstamo vigente Y deuda exigible pendiente, el tope es

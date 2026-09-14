@@ -3084,3 +3084,26 @@ seguro a todo `JUBILADO_COMPLEMENTARIO`, pero la corrida de pensiones sale tempr
 `AL_DIA` sin descontar nada. Ese seguro se paga al proveedor y no sale de la cuenta de nadie. Cerrado
 en el diseño (§11.1: seguro fijado 0 en esos casos). El bloque 4 del `sql/222` lo muestra como filas
 con `PGPCVLPN` nulo en períodos cuya pensión ya corrió.
+
+## ✅ 2026-09-14 — H60 cerrado en código: pensión, seguro y el mes en cero
+
+| Commit | Qué |
+|---|---|
+| `1dbd4e0c` | Pensión topada por saldo (corrida y prevuelo) + guardarraíl en `crearMovimientoNegativo` |
+| `612de4ba` | Opción A: seguro topado al fijarlo (0 sin ancla / al día), reservado y descontado primero |
+| `77f41d34` | Contrato §11.2.3 corregido: con saldo agotado, un mes sin seguro propio se saltea |
+| este commit | Implementación de ese salteo |
+
+**Error del árbitro, registrado:** la primera redacción del §11.2.3 mandaba procesar un mes con
+seguro, cruce y pensión en 0 cuando quedaba seguro reservado más adelante. Eso dejaba un PGPC `PAGADA`
+por $0 y un asiento de devengo sin líneas. Lo vi al revisar el diff, no el ejecutor: implementó fiel
+lo que yo había escrito. **Una especificación con fórmulas no reemplaza recorrer el caso borde hasta el
+asiento.**
+
+**Verificación:** los 4 casos (C1, C2, C3 y el del salteo) los recorrió el ejecutor contra el código
+final, y el árbitro los contrastó contra el diff. Compilación: `javac` dirigido, exit 0. El
+`mvn compile` del árbol completo falla hoy por un frente de `cxp` sin commitear de otro equipo
+(`PagoProgramadoServiceImpl` y 10 archivos más), ajeno a esto.
+
+**Pendiente para que surta efecto:** WAR. No correr seguro ni pensión de septiembre antes. `sql/222`
+sin correr. Sin decidir: el sobrepago de agosto y el reverso de aportes ya consumidos.
