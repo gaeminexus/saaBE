@@ -2870,3 +2870,96 @@ barrió y no hay otra que los use para mostrar un pendiente; **en el backend no 
 `DTPRSLIV` (se escriben mal). ⭐ **Un campo de saldo persistido en este sistema no es confiable
 hasta que se demuestre quién lo escribe y con qué criterio.** Lo confiable es reconstruirlo desde
 las cuotas y los pagos, que es lo que ya hacían `SaldoPrestamoService` y el motor.
+
+---
+
+# 🔒 CIERRE DE SESIÓN — 2026-09-14 — TRASPASO PARA QUIEN ARRANQUE
+
+**Estado de los árboles al cerrar:** `saaBE` y `saaFE` limpios y al día con `origin/main`. Nada de
+este equipo sin entregar. Los dos ejecutores (`omen-saa-1-be`, `omen-saa-1-fe`) confirmaron «nada
+pendiente» y quedaron cerrados.
+
+## Lo que se entregó entre el 2026-09-09 y el 2026-09-11 (todo en `origin/main`)
+
+| Frente | saaBE | saaFE | Estado |
+|---|---|---|---|
+| Timer diario de mora reactivado a las 02:00 (H47 levantada) | `6c2d904d` | — | ⛔ **pendiente confirmar despliegue** |
+| CCPM: nombre, vencimiento y monto solicitado | `6bb7db5f` | `8729773` | DDL `sql/220` **corrido** ✅ · desplegar |
+| Padrón: voto estricto + «Mantiene Calidad» | `48135290` | `7982640` | sin DDL · desplegar |
+| Acta de entrega-recepción definitiva del SAA | `36844093` (`docs/contractual/`) | — | entregada en Word; **confirmar si se firmó el 10-sep** |
+| Consulta de préstamos: saldos calculados en lote, «Capital Pagado» por estado | `dc198b91` | `6a7b9a7` | sin DDL · desplegar |
+| Diálogo de resumen de pago: pendiente por concepto = pactado − pagado | — | `9f7f938` | desplegar |
+| Memorando de respuesta al requerimiento de documentación TI + 5 anexos | `0f938003` (`docs/regulatorio/`) | — | entregado en Word; **espera los datos de Paúl** |
+
+**El WAR y el build pendientes arrastran TODO lo anterior** más lo de la semana previa
+(otorgamiento, reverso de cobro, Gs en transacción propia, H54, calificación de riesgo).
+**Antes del WAR: `crd/sql/218`** (control de 212/213, jubilados). **Antes de desplegar el
+padrón: descargar el CSV de elegibles** — es la única foto con la regla vieja.
+⚠️ El usuario dijo el 2026-09-10 que la consulta «ya no está lenta» → desplegó al menos hasta
+`96fb57bd`; **no consta** que haya desplegado `dc198b91` ni el build con `6a7b9a7`/`9f7f938`.
+Preguntárselo primero.
+
+## Decisiones del usuario que gobiernan el código (no re-litigar)
+
+- **Capital pagado** (`/prst/saldos`): préstamo en cualquiera de los tres estados cancelados → todo
+  el capital; cuota 4/7 → capital de la cuota; cuota 5/6 → abonado en PGPR; PENDIENTE y el resto,
+  incluido el nulo → 0 aunque tenga pagos. Contrato: `crd/API-SALDOS-PRESTAMO.md` §3bis y §7.
+- **La mora se prendió por orden directa** el 2026-09-09; `lap-saa-1` había pedido congelarla.
+  **Aviso a ese árbitro: pendiente de autorización del usuario.**
+- **Los ocho frentes de la semana previa NO se mencionan en el acta** (son mejoras normales).
+- **El acta incluye manuales de usuario** (uno por módulo, diferido con las fuentes, tope al
+  vencimiento de la garantía) — compromiso voluntario, el contrato no lo exige.
+
+## Supuestos del árbitro que faltan confirmar (con qué dato se cierran)
+
+| Supuesto | Cómo se cierra |
+|---|---|
+| Cuota `VENCIDA` (8) y cuota sin estado aportan 0 al capital pagado | **Bloque 5 del `crd/sql/221`** — si hay volumen ahí, sumarlas como 5 y 6 |
+| Sólo la app usa los saldos muertos de `Prestamo` fuera de las pantallas ya corregidas | grep sobre `saaFE/src` hecho (limpio); **sobre el backend, no hecho** |
+| Nadie más lee `DTPRSLIN`/`DTPRSLMR`/`DTPRSLIV` de cuotas con pagos | **Barrido del backend, no hecho** — ofrecido al usuario, sin respuesta |
+
+## Deudas registradas, sin dueño asignado
+
+1. **Cinco columnas de saldo de `Prestamo` muertas** (`PRSTSLTT`, `PRSTSLCP`, `PRSTTTPG`,
+   `PRSTSLPV`, `PRSTSLVN`): nadie las escribe. El filtro «Saldo desde/hasta» de la consulta sigue
+   operando sobre `PRSTSLTT`. La **app móvil las sirve al teléfono** (`MovilMappers:33-38`):
+   avisado a `omen-app-1-arb` el 2026-09-10 con el contrato del endpoint para reusar.
+2. **`MotorPago:242-244` pone en cero los saldos de interés, mora e IV de la cuota al cobrar
+   cualquier cosa.** El diálogo ya no los lee; el resto del backend no se barrió.
+3. **`ProcesoCargaPetroServiceImpl.procesarPrestamo`** escribe `DTPRSLCP` con semántica por cuota,
+   distinta del resto. Vía alterna sin llamadores; **mina dormida**.
+4. **Asimetría voto / elegibilidad**: votar exige 0 cuotas en mora, ser elegible tolera 6. Nadie lo
+   decidió explícitamente.
+5. De antes: **H46** (corrida de jubilados no reintentable → respaldo antes de correr), **P18–P21**,
+   **H48** (el centavo), seguros de préstamo por póliza (frente 3, cero construido), motivo de
+   bloqueo de jubilados no persistido, estados financieros SBS faltantes.
+
+## Herramientas que esta sesión dejó (y dónde)
+
+- **Compilar el frontend en esta OMEN:** `node` no resuelve en Git Bash; la v22 de nvm no tiene
+  `node.exe`, sólo `node64.exe` →
+  `"/c/Users/xeonp/AppData/Roaming/nvm/v22.12.0/node64.exe" node_modules/@angular/cli/bin/ng.js build --configuration development`
+- **Markdown → Word:** `tools/docx/md2docx.ps1` (README al lado). Así se hicieron el acta y el
+  memorando.
+- **PDF escaneado → imagen:** `pdfbox-app-3.0.3.jar` en `~/.m2` (`render` a PNG); el lector de
+  PDF de la máquina no renderiza escaneos.
+- **`git commit -- <rutas>`** siempre, y `git diff --cached --name-only` antes: el índice es
+  compartido (H59). Y mirar los `??`: `commit -- rutas` no incluye archivos nuevos si no se
+  agregaron (§39 de omen2).
+- **Heredocs largos en Bash fallan en esta herramienta** con «unexpected EOF while looking for
+  matching `''`»; para archivos largos usar el editor (Write) y `cat archivo >> destino`.
+
+## Contexto contractual que no está en el código
+
+`contrato-saa-asoprep` en la memoria del árbitro y `docs/contractual/`: contrato 2025-10-13, adendum
+2026-07-03 (plazo al 2026-09-16, saldo USD 23.016 neto al firmar el acta), garantía 6 meses desde
+el «Acta – Entrega Recepción Definitiva». El Anexo 1 sólo exige **fuentes**; manuales no. La app
+**ASOPREP CONTIGO** es contractual y **no está en producción** (ISP, `CRD.USAP`, tiendas).
+
+## Lección de la serie, para no repetirla
+
+Tres vueltas sobre `/prst/saldos` en un día: (1) acepté un costo sin leer el cuerpo del método
+reusado —consultaba pagos por cuota—; (2) el lote no alcanzó porque **todos los `@ManyToOne` son
+EAGER** y cada entidad arrastra su grafo; (3) la fórmula cambió dos veces por aclaraciones del
+usuario que un `.sql` de medición habría anticipado. ⭐ **Reusar no exime de leer; una entidad
+JPA en este sistema nunca es «una fila»; y ante un campo ambiguo, medir antes que deducir.**
