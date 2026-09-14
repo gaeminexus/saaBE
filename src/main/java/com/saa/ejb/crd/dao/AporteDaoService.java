@@ -427,6 +427,38 @@ public interface AporteDaoService extends EntityDao<Aporte>{
 	Double sumValorByEntidadYTipo(Long codigoEntidad, Long codigoTipoAporte) throws Throwable;
 
 	/**
+	 * H61 (INVARIANTE-SALDO-APORTES.md §3.1) — bloqueo pesimista por partícipe, para que dos
+	 * operaciones que resten de sus aportes (cruce, devolución, pensión, reverso, …) no lean el
+	 * mismo saldo a la vez y las dos pasen. Se llama SIEMPRE antes de la primera lectura de
+	 * saldo de la operación.
+	 *
+	 * <p><b>Por qué es SQL nativo y no {@code em.find(Entidad.class, id, PESSIMISTIC_WRITE)}:</b>
+	 * {@code Entidad} arrastra relaciones {@code @ManyToOne} EAGER (filial, etc.) — un
+	 * {@code FOR UPDATE} de Oracle sobre la consulta que JPA arma para cargarlas con sus joins
+	 * bloquearía también las filas de esas tablas relacionadas, serializando a medio sistema
+	 * cada vez que se toca un aporte. La consulta nativa sólo trae {@code ENTDCDGO} y sólo
+	 * bloquea la fila de {@code CRD.ENTD}. Precedente de lock pesimista en el repo (JPA, caso
+	 * distinto sin este problema de EAGER): {@code tsr/serviceImpl/ChequeServiceImpl.java:459}.</p>
+	 *
+	 * <p>{@code WAIT 30}: sin tope, un proceso largo con el partícipe tomado colgaría la
+	 * pantalla del operador sin límite. Si el tiempo se agota (ORA-30006), se relanza como
+	 * {@link com.saa.basico.util.IncomeException} con un mensaje que invita a reintentar. El
+	 * lock se libera solo al confirmar o revertir la transacción — todas las operaciones de la
+	 * tabla del §3.1 son {@code REQUIRED}, así que bloquear dos veces en la misma transacción
+	 * (p.ej. la pensión llama al cruce) es reentrante en Oracle y no se auto-bloquea.</p>
+	 *
+	 * <p><b>No atrapa ninguna excepción</b>, a diferencia de sus vecinos de este DAO
+	 * ({@link #sumValorByEntidadYTipo} devuelve 0.0 ante error): un bloqueo que falla en
+	 * silencio es un bloqueo que no existe.</p>
+	 *
+	 * @param idEntidad Código del partícipe (CRD.ENTD) a bloquear
+	 * @throws Throwable {@link com.saa.basico.util.IncomeException} si el partícipe no existe,
+	 *                   si se agota el tiempo de espera del lock (ORA-30006), o cualquier otro
+	 *                   error de la consulta, tal cual lo lanza
+	 */
+	void bloquearAportesEntidad(Long idEntidad) throws Throwable;
+
+	/**
 	 * Suma de {@code valor} de los aportes generados por una carga Petro (CRD.CRAR),
 	 * agrupada por tipo de aporte. Base del asiento de APLICACION del cobro de Petro en dos
 	 * pasos — ver {@code CobroPetroContableService.contabilizarAplicacion}.

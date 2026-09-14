@@ -244,6 +244,10 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
                 + solicitud.getIdEntidad());
         }
 
+        // H61 (INVARIANTE-SALDO-APORTES.md §3.1): bloqueo por partícipe, antes de la primera
+        // lectura de saldo (paso 4-7, más abajo) — este método corre REQUIRED.
+        aporteDaoService.bloquearAportesEntidad(entidad.getCodigo());
+
         // 3. Detalle no vacío y sin tipos repetidos
         List<DetalleSolicitudDevolucion> lineas = solicitud.getDetalle();
         if (lineas.isEmpty()) {

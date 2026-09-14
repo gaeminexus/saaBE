@@ -711,6 +711,13 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
             LocalDateTime fecha, String usuario, String glosa, PagoPrestamo pagoPrestamo,
             String rutaDocumentoRespaldo) throws Throwable {
 
+        // H61 (INVARIANTE-SALDO-APORTES.md §3.1): bloqueo por partícipe, antes de la primera
+        // lectura de saldo — sin esto, dos transacciones concurrentes pueden leer el mismo
+        // saldo y las dos pasar el guardarraíl de abajo. Este método corre REQUIRED (sin
+        // @TransactionAttribute explícito, default del EJB): el lock vive dentro de esta
+        // transacción y se libera solo al confirmar o revertir.
+        aporteDaoService.bloquearAportesEntidad(entidad.getCodigo());
+
         List<MovimientoAporte> movimientos = new ArrayList<>();
 
         for (DesgloseAporte renglon : aportes) {

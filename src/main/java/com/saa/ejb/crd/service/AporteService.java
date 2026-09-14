@@ -34,6 +34,12 @@ public interface AporteService extends EntityService<Aporte> {
     String ERR_APORTE_NO_ENCONTRADO = "APORTE_NO_ENCONTRADO";
     /** 422 - El partícipe no está en un estado desde el que se pueda procesar la jubilación */
     String ERR_ESTADO_NO_ELEGIBLE = "ESTADO_NO_ELEGIBLE";
+    /**
+     * 422 - H61 (INVARIANTE-SALDO-APORTES.md §3.2): reversar dejaría el saldo del tipo de
+     * aporte por debajo de cero — el dinero de ese movimiento ya se consumió (cruce, devolución
+     * u otro pago). Mismo valor que {@code DevolucionAporteService.ERR_SALDO_INSUFICIENTE}.
+     */
+    String ERR_SALDO_INSUFICIENTE = "SALDO_INSUFICIENTE";
 
     /**
      * Registra un pago de aportes recibido en ventanilla: genera para el partícipe un aporte

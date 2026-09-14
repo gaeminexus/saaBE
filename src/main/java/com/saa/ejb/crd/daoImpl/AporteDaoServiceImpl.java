@@ -4,6 +4,7 @@ import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
 
+import com.saa.basico.util.IncomeException;
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.crd.dao.AporteDaoService;
 import com.saa.model.crd.Aporte;
@@ -976,6 +977,50 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 			// NO lanzar excepción - retornar 0.0 para no detener el proceso
 			return 0.0;
 		}
+	}
+
+	@SuppressWarnings("unchecked")
+	@Override
+	public void bloquearAportesEntidad(Long idEntidad) throws Throwable {
+		System.out.println("AporteDaoServiceImpl.bloquearAportesEntidad - entidad: " + idEntidad);
+
+		// H61 (INVARIANTE-SALDO-APORTES.md §3.1): sin catch — a diferencia de sus vecinos de
+		// este DAO, un bloqueo que traga su propia excepción es un bloqueo que no existe.
+		Query query = em.createNativeQuery(
+			" SELECT ENTDCDGO FROM CRD.ENTD WHERE ENTDCDGO = :id FOR UPDATE WAIT 30"
+		);
+		query.setParameter("id", idEntidad);
+
+		List<Object> filas;
+		try {
+			filas = query.getResultList();
+		} catch (Exception e) {
+			if (contieneOra30006(e)) {
+				throw new IncomeException("otra operación está moviendo los aportes del partícipe "
+					+ idEntidad + "; intente de nuevo en unos segundos");
+			}
+			throw e;
+		}
+
+		if (filas == null || filas.isEmpty()) {
+			throw new IncomeException("no existe el partícipe " + idEntidad);
+		}
+	}
+
+	/**
+	 * Recorre la cadena de {@code getCause()} buscando "ORA-30006" (timeout de
+	 * {@code FOR UPDATE WAIT}) en el mensaje de alguna excepción — Hibernate envuelve la
+	 * excepción JDBC original en una o más capas propias.
+	 */
+	private boolean contieneOra30006(Throwable e) {
+		Throwable actual = e;
+		while (actual != null) {
+			if (actual.getMessage() != null && actual.getMessage().contains("ORA-30006")) {
+				return true;
+			}
+			actual = actual.getCause();
+		}
+		return false;
 	}
 
 	@SuppressWarnings("unchecked")

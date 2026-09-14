@@ -378,6 +378,10 @@ public class AporteRest {
         try {
             Aporte resultado = aporteService.saveSingle(registro);
             return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.IncomeException e) {
+            // H61 (INVARIANTE-SALDO-APORTES.md §3.3): saveSingle rechaza valor/tipo/entidad
+            // distintos del guardado — es una validación de negocio, no un error del servidor.
+            return Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar aporte: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
@@ -391,6 +395,9 @@ public class AporteRest {
         try {
             Aporte resultado = aporteService.saveSingle(registro);
             return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.IncomeException e) {
+            // H61: saveSingle rechaza valor negativo en un alta — validación de negocio.
+            return Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear aporte: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
@@ -427,9 +434,14 @@ public class AporteRest {
     public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE - APORTE");
         try {
-            Aporte elimina = new Aporte();
-            aporteDaoService.remove(elimina, id);
+            // H61 (INVARIANTE-SALDO-APORTES.md §3.3): CRD.APRT es append-only. Antes llamaba a
+            // aporteDaoService.remove directo (borrado físico); ahora pasa por el service, que
+            // rechaza siempre — así el texto del rechazo tiene una sola fuente de verdad con
+            // AporteServiceImpl#remove.
+            aporteService.remove(Arrays.asList(id));
             return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (com.saa.basico.util.IncomeException e) {
+            return Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar aporte: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }

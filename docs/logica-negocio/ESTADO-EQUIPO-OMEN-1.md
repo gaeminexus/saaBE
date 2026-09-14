@@ -3126,3 +3126,22 @@ de todo lo que resta de un aporte. Detalle y diseño en `crd/INVARIANTE-SALDO-AP
 **Por qué costaba verlo:** cada camino, leído solo, tiene su validación y su comentario de
 "anti-carrera". El agujero está en lo que la palabra promete y el nivel de aislamiento no cumple, y en
 las rutas que no son procesos (el CRUD genérico), que nadie revisa porque "nadie las usa".
+
+## ✅ 2026-09-14 — H61 implementado
+
+Los cuatro ítems de `crd/INVARIANTE-SALDO-APORTES.md` aplicados por `omen-saa-1-be`, **revisados por
+el árbitro sobre el diff**:
+- `AporteDaoServiceImpl.bloquearAportesEntidad`: nativa, `FOR UPDATE WAIT 30`, sólo traduce `ORA-30006`
+  y relanza el resto.
+- Bloqueo antes de leer saldo en `consumirAportes`, `registrarDevolucion`, `generarMesesRetroactivos`,
+  `generarSeguroIndividual`, `crearMovimientoNegativo`, `procesarJubilacion` y `reversarAporte`. Todos
+  corren en `REQUIRED` o dentro de un `REQUIRES_NEW` por jubilado: el ejecutor lo confirmó método por
+  método y ninguno queda fuera de una transacción.
+- `reversarAporte` rechaza si deja el saldo bajo cero. **Cambia la anulación de cobros**: un cobro cuyo
+  dinero ya se devolvió o se cruzó no se anula hasta anular primero eso.
+- `/rest/aprt`: `DELETE` rechazado (antes llamaba al DAO directo, **saltándose el service**); `POST` sin
+  negativos; `PUT` no cambia valor, tipo ni entidad (compara contra copias locales tomadas antes del
+  merge). Los errores de validación salen como `400`, no como `500`. El cambio de estado de
+  `participe-dash` sigue pasando porque reenvía el mismo valor.
+
+`mvn -q compile` del árbol completo → exit 0 (árbitro). Surte efecto con el próximo WAR.

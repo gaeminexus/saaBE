@@ -100,15 +100,14 @@ public class AporteServiceImpl implements AporteService {
     }
 
     /**
-     * Elimina uno o varios registros de Aporte.
+     * H61 (INVARIANTE-SALDO-APORTES.md §3.3): {@code CRD.APRT} es append-only — un aporte
+     * jamás se borra, se reversa ({@link #reversarAporte}). Antes de esto borraba de verdad;
+     * un {@code DELETE} de una fila NEGATIVA (el descuento de una devolución ya pagada) le
+     * devolvía el saldo al partícipe y le permitía cobrar dos veces, sin ningún error.
      */
     @Override
     public void remove(List<Long> id) throws Throwable {
-        System.out.println("Ingresa al metodo remove[] de AporteService ... depurado");
-        Aporte aporte = new Aporte();
-        for (Long registro : id) {
-            aporteDaoService.remove(aporte, registro);
-        }
+        throw new IncomeException("CRD.APRT es append-only: un aporte no se elimina, se reversa");
     }
 
     /**
@@ -137,13 +136,61 @@ public class AporteServiceImpl implements AporteService {
 
     /**
      * Guarda un solo registro de Aporte.
+     *
+     * H61 (INVARIANTE-SALDO-APORTES.md §3.3): {@code CRD.APRT} es append-only, así que este
+     * CRUD genérico deja de aceptar cualquier cosa. Un {@code POST} (alta) sólo puede crear
+     * valores positivos — los descuentos nacen únicamente de los procesos de negocio del §3.1,
+     * que graban con {@code aporteDaoService.save(...)} directo, no por acá. Un {@code PUT}
+     * (edición) sólo puede cambiar el ESTADO: valor, tipo de aporte y entidad quedan fijos —
+     * es justo lo único que hoy usa el frontend (cambio de estado desde
+     * {@code participe-dash.component.ts}, que manda la entidad completa con el mismo valor).
      */
     @Override
     public Aporte saveSingle(Aporte aporte) throws Throwable {
         System.out.println("saveSingle - Aporte");
-        if(aporte.getCodigo() == null){
-        	aporte.setEstado(Long.valueOf(Estado.ACTIVO)); //Activo
-		}
+        if (aporte.getCodigo() == null) {
+            double valorNuevo = aporte.getValor() != null ? aporte.getValor() : 0.0;
+            if (valorNuevo < 0) {
+                throw new IncomeException(ERR_VALOR_INVALIDO + ": un aporte nuevo no puede tener valor"
+                    + " negativo ($" + redondear(valorNuevo) + "); los descuentos de CRD.APRT sólo los"
+                    + " generan los procesos de negocio (cruce, devolución, pago de pensión, reverso).");
+            }
+            aporte.setEstado(Long.valueOf(Estado.ACTIVO)); //Activo
+        } else {
+            // `guardado` puede ser la MISMA instancia gestionada por el EntityManager que el
+            // save() de abajo va a mergear (find() y save() comparten persistence context) —
+            // se copian los tres datos a variables locales ANTES de llamar a save(), para
+            // comparar contra el valor de ANTES y no contra lo que el merge ya haya pisado.
+            Aporte guardado = aporteDaoService.find(new Aporte(), aporte.getCodigo());
+            if (guardado == null) {
+                throw new IncomeException(ERR_APORTE_NO_ENCONTRADO + ": no existe el aporte "
+                    + aporte.getCodigo());
+            }
+            double valorGuardado = guardado.getValor() != null ? guardado.getValor() : 0.0;
+            Long idTipoGuardado = guardado.getTipoAporte() != null ? guardado.getTipoAporte().getCodigo() : null;
+            Long idEntidadGuardado = guardado.getEntidad() != null ? guardado.getEntidad().getCodigo() : null;
+
+            double valorNuevo = aporte.getValor() != null ? aporte.getValor() : 0.0;
+            Long idTipoNuevo = aporte.getTipoAporte() != null ? aporte.getTipoAporte().getCodigo() : null;
+            Long idEntidadNuevo = aporte.getEntidad() != null ? aporte.getEntidad().getCodigo() : null;
+
+            if (Math.abs(valorNuevo - valorGuardado) > TOLERANCIA) {
+                throw new IncomeException(ERR_VALOR_INVALIDO + ": el aporte " + aporte.getCodigo()
+                    + " tiene valor $" + redondear(valorGuardado) + " y se intentó cambiarlo a $"
+                    + redondear(valorNuevo) + "; CRD.APRT es append-only, un valor no se corrige con"
+                    + " un PUT — hace falta un reverso.");
+            }
+            if (!java.util.Objects.equals(idTipoGuardado, idTipoNuevo)) {
+                throw new IncomeException(ERR_VALOR_INVALIDO + ": el aporte " + aporte.getCodigo()
+                    + " es del tipo " + idTipoGuardado + " y se intentó cambiarlo al tipo "
+                    + idTipoNuevo + "; el tipo de aporte no se puede modificar con un PUT.");
+            }
+            if (!java.util.Objects.equals(idEntidadGuardado, idEntidadNuevo)) {
+                throw new IncomeException(ERR_VALOR_INVALIDO + ": el aporte " + aporte.getCodigo()
+                    + " pertenece a la entidad " + idEntidadGuardado + " y se intentó cambiarlo a la"
+                    + " entidad " + idEntidadNuevo + "; la entidad no se puede modificar con un PUT.");
+            }
+        }
         aporte = aporteDaoService.save(aporte, aporte.getCodigo());
         return aporte;
     }
@@ -380,6 +427,25 @@ public class AporteServiceImpl implements AporteService {
                 + " ya es una fila de reverso (valor negativo); no se puede reversar de nuevo");
         }
 
+        // H61 (INVARIANTE-SALDO-APORTES.md §3.1/§3.2): bloqueo por partícipe, ANTES de leer el
+        // saldo, y tope: reversar NO puede dejar el saldo del tipo por debajo de cero — el
+        // dinero de este aporte pudo haberse consumido ya (cruce, devolución, pago de pensión,
+        // …), y esta es la ÚNICA operación de la tabla del §3.1 que le SUMA de vuelta el valor
+        // completo a un tipo, así que es la única que puede sobregirarlo. Copiado a variables
+        // locales antes de nada: `original` sigue siendo la misma instancia gestionada por el
+        // EntityManager después del find(), y su entidad/tipoAporte podrían mutar si algo más
+        // toca ese mismo contexto de persistencia más abajo.
+        Long idEntidadOriginal = original.getEntidad() != null ? original.getEntidad().getCodigo() : null;
+        Long idTipoOriginal = original.getTipoAporte() != null ? original.getTipoAporte().getCodigo() : null;
+        aporteDaoService.bloquearAportesEntidad(idEntidadOriginal);
+        double saldoActualParaReverso = saldoAporteService.saldoPorEntidadYTipo(idEntidadOriginal, idTipoOriginal);
+        if (saldoActualParaReverso - valorOriginal < -TOLERANCIA) {
+            throw new IncomeException(ERR_SALDO_INSUFICIENTE + ": no se puede reversar el aporte "
+                + idAporte + " por $" + redondear(valorOriginal) + ": el partícipe ya usó ese dinero"
+                + " (saldo actual $" + redondear(saldoActualParaReverso) + "). Anule primero la"
+                + " devolución, el cruce o el pago que lo consumió.");
+        }
+
         String glosa = truncarPorBytes("REVERSO APORTE " + idAporte + " - " + motivo.trim(), MAX_BYTES_GLOSA);
         LocalDateTime ahora = LocalDateTime.now();
 
@@ -462,6 +528,10 @@ public class AporteServiceImpl implements AporteService {
         }
         LocalDateTime fechaHora = fechaEfectiva.isEqual(LocalDate.now())
             ? LocalDateTime.now() : fechaEfectiva.atStartOfDay();
+
+        // H61 (INVARIANTE-SALDO-APORTES.md §3.1): bloqueo por partícipe, antes de leer los
+        // saldos de cesantía y jubilación de abajo. Método REQUIRED.
+        aporteDaoService.bloquearAportesEntidad(idEntidad);
 
         double saldoCesantia = redondear(saldoAporteService.saldoPorEntidadYTipo(idEntidad, TIPO_APORTE_CESANTIA));
         double saldoJubilacion = redondear(saldoAporteService.saldoPorEntidadYTipo(idEntidad, TIPO_APORTE_JUBILACION));

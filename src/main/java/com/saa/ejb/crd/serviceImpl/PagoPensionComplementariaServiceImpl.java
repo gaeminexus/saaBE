@@ -1051,6 +1051,10 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
                         + (fila.getValorSeguro() != null ? fila.getValorSeguro() : 0.0));
                 }
             }
+            // H61 (INVARIANTE-SALDO-APORTES.md §3.1): bloqueo por partícipe, antes de esta
+            // primera lectura de saldo (las dos ramas de arriba, SIN_ANCLA/AL_DIA, no leen
+            // saldo — no hace falta bloquear ahí). Este método corre REQUIRES_NEW.
+            aporteDaoService.bloquearAportesEntidad(idEntidad);
             double saldoLibre = Math.max(0.0, redondear(
                 saldoAporteService.saldoPorEntidadYTipo(idEntidad, TIPO_APORTE_PENSION_COMPLEMENTARIA)
                     - seguroPendientePrevio));
@@ -1628,6 +1632,14 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
                 + " mes(es) adeudado(s) sin generar.");
             return resumen;
         }
+
+        // H61 (INVARIANTE-SALDO-APORTES.md §3.1): bloqueo por partícipe, antes de la primera
+        // lectura de saldo de esta corrida — se llama vía self/generarPagoIndividual|
+        // generarPensionIndividual, ambos REQUIRES_NEW, así que el lock vive dentro de esa
+        // transacción. Es reentrante: si generarMesesRetroactivos ya bloqueó y el cruce de más
+        // abajo (consumirAportes) vuelve a bloquear al mismo partícipe en la MISMA transacción,
+        // Oracle no se auto-bloquea.
+        aporteDaoService.bloquearAportesEntidad(idEntidad);
 
         double saldoRestante = saldoAporteService.saldoPorEntidadYTipo(idEntidad, TIPO_APORTE_PENSION_COMPLEMENTARIA);
 
@@ -3045,6 +3057,13 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
                 + " (pensión complementaria) en el catálogo CRD.TPAP.");
         }
 
+        // H61 (INVARIANTE-SALDO-APORTES.md §3.1): bloqueo por partícipe, antes del guardarraíl
+        // de abajo. Reentrante: generarMesesRetroactivos ya bloqueó al entrar (misma
+        // transacción REQUIRES_NEW heredada vía self.generarPagoIndividual/
+        // generarPensionIndividual) — este segundo bloqueo no se auto-bloquea en Oracle, y deja
+        // a crearMovimientoNegativo protegido igual el día que alguien lo llame desde otro lado.
+        aporteDaoService.bloquearAportesEntidad(entidad.getCodigo());
+
         // ⛔⛔ H60 (2026-09-14): guardarraíl anti-carrera, revalidado DENTRO de la transacción —
         // mismo criterio que ProcesoPagoPrestamoServiceImpl.consumirAportes:716-727. Este era el
         // único camino que restaba de un aporte sin volver a comprobar el saldo antes de
@@ -3054,7 +3073,9 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         // ve los negativos ya persistidos en esta misma transacción (el seguro del mismo mes,
         // los cruces de pagarConAportes) porque el flush de JPA es AUTO en todo el proyecto —
         // no hay ningún FlushModeType.COMMIT (verificado, ver el javadoc de
-        // ProcesoPagoPrestamoService#precancelar).
+        // ProcesoPagoPrestamoService#precancelar). Con H61, además, ningún otro proceso puede
+        // haber corrido en paralelo entre esta lectura y el INSERT de abajo: el bloqueo lo
+        // impide.
         double saldoActual = saldoAporteService.saldoPorEntidadYTipo(entidad.getCodigo(),
             TIPO_APORTE_PENSION_COMPLEMENTARIA);
         if (saldoActual < valor - TOLERANCIA) {
