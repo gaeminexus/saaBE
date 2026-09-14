@@ -645,39 +645,42 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         // a pagar de todos los jubilados y otro el total a pagar por seguros». Esto SUPERSEDE el
         // reparto proporcional de §4bis "Mes parcial" (2026-09-04) y la compuerta por
         // certificado del seguro (6abf436, mismo día): el seguro deja de viajar en la orden de
-        // pago del jubilado EN NINGÚN CASO, y deja de repartirse proporcional con la pensión —
-        // ahora es PRIORIDAD 2 (después del cruce contra préstamo, antes de la pensión).
+        // pago del jubilado EN NINGÚN CASO, y deja de repartirse proporcional con la pensión.
         //
-        // Prioridad, decisión del árbitro bajo esta misma delegación: 1) cruce contra préstamo,
-        // 2) seguro médico, 3) pensión al jubilado — "la pensión es lo único que puede quedar
-        // corto". Se implementa como una "olla" compartida (pensionesAcumuladas = pensión +
-        // seguro de todos los meses adeudados) de la que cada prioridad toma su parte, topada
-        // en cada paso por lo que de verdad queda de saldo.
+        // ⛔⛔ H60 despacho 2, opción A (2026-09-14), §11.3: el orden de prioridad CAMBIÓ. Ya NO
+        // es 1) cruce, 2) seguro, 3) pensión (así quedó el 2026-09-05, y fue la causa de que la
+        // pensión pudiera salir sin tope de saldo). Ahora es **1) SEGURO, 2) CRUCE, 3) PENSIÓN**
+        // — porque el seguro ya se le pagó al proveedor ANTES, en el proceso de seguro
+        // (generarSeguroIndividual, §11.1), así que tiene que reservarse primero acá también.
+        // "La pensión es lo único que puede quedar corto" sigue valiendo — sigue siendo la
+        // última prioridad. Se implementa como una "olla" compartida (pensionesAcumuladas =
+        // pensión + seguro de todos los meses adeudados) de la que cada prioridad toma su
+        // parte, topada en cada paso por lo que de verdad queda de saldo.
         double pensionesAcumuladas = redondear(mesesAdeudados * valorTotal);
         double seguroAcumulado = redondear(mesesAdeudados * valorSeguroMensual);
 
-        // Prioridad 1 — cruce contra préstamo (sin cambios de fondo).
-        double montoACruzar = redondear(Math.min(pensionesAcumuladas, Math.min(deudaExigibleTotal, saldo)));
-        double ollaTrasCruce = redondear(pensionesAcumuladas - montoACruzar);
-        double saldoTrasCruce = redondear(Math.max(0.0, saldo - montoACruzar));
+        // ⛔⛔ H60 despacho 2, opción A (2026-09-14), §11.3: orden SEGURO → CRUCE → PENSIÓN
+        // (antes era cruce → seguro → pensión, a18b1b80) — mismo orden que ahora usa la corrida
+        // real (generarMesesRetroactivos, §11.2). Sigue siendo una aproximación sobre el
+        // nominal: no lee los stubs de CRD.PGPC que sí usa la corrida real.
 
-        // Prioridad 2 — seguro médico. SIEMPRE, tenga o no certificado: no sale al banco del
-        // jubilado, así que el certificado (que valida esa cuenta) no lo gobierna. Tope doble:
-        // no más de lo nominalmente adeudado de seguro, no más de lo que queda en la olla, no
-        // más de lo que el saldo permite.
-        double montoSeguro = redondear(Math.min(seguroAcumulado, Math.min(ollaTrasCruce, saldoTrasCruce)));
-        double ollaTrasSeguro = redondear(ollaTrasCruce - montoSeguro);
-        double saldoTrasSeguro = redondear(saldoTrasCruce - montoSeguro);
+        // Prioridad 1 — seguro médico. SIEMPRE, tenga o no certificado: no sale al banco del
+        // jubilado, así que el certificado (que valida esa cuenta) no lo gobierna. Es la
+        // primera prioridad, así que su único tope es lo nominalmente adeudado y el saldo —
+        // todavía no compite por ninguna olla.
+        double montoSeguro = redondear(Math.min(seguroAcumulado, saldo));
+        double saldoTrasSeguro = redondear(Math.max(0.0, saldo - montoSeguro));
+        double ollaTrasSeguro = redondear(pensionesAcumuladas - montoSeguro);
 
-        // Prioridad 3 — pensión al jubilado. Es lo que queda de la olla tras cruce y seguro.
-        // ⛔⛔ H60 (2026-09-14): el comentario anterior decía "el saldo ya la topa por
-        // construcción" y es falso — ollaTrasCruce nunca se topó contra el saldo, solo el
-        // cruce y el seguro. Misma regresión de a18b1b80 (2026-09-04) que en
-        // generarMesesRetroactivos: acá vuelve el min contra saldoTrasSeguro (invariante H60 de
-        // crd/API-PAGO-PENSION-COMPLEMENTARIA.md). Sólo sale al banco si hay certificado — si
-        // no, esta porción queda RETENIDA en el aporte 23 del jubilado, no se consume ni se
-        // envía (D2, sin cambios).
-        double pensionNominal = redondear(Math.max(0.0, Math.min(ollaTrasSeguro, saldoTrasSeguro)));
+        // Prioridad 2 — cruce contra préstamo. Compite por lo que queda DESPUÉS del seguro, no
+        // antes (sin cambios de fondo respecto al criterio de siempre, sólo el orden).
+        double montoACruzar = redondear(Math.min(ollaTrasSeguro, Math.min(deudaExigibleTotal, saldoTrasSeguro)));
+
+        // Prioridad 3 — pensión al jubilado. Es lo que queda de la olla tras seguro Y cruce.
+        // Sólo sale al banco si hay certificado — si no, esta porción queda RETENIDA en el
+        // aporte 23 del jubilado, no se consume ni se envía (D2, sin cambios).
+        double pensionNominal = redondear(Math.max(0.0,
+            Math.min(ollaTrasSeguro - montoACruzar, saldoTrasSeguro - montoACruzar)));
         double montoADinero = tieneCertificado ? pensionNominal : 0.0;
 
         double total = redondear(montoACruzar + montoSeguro + pensionNominal);
@@ -998,7 +1001,7 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
                 + " no tiene una configuración de pensión complementaria (VPPC) activa; no se"
                 + " puede fijar su seguro médico.");
         }
-        double valorSeguro = redondear(vppc.getValorSeguro() != null ? vppc.getValorSeguro() : 0.0);
+        double valorSeguroNominal = redondear(vppc.getValorSeguro() != null ? vppc.getValorSeguro() : 0.0);
 
         PagoPensionComplementaria existente = pagoPensionDaoService.selectByEntidadYPeriodo(
             idEntidad, anio.longValue(), mes.longValue());
@@ -1006,6 +1009,59 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
             System.out.println("  Entidad " + idEntidad + " ya tiene el seguro fijado ($"
                 + existente.getValorSeguro() + ") para " + mes + "/" + anio + " - se omite");
             return null;
+        }
+
+        // ⛔⛔ H60 despacho 2, opción A (2026-09-14), §11.1: el seguro se fija YA TOPADO por lo
+        // que el jubilado de verdad tiene — nunca el nominal del VPPC a secas. Antes esto pagaba
+        // al proveedor por el nominal completo y la corrida de pensiones (generarMesesRetroactivos)
+        // descontaba después, topado por lo que quedaba: al proveedor le pagaba más de lo que
+        // salía de la cuenta del jubilado.
+        YearMonth periodo = YearMonth.of(anio, mes);
+        String motivoTope = null;
+        double seguroFijado;
+        LocalDate ancla = resolverAnclaRetroactivo(idEntidad);
+        if (ancla == null) {
+            // SIN_ANCLA: generarMesesRetroactivos rechaza a este jubilado de entrada y nunca
+            // descontaría el seguro — fijarlo en el nominal pagaría al proveedor por algo que
+            // nunca sale de la cuenta de nadie (mismas condiciones de SIN_ANCLA que ese método).
+            seguroFijado = 0.0;
+            motivoTope = "SIN_ANCLA";
+        } else if (YearMonth.from(ancla).plusMonths(1).isAfter(periodo)) {
+            // AL_DIA para este período: mismo motivo — la corrida no tiene nada que descontar
+            // acá (mismas condiciones de AL_DIA que generarMesesRetroactivos).
+            seguroFijado = 0.0;
+            motivoTope = "AL_DIA";
+        } else {
+            // seguroPendientePrevio: seguro YA fijado (pagado al proveedor) en meses ANTERIORES
+            // a éste y que la corrida de pensiones todavía no descontó (stubs con PGPCVLPN
+            // null) — mismo criterio que seguroReservado de generarMesesRetroactivos, medido
+            // acá antes de correr la corrida para no comprometer más de lo que de verdad queda.
+            List<PagoPensionComplementaria> historicoPgpc = pagoPensionDaoService.selectByEntidad(idEntidad);
+            double seguroPendientePrevio = 0.0;
+            if (historicoPgpc != null) {
+                for (PagoPensionComplementaria fila : historicoPgpc) {
+                    if (fila.getValorPension() != null || fila.getAnio() == null || fila.getMes() == null) {
+                        continue;
+                    }
+                    YearMonth ymFila = YearMonth.of(fila.getAnio().intValue(), fila.getMes().intValue());
+                    if (!ymFila.isBefore(periodo)) {
+                        continue;
+                    }
+                    seguroPendientePrevio = redondear(seguroPendientePrevio
+                        + (fila.getValorSeguro() != null ? fila.getValorSeguro() : 0.0));
+                }
+            }
+            double saldoLibre = Math.max(0.0, redondear(
+                saldoAporteService.saldoPorEntidadYTipo(idEntidad, TIPO_APORTE_PENSION_COMPLEMENTARIA)
+                    - seguroPendientePrevio));
+            seguroFijado = redondear(Math.min(valorSeguroNominal, saldoLibre));
+            if (seguroFijado < valorSeguroNominal - TOLERANCIA) {
+                motivoTope = "SALDO";
+            }
+        }
+        if (motivoTope != null) {
+            System.out.println("  ⚠️ Seguro topado - Entidad " + idEntidad + " - nominal $"
+                + valorSeguroNominal + " - fijado $" + seguroFijado + " - motivo " + motivoTope);
         }
 
         LocalDate finDeMes = YearMonth.of(anio, mes).atEndOfMonth();
@@ -1019,9 +1075,11 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         pago.setFilial(entidad.getFilial());
         pago.setAnio(anio.longValue());
         pago.setMes(mes.longValue());
-        pago.setValorSeguro(valorSeguro);
+        pago.setValorSeguro(seguroFijado);
         // PGPCVLPN/PGPCVLRR quedan sin fijar (null) hasta que generarPensionIndividual complete
-        // esta misma fila — es la señal de "stub" que usa generarMesesRetroactivos.
+        // esta misma fila — es la señal de "stub" que usa generarMesesRetroactivos. La fila se
+        // graba SIEMPRE, aunque seguroFijado sea 0.0 (§11.1): así la corrida la reconoce como
+        // fijada y no la trata como SIN_SEGURO_DEL_PERIODO.
         pago.setEstado(Long.valueOf(EstadoPagoPensionComplementaria.SEGURO_GENERADO));
         if (pago.getFecha() == null) {
             pago.setFecha(fecha);
@@ -1032,9 +1090,9 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         }
         pagoPensionDaoService.save(pago, pago.getCodigo());
 
-        System.out.println("  ✅ Seguro médico fijado - Entidad " + idEntidad + " - $" + valorSeguro
-            + " - " + mes + "/" + anio);
-        return valorSeguro;
+        System.out.println("  ✅ Seguro médico fijado - Entidad " + idEntidad + " - $" + seguroFijado
+            + " (nominal $" + valorSeguroNominal + ")" + " - " + mes + "/" + anio);
+        return seguroFijado;
     }
 
     @Override
@@ -1096,7 +1154,9 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         int generados = 0;
         int yaGenerados = 0;
         int conError = 0;
+        int topados = 0;
         double totalSeguroGeneral = 0.0;
+        double totalNominalNoCobrado = 0.0;
 
         if (jubilados != null) {
             for (Entidad jubilado : jubilados) {
@@ -1106,6 +1166,26 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
                     if (valorSeguro != null) {
                         generados++;
                         totalSeguroGeneral += valorSeguro;
+                        // §11.1: generarSeguroIndividual ya decidió y logueó el tope; acá sólo
+                        // se re-lee el nominal (misma consulta que usa por dentro) para poder
+                        // contarlo en el resumen SIN agregar ningún campo al DTO. Try/catch
+                        // propio: el seguro YA se fijó con éxito arriba, así que un fallo acá
+                        // (sólo de conteo para el mensaje) no puede sumar a conError ni pisar
+                        // el resultado real.
+                        try {
+                            List<ValorPagoPensionComplementaria> configJubilado =
+                                valorPagoPensionComplementariaService.selectByEntidad(jubilado.getCodigo());
+                            ValorPagoPensionComplementaria vppcJubilado = unicaActiva(configJubilado, jubilado.getCodigo());
+                            double nominalJubilado = redondear(vppcJubilado != null && vppcJubilado.getValorSeguro() != null
+                                ? vppcJubilado.getValorSeguro() : 0.0);
+                            if (valorSeguro < nominalJubilado - TOLERANCIA) {
+                                topados++;
+                                totalNominalNoCobrado = redondear(totalNominalNoCobrado + (nominalJubilado - valorSeguro));
+                            }
+                        } catch (Throwable eConteo) {
+                            System.out.println("  (informativo, no bloquea) no se pudo medir si el seguro de"
+                                + " la entidad " + jubilado.getCodigo() + " quedó topado: " + eConteo.getMessage());
+                        }
                     } else {
                         yaGenerados++;
                     }
@@ -1132,7 +1212,9 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
             + totalSeguroPeriodo + " generados hacia el proveedor"
             + (idOrdenProveedor != null ? " (orden " + idOrdenProveedor + ")" : " (sin orden, total $0)")
             + ", " + yaGenerados + " ya tenían el seguro fijado, " + conError + " con error, de "
-            + evaluados + " evaluados.");
+            + evaluados + " evaluados. " + topados + " jubilado(s) con el seguro topado por saldo,"
+            + " sin ancla o al día (H60, §11.1): $" + redondear(totalNominalNoCobrado)
+            + " de nominal NO cobrado al proveedor.");
 
         if (corrida == null) {
             corrida = new CorridaJubilados();
@@ -1549,6 +1631,43 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
 
         double saldoRestante = saldoAporteService.saldoPorEntidadYTipo(idEntidad, TIPO_APORTE_PENSION_COMPLEMENTARIA);
 
+        // ⛔⛔ H60 despacho 2, opción A (2026-09-14), §11.2: orden SEGURO → CRUCE → PENSIÓN. El
+        // seguro de los meses [desde, corrida] ya se pagó al proveedor en el proceso de SEGURO
+        // (generarSeguroIndividual, §11.1) — se reserva del saldo ACÁ, una sola vez, antes de
+        // tocar el primer mes. Los "stubs" son las filas CRD.PGPC de ese rango con PGPCVLPN
+        // null. Sólo aplica con usarSeguroFijado: el proceso único deprecado nunca deja stubs
+        // (cualquier fila existente hace saltar el mes entero, ver más abajo), así que ahí
+        // seguroReservado queda en 0 y saldoLibre == saldoRestante, sin cambio de comportamiento.
+        Map<YearMonth, PagoPensionComplementaria> stubsEnRango = new LinkedHashMap<>();
+        double seguroReservado = 0.0;
+        if (usarSeguroFijado) {
+            List<PagoPensionComplementaria> historicoPgpc = pagoPensionDaoService.selectByEntidad(idEntidad);
+            if (historicoPgpc != null) {
+                for (PagoPensionComplementaria fila : historicoPgpc) {
+                    if (fila.getValorPension() != null || fila.getAnio() == null || fila.getMes() == null) {
+                        continue;
+                    }
+                    YearMonth ymFila = YearMonth.of(fila.getAnio().intValue(), fila.getMes().intValue());
+                    if (ymFila.isBefore(desde) || ymFila.isAfter(corrida)) {
+                        continue;
+                    }
+                    stubsEnRango.put(ymFila, fila);
+                    seguroReservado = redondear(seguroReservado
+                        + (fila.getValorSeguro() != null ? fila.getValorSeguro() : 0.0));
+                }
+            }
+            if (saldoRestante < seguroReservado - TOLERANCIA) {
+                throw new IncomeException(ERR_SALDO_INSUFICIENTE + ": el seguro médico de $"
+                    + redondear(seguroReservado) + " de la entidad " + idEntidad + " YA SE PAGÓ AL"
+                    + " PROVEEDOR (filas CRD.PGPC con seguro fijado, período " + desde + " a " + corrida
+                    + ", pendientes de descontarse de su saldo) y el saldo actual del aporte 23 es sólo $"
+                    + redondear(saldoRestante) + " — no alcanza ni para el seguro ya pagado. Es una"
+                    + " carrera entre el proceso de seguro y esta corrida (algo movió el saldo entre"
+                    + " los dos): revisar antes de reintentar, no forzar.");
+            }
+        }
+        double saldoLibre = redondear(saldoRestante - seguroReservado);
+
         int mesesAplicados = 0;
         double totalPension = 0.0, totalSeguro = 0.0, totalCruzado = 0.0, totalOrden = 0.0;
         // Cuánto del seguro se traspasó internamente (2.3.90.90.06) sin salir al banco —
@@ -1589,6 +1708,8 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
                 }
                 if (existenteM != null) {
                     filaExistente = existenteM;
+                    // Ya reservado en seguroReservado, arriba del bucle: NO se vuelve a restar
+                    // de saldoLibre acá — eso lo dejaría descontado dos veces.
                     valorSeguroMes = existenteM.getValorSeguro() != null ? existenteM.getValorSeguro() : 0.0;
                 } else {
                     // Sin fila de seguro para este período: el jubilado entró al padrón después
@@ -1605,9 +1726,17 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
                         + " para " + mesM + "/" + anioM + " - se omite");
                     continue;
                 }
-                valorSeguroMes = valorSeguro;
+                // Camino deprecado (sin usarSeguroFijado): no hay stub ni reserva previa — el
+                // seguro se topa acá mismo por lo que queda de saldoLibre y se resta de una vez,
+                // §11.2 punto 2.
+                valorSeguroMes = redondear(Math.min(valorSeguro, Math.max(0.0, saldoLibre)));
+                saldoLibre = redondear(saldoLibre - valorSeguroMes);
             }
             double valorPensionMes = redondear(valorTotal - valorSeguroMes);
+            // Seguro → cruce → pensión (H60 despacho 2): el seguro de este mes ya quedó
+            // determinado arriba, antes de tocar el cruce. seguroInternoMes es el mismo valor,
+            // sólo con el nombre que usa el resto del método (registro, acumulados, DSBN).
+            double seguroInternoMes = valorSeguroMes;
 
             // ⛔⛔ Corrección 2026-09-05 (hallazgo propio, auditando participacion, ANTES de la
             // corrida de agosto): "préstamo al día" YA NO CORTA el bucle. Antes de D4 sí tenía
@@ -1624,18 +1753,36 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
             // natural del for) y SALDO_AGOTADO. "PRESTAMO_AL_DIA" ya no es alcanzable como
             // motivoCorte final — una vez que la deuda exigible llega a 0, el resto de los
             // meses simplemente sigue procesándose 100% como remanente (ver disponibleMes).
-            if (saldoRestante <= TOLERANCIA) {
-                motivoCorte = "SALDO_AGOTADO";
-                break;
+            // §11.2 punto 3: el corte por saldo agotado YA NO es incondicional. Si algún mes
+            // desde ÉSTE en adelante todavía tiene un stub de seguro pendiente de descontar
+            // (ya pagado al proveedor), ese mes se tiene que seguir procesando —con cruce 0 y
+            // pensión 0, que es lo que dan los min() de abajo cuando saldoLibre ~ 0— para que el
+            // seguro ya pagado quede reflejado en su PGPC. Sólo se corta cuando de verdad no
+            // queda nada más por descontar.
+            if (saldoLibre <= TOLERANCIA) {
+                boolean quedanStubsConSeguro = false;
+                for (YearMonth futuro = ym; !futuro.isAfter(corrida); futuro = futuro.plusMonths(1)) {
+                    PagoPensionComplementaria stubFuturo = stubsEnRango.get(futuro);
+                    if (stubFuturo != null && stubFuturo.getValorSeguro() != null
+                            && stubFuturo.getValorSeguro() > TOLERANCIA) {
+                        quedanStubsConSeguro = true;
+                        break;
+                    }
+                }
+                if (!quedanStubsConSeguro) {
+                    motivoCorte = "SALDO_AGOTADO";
+                    break;
+                }
             }
 
             // D4: con préstamo vigente Y deuda exigible pendiente, el tope es
-            // min(pensión del mes, saldo) — SIN deudaExigibleTotal en el min(): una vez que la
+            // min(olla tras seguro, saldo) — SIN deudaExigibleTotal en el min(): una vez que la
             // deuda llega a 0 (con o sin préstamo vigente), ya no hay nada que la limite más
-            // que el saldo, y el resto fluye entero a remanente (ver más abajo).
+            // que el saldo, y el resto fluye entero a remanente (ver más abajo). valorPensionMes
+            // hace de "olla tras seguro" (§11.2): es literalmente valorTotal − valorSeguroMes.
             double disponibleMes = (hayPrestamoVigente && deudaExigibleTotal > TOLERANCIA)
-                ? redondear(Math.min(valorTotal, Math.min(deudaExigibleTotal, saldoRestante)))
-                : redondear(Math.min(valorTotal, saldoRestante));
+                ? redondear(Math.min(valorPensionMes, Math.min(deudaExigibleTotal, saldoLibre)))
+                : redondear(Math.min(valorPensionMes, saldoLibre));
 
             // Cruce del mes: en orden, respetando el tope EXIGIBLE de CADA préstamo (no el
             // pendiente total) — así el motor jamás llega a una cuota futura, sin tocarlo.
@@ -1705,22 +1852,6 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
             deudaExigibleTotal = redondear(sumaValores(exigibleRestantePorPrestamo));
             totalCruzado = redondear(totalCruzado + aplicadoEsteMes);
 
-            // ⛔⛔ REGLA NUEVA 2026-09-05 (decisión del usuario, ver previsualizarJubilado para
-            // la cita textual): el seguro se separa SIEMPRE, con la misma prioridad de "olla
-            // compartida" — 1) cruce, 2) seguro, 3) pensión — y NUNCA entra en la orden de pago
-            // del jubilado. Supersede el reparto proporcional de §4bis y la compuerta por
-            // certificado del seguro (6abf436, mismo día).
-            double ollaTrasCruce = redondear(valorTotal - aplicadoEsteMes);
-            double saldoTrasCruce = redondear(Math.max(0.0, saldoRestante - aplicadoEsteMes));
-
-            // Prioridad 2 — seguro médico, SIEMPRE (cert o no): topado por lo nominal del mes,
-            // lo que queda de la olla, y lo que queda de saldo. valorSeguroMes en vez de
-            // valorSeguro: con usarSeguroFijado, cada mes trae SU PROPIO seguro (leído de su
-            // fila, o 0 si no la tiene) en vez de la misma constante para todos los meses.
-            double seguroInternoMes = redondear(Math.min(valorSeguroMes, Math.min(ollaTrasCruce, saldoTrasCruce)));
-            double ollaTrasSeguro = redondear(ollaTrasCruce - seguroInternoMes);
-            double saldoTrasSeguro = redondear(saldoTrasCruce - seguroInternoMes);
-
             // MEDIDO, NO RESUELTO (2026-09-07): un mes RETROACTIVO (anterior al período de esta
             // corrida) con seguro > 0 se descuenta acá pero esta corrida NUNCA genera una orden
             // al proveedor (§4.2 punto 5) — ver el javadoc de
@@ -1734,17 +1865,15 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
                     + " totalSeguroRetroactivoNoPagado en el resumen");
             }
 
-            // Prioridad 3 — pensión al jubilado: lo que sobra de la olla tras cruce y seguro.
-            // ⛔⛔ H60 (2026-09-14): esto NO viene topado por saldo. ollaTrasCruce (la base de la
-            // olla) nunca se topó contra el saldo — solo el cruce y el seguro se calcularon con
-            // min(..., saldoTrasCruce). El comentario anterior afirmaba "saldoTrasSeguro >=
-            // ollaTrasSeguro siempre" y es falso apenas el saldo es menor que la olla: es la
-            // regresión de a18b1b80 (2026-09-04), que reordenó cruce → seguro → pensión y dejó
-            // la pensión sin su propio tope. Con esto vuelve el min contra saldoTrasSeguro, que
-            // el contrato (crd/API-PAGO-PENSION-COMPLEMENTARIA.md, invariante H60) exige. Sólo
-            // sale al banco con certificado; si no, queda RETENIDA en el aporte 23 del jubilado
-            // (D2, sin cambios).
-            double remanenteMes = redondear(Math.max(0.0, Math.min(ollaTrasSeguro, saldoTrasSeguro)));
+            // Prioridad 3 — pensión al jubilado: lo que sobra de la olla tras seguro Y cruce.
+            // ⛔⛔ H60 despacho 2, opción A (2026-09-14), §11.2: el orden ahora es SEGURO →
+            // CRUCE → PENSIÓN (antes era cruce → seguro → pensión, a18b1b80). valorPensionMes ya
+            // es "olla tras seguro" (valorTotal − valorSeguroMes, calculado arriba); acá se topa
+            // además por lo que el cruce de este mes (aplicadoEsteMes) ya consumió y por lo que
+            // queda de saldoLibre tras ese mismo cruce. Sólo sale al banco con certificado; si
+            // no, queda RETENIDA en el aporte 23 del jubilado (D2, sin cambios).
+            double remanenteMes = redondear(Math.max(0.0,
+                Math.min(valorPensionMes - aplicadoEsteMes, saldoLibre - aplicadoEsteMes)));
 
             String glosa = "PAGO PENSION COMPLEMENTARIA RETROACTIVO " + mesM + "/" + anioM
                 + " - Entidad " + idEntidad;
@@ -1754,11 +1883,13 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
                 pagosDelMesParaDsbn, filaExistente);
 
             boolean saleAlBancoEsteMes = pago.getIdPagoProgramado() != null;
-            // El seguro SIEMPRE consume saldo del aporte 23 (se traspasa siempre), y la pensión
-            // sólo si de verdad sale al banco — si no, queda retenida sin consumirse (D2).
-            double consumidoEsteMes = redondear(aplicadoEsteMes + seguroInternoMes
-                + (saleAlBancoEsteMes ? remanenteMes : 0.0));
-            saldoRestante = redondear(saldoRestante - consumidoEsteMes);
+            // §11.2: el seguro de este mes YA se restó de saldoLibre — arriba del bucle, de una
+            // sola vez, si venía de un stub (usarSeguroFijado); o acá mismo al determinar
+            // valorSeguroMes, si no (camino deprecado). Acá sólo se resta lo que faltaba: el
+            // cruce, y la pensión sólo si de verdad sale al banco — si no, queda retenida sin
+            // consumirse (D2).
+            double consumidoEsteMes = redondear(aplicadoEsteMes + (saleAlBancoEsteMes ? remanenteMes : 0.0));
+            saldoLibre = redondear(saldoLibre - consumidoEsteMes);
 
             mesesAplicados++;
             // totalPension/totalSeguro: con la prioridad ya no hay reparto proporcional que
