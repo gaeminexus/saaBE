@@ -3107,3 +3107,22 @@ final, y el árbitro los contrastó contra el diff. Compilación: `javac` dirigi
 
 **Pendiente para que surta efecto:** WAR. No correr seguro ni pensión de septiembre antes. `sql/222`
 sin correr. Sin decidir: el sobrepago de agosto y el reverso de aportes ya consumidos.
+
+## 2026-09-14 — H61: la devolución valida bien, pero ninguna validación resiste dos operaciones a la vez
+
+A pedido del usuario («asegurarnos que jamás vuelva a pasar»), revisión de la devolución de aportes y
+de todo lo que resta de un aporte. Detalle y diseño en `crd/INVARIANTE-SALDO-APORTES.md`.
+
+- **La devolución está bien.** Valida dos veces y descuenta al registrar, así que la orden sale por
+  exactamente lo descontado.
+- ⛔ **Ningún camino bloquea.** Las "revalidaciones anti-carrera" sólo protegen dentro de la misma
+  transacción. Dos operaciones simultáneas sobre el mismo partícipe leen el mismo saldo y pasan las
+  dos. No hay un solo `FOR UPDATE` en `crd` (el único precedente del repo es `ChequeServiceImpl:459`).
+- ⛔ **Puertas traseras abiertas:** `PUT /rest/aprt` acepta cualquier `valor`, `POST` acepta negativos y
+  `DELETE /rest/aprt/{id}` borra cualquier fila. Borrar el negativo de una devolución ya pagada
+  devuelve el saldo y permite cobrar dos veces.
+- ⛔ **`reversarAporte`** puede dejar el saldo negativo, y lo usa la anulación de cobros.
+
+**Por qué costaba verlo:** cada camino, leído solo, tiene su validación y su comentario de
+"anti-carrera". El agujero está en lo que la palabra promete y el nivel de aislamiento no cumple, y en
+las rutas que no son procesos (el CRUD genérico), que nadie revisa porque "nadie las usa".
