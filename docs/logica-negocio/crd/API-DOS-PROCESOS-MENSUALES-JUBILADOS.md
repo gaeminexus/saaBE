@@ -324,9 +324,15 @@ cuánto seguro nominal no se cobró. **Sin cambios de forma** en la respuesta.
    - **Cruce:** `disponibleMes = min(ollaTrasSeguro, deudaExigible si hay préstamo, saldoLibre)`.
    - **Pensión:** `remanenteMes = max(0, min(ollaTrasSeguro − cruce, saldoLibre − cruce))`.
    - `saldoLibre −= cruce + (remanenteMes si sale al banco)`.
-3. **Corte `SALDO_AGOTADO`:** sólo si `saldoLibre <= TOLERANCIA` **y no quedan** stubs con seguro > 0
-   en los meses que faltan. Si quedan, el mes se procesa igual con cruce 0 y pensión 0 para que el
-   seguro ya pagado se descuente.
+3. **Con `saldoLibre <= TOLERANCIA`** (corregido 2026-09-14, la primera redacción era del árbitro y
+   estaba mal):
+   - si **este** mes tiene stub con seguro > 0 → se procesa: seguro exacto, cruce 0, pensión 0;
+   - si este mes **no** tiene stub con seguro > 0 pero **alguno posterior sí** → `continue`: el mes
+     **no se genera** (no hay nada que descontar ni pagar). Procesarlo daba un PGPC `PAGADA` por $0 y
+     un asiento de devengo **sin líneas**;
+   - si no queda ningún stub con seguro > 0 → `SALDO_AGOTADO`, `break`, como siempre.
+   El mes salteado no se vuelve a pagar después (el movimiento del seguro posterior mueve el ancla),
+   que es la misma semántica que `SALDO_AGOTADO`: sin saldo, no hay pensión.
 4. Los cortes tempranos `SIN_ANCLA` y `AL_DIA` quedan como están: con 11.1, un jubilado en esos casos
    ya no tiene seguro fijado > 0 en el período.
 
