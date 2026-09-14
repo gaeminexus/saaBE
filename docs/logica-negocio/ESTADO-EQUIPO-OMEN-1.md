@@ -3170,3 +3170,16 @@ registra el backend. Pero el operador decide cuánto cobrar mirando ese número.
 **Corrección propuesta (sólo FE, sin tocar el backend):** leer `/rest/hstr/selectByCriteria` por
 `entidad.codigo` y `estado = 99`, el más reciente por `fechaIngreso`, y usar `montoCesantia` /
 `montoJubilacion`. **Sin despachar**: espera el visto bueno del usuario.
+
+### H62 — decisión y despacho (2026-09-14)
+
+**El usuario decidió la fuente: el CONTRATO**, «como la generación del archivo Petro». Contrastado
+contra el código antes de despachar (regla 12): **la premisa es cierta sólo a medias.** La generación
+lee vigencias de contrato **únicamente si el flag del rubro 242 está encendido**, y está **apagado por
+defecto**. Apagada, lee `HSTR` estado 99. La carga Petro lee `HSTR` siempre. Se le planteó al usuario.
+La decisión de negocio (contrato) no cambia por eso, pero si el flag sigue apagado, la pantalla y el
+archivo pueden diferir.
+
+Contrato: `crd/API-VALOR-MENSUAL-APORTE-COBROS-PERSONALES.md`. Se usa la **vigencia que rige al último
+día del mes**, no el espejo `CNTRMNAC`/`CNTRMNAJ`: el espejo toma la vigencia abierta aunque arranque en
+un mes futuro. Despachado a `omen-saa-1-fe`.
