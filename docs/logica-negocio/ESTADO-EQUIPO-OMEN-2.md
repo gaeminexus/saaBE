@@ -3587,3 +3587,44 @@ contestó igual, por el camino caro.
 **El índice de git volvió a probar su regla:** al ir a commitear había **8 archivos de `crd` staged
 que no eran míos**. `git commit -- <rutas>` se llevó sólo el mío, y `omen1` los commiteó ellos
 minutos después. La regla del §38 funcionó.
+
+## §41 — Pagar liquidaciones de compra y notas de venta: el pago que nunca existió
+
+**2026-09-14, urgente** (el usuario tenía que pagar 3 liquidaciones). Reporte: *«en la solicitud de
+pago solo salen las facturas»*.
+
+| Parte | Commit |
+|---|---|
+| Medición `e2-40` (solo lectura, quedó opcional) | `7a1266d3` |
+| Plan, contrato y DDL `e2-41` (`PGS.PGTR.PGTRLQCC`) | `111e9cca` · FE `4a40e3f` |
+| Frontend: combos tipo de documento + documento pendiente | FE `764ca5e` |
+| Backend: registro, contabilización, bandeja, comprometidas | `cd800803` |
+
+### Lo que hay que llevarse
+
+1. **No era un filtro: el pago no existía.** `PGS.PGTR` sólo podía apuntar a una factura. Leer la
+   pantalla sugería un `WHERE` de más; la tabla decía que no había dónde guardar el pago.
+2. **Dos tablas de liquidación, y sólo una tiene deuda.** `CBR.LQCS` es la emisión al SRI;
+   `PGS.LQCC` es el documento CXP con la cuenta por pagar. El selector del FE, en modo
+   `LIQUIDACION`, lee `LQCS` a propósito (retenciones) y no se tocó.
+3. **La nota de venta ya se podía pagar**: es `FacturaCompra` tipo `02`. Salía mezclada con las
+   facturas sin distinguirse — faltaba separarla, no programarla.
+4. **El `else` de `contabilizarSegunOrigen` es un catch-all, no un «es factura».** Medido por el
+   BE: un pago de liquidación sin rama propia registraba bien, salía al banco, y fallaba recién en
+   `procesarRespuestaBanco`, con el dinero ya transferido y el error sólo en un arreglo de la
+   respuesta. La rama va ANTES del `else`. Lo mismo en `origenDe`/`conceptoDe` y en los dos
+   filtros por origen del DAO, que caían en silencio a la rama de origen externo.
+5. **Deuda levantada, no tocada:** `procesarRespuestaBanco:~1732` setea `fechaRespuesta` antes del
+   `try`, así que un fallo de contabilización puede dejar la fecha persistida con el pago
+   `EN_ARCHIVO` — preexistente, para los tres tipos de documento.
+
+### Orden de despliegue y decisión del usuario
+
+`e2-41` → WAR → FE. **El usuario pidió commitear el backend antes de correr el SQL** (lo corre él
+y despliega de una vez). Hasta que el `e2-41` esté en la base, un WAR de `main` rompe **todo** el
+circuito de pagos con `ORA-00904`.
+
+### Abierto
+
+- Pantalla legado `pagos/transferencias-legacy`: su `conceptoPago()` no muestra la liquidación.
+- Probar en producción las 3 liquidaciones, y un reverso de una.
