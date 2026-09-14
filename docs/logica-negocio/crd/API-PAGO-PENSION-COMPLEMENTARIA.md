@@ -490,9 +490,31 @@ olla = pensión + seguro del período (lo mismo que antes se llamaba "remanente 
 1) CRUCE contra préstamo       (sin cambios de fondo)
 2) SEGURO MÉDICO                — SIEMPRE, con o sin certificado. Topado por lo nominal
                                    adeudado, lo que queda de la olla, y el saldo.
-3) PENSIÓN al jubilado          — lo que sobra. Sólo sale al banco con certificado.
+3) PENSIÓN al jubilado          — lo que sobra, TOPADO POR EL SALDO que queda tras cruce y
+                                   seguro. Sólo sale al banco con certificado.
                                    ES LA ÚNICA que puede quedar corta.
 ```
+
+> ### ⛔⛔ INVARIANTE — 2026-09-14 (H60): nunca sale del aporte 23 más de lo que hay
+>
+> En cada mes, y en el prevuelo sobre el acumulado:
+>
+> ```
+> pension = min(olla − cruce − seguro,  saldo − cruce − seguro)
+> cruce + seguro + pension(si sale al banco)  ≤  saldo del aporte 23 al empezar el mes
+> ```
+>
+> **Esta regla existía** (`remanenteProcesable = min(remanente nominal, saldo libre)`, más arriba) y
+> **se perdió en `a18b1b80`** (2026-09-04) al reordenar la olla por prioridades: la pensión quedó como
+> `olla − cruce − seguro` sin el `min` contra el saldo, y un comentario afirmaba que «ya venía topada
+> por construcción», lo cual es falso cuando el saldo es menor que la olla. Consecuencia real en la
+> corrida de agosto 2026: un jubilado cobró la pensión completa con un saldo que sólo cubría una
+> parte, y su aporte 23 quedó **negativo** (lo detectó el usuario al generar los G).
+>
+> Además, `crearMovimientoNegativo` **revalida el saldo dentro de la transacción** (mismo guardarraíl
+> que `consumirAportes` del cruce y que la devolución de aportes) y falla con `SALDO_INSUFICIENTE`
+> antes de dejar el aporte en negativo. Ninguna forma de la respuesta cambia: sólo los montos del
+> mes en que el saldo no alcanza.
 
 **`montoADinero` / `totalADinero` vuelven a ser EXCLUSIVAMENTE pensión.** El seguro nunca entra
 ahí, tenga o no certificado el jubilado — a diferencia del §4ter, donde con certificado el

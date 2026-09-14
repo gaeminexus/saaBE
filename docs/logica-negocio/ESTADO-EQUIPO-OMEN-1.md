@@ -2963,3 +2963,92 @@ reusado —consultaba pagos por cuota—; (2) el lote no alcanzó porque **todos
 EAGER** y cada entidad arrastra su grafo; (3) la fórmula cambió dos veces por aclaraciones del
 usuario que un `.sql` de medición habría anticipado. ⭐ **Reusar no exime de leer; una entidad
 JPA en este sistema nunca es «una fila»; y ante un campo ambiguo, medir antes que deducir.**
+
+---
+
+# ⛔⛔ 2026-09-14 — H60: el pago a jubilados sobregira la pensión complementaria
+
+**Reportado por el usuario al generar los G de agosto 2026:** un jubilado con su cuenta de pensión
+complementaria (aporte 23) **en negativo**. El proceso le pagó la pensión completa cuando el saldo
+sólo alcanzaba para una parte. Regla del usuario, textual: *«Jamás debería ser así, el sistema no
+debe permitir devolver más dinero o cruzarlo con préstamos del que un partícipe tenga.»*
+
+## La causa: un `min` que se perdió, y un comentario que decía que no hacía falta
+
+`PagoPensionComplementariaServiceImpl.generarMesesRetroactivos` (corrida real), por mes:
+
+```java
+double ollaTrasCruce   = valorTotal - aplicadoEsteMes;              // NO topada por saldo
+double seguroInternoMes = min(valorSeguroMes, min(ollaTrasCruce, saldoTrasCruce));   // sí topado
+double ollaTrasSeguro  = ollaTrasCruce - seguroInternoMes;
+double remanenteMes    = ollaTrasSeguro;                            // ⛔ sin min contra saldoTrasSeguro
+```
+
+Con el comentario encima: *«Ya viene topada por saldo (saldoTrasSeguro >= ollaTrasSeguro siempre)»*.
+**Es falso** en cuanto el saldo es menor que la olla. Ejemplo: saldo 100, pensión+seguro 500,
+seguro 50, sin préstamo → seguro 50, pensión **450** al banco, saldo final **−400**. El único corte
+por saldo es el `if (saldoRestante <= TOLERANCIA) break` al **empezar** el mes, así que el mes en que
+el saldo es parcial sale entero.
+
+`previsualizarJubilado` (prevuelo) tiene **el mismo defecto** sobre el acumulado
+(`pensionNominal = ollaTrasSeguro`), con el mismo comentario falso. Por eso el prevuelo y la corrida
+**coincidían** y nadie vio una diferencia: los dos estaban mal igual.
+
+**Es una regresión, no un defecto de origen.** Antes de `a18b1b80` (2026-09-04, «el seguro médico
+pasa a ser un pago a un proveedor») el código tenía
+`remanenteMes = min(remanenteNominal, saldoLibreParaRemanente)` y el prevuelo
+`remanenteProcesable = min(montoADineroNominal, saldoLibreParaDinero)`. Al reordenar la olla por
+prioridades (cruce → seguro → pensión) se toparon el cruce y el seguro, y la pensión —la única que
+sale al banco— quedó sin tope. **El contrato seguía diciendo `min(remanente nominal, saldo libre)`:
+el documento tenía razón y el código no.**
+
+## Por qué costaba verlo
+
+1. La prueba de la corrida de agosto se verificó contra **el mayor** (asientos cuadrados), y el
+   asiento cuadra igual: el devengo va por `remanente`, la orden por `remanente`. Un sobrepago
+   consistente en todos lados no descuadra nada.
+2. `crearMovimientoNegativo` **no valida saldo**. Los otros dos caminos que sacan dinero de un aporte
+   sí: `ProcesoPagoPrestamoServiceImpl.consumirAportes` (cruce, revalida dentro de la transacción) y
+   `DevolucionAporteServiceImpl` (dos veces). El pago de pensión era **el único camino sin
+   guardarraíl**.
+3. Sólo se manifiesta en el mes en que el saldo es **parcial**, que es justo el último de cada
+   jubilado: poco frecuente y siempre al final.
+
+## Segundo hueco, del mismo origen: el seguro al proveedor
+
+`generarSeguroDelMes` → `generarSeguroIndividual` fija `PGPCVLSG` con el seguro **nominal** del VPPC y
+emite la orden al proveedor por la **suma de nominales**, sin mirar el saldo. Después la pensión
+descuenta `seguroInternoMes` **topado por saldo tras el cruce**. Si el saldo no cubría cruce +
+seguro, al proveedor se le pagó **más de lo que salió de la cuenta del jubilado** (va contra
+`2.3.90.90.06`, dinero del fondo). El bloque 4 del `sql/222` lo mide. **La corrección necesita una
+decisión del usuario** (qué cede cuando no alcanza para cruce + seguro), así que NO va en el primer
+despacho.
+
+## Verificado que el resto de caminos sí respeta el saldo
+
+| Camino que resta de un aporte | Guarda de saldo |
+|---|---|
+| Cruce contra préstamo (`consumirAportes`) | ✅ `ProcesoPagoPrestamoServiceImpl:688` y `:717`, dentro de la transacción |
+| Devolución de aportes | ✅ `DevolucionAporteServiceImpl:295` y `:420` |
+| Traslado de jubilación | ✅ traslada exactamente el saldo (`AporteServiceImpl:466-487`) |
+| **Pago de pensión (`crearMovimientoNegativo`)** | ⛔ **ninguna** — se agrega en esta corrección |
+| **Reverso de un aporte positivo (`AporteServiceImpl.reversarAporte`)** | ⚠️ ninguna: reversar un aporte ya consumido deja el saldo negativo. Es una corrección de datos, no una salida de dinero — **decisión del usuario** si se bloquea |
+
+## Diseño de la corrección (despacho 1, BE)
+
+1. **Corrida:** `remanenteMes = min(ollaTrasSeguro, saldoTrasSeguro)`, nunca negativo.
+2. **Prevuelo:** `pensionNominal = min(ollaTrasSeguro, saldoTrasSeguro)`.
+3. **Guardarraíl:** `crearMovimientoNegativo` revalida `sumValorByEntidadYTipo(entidad, 23)` y lanza
+   `ERR_SALDO_INSUFICIENTE` si `saldo < valor − TOLERANCIA`. Mismo patrón que `consumirAportes`.
+   Tumba **sólo a ese jubilado** (su transacción es `REQUIRES_NEW`) y queda en `errores`: una falla
+   ruidosa en vez de un sobrepago.
+4. Corregir los dos comentarios falsos.
+
+Sin cambios de contrato de forma, sin DDL, sin frontend. Contrato actualizado con el invariante en
+`crd/API-PAGO-PENSION-COMPLEMENTARIA.md`.
+
+## Lo que el código NO arregla
+
+El dinero de agosto **ya salió**. Recuperarlo (descontar de la pensión futura, pedir devolución,
+asumirlo) es una decisión de negocio. Mientras tanto el saldo negativo **frena solo** al jubilado en
+las próximas corridas (`saldoRestante <= TOLERANCIA → SALDO_AGOTADO`): no se le vuelve a pagar.
