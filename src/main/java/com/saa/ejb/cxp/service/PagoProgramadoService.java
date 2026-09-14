@@ -74,6 +74,45 @@ public interface PagoProgramadoService extends EntityService<PagoProgramado> {
 			Long formaPago) throws Throwable;
 
 	/**
+	 * Igual que {@link #registrarPago(Long, Long, Long, Double, String, Long, Long, String,
+	 * boolean, String, Long)}, pero para pagar una LIQUIDACIÓN de compra ({@code PGS.LQCC},
+	 * el documento CXP que crea {@code LiquidacionCompraService#crearDocumentoCxp} al
+	 * autorizarse una liquidación emitida — no {@code CBR.LQCS}, que es sólo el trámite de
+	 * emisión al SRI y no tiene cuenta por pagar) en vez de una factura. Mismas reglas y
+	 * mismos cuatro caminos según cuenta/forma de pago (POR_APROBAR sin cuenta, cheque,
+	 * transferencia REGISTRADO, débito automático).
+	 * <p>
+	 * A diferencia de {@link #registrarPago}, sólo existe esta sobrecarga con
+	 * {@code formaPago} explícito: {@code PagoProgramadoRest.registrar} siempre lo manda
+	 * (lee el campo del body igual para los dos documentos), así que la sobrecarga corta
+	 * de cuatro argumentos de factura no tiene equivalente útil acá.
+	 * @param idLiquidacionCompra      : Id de la liquidación de compra a pagar (PGS.LQCC)
+	 * @param idCuentaBancariaOrigen   : Id de la cuenta bancaria propia (TSR.CNBC)
+	 * @param idCuentaDestinoTitular   : Id de la cuenta del proveedor (TSR.CTBN)
+	 * @param valor                    : Valor a transferir
+	 * @param fechaProgramada          : Fecha programada, o fecha del débito (yyyy-MM-dd, null = hoy)
+	 * @param idEmpresa                : Id de la empresa
+	 * @param idUsuario                : Id del usuario que registra
+	 * @param observacion              : Observación del pago
+	 * @param debitoAutomatico         : true si el banco ya debitó la cuenta por convenio
+	 * @param referencia               : Referencia del débito (nota de débito, convenio, etc.)
+	 * @param formaPago                : Forma de pago (1=Efectivo, 2=Transferencia, 3=Cheque,
+	 *                                   4=Débito automático); null equivale a la forma inferida
+	 *                                   de debitoAutomatico
+	 * @return                         : Mapa con exito, mensaje, pago, tipoDocumento
+	 *                                   ({@link com.saa.rubros.OrigenPagoCxp#LIQUIDACION_COMPRA})
+	 *                                   y los saldos de
+	 *                                   {@code AplicacionPagoCxpService#saldoLiquidacion}
+	 * @throws Throwable               : Excepcion; IncomeException si la liquidación no existe,
+	 *                                   está anulada, no tiene proveedor, o el valor supera lo
+	 *                                   disponible
+	 */
+	Map<String, Object> registrarPagoLiquidacion(Long idLiquidacionCompra, Long idCuentaBancariaOrigen,
+			Long idCuentaDestinoTitular, Double valor, String fechaProgramada, Long idEmpresa,
+			Long idUsuario, String observacion, boolean debitoAutomatico, String referencia,
+			Long formaPago) throws Throwable;
+
+	/**
 	 * Registra el pago de un egreso de tesorería sin documento físico
 	 * (TSR.EGRS). El pago toma del egreso la empresa, el titular, el valor y la
 	 * fecha, y entra al mismo circuito que los pagos de facturas: aparece en el
@@ -470,9 +509,10 @@ public interface PagoProgramadoService extends EntityService<PagoProgramado> {
 	 * la misma factura: una vez desde la bandeja de pagos y otra desde caja chica
 	 * (docs/logica-negocio/tsr/PLAN-GASTO-CAJA-CHICA-PAGA-FACTURA.md).
 	 * <p>
-	 * Sólo para facturas: {@code PagoProgramado} no tiene FK a liquidación de
-	 * compra y {@code OrigenPagoCxp} no define un origen de liquidación, así que
-	 * una liquidación no puede quedar comprometida por la bandeja de pagos.
+	 * Sólo para facturas: el equivalente para una liquidación de compra es
+	 * {@code PagoProgramadoServiceImpl.validaValorContraSaldoLiquidacion} (privado,
+	 * usado internamente por {@link #registrarPagoLiquidacion} — nada más lo necesita
+	 * todavía, a diferencia de este, que caja chica llama directo).
 	 * @param factura   : Factura de compra
 	 * @param valor     : Valor que se pretende pagar
 	 * @param idPagoEx  : Id de pago a excluir del cálculo (null si no aplica)

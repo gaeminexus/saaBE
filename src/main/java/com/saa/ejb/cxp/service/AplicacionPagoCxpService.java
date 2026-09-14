@@ -154,6 +154,26 @@ public interface AplicacionPagoCxpService extends EntityService<AplicacionPagoCx
 	AplicacionPagoCxp aplicarPagoTransferencia(PagoProgramado pago, Long idUsuario,
 			boolean emitirMovimientoCheque) throws Throwable;
 
+	/**
+	 * Igual que {@link #aplicarPagoTransferencia(PagoProgramado, Long, boolean)}, pero
+	 * para un pago que paga una LIQUIDACIÓN de compra ({@code pago.getLiquidacionCompra()})
+	 * en vez de una factura. Mismo asiento contable (DEBE CxP proveedor / HABER banco,
+	 * {@code AsientoContableService#generarAsientoPagoTransferenciaCxp}) y mismo movimiento
+	 * bancario; sólo cambia el documento que recibe la aplicación
+	 * ({@link #saldoLiquidacion(Long)}/{@link #recalcularEstadoPagoLiquidacion(Long)} en vez
+	 * de {@code saldoFactura}/{@code recalcularEstadoPago}).
+	 * @param pago                  : Pago programado ya ejecutado por el banco, con
+	 *                                {@code liquidacionCompra} poblado
+	 * @param idUsuario             : Id del usuario que registra o procesa el pago
+	 * @param emitirMovimientoCheque: false para suprimir el MovimientoBanco individual
+	 *                                de este pago cuando tiene cheque (cheque agrupado)
+	 * @return                      : Aplicación creada
+	 * @throws Throwable            : Excepcion, o IncomeException si el pago no tiene
+	 *                                liquidación de compra asociada
+	 */
+	AplicacionPagoCxp aplicarPagoTransferenciaLiquidacion(PagoProgramado pago, Long idUsuario,
+			boolean emitirMovimientoCheque) throws Throwable;
+
 	// ── Aplicación desde caja chica ──────────────────────────────────────────
 
 	/**

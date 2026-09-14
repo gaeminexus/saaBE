@@ -28,7 +28,8 @@ import jakarta.persistence.Table;
 
 /**
  * Entity PagoProgramado.
- * Pago a un proveedor por transferencia bancaria, sobre una factura de compra.
+ * Pago a un proveedor por transferencia bancaria, sobre una factura de compra o
+ * una liquidación de compra.
  * Tabla: PGS.PGTR
  *
  * Ciclo de vida (ESTADO), ver {@link com.saa.rubros.EstadoPagoProgramado}:
@@ -98,13 +99,26 @@ public class PagoProgramado implements Serializable {
 
     /**
      * Factura de compra que se está pagando. FK a PGS.FCTC.
-     * Excluyente con {@link #egreso} y {@link #anticipo}: el pago referencia
-     * una factura O un egreso de tesorería O un anticipo a proveedor, nunca
-     * más de uno.
+     * Excluyente con {@link #liquidacionCompra}, {@link #egreso} y
+     * {@link #anticipo}: el pago referencia una factura O una liquidación de
+     * compra O un egreso de tesorería O un anticipo a proveedor, nunca más de
+     * uno.
      */
     @ManyToOne
     @JoinColumn(name = "PGTRFCTC", referencedColumnName = "ID")
     private FacturaCompra facturaCompra;
+
+    /**
+     * Liquidación de compra que se está pagando. FK a PGS.LQCC (el documento CXP de
+     * la liquidación — no CBR.LQCS, que es sólo el trámite de emisión al SRI y no
+     * tiene cuenta por pagar).
+     * Excluyente con {@link #facturaCompra}, {@link #egreso} y {@link #anticipo}:
+     * el pago referencia exactamente uno de los cuatro documentos propios de CXP,
+     * o un origen externo.
+     */
+    @ManyToOne
+    @JoinColumn(name = "PGTRLQCC", referencedColumnName = "ID")
+    private LiquidacionCompraCompra liquidacionCompra;
 
     /**
      * Egreso de tesorería sin documento físico que se está pagando.
@@ -133,7 +147,8 @@ public class PagoProgramado implements Serializable {
      * {@link #idOrigen} identifica el documento en el módulo que lo generó, sin que CXP
      * tenga que conocer ese módulo.
      * <p>
-     * Excluyente con {@link #facturaCompra}, {@link #egreso} y {@link #anticipo}.
+     * Excluyente con {@link #facturaCompra}, {@link #liquidacionCompra},
+     * {@link #egreso} y {@link #anticipo}.
      */
     @Basic
     @Column(name = "PGTRORGN", length = 30)
@@ -334,6 +349,9 @@ public class PagoProgramado implements Serializable {
 
     public FacturaCompra getFacturaCompra() { return facturaCompra; }
     public void setFacturaCompra(FacturaCompra facturaCompra) { this.facturaCompra = facturaCompra; }
+
+    public LiquidacionCompraCompra getLiquidacionCompra() { return liquidacionCompra; }
+    public void setLiquidacionCompra(LiquidacionCompraCompra liquidacionCompra) { this.liquidacionCompra = liquidacionCompra; }
 
     public com.saa.model.tsr.Egreso getEgreso() { return egreso; }
     public void setEgreso(com.saa.model.tsr.Egreso egreso) { this.egreso = egreso; }

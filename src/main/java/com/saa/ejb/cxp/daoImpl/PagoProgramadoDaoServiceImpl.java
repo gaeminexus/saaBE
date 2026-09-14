@@ -30,6 +30,7 @@ public class PagoProgramadoDaoServiceImpl extends EntityDaoImpl<PagoProgramado>
             "id",
             "empresa",
             "facturaCompra",
+            "liquidacionCompra",
             "egreso",
             "anticipo",
             "origenExterno",
@@ -105,6 +106,8 @@ public class PagoProgramadoDaoServiceImpl extends EntityDaoImpl<PagoProgramado>
                 String origen = o.trim();
                 if (OrigenPagoCxp.FACTURA_COMPRA.equals(origen)) {
                     condiciones.add("p.facturaCompra is not null");
+                } else if (OrigenPagoCxp.LIQUIDACION_COMPRA.equals(origen)) {
+                    condiciones.add("p.liquidacionCompra is not null");
                 } else if (OrigenPagoCxp.EGRESO_TESORERIA.equals(origen)) {
                     condiciones.add("p.egreso is not null");
                 } else if (OrigenPagoCxp.ANTICIPO_PROVEEDOR.equals(origen)) {
@@ -215,6 +218,39 @@ public class PagoProgramadoDaoServiceImpl extends EntityDaoImpl<PagoProgramado>
                 " and    p.estado in (:porAprobar, :registrado, :enArchivo) " +
                 " order by p.id");
         query.setParameter("idFactura", idFacturaCompra);
+        query.setParameter("porAprobar", Long.valueOf(EstadoPagoProgramado.POR_APROBAR));
+        query.setParameter("registrado", Long.valueOf(EstadoPagoProgramado.REGISTRADO));
+        query.setParameter("enArchivo",  Long.valueOf(EstadoPagoProgramado.EN_ARCHIVO));
+        return query.getResultList();
+    }
+
+    @Override
+    public List<PagoProgramado> selectVigentesByLiquidacion(Long idLiquidacionCompra) throws Throwable {
+        System.out.println("Ingresa al metodo selectVigentesByLiquidacion con liquidacion: " + idLiquidacionCompra);
+        Query query = em.createQuery(
+                " select p from PagoProgramado p " +
+                " where  p.liquidacionCompra.id = :idLiquidacion " +
+                " and    p.estado in (:porAprobar, :registrado, :enArchivo, :confirmado) " +
+                " order by p.id");
+        query.setParameter("idLiquidacion", idLiquidacionCompra);
+        query.setParameter("porAprobar", Long.valueOf(EstadoPagoProgramado.POR_APROBAR));
+        query.setParameter("registrado", Long.valueOf(EstadoPagoProgramado.REGISTRADO));
+        query.setParameter("enArchivo",  Long.valueOf(EstadoPagoProgramado.EN_ARCHIVO));
+        query.setParameter("confirmado", Long.valueOf(EstadoPagoProgramado.CONFIRMADO));
+        return query.getResultList();
+    }
+
+    @Override
+    public List<PagoProgramado> selectComprometidosNoConfirmadosByLiquidacion(Long idLiquidacionCompra)
+            throws Throwable {
+        System.out.println("Ingresa al metodo selectComprometidosNoConfirmadosByLiquidacion con liquidacion: "
+                + idLiquidacionCompra);
+        Query query = em.createQuery(
+                " select p from PagoProgramado p " +
+                " where  p.liquidacionCompra.id = :idLiquidacion " +
+                " and    p.estado in (:porAprobar, :registrado, :enArchivo) " +
+                " order by p.id");
+        query.setParameter("idLiquidacion", idLiquidacionCompra);
         query.setParameter("porAprobar", Long.valueOf(EstadoPagoProgramado.POR_APROBAR));
         query.setParameter("registrado", Long.valueOf(EstadoPagoProgramado.REGISTRADO));
         query.setParameter("enArchivo",  Long.valueOf(EstadoPagoProgramado.EN_ARCHIVO));
@@ -343,12 +379,14 @@ public class PagoProgramadoDaoServiceImpl extends EntityDaoImpl<PagoProgramado>
                 String origen = o.trim();
                 if (OrigenPagoCxp.FACTURA_COMPRA.equals(origen)) {
                     condiciones.add("p.facturaCompra is not null");
+                } else if (OrigenPagoCxp.LIQUIDACION_COMPRA.equals(origen)) {
+                    condiciones.add("p.liquidacionCompra is not null");
                 } else if (OrigenPagoCxp.EGRESO_TESORERIA.equals(origen)) {
                     condiciones.add("p.egreso is not null");
                 } else if (OrigenPagoCxp.ANTICIPO_PROVEEDOR.equals(origen)) {
                     condiciones.add("p.anticipo is not null");
                 } else {
-                    // No es uno de los tres propios de CXP: se compara como etiqueta opaca
+                    // No es uno de los cuatro propios de CXP: se compara como etiqueta opaca
                     // de OrigenPagoExterno, sin resolverla.
                     externos.add(origen);
                 }

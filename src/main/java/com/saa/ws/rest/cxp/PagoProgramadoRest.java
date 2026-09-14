@@ -29,7 +29,9 @@ import jakarta.ws.rs.core.UriInfo;
  * Base path: /pgtr
  *
  * Flujo de la pantalla:
- *   POST /pgtr                       → registra un pago sobre una factura
+ *   POST /pgtr                       → registra un pago sobre una factura de compra
+ *                                      (o nota de venta) O una liquidación de compra
+ *                                      (docs/logica-negocio/pagos/API-PAGO-LIQUIDACION-Y-NOTA-VENTA.md)
  *                                      (con "debitoAutomatico": true el pago ya
  *                                       ejecutado por el banco se abona y se
  *                                       contabiliza en la misma llamada, sin
@@ -138,7 +140,10 @@ public class PagoProgramadoRest {
     }
 
     /**
-     * Registra un pago por transferencia sobre una factura de compra.
+     * Registra un pago por transferencia sobre una factura de compra (o nota de venta,
+     * que se paga exactamente igual) O una liquidación de compra: uno y sólo uno de
+     * "idFacturaCompra"/"idLiquidacionCompra" (docs/logica-negocio/pagos/
+     * API-PAGO-LIQUIDACION-Y-NOTA-VENTA.md).
      * Body esperado:
      * {
      *   "idFacturaCompra": 123,
@@ -180,6 +185,7 @@ public class PagoProgramadoRest {
         System.out.println("LLEGA AL SERVICIO POST /pgtr");
         try {
             Long idFactura      = toLong(datos.get("idFacturaCompra"));
+            Long idLiquidacion  = toLong(datos.get("idLiquidacionCompra"));
             Long idCuentaOrigen = toLong(datos.get("idCuentaBancariaOrigen"));
             Long idCuentaDest   = toLong(datos.get("idCuentaDestinoTitular"));
             Double valor        = toDouble(datos.get("valor"));
@@ -191,15 +197,25 @@ public class PagoProgramadoRest {
             String referencia   = (String) datos.get("referencia");
             Long formaPago      = toLong(datos.get("formaPago"));
 
-            if (idFactura == null || valor == null || idEmpresa == null) {
+            // Uno y solo uno de idFacturaCompra/idLiquidacionCompra (docs/logica-negocio/
+            // pagos/API-PAGO-LIQUIDACION-Y-NOTA-VENTA.md §1). idFacturaCompra sigue
+            // sirviendo también para la nota de venta (FacturaCompra tipoComprobante='02'):
+            // no lleva id propio, ver ítem 4 del inventario de omen-saa-2-be.
+            boolean unoSoloDeLosDos = (idFactura == null) != (idLiquidacion == null);
+            if (!unoSoloDeLosDos || valor == null || idEmpresa == null) {
                 return Response.status(Response.Status.BAD_REQUEST)
-                        .entity("Debe enviar idFacturaCompra, valor e idEmpresa.")
+                        .entity("Debe enviar idFacturaCompra o idLiquidacionCompra (uno solo), "
+                                + "valor e idEmpresa.")
                         .type(MediaType.APPLICATION_JSON).build();
             }
 
-            Map<String, Object> resultado = pagoProgramadoService.registrarPago(idFactura,
-                    idCuentaOrigen, idCuentaDest, valor, fecha, idEmpresa, idUsuario, observacion,
-                    debitoAut, referencia, formaPago);
+            Map<String, Object> resultado = (idLiquidacion != null)
+                    ? pagoProgramadoService.registrarPagoLiquidacion(idLiquidacion,
+                            idCuentaOrigen, idCuentaDest, valor, fecha, idEmpresa, idUsuario,
+                            observacion, debitoAut, referencia, formaPago)
+                    : pagoProgramadoService.registrarPago(idFactura, idCuentaOrigen, idCuentaDest,
+                            valor, fecha, idEmpresa, idUsuario, observacion, debitoAut, referencia,
+                            formaPago);
             return Response.status(Response.Status.CREATED).entity(resultado)
                     .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
@@ -213,8 +229,8 @@ public class PagoProgramadoRest {
      * Bandeja de pagos POR_APROBAR (punto 14). Proyección, no la entidad — ver
      * docs/estandar/ESTANDAR-PROYECCIONES-EN-LISTADOS.md.
      * @param idEmpresa : Id de la empresa (obligatorio)
-     * @param origen    : OrigenPagoCxp (FACTURA_COMPRA, EGRESO_TESORERIA, ANTICIPO_PROVEEDOR)
-     *                    u OrigenPagoExterno (CRD_DEVOLUCION_APORTE, TSR_CAJA_CHICA,
+     * @param origen    : OrigenPagoCxp (FACTURA_COMPRA, LIQUIDACION_COMPRA, EGRESO_TESORERIA,
+     *                    ANTICIPO_PROVEEDOR) u OrigenPagoExterno (CRD_DEVOLUCION_APORTE, TSR_CAJA_CHICA,
      *                    RHH_ANTICIPO_EMPLEADO); repetible (?origen=A&origen=B), cero
      *                    orígenes = sin filtro (todos)
      * @param desde     : Fecha solicitada desde, yyyy-MM-dd (opcional)
@@ -273,13 +289,15 @@ public class PagoProgramadoRest {
     }
 
     /**
-     * Ids de las facturas de compra del proveedor cuyo saldo pendiente ya está íntegramente
-     * comprometido por pagos vigentes (POR_APROBAR/REGISTRADO/EN_ARCHIVO/CONFIRMADO, no
-     * RECHAZADO ni ANULADO) y por eso no deberían volver a ofrecerse en el combo de registrar
-     * pagos. Un pago PARCIAL no saca la factura de la lista.
+     * Ids de las facturas de compra (y de las liquidaciones de compra, aditivo — docs/
+     * logica-negocio/pagos/API-PAGO-LIQUIDACION-Y-NOTA-VENTA.md §3) del proveedor cuyo saldo
+     * pendiente ya está íntegramente comprometido por pagos vigentes (POR_APROBAR/REGISTRADO/
+     * EN_ARCHIVO/CONFIRMADO, no RECHAZADO ni ANULADO) y por eso no deberían volver a ofrecerse
+     * en el combo de registrar pagos. Un pago PARCIAL no saca el documento de la lista.
      * Ver docs/logica-negocio/cxp/DISENO-FACTURAS-COMPROMETIDAS-EN-COMBO-PAGOS.md.
      *
-     * GET /rest/pgtr/facturasComprometidas/45 → { "idTitular": 45, "idsFacturas": [12, 87, 103] }
+     * GET /rest/pgtr/facturasComprometidas/45 →
+     *   { "idTitular": 45, "idsFacturas": [12, 87, 103], "idsLiquidaciones": [57] }
      */
     @GET
     @Path("/facturasComprometidas/{idTitular}")

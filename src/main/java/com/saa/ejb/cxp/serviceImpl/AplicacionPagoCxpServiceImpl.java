@@ -728,6 +728,91 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 		return aplicacion;
 	}
 
+	@Override
+	public AplicacionPagoCxp aplicarPagoTransferenciaLiquidacion(PagoProgramado pago, Long idUsuario,
+			boolean emitirMovimientoCheque) throws Throwable {
+
+		boolean debitoAutomatico = esDebitoAutomatico(pago);
+		com.saa.model.tsr.Cheque cheque = pago.getCheque();
+		String tipoTexto = (cheque != null) ? "cheque" : debitoAutomatico ? "débito automático" : "transferencia";
+
+		System.out.println("=== aplicarPagoTransferenciaLiquidacion | pago=" + pago.getId()
+				+ " | valor=" + pago.getValor() + " | tipo=" + tipoTexto + " ===");
+
+		LiquidacionCompraCompra liquidacion = pago.getLiquidacionCompra();
+		if (liquidacion == null) {
+			throw new IncomeException("El pago " + pago.getId() + " no tiene liquidación de compra asociada.");
+		}
+		Long idEmpresa = (pago.getEmpresa() != null) ? pago.getEmpresa().getCodigo() : null;
+		Long idProveedor = (pago.getTitular() != null) ? pago.getTitular().getCodigo() : null;
+
+		validaMontoContraSaldoLiquidacion(liquidacion, pago.getValor(), null);
+
+		LocalDate fecha = (pago.getFechaRespuesta() != null) ? pago.getFechaRespuesta() : LocalDate.now();
+		String nombreProveedor = (pago.getTitular() != null) ? pago.getTitular().getNombre() : "";
+		String notaCheque = (cheque != null)
+				? " | Cheque N° " + cheque.getNumero() + " Cta " + pago.getCuentaBancaria().getNumeroCuenta()
+				: "";
+		String observacionAsiento = "Pago por " + tipoTexto + " | Proveedor: " + nombreProveedor
+				+ " | Liquidación: " + liquidacion.getNumero()
+				+ " | Ref: " + nvl(pago.getReferenciaBanco(), "")
+				+ " | Valor: $" + String.format(java.util.Locale.US, "%.2f", pago.getValor())
+				+ notaCheque;
+
+		// 1. Asiento contable del pago -- mismo asiento que el de factura: DEBE cuenta
+		// CxP del proveedor / HABER cuenta contable del banco. Es el MISMO metodo que
+		// generarAsientoLiquidacionCompraCompra usa para el HABER al crear la liquidacion
+		// (obtenerCuentaProveedorPorTipo con tipoCuenta=1L): cuadran por construccion,
+		// verificado en el inventario de omen-saa-2-be (item 2).
+		Long idCuentaBancaria = (pago.getCuentaBancaria() != null)
+				? pago.getCuentaBancaria().getCodigo() : null;
+		Asiento asiento = asientoContableService.generarAsientoPagoTransferenciaCxp(
+				idProveedor, pago.getValor(), idCuentaBancaria, idEmpresa,
+				TipoAsientos.PAGO_TRANSFERENCIA_CXP, fecha, observacionAsiento,
+				usuarioNombre(idUsuario));
+
+		// 2. Aplicación a la liquidación
+		AplicacionPagoCxp aplicacion = nuevaAplicacionLiquidacion(liquidacion, idEmpresa,
+				TipoDocPagoAplicacion.COBRO_DIRECTO, pago.getValor(), fecha,
+				"Pago por " + tipoTexto + " | Ref: " + nvl(pago.getReferenciaBanco(), ""),
+				usuarioNombre(idUsuario));
+		aplicacion.setFormaPago((pago.getFormaPago() != null) ? pago.getFormaPago()
+				: (debitoAutomatico ? Long.valueOf(FormaPagoProgramado.DEBITO_AUTOMATICO)
+						: Long.valueOf(FormaPagoProgramado.TRANSFERENCIA)));
+		aplicacion.setReferencia(pago.getReferenciaBanco());
+		aplicacion.setBanco(nombreBancoPago(pago, debitoAutomatico));
+		aplicacion.setAsiento(asiento);
+		aplicacion.setUsuario(em.find(Usuario.class, idUsuario));
+		aplicacion = saveSingle(aplicacion);
+
+		// saveSingle sólo recalcula el estado de pago cuando la aplicación es contra una
+		// factura (ver su cuerpo): el caso liquidación se completa acá, igual que
+		// aplicarDesdeCajaChica.
+		recalcularEstadoPagoLiquidacion(liquidacion.getId());
+
+		// 3. Movimiento bancario de egreso -- igual que aplicarPagoTransferencia.
+		if (cheque == null || emitirMovimientoCheque) {
+			int tipoMovimiento = (cheque != null)
+					? TipoMovimientoConciliacion.CHEQUES_GIRADOS_Y_NO_COBRADOS
+					: TipoMovimientoConciliacion.TRANSFERENCIAS_DEBITOS_EN_TRANSITO;
+			com.saa.model.tsr.MovimientoBanco mov = movimientoBancoService.creaMovimientoPorTransferencia(idEmpresa,
+					"Pago proveedor: " + nombreProveedor + " | Liquidación: " + liquidacion.getNumero()
+					+ (debitoAutomatico ? " | Débito automático" : "")
+					+ (cheque != null ? " | Cheque N° " + cheque.getNumero() : " | Ref: " + nvl(pago.getReferenciaBanco(), "")),
+					asiento, pago.getCuentaBancaria(), pago.getValor(),
+					tipoMovimiento, OrigenMovimientoConciliacion.PAGOS);
+			if (cheque != null) {
+				mov.setCheque(cheque);
+				mov.setNumeroCheque(cheque.getNumero());
+				movimientoBancoService.saveSingle(mov);
+			}
+		}
+
+		System.out.println("✓ Pago de liquidación aplicado: aplicacion=" + aplicacion.getId()
+				+ " | asiento=" + asiento.getNumeroAlterno());
+		return aplicacion;
+	}
+
 	// =====================================================================
 	// Aplicación desde caja chica
 	// =====================================================================

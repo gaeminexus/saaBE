@@ -16,4 +16,15 @@ public interface LiquidacionCompraCompraDaoService extends EntityDao<Liquidacion
 	 * @throws Throwable	: Excepcion
 	 */
 	List<LiquidacionCompraCompra> selectPendientesSustento(Long idEmpresa) throws Throwable;
+
+	/**
+	 * Liquidaciones de compra activas (no anuladas) de un proveedor, para calcular
+	 * cuáles ya tienen el saldo íntegramente comprometido por pagos. Equivalente de
+	 * {@code FacturaCompraDaoService.selectActivasByTitular}
+	 * (docs/logica-negocio/cxp/DISENO-FACTURAS-COMPROMETIDAS-EN-COMBO-PAGOS.md).
+	 * @param idTitular  : Id del proveedor
+	 * @return           : Liquidaciones activas y no anuladas del proveedor
+	 * @throws Throwable : Excepcion
+	 */
+	List<LiquidacionCompraCompra> selectActivasByTitular(Long idTitular) throws Throwable;
 }

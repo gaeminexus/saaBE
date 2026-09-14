@@ -82,6 +82,31 @@ public interface PagoProgramadoDaoService extends EntityDao<PagoProgramado> {
 	List<PagoProgramado> selectComprometidosNoConfirmadosByFactura(Long idFacturaCompra) throws Throwable;
 
 	/**
+	 * Recupera los pagos de una liquidación de compra que siguen vigentes:
+	 * {@code POR_APROBAR(0)}, {@code REGISTRADO(1)}, {@code EN_ARCHIVO(2)} o
+	 * {@code CONFIRMADO(3)}. Equivalente de {@link #selectVigentesByFactura(Long)}.
+	 * Único llamador: {@code PagoProgramadoServiceImpl.validaValorContraSaldoLiquidacion}.
+	 * @param idLiquidacionCompra : Id de la liquidación de compra (PGS.LQCC)
+	 * @return                    : Listado de pagos vigentes
+	 * @throws Throwable          : Excepcion
+	 */
+	List<PagoProgramado> selectVigentesByLiquidacion(Long idLiquidacionCompra) throws Throwable;
+
+	/**
+	 * Pagos programados de una liquidación de compra que están COMPROMETIDOS pero
+	 * todavía NO reflejados en el saldo aplicado: {@code POR_APROBAR(0)},
+	 * {@code REGISTRADO(1)}, {@code EN_ARCHIVO(2)}. Deliberadamente EXCLUYE
+	 * {@code CONFIRMADO(3)}, mismo criterio que
+	 * {@link #selectComprometidosNoConfirmadosByFactura(Long)}. Usado por
+	 * {@code PagoProgramadoServiceImpl.facturasComprometidas} para calcular
+	 * {@code idsLiquidaciones}.
+	 * @param idLiquidacionCompra : Id de la liquidación de compra (PGS.LQCC)
+	 * @return                    : Pagos comprometidos sin confirmar todavía
+	 * @throws Throwable          : Excepcion
+	 */
+	List<PagoProgramado> selectComprometidosNoConfirmadosByLiquidacion(Long idLiquidacionCompra) throws Throwable;
+
+	/**
 	 * Recupera los pagos de un egreso de tesorería que siguen vigentes
 	 * (registrados, en archivo o confirmados). Un egreso solo admite un pago
 	 * vigente a la vez.

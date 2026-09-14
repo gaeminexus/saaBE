@@ -31,4 +31,17 @@ public class LiquidacionCompraCompraDaoServiceImpl extends EntityDaoImpl<Liquida
 		}
 		return query.getResultList();
 	}
+
+	@Override
+	public List<LiquidacionCompraCompra> selectActivasByTitular(Long idTitular) throws Throwable {
+		// estadoEmision=3 es "anulada" (LiquidacionCompraCompraServiceImpl.anularLiquidacionCompra);
+		// mismo criterio de dos columnas que FacturaCompraDaoServiceImpl.selectActivasByTitular.
+		TypedQuery<LiquidacionCompraCompra> query = em.createQuery(
+				"select l from LiquidacionCompraCompra l where l.titular.codigo = :idTitular "
+				+ "and l.estado = :estado and (l.estadoEmision is null or l.estadoEmision <> 3) "
+				+ "order by l.fecha", LiquidacionCompraCompra.class);
+		query.setParameter("idTitular", idTitular);
+		query.setParameter("estado", Long.valueOf(Estado.ACTIVO));
+		return query.getResultList();
+	}
 }

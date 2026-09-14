@@ -44,6 +44,7 @@ import com.saa.model.cxp.AnticipoProveedor;
 import com.saa.model.cxp.AplicacionPagoCxp;
 import com.saa.model.cxp.DetallePagoOrigenExterno;
 import com.saa.model.cxp.FacturaCompra;
+import com.saa.model.cxp.LiquidacionCompraCompra;
 import com.saa.model.cxp.LotePago;
 import com.saa.model.cxp.NombreEntidadesCompra;
 import com.saa.model.cxp.PagoPorAprobar;
@@ -99,6 +100,9 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 
 	@EJB
 	private com.saa.ejb.cxp.dao.FacturaCompraDaoService facturaCompraDaoService;
+
+	@EJB
+	private com.saa.ejb.cxp.dao.LiquidacionCompraCompraDaoService liquidacionCompraCompraDaoService;
 
 	@EJB
 	private AnticipoProveedorService anticipoProveedorService;
@@ -284,6 +288,7 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 					+ "tesorería debe asignar cuenta y forma de pago.");
 			resultado.put("pago", pago.getId());
 			resultado.put("estado", pago.getEstado());
+			resultado.put("tipoDocumento", OrigenPagoCxp.FACTURA_COMPRA);
 			resultado.putAll(aplicacionPagoCxpService.saldoFactura(idFacturaCompra));
 			return resultado;
 		}
@@ -350,6 +355,7 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 			resultado.put("debitoAutomatico", false);
 			resultado.put("formaPago", fp);
 			resultado.put("numeroCheque", cheque.getNumero());
+			resultado.put("tipoDocumento", OrigenPagoCxp.FACTURA_COMPRA);
 			if (pago.getAplicacion() != null) {
 				resultado.put("aplicacion", pago.getAplicacion().getId());
 			}
@@ -372,6 +378,7 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 			resultado.put("pago", pago.getId());
 			resultado.put("debitoAutomatico", false);
 			resultado.put("formaPago", fp);
+			resultado.put("tipoDocumento", OrigenPagoCxp.FACTURA_COMPRA);
 			resultado.putAll(aplicacionPagoCxpService.saldoFactura(idFacturaCompra));
 			return resultado;
 		}
@@ -398,6 +405,7 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		resultado.put("pago", pago.getId());
 		resultado.put("debitoAutomatico", true);
 		resultado.put("formaPago", fp);
+		resultado.put("tipoDocumento", OrigenPagoCxp.FACTURA_COMPRA);
 		if (pago.getAplicacion() != null) {
 			resultado.put("aplicacion", pago.getAplicacion().getId());
 		}
@@ -405,6 +413,229 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 			resultado.put("asiento", asiento.getNumeroAlterno());
 		}
 		resultado.putAll(aplicacionPagoCxpService.saldoFactura(idFacturaCompra));
+		return resultado;
+	}
+
+	/**
+	 * Igual que {@link #registrarPago(Long, Long, Long, Double, String, Long, Long, String,
+	 * boolean, String, Long)}, pero para pagar una LIQUIDACIÓN de compra ({@code PGS.LQCC})
+	 * en vez de una factura de compra. Ver el javadoc de la interfaz para el detalle de los
+	 * cuatro caminos según cuenta/forma de pago — es exactamente el mismo flujo, cambiando
+	 * sólo el documento.
+	 * @param idLiquidacionCompra    : Id de la liquidación de compra a pagar (PGS.LQCC)
+	 * @param idCuentaBancariaOrigen : Id de la cuenta bancaria propia (TSR.CNBC)
+	 * @param idCuentaDestinoTitular : Id de la cuenta del proveedor (TSR.CTBN)
+	 * @param valor                  : Valor a transferir
+	 * @param fechaProgramada        : Fecha programada, o fecha del débito (yyyy-MM-dd, null = hoy)
+	 * @param idEmpresa              : Id de la empresa
+	 * @param idUsuario              : Id del usuario que registra
+	 * @param observacion            : Observación del pago
+	 * @param debitoAutomatico       : true si el banco ya debitó la cuenta por convenio
+	 * @param referencia             : Referencia del débito
+	 * @param formaPago              : Forma de pago; null equivale a la forma inferida de debitoAutomatico
+	 * @return                       : Mapa con exito, mensaje, pago, tipoDocumento y los
+	 *                                 saldos de la liquidación (saldoLiquidacion)
+	 * @throws Throwable             : Excepcion
+	 */
+	@Override
+	public Map<String, Object> registrarPagoLiquidacion(Long idLiquidacionCompra, Long idCuentaBancariaOrigen,
+			Long idCuentaDestinoTitular, Double valor, String fechaProgramada, Long idEmpresa,
+			Long idUsuario, String observacion, boolean debitoAutomatico, String referencia,
+			Long formaPago) throws Throwable {
+
+		System.out.println("=== registrarPagoLiquidacion | liquidacion=" + idLiquidacionCompra
+				+ " | valor=" + valor + " | cuentaOrigen=" + idCuentaBancariaOrigen
+				+ " | debitoAutomatico=" + debitoAutomatico + " | formaPago=" + formaPago + " ===");
+
+		Map<String, Object> resultado = new HashMap<>();
+
+		if (valor == null || valor <= 0) {
+			throw new IncomeException("El valor del pago debe ser mayor a cero.");
+		}
+
+		LiquidacionCompraCompra liquidacion = em.find(LiquidacionCompraCompra.class, idLiquidacionCompra);
+		if (liquidacion == null) {
+			throw new IncomeException("No se encontró la liquidación de compra con ID: " + idLiquidacionCompra);
+		}
+		// estadoEmision=3 es "anulada" (LiquidacionCompraCompraServiceImpl.anularLiquidacionCompra) --
+		// no liquidacion.getEstado(), que es Estado.ACTIVO/INACTIVO y también cambia con la
+		// anulación, pero estadoEmision es la columna que ese servicio trata como autoritativa.
+		if (Long.valueOf(3L).equals(liquidacion.getEstadoEmision())) {
+			throw new IncomeException("La liquidación de compra "
+					+ nvl(liquidacion.getNumero(), String.valueOf(idLiquidacionCompra)) + " está anulada.");
+		}
+		if (liquidacion.getTitular() == null) {
+			throw new IncomeException("La liquidación de compra " + idLiquidacionCompra
+					+ " no tiene proveedor asignado.");
+		}
+
+		// El valor no puede superar el saldo pendiente menos lo ya comprometido en
+		// otros pagos vigentes de la misma liquidación -- equivalente de
+		// validaValorContraSaldo para factura.
+		validaValorContraSaldoLiquidacion(liquidacion, valor, null);
+
+		// Cuenta nula (punto 14, 2026-08-27): la solicitud nace POR_APROBAR, sin cuenta
+		// ni forma de pago -- tesoreria los asigna despues con POST /pgtr/aprobar. Ver
+		// docs/logica-negocio/pagos/PLAN-REDISENO-APROBACION-PAGOS.md.
+		if (idCuentaBancariaOrigen == null) {
+			CuentaBancariaTitular cuentaDestinoPorAprobar = null;
+			if (idCuentaDestinoTitular != null) {
+				cuentaDestinoPorAprobar = em.find(CuentaBancariaTitular.class, idCuentaDestinoTitular);
+				if (cuentaDestinoPorAprobar == null) {
+					throw new IncomeException("No se encontró la cuenta bancaria del proveedor con ID: "
+							+ idCuentaDestinoTitular);
+				}
+				if (cuentaDestinoPorAprobar.getTitular() != null && !cuentaDestinoPorAprobar.getTitular()
+						.getCodigo().equals(liquidacion.getTitular().getCodigo())) {
+					throw new IncomeException("La cuenta bancaria de destino pertenece a otro titular, "
+							+ "no al proveedor de la liquidación de compra.");
+				}
+			}
+			PagoProgramado pago = new PagoProgramado();
+			pago.setEmpresa(em.find(Empresa.class, idEmpresa));
+			pago.setLiquidacionCompra(liquidacion);
+			pago.setTitular(liquidacion.getTitular());
+			pago.setCuentaDestino(cuentaDestinoPorAprobar);
+			pago.setValor(redondea(valor));
+			pago.setFechaProgramada(parseFecha(fechaProgramada));
+			pago.setObservacion(observacion);
+			pago.setUsuario(em.find(Usuario.class, idUsuario));
+			pago.setFechaRegistro(LocalDateTime.now());
+			pago.setEstado(Long.valueOf(EstadoPagoProgramado.POR_APROBAR));
+			pago = saveSingle(pago);
+
+			System.out.println("✓ Pago de liquidación por aprobar registrado (sin cuenta): id=" + pago.getId());
+
+			resultado.put("exito", true);
+			resultado.put("mensaje", "Pago registrado, pendiente de aprobación: "
+					+ "tesorería debe asignar cuenta y forma de pago.");
+			resultado.put("pago", pago.getId());
+			resultado.put("estado", pago.getEstado());
+			resultado.put("tipoDocumento", OrigenPagoCxp.LIQUIDACION_COMPRA);
+			resultado.putAll(aplicacionPagoCxpService.saldoLiquidacion(idLiquidacionCompra));
+			return resultado;
+		}
+
+		CuentaBancaria cuentaOrigen = em.find(CuentaBancaria.class, idCuentaBancariaOrigen);
+		if (cuentaOrigen == null) {
+			throw new IncomeException("No se encontró la cuenta bancaria de origen con ID: "
+					+ idCuentaBancariaOrigen);
+		}
+
+		long fp = validarFormaPago(cuentaOrigen, formaPago, debitoAutomatico);
+		boolean esDebitoAutomatico = (fp == FormaPagoProgramado.DEBITO_AUTOMATICO);
+
+		CuentaBancariaTitular cuentaDestino = null;
+		if (idCuentaDestinoTitular != null) {
+			cuentaDestino = em.find(CuentaBancariaTitular.class, idCuentaDestinoTitular);
+			if (cuentaDestino == null) {
+				throw new IncomeException("No se encontró la cuenta bancaria del proveedor con ID: "
+						+ idCuentaDestinoTitular);
+			}
+			if (cuentaDestino.getTitular() != null
+					&& !cuentaDestino.getTitular().getCodigo().equals(liquidacion.getTitular().getCodigo())) {
+				throw new IncomeException("La cuenta bancaria de destino pertenece a otro titular, "
+						+ "no al proveedor de la liquidación de compra.");
+			}
+		}
+
+		LocalDate fecha = parseFecha(fechaProgramada);
+
+		PagoProgramado pago = new PagoProgramado();
+		pago.setEmpresa(em.find(Empresa.class, idEmpresa));
+		pago.setLiquidacionCompra(liquidacion);
+		pago.setTitular(liquidacion.getTitular());
+		pago.setCuentaBancaria(cuentaOrigen);
+		pago.setCuentaDestino(cuentaDestino);
+		pago.setDebitoAutomatico(Long.valueOf(esDebitoAutomatico ? 1 : 0));
+		pago.setFormaPago(Long.valueOf(fp));
+		pago.setValor(valor);
+		pago.setFechaProgramada(fecha);
+		pago.setObservacion(observacion);
+		pago.setUsuario(em.find(Usuario.class, idUsuario));
+		pago.setFechaRegistro(LocalDateTime.now());
+
+		if (fp == FormaPagoProgramado.CHEQUE) {
+			Cheque cheque = chequeService.asignarAPago(idCuentaBancariaOrigen, valor,
+					liquidacion.getTitular(), liquidacion.getTitular().getNombre(), idUsuario);
+			pago.setCheque(cheque);
+			pago.setEstado(Long.valueOf(EstadoPagoProgramado.CONFIRMADO));
+			pago.setReferenciaBanco("CHQ-" + cheque.getNumero());
+			pago.setFechaRespuesta(fecha);
+			pago = guardaPagoConCheque(pago, cheque);
+
+			Asiento asiento = contabilizarSegunOrigen(pago, idUsuario);
+			pago = pagoProgramadoDaoService.save(pago, pago.getId());
+			em.flush();
+
+			System.out.println("✓ Pago de liquidación con cheque N° " + cheque.getNumero()
+					+ " registrado y aplicado: id=" + pago.getId());
+
+			resultado.put("exito", true);
+			resultado.put("mensaje", "Pago con cheque N° " + cheque.getNumero()
+					+ " registrado. La liquidación de compra quedó abonada y el asiento contable fue generado.");
+			resultado.put("pago", pago.getId());
+			resultado.put("debitoAutomatico", false);
+			resultado.put("formaPago", fp);
+			resultado.put("numeroCheque", cheque.getNumero());
+			resultado.put("tipoDocumento", OrigenPagoCxp.LIQUIDACION_COMPRA);
+			if (pago.getAplicacion() != null) {
+				resultado.put("aplicacion", pago.getAplicacion().getId());
+			}
+			if (asiento != null) {
+				resultado.put("asiento", asiento.getNumeroAlterno());
+			}
+			resultado.putAll(aplicacionPagoCxpService.saldoLiquidacion(idLiquidacionCompra));
+			return resultado;
+		}
+
+		if (!esDebitoAutomatico) {
+			pago.setEstado(Long.valueOf(EstadoPagoProgramado.REGISTRADO));
+			pago = saveSingle(pago);
+
+			System.out.println("✓ Pago de liquidación registrado: id=" + pago.getId());
+
+			resultado.put("exito", true);
+			resultado.put("mensaje",
+					"Pago registrado. Queda pendiente de incluirse en un archivo de pagos.");
+			resultado.put("pago", pago.getId());
+			resultado.put("debitoAutomatico", false);
+			resultado.put("formaPago", fp);
+			resultado.put("tipoDocumento", OrigenPagoCxp.LIQUIDACION_COMPRA);
+			resultado.putAll(aplicacionPagoCxpService.saldoLiquidacion(idLiquidacionCompra));
+			return resultado;
+		}
+
+		// Débito automático: el banco ya debitó la cuenta. El pago no se aprueba
+		// ni se envía en ningún archivo, así que nace confirmado y se contabiliza
+		// aquí mismo. La fecha del débito es la fecha con la que se registra.
+		pago.setEstado(Long.valueOf(EstadoPagoProgramado.CONFIRMADO));
+		pago.setReferenciaBanco((referencia != null && !referencia.trim().isEmpty())
+				? referencia.trim() : null);
+		pago.setFechaRespuesta(fecha);
+		pago = saveSingle(pago);
+		em.flush();
+
+		Asiento asiento = contabilizarSegunOrigen(pago, idUsuario);
+		pago = pagoProgramadoDaoService.save(pago, pago.getId());
+		em.flush();
+
+		System.out.println("✓ Pago de liquidación por débito automático registrado y aplicado: id=" + pago.getId());
+
+		resultado.put("exito", true);
+		resultado.put("mensaje", "Pago por débito automático registrado. La liquidación de compra quedó "
+				+ "abonada y el asiento contable fue generado.");
+		resultado.put("pago", pago.getId());
+		resultado.put("debitoAutomatico", true);
+		resultado.put("formaPago", fp);
+		resultado.put("tipoDocumento", OrigenPagoCxp.LIQUIDACION_COMPRA);
+		if (pago.getAplicacion() != null) {
+			resultado.put("aplicacion", pago.getAplicacion().getId());
+		}
+		if (asiento != null) {
+			resultado.put("asiento", asiento.getNumeroAlterno());
+		}
+		resultado.putAll(aplicacionPagoCxpService.saldoLiquidacion(idLiquidacionCompra));
 		return resultado;
 	}
 
@@ -1112,6 +1343,9 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		if (pago.getFacturaCompra() != null) {
 			return OrigenPagoCxp.FACTURA_COMPRA;
 		}
+		if (pago.getLiquidacionCompra() != null) {
+			return OrigenPagoCxp.LIQUIDACION_COMPRA;
+		}
 		if (pago.getEgreso() != null) {
 			return OrigenPagoCxp.EGRESO_TESORERIA;
 		}
@@ -1131,6 +1365,10 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		if (pago.getFacturaCompra() != null) {
 			return "Factura " + nvl(pago.getFacturaCompra().getNumero(),
 					String.valueOf(pago.getFacturaCompra().getId()));
+		}
+		if (pago.getLiquidacionCompra() != null) {
+			return "Liquidación " + nvl(pago.getLiquidacionCompra().getNumero(),
+					String.valueOf(pago.getLiquidacionCompra().getId()));
 		}
 		return pago.getObservacion();
 	}
@@ -1502,9 +1740,33 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		System.out.println("✓ facturasComprometidas | titular=" + idTitular
 				+ " | comprometidas=" + idsComprometidas.size());
 
+		// idsLiquidaciones (aditivo, API-PAGO-LIQUIDACION-Y-NOTA-VENTA.md §3): mismo
+		// criterio que las facturas de arriba, sobre las liquidaciones activas del
+		// proveedor.
+		List<Long> idsLiquidacionesComprometidas = new ArrayList<>();
+		for (LiquidacionCompraCompra liquidacion : liquidacionCompraCompraDaoService.selectActivasByTitular(idTitular)) {
+			Map<String, Object> saldos = aplicacionPagoCxpService.saldoLiquidacion(liquidacion.getId());
+			double saldoPendiente = ((Number) saldos.get("saldoPendiente")).doubleValue();
+
+			double comprometido = 0.0;
+			for (PagoProgramado pago : pagoProgramadoDaoService
+					.selectComprometidosNoConfirmadosByLiquidacion(liquidacion.getId())) {
+				comprometido += (pago.getValor() != null) ? pago.getValor() : 0.0;
+			}
+
+			double disponible = saldoPendiente - comprometido;
+			if (disponible <= TOLERANCIA) {
+				idsLiquidacionesComprometidas.add(liquidacion.getId());
+			}
+		}
+
+		System.out.println("✓ facturasComprometidas | titular=" + idTitular
+				+ " | liquidaciones comprometidas=" + idsLiquidacionesComprometidas.size());
+
 		Map<String, Object> resultado = new HashMap<>();
 		resultado.put("idTitular", idTitular);
 		resultado.put("idsFacturas", idsComprometidas);
+		resultado.put("idsLiquidaciones", idsLiquidacionesComprometidas);
 		return resultado;
 	}
 
@@ -2202,6 +2464,52 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	}
 
 	/**
+	 * Valida que el valor a pagar quepa en el saldo pendiente de la liquidación de
+	 * compra, descontando lo ya comprometido en otros pagos vigentes. Equivalente de
+	 * {@link #validaValorContraSaldo} para {@code registrarPagoLiquidacion}.
+	 * <p>
+	 * Privado, a diferencia de {@code validaValorContraSaldo}: ese está expuesto en la
+	 * interfaz porque caja chica lo llama directo (ver su javadoc); hoy nada más necesita
+	 * la validación equivalente de liquidación — si aparece otro llamador, se sube a la
+	 * interfaz entonces.
+	 * @param liquidacion : Liquidación de compra
+	 * @param valor       : Valor que se pretende pagar
+	 * @param idPagoEx    : Id de pago a excluir del cálculo (null si no aplica)
+	 * @throws Throwable  : Excepcion si el valor supera lo disponible
+	 */
+	private void validaValorContraSaldoLiquidacion(LiquidacionCompraCompra liquidacion, Double valor, Long idPagoEx)
+			throws Throwable {
+
+		Map<String, Object> saldos = aplicacionPagoCxpService.saldoLiquidacion(liquidacion.getId());
+		double saldoPendiente = ((Number) saldos.get("saldoPendiente")).doubleValue();
+
+		double comprometido = 0.0;
+		List<PagoProgramado> vigentes =
+				pagoProgramadoDaoService.selectVigentesByLiquidacion(liquidacion.getId());
+		for (PagoProgramado vigente : vigentes) {
+			if (idPagoEx != null && idPagoEx.equals(vigente.getId())) {
+				continue;
+			}
+			if (vigente.getEstado() != null
+					&& vigente.getEstado().intValue() != EstadoPagoProgramado.CONFIRMADO) {
+				comprometido += (vigente.getValor() != null) ? vigente.getValor() : 0.0;
+			}
+		}
+
+		double disponible = saldoPendiente - comprometido;
+		if (valor > disponible + TOLERANCIA) {
+			throw new IncomeException("El valor a pagar ($"
+					+ String.format(java.util.Locale.US, "%.2f", valor)
+					+ ") supera lo disponible de la liquidación de compra N° " + liquidacion.getNumero()
+					+ " ($" + String.format(java.util.Locale.US, "%.2f", disponible)
+					+ "). Saldo pendiente: $"
+					+ String.format(java.util.Locale.US, "%.2f", saldoPendiente)
+					+ " | comprometido en otros pagos: $"
+					+ String.format(java.util.Locale.US, "%.2f", comprometido) + ".");
+		}
+	}
+
+	/**
 	 * Indica si el pago se realizó por débito automático del banco.
 	 * @param pago : Pago programado
 	 * @return     : true si es débito automático
@@ -2302,7 +2610,7 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	/**
 	 * Genera la contabilidad y el movimiento bancario del pago según el
 	 * documento que lo originó: es el único punto que decide el switch entre
-	 * factura, egreso, anticipo y origen externo. Lo llaman el registro con
+	 * factura, liquidación de compra, egreso, anticipo y origen externo. Lo llaman el registro con
 	 * débito automático, el registro con cheque, procesarRespuestaBanco y
 	 * confirmarPagosManual. Si el pago se pagó con cheque, además anexa la
 	 * nota del cheque a la línea HABER (banco) del asiento generado.
@@ -2346,6 +2654,11 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 			// Pago de un egreso de tesorería: asiento contra la cuenta del
 			// grupo del producto, sin aplicación.
 			asiento = contabilizarPagoEgreso(pago, idUsuario, emitirMovimientoCheque);
+		} else if (pago.getLiquidacionCompra() != null) {
+			AplicacionPagoCxp aplicacion = aplicacionPagoCxpService.aplicarPagoTransferenciaLiquidacion(
+					pago, idUsuario, emitirMovimientoCheque);
+			pago.setAplicacion(aplicacion);
+			asiento = aplicacion.getAsiento();
 		} else {
 			AplicacionPagoCxp aplicacion =
 					aplicacionPagoCxpService.aplicarPagoTransferencia(pago, idUsuario, emitirMovimientoCheque);
