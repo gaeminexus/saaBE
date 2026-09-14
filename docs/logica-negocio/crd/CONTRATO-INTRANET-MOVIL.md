@@ -228,7 +228,7 @@ suposición: los campos son los que declaran los DTO de `com.saa.ws.movil.dto`. 
 |---|---|
 | `ParticipeMovilDTO` | `idEntidad:Long, identificacion:String, nombres:String, apellidos:String, correoPersonal:String, correoInstitucional:String, telefono:String, movil:String` |
 | `PrestamoMovilDTO` | `codigo:Long, idAsoprep:Long, idProducto:Long, nombreProducto:String, fecha *(texto)*, fechaInicio *(texto)*, fechaFin *(texto)*, plazo:Long, montoSolicitado:Double, valorCuota:Double, tasa:Double, totalPagado:Double, saldoCapital:Double, saldoInteres:Double, saldoPorVencer:Double, saldoVencido:Double, saldoTotal:Double, moraCalculada:Double, diasVencido:Long, idEstado:Long` |
-| `CuotaPrestamoMovilDTO` | `codigo:Long, numeroCuota:Double, fechaVencimiento *(texto)*, capital:Double, interes:Double, mora:Double, cuota:Double, saldoCapital:Double, saldo:Double, estado:Long, fechaPagado *(texto)*, capitalPagado:Double, interesPagado:Double, diasMora:Long` |
+| `CuotaPrestamoMovilDTO` | `codigo:Long, numeroCuota:Double, fechaVencimiento *(texto)*, capital:Double, interes:Double, mora:Double, cuota:Double, desgravamen:Double, seguroIncendio:Double, total:Double, saldoCapital:Double, saldo:Double, estado:Long, fechaPagado *(texto)*, capitalPagado:Double, interesPagado:Double, diasMora:Long` — `desgravamen` = `DTPRDSGR`, `seguroIncendio` = `DTPRVLSI`, `total` = `DTPRTTLL` **crudo, nulo si es nulo** (agregados el 2026-09-14, ver `saaAPP/docs/ORDEN-CUOTAS-DESGLOSE-Y-ESTADO-2026-09-14.md`). `estado` es `DTPRESTD`, catálogo `EstadoCuotaPrestamo` |
 | `SaldoTipoAporte` *(reutilizado tal cual)* | `idTipoAporte:Long, nombre:String, saldo:Double` |
 | `EstadoCuentaAportesMovilDTO` | `idEntidad:Long, identificacion:String, razonSocial:String, totalFaltante:Double, rangoPorDefectoAplicado:boolean, desdeAplicado:String (yyyy-MM), hastaAplicado:String (yyyy-MM), periodos:[...]` |
 | `PeriodoEstadoCuentaMovilDTO` | `periodo:String, idTipoAporte:Long, nombreTipoAporte:String, esperado:Double, aportado:Double, faltante:Double, estado:String, movimientos:[...]` |
@@ -288,6 +288,7 @@ Antes de cada despliegue, tres controles — dos se leen y uno se corre:
 | 2026-09-07 | Implementado (`3666a6c`) y revisado por el árbitro. Se agrega la §5.4 con la forma real de cada respuesta, se precisa la regla 7 (prohibía `getAll` por su nombre y no por su motivo, y frenó de más el endpoint de productos) y se anota que `selectVigentesByEntidad` absorbe errores y devuelve lista vacía |
 | 2026-09-07 | Cerrado `/simulador/productos` (`48f8c2c`): la lista blanca queda completa. Se documenta que tasa y plazo por producto no existen hoy en `saaBE` para ningún consumidor |
 | 2026-09-07 | Se documenta el catálogo real de `PRSTIDST` (11 estados, de `com.saa.rubros.EstadoPrestamo`) y cómo se agrupa para el filtro de la app, que había quedado sin poder implementarse |
+| 2026-09-14 | §5.4: `CuotaPrestamoMovilDTO` suma `desgravamen`, `seguroIncendio` y `total` — la tabla de amortización de la app mostraba solo `cuota` (capital + interés). `total` viaja crudo: **no** se replica el fallback del motor para `DTPRTTLL` nulo. Medición de nulos y de si el total cuadra: `sql/MEDICION-CUOTAS-APP-MOVIL.sql` |
 
 ---
 
