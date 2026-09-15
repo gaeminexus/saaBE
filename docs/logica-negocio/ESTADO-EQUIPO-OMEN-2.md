@@ -3818,3 +3818,10 @@ no salió del código de `b170911e`: WAR viejo o archivo anterior. El usuario lo
 2. **Un documento que se tipea no hereda las garantías del que viene de un XML.** La factura trae 3-3-9 porque
    la emite un sistema; la nota de venta trae lo que alguien escribió. Toda validación que el SRI hace sobre el
    XML hay que hacerla **antes de firmar** para los documentos manuales.
+
+### §44ter — `sri` entra al alcance (2026-09-15)
+
+**Alcance vigente, confirmado por el usuario:** `rhh · cxp · pagos · cnt · tsr · cxc · sri`. ⛔ `crd`.
+Primer frente: `sri/PLAN-ATS-AJUSTES-2026-09-15.md`, con tres ajustes: la retención se enlaza por autorización
++ número, la liquidación emitida usa `SUBTOTAL` como gravada, y **las facturas de intermediario salen del ATS**
+(pedido del usuario). Pregunta abierta: ¿también fuera de los cuadres 103/104?
