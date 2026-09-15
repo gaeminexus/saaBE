@@ -3325,3 +3325,44 @@ bloque es lo que hay que retomar.
 `211` (masivo, escribe), `212`/`213`/`218` (CRJB), `DDL-USUARIO-APP-MOVIL`, `221`, `222`, `157`,
 `158`, `156`, `81`. El verificador de esquema de `crd` no cubre 9 entidades: CFCR, CRJB, CTAP, DAAP,
 DAPR, DSBN, ESCR, PGPC, USAP.
+
+---
+
+# ✅ 2026-09-15 — H65: reemitir el pago de una devolución rebotada · H66: la anulación dejaba viva la orden
+
+**Pedido del usuario:** una devolución se pagó a una cuenta mal digitada y la transferencia rebotó.
+Quería reprocesar **sólo la salida del pago**, sin revertir el aporte negativo.
+
+**Por qué no se podía (medido):** la cuenta viaja copiada en `PGS.PGTR` (`PGTRBFCT`), una orden
+rechazada no tiene vuelta, y `sincronizarDevolucion` revertía todo sola **cada vez que alguien abría
+las devoluciones del partícipe** (`listarPorEntidad` reconcilia antes de listar). Lo que lo hizo
+posible sin tocar CXP: `selectVigentesByOrigen` sólo mira órdenes `0-3`.
+
+**Decisiones del usuario:** créditos corrige la cuenta en la ficha del partícipe y presiona «REEMITIR
+PAGO»; con la orden sin confirmar el botón anula y reemite en un paso; confirmada, tesorería la reversa
+primero (tiene movimiento bancario y asiento, y la fecha del rebote la sabe tesorería); una orden
+rechazada ya no revierte la devolución sola.
+
+**H66, encontrado al diseñar:** `anularDevolucion` sólo anulaba la orden en `REGISTRADO(1)`, y desde el
+2026-08-29 toda orden nace `POR_APROBAR(0)`. Anular una devolución antes de la aprobación dejaba el
+aporte devuelto **y la orden viva y pagable**. `crd/sql/224` mide si ya pasó.
+
+**Error del árbitro, registrado:** el contrato decía «por defecto la cuenta actual» en el diálogo. En un
+rebote la cuenta actual es la errada. Lo vi al revisar el diff del FE, que lo había implementado fiel;
+corregido a «sin preselección».
+
+| Commit | Qué |
+|---|---|
+| `saaBE 3b191715` | `sql/223` — en qué punto quedó un caso (cuatro situaciones A-D) |
+| `saaBE 0766c327`, `28033a8d` · `saaFE 092fc0b` | Contrato `crd/API-REEMITIR-PAGO-DEVOLUCION.md` + `sql/224` |
+| `saaFE 3a768ff` | Botón, diálogo sin preselección, estado de la orden y aviso; el botón sólo aparece con el WAR nuevo |
+| `saaBE 04d96086` | `POST /dvap/{id}/reemitirPago`, sincronización sin reversión automática, anulación de `POR_APROBAR` y de `PAGADA` con orden reversada, `estadoPago` en `/porEntidad` |
+
+Verificado por el árbitro sobre el diff (las 12 reglas en orden, una sola transacción, forma de la
+respuesta contra lo que consume el FE), `mvn -q compile` exit 0 y `ng build` exit 0. **Sin DDL.**
+**Pendiente:** WAR + build; salida de `sql/223` (el caso real) y de `sql/224`.
+
+**Derivado a `omen-saa-2-arb` por orden del usuario (2026-09-15):** pantalla de seguimiento de un pago;
+auditoría de los estados de cuenta de titulares; número de pago visible y buscable en tesorería
+(medido: la consulta de pagos de tesorería no muestra el número ni filtra por él, y el filtro de
+proveedor no encuentra pagos de origen externo).
