@@ -280,14 +280,31 @@ public class AnticipoEmpleadoServiceImpl implements AnticipoEmpleadoService {
 		if (Long.valueOf(EstadoAnticipoEmpleado.SOLICITADO).equals(estado)) {
 			// Nada más que validar: todavía no hay pago.
 		} else if (Long.valueOf(EstadoAnticipoEmpleado.APROBADO).equals(estado)) {
-			// Defensivo: hoy inalcanzable en la práctica porque el pago nace
-			// CONFIRMADO (sólo admite cheque o débito automático), así que
-			// aprobar() nunca deja el anticipo en APROBADO con un pago vivo
-			// sin confirmar — se deja por si esa restricción cambia a futuro.
-			if (anticipo.getPagoProgramado() != null
-					&& Long.valueOf(EstadoPagoProgramado.CONFIRMADO).equals(anticipo.getPagoProgramado().getEstado())) {
-				throw new IncomeException("El anticipo " + idAnticipo + " ya tiene el pago confirmado:"
-						+ " revierta el pago (POST /pgtr/revertirConfirmado/{id}) antes de anular.");
+			// ÍTEM 19 / S2 (2026-09-15, docs/logica-negocio/tsr/PLAN-SEGUIMIENTO-PAGOS.md §2):
+			// el comentario que estaba acá decía "inalcanzable en la práctica porque el pago
+			// nace CONFIRMADO" -- dejó de ser cierto el 2026-08-30 (ver aprobar():178-181): con
+			// idCuentaBancariaOrigen null el pago nace POR_APROBAR(0) y tesorería lo mueve por
+			// REGISTRADO(1)/EN_ARCHIVO(2) sin que el anticipo se entere. Antes de este fix,
+			// anular en cualquiera de esos tres estados dejaba el PGTR vivo y pagable.
+			com.saa.model.cxp.PagoProgramado pagoAnticipo = anticipo.getPagoProgramado();
+			if (pagoAnticipo != null && pagoAnticipo.getEstado() != null) {
+				int estadoPago = pagoAnticipo.getEstado().intValue();
+				if (estadoPago == EstadoPagoProgramado.CONFIRMADO) {
+					throw new IncomeException("El anticipo " + idAnticipo + " ya tiene el pago confirmado:"
+							+ " revierta el pago (POST /pgtr/revertirConfirmado/{id}) antes de anular.");
+				}
+				if (estadoPago == EstadoPagoProgramado.EN_ARCHIVO) {
+					throw new IncomeException("El pago N° " + pagoAnticipo.getId() + " ya está en un "
+							+ "archivo del banco: anúlelo en tesorería o espere la respuesta del banco "
+							+ "antes de anular.");
+				}
+				if (estadoPago == EstadoPagoProgramado.POR_APROBAR
+						|| estadoPago == EstadoPagoProgramado.REGISTRADO) {
+					pagoProgramadoService.anularPago(pagoAnticipo.getId(),
+							"Anulación del anticipo a empleado " + idAnticipo + ": " + motivo.trim(), idUsuario);
+					System.out.println("✓ Pago " + pagoAnticipo.getId() + " anulado junto con el "
+							+ "anticipo " + idAnticipo + " (estaba en estado " + estadoPago + ").");
+				}
 			}
 		} else {
 			throw new IncomeException("Sólo se puede anular un anticipo SOLICITADO, o APROBADO sin pago"

@@ -210,7 +210,13 @@ public class AnticipoProveedorServiceImpl implements AnticipoProveedorService {
         // ── Validaciones de entrada ────────────────────────────────────────────
         if (idTitular == null)       throw new IncomeException("El id del titular es obligatorio.");
         if (valor == null || valor <= 0) throw new IncomeException("El valor del anticipo debe ser mayor a cero.");
-        if (idCuentaBancaria == null) throw new IncomeException("La cuenta bancaria es obligatoria.");
+        // ÍTEM 20 / S3 (2026-09-15, docs/logica-negocio/tsr/PLAN-SEGUIMIENTO-PAGOS.md §2):
+        // idCuentaBancaria es la cuenta de ORIGEN (de la empresa) -- opcional, igual que en
+        // egreso y caja chica: sin ella, registrarPagoDeAnticipo (abajo) ya sabía crear el PGTR
+        // en POR_APROBAR(0) para que tesorería elija cuenta y forma de pago al aprobar (mismo
+        // mecanismo del punto 14, 2026-08-27, PLAN-REDISENO-APROBACION-PAGOS.md); lo único que
+        // faltaba era que este método dejara de exigirla. La pantalla (anticipos-proveedores
+        // .component.ts:305-314) nunca la mandó, así que registrar un anticipo fallaba siempre.
         if (idEmpresa == null)       throw new IncomeException("La empresa es obligatoria.");
         if (idUsuario == null)       throw new IncomeException("El usuario es obligatorio.");
         if (fechaAnticipo == null || fechaAnticipo.isBlank())
@@ -240,19 +246,21 @@ public class AnticipoProveedorServiceImpl implements AnticipoProveedorService {
         Usuario usuario = em.find(Usuario.class, idUsuario);
         if (usuario == null) throw new IncomeException("No se encontró el usuario con ID: " + idUsuario);
 
-        // ── Validar cuenta bancaria y su PlanCuenta ANTES de guardar ───────────
-        com.saa.model.tsr.CuentaBancaria cuentaBancaria =
-                em.find(com.saa.model.tsr.CuentaBancaria.class, idCuentaBancaria);
-        if (cuentaBancaria == null) {
-            throw new IncomeException(
-                    "No se encontró la cuenta bancaria con ID: " + idCuentaBancaria
-                    + ". Verifique la configuración en Tesorería → Cuentas Bancarias.");
-        }
-        if (cuentaBancaria.getPlanCuenta() == null) {
-            throw new IncomeException(
-                    "La cuenta bancaria '" + cuentaBancaria.getNumeroCuenta()
-                    + "' no tiene una cuenta contable (PlanCuenta) asociada. "
-                    + "Configure la cuenta contable en Tesorería → Cuentas Bancarias antes de continuar.");
+        // ── Validar cuenta bancaria y su PlanCuenta ANTES de guardar (sólo si vino) ────
+        com.saa.model.tsr.CuentaBancaria cuentaBancaria = null;
+        if (idCuentaBancaria != null) {
+            cuentaBancaria = em.find(com.saa.model.tsr.CuentaBancaria.class, idCuentaBancaria);
+            if (cuentaBancaria == null) {
+                throw new IncomeException(
+                        "No se encontró la cuenta bancaria con ID: " + idCuentaBancaria
+                        + ". Verifique la configuración en Tesorería → Cuentas Bancarias.");
+            }
+            if (cuentaBancaria.getPlanCuenta() == null) {
+                throw new IncomeException(
+                        "La cuenta bancaria '" + cuentaBancaria.getNumeroCuenta()
+                        + "' no tiene una cuenta contable (PlanCuenta) asociada. "
+                        + "Configure la cuenta contable en Tesorería → Cuentas Bancarias antes de continuar.");
+            }
         }
 
         // ── Validar cuenta de anticipos del proveedor ANTES de guardar ─────────
@@ -284,17 +292,22 @@ public class AnticipoProveedorServiceImpl implements AnticipoProveedorService {
         anticipo.setObservacion(observacion);
         anticipo.setEstado(Long.valueOf(EstadoAnticipoProveedor.INGRESADO));
         anticipo.setFechaRegistro(LocalDateTime.now());
-        // ── Datos de la cuenta bancaria de pago ────────────────────────────────
-        anticipo.setReferencia(cuentaBancaria.getNumeroCuenta());
+        // ── Datos de la cuenta bancaria de pago (sólo si se indicó cuenta de origen) ──
+        // Sin cuenta (ÍTEM 20): quedan null -- tesorería los completa al aprobar, igual
+        // que "referencia más abajo si el pago terminó asignando un cheque" ya hacía
+        // para el caso con cuenta.
+        if (cuentaBancaria != null) {
+            anticipo.setReferencia(cuentaBancaria.getNumeroCuenta());
+            String nombreBanco = (cuentaBancaria.getBanco() != null
+                    && cuentaBancaria.getBanco().getNombre() != null)
+                    ? cuentaBancaria.getBanco().getNombre()
+                    : "BANCO";
+            anticipo.setBanco(nombreBanco + " - " + cuentaBancaria.getNumeroCuenta());
+        }
         // La forma real (incluido cheque=3) la decide el circuito de pagos; aquí
         // se deja la indicada (o Transferencia por defecto) y se corrige la
         // referencia más abajo si el pago terminó asignando un cheque.
         anticipo.setFormaPago(formaPago != null ? formaPago : 2L);
-        String nombreBanco = (cuentaBancaria.getBanco() != null
-                && cuentaBancaria.getBanco().getNombre() != null)
-                ? cuentaBancaria.getBanco().getNombre()
-                : "BANCO";
-        anticipo.setBanco(nombreBanco + " - " + cuentaBancaria.getNumeroCuenta());
 
         // ── Guardar anticipo ───────────────────────────────────────────────────
         anticipo = anticipoDaoService.save(anticipo, anticipo.getId());
