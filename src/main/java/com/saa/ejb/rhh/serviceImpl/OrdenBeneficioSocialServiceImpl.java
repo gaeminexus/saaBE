@@ -459,6 +459,40 @@ public class OrdenBeneficioSocialServiceImpl implements OrdenBeneficioSocialServ
             throw new IncomeException("La orden " + idOrden + " ya está ANULADA.");
         }
 
+        // ÍTEM 19 / S1 (2026-09-15, docs/logica-negocio/tsr/PLAN-SEGUIMIENTO-PAGOS.md §2): una
+        // orden ENVIADA_A_TESORERIA (ni PAGADA ni ANULADA, los dos únicos estados que el chequeo
+        // de arriba mira) pasaba a ANULADA dejando su PGTR vivo y pagable -- el pago quedaba
+        // "huérfano" del origen que lo generó.
+        // ÍTEM 19bis (2026-09-15): el chequeo de PAGADA de arriba mira el estado de la ORDEN, no
+        // el del PAGO -- una orden ENVIADA_A_TESORERIA cuyo PGTR ya está CONFIRMADO (tesorería
+        // pagó, pero nadie corrió confirmarPago en rhh para sincronizar la orden) pasaba el
+        // chequeo de PAGADA (la orden no está en ese estado) y llegaba hasta acá con el dinero
+        // ya fuera. Se cubre explícito, a diferencia de AnticipoEmpleadoServiceImpl.anular, que
+        // sí mira el estado del pago (no de sí mismo) y no tiene este hueco.
+        PagoProgramado pagoOrdenViva = orden.getPagoProgramado();
+        if (pagoOrdenViva != null && pagoOrdenViva.getEstado() != null) {
+            int estadoPago = pagoOrdenViva.getEstado().intValue();
+            if (estadoPago == EstadoPagoProgramado.CONFIRMADO) {
+                throw new IncomeException("El pago N° " + pagoOrdenViva.getId() + " de la orden "
+                        + idOrden + " ya fue confirmado en tesorería: confirme el pago de la orden "
+                        + "(o revierta el pago en tesorería) antes de anularla.");
+            }
+            if (estadoPago == EstadoPagoProgramado.EN_ARCHIVO) {
+                throw new IncomeException("El pago N° " + pagoOrdenViva.getId() + " ya está en un "
+                        + "archivo del banco: anúlelo en tesorería o espere la respuesta del banco "
+                        + "antes de anular.");
+            }
+            if (estadoPago == EstadoPagoProgramado.POR_APROBAR
+                    || estadoPago == EstadoPagoProgramado.REGISTRADO) {
+                // idUsuario: anularPago no lo usa en el cuerpo (sólo motivo/estado) -- este
+                // método sólo recibe el nombre del usuario, no su id.
+                pagoProgramadoService.anularPago(pagoOrdenViva.getId(),
+                        "Anulación de la orden de beneficio social " + idOrden + ": " + motivo.trim(), null);
+                System.out.println("✓ Pago " + pagoOrdenViva.getId() + " anulado junto con la orden "
+                        + idOrden + " (estaba en estado " + estadoPago + ").");
+            }
+        }
+
         for (LiquidacionBeneficioSocial liquidacion : liquidacionBeneficioSocialDaoService.selectByOrden(idOrden)) {
             liquidacion.setOrdenBeneficioSocial(null);
             liquidacionBeneficioSocialDaoService.save(liquidacion, liquidacion.getCodigo());
