@@ -78,3 +78,19 @@ pantalla toma el saldo pendiente **sólo** de las filas tipo FACTURA (FCTC y LQC
 
 1. **C6/P4:** un anticipo **ingresado pero no pagado**, ¿debe contar como saldo a favor del titular, o sólo cuando se confirma?
 2. **C1:** ¿la caja de tesorería (`TSR.CBRO`) se usa para cobrar facturas de venta? Si sí, hoy esos cobros no abonan ninguna factura.
+
+## D. Entregas y lo que dejaron a la vista (2026-09-15)
+
+| Ítem | Commit |
+|---|---|
+| C2 retención recibida en el titular de la factura | `147d1b50` |
+| C3 · P2 · P6 | `fca68efa` |
+| C4 · C5 · C7 · C8 · C9 (FE) | saaFE `fa6c145` |
+
+**Anotado por el BE al hacer P6, sin tocar:**
+- `LiquidacionCompraCompraServiceImpl.anularLiquidacionCompra` (~:124-148), la referencia que se copió, **no tiene la guarda
+  de pago CONFIRMADO**: revierte en cascada cualquier `APLP`, incluida la de un pago cuyo dinero ya salió. Mismo riesgo del
+  lado de la liquidación recibida. Candidato a ítem.
+- La cascada revierte movimiento por movimiento; si uno de caja chica la rechaza a mitad, **lo revertido antes queda
+  revertido** (`IncomeException` no marca rollback). Límite heredado, no introducido.
+- `CriterioVentaVigente` pasó a `public` para usarse desde `cxc`.
