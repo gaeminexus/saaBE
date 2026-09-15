@@ -85,7 +85,7 @@ distintas y confundirlas es peor que la deuda.
 
 | # | Ruta completa | Qué hace | Estado |
 |---|---|---|---|
-| **e2-43** | `cxc/sql/e2-43-retencion-sobre-nota-de-venta.sql` | Antes de emitir retenciones sobre notas de venta: si el combo tiene el tipo `02` (`CBR.TSRI`, LSRI 3), cuántas notas de venta comparten autorización (trampa del ATS), números repetidos entre factura y nota de venta, y retenciones **ya emitidas** sobre notas de venta — incluidas las que salieron declarando `01`. **Solo lectura** | 🔴 **PENDIENTE — 2026-09-15** |
+| **e2-43** | `cxc/sql/e2-43-retencion-sobre-nota-de-venta.sql` | Antes de emitir retenciones sobre notas de venta: si el combo tiene el tipo `02` (`CBR.TSRI`, LSRI 3), cuántas notas de venta comparten autorización (trampa del ATS), números repetidos entre factura y nota de venta, y retenciones **ya emitidas** sobre notas de venta — incluidas las que salieron declarando `01`. **Solo lectura** | ✅ **CORRIDO el 2026-09-15.** El `02` está activo en el combo (`TSRI` id 7). `FCTC`: 181 facturas por 177.565,27 y **2 notas de venta** por 117,50. Bloques 3, 3b, 4 y 5 **vacíos**: ninguna autorización compartida, ningún número repetido y **ninguna retención emitida todavía sobre una nota de venta**. La trampa del ATS está latente, no activa; el BE-3 del plan no hace falta |
 
 ### Consulta suelta que quedó sin script y vale anotarla
 

@@ -142,6 +142,16 @@ lo valida para una factura.
 - **Mientras la Fase 2 no esté**, cada retención sobre una nota de venta es un renglón que el ATS puede
   declarar mal si esa autorización la comparten otras notas de venta del mismo proveedor en el mes.
 
+## 4bis. Medido con el `e2-43` — 2026-09-15
+
+| Bloque | Resultado | Qué decide |
+|---|---|---|
+| 1 | `02 NOTA DE VENTA` activo (`CBR.TSRI` id 7) | La precondición del §4 se cumple: no hace falta tocar el catálogo |
+| 2 | `01`: 181 documentos, 177.565,27 · `02`: **2**, 117,50 · ningún tipo nulo | El volumen de notas de venta es mínimo hoy |
+| 3 / 3b | vacíos | **Ninguna autorización compartida.** La trampa del ATS (§1.5) está latente, no activa. La Fase 2 sigue haciendo falta —la próxima nota de venta del mismo talonario la activa—, pero no es urgente |
+| 4 | vacío | **BE-3 descartado**: no hay números repetidos entre factura y nota de venta |
+| 5 | vacío | **Ninguna retención salió al SRI declarando `01` sobre una nota de venta.** El defecto del §1.2 no llegó a producir daño |
+
 ## 5. Criterio de aceptación — el número que tiene que dar
 
 Con una nota de venta de prueba de total **T** y una retención de valor **R**:
