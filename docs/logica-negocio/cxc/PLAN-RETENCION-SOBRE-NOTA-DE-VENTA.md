@@ -191,3 +191,16 @@ y `NUMERO` de las notas de venta. Los pagos y cruces apuntan por `ID`, no por n�
 | **BE-5** | `omen-saa-2-be` | Retención: validar que cada `numDocSustento` sin guiones tenga 15 dígitos **antes de firmar** (en la validación previa), con mensaje que nombre el documento. Completar ceros si viene en forma `E-P-S` con segmentos cortos y sólo dígitos |
 | **BE-6** | `omen-saa-2-be` | **Medir, no arreglar:** qué pasa en asiento y cruce con una retención de total `0,00` (código 332 al 0%, el caso real). `nuevaAplicacion` rechaza monto cero |
 | **FE-3** | `omen-saa-2-fe` | Formulario de nota de venta manual: sólo dígitos, largo máximo, y completar con ceros al salir del campo |
+
+### 6.1 Medido por el BE (BE-6): retención de total 0,00 — y lo que se hace
+
+- **Asiento:** `generarAsientoRetencionV2` (`AsientoContableServiceImpl:2251-2335`) genera un asiento con sus
+  líneas en 0,00; cuadra y no falla.
+- **Cruce:** `nuevaAplicacion` (`AplicacionPagoCxpServiceImpl:1208-1213`) lanza «El monto a aplicar no puede
+  ser cero». `cerrarContabilidadYCruceRetencionV2` lo atrapa y la retención queda **autorizada, con asiento
+  y con el aviso `cruceFacturaPendiente`**, que es falso: no hay nada que cruzar.
+
+**BE-9 (despachado):** con `total` nulo o 0, `aplicarPagoRetencionV2` no intenta el cruce y devuelve
+`aplicado=false` con `sinMontoACruzar=true`, sin excepción; y ningún consumidor que decida «cruce pendiente»
+o «ya estaba completo» (el botón Contabilizar, `:1377-1401`) la trata como pendiente. El asiento en cero
+**no se toca**: si contabilidad no lo quiere, es decisión del usuario.

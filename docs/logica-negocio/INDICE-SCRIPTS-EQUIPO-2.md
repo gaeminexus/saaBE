@@ -90,6 +90,7 @@ distintas y confundirlas es peor que la deuda.
 | **e2-45** | `sri/sql/e2-45-rubro-35-tipo-persona-valor-sri.sql` | ⚠️ **NO es solo lectura.** Control del texto `'null'` en el rubro 35, conteo de la familia en todo `SCP.PDTR`, y `UPDATE` de los dos detalles a `01` (NATURAL) / `02` (JURÍDICO), la Tabla 14 del ATS. `COMMIT` comentado, reverso comentado | ✅ **CORRIDO el 2026-09-15** — al regenerar el ATS el aviso del titular 65 desapareció |
 | **e2-46** | `sri/sql/e2-46-liquidaciones-agosto-base-gravada-ats.sql` | `PGS.LQCC.SUBTOTAL` es «total sin impuestos» si vino del XML y «base gravada» si la emitió ASOPREP (`LiquidacionCompraServiceImpl:813`); el ATS resta `SUBCERO` en los dos casos. Mide las liquidaciones de agosto y cuánto gravado declararía de menos. **Solo lectura** | 🔴 **PENDIENTE — 2026-09-15** |
 | **e2-47** | `cxp/sql/e2-47-nota-venta-numero-a-15-digitos.sql` | ⚠️ **NO es solo lectura.** Completa con ceros el número de las notas de venta manuales (3-3-9). La retención 278 volvió DEVUELTA por `numDocSustento` de 13 dígitos. Bloque 0 guarda el original, bloque 1 controla choques, `COMMIT` comentado | 🔴 **PENDIENTE — urgente, 2026-09-15** |
+| **e2-48** | `cxp/sql/e2-48-observacion-adicional-documento-cxp.sql` | ⚠️ **DDL.** `PGS.DCXP.DCXPOBAD VARCHAR2(500 CHAR)`: la observación adicional que el usuario escribe al registrar un XML. **Va ANTES del WAR** — si no, `ORA-00904` en toda lectura de `DocumentoCxp` | 🔴 **PENDIENTE — 2026-09-15** |
 
 ### Consulta suelta que quedó sin script y vale anotarla
 
