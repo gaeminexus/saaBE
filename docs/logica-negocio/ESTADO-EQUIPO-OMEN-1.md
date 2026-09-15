@@ -3211,3 +3211,42 @@ El backend ya lo tenía completo (`GET/PUT /rest/cnfg/generacionPorFaltanteAh`, 
 rubro ausente, el `GET` de **los dos** flags responde «apagado» en vez de fallar.
 
 Contrato de los dos: `crd/API-INTERRUPTOR-GENERACION-POR-FALTANTE.md`. Despachado a `omen-saa-1-fe`.
+
+**✅ H63 y H64 entregados** — `saaFE 96df8f3` (navegación de contratos + tarjeta del rubro 242 en
+«Parámetros de créditos (CRD)»), contrato espejado en `a635f8d`/`72cd77b`.
+
+---
+
+# 2026-09-14, noche — PRODUCCIÓN = `origin/main`. Arranque de sesión nueva del árbitro
+
+**Dato del usuario, textual:** *«todo lo que está hecho commit y push está en producción en este
+momento. Está subido al servidor de producción.»* Al momento de decirlo, `origin/main` estaba en
+`saaBE 94980005` y `saaFE 17cf124`. **Todo lo que este tablero marcaba «desplegar» o «surte efecto con
+el próximo WAR» ya está vivo:** timer de mora 02:00, CCPM, padrón, `/prst/saldos`, H60 (pensión y
+seguro topados por saldo), H61 (bloqueo `FOR UPDATE`, `/rest/aprt` cerrado, `reversarAporte` rechaza
+saldo negativo), H62, H63, H64, otorgamiento, reverso de cobro, Gs, H54, calificación de riesgo.
+
+**Lo que eso cambia, y no está confirmado:**
+- `crd/sql/218` iba **antes** del WAR y no consta que haya corrido. Sigue sirviendo después: es de solo
+  lectura y su bloque 3 dice si queda algún período de `PGPC` sin cabecera `CRJB` (pagable dos veces).
+- `VERIFICACION-ENTIDADES-VS-ESQUEMA-CRD.sql` es del **2026-08-30** y cubre 98 entidades; hoy
+  `model/crd` tiene **107** `@Table`. **No incluye `CRJB`, `CFCR`, `ESCR` ni `USAP`.** Tal como está, da
+  una tranquilidad que no corresponde (regla 9).
+- El timer de mora corre esta noche a las 02:00 **con la zona horaria del servidor sin verificar**.
+- «Descargar el CSV de elegibles antes de desplegar el padrón»: si no se hizo, esa foto ya no existe.
+- La restricción de H60 (no correr seguro ni pensión de septiembre antes del WAR) **queda levantada**.
+
+**Defectos encontrados en la revisión de arranque, vivos en producción (verificados en código):**
+- `crd` — **«Pago Cuota» simula el pago**: `forms/pago-cuotas/pago-cuotas.component.ts` muestra «Pago de
+  $X registrado exitosamente» sin llamar al backend (`TODO: Enviar datos al backend`), con cuentas mock.
+  Está en el menú (`menucreditos.component.ts:264`). Mismo patrón que H31.
+- `cnt` — **la limpieza de temporales borra por PK**: `reporte-myan.service.ts:68` → `DELETE /myan/{sec}`
+  y `reporte-balance.service.ts:44` → `DELETE /dtmt/{idEjecucion}` pegan al borrado por PK
+  (`MayorAnaliticoRest:308`, `TempReportesRest:309`), no a `/resultado/{…}` (`:293`/`:294`). Los temporales
+  no se limpian y, si el secuencial coincide con el PK de otra fila, se borra esa fila. Error silenciado.
+- `cnt` — **mayorizar/desmayorizar desde `periodo.service.ts:143-155`** hace POST a `/prdo/mayorizar/{id}`,
+  que no existe en `PeriodoRest`. La mayorización real va por `/myrz`.
+- `crd` — desembolso: `PrestamoServiceImpl:296` `ID_PRODUCTO_PAGO_SOCIOS_POR_PAGAR = null` ⇒ `aprobar`
+  falla siempre, y el FE no manda `idEmpresa`/`idUsuario`.
+- Corrección a este tablero: `validaDebeHaberAsientoContable` (la guarda espejo, sin redondeo) **sí tiene
+  llamadores** — `AsientoServiceImpl:306` (cierre) y `TransferenciaServiceImpl:128,237`.
