@@ -3795,3 +3795,26 @@ decisión sobre `sri`. Criterio de aceptación en producción: el §5 del plan.
 **ATS de agosto (`e2-44`, lateral):** el titular del pasaporte `C05580508` tiene Tipo de Persona
 NATURAL; con ese dato el código vigente escribe `tipoCliente=01` siempre. El `AT082026` del 14/9 17:27
 no salió del código de `b170911e`: WAR viejo o archivo anterior. El usuario lo regenera para verificar.
+
+### §44bis — La primera retención volvió DEVUELTA, y dos pedidos de observación (2026-09-15, tarde)
+
+| Parte | Commit |
+|---|---|
+| `e2-44`/`e2-45`: el rubro 35 guardaba el TEXTO `null` → el ATS no escribía `tipoCliente` (corrido, resuelto) | `63ff0582` · `d1857cb8` · `a3aa04df` |
+| `e2-46`: `LQCC.SUBTOTAL` con dos significados según origen; el ATS resta `SUBCERO` en los dos (sin correr) | `aefa2087` |
+| `e2-47` + código: nota de venta con secuencial de 7 dígitos → `numDocSustento` de 13 → DEVUELTA | `ff8d5001` · `1b44e51c` · FE `ead5c84` |
+| Observación del asiento de la nota de venta + observación adicional (`DCXPOBAD`) + retención en 0,00 sin cruce falso | `aecffd0b` · `de9add7f` · FE `d8ec55e` `c4136e3` |
+
+⛔ **Desde `de9add7f`, un WAR de `main` sin el `e2-48` corrido rompe TODA lectura de `PGS.DCXP`**
+(gestión de documentos, bandeja, carga). Orden: `e2-48` → WAR → FE.
+
+**Lo que hay que llevarse:**
+
+1. **Dos veces el mismo día concluí sobre un dato que no medí.** «El código escribe `tipoCliente` por cualquier
+   camino» se apoyaba en una nota del 11-09 que decía `PDTRVLRV = NULL`; era el texto `null`, que el cliente
+   SQL muestra igual. Y el §1.3 del plan de retenciones afirmaba «15 dígitos, igual que una factura» sin mirar
+   que la nota de venta se tipea. **Las dos las desmintió la salida real** (el aviso del ATS, el log del SRI),
+   no una revisión. Es el §35 otra vez: *contrastar la salida contra un valor conocido*.
+2. **Un documento que se tipea no hereda las garantías del que viene de un XML.** La factura trae 3-3-9 porque
+   la emite un sistema; la nota de venta trae lo que alguien escribió. Toda validación que el SRI hace sobre el
+   XML hay que hacerla **antes de firmar** para los documentos manuales.
