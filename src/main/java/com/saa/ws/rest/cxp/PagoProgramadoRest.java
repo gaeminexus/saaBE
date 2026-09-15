@@ -140,6 +140,77 @@ public class PagoProgramadoRest {
     }
 
     /**
+     * ÍTEM 21 (2026-09-15, docs/logica-negocio/tsr/API-SEGUIMIENTO-PAGOS.md §1). Exactamente UNO
+     * de {@code numero}, {@code texto}, o el par {@code origen}+{@code idOrigen}; si no, 400.
+     * {@code idEmpresa} es opcional. Sin resultados: {@code 200 []}, nunca error.
+     */
+    @GET
+    @Path("/seguimiento")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response buscarSeguimiento(@QueryParam("numero") Long numero,
+            @QueryParam("texto") String texto,
+            @QueryParam("origen") String origen,
+            @QueryParam("idOrigen") Long idOrigen,
+            @QueryParam("idEmpresa") Long idEmpresa) {
+        System.out.println("LLEGA AL SERVICIO GET /pgtr/seguimiento");
+        try {
+            boolean tieneNumero = numero != null;
+            boolean tieneTexto = texto != null && !texto.trim().isEmpty();
+            boolean tieneOrigen = origen != null && !origen.trim().isEmpty() && idOrigen != null;
+            int cuantos = (tieneNumero ? 1 : 0) + (tieneTexto ? 1 : 0) + (tieneOrigen ? 1 : 0);
+            if (cuantos != 1) {
+                Map<String, Object> error = new HashMap<>();
+                error.put("mensaje", "Debe enviar exactamente uno de: numero, texto, o el par "
+                        + "origen+idOrigen.");
+                return Response.status(Response.Status.BAD_REQUEST).entity(error)
+                        .type(MediaType.APPLICATION_JSON).build();
+            }
+            if (tieneTexto && texto.trim().length() < 3) {
+                Map<String, Object> error = new HashMap<>();
+                error.put("mensaje", "El texto de búsqueda debe tener al menos 3 caracteres.");
+                return Response.status(Response.Status.BAD_REQUEST).entity(error)
+                        .type(MediaType.APPLICATION_JSON).build();
+            }
+            List<Map<String, Object>> lista = pagoProgramadoService.buscarSeguimiento(
+                    numero, texto, origen, idOrigen, idEmpresa);
+            return Response.status(Response.Status.OK).entity(lista)
+                    .type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("mensaje", "Error al buscar el seguimiento: " + e.getMessage());
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity(error)
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
+     * ÍTEM 21. Detalle completo para la pantalla de seguimiento: pago, origen resuelto, línea de
+     * tiempo de etapas y acciones disponibles (API-SEGUIMIENTO-PAGOS.md §2).
+     */
+    @GET
+    @Path("/seguimiento/{idPago}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response obtenerSeguimiento(@PathParam("idPago") Long idPago) {
+        System.out.println("LLEGA AL SERVICIO GET /pgtr/seguimiento/" + idPago);
+        try {
+            Map<String, Object> detalle = pagoProgramadoService.obtenerSeguimiento(idPago);
+            if (detalle == null) {
+                Map<String, Object> error = new HashMap<>();
+                error.put("mensaje", "No existe el pago N° " + idPago);
+                return Response.status(Response.Status.NOT_FOUND).entity(error)
+                        .type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(detalle)
+                    .type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("mensaje", "Error al obtener el seguimiento del pago: " + e.getMessage());
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity(error)
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
      * Registra un pago por transferencia sobre una factura de compra (o nota de venta,
      * que se paga exactamente igual) O una liquidación de compra: uno y sólo uno de
      * "idFacturaCompra"/"idLiquidacionCompra" (docs/logica-negocio/pagos/

@@ -536,4 +536,32 @@ public interface PagoProgramadoService extends EntityService<PagoProgramado> {
 	 */
 	List<Map<String, Object>> listarLotes(Long idEmpresa, String desde, String hasta, Integer limite)
 			throws Throwable;
+
+	/**
+	 * ÍTEM 21 (2026-09-15, docs/logica-negocio/tsr/API-SEGUIMIENTO-PAGOS.md §1): busca pagos para
+	 * la pantalla de seguimiento. Exactamente UNO de {@code numero}, {@code texto}, o el par
+	 * {@code origen}+{@code idOrigen} debe venir — el REST valida eso y responde 400 si no.
+	 * @param numero    : PGTRCDGO exacto
+	 * @param texto     : mismo criterio que {@code GET /pgtr/listar?texto=} (observación,
+	 *                    beneficiario, titular) + número de factura/liquidación; mínimo 3
+	 *                    caracteres
+	 * @param origen    : clave del origen (tabla §3 del contrato); requiere idOrigen
+	 * @param idOrigen  : id del documento de origen; requiere origen
+	 * @param idEmpresa : opcional
+	 * @return          : máx. 50, más reciente primero; lista vacía si no hay resultados (nunca
+	 *                    null)
+	 * @throws Throwable : Excepcion
+	 */
+	List<Map<String, Object>> buscarSeguimiento(Long numero, String texto, String origen, Long idOrigen,
+			Long idEmpresa) throws Throwable;
+
+	/**
+	 * ÍTEM 21: detalle completo de un pago para la pantalla de seguimiento -- pago, origen
+	 * resuelto, línea de tiempo de etapas y acciones disponibles.
+	 * @param idPago : Id del pago
+	 * @return       : el detalle armado según API-SEGUIMIENTO-PAGOS.md §2, o {@code null} si no
+	 *                 existe (el REST lo traduce a 404, nunca 500)
+	 * @throws Throwable : Excepcion
+	 */
+	Map<String, Object> obtenerSeguimiento(Long idPago) throws Throwable;
 }

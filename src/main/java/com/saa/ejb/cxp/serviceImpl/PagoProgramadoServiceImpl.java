@@ -30,6 +30,13 @@ import com.saa.ejb.cxp.service.PagoProgramadoService;
 import com.saa.ejb.cxp.service.RespuestaPagoBanco;
 import com.saa.ejb.cxp.service.dto.BeneficiarioOcasional;
 import com.saa.ejb.cxp.service.dto.LineaContablePago;
+import com.saa.ejb.cxp.seguimiento.DocumentoOrigenPago;
+import com.saa.ejb.cxp.seguimiento.ResolutorAnticipoProveedor;
+import com.saa.ejb.cxp.seguimiento.ResolutorCrdDevolucionAporte;
+import com.saa.ejb.cxp.seguimiento.ResolutorEgresoTesoreria;
+import com.saa.ejb.cxp.seguimiento.ResolutorFacturaCompra;
+import com.saa.ejb.cxp.seguimiento.ResolutorLiquidacionCompra;
+import com.saa.ejb.cxp.seguimiento.ResolutorOrigenPago;
 import com.saa.ejb.tsr.formateador.ArchivoPagosGenerado;
 import com.saa.ejb.tsr.formateador.FormateadorArchivoPagos;
 import com.saa.ejb.tsr.formateador.FormateadorArchivoPagosFactory;
@@ -2216,26 +2223,12 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 			throw new IncomeException("No se encontró el pago con ID: " + idPago);
 		}
 
-		int estado = (pago.getEstado() != null) ? pago.getEstado().intValue() : 0;
-		if (estado == EstadoPagoProgramado.ANULADO) {
-			throw new IncomeException("El pago " + idPago + " ya está anulado.");
-		}
-		// Defensivo: un pago con cheque nace CONFIRMADO, así que nunca debería
-		// llegar aquí en estado REGISTRADO; el check de estado de abajo ya lo
-		// bloquearía, pero el mensaje específico es más claro para el usuario.
-		// Va después del check de ANULADO para que un pago ya reversado (cuyo
-		// cheque quedó anulado, pero el pago sigue con la referencia al cheque)
-		// responda "ya está anulado" y no el mensaje de cheque.
-		if (pago.getCheque() != null) {
-			throw new IncomeException("El pago " + idPago + " se pagó con cheque y nace confirmado: "
-					+ "use la reversión (pgtr/revertirConfirmado) en lugar de la anulación.");
-		}
-		if (estado == EstadoPagoProgramado.CONFIRMADO) {
-			throw new IncomeException("El pago " + idPago
-					+ (esDebitoAutomatico(pago)
-							? " es un débito automático ya ejecutado por el banco y tiene "
-							: " ya fue confirmado por el banco y tiene ")
-					+ "contabilidad generada. Use la reversión en lugar de la anulación.");
+		// ÍTEM 21 (2026-09-15, docs/logica-negocio/tsr/PLAN-SEGUIMIENTO-PAGOS.md §3.1): la regla
+		// vive en motivoNoAnular -- la usa también GET /pgtr/seguimiento/{id} para
+		// acciones.puedeAnular/motivoNoAnular, así que las dos puertas nunca pueden discrepar.
+		String motivoNoAnular = motivoNoAnular(pago);
+		if (motivoNoAnular != null) {
+			throw new IncomeException(motivoNoAnular);
 		}
 
 		pago.setEstado(Long.valueOf(EstadoPagoProgramado.ANULADO));
@@ -2249,6 +2242,85 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		resultado.put("mensaje", "Pago anulado correctamente.");
 		resultado.put("pago", idPago);
 		return resultado;
+	}
+
+	/**
+	 * ÍTEM 21: mismas reglas que {@link #anularPago}, en un solo lugar -- las usa tanto
+	 * {@code anularPago} (que corta con {@code IncomeException}) como
+	 * {@code GET /pgtr/seguimiento/{id}} (que sólo informa, sin mutar nada). No graba, no valida
+	 * el motivo (eso es del llamador que sí va a escribir).
+	 * @return el motivo por el que NO se puede anular, o {@code null} si sí se puede
+	 */
+	private String motivoNoAnular(PagoProgramado pago) {
+		int estado = (pago.getEstado() != null) ? pago.getEstado().intValue() : 0;
+		if (estado == EstadoPagoProgramado.ANULADO) {
+			return "El pago " + pago.getId() + " ya está anulado.";
+		}
+		// Defensivo: un pago con cheque nace CONFIRMADO, así que nunca debería
+		// llegar aquí en estado REGISTRADO; el check de estado de abajo ya lo
+		// bloquearía, pero el mensaje específico es más claro para el usuario.
+		// Va después del check de ANULADO para que un pago ya reversado (cuyo
+		// cheque quedó anulado, pero el pago sigue con la referencia al cheque)
+		// responda "ya está anulado" y no el mensaje de cheque.
+		if (pago.getCheque() != null) {
+			return "El pago " + pago.getId() + " se pagó con cheque y nace confirmado: "
+					+ "use la reversión (pgtr/revertirConfirmado) en lugar de la anulación.";
+		}
+		if (estado == EstadoPagoProgramado.CONFIRMADO) {
+			return "El pago " + pago.getId()
+					+ (esDebitoAutomatico(pago)
+							? " es un débito automático ya ejecutado por el banco y tiene "
+							: " ya fue confirmado por el banco y tiene ")
+					+ "contabilidad generada. Use la reversión en lugar de la anulación.";
+		}
+		return null;
+	}
+
+	/**
+	 * ÍTEM 21: ids de otros pagos que comparten el mismo cheque físico que {@code pago} --
+	 * vacío si no tiene cheque o si el cheque es sólo de este pago. Es la parte no trivial de
+	 * la regla D2 (docs/logica-negocio/tsr/DISENO-UN-CHEQUE-VARIOS-PAGOS.md §2): la usan tanto
+	 * {@code revertirPagoConfirmado} (rechaza con {@code ConflictoNegocioException}) como
+	 * {@code motivoNoRevertir} (sólo informa), para que la consulta no viva en dos lugares.
+	 */
+	private List<Long> otrosPagosDelMismoCheque(PagoProgramado pago) throws Throwable {
+		if (pago.getCheque() == null) {
+			return new ArrayList<>();
+		}
+		List<Long> idsGrupo = chequeService.idsPagoDelCheque(pago.getCheque().getCodigo());
+		List<Long> otros = new ArrayList<>();
+		for (Long id : idsGrupo) {
+			if (!id.equals(pago.getId())) {
+				otros.add(id);
+			}
+		}
+		return otros;
+	}
+
+	/**
+	 * ÍTEM 21: mismas reglas que {@link #revertirPagoConfirmado}, en un solo lugar. La
+	 * verificación del grupo de cheque no bloquea la lectura del seguimiento si falla -- el
+	 * usuario la ve igual al intentar revertir de verdad.
+	 * @return el motivo por el que NO se puede revertir, o {@code null} si sí se puede
+	 */
+	private String motivoNoRevertir(PagoProgramado pago) {
+		if (pago.getEstado() == null
+				|| pago.getEstado().intValue() != EstadoPagoProgramado.CONFIRMADO) {
+			return "Sólo se revierte un pago CONFIRMADO. Estado actual: "
+					+ descripcionEstado(pago.getEstado());
+		}
+		try {
+			List<Long> otrosPagos = otrosPagosDelMismoCheque(pago);
+			if (!otrosPagos.isEmpty()) {
+				return "El pago " + pago.getId() + " comparte el cheque N° "
+						+ pago.getCheque().getNumero() + " con los pagos " + otrosPagos
+						+ ". Reverse el grupo completo.";
+			}
+		} catch (Throwable e) {
+			System.err.println("⚠ No se pudo verificar el grupo de cheque del pago "
+					+ pago.getId() + ": " + e.getMessage());
+		}
+		return null;
 	}
 
 	@Override
@@ -2290,19 +2362,11 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		// reversar el grupo completo. Va ANTES de cualquier efecto de reverso: si se
 		// valida más abajo (como estaba el anularPorReverso), este pago ya habría
 		// quedado con su aplicación/asiento reversados aunque el reverso se rechace.
-		if (pago.getCheque() != null) {
-			List<Long> idsGrupo = chequeService.idsPagoDelCheque(pago.getCheque().getCodigo());
-			List<Long> otrosPagos = new ArrayList<>();
-			for (Long id : idsGrupo) {
-				if (!id.equals(idPago)) {
-					otrosPagos.add(id);
-				}
-			}
-			if (!otrosPagos.isEmpty()) {
-				throw new ConflictoNegocioException("El pago " + idPago + " comparte el cheque N° "
-						+ pago.getCheque().getNumero() + " con los pagos " + otrosPagos
-						+ ". Reverse el grupo completo.");
-			}
+		List<Long> otrosPagos = otrosPagosDelMismoCheque(pago);
+		if (!otrosPagos.isEmpty()) {
+			throw new ConflictoNegocioException("El pago " + idPago + " comparte el cheque N° "
+					+ pago.getCheque().getNumero() + " con los pagos " + otrosPagos
+					+ ". Reverse el grupo completo.");
 		}
 
 		Map<String, Object> resultado = new HashMap<>();
@@ -3723,6 +3787,9 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 			return "sin estado";
 		}
 		switch (estado.intValue()) {
+			// ÍTEM 21 (2026-09-15): faltaba POR_APROBAR -- caía al default y el mensaje de
+			// motivoNoRevertir mostraba "Estado actual: 0" en vez de un texto legible.
+			case EstadoPagoProgramado.POR_APROBAR: return "Por aprobar";
 			case EstadoPagoProgramado.REGISTRADO: return "Registrado";
 			case EstadoPagoProgramado.EN_ARCHIVO: return "En archivo";
 			case EstadoPagoProgramado.CONFIRMADO: return "Confirmado";
@@ -3747,5 +3814,423 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 			System.err.println("⚠ Fecha inválida '" + fecha + "', se usa la fecha actual.");
 			return LocalDate.now();
 		}
+	}
+
+	// =====================================================================
+	// ÍTEM 21 (2026-09-15, docs/logica-negocio/tsr/PLAN-SEGUIMIENTO-PAGOS.md/API-SEGUIMIENTO-
+	// PAGOS.md) — Seguimiento de un pago: búsqueda y detalle
+	// =====================================================================
+
+	/**
+	 * Un resolutor por clave de origen (tabla §3 del contrato). ÍTEM 21, alcance de esta
+	 * entrega: FACTURA_COMPRA/NOTA_VENTA, LIQUIDACION_COMPRA, EGRESO_TESORERIA,
+	 * ANTICIPO_PROVEEDOR (los cuatro propios de CXP) y CRD_DEVOLUCION_APORTE. Los ocho restantes
+	 * (TSR_CAJA_CHICA, CXC_DEVOLUCION_CLIENTE, RHH_NOMINA, RHH_BENEFICIO_SOCIAL,
+	 * RHH_ANTICIPO_EMPLEADO, RHH_PLANILLA_IESS, CRD_PENSION_COMPLEMENTARIA, CRD_SEGURO_JUBILADOS,
+	 * CRD_DESEMBOLSO_PRESTAMO) quedan SIN resolutor a propósito -- degradan a
+	 * {@code resuelto=false} tal como exige el contrato, reportado aparte al árbitro. Agregar uno
+	 * nuevo es una clase que implemente {@link ResolutorOrigenPago} más una entrada acá: no hace
+	 * falta tocar el resto de este bloque.
+	 */
+	private static final Map<String, ResolutorOrigenPago> RESOLUTORES_ORIGEN = construirResolutoresOrigen();
+	private static final Map<String, String> RUTA_POR_ORIGEN = construirRutaPorOrigen();
+	private static final Map<String, String> TEXTO_POR_ORIGEN = construirTextoPorOrigen();
+
+	private static Map<String, ResolutorOrigenPago> construirResolutoresOrigen() {
+		Map<String, ResolutorOrigenPago> m = new HashMap<>();
+		ResolutorOrigenPago factura = new ResolutorFacturaCompra();
+		m.put(OrigenPagoCxp.FACTURA_COMPRA, factura);
+		m.put("NOTA_VENTA", factura);
+		m.put(OrigenPagoCxp.LIQUIDACION_COMPRA, new ResolutorLiquidacionCompra());
+		m.put(OrigenPagoCxp.EGRESO_TESORERIA, new ResolutorEgresoTesoreria());
+		m.put(OrigenPagoCxp.ANTICIPO_PROVEEDOR, new ResolutorAnticipoProveedor());
+		m.put(OrigenPagoExterno.CRD_DEVOLUCION_APORTE, new ResolutorCrdDevolucionAporte());
+		return m;
+	}
+
+	/** Rutas del FE, tal como están al 2026-09-15 en app.routes.ts (API-SEGUIMIENTO-PAGOS.md §3). */
+	private static Map<String, String> construirRutaPorOrigen() {
+		Map<String, String> m = new HashMap<>();
+		m.put(OrigenPagoCxp.FACTURA_COMPRA, "/menucuentaxpagar/pagos/solicitud");
+		m.put("NOTA_VENTA", "/menucuentaxpagar/pagos/solicitud");
+		m.put(OrigenPagoCxp.LIQUIDACION_COMPRA, "/menucuentaxpagar/pagos/solicitud");
+		m.put(OrigenPagoCxp.EGRESO_TESORERIA, "/menutesoreria/procesos/registrar/egresos");
+		m.put(OrigenPagoCxp.ANTICIPO_PROVEEDOR, "/menutesoreria/procesos/anticipos/proveedores");
+		m.put(OrigenPagoExterno.TSR_CAJA_CHICA, "/menutesoreria/procesos/caja-chica/reposicion");
+		m.put(OrigenPagoExterno.CXC_DEVOLUCION_CLIENTE, "/menutesoreria/procesos/anticipos/seguimiento");
+		m.put(OrigenPagoExterno.RHH_NOMINA, "/menurecursoshumanos/procesos/ordenes-pago");
+		m.put(OrigenPagoExterno.RHH_BENEFICIO_SOCIAL, "/menurecursoshumanos/procesos/pago-beneficios-sociales");
+		m.put(OrigenPagoExterno.RHH_ANTICIPO_EMPLEADO, "/menurecursoshumanos/procesos/anticipos");
+		m.put(OrigenPagoExterno.RHH_PLANILLA_IESS, "/menurecursoshumanos/procesos/planillas-iess");
+		m.put(OrigenPagoExterno.CRD_DEVOLUCION_APORTE, "/menucreditos/devolucion-aportes");
+		m.put(OrigenPagoExterno.CRD_PAGO_PENSION_COMPLEMENTARIA, "/menucreditos/jubilados");
+		m.put(OrigenPagoExterno.CRD_SEGURO_JUBILADOS, "/menucreditos/jubilados");
+		m.put(OrigenPagoExterno.CRD_DESEMBOLSO_PRESTAMO, "/menucreditos/prestamo-edit");
+		return m;
+	}
+
+	private static Map<String, String> construirTextoPorOrigen() {
+		Map<String, String> m = new HashMap<>();
+		m.put(OrigenPagoCxp.FACTURA_COMPRA, "Factura de compra");
+		m.put("NOTA_VENTA", "Nota de venta");
+		m.put(OrigenPagoCxp.LIQUIDACION_COMPRA, "Liquidación de compra");
+		m.put(OrigenPagoCxp.EGRESO_TESORERIA, "Egreso de tesorería");
+		m.put(OrigenPagoCxp.ANTICIPO_PROVEEDOR, "Anticipo a proveedor");
+		m.put(OrigenPagoExterno.TSR_CAJA_CHICA, "Caja chica");
+		m.put(OrigenPagoExterno.CXC_DEVOLUCION_CLIENTE, "Devolución a cliente");
+		m.put(OrigenPagoExterno.RHH_NOMINA, "Nómina");
+		m.put(OrigenPagoExterno.RHH_BENEFICIO_SOCIAL, "Beneficio social");
+		m.put(OrigenPagoExterno.RHH_ANTICIPO_EMPLEADO, "Anticipo a empleado");
+		m.put(OrigenPagoExterno.RHH_PLANILLA_IESS, "Planilla IESS");
+		m.put(OrigenPagoExterno.CRD_DEVOLUCION_APORTE, "Devolución de aportes");
+		m.put(OrigenPagoExterno.CRD_PAGO_PENSION_COMPLEMENTARIA, "Pensión complementaria");
+		m.put(OrigenPagoExterno.CRD_SEGURO_JUBILADOS, "Seguro de jubilados");
+		m.put(OrigenPagoExterno.CRD_DESEMBOLSO_PRESTAMO, "Desembolso de préstamo");
+		return m;
+	}
+
+	/** FACTURA_COMPRA con tipoComprobante='02' (nota de venta manual) -> clave NOTA_VENTA. */
+	private String claveOrigenPago(PagoProgramado pago) {
+		if (pago.getFacturaCompra() != null) {
+			return "02".equals(pago.getFacturaCompra().getTipoComprobante())
+					? "NOTA_VENTA" : OrigenPagoCxp.FACTURA_COMPRA;
+		}
+		if (pago.getLiquidacionCompra() != null) return OrigenPagoCxp.LIQUIDACION_COMPRA;
+		if (pago.getEgreso() != null) return OrigenPagoCxp.EGRESO_TESORERIA;
+		if (pago.getAnticipo() != null) return OrigenPagoCxp.ANTICIPO_PROVEEDOR;
+		return pago.getOrigenExterno();
+	}
+
+	private Long idOrigenDocumento(PagoProgramado pago) {
+		if (pago.getFacturaCompra() != null) return pago.getFacturaCompra().getId();
+		if (pago.getLiquidacionCompra() != null) return pago.getLiquidacionCompra().getId();
+		if (pago.getEgreso() != null) return pago.getEgreso().getId();
+		if (pago.getAnticipo() != null) return pago.getAnticipo().getId();
+		return pago.getIdOrigen();
+	}
+
+	/** Titular si lo tiene (pagos propios de CXP); si no, el nombre denormalizado (orígenes
+	 *  externos, sin titular en el maestro -- API-SEGUIMIENTO-PAGOS.md §5). */
+	private String nombreBeneficiario(PagoProgramado pago) {
+		if (pago.getTitular() != null && pago.getTitular().getNombre() != null) {
+			return pago.getTitular().getNombre();
+		}
+		return pago.getBeneficiarioNombre();
+	}
+
+	/** Texto en MAYÚSCULAS igual al nombre de la constante -- así lo pide el contrato
+	 *  (distinto de {@link #descripcionEstado}, que usa Título y no incluye POR_APROBAR). */
+	private String estadoTextoUpper(Long estado) {
+		if (estado == null) return null;
+		switch (estado.intValue()) {
+			case EstadoPagoProgramado.POR_APROBAR: return "POR_APROBAR";
+			case EstadoPagoProgramado.REGISTRADO:  return "REGISTRADO";
+			case EstadoPagoProgramado.EN_ARCHIVO:  return "EN_ARCHIVO";
+			case EstadoPagoProgramado.CONFIRMADO:  return "CONFIRMADO";
+			case EstadoPagoProgramado.RECHAZADO:   return "RECHAZADO";
+			case EstadoPagoProgramado.ANULADO:     return "ANULADO";
+			default: return String.valueOf(estado);
+		}
+	}
+
+	private String formaPagoTexto(Long formaPago) {
+		if (formaPago == null) return null;
+		if (formaPago.longValue() == FormaPagoProgramado.EFECTIVO) return "Efectivo";
+		if (formaPago.longValue() == FormaPagoProgramado.TRANSFERENCIA) return "Transferencia";
+		if (formaPago.longValue() == FormaPagoProgramado.CHEQUE) return "Cheque";
+		if (formaPago.longValue() == FormaPagoProgramado.DEBITO_AUTOMATICO) return "Débito automático";
+		return String.valueOf(formaPago);
+	}
+
+	private String estadoLoteTexto(Long estado) {
+		if (estado == null) return null;
+		switch (estado.intValue()) {
+			case EstadoLotePago.GENERADO: return "GENERADO";
+			case EstadoLotePago.RESPUESTA_PROCESADA: return "RESPUESTA_PROCESADA";
+			case EstadoLotePago.ANULADO: return "ANULADO";
+			default: return String.valueOf(estado);
+		}
+	}
+
+	@Override
+	public List<Map<String, Object>> buscarSeguimiento(Long numero, String texto, String origen, Long idOrigen,
+			Long idEmpresa) throws Throwable {
+
+		System.out.println("=== buscarSeguimiento | numero=" + numero + " | texto=" + texto
+				+ " | origen=" + origen + " | idOrigen=" + idOrigen + " | empresa=" + idEmpresa + " ===");
+
+		List<PagoProgramado> pagos;
+		if (numero != null) {
+			PagoProgramado p = em.find(PagoProgramado.class, numero);
+			pagos = (p != null) ? java.util.Collections.singletonList(p) : new ArrayList<>();
+		} else if (origen != null && idOrigen != null) {
+			pagos = buscarPagosPorOrigen(origen, idOrigen, idEmpresa);
+		} else {
+			// Mismo filtro que GET /pgtr/listar?texto= (PagoProgramadoDaoServiceImpl:~141-145),
+			// sin duplicarlo: se llama al mismo método del DAO, con el resto de filtros vacíos.
+			pagos = pagoProgramadoDaoService.selectByEmpresaEstado(
+					idEmpresa, null, null, null, null, null, null, texto, null);
+		}
+
+		pagos.sort((a, b) -> {
+			LocalDateTime fa = a.getFechaRegistro();
+			LocalDateTime fb = b.getFechaRegistro();
+			if (fa == null && fb == null) return 0;
+			if (fa == null) return 1;
+			if (fb == null) return -1;
+			return fb.compareTo(fa);
+		});
+		if (pagos.size() > 50) {
+			pagos = pagos.subList(0, 50);
+		}
+
+		List<Map<String, Object>> resultado = new ArrayList<>();
+		for (PagoProgramado p : pagos) {
+			Map<String, Object> fila = new LinkedHashMap<>();
+			fila.put("idPago", p.getId());
+			fila.put("estado", p.getEstado());
+			fila.put("estadoTexto", estadoTextoUpper(p.getEstado()));
+			fila.put("valor", p.getValor());
+			fila.put("fechaProgramada", p.getFechaProgramada() != null ? p.getFechaProgramada().toString() : null);
+			fila.put("beneficiario", nombreBeneficiario(p));
+			String clave = claveOrigenPago(p);
+			fila.put("origen", clave);
+			fila.put("origenTexto", TEXTO_POR_ORIGEN.getOrDefault(clave, clave));
+			fila.put("concepto", p.getObservacion());
+			resultado.add(fila);
+		}
+		return resultado;
+	}
+
+	/** Búsqueda inversa (clave+idOrigen -> pagos): FK propia para los 4 orígenes de CXP,
+	 *  origenExterno+idOrigen para el resto -- mismo criterio que ya usa selectByEmpresaEstado
+	 *  para el filtro "origen" de /pgtr/listar (PagoProgramadoDaoServiceImpl:~100-125). */
+	private List<PagoProgramado> buscarPagosPorOrigen(String origen, Long idOrigen, Long idEmpresa)
+			throws Throwable {
+		String campoFk = null;
+		if (OrigenPagoCxp.FACTURA_COMPRA.equals(origen) || "NOTA_VENTA".equals(origen)) {
+			campoFk = "facturaCompra";
+		} else if (OrigenPagoCxp.LIQUIDACION_COMPRA.equals(origen)) {
+			campoFk = "liquidacionCompra";
+		} else if (OrigenPagoCxp.EGRESO_TESORERIA.equals(origen)) {
+			campoFk = "egreso";
+		} else if (OrigenPagoCxp.ANTICIPO_PROVEEDOR.equals(origen)) {
+			campoFk = "anticipo";
+		}
+		StringBuilder jpql = new StringBuilder("select p from PagoProgramado p where ");
+		if (campoFk != null) {
+			jpql.append("p.").append(campoFk).append(".id = :idOrigen");
+		} else {
+			jpql.append("p.origenExterno = :origen and p.idOrigen = :idOrigen");
+		}
+		if (idEmpresa != null) {
+			jpql.append(" and p.empresa.codigo = :idEmpresa");
+		}
+		jakarta.persistence.Query q = em.createQuery(jpql.toString());
+		q.setParameter("idOrigen", idOrigen);
+		if (campoFk == null) {
+			q.setParameter("origen", origen);
+		}
+		if (idEmpresa != null) {
+			q.setParameter("idEmpresa", idEmpresa);
+		}
+		@SuppressWarnings("unchecked")
+		List<PagoProgramado> lista = q.getResultList();
+		return lista;
+	}
+
+	@Override
+	public Map<String, Object> obtenerSeguimiento(Long idPago) throws Throwable {
+		System.out.println("=== obtenerSeguimiento | idPago=" + idPago + " ===");
+
+		PagoProgramado p = em.find(PagoProgramado.class, idPago);
+		if (p == null) {
+			return null;
+		}
+
+		// ── pago ────────────────────────────────────────────────────────────
+		Map<String, Object> pago = new LinkedHashMap<>();
+		pago.put("idPago", p.getId());
+		pago.put("estado", p.getEstado());
+		pago.put("estadoTexto", estadoTextoUpper(p.getEstado()));
+		pago.put("formaPago", p.getFormaPago());
+		pago.put("formaPagoTexto", formaPagoTexto(p.getFormaPago()));
+		pago.put("valor", p.getValor());
+		pago.put("fechaProgramada", p.getFechaProgramada() != null ? p.getFechaProgramada().toString() : null);
+		pago.put("beneficiario", nombreBeneficiario(p));
+		pago.put("identificacionBeneficiario", p.getTitular() != null
+				? p.getTitular().getIdentificacion() : p.getBeneficiarioIdentificacion());
+		pago.put("concepto", p.getObservacion());
+		pago.put("observacion", p.getObservacion());
+		pago.put("cuentaOrigen", p.getCuentaBancaria() != null
+				? textoCuentaBancaria(p.getCuentaBancaria()) : null);
+		pago.put("cuentaDestino", p.getCuentaDestino() != null
+				? textoCuentaDestino(p.getCuentaDestino()) : null);
+		pago.put("motivo", p.getMotivo());
+		pago.put("referenciaBanco", p.getReferenciaBanco());
+		pago.put("fechaRespuesta", p.getFechaRespuesta() != null ? p.getFechaRespuesta().toString() : null);
+
+		if (p.getLote() != null) {
+			LotePago lote = p.getLote();
+			Map<String, Object> loteMap = new LinkedHashMap<>();
+			loteMap.put("idLote", lote.getId());
+			loteMap.put("nombreArchivo", lote.getNombreArchivo());
+			loteMap.put("estado", lote.getEstado());
+			loteMap.put("estadoTexto", estadoLoteTexto(lote.getEstado()));
+			pago.put("lote", loteMap);
+		} else {
+			pago.put("lote", null);
+		}
+
+		if (p.getAsiento() != null) {
+			Asiento asiento = p.getAsiento();
+			Map<String, Object> asientoMap = new LinkedHashMap<>();
+			asientoMap.put("codigo", asiento.getCodigo());
+			asientoMap.put("numeroAlterno", asiento.getNumeroAlterno());
+			pago.put("asiento", asientoMap);
+		} else {
+			pago.put("asiento", null);
+		}
+
+		// ── origen ──────────────────────────────────────────────────────────
+		String clave = claveOrigenPago(p);
+		Long idOrigenDoc = idOrigenDocumento(p);
+		Map<String, Object> origen = new LinkedHashMap<>();
+		origen.put("clave", clave);
+		origen.put("texto", TEXTO_POR_ORIGEN.getOrDefault(clave, clave));
+		origen.put("idOrigen", idOrigenDoc);
+		ResolutorOrigenPago resolutor = (clave != null) ? RESOLUTORES_ORIGEN.get(clave) : null;
+		DocumentoOrigenPago doc = null;
+		if (resolutor != null && idOrigenDoc != null) {
+			try {
+				doc = resolutor.resolver(idOrigenDoc, em);
+			} catch (Throwable e) {
+				System.err.println("⚠ No se pudo resolver el origen " + clave + " (idOrigen="
+						+ idOrigenDoc + ") del pago " + idPago + ": " + e.getMessage());
+				doc = null;
+			}
+		}
+		origen.put("resuelto", doc != null);
+		if (doc != null) {
+			Map<String, Object> docMap = new LinkedHashMap<>();
+			docMap.put("numero", doc.getNumero());
+			docMap.put("estado", doc.getEstado());
+			docMap.put("estadoTexto", doc.getEstadoTexto());
+			docMap.put("fecha", doc.getFecha());
+			docMap.put("total", doc.getTotal());
+			origen.put("documento", docMap);
+		} else {
+			origen.put("documento", null);
+		}
+		origen.put("ruta", clave != null ? RUTA_POR_ORIGEN.get(clave) : null);
+
+		// ── etapas ──────────────────────────────────────────────────────────
+		List<Map<String, Object>> etapas = construirEtapas(p);
+
+		// ── acciones ────────────────────────────────────────────────────────
+		String motivoNoAnular = motivoNoAnular(p);
+		String motivoNoRevertir = motivoNoRevertir(p);
+		String rutaEtapaActual = null;
+		for (Map<String, Object> et : etapas) {
+			if ("ACTUAL".equals(et.get("situacion"))) {
+				rutaEtapaActual = (String) et.get("ruta");
+			}
+		}
+		if (rutaEtapaActual == null) {
+			rutaEtapaActual = (String) origen.get("ruta");
+		}
+		Map<String, Object> acciones = new LinkedHashMap<>();
+		acciones.put("rutaEtapaActual", rutaEtapaActual);
+		acciones.put("puedeAnular", motivoNoAnular == null);
+		acciones.put("motivoNoAnular", motivoNoAnular);
+		acciones.put("puedeRevertir", motivoNoRevertir == null);
+		acciones.put("motivoNoRevertir", motivoNoRevertir);
+
+		Map<String, Object> resultado = new LinkedHashMap<>();
+		resultado.put("pago", pago);
+		resultado.put("origen", origen);
+		resultado.put("etapas", etapas);
+		resultado.put("acciones", acciones);
+		return resultado;
+	}
+
+	/**
+	 * Línea de tiempo ORIGEN → POR_APROBAR → REGISTRADO → EN_ARCHIVO → CONFIRMADO
+	 * (API-SEGUIMIENTO-PAGOS.md §2). En RECHAZADO/ANULADO se marca HECHA hasta el punto
+	 * alcanzado y se agrega la etapa terminal como ACTUAL, sin las pendientes que ya no van a
+	 * ocurrir.
+	 * <p>
+	 * Para ANULADO no hay un dato que registre desde qué paso se anuló (el estado es un único
+	 * campo): se aproxima con {@code lote != null} -> alcanzó EN_ARCHIVO/REGISTRADO; sin lote ->
+	 * se asume anulado en POR_APROBAR. Es una heurística, no un hecho medido -- documentada en
+	 * el reporte del ítem, no inventada en silencio.
+	 */
+	private List<Map<String, Object>> construirEtapas(PagoProgramado p) {
+		int estado = (p.getEstado() != null) ? p.getEstado().intValue() : -1;
+		boolean terminalNegativo = estado == EstadoPagoProgramado.RECHAZADO
+				|| estado == EstadoPagoProgramado.ANULADO;
+
+		int alcanzado;
+		if (estado == EstadoPagoProgramado.RECHAZADO) {
+			// RECHAZADO sólo ocurre desde EN_ARCHIVO (respuesta del banco) -- EstadoPagoProgramado.
+			alcanzado = EstadoPagoProgramado.EN_ARCHIVO;
+		} else if (estado == EstadoPagoProgramado.ANULADO) {
+			alcanzado = (p.getLote() != null) ? EstadoPagoProgramado.EN_ARCHIVO : EstadoPagoProgramado.POR_APROBAR;
+		} else {
+			alcanzado = estado;
+		}
+
+		List<Map<String, Object>> etapas = new ArrayList<>();
+		etapas.add(etapa("ORIGEN", "Documento registrado", -1, alcanzado, terminalNegativo, null));
+		etapas.add(etapa("POR_APROBAR", "Aprobación de tesorería", EstadoPagoProgramado.POR_APROBAR,
+				alcanzado, terminalNegativo, "/menutesoreria/pagos/aprobacion"));
+		etapas.add(etapa("REGISTRADO", "Archivo del banco", EstadoPagoProgramado.REGISTRADO,
+				alcanzado, terminalNegativo, "/menutesoreria/pagos/archivo-banco"));
+		etapas.add(etapa("EN_ARCHIVO", "Respuesta del banco", EstadoPagoProgramado.EN_ARCHIVO,
+				alcanzado, terminalNegativo, "/menutesoreria/pagos/confirmacion"));
+		etapas.add(etapa("CONFIRMADO", "Pagado", EstadoPagoProgramado.CONFIRMADO,
+				alcanzado, terminalNegativo, "/menutesoreria/pagos/consulta"));
+
+		if (terminalNegativo) {
+			// Se descartan las etapas PENDIENTE: ya no van a ocurrir.
+			etapas.removeIf(et -> "PENDIENTE".equals(et.get("situacion")));
+			String claveTerminal = (estado == EstadoPagoProgramado.RECHAZADO) ? "RECHAZADO" : "ANULADO";
+			String textoTerminal = (estado == EstadoPagoProgramado.RECHAZADO)
+					? "Rechazado por el banco" : "Anulado";
+			etapas.add(etapa(claveTerminal, textoTerminal, alcanzado, alcanzado, false, null));
+		}
+		return etapas;
+	}
+
+	private Map<String, Object> etapa(String clave, String texto, int pasoOrden, int alcanzadoOrden,
+			boolean terminalNegativo, String ruta) {
+		Map<String, Object> m = new LinkedHashMap<>();
+		m.put("clave", clave);
+		m.put("texto", texto);
+		String situacion;
+		if (pasoOrden < alcanzadoOrden) {
+			situacion = "HECHA";
+		} else if (pasoOrden == alcanzadoOrden) {
+			situacion = terminalNegativo ? "HECHA" : "ACTUAL";
+		} else {
+			situacion = "PENDIENTE";
+		}
+		m.put("situacion", situacion);
+		if ("ACTUAL".equals(situacion) && ruta != null) {
+			m.put("ruta", ruta);
+		}
+		return m;
+	}
+
+	private String textoCuentaBancaria(CuentaBancaria c) {
+		String banco = (c.getBanco() != null && c.getBanco().getNombre() != null)
+				? c.getBanco().getNombre() : "Banco";
+		return banco + " " + nvl(c.getNumeroCuenta(), "");
+	}
+
+	private String textoCuentaDestino(CuentaBancariaTitular c) {
+		String banco = (c.getBanco() != null && c.getBanco().getNombre() != null)
+				? c.getBanco().getNombre() : "Banco";
+		return banco + " " + nvl(c.getNumeroCuenta(), "");
 	}
 }

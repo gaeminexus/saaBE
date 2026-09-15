@@ -79,10 +79,17 @@ public class PagoProgramadoDaoServiceImpl extends EntityDaoImpl<PagoProgramado>
             }
         }
 
+        // ÍTEM 21 (2026-09-15, docs/logica-negocio/tsr/API-SEGUIMIENTO-PAGOS.md §1): idEmpresa
+        // pasó a ser opcional -- GET /pgtr/seguimiento?texto= lo permite omitir. Todos los
+        // llamadores existentes (listar, porAprobar) siempre mandan un idEmpresa, así que su
+        // comportamiento no cambia.
         StringBuilder jpql = new StringBuilder(
                 " select p from PagoProgramado p " +
                 " left join p.titular t " +
-                " where  p.empresa.codigo = :idEmpresa ");
+                " where  1 = 1 ");
+        if (idEmpresa != null) {
+            jpql.append(" and p.empresa.codigo = :idEmpresa ");
+        }
         if (!estadosFiltrados.isEmpty()) {
             jpql.append(" and ( p.estado in :estados ) ");
         }
@@ -148,7 +155,9 @@ public class PagoProgramadoDaoServiceImpl extends EntityDaoImpl<PagoProgramado>
         jpql.append(" order by p.fechaProgramada, p.id");
 
         Query query = em.createQuery(jpql.toString());
-        query.setParameter("idEmpresa", idEmpresa);
+        if (idEmpresa != null) {
+            query.setParameter("idEmpresa", idEmpresa);
+        }
         if (!estadosFiltrados.isEmpty()) {
             query.setParameter("estados", estadosFiltrados);
         }
