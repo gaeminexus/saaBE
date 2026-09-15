@@ -86,7 +86,8 @@ distintas y confundirlas es peor que la deuda.
 | # | Ruta completa | Qué hace | Estado |
 |---|---|---|---|
 | **e2-43** | `cxc/sql/e2-43-retencion-sobre-nota-de-venta.sql` | Antes de emitir retenciones sobre notas de venta: si el combo tiene el tipo `02` (`CBR.TSRI`, LSRI 3), cuántas notas de venta comparten autorización (trampa del ATS), números repetidos entre factura y nota de venta, y retenciones **ya emitidas** sobre notas de venta — incluidas las que salieron declarando `01`. **Solo lectura** | ✅ **CORRIDO el 2026-09-15.** El `02` está activo en el combo (`TSRI` id 7). `FCTC`: 181 facturas por 177.565,27 y **2 notas de venta** por 117,50. Bloques 3, 3b, 4 y 5 **vacíos**: ninguna autorización compartida, ningún número repetido y **ninguna retención emitida todavía sobre una nota de venta**. La trampa del ATS está latente, no activa; el BE-3 del plan no hace falta |
-| **e2-44** | `sri/sql/e2-44-tipocliente-pasaporte-c05580508.sql` | Por qué el `AT082026` (generado 14/9 17:27) sale sin `<tipoCliente>` para el pasaporte `C05580508`, si el código que lo escribe está desde `b170911e` (11/9). Titular(es) con esa identificación y sus facturas de agosto. **Solo lectura** | ✅ **CORRIDO el 2026-09-15. El dato está bien:** un solo titular (65, AGHAYAR SEYIDOV), tipo de identificación H=3 (pasaporte → `06`), **tipo de persona H=1 (NATURAL)**, `TTLRTPAT` nulo; una factura de agosto (147, `001-001-000000774`, 770,01, estado 5). Con ese dato `resolverTipoClienteVenta` devuelve `01` **por cualquier camino** (el `catch` también cae al alterno). **Conclusión: el `AT082026` no lo generó el código de `b170911e`** — WAR viejo en el servidor o archivo anterior copiado. Se verifica regenerando y buscando `C05580508` en el XML |
+| **e2-44** | `sri/sql/e2-44-tipocliente-pasaporte-c05580508.sql` | Por qué el `AT082026` (generado 14/9 17:27) sale sin `<tipoCliente>` para el pasaporte `C05580508`, si el código que lo escribe está desde `b170911e` (11/9). Titular(es) con esa identificación y sus facturas de agosto. **Solo lectura** | ✅ **CORRIDO el 2026-09-15. El dato está bien:** un solo titular (65, AGHAYAR SEYIDOV), tipo de identificación H=3 (pasaporte → `06`), **tipo de persona H=1 (NATURAL)**, `TTLRTPAT` nulo; una factura de agosto (147, `001-001-000000774`, 770,01, estado 5). ~~Con ese dato `resolverTipoClienteVenta` devuelve `01` por cualquier camino — el `AT082026` no lo generó el código vigente.~~ ⛔ **CONCLUSIÓN FALSA, corregida el mismo día.** Supuse que `PDTRVLRV` del rubro 35 era nulo porque así lo anotaba este índice el 11-09. Al regenerar, la pantalla avisó *«el catálogo del rubro 35 devolvió 'null'»*: **es el TEXTO `null`**, que el código rechaza con un `return null` **antes** de llegar al respaldo por alterno. El WAR sí es el vigente. Ver `e2-45` |
+| **e2-45** | `sri/sql/e2-45-rubro-35-tipo-persona-valor-sri.sql` | ⚠️ **NO es solo lectura.** Control del texto `'null'` en el rubro 35, conteo de la familia en todo `SCP.PDTR`, y `UPDATE` de los dos detalles a `01` (NATURAL) / `02` (JURÍDICO), la Tabla 14 del ATS. `COMMIT` comentado, reverso comentado | 🔴 **PENDIENTE — 2026-09-15.** Destraba el `<tipoCliente>` del ATS de agosto |
 
 ### Consulta suelta que quedó sin script y vale anotarla
 
@@ -100,6 +101,9 @@ select d.PDTRALTR, d.PDTRDSCR, d.PDTRVLRV
 --  1  NATURAL    (PDTRVLRV = NULL)
 --  2  JURIDICO   (PDTRVLRV = NULL)
 ```
+
+⛔ **Corregido el 2026-09-15:** ese «NULL» era **el texto `null`**, no un nulo — el cliente SQL los muestra
+igual. El ATS lo delató al avisar *«devolvió 'null'»*. Ver `e2-45`.
 
 **Las dos filas con el `valorAlfanumerico` vacío**, que es por lo que el ATS deriva el `01`/`02`
 desde el alterno. Llenar esas dos celdas con `'01'`/`'02'` haría innecesario el mapeo en código —
