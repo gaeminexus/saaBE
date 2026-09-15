@@ -390,7 +390,8 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 
 			writeElement(writer, "codSustento",              "02", 6); // Tabla 5 ATS: 02=Factura
 			writeElement(writer, "codDocSustento",           nvl(tipoDocReten, ""), 6);
-			writeElement(writer, "numDocSustento", normalizarNumDocSustento(numDocReten), 6);
+			writeElement(writer, "numDocSustento",
+					com.saa.ejb.cxc.util.NumeroDocumentoSri.normalizarA15(numDocReten), 6);
 			writeElement(writer, "fechaEmisionDocSustento",
 					fechaEmiDoc != null ? fechaEmiDoc.format(dateFormatter) : "", 6);
 			writeElement(writer, "pagoLocExt",               "01", 6); // Tabla 15 ATS: 01=Residente
@@ -624,26 +625,6 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 		return value != null ? value : defaultValue;
 	}
 
-	// docs/logica-negocio/cxc/PLAN-RETENCION-SOBRE-NOTA-DE-VENTA.md §6: numDocSustento debe
-	// llegar al SRI en 15 dígitos (EEE-PPP-SSSSSSSSS), y una nota de venta manual puede tipear
-	// un segmento sin completar (p. ej. secuencial de 7 dígitos). Si numDocReten tiene forma
-	// E-P-S con los tres segmentos sólo de dígitos y dentro de 3/3/9, completa cada uno con
-	// ceros antes de unirlos; cualquier otra forma se deja igual que antes (sólo quita guiones).
-	// Única función de normalización — la usan tanto el XML (numDocSustento) como la validación
-	// previa a firmar.
-	private String normalizarNumDocSustento(String numDocReten) {
-		String valor = nvl(numDocReten, "");
-		String[] partes = valor.split("-");
-		if (partes.length == 3
-				&& partes[0].matches("[0-9]{1,3}")
-				&& partes[1].matches("[0-9]{1,3}")
-				&& partes[2].matches("[0-9]{1,9}")) {
-			return "0".repeat(3 - partes[0].length()) + partes[0]
-					+ "0".repeat(3 - partes[1].length()) + partes[1]
-					+ "0".repeat(9 - partes[2].length()) + partes[2];
-		}
-		return valor.replace("-", "");
-	}
 
 	// =========================================================================
 	// Etapas transaccionales independientes del proceso de emisión
@@ -1880,7 +1861,7 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 		if (detalles != null) {
 			for (DetalleRetencionV2 detalle : detalles) {
 				String numDocReten = detalle.getNumDocReten();
-				String normalizado = normalizarNumDocSustento(numDocReten);
+				String normalizado = com.saa.ejb.cxc.util.NumeroDocumentoSri.normalizarA15(numDocReten);
 				if (!normalizado.matches("[0-9]{15}")) {
 					resultado.put("etapa", "VALIDACION_FACTURA");
 					resultado.put("mensaje", "El número del documento sustento " + nvl(numDocReten, "")

@@ -140,18 +140,60 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         compras.addAll(comprasNotaCredito(idEmpresa, desde, hasta, desdeDT, hastaDT, avisos));
         compras.addAll(comprasNotaDebito(idEmpresa, desde, hasta, desdeDT, hastaDT, avisos));
 
+        // ÍTEM 13 (docs/logica-negocio/sri/PLAN-ATS-AJUSTES-2026-09-15.md §3): las facturas de
+        // intermediario ya están excluidas de `compras` (comprasFacturaCompra), pero hacen falta
+        // acá -- ANTES de cargar el mapa de retenciones -- para poder avisar si alguna quedó con
+        // una retención enlazada que ya no se va a declarar en ningún lado.
+        List<FacturaCompra> facturasIntermediario =
+                facturasIntermediarioDelPeriodo(idEmpresa, desde, hasta, desdeDT, hastaDT);
+
         List<LineaVenta> ventas = agruparVentas(idEmpresa, desdeDT, hastaDT, avisos);
 
-        // ÍTEM 5 del encargo 2026-09-09: retenciones de compra (PGS.RCV2/DRC2), enlazadas por
-        // autorización del documento. Se calcula ANTES de generarXml para que writeDetalleCompra
-        // sólo tenga que buscar en el mapa. Ver DIAGNOSTICO-ATS-RECHAZADO-VALIDADOR.md §A.2/§A.3.
+        // ÍTEM 5 del encargo 2026-09-09, extendido por el ÍTEM 11 (2026-09-15): retenciones de
+        // compra (PGS.RCV2/DRC2), enlazadas por autorización + número del documento sustento
+        // (antes sólo autorización -- una nota de venta preimpresa comparte autorización con el
+        // resto de su talonario, ver PLAN-RETENCION-SOBRE-NOTA-DE-VENTA.md §1.5). Se calcula ANTES
+        // de generarXml para que writeDetalleCompra sólo tenga que buscar en el mapa. Ver
+        // DIAGNOSTICO-ATS-RECHAZADO-VALIDADOR.md §A.2/§A.3.
+        //
+        // Las autorizaciones de las facturas de intermediario ENTRAN acá también -- si no, una
+        // retención enlazada a una de ellas ni se cargaría, y el aviso del ÍTEM 13b no tendría
+        // nada que encontrar.
         java.util.Set<String> autorizacionesCompra = new java.util.HashSet<String>();
         for (LineaCompra c : compras) {
             if (c.autorizacion != null && !c.autorizacion.trim().isEmpty()) {
                 autorizacionesCompra.add(c.autorizacion);
             }
         }
+        for (FacturaCompra fi : facturasIntermediario) {
+            if (fi.getAutorizacion() != null && !fi.getAutorizacion().trim().isEmpty()) {
+                autorizacionesCompra.add(fi.getAutorizacion());
+            }
+        }
         Map<String, RetencionInfo> retencionesCompra = cargarRetencionesCompra(idFacturador, autorizacionesCompra, avisos);
+
+        // Claves de `retencionesCompra` que SÍ quedaron enlazadas a algo -- una compra declarada
+        // (writeDetalleCompra las agrega dentro de generarXml) o, acá mismo, una factura de
+        // intermediario excluida. Lo que sobre al terminar se avisa como "no enlazada" (ÍTEM 11c).
+        java.util.Set<String> clavesRetencionUsadas = new java.util.HashSet<String>();
+
+        // ÍTEM 13b: factura de intermediario con una retención enlazada -- esa retención se queda
+        // sin ningún documento donde declararse (la factura está excluida a propósito). Se marca
+        // usada para que NO dispare además el aviso genérico de "no enlazada" del ÍTEM 11c.
+        for (FacturaCompra fi : facturasIntermediario) {
+            if (fi.getAutorizacion() == null || fi.getAutorizacion().trim().isEmpty()) {
+                continue;
+            }
+            String clave = fi.getAutorizacion() + "|" + com.saa.ejb.cxc.util.NumeroDocumentoSri.normalizarA15(
+                    fi.getNumEstablecimiento(), fi.getNumPtoEmision(), fi.getSecuencial());
+            RetencionInfo ret = retencionesCompra.get(clave);
+            if (ret != null) {
+                clavesRetencionUsadas.add(clave);
+                avisos.add("Factura de intermediario " + fi.getId() + " excluida del ATS tiene la "
+                        + "retención " + nvl(ret.numeroRetencion, "") + ": no se declara. Revisar con "
+                        + "el contador.");
+            }
+        }
 
         // ÍTEM 8 del encargo 2026-09-09: <anulados> declara los secuenciales que EMITIMOS
         // NOSOTROS y anulamos -- nunca los de un documento que nos emitió un proveedor. Las 4
@@ -179,7 +221,7 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         }
 
         String xml = generarXml(facturador, periodo, compras, ventas, anulados, totalVentasDeclarado,
-                retencionesCompra, avisos);
+                retencionesCompra, clavesRetencionUsadas, avisos);
         String nombreArchivoXml = String.format("AT%02d%04d.xml", mes, anio);
         String nombreArchivoZip = String.format("AT%02d%04d.zip", mes, anio);
         byte[] zip = empaquetar(nombreArchivoXml, xml);
@@ -223,6 +265,17 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
      * diferencia de <b>+7,23 exacta en las ocho</b> contra su propia columna Base IVA 0% (ver
      * DIAGNOSTICO-ATS-BASES-Y-RETENCIONES.md §2). <b>Base gravada correcta = SUBTOTAL − SUBCERO.</b>
      * <p>
+     * <b>ÍTEM 12 (2026-09-15, docs/logica-negocio/sri/PLAN-ATS-AJUSTES-2026-09-15.md §2): esta
+     * fórmula NO vale para toda {@code LiquidacionCompraCompra} (PGS.LQCC).</b> La verificación de
+     * arriba sólo cubrió la carga por XML. Pero {@code PGS.LQCC} tiene un segundo origen:
+     * {@code LiquidacionCompraServiceImpl.crearDocumentoCxp} (línea 813) copia el subtotal desde
+     * {@code CBR.LQCS}, donde la pantalla graba {@code subtotal = subtotalGravado}
+     * ({@code liquidaciones.component.ts:661} del FE) y el XML que se emite arma
+     * {@code totalSinImpuestos = SUBTOTAL + SUBCERO} ({@code LiquidacionCompraServiceImpl:1035}).
+     * Para esas (una {@code LiquidacionCompra} de {@code CBR.LQCS} la referencia por
+     * {@code documentoCxp}/{@code LQCSLQCC}), SUBTOTAL YA ES la base gravada: no se le resta
+     * SUBCERO, y este método ni se llama (ver {@code comprasLiquidacion}).
+     * <p>
      * Si SUBCERO &gt; SUBTOTAL (dato inconsistente), no se emite una base negativa: se avisa con
      * el documento y los dos valores, y la gravada queda en 0.00.
      */
@@ -240,9 +293,15 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
 
     private List<LineaCompra> comprasFacturaCompra(Long idEmpresa, LocalDate desde, LocalDate hasta,
             LocalDateTime desdeDT, LocalDateTime hastaDT, List<String> avisos) {
+        // ÍTEM 13 (docs/logica-negocio/sri/PLAN-ATS-AJUSTES-2026-09-15.md §3), pedido textual del
+        // usuario: una factura marcada de intermediario al procesarla no se declara en el ATS.
+        // FacturaCompra.esIntermediario (FCTCESIN) es NULLABLE -- nulo = no es intermediario, por
+        // eso el filtro compara explícito contra 1 en vez de nvl/coalesce en JPQL (ya reventó una
+        // vez, ver §36 del estado del equipo).
         TypedQuery<FacturaCompra> q = em.createQuery(
                 "select f from FacturaCompra f where f.empresa.codigo = :idEmpresa "
                         + "and f.estado = :activo and f.titular is not null "
+                        + "and (f.esIntermediario is null or f.esIntermediario <> 1) "
                         + "and ((f.fechaRegistroContable between :desde and :hasta) "
                         + "or (f.fechaRegistroContable is null and f.fecha between :desdeDT and :hastaDT)) "
                         + "order by f.fecha", FacturaCompra.class);
@@ -275,6 +334,30 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         return resultado;
     }
 
+    /**
+     * ÍTEM 13b (docs/logica-negocio/sri/PLAN-ATS-AJUSTES-2026-09-15.md §3): facturas de
+     * intermediario del período, mismo filtro de fecha que {@link #comprasFacturaCompra} pero
+     * SIN el resto de condiciones de esa consulta -- acá no interesa si tienen sustento o cuenta
+     * contable, sólo si existen, para poder avisar si alguna quedó con una retención enlazada que
+     * ya no se va a declarar en ningún lado (esa factura está excluida de {@code <compras>}).
+     */
+    private List<FacturaCompra> facturasIntermediarioDelPeriodo(Long idEmpresa, LocalDate desde, LocalDate hasta,
+            LocalDateTime desdeDT, LocalDateTime hastaDT) {
+        TypedQuery<FacturaCompra> q = em.createQuery(
+                "select f from FacturaCompra f where f.empresa.codigo = :idEmpresa "
+                        + "and f.estado = :activo and f.titular is not null and f.esIntermediario = 1 "
+                        + "and ((f.fechaRegistroContable between :desde and :hasta) "
+                        + "or (f.fechaRegistroContable is null and f.fecha between :desdeDT and :hastaDT)) "
+                        + "order by f.fecha", FacturaCompra.class);
+        q.setParameter("idEmpresa", idEmpresa);
+        q.setParameter("activo", Long.valueOf(Estado.ACTIVO));
+        q.setParameter("desde", desde);
+        q.setParameter("hasta", hasta);
+        q.setParameter("desdeDT", desdeDT);
+        q.setParameter("hastaDT", hastaDT);
+        return q.getResultList();
+    }
+
     private List<LineaCompra> comprasLiquidacion(Long idEmpresa, LocalDate desde, LocalDate hasta,
             LocalDateTime desdeDT, LocalDateTime hastaDT, List<String> avisos) {
         TypedQuery<LiquidacionCompraCompra> q = em.createQuery(
@@ -289,13 +372,35 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         q.setParameter("hasta", hasta);
         q.setParameter("desdeDT", desdeDT);
         q.setParameter("hastaDT", hastaDT);
+        List<LiquidacionCompraCompra> liquidaciones = q.getResultList();
+
+        // ÍTEM 12 (docs/logica-negocio/sri/PLAN-ATS-AJUSTES-2026-09-15.md §2): una LQCC es
+        // EMITIDA por ASOPREP si alguna LiquidacionCompra (CBR.LQCS) la referencia en
+        // documentoCxp (LQCSLQCC) -- para esas, SUBTOTAL ya es la base gravada, sin restar
+        // SUBCERO (ver javadoc de baseGravadaCompra). Se distingue por el dato, no por una
+        // marca nueva: una sola consulta con los ids del resultado. Lista vacía → sin
+        // consultar, "in :ids" con lista vacía revienta.
+        Set<Long> emitidas = new java.util.HashSet<Long>();
+        if (!liquidaciones.isEmpty()) {
+            List<Long> ids = new ArrayList<Long>();
+            for (LiquidacionCompraCompra l : liquidaciones) {
+                ids.add(l.getId());
+            }
+            emitidas.addAll(em.createQuery(
+                    "select l.documentoCxp.id from LiquidacionCompra l where l.documentoCxp.id in :ids",
+                    Long.class).setParameter("ids", ids).getResultList());
+        }
+
         List<LineaCompra> resultado = new ArrayList<LineaCompra>();
-        for (LiquidacionCompraCompra l : q.getResultList()) {
+        for (LiquidacionCompraCompra l : liquidaciones) {
             double subtotal = nvl(l.getSubtotal(), 0.0), subcero = nvl(l.getSubcero(), 0.0);
+            boolean emitida = emitidas.contains(l.getId());
+            double gravada = emitida ? subtotal
+                    : baseGravadaCompra(subtotal, subcero, "Liquidación de compra", l.getId(), avisos);
             resultado.add(new LineaCompra(l.getTipoComprobante(), l.getNumEstablecimiento(),
                     l.getNumPtoEmision(), l.getSecuencial(), l.getFecha() != null ? l.getFecha().toLocalDate() : null,
                     l.getAutorizacion(), l.getTitular(), l.getSustentoTributario(), l.getFechaRegistroContable(),
-                    baseGravadaCompra(subtotal, subcero, "Liquidación de compra", l.getId(), avisos), subcero,
+                    gravada, subcero,
                     nvl(l.getvIVA(), 0.0), nvl(l.getvICE(), 0.0),
                     formasPagoLiquidacionCompra(l.getId())));
             if (l.getFechaRegistroContable() == null) {
@@ -560,7 +665,8 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
 
     private String generarXml(Facturador facturador, YearMonth periodo, List<LineaCompra> compras,
             List<LineaVenta> ventas, List<LineaAnulado> anulados, double totalVentas,
-            Map<String, RetencionInfo> retencionesCompra, List<String> avisos)
+            Map<String, RetencionInfo> retencionesCompra, Set<String> clavesRetencionUsadas,
+            List<String> avisos)
             throws Exception {
         StringWriter sw = new StringWriter();
         XMLOutputFactory factory = XMLOutputFactory.newInstance();
@@ -589,11 +695,31 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         w.writeStartElement("compras");
         w.writeCharacters("\n");
         for (LineaCompra c : compras) {
-            writeDetalleCompra(w, c, retencionesCompra, avisos);
+            writeDetalleCompra(w, c, retencionesCompra, clavesRetencionUsadas, avisos);
         }
         w.writeCharacters("  ");
         w.writeEndElement();
         w.writeCharacters("\n");
+
+        // ÍTEM 11c (docs/logica-negocio/sri/PLAN-ATS-AJUSTES-2026-09-15.md §1), OBLIGATORIO: toda
+        // retención autorizada del período que no quedó enlazada a ninguna compra (ni, antes de
+        // acá, a una factura de intermediario excluida -- ÍTEM 13b) se avisa. Antes, con la clave
+        // vieja (sólo autorización), una retención con el número mal tipeado se declaraba igual
+        // por compartir autorización con otra del mismo talonario; con la clave nueva desaparecería
+        // EN SILENCIO si no fuera por este aviso.
+        for (Map.Entry<String, RetencionInfo> entrada : retencionesCompra.entrySet()) {
+            if (clavesRetencionUsadas.contains(entrada.getKey())) {
+                continue;
+            }
+            RetencionInfo ret = entrada.getValue();
+            String[] partes = entrada.getKey().split("\\|", 2);
+            String autorizacion = partes.length > 0 ? partes[0] : "";
+            String numDocSustento = partes.length > 1 ? partes[1] : "";
+            avisos.add("Retención " + nvl(ret.numeroRetencion, "") + " (documento sustento "
+                    + nvl(ret.numDocRetenOriginal, numDocSustento) + ", autorización " + autorizacion
+                    + ") no quedó enlazada a ninguna compra del período: no se declara en el ATS. "
+                    + "Revisar el número del documento sustento.");
+        }
 
         w.writeCharacters("  ");
         w.writeStartElement("ventas");
@@ -658,7 +784,7 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
     }
 
     private void writeDetalleCompra(XMLStreamWriter w, LineaCompra c, Map<String, RetencionInfo> retenciones,
-            List<String> avisos) throws Exception {
+            Set<String> clavesRetencionUsadas, List<String> avisos) throws Exception {
         w.writeCharacters("    ");
         w.writeStartElement("detalleCompras");
         w.writeCharacters("\n");
@@ -690,11 +816,21 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         writeElement(w, "montoIva", formatDecimal(c.montoIva), 6);
 
         // Retenciones de IVA/renta, pagoExterior y formasDePago -- DIAGNOSTICO-ATS-RECHAZADO-
-        // VALIDADOR.md §A.2/§A.3. Sin retenciones.get(c.autorizacion) los 8 campos numéricos van
-        // en 0.00 y NI air NI el bloque estabRetencion1..fechaEmiRet1 se escriben, tal como está
-        // en el archivo autorizado para un documento sin retención.
-        RetencionInfo ret = (c.autorizacion != null && !c.autorizacion.trim().isEmpty())
-                ? retenciones.get(c.autorizacion) : null;
+        // VALIDADOR.md §A.2/§A.3. Sin match en el mapa los 8 campos numéricos van en 0.00 y NI air
+        // NI el bloque estabRetencion1..fechaEmiRet1 se escriben, tal como está en el archivo
+        // autorizado para un documento sin retención.
+        //
+        // ÍTEM 11 (2026-09-15): la clave ya no es sólo la autorización -- autorización + número de
+        // 15 dígitos del propio documento (establecimiento-puntoEmision-secuencial de esta compra),
+        // para no pegarle la retención de una nota de venta a otra del mismo talonario.
+        String claveRetencion = (c.autorizacion != null && !c.autorizacion.trim().isEmpty())
+                ? c.autorizacion + "|" + com.saa.ejb.cxc.util.NumeroDocumentoSri.normalizarA15(
+                        c.establecimiento, c.puntoEmision, c.secuencial)
+                : null;
+        RetencionInfo ret = claveRetencion != null ? retenciones.get(claveRetencion) : null;
+        if (ret != null) {
+            clavesRetencionUsadas.add(claveRetencion);
+        }
         writeElement(w, "valRetBien10", formatDecimal(ret != null ? ret.valRetBien10 : 0.0), 6);
         writeElement(w, "valRetServ20", formatDecimal(ret != null ? ret.valRetServ20 : 0.0), 6);
         writeElement(w, "valorRetBienes", formatDecimal(ret != null ? ret.valorRetBienes : 0.0), 6);
@@ -1092,18 +1228,27 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         q.setParameter("autorizaciones", autorizacionesCompra);
         for (DetalleRetencionV2 d : q.getResultList()) {
             String autorizacion = d.getDocResAutorizacion();
-            RetencionInfo info = resultado.get(autorizacion);
+            // ÍTEM 11 (2026-09-15): la clave ya no es sólo la autorización -- una nota de venta
+            // preimpresa comparte autorización (la del talonario) con el resto de sus notas, así
+            // que agrupar sólo por autorización le pegaba la retención de una a todas. Se agrupa
+            // por autorización + número de 15 dígitos del documento sustento (normalizado con la
+            // misma regla que usa el propio XML de la retención).
+            String numDocRetenNorm = com.saa.ejb.cxc.util.NumeroDocumentoSri.normalizarA15(d.getNumDocReten());
+            String clave = autorizacion + "|" + numDocRetenNorm;
+            RetencionInfo info = resultado.get(clave);
             if (info == null) {
                 info = new RetencionInfo();
+                info.numDocRetenOriginal = d.getNumDocReten();
                 RetencionV2 cabecera = d.getRetencionV2();
                 if (cabecera != null) {
+                    info.numeroRetencion = cabecera.getNumero();
                     info.estabRetencion1 = cabecera.getNumEstablecimiento();
                     info.ptoEmiRetencion1 = cabecera.getNumPtoEmision();
                     info.secRetencion1 = cabecera.getSecuencial();
                     info.autRetencion1 = cabecera.getAutorizacion();
                     info.fechaEmiRet1 = cabecera.getFecha() != null ? cabecera.getFecha().toLocalDate() : null;
                 }
-                resultado.put(autorizacion, info);
+                resultado.put(clave, info);
             }
             String codImpuesto = nvl(d.getCodImpuesto(), "");
             double valor = nvl(d.getValorReten(), 0.0);
@@ -1337,15 +1482,20 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
     }
 
     /**
-     * Retención de compra ya resuelta para un documento (clave: su autorización), lista para que
-     * {@code writeDetalleCompra} la escriba sin volver a tocar {@code RCV2}/{@code DRC2}. Ver
-     * {@code cargarRetencionesCompra} (ÍTEM 5 del encargo 2026-09-09).
+     * Retención de compra ya resuelta para un documento (clave: autorización + número de 15
+     * dígitos del documento sustento, ÍTEM 11 2026-09-15 -- antes era sólo la autorización, ver
+     * PLAN-ATS-AJUSTES-2026-09-15.md §1), lista para que {@code writeDetalleCompra} la escriba
+     * sin volver a tocar {@code RCV2}/{@code DRC2}. Ver {@code cargarRetencionesCompra} (ÍTEM 5
+     * del encargo 2026-09-09).
      */
     private static class RetencionInfo {
         double valRetBien10 = 0.0, valRetServ20 = 0.0, valorRetBienes = 0.0, valRetServ50 = 0.0,
                 valorRetServicios = 0.0, valRetServ100 = 0.0;
         List<DetalleAir> airLineas = new ArrayList<DetalleAir>();
         String formaPago;
+        /** Número de la retención (RetencionV2.numero) y documento sustento tal como se tipeó,
+         *  sin normalizar -- sólo para el texto del aviso de "no enlazada" (ÍTEM 11c). */
+        String numeroRetencion, numDocRetenOriginal;
         String estabRetencion1, ptoEmiRetencion1, secRetencion1, autRetencion1;
         LocalDate fechaEmiRet1;
     }
