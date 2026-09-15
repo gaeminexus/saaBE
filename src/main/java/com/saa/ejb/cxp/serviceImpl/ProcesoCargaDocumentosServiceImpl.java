@@ -894,6 +894,44 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         return resultado;
     }
 
+    @Override
+    public Map<String, Object> registrarDocumentoBD(Long idDocumentoCxp, Long idEmpresa, Long idUsuario,
+                                                      Boolean esIntermediario, Long idProductoIntermediario,
+                                                      String observacionAdicional)
+            throws Throwable {
+
+        System.out.println("=== registrarDocumentoBD (con observación adicional) idDocumentoCxp="
+                + idDocumentoCxp);
+
+        // Único punto que escribe DCXPOBAD (docs/.../PLAN-OBSERVACION-ASIENTO-DOCUMENTOS-CXP.md §2.1-2):
+        // se carga y valida el documento ANTES de cualquier bloqueante, se normaliza y graba la
+        // observación, y recién después sigue el flujo normal de registro (que vuelve a cargar el
+        // documento por su cuenta). Así, si el registro se corta por productos pendientes, la
+        // observación ya quedó guardada para cuando se complete.
+        DocumentoCxp doc = documentoCxpDaoService.selectById(idDocumentoCxp,
+                NombreEntidadesCompra.DOCUMENTO_CXP);
+        if (doc == null)
+            throw new Exception("DocumentoCxp no encontrado: " + idDocumentoCxp);
+
+        if (doc.getEstadoDocumento() == null || doc.getEstadoDocumento() != ESTADO_XML_CARGADO)
+            throw new Exception("El documento debe tener estado XML_CARGADO (2). Estado actual: "
+                    + doc.getEstadoDocumento());
+
+        String obs = observacionAdicional == null ? null : observacionAdicional.trim();
+        if (obs != null && obs.isEmpty())
+            obs = null;
+        if (obs != null && obs.length() > 500)
+            throw new com.saa.basico.util.IncomeException(
+                    "La observación adicional admite hasta 500 caracteres (se recibieron "
+                    + obs.length() + ").");
+
+        doc.setObservacionAdicional(obs);
+        documentoCxpDaoService.save(doc, doc.getId());
+
+        return registrarDocumentoBD(idDocumentoCxp, idEmpresa, idUsuario, esIntermediario,
+                idProductoIntermediario);
+    }
+
     // =========================================================
     // FASE 4: Resolver novedad  →  opera sobre DocumentoCxp
     // =========================================================
@@ -1088,7 +1126,8 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                     // El asiento lleva LocalDate y la factura guarda LocalDateTime.
                     // Mismo recorte que hace el registro original (:1933).
                     fc.getFecha() != null ? fc.getFecha().toLocalDate() : java.time.LocalDate.now(),
-                    "Factura compra (recontabilizada): " + nvlStr(fc.getNumero(), String.valueOf(idDocBD)),
+                    conObservacionAdicional("Factura compra (recontabilizada): "
+                            + nvlStr(fc.getNumero(), String.valueOf(idDocBD)), doc),
                     "SISTEMA");
         } catch (Throwable t) {
             // Se deja el documento en XML_CARGADO: si la cuenta sigue mal, el usuario corrige y
@@ -1177,6 +1216,19 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
 
     private String nvlStr(String v, String porDefecto) {
         return (v != null && !v.trim().isEmpty()) ? v : porDefecto;
+    }
+
+    // docs/logica-negocio/cxp/PLAN-OBSERVACION-ASIENTO-DOCUMENTOS-CXP.md §2.4-5: todo asiento de
+    // un documento CXP agrega " | {observación adicional}" cuando el documento la tiene (la del
+    // usuario, DCXP.DCXPOBAD — no DCXPOBSR, que es del sistema). Una sola función, usada en
+    // generarAsientoCxp, contabilizarReembolso y recontabilizarDocumento. ASNT.ASNTOBSR es de
+    // 2000: si el resultado se pasa, se corta ahí.
+    private String conObservacionAdicional(String base, DocumentoCxp doc) {
+        if (doc == null || doc.getObservacionAdicional() == null) return base;
+        String obs = doc.getObservacionAdicional().trim();
+        if (obs.isEmpty()) return base;
+        String resultado = base + " | " + obs;
+        return resultado.length() > 2000 ? resultado.substring(0, 2000) : resultado;
     }
 
     // =========================================================
@@ -2064,10 +2116,21 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                     "REEMBOLSO: descuadre de %.2f (sum RMBF=%.2f vs factura.total=%.2f). "
                     + "Ajuste los documentos sustento antes de contabilizar.", diferencia, sumRmbf, totalFc));
 
+        // DocumentoCxp del que sale la observación adicional del usuario. Antes se buscaba
+        // DESPUÉS del asiento, sólo para actualizar estado; se adelanta para poder armar la
+        // observación, y se reusa abajo para no repetir la consulta ni el selectById.
+        @SuppressWarnings("unchecked")
+        java.util.List<Long> dcxpIds = em.createQuery(
+                "select d.id from DocumentoCxp d where d.idDocumentoBD = :id and d.tipoTablaDestino = 'FACTURA_COMPRA'")
+                .setParameter("id", idFacturaCompra).getResultList();
+        DocumentoCxp doc = !dcxpIds.isEmpty()
+                ? documentoCxpDaoService.selectById(dcxpIds.get(0), NombreEntidadesCompra.DOCUMENTO_CXP)
+                : null;
+
         // Generar asiento
         java.time.LocalDate fechaDoc = fc.getFecha() != null ? fc.getFecha().toLocalDate() : java.time.LocalDate.now();
-        String obs = "Factura reembolso: " + (fc.getNumero() != null ? fc.getNumero() : fc.getClave())
-                + " | Proveedor: " + (fc.getTitular() != null ? fc.getTitular().getNombre() : "");
+        String obs = conObservacionAdicional("Factura reembolso: " + (fc.getNumero() != null ? fc.getNumero() : fc.getClave())
+                + " | Proveedor: " + (fc.getTitular() != null ? fc.getTitular().getNombre() : ""), doc);
         com.saa.model.cnt.Asiento asiento = asientoContableService.generarAsientoFacturaCompra(
                 idFacturaCompra, idEmpresa, com.saa.rubros.TipoAsientos.FACTURAS_COMPRA,
                 fechaDoc, obs, "SISTEMA");
@@ -2076,19 +2139,12 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         fc.setAsiento(asiento);
         facturaCompraDaoService.save(fc, fc.getId());
 
-        // Buscar DocumentoCxp y actualizarlo
-        @SuppressWarnings("unchecked")
-        java.util.List<Long> dcxpIds = em.createQuery(
-                "select d.id from DocumentoCxp d where d.idDocumentoBD = :id and d.tipoTablaDestino = 'FACTURA_COMPRA'")
-                .setParameter("id", idFacturaCompra).getResultList();
-        if (!dcxpIds.isEmpty()) {
-            DocumentoCxp doc = documentoCxpDaoService.selectById(dcxpIds.get(0), NombreEntidadesCompra.DOCUMENTO_CXP);
-            if (doc != null) {
-                doc.setEstadoDocumento(ESTADO_REGISTRADO_BD);
-                doc.setObservacion(null);
-                if (doc.getFechaRegistroBD() == null) doc.setFechaRegistroBD(java.time.LocalDateTime.now());
-                documentoCxpDaoService.save(doc, doc.getId());
-            }
+        // Actualizar el DocumentoCxp ya cargado arriba (si existe)
+        if (doc != null) {
+            doc.setEstadoDocumento(ESTADO_REGISTRADO_BD);
+            doc.setObservacion(null);
+            if (doc.getFechaRegistroBD() == null) doc.setFechaRegistroBD(java.time.LocalDateTime.now());
+            documentoCxpDaoService.save(doc, doc.getId());
         }
 
         Map<String, Object> resultado = new java.util.HashMap<>();
@@ -4535,6 +4591,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                     obsBase += " | Factura: " + facturaAfectada;
                 }
             }
+            obsBase = conObservacionAdicional(obsBase, doc);
 
             if ("FACTURA_COMPRA".equals(tipo)) {
                 // Si la factura es reembolso con contabilización pendiente (sin RMBF o descuadre),

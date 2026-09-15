@@ -122,6 +122,23 @@ public interface ProcesoCargaDocumentosService {
             throws Throwable;
 
     /**
+     * Igual que {@link #registrarDocumentoBD(Long, Long, Long, Boolean, Long)}, con la observación
+     * adicional del usuario (docs/logica-negocio/cxp/PLAN-OBSERVACION-ASIENTO-DOCUMENTOS-CXP.md §2).
+     * Es la ÚNICA sobrecarga que escribe {@code DocumentoCxp.observacionAdicional} (PGS.DCXP.DCXPOBAD):
+     * las de 3 y 5 parámetros no la tocan, para que un re-registro disparado desde otro camino
+     * (completar productos pendientes, novedad, lote) no la borre.
+     *
+     * @param observacionAdicional texto del usuario, hasta 500 caracteres; se hace {@code trim};
+     *                              nulo o sólo espacios se graba como {@code NULL}
+     * @throws com.saa.basico.util.IncomeException si, después del trim, supera los 500 caracteres
+     *         — no se graba nada
+     */
+    Map<String, Object> registrarDocumentoBD(Long idDocumentoCxp, Long idEmpresa, Long idUsuario,
+                                              Boolean esIntermediario, Long idProductoIntermediario,
+                                              String observacionAdicional)
+            throws Throwable;
+
+    /**
      * FASE 4: Resuelve una novedad en un DocumentoCxp.
      * accion={@link com.saa.rubros.AccionNovedad#REEMPLAZAR} (2) → revierte registros previos, carga nuevo XML y re-registra.
      * accion={@link com.saa.rubros.AccionNovedad#MANTENER}   (1) → marca estadoNovedad=3 sin cambios.

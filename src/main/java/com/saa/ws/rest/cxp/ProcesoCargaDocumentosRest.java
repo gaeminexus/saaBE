@@ -274,6 +274,11 @@ public class ProcesoCargaDocumentosRest {
      * grupo de ese producto (docs/logica-negocio/cxp/DISENO-FACTURA-INTERMEDIARIO.md).
      * A diferencia de "esReembolso" (que se marca al subir el XML), esta marca se decide
      * al registrar, así que viaja en este body y no en el documento ya persistido.
+     *
+     * "observacionAdicional" (String, opcional, hasta 500 caracteres): texto del usuario que se
+     * guarda en DocumentoCxp.observacionAdicional y se agrega al final de la observación del
+     * asiento (docs/logica-negocio/cxp/API-OBSERVACION-ADICIONAL-REGISTRO-CXP.md). Ausente o
+     * vacío → se graba nulo. Más de 500 caracteres (después de trim) → 422.
      */
     @POST
     @Path("/registrarBD/{idDocumentoCxp}")
@@ -296,10 +301,13 @@ public class ProcesoCargaDocumentosRest {
             Long idProductoIntermediario = (params.get("idProductoIntermediario") != null)
                     ? Long.valueOf(params.get("idProductoIntermediario").toString())
                     : null;
+            String observacionAdicional = (params.get("observacionAdicional") != null)
+                    ? params.get("observacionAdicional").toString()
+                    : null;
 
             Map<String, Object> resultado = procesoCargaDocumentosService
                     .registrarDocumentoBD(idDocumentoCxp, idEmpresa, idUsuario,
-                            esIntermediario, idProductoIntermediario);
+                            esIntermediario, idProductoIntermediario, observacionAdicional);
 
             // Bloqueantes (productos sin clasificar, tipo asiento no configurado, etc.)
             if (Boolean.TRUE.equals(resultado.get("pendienteClasificacion"))) {

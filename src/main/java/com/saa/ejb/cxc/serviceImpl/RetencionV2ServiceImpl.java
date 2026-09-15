@@ -784,6 +784,20 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 		if (retencion == null) {
 			throw new IncomeException("Retención V2 con ID " + idRetencion + " no encontrada.");
 		}
+
+		// Retención de total 0,00 (p. ej. un código al 0%): no hay nada que cruzar contra la
+		// factura, con o sin asiento — va ANTES del chequeo de asiento a propósito.
+		// docs/logica-negocio/cxc/PLAN-RETENCION-SOBRE-NOTA-DE-VENTA.md §6.1 (BE-9): antes esto
+		// llegaba a nuevaAplicacion, que rechaza con "El monto a aplicar no puede ser cero" — un
+		// error real para un caso que no lo es.
+		double total = retencion.getTotal() != null ? retencion.getTotal() : 0.0;
+		if (Math.abs(total) < 0.005) {
+			resultado.put("sinMontoACruzar", true);
+			System.out.println("ℹ Retención V2 " + idRetencion
+					+ " con total 0,00: no hay cruce que registrar contra la factura.");
+			return resultado;
+		}
+
 		if (retencion.getAsiento() == null) {
 			throw new IncomeException("La retención V2 " + idRetencion + " no tiene asiento contable: "
 					+ "no se puede registrar el cruce con la factura de compra.");
@@ -1358,6 +1372,12 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 			try {
 				java.util.Map<String, Object> resAplicacion = self().aplicarPagoRetencionV2(idRetencion);
 				resultado.put("aplicacionPago", resAplicacion.get("idAplicacion"));
+				// Retención de total 0,00: no lanza excepción (ver aplicarPagoRetencionV2), así
+				// que este try no falla — pero tampoco hay cruce real. Se propaga la marca para
+				// que el llamador no la confunda con "ya estaba completo" ni con "pendiente".
+				if (Boolean.TRUE.equals(resAplicacion.get("sinMontoACruzar"))) {
+					resultado.put("sinMontoACruzar", true);
+				}
 			} catch (Throwable e) {
 				resultado.put("cruceFacturaPendiente", true);
 				resultado.put("advertenciaAplicacion",
@@ -1404,16 +1424,28 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 			agregarErroresContablesRetencionV2(retencion, resultado);
 		}
 
+		// Retención de total 0,00: nunca va a tener cruce (aplicarPagoRetencionV2 no lo
+		// intenta), así que "teniaCruceAntes" queda en false para siempre y no puede ser
+		// la vara de si está completa — se usa "sinMontoACruzar" en su lugar.
+		// docs/logica-negocio/cxc/PLAN-RETENCION-SOBRE-NOTA-DE-VENTA.md §6.1 (BE-9).
+		boolean sinMontoACruzar = Boolean.TRUE.equals(resultado.get("sinMontoACruzar"));
+
 		boolean exito = !Boolean.TRUE.equals(resultado.get("contabilidadPendiente"))
 				&& !Boolean.TRUE.equals(resultado.get("cruceFacturaPendiente"));
-		boolean yaEstabaCompleto = teniaAsientoAntes && teniaCruceAntes;
+		boolean yaEstabaCompleto = teniaAsientoAntes && (teniaCruceAntes || sinMontoACruzar);
 
 		resultado.put("exito", exito);
 		resultado.put("yaEstabaCompleto", yaEstabaCompleto);
 		if (exito) {
-			resultado.put("mensaje", yaEstabaCompleto
-					? "La retención ya tenía asiento y cruce."
-					: "Asiento y cruce registrados.");
+			if (sinMontoACruzar) {
+				resultado.put("mensaje", yaEstabaCompleto
+						? "La retención ya tenía asiento. Es de total $0,00: no hay cruce que registrar."
+						: "Asiento registrado. La retención es de total $0,00: no hay cruce que registrar.");
+			} else {
+				resultado.put("mensaje", yaEstabaCompleto
+						? "La retención ya tenía asiento y cruce."
+						: "Asiento y cruce registrados.");
+			}
 		} else if (Boolean.TRUE.equals(resultado.get("contabilidadPendiente"))) {
 			resultado.put("mensaje", nvl((String) resultado.get("advertenciaAsiento"),
 					"No se pudo generar el asiento contable."));
@@ -2292,7 +2324,10 @@ public java.util.Map<String, Object> consultarYActualizarEstadoRetencionV2(Long 
 		try {
 			java.util.Map<String, Object> resAplicacion = self().aplicarPagoRetencionV2(idRetencion);
 			resultado.put("aplicacionPago", resAplicacion.get("idAplicacion"));
-			if (Boolean.TRUE.equals(resAplicacion.get("aplicado"))) {
+			if (Boolean.TRUE.equals(resAplicacion.get("sinMontoACruzar"))) {
+				// Retención de total 0,00: no hay cruce que completar, y no es un pendiente.
+				resultado.put("sinMontoACruzar", true);
+			} else if (Boolean.TRUE.equals(resAplicacion.get("aplicado"))) {
 				System.out.println("✓ Cruce con la factura de compra completado.");
 			}
 		} catch (Throwable e) {

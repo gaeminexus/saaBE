@@ -503,15 +503,23 @@ public class FacturaCompraServiceImpl implements FacturaCompraService {
 					+ factura.getId() + ": " + e.getMessage());
 		}
 
-		// Asiento contable — mismo generador que la factura de compra electrónica.
+		// Asiento contable — mismo generador y mismo formato que la factura de compra
+		// electrónica: "X compra: {serie} | Proveedor: {emisor}"
+		// (docs/logica-negocio/cxp/PLAN-OBSERVACION-ASIENTO-DOCUMENTOS-CXP.md §1.1).
+		// Además la propia observación de la nota de venta, si la tiene — mismo
+		// principio del punto B del plan: lo que el usuario escribe llega al asiento.
 		// Sin asiento si generaConta=0: no es error (contrato §1).
 		com.saa.model.cnt.Asiento asiento = null;
 		if (generaConta) {
+			String obsAsiento = "Nota de venta compra: " + factura.getNumero()
+					+ " | Proveedor: " + nombreProveedor(titular);
+			if (!esVacio(factura.getObservacion()))
+				obsAsiento += " | " + factura.getObservacion().trim();
 			asiento = asientoContableService.generarAsientoFacturaCompra(
 					factura.getId(), solicitud.getIdEmpresa(),
 					com.saa.rubros.TipoAsientos.FACTURAS_COMPRA,
 					factura.getFecha() != null ? factura.getFecha().toLocalDate() : java.time.LocalDate.now(),
-					"Nota de venta compra: " + factura.getNumero(),
+					obsAsiento,
 					usuario.getNombre() != null ? usuario.getNombre() : "SISTEMA");
 			factura.setAsiento(asiento);
 			factura = facturaCompraDaoService.save(factura, factura.getId());
@@ -578,6 +586,14 @@ public class FacturaCompraServiceImpl implements FacturaCompraService {
 
 	private boolean esVacio(String valor) {
 		return valor == null || valor.trim().isEmpty();
+	}
+
+	// razón social si la tiene; si no, nombre; si no, identificación — mismo criterio
+	// que ProcesoCargaDocumentosServiceImpl usa para el "emisor" de la observación.
+	private String nombreProveedor(Titular titular) {
+		if (!esVacio(titular.getRazonSocial())) return titular.getRazonSocial();
+		if (!esVacio(titular.getNombre())) return titular.getNombre();
+		return titular.getIdentificacion();
 	}
 
 	// Nota de venta manual: establecimiento/ptoEmisión/secuencial deben quedar sólo

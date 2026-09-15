@@ -132,6 +132,10 @@ public class DocumentoCxp implements Serializable {
     @Basic @Column(name = "DCXPOBSR", length = 2000)
     private String observacion;
 
+    /** Observación del USUARIO, capturada al registrar (POST /registrarBD). NO es DCXPOBSR: ésa la escribe y borra el sistema. */
+    @Basic @Column(name = "DCXPOBAD", length = 500)
+    private String observacionAdicional;
+
     /** Período contable — FK única a CNT.PRDO, columna toma el nombre del PK: PRDOCDGO */
     @ManyToOne @JoinColumn(name = "PRDOCDGO", referencedColumnName = "PRDOCDGO")
     private Periodo periodoContable;
@@ -217,6 +221,8 @@ public class DocumentoCxp implements Serializable {
     public void setEstadoNovedad(Long estadoNovedad) { this.estadoNovedad = estadoNovedad; }
     public String getObservacion() { return observacion; }
     public void setObservacion(String observacion) { this.observacion = observacion; }
+    public String getObservacionAdicional() { return observacionAdicional; }
+    public void setObservacionAdicional(String observacionAdicional) { this.observacionAdicional = observacionAdicional; }
     public Periodo getPeriodoContable() { return periodoContable; }
     public void setPeriodoContable(Periodo periodoContable) { this.periodoContable = periodoContable; }
     public Long getEsReembolso() { return esReembolso; }
