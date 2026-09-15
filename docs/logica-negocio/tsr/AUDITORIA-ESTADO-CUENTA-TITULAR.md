@@ -44,6 +44,37 @@ rol proveedor usa `PGS.LQCC`. Se revisa en la sección B.
 
 ---
 
-## B. Rol PROVEEDOR
+## B. Rol PROVEEDOR — medido 2026-09-15 (verificado por el árbitro en los puntos marcados ✔)
 
-*Pendiente — la medición está en curso.*
+Saldo de factura de compra = `total − Σ PGS.APLP activas` (`AplicacionPagoCxpServiceImpl:1065-1084`). El resumen de la
+pantalla toma el saldo pendiente **sólo** de las filas tipo FACTURA (FCTC y LQCC).
+
+| Flujo | ¿Crea `PGS.APLP`? | ¿Se ve? | Veredicto |
+|---|---|---|---|
+| Factura (FCTC 01) y nota de venta (FCTC 02) | Recibe APLP en `APLPFCTC` | Sí | ✅ (la nota de venta rotulada «Factura») |
+| **Liquidación (LQCC)** | **Sí** — ✔ `APLPLQCC` existe (`AplicacionPagoCxp.java:111`), ✔ `/aplp/liquidacion/{id}` y `/aplp/saldoLiquidacion/{id}` existen | **No**: ✔ FE fuerza `saldo = total`, `aplicado = 0` (`:300-309`), con un comentario viejo («APLP no tiene FK a LQCC»). Al expandir, pide `/aplp/factura/{idLQCC}` → **abonos de una FCTC ajena con el mismo id** | 🔴 **P1** |
+| Retención V2 sobre factura/nota de venta | APLP tipo 3 contra FCTC | Sí | ✅ con condiciones: exige asiento (`generaConta=1`) y saldo; si el cruce falla queda `cruceFacturaPendiente` y **la factura no baja** (P3) |
+| **Retención V2 sobre liquidación (03), NC (04), ND (05)** | **Nunca**: PASO 0.1 y el cruce buscan sólo en FCTC | Con `generaConta=1` la emisión se corta («No existe la factura de compra»); con 0, sale sin cruce | 🔴 **P2** |
+| Pago programado CONFIRMADO | Factura/NV: APLP tipo 1; liquidación: APLP contra LQCC (`cd800803`); anticipo y egreso: sin APLP | Factura sí; **liquidación no** (P1); **POR_APROBAR/REGISTRADO/EN_ARCHIVO en ninguna parte** | P1 · **P5** |
+| Caja chica que paga un documento | APLP tipo 6 contra FCTC o LQCC | Factura sí; liquidación no | P1 |
+| NC/ND de compra | APLP tipo 2/5 contra FCTC | Sí | ✅ sobre factura; sobre liquidación falla (búsqueda sólo FCTC) |
+| Anticipo a proveedor (`PGS.ANTP`) | Cruce: APLP tipo 4 con `anticipoOrigen` | Sí; nombres de campo correctos | 🔴 **P4**, **P7**, P8 |
+| Retención V1 (`CBR.RTNC`), pago legacy `TSR.PGSS` | No | No | ⚪ sólo históricos; sin FK para enlazar |
+
+### Defectos, del que más plata mueve al que menos
+
+| # | Defecto | Arreglo | Ítem |
+|---|---|---|---|
+| **P1** | **La liquidación de compra está ciega en el estado de cuenta**: ni pagos, ni cruces de anticipo, ni caja chica bajan su saldo; y al expandirla muestra abonos de otra factura | FE: para LQCC, `/aplp/saldoLiquidacion/{id}` y `/aplp/liquidacion/{id}`; el discriminador es la fuente, no `consultaSaldo` | FE-6 |
+| **P2** | **Retención V2 sobre liquidación no se puede emitir o nunca se cruza** | BE: resolver el documento sustento según `tipoDocReten` — 01/02 en FCTC, 03 en LQCC — en PASO 0.1 y en `aplicarRetencionEmitida` | BE-17 |
+| **P3** | Retención autorizada con **cruce pendiente**: la retención aparece restando y la factura no baja. Pasa sin asiento, con `generaConta=0`, o si el pago se programó por el total antes de la retención | Medir con `e2-49`; reproceso con el botón Contabilizar ya existente | `e2-49` |
+| **P4** | Anticipo **INGRESADO sin pagar** suma como saldo a favor (nace con `saldo = valor`) | Mismo punto que C6 del cliente → **pregunta al usuario** | — |
+| **P5** | **Pagos no confirmados no se ven** en ninguna parte | Fuente informativa «Pagos en proceso» que no toca el saldo — o la pantalla de seguimiento de pagos (pedido 1) | FE-6 |
+| **P6** | **Anular la liquidación emitida (`CBR.LQCS`) no revierte las APLP de su LQCC**: pagos y cruces de anticipo quedan vivos y el saldo del anticipo sigue consumido | ✔ `LiquidacionCompraServiceImpl:~2187-2210` sólo mira `AplicacionPagoCxc`. BE: revertir también las de `consultarPorLiquidacion(lqcc.id)`, como `LiquidacionCompraCompraServiceImpl:141` | BE-18 |
+| **P7** | Aviso falso «No se pudieron consultar: Anticipos a proveedor» (`AnticipoProveedorServiceImpl:136`, cuerpo `{error}`) | Cubierto por FE-5a si la detección lee también `error` | FE-5/6 |
+| **P8** | Abono por anticipo sin número; nota de venta rotulada «Factura» | Cubierto por FE-5c; rótulo por `tipoComprobante` | FE-6 |
+
+## C. Preguntas al usuario
+
+1. **C6/P4:** un anticipo **ingresado pero no pagado**, ¿debe contar como saldo a favor del titular, o sólo cuando se confirma?
+2. **C1:** ¿la caja de tesorería (`TSR.CBRO`) se usa para cobrar facturas de venta? Si sí, hoy esos cobros no abonan ninguna factura.
