@@ -216,13 +216,22 @@
 				<element kind="rectangle" uuid="a1000001-0000-0000-0000-000000000001" mode="Opaque" x="0" y="2" width="535" height="14" backcolor="#E8E8E8">
 					<pen lineWidth="0.3"/>
 				</element>
-				<element kind="staticText" uuid="a1000002-0000-0000-0000-000000000002" mode="Opaque" x="80" y="2" width="40" height="14" backcolor="#E8E8E8" fontSize="7.0" bold="true" vTextAlign="Middle">
-					<text><![CDATA[Factura - ]]></text>
+				<!-- 2026-09-15 (PLAN-RETENCION-SOBRE-NOTA-DE-VENTA.md §1.4): el rótulo del documento
+				     sustento ya no es fijo "Factura - ". Antes imprimía "Factura - " también para
+				     liquidación de compra (03), nota de crédito (04) y nota de débito (05); con la
+				     retención sobre nota de venta (02) habría sido un cuarto caso mal rotulado. -->
+				<element kind="textField" uuid="a1000002-0000-0000-0000-000000000002" mode="Opaque" x="80" y="2" width="130" height="14" backcolor="#E8E8E8" fontSize="7.0" bold="true" vTextAlign="Middle">
+					<expression><![CDATA[("01".equals($F{TIPODOCRETEN}) ? "Factura" :
+	"02".equals($F{TIPODOCRETEN}) ? "Nota de venta" :
+	"03".equals($F{TIPODOCRETEN}) ? "Liquidación de compra" :
+	"04".equals($F{TIPODOCRETEN}) ? "Nota de crédito" :
+	"05".equals($F{TIPODOCRETEN}) ? "Nota de débito" :
+	"Documento") + " - "]]></expression>
 					<box leftPadding="3">
 						<pen lineWidth="0.3"/>
 					</box>
 				</element>
-				<element kind="textField" uuid="a1000003-0000-0000-0000-000000000003" mode="Opaque" x="120" y="2" width="110" height="14" backcolor="#E8E8E8" fontSize="7.0" vTextAlign="Middle">
+				<element kind="textField" uuid="a1000003-0000-0000-0000-000000000003" mode="Opaque" x="210" y="2" width="180" height="14" backcolor="#E8E8E8" fontSize="7.0" vTextAlign="Middle">
 					<expression><![CDATA[$F{NUMDOCRETEN}]]></expression>
 					<box leftPadding="3">
 						<pen lineWidth="0.3"/>
