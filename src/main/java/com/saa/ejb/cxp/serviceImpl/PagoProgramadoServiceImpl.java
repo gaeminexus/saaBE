@@ -3845,6 +3845,22 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		m.put(OrigenPagoCxp.EGRESO_TESORERIA, new ResolutorEgresoTesoreria());
 		m.put(OrigenPagoCxp.ANTICIPO_PROVEEDOR, new ResolutorAnticipoProveedor());
 		m.put(OrigenPagoExterno.CRD_DEVOLUCION_APORTE, new ResolutorCrdDevolucionAporte());
+		// ÍTEM 22 (2026-09-15): los ocho que faltaban.
+		m.put(OrigenPagoExterno.TSR_CAJA_CHICA, new com.saa.ejb.cxp.seguimiento.ResolutorCajaChica());
+		m.put(OrigenPagoExterno.CXC_DEVOLUCION_CLIENTE,
+				new com.saa.ejb.cxp.seguimiento.ResolutorAnticipoCliente());
+		m.put(OrigenPagoExterno.RHH_NOMINA, new com.saa.ejb.cxp.seguimiento.ResolutorOrdenPagoNomina());
+		m.put(OrigenPagoExterno.RHH_BENEFICIO_SOCIAL,
+				new com.saa.ejb.cxp.seguimiento.ResolutorOrdenBeneficioSocial());
+		m.put(OrigenPagoExterno.RHH_ANTICIPO_EMPLEADO,
+				new com.saa.ejb.cxp.seguimiento.ResolutorAnticipoEmpleado());
+		m.put(OrigenPagoExterno.RHH_PLANILLA_IESS, new com.saa.ejb.cxp.seguimiento.ResolutorPlanillaIess());
+		m.put(OrigenPagoExterno.CRD_PAGO_PENSION_COMPLEMENTARIA,
+				new com.saa.ejb.cxp.seguimiento.ResolutorPensionComplementaria());
+		m.put(OrigenPagoExterno.CRD_DESEMBOLSO_PRESTAMO,
+				new com.saa.ejb.cxp.seguimiento.ResolutorDesembolsoPrestamo());
+		m.put(OrigenPagoExterno.CRD_SEGURO_JUBILADOS,
+				new com.saa.ejb.cxp.seguimiento.ResolutorSeguroJubilados());
 		return m;
 	}
 
