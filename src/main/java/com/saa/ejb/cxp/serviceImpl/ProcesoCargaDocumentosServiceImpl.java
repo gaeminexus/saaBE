@@ -2651,8 +2651,14 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
      * @param numAutDocSustento : Autorización del sustento, solo para el mensaje
      * @param idEmpresa         : Id de la empresa contable
      * @param etiquetaLog       : "doc sustento" o "doc sustento V2", para la traza
+     * @return                  : la {@code Factura} resuelta cuando hay exactamente una (ÍTEM 15,
+     *                            2026-09-15, docs/logica-negocio/tsr/AUDITORIA-ESTADO-CUENTA-TITULAR.md
+     *                            C2) — {@code null} si no se pudo resolver (número vacío, no existe,
+     *                            más de una, o error de consulta), que es también cuando se agrega el
+     *                            bloqueante. El llamador de V2 usa el titular de esta factura como
+     *                            proveedor de la retención; el de V1 sigue ignorando el retorno.
      */
-    private void agregarBloqueanteFacturaVenta(List<Map<String, Object>> bloqueantes,
+    private com.saa.model.cxc.Factura agregarBloqueanteFacturaVenta(List<Map<String, Object>> bloqueantes,
             String numDocSustento, String numAutDocSustento, Long idEmpresa, String etiquetaLog) {
 
         String numero = numDocSustento != null ? numDocSustento.trim() : "";
@@ -2682,7 +2688,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                         + "): factura id=" + facturas.get(0).getId()
                         + " | numero=" + facturas.get(0).getNumero()
                         + " | buscado='" + numero + "'");
-                return;
+                return facturas.get(0);
             }
         }
 
@@ -2698,6 +2704,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         bloqueantes.add(b);
         System.out.println("⚠ BLOQUEANTE " + etiquetaLog + ": " + motivo
                 + " | Número: '" + numero + "' | Autorización: '" + numAutDocSustento + "'");
+        return null;
     }
 
     /**
@@ -3412,6 +3419,13 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         //     aplicación de pago nunca discrepen.
         //     Solo se valida si la empresa genera contabilidad: con generaConta=0
         //     no hay asiento ni aplicación de pago, y la factura no hace falta.
+        //
+        // ÍTEM 15 (2026-09-15, docs/logica-negocio/tsr/AUDITORIA-ESTADO-CUENTA-TITULAR.md C2):
+        // si este paso resuelve la factura, se guarda para usar su titular como proveedor de la
+        // retención más abajo (PASO 3) -- antes se usaba siempre `cliente` (buscarTitularPorRuc,
+        // primero por RUC, sin orden), que puede ser un titular distinto al de la factura si hay
+        // duplicados o la factura quedó emitida a cédula y la retención llega con RUC.
+        com.saa.model.cxc.Factura facturaSustento = null;
         if (verificarGeneraConta(idEmpresa)) {
             // Números de documento sustento presentes en el XML. Se comparan tal
             // cual (sin normalizar) porque así los distingue el Paso 4, que lee
@@ -3438,7 +3452,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                 System.out.println("⚠ BLOQUEANTE doc sustento V2 (multidocumento): " + numerosSustento);
             } else {
                 String numSustento = numerosSustento.isEmpty() ? "" : numerosSustento.iterator().next();
-                agregarBloqueanteFacturaVenta(bloqueantes, numSustento, numAutDocSustento,
+                facturaSustento = agregarBloqueanteFacturaVenta(bloqueantes, numSustento, numAutDocSustento,
                         idEmpresa, "doc sustento V2");
             }
         }
@@ -3477,7 +3491,30 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         rc.setAutorizacion(numeroAutorizacion);
         rc.setPeriodoFiscal(getXmlValue(xmlDoc, "periodoFiscal"));
         rc.setTotal(totalRetenido);
-        rc.setProveedor(cliente);
+
+        // ÍTEM 15 (2026-09-15, AUDITORIA-ESTADO-CUENTA-TITULAR.md C2): si el PASO 2d resolvió la
+        // factura sustento, la retención queda en el titular de ESA factura, no en el que dio
+        // buscarTitularPorRuc -- que puede ser otro registro (duplicado, o la factura emitida a
+        // cédula mientras la retención llega con RUC). No se crea titular nuevo ni se toca
+        // buscarTitularPorRuc; si la factura no se resolvió (generaConta=0, sin doc sustento, o
+        // más de un documento sustento) se deja el comportamiento de siempre.
+        Titular proveedorRetencion = cliente;
+        if (facturaSustento != null && facturaSustento.getTitular() != null) {
+            Titular titularFactura = facturaSustento.getTitular();
+            proveedorRetencion = titularFactura;
+            if (cliente != null && cliente.getCodigo() != null && titularFactura.getCodigo() != null
+                    && !titularFactura.getCodigo().equals(cliente.getCodigo())) {
+                System.out.println("⚠ RetencionCompraV2: el titular de buscarTitularPorRuc (id="
+                        + cliente.getCodigo() + ") difiere del titular de la factura sustento (id="
+                        + titularFactura.getCodigo() + " | factura=" + facturaSustento.getId()
+                        + "); se usa el de la factura.");
+            }
+        } else {
+            System.out.println("ℹ RetencionCompraV2: no se resolvió la factura sustento en el PASO 2d "
+                    + "(generaConta=0, sin documento sustento, o múltiples documentos); proveedor = "
+                    + "titular de buscarTitularPorRuc (id=" + (cliente != null ? cliente.getCodigo() : null) + ").");
+        }
+        rc.setProveedor(proveedorRetencion);
         rc.setUsuario(usuario);
         rc.setEstado(Long.valueOf(Estado.ACTIVO));
         rc.setEstadoEmision(2L);
