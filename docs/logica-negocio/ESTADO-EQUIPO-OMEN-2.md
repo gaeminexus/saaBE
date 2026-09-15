@@ -3825,3 +3825,20 @@ no salió del código de `b170911e`: WAR viejo o archivo anterior. El usuario lo
 Primer frente: `sri/PLAN-ATS-AJUSTES-2026-09-15.md`, con tres ajustes: la retención se enlaza por autorización
 + número, la liquidación emitida usa `SUBTOTAL` como gravada, y **las facturas de intermediario salen del ATS**
 (pedido del usuario). Pregunta abierta: ¿también fuera de los cuadres 103/104?
+
+## §45 — Tres pedidos urgentes derivados por `omen-saa-1-arb` y confirmados por el usuario (2026-09-15, tarde)
+
+Diagnóstico en `tsr/AUDITORIA-ESTADO-CUENTA-TITULAR.md` y `tsr/PLAN-SEGUIMIENTO-PAGOS.md` (+ contrato).
+
+| Frente | saaBE | saaFE |
+|---|---|---|
+| Estado de cuenta — cliente (C2 C3 C4 C5 C7 C8 C9) | `147d1b50` `fca68efa` | `fa6c145` |
+| Estado de cuenta — proveedor (P1 P2 P6) | `fca68efa` | `8f0934d` |
+| Pagos vivos al anular el origen (S1 S2) y anticipo a proveedor imposible de registrar (S3) | `9751d151` `321bb182` | — |
+| Número de pago visible y buscable (pedido 3) | — | `8df5066` |
+| Seguimiento de un pago (pedido 1), 14 orígenes | `f41df926` `a7a2a06d` | `619ea16` |
+
+**Lo que hay que llevarse:**
+1. **Un comentario viejo cegó una pantalla entera.** «PGS.APLP no tiene FK a LQCC» era cierto el 2026-09-02 por la mañana y dejó de serlo esa tarde; la pantalla siguió forzando `saldo = total` dos semanas. Y la primera corrección del FE volvió a deducir el tipo **por el dato** (`!tipoComprobante`) cuando la LQCC trae `'03'`: **el discriminador sale de la fuente, no del dato** (se atrapó en revisión, antes de commitear).
+2. **Mismo defecto en cuatro orígenes: el documento se anula y su orden de pago sigue en la bandeja** (devoluciones de `crd`, beneficios sociales, anticipo a empleado — y la liquidación emitida con sus APLP). Un encargo del árbitro dio por cubierto el caso «pago confirmado» con un chequeo que miraba el estado de la **orden**, no del **pago**; se atrapó en la revisión del diff.
+3. **Pendientes de decisión:** anticipo ingresado sin pagar como saldo a favor (C6/P4), cobros de caja TSR sin APLC (C1), guarda de pago confirmado en `LiquidacionCompraCompraServiceImpl.anularLiquidacionCompra`, `e2-49` sin correr.
