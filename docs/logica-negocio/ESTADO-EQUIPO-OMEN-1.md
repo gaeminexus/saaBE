@@ -3250,3 +3250,78 @@ saldo negativo), H62, H63, H64, otorgamiento, reverso de cobro, Gs, H54, calific
   falla siempre, y el FE no manda `idEmpresa`/`idUsuario`.
 - Corrección a este tablero: `validaDebeHaberAsientoContable` (la guarda espejo, sin redondeo) **sí tiene
   llamadores** — `AsientoServiceImpl:306` (cierre) y `TransferenciaServiceImpl:128,237`.
+
+---
+
+# 2026-09-15 — Revisión contra CÓDIGO (no contra docs) y lote urgente — EN PAUSA, sin despachar
+
+**Alcance de la sesión: `crd` + `cnt`.** Cuatro barridos de solo lectura contra el código actual
+(BE `de9add7f`, FE `c4136e3`), con los hallazgos graves reverificados por el árbitro. **Nada
+despachado**: el usuario pidió corregir urgente y enseguida cambió a una revisión específica. Este
+bloque es lo que hay que retomar.
+
+## Correcciones a la revisión de arranque del 14-09 (medidas, no deducidas)
+
+- **La guarda espejo `validaDebeHaberAsientoContable` NO es defecto vivo en `cnt`:** su único llamador
+  de `cnt`, `AsientoServiceImpl.generaAsientoCierre`, **no tiene llamadores** (grep). Los vivos son
+  `tsr` (`TransferenciaServiceImpl:128` lanza; `:237` ignora el retorno), fuera de alcance.
+- **La limpieza de temporales de `cnt` que borra por PK es de baja severidad:** sólo toca `CNT.MYAN`/
+  `CNT.DTMT`, que son temporales; el efecto real es que no se limpian nunca. **Arreglarla choca con dos
+  cosas:** los balances imprimen desde `DTMT` por `P_DTMTSCRP` (si se limpia al salir, el `idEjecucion`
+  del pie no reproduce nada) y el secuencial es `max+1` sin bloqueo (dos usuarios pueden compartir
+  número y la limpieza de uno borraría el del otro). Además `MayorAnaliticoServiceImpl
+  .eliminaConsultasAnteriores:385` borra una sola cabecera usando el secuencial como PK. **Pide
+  decisión antes de tocar.**
+- **Aprobar préstamo no es defecto escondido:** falla a propósito hasta resolver `crd/sql/157` bloque 2
+  (`ID_PRODUCTO_PAGO_SOCIOS_POR_PAGAR = null`). El FE además no manda `idEmpresa`/`idUsuario`, y
+  `API-CICLO-OTORGAMIENTO.md` tampoco los documenta (contrato viejo frente al código de `7bca1713`).
+- **Cantón → `/btpc`:** ninguna pantalla usa Cantón. Código muerto.
+- **H48 (el centavo) está corregido** (`0838f7ad`, `MEDIO_CENTAVO`). Queda un residuo: `MotorPago:485`
+  marca PAGADA con 0,01 pendiente (condona el centavo en silencio).
+- **H50 corregido** (`anularCobro` y `reversarProceso` borran DSBN). **El reverso de cobro está
+  implementado** BE+FE (`/cbcr/{id}/reversar`).
+
+## Lote urgente — defectos VIVOS en producción, silenciosos, alcanzables desde la UI
+
+| # | Qué | Evidencia | Corrección decidida por el árbitro |
+|---|---|---|---|
+| U1 | **El seguro de jubilados nunca se paga al proveedor si falla la orden.** `generarSeguroDelMes` (NOT_SUPPORTED) fija cada seguro en su `REQUIRES_NEW`; si `generarOrdenPagoProveedorSeguro` lanza, CRJB no se graba. Al reintentar, `generarSeguroIndividual:1008` devuelve null para todos («ya fijado»), total $0, sin orden (`:2501`), y CRJB queda `estadoSeguro=1` → no se puede volver a correr | `PPCS:1168-1236`, `:1008-1012`, `:2501-2514` | BE: el total de la orden = Σ seguro fijado de los jubilados evaluados, **nuevo o preexistente**. La orden ya es idempotente por `(CRD_SEGURO_JUBILADOS, anio*100+mes)` |
+| U2 | **«Anular» en Historial de operaciones descuadra un cobro CBCR.** `/prst/anularOperacion` anula PGPR y recalcula cuotas de un evento enlazado a `DCBC.EVPRCDGO`; `contabilizarReverso:744` no hace nada (el asiento vive en el CBCR); el cobro queda PROCESADO con asientos y DSBN vivos, y después `reversarProceso` queda bloqueado (`ERR_EVENTO_YA_ANULADO`). Sin error | FE `historial-operaciones-dialog.component.ts:96-141`; BE `ProcesoPagoPrestamoServiceImpl:1210-1236`, `ContabilidadPrestamoServiceImpl:744-749` | BE: rechazar **en `PrestamoRest.anularOperacion`**, no en el service, un evento enlazado a un `DetalleCobroCredito`, con código de negocio y mensaje que remita a `/cbcr/{id}/reversar`. ⛔ **No en el service:** su único otro llamador es `CobroCreditoServiceImpl:574` (`reversarLineasProcesadas`), que corre con el enlace todavía puesto. Falta la query `DetalleCobroCreditoDaoService.selectByEvento`. FE sin cambio obligatorio: el diálogo ya muestra `mensajeDeRespuesta` |
+| U3 | **«Pago Cuota» simula el pago** (éxito sin HTTP, cuentas mock) | `pago-cuotas.component.ts:565-611`; menú `menucreditos:260-265`; ruta `app.routes.ts:1101` | FE: retirar del menú y de la ruta (conservar archivos). El cobro real es Cobros Personales |
+| U4 | **«Asignación de Seguros» simula** («asignado correctamente (simulado)») | `asignacion-seguros.component.ts:298-314`; menú `:191-195`; ruta `app.routes.ts:1281` | FE: retirar del menú y de la ruta. No hay backend de pólizas |
+| U5 | **«Plantilla general» (cnt) finge guardar**: ante cualquier error del POST mete la fila en la grilla con «guardado localmente para demostración»; el update hace lo mismo («modo demo»); «duplicar» sólo copia en memoria; «crear asiento desde plantilla» navega a una ruta inexistente. Las plantillas gobiernan los asientos automáticos | `plantilla-general.component.ts:700-766, 892-910, 957-968, 972-1003, 1260-1269` | FE: quitar fallbacks locales/demo y mostrar el error real; quitar (o persistir) duplicar; quitar el botón de asiento desde plantilla. **`cnt` es compartido** (registro §4, bloque de `omen-saa-2`): avisar con autorización del usuario |
+
+## Segundo lote — sin UI que los alcance, o fallan con aviso, o piden decisión
+
+- **Puertas REST sin contabilidad ni guardas** (sólo por HTTP directo): `/prst/pagarCuota`,
+  `/prst/pagarMultiplesCuotas` (`contabilizarPagoCuota` devuelve null), `/prst/precancelar` 100 %
+  efectivo, `/pgpc/generarPagosDelMes` (deprecado, **se salta las guardas de CRJB** → pago doble
+  posible), `/asgn/procesarCargaPetro` (reescribe `DTPRSLCP` con otra semántica), POST/PUT genérico de
+  `/cfcr` (vigencias solapadas).
+- **Cobros personales, rama débito:** `registrarAportesDelSocio` → `POST /aprt/registrarAporte` directo,
+  sin CBCR ni asiento (`cobros-personales:1392,1607-1650`; `AporteServiceImpl:379`). **Decisión del
+  usuario:** mandarlo por CBCR o bloquear aportes en débito.
+- **Precancelación sin cuotas pagadas (P21) confirmada:** la ancla fallback queda PAGADA(4) y el
+  re-bandeo suma sólo estado 7 → `IncomeException` y rollback. Pide la decisión ya anotada en P21.
+- **USAP:** el bloqueo por 5 intentos nunca persiste (`save` + `throw IncomeException` en la misma
+  transacción, rollback). La app no está en producción. Tampoco hay pantalla de oficina.
+- **Desembolso:** además de `sql/157` y el FE, no hay sincronización CRD←CXP: si tesorería anula la
+  orden, el préstamo queda VIGENTE con asiento de entrega vivo.
+- **Jubilados:** ancla envenenada (H46) confirmada y ampliada (cualquier negativo del tipo 23 la mueve,
+  incluido `reversarAporte`); motivo de bloqueo no persistido; sin mecanismo de recuperación del
+  sobrepago; rechazo del pago no revierte el devengo; la reserva del seguro no la respetan
+  `registrarDevolucion`/`consumirAportes`/`reversarAporte`; ~11 comentarios que contradicen el código.
+- **Timer de reconciliación de devoluciones apagado desde el 08-27**; sin UI para `/dvap/sincronizar`.
+- **`cnt`:** botones mayorizar/desmayorizar de Período contable a `/prdo/...` inexistente (404 con
+  aviso); mayor analítico viejo con rótulos mal y sin la opción 2; posible cabecera `codigo=0L` en la
+  distribución 2 del mayor; balances sin RUC, sin línea A = P + Pat, sin marca de provisional;
+  Estado de Resultados / Patrimonio / Flujos inexistentes.
+- **FE crd varios:** Preview de Generar archivo Petro → `/pdga/preview` inexistente (404 con aviso);
+  `corregirDuplicado` no-op silencioso en detalle de carga; filtro «Saldo desde/hasta» sobre
+  `PRSTSLTT` muerta; `MovilMappers:46` sirve `PRSTTTPG` muerta a la app.
+
+## Scripts sin constancia de ejecución (preguntar al usuario)
+
+`211` (masivo, escribe), `212`/`213`/`218` (CRJB), `DDL-USUARIO-APP-MOVIL`, `221`, `222`, `157`,
+`158`, `156`, `81`. El verificador de esquema de `crd` no cubre 9 entidades: CFCR, CRJB, CTAP, DAAP,
+DAPR, DSBN, ESCR, PGPC, USAP.
