@@ -27,8 +27,11 @@ import com.saa.ejb.crd.service.dto.DetalleResultadoDevolucion;
 import com.saa.ejb.crd.service.dto.DetalleSolicitudDevolucion;
 import com.saa.ejb.crd.service.dto.ResultadoConsultaPagoDevolucion;
 import com.saa.ejb.crd.service.dto.ResultadoDevolucionAporte;
+import com.saa.ejb.crd.service.dto.ResultadoReemisionPagoDevolucion;
 import com.saa.ejb.crd.service.dto.ResultadoSincronizacion;
 import com.saa.ejb.crd.service.dto.SolicitudDevolucionAporte;
+import com.saa.ejb.crd.service.dto.SolicitudReemisionPagoDevolucion;
+import com.saa.ejb.cxp.dao.DetallePagoOrigenExternoDaoService;
 import com.saa.ejb.cxp.dao.PagoProgramadoDaoService;
 import com.saa.ejb.cxp.service.PagoProgramadoService;
 import com.saa.ejb.cxp.service.dto.BeneficiarioOcasional;
@@ -42,6 +45,7 @@ import com.saa.model.crd.NombreEntidadesCredito;
 import com.saa.model.crd.PagoAporte;
 import com.saa.model.crd.TipoAporte;
 import com.saa.model.cnt.DetalleAsiento;
+import com.saa.model.cxp.DetallePagoOrigenExterno;
 import com.saa.model.cxp.PagoProgramado;
 import com.saa.rubros.CrdTipoMovimientoAporte;
 import com.saa.rubros.Estado;
@@ -123,6 +127,11 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
     /** crd → cxp: dirección permitida. Solo lectura del estado del pago. */
     @EJB
     private PagoProgramadoDaoService pagoProgramadoDaoService;
+
+    /** crd → cxp: dirección permitida. Solo lectura, para copiar el desglose de la orden
+     * anterior al reemitir un pago (ver {@link #reemitirPagoDevolucion}). */
+    @EJB
+    private DetallePagoOrigenExternoDaoService detallePagoOrigenExternoDaoService;
 
     /**
      * Auto-inyección: permite que el bucle del lote invoque {@code sincronizarDevolucion} a
@@ -338,26 +347,8 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
         // 9. Cuenta bancaria del partícipe (salvo débito automático, que no transfiere)
         CuentaBancariaParticipe cuentaParticipe = null;
         if (!solicitud.isDebitoAutomatico()) {
-            if (solicitud.getIdCuentaBancariaParticipe() == null) {
-                throw new IncomeException(ERR_SIN_CUENTA_BANCARIA + ": debe indicar la cuenta "
-                    + "bancaria del partícipe a la que se transfiere el dinero");
-            }
-            cuentaParticipe = cuentaBancariaParticipeDaoService.find(
-                new CuentaBancariaParticipe(), solicitud.getIdCuentaBancariaParticipe());
-            if (cuentaParticipe == null) {
-                throw new IncomeException(ERR_CUENTA_NO_ENCONTRADA + ": no existe la cuenta "
-                    + "bancaria " + solicitud.getIdCuentaBancariaParticipe());
-            }
-            if (cuentaParticipe.getEntidad() == null
-                    || !cuentaParticipe.getEntidad().getCodigo().equals(entidad.getCodigo())) {
-                throw new IncomeException(ERR_SIN_CUENTA_BANCARIA + ": la cuenta bancaria "
-                    + cuentaParticipe.getCodigo() + " pertenece a otro partícipe");
-            }
-            if (cuentaParticipe.getEstado() == null
-                    || cuentaParticipe.getEstado().longValue() != Estado.ACTIVO) {
-                throw new IncomeException(ERR_SIN_CUENTA_BANCARIA + ": la cuenta bancaria "
-                    + cuentaParticipe.getCodigo() + " no está activa");
-            }
+            cuentaParticipe = validarCuentaBancariaParticipe(
+                solicitud.getIdCuentaBancariaParticipe(), entidad);
         } else if (solicitud.getIdCuentaBancariaParticipe() != null) {
             // El débito automático no exige cuenta, pero si viene se conserva como dato.
             cuentaParticipe = cuentaBancariaParticipeDaoService.find(
@@ -709,6 +700,7 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
             + " - Evaluadas: " + resumen.getEvaluadas()
             + " - Pagadas: " + resumen.getMarcadasPagadas()
             + " - Rechazadas: " + resumen.getMarcadasRechazadas()
+            + " - Pendientes de reemisión: " + resumen.getPendientesReemision()
             + " - Huérfanas: " + resumen.getHuerfanas()
             + " - Con error: " + resumen.getConError());
 
@@ -776,12 +768,14 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
 
         } else if (estadoPago == EstadoPagoProgramado.RECHAZADO
                 || estadoPago == EstadoPagoProgramado.ANULADO) {
-            generarContraMovimientos(devolucion, "Pago rechazado", "SISTEMA");
-            devolucion.setEstado(Long.valueOf(EstadoDevolucionAporte.RECHAZADA));
-            devolucionAporteDaoService.save(devolucion, devolucion.getCodigo());
-            parcial.setMarcadasRechazadas(1);
-            System.out.println("  ↩ Devolución " + idDevolucion + " RECHAZADA: "
-                + "contra-movimientos generados, el saldo del partícipe vuelve a su valor previo.");
+            // Contrato de reemisión de pago (2026-09-15, §4): una orden rechazada o anulada
+            // YA NO revierte la devolución sola. La devolución queda como está (EN_PAGO) y se
+            // cuenta como pendiente de reemisión; revertir pasa a ser un acto explícito
+            // (anular la devolución) o el operador reemite el pago con la cuenta correcta.
+            parcial.setPendientesReemision(1);
+            System.out.println("  ⏸ Devolución " + idDevolucion + " pendiente de reemisión: la "
+                + "orden " + pago.getId() + " quedó " + nombreEstadoPago(pago.getEstado())
+                + ". La devolución sigue " + nombreEstado(devolucion.getEstado()) + ".");
 
         } else {
             System.out.println("  Devolución " + idDevolucion + ": el pago sigue en curso "
@@ -826,49 +820,64 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
             throw new IncomeException(ERR_DEVOLUCION_YA_ANULADA + ": la devolución "
                 + idDevolucion + " ya está anulada");
         }
+
+        // La orden enlazada, si la hay. Se resuelve antes de decidir el gate de PAGADA y se
+        // reusa más abajo, sin repetir la consulta.
+        PagoProgramado ordenActual = (devolucion.getIdPagoProgramado() != null)
+            ? pagoProgramadoDaoService.find(new PagoProgramado(), devolucion.getIdPagoProgramado())
+            : null;
+
         if (estado == EstadoDevolucionAporte.PAGADA) {
-            throw new IncomeException(ERR_DEVOLUCION_YA_PAGADA + ": La devolución ya fue pagada; "
-                + "reverse el pago desde Cuentas por Pagar y vuelva a intentar.");
-        }
-        if (estado != EstadoDevolucionAporte.REGISTRADA && estado != EstadoDevolucionAporte.EN_PAGO) {
+            // §5.2 del contrato de reemisión (2026-09-15): una PAGADA cuya orden ya quedó
+            // RECHAZADA o ANULADA en tesorería SÍ se puede anular — es la reversión completa
+            // explícita. Con la orden CONFIRMADA (o sin orden) sigue rechazándose igual que
+            // antes.
+            int estadoOrdenActual = (ordenActual != null && ordenActual.getEstado() != null)
+                ? ordenActual.getEstado().intValue() : -1;
+            boolean ordenRevertidaPorTesoreria = estadoOrdenActual == EstadoPagoProgramado.RECHAZADO
+                || estadoOrdenActual == EstadoPagoProgramado.ANULADO;
+            if (!ordenRevertidaPorTesoreria) {
+                throw new IncomeException(ERR_DEVOLUCION_YA_PAGADA + ": La devolución ya fue "
+                    + "pagada; reverse el pago desde Cuentas por Pagar y vuelva a intentar.");
+            }
+        } else if (estado != EstadoDevolucionAporte.REGISTRADA && estado != EstadoDevolucionAporte.EN_PAGO) {
             throw new IncomeException(ERR_ESTADO_NO_PERMITE + ": la devolución " + idDevolucion
                 + " está " + nombreEstado(devolucion.getEstado()) + " y no se puede anular");
         }
 
         // La orden de pago: se anula antes de tocar los aportes, para que el fallo de CXP
         // deje todo como estaba.
-        if (devolucion.getIdPagoProgramado() != null) {
+        if (ordenActual != null) {
+            int estadoPago = (ordenActual.getEstado() != null) ? ordenActual.getEstado().intValue() : 0;
 
-            PagoProgramado pago = pagoProgramadoDaoService.find(
-                new PagoProgramado(), devolucion.getIdPagoProgramado());
-
-            if (pago != null) {
-                int estadoPago = (pago.getEstado() != null) ? pago.getEstado().intValue() : 0;
-
-                if (estadoPago == EstadoPagoProgramado.CONFIRMADO) {
-                    // El estado de la devolución estaba desactualizado: el pago ya salió.
-                    throw new IncomeException(ERR_DEVOLUCION_YA_PAGADA + ": La devolución ya fue "
-                        + "pagada; reverse el pago desde Cuentas por Pagar y vuelva a intentar.");
-                }
-                if (estadoPago == EstadoPagoProgramado.EN_ARCHIVO) {
-                    // Mismo criterio que EgresoServiceImpl.anularEgreso: el archivo ya está
-                    // en poder del banco y todavía puede ejecutarse.
-                    throw new IncomeException(ERR_ESTADO_NO_PERMITE + ": la orden de pago "
-                        + pago.getId() + " está en un archivo enviado al banco. Procese la "
-                        + "respuesta del banco antes de anular la devolución.");
-                }
-                if (estadoPago == EstadoPagoProgramado.REGISTRADO) {
-                    try {
-                        pagoProgramadoService.anularPago(pago.getId(),
-                            "Anulación de la devolución de aportes " + idDevolucion + ": "
-                                + motivo.trim(), null);
-                    } catch (Throwable e) {
-                        throw new IncomeException(ERR_ERROR_ORDEN_PAGO + ": no se pudo anular la "
-                            + "orden de pago " + pago.getId() + " en Cuentas por Pagar. "
-                            + e.getMessage());
-                    }
+            if (estadoPago == EstadoPagoProgramado.CONFIRMADO) {
+                // El estado de la devolución estaba desactualizado: el pago ya salió.
+                throw new IncomeException(ERR_DEVOLUCION_YA_PAGADA + ": La devolución ya fue "
+                    + "pagada; reverse el pago desde Cuentas por Pagar y vuelva a intentar.");
+            }
+            if (estadoPago == EstadoPagoProgramado.EN_ARCHIVO) {
+                // Mismo criterio que EgresoServiceImpl.anularEgreso: el archivo ya está
+                // en poder del banco y todavía puede ejecutarse.
+                throw new IncomeException(ERR_ESTADO_NO_PERMITE + ": la orden de pago "
+                    + ordenActual.getId() + " está en un archivo enviado al banco. Procese la "
+                    + "respuesta del banco antes de anular la devolución.");
+            }
+            // Defecto vivo corregido (2026-09-15): toda orden nace POR_APROBAR(0) desde el
+            // 2026-08-29, no solo REGISTRADO(1). Antes solo se anulaba en 1: una devolución
+            // anulada con su orden en 0 dejaba la orden viva y aprobable/pagable.
+            if (estadoPago == EstadoPagoProgramado.POR_APROBAR
+                    || estadoPago == EstadoPagoProgramado.REGISTRADO) {
+                try {
+                    pagoProgramadoService.anularPago(ordenActual.getId(),
+                        "Anulación de la devolución de aportes " + idDevolucion + ": "
+                            + motivo.trim(), null);
+                } catch (Throwable e) {
+                    throw new IncomeException(ERR_ERROR_ORDEN_PAGO + ": no se pudo anular la "
+                        + "orden de pago " + ordenActual.getId() + " en Cuentas por Pagar. "
+                        + e.getMessage());
                 }
             }
+            // RECHAZADO/ANULADO: nada que anular, ya están en su estado terminal.
         }
 
         // Contra-movimientos: el saldo del partícipe vuelve a su valor previo.
@@ -883,6 +892,215 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
         ResultadoDevolucionAporte resultado = armaResultado(devolucion);
 
         System.out.println("  ✅ Devolución " + idDevolucion + " ANULADA. Motivo: " + motivo.trim());
+        return resultado;
+    }
+
+    // ========================================================================
+    // Reemisión del pago (transferencia rebotada)
+    // ========================================================================
+
+    @Override
+    @TransactionAttribute(TransactionAttributeType.REQUIRED)
+    public ResultadoReemisionPagoDevolucion reemitirPagoDevolucion(Long idDevolucion,
+            SolicitudReemisionPagoDevolucion solicitud) throws Throwable {
+
+        System.out.println("DevolucionAporteService.reemitirPagoDevolucion - Devolucion: "
+            + idDevolucion);
+
+        // ------------------------------------------------------------------
+        // Validación de parámetros
+        // ------------------------------------------------------------------
+        if (idDevolucion == null) {
+            throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": idDevolucion es obligatorio");
+        }
+        if (solicitud == null) {
+            throw new IncomeException(ERR_PARAMETRO_INVALIDO
+                + ": no se recibió el cuerpo de la solicitud");
+        }
+        if (solicitud.getMotivo() == null || solicitud.getMotivo().trim().isEmpty()) {
+            throw new IncomeException(ERR_PARAMETRO_INVALIDO
+                + ": debe indicar el motivo de la reemisión");
+        }
+        if (solicitud.getIdEmpresa() == null) {
+            throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": idEmpresa es obligatorio");
+        }
+        if (solicitud.getUsuario() == null || solicitud.getUsuario().trim().isEmpty()) {
+            throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": usuario es obligatorio");
+        }
+
+        // ------------------------------------------------------------------
+        // Reglas, en el orden exacto del §3.2 del contrato
+        // ------------------------------------------------------------------
+
+        // 1. Devolución no existe
+        DevolucionAporte devolucion = devolucionAporteDaoService.find(
+            new DevolucionAporte(), idDevolucion);
+        if (devolucion == null) {
+            throw new IncomeException(ERR_DEVOLUCION_NO_ENCONTRADA + ": no existe la devolución "
+                + idDevolucion);
+        }
+
+        int estadoDevolucion = (devolucion.getEstado() != null) ? devolucion.getEstado().intValue() : 0;
+
+        // 2. REGISTRADA(1) sin orden, RECHAZADA(4) o ANULADA(5)
+        if (estadoDevolucion == EstadoDevolucionAporte.RECHAZADA
+                || estadoDevolucion == EstadoDevolucionAporte.ANULADA) {
+            throw new IncomeException(ERR_ESTADO_NO_PERMITE + ": la devolución " + idDevolucion
+                + " está " + nombreEstado(devolucion.getEstado()) + "; la reversión completa ya "
+                + "ocurrió. Si corresponde, registre una devolución nueva.");
+        }
+        if (estadoDevolucion == EstadoDevolucionAporte.REGISTRADA
+                && devolucion.getIdPagoProgramado() == null) {
+            throw new IncomeException(ERR_ESTADO_NO_PERMITE + ": la devolución " + idDevolucion
+                + " todavía no tiene una orden de pago que reemitir.");
+        }
+
+        // 3. O no existe en CXP (o la devolución no tiene ninguna orden enlazada)
+        Long idOrdenAnterior = devolucion.getIdPagoProgramado();
+        if (idOrdenAnterior == null) {
+            throw new IncomeException(ERR_ESTADO_NO_PERMITE + ": la devolución " + idDevolucion
+                + " no tiene una orden de pago enlazada");
+        }
+        PagoProgramado ordenAnterior = pagoProgramadoDaoService.find(
+            new PagoProgramado(), idOrdenAnterior);
+        if (ordenAnterior == null) {
+            throw new IncomeException(ERR_ESTADO_NO_PERMITE + ": la orden " + idOrdenAnterior
+                + " ya no existe");
+        }
+
+        int estadoOrden = (ordenAnterior.getEstado() != null) ? ordenAnterior.getEstado().intValue() : 0;
+
+        // 4. Débito automático (mismo criterio que PagoProgramadoServiceImpl.esDebitoAutomatico,
+        // privado allá: se repite la comparación acá).
+        if (ordenAnterior.getDebitoAutomatico() != null
+                && ordenAnterior.getDebitoAutomatico().intValue() == 1) {
+            throw new IncomeException(ERR_ESTADO_NO_PERMITE + ": la orden " + idOrdenAnterior
+                + " es un débito automático; el débito automático no se reemite.");
+        }
+
+        // 5. CONFIRMADO(3)
+        if (estadoOrden == EstadoPagoProgramado.CONFIRMADO) {
+            throw new IncomeException(ERR_PAGO_CONFIRMADO + ": la orden " + idOrdenAnterior
+                + " ya fue confirmada por tesorería"
+                + (ordenAnterior.getFechaRespuesta() != null
+                    ? " el " + ordenAnterior.getFechaRespuesta() : "")
+                + (ordenAnterior.getReferenciaBanco() != null
+                    ? " (referencia " + ordenAnterior.getReferenciaBanco() + ")" : "")
+                + " por $" + String.format(Locale.US, "%.2f",
+                    ordenAnterior.getValor() != null ? ordenAnterior.getValor() : 0.0)
+                + " a " + ordenAnterior.getBeneficiarioNombre() + ". Tesorería debe reversarla "
+                + "primero y después reemitir el pago desde aquí.");
+        }
+
+        // 6. EN_ARCHIVO(2) sin confirmar que el banco la rechazó
+        if (estadoOrden == EstadoPagoProgramado.EN_ARCHIVO
+                && !Boolean.TRUE.equals(solicitud.getConfirmaRechazoBanco())) {
+            throw new IncomeException(ERR_CONFIRMAR_RECHAZO_BANCO + ": la orden " + idOrdenAnterior
+                + " está en un archivo enviado al banco. Confirme que el banco la rechazó antes "
+                + "de anular y reemitir.");
+        }
+
+        // 7. PAGADA con la orden en 0, 1 o 2 — incoherente, no se adivina.
+        if (estadoDevolucion == EstadoDevolucionAporte.PAGADA
+                && (estadoOrden == EstadoPagoProgramado.POR_APROBAR
+                    || estadoOrden == EstadoPagoProgramado.REGISTRADO
+                    || estadoOrden == EstadoPagoProgramado.EN_ARCHIVO)) {
+            throw new IncomeException(ERR_ESTADO_NO_PERMITE + ": la devolución " + idDevolucion
+                + " está PAGADA pero su orden " + idOrdenAnterior + " está "
+                + nombreEstadoPago(ordenAnterior.getEstado()) + " (no confirmada). Estado "
+                + "incoherente: revíselo antes de reemitir.");
+        }
+
+        // 8. Cuenta bancaria nueva — misma validación que /registrar §9.
+        Entidad entidad = devolucion.getEntidad();
+        CuentaBancariaParticipe cuentaNueva = validarCuentaBancariaParticipe(
+            solicitud.getIdCuentaBancariaParticipe(), entidad);
+
+        // ------------------------------------------------------------------
+        // Ejecución
+        // ------------------------------------------------------------------
+
+        // 9/10. Se anula la orden vieja si sigue viva (0,1,2); si ya está 4/5 no hay nada
+        // que anular.
+        boolean ordenAnteriorYaEstabaCerrada = estadoOrden == EstadoPagoProgramado.RECHAZADO
+            || estadoOrden == EstadoPagoProgramado.ANULADO;
+        if (!ordenAnteriorYaEstabaCerrada) {
+            try {
+                pagoProgramadoService.anularPago(idOrdenAnterior,
+                    "Reemisión del pago de la devolución de aportes " + idDevolucion + ": "
+                        + solicitud.getMotivo().trim(), solicitud.getIdUsuario());
+            } catch (Throwable e) {
+                throw new IncomeException(ERR_ERROR_ORDEN_PAGO + ": no se pudo anular la orden "
+                    + "de pago " + idOrdenAnterior + " en Cuentas por Pagar. " + e.getMessage());
+            }
+        }
+
+        // 11. Orden nueva — copia de la anterior salvo la cuenta (§3.3 del contrato).
+        BeneficiarioOcasional beneficiarioNuevo = armaBeneficiario(entidad, cuentaNueva);
+
+        List<DetallePagoOrigenExterno> detallesAnteriores =
+            detallePagoOrigenExternoDaoService.selectByPago(idOrdenAnterior);
+        List<LineaContablePago> desgloseNuevo = null;
+        if (detallesAnteriores != null && !detallesAnteriores.isEmpty()) {
+            desgloseNuevo = new ArrayList<>();
+            for (DetallePagoOrigenExterno detalleAnterior : detallesAnteriores) {
+                LineaContablePago linea = new LineaContablePago();
+                linea.setIdProductoPago((detalleAnterior.getProducto() != null)
+                    ? detalleAnterior.getProducto().getId() : null);
+                linea.setValor(detalleAnterior.getValor());
+                linea.setConcepto(detalleAnterior.getConcepto());
+                desgloseNuevo.add(linea);
+            }
+        }
+
+        String observacionNueva = "Devolución de aportes N° " + idDevolucion + " - "
+            + (entidad != null ? entidad.getRazonSocial() : "")
+            + " | REEMISIÓN de la orden " + idOrdenAnterior + ": " + solicitud.getMotivo().trim();
+
+        Long idOrdenNueva;
+        try {
+            Map<String, Object> respuesta = pagoProgramadoService.registrarPagoDeOrigenExterno(
+                OrigenPagoExterno.CRD_DEVOLUCION_APORTE, idDevolucion, solicitud.getIdEmpresa(),
+                null, ordenAnterior.getValor(), LocalDate.now().toString(), beneficiarioNuevo,
+                desgloseNuevo, observacionNueva, solicitud.getIdUsuario(), false, null);
+
+            Object valorPago = (respuesta != null) ? respuesta.get("pago") : null;
+            if (valorPago == null) {
+                throw new IncomeException("Cuentas por Pagar no devolvió el número de la orden "
+                    + "nueva.");
+            }
+            idOrdenNueva = ((Number) valorPago).longValue();
+
+        } catch (IncomeException e) {
+            throw new IncomeException(ERR_ERROR_ORDEN_PAGO + ": no se pudo generar la orden de "
+                + "pago nueva en Cuentas por Pagar. " + e.getMessage());
+        } catch (Throwable e) {
+            throw new IncomeException(ERR_ERROR_ORDEN_PAGO + ": no se pudo generar la orden de "
+                + "pago nueva en Cuentas por Pagar. " + e.getMessage());
+        }
+
+        // 12. La devolución queda enlazada a la orden y la cuenta nuevas. Si venía PAGADA, ese
+        // asiento de pago y esa fecha ya los reversó CXP: se limpian. NO se toca CRD.APRT,
+        // CRD.DDVA, CRD.PGAP ni DVAPNMRC (asiento de reclasificación).
+        devolucion.setIdPagoProgramado(idOrdenNueva);
+        devolucion.setCuentaParticipe(cuentaNueva);
+        devolucion.setEstado(Long.valueOf(EstadoDevolucionAporte.EN_PAGO));
+        if (estadoDevolucion == EstadoDevolucionAporte.PAGADA) {
+            devolucion.setNumeroAsiento(null);
+            devolucion.setFechaPago(null);
+        }
+        devolucionAporteDaoService.save(devolucion, devolucion.getCodigo());
+
+        ResultadoReemisionPagoDevolucion resultado = new ResultadoReemisionPagoDevolucion();
+        resultado.setIdPagoAnterior(idOrdenAnterior);
+        resultado.setIdPagoNuevo(idOrdenNueva);
+        resultado.setOrdenAnteriorYaEstabaCerrada(ordenAnteriorYaEstabaCerrada);
+        resultado.setResultado(armaResultado(devolucion));
+
+        System.out.println("  ✅ Devolución " + idDevolucion + " - pago reemitido. Orden anterior "
+            + idOrdenAnterior + (ordenAnteriorYaEstabaCerrada ? " (ya estaba cerrada)" : " anulada")
+            + " - Orden nueva " + idOrdenNueva + " (por aprobar)");
+
         return resultado;
     }
 
@@ -1187,16 +1405,18 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
      * <b>Idempotente</b>: un detalle que ya tiene {@code idAporteReverso} se saltea.
      * <p>
      * También reversa el asiento de RECLASIFICACIÓN ({@code DVAPNMRC}) si lo hay — NUNCA el
-     * de PAGO ({@code DVAPNMAS}): ese es de CXP y lo reversa CXP. Ambos casos que llegan
-     * acá (pago rechazado, devolución anulada por el usuario) ocurren SIEMPRE antes de que
-     * el pago se confirme ({@code anularDevolucion} rechaza una devolución ya PAGADA en
-     * {@code :773}, y "Pago rechazado" es la contraparte de que nunca se confirmó) — así que
-     * el asiento de reclasificación es, en la práctica, el único que puede existir en este
-     * punto.
+     * de PAGO ({@code DVAPNMAS}): ese es de CXP y lo reversa CXP.
+     * <p>
+     * <b>Único llamador: {@code anularDevolucion}.</b> Desde el contrato de reemisión de pago
+     * (2026-09-15, §4), {@code sincronizarDevolucion} DEJÓ de invocar este método: una orden
+     * rechazada o anulada ya no revierte la devolución sola — la deja EN_PAGO y la cuenta
+     * como pendiente de reemisión. Revertir es ahora siempre un acto explícito del usuario
+     * (anular la devolución, incluida una PAGADA cuya orden ya quedó rechazada/anulada —
+     * §5.2), así que {@code usuario} nunca llega como {@code "SISTEMA"}.
      * @param devolucion : Devolución cuyos aportes hay que revertir
      * @param causa      : Texto que se estampa en la glosa del contra-movimiento y del reverso
      *                     del asiento
-     * @param usuario    : Quien dispara el reverso — "SISTEMA" cuando lo hace el reconciliador
+     * @param usuario    : Quien dispara el reverso — el usuario que anula la devolución
      * @throws Throwable : Excepcion
      */
     private void generarContraMovimientos(DevolucionAporte devolucion, String causa, String usuario)
@@ -1290,6 +1510,41 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
     }
 
     /**
+     * Valida una cuenta bancaria de partícipe contra la entidad dueña de la operación: existe,
+     * le pertenece y está ACTIVA. Mismos códigos y mensajes que el paso 9 de
+     * {@link #registrarDevolucion} — extraído para que {@link #reemitirPagoDevolucion}
+     * (§3.1 del contrato de reemisión) use exactamente la misma regla sin duplicar el cuerpo.
+     * @param idCuentaBancariaParticipe : Id de la cuenta bancaria del partícipe, obligatorio
+     * @param entidad                   : Partícipe dueño de la operación
+     * @return                          : Cuenta bancaria válida
+     * @throws Throwable                : IncomeException si la cuenta no existe, es de otro
+     *                                    partícipe o no está activa
+     */
+    private CuentaBancariaParticipe validarCuentaBancariaParticipe(Long idCuentaBancariaParticipe,
+            Entidad entidad) throws Throwable {
+        if (idCuentaBancariaParticipe == null) {
+            throw new IncomeException(ERR_SIN_CUENTA_BANCARIA + ": debe indicar la cuenta "
+                + "bancaria del partícipe a la que se transfiere el dinero");
+        }
+        CuentaBancariaParticipe cuenta = cuentaBancariaParticipeDaoService.find(
+            new CuentaBancariaParticipe(), idCuentaBancariaParticipe);
+        if (cuenta == null) {
+            throw new IncomeException(ERR_CUENTA_NO_ENCONTRADA + ": no existe la cuenta "
+                + "bancaria " + idCuentaBancariaParticipe);
+        }
+        if (cuenta.getEntidad() == null || entidad == null
+                || !cuenta.getEntidad().getCodigo().equals(entidad.getCodigo())) {
+            throw new IncomeException(ERR_SIN_CUENTA_BANCARIA + ": la cuenta bancaria "
+                + cuenta.getCodigo() + " pertenece a otro partícipe");
+        }
+        if (cuenta.getEstado() == null || cuenta.getEstado().longValue() != Estado.ACTIVO) {
+            throw new IncomeException(ERR_SIN_CUENTA_BANCARIA + ": la cuenta bancaria "
+                + cuenta.getCodigo() + " no está activa");
+        }
+        return cuenta;
+    }
+
+    /**
      * Arma el beneficiario ocasional que viaja a CXP con los datos del partícipe y de la
      * cuenta bancaria elegida.
      * <p>
@@ -1374,6 +1629,8 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
         resumen.setMarcadasPagadas(resumen.getMarcadasPagadas() + parcial.getMarcadasPagadas());
         resumen.setMarcadasRechazadas(
             resumen.getMarcadasRechazadas() + parcial.getMarcadasRechazadas());
+        resumen.setPendientesReemision(
+            resumen.getPendientesReemision() + parcial.getPendientesReemision());
         resumen.setHuerfanas(resumen.getHuerfanas() + parcial.getHuerfanas());
         resumen.setConError(resumen.getConError() + parcial.getConError());
         for (String error : parcial.getErrores()) {
@@ -1403,8 +1660,12 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
     }
 
     /** Mismo criterio que {@link #nombreEstado}, para {@code PagoProgramado.estado}
-     * ({@code EstadoPagoProgramado}) — un catálogo distinto, nunca confundir los dos. */
-    private String nombreEstadoPago(Long estado) {
+     * ({@code EstadoPagoProgramado}) — un catálogo distinto, nunca confundir los dos.
+     * Expuesto en la interfaz (§6 del contrato de reemisión) para que
+     * {@code DevolucionAporteRest.armaResumen} arme {@code estadoPagoTexto} sin duplicar
+     * este switch. */
+    @Override
+    public String nombreEstadoPago(Long estado) {
         if (estado == null) {
             return "SIN ESTADO";
         }

@@ -22,15 +22,19 @@ import com.saa.ejb.crd.service.dto.DeudaPrestamo;
 import com.saa.ejb.crd.service.dto.DeudaVigenteParticipe;
 import com.saa.ejb.crd.service.dto.ResultadoConsultaPagoDevolucion;
 import com.saa.ejb.crd.service.dto.ResultadoDevolucionAporte;
+import com.saa.ejb.crd.service.dto.ResultadoReemisionPagoDevolucion;
 import com.saa.ejb.crd.service.dto.ResultadoSincronizacion;
 import com.saa.ejb.crd.service.dto.ResumenDevolucionAporte;
 import com.saa.ejb.crd.service.dto.SolicitudAnulacionDevolucion;
 import com.saa.ejb.crd.service.dto.SolicitudDevolucionAporte;
+import com.saa.ejb.crd.service.dto.SolicitudReemisionPagoDevolucion;
+import com.saa.ejb.cxp.dao.PagoProgramadoDaoService;
 import com.saa.model.crd.CuentaBancariaParticipe;
 import com.saa.model.crd.DetalleDevolucionAporte;
 import com.saa.model.crd.DetallePrestamo;
 import com.saa.model.crd.DevolucionAporte;
 import com.saa.model.crd.Prestamo;
+import com.saa.model.cxp.PagoProgramado;
 import com.saa.rubros.EstadoPrestamo;
 import com.saa.rubros.Rubros;
 
@@ -72,6 +76,11 @@ public class DevolucionAporteRest {
 
     @EJB
     private DetalleRubroDaoService detalleRubroDaoService;
+
+    /** Solo lectura, para resolver {@code estadoPago}/{@code estadoPagoTexto} del listado
+     * (§6 del contrato de reemisión de pago). */
+    @EJB
+    private PagoProgramadoDaoService pagoProgramadoDaoService;
 
     /** Solo lectura, para el aviso de deuda de la §6.5. No se toca ningún préstamo. */
     @EJB
@@ -267,6 +276,88 @@ public class DevolucionAporteRest {
 
         } catch (Throwable e) {
             return respuestaError("anular la devolución de aportes", e);
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // §3 (API-REEMITIR-PAGO-DEVOLUCION.md) — Reemitir el pago de una devolución rebotada
+    // ------------------------------------------------------------------------
+
+    /**
+     * Reemite el pago de una devolución cuya transferencia rebotó: anula (o reconoce ya
+     * anulada/rechazada) la orden de pago vigente y genera una orden nueva con la cuenta
+     * bancaria correcta, sin tocar el aporte negativo ni el asiento de reclasificación.
+     *
+     * Ver docs/logica-negocio/crd/API-REEMITIR-PAGO-DEVOLUCION.md §3 para el orden exacto
+     * de las reglas de negocio.
+     *
+     * @param idDevolucion Código de la devolución
+     * @param solicitud    { idCuentaBancariaParticipe, motivo, confirmaRechazoBanco,
+     *                       idEmpresa, idUsuario, usuario }
+     * @return 200 con { exito, etapa, mensaje, idPagoAnterior, idPagoNuevo, resultado };
+     *         400/404/409/422/500 según el fallo
+     */
+    @POST
+    @Path("/{idDevolucion}/reemitirPago")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response reemitirPago(@PathParam("idDevolucion") Long idDevolucion,
+            SolicitudReemisionPagoDevolucion solicitud) {
+        System.out.println("LLEGA AL SERVICIO REEMITIR PAGO DEVOLUCION DE APORTES - Devolucion: "
+            + idDevolucion);
+
+        if (idDevolucion == null || idDevolucion <= 0) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(),
+                "Debe indicar una devolución válida",
+                DevolucionAporteService.ERR_PARAMETRO_INVALIDO);
+        }
+        if (solicitud == null) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(),
+                "Debe enviar el cuerpo de la solicitud",
+                DevolucionAporteService.ERR_PARAMETRO_INVALIDO);
+        }
+        if (solicitud.getIdCuentaBancariaParticipe() == null) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(),
+                "Debe indicar la cuenta bancaria nueva del partícipe",
+                DevolucionAporteService.ERR_PARAMETRO_INVALIDO);
+        }
+        if (solicitud.getMotivo() == null || solicitud.getMotivo().trim().isEmpty()) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(),
+                "Debe indicar el motivo de la reemisión",
+                DevolucionAporteService.ERR_PARAMETRO_INVALIDO);
+        }
+        if (solicitud.getIdEmpresa() == null) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(),
+                "Debe indicar la empresa contable (idEmpresa)",
+                DevolucionAporteService.ERR_PARAMETRO_INVALIDO);
+        }
+        if (solicitud.getUsuario() == null || solicitud.getUsuario().trim().isEmpty()) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(),
+                "Debe indicar el usuario que reemite el pago",
+                DevolucionAporteService.ERR_PARAMETRO_INVALIDO);
+        }
+
+        try {
+            ResultadoReemisionPagoDevolucion resultado =
+                devolucionAporteService.reemitirPagoDevolucion(idDevolucion, solicitud);
+
+            Map<String, Object> cuerpo = new LinkedHashMap<>();
+            cuerpo.put("exito", Boolean.TRUE);
+            cuerpo.put("etapa", "APLICACION");
+            cuerpo.put("mensaje", "Pago reemitido. La orden " + resultado.getIdPagoAnterior()
+                + (resultado.isOrdenAnteriorYaEstabaCerrada()
+                    ? " ya estaba rechazada/anulada" : " quedó anulada")
+                + " y se generó la orden " + resultado.getIdPagoNuevo()
+                + ", por aprobar en tesorería.");
+            cuerpo.put("idPagoAnterior", resultado.getIdPagoAnterior());
+            cuerpo.put("idPagoNuevo", resultado.getIdPagoNuevo());
+            cuerpo.put("resultado", resultado.getResultado());
+
+            return Response.status(Response.Status.OK)
+                    .entity(cuerpo).type(MediaType.APPLICATION_JSON).build();
+
+        } catch (Throwable e) {
+            return respuestaError("reemitir el pago de la devolución de aportes", e);
         }
     }
 
@@ -505,7 +596,9 @@ public class DevolucionAporteRest {
     private static final List<String> CODIGOS_409 = Arrays.asList(
         DevolucionAporteService.ERR_ESTADO_NO_PERMITE,
         DevolucionAporteService.ERR_DEVOLUCION_YA_PAGADA,
-        DevolucionAporteService.ERR_DEVOLUCION_YA_ANULADA);
+        DevolucionAporteService.ERR_DEVOLUCION_YA_ANULADA,
+        DevolucionAporteService.ERR_PAGO_CONFIRMADO,
+        DevolucionAporteService.ERR_CONFIRMAR_RECHAZO_BANCO);
 
     /**
      * Traduce una excepción del servicio a la respuesta HTTP que le corresponde, leyendo el
@@ -570,6 +663,23 @@ public class DevolucionAporteRest {
         resumen.setFechaPago(devolucion.getFechaPago());
         resumen.setMotivo(devolucion.getMotivo());
         resumen.setCuentaDestino(describeCuenta(devolucion.getCuentaParticipe()));
+
+        // estadoPago/estadoPagoTexto (§6 del contrato de reemisión de pago): null si no hay
+        // orden enlazada o ya no existe en Cuentas por Pagar — nunca rompe el listado.
+        if (devolucion.getIdPagoProgramado() != null) {
+            try {
+                PagoProgramado orden = pagoProgramadoDaoService.find(
+                    new PagoProgramado(), devolucion.getIdPagoProgramado());
+                if (orden != null) {
+                    resumen.setEstadoPago(orden.getEstado());
+                    resumen.setEstadoPagoTexto(devolucionAporteService.nombreEstadoPago(orden.getEstado()));
+                }
+            } catch (Throwable e) {
+                System.err.println("No se pudo resolver el estado de la orden de pago "
+                    + devolucion.getIdPagoProgramado() + " de la devolución "
+                    + devolucion.getCodigo() + ": " + e.getMessage());
+            }
+        }
 
         List<DetalleDevolucionAporte> detalles =
             detalleDevolucionAporteDaoService.selectByDevolucion(devolucion.getCodigo());

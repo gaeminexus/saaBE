@@ -5,8 +5,10 @@ import java.util.List;
 import com.saa.basico.util.EntityService;
 import com.saa.ejb.crd.service.dto.ResultadoConsultaPagoDevolucion;
 import com.saa.ejb.crd.service.dto.ResultadoDevolucionAporte;
+import com.saa.ejb.crd.service.dto.ResultadoReemisionPagoDevolucion;
 import com.saa.ejb.crd.service.dto.ResultadoSincronizacion;
 import com.saa.ejb.crd.service.dto.SolicitudDevolucionAporte;
+import com.saa.ejb.crd.service.dto.SolicitudReemisionPagoDevolucion;
 import com.saa.model.crd.DevolucionAporte;
 
 import jakarta.ejb.Local;
@@ -87,6 +89,10 @@ public interface DevolucionAporteService extends EntityService<DevolucionAporte>
     String ERR_SIN_CUENTA_BANCARIA = "SIN_CUENTA_BANCARIA";
     /** 422 - CXP no pudo generar o anular la orden de pago */
     String ERR_ERROR_ORDEN_PAGO = "ERROR_ORDEN_PAGO";
+    /** 409 - La orden vigente ya fue confirmada por tesorería; hay que reversarla primero */
+    String ERR_PAGO_CONFIRMADO = "PAGO_CONFIRMADO";
+    /** 409 - La orden vigente está en un archivo enviado al banco: falta confirmar el rechazo */
+    String ERR_CONFIRMAR_RECHAZO_BANCO = "CONFIRMAR_RECHAZO_BANCO";
 
     /** Usuario con el que el temporizador registra la corrida automática */
     String USUARIO_PROCESO = "SAA_DEVOLUCION";
@@ -132,9 +138,13 @@ public interface DevolucionAporteService extends EntityService<DevolucionAporte>
      * Reconcilia contra PGS.PGTR todas las devoluciones en estado REGISTRADA(1) o
      * EN_PAGO(2) que ya tienen orden de pago.
      *
-     * <b>Idempotente</b>: correrlo N veces da el mismo resultado. Una devolución ya en
-     * PAGADA(3) o RECHAZADA(4) sale del universo y no se vuelve a tocar, y los
-     * contra-movimientos no se repiten porque {@code DDVAAPRV} ya tiene valor.
+     * <b>Idempotente</b>: correrlo N veces da el mismo resultado. Una devolución que pasa a
+     * PAGADA(3) sale del universo y no se vuelve a tocar. Desde el contrato de reemisión de
+     * pago (2026-09-15, §4), una cuya orden queda RECHAZADA o ANULADA en tesorería <b>ya NO</b>
+     * se marca RECHAZADA ni genera contra-movimientos: sigue EN_PAGO, se cuenta en
+     * {@code pendientesReemision} en cada corrida, y queda a la espera de que el operador
+     * reemita el pago ({@link #reemitirPagoDevolucion}) o anule la devolución
+     * ({@link #anularDevolucion}) explícitamente.
      *
      * El orquestador corre en {@code NOT_SUPPORTED} y cada devolución en su propia
      * transacción {@code REQUIRES_NEW}: una devolución con datos malos no aborta el lote.
@@ -159,12 +169,17 @@ public interface DevolucionAporteService extends EntityService<DevolucionAporte>
     ResultadoSincronizacion sincronizarDevolucion(Long idDevolucion) throws Throwable;
 
     /**
-     * Anula una devolución que todavía no se pagó: genera los contra-movimientos positivos
-     * de CRD.APRT (el saldo del partícipe vuelve a su valor previo) y anula la orden de
-     * pago en CXP.
+     * Anula una devolución: genera los contra-movimientos positivos de CRD.APRT (el saldo
+     * del partícipe vuelve a su valor previo) y, si la orden de pago sigue viva
+     * (POR_APROBAR(0) o REGISTRADO(1)), la anula también en CXP.
      *
-     * Solo en estado REGISTRADA(1) o EN_PAGO(2) y con el pago NO confirmado. Si el pago ya
-     * está confirmado hay que reversarlo primero desde Cuentas por Pagar.
+     * Estados que lo permiten: REGISTRADA(1) o EN_PAGO(2), siempre; y, desde el contrato de
+     * reemisión de pago (2026-09-15, §5.2), PAGADA(3) cuando su orden de pago ya quedó
+     * RECHAZADA(4) o ANULADA(5) en tesorería — es la reversión completa explícita. Una
+     * PAGADA con la orden todavía CONFIRMADA(3), o sin ninguna orden en ese estado, sigue
+     * rechazándose igual que siempre: hay que reversar el pago desde Cuentas por Pagar
+     * primero. Una orden EN_ARCHIVO(2) tampoco se anula: hay que procesar la respuesta del
+     * banco antes.
      *
      * @param idDevolucion Código de la devolución
      * @param motivo       Motivo de la anulación, obligatorio
@@ -174,6 +189,26 @@ public interface DevolucionAporteService extends EntityService<DevolucionAporte>
      */
     ResultadoDevolucionAporte anularDevolucion(Long idDevolucion, String motivo, String usuario)
             throws Throwable;
+
+    /**
+     * Reemite el pago de una devolución cuya transferencia rebotó: anula (o reconoce ya
+     * anulada/rechazada) la orden de pago vigente y genera una orden nueva con la cuenta
+     * bancaria correcta, SIN tocar el aporte negativo ni el asiento de reclasificación.
+     *
+     * Todo ocurre en UNA transacción {@code REQUIRED}. Ver
+     * {@code docs/logica-negocio/crd/API-REEMITIR-PAGO-DEVOLUCION.md} §3.2 para el orden
+     * exacto de las doce reglas de negocio, y §3.3 para cómo se arma la orden nueva (copia
+     * del valor y el desglose de la anterior, cuenta y beneficiario nuevos).
+     *
+     * @param idDevolucion Código de la devolución
+     * @param solicitud    Cuenta bancaria nueva, motivo, confirmación de rechazo del banco
+     *                     (obligatoria solo si la orden actual está EN_ARCHIVO), empresa y
+     *                     usuario
+     * @return Ids de la orden anterior y de la nueva, y el resultado de la devolución
+     * @throws Throwable Si ocurre un error
+     */
+    ResultadoReemisionPagoDevolucion reemitirPagoDevolucion(Long idDevolucion,
+            SolicitudReemisionPagoDevolucion solicitud) throws Throwable;
 
     /**
      * Consulta BAJO DEMANDA si el pago de una devolución ya se confirmó en Cuentas por Pagar,
@@ -214,4 +249,19 @@ public interface DevolucionAporteService extends EntityService<DevolucionAporte>
      * @throws Throwable : Si el aporte no existe
      */
     Long obtenerIdDevolucionPorAporte(Long idAporte) throws Throwable;
+
+    /**
+     * Nombre legible de un estado de {@code PagoProgramado} (PGTRESTD) — "POR APROBAR",
+     * "REGISTRADO", "EN ARCHIVO", "CONFIRMADO", "RECHAZADO", "ANULADO", o "SIN ESTADO" si
+     * {@code estado} es {@code null}.
+     * <p>
+     * Expuesto (§6 del contrato de reemisión de pago) para que
+     * {@code DevolucionAporteRest.armaResumen} arme {@code ResumenDevolucionAporte
+     * .estadoPagoTexto} con el MISMO catálogo que usa este servicio internamente, sin
+     * duplicar el switch. Es un catálogo DISTINTO del de {@code DevolucionAporte.estado}
+     * ({@link com.saa.rubros.EstadoDevolucionAporte}) — nunca confundir los dos.
+     * @param estado : PGTRESTD, o {@code null}
+     * @return       : Nombre del estado
+     */
+    String nombreEstadoPago(Long estado);
 }

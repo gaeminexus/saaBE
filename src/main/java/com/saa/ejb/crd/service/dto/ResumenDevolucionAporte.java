@@ -30,6 +30,14 @@ public class ResumenDevolucionAporte {
     /** Orden de pago generada en CXP. */
     private Long idPagoProgramado;
 
+    /** {@code PGTRESTD} de la orden enlazada ({@link com.saa.rubros.EstadoPagoProgramado});
+     * {@code null} si no hay orden o ya no existe en Cuentas por Pagar. */
+    private Long estadoPago;
+
+    /** Nombre legible de {@link #estadoPago} — "POR APROBAR", "REGISTRADO", "EN ARCHIVO",
+     * "CONFIRMADO", "RECHAZADO", "ANULADO"; {@code null} igual que {@link #estadoPago}. */
+    private String estadoPagoTexto;
+
     /** Código del asiento contable, cuando la devolución ya está pagada. */
     private Long numeroAsiento;
 
@@ -91,6 +99,22 @@ public class ResumenDevolucionAporte {
 
     public void setIdPagoProgramado(Long idPagoProgramado) {
         this.idPagoProgramado = idPagoProgramado;
+    }
+
+    public Long getEstadoPago() {
+        return estadoPago;
+    }
+
+    public void setEstadoPago(Long estadoPago) {
+        this.estadoPago = estadoPago;
+    }
+
+    public String getEstadoPagoTexto() {
+        return estadoPagoTexto;
+    }
+
+    public void setEstadoPagoTexto(String estadoPagoTexto) {
+        this.estadoPagoTexto = estadoPagoTexto;
     }
 
     public Long getNumeroAsiento() {

@@ -24,8 +24,19 @@ public class ResultadoSincronizacion {
     /**
      * Devoluciones que pasaron a RECHAZADA porque su pago fue rechazado o anulado.
      * Cada una generó sus contra-movimientos positivos en CRD.APRT.
+     *
+     * <b>Histórico desde el contrato de reemisión de pago (2026-09-15, §4)</b>: este
+     * contador ya no se incrementa — una orden rechazada o anulada ya no marca la
+     * devolución RECHAZADA sola, ver {@link #pendientesReemision}.
      */
     private Integer marcadasRechazadas = 0;
+
+    /**
+     * Devoluciones cuya orden de pago quedó RECHAZADA o ANULADA en tesorería y siguen
+     * EN_PAGO, a la espera de que el operador reemita el pago con la cuenta correcta o
+     * anule la devolución explícitamente (contrato de reemisión de pago, 2026-09-15, §4).
+     */
+    private Integer pendientesReemision = 0;
 
     /**
      * Devoluciones cuya orden de pago ya no existe en CXP. Se dejan como están y se
@@ -64,6 +75,14 @@ public class ResultadoSincronizacion {
 
     public void setMarcadasRechazadas(Integer marcadasRechazadas) {
         this.marcadasRechazadas = marcadasRechazadas;
+    }
+
+    public Integer getPendientesReemision() {
+        return pendientesReemision;
+    }
+
+    public void setPendientesReemision(Integer pendientesReemision) {
+        this.pendientesReemision = pendientesReemision;
     }
 
     public Integer getHuerfanas() {
