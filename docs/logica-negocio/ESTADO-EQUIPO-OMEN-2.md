@@ -3743,3 +3743,40 @@ como lista vacia (el §8.1: un fallo se lee como «no hay datos»).
 Descartadas por el barrido (limpian bien o no son maestro-detalle): `cuentas-bancarias-listado`,
 `bancos`, `bancos-nacionales-extranjeros`, `registro-egreso`, `chequera`, `solicitud-chequera`,
 `detalle-extracto-bancario`, `conciliacion-cierre`, `consulta-extractos-bancarios`.
+
+## §44 — Retención sobre nota de venta (2026-09-15) · y la revisión de arranque
+
+**Árbitro nuevo, memoria limpia.** Alcance dado por el usuario: `rhh · cxp · pagos · cnt · tsr · cxc`,
+⛔ `crd`. **`sri` no está en la lista** (se trabajó toda la semana del §40): preguntado, sin respuesta.
+
+### Revisión de arranque — defectos vivos verificados en código, sin frente abierto
+
+- `cnt` — `periodo.service.ts:143-155` hace POST a `/prdo/mayorizar|desmayorizar/{id}`, que **no existen**
+  en `PeriodoRest`; el error se traga como `false`. Lo usan `procesos/mayorizacion` y `periodo-contable`.
+- `cnt` — `reporte-myan.service.ts:67-70` y `reporte-balance.service.ts:43-46` limpian temporales con el
+  `DELETE /{id}` **por PK** (`MayorAnaliticoRest:307`, `TempReportesRest:308`), no con `/resultado/{…}`.
+  Los dos los encontró `omen-saa-1` (`307a5416`); verificados acá.
+- `rhh` — el archivo bancario de nómina sigue mandando el NOMBRE del banco (`GeneracionOrdenPagoServiceImpl:619-622`).
+- ⚠️ Según `ESTADO-EQUIPO-OMEN-1.md` (2026-09-14, noche), producción = `origin/main`. Si es así y el
+  `e2-42` no corrió, las cuentas de titulares dan ORA-00904; y `lap1-06`/`lap1-08` (mapeados en
+  `CajaChica` y `PlanillaIess`) no tienen constancia de corrida. **Pedido al usuario, sin confirmar.**
+- Ya CERRADOS aunque el traspaso los listaba: §24 (`PagoProgramadoServiceImpl:1435`), §31.1 A y B, §38
+  `selectPendientes` (ya ancla en `DetalleAsiento`).
+
+### El frente
+
+Pedido: *«al emitir retenciones desde cxc, también debe permitirme escoger notas de venta (las
+ingresadas manualmente), no solo facturas»*. Diseño `cxc/PLAN-RETENCION-SOBRE-NOTA-DE-VENTA.md`,
+contrato `cxc/API-RETENCION-SOBRE-NOTA-DE-VENTA.md` (espejado), medición `cxc/sql/e2-43`.
+
+**Lo que hay que llevarse:**
+
+1. **El pedido parecía «agregar una opción» y el defecto real era la lista mezclada.** El modo «Factura»
+   del selector ya trae las notas de venta (filtra sólo por titular), y elegir una ahí manda
+   `codDocSustento = 01` al SRI. El filtro correcto ya existía en `solicitud-pago.component.ts:313-317`.
+2. **El backend no necesita lógica nueva** para emitir y cruzar: todo el camino busca `FacturaCompra` por
+   número, sin mirar el tipo. Es el mismo dividendo del §5 del plan de la nota de venta.
+3. 🔴 **El ATS enlaza retención↔compra por autorización**, y la de una nota de venta preimpresa es la del
+   talonario: la comparten varias. Habilitar la retención sobre nota de venta **activa** un defecto
+   latente. Arreglo (autorización + número) en `sri` → Fase 2, no despachada.
+4. El RIDE rotula «Factura» fijo para todo documento sustento (`RPRT_RIDE_RETENCION_V2.jrxml:219-220`).

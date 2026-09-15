@@ -7,7 +7,7 @@ archivo**, y buscar «e2-08» en `rhh/sql/` no lo encuentra porque vive en `tsr/
 Eso hizo perder tiempo el 2026-09-07. Este índice lo arregla: **una sola tabla con la ruta completa
 de cada uno.**
 
-> Última actualización: **2026-09-14** (e2-39). Al agregar un `e2-*` nuevo, agregar la fila acá **en el mismo
+> Última actualización: **2026-09-15** (e2-43). Al agregar un `e2-*` nuevo, agregar la fila acá **en el mismo
 > commit**.
 
 ---
@@ -80,6 +80,12 @@ distintas y confundirlas es peor que la deuda.
 | **e2-40** | `cxp/sql/e2-40-liquidaciones-y-notas-de-venta-por-pagar.sql` | Antes de diseñar el pago de liquidaciones desde Solicitud de pago: forma de `PGS.PGTR` (¿existe `PGTRLQCC`?), liquidaciones emitidas con/sin documento CXP, `PGS.LQCC` por estado y con saldo, y las notas de venta (`FCTC` tipo `02`). **Solo lectura** | ⚪ opcional — el usuario confirmó que las columnas no existían y pidió avanzar; el `e2-41` repite los controles que importan |
 | **e2-41** | `cxp/sql/e2-41-pago-programado-a-liquidacion-de-compra.sql` | ⚠️ **NO es lectura.** `PGS.PGTR.PGTRLQCC` + `FK_PGTR_LQCC` + índice: un pago programado puede pagar una liquidación de compra (`PGS.LQCC`). **Va ANTES del WAR** — si no, `ORA-00904` en todo el circuito de pagos | ✅ **CORRIDO el 2026-09-14** según el usuario, antes del WAR `cd800803`. La salida de los bloques 3.x no llegó al árbitro |
 | **e2-42** | `tsr/sql/e2-42-identificacion-de-la-cuenta-bancaria-del-titular.sql` | ⚠️ **NO es lectura.** `TSR.CTBN.CTBNTPID` + `CTBNIDNT` + `CK_CTBN_IDENTIFICACION`: la identificación con la que se abrió la cuenta, para el archivo del banco. Bloque 4 = lectura de cuentas a revisar. **Va ANTES del WAR** — si no, `ORA-00904` en toda lectura de cuentas de titulares | 🔴 **PENDIENTE — 2026-09-14** |
+
+## Scripts de retenciones sobre notas de venta (2026-09-15 →)
+
+| # | Ruta completa | Qué hace | Estado |
+|---|---|---|---|
+| **e2-43** | `cxc/sql/e2-43-retencion-sobre-nota-de-venta.sql` | Antes de emitir retenciones sobre notas de venta: si el combo tiene el tipo `02` (`CBR.TSRI`, LSRI 3), cuántas notas de venta comparten autorización (trampa del ATS), números repetidos entre factura y nota de venta, y retenciones **ya emitidas** sobre notas de venta — incluidas las que salieron declarando `01`. **Solo lectura** | 🔴 **PENDIENTE — 2026-09-15** |
 
 ### Consulta suelta que quedó sin script y vale anotarla
 
