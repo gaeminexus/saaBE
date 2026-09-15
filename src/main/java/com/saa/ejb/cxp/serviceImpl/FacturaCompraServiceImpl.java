@@ -297,6 +297,16 @@ public class FacturaCompraServiceImpl implements FacturaCompraService {
 			}
 		}
 
+		// Establecimiento/ptoEmisión/secuencial: sólo dígitos, largo máximo 3/3/9,
+		// completados con ceros a la izquierda. Antes del control de duplicado y del
+		// grabado — docs/logica-negocio/cxc/PLAN-RETENCION-SOBRE-NOTA-DE-VENTA.md §6:
+		// la retención 278 volvió DEVUELTA del SRI porque un secuencial de 7 dígitos
+		// se grabó tal cual, sin completar a 9.
+		String numEstablecimiento = normalizarSegmentoDocumento(solicitud.getNumEstablecimiento(),
+				"numEstablecimiento", 3);
+		String numPtoEmision = normalizarSegmentoDocumento(solicitud.getNumPtoEmision(), "numPtoEmision", 3);
+		String secuencial = normalizarSegmentoDocumento(solicitud.getSecuencial(), "secuencial", 9);
+
 		Empresa empresa = em.find(Empresa.class, solicitud.getIdEmpresa());
 		if (empresa == null)
 			throw new IllegalArgumentException("No se encontró la empresa con ID: " + solicitud.getIdEmpresa());
@@ -402,15 +412,15 @@ public class FacturaCompraServiceImpl implements FacturaCompraService {
 				+ "and f.numPtoEmision = :pto and f.secuencial = :sec and f.estadoEmision <> 3")
 				.setParameter("idTitular", titular.getCodigo())
 				.setParameter("tipo", TIPO_COMPROBANTE_NOTA_VENTA)
-				.setParameter("estab", solicitud.getNumEstablecimiento())
-				.setParameter("pto", solicitud.getNumPtoEmision())
-				.setParameter("sec", solicitud.getSecuencial())
+				.setParameter("estab", numEstablecimiento)
+				.setParameter("pto", numPtoEmision)
+				.setParameter("sec", secuencial)
 				.getSingleResult()).longValue();
 		if (duplicados > 0) {
 			Map<String, Object> b = new HashMap<>();
 			b.put("tipo", "DOCUMENTO_DUPLICADO");
-			b.put("detalle", "Ya existe una nota de venta " + solicitud.getNumEstablecimiento() + "-"
-					+ solicitud.getNumPtoEmision() + "-" + solicitud.getSecuencial() + " del proveedor '"
+			b.put("detalle", "Ya existe una nota de venta " + numEstablecimiento + "-"
+					+ numPtoEmision + "-" + secuencial + " del proveedor '"
 					+ titular.getNombre() + "'.");
 			bloqueantes.add(b);
 		}
@@ -432,11 +442,10 @@ public class FacturaCompraServiceImpl implements FacturaCompraService {
 		factura.setTitular(titular);
 		factura.setUsuario(usuario);
 		factura.setTipoComprobante(TIPO_COMPROBANTE_NOTA_VENTA);
-		factura.setNumEstablecimiento(solicitud.getNumEstablecimiento());
-		factura.setNumPtoEmision(solicitud.getNumPtoEmision());
-		factura.setSecuencial(solicitud.getSecuencial());
-		factura.setNumero(solicitud.getNumEstablecimiento() + "-" + solicitud.getNumPtoEmision()
-				+ "-" + solicitud.getSecuencial());
+		factura.setNumEstablecimiento(numEstablecimiento);
+		factura.setNumPtoEmision(numPtoEmision);
+		factura.setSecuencial(secuencial);
+		factura.setNumero(numEstablecimiento + "-" + numPtoEmision + "-" + secuencial);
 		factura.setAutorizacion(solicitud.getAutorizacion());
 		factura.setFecha(solicitud.getFecha());
 		factura.setObservacion(solicitud.getObservacion());
@@ -569,6 +578,17 @@ public class FacturaCompraServiceImpl implements FacturaCompraService {
 
 	private boolean esVacio(String valor) {
 		return valor == null || valor.trim().isEmpty();
+	}
+
+	// Nota de venta manual: establecimiento/ptoEmisión/secuencial deben quedar sólo
+	// dígitos, completados con ceros a la izquierda al largo fijo del segmento (3/3/9),
+	// igual que una factura electrónica (docs/.../PLAN-RETENCION-SOBRE-NOTA-DE-VENTA.md §6).
+	private String normalizarSegmentoDocumento(String valor, String nombreCampo, int largoMaximo) {
+		String limpio = valor == null ? "" : valor.trim();
+		if (limpio.isEmpty() || !limpio.matches("[0-9]+") || limpio.length() > largoMaximo)
+			throw new IllegalArgumentException(nombreCampo + " debe ser sólo dígitos, máximo "
+					+ largoMaximo + " (se recibió '" + valor + "').");
+		return "0".repeat(largoMaximo - limpio.length()) + limpio;
 	}
 
 	private double nvlDouble(Double valor) {

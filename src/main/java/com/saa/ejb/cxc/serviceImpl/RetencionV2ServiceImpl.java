@@ -390,7 +390,7 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 
 			writeElement(writer, "codSustento",              "02", 6); // Tabla 5 ATS: 02=Factura
 			writeElement(writer, "codDocSustento",           nvl(tipoDocReten, ""), 6);
-			writeElement(writer, "numDocSustento", nvl(numDocReten, "").replace("-", ""), 6);
+			writeElement(writer, "numDocSustento", normalizarNumDocSustento(numDocReten), 6);
 			writeElement(writer, "fechaEmisionDocSustento",
 					fechaEmiDoc != null ? fechaEmiDoc.format(dateFormatter) : "", 6);
 			writeElement(writer, "pagoLocExt",               "01", 6); // Tabla 15 ATS: 01=Residente
@@ -622,6 +622,27 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 
 	private double nvl(Double value, double defaultValue) {
 		return value != null ? value : defaultValue;
+	}
+
+	// docs/logica-negocio/cxc/PLAN-RETENCION-SOBRE-NOTA-DE-VENTA.md §6: numDocSustento debe
+	// llegar al SRI en 15 dígitos (EEE-PPP-SSSSSSSSS), y una nota de venta manual puede tipear
+	// un segmento sin completar (p. ej. secuencial de 7 dígitos). Si numDocReten tiene forma
+	// E-P-S con los tres segmentos sólo de dígitos y dentro de 3/3/9, completa cada uno con
+	// ceros antes de unirlos; cualquier otra forma se deja igual que antes (sólo quita guiones).
+	// Única función de normalización — la usan tanto el XML (numDocSustento) como la validación
+	// previa a firmar.
+	private String normalizarNumDocSustento(String numDocReten) {
+		String valor = nvl(numDocReten, "");
+		String[] partes = valor.split("-");
+		if (partes.length == 3
+				&& partes[0].matches("[0-9]{1,3}")
+				&& partes[1].matches("[0-9]{1,3}")
+				&& partes[2].matches("[0-9]{1,9}")) {
+			return "0".repeat(3 - partes[0].length()) + partes[0]
+					+ "0".repeat(3 - partes[1].length()) + partes[1]
+					+ "0".repeat(9 - partes[2].length()) + partes[2];
+		}
+		return valor.replace("-", "");
 	}
 
 	// =========================================================================
@@ -1814,6 +1835,26 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 				resultado.put("error", e.getMessage());
 				System.err.println("✗ Validación de factura afectada fallida: " + e.getMessage());
 				return resultado;
+			}
+		}
+
+		// ── PASO 0.2: numDocSustento debe tener 15 dígitos ─────────────────────
+		// A diferencia del PASO 0.1, corre SIEMPRE — no sólo cuando el facturador genera
+		// contabilidad. El SRI exige el patrón [0-9]{15} para numDocSustento; una nota de
+		// venta manual con un segmento sin completar (p. ej. secuencial de 7 dígitos) lo
+		// incumple. docs/.../PLAN-RETENCION-SOBRE-NOTA-DE-VENTA.md §6: la retención 278
+		// volvió DEVUELTA del SRI por esto exactamente, sin que ninguna validación previa
+		// la hubiera detectado.
+		if (detalles != null) {
+			for (DetalleRetencionV2 detalle : detalles) {
+				String numDocReten = detalle.getNumDocReten();
+				String normalizado = normalizarNumDocSustento(numDocReten);
+				if (!normalizado.matches("[0-9]{15}")) {
+					resultado.put("etapa", "VALIDACION_FACTURA");
+					resultado.put("mensaje", "El número del documento sustento " + nvl(numDocReten, "")
+							+ " debe tener 15 dígitos (EEE-PPP-SSSSSSSSS).");
+					return resultado;
+				}
 			}
 		}
 
