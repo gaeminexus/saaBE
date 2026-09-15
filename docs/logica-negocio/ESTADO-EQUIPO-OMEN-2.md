@@ -3780,3 +3780,18 @@ contrato `cxc/API-RETENCION-SOBRE-NOTA-DE-VENTA.md` (espejado), medición `cxc/s
    talonario: la comparten varias. Habilitar la retención sobre nota de venta **activa** un defecto
    latente. Arreglo (autorización + número) en `sri` → Fase 2, no despachada.
 4. El RIDE rotula «Factura» fijo para todo documento sustento (`RPRT_RIDE_RETENCION_V2.jrxml:219-220`).
+
+### Fase 1 entregada — 2026-09-15
+
+| Parte | Commit |
+|---|---|
+| Diseño, contrato, `e2-43` (corrido: `02` activo, 2 notas de venta, bloques 3-5 vacíos) | `6707ed39` · `5ca4731a` · FE `8497b27` |
+| RIDE rotula el documento sustento por `TIPODOCRETEN` (compilado, fill vacío OK re-corrido por el árbitro, fill con fila `02` por el BE) | `2ba64faa` |
+| Selector: tipo `NOTA_VENTA`; `FACTURA` explícito excluye `02`; legado intacto (`ng build` OK, re-corrido por el árbitro) | FE `ff7bb21` |
+
+**Sin SQL. WAR y FE en cualquier orden.** Abierto: Fase 2 (ATS por autorización + número), espera la
+decisión sobre `sri`. Criterio de aceptación en producción: el §5 del plan.
+
+**ATS de agosto (`e2-44`, lateral):** el titular del pasaporte `C05580508` tiene Tipo de Persona
+NATURAL; con ese dato el código vigente escribe `tipoCliente=01` siempre. El `AT082026` del 14/9 17:27
+no salió del código de `b170911e`: WAR viejo o archivo anterior. El usuario lo regenera para verificar.
