@@ -76,3 +76,28 @@ se tocan. Si también deben excluir las de intermediario, es otro ítem.
    (todo al 0%). Una liquidación emitida con parte gravada: `baseImpGrav = SUBTOTAL`.
 3. Las retenciones de agosto (4.642,52) siguen sumando lo mismo en `<compras>`, **o** las que no se enlacen
    aparecen en los avisos con su número.
+
+---
+
+## 5. 🔴 Validador del SRI, 2026-09-15: falta `denoCli` para el cliente con pasaporte
+
+> *«EL DETALLE DE VENTA CON TIPO ID CLIENTE [06], IDENTIFICACIÓN [C05580508] Y TIPO COMPROBANTE [18] … A partir
+> de mayo-2016 debe indicar la razón o denominación social del cliente cuando el tipo de identificación es 06»*
+
+**Causa:** `writeDetalleVenta` (`GeneradorAtsServiceImpl:~941`) dice en un comentario *«"denoCli" no va: no existe
+en el esquema real»*. Salió de `DIAGNOSTICO-ATS-RECHAZADO-VALIDADOR.md:81`, que comparó contra el ATS autorizado de
+**julio**, y julio **no tuvo ningún cliente con pasaporte**. **Es el error del §40.1 del estado, repetido en el campo
+de al lado:** con `tipoCliente` se aprendió que *un ejemplar aceptado prueba lo que contiene, no lo que no contiene*,
+se arregló `tipoCliente` y no se revisó el campo vecino, que cumple la misma condición. El `CATALOGO-ATS.md:48`
+(extraído del catálogo oficial) sí lo listaba: `tipoCliente · DenoCli · tipoComprobante`.
+
+**La familia, contada antes de arreglar (§29 del estado):**
+
+| Dónde | Condición | Estado |
+|---|---|---|
+| Ventas `denoCli` | `tpIdCliente = 06` | 🔴 lo rechaza el SRI hoy → **BE-14** |
+| Compras `tipoProv` + denominación del proveedor | `tpIdProv = 03` (pasaporte) | ⚠️ mismo comentario («no existen en el esquema», `:~797`), mismo origen. **No se emiten sin ver el nombre exacto del elemento en el XSD** (`CATALOGO-ATS.md:30-31` dice `tipoProv · parteRel · DenoProv`; `LEVANTAMIENTO-ATS-103-104.md:204` dice `denopr`: dos fuentes, dos nombres). Mientras tanto, **aviso** cuando una compra salga con `tpIdProv = 03` |
+
+**BE-14:** en ventas con `tpIdCliente = 06`, escribir `denoCli` **inmediatamente después de `tipoCliente`** (orden del
+catálogo) con la razón social del titular, o su nombre si no tiene. Corregir los dos comentarios que afirman que no
+existen. En compras, sólo el aviso.
