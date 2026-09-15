@@ -78,7 +78,7 @@ columna ya existe y se llena desde el formulario manual.
    `recontabilizarDocumento`. Una sola función privada para los tres.
 5. La observación del asiento (`CNT.ASNT.ASNTOBSR`) es de 2000: si el texto armado pasa de 2000, se corta a
    2000.
-6. **Límite conocido:** la pantalla `bandeja-electronica` registra con un `confirm()` nativo y sin diálogo
+6. **Decisión del usuario, 2026-09-15: sólo en Gestión de documentos.** la pantalla `bandeja-electronica` registra con un `confirm()` nativo y sin diálogo
    (`bandeja-electronica.component.ts:231`); **no** tendrá la casilla. Tampoco el registro por lote.
 
 ## 3. Reparto
