@@ -150,9 +150,16 @@ public class AplicacionPagoCxcDaoServiceImpl extends EntityDaoImpl<AplicacionPag
         // '001001000000123'): se comparan ambos sin guiones.
         String numeroNormalizado = numeroDocumento.trim().replace("-", "");
 
+        // ÍTEM 16 (2026-09-15, docs/logica-negocio/tsr/AUDITORIA-ESTADO-CUENTA-TITULAR.md C3):
+        // sin este filtro, una retención/NC/ND podía cruzarse contra una factura anulada o
+        // todavía no autorizada por el SRI -- mismo criterio que usa GeneradorAtsServiceImpl
+        // para <ventas> y los cuadres 103/104 (com.saa.ejb.sri.serviceImpl.CriterioVentaVigente),
+        // vuelto public para este uso. No literales sueltos.
         StringBuilder jpql = new StringBuilder(
                 " select f from Factura f " +
-                " where  FUNCTION('replace', f.numero, '-', '') = :numero ");
+                " where  FUNCTION('replace', f.numero, '-', '') = :numero " +
+                " and    f.estado = :estadoAutorizada " +
+                " and    f.estadoEmision <> :estadoEmisionAnulada ");
         if (idTitular != null) {
             jpql.append(" and f.titular.codigo = :idTitular ");
         }
@@ -162,6 +169,10 @@ public class AplicacionPagoCxcDaoServiceImpl extends EntityDaoImpl<AplicacionPag
 
         Query query = em.createQuery(jpql.toString());
         query.setParameter("numero", numeroNormalizado);
+        query.setParameter("estadoAutorizada",
+                com.saa.ejb.sri.serviceImpl.CriterioVentaVigente.ESTADO_AUTORIZADA);
+        query.setParameter("estadoEmisionAnulada",
+                com.saa.ejb.sri.serviceImpl.CriterioVentaVigente.ESTADO_EMISION_ANULADA);
         if (idTitular != null) {
             query.setParameter("idTitular", idTitular);
         }

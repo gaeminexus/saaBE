@@ -90,6 +90,23 @@ public interface AplicacionPagoCxpDaoService extends EntityDao<AplicacionPagoCxp
 			throws Throwable;
 
 	/**
+	 * ÍTEM 17 (2026-09-15, docs/logica-negocio/tsr/AUDITORIA-ESTADO-CUENTA-TITULAR.md P2): igual
+	 * criterio que {@link #selectFacturaByNumero}, pero sobre {@code CBR.LQCS}
+	 * ({@code com.saa.model.cxc.LiquidacionCompra}) — la liquidación de compra EMITIDA (recibida
+	 * electrónicamente), no {@code PGS.LQCC}. Una retención con {@code tipoDocReten='03'} nombra el
+	 * número de la LQCS; su {@code documentoCxp} (si existe) es la {@code LiquidacionCompraCompra}
+	 * contra la que se cruza de verdad.
+	 * @param numeroDocumento : Número del documento tal como viene en el otro documento
+	 * @param idTitular       : Id del proveedor emisor de la liquidación
+	 * @param idEmpresa       : Id de la empresa (vía {@code facturador.empresa}, la LQCS no tiene
+	 *                          empresa propia)
+	 * @return                : Listado de liquidaciones que coinciden (normalmente 0 ó 1)
+	 * @throws Throwable      : Excepcion
+	 */
+	List<com.saa.model.cxc.LiquidacionCompra> selectLiquidacionEmitidaByNumero(String numeroDocumento,
+			Long idTitular, Long idEmpresa) throws Throwable;
+
+	/**
 	 * Recupera las aplicaciones ACTIVAS de tipo ANTICIPO (cruces del saldo de
 	 * anticipos) de un proveedor en una empresa, de la más reciente a la más
 	 * antigua.

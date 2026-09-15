@@ -392,4 +392,29 @@ public interface AplicacionPagoCxpService extends EntityService<AplicacionPagoCx
 	 */
 	FacturaCompra resolverFacturaCompraPorNumero(String numeroDocumento, Long idTitular,
 			Long idEmpresa) throws Throwable;
+
+	/**
+	 * ÍTEM 17 (2026-09-15, docs/logica-negocio/tsr/AUDITORIA-ESTADO-CUENTA-TITULAR.md P2): resuelve
+	 * el documento sustento de una retención SEGÚN SU TIPO — único punto de decisión, usado tanto
+	 * por el PASO 0.1 de {@code RetencionV2ServiceImpl} (valida que exista, antes de firmar) como
+	 * por {@code aplicarRetencionEmitida} (el cruce real), para que nunca discrepen.
+	 * <ul>
+	 * <li>{@code tipoDocReten = "03"} (liquidación de compra) → resuelve en {@code PGS.LQCC}
+	 * ({@code LiquidacionCompraCompra}), pasando por la {@code LiquidacionCompra} (CBR.LQCS)
+	 * emitida con ese número: si la LQCS existe pero no tiene {@code documentoCxp} generado, lanza
+	 * con un mensaje que lo dice explícitamente (no el genérico de "no existe").</li>
+	 * <li>Cualquier otro valor ("01"/"02", null, o "04"/"05" — NC/ND como documento sustento, que
+	 * este método NO soporta todavía) → {@link #resolverFacturaCompraPorNumero}, igual que hoy.</li>
+	 * </ul>
+	 * @param tipoDocReten    : {@code DetalleRetencionV2.tipoDocReten} ("01".."05")
+	 * @param numeroDocumento : Número del documento referenciado
+	 * @param idTitular       : Id del proveedor
+	 * @param idEmpresa       : Id de la empresa
+	 * @return                : {@code FacturaCompra} o {@code LiquidacionCompraCompra} encontrada,
+	 *                          según el tipo
+	 * @throws Throwable      : Excepcion si no hay coincidencia, hay ambigüedad, o (para "03") la
+	 *                          LQCS no tiene documento CXP generado
+	 */
+	Object resolverDocumentoSustentoPorTipo(String tipoDocReten, String numeroDocumento,
+			Long idTitular, Long idEmpresa) throws Throwable;
 }

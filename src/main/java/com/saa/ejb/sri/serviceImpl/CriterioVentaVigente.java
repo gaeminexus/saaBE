@@ -32,14 +32,19 @@ package com.saa.ejb.sri.serviceImpl;
  * {@code docs/logica-negocio/sri/sql/e2-37-por-que-el-ats-de-agosto-salio-sin-ventas.sql}
  * (bloques 2 y 3) para verificar que no hay otro valor de {@code estado} en juego antes de dar
  * esto por definitivo. Si el script muestra algo distinto, el ajuste es de una línea: acá.
+ *
+ * <p>ÍTEM 16 (2026-09-15, docs/logica-negocio/tsr/AUDITORIA-ESTADO-CUENTA-TITULAR.md C3): pasó a
+ * {@code public} para que {@code com.saa.ejb.cxc.daoImpl.AplicacionPagoCxcDaoServiceImpl}
+ * (paquete distinto) filtre por el mismo criterio en {@code selectFacturaByNumero} — antes sólo
+ * lo usaba {@code GeneradorAtsServiceImpl}, en este mismo paquete. Mismo criterio, mismo dato.
  */
-final class CriterioVentaVigente {
+public final class CriterioVentaVigente {
 
     /** {@code estado = 5} (AUTORIZADA) — nunca {@code Estado.ACTIVO} para estas 4 entidades. */
-    static final Long ESTADO_AUTORIZADA = Long.valueOf(5L);
+    public static final Long ESTADO_AUTORIZADA = Long.valueOf(5L);
 
     /** {@code estadoEmision = 3} (ANULADA) — excluir siempre del lado "vigente". */
-    static final Long ESTADO_EMISION_ANULADA = Long.valueOf(3L);
+    public static final Long ESTADO_EMISION_ANULADA = Long.valueOf(3L);
 
     private CriterioVentaVigente() {
     }

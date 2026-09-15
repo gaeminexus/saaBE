@@ -181,6 +181,42 @@ public class AplicacionPagoCxpDaoServiceImpl extends EntityDaoImpl<AplicacionPag
     }
 
     @Override
+    public List<com.saa.model.cxc.LiquidacionCompra> selectLiquidacionEmitidaByNumero(String numeroDocumento,
+            Long idTitular, Long idEmpresa) throws Throwable {
+        System.out.println("Ingresa al metodo selectLiquidacionEmitidaByNumero con numero: " + numeroDocumento
+                + " | titular: " + idTitular + " | empresa: " + idEmpresa);
+
+        if (numeroDocumento == null || numeroDocumento.trim().isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        String numeroNormalizado = numeroDocumento.trim().replace("-", "");
+
+        // ÍTEM 17 (docs/logica-negocio/tsr/AUDITORIA-ESTADO-CUENTA-TITULAR.md P2): CBR.LQCS
+        // (LiquidacionCompra) no tiene empresa propia -- va por el facturador, igual que el resto
+        // del módulo sri/cxc que filtra por empresa contable.
+        StringBuilder jpql = new StringBuilder(
+                " select l from LiquidacionCompra l " +
+                " where  FUNCTION('replace', l.numero, '-', '') = :numero ");
+        if (idTitular != null) {
+            jpql.append(" and l.titular.codigo = :idTitular ");
+        }
+        if (idEmpresa != null) {
+            jpql.append(" and l.facturador.empresa.codigo = :idEmpresa ");
+        }
+
+        Query query = em.createQuery(jpql.toString());
+        query.setParameter("numero", numeroNormalizado);
+        if (idTitular != null) {
+            query.setParameter("idTitular", idTitular);
+        }
+        if (idEmpresa != null) {
+            query.setParameter("idEmpresa", idEmpresa);
+        }
+        return query.getResultList();
+    }
+
+    @Override
     public List<AplicacionPagoCxp> selectCrucesAnticipoActivos(Long idTitular, Long idEmpresa)
             throws Throwable {
         System.out.println("Ingresa al metodo selectCrucesAnticipoActivos con titular: " + idTitular

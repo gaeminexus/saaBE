@@ -1822,12 +1822,17 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 				Long idEmpresaValida = retencion.getFacturador().getEmpresa().getCodigo();
 				Long idProveedorValida = (retencion.getProveedor() != null)
 						? retencion.getProveedor().getCodigo() : null;
-				java.util.Set<String> documentos = new java.util.LinkedHashSet<>();
+				// ÍTEM 17 (2026-09-15, AUDITORIA-ESTADO-CUENTA-TITULAR.md P2): se guarda el
+				// tipoDocReten junto al número -- una retención sobre liquidación (03) se
+				// resuelve contra PGS.LQCC, no contra FacturaCompra. Mismo resolutor que usa
+				// el cruce real (AplicacionPagoCxpService.resolverDocumentoSustentoPorTipo),
+				// para que PASO 0.1 y el cruce nunca discrepen.
+				java.util.Map<String, String> documentos = new java.util.LinkedHashMap<>();
 				if (detalles != null) {
 					for (DetalleRetencionV2 detalle : detalles) {
 						if (detalle.getNumDocReten() != null
 								&& !detalle.getNumDocReten().trim().isEmpty()) {
-							documentos.add(detalle.getNumDocReten().trim());
+							documentos.putIfAbsent(detalle.getNumDocReten().trim(), detalle.getTipoDocReten());
 						}
 					}
 				}
@@ -1837,11 +1842,12 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 							+ "a la que afecta (documento sustento).");
 					return resultado;
 				}
-				for (String numeroDocumento : documentos) {
-					aplicacionPagoCxpService.resolverFacturaCompraPorNumero(
-							numeroDocumento, idProveedorValida, idEmpresaValida);
+				for (java.util.Map.Entry<String, String> entrada : documentos.entrySet()) {
+					aplicacionPagoCxpService.resolverDocumentoSustentoPorTipo(
+							entrada.getValue(), entrada.getKey(), idProveedorValida, idEmpresaValida);
 				}
-				System.out.println("✓ Factura(s) de compra afectada(s) verificada(s): " + documentos);
+				System.out.println("✓ Factura(s)/Liquidación(es) de compra afectada(s) verificada(s): "
+						+ documentos);
 			} catch (Throwable e) {
 				resultado.put("etapa", "VALIDACION_FACTURA");
 				resultado.put("mensaje", e.getMessage());

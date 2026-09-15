@@ -159,9 +159,33 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 
 		// El documento sustento de la retención vive en sus detalles.
 		String numeroFactura = obtenerNumeroDocSustento(retencion.getId());
-		FacturaCompra factura = resolverFacturaCompraPorNumero(numeroFactura, idProveedor, idEmpresa);
+		// ÍTEM 17 (2026-09-15, AUDITORIA-ESTADO-CUENTA-TITULAR.md P2): el tipo decide si el
+		// documento sustento es una FacturaCompra o una LiquidacionCompraCompra -- mismo
+		// resolutor que usa el PASO 0.1 de RetencionV2ServiceImpl, para que nunca discrepen.
+		String tipoDocSustento = obtenerTipoDocSustento(retencion.getId());
+		Object documento = resolverDocumentoSustentoPorTipo(tipoDocSustento, numeroFactura,
+				idProveedor, idEmpresa);
 
-		AplicacionPagoCxp aplicacion = nuevaAplicacion(factura, idEmpresa,
+		AplicacionPagoCxp aplicacion;
+		if (documento instanceof LiquidacionCompraCompra) {
+			LiquidacionCompraCompra liquidacion = (LiquidacionCompraCompra) documento;
+			aplicacion = nuevaAplicacionLiquidacion(liquidacion, idEmpresa,
+					TipoDocPagoAplicacion.RETENCION, retencion.getTotal(),
+					fechaDe(retencion.getFecha()),
+					"Retención V2 N° " + retencion.getNumero(), usuario);
+			aplicacion.setRetencionV2(retencion);
+			aplicacion.setAsiento(asiento);
+
+			validaMontoContraSaldoLiquidacion(liquidacion, aplicacion.getMontoAplicado(), null);
+
+			aplicacion = saveSingle(aplicacion);
+			System.out.println("✓ Aplicación por retención creada (liquidación): id=" + aplicacion.getId()
+					+ " | liquidacion=" + liquidacion.getId() + " | monto=" + aplicacion.getMontoAplicado());
+			return aplicacion;
+		}
+
+		FacturaCompra factura = (FacturaCompra) documento;
+		aplicacion = nuevaAplicacion(factura, idEmpresa,
 				TipoDocPagoAplicacion.RETENCION, retencion.getTotal(),
 				fechaDe(retencion.getFecha()),
 				"Retención V2 N° " + retencion.getNumero(), usuario);
@@ -1189,6 +1213,56 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 		return facturas.get(0);
 	}
 
+	@Override
+	public Object resolverDocumentoSustentoPorTipo(String tipoDocReten, String numeroDocumento,
+			Long idTitular, Long idEmpresa) throws Throwable {
+
+		if ("03".equals(tipoDocReten)) {
+			return resolverLiquidacionCompraPorNumero(numeroDocumento, idTitular, idEmpresa);
+		}
+		// "01"/"02" (factura electrónica / nota de venta, ambas en PGS.FCTC), null, o "04"/"05"
+		// (NC/ND como documento sustento) -- ÍTEM 17c: NC/ND no están soportados, caen al mismo
+		// camino que hoy (buscan en FacturaCompra con el número de la NC/ND, que no va a
+		// encontrar nada -- mismo comportamiento sin cambios, no se agrega soporte nuevo).
+		return resolverFacturaCompraPorNumero(numeroDocumento, idTitular, idEmpresa);
+	}
+
+	/**
+	 * ÍTEM 17: localiza la {@code LiquidacionCompraCompra} (PGS.LQCC) a la que se refiere un
+	 * documento por número, pasando por la {@code LiquidacionCompra} (CBR.LQCS) EMITIDA con ese
+	 * número. No se busca directo en LQCC porque el caso que hay que distinguir con un mensaje
+	 * propio es justo "la LQCS existe pero todavía no tiene LQCC" -- buscando directo en LQCC ese
+	 * caso da 0 filas, indistinguible de "no existe ninguna liquidación con ese número".
+	 * @throws IncomeException si no existe, hay ambigüedad, o la LQCS no tiene documento CXP
+	 */
+	private LiquidacionCompraCompra resolverLiquidacionCompraPorNumero(String numeroDocumento,
+			Long idTitular, Long idEmpresa) throws Throwable {
+
+		if (numeroDocumento == null || numeroDocumento.trim().isEmpty()) {
+			throw new IncomeException("El documento no indica el número de la liquidación a la que "
+					+ "afecta. No es posible registrar el pago ni generar la contabilidad.");
+		}
+
+		List<com.saa.model.cxc.LiquidacionCompra> liquidaciones =
+				aplicacionPagoCxpDaoService.selectLiquidacionEmitidaByNumero(numeroDocumento, idTitular, idEmpresa);
+
+		if (liquidaciones == null || liquidaciones.isEmpty()) {
+			throw new IncomeException("No existe en el sistema la liquidación de compra N° "
+					+ numeroDocumento + " del proveedor indicado. Emita primero la liquidación "
+					+ "para poder registrar el documento que la afecta.");
+		}
+		if (liquidaciones.size() > 1) {
+			throw new IncomeException("Existe más de una liquidación de compra con el número "
+					+ numeroDocumento + " para el mismo proveedor. Revise los documentos duplicados.");
+		}
+		com.saa.model.cxc.LiquidacionCompra liquidacion = liquidaciones.get(0);
+		if (liquidacion.getDocumentoCxp() == null) {
+			throw new IncomeException("La liquidación N° " + numeroDocumento
+					+ " no tiene documento CXP generado: genérelo antes de retener.");
+		}
+		return liquidacion.getDocumentoCxp();
+	}
+
 	// =====================================================================
 	// Helpers privados
 	// =====================================================================
@@ -1539,6 +1613,32 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 					+ "para retenciones de un solo documento sustento.");
 		}
 		return numeros.get(0);
+	}
+
+	/**
+	 * ÍTEM 17: equivalente de {@link #obtenerNumeroDocSustento(Long)} para el TIPO del documento
+	 * sustento -- no se toca ese método (obligatorio un solo documento sustento), este es uno
+	 * nuevo, en paralelo, con la misma regla aplicada al tipo.
+	 * @throws IncomeException si los detalles activos tienen más de un tipoDocReten distinto
+	 */
+	private String obtenerTipoDocSustento(Long idRetencionV2) throws Throwable {
+		@SuppressWarnings("unchecked")
+		List<String> tipos = em.createQuery(
+				" select distinct d.tipoDocReten from DetalleRetencionV2 d " +
+				" where  d.retencionV2.id = :idRetencion " +
+				" and    d.tipoDocReten is not null ")
+			.setParameter("idRetencion", idRetencionV2)
+			.getResultList();
+
+		if (tipos.isEmpty()) {
+			return null;
+		}
+		if (tipos.size() > 1) {
+			throw new IncomeException("La retención afecta a documentos sustento de " + tipos.size()
+					+ " tipos distintos. El registro automático del pago solo está soportado "
+					+ "para retenciones de un solo tipo de documento sustento.");
+		}
+		return tipos.get(0);
 	}
 
 	/**

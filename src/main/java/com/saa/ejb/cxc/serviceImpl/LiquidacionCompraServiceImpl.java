@@ -88,6 +88,12 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 	@EJB
 	private com.saa.ejb.cxc.dao.AplicacionPagoCxcDaoService aplicacionPagoCxcDaoService;
 
+	/** ÍTEM 18 (2026-09-15, AUDITORIA-ESTADO-CUENTA-TITULAR.md P6): para revertir en cascada las
+	 *  AplicacionPagoCxp (lado proveedor: pagos, retenciones, cruces de anticipo, caja chica) de
+	 *  la LiquidacionCompraCompra al anular su LiquidacionCompra -- ver anularLiquidacion. */
+	@EJB
+	private com.saa.ejb.cxp.service.AplicacionPagoCxpService aplicacionPagoCxpService;
+
 	/** Catálogo de rubros: traduce el tipo de identificación interno al código del SRI. Ver
 	 *  {@link #resolverTipoIdentificacionSRI(com.saa.model.tsr.Titular)}. */
 	@EJB
@@ -2134,9 +2140,18 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 
 	/**
 	 * Corregido el 2026-08-28 (ítem 14) — ver el javadoc de la interfaz para el gap que tenía
-	 * esto: {@code AplicacionPagoCxc.liquidacion} existe y se usa activamente, a diferencia de
-	 * {@code AplicacionPagoCxp} (que no tiene FK a {@code LiquidacionCompraCompra}, confirmado
-	 * en el ítem 13 para el lado compra puro). Ahora sí se verifica antes de anular.
+	 * esto: {@code AplicacionPagoCxc.liquidacion} existe y se usa activamente. Ahora sí se
+	 * verifica antes de anular.
+	 * <p>
+	 * ⚠️ Corrección del comentario original (ÍTEM 18, 2026-09-15, AUDITORIA-ESTADO-CUENTA-TITULAR.md
+	 * P6): decía que {@code AplicacionPagoCxp} "no tiene FK a LiquidacionCompraCompra" — falso.
+	 * {@code AplicacionPagoCxp.liquidacionCompra} existe y se usa activamente desde que se agregó
+	 * el cruce de anticipos contra liquidaciones (docs/logica-negocio/cxp/DISENO-CRUCE-ANTICIPO-
+	 * CONTRA-LIQUIDACION.md) — ver {@code nuevaAplicacionLiquidacion} en
+	 * {@code AplicacionPagoCxpServiceImpl}. Este método SÓLO cubría el lado cliente (APLC); el
+	 * lado proveedor (APLP: pagos, retenciones, cruces de anticipo, caja chica) quedaba con
+	 * movimientos vivos al anular la liquidación — corregido en {@code anularLiquidacion}, más
+	 * abajo.
 	 */
 	@Override
 	public java.util.List<java.util.Map<String, Object>> movimientosRelacionadosLiquidacion(Long idLiquidacion)
@@ -2183,6 +2198,39 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 		String motivoFinal      = (motivo  != null && !motivo.trim().isEmpty())  ? motivo.trim()  : "Anulación manual";
 		java.time.LocalDateTime ahora = java.time.LocalDateTime.now();
 
+		com.saa.model.cxp.LiquidacionCompraCompra lqcc = liquidacion.getDocumentoCxp();
+
+		// ÍTEM 18b (2026-09-15, AUDITORIA-ESTADO-CUENTA-TITULAR.md P6): un pago CONFIRMADO
+		// significa que el banco ya ejecutó la transferencia (o que el cheque/débito automático
+		// ya se giró) -- ver el javadoc de EstadoPagoProgramado. Revertir en cascada la
+		// AplicacionPagoCxp de ese pago dejaría el dinero transferido sin ningún documento vivo
+		// que lo explique. Mismo criterio que ya aplica PagoProgramadoServiceImpl.anularPago
+		// (~:2233): un pago CONFIRMADO no se anula, se revierte a propósito
+		// (POST /pgtr/revertirConfirmado). Por eso este chequeo va ANTES de tocar nada, y
+		// rechaza SIEMPRE -- sin importar anularEnCascada, que es para movimientos que sí se
+		// pueden reversar automáticamente.
+		if (lqcc != null) {
+			@SuppressWarnings("unchecked")
+			List<com.saa.model.cxp.PagoProgramado> pagosConfirmados = em.createQuery(
+					"select p from PagoProgramado p where p.liquidacionCompra.id = :idLqcc "
+					+ "and p.estado = :confirmado")
+					.setParameter("idLqcc", lqcc.getId())
+					.setParameter("confirmado", Long.valueOf(com.saa.rubros.EstadoPagoProgramado.CONFIRMADO))
+					.getResultList();
+			if (!pagosConfirmados.isEmpty()) {
+				StringBuilder pagosDetalle = new StringBuilder();
+				for (com.saa.model.cxp.PagoProgramado p : pagosConfirmados) {
+					if (pagosDetalle.length() > 0) pagosDetalle.append(", ");
+					pagosDetalle.append("N° ").append(p.getId());
+				}
+				throw new IncomeException("No se puede anular la liquidación " + idLiquidacion
+						+ ": tiene " + pagosConfirmados.size() + " pago(s) CONFIRMADO(s) (" + pagosDetalle
+						+ ") -- el banco ya ejecutó la transferencia, o el cheque/débito automático ya "
+						+ "se giró. Revierta el pago primero (Tesorería → Revertir pago confirmado) "
+						+ "antes de anular la liquidación.");
+			}
+		}
+
 		// Movimientos relacionados (ítem 14): cobros/pagos cruzados contra esta liquidación.
 		// No hay un revertirAplicacionesDeLiquidacion bulk -- se loopea con revertirAplicacion,
 		// mismo criterio que se usó para FacturaCompra en el ítem 13.
@@ -2211,7 +2259,42 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 			System.out.println("✓ " + reversados + " movimiento(s) relacionado(s) reversados antes de anular la liquidación.");
 		}
 
-		com.saa.model.cxp.LiquidacionCompraCompra lqcc = liquidacion.getDocumentoCxp();
+		// ÍTEM 18a: movimientos del LADO PROVEEDOR (pagos, retenciones emitidas cruzadas, cruces
+		// de anticipo, caja chica) contra la LiquidacionCompraCompra (PGS.LQCC) de esta
+		// liquidación -- mismo mecanismo que copia LiquidacionCompraCompraServiceImpl
+		// .anularLiquidacionCompra (consultarPorLiquidacion + revertirAplicacion). Antes de este
+		// ítem, esta rama sólo anulaba el asiento y marcaba la LQCC inactiva: las APLP quedaban
+		// vivas y, si eran cruces de anticipo, el saldo del anticipo seguía consumido.
+		if (lqcc != null) {
+			List<com.saa.model.cxp.AplicacionPagoCxp> movimientosProveedor =
+					aplicacionPagoCxpService.consultarPorLiquidacion(lqcc.getId(), true);
+			if (!movimientosProveedor.isEmpty()) {
+				if (!anularEnCascada) {
+					StringBuilder detalleProveedor = new StringBuilder();
+					for (com.saa.model.cxp.AplicacionPagoCxp m : movimientosProveedor) {
+						if (detalleProveedor.length() > 0) detalleProveedor.append("; ");
+						detalleProveedor.append("tipo ").append(m.getTipoDocPago()).append(" $")
+								.append(m.getMontoAplicado()).append(" (id ").append(m.getId()).append(")");
+					}
+					throw new IncomeException("No se puede anular la liquidación " + idLiquidacion
+							+ ": su documento CXP (LQCC " + lqcc.getId() + ") tiene "
+							+ movimientosProveedor.size() + " movimiento(s) del lado proveedor sin "
+							+ "reversar: " + detalleProveedor + ". Reenvíe la anulación con "
+							+ "anularEnCascada=true para reversarlos todos junto con la liquidación.");
+				}
+				int reversadosProveedor = 0;
+				for (com.saa.model.cxp.AplicacionPagoCxp m : movimientosProveedor) {
+					aplicacionPagoCxpService.revertirAplicacion(m.getId(),
+							"Anulación en cascada de la liquidación " + idLiquidacion + ": " + motivoFinal,
+							idUsuario);
+					reversadosProveedor++;
+				}
+				resultado.put("movimientosProveedorReversados", reversadosProveedor);
+				System.out.println("✓ " + reversadosProveedor + " movimiento(s) del lado proveedor "
+						+ "reversados antes de anular la liquidación.");
+			}
+		}
+
 		if (lqcc != null) {
 			com.saa.model.cxp.LiquidacionCompraCompra lqccManaged =
 					em.find(com.saa.model.cxp.LiquidacionCompraCompra.class, lqcc.getId());
