@@ -162,3 +162,32 @@ Con una nota de venta de prueba de total **T** y una retención de valor **R**:
 3. El RIDE imprime `Nota de venta - EEE-PPP-SSSSSSSSS`.
 4. Aparece una `PGS.APLP` tipo retención apuntando al `ID` de esa `FCTC`, y el saldo de la nota queda en
    **T − R**.
+
+---
+
+## 6. 🔴 Incidente en producción, 2026-09-15 11:11 — la primera retención volvió DEVUELTA
+
+Retención 278 sobre la nota de venta `002-001-0000610` (Ayala Naranjo Juan Pablo, $37,50, código 332 al 0%).
+Respuesta del SRI, del log del servidor:
+
+> `cvc-pattern-valid: Value '0020010000610' is not facet-valid with respect to pattern '[0-9]{15}' for type 'numDocSustento'`
+
+**Causa:** la nota de venta se registró a mano con secuencial de **7** dígitos. `POST /fctc/manual`
+(`FacturaCompraServiceImpl:434-439`) graba lo que se tipea sin completar ceros, y el XML de la retención
+(`RetencionV2ServiceImpl:393`) sólo quita guiones. Una factura electrónica nunca lo muestra porque su
+número sale del XML del SRI, siempre 3-3-9. **El §1.3 de este plan decía «✅ 15 dígitos, igual que una
+factura»: era cierto para la factura y no se verificó para el documento que se tipea a mano.**
+
+El sistema borró la retención 278 (`eliminarRetencionV2NoEmitida`, nunca llegó al SRI): no queda residuo.
+
+**Salida inmediata (dato):** `cxp/sql/e2-47` completa con ceros `NUMESTABLECIMIENTO`/`NUMPTOEMISION`/`SECUENCIAL`
+y `NUMERO` de las notas de venta. Los pagos y cruces apuntan por `ID`, no por número.
+
+**Salida de fondo (código), despachada:**
+
+| Ítem | Quién | Qué |
+|---|---|---|
+| **BE-4** | `omen-saa-2-be` | `POST /fctc/manual`: sólo dígitos, largo máximo 3/3/9, y completar con ceros **antes** del control de duplicado y del grabado |
+| **BE-5** | `omen-saa-2-be` | Retención: validar que cada `numDocSustento` sin guiones tenga 15 dígitos **antes de firmar** (en la validación previa), con mensaje que nombre el documento. Completar ceros si viene en forma `E-P-S` con segmentos cortos y sólo dígitos |
+| **BE-6** | `omen-saa-2-be` | **Medir, no arreglar:** qué pasa en asiento y cruce con una retención de total `0,00` (código 332 al 0%, el caso real). `nuevaAplicacion` rechaza monto cero |
+| **FE-3** | `omen-saa-2-fe` | Formulario de nota de venta manual: sólo dígitos, largo máximo, y completar con ceros al salir del campo |
