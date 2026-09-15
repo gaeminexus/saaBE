@@ -789,15 +789,31 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         w.writeStartElement("detalleCompras");
         w.writeCharacters("\n");
         writeElement(w, "codSustento", nvl(c.codSustento, ""), 6);
-        writeElement(w, "tpIdProv", tipoIdentificacionCompra(c.titular), 6);
+        String tpIdProv = tipoIdentificacionCompra(c.titular);
+        writeElement(w, "tpIdProv", tpIdProv, 6);
         writeElement(w, "idProv", nvl(c.titular.getIdentificacion(), ""), 6);
         writeElement(w, "tipoComprobante", nvl(c.tipoComprobante, ""), 6);
         // Decisión del usuario 2026-09-09 (DIAGNOSTICO-ATS-RECHAZADO-VALIDADOR.md §A.5): NULL ->
         // "NO". Es una afirmación tributaria, no un default técnico -- el archivo autorizado de
         // julio declara "NO" en los 79 proveedores; se revierte en Titular.parteRelacionada en
-        // cuanto contabilidad marque las excepciones. "tipoProv" y "denopr" NO van acá: no existen
-        // en el esquema real (0 ocurrencias en las 79 compras del autorizado) y eran justo lo que
-        // rompía la secuencia ante el validador ("se esperaba 'fechaRegistro'").
+        // cuanto contabilidad marque las excepciones.
+        //
+        // ÍTEM 14 (2026-09-15, docs/logica-negocio/sri/PLAN-ATS-AJUSTES-2026-09-15.md §5):
+        // "tipoProv" y "DenoProv"/"denopr" SÍ son condicionales del esquema para tpIdProv="03"
+        // (pasaporte) -- mismo patrón que "tipoCliente"/"denoCli" del lado ventas (ver
+        // writeDetalleVenta), que el validador del SRI rechazó por el mismo error de origen: un
+        // ejemplar aceptado (julio, 79 compras) que no tenía NINGÚN proveedor con pasaporte
+        // probaba que el campo no aplicaba ese mes, no que no existiera. A diferencia de ventas,
+        // acá NO se emiten todavía: el nombre exacto del elemento no está confirmado --
+        // CATALOGO-ATS.md:30-31 dice "DenoProv", LEVANTAMIENTO-ATS-103-104.md:204 dice "denopr",
+        // dos fuentes con dos nombres distintos y sin el XSD oficial para desempatar. Mientras
+        // tanto, sólo se avisa cuando ocurre (abajo).
+        if ("03".equals(tpIdProv)) {
+            avisos.add("Compra de proveedor con pasaporte (" + nvl(c.titular.getNombre(), "")
+                    + ", identificación " + nvl(c.titular.getIdentificacion(), "") + "): el SRI exige "
+                    + "tipo de proveedor y denominación, que este generador todavía no emite. "
+                    + "Revisar antes de declarar.");
+        }
         writeElement(w, "parteRel", nvl(c.titular.getParteRelacionada(), "NO"), 6);
         writeElement(w, "fechaRegistro", formatFecha(c.fechaRegistro != null ? c.fechaRegistro : c.fechaEmision), 6);
         writeElement(w, "establecimiento", nvl(c.establecimiento, ""), 6);
@@ -938,7 +954,7 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         // parteRelVtas (no "parteRel" -- nombre distinto del lado compras, DIAGNOSTICO-ATS-
         // RECHAZADO-VALIDADOR.md §3). Mismo default "NO" que en compras y por la misma decisión
         // del usuario (§A.5): NULL -> "NO", afirmación tributaria a revertir si contabilidad marca
-        // excepciones. "denoCli" no va: no existe en el esquema real.
+        // excepciones.
         writeElement(w, "parteRelVtas", nvl(v.titular.getParteRelacionada(), "NO"), 6);
         // ÍTEM 28 (2026-09-10), ERROR 3 -- corrección de un error del ítem 3: "tipoCliente" SÍ
         // existe en el esquema, condicional: sólo cuando tpIdCliente="06" (pasaporte). Julio no
@@ -946,10 +962,31 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         // autorizado -- su ausencia ahí no probaba que no existiera, sólo que no aplicaba ese mes.
         // Valor: Tabla 14 ("01"=Persona natural, "02"=Sociedad) -- ver resolverTipoClienteVenta
         // para de dónde sale (ítem 31, corrigió el ítem 28: no basta con tipoProveedorAts).
+        //
+        // ÍTEM 14 (2026-09-15, docs/logica-negocio/sri/PLAN-ATS-AJUSTES-2026-09-15.md §5): "denoCli"
+        // SÍ existe -- es condicional a tpIdCliente="06", igual que "tipoCliente" de al lado, y por
+        // el mismo motivo se pasó por alto: julio no tenía ningún cliente con pasaporte. El SRI
+        // rechazó el ATS de agosto por esto exacto (validador: falta la razón/denominación social
+        // del cliente cuando tipoId=06). Va INMEDIATAMENTE DESPUÉS de "tipoCliente" (orden del
+        // catálogo, CATALOGO-ATS.md:48) y es independiente de si "tipoCliente" se pudo resolver.
         if ("06".equals(tpIdCliente)) {
             String tipoCliente = resolverTipoClienteVenta(v.titular, avisos);
             if (tipoCliente != null) {
                 writeElement(w, "tipoCliente", tipoCliente, 6);
+            }
+            String razonSocial = v.titular.getRazonSocial();
+            String nombreTitular = v.titular.getNombre();
+            String denoCli = (razonSocial != null && !razonSocial.trim().isEmpty()) ? razonSocial.trim()
+                    : (nombreTitular != null && !nombreTitular.trim().isEmpty() ? nombreTitular.trim() : null);
+            // Sin límite de largo documentado para "denoCli" en CATALOGO-ATS.md ni en
+            // LEVANTAMIENTO-ATS-103-104.md (a diferencia de razonSocial del facturador, que sí lo
+            // tiene -- ver resolverRazonSocial): no se trunca, se emite tal cual.
+            if (denoCli != null) {
+                writeElement(w, "denoCli", denoCli, 6);
+            } else {
+                avisos.add("Cliente " + v.titular.getCodigo() + " (tpIdCliente=06, pasaporte) sin razón "
+                        + "social ni nombre: el SRI exige <denoCli> para ese tipo de identificación y no "
+                        + "se pudo escribir. Revisar el titular antes de declarar.");
             }
         }
         writeElement(w, "tipoComprobante", nvl(v.tipoComprobante, ""), 6);
