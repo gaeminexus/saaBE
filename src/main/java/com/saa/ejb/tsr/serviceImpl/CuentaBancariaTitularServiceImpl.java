@@ -83,7 +83,28 @@ public class CuentaBancariaTitularServiceImpl implements CuentaBancariaTitularSe
             cuentaBancariaTitular.setCodigo(null);
         }
         validaIdentificacion(cuentaBancariaTitular);
+        normalizaNombreTitularCuenta(cuentaBancariaTitular);
         return cuentaBancariaTitularDaoService.save(cuentaBancariaTitular, cuentaBancariaTitular.getCodigo());
+    }
+
+    /**
+     * ÍTEM 23 (2026-09-16, docs/logica-negocio/tsr/API-IDENTIFICACION-CUENTA-BANCARIA.md §6.3):
+     * trim, vacío -&gt; null -- mismo mecanismo que {@link #validaIdentificacion} usa para
+     * {@code identificacion}. NO valida largo máximo (200): {@code identificacion} tampoco lo
+     * hace -- su columna es de 20 y sus únicos checks de longitud son de FORMATO (cédula=10,
+     * RUC=13, pasaporte 5-15), no "cabe en la columna" -- así que no se agrega acá una regla que
+     * el precedente que se pidió copiar no tiene.
+     * @param cuentaBancariaTitular : Cuenta a normalizar antes de grabar
+     */
+    private void normalizaNombreTitularCuenta(CuentaBancariaTitular cuentaBancariaTitular) {
+        String nombre = cuentaBancariaTitular.getNombreTitularCuenta();
+        if (nombre != null) {
+            nombre = nombre.trim();
+            if (nombre.isEmpty()) {
+                nombre = null;
+            }
+        }
+        cuentaBancariaTitular.setNombreTitularCuenta(nombre);
     }
 
     /**

@@ -109,7 +109,10 @@ public class PacificoArchivoPagoFormateador implements FormateadorArchivoPagos {
 		// F: Identificacion -- vacia, solo obligatoria en ordenes de cobro
 		celda(fila, 6, tipoIdentificacion);                            // G: Tip.Doc
 		celda(fila, 7, numeroId);                                      // H: NUC
-		celda(fila, 8, nombreBeneficiario(pago));                      // I: Beneficiario
+		// I: Beneficiario -- el de la cuenta si está a nombre de otra persona (ÍTEM 23,
+		// docs/logica-negocio/tsr/API-IDENTIFICACION-CUENTA-BANCARIA.md §6.2). NO
+		// nombreBeneficiario(pago): ese se queda sólo para los mensajes de error de este archivo.
+		celda(fila, 8, NombreBeneficiarioResolver.resolver(pago));     // I: Beneficiario
 		// J: Telefono -- vacia
 		celda(fila, 10, sanearReferencia(nvl(pago.getObservacion()))); // K: Referencia
 		// L, M, N: vacias -- Base Imponible/Base IVA/Tipo son solo de recaudacion
@@ -155,6 +158,8 @@ public class PacificoArchivoPagoFormateador implements FormateadorArchivoPagos {
 		return saneado.replaceAll("\\s+", " ").trim();
 	}
 
+	// Sólo para los MENSAJES DE ERROR de este archivo: quien lee el error busca el pago por su
+	// proveedor, no por el dueño de la cuenta -- no usa NombreBeneficiarioResolver (ÍTEM 23, §6.2).
 	private String nombreBeneficiario(PagoProgramado pago) {
 		if (pago.getTitular() != null) {
 			return nvl(pago.getTitular().getNombre());

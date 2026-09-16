@@ -119,7 +119,11 @@ public class InternacionalArchivoPagoFormateador implements FormateadorArchivoPa
 		campos[7] = truncar(nvl(pago.getObservacion()), LARGO_MAXIMO_REFERENCIA);
 		campos[8] = tipoIdentificacion;
 		campos[9] = numeroId;
-		campos[10] = truncar(nombreBeneficiario(pago), LARGO_MAXIMO_NOMBRE);
+		// Campo 10, Nombre: el de la cuenta si está a nombre de otra persona (ÍTEM 23,
+		// docs/logica-negocio/tsr/API-IDENTIFICACION-CUENTA-BANCARIA.md §6.2) -- NO
+		// nombreBeneficiario(pago), que se queda sólo para los mensajes de error (ver ese
+		// método, más abajo). El truncado a 41 no se mueve al resolver: sigue acá.
+		campos[10] = truncar(NombreBeneficiarioResolver.resolver(pago), LARGO_MAXIMO_NOMBRE);
 		campos[11] = codigoBanco;
 
 		// Saneo final, en UN SOLO LUGAR y sobre los doce campos ya armados: un
@@ -203,6 +207,8 @@ public class InternacionalArchivoPagoFormateador implements FormateadorArchivoPa
 				+ "Banco Internacional.");
 	}
 
+	// Sólo para los MENSAJES DE ERROR de este archivo: quien lee el error busca el pago por su
+	// proveedor, no por el dueño de la cuenta -- no usa NombreBeneficiarioResolver (ÍTEM 23, §6.2).
 	private String nombreBeneficiario(PagoProgramado pago) {
 		if (pago.getTitular() != null) {
 			return nvl(pago.getTitular().getNombre());

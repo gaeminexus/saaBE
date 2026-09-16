@@ -111,6 +111,14 @@ public class CuentaBancariaTitular implements Serializable {
     private String identificacion;
 
     /**
+     * Nombre de la persona a cuyo nombre está la cuenta en el banco (puede ser distinta del
+     * titular). Vacío/NULL = la cuenta es del propio titular.
+     */
+    @Basic
+    @Column(name = "CTBNNMBR", length = 200)
+    private String nombreTitularCuenta;
+
+    /**
      * Observaciones adicionales sobre la cuenta.
      */
     @Basic
@@ -252,6 +260,22 @@ public class CuentaBancariaTitular implements Serializable {
      */
     public void setIdentificacion(String identificacion) {
         this.identificacion = identificacion;
+    }
+
+    /**
+     * Devuelve nombreTitularCuenta
+     * @return nombreTitularCuenta
+     */
+    public String getNombreTitularCuenta() {
+        return nombreTitularCuenta;
+    }
+
+    /**
+     * Asigna nombreTitularCuenta
+     * @param nombreTitularCuenta Nuevo valor de nombreTitularCuenta
+     */
+    public void setNombreTitularCuenta(String nombreTitularCuenta) {
+        this.nombreTitularCuenta = nombreTitularCuenta;
     }
 
     /**
