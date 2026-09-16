@@ -3366,3 +3366,31 @@ respuesta contra lo que consume el FE), `mvn -q compile` exit 0 y `ng build` exi
 auditoría de los estados de cuenta de titulares; número de pago visible y buscable en tesorería
 (medido: la consulta de pagos de tesorería no muestra el número ni filtra por él, y el filtro de
 proveedor no encuentra pagos de origen externo).
+
+---
+
+# ✅ 2026-09-16 — H67: el «Estado» del informe mensual de partícipes salía como número
+
+**Reportado por el usuario** (Reportes → Créditos → Informes Mensuales, pestaña Partícipes).
+
+**Causa, medida:** `GeneracionCPRMServiceImpl` armaba el mapa de nombres con la **PK** del catálogo
+(`ESPRCDGO`) y lo consultaba con `ENTDIDST`, que desde la migración del 2026-08-11 guarda el **código
+alterno** (`ESPRCDEX`). El `getOrDefault` no encontraba nada y escribía su respaldo, `"Estado N"`.
+Es la trampa que ya registra el `CLAUDE.md` de la raíz, esta vez del lado de los reportes.
+
+⭐ **Por qué costaba verlo: CESANTE salía bien.** Su PK y su alterno valen los dos 2, así que la
+columna parecía funcionar a medias y se leía como un problema de datos de algunos partícipes, no como
+un defecto de la generación. **Una coincidencia numérica es la mejor forma de esconder un mapeo mal
+indexado** — el mismo patrón que las dos cuentas «DE 1 A 30 DÍAS» de la banda del vencimiento.
+
+| Commit | Qué |
+|---|---|
+| `7da305bd` | Diseño (`reportes/CORRECCION-ESTADO-PARTICIPE-CPRM.md`) y `crd/sql/227` para los meses ya generados |
+| `04c548b4` | El mapa se indexa por `ESPRCDEX`; respaldo `"SIN ESTADO (N)"` para que una próxima ruptura se lea como falla |
+
+**Barrido del ejecutor, contrastado:** `getIdEstado()` en `rpr` se usa en cuatro puntos y los otros
+tres ya comparan contra las constantes del rubro (alterno). En el resto del sistema no hay otro mapa
+indexado por la PK; `CertificadoServiceImpl.nombreEstadoParticipe` ya usaba el alterno.
+
+**Pendiente del usuario:** decidir si `sql/227` corre sobre todos los meses o sólo sobre los no
+entregados — deja el estado de HOY, porque `CPRM` guarda el nombre y no el código.
