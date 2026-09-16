@@ -93,6 +93,7 @@ distintas y confundirlas es peor que la deuda.
 | **e2-48** | `cxp/sql/e2-48-observacion-adicional-documento-cxp.sql` | ⚠️ **DDL.** `PGS.DCXP.DCXPOBAD VARCHAR2(500 CHAR)`: la observación adicional que el usuario escribe al registrar un XML. **Va ANTES del WAR** — si no, `ORA-00904` en toda lectura de `DocumentoCxp` | ✅ **CORRIDO el 2026-09-15** según el usuario. Ya se puede desplegar el WAR de `main` |
 | **e2-49** | `tsr/sql/e2-49-retenciones-autorizadas-sin-cruce.sql` | Retenciones V2 autorizadas con total > 0 que no rebajaron su documento (sin `PGS.APLP` activa): en el estado de cuenta restan y la factura no baja. Resumen y detalle con tipo de documento sustento. **Solo lectura** | 🔴 **PENDIENTE — 2026-09-15** |
 | **e2-50** | `tsr/sql/e2-50-nombre-titular-cuenta-bancaria.sql` | ⚠️ **DDL.** `TSR.CTBN.CTBNNMBR VARCHAR2(200 CHAR)`: el nombre de la persona a cuyo nombre está la cuenta, cuando no es el titular del pago. El bloque 3 lista las cuentas que ya tienen identificación propia distinta. **Va ANTES del WAR** | 🔴 **PENDIENTE — 2026-09-16** |
+| **e2-51** | `sri/sql/e2-51-ats-agosto-bases-y-retenciones.sql` | Por qué el ATS de agosto declara la base 0% en la columna de base gravada (cabecera `FCTC.SUBCERO` contra el detalle `DFCC.CODIGOIVASRI`), por qué las retenciones emitidas salen en 0 (enlace autorización + número) y si el detalle de las retenciones recibidas tiene datos en la base. **Solo lectura** | 🔴 **PENDIENTE — urgente, 2026-09-16** |
 
 ### Consulta suelta que quedó sin script y vale anotarla
 
