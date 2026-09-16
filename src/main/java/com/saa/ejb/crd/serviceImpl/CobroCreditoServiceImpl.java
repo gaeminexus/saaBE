@@ -82,6 +82,7 @@ import com.saa.rubros.CrdEstadoCobro;
 import com.saa.rubros.CrdLineaAsiento;
 import com.saa.rubros.CrdTipoOperacionCobro;
 import com.saa.rubros.DsbnOrigen;
+import com.saa.rubros.EstadoParticipeEntidad;
 import com.saa.rubros.ModuloSistema;
 import com.saa.rubros.MovimientoCuentaPlantilla;
 import com.saa.rubros.PlantillasCredito;
@@ -103,14 +104,28 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
     private static final double TOLERANCIA_CUADRE = 0.01;
 
     /**
-     * CRD.TPAP.TPAPCDGO — únicos tipos de aporte con cuenta contable en la plantilla 21
-     * (aux1 51/50/52 respectivamente). Confirmado con el usuario 2026-08-29: son los únicos
-     * que se registran manualmente en la práctica. Cualquier otro tipo se rechaza en el
+     * CRD.TPAP.TPAPCDGO — tipos de aporte con cuenta contable en la plantilla 21 (aux1
+     * 51/50/52 respectivamente). Confirmado con el usuario 2026-08-29: eran los únicos que
+     * se registraban manualmente en la práctica. Cualquier otro tipo se rechaza en el
      * registro (ver {@link #esTipoAporteContabilizable}).
      */
     private static final long TIPO_APORTE_JUBILACION = 9L;
     private static final long TIPO_APORTE_CESANTIA = 11L;
     private static final long TIPO_APORTE_ADICIONAL = 2L;
+
+    /**
+     * CRD.TPAP.TPAPCDGO = 23 — PENSIÓN COMPLEMENTARIA. Sumado a la lista blanca el
+     * 2026-09-16, decisión del usuario: cobro temporal para registrar valores que se les
+     * pagaron de más a los jubilados (devolución de sobrepago, ver
+     * docs/logica-negocio/crd/API-COBRO-APORTE-PENSION-COMPLEMENTARIA.md). Va por aux1 53 de
+     * la plantilla 21, la MISMA cuenta de cuenta individual (2.1.02.25.01) que usa la corrida
+     * mensual de jubilados — resuelta por {@code ContabilizacionIndividualCreditoServiceImpl
+     * .aux1ParaTipoAporte}. Sólo se acepta para partícipes JUBILADO_COMPLEMENTARIO (ver
+     * {@link #validar}); no habilita "pagar con aportes" ni participa de
+     * {@code validarDesgloseAportes}, la precancelación con aportes ni el cruce contra
+     * préstamos — sigue siendo exclusivo de cesantía y jubilación.
+     */
+    private static final long TIPO_APORTE_PENSION_COMPLEMENTARIA = 23L;
 
     @EJB
     private CobroCreditoDaoService cobroCreditoDaoService;
@@ -1187,6 +1202,29 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
         return String.valueOf(estado);
     }
 
+    /**
+     * Nombre legible del estado de un partícipe (CRD.ENTD.ENTDIDST, código ALTERNO de
+     * CRD.ESPR — {@link EstadoParticipeEntidad}), para el mensaje de la guarda del tipo de
+     * aporte 23. No consulta CRD.ESPR: es solo para mensajes de validación.
+     */
+    private String textoEstadoParticipe(Long idEstado) {
+        if (idEstado == null) {
+            return "SIN ESTADO";
+        }
+        switch (idEstado.intValue()) {
+            case EstadoParticipeEntidad.ACTIVO:                  return "ACTIVO";
+            case EstadoParticipeEntidad.CESANTE:                 return "CESANTE";
+            case EstadoParticipeEntidad.JUBILADO_COMPLEMENTARIO: return "JUBILADO COMPLEMENTARIO";
+            case EstadoParticipeEntidad.CESANTE_DESAFILIADO:     return "CESANTE DESAFILIADO";
+            case EstadoParticipeEntidad.CESANTE_FALLECIDO:       return "CESANTE FALLECIDO";
+            case EstadoParticipeEntidad.JUBILADO_APORTANTE:      return "JUBILADO APORTANTE";
+            case EstadoParticipeEntidad.JUBILADO_PASIVO:         return "JUBILADO PASIVO";
+            case EstadoParticipeEntidad.ACTIVO_EN_MORA:          return "ACTIVO EN MORA";
+            case EstadoParticipeEntidad.NUEVO:                   return "NUEVO";
+            default: return "ESTADO " + idEstado;
+        }
+    }
+
     // =====================================================================
     // Validaciones
     // =====================================================================
@@ -1375,15 +1413,30 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
                 } catch (NoResultException e) {
                     throw new IncomeException("No existe el tipo de aporte " + linea.getIdTipoAporte());
                 }
-                // Solo 9 (jubilación), 11 (cesantía) y 2 (aporte adicional) tienen cuenta
-                // contable asignada en la plantilla 21 (aux1 51/50/52) — verificado contra
-                // CNT.PLNS/DTPL, no todos los tipos vigentes de CRD.TPAP tienen una. Rechazar
-                // acá, no al procesar: mejor que falle en el registro que dejarlo pasar y
-                // reventar después de aprobado, con el dinero ya adentro.
+                // Solo 9 (jubilación), 11 (cesantía), 2 (aporte adicional) y 23 (pensión
+                // complementaria) tienen cuenta contable asignada en la plantilla 21 (aux1
+                // 51/50/52/53) — verificado contra CNT.PLNS/DTPL, no todos los tipos vigentes
+                // de CRD.TPAP tienen una. Rechazar acá, no al procesar: mejor que falle en el
+                // registro que dejarlo pasar y reventar después de aprobado, con el dinero ya
+                // adentro.
                 if (!esTipoAporteContabilizable(linea.getIdTipoAporte())) {
                     throw new IncomeException("El tipo de aporte " + linea.getIdTipoAporte() + " ("
                             + tipoAporte.getNombre() + ") no tiene cuenta contable asignada en la"
                             + " plantilla 21; no se puede contabilizar este cobro");
+                }
+                // Pensión complementaria (23) es temporal y SOLO para jubilados (decisión del
+                // usuario 2026-09-16, §2.3 del contrato): se cobra acá para devolver un
+                // sobrepago a la cuenta individual, así que sólo tiene sentido para quien esa
+                // cuenta le pertenece. Va en el registro, no al procesar: el dinero no debe
+                // entrar y quedar trabado.
+                if (linea.getIdTipoAporte() == TIPO_APORTE_PENSION_COMPLEMENTARIA
+                        && (entidad.getIdEstado() == null || entidad.getIdEstado()
+                                != EstadoParticipeEntidad.JUBILADO_COMPLEMENTARIO)) {
+                    throw new IncomeException("El tipo de aporte " + linea.getIdTipoAporte() + " ("
+                            + tipoAporte.getNombre() + ") solo se puede cobrar a partícipes en"
+                            + " estado JUBILADO COMPLEMENTARIO; el partícipe " + entidad.getCodigo()
+                            + " (" + entidad.getRazonSocial() + ") está "
+                            + textoEstadoParticipe(entidad.getIdEstado()));
                 }
                 if (linea.getPeriodoDevengo() == null) {
                     throw new IncomeException("El período de devengo es obligatorio en REGISTRO_APORTE");
@@ -1488,7 +1541,8 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
 
     private boolean esTipoAporteContabilizable(Long idTipoAporte) {
         return idTipoAporte != null && (idTipoAporte == TIPO_APORTE_JUBILACION
-                || idTipoAporte == TIPO_APORTE_CESANTIA || idTipoAporte == TIPO_APORTE_ADICIONAL);
+                || idTipoAporte == TIPO_APORTE_CESANTIA || idTipoAporte == TIPO_APORTE_ADICIONAL
+                || idTipoAporte == TIPO_APORTE_PENSION_COMPLEMENTARIA);
     }
 
     private boolean esTipoOperacionValido(String tipoOperacion) {
