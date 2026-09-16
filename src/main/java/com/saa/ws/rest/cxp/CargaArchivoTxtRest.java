@@ -57,6 +57,40 @@ public class CargaArchivoTxtRest {
 			return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
 		}
 	}
+	/**
+	 * ÍTEM 25 (2026-09-16, docs/logica-negocio/cxp/API-CARGAS-TXT-BANDEJA-ELECTRONICA.md §2).
+	 * GET /crtx/buscar?idEmpresa=1236&desde=2026-08-01&hasta=2026-08-31&idPeriodo=57&nombreArchivo=RECI&estado=1&limite=100
+	 */
+	@GET @Path("/buscar") @Produces(MediaType.APPLICATION_JSON)
+	public Response buscar(@QueryParam("idEmpresa") Long idEmpresa,
+			@QueryParam("desde") String desde,
+			@QueryParam("hasta") String hasta,
+			@QueryParam("idPeriodo") Long idPeriodo,
+			@QueryParam("nombreArchivo") String nombreArchivo,
+			@QueryParam("estado") Long estado,
+			@QueryParam("limite") Integer limite) {
+		System.out.println("LLEGA AL SERVICIO GET /crtx/buscar");
+		if (idEmpresa == null) {
+			return Response.status(Response.Status.BAD_REQUEST)
+					.entity(java.util.Collections.singletonMap("mensaje", "idEmpresa es obligatorio."))
+					.type(MediaType.APPLICATION_JSON).build();
+		}
+		try {
+			List<java.util.Map<String, Object>> lista = cargaArchivoTxtService.buscar(
+					idEmpresa, desde, hasta, idPeriodo, nombreArchivo, estado, limite);
+			return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+		} catch (com.saa.basico.util.IncomeException e) {
+			// idEmpresa ya se valido arriba (nunca llega aca por eso): esto es fecha invalida.
+			return Response.status(Response.Status.BAD_REQUEST)
+					.entity(java.util.Collections.singletonMap("mensaje", e.getMessage()))
+					.type(MediaType.APPLICATION_JSON).build();
+		} catch (Throwable e) {
+			return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+					.entity(java.util.Collections.singletonMap("mensaje", "Error al buscar cargas: " + e.getMessage()))
+					.type(MediaType.APPLICATION_JSON).build();
+		}
+	}
+
 	@PUT @Consumes(MediaType.APPLICATION_JSON) @Produces(MediaType.APPLICATION_JSON)
 	public Response put(CargaArchivoTxt registro) {
 		try {
