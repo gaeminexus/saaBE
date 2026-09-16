@@ -56,6 +56,14 @@ public class ValorPagoPensionComplementariaServiceImpl implements ValorPagoPensi
     @Override
     public ValorPagoPensionComplementaria saveSingle(ValorPagoPensionComplementaria valorPago) throws Throwable {
         System.out.println("saveSingle - ValorPagoPensionComplementaria");
+        // VPPCVLSR es NOT NULL en Oracle. "Sin seguro médico" se representa con 0, no con
+        // nulo — es como ya lo lee PagoPensionComplementariaServiceImpl
+        // (getValorSeguro() != null ? ... : 0.0). El formulario de jubilación manda null
+        // cuando el campo queda vacío; se normaliza acá (alta y edición), no solo en la
+        // pantalla, porque /rest/vppc es CRUD genérico (mismo criterio de H61 con /rest/aprt).
+        if (valorPago.getValorSeguro() == null) {
+            valorPago.setValorSeguro(0.0);
+        }
         if (valorPago.getCodigo() == null) {
             valorPago.setEstado(Long.valueOf(Estado.ACTIVO));
             valorPago.setFechaIngreso(LocalDateTime.now());
