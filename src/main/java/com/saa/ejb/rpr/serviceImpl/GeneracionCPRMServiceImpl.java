@@ -90,13 +90,21 @@ public class GeneracionCPRMServiceImpl implements GeneracionCPRMService {
         }
         System.out.println("CPRM - Entidades cargadas en batch: " + mapaEntidades.size());
 
-        // Cargar todos los estados de partícipe desde CRD.ESPR en una sola consulta
+        // Cargar todos los estados de partícipe desde CRD.ESPR en una sola consulta.
+        // Se indexa por el CÓDIGO EXTERNO (ESPRCDEX), NO por la PK (ESPRCDGO): desde la
+        // migración del 2026-08-11, CRD.ENTD.ENTDIDST guarda el alterno, no la PK — ver
+        // docs/logica-negocio/crd/MIGRACION-ESTADO-PARTICIPE.md. No volver a indexar por
+        // ep.getCodigo().
         Map<Long, String> mapaEstados = new HashMap<>();
         try {
             List<EstadoParticipe> estados = estadoParticipeService.selectAll();
             for (EstadoParticipe ep : estados) {
-                if (ep.getCodigo() != null && ep.getNombre() != null) {
-                    mapaEstados.put(ep.getCodigo(), ep.getNombre());
+                if (ep.getCodigoExterno() != null && ep.getNombre() != null) {
+                    mapaEstados.put(ep.getCodigoExterno(), ep.getNombre());
+                } else {
+                    System.out.println("CPRM - Estado de partícipe " + ep.getCodigo() + " ("
+                            + ep.getNombre() + ") sin código externo (ESPRCDEX): no se puede "
+                            + "resolver por el alterno.");
                 }
             }
         } catch (Throwable e) {
@@ -147,7 +155,8 @@ public class GeneracionCPRMServiceImpl implements GeneracionCPRMService {
                 nuevo.setTipoIdentificacion("C");
                 nuevo.setTipoAporte(tipoAporte);
                 nuevo.setTotal(suma);
-                nuevo.setNombreEstado(mapaEstados.getOrDefault(entidad.getIdEstado(), "Estado " + entidad.getIdEstado()));
+                nuevo.setNombreEstado(mapaEstados.getOrDefault(entidad.getIdEstado(),
+                        "SIN ESTADO (" + entidad.getIdEstado() + ")"));
 
                 cprmDaoService.save(nuevo, null);
                 System.out.println("CPRM INSERT entidad: " + codigoEntidad
