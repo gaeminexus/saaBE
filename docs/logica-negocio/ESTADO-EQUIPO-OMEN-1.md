@@ -3394,3 +3394,45 @@ indexado por la PK; `CertificadoServiceImpl.nombreEstadoParticipe` ya usaba el a
 
 **Pendiente del usuario:** decidir si `sql/227` corre sobre todos los meses o sólo sobre los no
 entregados — deja el estado de HOY, porque `CPRM` guarda el nombre y no el código.
+
+---
+
+# ✅ 2026-09-16 — H68: jubilar un partícipe reventaba con ORA-01400 · y el panel que no se cerraba
+
+**Reportado por el usuario con el log de producción:** `POST /rest/vppc` →
+`ORA-01400: no se puede realizar una inserción NULL en ("CRD"."VPPC"."VPPCVLSR")`. La transacción se
+revertía entera: **el jubilado no quedaba registrado, y no quedaba ni a medias.**
+
+**Causa:** las dos pantallas de jubilados (`proceso-pago-jubilados` — la que usaba el usuario — y
+`jubilar-participe`) mandan `valorSeguro: null` cuando el campo queda vacío, y la columna es `NOT NULL`.
+«Sin seguro médico» en este sistema se representa con **0**: así lo lee
+`PagoPensionComplementariaServiceImpl` y así lo graba el proceso de seguro cuando no corresponde
+cobrarlo (§11.1). **Rodeo que se le dio al usuario en el momento: escribir 0 en el campo.**
+
+| Commit | Qué |
+|---|---|
+| `saaBE 854e0f05` | Diseño `crd/CORRECCION-VPPC-SEGURO-NULO.md` |
+| `saaBE 54ff7a01` | El service normaliza el nulo a 0 (no sólo la pantalla: `/rest/vppc` es CRUD genérico, criterio de H61) + `sql/229` |
+| `saaFE 5a100b1` | Las dos pantallas mandan 0; el campo arranca en `$0.00`; y el panel de asignación se cierra al guardar bien |
+
+**Pedido del usuario en el mismo día:** que la tarjeta «2. Asignar valor de pago» se cierre tras un
+guardado exitoso. Hecho sólo en la rama de éxito — **si el guardado falla, el panel queda abierto con
+los datos**, para corregir sin volver a escribir todo.
+
+**Error del árbitro, registrado:** despaché la corrección apuntando a `jubilar-participe`, que tiene el
+mismo defecto pero **no es la pantalla donde el usuario lo sufrió**. Lo vi al leer el HTML buscando el
+botón «Guardar asignación» de su pedido siguiente. El ejecutor ya había llegado solo a la pantalla
+correcta. **Leer el nombre del endpoint en el log no alcanza para saber qué pantalla lo llamó cuando
+hay dos que llaman al mismo.**
+
+## ⚠️ Lo que queda medido y sin tocar: `numeroCuotas`
+
+Las **dos** pantallas mandan también `numeroCuotas` nulo con el campo vacío. No se corrigió porque el
+nulo ahí **probablemente es legítimo** («pago mensual fijo, sin número de cuotas»), y rellenarlo con
+cero cambiaría el significado del dato. Lo decide `crd/sql/229` (obligatoriedad real de las columnas
+de `CRD.VPPC` y cuántas filas tienen nulo hoy): **sólo si `VPPCNMCT` resulta `NOT NULL` hay algo que
+hacer.**
+
+⭐ **Y la lección de método que dejó el ejecutor:** el mapeo JPA **no** sirve para saber si una columna
+es obligatoria — `VPPCVLSR` no declara `nullable=false` y lo es. En el repo tampoco hay DDL de `VPPC`.
+La obligatoriedad real sólo la contesta `ALL_TAB_COLUMNS`.
