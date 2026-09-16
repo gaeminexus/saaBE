@@ -295,4 +295,23 @@ public interface ProcesoCargaDocumentosService {
      * Si ya existe un producto con ese codigo, lo devuelve sin crear.
      */
     ProductoPago crearProductoPorClasificar(String nombre, String codigo, Long idEmpresa) throws Throwable;
+
+    /**
+     * ÍTEM 24 (2026-09-16, docs/logica-negocio/cxp/API-DESCARGA-XML-Y-DESGLOSE-IVA.md §2): resuelve
+     * y lee el XML original de un documento CXP -- SÓLO LECTURA, no re-descarga del SRI ni
+     * regenera nada.
+     * <p>
+     * Resolución de la ruta, en orden: {@code DocumentoCxp.pathXml}; si está vacío, la fila más
+     * reciente de {@code Path*} del documento destino según {@code tipoTablaDestino}. Ruta
+     * relativa se resuelve contra {@code saa.upload.dir} (mismo criterio que
+     * {@code FileServiceImpl:36}); ruta absoluta se usa tal cual. Nunca lee fuera de esa raíz.
+     * @param idDocumentoCxp : Id del DocumentoCxp
+     * @return : {@code null} si el documento no existe (el REST lo traduce a 404 "No existe el
+     *           documento..."); si existe, un mapa con {@code encontrado} (boolean) y, cuando es
+     *           {@code false}, {@code mensaje} con el motivo exacto del contrato (sin XML, o
+     *           archivo no está en el servidor); cuando es {@code true}: {@code nombreArchivo},
+     *           {@code contenidoBase64}, {@code mimeType}, {@code tamanoBytes}
+     * @throws Throwable : Excepcion
+     */
+    Map<String, Object> obtenerXmlDocumento(Long idDocumentoCxp) throws Throwable;
 }

@@ -4212,6 +4212,151 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         }
     }
 
+    // =========================================================
+    // ÍTEM 24 (2026-09-16, docs/logica-negocio/cxp/API-DESCARGA-XML-Y-DESGLOSE-IVA.md §2):
+    // descargar el XML original de un documento CXP -- sólo lectura.
+    // =========================================================
+
+    @Override
+    public Map<String, Object> obtenerXmlDocumento(Long idDocumentoCxp) throws Throwable {
+        System.out.println("=== obtenerXmlDocumento idDocumentoCxp=" + idDocumentoCxp);
+
+        DocumentoCxp doc = documentoCxpDaoService.selectById(idDocumentoCxp, NombreEntidadesCompra.DOCUMENTO_CXP);
+        if (doc == null) {
+            return null;
+        }
+
+        String referencia = referenciaDocumento(doc);
+
+        String path = doc.getPathXml();
+        if (path == null || path.trim().isEmpty()) {
+            path = pathXmlDesdeDocumentoDestino(doc);
+        }
+
+        Map<String, Object> resultado = new HashMap<>();
+        if (path == null || path.trim().isEmpty()) {
+            resultado.put("encontrado", false);
+            resultado.put("mensaje", "El documento " + referencia + " no tiene XML: se registró a "
+                    + "mano, sin comprobante electrónico.");
+            return resultado;
+        }
+        String pathOriginal = path.trim();
+
+        java.nio.file.Path archivo = resolverRutaXml(pathOriginal);
+        if (archivo == null || !java.nio.file.Files.exists(archivo) || !java.nio.file.Files.isRegularFile(archivo)) {
+            // Mismo mensaje tanto si la ruta se sale de la raíz de subida como si, estando
+            // adentro, el archivo no existe -- no hay que darle a quien llama una pista de la
+            // estructura de directorios del servidor.
+            resultado.put("encontrado", false);
+            resultado.put("mensaje", "El XML del documento " + referencia + " no está en el "
+                    + "servidor (ruta: " + pathOriginal + ").");
+            return resultado;
+        }
+
+        byte[] contenido;
+        try {
+            contenido = java.nio.file.Files.readAllBytes(archivo);
+        } catch (java.io.IOException e) {
+            resultado.put("encontrado", false);
+            resultado.put("mensaje", "El XML del documento " + referencia + " no está en el "
+                    + "servidor (ruta: " + pathOriginal + ").");
+            return resultado;
+        }
+
+        String nombreArchivo = (archivo.getFileName() != null) ? archivo.getFileName().toString() : null;
+        if (nombreArchivo == null || nombreArchivo.trim().isEmpty()) {
+            String serie = doc.getSerieComprobante();
+            nombreArchivo = (serie != null && !serie.trim().isEmpty() ? serie : "documento") + ".xml";
+        }
+
+        resultado.put("encontrado", true);
+        resultado.put("nombreArchivo", nombreArchivo);
+        resultado.put("contenidoBase64", java.util.Base64.getEncoder().encodeToString(contenido));
+        resultado.put("mimeType", "application/xml");
+        resultado.put("tamanoBytes", contenido.length);
+        System.out.println("✓ XML resuelto para el documento " + referencia + ": " + pathOriginal
+                + " (" + contenido.length + " bytes)");
+        return resultado;
+    }
+
+    /**
+     * Fila más reciente de {@code Path*} del documento destino según {@code tipoTablaDestino} --
+     * {@code alterno} NO sirve como criterio de "más reciente": está hardcodeado a 1 en las
+     * CUATRO tablas y en los CUATRO puntos donde se graba (verificado con grep de
+     * {@code setAlterno} en esta clase), así que nunca distingue nada. Se usa el {@code id} más
+     * alto (autogenerado, monótono creciente) en su lugar.
+     */
+    private String pathXmlDesdeDocumentoDestino(DocumentoCxp doc) {
+        if (doc.getIdDocumentoBD() == null || doc.getTipoTablaDestino() == null) {
+            return null;
+        }
+        String jpql;
+        switch (doc.getTipoTablaDestino()) {
+            case "FACTURA_COMPRA":
+                jpql = "select p.path from PathFacturaCompra p where p.factura.id = :id order by p.id desc";
+                break;
+            case "NOTA_CREDITO_COMPRA":
+                jpql = "select p.path from PathNotaCreditoCompra p where p.notaCredito.id = :id order by p.id desc";
+                break;
+            case "NOTA_DEBITO_COMPRA":
+                jpql = "select p.path from PathNotaDebitoCompra p where p.notaDebito.id = :id order by p.id desc";
+                break;
+            case "LIQUIDACION_COMPRA_COMPRA":
+                jpql = "select p.path from PathLiquidacionCompraCompra p where p.liquidacion.id = :id order by p.id desc";
+                break;
+            default:
+                // RETENCION_COMPRA/RETENCION_COMPRA_V2: sin Path* propio, la ruta vive sólo en
+                // DocumentoCxp.pathXml (ver el comentario de revertirRegistrosBD para RCV2).
+                return null;
+        }
+        @SuppressWarnings("unchecked")
+        List<String> paths = em.createQuery(jpql)
+                .setParameter("id", doc.getIdDocumentoBD())
+                .setMaxResults(1)
+                .getResultList();
+        return paths.isEmpty() ? null : paths.get(0);
+    }
+
+    /**
+     * Ruta absoluta se usa TAL CUAL (sólo normalizada); ruta relativa se resuelve contra la raíz
+     * de subida. En los dos casos, si la ruta resuelta queda fuera de esa raíz, devuelve
+     * {@code null} -- este endpoint recibe un id y devuelve un archivo, no un paseo por el disco
+     * del servidor.
+     */
+    private java.nio.file.Path resolverRutaXml(String path) {
+        java.nio.file.Path candidato = java.nio.file.Paths.get(path);
+        java.nio.file.Path base = java.nio.file.Paths.get(getBaseUploadDirectory()).normalize().toAbsolutePath();
+
+        java.nio.file.Path resuelto = candidato.isAbsolute()
+                ? candidato.normalize()
+                : base.resolve(candidato).normalize();
+
+        if (!resuelto.toAbsolutePath().startsWith(base)) {
+            return null;
+        }
+        return resuelto;
+    }
+
+    /**
+     * Mismo criterio que {@code FileServiceImpl.getUploadDirectory():36} (propiedad de sistema,
+     * variable de entorno, default por SO) -- duplicado a propósito: ese método es privado y
+     * estático en otra clase, y ya está duplicado así en {@code RetencionV2ServiceImpl} y otras
+     * cinco clases de {@code cxc} (grep de {@code getBaseUploadDirectory}), mismo patrón.
+     */
+    private String getBaseUploadDirectory() {
+        String uploadDir = System.getProperty("saa.upload.dir");
+        if (uploadDir != null && !uploadDir.trim().isEmpty()) {
+            return uploadDir.endsWith("/") || uploadDir.endsWith("\\") ? uploadDir : uploadDir + "/";
+        }
+        uploadDir = System.getenv("SAA_UPLOAD_DIR");
+        if (uploadDir != null && !uploadDir.trim().isEmpty()) {
+            return uploadDir.endsWith("/") || uploadDir.endsWith("\\") ? uploadDir : uploadDir + "/";
+        }
+        String userHome = System.getProperty("user.home");
+        String osName = System.getProperty("os.name").toLowerCase();
+        return osName.contains("windows") ? userHome + "/saa-uploads/" : "/opt/saa-uploads/";
+    }
+
     /**
      * Cómo se nombra un documento en un mensaje de error para que el usuario lo
      * reconozca en la grilla: la serie es lo que ve en pantalla, y el id es lo

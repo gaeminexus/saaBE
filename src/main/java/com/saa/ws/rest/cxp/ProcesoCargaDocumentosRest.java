@@ -27,6 +27,7 @@ import jakarta.ws.rs.core.*;
  *  POST /carga-documentos/revertir/{idDocumentoCxp}        → Fase 5: Revertir documento
  *  GET  /carga-documentos/resumen/{idCargaTxt}             → Consultar resumen de una carga
  *  GET  /carga-documentos/documento/{id}                   → Consultar un DocumentoCxp
+ *  GET  /carga-documentos/xml/{idDocumentoCxp}             → Descargar el XML original (ÍTEM 24, base64)
  *  GET  /carga-documentos/novedades/{idEmpresa}            → Novedades pendientes
  *
  * LOTE POR CARGA TXT (plan de carga automática desde el SRI, §6):
@@ -548,6 +549,50 @@ public class ProcesoCargaDocumentosRest {
                     .entity(errorMap("Error: " + e.getMessage()))
                     .type(MediaType.APPLICATION_JSON).build();
         }
+    }
+
+    /**
+     * ÍTEM 24 (2026-09-16, docs/logica-negocio/cxp/API-DESCARGA-XML-Y-DESGLOSE-IVA.md §2):
+     * descarga el XML original de un documento CXP. Sólo lectura -- no re-descarga del SRI, no
+     * regenera nada. Base64, no un flujo binario (mismo motivo que el archivo del banco, §34bis
+     * del estado: el frontend decodifica y arma la descarga).
+     * <p>
+     * Los tres 404 del contrato usan {@code {"mensaje": ...}} -- NO {@code errorMap} (que usa la
+     * clave {@code "error"}): el cuerpo exacto es parte del contrato, no se reutiliza el genérico.
+     */
+    @GET
+    @Path("/xml/{idDocumentoCxp}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response obtenerXml(@PathParam("idDocumentoCxp") Long idDocumentoCxp) {
+        System.out.println("=== REST obtenerXml idDocumentoCxp=" + idDocumentoCxp);
+        try {
+            Map<String, Object> resultado = procesoCargaDocumentosService.obtenerXmlDocumento(idDocumentoCxp);
+            if (resultado == null) {
+                return Response.status(Response.Status.NOT_FOUND)
+                        .entity(mensajeMap("No existe el documento N° " + idDocumentoCxp))
+                        .type(MediaType.APPLICATION_JSON).build();
+            }
+            if (!Boolean.TRUE.equals(resultado.get("encontrado"))) {
+                return Response.status(Response.Status.NOT_FOUND)
+                        .entity(mensajeMap(String.valueOf(resultado.get("mensaje"))))
+                        .type(MediaType.APPLICATION_JSON).build();
+            }
+            Map<String, Object> cuerpo = new java.util.HashMap<>();
+            cuerpo.put("nombreArchivo", resultado.get("nombreArchivo"));
+            cuerpo.put("contenidoBase64", resultado.get("contenidoBase64"));
+            cuerpo.put("mimeType", resultado.get("mimeType"));
+            cuerpo.put("tamanoBytes", resultado.get("tamanoBytes"));
+            return Response.status(Response.Status.OK).entity(cuerpo)
+                    .type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity(mensajeMap("Error al obtener el XML del documento: " + e.getMessage()))
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    private Map<String, Object> mensajeMap(String mensaje) {
+        return java.util.Collections.singletonMap("mensaje", mensaje);
     }
 
     @GET
