@@ -92,6 +92,7 @@ distintas y confundirlas es peor que la deuda.
 | **e2-47** | `cxp/sql/e2-47-nota-venta-numero-a-15-digitos.sql` | ⚠️ **NO es solo lectura.** Completa con ceros el número de las notas de venta manuales (3-3-9). La retención 278 volvió DEVUELTA por `numDocSustento` de 13 dígitos. Bloque 0 guarda el original, bloque 1 controla choques, `COMMIT` comentado | 🔴 **PENDIENTE — urgente, 2026-09-15** |
 | **e2-48** | `cxp/sql/e2-48-observacion-adicional-documento-cxp.sql` | ⚠️ **DDL.** `PGS.DCXP.DCXPOBAD VARCHAR2(500 CHAR)`: la observación adicional que el usuario escribe al registrar un XML. **Va ANTES del WAR** — si no, `ORA-00904` en toda lectura de `DocumentoCxp` | ✅ **CORRIDO el 2026-09-15** según el usuario. Ya se puede desplegar el WAR de `main` |
 | **e2-49** | `tsr/sql/e2-49-retenciones-autorizadas-sin-cruce.sql` | Retenciones V2 autorizadas con total > 0 que no rebajaron su documento (sin `PGS.APLP` activa): en el estado de cuenta restan y la factura no baja. Resumen y detalle con tipo de documento sustento. **Solo lectura** | 🔴 **PENDIENTE — 2026-09-15** |
+| **e2-50** | `tsr/sql/e2-50-nombre-titular-cuenta-bancaria.sql` | ⚠️ **DDL.** `TSR.CTBN.CTBNNMBR VARCHAR2(200 CHAR)`: el nombre de la persona a cuyo nombre está la cuenta, cuando no es el titular del pago. El bloque 3 lista las cuentas que ya tienen identificación propia distinta. **Va ANTES del WAR** | 🔴 **PENDIENTE — 2026-09-16** |
 
 ### Consulta suelta que quedó sin script y vale anotarla
 
