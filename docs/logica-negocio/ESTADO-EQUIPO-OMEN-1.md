@@ -3436,3 +3436,45 @@ hacer.**
 ⭐ **Y la lección de método que dejó el ejecutor:** el mapeo JPA **no** sirve para saber si una columna
 es obligatoria — `VPPCVLSR` no declara `nullable=false` y lo es. En el repo tampoco hay DDL de `VPPC`.
 La obligatoriedad real sólo la contesta `ALL_TAB_COLUMNS`.
+
+---
+
+# ✅ 2026-09-16 — H69: cobrar el aporte de PENSIÓN COMPLEMENTARIA · y con eso, cómo se recupera un sobrepago
+
+**Pedido del usuario:** poder cobrar también pensión complementaria en «Cobros personales», **de forma
+temporal, para registrar valores que se les pagaron de más a los jubilados**.
+
+⭐ **Lo que el pedido resuelve sin decirlo:** H60 dejó anotado que **no existía ningún mecanismo para
+recuperar un sobrepago** — se cerró como «decisión de negocio, sin herramienta». Esta es la
+herramienta: el aporte positivo de tipo 23 devuelve el dinero a la cuenta individual y la corrida del
+mes siguiente vuelve a tener de dónde descontar. **No toca el ancla de H46**, que la mueven sólo los
+movimientos negativos.
+
+**Decisiones del usuario (2026-09-16):** sólo cobrar, no pagar (eso va por la pantalla de jubilados);
+misma cuenta individual `2.1.02.25.01` (aux1 53 de la plantilla 21); sólo a jubilados; columna «Valor
+mensual» vacía.
+
+| Commit | Qué |
+|---|---|
+| `saaBE abe01524`, `5648f209` · `saaFE a266bbd` | Contrato `crd/API-COBRO-APORTE-PENSION-COMPLEMENTARIA.md` |
+| `saaBE 5648f209` | Tipo 23 en la lista blanca de tipos contabilizables + guarda: sólo `JUBILADO_COMPLEMENTARIO`, rechazado en el registro |
+| `saaFE a771b44`, `7728595` | Fila nueva sólo para jubilados, con saldo, sin valor mensual ni cobertura; «pagar con aportes» sin cambios |
+
+⛔ **Gate de despliegue: `crd/sql/199`.** La plantilla 21 necesita la línea `aux1 = 53`. Sin ella el
+cobro se registra y **no se puede procesar**.
+
+## Dos correcciones al contrato que salieron de los ejecutores, no del árbitro
+
+1. **El contrato se contradecía** (§5.2 vs §5.6): resolver el tipo sólo desde los saldos del partícipe
+   y, a la vez, permitir cobrar a quien no tiene saldo. El listado sale de un `GROUP BY` sobre
+   `CRD.APRT`, así que **sólo trae tipos con movimientos** — y la pantalla bloqueaba el cobro ENTERO,
+   no sólo esa línea. Corregido: fallback al catálogo `/rest/tpap/getAll` y, si aun así no resuelve,
+   se excluye sólo la línea de pensión. **Medido para dimensionarlo:** `procesarJubilacion` crea el
+   movimiento positivo de tipo 23 al jubilar, así que el hueco es de los jubilados migrados por SQL.
+2. **Yo escribí que si falta la línea 53 el dinero queda adentro sin asiento. Es falso.** Todo corre
+   en la misma transacción (`procesarCobro` REQUIRED + `registrarAporte` REQUIRED +
+   `IncomeException(rollback = true)`): el fallo revierte el aporte, su `PagoAporte` y el enlace, y el
+   cobro queda `APROBADO`, reintentable. **Fallo limpio, no descuadre.**
+
+⭐ **Las dos las encontraron los agentes revisando lo que el árbitro les mandó** — el mismo patrón que
+H34. Un contrato con dos reglas que se contradicen sólo se nota cuando alguien intenta programarlas.
