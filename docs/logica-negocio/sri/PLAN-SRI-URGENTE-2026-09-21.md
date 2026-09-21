@@ -202,6 +202,59 @@ Reglas que no se negocian:
 4. **Corregir el comentario** de `:1005-1011`, que afirma que la tabla no existe.
 5. `CODIMPUESTO` distinto de `1` y `2` (p. ej. `6` = ISD): no suma a ninguno de los dos, y avisa.
 
+## 2quater. 🔴 BE-4 — La contribución a bomberos es NO OBJETO DE IVA, no tarifa 0%
+
+**Criterio del auditor interno Roberto Guachamín**, correo del 2026-09-19 trasladado por el usuario
+el 2026-09-21: *«La contribución a bomberos pagada en las facturas de consumo eléctrico … esta es
+considerada como **No Objeto de IVA**»*, y los valores detallados en la factura son **tarifa 0%**.
+
+**Qué hace hoy el sistema, medido:**
+
+1. `ProcesoCargaDocumentosServiceImpl:1752-1754` suma los valores de terceros al `SUBTOTAL`, al
+   `SUBCERO` **y** al `TOTAL`. O sea que el bomberos entra en la base **0%**.
+2. `leerValoresTerceros:4421` sólo toma los `campoAdicional` cuyo nombre contiene `BOMBERO` o
+   `BASURA`, y `:1726-1741` les crea **una línea de detalle propia** con esa descripción y
+   `CODIGOIVASRI = 0`.
+3. `GeneradorAtsServiceImpl:819` escribe `baseNoGraIva = "0.00"` **fijo**: hoy el ATS no tiene de
+   dónde sacar la base no objeto. Se ve en la captura del DIMM del 21-09: `Base No Objeto IVA = 0,00`
+   en las ocho compras, con el 7,23 viajando en `Base IVA 0%`.
+
+**⚠️ Y esto corrige lo que hicimos hoy mismo:** el `e2-52`/`e2-54` puso `SUBCERO = SUBTOTAL`, con lo
+que el bomberos quedó declarado como tarifa 0%. El total declarado por factura es el correcto; lo
+que falta es **el reparto entre las dos columnas**.
+
+### El invariante que establece el cambio
+
+```
+SUBTOTAL = total sin impuestos, TODO incluido        (no cambia)
+SUBNOOBJ = base no objeto de IVA                     (columna nueva, default 0)
+SUBCERO  = base tarifa 0%, SIN incluir la no objeto
+gravada  = SUBTOTAL - SUBCERO - SUBNOOBJ             (lo calcula el ATS)
+```
+
+Con `SUBNOOBJ = 0` el comportamiento es **idéntico al de hoy**: el cambio es aditivo y un WAR viejo
+convive con la columna.
+
+### Las tres piezas
+
+| # | Qué | Dónde |
+|---|---|---|
+| **DDL + datos** | `PGS.FCTC.SUBNOOBJ` + mover lo ya cargado de `SUBCERO` a `SUBNOOBJ` + el detalle de terceros pasa a `CODIGOIVASRI = 6` | `sri/sql/e2-55-base-no-objeto-de-iva.sql` (lo corre el usuario) |
+| **BE-4a** | La entidad mapea la columna; la carga escribe los terceros en `SUBNOOBJ` en vez de en `SUBCERO`, y la línea de detalle nace con `CODIGOIVASRI = 6` | `FacturaCompra.java`, `ProcesoCargaDocumentosServiceImpl:1726-1754` |
+| **BE-4b** | El ATS emite `baseNoGraIva` desde `SUBNOOBJ` y descuenta la no objeto de la gravada | `GeneradorAtsServiceImpl:819` y `comprasFacturaCompra` / `baseGravadaCompra` |
+
+**⛔ Orden de despliegue, estricto:** `e2-55` → WAR → regenerar el ATS. La entidad mapea la columna
+nueva, así que un WAR sin el script rompe **toda** lectura de `PGS.FCTC` con `ORA-00904`.
+
+**⚠️ `PGS.FCTC` es territorio compartido con `lap-saa-1`** (ellos agregaron `FCTCESIN`). La columna es
+aditiva, pero el cambio de significado de `SUBCERO` afecta a cualquier reporte suyo que lo lea.
+**Pendiente de autorización del usuario para avisarle a su árbitro.**
+
+### Alcance: no es sólo la eléctrica
+
+El criterio es del concepto, no del proveedor: **toda** factura con un `campoAdicional` de bomberos o
+basura entra. El bloque 0 del `e2-55` las lista todas antes de tocar nada.
+
 ## 3. Criterio de aceptación
 
 1. `e2-53` corrido: el BLOQUE 4 da `GRAVADA_AHORA = 0` en todas las notas de venta que el BLOQUE 1
