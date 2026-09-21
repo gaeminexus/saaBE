@@ -3674,3 +3674,73 @@ inactiva sin decir que lo que falta es una fila de catálogo.
 
 Es la misma familia de defecto que `omen-saa-2` dejó especificado y sin hacer en
 `DetalleRubroDaoServiceImpl:77`: un catálogo faltante que se presenta como otra cosa.
+
+---
+
+# ⚡ 2026-09-21, 18:20 — SE FUE LA LUZ EN LA OMEN. Qué se perdió: NADA de código
+
+**Sesión nueva del árbitro, retomando.** Este bloque existe porque el tablero se había cerrado a las
+**16:59** (`dc2bca35`) y el equipo **siguió entregando hasta las 18:19**. Esa hora y veinte no estaba
+registrada en ningún lado, y el equipo que retome después del corte sólo tiene este documento.
+
+## Lo primero que se midió al volver, antes de tocar nada
+
+| Control | Resultado |
+|---|---|
+| `git status` en `saaBE` y en `saaFE` | **limpio, cero archivos modificados** — ni míos ni de otro equipo |
+| `git fetch` + comparación con `origin/main` | **al día, sin commits nuevos de la otra máquina** |
+| `omen-saa-1-be` y `omen-saa-1-fe` preguntados por archivos sin reportar | **ninguno**, los dos arrancaron limpios y lo verificaron en disco, no de memoria |
+
+⇒ **El corte se llevó el contexto del chat, no el trabajo.** Todo lo entregado estaba commiteado y
+pusheado. El esquema de "el árbitro commitea apenas cierra un ítem" es exactamente lo que hizo que
+un corte de luz costara cero líneas.
+
+⭐ **Y al revés, la lección que sí deja:** lo único que se perdió fue **lo que vivía sólo en el chat**
+— el registro de la última hora y media. Un ítem cerrado y commiteado sobrevive; un ítem cerrado y
+no escrito, no. Por eso este bloque se escribe antes de cualquier trabajo nuevo.
+
+## Los tres commits de `saaFE` que el tablero no registraba
+
+| Commit | Hora | Qué |
+|---|---|---|
+| `5a29fff` | 17:02 | Sepelio: el tipo de valor de seguro viene **preseleccionado**, y la recepción se puede **anular** desde la UI (el ajuste que el bloque de sepelio menciona como «despachado al cierre de la jornada», sin el hash) |
+| `bc54cba` | 17:26 | La entrada de menú pasa a llamarse **«Valores de Seguro»** (17 caracteres), porque «Recepción de Valores de Seguro» (31) se veía **sólo como `...`** |
+| `4e74754` | 18:19 | Otras **dos** entradas de `crd` con el mismo defecto, ya en producción, + el patrón escrito para todos los módulos |
+
+## ⛔ H71 — Un nombre de menú largo no se recorta: DESAPARECE ENTERO
+
+**Reportado por el usuario con captura de producción.** No era sólo nuestra pantalla nueva: en
+«Parametrización de Créditos» había **dos entradas más que se veían como `...`, sin una sola letra**.
+
+| Antes | car. | Ahora | car. |
+|---|---|---|---|
+| Escala de Calificación de Riesgo | 33 | **Calificación de Riesgo** | 22 |
+| Cuentas por Tipo de Aporte | 26 | **Cuentas por Aporte** | 18 |
+| Recepción de Valores de Seguro | 31 | **Valores de Seguro** | 17 |
+
+**El límite, medido contra las capturas, está entre 24 y 26 caracteres**: «Repote Valores Insolutos»
+(24) se ve entero y «Cuentas por Tipo de Aporte» (26) no se ve nada.
+
+⭐ **Por qué es peor que un truncado normal y por qué nadie lo vio antes:** un texto recortado a la
+mitad se lee igual y alguien lo reporta. Éste **no deja ni una letra**, así que la entrada parece un
+separador decorativo o un ítem deshabilitado — **no parece un nombre roto, parece que la pantalla no
+existe**. Dos entradas de `crd` llevaban así vaya a saber cuánto tiempo, en producción, y el reporte
+llegó recién cuando el usuario fue a buscar una pantalla nueva y tampoco la encontró.
+
+⛔ **No se arregla en el SCSS compartido de `shared/basics/menu/`, a propósito**: lo usan los siete
+módulos, y tocarlo para acomodar un ítem propio es como se rompe el menú de otro equipo sin que
+nadie se entere. Se arregló en `menucreditos.component.ts`, que es nuestro.
+
+**Dónde quedó la regla, que es lo que evita la próxima vez:** `saaFE docs/patrones/NOMBRES-DE-MENU-LATERAL.md`
+(máximo 24 caracteres, apuntar a 22 — los dos últimos son margen porque el ancho cambia con la
+fuente de cada entorno; a mayor profundidad hay menos espacio; trae un `grep` de una línea para
+verificarlo antes de commitear). Y la línea que lo hace visible de verdad está en el **`CLAUDE.md` de
+`saaFE`:96**, que se carga solo — un documento de patrones que nadie abre no sirve de nada.
+
+## Deuda con `omen-saa-2`, ésta SÍ avisada
+
+El intento de fondo de ellos (`saaFE eb45fd6`, 2026-09-08) puso las reglas sobre `.menu-text` **sin
+tocar `.mdc-list-item__primary-text`**, que es donde Angular Material hace el recorte de verdad. Por
+eso su arreglo no alcanzó. **Ya se les avisó, con autorización del usuario.** ⚠️ Si lo arreglan de
+fondo, `NOMBRES-DE-MENU-LATERAL.md` hay que actualizarlo: hoy documenta un **límite de diseño**, y
+pasaría a ser una cicatriz.
