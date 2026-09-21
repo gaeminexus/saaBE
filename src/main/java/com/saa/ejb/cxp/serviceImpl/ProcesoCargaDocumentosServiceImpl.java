@@ -3522,6 +3522,15 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         rc.setEstadoEmision(2L);
         rc = retencionCompraV2DaoService.save(rc, null);
 
+        // BE-5 (2026-09-21): el TXT del SRI trae valorSinImpuestos, iva e importeTotal en 0.00 para un
+        // comprobante de retención, y así lo grabó la carga en DocumentoCxp -- la bandeja y Consulta de
+        // Documentos mostraban Subtotal/IVA/Total en cero. El único número con sentido es lo retenido:
+        // va a importeTotal (el llamador guarda `doc` justo después de registrar). valorSinImpuestos e
+        // iva se quedan en 0: una retención no tiene subtotal ni IVA, y ponerlo ahí sería mentir en otra
+        // casilla. Ningún lector se rompe: la comparación contra el TXT (detectarDiferencias y la
+        // validación del XML) se salta las retenciones a propósito, así que una recarga no lo pisa.
+        doc.setImporteTotal(totalRetenido);
+
         // Grabar detalles de retención V2
         for (int i = 0; i < retenciones.getLength(); i++) {
             Element el = (Element) retenciones.item(i);
