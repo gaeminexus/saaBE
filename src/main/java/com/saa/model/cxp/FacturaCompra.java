@@ -72,6 +72,10 @@ public class FacturaCompra implements Serializable {
 	@Basic @Column(name = "SUBNOOBJ")
 	private Double subnoobj;
 
+	/** Base exenta de IVA (BE-6, e2-61; codigoPorcentaje 7). SUBCERO no la incluye; SUBTOTAL sí. */
+	@Basic @Column(name = "SUBEXENT")
+	private Double subexent;
+
 	@Basic @Column(name = "SUBTOTAL5")
 	private Double subtotal5;
 
@@ -190,6 +194,8 @@ public class FacturaCompra implements Serializable {
 	public void setSubcero(Double subcero) { this.subcero = subcero; }
 	public Double getSubnoobj() { return subnoobj; }
 	public void setSubnoobj(Double subnoobj) { this.subnoobj = subnoobj; }
+	public Double getSubexent() { return subexent; }
+	public void setSubexent(Double subexent) { this.subexent = subexent; }
 	public Double getSubtotal5() { return subtotal5; }
 	public void setSubtotal5(Double subtotal5) { this.subtotal5 = subtotal5; }
 	public Double getSubtotal8() { return subtotal8; }

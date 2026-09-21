@@ -264,9 +264,12 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
      * defecto: se usaba SUBTOTAL entero como base gravada y SUBCERO aparte, contando el 0% dos
      * veces. Medido en las 8 facturas de Empresa Eléctrica Quito (1790053881001, agosto 2026):
      * diferencia de <b>+7,23 exacta en las ocho</b> contra su propia columna Base IVA 0% (ver
-     * DIAGNOSTICO-ATS-BASES-Y-RETENCIONES.md §2). <b>Base gravada correcta = SUBTOTAL − SUBCERO −
-     * SUBNOOBJ</b> (BE-4, 2026-09-21: SUBNOOBJ es la base no objeto de IVA, columna aparte que SUBCERO
-     * NO incluye y SUBTOTAL sí; con SUBNOOBJ = 0 es la fórmula de siempre).
+     * DIAGNOSTICO-ATS-BASES-Y-RETENCIONES.md §2). <b>Base gravada = SUBTOTAL − SUBCERO − SUBNOOBJ −
+     * SUBEXENT</b> (BE-4/BE-6, 2026-09-21): cada una es una columna aparte que SUBCERO no incluye y
+     * SUBTOTAL sí, y cada una tiene su propio elemento del ATS (baseImponible, baseNoGraIva, baseImpExe).
+     * <b>SUBTOTAL5 y SUBTOTAL8 NO se restan</b>: el ATS no tiene elemento para el 5% ni el 8%, esas bases
+     * van dentro de baseImpGrav ("tarifa IVA diferente de 0%", Catalogo_ATS.xls); si se restaran
+     * desaparecerían del anexo. Con las columnas nuevas en 0 es la fórmula de siempre.
      * <p>
      * <b>ÍTEM 12 (2026-09-15, docs/logica-negocio/sri/PLAN-ATS-AJUSTES-2026-09-15.md §2): esta
      * fórmula NO vale para toda {@code LiquidacionCompraCompra} (PGS.LQCC).</b> La verificación de
@@ -279,15 +282,16 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
      * {@code documentoCxp}/{@code LQCSLQCC}), SUBTOTAL YA ES la base gravada: no se le resta
      * SUBCERO, y este método ni se llama (ver {@code comprasLiquidacion}).
      * <p>
-     * Si SUBCERO + SUBNOOBJ &gt; SUBTOTAL (dato inconsistente), no se emite una base negativa: se
-     * avisa con el documento y los tres valores, y la gravada queda en 0.00.
+     * Si SUBCERO + SUBNOOBJ + SUBEXENT &gt; SUBTOTAL (dato inconsistente), no se emite una base
+     * negativa: se avisa con el documento y los cuatro valores, y la gravada queda en 0.00.
      */
-    private double baseGravadaCompra(double subtotal, double subcero, double noObjeto,
+    private double baseGravadaCompra(double subtotal, double subcero, double noObjeto, double exento,
             String etiquetaDocumento, Long idDocumento, List<String> avisos) {
-        double base = subtotal - subcero - noObjeto;
+        double base = subtotal - subcero - noObjeto - exento;
         if (base < 0.0) {
             avisos.add(etiquetaDocumento + " " + idDocumento + ": SUBCERO (" + formatDecimal(subcero)
-                    + ") + SUBNOOBJ (" + formatDecimal(noObjeto) + ") es mayor que SUBTOTAL ("
+                    + ") + SUBNOOBJ (" + formatDecimal(noObjeto) + ") + SUBEXENT (" + formatDecimal(exento)
+                    + ") es mayor que SUBTOTAL ("
                     + formatDecimal(subtotal) + ") -- dato inconsistente. "
                     + "No se emite una base gravada negativa; se dejó en 0.00. Revisar el documento.");
             return 0.0;
@@ -318,12 +322,12 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         List<LineaCompra> resultado = new ArrayList<LineaCompra>();
         for (FacturaCompra f : q.getResultList()) {
             double subtotal = nvl(f.getSubtotal(), 0.0), subcero = nvl(f.getSubcero(), 0.0);
-            double noObjeto = nvl(f.getSubnoobj(), 0.0);
+            double noObjeto = nvl(f.getSubnoobj(), 0.0), exento = nvl(f.getSubexent(), 0.0);
             resultado.add(new LineaCompra(f.getTipoComprobante(), f.getNumEstablecimiento(),
                     f.getNumPtoEmision(), f.getSecuencial(), f.getFecha() != null ? f.getFecha().toLocalDate() : null,
                     f.getAutorizacion(), f.getTitular(), f.getSustentoTributario(), f.getFechaRegistroContable(),
-                    baseGravadaCompra(subtotal, subcero, noObjeto, "Factura de compra", f.getId(), avisos), subcero,
-                    noObjeto,
+                    baseGravadaCompra(subtotal, subcero, noObjeto, exento, "Factura de compra", f.getId(), avisos), subcero,
+                    noObjeto, exento,
                     nvl(f.getvIVA(), 0.0), nvl(f.getvICE(), 0.0),
                     formasPagoFacturaCompra(f.getId())));
             if (f.getSustentoTributario() == null) {
@@ -402,11 +406,12 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
             double subtotal = nvl(l.getSubtotal(), 0.0), subcero = nvl(l.getSubcero(), 0.0);
             boolean emitida = emitidas.contains(l.getId());
             double gravada = emitida ? subtotal
-                    : baseGravadaCompra(subtotal, subcero, 0.0, "Liquidación de compra", l.getId(), avisos);
+                    : baseGravadaCompra(subtotal, subcero, nvl(l.getSubnoobj(), 0.0), nvl(l.getSubexent(), 0.0),
+                            "Liquidación de compra", l.getId(), avisos);
             resultado.add(new LineaCompra(l.getTipoComprobante(), l.getNumEstablecimiento(),
                     l.getNumPtoEmision(), l.getSecuencial(), l.getFecha() != null ? l.getFecha().toLocalDate() : null,
                     l.getAutorizacion(), l.getTitular(), l.getSustentoTributario(), l.getFechaRegistroContable(),
-                    gravada, subcero, 0.0, // sin SUBNOOBJ en PGS.LQCC: 0 hasta que se llene
+                    gravada, subcero, nvl(l.getSubnoobj(), 0.0), nvl(l.getSubexent(), 0.0),
                     nvl(l.getvIVA(), 0.0), nvl(l.getvICE(), 0.0),
                     formasPagoLiquidacionCompra(l.getId())));
             if (l.getFechaRegistroContable() == null) {
@@ -442,8 +447,9 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
             resultado.add(new LineaCompra(n.getTipoComprobante(), n.getNumEstablecimiento(),
                     n.getNumPtoEmision(), n.getSecuencial(), n.getFecha() != null ? n.getFecha().toLocalDate() : null,
                     n.getAutorizacion(), n.getTitular(), n.getSustentoTributario(), n.getFechaRegistroContable(),
-                    baseGravadaCompra(subtotal, subcero, 0.0, "Nota de crédito de compra", n.getId(), avisos), subcero,
-                    0.0, // sin SUBNOOBJ en la NC de compra: 0 hasta que se llene
+                    baseGravadaCompra(subtotal, subcero, nvl(n.getSubnoobj(), 0.0), nvl(n.getSubexent(), 0.0),
+                            "Nota de crédito de compra", n.getId(), avisos), subcero,
+                    nvl(n.getSubnoobj(), 0.0), nvl(n.getSubexent(), 0.0),
                     nvl(n.getvIVA(), 0.0), nvl(n.getvICE(), 0.0),
                     java.util.Collections.<String>emptyList()));
             if (n.getFechaRegistroContable() == null) {
@@ -479,8 +485,9 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
             resultado.add(new LineaCompra(n.getTipoComprobante(), n.getNumEstablecimiento(),
                     n.getNumPtoEmision(), n.getSecuencial(), n.getFecha() != null ? n.getFecha().toLocalDate() : null,
                     n.getAutorizacion(), n.getTitular(), n.getSustentoTributario(), n.getFechaRegistroContable(),
-                    baseGravadaCompra(subtotal, subcero, 0.0, "Nota de débito de compra", n.getId(), avisos), subcero,
-                    0.0, // sin SUBNOOBJ en la ND de compra: 0 hasta que se llene
+                    baseGravadaCompra(subtotal, subcero, nvl(n.getSubnoobj(), 0.0), nvl(n.getSubexent(), 0.0),
+                            "Nota de débito de compra", n.getId(), avisos), subcero,
+                    nvl(n.getSubnoobj(), 0.0), nvl(n.getSubexent(), 0.0),
                     nvl(n.getvIVA(), 0.0), nvl(n.getvICE(), 0.0),
                     java.util.Collections.<String>emptyList()));
             if (n.getFechaRegistroContable() == null) {
@@ -821,12 +828,12 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         writeElement(w, "fechaEmision", formatFecha(c.fechaEmision), 6);
         writeElement(w, "autorizacion", nvl(c.autorizacion, ""), 6);
         // baseNoGraIva sale de SUBNOOBJ (BE-4, 2026-09-21: la contribución a bomberos es no objeto
-        // de IVA, no tarifa 0%). Sigue sin columna propia lo EXENTO: baseImpExe queda en 0.00 -- ver
-        // aviso general en §10, no se inventa el reparto.
+        // de IVA, no tarifa 0%). baseImpExe sale de SUBEXENT (BE-6, e2-61). El 5% y el 8% no tienen
+        // elemento propio: van dentro de baseImpGrav (ver baseGravadaCompra).
         writeElement(w, "baseNoGraIva", formatDecimal(c.baseNoObjeto), 6);
         writeElement(w, "baseImponible", formatDecimal(c.base0), 6);
         writeElement(w, "baseImpGrav", formatDecimal(c.baseGravada), 6);
-        writeElement(w, "baseImpExe", "0.00", 6);
+        writeElement(w, "baseImpExe", formatDecimal(c.baseExenta), 6);
         writeElement(w, "montoIce", formatDecimal(c.montoIce), 6);
         writeElement(w, "montoIva", formatDecimal(c.montoIva), 6);
 
@@ -885,7 +892,7 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         // se queja si aparece en un documento que NO supera. "> 500.00" estricto (el texto del SRI
         // dice "exceden"): un documento en exactamente 500.00 no la lleva hasta que se mida lo
         // contrario -- no se adivina el borde.
-        double totalDocumento = c.base0 + c.baseNoObjeto + c.baseGravada + c.montoIva + c.montoIce;
+        double totalDocumento = c.base0 + c.baseNoObjeto + c.baseExenta + c.baseGravada + c.montoIva + c.montoIce;
         boolean superaUmbral = totalDocumento > 500.0;
         if (superaUmbral && !formasPago.isEmpty()) {
             w.writeCharacters("      ");
@@ -1531,15 +1538,15 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         final String tipoComprobante, establecimiento, puntoEmision, secuencial, autorizacion, codSustento;
         final LocalDate fechaEmision, fechaRegistro;
         final Titular titular;
-        final double baseGravada, base0, baseNoObjeto, montoIva, montoIce;
+        final double baseGravada, base0, baseNoObjeto, baseExenta, montoIva, montoIce;
         /** ÍTEM 28 (2026-09-10): formas de pago DEL DOCUMENTO (no de la retención) -- vacía si el
          *  tipo de documento no tiene tabla propia (NotaCreditoCompra/NotaDebitoCompra). */
         final List<String> formasPagoPrimario;
 
         LineaCompra(String tipoComprobante, String establecimiento, String puntoEmision, String secuencial,
                 LocalDate fechaEmision, String autorizacion, Titular titular, String codSustento,
-                LocalDate fechaRegistro, double baseGravada, double base0, double baseNoObjeto, double montoIva,
-                double montoIce, List<String> formasPagoPrimario) {
+                LocalDate fechaRegistro, double baseGravada, double base0, double baseNoObjeto, double baseExenta,
+                double montoIva, double montoIce, List<String> formasPagoPrimario) {
             this.tipoComprobante = tipoComprobante;
             this.establecimiento = establecimiento;
             this.puntoEmision = puntoEmision;
@@ -1552,6 +1559,7 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
             this.baseGravada = baseGravada;
             this.base0 = base0;
             this.baseNoObjeto = baseNoObjeto;
+            this.baseExenta = baseExenta;
             this.montoIva = montoIva;
             this.montoIce = montoIce;
             this.formasPagoPrimario = formasPagoPrimario;

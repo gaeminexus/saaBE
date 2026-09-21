@@ -68,6 +68,23 @@ public class LiquidacionCompraCompra implements Serializable {
 	@Basic @Column(name = "SUBCERO")
 	private Double subcero;
 
+	// BE-6 (e2-61, PLAN-CLASIFICACION-POR-TARIFA-COMPRAS.md): base por tarifa. Ninguna incluida en SUBCERO; todas en SUBTOTAL.
+	/** Base no objeto de IVA (codigoPorcentaje 6). */
+	@Basic @Column(name = "SUBNOOBJ")
+	private Double subnoobj;
+
+	/** Base exenta de IVA (codigoPorcentaje 7). */
+	@Basic @Column(name = "SUBEXENT")
+	private Double subexent;
+
+	/** Base tarifa 5% (codigoPorcentaje 5). */
+	@Basic @Column(name = "SUBTOTAL5")
+	private Double subtotal5;
+
+	/** Base tarifa 8% (codigoPorcentaje 8). */
+	@Basic @Column(name = "SUBTOTAL8")
+	private Double subtotal8;
+
 	@Basic @Column(name = "PIVA")
 	private Double pIVA;
 
@@ -209,6 +226,14 @@ public class LiquidacionCompraCompra implements Serializable {
 	public void setSubtotal(Double subtotal) { this.subtotal = subtotal; }
 	public Double getSubcero() { return subcero; }
 	public void setSubcero(Double subcero) { this.subcero = subcero; }
+	public Double getSubnoobj() { return subnoobj; }
+	public void setSubnoobj(Double subnoobj) { this.subnoobj = subnoobj; }
+	public Double getSubexent() { return subexent; }
+	public void setSubexent(Double subexent) { this.subexent = subexent; }
+	public Double getSubtotal5() { return subtotal5; }
+	public void setSubtotal5(Double subtotal5) { this.subtotal5 = subtotal5; }
+	public Double getSubtotal8() { return subtotal8; }
+	public void setSubtotal8(Double subtotal8) { this.subtotal8 = subtotal8; }
 	public Double getpIVA() { return pIVA; }
 	public void setpIVA(Double pIVA) { this.pIVA = pIVA; }
 	public Double getvIVA() { return vIVA; }
