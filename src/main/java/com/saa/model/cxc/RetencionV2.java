@@ -24,6 +24,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.NamedQueries;
 import jakarta.persistence.NamedQuery;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 
 /**
  * Entity RetencionV2.
@@ -340,4 +341,23 @@ public class RetencionV2 implements Serializable {
 
 	public Asiento getAsiento() { return asiento; }
 	public void setAsiento(Asiento asiento) { this.asiento = asiento; }
+
+	/**
+	 * BE-9b (2026-09-21): total retenido de RENTA (DRV2.CODIMPUESTO = '1') de esta retención. No es columna:
+	 * lo llena RetencionV2ServiceImpl.selectByCriteria con UNA consulta agregada para toda la lista, para que
+	 * la pantalla de consulta de documentos electrónicos lo muestre sin pedir el detalle fila por fila.
+	 * Solo viene lleno en selectByCriteria; en getAll/getId es null.
+	 */
+	@Transient
+	private Double totalRenta;
+
+	/** BE-9b: total retenido de IVA (DRV2.CODIMPUESTO = '2'). Misma nota que {@link #totalRenta}. */
+	@Transient
+	private Double totalIva;
+
+	public Double getTotalRenta() { return totalRenta; }
+	public void setTotalRenta(Double totalRenta) { this.totalRenta = totalRenta; }
+
+	public Double getTotalIva() { return totalIva; }
+	public void setTotalIva(Double totalIva) { this.totalIva = totalIva; }
 }

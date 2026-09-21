@@ -228,7 +228,41 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 		if (result.isEmpty()) {
 			throw new IncomeException("Busqueda por criterio RetencionV2 no devolvio ningun registro");
 		}
+		completarTotalesPorImpuesto(result);
 		return result;
+	}
+
+	/**
+	 * BE-9b (2026-09-21): pone totalRenta / totalIva (DRV2.CODIMPUESTO '1' / '2', valor retenido) en cada
+	 * retencion de la lista, con UNA consulta agregada para toda la lista (ver selectTotalesPorImpuesto), no
+	 * una por fila. Una retencion sin lineas de ese impuesto queda en 0.0. Otros codigos (p. ej. ISD) no
+	 * suman a ninguno: en ese caso totalRenta + totalIva es menor que total.
+	 */
+	private void completarTotalesPorImpuesto(List<RetencionV2> lista) {
+		java.util.Map<Long, double[]> porRetencion = new java.util.HashMap<Long, double[]>();
+		List<Long> ids = new java.util.ArrayList<Long>();
+		for (RetencionV2 r : lista) {
+			ids.add(r.getId());
+			porRetencion.put(r.getId(), new double[2]);
+		}
+		for (Object[] fila : retencionV2DaoService.selectTotalesPorImpuesto(ids)) {
+			double[] acumulado = porRetencion.get((Long) fila[0]);
+			if (acumulado == null || fila[2] == null) {
+				continue;
+			}
+			String codImpuesto = fila[1] != null ? ((String) fila[1]).trim() : "";
+			double valor = ((Number) fila[2]).doubleValue();
+			if ("1".equals(codImpuesto)) {
+				acumulado[0] += valor;
+			} else if ("2".equals(codImpuesto)) {
+				acumulado[1] += valor;
+			}
+		}
+		for (RetencionV2 r : lista) {
+			double[] acumulado = porRetencion.get(r.getId());
+			r.setTotalRenta(Math.round(acumulado[0] * 100.0) / 100.0);
+			r.setTotalIva(Math.round(acumulado[1] * 100.0) / 100.0);
+		}
 	}
 	
 	@Override
