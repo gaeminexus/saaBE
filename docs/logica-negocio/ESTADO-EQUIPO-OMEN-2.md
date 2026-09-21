@@ -4017,3 +4017,36 @@ avisa** con nombre e identificación. Si el aviso no aparece al regenerar, no bl
 | Cuadres 103/104 vs. facturas de intermediario | 🟡 preguntado el 15-09, sin respuesta. Hoy el ATS las excluye y los cuadres no: **dos reportes del mismo período que no pueden ser ciertos a la vez** |
 | Período de las retenciones recibidas | 🟡 se filtra por la fecha de la **retención**. Si el contador las declara en el mes de la **venta**, cambia |
 | `denoCli` en minúscula | ⚪ a vigilar en la validación de hoy: si el SRI rechaza por ese campo, la grafía es el motivo (§46.7) |
+
+## §47 — Aviso PENDIENTE DE ENTREGAR a `lap-saa-1-arb` (2026-09-21)
+
+**El usuario autorizó el aviso; la sesión de `lap-saa-1-arb` no existe** (verificado en el listado de
+agentes: sólo hay sesiones `omen`). Queda escrito acá para mandarlo apenas aparezca, o para que lo
+lea el árbitro que retome ese equipo.
+
+> **Para `lap-saa-1-arb` — cambio nuestro que toca tu alcance.**
+>
+> `PGS.FCTC` es compartido: ustedes agregaron `FCTCESIN` y nosotros venimos tocando las columnas de
+> bases.
+>
+> **Qué cambia:** hasta el 2026-09-21 `FCTC.SUBCERO` significaba «base 0% **más** la contribución a
+> bomberos/basura de las planillas eléctricas». Por criterio del auditor interno de ASOPREP (correo
+> del 19-09) el bomberos pasa a **no objeto de IVA**, en la columna nueva `SUBNOOBJ`. Y por pedido
+> del usuario se completó la clasificación por tarifa: `SUBEXENT` en `FCTC`, y
+> `SUBNOOBJ`/`SUBEXENT`/`SUBTOTAL5`/`SUBTOTAL8` también en `NTCC`, `NTDC` y `LQCC`.
+>
+> **Qué les puede afectar:** las columnas nuevas son aditivas y con default 0, no rompen nada. **Lo
+> que cambia de significado es `SUBCERO`**: cualquier reporte suyo que lo lea como «todo lo que no
+> grava» va a dar distinto, porque el bomberos ya no está adentro.
+>
+> **Scripts:** `e2-55` (corrido en producción el 21-09) y `e2-61` (pendiente), en
+> `docs/logica-negocio/`. Diseño en `cxp/PLAN-CLASIFICACION-POR-TARIFA-COMPRAS.md`.
+>
+> **Orden de despliegue:** `e2-55` → `e2-61` → WAR. Las cuatro entidades de compra mapean las
+> columnas nuevas, así que un WAR de `main` sin esos scripts rompe toda lectura de
+> `FCTC`/`NTCC`/`NTDC`/`LQCC` con `ORA-00904`. Si tienen un WAR propio por desplegar, coordinemos.
+
+> **Por qué no se editó `REGISTRO-RESERVAS-EQUIPOS.md`, que sería el lugar natural:** ese archivo
+> tiene cambios **sin commitear de otro equipo** en el árbol compartido. Agregarle una sección
+> obligaría a `git add` del archivo entero y se llevaría el trabajo a medio hacer de ellos dentro de
+> un commit nuestro. El aviso espera acá hasta que el archivo esté limpio o la sesión aparezca.
