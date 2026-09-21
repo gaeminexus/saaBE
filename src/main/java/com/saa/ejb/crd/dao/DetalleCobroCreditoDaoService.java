@@ -37,4 +37,14 @@ public interface DetalleCobroCreditoDaoService extends EntityDao<DetalleCobroCre
      * @throws Throwable : Excepcion
      */
     List<DetalleCobroCredito> selectByPrestamo(Long idPrestamo) throws Throwable;
+
+    /**
+     * Las líneas de cobro enlazadas a un evento de pago (DCBC.EVPRCDGO), para saber si un evento
+     * nació de un cobro y no debe anularse por fuera de su reverso.
+     *
+     * @param idEvento   : Código del evento (CRD.EVPR)
+     * @return           : Listado; VACÍO si el evento no vino de ningún cobro
+     * @throws Throwable : Excepcion
+     */
+    List<DetalleCobroCredito> selectByEvento(Long idEvento) throws Throwable;
 }

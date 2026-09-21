@@ -11,6 +11,7 @@ import java.util.Map;
 import org.jboss.resteasy.plugins.providers.multipart.MultipartFormDataInput;
 
 import com.saa.basico.util.DatosBusqueda;
+import com.saa.ejb.crd.dao.DetalleCobroCreditoDaoService;
 import com.saa.ejb.crd.dao.PrestamoDaoService;
 import com.saa.ejb.crd.service.AbonoCapitalPrestamoService;
 import com.saa.ejb.crd.service.PrestamoService;
@@ -42,6 +43,7 @@ import com.saa.ejb.crd.service.dto.SolicitudPrecancelacion;
 import com.saa.ejb.crd.service.dto.SolicitudReestructuracion;
 import com.saa.ejb.crd.service.dto.SolicitudReporteSimulacion;
 import com.saa.ejb.reporte.service.ReporteService;
+import com.saa.model.crd.DetalleCobroCredito;
 import com.saa.model.crd.NombreEntidadesCredito;
 import com.saa.model.crd.Prestamo;
 
@@ -83,6 +85,9 @@ public class PrestamoRest {
 
     @EJB
     private ReporteService reporteService;
+
+    @EJB
+    private DetalleCobroCreditoDaoService detalleCobroCreditoDaoService;
 
     @Context
     private UriInfo context;
@@ -1241,6 +1246,24 @@ public class PrestamoRest {
         if (solicitud.getMotivo() == null || solicitud.getMotivo().trim().isEmpty()) {
             return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
                 "Debe indicar el motivo de la anulación", null);
+        }
+
+        // La guarda va aquí y no en el service: CobroCreditoServiceImpl.reversarLineasProcesadas
+        // también llama a anularOperacion, con el enlace EVPRCDGO todavía puesto.
+        try {
+            List<DetalleCobroCredito> lineasDelEvento =
+                detalleCobroCreditoDaoService.selectByEvento(solicitud.getIdEvento());
+            if (lineasDelEvento != null && !lineasDelEvento.isEmpty()) {
+                DetalleCobroCredito linea = lineasDelEvento.get(0);
+                Long idCobro = linea.getCobroCredito() != null ? linea.getCobroCredito().getCodigo() : null;
+                return respuestaFallo(Response.Status.CONFLICT.getStatusCode(), ETAPA_VALIDACION,
+                    "El evento " + solicitud.getIdEvento() + " pertenece al cobro " + idCobro
+                        + ": anúlelo desde el reverso del cobro (POST /rest/cbcr/" + idCobro
+                        + "/reversar), no desde el historial de operaciones del préstamo.", null);
+            }
+        } catch (Throwable e) {
+            System.err.println("ERROR al verificar si el evento pertenece a un cobro: " + e.getMessage());
+            return respuestaErrorNegocio(e);
         }
 
         try {

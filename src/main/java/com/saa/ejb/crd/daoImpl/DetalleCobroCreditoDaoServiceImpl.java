@@ -59,4 +59,16 @@ public class DetalleCobroCreditoDaoServiceImpl extends EntityDaoImpl<DetalleCobr
         query.setParameter("idPrestamo", idPrestamo);
         return query.getResultList();
     }
+
+    @Override
+    public List<DetalleCobroCredito> selectByEvento(Long idEvento) throws Throwable {
+        System.out.println("Ingresa al metodo selectByEvento de DetalleCobroCredito"
+                + " - evento: " + idEvento);
+        Query query = em.createQuery(
+                " select d from DetalleCobroCredito d " +
+                " where  d.eventoPrestamo.codigo = :idEvento " +
+                " order by d.codigo desc");
+        query.setParameter("idEvento", idEvento);
+        return query.getResultList();
+    }
 }

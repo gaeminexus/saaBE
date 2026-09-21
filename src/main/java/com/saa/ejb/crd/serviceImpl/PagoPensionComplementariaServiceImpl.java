@@ -1161,6 +1161,7 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         int topados = 0;
         double totalSeguroGeneral = 0.0;
         double totalNominalNoCobrado = 0.0;
+        String abortarPor = null;
 
         if (jubilados != null) {
             for (Entidad jubilado : jubilados) {
@@ -1192,6 +1193,29 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
                         }
                     } else {
                         yaGenerados++;
+                        // U1 (2026-09-21): un seguro fijado en un intento anterior también forma parte
+                        // de lo que se le paga al proveedor. Si no se suma, el reintento de una corrida
+                        // que falló a medias da total $0, no crea orden y cierra el CRJB.
+                        // La lectura vive en su propio try: el catch de abajo sólo cuenta errores por
+                        // jubilado y seguiría, y un total corto le paga de menos al proveedor.
+                        String falloLectura = null;
+                        try {
+                            PagoPensionComplementaria fijado = pagoPensionDaoService.selectByEntidadYPeriodo(
+                                jubilado.getCodigo(), anio.longValue(), mes.longValue());
+                            if (fijado == null || fijado.getValorSeguro() == null) {
+                                falloLectura = "no se encontró el seguro ya fijado";
+                            } else {
+                                totalSeguroGeneral += fijado.getValorSeguro();
+                            }
+                        } catch (Throwable eLectura) {
+                            falloLectura = "falló la lectura del seguro ya fijado: " + eLectura.getMessage();
+                        }
+                        if (falloLectura != null) {
+                            abortarPor = "Entidad " + jubilado.getCodigo() + ": " + falloLectura
+                                + " del período " + mes + "/" + anio + ". Se aborta la generación sin"
+                                + " cerrar la corrida, para no pagarle de menos al proveedor; reintente.";
+                            break;
+                        }
                     }
                 } catch (Throwable e) {
                     conError++;
@@ -1200,6 +1224,9 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
                         + jubilado.getCodigo() + ": " + e.getMessage());
                 }
             }
+        }
+        if (abortarPor != null) {
+            throw new IncomeException(abortarPor);
         }
 
         resumen.setEvaluados(evaluados);
@@ -1212,10 +1239,11 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         Long idOrdenProveedor = generarOrdenPagoProveedorSeguro(idEmpresa, anio, mes, usuario, idUsuario,
             proveedorSeguro, cuentaBancariaProveedorSeguro, totalSeguroPeriodo);
         resumen.setIdOrdenPago(idOrdenProveedor);
-        resumen.setMensaje("Seguro médico " + mes + "/" + anio + " - " + generados + " jubilados, $"
-            + totalSeguroPeriodo + " generados hacia el proveedor"
+        resumen.setMensaje("Seguro médico " + mes + "/" + anio + " - " + generados + " jubilados nuevos y "
+            + yaGenerados + " que ya tenían el seguro fijado, $"
+            + totalSeguroPeriodo + " en total hacia el proveedor"
             + (idOrdenProveedor != null ? " (orden " + idOrdenProveedor + ")" : " (sin orden, total $0)")
-            + ", " + yaGenerados + " ya tenían el seguro fijado, " + conError + " con error, de "
+            + ", " + conError + " con error, de "
             + evaluados + " evaluados. " + topados + " jubilado(s) con el seguro topado por saldo,"
             + " sin ancla o al día (H60, §11.1): $" + redondear(totalNominalNoCobrado)
             + " de nominal NO cobrado al proveedor.");
@@ -1232,7 +1260,7 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         corrida.setUsuarioSeguro(usuario);
         corrida.setTotalSeguro(totalSeguroPeriodo);
         corrida.setIdOrdenPagoSeguro(idOrdenProveedor);
-        corrida.setCantidadJubiladosSeguro(Long.valueOf(generados));
+        corrida.setCantidadJubiladosSeguro(Long.valueOf(generados + yaGenerados));
         corridaJubiladosDaoService.save(corrida, corrida.getCodigo());
 
         System.out.println("GENERACIÓN DE SEGURO TERMINADA - Evaluados: " + evaluados + " - Jubilados: "
