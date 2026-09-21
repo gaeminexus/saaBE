@@ -3842,3 +3842,178 @@ Diagnóstico en `tsr/AUDITORIA-ESTADO-CUENTA-TITULAR.md` y `tsr/PLAN-SEGUIMIENTO
 1. **Un comentario viejo cegó una pantalla entera.** «PGS.APLP no tiene FK a LQCC» era cierto el 2026-09-02 por la mañana y dejó de serlo esa tarde; la pantalla siguió forzando `saldo = total` dos semanas. Y la primera corrección del FE volvió a deducir el tipo **por el dato** (`!tipoComprobante`) cuando la LQCC trae `'03'`: **el discriminador sale de la fuente, no del dato** (se atrapó en revisión, antes de commitear).
 2. **Mismo defecto en cuatro orígenes: el documento se anula y su orden de pago sigue en la bandeja** (devoluciones de `crd`, beneficios sociales, anticipo a empleado — y la liquidación emitida con sus APLP). Un encargo del árbitro dio por cubierto el caso «pago confirmado» con un chequeo que miraba el estado de la **orden**, no del **pago**; se atrapó en la revisión del diff.
 3. **Pendientes de decisión:** anticipo ingresado sin pagar como saldo a favor (C6/P4), cobros de caja TSR sin APLC (C1), guarda de pago confirmado en `LiquidacionCompraCompraServiceImpl.anularLiquidacionCompra`, `e2-49` sin correr.
+
+## §46 — El ATS de agosto, contra reloj (2026-09-21) · árbitro nuevo, memoria limpia
+
+Alcance confirmado por el usuario: `rhh · cxp · pagos · cnt · tsr · cxc` + `sri`. ⛔ `crd`.
+Encargo: *«necesitamos procesar el ATS sin errores hoy mismo»*.
+
+### 46.0 — Antes: la jornada del 2026-09-16 no estaba registrada
+
+Este documento terminaba en el §45 (15-09) y el equipo había entregado cuatro frentes el 16-09 que
+no figuraban en ninguna parte: el nombre del titular de la cuenta en el archivo del banco
+(`d28e44ec` + `e2-50`), la descarga del XML y el desglose de IVA en consulta de documentos
+(`26fb5793`), la carga de TXT con su bandeja (`eba078f3`) y el `e2-51`/`e2-52` del ATS. **Un frente
+entregado y sin registrar es indistinguible de uno que no se hizo**, y el árbitro que entró lo
+reconstruyó leyendo el log de git.
+
+### 46.1 — ⛔ EL HALLAZGO DEL DÍA: correr un script y guardar el cambio son dos actos distintos
+
+El usuario dijo *«ya corrí todos los sql en producción»* y era cierto. El ATS seguía mal igual.
+
+La captura del DIMM mostraba las compras de la eléctrica con `Base IVA 0% = 7,23`, el resto en
+`Base IVA diferente 0%` y **`Monto IVA = 0,00`**: una base declarada como gravada en un documento
+sin un centavo de IVA — exactamente lo que el `e2-52` tenía que corregir.
+
+La primera sospecha razonable era el criterio. **Era falsa**: el `e2-51` y el `e2-52` usan el mismo
+(`NVL(CODIGOIVASRI,-1) = 0`), así que esas facturas clasifican como `CORREGIBLE` en los dos. Lo que
+lo cerró fue el **BLOQUE 4 del propio `e2-52`**, que el usuario pegó: es el control **posterior** y
+seguía contando **7 en `CORREGIBLE 100% CERO`**. Si el `UPDATE` hubiera entrado, ahí tenía que haber
+un cero.
+
+**El `COMMIT` de nuestros scripts va comentado** — convención de la casa, y es correcta: hace que un
+`.sql` sea seguro de correr de corrido. Pero el `UPDATE` corrió, informó las filas afectadas, y se
+perdió al cerrar la sesión. **Sin un solo error.** Cinco días de arreglos de datos sobre el ATS
+(`e2-45`, `e2-47`, `e2-52`, y el `e2-53` de hoy) quedaron bajo la misma duda de un solo golpe.
+
+**Confirmado por la vía más directa:** el usuario volvió a correr el `e2-52` y después el `e2-54`,
+que dio `YA CORREGIDA 18` y el bloque de control **vacío**. Mismo script, mismo criterio, mismos
+datos: lo único que cambió fue que esta vez se guardó.
+
+> **La regla, desde hoy:** un `.sql` que escribe **dice en su cabecera, con todas las letras, que sin
+> el `COMMIT` no pasó nada**. No alcanza con dejarlo comentado al final. Es la misma familia que el
+> §27 (el `GRANT` comentado que hizo fallar dos scripts en silencio) y que el §8.1 (un fallo que se
+> lee como «no hay datos»): **el modo de fallar más caro de este sistema es el que no deja rastro.**
+
+### 46.2 — 🔴 Las retenciones que nos hicieron salían en 0,00, y la tabla existía
+
+Segundo defecto de la misma captura: en el talón, `RESUMEN DE RETENCIONES QUE LE EFECTUARON` daba
+`0,00`. (Las que **emitimos** sumaban 4.642,52, el número del cuadre del 104: ese lado estaba bien.)
+
+`GeneradorAtsServiceImpl:1010-1011` escribía `valorRetIva`/`valorRetRenta` **hardcodeados**, con un
+comentario que afirmaba que no existe ninguna tabla que enlace una retención recibida con un
+documento de venta y su tipo de impuesto. Revisaba dos candidatos —`CBR.RTV2` (las que emitimos) y
+`TSR.CRTN`— y daba la búsqueda por cerrada.
+
+**Era falso.** Son `PGS.RCV2`/`PGS.DRC2`: las retenciones que nos hacen **se cargan en CXP**, y ahí
+están `CODIMPUESTO` (1 renta / 2 IVA), `VALORRETEN`, `BASEIMPONIBLE` y el enlace por
+`TIPODOCRETEN` + `NUMDOCRETEN`; `RCV2.PROVEEDOR` es el cliente que nos retuvo (§21). Y el **bloque 4
+del `e2-51`, corrido el 16-09, ya había medido que ahí hay valores**: el dato estaba, medido, y el
+generador escribía cero al lado.
+
+**Lo resolvió el usuario en una frase**, nombrando el módulo: *«las retenciones cargadas en CXP»*.
+
+> **Lo que hay que llevarse:** un comentario que dice «no existe» es una afirmación con fecha, como
+> cualquier otra, y éste además **enumeraba los candidatos que había mirado** — lo que lo hacía leer
+> como exhaustivo cuando era una lista de dos. Es el §14 otra vez: *una relación que nunca se
+> consultó*. Cuando un comentario cierra una búsqueda, lo que hay que auditar es **dónde no buscó**.
+
+Entregado en `1aeed9ed`. El ejecutor encontró en el camino lo que salvó el ítem: **`TIPODOCRETEN`
+guarda el código del SRI (`'01'`) y la línea de `<detalleVentas>` el del ATS (`'18'`)**; sin
+traducir con `mapearTipoComprobanteVenta`, la retención de un titular con línea de factura y de nota
+de crédito se habría sumado a las dos. Lo encontró **porque verificó la premisa del encargo del
+árbitro antes de programarla**, que es la instrucción permanente.
+
+### 46.3 — Tres frentes de `sri` reportados como abiertos y cerrados hacía días
+
+El árbitro entró, leyó `DIAGNOSTICO-ATS-BASES-Y-RETENCIONES.md` (11-09) y reportó al usuario tres
+frentes abiertos. **Los tres estaban cerrados**, medidos contra el código el mismo día:
+
+| Reportado como abierto | Cerrado por |
+|---|---|
+| «el reparto de bases por tarifa no existe en ninguna parte del sistema» (`ANEXO A`) | `774dc0e0`, **el mismo 11-09**, horas después de escribirse el anexo |
+| el filtro de Consulta de Documentos no ve las notas de venta (§5) | ya estaba (`consulta-documentos.component.ts:61,228,285`) |
+| retenciones desde la tabla equivocada (§1) y doble conteo (§2) | `fd3265a8` y `baseGravadaCompra` |
+
+El `ANEXO A` fue **falso en horas**: se midió a la mañana y se arregló a la tarde. Se le puso al
+diagnóstico una cabecera de estado para que no vuelva a pasar.
+
+> **Lo que hay que llevarse:** la regla dura 1 dice *verificar contra el código antes de dar por
+> buena la documentación*, y el caso que la rompe no es el documento viejo y evidente — es **el
+> documento de esta semana**, que se lee como vigente. El único antídoto es la fecha: un diagnóstico
+> describe el sistema **el día que se escribió**.
+
+### 46.4 — El hueco del `e2-52`, y por qué las notas de venta necesitaron su propio script
+
+El §4 del diagnóstico («la nota de venta se declara con tarifa ≠ 0%») estaba **sin medir** desde el
+11-09. Medido el 21-09, los tres eslabones: la pantalla arranca con `subcero: 0` y `codigoIVASRI:
+''`; el registro graba lo que llega (contrato §1, deliberado); el ATS hace
+`baseImpGrav = SUBTOTAL − SUBCERO`.
+
+**Y el `e2-52` no las agarraba aunque corre sobre la misma tabla:** su criterio de base 0% es
+`NVL(CODIGOIVASRI,-1) = 0` y el de gravada `NOT IN (0,6,7)` — **un código en `NULL` cae en el
+segundo**. El `e2-52` está bien para lo que fue escrito (documentos que vienen del XML, que siempre
+traen el código); el hueco son **los que se tipean**. De ahí el `e2-53`, con el mismo criterio
+aritmético que el código nuevo (`4b2787d4`, FE `a8dbbc8`): si no hay IVA en ninguna parte del
+documento, toda la base es 0%.
+
+> **Lo que hay que llevarse:** un criterio escrito para documentos con `NULL` imposible se vuelve
+> **silenciosamente permisivo** el día que entra una fuente que sí los produce. Al escribir un
+> criterio sobre una columna, preguntarse quién más la llena.
+
+### 46.5 — Dos correcciones del árbitro, y de dónde salió cada una
+
+1. **Le pedí al ejecutor la base 0% desde la suma del detalle, y el encargo estaba mal.** Divergía
+   del `e2-53`, que usa `SUBTOTAL`. La pantalla deja tipear el subtotal **aparte** del detalle (por
+   eso existe el botón «Usar suma del detalle»): con un descuadre de 5,00 en un documento sin IVA,
+   la versión del detalle declaraba 5,00 de base **gravada inventada**. Se corrigió a `SUBTOTAL` y
+   el descuadre quedó como traza. *(El `e2-54` lo confirmó en producción: tres de las diez facturas
+   de la eléctrica tienen el detalle desviado de la cabecera entre 0,03 y 0,18.)*
+2. **Le marqué un NPE que no existía.** Afirmé que `solicitud.getSubtotal()` podía venir en `null`
+   porque no lo vi en el bucle de validación del detalle; **la validación de cabecera está 60 líneas
+   antes** (`FacturaCompraServiceImpl:285`). Lo desmintió el ejecutor y lo verificó el árbitro.
+
+### 46.6 — Los ejecutores quedaban idle sin reportar, y eso destapó dos defectos
+
+Las dos primeras entregas llegaron como «sesión idle» sin ningún mensaje: los ejecutores escribían
+el reporte **como texto en su propia sesión**, no por `SendMessage`. El árbitro los leyó igual —
+`git diff` línea por línea, `mvn -q compile` y `ng build` corridos por él — y **ahí aparecieron las
+dos cosas del §46.5 y el hueco del botón en el FE**, que un «ÍTEM COMPLETADO» habría tapado.
+
+> **Lo que hay que llevarse:** la regla dura 11 dice que la verificación que un agente hace sobre su
+> propio código es confirmación de sus propias suposiciones. Acá la falta de reporte **forzó** la
+> revisión que la regla pide, y pagó las dos veces. El reporte sirve para saber **dónde** mirar, no
+> para reemplazar el mirar.
+
+### 46.7 — 🟠 `tipoProv`/`denoProv` del proveedor con pasaporte: BLOQUEADO, y está bien que lo esté
+
+El ejecutor **leyó el `cxp/Catalogo_ATS.xls`** —Apache POI 5.2.3 del `.m2` con una clase Java, sin
+Python; 14 hojas, 134.987 líneas volcadas— y el catálogo **no desempata**:
+
+| Hoja | Nombre | Posición |
+|---|---|---|
+| `ESQUEMA TIPO 1 Y 2`, filas 17-18 | `tipoProv` + **`denopr`** | después de `parteRel` |
+| `ESQUEMA REGIMEN RIMPE`, filas 18-19 | `tipoProv` + **`denopr`** | después de `parteRel` |
+| `CLAVE PRIMARIA (2)`, filas 8-10 | `tipoProv` + **`DenoProv`** | **antes** de `parteRel` |
+
+Ni el nombre ni la posición son únicos. Y no se puede desempatar por analogía con ventas: el
+catálogo escribe `DenoCli` y el generador emite **`denoCli`** (`:985`), sin que conste en ningún
+lado que el SRI haya aceptado esa grafía — lo único que consta es el rechazo **por ausencia**.
+
+**Paró y avisó, que era exactamente la instrucción.** Un elemento con el nombre o la posición
+equivocados hace rechazar el anexo entero: es estrictamente peor que el aviso que el generador ya
+emite hoy.
+
+**Lo que lo destraba:** el XSD oficial del ATS (lo trae instalado el validador del DIMM), o un ATS
+ya **autorizado** que contenga un proveedor con pasaporte, de donde se copia el elemento tal cual.
+
+**Impacto real:** sólo si el período tiene una compra con `tpIdProv = "03"`, y el generador **ya lo
+avisa** con nombre e identificación. Si el aviso no aparece al regenerar, no bloquea nada.
+
+> **Lo que hay que llevarse, y es el reverso del §46.2:** ahí un comentario dio una búsqueda por
+> cerrada sin mirar dónde faltaba, y costó una pantalla entera. Acá el ejecutor **leyó la fuente
+> primaria que nadie había abierto**, encontró que no alcanzaba, y se detuvo. Las dos son la misma
+> disciplina: lo que decide es la evidencia, no la comodidad de cerrar el ítem.
+
+### 46.8 — Estado al cierre de la jornada
+
+| Frente | Estado |
+|---|---|
+| Bases de compra declaradas como gravadas | ✅ **datos corregidos y verificados** (`e2-54`: `YA CORREGIDA 18`, control posterior vacío). Falta regenerar el ATS |
+| Retenciones recibidas en 0,00 | ✅ código en `1aeed9ed` — **necesita desplegar el WAR**. Sin DDL |
+| Nota de venta declarada como gravada | ✅ código (`4b2787d4`, FE `a8dbbc8`). ⚠️ El `e2-53` necesita su `COMMIT` como el `e2-52` |
+| `tipoProv`/`denoProv` del proveedor con pasaporte | 🟠 bloqueado en el nombre del elemento — ver §46.7. Sólo afecta si aparece el aviso |
+| 13 facturas `MIXTA - REVISAR` del `e2-52` | 🟡 decisión del usuario, sin listar todavía |
+| Cuadres 103/104 vs. facturas de intermediario | 🟡 preguntado el 15-09, sin respuesta. Hoy el ATS las excluye y los cuadres no: **dos reportes del mismo período que no pueden ser ciertos a la vez** |
+| Período de las retenciones recibidas | 🟡 se filtra por la fecha de la **retención**. Si el contador las declara en el mes de la **venta**, cambia |
+| `denoCli` en minúscula | ⚪ a vigilar en la validación de hoy: si el SRI rechaza por ese campo, la grafía es el motivo (§46.7) |
