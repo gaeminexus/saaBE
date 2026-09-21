@@ -9,6 +9,26 @@ físicas. Cinco síntomas, **tres causas**.
 
 ---
 
+> ## ⛔ ESTADO AL 2026-09-21 — leer esto antes que el resto del documento
+>
+> **Cuatro de los cinco síntomas están cerrados.** Medido contra el código el 2026-09-21, no
+> supuesto:
+>
+> | § | Estado hoy |
+> |---|---|
+> | §1 retenciones desde la tabla equivocada | ✅ cerrado (`fd3265a8`) |
+> | §2 doble conteo de la base 0% | ✅ cerrado (`baseGravadaCompra`, `GeneradorAtsServiceImpl:282`) |
+> | §3 **y todo el `ANEXO A`** | ✅ **cerrado el mismo 2026-09-11 por `774dc0e0`**, horas después de escribirse. La carga sí reparte la base por tarifa: `ProcesoCargaDocumentosServiceImpl:1697` (factura), `:2848` (NC), `:2979` (ND), `:3117` (liquidación). Lo ya cargado lo corrigió el `e2-52` |
+> | §4 nota de venta con tarifa ≠ 0% | 🔴 **ABIERTO, y ya medido** — ver `PLAN-SRI-URGENTE-2026-09-21.md` §1.1 y el script `sri/sql/e2-53` |
+> | §5 filtro sin Nota de Venta | ✅ cerrado (`consulta-documentos.component.ts:61,228,285`) |
+>
+> **Por qué vale la pena el aviso:** el `ANEXO A` afirma que *«el reparto de bases por tarifa no
+> existe en ninguna parte del sistema»* y quedó falso **el mismo día**. El 2026-09-21 ese párrafo
+> volvió a reportarse como frente abierto por leerlo sin medirlo. Un diagnóstico describe el sistema
+> el día que se escribió, no hoy.
+
+---
+
 ## 1. 🔴 Las retenciones del talón salen en CERO — el ATS lee la tabla equivocada
 
 **Síntoma.** En `RETENCION EN LA FUENTE DE IVA` del talón resumen, las siete filas (10%, 20%, 30%,
