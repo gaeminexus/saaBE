@@ -94,8 +94,10 @@ guardar; la pantalla muestra el acumulado mientras se cargan. Un pago con porcen
 
 **b) El centavo del reparto.** $1.000,00 entre tres al 33,33 % da $999,99: **falta un centavo**.
 Este fondo ya se quemó con esto (H48, la cascada de pagos que abandonaba un residuo).
-⇒ **Propuesta: el residuo va al beneficiario de mayor porcentaje; si empatan, al de menor código.**
-Determinista, auditable y explicable. **PENDIENTE de confirmación del usuario.**
+⇒ ✅ **DECIDIDO POR EL USUARIO (2026-09-21): el residuo va al beneficiario de mayor porcentaje;
+si empatan, al de menor código.** Determinista, auditable y explicable a un familiar que pregunte
+por qué recibió un centavo más. La suma de las órdenes generadas tiene que dar **exactamente** el
+valor entregado — esa es la guarda, no el redondeo de cada línea por separado.
 
 ---
 
@@ -153,9 +155,22 @@ cuya cuenta sea `2.3.90.90.11`** — el mismo acoplamiento de los productos 516 
 | # | Qué | Tipo |
 |---|---|---|
 | S1 | **Crear `CRD.BNFC`** — autorización de DDL sobre `CRD` | bloqueante |
-| S2 | ¿El residuo del centavo va al de mayor porcentaje? (§3b) | bloqueante |
+| ~~S2~~ | ~~¿El residuo del centavo?~~ | ✅ **decidido**, §3b |
 | S3 | **El producto de pago de CXP contra `2.3.90.90.11`** — pide coordinación con el equipo de `cxp` | bloqueante |
 | S4 | ¿`CARGA-TIPO-ADJUNTO-CERTIFICADO-BANCARIO.sql` corrió en producción? Sin esa fila no se puede adjuntar ningún certificado | bloqueante |
-| S5 | ¿La devolución de aportes normal **también** pasa a pagarse a beneficiarios cuando el partícipe falleció? El usuario lo mencionó; define si el alcance incluye tocar `registrarDevolucion` para todos los tipos o sólo para el de sepelio | decidible |
-| S6 | ¿Un beneficiario puede cobrar de **varios** partícipes? (afecta si la cédula es única por partícipe o global) | decidible |
-| S7 | ¿Qué pasa si el dinero llega y **no hay beneficiarios cargados**? ¿Se puede recibir igual y cargar después? | decidible |
+| ~~S5~~ | ~~¿La devolución normal también a beneficiarios?~~ | ✅ **decidido**, §7 |
+| ~~S6~~ | ~~¿Un beneficiario de varios partícipes?~~ | ✅ **decidido**, §7 |
+| ~~S7~~ | ~~¿Recibir sin beneficiarios cargados?~~ | ✅ **decidido**, §7 |
+
+---
+
+## 7. Decisiones del usuario — 2026-09-21. NO re-litigar
+
+Las cuatro se preguntaron con las alternativas a la vista y se decidieron el mismo día.
+
+| Decisión | Qué implica en el código |
+|---|---|
+| **El residuo del centavo va al de mayor porcentaje** (empate → menor código) | §3b. La guarda es que la **suma de las órdenes** dé exactamente el valor entregado |
+| **La devolución de aportes normal TAMBIÉN se paga a beneficiarios** cuando el partícipe está fallecido | ⚠️ **Amplía el alcance:** `registrarDevolucion` deja de pagar siempre a `CuentaBancariaParticipe` y pasa a elegir destino según el estado del partícipe. Se resuelve **una sola vez** para sepelio y para aportes — es el mismo problema: la cuenta de un muerto no sirve |
+| **La recepción del dinero se puede registrar SIN beneficiarios cargados** | La validación del 100 % vive en el **pago**, nunca en la recepción. La plata ya está en el banco: negarse a registrarla no la hace desaparecer. La pantalla debe avisar que faltan beneficiarios, sin bloquear |
+| **La misma cédula puede ser beneficiaria de VARIOS partícipes** | El índice único es **(partícipe, cédula)**, NO la cédula sola. Un hijo es beneficiario del padre y de la madre: caso real y frecuente. ⛔ Un `UNIQUE` sobre `BNFCIDNT` solo sería un defecto que aparece recién cuando muere el segundo progenitor |
