@@ -35,7 +35,7 @@
 --        dato lo dicen: hay que mirar que WAR esta corriendo
 --
 -- ⚠️ Y UNA CUARTA, que conviene descartar: el ATS filtra las compras por
---    FECHAREGISTROCONTABLE (con respaldo a FECHA) y otros reportes por
+--    FCTCFCRG (con respaldo a FECHA) y otros reportes por
 --    FECHA. Si las dos fechas caen en meses distintos, un documento puede
 --    aparecer donde no se lo espera. El BLOQUE 0 muestra las dos.
 --
@@ -49,7 +49,7 @@
 --
 -- Columnas copiadas de las entidades: FacturaCompra (PGS.FCTC: ID, NUMERO,
 --   NUMESTABLECIMIENTO, NUMPTOEMISION, SECUENCIAL, FECHA,
---   FECHAREGISTROCONTABLE, SUBTOTAL, SUBCERO, SUBNOOBJ, SUBEXENT, VIVA,
+--   FCTCFCRG, SUBTOTAL, SUBCERO, SUBNOOBJ, SUBEXENT, VIVA,
 --   ESTADO, TITULAR, FCTCESIN, FCTCPRIN), Titular (TSR.TTLR).
 -- =====================================================================
 
@@ -67,7 +67,7 @@
 -- ---------------------------------------------------------------------
 SELECT 'BLOQUE 0 - la factura de la captura' AS bloque,
        f.ID, f.NUMERO, t.TTLRIDNT AS ruc, t.TTLRNMBR AS proveedor,
-       f.FECHA, f.FECHAREGISTROCONTABLE,
+       f.FECHA, f.FCTCFCRG,
        f.FCTCESIN AS es_intermediario,
        f.FCTCPRIN AS producto_intermediario,
        f.ESTADO,
@@ -120,19 +120,19 @@ SELECT 'BLOQUE 2 - distribucion de FCTCESIN' AS bloque,
 -- BLOQUE 3 — Las marcadas como intermediario de AGOSTO, una por una, con
 --            las dos fechas que deciden en que periodo cae cada una.
 -- ESPERADO: ninguna de estas deberia estar en el ATS de 08/2026.
---   Si FECHA y FECHAREGISTROCONTABLE caen en meses distintos, anotarlo:
+--   Si FECHA y FCTCFCRG caen en meses distintos, anotarlo:
 --   el ATS usa la segunda y el cuadre 104 usa la primera.
 -- ---------------------------------------------------------------------
 SELECT 'BLOQUE 3 - intermediarios de agosto' AS bloque,
        f.ID, f.NUMERO, t.TTLRIDNT AS ruc, t.TTLRNMBR AS proveedor,
-       f.FECHA, f.FECHAREGISTROCONTABLE,
+       f.FECHA, f.FCTCFCRG,
        NVL(f.SUBTOTAL,0) AS subtotal, NVL(f.VIVA,0) AS iva
   FROM PGS.FCTC f
   JOIN TSR.TTLR t ON t.TTLRCDGO = f.TITULAR
  WHERE f.ESTADO = 1
    AND NVL(f.FCTCESIN,0) = 1
-   AND ( (f.FECHAREGISTROCONTABLE >= DATE '2026-08-01' AND f.FECHAREGISTROCONTABLE < DATE '2026-09-01')
-      OR (f.FECHAREGISTROCONTABLE IS NULL
+   AND ( (f.FCTCFCRG >= DATE '2026-08-01' AND f.FCTCFCRG < DATE '2026-09-01')
+      OR (f.FCTCFCRG IS NULL
           AND f.FECHA >= DATE '2026-08-01' AND f.FECHA < DATE '2026-09-01') )
  ORDER BY f.ID;
 
