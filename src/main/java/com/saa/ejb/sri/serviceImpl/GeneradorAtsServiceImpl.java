@@ -264,7 +264,9 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
      * defecto: se usaba SUBTOTAL entero como base gravada y SUBCERO aparte, contando el 0% dos
      * veces. Medido en las 8 facturas de Empresa Eléctrica Quito (1790053881001, agosto 2026):
      * diferencia de <b>+7,23 exacta en las ocho</b> contra su propia columna Base IVA 0% (ver
-     * DIAGNOSTICO-ATS-BASES-Y-RETENCIONES.md §2). <b>Base gravada correcta = SUBTOTAL − SUBCERO.</b>
+     * DIAGNOSTICO-ATS-BASES-Y-RETENCIONES.md §2). <b>Base gravada correcta = SUBTOTAL − SUBCERO −
+     * SUBNOOBJ</b> (BE-4, 2026-09-21: SUBNOOBJ es la base no objeto de IVA, columna aparte que SUBCERO
+     * NO incluye y SUBTOTAL sí; con SUBNOOBJ = 0 es la fórmula de siempre).
      * <p>
      * <b>ÍTEM 12 (2026-09-15, docs/logica-negocio/sri/PLAN-ATS-AJUSTES-2026-09-15.md §2): esta
      * fórmula NO vale para toda {@code LiquidacionCompraCompra} (PGS.LQCC).</b> La verificación de
@@ -277,15 +279,16 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
      * {@code documentoCxp}/{@code LQCSLQCC}), SUBTOTAL YA ES la base gravada: no se le resta
      * SUBCERO, y este método ni se llama (ver {@code comprasLiquidacion}).
      * <p>
-     * Si SUBCERO &gt; SUBTOTAL (dato inconsistente), no se emite una base negativa: se avisa con
-     * el documento y los dos valores, y la gravada queda en 0.00.
+     * Si SUBCERO + SUBNOOBJ &gt; SUBTOTAL (dato inconsistente), no se emite una base negativa: se
+     * avisa con el documento y los tres valores, y la gravada queda en 0.00.
      */
-    private double baseGravadaCompra(double subtotal, double subcero, String etiquetaDocumento,
-            Long idDocumento, List<String> avisos) {
-        double base = subtotal - subcero;
+    private double baseGravadaCompra(double subtotal, double subcero, double noObjeto,
+            String etiquetaDocumento, Long idDocumento, List<String> avisos) {
+        double base = subtotal - subcero - noObjeto;
         if (base < 0.0) {
             avisos.add(etiquetaDocumento + " " + idDocumento + ": SUBCERO (" + formatDecimal(subcero)
-                    + ") es mayor que SUBTOTAL (" + formatDecimal(subtotal) + ") -- dato inconsistente. "
+                    + ") + SUBNOOBJ (" + formatDecimal(noObjeto) + ") es mayor que SUBTOTAL ("
+                    + formatDecimal(subtotal) + ") -- dato inconsistente. "
                     + "No se emite una base gravada negativa; se dejó en 0.00. Revisar el documento.");
             return 0.0;
         }
@@ -315,10 +318,12 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         List<LineaCompra> resultado = new ArrayList<LineaCompra>();
         for (FacturaCompra f : q.getResultList()) {
             double subtotal = nvl(f.getSubtotal(), 0.0), subcero = nvl(f.getSubcero(), 0.0);
+            double noObjeto = nvl(f.getSubnoobj(), 0.0);
             resultado.add(new LineaCompra(f.getTipoComprobante(), f.getNumEstablecimiento(),
                     f.getNumPtoEmision(), f.getSecuencial(), f.getFecha() != null ? f.getFecha().toLocalDate() : null,
                     f.getAutorizacion(), f.getTitular(), f.getSustentoTributario(), f.getFechaRegistroContable(),
-                    baseGravadaCompra(subtotal, subcero, "Factura de compra", f.getId(), avisos), subcero,
+                    baseGravadaCompra(subtotal, subcero, noObjeto, "Factura de compra", f.getId(), avisos), subcero,
+                    noObjeto,
                     nvl(f.getvIVA(), 0.0), nvl(f.getvICE(), 0.0),
                     formasPagoFacturaCompra(f.getId())));
             if (f.getSustentoTributario() == null) {
@@ -397,11 +402,11 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
             double subtotal = nvl(l.getSubtotal(), 0.0), subcero = nvl(l.getSubcero(), 0.0);
             boolean emitida = emitidas.contains(l.getId());
             double gravada = emitida ? subtotal
-                    : baseGravadaCompra(subtotal, subcero, "Liquidación de compra", l.getId(), avisos);
+                    : baseGravadaCompra(subtotal, subcero, 0.0, "Liquidación de compra", l.getId(), avisos);
             resultado.add(new LineaCompra(l.getTipoComprobante(), l.getNumEstablecimiento(),
                     l.getNumPtoEmision(), l.getSecuencial(), l.getFecha() != null ? l.getFecha().toLocalDate() : null,
                     l.getAutorizacion(), l.getTitular(), l.getSustentoTributario(), l.getFechaRegistroContable(),
-                    gravada, subcero,
+                    gravada, subcero, 0.0, // sin SUBNOOBJ en PGS.LQCC: 0 hasta que se llene
                     nvl(l.getvIVA(), 0.0), nvl(l.getvICE(), 0.0),
                     formasPagoLiquidacionCompra(l.getId())));
             if (l.getFechaRegistroContable() == null) {
@@ -437,7 +442,8 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
             resultado.add(new LineaCompra(n.getTipoComprobante(), n.getNumEstablecimiento(),
                     n.getNumPtoEmision(), n.getSecuencial(), n.getFecha() != null ? n.getFecha().toLocalDate() : null,
                     n.getAutorizacion(), n.getTitular(), n.getSustentoTributario(), n.getFechaRegistroContable(),
-                    baseGravadaCompra(subtotal, subcero, "Nota de crédito de compra", n.getId(), avisos), subcero,
+                    baseGravadaCompra(subtotal, subcero, 0.0, "Nota de crédito de compra", n.getId(), avisos), subcero,
+                    0.0, // sin SUBNOOBJ en la NC de compra: 0 hasta que se llene
                     nvl(n.getvIVA(), 0.0), nvl(n.getvICE(), 0.0),
                     java.util.Collections.<String>emptyList()));
             if (n.getFechaRegistroContable() == null) {
@@ -473,7 +479,8 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
             resultado.add(new LineaCompra(n.getTipoComprobante(), n.getNumEstablecimiento(),
                     n.getNumPtoEmision(), n.getSecuencial(), n.getFecha() != null ? n.getFecha().toLocalDate() : null,
                     n.getAutorizacion(), n.getTitular(), n.getSustentoTributario(), n.getFechaRegistroContable(),
-                    baseGravadaCompra(subtotal, subcero, "Nota de débito de compra", n.getId(), avisos), subcero,
+                    baseGravadaCompra(subtotal, subcero, 0.0, "Nota de débito de compra", n.getId(), avisos), subcero,
+                    0.0, // sin SUBNOOBJ en la ND de compra: 0 hasta que se llene
                     nvl(n.getvIVA(), 0.0), nvl(n.getvICE(), 0.0),
                     java.util.Collections.<String>emptyList()));
             if (n.getFechaRegistroContable() == null) {
@@ -813,10 +820,10 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         writeElement(w, "secuencial", nvl(c.secuencial, ""), 6);
         writeElement(w, "fechaEmision", formatFecha(c.fechaEmision), 6);
         writeElement(w, "autorizacion", nvl(c.autorizacion, ""), 6);
-        // Sin columnas propias en el modelo actual para distinguir "no objeto de IVA" vs
-        // "exento" del resto de la base 0%: baseNoGraIva y baseImpExe quedan en 0.00 -- ver
+        // baseNoGraIva sale de SUBNOOBJ (BE-4, 2026-09-21: la contribución a bomberos es no objeto
+        // de IVA, no tarifa 0%). Sigue sin columna propia lo EXENTO: baseImpExe queda en 0.00 -- ver
         // aviso general en §10, no se inventa el reparto.
-        writeElement(w, "baseNoGraIva", "0.00", 6);
+        writeElement(w, "baseNoGraIva", formatDecimal(c.baseNoObjeto), 6);
         writeElement(w, "baseImponible", formatDecimal(c.base0), 6);
         writeElement(w, "baseImpGrav", formatDecimal(c.baseGravada), 6);
         writeElement(w, "baseImpExe", "0.00", 6);
@@ -878,7 +885,7 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         // se queja si aparece en un documento que NO supera. "> 500.00" estricto (el texto del SRI
         // dice "exceden"): un documento en exactamente 500.00 no la lleva hasta que se mida lo
         // contrario -- no se adivina el borde.
-        double totalDocumento = c.base0 + c.baseGravada + c.montoIva + c.montoIce;
+        double totalDocumento = c.base0 + c.baseNoObjeto + c.baseGravada + c.montoIva + c.montoIce;
         boolean superaUmbral = totalDocumento > 500.0;
         if (superaUmbral && !formasPago.isEmpty()) {
             w.writeCharacters("      ");
@@ -1524,15 +1531,15 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         final String tipoComprobante, establecimiento, puntoEmision, secuencial, autorizacion, codSustento;
         final LocalDate fechaEmision, fechaRegistro;
         final Titular titular;
-        final double baseGravada, base0, montoIva, montoIce;
+        final double baseGravada, base0, baseNoObjeto, montoIva, montoIce;
         /** ÍTEM 28 (2026-09-10): formas de pago DEL DOCUMENTO (no de la retención) -- vacía si el
          *  tipo de documento no tiene tabla propia (NotaCreditoCompra/NotaDebitoCompra). */
         final List<String> formasPagoPrimario;
 
         LineaCompra(String tipoComprobante, String establecimiento, String puntoEmision, String secuencial,
                 LocalDate fechaEmision, String autorizacion, Titular titular, String codSustento,
-                LocalDate fechaRegistro, double baseGravada, double base0, double montoIva, double montoIce,
-                List<String> formasPagoPrimario) {
+                LocalDate fechaRegistro, double baseGravada, double base0, double baseNoObjeto, double montoIva,
+                double montoIce, List<String> formasPagoPrimario) {
             this.tipoComprobante = tipoComprobante;
             this.establecimiento = establecimiento;
             this.puntoEmision = puntoEmision;
@@ -1544,6 +1551,7 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
             this.fechaRegistro = fechaRegistro;
             this.baseGravada = baseGravada;
             this.base0 = base0;
+            this.baseNoObjeto = baseNoObjeto;
             this.montoIva = montoIva;
             this.montoIce = montoIce;
             this.formasPagoPrimario = formasPagoPrimario;

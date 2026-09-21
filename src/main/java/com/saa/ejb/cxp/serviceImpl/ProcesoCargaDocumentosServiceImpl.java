@@ -1731,8 +1731,9 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                 dt.setSubTotal(valorConcepto);
                 dt.setDescuento(0.0);
                 dt.setBaseImponible(valorConcepto);
-                // No grava IVA: va al 0% (codigoPorcentaje 0 del SRI)
-                dt.setCodigoIVASRI(0L);
+                // No es objeto de IVA (codigoPorcentaje 6 del SRI, Tabla 17), no tarifa 0%: criterio del
+                // auditor de ASOPREP, PLAN-SRI-URGENTE-2026-09-21.md §2quater.
+                dt.setCodigoIVASRI(6L);
                 dt.setPorcentajeIVA(0L);
                 dt.setValorIVA(0.0);
                 dt.setTotal(valorConcepto);
@@ -1746,11 +1747,12 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                                .append(String.format(java.util.Locale.US, "%.2f", valorConcepto));
             }
 
-            // El valor no grava IVA -> suma al subtotal 0% y al total de la
-            // factura. El total DEBE crecer: es lo que realmente se le debe
-            // al proveedor y lo que el asiento va a registrar en la CxP.
+            // El valor es no objeto de IVA -> suma al subtotal (que es el total sin impuestos, todo
+            // incluido), a la base NO OBJETO (SUBNOOBJ, no a SUBCERO) y al total de la factura. El
+            // total DEBE crecer: es lo que realmente se le debe al proveedor y lo que el asiento va
+            // a registrar en la CxP.
             factura.setSubtotal(nvlDouble(factura.getSubtotal()) + totalTerceros);
-            factura.setSubcero(nvlDouble(factura.getSubcero()) + totalTerceros);
+            factura.setSubnoobj(nvlDouble(factura.getSubnoobj()) + totalTerceros);
             factura.setTotal(nvlDouble(factura.getTotal()) + totalTerceros);
             factura = facturaCompraDaoService.save(factura, factura.getId());
 

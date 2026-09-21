@@ -68,6 +68,10 @@ public class FacturaCompra implements Serializable {
 	@Basic @Column(name = "SUBCERO")
 	private Double subcero;
 
+	/** Base no objeto de IVA (BE-4, e2-55). SUBCERO NO la incluye; SUBTOTAL sí. */
+	@Basic @Column(name = "SUBNOOBJ")
+	private Double subnoobj;
+
 	@Basic @Column(name = "SUBTOTAL5")
 	private Double subtotal5;
 
@@ -184,6 +188,8 @@ public class FacturaCompra implements Serializable {
 	public void setSubtotal(Double subtotal) { this.subtotal = subtotal; }
 	public Double getSubcero() { return subcero; }
 	public void setSubcero(Double subcero) { this.subcero = subcero; }
+	public Double getSubnoobj() { return subnoobj; }
+	public void setSubnoobj(Double subnoobj) { this.subnoobj = subnoobj; }
 	public Double getSubtotal5() { return subtotal5; }
 	public void setSubtotal5(Double subtotal5) { this.subtotal5 = subtotal5; }
 	public Double getSubtotal8() { return subtotal8; }
