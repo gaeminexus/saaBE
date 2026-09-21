@@ -442,9 +442,12 @@ public class FacturaCompraServiceImpl implements FacturaCompraService {
 		// EXCEPCIÓN DELIBERADA a la regla de arriba (PLAN-SRI-URGENTE-2026-09-21.md §1.1):
 		// la pantalla manda subcero = 0, y el ATS declara baseImpGrav = SUBTOTAL - SUBCERO,
 		// o sea toda la nota de venta como gravada. Si no hay IVA en la cabecera ni una línea
-		// con código gravado, la base 0% se toma del detalle. Con IVA o con una línea gravada
-		// se graba lo que llega: ahí el operador afirma algo que no se sobreescribe.
-		// Mismo criterio que sri/sql/e2-53-nota-de-venta-base-cero.sql — si uno cambia, el otro también.
+		// con código gravado, no hay nada gravado en el documento: toda la base es 0% y
+		// subcero = subtotal. Con IVA o con una línea gravada se graba lo que llega: ahí el
+		// operador afirma algo que no se sobreescribe.
+		// Mismo criterio que sri/sql/e2-53-nota-de-venta-base-cero.sql (SUBCERO = SUBTOTAL) —
+		// si uno cambia, el otro también. La suma del detalle NO es la fuente: el subtotal se
+		// tipea aparte del detalle, y si difieren el resto quedaría declarado como base gravada.
 		double subcero = nvlDouble(solicitud.getSubcero());
 		boolean hayLineaGravada = false;
 		double base0Detalle = 0d;
@@ -455,8 +458,16 @@ public class FacturaCompraServiceImpl implements FacturaCompraService {
 			else
 				hayLineaGravada = true;
 		}
-		if (nvlDouble(solicitud.getvIVA()) < 0.005 && !hayLineaGravada)
-			subcero = Math.round(base0Detalle * 100d) / 100d;
+		if (nvlDouble(solicitud.getvIVA()) < 0.005 && !hayLineaGravada) {
+			double subtotal = nvlDouble(solicitud.getSubtotal());
+			subcero = subtotal;
+			// El descuadre subtotal vs. detalle se traza, no bloquea el registro.
+			if (Math.abs(base0Detalle - subtotal) >= 0.005)
+				System.out.println("ATENCION: nota de venta " + numEstablecimiento + "-" + numPtoEmision + "-"
+						+ secuencial + " con subtotal " + subtotal
+						+ " distinto de la suma de bases del detalle " + base0Detalle
+						+ "; se graba subcero = subtotal (sin IVA ni líneas gravadas).");
+		}
 
 		FacturaCompra factura = new FacturaCompra();
 		factura.setEmpresa(empresa);

@@ -148,6 +148,7 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
                 facturasIntermediarioDelPeriodo(idEmpresa, desde, hasta, desdeDT, hastaDT);
 
         List<LineaVenta> ventas = agruparVentas(idEmpresa, desdeDT, hastaDT, avisos);
+        asignarRetencionesRecibidas(idEmpresa, desdeDT, hastaDT, ventas, avisos);
 
         // ÍTEM 5 del encargo 2026-09-09, extendido por el ÍTEM 11 (2026-09-15): retenciones de
         // compra (PGS.RCV2/DRC2), enlazadas por autorización + número del documento sustento
@@ -587,19 +588,10 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         }
 
         if (!agrupado.isEmpty()) {
-            // ÍTEM 6 del encargo 2026-09-09: valorRetIva/valorRetRenta (la retención que el
-            // cliente nos practicó) se emiten en 0.00 para TODAS las líneas -- no hay tabla en el
-            // modelo que enlace una retención recibida a un documento de venta con su tipo de
-            // impuesto (ver comentario en writeDetalleVenta). El archivo autorizado de julio no
-            // era cero: 3 ventas con retención de IVA y 2 con retención de renta. Reportado al
-            // árbitro, no inventado.
-            avisos.add("<detalleVentas> declara valorRetIva=0.00 y valorRetRenta=0.00 en las " + agrupado.size()
-                    + " línea(s) del período: no existe en el modelo una tabla que enlace la retención que "
-                    + "el CLIENTE nos practica a un documento de venta con su tipo de impuesto (CBR.RTV2 es "
-                    + "la retención que emitimos NOSOTROS a un proveedor, no sirve). El archivo autorizado "
-                    + "de julio declaraba montos reales aquí (3 ventas con IVA, 2 con renta) -- revisar con "
-                    + "el usuario si hace falta modelar esto antes de declarar, o si por ahora se acepta en "
-                    + "0.00. No incluye tampoco la compensación (Tabla 21, sin verificar) — ver §10.");
+            // valorRetIva/valorRetRenta ya se llenan desde PGS.RCV2/DRC2 (BE-3, 2026-09-21, ver
+            // asignarRetencionesRecibidas); el aviso que decía que iban en 0.00 porque no existía la
+            // tabla era falso y se retiró. Queda sólo lo que sigue sin cubrirse.
+            avisos.add("<detalleVentas> no incluye la compensación (Tabla 21, sin verificar) — ver §10.");
         }
         return new ArrayList<LineaVenta>(agrupado.values());
     }
@@ -1000,15 +992,17 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         writeElement(w, "baseImpGrav", formatDecimal(v.baseGravada), 6);
         writeElement(w, "montoIva", formatDecimal(v.montoIva), 6);
         writeElement(w, "montoIce", formatDecimal(v.montoIce), 6);
-        // valorRetIva/valorRetRenta: retención que el CLIENTE nos practicó. CBR.RTV2 no sirve --
-        // tiene FACTURADOR+PROVEEDOR, es la retención que EMITIMOS nosotros (verificado contra
-        // RetencionV2.java). No se encontró ninguna tabla que enlace una retención recibida a un
-        // documento de venta puntual con su tipo de impuesto (candidato revisado: TSR.CRTN /
-        // CobroRetencion, ligada a Cobro+Plantilla, sin FK a Factura/NotaCredito/NotaDebito ni
-        // columna de tipo de impuesto) -- ver ítem 6 del encargo, reportado al árbitro sin inventar
-        // el valor.
-        writeElement(w, "valorRetIva", "0.00", 6);
-        writeElement(w, "valorRetRenta", "0.00", 6);
+        // valorRetIva/valorRetRenta: retención que el CLIENTE nos practicó. La tabla es PGS.RCV2/DRC2
+        // (RetencionCompraV2/DetalleRetencionCompraV2): las retenciones que nos hacen se cargan en
+        // CXP, y ahí están el tipo de impuesto (CODIMPUESTO), el valor (VALORRETEN) y el documento
+        // de venta que afectan (TIPODOCRETEN+NUMDOCRETEN); RCV2.PROVEEDOR es el cliente que nos
+        // retuvo. Ver asignarRetencionesRecibidas (BE-3, PLAN-SRI-URGENTE-2026-09-21.md §2ter).
+        // Los dos candidatos que este comentario revisaba antes no eran: CBR.RTV2 es la retención
+        // que EMITIMOS nosotros (FACTURADOR+PROVEEDOR), y TSR.CRTN/CobroRetencion cuelga de
+        // Cobro+Plantilla, sin FK a documento de venta ni columna de impuesto. Se dio la búsqueda
+        // por cerrada sin mirar el módulo donde se cargan.
+        writeElement(w, "valorRetIva", formatDecimal(v.valRetIva), 6);
+        writeElement(w, "valorRetRenta", formatDecimal(v.valRetRenta), 6);
 
         // ÍTEM 28 (2026-09-10), ERROR 2: nunca se emitía. Fuente: FormaPagoFactura -- se prefiere
         // sobre Factura.getFormaPago() (Long, cabecera) porque FacturaServiceImpl garantiza que
@@ -1327,6 +1321,85 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         return resultado;
     }
 
+    /**
+     * BE-3 (2026-09-21, docs/logica-negocio/sri/PLAN-SRI-URGENTE-2026-09-21.md §2ter): llena
+     * {@code valRetIva}/{@code valRetRenta} de cada línea de {@code <detalleVentas>} con las
+     * retenciones que el CLIENTE nos practicó, cargadas en CXP (PGS.RCV2/DRC2).
+     * <p>
+     * Una sola consulta para todo el período (empresa, cabecera y detalle activos, RCV2.FECHA dentro
+     * del mes). {@code RCV2.PROVEEDOR} es aquí el cliente que nos retuvo (desde 147d1b50, el titular
+     * de la factura sustento). {@code CODIMPUESTO}: "2" IVA, "1" renta; cualquier otro (p. ej. "6"
+     * ISD) no suma a ninguno y se avisa.
+     * <p>
+     * La línea destino es la de (titular, tipo de documento sustento): {@code TIPODOCRETEN} guarda el
+     * código del SRI ("01" factura) y la línea usa el del ATS ("18"), así que se traduce con la misma
+     * regla de {@code mapearTipoComprobanteVenta} -- si no, la retención de un titular con líneas de
+     * factura y de nota de crédito se sumaría a las dos. Lo que no se enlaza se avisa con su número
+     * y titular: sin esa red, la retención desaparece del anexo en silencio.
+     */
+    private void asignarRetencionesRecibidas(Long idEmpresa, LocalDateTime desdeDT, LocalDateTime hastaDT,
+            List<LineaVenta> ventas, List<String> avisos) {
+        System.out.println("asignarRetencionesRecibidas: empresa=" + idEmpresa + " | " + desdeDT + " a " + hastaDT);
+        Map<String, LineaVenta> lineas = new LinkedHashMap<String, LineaVenta>();
+        for (LineaVenta v : ventas) {
+            lineas.put(v.titular.getCodigo() + "|" + v.tipoComprobante, v);
+        }
+        TypedQuery<com.saa.model.cxp.DetalleRetencionCompraV2> q = em.createQuery(
+                "select d from DetalleRetencionCompraV2 d where d.retencionCompraV2.empresa.codigo = :idEmpresa "
+                        + "and d.retencionCompraV2.estado = :activo and d.estado = :activo "
+                        + "and d.retencionCompraV2.fecha between :desde and :hasta "
+                        + "order by d.retencionCompraV2.id, d.id",
+                com.saa.model.cxp.DetalleRetencionCompraV2.class);
+        q.setParameter("idEmpresa", idEmpresa);
+        q.setParameter("activo", Long.valueOf(Estado.ACTIVO));
+        q.setParameter("desde", desdeDT);
+        q.setParameter("hasta", hastaDT);
+
+        Set<String> yaAvisado = new java.util.HashSet<String>();
+        int enlazadas = 0;
+        for (com.saa.model.cxp.DetalleRetencionCompraV2 d : q.getResultList()) {
+            com.saa.model.cxp.RetencionCompraV2 r = d.getRetencionCompraV2();
+            Titular t = r.getProveedor();
+            String numRet = nvl(r.getNumero(), "id " + r.getId());
+            String quien = t != null ? t.getCodigo() + " (" + nvl(t.getNombre(), "") + ")" : "sin titular";
+            String codImpuesto = nvl(d.getCodImpuesto(), "").trim();
+            double valor = nvl(d.getValorReten(), 0.0);
+
+            if (!"1".equals(codImpuesto) && !"2".equals(codImpuesto)) {
+                if (yaAvisado.add(r.getId() + "|imp|" + codImpuesto)) {
+                    avisos.add("Retención recibida " + numRet + " de " + quien + ": CODIMPUESTO '" + codImpuesto
+                            + "' no es '1' (renta) ni '2' (IVA) -- no se suma a valorRetRenta ni valorRetIva. "
+                            + "Revisar.");
+                }
+                continue;
+            }
+            String tipoDoc = nvl(d.getTipoDocReten(), "").trim();
+            // Misma regla que las ventas; su aviso ("tipo no verificado") es de otro contexto y se
+            // descarta -- el que importa acá es el de "no enlazada", más abajo.
+            String tipoVenta = tipoDoc.isEmpty() ? ""
+                    : mapearTipoComprobanteVenta(tipoDoc, d.getId(), "Retención recibida", new ArrayList<String>());
+            LineaVenta linea = (t != null && !tipoVenta.isEmpty())
+                    ? lineas.get(t.getCodigo() + "|" + tipoVenta) : null;
+            if (linea == null) {
+                if (yaAvisado.add(r.getId() + "|sinlinea")) {
+                    avisos.add("Retención recibida " + numRet + " de " + quien + " (documento sustento tipo '"
+                            + tipoDoc + "' número '" + nvl(d.getNumDocReten(), "") + "', valor "
+                            + formatDecimal(valor) + "): no se enlazó a ninguna línea de <detalleVentas> del "
+                            + "período (ese titular no tiene ventas de ese tipo este mes, o el titular de la "
+                            + "retención no es el de la factura) -- NO se declara en el anexo. Revisar.");
+                }
+                continue;
+            }
+            if ("2".equals(codImpuesto)) {
+                linea.valRetIva += valor;
+            } else {
+                linea.valRetRenta += valor;
+            }
+            enlazadas++;
+        }
+        System.out.println("asignarRetencionesRecibidas: " + enlazadas + " detalle(s) enlazado(s)");
+    }
+
     // =====================================================================
     // Empaquetado ZIP
     // =====================================================================
@@ -1482,6 +1555,9 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         final String tipoComprobante;
         int numeroComprob = 0;
         double baseGravada = 0.0, base0 = 0.0, baseNoObjeto = 0.0, montoIva = 0.0, montoIce = 0.0;
+        /** BE-3 (2026-09-21): retenciones que el CLIENTE nos practicó (PGS.RCV2/DRC2), partidas por
+         *  CODIMPUESTO -- ver asignarRetencionesRecibidas. */
+        double valRetIva = 0.0, valRetRenta = 0.0;
         /** ÍTEM 28 (2026-09-10): ids de los documentos agrupados en esta línea -- sólo se usan
          *  para resolver formasDePago cuando tipoComprobante="18" (factura); ver
          *  resolverFormasDePagoVenta(). NC/ND no tienen tabla de formas de pago propia. */
