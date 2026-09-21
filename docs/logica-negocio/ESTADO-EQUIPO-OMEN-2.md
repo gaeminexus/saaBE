@@ -4050,3 +4050,59 @@ lea el árbitro que retome ese equipo.
 > tiene cambios **sin commitear de otro equipo** en el árbol compartido. Agregarle una sección
 > obligaría a `git add` del archivo entero y se llevaría el trabajo a medio hacer de ellos dentro de
 > un commit nuestro. El aviso espera acá hasta que el archivo esté limpio o la sesión aparezca.
+
+## §48 — `selectByCriteria`: dos cosas que conviene saber antes de usarlo (2026-09-21)
+
+Salieron de medir por qué el filtro «Nota de Venta» de Consulta de Documentos (`cxp`) devolvía
+**cero filas** teniendo dos notas de venta registradas. Las dos valen para **todos** los módulos,
+porque `EntityDaoImpl.selectByCriteria` es transversal.
+
+### 48.1 — 🔴 `obtieneCampos()` NO VALIDA NADA. Es código muerto.
+
+`CLAUDE.md` lo menciona al describir el DAO genérico —*«cada `*DaoServiceImpl` sobreescribe
+`obtieneCampos()` devolviendo los nombres de campo Java de la entidad»*— y eso se lee como si fuera
+una **lista blanca** de campos buscables.
+
+**No hay un solo llamador en todo el backend.** Medido con `grep` sobre `src/main/java`: aparecen su
+declaración en `EntityDao`/`EntityDaoImpl` y los `@Override` de cada DAO, y nada más. Ningún código
+la consulta.
+
+Dos consecuencias prácticas:
+
+1. **Cualquier nombre de campo pasa**, incluida una ruta con punto (`empresa.codigo`) o un campo que
+   no existe: se concatena **crudo** al JPQL. Un campo mal escrito no da un error claro de
+   validación, da un fallo de JPQL en tiempo de ejecución.
+2. **No hay ninguna barrera** entre lo que manda el cliente y el JPQL que se arma. Vale tenerlo
+   presente al exponer un `selectByCriteria` nuevo.
+
+### 48.2 — 🟠 Un criterio sobre una relación `@ManyToOne` hay que pasarlo por campo padre
+
+`selectByCriteria` arma, por cada criterio,
+` <lógico> (b.<campo>) <comparador> :<campo><numeroCampoRepetido>`, y enlaza el valor según el tipo
+declarado (`LONG` → `Long.valueOf(valor)`).
+
+Si el campo es una relación y se manda el nombre **plano**, sale
+`(b.empresa) = :empresa0` — o sea **la entidad comparada contra un número**. El REST lo captura con
+`catch (Throwable) → BAD_REQUEST`, devuelve **400**, y el llamador que traga el error muestra una
+lista vacía.
+
+**La forma correcta, que es la que usa el resto del sistema:**
+
+```ts
+db.asignaValorConCampoPadre(TipoDatos.LONG, 'empresa', 'codigo', String(idEmpresa), TipoComandosBusqueda.IGUAL);
+```
+
+→ `(b.empresa.codigo) = :empresaCodigo1`, Long contra Long. Lo usan `cxp/bandeja-electronica`
+(`:97`, `:146`) y tres pantallas de `cnt`. La pantalla de Consulta de Documentos era **el único
+lugar del frontend** que mandaba `'empresa'` plano.
+
+> **Lo que hay que llevarse, y es el §8.1 otra vez:** el defecto no se vio durante días porque el
+> `catchError(() => of(null))` convertía un **400** en *«no hay documentos registrados»*. Un fallo
+> que se lee como «no hay datos» no se reporta como fallo: se reporta como «falta una función», y se
+> busca en el lugar equivocado. Al tragar un error, distinguir siempre **«sin filas»** (dato normal,
+> sin aviso) de **«no se pudo consultar»** (aviso, y la pantalla sigue).
+
+⚠️ **Lo que sigue siendo inferencia:** que Hibernate responda exactamente con un error de tipo de
+parámetro no se pudo **medir** —no hay WildFly ni Oracle levantados en la OMEN—, se dedujo leyendo
+el código. La confirmación dura son diez segundos en la pestaña Red del navegador: `400` con
+«did not match parameter type» lo cierra; un `200` con lista vacía diría que la causa es otra.
