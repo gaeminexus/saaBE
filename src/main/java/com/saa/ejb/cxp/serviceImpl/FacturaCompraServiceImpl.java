@@ -344,7 +344,9 @@ public class FacturaCompraServiceImpl implements FacturaCompraService {
 						+ " (detalles[" + i + "]).");
 			productos.add(producto);
 
-			Long codigoIVA = null;
+			// Sin código en el payload la línea es 0%: una nota de venta no traslada IVA
+			// (docs/logica-negocio/sri/PLAN-SRI-URGENTE-2026-09-21.md §1.1).
+			Long codigoIVA = 0L;
 			if (!esVacio(d.getCodigoIVASRI())) {
 				try {
 					codigoIVA = Long.valueOf(d.getCodigoIVASRI().trim());
@@ -437,6 +439,25 @@ public class FacturaCompraServiceImpl implements FacturaCompraService {
 		// Todo OK -> grabar. NO se recalculan los totales de cabecera desde el
 		// detalle (contrato §1): se graba lo que llega, manda el documento físico.
 		// ══════════════════════════════════════════════════════════════════
+		// EXCEPCIÓN DELIBERADA a la regla de arriba (PLAN-SRI-URGENTE-2026-09-21.md §1.1):
+		// la pantalla manda subcero = 0, y el ATS declara baseImpGrav = SUBTOTAL - SUBCERO,
+		// o sea toda la nota de venta como gravada. Si no hay IVA en la cabecera ni una línea
+		// con código gravado, la base 0% se toma del detalle. Con IVA o con una línea gravada
+		// se graba lo que llega: ahí el operador afirma algo que no se sobreescribe.
+		// Mismo criterio que sri/sql/e2-53-nota-de-venta-base-cero.sql — si uno cambia, el otro también.
+		double subcero = nvlDouble(solicitud.getSubcero());
+		boolean hayLineaGravada = false;
+		double base0Detalle = 0d;
+		for (int i = 0; i < solicitud.getDetalles().size(); i++) {
+			long codigo = codigosIVA.get(i);
+			if (codigo == 0L || codigo == 6L || codigo == 7L)
+				base0Detalle += solicitud.getDetalles().get(i).getBaseImponible();
+			else
+				hayLineaGravada = true;
+		}
+		if (nvlDouble(solicitud.getvIVA()) < 0.005 && !hayLineaGravada)
+			subcero = Math.round(base0Detalle * 100d) / 100d;
+
 		FacturaCompra factura = new FacturaCompra();
 		factura.setEmpresa(empresa);
 		factura.setTitular(titular);
@@ -450,7 +471,7 @@ public class FacturaCompraServiceImpl implements FacturaCompraService {
 		factura.setFecha(solicitud.getFecha());
 		factura.setObservacion(solicitud.getObservacion());
 		factura.setSubtotal(solicitud.getSubtotal());
-		factura.setSubcero(nvlDouble(solicitud.getSubcero()));
+		factura.setSubcero(subcero);
 		factura.setDescuento(nvlDouble(solicitud.getDescuento()));
 		factura.setpIVA(nvlDouble(solicitud.getpIVA()));
 		factura.setvIVA(nvlDouble(solicitud.getvIVA()));
