@@ -39,6 +39,19 @@ public interface RecepcionValorSeguroDaoService extends EntityDao<RecepcionValor
     List<RecepcionValorSeguro> selectByEntidad(Long idEntidad) throws Throwable;
 
     /**
+     * Recepciones VIGENTES cuya referencia (recortada) coincide con la buscada, para el chequeo
+     * de unicidad al registrar. MISMO criterio que el índice único {@code CRD.UX_RVSG_REFERENCIA}:
+     * {@code TRIM(RVSGRFRN)} y excluye las recepciones RECHAZADAS y ANULADAS (una recepción que
+     * no vale libera su referencia). Los valores exentos '9' y '09' los decide el llamador, igual
+     * que en cobros.
+     *
+     * @param referenciaTrim : Ya recortada por el llamador; este método nunca la recorta
+     * @return               : Recepciones en conflicto (normalmente 0 o 1)
+     * @throws Throwable     : Excepcion
+     */
+    List<RecepcionValorSeguro> selectByReferencia(String referenciaTrim) throws Throwable;
+
+    /**
      * Lee la recepción con bloqueo de escritura (FOR UPDATE) dentro de la transacción en curso:
      * dos aprobaciones o anulaciones simultáneas de la misma recepción se serializan y la
      * segunda ve el estado ya cambiado, en vez de generar el asiento dos veces.

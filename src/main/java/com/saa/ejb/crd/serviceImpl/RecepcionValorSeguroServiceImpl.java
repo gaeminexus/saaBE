@@ -157,6 +157,20 @@ public class RecepcionValorSeguroServiceImpl implements RecepcionValorSeguroServ
             throw new IncomeException(ERR_VALIDACION + ": el valor debe ser mayor a cero");
         }
 
+        // Unicidad de la referencia: MISMA regla que el índice CRD.UX_RVSG_REFERENCIA ('9' y '09'
+        // exentos tras el trim; las RECHAZADAS/ANULADAS liberan la suya). Sin este chequeo
+        // previo, el operador vería un ORA-00001 convertido en 500.
+        String referenciaTrim = solicitud.getReferencia().trim();
+        if (!"9".equals(referenciaTrim) && !"09".equals(referenciaTrim)) {
+            List<RecepcionValorSeguro> enConflicto =
+                    recepcionValorSeguroDaoService.selectByReferencia(referenciaTrim);
+            if (enConflicto != null && !enConflicto.isEmpty()) {
+                throw new IncomeException("La referencia " + referenciaTrim + " ya está registrada en la"
+                        + " recepción " + enConflicto.get(0).getCodigo() + "; cada referencia debe ser"
+                        + " única. Use '9' o '09' si la recepción no tiene un número de referencia real.");
+            }
+        }
+
         Entidad entidad = entidadDaoService.find(new Entidad(), solicitud.getIdEntidad());
         if (entidad == null) {
             throw new IncomeException("No existe el partícipe " + solicitud.getIdEntidad() + ".");
@@ -179,7 +193,7 @@ public class RecepcionValorSeguroServiceImpl implements RecepcionValorSeguroServ
         recepcion.setTipoAporte(tipo);
         recepcion.setEstado(Long.valueOf(CrdEstadoRecepcionSeguro.REGISTRADO));
         recepcion.setCuentaBancaria(cuentaBancaria);
-        recepcion.setReferencia(solicitud.getReferencia().trim());
+        recepcion.setReferencia(referenciaTrim);
         recepcion.setRutaRespaldo(solicitud.getRutaRespaldo().trim());
         recepcion.setValor(valor);
         recepcion.setFecha(solicitud.getFecha());

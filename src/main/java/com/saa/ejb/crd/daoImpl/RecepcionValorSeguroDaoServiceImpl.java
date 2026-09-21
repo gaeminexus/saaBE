@@ -5,6 +5,7 @@ import java.util.List;
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.crd.dao.RecepcionValorSeguroDaoService;
 import com.saa.model.crd.RecepcionValorSeguro;
+import com.saa.rubros.CrdEstadoRecepcionSeguro;
 
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;
@@ -70,6 +71,23 @@ public class RecepcionValorSeguroDaoServiceImpl extends EntityDaoImpl<RecepcionV
                 " where  r.entidad.codigo = :idEntidad " +
                 " order by r.fechaRegistro desc");
         query.setParameter("idEntidad", idEntidad);
+        return query.getResultList();
+    }
+
+    @Override
+    public List<RecepcionValorSeguro> selectByReferencia(String referenciaTrim) throws Throwable {
+        System.out.println("Ingresa al metodo selectByReferencia de RecepcionValorSeguro"
+                + " - referencia: " + referenciaTrim);
+        // Igual que el índice: TRIM(RVSGRFRN) y fuera las RECHAZADAS/ANULADAS; NVL(estado,0) del
+        // índice equivale a tratar el estado nulo como vigente.
+        Query query = em.createQuery(
+                " select r from RecepcionValorSeguro r " +
+                " where  TRIM(r.referencia) = :referenciaTrim " +
+                " and    (r.estado is null or r.estado not in (:rechazado, :anulado)) " +
+                " order by r.codigo");
+        query.setParameter("referenciaTrim", referenciaTrim);
+        query.setParameter("rechazado", Long.valueOf(CrdEstadoRecepcionSeguro.RECHAZADO));
+        query.setParameter("anulado", Long.valueOf(CrdEstadoRecepcionSeguro.ANULADO));
         return query.getResultList();
     }
 
