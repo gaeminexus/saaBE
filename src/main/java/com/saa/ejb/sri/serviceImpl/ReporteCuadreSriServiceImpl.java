@@ -77,12 +77,19 @@ public class ReporteCuadreSriServiceImpl implements ReporteCuadreSriService {
         double[] compras = sumarCompras(idEmpresa, desde, hasta);
         double cConCredito = compras[0], cSinCredito = compras[1], cCero = compras[2],
                 cIvaConCredito = compras[3];
+        // BE-7 (2026-09-21): buckets por tarifa que ahora existen en las cuatro entidades de compra.
+        double cNoObjeto = compras[4], cExento = compras[5], cCinco = compras[6];
 
         agregarCasillaSimple(casillas, "500/501", "Adquisiciones gravadas tarifa ≠ 0% CON derecho a "
                 + "crédito tributario (codSustento 01/03/06)", cConCredito);
         agregarCasillaSimple(casillas, "502/512/522", "Otras adquisiciones gravadas tarifa ≠ 0% SIN "
                 + "derecho a crédito (codSustento 02/04/07/08 y otros)", cSinCredito);
         agregarCasillaSimple(casillas, "507", "Adquisiciones gravadas tarifa 0%", cCero);
+        // BE-7: no objeto (531), exentas (532) y 5% (540/550/560, solo base) -- casillas del 104 según
+        // LEVANTAMIENTO-ATS-103-104.md §1.2. Se agregan aparte; 500/502/507 siguen calculándose igual.
+        agregarCasillaSimple(casillas, "531", "Adquisiciones no objeto de IVA", cNoObjeto);
+        agregarCasillaSimple(casillas, "532", "Adquisiciones exentas del pago de IVA", cExento);
+        agregarCasillaSimple(casillas, "540/550/560", "Adquisiciones gravadas tarifa 5% (base)", cCinco);
 
         // ── Resumen impositivo, simplificado (§1.3): sin ajustes ni compensaciones ───────────
         double impuestoCausado = redondear((vIva + vIva5) - cIvaConCredito);
@@ -309,24 +316,35 @@ public class ReporteCuadreSriServiceImpl implements ReporteCuadreSriService {
         return totales;
     }
 
-    /** {baseConCredito, baseSinCredito, base0, ivaConCredito} de FCTC+LQCC+NTCC+NTDC, por codSustento. */
+    /**
+     * {baseConCredito, baseSinCredito, base0, ivaConCredito, noObjeto, exento, base5} de
+     * FCTC+LQCC+NTCC+NTDC. Las tres primeras y la cuarta son las de siempre (base = SUBTOTAL completo,
+     * por codSustento); las tres últimas (BE-7) son los buckets SUBNOOBJ, SUBEXENT y SUBTOTAL5.
+     */
     private double[] sumarCompras(Long idEmpresa, LocalDateTime desde, LocalDateTime hasta) {
-        double[] totales = new double[4];
+        double[] totales = new double[7];
         List<String> codigosConCredito = Arrays.asList(
                 SustentoTributarioSri.CREDITO_TRIBUTARIO_IVA,
                 SustentoTributarioSri.ACTIVO_FIJO_CREDITO_IVA,
                 SustentoTributarioSri.INVENTARIO_CREDITO_IVA);
 
+        // BE-7 (2026-09-21, decisión del usuario): igual que el ATS (GeneradorAtsServiceImpl.
+        // comprasFacturaCompra, 5901c8ef), la factura marcada de intermediario no entra. Sólo aplica a
+        // FacturaCompra: NTCC, NTDC y LQCC no tienen la columna. FacturaCompra.esIntermediario
+        // (FCTCESIN) es NULLABLE -- nulo = no es intermediario, por eso el filtro compara explícito
+        // contra 1 en vez de nvl/coalesce en JPQL (ya reventó una vez, ver §36 del estado del equipo).
         TypedQuery<FacturaCompra> qf = em.createQuery(
                 "select f from FacturaCompra f where f.empresa.codigo = :idEmpresa "
-                        + "and f.estado = :activo and f.fecha between :desde and :hasta", FacturaCompra.class);
+                        + "and f.estado = :activo and f.fecha between :desde and :hasta "
+                        + "and (f.esIntermediario is null or f.esIntermediario <> 1)", FacturaCompra.class);
         qf.setParameter("idEmpresa", idEmpresa);
         qf.setParameter("activo", Long.valueOf(Estado.ACTIVO));
         qf.setParameter("desde", desde);
         qf.setParameter("hasta", hasta);
         for (FacturaCompra f : qf.getResultList()) {
             acumularCompra(totales, codigosConCredito, f.getSustentoTributario(), nvl(f.getSubtotal()),
-                    nvl(f.getSubcero()), nvl(f.getvIVA()));
+                    nvl(f.getSubcero()), nvl(f.getvIVA()), nvl(f.getSubnoobj()), nvl(f.getSubexent()),
+                    nvl(f.getSubtotal5()));
         }
 
         TypedQuery<LiquidacionCompraCompra> ql = em.createQuery(
@@ -338,7 +356,8 @@ public class ReporteCuadreSriServiceImpl implements ReporteCuadreSriService {
         ql.setParameter("hasta", hasta);
         for (LiquidacionCompraCompra l : ql.getResultList()) {
             acumularCompra(totales, codigosConCredito, l.getSustentoTributario(), nvl(l.getSubtotal()),
-                    nvl(l.getSubcero()), nvl(l.getvIVA()));
+                    nvl(l.getSubcero()), nvl(l.getvIVA()), nvl(l.getSubnoobj()), nvl(l.getSubexent()),
+                    nvl(l.getSubtotal5()));
         }
 
         TypedQuery<NotaCreditoCompra> qnc = em.createQuery(
@@ -351,7 +370,8 @@ public class ReporteCuadreSriServiceImpl implements ReporteCuadreSriService {
         for (NotaCreditoCompra n : qnc.getResultList()) {
             // Nota de crédito de compra: resta (se recibió a favor).
             acumularCompra(totales, codigosConCredito, n.getSustentoTributario(), -nvl(n.getSubtotal()),
-                    -nvl(n.getSubcero()), -nvl(n.getvIVA()));
+                    -nvl(n.getSubcero()), -nvl(n.getvIVA()), -nvl(n.getSubnoobj()), -nvl(n.getSubexent()),
+                    -nvl(n.getSubtotal5()));
         }
 
         TypedQuery<NotaDebitoCompra> qnd = em.createQuery(
@@ -363,14 +383,15 @@ public class ReporteCuadreSriServiceImpl implements ReporteCuadreSriService {
         qnd.setParameter("hasta", hasta);
         for (NotaDebitoCompra n : qnd.getResultList()) {
             acumularCompra(totales, codigosConCredito, n.getSustentoTributario(), nvl(n.getSubtotal()),
-                    nvl(n.getSubcero()), nvl(n.getvIVA()));
+                    nvl(n.getSubcero()), nvl(n.getvIVA()), nvl(n.getSubnoobj()), nvl(n.getSubexent()),
+                    nvl(n.getSubtotal5()));
         }
 
         return totales;
     }
 
     private void acumularCompra(double[] totales, List<String> codigosConCredito, String sustento,
-            double base, double base0, double iva) {
+            double base, double base0, double iva, double noObjeto, double exento, double base5) {
         if (sustento != null && codigosConCredito.contains(sustento)) {
             totales[0] += base;
             totales[3] += iva;
@@ -378,6 +399,10 @@ public class ReporteCuadreSriServiceImpl implements ReporteCuadreSriService {
             totales[1] += base;
         }
         totales[2] += base0;
+        // BE-7: buckets aparte, sin tocar lo de arriba.
+        totales[4] += noObjeto;
+        totales[5] += exento;
+        totales[6] += base5;
     }
 
     /**
