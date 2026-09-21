@@ -448,25 +448,43 @@ public class FacturaCompraServiceImpl implements FacturaCompraService {
 		// Mismo criterio que sri/sql/e2-53-nota-de-venta-base-cero.sql (SUBCERO = SUBTOTAL) —
 		// si uno cambia, el otro también. La suma del detalle NO es la fuente: el subtotal se
 		// tipea aparte del detalle, y si difieren el resto quedaría declarado como base gravada.
+		//
+		// BE-8 (2026-09-21, PLAN-CLASIFICACION-POR-TARIFA-COMPRAS.md): el reparto sigue el invariante del
+		// BE-6 y usa la MISMA regla que la carga (BasesPorTarifa): código 0 -> subcero, 6 -> subnoobj,
+		// 7 -> subexent. Lo que no es no objeto ni exento se queda en subcero: subcero = subtotal -
+		// subnoobj - subexent, así los tres suman el subtotal (lo que dejó el e2-53).
 		double subcero = nvlDouble(solicitud.getSubcero());
+		double subnoobj = 0d, subexent = 0d;
 		boolean hayLineaGravada = false;
-		double base0Detalle = 0d;
+		BasesPorTarifa bases = new BasesPorTarifa("Nota de venta compra");
 		for (int i = 0; i < solicitud.getDetalles().size(); i++) {
 			long codigo = codigosIVA.get(i);
-			if (codigo == 0L || codigo == 6L || codigo == 7L)
-				base0Detalle += solicitud.getDetalles().get(i).getBaseImponible();
-			else
+			bases.acumular(i, codigo, solicitud.getDetalles().get(i).getBaseImponible());
+			if (!BasesPorTarifa.sinIva(codigo))
 				hayLineaGravada = true;
 		}
 		if (nvlDouble(solicitud.getvIVA()) < 0.005 && !hayLineaGravada) {
 			double subtotal = nvlDouble(solicitud.getSubtotal());
-			subcero = subtotal;
+			double noObj = bases.noObjeto(), exent = bases.exenta();
+			double resto = subtotal - noObj - exent;
 			// El descuadre subtotal vs. detalle se traza, no bloquea el registro.
-			if (Math.abs(base0Detalle - subtotal) >= 0.005)
+			double sumaDetalle = bases.base0() + noObj + exent;
+			if (Math.abs(sumaDetalle - subtotal) >= 0.005)
 				System.out.println("ATENCION: nota de venta " + numEstablecimiento + "-" + numPtoEmision + "-"
 						+ secuencial + " con subtotal " + subtotal
-						+ " distinto de la suma de bases del detalle " + base0Detalle
-						+ "; se graba subcero = subtotal (sin IVA ni líneas gravadas).");
+						+ " distinto de la suma de bases del detalle " + sumaDetalle
+						+ "; subcero = subtotal - no objeto - exento (sin IVA ni líneas gravadas).");
+			if (resto < -0.005) {
+				// No cierra: el no objeto + exento del detalle supera al subtotal tipeado. No se inventa un
+				// reparto: se graba lo que llega, como en la excepción de arriba.
+				System.out.println("ATENCION: nota de venta " + numEstablecimiento + "-" + numPtoEmision + "-"
+						+ secuencial + ": no objeto (" + noObj + ") + exento (" + exent + ") del detalle superan "
+						+ "el subtotal (" + subtotal + "); no se reparte, se graba lo que llega.");
+			} else {
+				subnoobj = noObj;
+				subexent = exent;
+				subcero = Math.max(0d, Math.round(resto * 100d) / 100d);
+			}
 		}
 
 		FacturaCompra factura = new FacturaCompra();
@@ -483,6 +501,8 @@ public class FacturaCompraServiceImpl implements FacturaCompraService {
 		factura.setObservacion(solicitud.getObservacion());
 		factura.setSubtotal(solicitud.getSubtotal());
 		factura.setSubcero(subcero);
+		factura.setSubnoobj(subnoobj);
+		factura.setSubexent(subexent);
 		factura.setDescuento(nvlDouble(solicitud.getDescuento()));
 		factura.setpIVA(nvlDouble(solicitud.getpIVA()));
 		factura.setvIVA(nvlDouble(solicitud.getvIVA()));
