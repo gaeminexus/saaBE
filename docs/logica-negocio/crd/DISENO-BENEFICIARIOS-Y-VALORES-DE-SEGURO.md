@@ -59,24 +59,30 @@ Se heredan gratis el bloqueo `FOR UPDATE` por partícipe y el rechazo de saldo n
 ⛔ **DDL sobre `CRD`: lo autoriza el usuario** (recuadro §3 de `REGISTRO-RESERVAS-EQUIPOS.md`).
 El nombre se reserva acá porque es un recurso global, pero **no se crea hasta el visto bueno**.
 
-**Nombre propuesto: `CRD.BNFC`** — verificado libre contra los `@Table` de `src/main/java/com/saa/model/`
-(cero ocurrencias, igual que `BFPR`, `BNPR`, `BFCT`, `CBBN`). **Falta el control contra `ALL_TABLES`**,
-que va como bloque 0 del propio DDL y detiene el script si devuelve filas.
+✅ **Nombre decidido por el usuario (2026-09-21): `CRD.CBBP` — Cuenta Bancaria Beneficiario
+Partícipe.** Verificado libre contra los `@Table` de `src/main/java/com/saa/model/` (cero
+ocurrencias). **Falta el control contra `ALL_TABLES`**, que va como bloque 0 del propio DDL y
+detiene el script si devuelve filas.
+
+> El árbitro había propuesto `BNFC` (beneficiario). **`CBBP` es mejor nombre y describe mejor lo
+> que la tabla realmente guarda**: no es un beneficiario en abstracto, es **la cuenta bancaria a la
+> que cobra un beneficiario**. Además queda en paralelo directo con `CRD.CNBP`
+> (Cuenta Bancaria Partícipe), que es su equivalente para el titular.
 
 Una fila = **un beneficiario con su cuenta**. No hacen falta dos tablas: un beneficiario cobra a una
 sola cuenta.
 
 | Campo Java | Columna | Notas |
 |---|---|---|
-| `codigo` | `BNFCCDGO` | PK, `SQ_BNFCCDGO` |
+| `codigo` | `CBBPCDGO` | PK, `SQ_CBBPCDGO` |
 | `entidad` | `ENTDCDGO` | FK al partícipe |
-| `nombre` | `BNFCNMBR` | |
-| `numeroIdentificacion` | `BNFCIDNT` | cédula |
+| `nombre` | `CBBPNMBR` | |
+| `numeroIdentificacion` | `CBBPIDNT` | cédula |
 | `bancoExterno` | `BEXTCDGO` | FK, igual que `CNBP` |
-| `tipoCuenta` | `BNFCTPCN` | mismo catálogo que `CNBPTPCN` |
-| `numeroCuenta` | `BNFCNMRO` | |
-| `porcentaje` | `BNFCPRCN` | `NUMBER(5,2)` |
-| `estado` | `BNFCIDST` | activo/inactivo |
+| `tipoCuenta` | `CBBPTPCN` | mismo catálogo que `CNBPTPCN` |
+| `numeroCuenta` | `CBBPNMRO` | |
+| `porcentaje` | `CBBPPRCN` | `NUMBER(5,2)` |
+| `estado` | `CBBPIDST` | activo/inactivo |
 
 El **certificado bancario** NO va como columna: va en `CRD.ADJN` con el tipo `CRD.TPDJ`
 «CERTIFICADO BANCARIO», exactamente como lo hace `crearConCertificado` para `CNBP`.
@@ -154,7 +160,7 @@ cuya cuenta sea `2.3.90.90.11`** — el mismo acoplamiento de los productos 516 
 
 | # | Qué | Tipo |
 |---|---|---|
-| S1 | **Crear `CRD.BNFC`** — autorización de DDL sobre `CRD` | bloqueante |
+| S1 | **Crear `CRD.CBBP`** — autorización de DDL sobre `CRD` | bloqueante |
 | ~~S2~~ | ~~¿El residuo del centavo?~~ | ✅ **decidido**, §3b |
 | S3 | **El producto de pago de CXP contra `2.3.90.90.11`** — pide coordinación con el equipo de `cxp` | bloqueante |
 | S4 | ¿`CARGA-TIPO-ADJUNTO-CERTIFICADO-BANCARIO.sql` corrió en producción? Sin esa fila no se puede adjuntar ningún certificado | bloqueante |
@@ -173,4 +179,4 @@ Las cuatro se preguntaron con las alternativas a la vista y se decidieron el mis
 | **El residuo del centavo va al de mayor porcentaje** (empate → menor código) | §3b. La guarda es que la **suma de las órdenes** dé exactamente el valor entregado |
 | **La devolución de aportes normal TAMBIÉN se paga a beneficiarios** cuando el partícipe está fallecido | ⚠️ **Amplía el alcance:** `registrarDevolucion` deja de pagar siempre a `CuentaBancariaParticipe` y pasa a elegir destino según el estado del partícipe. Se resuelve **una sola vez** para sepelio y para aportes — es el mismo problema: la cuenta de un muerto no sirve |
 | **La recepción del dinero se puede registrar SIN beneficiarios cargados** | La validación del 100 % vive en el **pago**, nunca en la recepción. La plata ya está en el banco: negarse a registrarla no la hace desaparecer. La pantalla debe avisar que faltan beneficiarios, sin bloquear |
-| **La misma cédula puede ser beneficiaria de VARIOS partícipes** | El índice único es **(partícipe, cédula)**, NO la cédula sola. Un hijo es beneficiario del padre y de la madre: caso real y frecuente. ⛔ Un `UNIQUE` sobre `BNFCIDNT` solo sería un defecto que aparece recién cuando muere el segundo progenitor |
+| **La misma cédula puede ser beneficiaria de VARIOS partícipes** | El índice único es **(partícipe, cédula)**, NO la cédula sola. Un hijo es beneficiario del padre y de la madre: caso real y frecuente. ⛔ Un `UNIQUE` sobre `CBBPIDNT` solo sería un defecto que aparece recién cuando muere el segundo progenitor |

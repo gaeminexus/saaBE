@@ -3478,3 +3478,72 @@ cobro se registra y **no se puede procesar**.
 
 ⭐ **Las dos las encontraron los agentes revisando lo que el árbitro les mandó** — el mismo patrón que
 H34. Un contrato con dos reglas que se contradicen sólo se nota cuando alguien intenta programarlas.
+
+---
+
+# ⛔⛔ 2026-09-21 — H70: el «Saldo total del préstamo» de los diálogos de cobro ofrece pagar el interés futuro
+
+**Reportado por el usuario funcional** (`LCALDERON`) en `NOVEDADES_BOTONES_SISTEMA_SAA.xlsx`, con
+tres capturas del préstamo **#70828** (OSPINA GONGORA JUAN ALEXIS, C.I. 0801910514, EMERGENTE, en
+mora). Textual: *«EN EL BOTON DE "PAGAR CON APORTES" Y EL VALOR QUE INDICA EN EL APARTADO DE SALDO
+TOTAL DEL CREDITO NO TOMA EN CUENTA EL VALOR A LA FECHA DEL ULTIMO PAGO»*, que en precancelación el
+valor sí está correcto, y que *«REGISTRO PAGO DE CUOTAS POSEE EL MISMO INCONVENIENTE»*.
+
+## Los números de la evidencia, y qué es esa diferencia
+
+| Pantalla | Rótulo | Valor |
+|---|---|---|
+| Pagar con aportes · Registrar pago de cuotas | «Saldo total del préstamo» | **$16.246,61** |
+| Precancelar crédito | «Total a cobrar» al 2026-09-21 | **$13.183,86** |
+| Precancelar crédito | «Intereses condonados» | **$3.062,73** |
+
+$2.713,22 (deuda exigible, 12 cuotas) + $10.470,64 (capital futuro, 63 cuotas) = **$13.183,86**.
+Y $13.183,86 + $3.062,73 = $16.246,59 ≈ **$16.246,61**.
+
+⇒ **La diferencia ES, exactamente, el interés futuro que la precancelación condona.**
+
+## Causa, medida
+
+`saldoTotal` sale de `MotorPagoPrestamoServiceImpl.calcularTotalPendientePrestamo:262`, que suma
+`getTotalPendiente()` de **TODAS** las cuotas pendientes — las 12 vencidas **y las 63 futuras, con
+su interés**. Es la magnitud correcta para *«cuánto pagará el socio si sigue pagando cuota a cuota
+hasta el final»*, y la equivocada para *«cuánto cuesta cancelar el crédito hoy»*, que es lo que el
+partícipe de la novedad quería hacer con sus aportes.
+
+**No es un error de cálculo.** Es un número correcto, mal rotulado y ofrecido en la pantalla
+equivocada. Por eso precancelación da bien: usa otro camino (exigible + capital futuro, sin interés
+no devengado).
+
+⭐ **El propio código ya lo advertía y nadie lo trasladó a la pantalla.**
+`PagoPensionComplementariaServiceImpl:2615`: *«⛔ NO usa `calcularTotalPendientePrestamo`: ese método
+suma TODAS las cuotas pendientes, exigibles o no — exactamente lo que `buscarSiguienteCuotaConSaldo`
+prepagaría si se le entregara de más»*. Y hay **precedente del 2026-09-04**, en ese mismo JavaDoc: el
+usuario ya había detectado descuento de más comparando contra cobros personales. Es la tercera vez
+que esta distinción muerde.
+
+## ⛔ Lo que el reporte NO dice, y es peor que lo reportado
+
+El diálogo **no sólo muestra** el número: **lo ofrece como botón**.
+`pago-prestamo-dialog.component.ts:142` arma la sugerencia **«Saldo total · $16.246,61»** junto a
+«1 cuota», «2 cuotas» y «3 cuotas».
+
+Un operador que quiere cancelar el crédito aprieta ese atajo y **registra un cobro de $16.246,61
+cuando cancelar hoy cuesta $13.183,86**: le cobra al socio **$3.062,75 de interés que no debía
+pagar**, y el motor lo aplica **prepagando cuotas futuras con su interés completo** en vez de
+condonarlo — que es literalmente lo que advierte el JavaDoc citado.
+
+**Alcance:** los dos diálogos que usan `pago-prestamo-dialog` (Pagar cuotas y Pagar con aportes),
+desde Cobros Personales. Precancelación **no** está afectada.
+
+## Corrección propuesta — PENDIENTE DE DECISIÓN DEL USUARIO, sin despachar
+
+1. **Mitigación inmediata (FE, barata):** quitar el atajo «Saldo total» de `sugerencias()`. Deja los
+   múltiplos de cuota, que sí son lo que esa pantalla sabe cobrar. Corta el camino al cobro de más.
+2. **Corrección de fondo (FE + BE):** el diálogo muestra **dos** magnitudes con rótulos que no se
+   confundan — «Total pendiente si paga cuota a cuota» y «Cuesta cancelarlo hoy» — y cuando el
+   operador quiere lo segundo, la pantalla lo **manda a precancelación**, que es el camino que
+   condona bien. El segundo número ya existe: es lo que calcula el diálogo de precancelación.
+3. ⛔ **Lo que NO hay que hacer:** cambiar `calcularTotalPendientePrestamo` para que reste el interés
+   futuro. Tiene **tres llamadores más** (`ProcesoPagoPrestamoServiceImpl:187` y `:597`,
+   `DevolucionAporteRest:529`) que dependen de la semántica actual. El defecto está en qué se
+   muestra y qué se ofrece, no en el cálculo.
