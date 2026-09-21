@@ -111,5 +111,6 @@ public interface NombreEntidadesCredito {
 	String ESCALA_CALIFICACION_RIESGO = "EscalaCalificacionRiesgo";
 	String USUARIO_APP = "UsuarioApp";
 	String CORRIDA_JUBILADOS = "CorridaJubilados";
+	String RECEPCION_VALOR_SEGURO = "RecepcionValorSeguro";
 
 }

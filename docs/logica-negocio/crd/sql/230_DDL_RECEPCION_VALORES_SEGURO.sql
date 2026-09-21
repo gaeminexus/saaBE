@@ -116,9 +116,38 @@ ALTER TABLE CRD.RVSG ADD CONSTRAINT FK_RVSG_CNBC
 ALTER TABLE CRD.RVSG ADD CONSTRAINT FK_RVSG_ASNT
     FOREIGN KEY (ASNTCDGO) REFERENCES CNT.ASNT(ASNTCDGO);
 
--- 1.4 Indices de consulta: las dos preguntas que hace la pantalla.
+-- 1.4 Reglas de dominio. Baratas, y atajan en la base lo que el codigo ya valida:
+--     una recepcion con valor 0 o negativo no existe, y el estado solo tiene 4 valores.
+ALTER TABLE CRD.RVSG ADD CONSTRAINT CK_RVSG_ESTADO CHECK (RVSGESTD IN (1,2,3,4));
+ALTER TABLE CRD.RVSG ADD CONSTRAINT CK_RVSG_VALOR  CHECK (RVSGVLRR > 0);
+
+-- 1.5 Indices de consulta: las dos preguntas que hace la pantalla.
 CREATE INDEX CRD.IDX_RVSG_ENTIDAD ON CRD.RVSG (ENTDCDGO);
 CREATE INDEX CRD.IDX_RVSG_ESTADO  ON CRD.RVSG (RVSGESTD);
+
+-- 1.6 ⭐ REFERENCIA UNICA — el mismo criterio que ya decidio el usuario para los cobros
+--     el 2026-09-01 (ver 106_REFERENCIA_UNICA_COBROS.sql). Se traslada tal cual porque
+--     es el mismo problema: dinero que entra al banco con una referencia.
+--
+--     SIN ESTO, registrar dos veces el mismo deposito es posible, y el valor entraria
+--     DOS VECES al saldo del participe — plata que no existe, descubierta meses despues.
+--
+--     Las tres reglas que decidio el usuario, respetadas:
+--       · La referencia no se puede repetir.
+--       · '9' y '09' son "no tengo referencia" y SI pueden repetirse.
+--       · Una recepcion que no vale ya libera su referencia. ⚠️ Aca son los estados
+--         3 RECHAZADO y 4 ANULADO. NO es el 5 como en CBCR: los codigos de estado de
+--         RVSG son propios (1 REGISTRADO, 2 APROBADO, 3 RECHAZADO, 4 ANULADO). Ese
+--         script documenta que la primera version se equivoco justo en este numero y
+--         dio un falso "todo limpio"; no repetirlo.
+--
+--     Indice unico basado en funcion: la expresion devuelve NULL para esos casos, y
+--     Oracle no compara NULLs entre si en un indice unico, asi que conviven. Se compara
+--     con TRIM, igual que en cobros: 'ABC' y 'ABC ' son la MISMA referencia.
+CREATE UNIQUE INDEX CRD.UX_RVSG_REFERENCIA
+    ON CRD.RVSG (CASE WHEN TRIM(RVSGRFRN) IN ('9','09') OR NVL(RVSGESTD, 0) IN (3,4)
+                      THEN NULL
+                      ELSE TRIM(RVSGRFRN) END);
 
 -- 1.5 Comentarios
 COMMENT ON TABLE  CRD.RVSG           IS 'Recepcion de valores de seguro que el fondo recibe de la aseguradora para entregar a los beneficiarios de un participe fallecido (sepelio, gastos funerarios, seguro de vida, indemnizaciones). Ciclo calcado de CRD.CBCR: se registra, contabilidad aprueba, y RECIEN AHI se genera el asiento D banco / H 2.3.90.90.11 y el valor entra al saldo del participe. El pago a los beneficiarios es un segundo momento (fase 2).';
