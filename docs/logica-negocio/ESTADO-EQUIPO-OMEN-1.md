@@ -3632,3 +3632,45 @@ todavía) y **un producto de pago de CXP contra `2.3.90.90.11`**, que es de otro
    fase 2 de sepelio. Mismo acoplamiento que los productos 516 y 517 (P19/P20).
 3. **Frente de seguridad de `laptop1`** — `docs/seguridad/ITEM7-MAPEO-BOTONES-PERMISOS.md` quedó
    desactualizado en los dos botones retirados de `plantilla-general`. **No se tocó esa carpeta.**
+
+## ✅ 2026-09-21 — `CRD.RVSG` creada en producción y verificada
+
+El usuario corrió `crd/sql/230` y `231`, y después el verificador `232`. **Todo OK**, con un solo
+tropiezo que fue del script, no del esquema:
+
+| Control | Resultado |
+|---|---|
+| Las 22 columnas, en los dos sentidos (`1.1`/`1.2`/`1.3`) | ✅ sin faltantes ni sobrantes |
+| Secuencia `SQ_RVSGCDGO` (`2.1`) | ✅ |
+| Índice único `UX_RVSG_REFERENCIA` (`2.2`) | ✅ — no se puede duplicar un depósito |
+| Constraints (`2.3`) | ✅ `PK_RVSG`, los dos `CK_`, y **9 `SYS_C` de `NOT NULL`**, que son exactamente las 9 columnas obligatorias del diseño |
+| Tipo de aporte y su cuenta en `CTAP` (`3.1`/`3.2`) | ✅ |
+| Cuentas ASOPREP del combo (`4`) | ✅ |
+
+⭐ **Las CINCO FK quedaron creadas, incluidas `FK_RVSG_ASNT` y `FK_RVSG_CNBC`, que cruzan de
+esquema.** O sea, `CRD` **sí** tiene `REFERENCES` sobre `TSR.CNBC` y `CNT.ASNT` en producción.
+Vale anotarlo porque en esta base ya hubo FK entre esquemas que quedaron comentadas por falta de
+`GRANT` (el caso `TSR.DTCN` → `CNT.DTAS`): resulta que el permiso existe, y la próxima tabla que lo
+necesite no tiene por qué asumir que no.
+
+## ⛔ El error del árbitro en el `232`, y la trampa que destapó
+
+El bloque `3.3` consultaba **`SCP.RUBR`** y reventó con `ORA-00942`. Las tablas de parametría son
+**`SCP.PRBR`** (rubro) y **`SCP.PDTR`** (detalle): el código de 4 letras es **`PRBR`**, no `RUBR`.
+Lo escribí de memoria en vez de leerlo del modelo — el mismo error que este tablero le viene
+reprochando a los demás.
+
+⚠️ **Y al corregirlo apareció algo que importa más que el nombre de la tabla:** la búsqueda **no es
+por nombre, es por CÓDIGO ALTERNO**. `DetalleRubroDaoServiceImpl:268` filtra por
+`t.rubro.codigoAlterno` (`PRBRALTR = 237`) y `t.codigoAlterno` (`PDTRALTR = 1`), y devuelve
+`valorNumerico` (`PDTRVLRN`).
+
+**Cero filas significa APAGADA, y eso es fácil de leer mal:** el DAO usa `getSingleResult()`, así
+que si la fila no existe lanza `NoResultException`, y
+`ConfiguracionContabilidadServiceImpl:61-67` lo atrapa y devuelve `false` **a propósito** («apagado
+es el lado seguro»). Lo mismo si hubiera más de una fila. Es decir: **si el rubro 237/1 no existe,
+`aprobar` responde 409 aunque nadie haya apagado nada**, y el mensaje va a hablar de contabilidad
+inactiva sin decir que lo que falta es una fila de catálogo.
+
+Es la misma familia de defecto que `omen-saa-2` dejó especificado y sin hacer en
+`DetalleRubroDaoServiceImpl:77`: un catálogo faltante que se presenta como otra cosa.

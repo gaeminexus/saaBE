@@ -133,13 +133,33 @@ JOIN   CNT.PLNN np ON np.PLNNCDGO = c.CTAPPLNP
 WHERE  t.TPAPNMBR = 'VALOR DE SEGURO POR ENTREGAR A BENEFICIARIOS';
 
 -- 3.3 ⚠️ La contabilidad de CRD tiene que estar ACTIVA o `aprobar` responde 409 a
---     proposito (no se deja entrar dinero al saldo sin asiento). Esperado: valor 1.
-SELECT r.RUBRCDGO, r.RUBRNMBR, d.PDTRCDGO, d.PDTRNMBR, d.PDTRVLRV AS VALOR
-FROM   SCP.RUBR r
-JOIN   SCP.PDTR d ON d.RUBRCDGO = r.RUBRCDGO
-WHERE  UPPER(r.RUBRNMBR) LIKE '%CONTABILIDAD%'
-AND    UPPER(r.RUBRNMBR) LIKE '%CRD%'
-ORDER  BY r.RUBRCDGO, d.PDTRCDGO;
+--     proposito (no se deja entrar dinero al saldo sin asiento).
+--
+--     ⛔ CORREGIDO 2026-09-21: la primera version de este bloque consultaba "SCP.RUBR" y
+--     daba ORA-00942. Las tablas son SCP.PRBR (rubro) y SCP.PDTR (detalle) — el codigo de
+--     4 letras es PRBR, no RUBR — y la busqueda NO es por nombre sino por CODIGO ALTERNO,
+--     que es como la lee el sistema: DetalleRubroDaoServiceImpl:268 filtra por
+--     t.rubro.codigoAlterno (PRBRALTR = 237, Rubros.CRD_PARAMETROS_CONTABILIDAD) y
+--     t.codigoAlterno (PDTRALTR = 1, CrdParametroContabilidad.CONTABILIDAD_ACTIVA), y
+--     devuelve valorNumerico (PDTRVLRN).
+--
+--     Esperado: 1 fila con VALOR_NUMERICO = 1.
+--
+--     ⚠️ CERO FILAS TAMBIEN SIGNIFICA APAGADA, y es facil de leer mal: el DAO usa
+--     getSingleResult(), asi que si la fila no existe lanza NoResultException y
+--     ConfiguracionContabilidadServiceImpl:61-67 lo atrapa y devuelve FALSE a proposito
+--     ("apagado es el lado seguro"). Lo mismo si hubiera mas de una fila. Es decir: si
+--     este bloque no devuelve exactamente una fila con 1, `aprobar` va a responder 409
+--     aunque nadie haya apagado nada.
+SELECT r.PRBRCDGO, r.PRBRDSCR AS RUBRO, r.PRBRALTR AS ALTERNO_RUBRO,
+       d.PDTRCDGO, d.PDTRDSCR AS DETALLE, d.PDTRALTR AS ALTERNO_DETALLE,
+       d.PDTRVLRN AS VALOR_NUMERICO, d.PDTRESTD AS ESTADO,
+       CASE WHEN d.PDTRVLRN = 1 THEN 'OK - contabilidad ACTIVA'
+            ELSE '*** APAGADA: aprobar va a responder 409 ***' END AS RESULTADO
+FROM   SCP.PDTR d
+JOIN   SCP.PRBR r ON r.PRBRCDGO = d.PRBRCDGO
+WHERE  r.PRBRALTR = 237
+AND    d.PDTRALTR = 1;
 
 
 -- =====================================================================================
