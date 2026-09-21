@@ -3547,3 +3547,88 @@ desde Cobros Personales. Precancelación **no** está afectada.
    futuro. Tiene **tres llamadores más** (`ProcesoPagoPrestamoServiceImpl:187` y `:597`,
    `DevolucionAporteRest:529`) que dependen de la semántica actual. El defecto está en qué se
    muestra y qué se ofrece, no en el cálculo.
+
+---
+
+# ✅ 2026-09-21 — Jornada completa: lote U1–U5, H70, y sepelio fase 1 entregada
+
+**Todo en `origin/main` en los dos repos.** Compilación reverificada por el árbitro en cada commit
+(`mvn -q compile` y `ng build --configuration development`, los dos exit 0), no por los ejecutores
+— regla 11.
+
+| Frente | `saaBE` | `saaFE` |
+|---|---|---|
+| U1 seguro de jubilados · U2 guarda de `anularOperacion` | `ed081231` | — |
+| U3 Pago Cuota · U4 Asignación de Seguros · U5 Plantilla general | — | `8849296` |
+| H70 saldo total vs. cancelar hoy | — | `e18713a` |
+| Sepelio fase 1 — backend | `d0c12eb3` · ajuste `bf995296` | — |
+| Sepelio fase 1 — frontend | — | `34cd7f7` |
+| SQL 230 / 231 y contratos | `cd70d6bd`, `1039aecc` | espejos |
+
+## Lo que se cerró del lote urgente (levantado el 15-09, despachado recién hoy)
+
+- **U1:** el CRJB se cerraba **en el reintento**, no en el intento fallido. Ahí el total daba $0,
+  `generarOrdenPagoProveedorSeguro` retornaba null **sin lanzar**, y por eso sí corría el cierre.
+- **U2:** guarda en `PrestamoRest`, **no** en el service — su otro llamador lo invoca con el enlace
+  `EVPRCDGO` puesto.
+- **U3/U4/U5:** tres pantallas que decían «guardado» sin guardar nada.
+
+## ⭐ El patrón de la jornada: los ejecutores corrigieron al árbitro CINCO veces
+
+No es anécdota, es el control de calidad que de hecho funciona. **Un contrato mal escrito sólo se
+nota cuando alguien intenta programarlo** (mismo patrón que H34 y H69).
+
+| # | Qué decía el árbitro | Qué estaba mal |
+|---|---|---|
+| 1 | U1: lanzar `IncomeException` dentro de la rama `else` del bucle | Ahí la atrapaba el `catch (Throwable)` del propio bucle: habría sumado a `conError` y seguido, dejando el total corto y el CRJB cerrado — **el defecto que se estaba corrigiendo** |
+| 2 | RVSG: `anular` reversa el asiento y el aporte | La tabla **no guardaba el id del aporte**. `CRD.APRT` es append-only: buscarlo por glosa y valor sería adivinar. Se agregó `APRTCDGO` |
+| 3 | RVSG: nada sobre el flag de contabilidad | Con `contabilidadActiva()` en false, `CBCR` registra igual y se saltea el asiento. Copiarlo habría metido el valor en el saldo **sin asiento** |
+| 4 | RVSG: reversar con `reversionAsiento` | El método de la casa es **`anulaAsiento(id, usuario, motivo)`** (`AsientoService:270`), que deja usuario y motivo auditados |
+| 5 | Despacho: «escribí los `.sql` 230 y 231» | **Va contra la regla del ejecutor Y contra el rol del árbitro.** El SQL lo escribe el árbitro. Error del árbitro, corregido |
+
+⭐ Y el sexto, que no fue corrección sino pregunta: **«¿querés chequeo de referencia duplicada?»**
+Esa pregunta destapó que **sin índice único, registrar dos veces el mismo depósito mete el valor DOS
+VECES en el saldo del partícipe**.
+
+## El precedente que se reusó en vez de reinventar
+
+Buscando por qué `CBCR` tenía índice único de referencia apareció `crd/sql/106`: **el usuario ya
+había decidido esto el 2026-09-01**, con tres reglas — la referencia no se repite, `'9'`/`'09'`
+significan «sin referencia» y sí pueden repetirse, y una operación anulada libera la suya.
+
+Se trasladó tal cual a `UX_RVSG_REFERENCIA`. ⚠️ **Con un cambio obligatorio: acá los estados que
+liberan son 3 y 4, no el 5 de `CBCR`.** Ese mismo script documenta que su primera versión se
+equivocó justo en ese número y dio un falso «todo limpio».
+
+## Sepelio — dónde quedó
+
+**Fase 1 (recepción) COMPLETA en código.** No corre hasta que el usuario ejecute `crd/sql/230` y
+`231`. Registrar → contabilidad aprueba → **un** asiento D banco / H `2.3.90.90.11` → el valor entra
+al saldo del partícipe.
+
+⚠️ **Dos cosas de configuración pueden trabarla el primer día, y no son código:**
+1. **La contabilidad de CRD tiene que estar activa** (rubro 237 en 1), o `aprobar` responde 409 a
+   propósito — no se deja entrar dinero al saldo sin asiento.
+2. **La cuenta ASOPREP donde entró el dinero tiene que tener `CNBCCBCR=1`**, o no aparece en el
+   combo de la pantalla. Lo levantó el ejecutor FE.
+
+**Fase 2 (pagar a los beneficiarios) NO EMPEZADA.** Necesita `CRD.CBBP` (autorizada, sin DDL escrito
+todavía) y **un producto de pago de CXP contra `2.3.90.90.11`**, que es de otro equipo.
+
+### Límites conocidos, medidos y aceptados
+
+- **La carrera del chequeo de referencia:** el chequeo previo y el índice no son atómicos. Dos
+  registros simultáneos con la misma referencia pueden pasar los dos y el segundo cae en ORA-00001
+  (500). No se cierra con bloqueo porque **no hay fila que bloquear antes de insertar**. El dato
+  queda protegido por el índice; lo feo es el 500 en esa carrera.
+- **La entrada de menú no tiene `idPermiso`**: no existe el nodo en el árbol de permisos. Lo asigna
+  el frente de seguridad, que es de otro equipo.
+- **`anular` no tenía UI** hasta el ajuste despachado al cierre de la jornada.
+
+## Deudas con otros equipos que siguen SIN AVISAR (esperan autorización del usuario)
+
+1. **`omen-saa-2-arb`** — U5 tocó `plantilla-general` de `cnt`, que es compartido.
+2. **`omen-saa-2-arb`** — hace falta un **producto de pago de CXP contra `2.3.90.90.11`** para la
+   fase 2 de sepelio. Mismo acoplamiento que los productos 516 y 517 (P19/P20).
+3. **Frente de seguridad de `laptop1`** — `docs/seguridad/ITEM7-MAPEO-BOTONES-PERMISOS.md` quedó
+   desactualizado en los dos botones retirados de `plantilla-general`. **No se tocó esa carpeta.**
