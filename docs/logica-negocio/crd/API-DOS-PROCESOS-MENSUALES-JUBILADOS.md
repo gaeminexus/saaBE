@@ -260,8 +260,34 @@ frontend tuvo que inferirlo. Su inferencia era la correcta y se canoniza acá:
 
 | Endpoint | Devuelve |
 |---|---|
-| `POST /pgpc/seguro/generar` | `{ jubilados, total, idOrdenPago, mensaje }` |
+| `POST /pgpc/seguro/generar` | `{ jubilados, total, idOrdenPago, mensaje }` **+ el diagnóstico de abajo** |
 | `POST /pgpc/pensiones/generar` | El **mismo `ResultadoGeneracionPagosPension`** que hoy devuelve `generarPagosDelMes`, más `totalSeguroRetroactivoNoPagado` y su conteo (§10) |
+
+### ⚠️ Precisado el 2026-09-22 — la forma COMPLETA de `/seguro/generar`, y la asimetría entre los dos
+
+**`/seguro/generar` devuelve el objeto DIRECTO** (`ResultadoGeneracionSeguroMedico`), sin sobre.
+**`/pensiones/generar` devuelve un sobre** `{ exito, mensaje, resultado }` que el REST arma a mano.
+⛔ **Los dos NO tienen la misma forma**, y tratarlos igual ya costó un defecto en producción: el
+frontend tipaba los dos con sobre, `exito` venía `undefined`, y **una generación exitosa se mostraba
+en rojo y no refrescaba la pantalla** (180 pagos y la orden 478 hechos, y la tarjeta diciendo
+«todavía no se ha generado»).
+
+**Los campos que `/seguro/generar` trae además de los cuatro de la tabla**, verificados contra
+`ResultadoGeneracionSeguroMedico`:
+
+| Campo | Tipo | Para qué |
+|---|---|---|
+| `evaluados` | `int` | cuántos jubilados recorrió |
+| `yaGenerados` | `int` | cuántos ya tenían el seguro fijado |
+| `conError` | `int` | ⭐ **cuántos fallaron** |
+| `errores` | `List<String>` | ⭐ **el motivo de cada fallo**, uno por jubilado |
+| `anio`, `mes` | `Integer` | el período |
+
+⭐ **`conError` y `errores` son la diferencia entre una pantalla útil y una inútil.** El frontend NO
+debe deducir si hubo errores parciales leyendo el texto de `mensaje` con una expresión regular: **hay
+un contador**. Y `errores` trae el motivo por jubilado, así que **la pantalla puede decir quiénes
+fallaron y por qué, sin que nadie tenga que ir al log del servidor** — que es exactamente lo que hubo
+que hacer el 2026-09-22 para averiguar qué pasó con 2 de 182.
 
 ⭐ **Y el frontend hizo algo mejor que adivinar bien: se blindó de la duda.** Después de cada
 generación vuelve a pedir `GET /corrida`, que **sí** tenía forma exacta, y repinta las dos tarjetas
