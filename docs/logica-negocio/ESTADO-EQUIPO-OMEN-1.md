@@ -3808,3 +3808,67 @@ hay que medir **antes** de apagar el flag, porque es justo lo que el mock viene 
 **Corrección propuesta, sin despachar (FE puro, barata):** apagar `mockCertificadosParticipe` en
 `environment.ts`, borrar el mock del servicio y corregir el comentario. Queda pendiente de la
 decisión del usuario y de la comparación de DTOs de arriba.
+
+---
+
+# 🚀 2026-09-21, 19:20 — WAR DESPLEGADO. Qué quedó vivo y qué NO viaja en el WAR
+
+**Dato del usuario, textual: «ya desplegue el war».** Al momento de decirlo `origin/main` estaba en
+`saaBE 3e32aa35` (el último commit con **código** de este equipo es `bf995296`) y
+`saaFE 4e74754`.
+
+## ⛔ Lo primero, porque es lo que se olvida: el WAR NO LLEVA EL FRONTEND
+
+Son dos artefactos y dos despliegues distintos. **De los frentes cerrados el 21-09, la mitad es
+frontend puro y no se activa con el WAR**, por más que el backend esté arriba.
+
+| Vive con el WAR (backend) | Necesita el build de `saaFE` |
+|---|---|
+| **U1** el seguro de jubilados se paga aunque la corrida falle a medias | **U3** «Pago Cuota» retirado del menú y la ruta |
+| **U2** `anularOperacion` rechaza un evento enlazado a un cobro | **U4** «Asignación de Seguros» retirada |
+| **H65** `POST /dvap/{id}/reemitirPago` y la sincronización sin reversión automática | **U5** «Plantilla general» (`cnt`) deja de fingir que guarda |
+| **H66** anular una devolución anula también la orden `POR_APROBAR` | ⛔ **H70** el atajo «Saldo total» retirado del diálogo de cobro |
+| **H67** el Estado de CPRM se resuelve por el código alterno | **Sepelio fase 1 — la pantalla** de recepción, aprobación y anulación |
+| **H68** el service normaliza `valorSeguro` nulo a 0 | **H68** las dos pantallas mandan 0 y el panel se cierra al guardar |
+| **H69** tipo 23 contabilizable, sólo a jubilados | **H71** los tres nombres de menú que se veían como `...` |
+| **Sepelio fase 1 — el backend** de `CRD.RVSG` | **H65** el botón «REEMITIR PAGO» y su diálogo |
+
+⚠️ **Las dos consecuencias que importan si el build del FE no subió:**
+
+1. **H70 sigue vivo en producción.** El atajo «Saldo total · $16.246,61» sigue ahí, y quien lo
+   aprieta para cancelar un crédito **le cobra al socio ~$3.062 de interés futuro que no debía
+   pagar**. La corrección es 100 % frontend: el WAR no la trae.
+2. **Sepelio fase 1 queda inservible aunque esté completo.** La tabla `CRD.RVSG` está creada y
+   verificada, el backend está desplegado… y **no hay pantalla desde donde registrar nada**. Las
+   tres piezas tienen que estar para que el frente exista.
+
+## Lo que el WAR levanta, y queda habilitado desde ahora
+
+- **La corrida de jubilados ya no se rompe entera si falla el pago al proveedor de seguro** (U1).
+- **«Anular» en Historial de operaciones ya no descuadra un cobro CBCR** (U2): ahora responde con un
+  código de negocio que remite a `/cbcr/{id}/reversar`.
+- **Se puede cobrar pensión complementaria a un jubilado** (H69) ⇒ con eso existe, por fin, la
+  herramienta para **recuperar un sobrepago**, que H60 había cerrado como «sin herramienta».
+- **Jubilar un partícipe con el seguro vacío ya no revienta con ORA-01400** (H68).
+- **Reemitir el pago de una devolución rebotada** (H65) y la anulación que dejaba viva la orden (H66).
+
+## ⛔ Los dos gates de configuración del primer caso de sepelio — NO son código
+
+Cuando se registre la primera recepción, si falla va a ser por acá y no por el WAR:
+
+1. **La contabilidad de CRD tiene que estar activa** — rubro `237` / detalle `1` en `SCP.PRBR`/`SCP.PDTR`,
+   buscado **por código alterno** (`PRBRALTR=237`, `PDTRALTR=1`), con `PDTRVLRN = 1`. Si esa fila
+   **no existe**, `aprobar` responde **409 igual que si alguien la hubiera apagado**, y el mensaje va
+   a hablar de contabilidad inactiva sin decir que lo que falta es una fila de catálogo.
+2. **La cuenta bancaria ASOPREP donde entró el dinero tiene que tener `CNBCCBCR = 1`**, o no aparece
+   en el combo de la pantalla.
+
+## Lo que sigue sin verificar, ahora que el WAR está arriba
+
+- **`crd/sql/218`** — sigue sin constancia de ejecución. Es de solo lectura y su bloque 3 dice si
+  quedó algún período de `PGPC` **sin cabecera `CRJB`, o sea pagable dos veces**.
+- **El verificador entidad-vs-esquema de `crd` es del 2026-08-30 y cubre 98 entidades; hoy
+  `model/crd` tiene 107.** No cubre `CRJB`, `CFCR`, `ESCR`, `USAP` ni `RVSG` (ésta tiene su propio
+  `232`, ya corrido y limpio). Tal como está da una tranquilidad que no corresponde — regla 9.
+- **P22, calificación de riesgo**: código de las dos puntas, tablas creadas, **nunca probado contra
+  producción**. Sigue igual desde el 09-09.
