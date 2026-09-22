@@ -112,5 +112,6 @@ public interface NombreEntidadesCredito {
 	String USUARIO_APP = "UsuarioApp";
 	String CORRIDA_JUBILADOS = "CorridaJubilados";
 	String RECEPCION_VALOR_SEGURO = "RecepcionValorSeguro";
+	String CUENTA_BANCARIA_BENEFICIARIO = "CuentaBancariaBeneficiario";
 
 }

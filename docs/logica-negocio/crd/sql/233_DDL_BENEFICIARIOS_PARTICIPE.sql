@@ -66,14 +66,33 @@ FROM   ALL_TAB_PRIVS p
 WHERE  p.OWNER = 'TSR' AND p.TABLE_NAME = 'BEXT' AND p.PRIVILEGE = 'REFERENCES';
 
 -- 0.5 EL TIPO DE ADJUNTO "CERTIFICADO BANCARIO" TIENE QUE EXISTIR.
---     El tipo se resuelve POR NOMBRE, asi que sin esta fila el endpoint que sube el
---     certificado responde TIPO_ADJUNTO_CERTIFICADO_NO_CONFIGURADO (500) en CUALQUIER
---     intento, y la pantalla no va a decir que lo que falta es una fila de catalogo.
---     El usuario informo el 2026-09-22 que el script ya corrio; esto lo confirma.
---     Esperado: 1 fila.
+--     Sin esta fila el endpoint que sube el certificado responde
+--     TIPO_ADJUNTO_CERTIFICADO_NO_CONFIGURADO en CUALQUIER intento, y la pantalla no va a
+--     decir que lo que falta es una fila de catalogo.
+--
+--     ⚠️ CORREGIDO 2026-09-22, y la correccion importa mas que el control:
+--     la primera version de este bloque buscaba con LIKE '%CERTIFICADO%BANCARIO%'. ESTA MAL.
+--     El codigo real (TipoAdjuntoDaoServiceImpl.selectByNombre:25-31) hace
+--       UPPER(t.nombre) = UPPER(:nombre)  AND  t.estado = Estado.ACTIVO (1)
+--     o sea IGUALDAD EXACTA y ademas filtra por estado. Un LIKE habria dado "1 fila, todo
+--     bien" con un nombre como 'CERTIFICADO BANCARIO DIGITALIZADO', o con la fila INACTIVA,
+--     y el certificado habria fallado igual el primer dia. Un control mas laxo que el codigo
+--     que pretende controlar no controla nada: da tranquilidad falsa.
+--     Lo levanto el ejecutor BE al programar contra el codigo en vez de contra mi prosa.
+--
+--     Esperado: EXACTAMENTE 1 fila, con TPDJNMBR = 'CERTIFICADO BANCARIO' (sin sufijos) y
+--     TPDJIDST = 1. Si devuelve 0 filas, o el nombre tiene algo mas, o el estado no es 1,
+--     PARAR: hay que corregir la fila de catalogo antes de usar la pantalla.
 SELECT d.TPDJCDGO, d.TPDJNMBR, d.TPDJIDST
 FROM   CRD.TPDJ d
-WHERE  UPPER(d.TPDJNMBR) LIKE '%CERTIFICADO%BANCARIO%';
+WHERE  UPPER(d.TPDJNMBR) = UPPER('CERTIFICADO BANCARIO')
+AND    d.TPDJIDST = 1;
+
+-- 0.5b Diagnostico, para el caso de que el 0.5 devuelva 0 filas: muestra TODO lo que se
+--      parezca, con su estado, para ver si el problema es el nombre o el estado.
+SELECT d.TPDJCDGO, d.TPDJNMBR, d.TPDJIDST
+FROM   CRD.TPDJ d
+WHERE  UPPER(d.TPDJNMBR) LIKE '%CERTIFICAD%';
 
 -- 0.6 Foto del antes: la tabla todavia no debe existir, asi que descomentar esta linea
 --     tiene que fallar con ORA-00942. Es el control, no un error.
