@@ -3683,10 +3683,11 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		String notaCheque = (cheque != null)
 				? "Cheque N° " + cheque.getNumero() + " Cta " + pago.getCuentaBancaria().getNumeroCuenta()
 				: null;
+		String observacionAnticipo = conReferenciaBanco(notaCheque, pago);
 
 		// 1. Asiento de anticipo + saldo de anticipos + anticipo Confirmado
 		Asiento asiento = anticipoProveedorService.contabilizarAnticipoConfirmado(
-				anticipo.getId(), idCuentaBancaria, fecha, idUsuario, notaCheque);
+				anticipo.getId(), idCuentaBancaria, fecha, idUsuario, observacionAnticipo);
 
 		// 2. Movimiento bancario de egreso (mismo criterio que los demás pagos)
 		if (cheque == null || emitirMovimientoCheque) {
@@ -3764,9 +3765,15 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	/**
 	 * Agrega la referencia bancaria del pago al final de una observación de asiento, en un
 	 * formato único (<code>... | Ref. banco: 1009212</code>), si el pago la tiene. Único
-	 * punto de construcción para las cuatro rutas de {@code contabilizarSegunOrigen}
-	 * (egreso, origen externo genérico, caja chica, anticipo a empleado) — una variante
-	 * futura sólo tiene que llamar a este método, no repetir el formato.
+	 * punto de construcción para las cinco rutas de {@code contabilizarSegunOrigen}
+	 * (egreso, origen externo genérico, caja chica, anticipo a empleado, anticipo a
+	 * proveedor) — una variante futura sólo tiene que llamar a este método, no repetir
+	 * el formato.
+	 * {@code observacionBase} puede venir <code>null</code> o vacío — es el caso del
+	 * anticipo a proveedor por transferencia sin cheque (§1 de
+	 * docs/logica-negocio/pagos/DISENO-REFERENCIA-BANCO-EN-ASIENTO-Y-CONCILIACION.md) — y
+	 * entonces el resultado es sólo <code>"Ref. banco: 1009212"</code>, sin el separador
+	 * ni el texto literal <code>"null"</code> por delante.
 	 * Ver docs/logica-negocio/pagos/PLAN-DEBITO-AUTOMATICO-CONTABILIZA-AL-CONFIRMAR.md §3.
 	 */
 	private String conReferenciaBanco(String observacionBase, PagoProgramado pago) {
@@ -3774,7 +3781,10 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		if (referencia == null || referencia.trim().isEmpty()) {
 			return observacionBase;
 		}
-		return observacionBase + " | Ref. banco: " + referencia.trim();
+		String textoReferencia = "Ref. banco: " + referencia.trim();
+		return (observacionBase == null || observacionBase.trim().isEmpty())
+				? textoReferencia
+				: observacionBase + " | " + textoReferencia;
 	}
 
 	/**
