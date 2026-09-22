@@ -127,17 +127,59 @@ SELECT 'BLOQUE 2 - pagos vivos sobre la factura' AS bloque,
 
 
 -- =====================================================================
--- BLOQUE 3 — OPCION A: marcarla como PAGADA. ⛔ COMENTADO.
--- Es lo que pidio el usuario y lo que la saca del combo.
--- Reemplazar <<ID>> por el ID que haya mostrado el BLOQUE 0.
--- Se filtra ademas por el numero como segunda guarda: si el ID no
--- correspondiera a esa factura, el UPDATE no toca nada en vez de tocar
--- otra cosa.
+-- ⭐ SALIDA REAL DE LOS BLOQUES 0 a 2 — corrida por el usuario el 2026-09-22
+--
+--   BLOQUE 0: factura id 243 · 001-501-000000203 · 2026-06-01 ·
+--     CUSTODIA & MAXIMA SEGURIDAD CUSTOMAX CIA LTDA (1792578426001) ·
+--     total 12.295,80 (subtotal 10.692,00 + IVA 1.603,80) ·
+--     ESTADO 1 (activa) · FCTCEPAG 2 (PAGADA PARCIAL) · asiento 7752
+--   BLOQUE 1: aplicado 320,76 · SALDO REAL 11.975,04
+--   BLOQUE 1b: UNA aplicacion — id 35, 07/07/2026, 320,76, tipo 3
+--     (RETENCION emitida al proveedor: es el 3% de 10.692), estado 1 activa.
+--     La retencion es la V2 N° 001-001-000007275, asiento CXP-2026-07-0097.
+--   BLOQUE 2: 🔴 pago id 477 por 11.975,04 en estado 0 = **POR_APROBAR**.
+--     NO es un pago anulado: es un pago VIVO esperando en la bandeja de
+--     Tesoreria. Si alguien aprueba ese lote, sale plata real al banco por
+--     una factura de prueba.
+--
+-- ⛔ DECISION DEL USUARIO, 2026-09-22, despues de ver estos numeros:
+--   1. **Anular el pago 477** (no se pago nada; era parte de la prueba).
+--      Se hace desde Tesoreria -> Aprobacion de pagos, NO por SQL.
+--      Verificado en el codigo: `anularPago` solo cambia el estado a
+--      ANULADO y guarda el motivo — **no toca ningun asiento ni genera
+--      contabilidad** (PagoProgramadoServiceImpl:2234-2238).
+--   2. **Marcar la factura como PAGADA** con el BLOQUE 3 de abajo. Es la
+--      unica via que NO genera contabilidad: no crea asiento, no crea
+--      aplicacion, solo cambia la marca. La contabilidad de junio (asiento
+--      7752) y la de julio (la retencion) **quedan intactas**, que es la
+--      condicion que puso el usuario: *"esa contabilidad ya fue generada"*.
+--   3. **El saldo de 11.975,04 SE DEJA VISIBLE** en el Estado de Cuenta del
+--      proveedor, rotulado "Pagada". Decision explicita del usuario: el
+--      saldo existe en libros y no se inventa un abono para taparlo.
+--
+-- ⛔ POR ESO SE DESCARTO ANULAR LA FACTURA (la vieja "opcion B"): el
+--    proceso `anularFacturaCompra` **anula el asiento contable**
+--    (FacturaCompraServiceImpl:~212-225) y eso es exactamente lo que el
+--    usuario no quiere. Su unica alternativa, `reversarAsiento=true`, deja
+--    el asiento original intacto pero **genera una contrapartida**, o sea
+--    contabilidad nueva. Ninguna de las dos sirve acá.
+-- =====================================================================
+
+
+-- =====================================================================
+-- BLOQUE 3 — MARCARLA COMO PAGADA. ⛔ COMENTADO.
+-- Es el camino elegido por el usuario y lo que la saca del combo.
+-- ⚠️ ANTES de correrlo: anular el pago 477 en Tesoreria (punto 1 de la
+--    decision). Si no, queda una factura "pagada" con un pago vivo que
+--    puede irse al banco.
+-- El ID es 243, del BLOQUE 0. Se filtra ademas por el numero como segunda
+-- guarda: si el ID no correspondiera a esa factura, el UPDATE no toca nada
+-- en vez de tocar otra cosa.
 -- ESPERADO: "1 fila actualizada".
 --
 -- UPDATE PGS.FCTC
 --    SET FCTCEPAG = 3                      -- PAGADA_TOTAL
---  WHERE ID = <<ID DEL BLOQUE 0>>
+--  WHERE ID = 243
 --    AND NUMERO = '001-501-000000203';     -- guarda
 --
 -- -- Control posterior, ANTES del COMMIT: volver a correr el BLOQUE 0.
@@ -147,29 +189,41 @@ SELECT 'BLOQUE 2 - pagos vivos sobre la factura' AS bloque,
 -- ⛔ SIN ESTE COMMIT NO SE GUARDA NADA.
 -- COMMIT;
 --
--- REVERSO (comentado): devuelve el estado de pago a PAGADA PARCIAL.
---   UPDATE PGS.FCTC SET FCTCEPAG = 2 WHERE ID = <<ID>>;
+-- REVERSO (comentado): devuelve el estado de pago a PAGADA PARCIAL, que es
+-- el valor exacto que tenia antes segun el BLOQUE 0 del 2026-09-22.
+--   UPDATE PGS.FCTC SET FCTCEPAG = 2 WHERE ID = 243;
 --   COMMIT;
 -- =====================================================================
 
 
 -- =====================================================================
--- OPCION B — ANULAR la factura. NO LA HACE ESTE SCRIPT, y va explicado
--- porque para un documento de PRUEBA suele ser lo correcto.
+-- DESCARTADO — anular la factura. Queda escrito por que NO se hizo, que
+-- es lo que le sirve al que lea esto dentro de seis meses.
 --
--- El primer filtro del combo es `estado === 1`, asi que anularla tambien
--- la saca de ahi — y ademas la saca del Estado de Cuenta del proveedor,
--- de los reportes de cuentas por pagar y del ATS y los cuadres del SRI,
--- que una factura de prueba de 12.295,80 no deberia estar alimentando.
+-- Anularla era la via mas limpia para un documento de prueba: sale del
+-- combo por el primer filtro (`estado === 1`), del Estado de Cuenta, de
+-- CxP y del ATS y los cuadres del SRI de junio.
 --
--- ⛔ Pero anular NO es un UPDATE de una columna: la factura tiene
---    aplicaciones de pago (BLOQUE 1b) y puede tener asiento contable
---    (BLOQUE 0). Anularla por SQL dejaria las aplicaciones huerfanas y el
---    asiento vivo, que es peor que el problema que resuelve. La anulacion
---    tiene su propio proceso en el sistema
---    (docs/logica-negocio/cxc/API-ANULACION-DOCUMENTOS.md).
+-- ⛔ Pero el proceso `anularFacturaCompra` **anula el asiento contable**
+--    (FacturaCompraServiceImpl:~212-225: pone el asiento en ANULADO con
+--    motivo, fecha y usuario) y ademas reversa los movimientos
+--    relacionados — acá, la retencion de 320,76 con su propio asiento de
+--    julio. El usuario lo descarto por eso, con una razon que se sostiene:
+--    *"no tocar los asientos contables porque esa contabilidad ya se
+--    genero"*. Junio ya esta contabilizado.
 --
--- Si el usuario prefiere esta via, el arbitro mide primero que cuelga de
--- la factura y escribe el procedimiento completo. NO improvisar un
--- UPDATE de ESTADO acá.
+--    La unica variante que no borra el asiento original es
+--    `reversarAsiento=true`, que lo deja intacto y **genera una
+--    contrapartida** con fecha del reverso (AplicacionPagoCxpServiceImpl
+--    :1534-1542, `asientoService.reversionAsiento`). Tampoco sirve: es
+--    contabilidad NUEVA, y la condicion era no generar ninguna.
+--
+--    Por eso la marca de estado de pago es la unica via que cumple las dos
+--    cosas a la vez — sacarla del combo y no tocar un solo asiento.
+--
+-- ⚠️ LO QUE ESTO DEJA ABIERTO, y el usuario lo sabe y lo acepto: la
+--    cuenta por pagar de 11.975,04 sigue viva en libros y en el Estado de
+--    Cuenta del proveedor, rotulada "Pagada". Si algun dia el contador
+--    decide regularizarla, se hace con un asiento de ajuste con fecha del
+--    periodo abierto, nunca tocando junio.
 -- =====================================================================
