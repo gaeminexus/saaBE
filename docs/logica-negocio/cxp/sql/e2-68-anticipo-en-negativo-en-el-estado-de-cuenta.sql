@@ -174,11 +174,48 @@ SELECT 'BLOQUE 3 - positivos con saldo negativo' AS bloque,
 
 
 -- =====================================================================
+-- ⭐ SALIDA REAL DE LOS BLOQUES 0 a 3 — corrida por el usuario el 2026-09-22
+--
+--   BLOQUE 0, dos filas:
+--     id 2 · 23/07 · "COMPROBANTE 202026070055" · valor  1200 · saldo  1200
+--            estado 2 (CONFIRMADO) · asiento 7590
+--     id 4 · 27/07 · "Factura N° 001-100-000000036" · valor -1200 · saldo -2400
+--            estado 2 (CONFIRMADO) · asiento 8030 · obs "Cruce con factura..."
+--     Suma que ve el Estado de Cuenta: 1200 + (-2400) = -1200. Exacto.
+--
+--   BLOQUE 1: la aplicacion del cruce EXISTE — id 96, tipo 4, estado 1
+--     (activa), 1.200,00 contra la factura 167, fecha 27/07, y con
+--     APLPANTP = 4: apunta al MOVIMIENTO NEGATIVO, no al anticipo real.
+--     APLPANTO vacio, que es lo que el javadoc de la entidad describe como
+--     "los cruces anteriores que la migracion no pudo atribuir".
+--     (Las otras filas del bloque son pagos y retenciones normales de otras
+--     facturas del proveedor, tipos 1 y 3: ninguna es cruce de anticipo.)
+--
+--   BLOQUE 2: UNA sola fila, la id 4. Es un ejemplar suelto, no una familia.
+--   BLOQUE 3: vacio.
+--
+-- ⛔ LO QUE ESTO CORRIGIO DE LA HIPOTESIS: no es una fila la que esta mal,
+--    son LAS DOS.
+--      · La id 4 es el movimiento negativo historico: le falta el
+--        ANTPESTD = 4 y su ANTPSALD tiene -2400, que es el "saldo global
+--        acumulado" del esquema viejo (MIGRACION-CRUCES-ANTICIPO.md lo
+--        documenta como el significado ANTERIOR de esa columna), no un
+--        saldo disponible.
+--      · La id 2 es el anticipo REAL y quedo con ANTPSALD = 1200, o sea el
+--        sistema cree que sigue disponible entero — y no lo esta: la
+--        aplicacion 96 lo consumio completo.
+--    Corregir solo la negativa dejaria el Estado de Cuenta en +1.200,00,
+--    que tambien es falso. Por eso el BLOQUE 4 toca las dos.
+-- =====================================================================
+
+
+-- =====================================================================
 -- BLOQUE 4 — LA CORRECCION. ⛔ COMENTADA. Leer los bloques 0 a 3 primero.
 --
--- QUE HACE: marca la fila NEGATIVA del cruce historico como MIGRADO (4)
--- y le pone el saldo en 0, que es exactamente el estado en el que la
--- migracion del 2026-08-20 deja a estas filas.
+-- QUE HACE: deja las dos filas como las habria dejado la migracion del
+-- 2026-08-20: el movimiento negativo marcado MIGRADO (4) con saldo 0, y el
+-- anticipo real con su saldo disponible REAL, que es 0 porque la
+-- aplicacion 96 lo consumio entero.
 --
 -- POR QUE NO AFECTA CONTABILIDAD NI SALDOS, que es lo que el usuario pidio:
 --   · NO toca ningun asiento: no se escribe ANTPASNT ni se modifica CNT.
@@ -190,27 +227,71 @@ SELECT 'BLOQUE 3 - positivos con saldo negativo' AS bloque,
 --   · Lo unico que cambia es la CLASIFICACION del movimiento historico,
 --     que es lo que el Estado de Cuenta mira para decidir si lo suma.
 --
--- ⚠️ Solo corre sobre filas NEGATIVAS. Una fila positiva jamas se toca.
--- ⚠️ Ajustar el ID a lo que haya dicho el BLOQUE 0. Se deja por ID y no
---    por RUC a proposito: un UPDATE por proveedor podria alcanzar filas
---    que todavia no se miraron.
+-- POR QUE EL SALDO DE LA id 2 VA A 0 Y NO SE INVENTA NADA: el anticipo es
+--   de 1.200,00 y la aplicacion 96 (tipo 4, ACTIVA, del 27/07) aplico
+--   1.200,00 contra la factura 167. Disponible = 1200 - 1200 = 0. Es el
+--   mismo numero que la pantalla de Consulta de Anticipos ya muestra
+--   ("SALDO DE ANTICIPOS $0.00") y que el usuario confirmo como correcto.
 --
+-- ⚠️ Cada UPDATE lleva su guarda de signo: el de la fila negativa exige
+--    ANTPVLOR < 0 y el de la positiva exige ANTPVLOR > 0. Si los ids se
+--    pegaran cambiados, ninguno de los dos toca nada.
+--
+-- -- 4.1 — el movimiento negativo historico pasa a MIGRADO, saldo 0
 -- UPDATE PGS.ANTP
 --    SET ANTPESTD = 4,          -- MIGRADO: movimiento negativo historico
 --        ANTPSALD = 0
---  WHERE ANTPCDGO = <<ID DE LA FILA NEGATIVA, del BLOQUE 0>>
+--  WHERE ANTPCDGO = 4
 --    AND NVL(ANTPVLOR,0) < 0;   -- guarda: nunca una fila positiva
 --
--- -- Control posterior, ANTES del COMMIT. ESPERADO: estado 4 y saldo 0,
--- -- y la columna SUMA_QUE_VE_EL_ESTADO_DE_CUENTA en 0 para esa fila.
--- -- Volver a correr el BLOQUE 0.
+-- -- 4.2 — el anticipo REAL conserva su estado CONFIRMADO y queda con su
+-- --       saldo disponible real. NO se toca ANTPESTD: sigue siendo un
+-- --       anticipo confirmado, solo que ya consumido.
+-- UPDATE PGS.ANTP
+--    SET ANTPSALD = 0
+--  WHERE ANTPCDGO = 2
+--    AND NVL(ANTPVLOR,0) > 0;   -- guarda: nunca la fila del cruce
+--
+-- -- Control posterior, ANTES del COMMIT: volver a correr el BLOQUE 0.
+-- -- ESPERADO:
+-- --   id 2 -> saldo 0, estado 2 (CONFIRMADO), asiento 7590 intacto
+-- --   id 4 -> saldo 0, estado 4 (MIGRADO),    asiento 8030 intacto
+-- --   y la columna SUMA_QUE_VE_EL_ESTADO_DE_CUENTA en 0 en las dos filas.
+-- --   Esa suma es, literalmente, lo que va a mostrar la pantalla.
 --
 -- ⛔ SIN ESTE COMMIT NO SE GUARDA NADA.
 -- COMMIT;
 --
--- REVERSO (comentado): devuelve la fila a como estaba. Reemplazar por los
--- valores EXACTOS que haya mostrado el BLOQUE 0 antes del cambio.
---   UPDATE PGS.ANTP SET ANTPESTD = <<estado anterior>>, ANTPSALD = <<saldo anterior>>
---    WHERE ANTPCDGO = <<ID>>;
+-- DESPUES DEL COMMIT, mirar las DOS pantallas:
+--   · Estado de Cuenta de Titular -> "Saldo a favor (anticipos)" debe decir 0,00
+--   · Consulta de Anticipos       -> debe SEGUIR diciendo $0.00, y el historial
+--     debe seguir mostrando las dos filas (la 4 se conserva como historial;
+--     MIGRADO no la borra).
+--   Si la Consulta de Anticipos cambiara, avisar al arbitro: significa que
+--   esa pantalla lee ANTPSALD de una forma que no se midio.
+--
+-- REVERSO (comentado): devuelve las dos filas EXACTAMENTE a como estaban,
+-- con los valores que imprimio el BLOQUE 0 el 2026-09-22.
+--   UPDATE PGS.ANTP SET ANTPESTD = 2, ANTPSALD = -2400 WHERE ANTPCDGO = 4;
+--   UPDATE PGS.ANTP SET ANTPESTD = 2, ANTPSALD =  1200 WHERE ANTPCDGO = 2;
 --   COMMIT;
+-- =====================================================================
+
+
+-- =====================================================================
+-- APARTE — una mejora de trazabilidad que este script NO hace, y es
+-- decision del usuario.
+--
+-- La aplicacion 96 tiene APLPANTP = 4 (apunta al movimiento negativo) y
+-- APLPANTO vacio. El esquema nuevo espera lo contrario: APLPANTO con el
+-- anticipo REAL (la id 2), que segun el javadoc de AplicacionPagoCxp "es
+-- lo que permite saber con exactitud que abonos hay que deshacer al anular
+-- un anticipo".
+--
+-- O sea: si algun dia se anulara el anticipo 2, el sistema no sabria que
+-- este cruce salio de el. Se arregla con
+--     UPDATE PGS.APLP SET APLPANTO = 2 WHERE APLPCDGO = 96;
+-- pero eso TOCA UNA APLICACION DE PAGO, que es otra cosa que tocar una
+-- clasificacion de historial, y no hace falta para el sintoma que el
+-- usuario reporto. Queda planteado, sin correr.
 -- =====================================================================
