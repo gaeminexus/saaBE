@@ -1080,8 +1080,16 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         pago.setAnio(anio.longValue());
         pago.setMes(mes.longValue());
         pago.setValorSeguro(seguroFijado);
-        // PGPCVLPN/PGPCVLRR quedan sin fijar (null) hasta que generarPensionIndividual complete
-        // esta misma fila — es la señal de "stub" que usa generarMesesRetroactivos. La fila se
+        // ⛔⛔ 2026-09-22: PGPCVLRR es NOT NULL en la base (crd/sql/97) — "Total pagado =
+        // VLPN + VLSG", y este método nunca lo completaba (ORA-01400 la primera vez que
+        // corrió de verdad). Se mantiene la invariante que declara la propia columna: se suma
+        // la pensión YA fijada en la fila (si es un reintento sobre una fila existente) más el
+        // seguro que se acaba de fijar acá. Si la fila es nueva, valorPension todavía es null
+        // y se toma como 0 — generarPensionIndividual la vuelve a pisar con el total real
+        // cuando complete PGPCVLPN.
+        pago.setValor(redondear((pago.getValorPension() != null ? pago.getValorPension() : 0.0) + seguroFijado));
+        // PGPCVLPN queda sin fijar (null) hasta que generarPensionIndividual complete esta
+        // misma fila — es la señal de "stub" que usa generarMesesRetroactivos. La fila se
         // graba SIEMPRE, aunque seguroFijado sea 0.0 (§11.1): así la corrida la reconoce como
         // fijada y no la trata como SIN_SEGURO_DEL_PERIODO.
         pago.setEstado(Long.valueOf(EstadoPagoPensionComplementaria.SEGURO_GENERADO));
