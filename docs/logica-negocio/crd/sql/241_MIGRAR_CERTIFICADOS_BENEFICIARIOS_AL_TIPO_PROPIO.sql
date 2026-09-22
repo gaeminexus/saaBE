@@ -156,3 +156,41 @@ SELECT a.ADJNIDRF, COUNT(*) AS ADJUNTOS_TIPO_4,
 -- UPDATE CRD.ADJN a SET a.TPDJCDGO = 4
 --  WHERE a.ADJNURLA LIKE '%certificados-beneficiarios%';
 -- COMMIT;
+
+
+-- =====================================================================================
+-- ✅ MEDIDO EN PRODUCCION — 2026-09-22. NO HUBO DAÑO.
+-- =====================================================================================
+-- 1.1 -> los DIEZ adjuntos de beneficiarios, ADJNCDGO 2664 a 2674, con ADJNIDRF 1 a 10,
+--        todos tipo 4, todos cargados hoy entre las 12:08 y las 13:55.
+--
+-- 1.2 -> ⭐ VACIO. No existe NINGUNA cuenta bancaria de participe con CNBPCDGO entre 1 y
+--        10, asi que la colision que este script vino a prevenir NO SE MATERIALIZO:
+--        ningun participe vio un certificado ajeno.
+--
+-- 1.3 -> lo confirma por el otro lado: para cada ADJNIDRF de 1 a 10 hay UN solo adjunto
+--        tipo 4, y es el del beneficiario. Cero de cuentas bancarias.
+--
+-- 2.1 -> el tipo 58 existe, activo y unico.   2.2 -> 0 migrados todavia.
+--
+-- ⚠️ QUE EL DAÑO NO HAYA OCURRIDO NO VUELVE INNECESARIO EL ARREGLO, y conviene dejarlo
+--    escrito para que nadie lea esto dentro de un año y concluya que fue alarmismo:
+--    CRD.CNBP tiene cientos de filas y CRD.CBBP suma de a una, desde 1. La colision era
+--    cuestion de TIEMPO, no de suerte: iba a empezar en cuanto CBBP alcanzara el primer
+--    codigo que exista en CNBP. Se llego antes, nada mas.
+--
+-- ⇒ La migracion se corre igual: sin ella, con el WAR nuevo esos diez beneficiarios
+--   (la viuda, las hijas, los Ormaza) aparecen SIN certificado, porque el codigo busca
+--   el tipo 58 y sus adjuntos tienen el 4.
+--
+-- EL UPDATE QUE CORRESPONDE, ya resuelto y sin subconsulta porque el tipo esta medido:
+--
+-- UPDATE CRD.ADJN a
+--    SET a.TPDJCDGO = 58
+--  WHERE a.ADJNURLA LIKE '%certificados-beneficiarios%'
+--    AND a.TPDJCDGO = 4;
+--
+-- COMMIT;
+--
+-- Esperado: 10 filas actualizadas. Despues, el bloque 4.
+-- =====================================================================================
