@@ -3961,3 +3961,100 @@ memoria (H34, H69, y el bloque `3.3` del `232`).
 - **Alcance que se amplía solo:** la devolución de aportes normal también debe pagar a beneficiarios
   cuando el partícipe está fallecido (decisión del usuario). Eso toca `registrarDevolucion`, que ya
   está en producción: la 2b modifica código vivo, no sólo agrega código nuevo.
+
+---
+
+# ⛔⛔ 2026-09-22 — H74: los 410 certificados bancarios se volvieron invisibles por UNA fila de catálogo
+
+**Reportado por el usuario:** *«los certificados de las cuentas bancarias de los partícipes que ya
+se habían cargado están saliendo como que no se hubieran cargado»*.
+
+## La cadena, medida en producción
+
+`CRD.TPDJ` tenía **dos filas activas** llamadas `CERTIFICADO BANCARIO`: la **4** y la **38**.
+
+El backend resuelve ese tipo **por nombre** y —desde la corrección del 2026-09-04— exige
+**exactamente una** fila activa. Con dos lanza `ERR_TIPO_ADJUNTO_NO_CONFIGURADO`. Y
+`obtenerCertificado:239` llama a ese resolutor **antes** de buscar el adjunto ⇒ **falla para TODAS
+las cuentas**, y la pantalla las muestra todas sin certificado.
+
+| Tipo | Adjuntos | Qué era |
+|---|---|---|
+| **4** | **410** (394 activos, **273 cuentas**), desde 2025-02-05 **hasta el 21-09 16:09** | el bueno |
+| 38 | **0** | lo creó el `INSERT` del 22-09 |
+| 37 | — | el duplicado del 04-09, ya inactivo desde `sql/193` |
+
+⭐ **El `HASTA` del 4 es la prueba que cierra el diagnóstico sin ambigüedad:** el sistema venía
+grabando certificados con el 4 hasta el día anterior. **Nada que reapuntar, nada que migrar** — ni
+un adjunto se tocó. Bastó desactivar el 38.
+
+## ⛔ La causa de fondo, y es la TERCERA vez
+
+`CARGA-TIPO-ADJUNTO-CERTIFICADO-BANCARIO.sql` traía un control previo que dice, textual:
+*«esperado: 0 filas. Si devuelve algo, NO correr el INSERT — ya existe»*… seguido de un **`INSERT`
+plano, sin guarda**. Corrido de corrido, duplica.
+
+- **2026-09-04** → creó el id 37 (`sql/193`).
+- **2026-09-22** → creó el id 38 (`sql/234`).
+
+**Las dos veces el control estaba bien escrito. Las dos veces falló que alguien lo leyera.**
+
+⇒ **La lección no es «leer mejor».** Un script que escribe no puede depender de que una persona
+interprete un comentario. **Mientras la base lo permita, va a volver a pasar.**
+
+## Error del árbitro, registrado
+
+**Yo disparé este incidente.** Le pedí al usuario que confirmara si ese script había corrido (ítem
+S4 de sepelio) **sin advertirle que su `INSERT` no tenía guarda**. Lo corrió, como correspondía a lo
+que le pedí, y rompió los certificados de 273 cuentas.
+
+## Las tres correcciones, en capas
+
+| Script | Qué |
+|---|---|
+| `sql/234` | El diagnóstico (sin ids quemados) y el `UPDATE` que desactiva el 38 |
+| `CARGA-TIPO-ADJUNTO-...` | El `INSERT` pasa a `INSERT ... WHERE NOT EXISTS`. Correrlo mil veces ya no duplica |
+| `sql/235` | ⭐ **`UX_TPDJ_NOMBRE_ACTIVO`**: índice único **funcional y parcial** sobre `UPPER(TRIM(nombre))` **sólo para activas** |
+
+**Por qué el índice y no sólo el script arreglado:** existe **`POST /rest/tpdj`**
+(`TipoAdjuntoRest:84`, CRUD genérico **sin validación de nombre repetido**) y su pantalla en
+Parametrización de Créditos. **Cualquier operador puede crear otro «CERTIFICADO BANCARIO» desde la
+UI y romper 273 cuentas sin enterarse.** Arreglar el script cerraba un camino de tres.
+
+**Detalles del índice que no son adorno:**
+- `TRIM` porque un espacio al final burlaría el índice **y el backend igual no encontraría la fila**
+  (su comparación es exacta): una fila que parece cargada y no funciona, peor que el duplicado.
+- **Parcial (`CASE WHEN estado = 1`)** porque la expresión da `NULL` para las inactivas y Oracle no
+  indexa claves todo-`NULL`: el 37 y el 38 conviven con el 4 sin conflicto. Un `UNIQUE` sobre el
+  nombre a secas habría obligado a **borrar** tipos con adjuntos colgando.
+
+Mismo criterio que `UX_RVSG_REFERENCIA`: **el chequeo previo informa, el índice impide.**
+
+## ⛔ H75 — El WAR subió otra vez sin su DDL (`ORA-00942` sobre `CRD.CBBP`)
+
+Mismo día, con la fase 2a recién entregada: el WAR se desplegó **antes** de correr el `233`, así que
+Hibernate consultaba una tabla inexistente.
+
+⭐ **Y acá se cobró sola la corrección de H73.** Como `porEntidad` ya devolvía lista vacía en vez de
+propagar, **la ficha del partícipe siguió abriendo** y el ORA-00942 quedó como ruido en el log en
+lugar de dejar una pantalla muerta para todos los partícipes. Ese `catchError` se escribió 24 h
+antes justamente para este escenario, y el escenario ocurrió.
+
+⚠️ **Precisión que evitó perseguir el defecto equivocado:** el error apareció «al procesar seguros
+médicos», pero **el proceso de seguros no consulta beneficiarios**. Verificado en las dos puntas:
+ninguna clase del backend fuera de las nuestras usa `CuentaBancariaBeneficiario`, y en el frontend
+sólo la usa `entidad-participe-info`. El ORA-00942 salía de **abrir la ficha de un partícipe**. Lo
+que sí rompía seguros médicos era H74: el pago a jubilados depende del certificado.
+
+## Estado al cierre
+
+El usuario corrió **234 (con el `UPDATE`), 233 y 235**. Queda `sql/236` —solo lectura— que da el
+veredicto de los seis controles en una fila, **y la confirmación en pantalla, que ningún SELECT
+puede dar**: que los certificados vuelvan a verse.
+
+## Lo que queda abierto de este incidente
+
+1. **`TipoAdjuntoRest` debería responder 409** con un mensaje claro ante un nombre repetido, como ya
+   hace `/rest/cbbp`. Hoy el índice lo rechaza con un ORA-00001 crudo: **feo pero seguro**.
+2. ⚠️ **Hay 21 puntos en el sistema que resuelven catálogos por nombre.** Este patrón —catálogo
+   duplicable + resolución por nombre— **no es exclusivo de `TPDJ`**. Nadie barrió los otros.
