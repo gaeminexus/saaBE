@@ -180,3 +180,56 @@ Las cuatro se preguntaron con las alternativas a la vista y se decidieron el mis
 | **La devolución de aportes normal TAMBIÉN se paga a beneficiarios** cuando el partícipe está fallecido | ⚠️ **Amplía el alcance:** `registrarDevolucion` deja de pagar siempre a `CuentaBancariaParticipe` y pasa a elegir destino según el estado del partícipe. Se resuelve **una sola vez** para sepelio y para aportes — es el mismo problema: la cuenta de un muerto no sirve |
 | **La recepción del dinero se puede registrar SIN beneficiarios cargados** | La validación del 100 % vive en el **pago**, nunca en la recepción. La plata ya está en el banco: negarse a registrarla no la hace desaparecer. La pantalla debe avisar que faltan beneficiarios, sin bloquear |
 | **La misma cédula puede ser beneficiaria de VARIOS partícipes** | El índice único es **(partícipe, cédula)**, NO la cédula sola. Un hijo es beneficiario del padre y de la madre: caso real y frecuente. ⛔ Un `UNIQUE` sobre `CBBPIDNT` solo sería un defecto que aparece recién cuando muere el segundo progenitor |
+
+---
+
+## 9. ✅ MEDIDO 2026-09-22 — el asiento de reclasificación: NO se agrega `CTAPRCLS`
+
+**Pendiente que el árbitro se había asignado y que quedaba bloqueando la fase 2b.** Medido contra el
+código, no deducido.
+
+### Lo que hace hoy
+
+`DevolucionAporteServiceImpl.generarAsientoReclasificacion:1296-1320` genera, **por cada tipo de
+aporte de la devolución**, dos líneas:
+
+- **DEBE** `CTAPPLNP` (cuenta de pasivo) — «baja del aporte del socio»
+- **HABER** `CTAPPLNL` (cuenta de liquidación) — «nace la obligación de liquidación»
+
+Y el `sql/231` configuró el tipo «VALOR DE SEGURO POR ENTREGAR A BENEFICIARIOS» con
+**`CTAPPLNL` = `CTAPPLNP` = `2.3.90.90.11`**, deliberadamente.
+
+⇒ Para ese tipo, la reclasificación sale **`D 2.3.90.90.11 / H 2.3.90.90.11`: neutra, cuadra, no
+descuadra nada.**
+
+### ⭐ Y una precisión que el diseño original no tenía
+
+§4 daba a entender que la reclasificación sobraba siempre. **No es así: se genera por TIPO.** En la
+**devolución de aportes normal a beneficiarios** (contrato `API-DEVOLUCION-APORTES-A-BENEFICIARIOS.md`)
+los tipos son los de siempre —cesantía y los demás—, con cuentas de pasivo y liquidación
+**distintas**, así que ahí la reclasificación es **real y necesaria**. El asiento neutro aparece
+**sólo** en la entrega del valor de sepelio.
+
+### La decisión, y su costo aceptado
+
+**NO se agrega la columna `CTAPRCLS` a `CRD.CTAP`.** Se deja correr el asiento neutro.
+
+| A favor de dejarlo | En contra |
+|---|---|
+| **Cero código nuevo** en `generarAsientoReclasificacion`, que corre en **todas** las devoluciones de todos los partícipes: es código vivo y crítico | El mayor de `2.3.90.90.11` va a tener movimientos espejo que no significan nada |
+| Cero DDL sobre `CRD.CTAP`, que es tabla compartida | El usuario pidió «dos asientos» y técnicamente son tres |
+| El asiento **cuadra**: no hay riesgo contable, sólo ruido | |
+| Volumen bajo: un asiento por caso de sepelio, no por corrida masiva | |
+
+⇒ **Criterio:** el ruido en un mayor es barato y reversible; tocar el motor de reclasificación de
+todas las devoluciones, no. La instrucción de «dos asientos» era sobre el **ciclo del dinero**
+(entra y sale), y un asiento técnico neutro no mueve ningún saldo.
+
+⚠️ **Cuándo revisar esta decisión:** si contabilidad concilia `2.3.90.90.11` y el ruido le molesta.
+Ahí se agrega `CTAPRCLS` como estaba diseñado — la opción sigue disponible y este documento la
+describe. **No se hace antes de que alguien lo pida**, que es lo contrario de lo que se hizo con la
+columna de origen en `ADJN` (H79), donde el problema ya existía y esperar habría costado datos.
+
+### ⇒ Con esto, la fase 2b queda bloqueada por UNA sola cosa
+
+El **producto de pago de CXP contra `2.3.90.90.11`**, que es de `omen-saa-2`. Nada más.
