@@ -71,10 +71,17 @@ public class CorridaJubilados implements Serializable {
     @Column(name = "CRJBMESS")
     private Long mes;
 
-    /** Estado del proceso de SEGURO: 0 pendiente, 1 generado. */
+    /**
+     * Estado del proceso de SEGURO: 0 pendiente, 1 generado.
+     *
+     * Inicializado en la declaración: la columna tiene {@code DEFAULT 0 NOT NULL} en la base,
+     * pero Hibernate manda la columna con {@code NULL} explícito en el INSERT (no la omite), así
+     * que el {@code DEFAULT} de Oracle nunca entra en juego. El valor por defecto tiene que vivir
+     * acá, no en la base.
+     */
     @Basic
     @Column(name = "CRJBESSG")
-    private Long estadoSeguro;
+    private Long estadoSeguro = 0L;
 
     /** Cuándo se generó el seguro. */
     @Basic
@@ -105,10 +112,16 @@ public class CorridaJubilados implements Serializable {
     @Column(name = "CRJBCTSG")
     private Long cantidadJubiladosSeguro;
 
-    /** Estado del proceso de PENSIONES: 0 pendiente, 1 generado. */
+    /**
+     * Estado del proceso de PENSIONES: 0 pendiente, 1 generado.
+     *
+     * Mismo motivo que {@link #estadoSeguro}: {@code DEFAULT 0 NOT NULL} en la base, pero
+     * Hibernate inserta la columna con {@code NULL} explícito — el default de Oracle nunca se
+     * aplica. Sin esta inicialización, {@code ORA-01400} al crear una cabecera nueva.
+     */
     @Basic
     @Column(name = "CRJBESPN")
-    private Long estadoPensiones;
+    private Long estadoPensiones = 0L;
 
     /** Cuándo se generaron las pensiones. */
     @Basic
