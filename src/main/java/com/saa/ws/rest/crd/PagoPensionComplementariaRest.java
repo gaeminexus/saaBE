@@ -11,6 +11,7 @@ import com.saa.ejb.crd.service.dto.ResultadoGeneracionSeguroMedico;
 import com.saa.ejb.crd.service.dto.ResultadoPrevisualizacionCorrida;
 import com.saa.ejb.crd.service.dto.ResultadoSeguimientoCorridaJubilados;
 import com.saa.ejb.crd.service.dto.ResultadoSincronizacion;
+import com.saa.ejb.crd.service.dto.SolicitudProcesoJubilados;
 import com.saa.model.crd.PagoPensionComplementaria;
 
 import jakarta.ejb.EJB;
@@ -102,30 +103,40 @@ public class PagoPensionComplementariaRest {
      */
     @POST
     @Path("/seguro/generar")
+    @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     public Response generarSeguroDelMes(
+            SolicitudProcesoJubilados cuerpo,
             @QueryParam("idEmpresa") Long idEmpresa,
             @QueryParam("anio") Integer anio,
             @QueryParam("mes") Integer mes,
             @QueryParam("usuario") String usuario) {
-        System.out.println("LLEGA AL SERVICIO GENERAR SEGURO MEDICO - Periodo: " + mes + "/" + anio);
+        // Forma canónica del contrato (§4.1): el cuerpo. Query params aceptados por
+        // compatibilidad, con el cuerpo con precedencia cuando llegan los dos — 2026-09-22.
+        Long empresaResuelta = (cuerpo != null && cuerpo.getIdEmpresa() != null) ? cuerpo.getIdEmpresa() : idEmpresa;
+        Integer anioResuelto = (cuerpo != null && cuerpo.getAnio() != null) ? cuerpo.getAnio() : anio;
+        Integer mesResuelto = (cuerpo != null && cuerpo.getMes() != null) ? cuerpo.getMes() : mes;
+        String usuarioResuelto = (cuerpo != null && cuerpo.getUsuario() != null && !cuerpo.getUsuario().trim().isEmpty())
+            ? cuerpo.getUsuario() : usuario;
 
-        if (idEmpresa == null) {
+        System.out.println("LLEGA AL SERVICIO GENERAR SEGURO MEDICO - Periodo: " + mesResuelto + "/" + anioResuelto);
+
+        if (empresaResuelta == null) {
             return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(),
                 "Debe indicar idEmpresa", null);
         }
-        if (anio == null || mes == null) {
+        if (anioResuelto == null || mesResuelto == null) {
             return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(),
                 "Debe indicar anio y mes", null);
         }
-        if (usuario == null || usuario.trim().isEmpty()) {
+        if (usuarioResuelto == null || usuarioResuelto.trim().isEmpty()) {
             return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(),
                 "Debe indicar el usuario que dispara la generación", null);
         }
 
         try {
             ResultadoGeneracionSeguroMedico resultado =
-                pagoPensionService.generarSeguroDelMes(idEmpresa, anio, mes, usuario);
+                pagoPensionService.generarSeguroDelMes(empresaResuelta, anioResuelto, mesResuelto, usuarioResuelto);
             return Response.status(Response.Status.OK)
                     .entity(resultado).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
@@ -141,34 +152,44 @@ public class PagoPensionComplementariaRest {
      */
     @POST
     @Path("/pensiones/generar")
+    @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     public Response generarPensionesDelMes(
+            SolicitudProcesoJubilados solicitud,
             @QueryParam("idEmpresa") Long idEmpresa,
             @QueryParam("anio") Integer anio,
             @QueryParam("mes") Integer mes,
             @QueryParam("usuario") String usuario) {
-        System.out.println("LLEGA AL SERVICIO GENERAR PENSIONES - Periodo: " + mes + "/" + anio);
+        // Forma canónica del contrato (§4.2): el cuerpo. Query params aceptados por
+        // compatibilidad, con el cuerpo con precedencia cuando llegan los dos — 2026-09-22.
+        Long empresaResuelta = (solicitud != null && solicitud.getIdEmpresa() != null) ? solicitud.getIdEmpresa() : idEmpresa;
+        Integer anioResuelto = (solicitud != null && solicitud.getAnio() != null) ? solicitud.getAnio() : anio;
+        Integer mesResuelto = (solicitud != null && solicitud.getMes() != null) ? solicitud.getMes() : mes;
+        String usuarioResuelto = (solicitud != null && solicitud.getUsuario() != null && !solicitud.getUsuario().trim().isEmpty())
+            ? solicitud.getUsuario() : usuario;
 
-        if (idEmpresa == null) {
+        System.out.println("LLEGA AL SERVICIO GENERAR PENSIONES - Periodo: " + mesResuelto + "/" + anioResuelto);
+
+        if (empresaResuelta == null) {
             return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(),
                 "Debe indicar idEmpresa", null);
         }
-        if (anio == null || mes == null) {
+        if (anioResuelto == null || mesResuelto == null) {
             return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(),
                 "Debe indicar anio y mes", null);
         }
-        if (usuario == null || usuario.trim().isEmpty()) {
+        if (usuarioResuelto == null || usuarioResuelto.trim().isEmpty()) {
             return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(),
                 "Debe indicar el usuario que dispara la generación", null);
         }
 
         try {
             ResultadoGeneracionPagosPension resultado =
-                pagoPensionService.generarPensionesDelMes(idEmpresa, anio, mes, usuario);
+                pagoPensionService.generarPensionesDelMes(empresaResuelta, anioResuelto, mesResuelto, usuarioResuelto);
 
             Map<String, Object> cuerpo = new LinkedHashMap<>();
             cuerpo.put("exito", Boolean.TRUE);
-            cuerpo.put("mensaje", "Pensiones " + mes + "/" + anio + " - " + resultado.getGenerados()
+            cuerpo.put("mensaje", "Pensiones " + mesResuelto + "/" + anioResuelto + " - " + resultado.getGenerados()
                 + " pagos generados, " + resultado.getYaGenerados() + " ya existían, "
                 + resultado.getConError() + " con error, de " + resultado.getEvaluados() + " evaluados.");
             cuerpo.put("resultado", resultado);

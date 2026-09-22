@@ -83,6 +83,29 @@ que el proceso sea idempotente por construcción y no por convención.
 
 Cuerpo: `{ idEmpresa, anio, mes, usuario, idUsuario }` (el mismo que hoy recibe `generarPagosDelMes`).
 
+> ⚠️ **Nota 2026-09-22:** `PagoPensionComplementariaRest` declaraba `idEmpresa`/`anio`/`mes`/`usuario`
+> como `@QueryParam` en los dos endpoints de este §4 (`/seguro/generar` y `/pensiones/generar`),
+> contra este mismo contrato, que siempre pidió el cuerpo. Bloqueó en producción el primer día que
+> alguien corrió el seguro médico de verdad («Debe indicar idEmpresa», `Periodo: null/null`).
+> **Corregido:** los dos endpoints ahora reciben el cuerpo (forma canónica, la de arriba) **y**
+> siguen aceptando los mismos cuatro valores por `@QueryParam`, por compatibilidad con quien ya
+> los llamara así. **El cuerpo tiene precedencia** cuando llegan los dos. `generarPagosDelMes`
+> (el endpoint viejo, deprecado) no se tocó: sigue siendo sólo `@QueryParam`.
+>
+> ⚠️ **Límite de esa compatibilidad, anotado por el árbitro y no medido contra el servidor:** los
+> dos métodos llevan ahora `@Consumes(APPLICATION_JSON)`, que hace falta para que RESTEasy
+> deserialice el cuerpo. Como contrapartida, **una llamada sin `Content-Type: application/json`
+> puede responder 415** antes de mirar los query params. Es decir que el respaldo por query params
+> sirve para un cliente que igual manda JSON, no para un `curl` pelado. Quien necesite disparar
+> estos procesos a mano —por ejemplo mientras se espera un WAR— debe mandar **igualmente**
+> `Content-Type: application/json` y un cuerpo, aunque sea `{}`. **No afecta al frontend**, que
+> siempre manda JSON.
+>
+> ⭐ **Por qué este defecto vivió sin que nadie lo viera:** el frente figuraba terminado hacía
+> días, «esperando WAR». Las dos puntas compilaban y ninguna se había ejecutado nunca contra la
+> otra. **Compilar en los dos lados no prueba que se entiendan** — el mismo riesgo que sigue
+> abierto en P22 (calificación de riesgo: código listo de las dos puntas, nunca probado).
+
 1. Guards de precondición **del seguro solamente**: `verificarCuentaProductoPagoSeguroMedico`,
    el proveedor y su cuenta bancaria. **No** los de pensión.
 2. Si `CRJB` de ese período ya tiene `CRJBESSG = 1` → `IncomeException`:
