@@ -269,8 +269,8 @@ public class CuentaBancariaBeneficiarioServiceImpl implements CuentaBancariaBene
                 + ": no existe el beneficiario " + cambio.getCodigo());
         }
 
-        // NO se toca entidad ni numeroIdentificacion (§3.4 del contrato): otro beneficiario
-        // se registra aparte, no se "convierte" éste.
+        // NO se toca entidad (§3.4, revisado 2026-09-22): mover un beneficiario de un
+        // partícipe a otro es otra operación, nadie la pidió.
         existente.setPorcentaje(cambio.getPorcentaje());
         existente.setEstado(cambio.getEstado());
         existente.setTipoCuenta(cambio.getTipoCuenta());
@@ -278,21 +278,99 @@ public class CuentaBancariaBeneficiarioServiceImpl implements CuentaBancariaBene
         existente.setBancoExterno(cambio.getBancoExterno());
         existente.setNombre(cambio.getNombre());
 
+        // numeroIdentificacion SÍ se puede cambiar (decisión del usuario, 2026-09-22). Si
+        // cambia, el mismo chequeo de duplicado del alta: sin esto, el UPDATE cae en
+        // ORA-00001 crudo contra UX_CBBP_PARTICIPE_IDENT.
+        String nuevaIdentificacion = cambio.getNumeroIdentificacion() != null
+            ? cambio.getNumeroIdentificacion().trim() : null;
+        if (nuevaIdentificacion == null || nuevaIdentificacion.isEmpty()) {
+            throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": numeroIdentificacion es obligatorio");
+        }
+        if (!nuevaIdentificacion.equals(existente.getNumeroIdentificacion())) {
+            List<CuentaBancariaBeneficiario> enConflicto = cuentaBancariaBeneficiarioDaoService
+                .selectPorEntidadEIdentificacion(existente.getEntidad().getCodigo(), nuevaIdentificacion);
+            if (enConflicto != null && !enConflicto.isEmpty()) {
+                throw new IncomeException(ERR_BENEFICIARIO_DUPLICADO
+                    + ": ya existe el beneficiario " + enConflicto.get(0).getCodigo()
+                    + " con identificación " + nuevaIdentificacion
+                    + " para el partícipe " + existente.getEntidad().getCodigo());
+            }
+            existente.setNumeroIdentificacion(nuevaIdentificacion);
+        }
+
         return cuentaBancariaBeneficiarioDaoService.save(existente, existente.getCodigo());
     }
 
+    @Override
+    public Adjunto obtenerCertificado(Long idBeneficiario) throws Throwable {
+        System.out.println("obtenerCertificado - CuentaBancariaBeneficiario: " + idBeneficiario);
+        if (idBeneficiario == null) {
+            throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": idBeneficiario es obligatorio");
+        }
+        TipoAdjunto tipoCertificado = resolverTipoCertificadoBancario();
+        List<Adjunto> encontrados = adjuntoDaoService.selectByReferenciaYTipo(idBeneficiario, tipoCertificado.getCodigo());
+        return encontrados.isEmpty() ? null : encontrados.get(0);
+    }
+
+    // ========================================================================
+    // Borrado real (decisión del usuario, 2026-09-22)
+    // ========================================================================
+
+    @Override
+    @TransactionAttribute(TransactionAttributeType.REQUIRED)
+    public void eliminar(Long idBeneficiario) throws Throwable {
+        System.out.println("eliminar - CuentaBancariaBeneficiario: " + idBeneficiario);
+        if (idBeneficiario == null) {
+            throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": el código del beneficiario es obligatorio");
+        }
+        CuentaBancariaBeneficiario existente = cuentaBancariaBeneficiarioDaoService.find(
+            new CuentaBancariaBeneficiario(), idBeneficiario);
+        if (existente == null) {
+            throw new IncomeException(ERR_BENEFICIARIO_NO_ENCONTRADO
+                + ": no existe el beneficiario " + idBeneficiario);
+        }
+
+        // TODO fase 2b: si el beneficiario ya tuviera un pago asociado, rechazar con 409 y un
+        // mensaje que remita a inactivarlo (PUT, estado = 2) en vez de borrarlo. Hoy no hace
+        // falta: la fase 2b no existe todavía y no hay ninguna tabla que referencie CBBP.
+
+        Adjunto certificado = obtenerCertificado(idBeneficiario);
+
+        cuentaBancariaBeneficiarioDaoService.remove(new CuentaBancariaBeneficiario(), idBeneficiario);
+        if (certificado != null) {
+            adjuntoDaoService.remove(new Adjunto(), certificado.getCodigo());
+        }
+        System.out.println("  🗑️ CuentaBancariaBeneficiario eliminado: " + idBeneficiario);
+
+        // El archivo se borra AL FINAL, con su propio catch: si falla, se loguea y NO revierte
+        // el borrado de las filas — es el inverso del patrón del alta, donde un fallo de BD sí
+        // borra el archivo recién subido.
+        if (certificado != null && certificado.getUrlArchivo() != null) {
+            try {
+                fileService.deleteFile(certificado.getUrlArchivo());
+                System.out.println("  🧹 Archivo del certificado borrado: " + certificado.getUrlArchivo());
+            } catch (Throwable e) {
+                System.err.println("  ⚠️ No se pudo borrar el archivo del certificado "
+                    + certificado.getUrlArchivo() + " del beneficiario " + idBeneficiario
+                    + ": " + e.getMessage());
+            }
+        }
+    }
+
     /**
-     * Resuelve el {@code TipoAdjunto} "CERTIFICADO BANCARIO" del catálogo CRD.TPDJ. Mismo
-     * criterio que {@code CuentaBancariaParticipeServiceImpl.resolverTipoCertificadoBancario}:
+     * Resuelve el {@code TipoAdjunto} "CERTIFICADO BANCARIO BENEFICIARIO" del catálogo CRD.TPDJ
+     * — tipo PROPIO de los beneficiarios, NO el que usa {@code CuentaBancariaParticipeService}
+     * (ver el porqué en {@link CuentaBancariaBeneficiarioService#CERTIFICADO_BANCARIO_BENEFICIARIO}).
+     * Mismo criterio que {@code CuentaBancariaParticipeServiceImpl.resolverTipoCertificadoBancario}:
      * exige EXACTAMENTE una fila activa, ni cero ni más de una — no se adivina sobre una consulta
      * sin ORDER BY.
      */
     private TipoAdjunto resolverTipoCertificadoBancario() throws Throwable {
-        List<TipoAdjunto> tipos = tipoAdjuntoDaoService.selectByNombre(CERTIFICADO_BANCARIO);
+        List<TipoAdjunto> tipos = tipoAdjuntoDaoService.selectByNombre(CERTIFICADO_BANCARIO_BENEFICIARIO);
         if (tipos.isEmpty()) {
             throw new IncomeException(ERR_TIPO_ADJUNTO_NO_CONFIGURADO
-                + ": falta cargar '" + CERTIFICADO_BANCARIO + "' en CRD.TPDJ"
-                + " (docs/logica-negocio/crd/sql/CARGA-TIPO-ADJUNTO-CERTIFICADO-BANCARIO.sql)");
+                + ": falta cargar '" + CERTIFICADO_BANCARIO_BENEFICIARIO + "' en CRD.TPDJ"
+                + " (docs/logica-negocio/crd/sql/240_TIPO_ADJUNTO_CERTIFICADO_BENEFICIARIO.sql)");
         }
         if (tipos.size() > 1) {
             StringBuilder ids = new StringBuilder();
@@ -303,7 +381,7 @@ public class CuentaBancariaBeneficiarioServiceImpl implements CuentaBancariaBene
                 ids.append(tipo.getCodigo());
             }
             throw new IncomeException(ERR_TIPO_ADJUNTO_NO_CONFIGURADO + ": hay " + tipos.size()
-                + " tipos de adjunto activos llamados '" + CERTIFICADO_BANCARIO + "' en CRD.TPDJ"
+                + " tipos de adjunto activos llamados '" + CERTIFICADO_BANCARIO_BENEFICIARIO + "' en CRD.TPDJ"
                 + " (ids: " + ids + "); no se puede saber cuál vale. Debe quedar uno solo activo.");
         }
         return tipos.get(0);

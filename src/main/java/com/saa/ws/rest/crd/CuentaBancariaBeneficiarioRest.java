@@ -6,16 +6,19 @@ import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 
+import com.saa.basico.ejb.FileService;
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.ejb.crd.dao.CuentaBancariaBeneficiarioDaoService;
 import com.saa.ejb.crd.service.CuentaBancariaBeneficiarioService;
 import com.saa.ejb.crd.service.dto.ResultadoCuentaBancariaBeneficiarioConCertificado;
 import com.saa.ejb.crd.service.dto.SolicitudCuentaBancariaBeneficiarioConCertificado;
+import com.saa.model.crd.Adjunto;
 import com.saa.model.crd.CuentaBancariaBeneficiario;
 import com.saa.model.crd.NombreEntidadesCredito;
 
 import jakarta.ejb.EJB;
 import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.DELETE;
 import jakarta.ws.rs.FormParam;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.POST;
@@ -30,8 +33,9 @@ import jakarta.ws.rs.core.Response;
  * Beneficiarios del partícipe (CRD.CBBP), sepelio fase 2a. Ver
  * {@code docs/logica-negocio/crd/API-BENEFICIARIOS-PARTICIPE.md}.
  *
- * ⛔ No hay DELETE: un beneficiario se inactiva (PUT con estado = 2), no se borra — es la prueba
- * de a quién se le pagó o se le iba a pagar la plata de un fallecido (§3.5 del contrato).
+ * ⚠️ Sí hay DELETE (decisión del usuario, 2026-09-22): borra la fila, su certificado y el
+ * archivo del disco. El contrato original sólo preveía inactivar (PUT, estado = 2); eso sigue
+ * disponible y sigue siendo lo recomendado para no perder el historial.
  */
 @Path("cbbp")
 public class CuentaBancariaBeneficiarioRest {
@@ -44,6 +48,9 @@ public class CuentaBancariaBeneficiarioRest {
 
     @EJB
     private CuentaBancariaBeneficiarioService cuentaBancariaBeneficiarioService;
+
+    @EJB
+    private FileService fileService;
 
     public CuentaBancariaBeneficiarioRest() {}
 
@@ -105,8 +112,87 @@ public class CuentaBancariaBeneficiarioRest {
     }
 
     /**
-     * Actualiza porcentaje, estado, tipoCuenta, numeroCuenta, bancoExterno y nombre de un
-     * beneficiario existente. NO cambia entidad ni numeroIdentificacion (§3.4 del contrato).
+     * Metadatos del certificado bancario de un beneficiario (para mostrar nombre/fecha en
+     * pantalla antes de descargar). 404 si el beneficiario no tiene certificado registrado.
+     */
+    @GET
+    @Path("/{id}/certificado")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getCertificado(@PathParam("id") Long id) {
+        System.out.println("LLEGA AL SERVICIO getCertificado - CBBP id: " + id);
+        try {
+            Adjunto certificado = cuentaBancariaBeneficiarioService.obtenerCertificado(id);
+            if (certificado == null) {
+                return Response.status(Response.Status.NOT_FOUND)
+                        .entity("El beneficiario " + id + " no tiene certificado bancario registrado")
+                        .type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(certificado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return respuestaError(e);
+        }
+    }
+
+    /**
+     * Descarga el PDF del certificado bancario de un beneficiario.
+     */
+    @GET
+    @Path("/{id}/certificado/descargar")
+    @Produces(MediaType.APPLICATION_OCTET_STREAM)
+    public Response descargarCertificado(@PathParam("id") Long id) {
+        System.out.println("LLEGA AL SERVICIO descargarCertificado - CBBP id: " + id);
+        try {
+            Adjunto certificado = cuentaBancariaBeneficiarioService.obtenerCertificado(id);
+            if (certificado == null) {
+                return Response.status(Response.Status.NOT_FOUND)
+                        .entity("El beneficiario " + id + " no tiene certificado bancario registrado")
+                        .type(MediaType.APPLICATION_JSON).build();
+            }
+            if (certificado.getUrlArchivo() == null || !fileService.fileExists(certificado.getUrlArchivo())) {
+                return Response.status(Response.Status.NOT_FOUND)
+                        .entity("El archivo del certificado ya no existe en el servidor")
+                        .type(MediaType.APPLICATION_JSON).build();
+            }
+            InputStream contenido = fileService.downloadFile(certificado.getUrlArchivo());
+            String nombreDescarga = certificado.getNombreArchivo() != null
+                ? certificado.getNombreArchivo() : ("certificado_" + id + ".pdf");
+
+            return Response.ok(contenido)
+                    .header("Content-Disposition", "attachment; filename=\"" + nombreDescarga + "\"")
+                    .header("Content-Type", "application/pdf")
+                    .build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al descargar el certificado: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
+     * Elimina REALMENTE un beneficiario: su fila de CRD.CBBP, su certificado de CRD.ADJN y el
+     * archivo del disco, en una transacción (§3.5 del contrato, revisado 2026-09-22 — decisión
+     * del usuario). Preferir inactivar (PUT, estado = 2) cuando se quiera conservar el historial.
+     */
+    @DELETE
+    @Path("/{id}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response delete(@PathParam("id") Long id) {
+        System.out.println("LLEGA AL SERVICIO DELETE - CBBP id: " + id);
+        try {
+            cuentaBancariaBeneficiarioService.eliminar(id);
+            return Response.status(Response.Status.OK)
+                    .entity("CuentaBancariaBeneficiario eliminado correctamente")
+                    .type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return respuestaError(e);
+        }
+    }
+
+    /**
+     * Actualiza porcentaje, estado, tipoCuenta, numeroCuenta, bancoExterno, nombre y
+     * numeroIdentificacion de un beneficiario existente (§3.4 del contrato, revisado
+     * 2026-09-22). NO cambia entidad: eso es otra operación. Si la identificación cambia y ya
+     * la tiene otro beneficiario del mismo partícipe, responde 409 — mismo código que el alta.
      */
     @PUT
     @Consumes(MediaType.APPLICATION_JSON)

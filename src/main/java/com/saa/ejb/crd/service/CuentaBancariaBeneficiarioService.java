@@ -5,6 +5,7 @@ import java.util.List;
 import com.saa.basico.util.EntityService;
 import com.saa.ejb.crd.service.dto.ResultadoCuentaBancariaBeneficiarioConCertificado;
 import com.saa.ejb.crd.service.dto.SolicitudCuentaBancariaBeneficiarioConCertificado;
+import com.saa.model.crd.Adjunto;
 import com.saa.model.crd.CuentaBancariaBeneficiario;
 
 import jakarta.ejb.Local;
@@ -13,10 +14,15 @@ import jakarta.ejb.Local;
 public interface CuentaBancariaBeneficiarioService extends EntityService<CuentaBancariaBeneficiario> {
 
     /**
-     * Nombre exacto del {@code TipoAdjunto} (CRD.TPDJ) que identifica un certificado bancario.
-     * Mismo catálogo y mismo criterio de resolución que {@code CuentaBancariaParticipeService}.
+     * Nombre exacto del {@code TipoAdjunto} (CRD.TPDJ) que identifica el certificado bancario de
+     * un BENEFICIARIO. Tipo propio, NO el {@code CERTIFICADO_BANCARIO} de
+     * {@code CuentaBancariaParticipeService}: los adjuntos se resuelven sólo por
+     * {@code (ADJNIDRF, TPDJCDGO)} y {@code CRD.ADJN} no guarda de qué tabla viene la referencia,
+     * así que compartir el tipo con CNBP hacía que un beneficiario y una cuenta bancaria de
+     * partícipe con el mismo código (p. ej. los dos "1") fueran indistinguibles para el catálogo
+     * de adjuntos. Ver {@code docs/logica-negocio/crd/sql/240_TIPO_ADJUNTO_CERTIFICADO_BENEFICIARIO.sql}.
      */
-    String CERTIFICADO_BANCARIO = "CERTIFICADO BANCARIO";
+    String CERTIFICADO_BANCARIO_BENEFICIARIO = "CERTIFICADO BANCARIO BENEFICIARIO";
 
     /** 400 - Falta un campo obligatorio (incluido el archivo), o un numérico no parsea */
     String ERR_PARAMETRO_INVALIDO = "PARAMETRO_INVALIDO";
@@ -41,7 +47,7 @@ public interface CuentaBancariaBeneficiarioService extends EntityService<CuentaB
     String ERR_BENEFICIARIO_DUPLICADO = "BENEFICIARIO_DUPLICADO";
     /**
      * 500 (de configuración, no del usuario) - Falta cargar CRD.TPDJ con
-     * {@link #CERTIFICADO_BANCARIO}.
+     * {@link #CERTIFICADO_BANCARIO_BENEFICIARIO}.
      */
     String ERR_TIPO_ADJUNTO_NO_CONFIGURADO = "TIPO_ADJUNTO_CERTIFICADO_NO_CONFIGURADO";
 
@@ -77,13 +83,40 @@ public interface CuentaBancariaBeneficiarioService extends EntityService<CuentaB
             SolicitudCuentaBancariaBeneficiarioConCertificado solicitud) throws Throwable;
 
     /**
-     * Actualiza porcentaje, estado, tipoCuenta, numeroCuenta, bancoExterno y nombre de un
-     * beneficiario existente. NO cambia entidad ni numeroIdentificacion: eso sería otro
-     * beneficiario (§3.4 del contrato) — se inactiva éste y se crea el otro.
+     * Actualiza porcentaje, estado, tipoCuenta, numeroCuenta, bancoExterno, nombre y
+     * numeroIdentificacion de un beneficiario existente. NO cambia entidad: mover un beneficiario
+     * de un partícipe a otro es otra operación (§3.4 del contrato, revisado 2026-09-22).
+     *
+     * Si la identificación cambia, corre el mismo chequeo de duplicado que
+     * {@link #crearConCertificado}: si la nueva identificación ya existe para el mismo partícipe
+     * en OTRO beneficiario, {@link #ERR_BENEFICIARIO_DUPLICADO} en vez del ORA-00001 crudo contra
+     * {@code UX_CBBP_PARTICIPE_IDENT}.
      *
      * @param cambio Beneficiario con el código del registro a actualizar y los campos permitidos
      * @return El beneficiario actualizado
-     * @throws Throwable Si el código no existe o el porcentaje está fuera de rango
+     * @throws Throwable Si el código no existe, el porcentaje está fuera de rango, o la nueva
+     *                    identificación ya la tiene otro beneficiario del mismo partícipe
      */
     CuentaBancariaBeneficiario actualizar(CuentaBancariaBeneficiario cambio) throws Throwable;
+
+    /**
+     * El certificado bancario ACTIVO de un beneficiario, o null si no tiene. Mismo criterio que
+     * {@code CuentaBancariaParticipeService.obtenerCertificado}.
+     *
+     * @param idBeneficiario Código de CuentaBancariaBeneficiario (CBBPCDGO)
+     * @throws Throwable Si ocurre un error
+     */
+    Adjunto obtenerCertificado(Long idBeneficiario) throws Throwable;
+
+    /**
+     * Elimina REALMENTE un beneficiario: su fila de CRD.CBBP, su adjunto de CRD.ADJN y el archivo
+     * del disco, en una transacción (decisión del usuario, 2026-09-22 — el contrato original sólo
+     * preveía inactivar). El archivo se borra al final; si falla, se loguea y NO se revierte la
+     * eliminación de las filas (inverso del patrón de {@link #crearConCertificado}: ahí un fallo
+     * de BD borra el archivo recién subido, acá un fallo al borrar el archivo no revive las filas).
+     *
+     * @param idBeneficiario Código del beneficiario a eliminar
+     * @throws Throwable Si el código no existe
+     */
+    void eliminar(Long idBeneficiario) throws Throwable;
 }
