@@ -5,9 +5,11 @@ import java.util.List;
 import com.saa.basico.util.EntityService;
 import com.saa.ejb.crd.service.dto.ResultadoConsultaPagoDevolucion;
 import com.saa.ejb.crd.service.dto.ResultadoDevolucionAporte;
+import com.saa.ejb.crd.service.dto.ResultadoDevolucionBeneficiario;
 import com.saa.ejb.crd.service.dto.ResultadoReemisionPagoDevolucion;
 import com.saa.ejb.crd.service.dto.ResultadoSincronizacion;
 import com.saa.ejb.crd.service.dto.SolicitudDevolucionAporte;
+import com.saa.ejb.crd.service.dto.SolicitudDevolucionAporteBeneficiarios;
 import com.saa.ejb.crd.service.dto.SolicitudReemisionPagoDevolucion;
 import com.saa.model.crd.DevolucionAporte;
 
@@ -93,6 +95,17 @@ public interface DevolucionAporteService extends EntityService<DevolucionAporte>
     String ERR_PAGO_CONFIRMADO = "PAGO_CONFIRMADO";
     /** 409 - La orden vigente está en un archivo enviado al banco: falta confirmar el rechazo */
     String ERR_CONFIRMAR_RECHAZO_BANCO = "CONFIRMAR_RECHAZO_BANCO";
+    /** 400 - El partícipe no está fallecido: use el endpoint normal (registrarDevolucion) */
+    String ERR_PARTICIPE_NO_FALLECIDO = "PARTICIPE_NO_FALLECIDO";
+    /** 400 - El partícipe fallecido no tiene beneficiarios activos cargados en CRD.CBBP */
+    String ERR_SIN_BENEFICIARIOS = "SIN_BENEFICIARIOS";
+    /** 400 - Los porcentajes de los beneficiarios activos no suman exactamente 100 */
+    String ERR_PORCENTAJES_NO_SUMAN_100 = "PORCENTAJES_NO_SUMAN_100";
+    /**
+     * 400 - El partícipe está fallecido y tiene beneficiarios activos: registrarDevolucion lo
+     * rechaza y remite a registrarParaBeneficiarios (guarda agregada 2026-09-22).
+     */
+    String ERR_USAR_DEVOLUCION_BENEFICIARIOS = "USAR_DEVOLUCION_BENEFICIARIOS";
 
     /** Usuario con el que el temporizador registra la corrida automática */
     String USUARIO_PROCESO = "SAA_DEVOLUCION";
@@ -264,4 +277,38 @@ public interface DevolucionAporteService extends EntityService<DevolucionAporte>
      * @return       : Nombre del estado
      */
     String nombreEstadoPago(Long estado);
+
+    /**
+     * Registra la devolución de aportes de un partícipe FALLECIDO, repartida entre sus
+     * beneficiarios activos (CRD.CBBP): UNA devolución completa por beneficiario, cada una con
+     * su propio DVAP, orden y pago. Ver
+     * {@code docs/logica-negocio/crd/API-DEVOLUCION-APORTES-A-BENEFICIARIOS.md} §3: CXP rechaza
+     * un segundo pago vivo para el mismo {@code idOrigen}, así que no puede ser N órdenes de una
+     * sola devolución.
+     *
+     * <p>Todo ocurre en UNA transacción {@code REQUIRED}: si la devolución de cualquier
+     * beneficiario falla, se revierten TODAS — repartir la plata de un fallecido a medias entre
+     * su familia es peor que no repartir nada (§6 del contrato, H78).
+     *
+     * <p>El reparto es <b>POR TIPO DE APORTE, no por el total</b> (§5.1): cada línea de tipo se
+     * reparte entre los beneficiarios por su porcentaje, con el residuo de ESE tipo al de mayor
+     * porcentaje (empate → menor código). El total de cada beneficiario sale de sumar sus
+     * líneas ya repartidas, nunca al revés — repartir primero el total y escalar las líneas
+     * después descuadra el tipo (§5.2).
+     *
+     * @param solicitud Partícipe, empresa, fecha, motivo y detalle por tipo — igual que
+     *                  {@link #registrarDevolucion}, sin cuenta bancaria (el destino sale de
+     *                  cada beneficiario)
+     * @return Una entrada por beneficiario activo, con su devolución, su valor repartido y su
+     *         orden de pago
+     * @throws Throwable                          Si ocurre un error
+     * @throws com.saa.basico.util.IncomeException Si el partícipe no está fallecido
+     *                  ({@link #ERR_PARTICIPE_NO_FALLECIDO}), no tiene beneficiarios activos
+     *                  ({@link #ERR_SIN_BENEFICIARIOS}), sus porcentajes no suman 100
+     *                  ({@link #ERR_PORCENTAJES_NO_SUMAN_100}), o cualquier fallo de la
+     *                  validación normal (revierte todas las devoluciones ya generadas en esta
+     *                  transacción)
+     */
+    List<ResultadoDevolucionBeneficiario> registrarParaBeneficiarios(
+            SolicitudDevolucionAporteBeneficiarios solicitud) throws Throwable;
 }

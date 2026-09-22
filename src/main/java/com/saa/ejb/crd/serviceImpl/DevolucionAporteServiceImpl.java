@@ -27,9 +27,11 @@ import com.saa.ejb.crd.service.dto.DetalleResultadoDevolucion;
 import com.saa.ejb.crd.service.dto.DetalleSolicitudDevolucion;
 import com.saa.ejb.crd.service.dto.ResultadoConsultaPagoDevolucion;
 import com.saa.ejb.crd.service.dto.ResultadoDevolucionAporte;
+import com.saa.ejb.crd.service.dto.ResultadoDevolucionBeneficiario;
 import com.saa.ejb.crd.service.dto.ResultadoReemisionPagoDevolucion;
 import com.saa.ejb.crd.service.dto.ResultadoSincronizacion;
 import com.saa.ejb.crd.service.dto.SolicitudDevolucionAporte;
+import com.saa.ejb.crd.service.dto.SolicitudDevolucionAporteBeneficiarios;
 import com.saa.ejb.crd.service.dto.SolicitudReemisionPagoDevolucion;
 import com.saa.ejb.cxp.dao.DetallePagoOrigenExternoDaoService;
 import com.saa.ejb.cxp.dao.PagoProgramadoDaoService;
@@ -37,6 +39,7 @@ import com.saa.ejb.cxp.service.PagoProgramadoService;
 import com.saa.ejb.cxp.service.dto.BeneficiarioOcasional;
 import com.saa.ejb.cxp.service.dto.LineaContablePago;
 import com.saa.model.crd.Aporte;
+import com.saa.model.crd.CuentaBancariaBeneficiario;
 import com.saa.model.crd.CuentaBancariaParticipe;
 import com.saa.model.crd.DetalleDevolucionAporte;
 import com.saa.model.crd.DevolucionAporte;
@@ -49,9 +52,11 @@ import com.saa.model.cxp.DetallePagoOrigenExterno;
 import com.saa.model.cxp.PagoProgramado;
 import com.saa.rubros.CrdTipoMovimientoAporte;
 import com.saa.rubros.Estado;
+import com.saa.rubros.EstadoCuentasBancarias;
 import com.saa.rubros.EstadoCuotaPrestamo;
 import com.saa.rubros.EstadoDevolucionAporte;
 import com.saa.rubros.EstadoPagoProgramado;
+import com.saa.rubros.EstadoParticipeEntidad;
 import com.saa.rubros.OrigenPagoExterno;
 
 import jakarta.ejb.EJB;
@@ -84,6 +89,9 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
     /** Máximo de errores que se detallan en el resumen de la sincronización */
     private static final int MAX_ERRORES_DETALLADOS = 50;
 
+    /** 100%, para comparar la suma de porcentajes de los beneficiarios activos (§4 punto 3). */
+    private static final BigDecimal CIEN = BigDecimal.valueOf(100);
+
     @EJB
     private DevolucionAporteDaoService devolucionAporteDaoService;
 
@@ -104,6 +112,10 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
 
     @EJB
     private CuentaBancariaParticipeDaoService cuentaBancariaParticipeDaoService;
+
+    /** Beneficiarios de un partícipe fallecido (CRD.CBBP) — registrarParaBeneficiarios. */
+    @EJB
+    private com.saa.ejb.crd.dao.CuentaBancariaBeneficiarioDaoService cuentaBancariaBeneficiarioDaoService;
 
     @EJB
     private SaldoAporteService saldoAporteService;
@@ -257,92 +269,32 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
         // lectura de saldo (paso 4-7, más abajo) — este método corre REQUIRED.
         aporteDaoService.bloquearAportesEntidad(entidad.getCodigo());
 
-        // 3. Detalle no vacío y sin tipos repetidos
-        List<DetalleSolicitudDevolucion> lineas = solicitud.getDetalle();
-        if (lineas.isEmpty()) {
-            throw new IncomeException(ERR_PARAMETRO_INVALIDO
-                + ": debe indicar al menos un tipo de aporte a devolver");
-        }
-        Set<Long> vistos = new HashSet<>();
-        for (DetalleSolicitudDevolucion linea : lineas) {
-            if (linea == null || linea.getIdTipoAporte() == null) {
-                throw new IncomeException(ERR_PARAMETRO_INVALIDO
-                    + ": cada línea del detalle debe indicar el tipo de aporte");
-            }
-            if (!vistos.add(linea.getIdTipoAporte())) {
-                throw new IncomeException(ERR_TIPO_DUPLICADO + ": el tipo de aporte "
-                    + linea.getIdTipoAporte() + " aparece más de una vez en el detalle");
+        // 2b. Guarda 2026-09-22 (API-DEVOLUCION-APORTES-A-BENEFICIARIOS.md §4): un fallecido
+        // CON beneficiarios activos usa el endpoint nuevo, no éste — evita pagarle por error
+        // a la cuenta bancaria de un muerto. Un fallecido SIN beneficiarios (casos históricos)
+        // sigue funcionando como siempre.
+        if (entidad.getIdEstado() != null
+                && entidad.getIdEstado().intValue() == EstadoParticipeEntidad.CESANTE_FALLECIDO) {
+            List<CuentaBancariaBeneficiario> beneficiariosActivos = beneficiariosActivosDe(entidad.getCodigo());
+            if (!beneficiariosActivos.isEmpty()) {
+                throw new IncomeException(ERR_USAR_DEVOLUCION_BENEFICIARIOS + ": el partícipe "
+                    + entidad.getCodigo() + " está fallecido y tiene " + beneficiariosActivos.size()
+                    + " beneficiario(s) activo(s) cargado(s) en CRD.CBBP. Use"
+                    + " POST /rest/dvap/registrarParaBeneficiarios para repartir la devolución entre ellos.");
             }
         }
 
-        // 4, 5, 6 y 7. Tipo vigente, producto de pago, valor válido y saldo suficiente
-        List<TipoAporte> tipos = new ArrayList<>();
-        List<Double> valores = new ArrayList<>();
-        List<String> tiposSinProducto = new ArrayList<>();
-        BigDecimal total = BigDecimal.ZERO;
-
-        for (DetalleSolicitudDevolucion linea : lineas) {
-
-            TipoAporte tipo = tipoAporteDaoService.find(new TipoAporte(), linea.getIdTipoAporte());
-            if (tipo == null) {
-                throw new IncomeException(ERR_TIPO_APORTE_NO_VIGENTE
-                    + ": no existe el tipo de aporte " + linea.getIdTipoAporte());
-            }
-            if (tipo.getEstado() == null || tipo.getEstado().longValue() != Estado.ACTIVO) {
-                throw new IncomeException(ERR_TIPO_APORTE_NO_VIGENTE + ": el tipo de aporte "
-                    + tipo.getCodigo() + " (" + tipo.getNombre() + ") no está vigente");
-            }
-            // El producto de pago clasifica contablemente la devolución de este tipo.
-            // Desde el 2026-08-24 es OPCIONAL (§6.5.b): solo se anota qué tipos lo tienen
-            // y cuáles no; la regla de todo-o-nada se resuelve al terminar el recorrido.
-            if (tipo.getProductoPago() == null) {
-                tiposSinProducto.add(tipo.getCodigo() + " (" + tipo.getNombre() + ")");
-            }
-
-            double valor = redondear(linea.getValor() != null ? linea.getValor() : 0.0);
-            if (valor <= 0.0) {
-                throw new IncomeException(ERR_VALOR_INVALIDO + ": el valor a devolver del tipo "
-                    + tipo.getNombre() + " debe ser mayor a cero");
-            }
-
-            double disponible = saldoAporteService.saldoPorEntidadYTipo(
-                entidad.getCodigo(), tipo.getCodigo());
-            if (valor > disponible + TOLERANCIA) {
-                throw new IncomeException(ERR_SALDO_INSUFICIENTE + ": el tipo " + tipo.getNombre()
-                    + " tiene $" + String.format(Locale.US, "%.2f", disponible)
-                    + " disponibles y se piden $" + String.format(Locale.US, "%.2f", valor));
-            }
-
-            tipos.add(tipo);
-            valores.add(valor);
-            total = total.add(BigDecimal.valueOf(valor));
-        }
-        double valorTotal = redondear(total.doubleValue());
-
-        // 5. Producto de pago: TODO O NADA (§6.5.b).
-        //
-        //   Todos los tipos lo tienen   -> se manda el desglose; al confirmarse el pago hay
-        //                                  asiento y movimiento bancario, como siempre.
-        //   Ninguno lo tiene            -> no se manda desglose; el pago se confirma SIN
-        //                                  contabilidad. Es la decisión del 2026-08-24.
-        //   Algunos sí y otros no       -> se rechaza.
-        //
-        // El caso mezclado TIENE que fallar: un desglose parcial genera un asiento donde las
-        // líneas DEBE suman menos que el HABER al banco. Un asiento descuadrado es peor que
-        // no tener asiento.
-        boolean contabiliza = tiposSinProducto.isEmpty();
-        if (!contabiliza && tiposSinProducto.size() < tipos.size()) {
-            throw new IncomeException(ERR_TIPO_APORTE_SIN_PRODUCTO + ": la devolución mezcla "
-                + "tipos con y sin producto de pago parametrizado, y eso generaría un asiento "
-                + "descuadrado. Sin producto de pago: " + String.join(", ", tiposSinProducto)
-                + ". Cárguelos en el catálogo de tipos de aporte, o quítelos de esta devolución.");
-        }
+        // 3, 4, 5, 6 y 7. Detalle no vacío ni repetido, tipo vigente, producto de pago,
+        // valor válido y saldo suficiente — extraído a validarDetalleYSaldo para reusarlo
+        // desde registrarParaBeneficiarios sobre el mismo detalle, antes de repartirlo.
+        DetalleValidado validado = validarDetalleYSaldo(entidad, solicitud.getDetalle());
+        List<TipoAporte> tipos = validado.tipos;
+        List<Double> valores = validado.valores;
+        double valorTotal = validado.valorTotal;
+        boolean contabiliza = validado.contabiliza;
 
         // 8. Fecha no futura
-        LocalDate fecha = solicitud.getFecha() != null ? solicitud.getFecha() : LocalDate.now();
-        if (fecha.isAfter(LocalDate.now())) {
-            throw new IncomeException(ERR_FECHA_INVALIDA + ": la fecha " + fecha + " es futura");
-        }
+        LocalDate fecha = resolverFecha(solicitud.getFecha());
 
         // 9. Cuenta bancaria del partícipe (salvo débito automático, que no transfiere)
         CuentaBancariaParticipe cuentaParticipe = null;
@@ -356,8 +308,67 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
         }
 
         // ------------------------------------------------------------------
-        // EJECUCIÓN — todo en esta transacción. Si CXP falla, se revierte todo.
+        // EJECUCIÓN — extraída a ejecutarDevolucion para reusarla desde
+        // registrarParaBeneficiarios (API-DEVOLUCION-APORTES-A-BENEFICIARIOS.md §4 punto 5):
+        // mismo cálculo de tipos y saldo, mismo desglose contable, misma orden de pago. Lo
+        // único distinto entre devolverle al propio partícipe y a uno de sus beneficiarios es
+        // CON QUÉ BeneficiarioOcasional se arma el pago.
         // ------------------------------------------------------------------
+        return ejecutarDevolucion(entidad, tipos, valores, valorTotal, fecha, solicitud.getMotivo(),
+            solicitud.getIdEmpresa(), solicitud.getUsuario().trim(), solicitud.getIdUsuario(),
+            solicitud.isDebitoAutomatico(), solicitud.getReferencia(), contabiliza,
+            cuentaParticipe, armaBeneficiario(entidad, cuentaParticipe));
+    }
+
+    /**
+     * Ejecuta el registro de UNA devolución completa: cabecera, DDVA + fila negativa de
+     * CRD.APRT por tipo, orden de pago en CXP y asiento de reclasificación — todo lo que hay
+     * DESPUÉS de la validación (§8.1 pasos 1-9) de {@link #registrarDevolucion}.
+     *
+     * <p>Extraído para reusarlo desde {@link #registrarParaBeneficiarios} (contrato
+     * API-DEVOLUCION-APORTES-A-BENEFICIARIOS.md): la única diferencia entre devolverle al
+     * propio partícipe y devolverle a uno de sus beneficiarios es CON QUÉ
+     * {@code BeneficiarioOcasional} se arma el pago — todo lo demás (cálculo de saldo por
+     * tipo, desglose contable, orden de pago, asiento de reclasificación) es exactamente este
+     * método, sin cambios.
+     *
+     * @param entidad               Partícipe (dueño de los aportes, vivo o fallecido)
+     * @param tipos                 Tipos de aporte a devolver, ya validados (vigentes; TODOS
+     *                              con producto de pago o TODOS sin — ver {@code contabiliza})
+     * @param valores               Valor a devolver de cada tipo, en el mismo orden que
+     *                              {@code tipos}
+     * @param valorTotal            Suma de {@code valores}, ya redondeada
+     * @param fecha                 Fecha de negocio de la devolución, ya validada (no futura)
+     * @param motivo                Motivo u observación
+     * @param idEmpresa             Empresa contable
+     * @param usuario               Usuario que registra, YA TRIMEADO
+     * @param idUsuario             Id del usuario, para la cabecera del pago en CXP
+     * @param debitoAutomatico      true si el banco ya debitó la cuenta por convenio
+     * @param referencia            Referencia del débito automático
+     * @param contabiliza           true si TODOS los tipos tienen producto de pago
+     *                              parametrizado (§6.5.b): sólo entonces se manda desglose
+     *                              contable a CXP
+     * @param cuentaParticipe       Cuenta bancaria del PARTÍCIPE, o {@code null} cuando el
+     *                              destinatario es un beneficiario (o débito automático sin
+     *                              cuenta)
+     * @param beneficiarioOcasional Con quién se arma el pago en CXP: el propio partícipe
+     *                              ({@link #armaBeneficiario}) o un beneficiario de CRD.CBBP
+     *                              ({@link #armaBeneficiarioDesdeCBBP})
+     * @return El resultado de esta devolución
+     * @throws Throwable Si ocurre un error
+     */
+    private ResultadoDevolucionAporte ejecutarDevolucion(
+            Entidad entidad, List<TipoAporte> tipos, List<Double> valores, double valorTotal,
+            LocalDate fecha, String motivo, Long idEmpresa, String usuario, Long idUsuario,
+            boolean debitoAutomatico, String referencia, boolean contabiliza,
+            CuentaBancariaParticipe cuentaParticipe, BeneficiarioOcasional beneficiarioOcasional)
+            throws Throwable {
+
+        // Mismo bloqueo que la validación de registrarDevolucion (H61): re-otorgar un lock ya
+        // tenido en la misma transacción es inocuo, y esto hace que este método sea correcto
+        // por sí mismo sin depender de que el llamador ya lo haya tomado — necesario para
+        // registrarParaBeneficiarios, que lo invoca N veces sobre el mismo partícipe.
+        aporteDaoService.bloquearAportesEntidad(entidad.getCodigo());
 
         // 2. Cabecera de la devolución
         DevolucionAporte devolucion = new DevolucionAporte();
@@ -366,10 +377,10 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
         devolucion.setCuentaParticipe(cuentaParticipe);
         devolucion.setValor(valorTotal);
         devolucion.setFecha(fecha);
-        devolucion.setMotivo(solicitud.getMotivo());
+        devolucion.setMotivo(motivo);
         devolucion.setEstado(Long.valueOf(EstadoDevolucionAporte.REGISTRADA));
-        devolucion.setIdEmpresa(solicitud.getIdEmpresa());
-        devolucion.setUsuarioRegistro(solicitud.getUsuario().trim());
+        devolucion.setIdEmpresa(idEmpresa);
+        devolucion.setUsuarioRegistro(usuario);
         devolucion.setFechaRegistro(LocalDateTime.now());
         devolucion = devolucionAporteDaoService.save(devolucion, null);
 
@@ -466,9 +477,9 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
                     String glosaPeriodo = truncarPorBytes(glosaBase + " (devengo " + periodo + ")",
                         MAX_BYTES_GLOSA);
                     Aporte fila = crearFilaNegativaDevolucion(entidad, tipo, consumir, periodo,
-                        glosaPeriodo, fechaHora, solicitud.getUsuario(), devolucion);
+                        glosaPeriodo, fechaHora, usuario, devolucion);
                     PagoAporte pagoFila = crearPagoAporteDevolucion(entidad, fila, consumir,
-                        glosaPeriodo, fechaHora, solicitud.getUsuario());
+                        glosaPeriodo, fechaHora, usuario);
                     if (primerIdAporte == null) {
                         primerIdAporte = fila.getCodigo();
                         primerIdPagoAporte = pagoFila.getCodigo();
@@ -483,9 +494,9 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
             if (remanente > 0.01) {
                 String glosaRemanente = truncarPorBytes(glosaBase, MAX_BYTES_GLOSA);
                 Aporte fila = crearFilaNegativaDevolucion(entidad, tipo, remanente, null,
-                    glosaRemanente, fechaHora, solicitud.getUsuario(), devolucion);
+                    glosaRemanente, fechaHora, usuario, devolucion);
                 PagoAporte pagoFila = crearPagoAporteDevolucion(entidad, fila, remanente,
-                    glosaRemanente, fechaHora, solicitud.getUsuario());
+                    glosaRemanente, fechaHora, usuario);
                 if (primerIdAporte == null) {
                     primerIdAporte = fila.getCodigo();
                     primerIdPagoAporte = pagoFila.getCodigo();
@@ -537,12 +548,9 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
         // ningún asiento y no hay ningún mensaje de éxito que desmentir.
         Long idPago;
         try {
-            BeneficiarioOcasional beneficiario = armaBeneficiario(entidad, cuentaParticipe);
-
             String observacion = "Devolución de aportes N° " + devolucion.getCodigo()
                 + " - " + entidad.getRazonSocial()
-                + (solicitud.getMotivo() != null && !solicitud.getMotivo().trim().isEmpty()
-                    ? " | " + solicitud.getMotivo().trim() : "");
+                + (motivo != null && !motivo.trim().isEmpty() ? " | " + motivo.trim() : "");
 
             // idCuentaBancariaOrigen SIEMPRE null (corrección 2026-08-29): con cuenta nula el
             // pago nace POR_APROBAR y tesorería asigna cuenta/forma de pago al aprobar (mismo
@@ -550,12 +558,12 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
             // en PagoProgramadoServiceImpl.registrarPagoDeOrigenExterno).
             Map<String, Object> respuesta = pagoProgramadoService.registrarPagoDeOrigenExterno(
                 OrigenPagoExterno.CRD_DEVOLUCION_APORTE, devolucion.getCodigo(),
-                solicitud.getIdEmpresa(), null, valorTotal,
-                fecha.toString(), beneficiario,
+                idEmpresa, null, valorTotal,
+                fecha.toString(), beneficiarioOcasional,
                 // null, no lista vacía: es la forma en que este servicio dice "sin desglose".
                 contabiliza ? desglose : null,
-                observacion, solicitud.getIdUsuario(),
-                solicitud.isDebitoAutomatico(), solicitud.getReferencia());
+                observacion, idUsuario,
+                debitoAutomatico, referencia);
 
             Object valorPago = (respuesta != null) ? respuesta.get("pago") : null;
             if (valorPago == null) {
@@ -618,6 +626,348 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
             + " - Estado: " + nombreEstado(devolucion.getEstado()));
 
         return resultado;
+    }
+
+    // ========================================================================
+    // Validación compartida del detalle (extraída para registrarParaBeneficiarios)
+    // ========================================================================
+
+    /** Resultado de {@link #validarDetalleYSaldo}: los tipos válidos, en orden, con su valor. */
+    private static final class DetalleValidado {
+        List<TipoAporte> tipos;
+        List<Double> valores;
+        double valorTotal;
+        boolean contabiliza;
+    }
+
+    /**
+     * Valida el {@code detalle} de una solicitud de devolución (§8.1 pasos 3-7 de
+     * {@link #registrarDevolucion}, extraído tal cual): no vacío, sin tipos repetidos, cada
+     * tipo vigente con saldo suficiente, y la regla todo-o-nada de producto de pago (§6.5.b).
+     *
+     * @param entidad Partícipe cuyo saldo se valida
+     * @param lineas  Detalle de la solicitud (idTipoAporte + valor)
+     * @return Los tipos y valores válidos, el total redondeado, y si la devolución contabiliza
+     * @throws Throwable Si ocurre un error
+     */
+    private DetalleValidado validarDetalleYSaldo(Entidad entidad, List<DetalleSolicitudDevolucion> lineas)
+            throws Throwable {
+
+        if (lineas.isEmpty()) {
+            throw new IncomeException(ERR_PARAMETRO_INVALIDO
+                + ": debe indicar al menos un tipo de aporte a devolver");
+        }
+        Set<Long> vistos = new HashSet<>();
+        for (DetalleSolicitudDevolucion linea : lineas) {
+            if (linea == null || linea.getIdTipoAporte() == null) {
+                throw new IncomeException(ERR_PARAMETRO_INVALIDO
+                    + ": cada línea del detalle debe indicar el tipo de aporte");
+            }
+            if (!vistos.add(linea.getIdTipoAporte())) {
+                throw new IncomeException(ERR_TIPO_DUPLICADO + ": el tipo de aporte "
+                    + linea.getIdTipoAporte() + " aparece más de una vez en el detalle");
+            }
+        }
+
+        List<TipoAporte> tipos = new ArrayList<>();
+        List<Double> valores = new ArrayList<>();
+        List<String> tiposSinProducto = new ArrayList<>();
+        BigDecimal total = BigDecimal.ZERO;
+
+        for (DetalleSolicitudDevolucion linea : lineas) {
+
+            TipoAporte tipo = tipoAporteDaoService.find(new TipoAporte(), linea.getIdTipoAporte());
+            if (tipo == null) {
+                throw new IncomeException(ERR_TIPO_APORTE_NO_VIGENTE
+                    + ": no existe el tipo de aporte " + linea.getIdTipoAporte());
+            }
+            if (tipo.getEstado() == null || tipo.getEstado().longValue() != Estado.ACTIVO) {
+                throw new IncomeException(ERR_TIPO_APORTE_NO_VIGENTE + ": el tipo de aporte "
+                    + tipo.getCodigo() + " (" + tipo.getNombre() + ") no está vigente");
+            }
+            // El producto de pago clasifica contablemente la devolución de este tipo.
+            // Desde el 2026-08-24 es OPCIONAL (§6.5.b): solo se anota qué tipos lo tienen
+            // y cuáles no; la regla de todo-o-nada se resuelve al terminar el recorrido.
+            if (tipo.getProductoPago() == null) {
+                tiposSinProducto.add(tipo.getCodigo() + " (" + tipo.getNombre() + ")");
+            }
+
+            double valor = redondear(linea.getValor() != null ? linea.getValor() : 0.0);
+            if (valor <= 0.0) {
+                throw new IncomeException(ERR_VALOR_INVALIDO + ": el valor a devolver del tipo "
+                    + tipo.getNombre() + " debe ser mayor a cero");
+            }
+
+            double disponible = saldoAporteService.saldoPorEntidadYTipo(
+                entidad.getCodigo(), tipo.getCodigo());
+            if (valor > disponible + TOLERANCIA) {
+                throw new IncomeException(ERR_SALDO_INSUFICIENTE + ": el tipo " + tipo.getNombre()
+                    + " tiene $" + String.format(Locale.US, "%.2f", disponible)
+                    + " disponibles y se piden $" + String.format(Locale.US, "%.2f", valor));
+            }
+
+            tipos.add(tipo);
+            valores.add(valor);
+            total = total.add(BigDecimal.valueOf(valor));
+        }
+
+        // Producto de pago: TODO O NADA (§6.5.b).
+        //
+        //   Todos los tipos lo tienen   -> se manda el desglose; al confirmarse el pago hay
+        //                                  asiento y movimiento bancario, como siempre.
+        //   Ninguno lo tiene            -> no se manda desglose; el pago se confirma SIN
+        //                                  contabilidad. Es la decisión del 2026-08-24.
+        //   Algunos sí y otros no       -> se rechaza.
+        //
+        // El caso mezclado TIENE que fallar: un desglose parcial genera un asiento donde las
+        // líneas DEBE suman menos que el HABER al banco. Un asiento descuadrado es peor que
+        // no tener asiento.
+        boolean contabiliza = tiposSinProducto.isEmpty();
+        if (!contabiliza && tiposSinProducto.size() < tipos.size()) {
+            throw new IncomeException(ERR_TIPO_APORTE_SIN_PRODUCTO + ": la devolución mezcla "
+                + "tipos con y sin producto de pago parametrizado, y eso generaría un asiento "
+                + "descuadrado. Sin producto de pago: " + String.join(", ", tiposSinProducto)
+                + ". Cárguelos en el catálogo de tipos de aporte, o quítelos de esta devolución.");
+        }
+
+        DetalleValidado resultado = new DetalleValidado();
+        resultado.tipos = tipos;
+        resultado.valores = valores;
+        resultado.valorTotal = redondear(total.doubleValue());
+        resultado.contabiliza = contabiliza;
+        return resultado;
+    }
+
+    /**
+     * Resuelve y valida la fecha de negocio de una devolución (§8.1 paso 8 de
+     * {@link #registrarDevolucion}, extraído tal cual): hoy si no viene, y nunca futura.
+     *
+     * @param solicitada Fecha pedida, o {@code null}
+     * @return La fecha a usar
+     */
+    private LocalDate resolverFecha(LocalDate solicitada) {
+        LocalDate fecha = solicitada != null ? solicitada : LocalDate.now();
+        if (fecha.isAfter(LocalDate.now())) {
+            throw new IncomeException(ERR_FECHA_INVALIDA + ": la fecha " + fecha + " es futura");
+        }
+        return fecha;
+    }
+
+    /**
+     * Los beneficiarios ACTIVOS (CBBPIDST = 1) de un partícipe, de CRD.CBBP. Compartido entre
+     * la guarda de {@link #registrarDevolucion} y el reparto de
+     * {@link #registrarParaBeneficiarios}.
+     *
+     * @param idEntidad Código del partícipe
+     * @throws Throwable Si ocurre un error
+     */
+    private List<CuentaBancariaBeneficiario> beneficiariosActivosDe(Long idEntidad) throws Throwable {
+        List<CuentaBancariaBeneficiario> todos = cuentaBancariaBeneficiarioDaoService.selectPorEntidad(idEntidad);
+        List<CuentaBancariaBeneficiario> activos = new ArrayList<>();
+        if (todos != null) {
+            for (CuentaBancariaBeneficiario beneficiario : todos) {
+                if (beneficiario.getEstado() != null
+                        && beneficiario.getEstado().intValue() == EstadoCuentasBancarias.ACTIVO) {
+                    activos.add(beneficiario);
+                }
+            }
+        }
+        return activos;
+    }
+
+    // ========================================================================
+    // Devolución a beneficiarios de un partícipe FALLECIDO
+    // (docs/logica-negocio/crd/API-DEVOLUCION-APORTES-A-BENEFICIARIOS.md)
+    // ========================================================================
+
+    @Override
+    @TransactionAttribute(TransactionAttributeType.REQUIRED)
+    public List<ResultadoDevolucionBeneficiario> registrarParaBeneficiarios(
+            SolicitudDevolucionAporteBeneficiarios solicitud) throws Throwable {
+
+        System.out.println("DevolucionAporteService.registrarParaBeneficiarios - Entidad: "
+            + (solicitud != null ? solicitud.getIdEntidad() : null)
+            + " - Lineas: " + (solicitud != null && solicitud.getDetalle() != null
+                ? solicitud.getDetalle().size() : 0));
+
+        // ------------------------------------------------------------------
+        // VALIDACIÓN — §4 del contrato, en ese orden
+        // ------------------------------------------------------------------
+
+        if (solicitud == null) {
+            throw new IncomeException(ERR_PARAMETRO_INVALIDO
+                + ": no se recibió el cuerpo de la solicitud");
+        }
+        if (solicitud.getIdEntidad() == null) {
+            throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": idEntidad es obligatorio");
+        }
+        if (solicitud.getIdEmpresa() == null) {
+            throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": idEmpresa es obligatorio");
+        }
+        if (solicitud.getUsuario() == null || solicitud.getUsuario().trim().isEmpty()) {
+            throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": usuario es obligatorio");
+        }
+        if (solicitud.getDetalle() == null) {
+            throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": detalle es obligatorio");
+        }
+
+        Entidad entidad = entidadDaoService.find(new Entidad(), solicitud.getIdEntidad());
+        if (entidad == null) {
+            throw new IncomeException(ERR_ENTIDAD_NO_ENCONTRADA + ": no existe el partícipe "
+                + solicitud.getIdEntidad());
+        }
+
+        // H61: mismo bloqueo que registrarDevolucion, antes de la primera lectura de saldo.
+        // ejecutarDevolucion lo vuelve a tomar por cada beneficiario más abajo: inocuo, mismo
+        // lock re-otorgado dentro de la misma transacción.
+        aporteDaoService.bloquearAportesEntidad(entidad.getCodigo());
+
+        // 1. El partícipe tiene que estar fallecido.
+        if (entidad.getIdEstado() == null
+                || entidad.getIdEstado().intValue() != EstadoParticipeEntidad.CESANTE_FALLECIDO) {
+            throw new IncomeException(ERR_PARTICIPE_NO_FALLECIDO + ": el partícipe " + entidad.getCodigo()
+                + " no está registrado como fallecido. Use POST /rest/dvap/registrar (el endpoint"
+                + " normal) para devolverle a su propia cuenta.");
+        }
+
+        // 2. Sus beneficiarios ACTIVOS.
+        List<CuentaBancariaBeneficiario> activos = beneficiariosActivosDe(entidad.getCodigo());
+        if (activos.isEmpty()) {
+            throw new IncomeException(ERR_SIN_BENEFICIARIOS + ": el partícipe " + entidad.getCodigo()
+                + " no tiene beneficiarios activos cargados en CRD.CBBP. Cárguelos en la ficha del"
+                + " partícipe antes de registrar la devolución.");
+        }
+
+        // 3. Los porcentajes de los activos tienen que sumar exactamente 100.
+        BigDecimal sumaPorcentajes = BigDecimal.ZERO;
+        for (CuentaBancariaBeneficiario beneficiario : activos) {
+            sumaPorcentajes = sumaPorcentajes.add(
+                beneficiario.getPorcentaje() != null ? beneficiario.getPorcentaje() : BigDecimal.ZERO);
+        }
+        if (sumaPorcentajes.compareTo(CIEN) != 0) {
+            throw new IncomeException(ERR_PORCENTAJES_NO_SUMAN_100 + ": los porcentajes de los "
+                + activos.size() + " beneficiarios activos del partícipe " + entidad.getCodigo()
+                + " suman " + sumaPorcentajes + "%, y tienen que sumar exactamente 100%. Corríjalos"
+                + " en la ficha del partícipe antes de registrar la devolución.");
+        }
+
+        // 4-8. Mismo cálculo de tipos, saldo, producto de pago y fecha que registrarDevolucion,
+        // sobre el detalle ORIGINAL (el total a repartir, todavía sin repartir).
+        DetalleValidado validado = validarDetalleYSaldo(entidad, solicitud.getDetalle());
+        List<TipoAporte> tipos = validado.tipos;
+        List<Double> valoresOriginales = validado.valores;
+        double valorTotal = validado.valorTotal;
+        boolean contabiliza = validado.contabiliza;
+
+        LocalDate fecha = resolverFecha(solicitud.getFecha());
+
+        // ------------------------------------------------------------------
+        // EL REPARTO — §5.1 del contrato: POR TIPO DE APORTE, no por el total. Repartir
+        // primero el total y escalar las líneas después descuadra el tipo (§5.2, medido con
+        // A=100,00/B=0,01 y tres beneficiarios: el tipo A quedaba en 100,01, un centavo más
+        // del que el partícipe tiene). El algoritmo correcto reparte cada línea de tipo:
+        //     línea_i(T) = redondear(valor(T) × porcentaje_i / 100)
+        //     residuo(T) = valor(T) − Σ_i línea_i(T)  →  al de mayor porcentaje (empate: menor código)
+        //     valor_i = Σ_T línea_i(T)
+        // Así las tres invariantes del §5.1 salen por construcción.
+        // ------------------------------------------------------------------
+
+        // El beneficiario de mayor porcentaje (empate → menor código) es SIEMPRE el mismo para
+        // el residuo de TODOS los tipos: ni el porcentaje ni el código cambian por tipo.
+        CuentaBancariaBeneficiario mayor = activos.get(0);
+        for (CuentaBancariaBeneficiario beneficiario : activos) {
+            int cmp = beneficiario.getPorcentaje().compareTo(mayor.getPorcentaje());
+            if (cmp > 0 || (cmp == 0 && beneficiario.getCodigo().compareTo(mayor.getCodigo()) < 0)) {
+                mayor = beneficiario;
+            }
+        }
+        int idxMayor = activos.indexOf(mayor);
+
+        // valoresPorBeneficiario[j][i] = línea del tipo i (índice en `tipos`) para el
+        // beneficiario j (índice en `activos`).
+        double[][] valoresPorBeneficiario = new double[activos.size()][tipos.size()];
+
+        for (int i = 0; i < tipos.size(); i++) {
+            double valorTipo = valoresOriginales.get(i);
+            double sumaLineas = 0.0;
+            for (int j = 0; j < activos.size(); j++) {
+                double porcentaje = activos.get(j).getPorcentaje().doubleValue();
+                double linea = redondear(valorTipo * porcentaje / 100.0);
+                valoresPorBeneficiario[j][i] = linea;
+                sumaLineas += linea;
+            }
+            double residuo = redondear(valorTipo - sumaLineas);
+            if (residuo != 0.0) {
+                valoresPorBeneficiario[idxMayor][i] = redondear(valoresPorBeneficiario[idxMayor][i] + residuo);
+            }
+        }
+
+        // §5.3: la guarda dura, sobre las TRES invariantes, ANTES de registrar nada. Si alguna
+        // no cuadra, no se registra ninguna devolución.
+        for (int i = 0; i < tipos.size(); i++) {
+            double sumaTipo = 0.0;
+            for (int j = 0; j < activos.size(); j++) {
+                sumaTipo += valoresPorBeneficiario[j][i];
+            }
+            sumaTipo = redondear(sumaTipo);
+            if (Math.abs(sumaTipo - valoresOriginales.get(i)) > TOLERANCIA) {
+                throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": el reparto del tipo "
+                    + tipos.get(i).getNombre() + " no cuadra (repartido $" + sumaTipo + ", original $"
+                    + valoresOriginales.get(i) + "). No se registró ninguna devolución.");
+            }
+        }
+        double sumaTotalBeneficiarios = 0.0;
+        for (int j = 0; j < activos.size(); j++) {
+            double sumaLineasBeneficiario = 0.0;
+            for (int i = 0; i < tipos.size(); i++) {
+                sumaLineasBeneficiario += valoresPorBeneficiario[j][i];
+            }
+            sumaTotalBeneficiarios = redondear(sumaTotalBeneficiarios + redondear(sumaLineasBeneficiario));
+        }
+        if (Math.abs(sumaTotalBeneficiarios - valorTotal) > TOLERANCIA) {
+            throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": el reparto entre beneficiarios no"
+                + " cuadra con el total a devolver (repartido $" + sumaTotalBeneficiarios + ", total $"
+                + valorTotal + "). No se registró ninguna devolución.");
+        }
+
+        // ------------------------------------------------------------------
+        // EJECUCIÓN — UNA devolución completa POR BENEFICIARIO (§3 del contrato: CXP rechaza
+        // un segundo pago vivo para el mismo idOrigen, así que no puede ser N órdenes de una
+        // sola devolución). Todas en ESTA transacción: si la de un beneficiario falla, se
+        // revierten todas (§6 — H78: nada de "best effort" con contador de errores).
+        // ------------------------------------------------------------------
+
+        List<ResultadoDevolucionBeneficiario> resultados = new ArrayList<>();
+        for (int j = 0; j < activos.size(); j++) {
+            CuentaBancariaBeneficiario beneficiario = activos.get(j);
+
+            List<Double> valoresBeneficiario = new ArrayList<>();
+            double totalBeneficiario = 0.0;
+            for (int i = 0; i < tipos.size(); i++) {
+                valoresBeneficiario.add(valoresPorBeneficiario[j][i]);
+                totalBeneficiario += valoresPorBeneficiario[j][i];
+            }
+            totalBeneficiario = redondear(totalBeneficiario);
+
+            ResultadoDevolucionAporte resultado = ejecutarDevolucion(entidad, tipos, valoresBeneficiario,
+                totalBeneficiario, fecha, solicitud.getMotivo(), solicitud.getIdEmpresa(),
+                solicitud.getUsuario().trim(), solicitud.getIdUsuario(), solicitud.isDebitoAutomatico(),
+                solicitud.getReferencia(), contabiliza, null, armaBeneficiarioDesdeCBBP(beneficiario));
+
+            ResultadoDevolucionBeneficiario r = new ResultadoDevolucionBeneficiario();
+            r.setIdDevolucion(resultado.getIdDevolucion());
+            r.setIdBeneficiario(beneficiario.getCodigo());
+            r.setNombre(beneficiario.getNombre());
+            r.setIdentificacion(beneficiario.getNumeroIdentificacion());
+            r.setValor(totalBeneficiario);
+            r.setIdPago(resultado.getIdPagoProgramado());
+            resultados.add(r);
+
+            System.out.println("  ✅ Devolución " + resultado.getIdDevolucion() + " para beneficiario "
+                + beneficiario.getCodigo() + " (" + beneficiario.getNombre() + ") por $" + totalBeneficiario);
+        }
+
+        return resultados;
     }
 
     // ========================================================================
@@ -1569,6 +1919,28 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
             beneficiario.setNumeroCuenta(cuentaParticipe.getNumeroCuenta());
         }
         return beneficiario;
+    }
+
+    /**
+     * Arma el beneficiario ocasional que viaja a CXP con los datos de un BENEFICIARIO de un
+     * partícipe fallecido (CRD.CBBP), en vez de los del propio partícipe.
+     *
+     * Variante de {@link #armaBeneficiario} para {@link #registrarParaBeneficiarios}: mismo
+     * DTO, mismo destino en CXP — sólo cambia de dónde salen los datos. El beneficiario
+     * tampoco se convierte en {@code TSR.Titular}, por el mismo motivo que el partícipe.
+     *
+     * @param beneficiario Beneficiario de CRD.CBBP, con su banco y cuenta ya cargados
+     * @return Beneficiario ocasional
+     */
+    private BeneficiarioOcasional armaBeneficiarioDesdeCBBP(CuentaBancariaBeneficiario beneficiario) {
+        BeneficiarioOcasional ocasional = new BeneficiarioOcasional();
+        ocasional.setNombre(beneficiario.getNombre());
+        ocasional.setIdentificacion(beneficiario.getNumeroIdentificacion());
+        ocasional.setIdBancoExterno((beneficiario.getBancoExterno() != null)
+            ? beneficiario.getBancoExterno().getCodigo() : null);
+        ocasional.setTipoCuenta(beneficiario.getTipoCuenta());
+        ocasional.setNumeroCuenta(beneficiario.getNumeroCuenta());
+        return ocasional;
     }
 
     /**

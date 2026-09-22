@@ -22,11 +22,13 @@ import com.saa.ejb.crd.service.dto.DeudaPrestamo;
 import com.saa.ejb.crd.service.dto.DeudaVigenteParticipe;
 import com.saa.ejb.crd.service.dto.ResultadoConsultaPagoDevolucion;
 import com.saa.ejb.crd.service.dto.ResultadoDevolucionAporte;
+import com.saa.ejb.crd.service.dto.ResultadoDevolucionBeneficiario;
 import com.saa.ejb.crd.service.dto.ResultadoReemisionPagoDevolucion;
 import com.saa.ejb.crd.service.dto.ResultadoSincronizacion;
 import com.saa.ejb.crd.service.dto.ResumenDevolucionAporte;
 import com.saa.ejb.crd.service.dto.SolicitudAnulacionDevolucion;
 import com.saa.ejb.crd.service.dto.SolicitudDevolucionAporte;
+import com.saa.ejb.crd.service.dto.SolicitudDevolucionAporteBeneficiarios;
 import com.saa.ejb.crd.service.dto.SolicitudReemisionPagoDevolucion;
 import com.saa.ejb.cxp.dao.PagoProgramadoDaoService;
 import com.saa.model.crd.CuentaBancariaParticipe;
@@ -171,6 +173,76 @@ public class DevolucionAporteRest {
 
         } catch (Throwable e) {
             return respuestaError("registrar la devolución de aportes", e);
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // Devolución a beneficiarios de un partícipe FALLECIDO
+    // (docs/logica-negocio/crd/API-DEVOLUCION-APORTES-A-BENEFICIARIOS.md)
+    // ------------------------------------------------------------------------
+
+    /**
+     * Registra la devolución de aportes de un partícipe FALLECIDO, repartida entre sus
+     * beneficiarios activos (CRD.CBBP): UNA devolución completa por beneficiario, cada una con
+     * su propio DVAP, orden y pago — CXP rechaza un segundo pago vivo para el mismo origen
+     * (§3 del contrato), así que no puede ser N órdenes de una sola devolución.
+     *
+     * Todas se registran en UNA transacción: si la de un beneficiario falla, se revierten
+     * todas (§6 del contrato).
+     *
+     * ⚠️ La forma de la respuesta es la que fija el contrato §4: el arreglo directo, sin el
+     * sobre {@code {exito, etapa, mensaje, resultado}} que usan los demás endpoints de esta
+     * clase.
+     *
+     * @param solicitud { idEntidad, idEmpresa, idUsuario, usuario, fecha, motivo,
+     *                    debitoAutomatico, referencia, detalle:[{ idTipoAporte, valor }] } —
+     *                    igual que {@code registrar}, sin cuenta bancaria
+     * @return 201 con {@code [{ idDevolucion, idBeneficiario, nombre, identificacion, valor, idPago }]};
+     *         400/500 según el fallo
+     */
+    @POST
+    @Path("/registrarParaBeneficiarios")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response registrarParaBeneficiarios(SolicitudDevolucionAporteBeneficiarios solicitud) {
+        System.out.println("LLEGA AL SERVICIO REGISTRAR DEVOLUCION PARA BENEFICIARIOS - Entidad: "
+            + (solicitud != null ? solicitud.getIdEntidad() : null)
+            + " - Lineas: " + (solicitud != null && solicitud.getDetalle() != null
+                ? solicitud.getDetalle().size() : 0));
+
+        if (solicitud == null) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(),
+                "Debe enviar el cuerpo de la solicitud", DevolucionAporteService.ERR_PARAMETRO_INVALIDO);
+        }
+        if (solicitud.getIdEntidad() == null) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(),
+                "Debe indicar el partícipe (idEntidad)", DevolucionAporteService.ERR_PARAMETRO_INVALIDO);
+        }
+        if (solicitud.getIdEmpresa() == null) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(),
+                "Debe indicar la empresa contable (idEmpresa)",
+                DevolucionAporteService.ERR_PARAMETRO_INVALIDO);
+        }
+        if (solicitud.getUsuario() == null || solicitud.getUsuario().trim().isEmpty()) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(),
+                "Debe indicar el usuario que registra la devolución",
+                DevolucionAporteService.ERR_PARAMETRO_INVALIDO);
+        }
+        if (solicitud.getDetalle() == null || solicitud.getDetalle().isEmpty()) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(),
+                "Debe indicar al menos un tipo de aporte a devolver",
+                DevolucionAporteService.ERR_PARAMETRO_INVALIDO);
+        }
+
+        try {
+            List<ResultadoDevolucionBeneficiario> resultado =
+                devolucionAporteService.registrarParaBeneficiarios(solicitud);
+
+            return Response.status(Response.Status.CREATED)
+                    .entity(resultado).type(MediaType.APPLICATION_JSON).build();
+
+        } catch (Throwable e) {
+            return respuestaError("registrar la devolución para beneficiarios", e);
         }
     }
 
@@ -586,7 +658,11 @@ public class DevolucionAporteRest {
     private static final int HTTP_CONFLICTO = Response.Status.CONFLICT.getStatusCode();
 
     private static final List<String> CODIGOS_400 = Arrays.asList(
-        DevolucionAporteService.ERR_PARAMETRO_INVALIDO);
+        DevolucionAporteService.ERR_PARAMETRO_INVALIDO,
+        DevolucionAporteService.ERR_PARTICIPE_NO_FALLECIDO,
+        DevolucionAporteService.ERR_SIN_BENEFICIARIOS,
+        DevolucionAporteService.ERR_PORCENTAJES_NO_SUMAN_100,
+        DevolucionAporteService.ERR_USAR_DEVOLUCION_BENEFICIARIOS);
 
     private static final List<String> CODIGOS_404 = Arrays.asList(
         DevolucionAporteService.ERR_ENTIDAD_NO_ENCONTRADA,
