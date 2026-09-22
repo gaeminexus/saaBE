@@ -4343,3 +4343,45 @@ fuera.
 > no se cierran nunca por esa vía**: uno espera una fuente externa (el XSD), otro no tiene impacto
 > medible, y dos son criterio contable. Decir «está todo corregido» habría sido falso en los cuatro.
 > **Una verificación de cierre vale por lo que deja afuera, no por lo que confirma.**
+
+## §50 — ⏸️ EN STAND BY: estado de cuenta GLOBAL de CxC y CxP (2026-09-22)
+
+**Pedido del usuario, textual:**
+
+> *«Adicionalmente es necesario hacer una pantalla de estado de cuenta global de todas las cxc y
+> todas las cxp a clientes y proveedores para saber todo lo que toca pagar y todo lo que toca
+> cobrar. Pero deja esto en stand by hasta terminar de hacer esto de customax y luego te explico a
+> detalle lo que queremos.»*
+
+⛔ **NO SE EMPIEZA.** El usuario lo pausó explícitamente y va a explicar el detalle después. Esta
+sección existe **sólo** para que el pedido no se pierda con el chat — que es exactamente lo que pasó
+hoy dos veces (§46.0 y §49.2). **Ningún ejecutor tiene nada despachado de esto.**
+
+### Lo único que corresponde hacer hoy: dejar anotado lo que ya se midió y sirve para cuando arranque
+
+Esto salió de los casos de hoy (el anticipo de Ramírez, la factura de Customax), no de investigar el
+frente nuevo:
+
+1. **Ya existe `estado-cuenta-titular`, y es de UN titular por vez.** Vive en
+   `saaFE/src/app/modules/tsr/forms/estado-cuenta-titular/`, y tiene los dos roles (Cliente y
+   Proveedor) con su resumen, filtros, CSV y PDF. Lo nuevo es el **agregado de todos**, no la ficha.
+2. 🔴 **Y acá está el dato que va a decidir el diseño: esa pantalla es FRONTEND PURO.** No hay
+   endpoint de estado de cuenta: el servicio (`tsr/service/estado-cuenta-titular.service.ts`) arma
+   la vista llamando **`selectByCriteria` de CADA entidad** (facturas, NC, ND, retenciones,
+   anticipos, liquidaciones…) filtrando por titular, y **además consulta el saldo de cada factura
+   una por una** con `/aplp/saldo/{id}`.
+   **Ese enfoque no escala a "todos los titulares".** Para un solo proveedor ya son N+1 consultas;
+   multiplicado por todos los clientes y proveedores es inviable — y hay un antecedente medido de
+   esa familia: el `ORA-04036` por expansión del grafo EAGER (§ del `APLPMVCH`, 2026-09-03).
+   **Conclusión anticipada: el frente global necesita un endpoint propio que agregue en la base,
+   no una versión "en bucle" de la pantalla actual.** Medirlo antes de prometer plazos.
+3. **El saldo de un documento se calcula, no se guarda** (`total − aplicado` desde `PGS.APLP`). Lo
+   confirmó el caso de Customax: marcar `FCTCEPAG = 3` no movió el saldo ni un centavo. Cualquier
+   consulta global tiene que salir de las aplicaciones, no de la marca de estado.
+4. **Hay dos familias de saldo y no se consultan igual**: factura (`/aplp/saldo/{id}`) y liquidación
+   (`/aplp/saldoLiquidacion/{id}`). Confundirlas ya pisó el total de una pantalla una vez (§45).
+
+> **Lo que hay que llevarse, y aplica al frente antes de que exista:** *la pantalla de un titular y
+> la de todos no son la misma pantalla con un filtro distinto.* La primera puede permitirse pedir
+> los datos documento por documento; la segunda no. Si el frente arranca copiando el servicio que ya
+> existe, se muere en la primera corrida con datos reales.
