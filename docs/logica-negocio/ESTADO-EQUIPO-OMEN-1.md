@@ -3872,3 +3872,92 @@ Cuando se registre la primera recepción, si falla va a ser por acá y no por el
   `232`, ya corrido y limpio). Tal como está da una tranquilidad que no corresponde — regla 9.
 - **P22, calificación de riesgo**: código de las dos puntas, tablas creadas, **nunca probado contra
   producción**. Sigue igual desde el 09-09.
+
+---
+
+# ✅ 2026-09-22 — SEPELIO FASE 2a ENTREGADA: los beneficiarios del partícipe
+
+**El usuario autorizó `CRD.CBBP` e informó que `CARGA-TIPO-ADJUNTO-CERTIFICADO-BANCARIO.sql` ya
+corrió** ⇒ se cerraron **S1** y **S4** del diseño.
+
+## Decisión de árbitro: la fase 2 se partió en dos
+
+El pago depende de un producto de CXP que es de otro equipo. Esperarlo habría dejado el frente
+entero parado, así que:
+
+| Fase | Qué | Estado |
+|---|---|---|
+| **2a — Beneficiarios** | cargar quién cobra, con cuenta, porcentaje y certificado | ✅ **entregada** |
+| **2b — Entrega** | repartir el valor en N órdenes | ⛔ bloqueada (ver abajo) |
+
+**La 2a no paga, no asienta y no llama a CXP.** Por eso se puede desplegar sola.
+
+| Commit | Qué |
+|---|---|
+| `saaBE a9d05751` | `sql/233` (DDL de `CBBP`), contrato `crd/API-BENEFICIARIOS-PARTICIPE.md`, reserva actualizada |
+| `saaBE 8c953e78` | Las 7 capas + `@Path("cbbp")` |
+| `saaFE edcecc0`, `aa853b3` | Espejo del contrato y su corrección |
+| `saaFE 58a1580` | La pestaña «Beneficiarios» dentro de la ficha del partícipe |
+
+**Verificado por el árbitro, no por los ejecutores (regla 11):** las 11 columnas de la entidad
+contra el DDL una por una (coinciden exactas), `mvn -q compile` exit 0, `ng build` exit 0, el
+`disabled` del botón que no mira el acumulado, SCSS con clases locales y cero `::ng-deep`, y
+`ws-crd.ts` con una sola línea agregada.
+
+## ⛔ H73 — Un `forkJoin` muere entero, y con él una pantalla que no es la suya
+
+**Encontrado por el árbitro revisando el diff, antes de commitear.**
+
+`cargarDatosIniciales()` de la ficha del partícipe agregó los beneficiarios al `forkJoin` que trae
+entidad, partícipe, cónyuge, referencias y cuentas bancarias. El servicio nuevo **propagaba** el
+error (`throwError`), mientras su vecino `CuentaBancariaParticipeService` devuelve **`of(null)`**.
+
+⇒ **Un error de `/cbbp/porEntidad` dejaba la ficha completa sin cargar NADA.** No la pestaña nueva:
+**la pantalla entera**, incluidas las cinco cosas que hoy funcionan bien.
+
+⭐ **Y no era hipotético.** `CRD.CBBP` no existe hasta que se corra el `233`, así que ese endpoint
+**falla seguro** si el WAR llega antes que el script — que es literalmente el **H58** de este mismo
+tablero («el WAR subió sin su DDL»). El defecto se habría manifestado como «la ficha del partícipe
+no abre», sin ninguna pista de que la causa era una pestaña nueva.
+
+**Regla que queda:** *una llamada nueva dentro de un `forkJoin` existente no puede propagar su
+error.* El `catchError` de la carga inicial no es el mismo que el de guardar: en la carga se absorbe
+(`of([])`), al guardar se propaga para mostrar el mensaje del backend. Los dos conviven en el mismo
+servicio, a propósito.
+
+## ⛔ Error del árbitro: escribí un control MÁS LAXO que el código que pretendía controlar
+
+El contrato decía que el tipo de adjunto se resuelve con `LIKE '%CERTIFICADO%BANCARIO%'`. **Falso:**
+`TipoAdjuntoDaoServiceImpl.selectByNombre:25-31` hace `UPPER(t.nombre) = UPPER(:nombre)` **y** filtra
+por estado activo. Lo levantó el ejecutor BE **programando contra el código en vez de contra mi
+prosa** — que es exactamente para lo que sirve que lo lean.
+
+⭐ **Lo caro es lo que destapó:** el bloque `0.5` del `233` —mi script de control— usaba el mismo
+`LIKE`. Habría devuelto «1 fila, todo bien» con un nombre como `CERTIFICADO BANCARIO DIGITALIZADO`,
+o con la fila **inactiva**, y el certificado habría fallado igual el primer día. **Un control más
+laxo que el código que verifica no verifica nada: da tranquilidad falsa**, que es peor que no tener
+control. Corregido a igualdad exacta + estado, con un `0.5b` de diagnóstico para cuando dé cero.
+
+Es la tercera vez que un ejecutor corrige al árbitro por leer el código donde el árbitro escribió de
+memoria (H34, H69, y el bloque `3.3` del `232`).
+
+## Dos precisiones del contrato que salieron al implementar
+
+1. **El estado es `1` activo / `2` inactivo** — rubro `EstadoCuentasBancarias`, no el genérico
+   `Estado`, cuyo `INACTIVO` vale **0** y habría violado el `CK_CBBP_ESTADO`.
+2. **El alta responde 400, no 404**, si el partícipe o el banco no existen: la tabla de códigos no
+   enumeraba un 404 y el ejecutor respetó el listado en vez de inventarlo. El 404 sólo vive en el `PUT`.
+
+## Lo que falta
+
+- ⛔ **Correr `crd/sql/233`, y ANTES del próximo WAR.** Sin la tabla, la pestaña no funciona; y sin
+  el arreglo de H73 desplegado, además se llevaría puesta la ficha entera.
+- **Fase 2b bloqueada por dos cosas:** el **producto de pago de CXP contra `2.3.90.90.11`**
+  (`omen-saa-2`, el aviso sigue esperando autorización del usuario) y **la decisión del asiento de
+  reclasificación**: el `231` dejó `CTAPPLNL = CTAPPLNP`, con lo que la reclasificación saldría
+  **neutra**, así que hay que **medir si esa rama se invoca** antes de elegir entre agregar
+  `CTAPRCLS` (dos asientos exactos) o dejar el tercero neutro (cero código). **Sin medir, no se
+  despacha.**
+- **Alcance que se amplía solo:** la devolución de aportes normal también debe pagar a beneficiarios
+  cuando el partícipe está fallecido (decisión del usuario). Eso toca `registrarDevolucion`, que ya
+  está en producción: la 2b modifica código vivo, no sólo agrega código nuevo.
