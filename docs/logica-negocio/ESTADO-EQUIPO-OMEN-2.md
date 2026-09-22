@@ -4106,3 +4106,111 @@ lugar del frontend** que mandaba `'empresa'` plano.
 parámetro no se pudo **medir** —no hay WildFly ni Oracle levantados en la OMEN—, se dedujo leyendo
 el código. La confirmación dura son diez segundos en la pestaña Red del navegador: `400` con
 «did not match parameter type» lo cierra; un `200` con lista vacía diría que la causa es otra.
+
+## §49 — El corte de luz, el WAR desplegado, y los SQL que «se corrieron» (2026-09-21, noche)
+
+**Árbitro nuevo, memoria limpia** (el tercero del día). Se fue la luz en la OMEN y el usuario pidió
+retomar lo del equipo anterior y cerrar sus sesiones.
+
+### 49.1 — El corte no se llevó nada, y la prueba es el reloj
+
+| Qué | Estado al retomar |
+|---|---|
+| `saaBE` | limpio, al día con `origin/main` en `7877c31b` (18:11) |
+| `saaFE` | limpio, al día con `origin/main` en `6a5a7e2` (18:19) |
+| `omen-saa-2-be` | sesión **nueva**, contestó «SIN TRABAJO EN CURSO», cero archivos tocados |
+| `omen-saa-2-fe` | sesión **nueva**, inventario de solo lectura al 60%, cero archivos tocados |
+| Sesiones del equipo anterior | ya **offline** (tres `omen-saa-2-arb` en el listado). No hay nada que cerrar |
+
+**El árbitro anterior alcanzó a commitear y pushear todo antes del corte.** Por eso no hay un solo
+archivo sin commitear, ni nuestro ni ajeno, y no se perdió una línea de código.
+
+### 49.2 — Lo que sí se perdió fue el registro, y es el §46.0 otra vez el mismo día
+
+Este documento terminaba en el **§48 (17:23)** y después entraron **ocho commits hasta las 18:19**
+que no figuraban en ninguna parte:
+
+| Commit | Qué |
+|---|---|
+| `db755fc3` `7b3fadad` | `e2-63`: por qué la factura marcada como intermediario seguía en el ATS |
+| `809a6c40` | `e2-64`: saca del ATS la factura 343 marcándola, sin tocar su asiento |
+| `3a152487` · FE `504f8e5` | la retención emitida informa cuánto retuvo de renta y cuánto de IVA (dos `@Transient` en `RetencionV2`, una consulta agregada por bloque de 500 ids) |
+| `cfa20082` `7877c31b` · FE `1db118f` | diseño y contrato de la ficha completa de un documento de CXP |
+| `1f956031` | `e2-65`: las ventas al 5% y al 8% que el ATS no declara |
+| FE `6a5a7e2` | **la ficha del documento**, cinco secciones, 477 líneas |
+
+**Es la segunda vez en el mismo día** que un árbitro nuevo tiene que reconstruir la jornada leyendo
+el log de git (la primera fue el §46.0, con la jornada del 16-09). Y esta vez había una razón
+material —se cortó la luz—, que es exactamente cuando el registro importa.
+
+> **Lo que hay que llevarse:** commitear protege el código, no el estado. El árbitro anterior hizo
+> lo más difícil —dejó los dos árboles limpios y pusheados— y lo que faltó fue el párrafo.
+
+### 49.3 — 🔴 EL WAR ESTÁ DESPLEGADO Y LA FICHA DEL DOCUMENTO QUEDÓ AFUERA DEL FE
+
+`omen-saa-1` registró (`1446df0b`, 19:17) que el usuario **desplegó el WAR**, con `origin/main` en
+**`saaBE 3e32aa35`** y **`saaFE 4e74754`**.
+
+**Del lado del backend, todo lo nuestro del 21-09 entró**: `3e32aa35` está por encima de nuestro
+último commit (`7877c31b`, 18:11). O sea que ya están vivas en producción las retenciones recibidas
+con su desglose (`1aeed9ed`), la clasificación por tarifa en la carga (`b6dd7bcb`), el cuadre 104
+(`8aaafe62`), la nota de venta (`296fa0c9`, `4b2787d4`) y el desglose renta/IVA de la retención
+emitida (`3a152487`).
+
+**Del lado del frontend NO.** Medido, no supuesto:
+
+```
+git merge-base --is-ancestor 6a5a7e2 4e74754  →  NO
+6a5a7e2  18:19:50  cxp(omen2): la ficha del documento ...
+4e74754  18:19:01  crd(omen1): los dos nombres de menu ...
+```
+
+**Cuarenta y nueve segundos.** Un build del FE hecho sobre el HEAD que el usuario reportó **no lleva
+la ficha del documento**, que es el frente grande que él mismo pidió hoy. Todo lo demás nuestro sí
+(`504f8e5`, de las 18:07, queda por debajo).
+
+> **Lo que hay que llevarse:** el WAR y el FE son **dos artefactos y dos despliegues**, y un frente
+> 100% frontend no se activa con el WAR — lo dejó escrito `omen-saa-1` en el mismo commit, por el
+> caso de H70. Acá el nuestro se cayó por **menos de un minuto** de diferencia entre dos commits de
+> equipos distintos. **Al reportar un despliegue, el hash del FE se contrasta contra el último
+> commit del FE, no contra el del WAR.**
+
+### 49.4 — «Todos los sql se corrieron»: qué cierra eso y qué no
+
+El usuario confirmó que corrió los seis que este árbitro listó como pendientes (`e2-56`, `e2-57`,
+`e2-58`, `e2-59`, `e2-62`, `e2-65`). Queda anotado, y **con la misma advertencia que el §46.1**, que
+es de hoy a la mañana y de este mismo frente: *correr un script y guardar el cambio son dos actos
+distintos*, porque el `COMMIT` va comentado.
+
+| Grupo | Scripts | Qué falta para darlos por cerrados |
+|---|---|---|
+| **Solo lectura** | `e2-56` `e2-57` `e2-59` `e2-65` | **La salida.** No cambian nada en la base: su valor entero es lo que imprimen. Sin pegarla, correrlos no informó nada |
+| **Escriben datos** | `e2-58` `e2-62` | El **bloque de control posterior**. Es lo único que distingue un `UPDATE` guardado de uno perdido |
+
+Y dos de esas mediciones **definen si hay un frente nuevo de código**, no solo si hay datos malos:
+
+- **`e2-65`** — el ATS de ventas alimenta la gravada con `SUBTOTAL` y el IVA con `VIVA`, e **ignora
+  `SUBTOTAL5`/`SUBTOTAL8`/`VIVA5`/`VIVA8`**. Si trae filas, toda venta al 5% u 8% está quedando
+  fuera del anexo y **el arreglo de código no existe todavía**. Si da cero, el defecto nunca afectó
+  una declaración y se cierra sin tocar nada.
+- **`e2-56`** — compras cuyo XML trae líneas con código 6 (no objeto) o 7 (exento) y cuya base no va
+  a ninguna columna de cabecera: el ATS las declara como gravadas. Mismo defecto que el bomberos,
+  por otro camino.
+
+### 49.5 — ✅ Resuelta la contradicción del índice: el `e2-55` entró
+
+El `INDICE-SCRIPTS-EQUIPO-2.md` marcaba `e2-53`, `e2-54` y `e2-55` como 🔴 pendientes mientras el
+§46 y el §47 decían que habían corrido. **Se resolvió midiendo, no eligiendo a cuál creerle:**
+
+1. El `e2-63` **consulta `SUBNOOBJ`** y corrió sin error el 21-09 → la columna existe.
+2. `PGS.FCTC.SUBNOOBJ` **no la crea el `e2-61`** (que solo le agrega `SUBEXENT` a `FCTC`): la crea
+   el **`e2-55`**. Su bloque 0 lleva la guarda escrita: *«Si SUBNOOBJ no aparece en FCTC, PARAR»*.
+3. Y ahora hay una prueba más dura todavía: **el WAR está desplegado** y las cuatro entidades de
+   compra mapean `SUBNOOBJ`/`SUBEXENT`. Hibernate mete toda columna `@Column` en el SELECT, así que
+   si faltara una, **toda lectura de `FCTC` moriría con ORA-00904**. Si la Consulta de Documentos de
+   CXP lista facturas, el DDL entero está aplicado.
+
+> **Lo que hay que llevarse:** el índice y el documento de estado se contradijeron porque cada uno se
+> actualizó en un commit distinto de la misma jornada. Lo que los desempató no fue la fecha del
+> archivo sino **un script que ya había corrido y que tocaba la columna en disputa**. Cuando dos
+> registros nuestros no coinciden, la salida de un tercero los arbitra.
