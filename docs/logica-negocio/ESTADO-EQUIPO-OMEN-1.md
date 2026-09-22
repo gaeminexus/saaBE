@@ -3744,3 +3744,67 @@ tocar `.mdc-list-item__primary-text`**, que es donde Angular Material hace el re
 eso su arreglo no alcanzó. **Ya se les avisó, con autorización del usuario.** ⚠️ Si lo arreglan de
 fondo, `NOMBRES-DE-MENU-LATERAL.md` hay que actualizarlo: hoy documenta un **límite de diseño**, y
 pasaría a ser una cicatriz.
+
+---
+
+# 🔍 2026-09-21, 19:10 — H72: el mock de certificados sobrevivió tres semanas a su propio backend
+
+**Salió de una corrección cruzada, y vale registrar cómo:** el ejecutor FE reportó en su inventario
+que «`certificados-participe` corre con mock». Lo verifiqué sobre el componente, no encontré nada y
+se lo corregí. **Tenía razón él y el que miró en el lugar equivocado fui yo**: el mock no está en el
+componente, está en el servicio. Me lo devolvió con archivo y línea, releído en disco.
+
+⭐ **La lección de método, que es la misma de H34, H69 y de las cinco correcciones del 21-09:** el
+que reporta algo impreciso no necesariamente reporta algo falso. Si lo hubiera descartado con mi
+primer grep, este frente seguía sin verse.
+
+## Lo que hay, medido en las dos puntas
+
+| Pieza | Dónde | Estado |
+|---|---|---|
+| Mock en memoria de los 6 tipos | `saaFE crd/service/certificado-participe.service.ts:22-28`, consultado en `:47,64,78,89,109` | **vivo** |
+| Flag en desarrollo | `saaFE src/environments/environment.ts:22` → `mockCertificadosParticipe: true` | **mock ON** |
+| Flag en producción | `saaFE src/environments/environment.prod.ts:7` → `false` | **backend real** |
+| Backend `@Path("crtf")` | `saaBE ws/rest/crd/CertificadoRest.java` — 8 endpoints | **existe desde `f08e92b2`, 2026-08-30** |
+
+**El comentario del servicio dice «el backend todavía no publica `/rest/crtf/*`». Es falso desde
+hace tres semanas.** No nació mentiroso: envejeció. El backend llegó después del mock y nadie volvió
+a apagar el flag.
+
+## El contrato coincide — verificado pieza por pieza por el árbitro, no por los agentes
+
+| FE llama | BE publica | ✓ |
+|---|---|---|
+| `GET /crtf/precarga/{idEntidad}/{tipo}` + `?idPrestamo&idLiquidacion` | `:145` con los dos `@QueryParam` | ✅ |
+| `POST /crtf/emitir` | `:171` | ✅ |
+| `GET /crtf/getByEntidad/{idEntidad}` | `:82` | ✅ |
+| `GET /crtf/getByAnio/{anio}` | `:97` | ✅ |
+| `GET /crtf/pdf/{id}` | `:115` | ✅ |
+| `POST /crtf/anular/{id}?motivo&usuario` | `:204` con los dos `@QueryParam` | ✅ |
+
+⚠️ **Una falsa alarma propia, anotada para que nadie la repita:** el FE tipa la respuesta de `anular`
+como `ResultadoAnulacionCertificado` y el BE devuelve `Certificado`. Parecía un desajuste de forma
+hasta leer `model/certificado-participe.ts:192`: **`export type ResultadoAnulacionCertificado =
+Certificado`**, un alias. No hay desajuste. Un nombre de tipo distinto no es un contrato distinto.
+
+## Por qué importa, si en producción funciona
+
+**No hay defecto vivo en producción**: allá el flag está en `false` y pega contra el backend real,
+que existe y cuyo contrato coincide. Lo que hay es peor de aguantar a largo plazo:
+
+⇒ **La pantalla de certificados hoy SÓLO se puede probar en producción.** En desarrollo el mock
+intercepta las seis llamadas y devuelve datos en memoria, así que la integración real nunca se
+ejercita: **un desajuste futuro entre FE y BE no se detectaría hasta que un usuario emita un
+certificado de verdad.** Es la misma familia que **P22** (calificación de riesgo: «código listo de
+las dos puntas, nunca probado contra producción»).
+
+## Lo que falta antes de apagarlo, y no está hecho
+
+Verifiqué rutas, path params, query params y la forma de la respuesta de `anular`. **NO** comparé
+campo por campo los tres DTOs (`PrecargaCertificado`, `SolicitudEmisionCertificado`,
+`ResultadoEmisionCertificado`), que existen con el mismo nombre en los dos repos — eso es lo que
+hay que medir **antes** de apagar el flag, porque es justo lo que el mock viene tapando.
+
+**Corrección propuesta, sin despachar (FE puro, barata):** apagar `mockCertificadosParticipe` en
+`environment.ts`, borrar el mock del servicio y corregir el comentario. Queda pendiente de la
+decisión del usuario y de la comparación de DTOs de arriba.
