@@ -136,3 +136,22 @@ SELECT c.CONSTRAINT_NAME, c.SEARCH_CONDITION, c.STATUS
 -- ⚠️ Saltarse el 1 hace que el 4 falle para 174 de 182 jubilados. Saltarse el 3 hace que
 --    el 4 ni siquiera arranque ("ya se genero").
 -- =====================================================================================
+
+
+-- =====================================================================================
+-- ✅ CONTROLES PREVIOS CORRIDOS EN PRODUCCION — 2026-09-22
+-- =====================================================================================
+-- 1.1 -> CK_PGPC_VLRR | C | "PGPCVLRR > 0" | ENABLED
+--        El CHECK existe de verdad y esta activo: la contradiccion es real, no del repo.
+--
+-- 1.2 -> 0 filas negativas. Nada que arreglar antes de relajar.
+--
+-- 1.3 -> EN_CERO 0 · MAYORES_A_CERO 225 · TOTAL 225
+--        ⭐ Ninguna fila existente queda afectada por el cambio, y el dato confirma el
+--        razonamiento de este script: las 225 filas son de corridas anteriores, todas
+--        pagos de pension REALES y por eso todas mayores a cero. El CHECK nunca estorbo
+--        porque hasta hoy CRD.PGPC solo guardaba eso. El seguro fijado en 0 —"evaluado,
+--        no corresponde cobrar"— es la semantica nueva que la restriccion no contemplaba.
+--
+-- ⇒ Las tres condiciones del bloque 2 se cumplen. El cambio es seguro.
+-- =====================================================================================
