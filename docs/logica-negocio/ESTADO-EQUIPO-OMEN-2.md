@@ -4284,3 +4284,62 @@ todavía) y deja julio **comentado**, porque ya se declaró y eso lo decide el u
 documento**. El XML lo declara con código 6 y el script respeta ese dato; si el criterio contable
 fuera el esquema de reembolso del ATS, el tratamiento es otro y hay que decirlo **antes** de generar
 el anexo.
+
+### 49.7 — VERIFICACIÓN DE CIERRE: los 16 defectos reportados del ATS, uno por uno
+
+**Encargo del usuario:** *«verifica que cuando yo corra el e2-66 y suba la nueva versión, ésta ya
+corrija todos los errores reportados»*. Decisión suya en el mismo mensaje: **julio no se corrige.**
+
+Medido contra el código de `main` (`3f6b1e56`), archivo y línea, **no contra los documentos** — que
+es la regla dura 1 y hoy ya falló dos veces (§46.3).
+
+| # | Defecto reportado | Se corrige en | Estado verificado |
+|:--:|---|---|---|
+| 1 | Bases de compra declaradas como gravadas (planillas eléctricas) | datos: `e2-52`/`e2-54` | ✅ corridos, control posterior vacío |
+| 2 | Bomberos/basura como 0% en vez de no objeto | datos `e2-55` + código `b6dd7bcb` | ✅ |
+| 3 | Líneas 6/7 del XML sin columna de cabecera (reembolso + intereses) | datos `e2-66` + código ya desplegado | ⏳ **falta correr el `e2-66`** |
+| 4 | Retenciones recibidas en 0,00 | `GeneradorAtsServiceImpl:1009-1019`, consulta única sobre `PGS.RCV2`/`DRC2` | ✅ en el WAR desplegado |
+| 5 | Nota de venta declarada como gravada | `FacturaCompraServiceImpl:471,:503` + FE `:191` (`codigoIVASRI: '0'`) + datos `e2-53` | ✅ |
+| 6 | Facturas de intermediario dentro del ATS | `GeneradorAtsServiceImpl:312` las excluye; `e2-64` marcó la 343 | ✅ |
+| 7 | El cuadre 104 **no** excluía las de intermediario (dos reportes del mismo período contradiciéndose) | `ReporteCuadreSriServiceImpl:339` | ✅ **resuelto el 21-09** — ya no es decisión pendiente |
+| 8 | Retención ↔ compra enlazada sólo por autorización | clave `autorización + "|" + número normalizado a 15` (`:849`, `:1282`) | ✅ |
+| 9 | Liquidación emitida: la gravada es `SUBTOTAL`, no `SUBTOTAL − SUBCERO` | `:277-282`, `:388-389` | ✅ |
+| 10 | `denoCli` faltante para el cliente con pasaporte (rechazo del SRI del 15-09) | `:985-994` | ✅ |
+| 11 | `tipoCliente` vacío: el rubro 35 guardaba el **texto** `null` | datos `e2-45` | ✅ |
+| 12 | `numDocSustento` de 13 dígitos en la nota de venta (retención DEVUELTA) | datos `e2-47` + código | ✅ |
+| 13 | **`tipoProv`/`denoProv` del proveedor con pasaporte** | — | 🟠 **NO corregido, y a propósito** (`:817-818` sólo avisa) |
+| 14 | El ATS de ventas ignora `SUBTOTAL5`/`SUBTOTAL8` | — | ⚪ **NO corregido**; impacto medido = **cero** (`e2-65`) |
+| 15 | Período de las retenciones recibidas: se filtra por la fecha de la **retención** (`:1344`) | — | ⚪ decisión del contador |
+| 16 | La factura 423 es un **reembolso** por el total | — | ⚪ decisión del contador |
+
+**La respuesta al encargo, sin adornos: con el `e2-66` corrido y su `COMMIT`, quedan corregidos los
+doce primeros. Los otros cuatro no se corrigen con esto, y sólo uno de ellos puede hacer fallar el
+anexo.**
+
+#### El único que puede hacer rechazar el anexo entero, y cómo saberlo antes
+
+El **#13**. Si agosto tiene una compra con proveedor con **pasaporte**, el anexo sale sin
+`<tipoProv>`/`<denoProv>` y el SRI puede rechazarlo — y emitirlos con el nombre equivocado es
+**estrictamente peor** (§46.7). Por eso se escribió el **`e2-67`**, de solo lectura: su BLOQUE 0
+contesta en una línea si ese caso existe en el período.
+
+**Si el `e2-67` BLOQUE 0 da cero filas, el #13 no afecta este ATS y se puede generar.** Si da filas,
+hay que parar: se necesita el XSD oficial del ATS (lo instala el validador del DIMM) o un ATS ya
+**autorizado** con un proveedor con pasaporte, para copiar el elemento tal cual.
+
+> La medición del tipo de identificación se hizo contra la entidad: `TSR.TTLR.TTLRRZZB` es el
+> **hijo** del rubro 36, y `PASAPORTE = 3` en `com.saa.rubros.TipoIdentificacion`. **Es el id del
+> hijo, no el código alterno** — confundirlos ya rompió el archivo del banco una vez (§40.4, §42).
+
+#### Lo que el `e2-67` deja además
+
+Los números conocidos contra los que contrastar el DIMM, que es la única verificación que este
+sistema respeta (§35): los totales de compra de agosto (**no objeto 477,12 · exento 0,39**), la lista
+—que debe ser **vacía**— de facturas con base gravada y `IVA = 0`, las retenciones que nos hicieron
+partidas en renta/IVA para cuadrar contra el talón, y las facturas de intermediario que deben quedar
+fuera.
+
+> **Lo que hay que llevarse:** de los 16 defectos, **doce se cerraron con código o con datos y cuatro
+> no se cierran nunca por esa vía**: uno espera una fuente externa (el XSD), otro no tiene impacto
+> medible, y dos son criterio contable. Decir «está todo corregido» habría sido falso en los cuatro.
+> **Una verificación de cierre vale por lo que deja afuera, no por lo que confirma.**
