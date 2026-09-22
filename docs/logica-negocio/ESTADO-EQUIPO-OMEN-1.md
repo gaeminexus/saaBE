@@ -4186,3 +4186,74 @@ beneficiario **se puede eliminar**, no sólo inactivar (borra también su certif
 
 ⭐ Los cuatro los destapó **ejecutar**: dos el usuario corriendo los scripts y dos el ejecutor
 leyendo el código en vez de mi prosa.
+
+---
+
+# ✅ 2026-09-22, 16:06 — EL SEGURO MÉDICO DE 9/2026 SE GENERÓ: $450,40, orden 478
+
+**Cerrado el frente que estuvo bloqueado toda la jornada.** Resultado final, textual de la pantalla:
+*«180 jubilados nuevos y 0 que ya tenían el seguro fijado, $450.4 en total hacia el proveedor
+(orden 478), 2 con error, de 182 evaluados»*. Cabecera verificada en la base: `CRJBESSG = 1`,
+`CRJBVLSG = 450.4`, `CRJBIDSG = 478`.
+
+## ⭐ Eran CUATRO defectos encadenados, y cada uno tapaba al siguiente
+
+Esto es lo que hay que entender de esta jornada: **no era un defecto, era una pila.** Cada corrección
+destapaba el próximo, y ninguno se veía compilando.
+
+| # | Defecto | Cómo se manifestaba | Corrección |
+|---|---|---|---|
+| 1 | Los parámetros iban por `@QueryParam` y el frontend manda el cuerpo (**H76**) | «Debe indicar idEmpresa», `Periodo: null/null` | `saaBE 3d87e029` |
+| 2 | La cabecera nacía con los estados en `NULL` (**H77**) | `ORA-01400` sobre `CRJBESPN` | `saaBE 175e7cbb` |
+| 3 | El seguro no completaba el valor total del pago | `ORA-01400` sobre `PGPCVLRR`, **182 de 182** | `saaBE ec1a5767` |
+| 4 | `CK_PGPC_VLRR` exige `> 0` y el diseño fija 0 a propósito | habría sido `ORA-02290` en **174 de 182** | `crd/sql/243` |
+
+⭐ **El cuarto nunca llegó a manifestarse** porque el ejecutor BE leyó el DDL entero en vez de sólo la
+columna que yo le había señalado. Sin eso: WAR desplegado, corrida reabierta, reintento… y **falla de
+nuevo para 174 de 182**, con una vuelta completa de diagnóstico encima.
+
+## ⛔ El defecto de diseño que convirtió un error de una línea en un bloqueo del período
+
+Con los 182 fallando, el bucle **atrapó cada excepción, la sumó a `conError` y siguió** — y al
+terminar **cerró la cabecera igual**, con total $0. A partir de ahí la guarda respondía *«ya se
+generó, no se puede generar dos veces»* y **el período quedó trabado**, sin haber pagado un centavo.
+
+Hizo falta `crd/sql/242` para reabrirlo a mano.
+
+⇒ **El bucle no debería cerrar la corrida si no generó ni un solo seguro.** Es la misma familia de
+**H78** y **H46**: errores que mueren en un contador que nadie mira. **Pendiente de decisión del
+usuario, sin despachar.**
+
+## La secuencia que lo resolvió, y el orden era obligatorio
+
+1. `sql/243` — relajar el `CHECK` a `>= 0`.
+2. WAR con el fix de `PGPCVLRR`.
+3. `sql/242` — reabrir la corrida (medido antes: cerrada con total 0, sin filas en `PGPC`, sin
+   movimientos negativos de aporte).
+4. Reintentar desde la pantalla.
+
+⚠️ **Precisión sobre el `242`, y es una corrección de criterio mía:** su bloque 3 decía «parar si hay
+movimientos de tipo 23 en septiembre». Devolvió **2, pero ninguno negativo** y los dos del **14-09**,
+ocho días antes de los intentos. **El ancla se resuelve por el último movimiento NEGATIVO**, así que
+dos positivos no la mueven. **El umbral del control era más grueso que la regla que pretendía
+proteger** — la lectura fina la daba la columna de negativos, no el conteo de filas.
+
+## ⭐ CORRECCIÓN DEL DIAGNÓSTICO DE H78 — la hipótesis era equivocada
+
+El `$0` de los intentos anteriores **no venía del ancla envenenada ni de las `VPPC` duplicadas**.
+Venía de que **todos** los jubilados fallaban al insertar su fila. Lo probó la propia pantalla por dos
+lados: *«0 jubilado(s) con el seguro topado por saldo, sin ancla o al día»* (el ancla no descartó a
+nadie) y *«182 con error»* (el total $0 se explica entero por los errores).
+
+⇒ **`crd/sql/239` pasa de urgente a informativo.** Pero **sigue teniendo sentido correrlo**: de 182
+evaluados quedaron **2 con error**, y la resta 190 configuraciones − 182 jubilados sigue sin cerrar.
+Ese script mide exactamente eso.
+
+## Lo que queda abierto de este frente
+
+1. **Los 2 jubilados que fallaron** — falta el motivo textual del log. Sospecha: sin `VPPC` activa, o
+   con dos (lo mide el `239`).
+2. **El cierre del bucle con errores** — decisión del usuario.
+3. **Las pensiones de fin de mes** todavía no se generaron (`CRJBESPN = 0`), que es lo correcto: son
+   de fin de mes. Ojo que **ese proceso tenía el mismo defecto de los `@QueryParam`** y ya está
+   corregido en el mismo WAR.
