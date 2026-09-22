@@ -19,39 +19,43 @@
 -- 0. VEREDICTO EN UNA SOLA FILA — los seis controles juntos
 -- =====================================================================================
 -- TODO tiene que decir OK. Cualquier FALTA manda al bloque correspondiente de abajo.
+--
+-- Que mira cada columna:
+--   C1 (234) el catalogo quedo con UN SOLO tipo activo 'CERTIFICADO BANCARIO'
+--   C2 (234) y el que quedo activo es el que TIENE los adjuntos (el 4), no el vacio
+--   C3 (235) existe el indice unico que impide volver a duplicar el nombre
+--   C4 (233) existe CRD.CBBP — su ausencia era el ORA-00942
+--   C5 (233) con sus 11 columnas, ni una menos: Hibernate las pide TODAS en el SELECT
+--   C6 (233) su secuencia y su indice unico (participe, identificacion)
+--
+-- ⛔ CORREGIDO 2026-09-22: la primera version llevaba estos comentarios INTERCALADOS
+--    entre las expresiones del SELECT, y en DBeaver eso reventaba con
+--    "ORA-00936: falta una expresion". El cliente manda la sentencia al servidor
+--    normalizando saltos de linea, asi que el primer "--" comentaba TODO el resto y
+--    llegaba un SELECT sin una sola expresion. Error mio, no del motor ni de la base:
+--    dentro de una sentencia que va a correr alguien desde un cliente grafico, los
+--    comentarios van ARRIBA, nunca intercalados.
 
 SELECT
-  -- 234: el catalogo quedo con un solo tipo activo
   CASE WHEN (SELECT COUNT(*) FROM CRD.TPDJ t
               WHERE UPPER(TRIM(t.TPDJNMBR)) = 'CERTIFICADO BANCARIO'
                 AND t.TPDJIDST = 1) = 1
        THEN 'OK' ELSE 'FALTA -> ver bloque 1' END          AS C1_TIPO_UNICO,
-
-  -- 234: y el que quedo activo es el que TIENE los adjuntos (el 4), no el vacio
   CASE WHEN (SELECT COUNT(*) FROM CRD.ADJN a
-              WHERE a.TPDJCDGO = (SELECT t.TPDJCDGO FROM CRD.TPDJ t
+              WHERE a.TPDJCDGO = (SELECT MIN(t.TPDJCDGO) FROM CRD.TPDJ t
                                    WHERE UPPER(TRIM(t.TPDJNMBR)) = 'CERTIFICADO BANCARIO'
-                                     AND t.TPDJIDST = 1
-                                     AND ROWNUM = 1)) > 0
+                                     AND t.TPDJIDST = 1)) > 0
        THEN 'OK' ELSE 'FALTA -> ver bloque 1' END          AS C2_TIPO_CON_ADJUNTOS,
-
-  -- 235: el indice que impide el duplicado
   CASE WHEN (SELECT COUNT(*) FROM ALL_INDEXES i
               WHERE i.OWNER = 'CRD' AND i.INDEX_NAME = 'UX_TPDJ_NOMBRE_ACTIVO'
                 AND i.UNIQUENESS = 'UNIQUE') = 1
        THEN 'OK' ELSE 'FALTA -> ver bloque 2' END          AS C3_INDICE_TPDJ,
-
-  -- 233: la tabla existe (esto es lo que causaba el ORA-00942)
   CASE WHEN (SELECT COUNT(*) FROM ALL_TABLES t
               WHERE t.OWNER = 'CRD' AND t.TABLE_NAME = 'CBBP') = 1
        THEN 'OK' ELSE 'FALTA -> ver bloque 3' END          AS C4_TABLA_CBBP,
-
-  -- 233: con sus 11 columnas, ni una menos (Hibernate las pide TODAS en el SELECT)
   CASE WHEN (SELECT COUNT(*) FROM ALL_TAB_COLUMNS c
               WHERE c.OWNER = 'CRD' AND c.TABLE_NAME = 'CBBP') = 11
        THEN 'OK' ELSE 'FALTA -> ver bloque 3' END          AS C5_COLUMNAS_11,
-
-  -- 233: secuencia e indice unico de la tabla nueva
   CASE WHEN (SELECT COUNT(*) FROM ALL_SEQUENCES s
               WHERE s.SEQUENCE_OWNER = 'CRD' AND s.SEQUENCE_NAME = 'SQ_CBBPCDGO') = 1
         AND (SELECT COUNT(*) FROM ALL_INDEXES i
@@ -59,6 +63,11 @@ SELECT
                 AND i.UNIQUENESS = 'UNIQUE') = 1
        THEN 'OK' ELSE 'FALTA -> ver bloque 4' END          AS C6_SECUENCIA_E_INDICE
 FROM DUAL;
+
+-- Nota sobre C2: se cambio ROWNUM = 1 por MIN(TPDJCDGO) en la subconsulta interna. Con
+-- UNA sola fila activa las dos formas dan lo mismo, pero MIN es determinista y ROWNUM
+-- no: si en algun momento vuelve a haber dos activas, ROWNUM elegiria cualquiera — el
+-- mismo tipo de eleccion silenciosa que causo todo este incidente.
 
 
 -- =====================================================================================
