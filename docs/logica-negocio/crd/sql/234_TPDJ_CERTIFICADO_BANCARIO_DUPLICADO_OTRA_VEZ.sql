@@ -176,3 +176,47 @@ SELECT COUNT(*)                                              AS ACTIVOS_CON_ESE_
 -- COMMIT;
 --
 -- Este script NO modifica un solo adjunto en ningun caso.
+
+
+-- =====================================================================================
+-- ✅ MEDIDO EN PRODUCCION — 2026-09-22. CAUSA CONFIRMADA Y RESUELTA.
+-- =====================================================================================
+-- Salida real de los pasos 1, 1b y 2, pegada acá para que no haya que volver a medirla:
+--
+-- PASO 1 (activas con igualdad exacta)      -> DOS filas:
+--     4    CERTIFICADO BANCARIO   1
+--    38    CERTIFICADO BANCARIO   1     <- el que creo el INSERT del 2026-09-22
+--
+-- PASO 1b (todo lo que se parece)           -> ademas:
+--    37    [CERTIFICADO BANCARIO]  largo 20, estado 0   <- el duplicado de septiembre,
+--                                                          ya desactivado por el sql/193
+--    20/24/31  otros certificados de otra cosa, no matchean la igualdad exacta: no molestan
+--    ⇒ Los tres 'CERTIFICADO BANCARIO' tienen LARGO 20: ninguno tiene espacios de mas.
+--
+-- PASO 2 (cual usan los adjuntos REALES)    -> UNA sola fila:
+--     TIPO_USADO 4 | ADJUNTOS 410 | ACTIVOS 394 | CUENTAS 273
+--     DESDE 2025-02-05 17:54 | HASTA 2026-09-21 16:09
+--
+-- ⇒ DECISION, sin ambiguedad: EL BUENO ES EL 4. El 38 no tiene UN SOLO adjunto.
+--   Y el HASTA del 4 (ayer 16:09) confirma que el sistema venia funcionando con el 4
+--   hasta que aparecio el 38: nada que reapuntar, nada que migrar.
+-- =====================================================================================
+
+-- PASO 4 RESUELTO — este es el UPDATE que corresponde, ya sin placeholders.
+-- Esperado: 1 fila actualizada.
+
+-- UPDATE CRD.TPDJ
+--    SET TPDJIDST = 0
+--  WHERE TPDJCDGO = 38
+--    AND UPPER(TRIM(TPDJNMBR)) = 'CERTIFICADO BANCARIO';
+--
+-- COMMIT;
+
+-- Y el control posterior (PASO 5) tiene que devolver EXACTAMENTE 1:
+--
+-- SELECT COUNT(*) AS ACTIVOS_CON_ESE_NOMBRE
+--   FROM CRD.TPDJ t
+--  WHERE UPPER(t.TPDJNMBR) = UPPER('CERTIFICADO BANCARIO')
+--    AND t.TPDJIDST = 1;
+--
+-- NO se toca el 37 (ya esta en 0) ni ninguno de los 410 adjuntos.
