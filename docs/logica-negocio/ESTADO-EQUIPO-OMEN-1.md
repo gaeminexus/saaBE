@@ -4058,3 +4058,131 @@ puede dar**: que los certificados vuelvan a verse.
    hace `/rest/cbbp`. Hoy el índice lo rechaza con un ORA-00001 crudo: **feo pero seguro**.
 2. ⚠️ **Hay 21 puntos en el sistema que resuelven catálogos por nombre.** Este patrón —catálogo
    duplicable + resolución por nombre— **no es exclusivo de `TPDJ`**. Nadie barrió los otros.
+
+---
+
+# 📌 2026-09-22, tarde — La jornada del primer despliegue: cinco defectos que sólo aparecen EJECUTANDO
+
+**El hilo conductor del día, y es la lección que más vale:** se desplegó el WAR después de ocho días
+de trabajo acumulado, y **todo lo que se rompió estaba escrito hacía días**. Compilaba en las dos
+puntas. Ninguno de estos defectos se ve compilando; todos aparecieron con un usuario adelante.
+
+| # | Qué | Cómo se manifestó |
+|---|---|---|
+| **H76** | Los dos procesos mensuales de jubilados esperaban `@QueryParam` y el frontend manda el cuerpo | «Debe indicar idEmpresa», `Periodo: null/null` |
+| **H77** | La cabecera de corrida nacía con los estados en `NULL` | `ORA-01400` sobre `CRJBESPN` |
+| **H78** | El seguro médico calcula $0 donde la pantalla promete $450,40 | **abierto**, ver abajo |
+| **H79** | El certificado del beneficiario iba a pisar el de las cuentas bancarias | encontrado antes de que mordiera |
+| H74/H75 | Certificados invisibles y `ORA-00942` de `CBBP` | ya registrados arriba |
+
+## ⛔ H76 — El backend estaba mal contra su propio contrato
+
+`PagoPensionComplementariaRest` declaraba `idEmpresa`/`anio`/`mes`/`usuario` como `@QueryParam` en
+`/seguro/generar` y `/pensiones/generar`. El frontend los manda **en el cuerpo**, que es lo que
+`API-DOS-PROCESOS-MENSUALES-JUBILADOS.md` §4.1 pidió siempre.
+
+⭐ **Por qué nadie lo vio:** el frente figuraba terminado hacía días, «esperando WAR». **Las dos
+puntas compilaban y ninguna se había ejecutado nunca contra la otra.** Es el mismo riesgo que sigue
+abierto en **P22**.
+
+Y `/pensiones/generar` tenía el **mismo** defecto, sin haber fallado todavía porque se corre a fin de
+mes. **Se corrigieron los dos juntos**, que es lo que evitó que reapareciera con las pensiones de
+septiembre. `saaBE 3d87e029`.
+
+⚠️ Límite anotado: con `@Consumes(APPLICATION_JSON)`, una llamada **sin** `Content-Type` puede dar
+415 antes de mirar los query params. El respaldo sirve para un cliente que igual manda JSON, no para
+un `curl` pelado.
+
+## ⛔ H77 — Un `DEFAULT 0 NOT NULL` que no defiende de nada
+
+`CRJBESPN` tiene `DEFAULT 0 NOT NULL` en el DDL **y aun así** falló con `ORA-01400`.
+
+⭐ **La razón, que no es obvia y conviene no volver a aprender:** Hibernate **incluye la columna en
+el INSERT con `NULL` explícito**, y un `DEFAULT` de Oracle **sólo actúa cuando la columna se OMITE**.
+El valor por defecto tiene que vivir en el objeto, no en la tabla. Corregido inicializando los dos
+estados en la entidad — y no en el service — para cubrir cualquier creador, incluido el CRUD
+genérico por REST (criterio de H61). `saaBE 175e7cbb`.
+
+**Corrección del ejecutor al árbitro:** mi despacho decía que **dos** métodos creaban esa cabecera.
+Falso: uno está dentro de `remove()` y esa instancia es una plantilla para borrar, nunca se persiste.
+Hay **un solo** punto de inserción.
+
+## ⛔ H78 — ABIERTO: el seguro médico de 9/2026 da $0 y la pantalla promete $450,40
+
+**Medido, y con una hipótesis fuerte sin confirmar.**
+
+| Medición | Resultado |
+|---|---|
+| `CRD.PGPC` de 9/2026 | **cero filas** ⇒ no se fijó nada, ni siquiera ceros ⇒ **H46 DESCARTADO** |
+| Configuraciones `VPPC` activas | **190** |
+| Jubilados en el padrón (`ENTDIDST = 3`) | **182** |
+| Con seguro configurado (`VPPCVLSR > 0`) | **8**, y suman exactamente **$450,40** |
+| Esos ocho | **todos en el padrón**, todos **con saldo** ($12.162 a $31.919), último movimiento 2026-08-31 |
+
+⇒ **Los $450,40 son de OCHO jubilados, no de los 139 «aptos» que muestra la pantalla.**
+
+⭐ **La hipótesis, que sale de una resta: 190 − 182 = 8.** `generarSeguroIndividual:998` llama a
+`unicaActiva`, que **lanza** si la entidad tiene **más de una VPPC activa**. Esa excepción la atrapa
+el catch del bucle, que **suma a `conError` y sigue**. Si los ocho únicos que aportan al total lanzan
+antes de fijar nada, el total queda en $0 **sin que el proceso falle** — y explica que no haya ni una
+fila en `PGPC`. **Lo confirma `crd/sql/239`, pendiente de correr.**
+
+⚠️ **Y lo tercero, que es lo peor y no depende de la hipótesis:** ocho jubilados sin cobrar su seguro
+**no detuvieron nada ni avisaron en pantalla**. El proceso informó «$0» como un resultado normal.
+**Un error por jubilado no puede terminar en un contador que nadie mira.**
+
+## ⛔ H79 — Dos tablas distintas compartiendo la clave de sus adjuntos
+
+Encontrado por el árbitro **al ir a implementar** la descarga del certificado que pidió el usuario.
+
+`selectByReferenciaYTipo` resuelve los adjuntos **sólo** por `(ADJNIDRF, TPDJCDGO)`, y `CRD.ADJN`
+**no tiene ninguna columna que diga de qué tabla viene la referencia**. La fase 2a guardaba el
+certificado del beneficiario con **el mismo tipo** que usa `CNBP` ⇒ el beneficiario 1 y la cuenta
+bancaria 1 eran indistinguibles.
+
+**Culpa del árbitro:** el contrato dijo «igual que `crearConCertificado`» sin ver que compartir el
+tipo los vuelve indistinguibles.
+
+**Corregido con un tipo propio** (`CERTIFICADO BANCARIO BENEFICIARIO`, id 58, `sql/240`): una fila de
+catálogo, cero cambios de estructura, cero líneas tocadas en la búsqueda que usa todo el módulo. Se
+descartó agregar una columna de origen a `ADJN` por ser DDL sobre una tabla de varios frentes.
+
+### El control que se saltó, y por qué esta vez salió barato
+
+El bloque 0.2 del `240` decía **«si hay beneficiarios cargados, PARAR»**. Devolvió **10** y el script
+siguió. Los diez certificados quedaron con el tipo viejo.
+
+⭐ **Lo que hizo la reparación posible y determinista:** las dos rutinas guardan en **carpetas
+distintas** (`crd/certificados-bancarios` vs `crd/certificados-beneficiarios`), así que `ADJNURLA`
+los distingue **sin adivinar por fecha ni por código**. `sql/241` los reapuntó.
+
+**Y la alarma que levanté no se materializó:** medido, **no existe ninguna cuenta bancaria con código
+1 a 10**, así que ningún partícipe llegó a ver un certificado ajeno. Queda escrito con la medición al
+lado. ⚠️ Pero `CNBP` tiene cientos de filas y `CBBP` suma de a una desde el 1: **la colisión era
+cuestión de tiempo, no de suerte.**
+
+## Lo entregado esta tarde
+
+| Commit | Qué |
+|---|---|
+| `saaBE 3d87e029` | H76 — los dos procesos aceptan el cuerpo |
+| `saaBE 175e7cbb` | H77 — los estados de la cabecera nacen en 0 |
+| `saaBE bbe5807f` · `saaFE 21d923d` | Beneficiarios: descargar certificado, **borrado real**, cédula editable, tipo de adjunto propio |
+| `saaBE 27014565`, `fb3a2b7f`, `329a8835` | `sql/240` y `241` — el tipo propio y la migración de los diez |
+| `saaBE 69418e84`, `bdb327c9`, `60cdaa02` | `sql/237`, `238`, `239` — la investigación de H78 |
+
+**Dos decisiones del usuario que cambiaron el contrato de beneficiarios (no re-litigar):** un
+beneficiario **se puede eliminar**, no sólo inactivar (borra también su certificado y el archivo); y
+**la cédula se puede corregir** con el `PUT`, con el 409 de duplicado corriendo también al editar.
+
+## Errores del árbitro de esta jornada, los cuatro
+
+1. **Inventé nombres de columna dos veces**: `APRTFCMV`/`APRTVLMV` en el `237` (los reales son
+   `APRTVLRR`/`APRTFCTR`). Es la segunda vez en la serie después de `SCP.RUBR` por `SCP.PRBR`.
+2. **Comentarios intercalados dentro de un `SELECT`** en el `236`: DBeaver normaliza los saltos de
+   línea y el primer `--` se comió la sentencia entera (`ORA-00936`).
+3. **El contrato de beneficiarios** mandó a compartir el tipo de adjunto (H79).
+4. **Dije que dos métodos creaban la cabecera** de corrida cuando era uno (H77).
+
+⭐ Los cuatro los destapó **ejecutar**: dos el usuario corriendo los scripts y dos el ejecutor
+leyendo el código en vez de mi prosa.
