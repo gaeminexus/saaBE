@@ -4214,3 +4214,73 @@ El `INDICE-SCRIPTS-EQUIPO-2.md` marcaba `e2-53`, `e2-54` y `e2-55` como 🔴 pen
 > actualizó en un commit distinto de la misma jornada. Lo que los desempató no fue la fecha del
 > archivo sino **un script que ya había corrido y que tocaba la columna en disputa**. Cuando dos
 > registros nuestros no coinciden, la salida de un tercero los arbitra.
+
+### 49.6 — Las dos mediciones que faltaban: una cierra, la otra abre un frente
+
+El usuario pegó las salidas del `e2-65` y del `e2-56`. **Las dos contestaron, y en direcciones
+opuestas** — que es exactamente para lo que se escribieron.
+
+#### ✅ `e2-65` — CERO. El defecto del ATS de ventas nunca afectó una declaración
+
+`CBR.FCTR` tiene **52 facturas de venta en total**, y **ninguna** con base al 5% ni al 8% (ni
+tampoco con base 0%: las 52 tienen IVA). Agosto 2026, cero facturas afectadas.
+
+El defecto **es real y sigue vivo**: `acumularVenta` alimenta la gravada con `SUBTOTAL` y el IVA con
+`VIVA`, e ignora `SUBTOTAL5`/`SUBTOTAL8`/`VIVA5`/`VIVA8`, mientras la pantalla de emisión **sí**
+reparte esas tarifas. Pero nunca se emitió una: **impacto histórico nulo, arreglo sin apuro.**
+
+> Queda como riesgo latente y conviene arreglarlo antes de que alguien emita la primera: el día que
+> pase, la base y el IVA de esa venta desaparecen del anexo **sin un solo error**. Es el §35 otra
+> vez — *lo que rompe fuerte se arregla; lo que contesta mal sobrevive*.
+
+#### 🔴 `e2-56` — TRAJO FILAS, y son del período que se está declarando
+
+Agosto 2026: **17 líneas** con código SRI 6 (no objeto) o 7 (exento). De esas, **12 son
+CONTRIBUCION BOMBEROS y ya las cubrió el `e2-55`**. Las otras **5 no las cubre nadie**:
+
+| Factura | Proveedor | Línea | Cód | Base |
+|---|---|---|:--:|---:|
+| `001-100-000000037` (id 423) | RAMIREZ MOLINA LEONARDO DAVID | **REEMBOLSOS** | 6 | **400,00** |
+| `092-999-011117120` (id 495) | CNEL EP | Intereses por Mora | 7 | 0,02 |
+| `001-999-134308072` (id 427) | E.E. QUITO | Intereses por Mora | 7 | 0,16 |
+| `001-999-134470375` (id 425) | E.E. QUITO | Intereses por Mora | 7 | 0,18 |
+| `001-999-134482033` (id 496) | E.E. QUITO | Intereses por Mora | 7 | 0,03 |
+| | | | | **400,39** |
+
+Los totales cierran exactos contra el bloque 0 del script: 400,00 + (2 × 2,41 + 10 × 7,23) = **477,12**
+de código 6, y **0,39** de código 7.
+
+**Esos 400,39 se están declarando como base GRAVADA de documentos sin IVA** — el mismo síntoma que
+el DIMM mostró a la mañana y que motivó todo el frente del día, en otro proveedor.
+
+**Por qué el `e2-55` no los agarró:** identifica las líneas de terceros **por su descripción**
+(`BOMBERO`/`BASURA`). Un reembolso y un interés por mora no matchean. No es un fallo del `e2-55`:
+es su alcance, y estaba escrito en su cabecera.
+
+> **Lo que hay que llevarse, y es el §46.4 con otro disfraz:** un criterio que identifica por
+> **texto libre** cubre exactamente los casos que su autor tenía delante. El `e2-52` fallaba con los
+> `NULL` que no existían cuando se escribió; el `e2-55` falla con las descripciones que nadie había
+> visto. **El dato estructurado —acá `CODIGOIVASRI`— estaba desde el principio**, y es el que usa el
+> `e2-66`: la descripción dice de qué habla la línea, el código dice cómo se declara.
+
+#### El arreglo: `e2-66`, de datos y sin WAR
+
+Las dos premisas se **midieron contra el código** antes de escribir una línea de SQL, con el WAR de
+`3e32aa35` ya desplegado:
+
+1. **El ATS ya resta las dos columnas**: `baseGravadaCompra(subtotal, subcero, noObjeto, exento, …)`
+   (`GeneradorAtsServiceImpl:288`, usado en `:325`) y las emite como `baseNoGraIva` y `baseImpExe`
+   (`:830-835`).
+2. **La carga nueva ya reparte bien** código 6 → `SUBNOOBJ` y 7 → `SUBEXENT` en los cuatro
+   documentos (`ProcesoCargaDocumentosServiceImpl:1687-1688, :2818, :2946, :3072`).
+
+O sea: **lo que entre de ahora en adelante entra bien, y lo ya cargado se arregla con datos.** El
+`e2-66` asigna `SUBNOOBJ`/`SUBEXENT` **desde el detalle** (no incrementa: es idempotente y deja
+intactas las que el `e2-55` ya dejó bien), con guarda contra producir una base gravada negativa,
+control previo y **control posterior que debe dar CERO filas**. Incluye septiembre (no declarado
+todavía) y deja julio **comentado**, porque ya se declaró y eso lo decide el usuario.
+
+⚠️ **Y una que no decide este equipo:** la factura 423 es un **reembolso por el total del
+documento**. El XML lo declara con código 6 y el script respeta ese dato; si el criterio contable
+fuera el esquema de reembolso del ATS, el tratamiento es otro y hay que decirlo **antes** de generar
+el anexo.
