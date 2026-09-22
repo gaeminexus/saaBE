@@ -39,11 +39,36 @@ WHERE UPPER(TPDJNMBR) LIKE '%CERTIFICADO%BANCARIO%';
 
 
 -- =====================================================================================
--- 2. INSERT — 1 fila esperada
+-- 2. INSERT — 1 fila esperada, 0 si ya existia
 -- =====================================================================================
+--
+-- ⛔⛔ CORREGIDO EL 2026-09-22, Y LA RAZON IMPORTA MAS QUE EL CAMBIO.
+-- Hasta hoy esto era un INSERT PLANO. El control 1.2 de arriba dice, textual, "esperado:
+-- 0 filas. Si devuelve algo, NO correr el INSERT — ya existe"... pero eso depende de que
+-- un humano lea la salida y decida no seguir. Corrido de corrido, el INSERT duplicaba
+-- la fila.
+--
+-- Y duplicarla NO es inofensivo: el backend resuelve este tipo POR NOMBRE y exige
+-- EXACTAMENTE UNA fila activa (resolverTipoCertificadoBancario). Con dos, lanza
+-- ERR_TIPO_ADJUNTO_NO_CONFIGURADO y **todos los certificados ya cargados aparecen como
+-- si no existieran**, en todas las cuentas, ademas de bloquear la carga de nuevos y el
+-- pago a jubilados que depende del certificado.
+--
+-- PASO DOS VECES: el 2026-09-04 (creo el id 37 junto al 4 — ver sql/193) y otra vez el
+-- 2026-09-22 (ver sql/234). Las dos veces el control estaba bien escrito y las dos veces
+-- el problema fue que un script que escribe no puede confiar en que alguien lea un
+-- comentario. Ahora la guarda esta EN EL SQL: correr esto de corrido, las veces que sea,
+-- ya no puede duplicar nada.
 
 INSERT INTO CRD.TPDJ (TPDJNMBR, TPDJIDST)
-VALUES ('CERTIFICADO BANCARIO', 1);
+SELECT 'CERTIFICADO BANCARIO', 1
+  FROM DUAL
+ WHERE NOT EXISTS (SELECT 1
+                     FROM CRD.TPDJ t
+                    WHERE UPPER(TRIM(t.TPDJNMBR)) = 'CERTIFICADO BANCARIO');
+
+-- ⚠️ Si dice "0 filas insertadas", NO es un error: significa que la fila ya estaba.
+--    Lo unico que hay que confirmar entonces es que este ACTIVA (control 3.1).
 
 
 -- =====================================================================================
