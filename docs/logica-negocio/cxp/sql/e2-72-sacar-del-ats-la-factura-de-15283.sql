@@ -23,6 +23,30 @@
 --   correctamente excluidas. El filtro del generador funciona. La factura
 --   a sacar es otra, de otro proveedor.
 --
+-- ⭐ SALIDA DEL BLOQUE 0 Y DECISIONES DEL USUARIO — 2026-09-23
+--
+--   El proveedor es **EQUISUIZA** y NO tiene dos facturas: tiene CUATRO,
+--   todas activas, todas 100% base 0% sin IVA, y NINGUNA marcada:
+--     id 468 · 004-100-003891553 · 26/08 · 15.283,98 · asiento 8319
+--     id 469 · 004-100-003891549 · 26/08 ·      14,15 · asiento 8320
+--     id 191 · 004-100-003713029 · 22/07 · 14.812,85 · asiento 7561
+--     id 189 · 004-100-003556736 · 03/07 · 15.909,38 · asiento 7559
+--
+--   Es el §29 otra vez: el usuario senalo UNA y la familia son CUATRO.
+--   Contarlas antes de arreglar la que estaba a mano es lo que evito dejar
+--   tres sueltas — dos de ellas de casi 15.000 cada una.
+--
+--   **DECISION 1 — alcance: SOLO LAS DOS DE AGOSTO (468 y 469).**
+--   Las de julio ya se declararon. Sacarlas ahora cambiaria un periodo YA
+--   PRESENTADO al SRI por 30.722,23 entre las dos, y eso puede obligar a
+--   una sustitutiva. Mismo criterio que el usuario tomo con julio en el
+--   e2-66. Quedan documentadas abajo, sin tocar.
+--
+--   **DECISION 2 — motivo: SI es intermediario**, el mismo caso que
+--   AIG-METROPOLITANA y GENERALI, que ya estan marcadas. Son polizas que
+--   ASOPREP intermedia y no son gasto propio. La marca FCTCESIN es
+--   semanticamente correcta y el mecanismo es el probado.
+--
 -- ⚠️ EL MOTIVO LO DEFINE EL USUARIO, Y CAMBIA EL TRATAMIENTO:
 --   · Si es del MISMO caso que las otras cuatro —ASOPREP actua de
 --     intermediario y el gasto no es propio— la marca FCTCESIN = 1 es
@@ -95,17 +119,24 @@ SELECT 'BLOQUE 1 - marcadas antes' AS bloque,
 -- -- 2.1 — la senalada por el usuario: 15.283,98
 -- UPDATE PGS.FCTC
 --    SET FCTCESIN = 1
---  WHERE ID = <<ID DE LA 004-100-003891553, del BLOQUE 0>>
+--  WHERE ID = 468
 --    AND NUMERO = '004-100-003891553';
 --
 -- -- 2.2 — la del mismo proveedor, misma serie y mismo dia, por 14,15.
--- --       ⚠️ DESCOMENTAR SOLO SI EL USUARIO CONFIRMA que es el mismo caso.
--- --       O las dos son de un tercero o ninguna lo es; pero que sea una
--- --       decision, no un arrastre.
--- -- UPDATE PGS.FCTC
--- --    SET FCTCESIN = 1
--- --  WHERE ID = <<ID DE LA 004-100-003891549, del BLOQUE 0>>
--- --    AND NUMERO = '004-100-003891549';
+-- --       CONFIRMADA por el usuario: es el mismo caso, va tambien.
+-- UPDATE PGS.FCTC
+--    SET FCTCESIN = 1
+--  WHERE ID = 469
+--    AND NUMERO = '004-100-003891549';
+--
+-- ⛔ 2.3 — LAS DOS DE JULIO **NO SE TOCAN**. Decision del usuario, 2026-09-23.
+--    Julio ya se declaro; sacarlas ahora cambiaria un periodo presentado por
+--    30.722,23 y puede obligar a una sustitutiva. Quedan escritas para que
+--    conste que se sabe que estan, no porque haya que correrlas:
+--      id 191 · 004-100-003713029 · 22/07 · 14.812,85
+--      id 189 · 004-100-003556736 · 03/07 · 15.909,38
+--    Si algun dia el contador decide regularizar julio, es ESTE update con
+--    esos dos ID — pero es una decision tributaria, no de datos.
 --
 -- -- Control posterior, ANTES del COMMIT: volver a correr el BLOQUE 0.
 -- -- ESPERADO: ES_INTERMEDIARIO = 1 en la(s) que se marco, y TODO lo demas
