@@ -2,6 +2,7 @@ package com.saa.ejb.cxc.serviceImpl;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -14,6 +15,7 @@ import com.saa.ejb.cnt.service.AsientoService;
 import com.saa.ejb.cxc.dao.AnticipoClienteDaoService;
 import com.saa.ejb.cxc.dao.AplicacionPagoCxcDaoService;
 import com.saa.ejb.cxc.service.AplicacionPagoCxcService;
+import com.saa.ejb.reporte.service.ReporteService;
 import com.saa.ejb.tsr.dao.PersonaCuentaContableDaoService;
 import com.saa.ejb.tsr.service.MovimientoBancoService;
 import com.saa.model.cnt.Asiento;
@@ -53,6 +55,9 @@ public class AplicacionPagoCxcServiceImpl implements AplicacionPagoCxcService {
 	/** Forma de pago transferencia (rubro TipoFormaPago del sistema). */
 	private static final long FORMA_PAGO_TRANSFERENCIA = 2L;
 
+	/** Formato de fecha para los parámetros de reporte (dd/MM/yyyy), igual que los demás RIDE. */
+	private static final DateTimeFormatter FORMATO_FECHA_REPORTE = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+
 	@EJB
 	private AplicacionPagoCxcDaoService aplicacionPagoCxcDaoService;
 
@@ -70,6 +75,9 @@ public class AplicacionPagoCxcServiceImpl implements AplicacionPagoCxcService {
 
 	@EJB
 	private PersonaCuentaContableDaoService personaCuentaContableDaoService;
+
+	@EJB
+	private ReporteService reporteService;
 
 	@PersistenceContext
 	private EntityManager em;
@@ -1267,5 +1275,96 @@ public class AplicacionPagoCxcServiceImpl implements AplicacionPagoCxcService {
 			resultado.add(item);
 		}
 		return resultado;
+	}
+
+	@Override
+	public byte[] generarComprobante(Long idAplicacion) throws Throwable {
+		System.out.println("=== generarComprobante (CXC) | idAplicacion=" + idAplicacion + " ===");
+
+		AplicacionPagoCxc aplicacion = em.find(AplicacionPagoCxc.class, idAplicacion);
+		if (aplicacion == null) {
+			throw new IncomeException("No existe la aplicación de cobro con ID: " + idAplicacion);
+		}
+
+		// Documento afectado: factura O liquidación (mutuamente excluyentes, ver
+		// javadoc de AplicacionPagoCxc). El titular sale del documento, no de la
+		// aplicación (que no tiene su propia FK a Titular).
+		Factura factura = aplicacion.getFactura();
+		LiquidacionCompra liquidacion = aplicacion.getLiquidacion();
+		String docTipo = "";
+		String docNumero = "";
+		String clienteIdent = "";
+		String clienteNombre = "";
+		if (factura != null) {
+			docTipo = "Factura";
+			docNumero = nvl(factura.getNumero(), "");
+			if (factura.getTitular() != null) {
+				clienteIdent = nvl(factura.getTitular().getIdentificacion(), "");
+				clienteNombre = nvl(factura.getTitular().getNombre(), "");
+			}
+		} else if (liquidacion != null) {
+			docTipo = "Liquidación de compra";
+			docNumero = nvl(liquidacion.getNumero(), "");
+			if (liquidacion.getTitular() != null) {
+				clienteIdent = nvl(liquidacion.getTitular().getIdentificacion(), "");
+				clienteNombre = nvl(liquidacion.getTitular().getNombre(), "");
+			}
+		}
+
+		Asiento asiento = aplicacion.getAsiento();
+		String asientoNumero = (asiento != null) ? nvl(asiento.getNumeroAlterno(), "") : "";
+		String asientoFecha = (asiento != null && asiento.getFechaAsiento() != null)
+				? asiento.getFechaAsiento().format(FORMATO_FECHA_REPORTE) : "";
+
+		Empresa empresa = aplicacion.getEmpresa();
+		boolean reversado = aplicacion.getEstado() != null
+				&& aplicacion.getEstado().intValue() == EstadoAplicacionPago.REVERSADO;
+
+		// Ningún parámetro viaja null: textos "" y números 0 (ver
+		// docs/logica-negocio/cxc/API-SEGUIMIENTO-COBROS.md §2.1) — un null en un
+		// parámetro de Jasper imprime "null" en el papel.
+		Map<String, Object> parametros = new HashMap<>();
+		parametros.put("P_EMPRESA", (empresa != null) ? nvl(empresa.getNombre(), "") : "");
+		parametros.put("P_NUMERO_COBRO", (aplicacion.getId() != null) ? aplicacion.getId() : 0L);
+		parametros.put("P_FECHA", (aplicacion.getFechaAplicacion() != null)
+				? aplicacion.getFechaAplicacion().format(FORMATO_FECHA_REPORTE) : "");
+		parametros.put("P_CLIENTE_IDENT", clienteIdent);
+		parametros.put("P_CLIENTE_NOMBRE", clienteNombre);
+		parametros.put("P_FORMA_PAGO", descripcionFormaPago(aplicacion.getFormaPago()));
+		parametros.put("P_VALOR", (aplicacion.getMontoAplicado() != null) ? aplicacion.getMontoAplicado() : 0.0);
+		parametros.put("P_ESTADO", reversado ? "REVERSADO" : "ACTIVO");
+		parametros.put("P_DOC_TIPO", docTipo);
+		parametros.put("P_DOC_NUMERO", docNumero);
+		parametros.put("P_OBSERVACION", nvl(aplicacion.getObservacion(), ""));
+		parametros.put("P_ASIENTO_NUMERO", asientoNumero);
+		parametros.put("P_ASIENTO_FECHA", asientoFecha);
+
+		byte[] pdf = reporteService.generarReporte("cxc", "RPRT_COBRO", parametros, "PDF");
+		System.out.println("✓ Comprobante de cobro generado | idAplicacion=" + idAplicacion
+				+ " | bytes=" + (pdf != null ? pdf.length : 0));
+		return pdf;
+	}
+
+	/**
+	 * Descripción legible de la forma de pago del cobro directo (CBR.APLC.APLCFPAG):
+	 * 1 Efectivo, 2 Transferencia, 3 Cheque, 4 Tarjeta. ⚠️ Catálogo propio de CXC,
+	 * DISTINTO del de PGS ({@link com.saa.rubros.FormaPagoProgramado}), donde el 4
+	 * es Débito automático — no reutilizar ese enum acá.
+	 * Nunca null, para imprimir en el comprobante de cobro
+	 * (docs/logica-negocio/cxc/API-SEGUIMIENTO-COBROS.md §2.1).
+	 * @param formaPago : Código de forma de pago, o null (aplica sólo a cobro directo)
+	 * @return           : Descripción, o cadena vacía si no hay forma de pago
+	 */
+	private String descripcionFormaPago(Long formaPago) {
+		if (formaPago == null) {
+			return "";
+		}
+		switch (formaPago.intValue()) {
+			case 1: return "Efectivo";
+			case 2: return "Transferencia";
+			case 3: return "Cheque";
+			case 4: return "Tarjeta";
+			default: return "Forma " + formaPago;
+		}
 	}
 }

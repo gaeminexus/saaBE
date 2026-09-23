@@ -258,4 +258,16 @@ public interface AplicacionPagoCxcService extends EntityService<AplicacionPagoCx
 	 */
 	List<Map<String, Object>> listar(Long idEmpresa, Long idTitular, java.time.LocalDate desde,
 			java.time.LocalDate hasta, Long formaPago, Long estado) throws Throwable;
+
+	/**
+	 * Genera el comprobante de un cobro en PDF (RPRT_COBRO), por parámetros,
+	 * sin query dentro del <code>.jrxml</code> — mismo patrón que el RIDE de
+	 * factura ({@code FacturaServiceImpl:2215}).
+	 * Ver docs/logica-negocio/cxc/API-SEGUIMIENTO-COBROS.md §2.1.
+	 * @param idAplicacion : Id de la aplicación de cobro (APLCCDGO)
+	 * @return             : PDF del comprobante
+	 * @throws Throwable   : Excepcion; incluye {@link com.saa.basico.util.IncomeException}
+	 *                       si no existe la aplicación
+	 */
+	byte[] generarComprobante(Long idAplicacion) throws Throwable;
 }

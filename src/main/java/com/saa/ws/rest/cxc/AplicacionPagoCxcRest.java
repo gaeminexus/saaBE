@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Map;
 
 import com.saa.basico.util.DatosBusqueda;
+import com.saa.basico.util.IncomeException;
 import com.saa.ejb.cxc.service.AplicacionPagoCxcService;
 import com.saa.model.cxc.AplicacionPagoCxc;
 
@@ -29,6 +30,7 @@ import jakarta.ws.rs.core.UriInfo;
  *   GET  /aplc/factura/{id}          → historial de cobros/abonos de una factura
  *   GET  /aplc/saldo/{id}            → total, cobrado y saldo pendiente de una factura
  *   GET  /aplc/listar                → listado de aplicaciones con filtros (pantalla de consulta)
+ *   GET  /aplc/comprobante/{id}      → comprobante de un cobro en PDF (RPRT_COBRO)
  *   POST /aplc/cobroTransferencia    → registra un cobro recibido por transferencia
  *   POST /aplc/anticipo              → cruza anticipos por monto total (FIFO sobre los disponibles)
  *   POST /aplc/anticipos             → cruza anticipos ESPECÍFICOS elegidos por el usuario
@@ -349,6 +351,35 @@ public class AplicacionPagoCxcRest {
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("Error al reversar la aplicación: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
+     * Comprobante de un cobro en PDF (RPRT_COBRO): forma de pago, valor, estado,
+     * documento afectado, observaciones y asiento contable.
+     * Ver docs/logica-negocio/cxc/API-SEGUIMIENTO-COBROS.md §2.
+     * @param idAplicacion : Id de la aplicación de cobro (APLCCDGO)
+     */
+    @GET
+    @Path("/comprobante/{idAplicacion}")
+    @Produces("application/pdf")
+    public Response comprobante(@PathParam("idAplicacion") Long idAplicacion) {
+        System.out.println("LLEGA AL SERVICIO GET /aplc/comprobante/" + idAplicacion);
+        try {
+            byte[] pdf = aplicacionPagoCxcService.generarComprobante(idAplicacion);
+            return Response.ok(pdf)
+                    .header("Content-Disposition",
+                            "attachment; filename=\"comprobante-cobro-" + idAplicacion + ".pdf\"")
+                    .header("Content-Type", "application/pdf")
+                    .build();
+        } catch (IncomeException e) {
+            return Response.status(Response.Status.NOT_FOUND)
+                    .entity(e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al generar el comprobante de cobro: " + e.getMessage())
                     .type(MediaType.APPLICATION_JSON).build();
         }
     }
