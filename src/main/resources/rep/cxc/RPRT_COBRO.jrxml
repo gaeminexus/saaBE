@@ -1,0 +1,218 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Comprobante de UN cobro (CXC), para imprimir o mandar al cliente. Ver
+     docs/logica-negocio/cxc/PLAN-SEGUIMIENTO-COBROS.md §1.3 y
+     docs/logica-negocio/cxc/API-SEGUIMIENTO-COBROS.md §2.
+
+     DISEÑO: sin <query>. Todo el contenido sale de parámetros que
+     AplicacionPagoCxcServiceImpl.generarComprobante ya resuelve en Java (empresa,
+     cliente, documento afectado, asiento) — el mismo criterio que el RIDE de
+     factura (FacturaServiceImpl:2215): sin query no hay SELECT * ni COLUMN_n que
+     se desalinee con un ALTER TABLE futuro (CLAUDE.md, caso RPRT_MVMN_APXT). Un
+     reporte sin <query> se llena con exactamente UNA fila virtual (lo usa también
+     VerificarFill.java con JREmptyDataSource()), así que todo el contenido va en
+     el <title>, que imprime una sola vez.
+
+     Sintaxis COMPACTA (<element kind="...">, sin xmlns) — la única que este repo
+     puede recompilar (CLAUDE.md, "Reportes"). Estilos con nombre a nivel de
+     reporte, nunca anónimos dentro de un <element> (el compilador no valida esa
+     referencia; revienta recién al llenar — CLAUDE.md, incidente RPRT_CNCL_CNTA). -->
+<jasperReport name="RPRT_COBRO" language="java" pageWidth="595" pageHeight="842" columnWidth="535" leftMargin="30" rightMargin="30" topMargin="20" bottomMargin="20" uuid="b3b64a6e-0760-debf-af46-d9a717648d14">
+
+	<style name="Reversado" mode="Opaque" backcolor="#FFC7CE"/>
+	<style name="EncabezadoSeccion" mode="Opaque" backcolor="#D1D1D1" fontName="Tahoma" fontSize="8.5" bold="true" hTextAlign="Left" vTextAlign="Middle"/>
+	<style name="Etiqueta" fontName="Tahoma" fontSize="8.5" bold="true" vTextAlign="Middle"/>
+	<style name="Valor" fontName="Tahoma" fontSize="8.5" vTextAlign="Middle"/>
+	<!-- Color condicional del estado: JasperReports no admite una expresión dinámica en el
+	     atributo forecolor de <element>, solo en un <conditionalStyle> con nombre a nivel de
+	     reporte (misma regla del comentario de cabecera — nada de estilos anónimos). -->
+	<style name="EstadoTexto" fontName="Tahoma" fontSize="8.5" bold="true" forecolor="#000000" vTextAlign="Middle">
+		<conditionalStyle>
+			<conditionExpression><![CDATA["REVERSADO".equals($P{P_ESTADO})]]></conditionExpression>
+			<style forecolor="#C00000"/>
+		</conditionalStyle>
+	</style>
+
+	<parameter name="P_EMPRESA" class="java.lang.String">
+		<defaultValueExpression><![CDATA[""]]></defaultValueExpression>
+	</parameter>
+	<parameter name="P_NUMERO_COBRO" class="java.lang.Long">
+		<defaultValueExpression><![CDATA[0L]]></defaultValueExpression>
+	</parameter>
+	<parameter name="P_FECHA" class="java.lang.String">
+		<defaultValueExpression><![CDATA[""]]></defaultValueExpression>
+	</parameter>
+	<parameter name="P_CLIENTE_IDENT" class="java.lang.String">
+		<defaultValueExpression><![CDATA[""]]></defaultValueExpression>
+	</parameter>
+	<parameter name="P_CLIENTE_NOMBRE" class="java.lang.String">
+		<defaultValueExpression><![CDATA[""]]></defaultValueExpression>
+	</parameter>
+	<parameter name="P_FORMA_PAGO" class="java.lang.String">
+		<defaultValueExpression><![CDATA[""]]></defaultValueExpression>
+	</parameter>
+	<parameter name="P_VALOR" class="java.lang.Double">
+		<defaultValueExpression><![CDATA[0.0]]></defaultValueExpression>
+	</parameter>
+	<parameter name="P_ESTADO" class="java.lang.String">
+		<defaultValueExpression><![CDATA["ACTIVO"]]></defaultValueExpression>
+	</parameter>
+	<parameter name="P_DOC_TIPO" class="java.lang.String">
+		<defaultValueExpression><![CDATA[""]]></defaultValueExpression>
+	</parameter>
+	<parameter name="P_DOC_NUMERO" class="java.lang.String">
+		<defaultValueExpression><![CDATA[""]]></defaultValueExpression>
+	</parameter>
+	<parameter name="P_OBSERVACION" class="java.lang.String">
+		<defaultValueExpression><![CDATA[""]]></defaultValueExpression>
+	</parameter>
+	<parameter name="P_ASIENTO_NUMERO" class="java.lang.String">
+		<defaultValueExpression><![CDATA[""]]></defaultValueExpression>
+	</parameter>
+	<parameter name="P_ASIENTO_FECHA" class="java.lang.String">
+		<defaultValueExpression><![CDATA[""]]></defaultValueExpression>
+	</parameter>
+
+	<background splitType="Stretch"/>
+
+	<!-- ═══ TITLE — todo el comprobante: imprime una sola vez, no hay <query> ═══ -->
+	<title height="312" splitType="Stretch">
+
+		<element kind="textField" uuid="4f9c91ec-3f3a-2a42-0223-4d6074df40bf"
+				x="0" y="0" width="535" height="18" fontName="Tahoma" fontSize="12.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<expression><![CDATA[$P{P_EMPRESA}]]></expression>
+		</element>
+		<element kind="staticText" uuid="36c8883a-a69f-6edb-e9b6-15dcd72f507e"
+				x="0" y="18" width="535" height="20" fontName="Tahoma" fontSize="14.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[COMPROBANTE DE COBRO]]></text>
+		</element>
+
+		<element kind="textField" uuid="b243788a-6373-e23a-41de-a69ba4d95101"
+				x="0" y="40" width="267" height="13" fontName="Tahoma" fontSize="9.0" bold="true" vTextAlign="Middle">
+			<expression><![CDATA["Nº: " + $P{P_NUMERO_COBRO}]]></expression>
+		</element>
+		<element kind="textField" uuid="c800d926-9f3a-a365-1a92-eb2d9a28b038"
+				x="267" y="40" width="268" height="13" fontName="Tahoma" fontSize="9.0" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA["Fecha: " + $P{P_FECHA}]]></expression>
+		</element>
+
+		<element kind="line" uuid="f25c1431-5344-2176-06b0-17de55faa053" x="0" y="56" width="535" height="1"/>
+
+		<!-- Aviso de reversado (criterio §2.2.1: tiene que decirlo de forma visible) -->
+		<element kind="staticText" uuid="a6a26d31-5704-4ab6-219a-3c65a95816c2" style="Reversado"
+				x="0" y="62" width="535" height="16" forecolor="#C00000" fontName="Tahoma" fontSize="10.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<printWhenExpression><![CDATA["REVERSADO".equals($P{P_ESTADO})]]></printWhenExpression>
+			<text><![CDATA[*** ESTE COBRO FUE REVERSADO / ANULADO ***]]></text>
+		</element>
+
+		<!-- 1. CLIENTE -->
+		<element kind="staticText" uuid="002f54b8-78f9-3a37-f288-37a815678f35" style="EncabezadoSeccion"
+				x="0" y="84" width="535" height="13">
+			<box leftPadding="5"/>
+			<text><![CDATA[CLIENTE]]></text>
+		</element>
+		<element kind="staticText" uuid="0b83018a-954e-1fb9-1343-a724cb48829c" style="Etiqueta"
+				x="0" y="99" width="100" height="13">
+			<text><![CDATA[Identificación:]]></text>
+		</element>
+		<element kind="textField" uuid="0e7b41f4-37ef-6dca-2366-59aafb9ec227" style="Valor"
+				x="100" y="99" width="200" height="13" blankWhenNull="true">
+			<expression><![CDATA[$P{P_CLIENTE_IDENT}]]></expression>
+		</element>
+		<element kind="staticText" uuid="395f71e8-ee41-ca7c-ab34-2c55d2072646" style="Etiqueta"
+				x="0" y="113" width="100" height="13">
+			<text><![CDATA[Nombre:]]></text>
+		</element>
+		<element kind="textField" uuid="8c68b4e2-f91f-19d5-650e-1ff11a2541a9" style="Valor"
+				x="100" y="113" width="435" height="13" blankWhenNull="true">
+			<expression><![CDATA[$P{P_CLIENTE_NOMBRE}]]></expression>
+		</element>
+
+		<!-- 2. EL COBRO -->
+		<element kind="staticText" uuid="e8c18f92-e88d-8402-0fea-f445f5270840" style="EncabezadoSeccion"
+				x="0" y="132" width="535" height="13">
+			<box leftPadding="5"/>
+			<text><![CDATA[EL COBRO]]></text>
+		</element>
+		<element kind="staticText" uuid="de736cf4-d015-6f06-e90c-d6f646639a3b" style="Etiqueta"
+				x="0" y="147" width="100" height="13">
+			<text><![CDATA[Forma de pago:]]></text>
+		</element>
+		<element kind="textField" uuid="10d7ac4a-534f-210e-8a95-95842071a30a" style="Valor"
+				x="100" y="147" width="200" height="13" blankWhenNull="true">
+			<expression><![CDATA[$P{P_FORMA_PAGO}]]></expression>
+		</element>
+		<element kind="staticText" uuid="01c4c102-f856-fe40-5a73-3b2df1bbfc5d" style="Etiqueta"
+				x="300" y="147" width="60" height="13">
+			<text><![CDATA[Valor:]]></text>
+		</element>
+		<element kind="textField" uuid="45bafc6e-1b3a-f9b0-1ce3-7cdb292c8524" style="Valor"
+				x="360" y="147" width="175" height="13" pattern="$ #,##0.00" hTextAlign="Right" blankWhenNull="true">
+			<expression><![CDATA[$P{P_VALOR}]]></expression>
+		</element>
+		<element kind="staticText" uuid="3a885baf-2faf-4923-048f-41ceb3215c8f" style="Etiqueta"
+				x="0" y="161" width="100" height="13">
+			<text><![CDATA[Estado:]]></text>
+		</element>
+		<element kind="textField" uuid="99c8731d-749e-a915-a45d-04810f1bf10e" style="EstadoTexto"
+				x="100" y="161" width="200" height="13" blankWhenNull="true">
+			<expression><![CDATA["REVERSADO".equals($P{P_ESTADO}) ? "REVERSADO" : "ACTIVO"]]></expression>
+		</element>
+
+		<!-- 3. DOCUMENTO AFECTADO -->
+		<element kind="staticText" uuid="bc9ec54c-4a9f-ce70-2b06-e0e45cb79351" style="EncabezadoSeccion"
+				x="0" y="180" width="535" height="13">
+			<box leftPadding="5"/>
+			<text><![CDATA[DOCUMENTO AFECTADO]]></text>
+		</element>
+		<element kind="staticText" uuid="781f541c-5236-6ab9-6018-58dd5baa7d48" style="Etiqueta"
+				x="0" y="195" width="100" height="13">
+			<text><![CDATA[Tipo:]]></text>
+		</element>
+		<element kind="textField" uuid="82d90172-54c5-a3d7-7e7c-e8fd00447d23" style="Valor"
+				x="100" y="195" width="200" height="13" blankWhenNull="true">
+			<expression><![CDATA[$P{P_DOC_TIPO}]]></expression>
+		</element>
+		<element kind="staticText" uuid="97533ac7-a433-2a2e-531b-c7a028ddb452" style="Etiqueta"
+				x="300" y="195" width="60" height="13">
+			<text><![CDATA[Número:]]></text>
+		</element>
+		<element kind="textField" uuid="5849ccec-83d7-e240-b123-b44caf7a1a85" style="Valor"
+				x="360" y="195" width="175" height="13" blankWhenNull="true">
+			<expression><![CDATA[$P{P_DOC_NUMERO}]]></expression>
+		</element>
+
+		<!-- 4. OBSERVACIONES — sin observaciones, el bloque no se imprime (criterio §2.2.2) -->
+		<element kind="staticText" uuid="d67d1258-cdbe-f322-0bc1-4b17aaffb4ac" style="EncabezadoSeccion"
+				x="0" y="214" width="535" height="13">
+			<printWhenExpression><![CDATA[$P{P_OBSERVACION} != null && !$P{P_OBSERVACION}.trim().isEmpty()]]></printWhenExpression>
+			<box leftPadding="5"/>
+			<text><![CDATA[OBSERVACIONES]]></text>
+		</element>
+		<element kind="textField" uuid="267f20af-9930-4268-d7fd-60cb2161aff7" style="Valor"
+				x="0" y="229" width="535" height="36" vTextAlign="Top">
+			<printWhenExpression><![CDATA[$P{P_OBSERVACION} != null && !$P{P_OBSERVACION}.trim().isEmpty()]]></printWhenExpression>
+			<expression><![CDATA[$P{P_OBSERVACION}]]></expression>
+			<box leftPadding="2" topPadding="2"/>
+		</element>
+
+		<!-- 5. ASIENTO CONTABLE — sin asiento, dice "Sin contabilizar" (criterio §2.2.3) -->
+		<element kind="staticText" uuid="a2fa4350-fe3a-47d0-1a57-f8031325d0d6" style="EncabezadoSeccion"
+				x="0" y="272" width="535" height="13">
+			<box leftPadding="5"/>
+			<text><![CDATA[ASIENTO CONTABLE]]></text>
+		</element>
+		<element kind="textField" uuid="e2ad18ee-c527-75ce-5b78-ffca446fe5f9" style="Valor"
+				x="0" y="287" width="535" height="13" blankWhenNull="true">
+			<expression><![CDATA[($P{P_ASIENTO_NUMERO} == null || $P{P_ASIENTO_NUMERO}.trim().isEmpty())
+    ? "Sin contabilizar"
+    : ("Nº " + $P{P_ASIENTO_NUMERO} + "   ·   Fecha: " + $P{P_ASIENTO_FECHA})]]></expression>
+		</element>
+	</title>
+
+	<pageFooter height="16" splitType="Stretch">
+		<element kind="textField" uuid="41147abb-85cc-9ea8-f0ac-271595fc2f50"
+				x="0" y="0" width="535" height="13" fontName="Tahoma" fontSize="7.0" italic="true" pattern="'Generado el' dd/MM/yyyy HH:mm">
+			<expression><![CDATA[new java.util.Date()]]></expression>
+		</element>
+	</pageFooter>
+</jasperReport>
