@@ -407,3 +407,61 @@ Sigue siendo una aproximación sobre el nominal (no lee los stubs), igual que an
 
 Esto rige desde el próximo WAR. Agosto 2026 y anteriores se miden con `crd/sql/222` (bloque 4) y lo
 que haya se decide aparte.
+
+---
+
+# 12. ⭐ El asiento del seguro médico — decisión del usuario, 2026-09-23
+
+**Reportado por el usuario:** *«al procesar solo seguro médico no se está generando el asiento que da
+de baja las cuentas individuales contra los seguros médicos por pagar»*.
+
+## Lo que pasaba, medido
+
+**El proceso de seguro (§4.1) NO generaba ningún asiento.** Verificado: su único acto contable es
+`generarOrdenPagoProveedorSeguro`. El asiento del seguro existía, pero dentro del **devengo de
+pensiones** (`generarAsientoDevengoPension`, líneas **aux1=3 y aux1=4** de la plantilla 35), que
+corre a **fin de mes**.
+
+⛔ **El desfase que eso produce:** el dinero le sale al proveedor al **inicio** del mes (la orden
+agregada) y el pasivo se reconoce al **final**. Si tesorería paga esa orden antes de que corran las
+pensiones, el asiento del pago **debita «seguros médicos por pagar» sin que nada la haya
+acreditado** — la cuenta queda en negativo. Y si el período contable se cierra en el medio, deja de
+ser temporal.
+
+## La decisión
+
+**El proceso de seguro genera su propio asiento**, en el momento en que fija los valores y manda a
+pagar: **D cuentas individuales / H seguros médicos por pagar**.
+
+⭐ **UN SOLO ASIENTO por corrida, por el total del período. No uno por jubilado.**
+
+| | |
+|---|---|
+| **Por qué uno solo** | El hecho económico es uno —«este mes se descontó X y se le debe X al proveedor»— y **el pago con el que hay que cuadrarlo también es uno solo**, la orden agregada. Conciliar devengado contra pagado pasa a ser comparar un asiento contra una orden |
+| **Contrapartida aceptada** | Desde el asiento **no se ve a quién se le bajó**. Ese detalle vive en `CRD.PGPC` (`PGPCVLSG` por jubilado) y en el reporte de la corrida |
+| **Por qué no uno por jubilado** | Duplicaría los asientos del mes (180 de devengo pasarían a 360) y dejaría el devengo individual enfrentado a un pago agregado |
+
+**Dónde se guarda:** `CRD.CRJB.CRJBASSG`, columna nueva (`crd/sql/244`). Número sin FK, mismo
+criterio que `PGPC.PGPCNMAS`. **Nulo = todavía no se generó.**
+
+## ⛔ La regla que evita devengar el seguro DOS veces
+
+El devengo de pensiones **deja de incluir las líneas aux1=3 y 4 sólo cuando el período tiene
+`CRJBASSG` generado**. No siempre.
+
+**Por qué la condición y no quitarlas a secas**, que es el error fácil:
+
+1. **La corrida de 9/2026 ya se generó** (orden 478, $450,40) **antes** de este cambio, así que su
+   `CRJBASSG` queda nulo. Si el devengo dejara de incluir el seguro sin mirar esa columna,
+   **septiembre se quedaría sin devengar el seguro por ningún lado**.
+2. **Los meses retroactivos** (§10) no tienen cabecera de corrida con asiento de seguro. Su seguro
+   se sigue devengando por el camino de siempre, dentro del asiento de pensiones.
+
+⇒ **El esquema nuevo empieza a regir con la corrida de octubre.** Septiembre se devenga completo por
+el camino viejo, una sola vez.
+
+## Cuándo NO se genera
+
+Si el total del período es 0, **no se genera asiento** — mismo criterio que la orden de pago, que
+tampoco se crea (*«Sin seguro médico que pagar al proveedor… ($0)»*). Un asiento sin líneas no se
+graba: es el defecto que §11.2 ya había atajado para los meses sin stub.
