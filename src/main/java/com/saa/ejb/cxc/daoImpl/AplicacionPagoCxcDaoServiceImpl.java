@@ -264,7 +264,7 @@ public class AplicacionPagoCxcDaoServiceImpl extends EntityDaoImpl<AplicacionPag
                 "        ft.codigo, ft.nombre, lt.codigo, lt.nombre, " +
                 "        f.id, f.numero, lc.id, lc.numero, " +
                 "        a.tipoDocPago, a.formaPago, a.montoAplicado, " +
-                "        asn.codigo, asn.numeroAlterno, a.estado " +
+                "        asn.codigo, asn.numeroAlterno, a.estado, a.observacion " +
                 " from   AplicacionPagoCxc a " +
                 " left join a.factura f " +
                 " left join f.titular ft " +

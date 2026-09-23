@@ -132,7 +132,8 @@ public interface AplicacionPagoCxcDaoService extends EntityDao<AplicacionPagoCxc
 	 * 2 idTitularFactura, 3 nombreTitularFactura, 4 idTitularLiquidacion,
 	 * 5 nombreTitularLiquidacion, 6 idFactura, 7 numeroFactura,
 	 * 8 idLiquidacion, 9 numeroLiquidacion, 10 tipoDocPago, 11 formaPago,
-	 * 12 montoAplicado, 13 idAsiento, 14 numeroAlternoAsiento, 15 estado.
+	 * 12 montoAplicado, 13 idAsiento, 14 numeroAlternoAsiento, 15 estado,
+	 * 16 observacion (puede ser null).
 	 * @param idEmpresa  : Empresa contable; null = todas
 	 * @param idTitular  : Cliente/proveedor (busca en ambos lados, factura y
 	 *                     liquidación); null = todos

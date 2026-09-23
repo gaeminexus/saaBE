@@ -1218,7 +1218,7 @@ public class AplicacionPagoCxcServiceImpl implements AplicacionPagoCxcService {
 			// Columnas: 0 id, 1 fechaAplicacion, 2 idTitularFactura, 3 nombreTitularFactura,
 			// 4 idTitularLiquidacion, 5 nombreTitularLiquidacion, 6 idFactura, 7 numeroFactura,
 			// 8 idLiquidacion, 9 numeroLiquidacion, 10 tipoDocPago, 11 formaPago,
-			// 12 montoAplicado, 13 idAsiento, 14 numeroAlternoAsiento, 15 estado.
+			// 12 montoAplicado, 13 idAsiento, 14 numeroAlternoAsiento, 15 estado, 16 observacion.
 			Long idFactura = (Long) fila[6];
 			Long idLiquidacion = (Long) fila[8];
 
@@ -1263,6 +1263,7 @@ public class AplicacionPagoCxcServiceImpl implements AplicacionPagoCxcService {
 				item.put("asiento", null);
 			}
 			item.put("estado", fila[15]);
+			item.put("observacion", fila[16]);
 			resultado.add(item);
 		}
 		return resultado;
