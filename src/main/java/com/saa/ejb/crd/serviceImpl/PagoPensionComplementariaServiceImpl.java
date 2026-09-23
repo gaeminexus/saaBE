@@ -1247,6 +1247,11 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         Long idOrdenProveedor = generarOrdenPagoProveedorSeguro(idEmpresa, anio, mes, usuario, idUsuario,
             proveedorSeguro, cuentaBancariaProveedorSeguro, totalSeguroPeriodo);
         resumen.setIdOrdenPago(idOrdenProveedor);
+
+        // §12 del contrato (2026-09-23): el proceso de seguro genera su propio asiento — D
+        // cuentas individuales / H seguros médicos por pagar, UN SOLO asiento por el total del
+        // período, mismo criterio de "sin total, sin asiento" que la orden de arriba.
+        Long idAsientoSeguro = generarAsientoSeguroMedico(idEmpresa, anio, mes, totalSeguroPeriodo, usuario);
         resumen.setMensaje("Seguro médico " + mes + "/" + anio + " - " + generados + " jubilados nuevos y "
             + yaGenerados + " que ya tenían el seguro fijado, $"
             + totalSeguroPeriodo + " en total hacia el proveedor"
@@ -1269,6 +1274,7 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         corrida.setTotalSeguro(totalSeguroPeriodo);
         corrida.setIdOrdenPagoSeguro(idOrdenProveedor);
         corrida.setCantidadJubiladosSeguro(Long.valueOf(generados + yaGenerados));
+        corrida.setNumeroAsientoSeguro(idAsientoSeguro);
         corridaJubiladosDaoService.save(corrida, corrida.getCodigo());
 
         System.out.println("GENERACIÓN DE SEGURO TERMINADA - Evaluados: " + evaluados + " - Jubilados: "
@@ -2767,6 +2773,76 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
      * que causó el defecto medido, y tocar seguro sin verificarlo por separado sería el mismo
      * error de raíz que este fix corrige para pensión — arreglar adivinando.
      */
+    /**
+     * El asiento PROPIO del seguro médico del período — D cuentas individuales / H seguros
+     * médicos por pagar — generado por {@code generarSeguroDelMes} en el momento en que fija
+     * los valores y manda a pagar al proveedor (§12 de API-DOS-PROCESOS-MENSUALES-JUBILADOS.md,
+     * decisión del usuario 2026-09-23).
+     *
+     * <p>UN SOLO asiento por el TOTAL del período, no uno por jubilado: el hecho económico es
+     * uno («este mes se descontó X y se le debe X al proveedor») y el pago con el que hay que
+     * cuadrarlo también es uno solo, la orden agregada de {@link #generarOrdenPagoProveedorSeguro}.
+     * Reusa la plantilla 35 y sus líneas {@code aux1=3}/{@code aux1=4} — las mismas que hasta
+     * ahora sólo usaba {@link #generarAsientoDevengoPension} — a través de {@link #lineaDevengo};
+     * no se crea ninguna plantilla nueva.
+     *
+     * @param idEmpresa          Empresa contable
+     * @param anio               Año del período
+     * @param mes                Mes del período
+     * @param totalSeguroPeriodo Total del seguro médico del período (Σ de los jubilados)
+     * @param usuario            Usuario que dispara la generación
+     * @return El código del asiento, o {@code null} si la contabilidad de CRD está inactiva o
+     *         si el total del período es $0 (mismo criterio que la orden: un asiento sin líneas
+     *         no se graba)
+     * @throws Throwable Si ocurre un error
+     */
+    private Long generarAsientoSeguroMedico(Long idEmpresa, Integer anio, Integer mes,
+            double totalSeguroPeriodo, String usuario) throws Throwable {
+        if (!configuracionContabilidadService.contabilidadActiva()) {
+            System.out.println("  Contabilidad de CRD INACTIVA: seguro médico " + mes + "/" + anio
+                + " registrado sin generar su asiento propio.");
+            return null;
+        }
+        double total = redondear(totalSeguroPeriodo);
+        if (total <= TOLERANCIA) {
+            System.out.println("  Sin seguro médico que devengar en " + mes + "/" + anio
+                + " ($0) - no se genera asiento.");
+            return null;
+        }
+
+        Long idPlantilla = plantillaService.codigoByAlterno(
+            PlantillasCredito.PAGO_PENSION_COMPLEMENTARIA, idEmpresa);
+        if (idPlantilla == null) {
+            throw new IncomeException("No existe la plantilla contable alterno "
+                + PlantillasCredito.PAGO_PENSION_COMPLEMENTARIA + " (pago mensual de pensión"
+                + " complementaria) para la empresa " + idEmpresa + ". Corra sql/173 antes de"
+                + " generar el seguro médico.");
+        }
+
+        String glosa = "Seguro médico jubilados " + mes + "/" + anio + " - total del período";
+
+        List<DetalleAsiento> lineas = new ArrayList<>();
+        lineas.add(lineaDevengo(idPlantilla, 3, total, glosa));
+        lineas.add(lineaDevengo(idPlantilla, 4, total, glosa));
+
+        double totalDebe = redondear(lineas.get(0).getValorDebe() + lineas.get(1).getValorDebe());
+        double totalHaber = redondear(lineas.get(0).getValorHaber() + lineas.get(1).getValorHaber());
+        if (Math.abs(redondear(totalDebe - total)) > TOLERANCIA
+                || Math.abs(redondear(totalHaber - total)) > TOLERANCIA) {
+            throw new IncomeException("El asiento del seguro médico de " + mes + "/" + anio
+                + " no cuadra: DEBE $" + totalDebe + ", HABER $" + totalHaber + ", esperado $" + total
+                + ". No se genera un asiento desbalanceado.");
+        }
+
+        Asiento asiento = asientoContableService.generarAsiento(idEmpresa, TipoAsientos.CREDITOS,
+            LocalDate.now(), glosa, usuario, lineas, Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR));
+
+        System.out.println("  ✅ Asiento del seguro médico generado - " + mes + "/" + anio
+            + " - Asiento " + asiento.getCodigo() + " - $" + total);
+
+        return asiento.getCodigo();
+    }
+
     private Long generarAsientoDevengoPension(PagoPensionComplementaria pago, Entidad entidad, Long idEmpresa,
             double montoDevengarPension) throws Throwable {
         if (!configuracionContabilidadService.contabilidadActiva()) {
@@ -2799,7 +2875,25 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
             totalHaber += valorPension;
         }
 
-        double valorSeguro = redondear(nvl(pago.getValorSeguro()));
+        // §12 del contrato (2026-09-23): las líneas del seguro (aux1=3/4) se saltean SÓLO
+        // cuando el período ya tiene su asiento PROPIO de seguro (CRJB.CRJBASSG generado por
+        // generarAsientoSeguroMedico) — nunca a secas. Condición, no fecha: septiembre/2026 se
+        // generó ANTES de este cambio y su CRJBASSG queda nulo, así que su seguro se sigue
+        // devengando acá, como siempre; y los meses retroactivos (§10) no tienen cabecera de
+        // corrida con asiento de seguro, así que también siguen por este camino. El esquema
+        // nuevo empieza a regir solo, por construcción, con la corrida de octubre en adelante.
+        CorridaJubilados corridaDelPeriodo = corridaJubiladosDaoService.selectByPeriodo(
+            idEmpresa, pago.getAnio(), pago.getMes());
+        boolean seguroEnAsientoPropio = corridaDelPeriodo != null
+            && corridaDelPeriodo.getNumeroAsientoSeguro() != null;
+
+        double valorSeguro = seguroEnAsientoPropio ? 0.0 : redondear(nvl(pago.getValorSeguro()));
+        if (seguroEnAsientoPropio && nvl(pago.getValorSeguro()) > TOLERANCIA) {
+            System.out.println("  Seguro médico de " + pago.getMes() + "/" + pago.getAnio()
+                + " ya devengado en su asiento propio (CRJB " + corridaDelPeriodo.getCodigo()
+                + ", asiento " + corridaDelPeriodo.getNumeroAsientoSeguro() + ") - PGPC "
+                + pago.getCodigo() + " no lo vuelve a devengar acá.");
+        }
         if (valorSeguro > TOLERANCIA) {
             lineas.add(lineaDevengo(idPlantilla, 3, valorSeguro, prefijo + " - seguro de salud"));
             lineas.add(lineaDevengo(idPlantilla, 4, valorSeguro, prefijo + " - seguro de salud"));

@@ -113,6 +113,18 @@ public class CorridaJubilados implements Serializable {
     private Long cantidadJubiladosSeguro;
 
     /**
+     * Asiento propio del seguro médico del período (D cuentas individuales / H seguros médicos
+     * por pagar), generado por {@code generarSeguroDelMes} — decisión del usuario, 2026-09-23
+     * (API-DOS-PROCESOS-MENSUALES-JUBILADOS.md §12). Sin FK, mismo criterio que
+     * {@code PagoPensionComplementaria.numeroAsiento} (PGPC.PGPCNMAS). {@code null} = todavía no
+     * se generó — y también en las corridas de antes de este cambio (p.ej. 9/2026), cuyo seguro
+     * sigue devengado por el camino viejo dentro del devengo de pensiones.
+     */
+    @Basic
+    @Column(name = "CRJBASSG")
+    private Long numeroAsientoSeguro;
+
+    /**
      * Estado del proceso de PENSIONES: 0 pendiente, 1 generado.
      *
      * Mismo motivo que {@link #estadoSeguro}: {@code DEFAULT 0 NOT NULL} en la base, pero
@@ -233,6 +245,14 @@ public class CorridaJubilados implements Serializable {
 
     public void setCantidadJubiladosSeguro(Long cantidadJubiladosSeguro) {
         this.cantidadJubiladosSeguro = cantidadJubiladosSeguro;
+    }
+
+    public Long getNumeroAsientoSeguro() {
+        return numeroAsientoSeguro;
+    }
+
+    public void setNumeroAsientoSeguro(Long numeroAsientoSeguro) {
+        this.numeroAsientoSeguro = numeroAsientoSeguro;
     }
 
     public Long getEstadoPensiones() {
