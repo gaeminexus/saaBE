@@ -4434,9 +4434,64 @@ prueba**. Lo anuló el usuario.
   regulariza, va con un **asiento de ajuste en el período abierto**, nunca tocando junio. Decisión
   del contador.
 - **Por qué la factura se ofrecía en el combo teniendo un pago comprometido** quedó **sin cerrar**.
+  *(Ver también el §52, que lo deja como frente abierto con riesgo de dinero.)*
   Medido: el backend **sí** cuenta los `POR_APROBAR` como comprometidos
   (`selectComprometidosNoConfirmadosByFactura` los incluye), así que esa factura **debería** haber
   estado excluida. La causa más probable es que la llamada a `facturasComprometidas` falle y el
   frontend **se lo trague sin avisar** — está escrito así a propósito (*«si falla, se sigue sin
   excluir nada»*). **Se confirma en diez segundos en la pestaña Red**, y si es eso, afecta a
   cualquier factura con un pago por aprobar: escenario de **pago duplicado**.
+
+## §52 — Seguimiento de cobros: ENTREGADO (2026-09-23)
+
+El usuario pidió una pantalla de seguimiento de cobros «o ya existe una opción así?». **Sí existía**
+—`cxc/forms/cobros/consulta-cobros`, con filtros por cliente y fechas, estado, asiento, CSV y
+anulación— y le faltaban exactamente las tres cosas que él enumeró. Por eso se **amplió** esa
+pantalla en vez de crear otra (decisión suya; y el precedente de `titulares`/`titulares-v2` del §43).
+
+| Parte | Commit |
+|---|---|
+| Diseño + contrato, espejado a `saaFE/docs/cxc/` | `96c6b376` · FE `9cdea1d` |
+| BE-2 — `observacion` en la proyección del listado | `64f6a205` |
+| BE-3 — `GET /aplc/comprobante/{id}` → PDF | `02a468ec` |
+| REP-1 — `RPRT_COBRO.jrxml` + `.jasper` | `5a880dbd` |
+| FE-4 + FE-4b — observaciones, período, imprimir, «Sin contabilizar» | FE `0fa4671` |
+
+### 52.1 — 🔴 TRES catálogos de forma de pago, y ninguno es intercambiable
+
+Lo levantó el ejecutor al escribir el helper del comprobante; el árbitro **sospechó que su mapeo
+estaba corrido y lo midió** — estaba bien, y en el camino apareció un tercero:
+
+| Catálogo | 1 | 2 | 3 | 4 |
+|---|---|---|---|---|
+| `AplicacionPagoCxc.formaPago` (CXC, javadoc `:177-180`) | Efectivo | Transferencia | Cheque | **Tarjeta** |
+| `FormaPagoProgramado` (PGS/CXP) | Efectivo | Transferencia | Cheque | **Débito automático** |
+| `TipoFormaPago` | Efectivo | **Cheque** | **Tarjeta** | — |
+
+> **Lo que hay que llevarse:** el 4 significa cosas distintas en CXC y CXP, y en el tercero el 2 y
+> el 3 están cambiados. **Usar el catálogo equivocado no da error: imprime otra cosa.** Es la
+> familia del §35 —*lo que rompe fuerte se arregla; lo que contesta mal sobrevive*— y acá el que
+> contesta mal es un PDF que va al cliente.
+
+### 52.2 — Lo que se decidió y por qué, para no rediscutirlo
+
+- **La observación no era una función nueva:** `APLCOBSR` existe y se graba desde siempre; el
+  listado no la traía porque su proyección tenía 16 columnas y ésa no estaba. **Se agregó a la
+  proyección, NO devolviendo la entidad**: `AplicacionPagoCxc` arrastra 12 relaciones y el modelo no
+  tiene un solo `LAZY` — devolverla habría metido en una pantalla de consulta el mismo problema de
+  rendimiento que el usuario reportó al confirmar pagos.
+- **El filtro por período no tocó el backend.** El combo rellena `desde`/`hasta` una sola vez. No se
+  agregó un `idPeriodo`: dos formas de expresar lo mismo obligan a decidir cuál gana dentro del
+  servidor, donde nadie lo ve.
+- **El comprobante se arma sin `<query>`**, todo por parámetros. Además de ser lo pedido, no hay
+  consulta que se pueda desalinear con un `ALTER TABLE` futuro (la trampa del `SELECT *`).
+- **El `.jrxml` y el `.jasper` fueron en el mismo commit**, compilados **y con el fill re-corrido
+  por el árbitro**. El compilador no valida referencias de estilo: así se cayeron dos reportes de
+  conciliación en producción.
+
+### 52.3 — Lo que sigue abierto de este frente
+
+- **Nada se ve hasta desplegar.** El comprobante necesita el WAR (endpoint + plantilla) y la
+  pantalla necesita el build del FE.
+- **`docs/crd/API-DOS-PROCESOS-MENSUALES-JUBILADOS.md`** (en `saaFE`) y dos archivos de `crd` en
+  `saaBE` siguen modificados **por otro equipo**, sin commitear. No se tocaron.
