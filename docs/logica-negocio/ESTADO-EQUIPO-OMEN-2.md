@@ -4385,3 +4385,58 @@ frente nuevo:
 > la de todos no son la misma pantalla con un filtro distinto.* La primera puede permitirse pedir
 > los datos documento por documento; la segunda no. Si el frente arranca copiando el servicio que ya
 > existe, se muere en la primera corrida con datos reales.
+
+## §51 — Tres casos de datos cerrados, y el que costó tres intentos (2026-09-22)
+
+Confirmado por el usuario: *«Ya corregí customax. Y el selector de cuentas solo debe permitir
+escoger cuentas de movimiento, Y la contabilizacion de scarlet ya esta corregida»*.
+
+| Caso | Cómo se cerró |
+|---|---|
+| **Customax** — factura de prueba 243 ofreciéndose para pagar y con saldo falso | `e2-69` (marca `FCTCEPAG = 3`) + `e2-70` (abono de 11.975,04 **sin asiento**). Junio y julio, intactos |
+| **Scarleth** — retención autorizada que no afectaba el saldo de su liquidación | Botón **Contabilizar** de Consulta de Documentos Electrónicos. **Sin SQL y sin código nuevo** |
+| **Selector de cuentas bancarias** | Queda como está: muestra el plan completo y **sólo deja elegir cuentas de movimiento**. Decisión cerrada del usuario |
+
+### 51.1 — El de Customax necesitó tres intentos, y ninguno fue por falta de análisis
+
+El recorrido, porque la forma importa más que el resultado:
+
+1. **Anular la factura** (mi recomendación inicial). **Descartada por el usuario**: `anularFacturaCompra`
+   anula el asiento contable, y junio ya estaba contabilizado.
+2. **Marcarla como PAGADA** (`e2-69`). Funcionó para lo que se pidió —sacarla del combo de Solicitud
+   de Pago, que filtra por `estadoPago`— y **no alcanzó para el estado de cuenta**, que es lo que el
+   usuario miró después.
+3. **Registrar el abono faltante** (`e2-70`), sin asiento. Ahí sí: saldo 0 en todas las pantallas.
+
+> **Lo que hay que llevarse:** los tres pasos fueron correctos **para lo que se preguntó en cada
+> uno**, y aun así hicieron falta los tres. Lo que los encadenó fue medir la salida real después de
+> cada cambio, no acertar de entrada. Y **la advertencia del paso 2 se cumplió tal cual**: al
+> proponer la marca quedó dicho por escrito que *«el saldo de 11.975,04 va a seguir viéndose en el
+> Estado de Cuenta, ahora rotulado Pagada»*. Cuando el usuario volvió con esa captura, no hubo que
+> re-diagnosticar nada — **advertir de más costó una línea y ahorró una vuelta entera.**
+
+### 51.2 — 🔴 El hallazgo que no buscaba nadie: un pago vivo sobre una factura de prueba
+
+Midiendo esa factura apareció el **pago 477 por 11.975,04 en estado `0`**. El `0` de
+`EstadoPagoProgramado` **no es anulado: es `POR_APROBAR`** — un pago esperando en la bandeja de
+Tesorería que, si alguien aprobaba ese lote, **mandaba la transferencia al banco por una factura de
+prueba**. Lo anuló el usuario.
+
+> **Y la lección es de método, no del caso:** ese pago apareció porque el script preguntaba *«¿hay
+> un pago vivo sobre esta factura?»* con su ESPERADO escrito al lado (*«CERO filas»*). Un bloque que
+> nadie había pedido, en un script que iba a otra cosa. **El costo de agregar un bloque de control
+> de más son cinco líneas; el de no tenerlo lo paga el banco.**
+
+### 51.3 — Lo que quedó abierto de estos casos, y es deuda anotada, no olvido
+
+- **La CxP de 11.975,04 sigue viva en libros.** El abono del `e2-70` no generó contabilidad —a
+  propósito, era la condición— así que el módulo dice «pagada» y el mayor sigue con el pasivo. Si se
+  regulariza, va con un **asiento de ajuste en el período abierto**, nunca tocando junio. Decisión
+  del contador.
+- **Por qué la factura se ofrecía en el combo teniendo un pago comprometido** quedó **sin cerrar**.
+  Medido: el backend **sí** cuenta los `POR_APROBAR` como comprometidos
+  (`selectComprometidosNoConfirmadosByFactura` los incluye), así que esa factura **debería** haber
+  estado excluida. La causa más probable es que la llamada a `facturasComprometidas` falle y el
+  frontend **se lo trague sin avisar** — está escrito así a propósito (*«si falla, se sigue sin
+  excluir nada»*). **Se confirma en diez segundos en la pestaña Red**, y si es eso, afecta a
+  cualquier factura con un pago por aprobar: escenario de **pago duplicado**.
