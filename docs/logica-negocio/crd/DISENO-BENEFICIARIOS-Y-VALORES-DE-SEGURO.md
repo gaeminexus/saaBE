@@ -233,3 +233,58 @@ columna de origen en `ADJN` (H79), donde el problema ya existía y esperar habr�
 ### ⇒ Con esto, la fase 2b queda bloqueada por UNA sola cosa
 
 El **producto de pago de CXP contra `2.3.90.90.11`**, que es de `omen-saa-2`. Nada más.
+
+---
+
+## 10. ⛔ 2026-09-25 — SE REVIERTE EL §9: `CTAPRCLS` SÍ se agrega
+
+**El usuario lo vio en el primer sepelio real.** Al autorizar el pago por contabilidad, el asiento
+de reclasificación (`CRE-2026-09-0422`) salió así:
+
+| Cuenta | Debe | Haber |
+|---|---|---|
+| 2.1.01.05.01 APORTES PERSONALES CESANTIA | 2.755,07 | |
+| 2.3.01.05.01 LIQUIDACION APORTES CESANTIA | | 2.755,07 |
+| **2.3.90.90.11 INDEMNIZACIONES … BENEFICIARIOS** | **1.000,00** | |
+| **2.3.90.90.11 INDEMNIZACIONES … BENEFICIARIOS** | | **1.000,00** |
+
+**Las dos últimas son la misma cuenta al debe y al haber por el mismo valor.**
+
+**Decisión del usuario, textual:** *«no generemos movimientos en la cuenta de sepelio en esta parte
+del proceso… para sepelio dejemos solo el asiento al registrar el dinero recibido y al pagarlo. No
+al autorizar.»*
+
+### Por qué mi decisión del §9 estaba mal
+
+En el §9 decidí **no** agregar la columna, con el argumento de que el asiento neutro *«cuadra, no
+descuadra nada»* y que el ruido en un mayor era más barato que tocar el motor de reclasificación.
+
+⇒ **Me equivoqué, y el diseño original (§4) tenía razón desde el principio.** Un asiento que no
+mueve nada **no es ruido inocuo**:
+
+- Es una línea que alguien tiene que **explicar cada vez que concilie** esa cuenta.
+- Hace parecer que el valor del sepelio **se movió dos veces**.
+- Y en una cuenta de terceros —plata de beneficiarios de un fallecido— la claridad del mayor no es
+  un lujo estético.
+
+⭐ **El criterio «cuadra, entonces da igual» era cómodo para mí, no correcto para quien lee el
+mayor.** Medí el costo técnico de tocar el motor y no medí el costo de quien concilia todos los
+meses. Esa es la parte que me faltó.
+
+### Lo que se implementa
+
+**`CRD.CTAP.CTAPRCLS`** (`crd/sql/246`): `1` = genera reclasificación (todos los tipos de hoy),
+`0` = no la genera. El tipo **27** (sepelio) queda en `0`.
+
+⚠️ **Y los dos puntos que el código NO puede olvidar**, porque rompen:
+
+1. **La validación de cuadre** compara hoy contra el valor **total** de la devolución
+   (`DevolucionAporteServiceImpl:1678-1682`). Al excluir el sepelio, el asiento suma menos que ese
+   total y **la validación lo rechazaría por descuadrado**, tumbando la devolución entera. Tiene que
+   comparar contra **la suma de los tipos que sí reclasifican**.
+2. **Una devolución SÓLO de sepelio no tiene ninguna línea que reclasificar** — que es exactamente
+   el caso del usuario. Ahí **no se genera asiento**: no se graba uno vacío. La devolución queda sin
+   número de asiento de reclasificación, y está bien, porque su contabilidad va por los otros dos.
+
+⇒ **Los dos asientos del ciclo de sepelio quedan como se diseñaron desde el principio:** uno al
+**recibir** el dinero (`RVSG`, aprobación de contabilidad) y uno al **pagarlo** a los beneficiarios.
