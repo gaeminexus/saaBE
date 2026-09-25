@@ -748,11 +748,13 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 		Long idEmpresa = retencion.getFacturador().getEmpresa().getCodigo();
 		java.time.LocalDate fechaAsiento = (retencion.getFecha() != null)
 				? retencion.getFecha().toLocalDate() : java.time.LocalDate.now();
+		// Pedido del usuario (2026-09-25): la observación del asiento ya NO lleva
+		// el número de autorización. Sigue guardado en RetencionV2.autorizacion y
+		// se sigue usando en el ATS, el RIDE y los cuadres — sólo se saca de acá.
 		String obsAsiento = "Retención V2 N° " + nvl(retencion.getNumero(), retencion.getClave())
 				+ observacionDocumentoOrigen(retencion.getId())
 				+ " | Proveedor: " + (retencion.getProveedor() != null
-						? retencion.getProveedor().getNombre() : "")
-				+ " | Aut: " + nvl(retencion.getAutorizacion(), retencion.getClave());
+						? retencion.getProveedor().getNombre() : "");
 		String usuarioAsiento = (retencion.getUsuario() != null)
 				? retencion.getUsuario().getNombre() : "SISTEMA";
 
