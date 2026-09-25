@@ -94,6 +94,22 @@ public class CuentaTipoAporte implements Serializable {
     @Column(name = "CTAPESTD")
     private Long estado;
 
+    /**
+     * 1 = este tipo de aporte genera el asiento de RECLASIFICACIÓN al autorizar la devolución
+     * (D {@link #cuentaPasivo} / H {@link #cuentaLiquidacion}, comportamiento de siempre).
+     * 0 = no lo genera, porque se liquida por otro camino (caso sepelio: su asiento va al
+     * recibir el dinero y al pagarlo, no al autorizar — decisión del usuario, 2026-09-25,
+     * revierte el §9 de DISENO-BENEFICIARIOS-Y-VALORES-DE-SEGURO.md).
+     *
+     * Inicializado en {@code 1L} en la declaración: la columna tiene {@code DEFAULT 1} en la
+     * base (crd/sql/246), pero Hibernate manda la columna con {@code NULL} explícito en el
+     * INSERT si el campo queda sin setear, así que el {@code DEFAULT} de Oracle no entra en
+     * juego (misma lección que H77, {@code CorridaJubilados}).
+     */
+    @Basic
+    @Column(name = "CTAPRCLS")
+    private Long generaReclasificacion = 1L;
+
     public CuentaTipoAporte() {
     }
 
@@ -143,5 +159,13 @@ public class CuentaTipoAporte implements Serializable {
 
     public void setEstado(Long estado) {
         this.estado = estado;
+    }
+
+    public Long getGeneraReclasificacion() {
+        return generaReclasificacion;
+    }
+
+    public void setGeneraReclasificacion(Long generaReclasificacion) {
+        this.generaReclasificacion = generaReclasificacion;
     }
 }

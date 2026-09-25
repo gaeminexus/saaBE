@@ -1625,11 +1625,14 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
      * afecta.
      *
      * @return el código (PK) del asiento generado, o {@code null} si la contabilidad de CRD
-     *         está apagada — en ese caso {@code DVAPNMRC} queda en null, ausencia esperada.
+     *         está apagada, o si NINGÚN tipo del desglose reclasifica (todos con
+     *         {@code CTAPRCLS = 0}, p.ej. una devolución sólo de sepelio) — en los dos casos
+     *         {@code DVAPNMRC} queda en null, ausencia esperada. Un asiento sin líneas no se
+     *         graba.
      * @throws Throwable {@code IncomeException} clara —con el tipo de aporte que falta— si
-     *         algún tipo del desglose no tiene fila en {@code CRD.CTAP} para la empresa (nunca
-     *         adivina una cuenta), o si el cuadre contra el valor total de la devolución no da
-     *         exacto (tolerancia $0.01)
+     *         algún tipo que SÍ reclasifica no tiene fila en {@code CRD.CTAP} para la empresa
+     *         (nunca adivina una cuenta), o si el cuadre contra la suma de los tipos que
+     *         reclasifican no da exacto (tolerancia $0.01)
      */
     private Long generarAsientoReclasificacion(DevolucionAporte devolucion, List<TipoAporte> tipos,
             List<Double> valores) throws Throwable {
@@ -1646,13 +1649,34 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
         List<DetalleAsiento> lineas = new ArrayList<>();
         double totalDebe = 0.0;
         double totalHaber = 0.0;
+        double valorReclasificado = 0.0;
         for (int i = 0; i < tipos.size(); i++) {
             TipoAporte tipo = tipos.get(i);
             double valor = valores.get(i);
 
             com.saa.model.crd.CuentaTipoAporte config =
                 cuentaTipoAporteService.selectByTipoAporteYEmpresa(tipo.getCodigo(), idEmpresa);
-            if (config == null || config.getCuentaPasivo() == null || config.getCuentaLiquidacion() == null) {
+            if (config == null) {
+                throw new IncomeException("El tipo de aporte " + tipo.getCodigo() + " (" + tipo.getNombre()
+                    + ") no tiene cuentas contables configuradas en CRD.CTAP para la empresa "
+                    + idEmpresa + "; configúrelas antes de devolver este tipo de aporte.");
+            }
+
+            // 2026-09-25 (§10 del diseño de beneficiarios): CTAPRCLS = 0 saca a este tipo del
+            // asiento de reclasificación — su contabilidad va por otro camino (caso sepelio: un
+            // asiento al recibir el dinero y otro al pagarlo, no al autorizar). null se trata
+            // como 1 (reclasifica), igual que el DEFAULT de la columna: "el lado seguro".
+            boolean reclasifica = config.getGeneraReclasificacion() == null
+                || config.getGeneraReclasificacion().longValue() != 0L;
+            if (!reclasifica) {
+                System.out.println("  Tipo de aporte " + tipo.getCodigo() + " (" + tipo.getNombre()
+                    + ") - $" + valor + " - CTAPRCLS=0: no entra al asiento de reclasificación de"
+                    + " la devolución " + devolucion.getCodigo() + " (su contabilidad va por otro"
+                    + " camino).");
+                continue;
+            }
+
+            if (config.getCuentaPasivo() == null || config.getCuentaLiquidacion() == null) {
                 throw new IncomeException("El tipo de aporte " + tipo.getCodigo() + " (" + tipo.getNombre()
                     + ") no tiene cuentas contables configuradas en CRD.CTAP para la empresa "
                     + idEmpresa + "; configúrelas antes de devolver este tipo de aporte.");
@@ -1667,21 +1691,31 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
             lineas.add(lineaDesdePlanCuenta(config.getCuentaLiquidacion(), valor, false,
                 prefijo + " - liquidación por pagar " + tipo.getNombre()));
             totalHaber += valor;
+            valorReclasificado += valor;
         }
+
+        if (lineas.isEmpty()) {
+            System.out.println("  Devolución " + devolucion.getCodigo() + " sin ningún tipo que"
+                + " reclasifique (todos con CTAPRCLS=0) - no se genera asiento de reclasificación.");
+            return null;
+        }
+
         totalDebe = redondear(totalDebe);
         totalHaber = redondear(totalHaber);
+        valorReclasificado = redondear(valorReclasificado);
 
-        // Cuadre contra el MONTO DE LA OPERACIÓN, no solo D=H (regla §4 de
-        // PLAN-CIERRE-CONTABLE-TOTAL.md): las dos mitades se construyen del mismo desglose,
-        // así que en construcción normal siempre coinciden — este chequeo es la red de
-        // seguridad si algún día CRD.CTAP quedara mal cargado para un tipo.
-        double valorTotal = redondear(devolucion.getValor() != null ? devolucion.getValor() : 0.0);
-        if (Math.abs(redondear(totalDebe - valorTotal)) > TOLERANCIA
-                || Math.abs(redondear(totalHaber - valorTotal)) > TOLERANCIA) {
+        // Cuadre contra la SUMA DE LOS TIPOS QUE RECLASIFICAN (2026-09-25) — no más contra el
+        // valor total de la devolución: un tipo con CTAPRCLS=0 resta del asiento pero no del
+        // total de la devolución, y comparar contra ese total rechazaría por descuadrado un
+        // asiento que en realidad está bien. Las dos mitades se construyen del mismo desglose,
+        // así que en construcción normal siempre coinciden — este chequeo sigue siendo la red
+        // de seguridad si algún día CRD.CTAP quedara mal cargado para un tipo.
+        if (Math.abs(redondear(totalDebe - valorReclasificado)) > TOLERANCIA
+                || Math.abs(redondear(totalHaber - valorReclasificado)) > TOLERANCIA) {
             throw new IncomeException("El asiento de reclasificación de la devolución "
-                + devolucion.getCodigo() + " no cuadra contra su valor total: DEBE $" + totalDebe
-                + ", HABER $" + totalHaber + ", devolución $" + valorTotal
-                + ". No se genera un asiento desbalanceado.");
+                + devolucion.getCodigo() + " no cuadra: DEBE $" + totalDebe + ", HABER $" + totalHaber
+                + ", esperado $" + valorReclasificado + " (suma de los tipos que reclasifican)."
+                + " No se genera un asiento desbalanceado.");
         }
 
         // Cédula/nombre, sumado al final (2026-08-31, pedido del usuario). Sin idAsoprep acá:
@@ -1700,7 +1734,7 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
             devolucion.getUsuarioRegistro(), lineas, Long.valueOf(com.saa.rubros.ModuloSistema.CUENTAS_POR_COBRAR));
 
         System.out.println("  ✅ Asiento de reclasificación generado - Devolución "
-            + devolucion.getCodigo() + " - Asiento " + asiento.getCodigo() + " - $" + valorTotal);
+            + devolucion.getCodigo() + " - Asiento " + asiento.getCodigo() + " - $" + valorReclasificado);
 
         return asiento.getCodigo();
     }
