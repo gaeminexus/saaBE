@@ -987,6 +987,14 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
             resultado.put("accion", AccionNovedad.REEMPLAZAR);
 
         } else if (AccionNovedad.MANTENER == accion) {
+            // Devolver el documento a un estado operativo (§ítem BE-5): MANTENER
+            // solo tocaba estadoNovedad y dejaba estadoDocumento clavado en
+            // NOVEDAD (5), donde la pantalla no ofrece ningún botón (ni
+            // Registrar ni Subir XML) — el documento quedaba entrampado para
+            // siempre. Mismo criterio de "tiene XML" que ya usa
+            // DescargaXmlDocumentoServiceImpl:76.
+            boolean tieneXml = doc.getPathXml() != null && !doc.getPathXml().trim().isEmpty();
+            doc.setEstadoDocumento(tieneXml ? ESTADO_XML_CARGADO : ESTADO_LEIDO);
             doc.setEstadoNovedad(NOVEDAD_MANTENIDO);
             doc.setObservacion("Usuario decidió mantener el documento previo.");
             documentoCxpDaoService.save(doc, doc.getId());
