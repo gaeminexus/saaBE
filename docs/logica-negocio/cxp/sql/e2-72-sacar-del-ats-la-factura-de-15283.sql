@@ -129,7 +129,20 @@ SELECT 'BLOQUE 1 - marcadas antes' AS bloque,
 --  WHERE ID = 469
 --    AND NUMERO = '004-100-003891549';
 --
--- ⛔ 2.3 — LAS DOS DE JULIO **NO SE TOCAN**. Decision del usuario, 2026-09-23.
+-- -- 2.3 — 🔴 LA 343 VUELVE AL ATS. Va en sentido CONTRARIO a las de arriba.
+-- --        El 2026-09-21 se la marco como intermediario (e2-64). El 2026-09-25
+-- --        el contador paso la lista completa de «no declaradas, no son costo
+-- --        ni gasto» de agosto — AIG, las dos de EQUISUIZA y las dos de la
+-- --        Electrica — y la 343 NO ESTA en esa lista. El usuario lo confirmo:
+-- --        *«Esta factura debe aparecer en el ATS y no esta apareciendo»*.
+-- --        Mientras siga marcada, a agosto le FALTAN 1.521,17: no es que sobre
+-- --        algo, es que falta. Por eso se desmarca.
+-- UPDATE PGS.FCTC
+--    SET FCTCESIN = 0
+--  WHERE ID = 343
+--    AND NUMERO = '001-001-000002868';
+--
+-- ⛔ 2.4 — LAS DOS DE JULIO **NO SE TOCAN**. Decision del usuario, 2026-09-23.
 --    Julio ya se declaro; sacarlas ahora cambiaria un periodo presentado por
 --    30.722,23 y puede obligar a una sustitutiva. Quedan escritas para que
 --    conste que se sabe que estan, no porque haya que correrlas:
@@ -145,7 +158,11 @@ SELECT 'BLOQUE 1 - marcadas antes' AS bloque,
 -- ⛔ SIN ESTE COMMIT NO SE GUARDA NADA.
 -- COMMIT;
 --
--- DESPUES DEL COMMIT: **REGENERAR el ATS de 08/2026**. Marcar una factura
+-- DESPUES DEL COMMIT: **REGENERAR el ATS de 08/2026**. El control es doble:
+--   · los secuenciales 003891553 y 003891549 NO deben aparecer
+--   · el secuencial 000002868 (la 343) SI debe aparecer, con 1.441,17 de base 0%
+--     y 80,00 gravado con 12,00 de IVA
+-- Marcar una factura
 -- no reescribe un anexo ya generado — el XML viejo va a seguir
 -- mostrandola para siempre. Y al regenerar, el control es directo: el
 -- secuencial 003891553 no debe aparecer ni una vez en el XML, igual que
