@@ -4495,3 +4495,35 @@ estaba corrido y lo midió** — estaba bien, y en el camino apareció un tercer
   pantalla necesita el build del FE.
 - **`docs/crd/API-DOS-PROCESOS-MENSUALES-JUBILADOS.md`** (en `saaFE`) y dos archivos de `crd` en
   `saaBE` siguen modificados **por otro equipo**, sin commitear. No se tocaron.
+
+## §53 — Detalle del ATS en pantalla (2026-09-28) · árbitro nuevo
+
+**Pedido:** ver todos los documentos de un mes con sus bases (0%, gravada, IVA…) para compararlos
+contra el ATS, y exportarlos. **Decisiones del usuario:** las cifras salen **de las mismas líneas que
+arma el generador del ATS**, `sri` **entra** al alcance, se muestran compras + retenciones + ventas, y
+se exporta a CSV. Diseño y contrato: `sri/API-DETALLE-ATS.md`, espejado a `saaFE/docs/cxc/`.
+
+### 53.1 — Por qué no se extendió Consulta de Documentos de `cxp`
+
+Porque una pantalla para *comparar contra el ATS* que calcule las bases por su cuenta es un segundo
+cálculo del mismo período. Es el §46.8 (ATS y cuadre 104 contradiciéndose) servido de nuevo. El
+generador ya tiene cinco reglas que una consulta paralela debería copiar exactas, y cambiaron cuatro
+veces este mes.
+
+### 53.2 — El dato que definió el diseño
+
+El enlace compra↔retención y dos de los avisos (pasaporte, «más de 500 sin forma de pago») **se
+calculan mientras se escribe el XML**, dentro de `writeDetalleCompra`. Por eso el detalle **genera el
+XML y lo descarta**, en vez de reconstruir ese recorrido: es la única forma de garantizar que la
+pantalla y el archivo digan lo mismo.
+
+Y otra cosa que habría pasado desapercibida: `formatDecimal` aplica **`Math.abs`**. Si el DTO usara
+el valor crudo, una nota de crédito se vería negativa en pantalla y positiva en el XML.
+
+### 53.3 — Registro atrasado, encontrado al abrir la sesión
+
+- Este documento no tenía entradas desde el §52 (23-09). Quedaron sin registrar `e2-71`/`e2-72`/`e2-73`,
+  `630153a7` (el asiento de la retención de `cxc` sin el número de autorización) y `ca2153e1` (Mantener
+  una novedad dejaba el documento entrampado). Los mensajes de esos commits son el registro.
+- En `INDICE-SCRIPTS-EQUIPO-2.md`, la fila del `e2-71` tiene incrustada la del `e2-72`, y
+  `e2-37`/`38`/`39` aparecen dos veces, una como urgentes del 09-09.
