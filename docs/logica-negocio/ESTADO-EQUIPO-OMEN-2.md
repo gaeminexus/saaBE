@@ -4534,3 +4534,15 @@ el valor crudo, una nota de crédito se vería negativa en pantalla y positiva e
 - **Modo directo autorizado:** los prompts se despachan por SendMessage a `omen-saa-2-be` y `omen-saa-2-fe`.
 - BE y FE arrancan **en paralelo** contra el contrato congelado. Despachados el 2026-09-28.
 - Hay un equipo nuevo, `omen-saa-3`, con alcance desconocido para este árbitro.
+
+### 53.5 — ENTREGADO el mismo día: BE `e37bd62a` · FE `1b7fdbf`
+
+- BE: `POST /rest/ats/detalle`, con `armar()` extraído de `generarAts`. Diff revisado por el árbitro
+  (el cuerpo de `armar()` sin cambios, los helpers copiados exactos) y `mvn -q compile` = 0.
+- FE: pantalla `cxc/reportes/ats-detalle`, menú «Detalle del ATS» con el permiso del ATS, y botón
+  «Ver detalle». `ng build` = 0, corrido por el árbitro.
+- **Defecto del contrato, mío:** la tabla §4.3 abreviaba los seis `valRet*` con «…». El ejecutor FE
+  no los adivinó: los confirmó contra `RetencionInfo` del BE. **Un contrato no abrevia nombres de
+  campo.**
+- **Falta:** desplegar WAR + FE (sin SQL) y la prueba que solo el usuario puede hacer: regenerar el ATS
+  de agosto y comparar el ZIP contra el último generado. Deben salir idénticos.
