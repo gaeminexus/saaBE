@@ -34,6 +34,31 @@ SELECT TABLE_NAME, CONSTRAINT_NAME, SEARCH_CONDITION
 
 Los `SYS_%` se excluyen porque son los `NOT NULL` que Oracle nombra solo; no aportan vocabulario.
 
+> ⚠️ **Excluir los `SYS_%` es correcto para el vocabulario, pero no los vuelve inofensivos.**
+> También dan `ORA-02290` —no `ORA-01400`— si el INSERT/UPDATE los deja en null, con el mismo
+> efecto de tumbar el commit entero. Pasó el 2026-09-28: crear un contrato desde la ficha
+> (`saaFE` `.../rrh/forms/personal/ficha/contrato-form.component.ts`) reventaba porque
+> `ContratoEmpleadoServiceImpl.saveSingle` no sellaba ni `CNTEESTD` ni `CNTEFCHR`, y el
+> formulario no manda ninguno de los dos (son campos de auditoría que el propio armador de
+> cuerpo del frontend dice explícitamente que "sella el servidor"). Los `NOT NULL` de `RHH.CNTE`,
+> vistos con la consulta de arriba filtrando por `TABLE_NAME = 'CNTE'`:
+>
+> | Constraint | Columna |
+> |---|---|
+> | `CK_CNTRESTD` | `CNTEESTD IN ('BORRADOR','ACTIVO','CERRADO','ANULADO')` — el vocabulario, no un `SYS_%` |
+> | `SYS_C009207` | `CNTECDGO IS NOT NULL` |
+> | `SYS_C009208` | `MPLDCDGO IS NOT NULL` |
+> | `SYS_C009209` | `TPCECDGO IS NOT NULL` |
+> | `SYS_C009210` | `CNTENMRO IS NOT NULL` |
+> | `SYS_C009211` | `CNTEFCHI IS NOT NULL` |
+> | `SYS_C009212` | `CNTESLRB IS NOT NULL` |
+> | `SYS_C009213` | `CNTEESTD IS NOT NULL` ← el que reventaba |
+> | `SYS_C009214` | `CNTEFCHR IS NOT NULL` ← el que revienta justo después de arreglar el anterior |
+>
+> Arreglo: `saveSingle` ahora sella `estado = "ACTIVO"` y `fechaRegistro = LocalDate.now()` en el
+> alta cuando llegan en blanco, y en la actualización los copia del registro previo en vez de
+> dejar que el merge desnudo de `EntityDaoImpl.save` los pise con null.
+
 ## Lo que admite cada columna, hoy
 
 ### Vocabularios de palabra completa — los que muerden

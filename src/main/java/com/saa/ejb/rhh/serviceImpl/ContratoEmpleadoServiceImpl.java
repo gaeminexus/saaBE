@@ -30,6 +30,13 @@ import jakarta.ejb.Stateless;
 @Stateless
 public class ContratoEmpleadoServiceImpl implements ContratoEmpleadoService {
 
+	/**
+	 * Estado con el que nace un contrato registrado desde la ficha, cuando el formulario
+	 * no manda ninguno. CNTEESTD tiene CHECK de vocabulario fijo (ver
+	 * docs/logica-negocio/rhh/REFERENCIA-CHECKS-RHH.md): no vale cualquier literal.
+	 */
+	private static final String ESTADO_ACTIVO = "ACTIVO";
+
 	@EJB
 	private ContratoEmpleadoDaoService contratoEmpleadoDaoService;
 
@@ -99,7 +106,9 @@ public class ContratoEmpleadoServiceImpl implements ContratoEmpleadoService {
 
 	@Override
 	public ContratoEmpleado saveSingle(ContratoEmpleado contratoEmpleado) throws Throwable {
-		System.out.println("Ingresa al metodo (selectByCriteria) Contrato Empleado");
+		System.out.println("Ingresa al metodo (saveSingle) Contrato Empleado");
+
+		validarCamposObligatorios(contratoEmpleado);
 
 		// FOTO DEL ESTADO ANTERIOR, ANTES DE GUARDAR. Se copian valores sueltos y no la
 		// entidad: al hacer merge, Hibernate escribe sobre la instancia gestionada, asi
@@ -124,6 +133,27 @@ public class ContratoEmpleadoServiceImpl implements ContratoEmpleadoService {
 				anteriorJornada = previo.getJornada();
 				anteriorDias = previo.getDiasDeclaradosIess();
 				anteriorSalario = previo.getSalarioBase();
+				// EntityDaoImpl.save hace merge desnudo: un PUT que no manda estado o
+				// fechaRegistro los grabaria en NULL y reventaria contra el mismo CHECK
+				// que la ORA-02290 de la alta (docs/logica-negocio/rhh/REFERENCIA-CHECKS-RHH.md).
+				if (esBlanco(contratoEmpleado.getEstado())) {
+					contratoEmpleado.setEstado(previo.getEstado());
+				}
+				if (contratoEmpleado.getFechaRegistro() == null) {
+					contratoEmpleado.setFechaRegistro(previo.getFechaRegistro());
+				}
+			}
+		} else {
+			// Alta desde la ficha: el formulario no tiene campo de estado y no manda
+			// fechaRegistro porque son campos de auditoria que sella el servidor. Sin
+			// esto CNTEESTD y CNTEFCHR llegan null y el INSERT revienta con ORA-02290
+			// contra SYS_C009213 / SYS_C009214. Un contrato que se registra desde la
+			// ficha nace vigente.
+			if (esBlanco(contratoEmpleado.getEstado())) {
+				contratoEmpleado.setEstado(ESTADO_ACTIVO);
+			}
+			if (contratoEmpleado.getFechaRegistro() == null) {
+				contratoEmpleado.setFechaRegistro(LocalDate.now());
 			}
 		}
 
@@ -220,6 +250,40 @@ public class ContratoEmpleadoServiceImpl implements ContratoEmpleadoService {
 	 */
 	private boolean distintos(Object anterior, Object actual) {
 		return anterior == null ? actual != null : !anterior.equals(actual);
+	}
+
+	/**
+	 * Valida solo la presencia de lo que ni el CHECK ni el NOT NULL de RHH.CNTE pueden
+	 * inventar por su cuenta. Nada de reglas de negocio nuevas (fechas cruzadas, montos
+	 * minimos): eso lo decide quien encargo este cambio, no esta validacion.
+	 *
+	 * @param contratoEmpleado	: Contrato a guardar, antes de sellar auditoria
+	 * @throws IncomeException	: Si falta un campo obligatorio, con mensaje para el usuario
+	 */
+	private void validarCamposObligatorios(ContratoEmpleado contratoEmpleado) throws IncomeException {
+		if (esBlanco(contratoEmpleado.getNumero())) {
+			throw new IncomeException("El número de contrato es obligatorio.");
+		}
+		if (contratoEmpleado.getFechaInicio() == null) {
+			throw new IncomeException("La fecha de inicio del contrato es obligatoria.");
+		}
+		if (contratoEmpleado.getSalarioBase() == null) {
+			throw new IncomeException("El sueldo base del contrato es obligatorio.");
+		}
+		if (contratoEmpleado.getTipoContratoEmpleado() == null) {
+			throw new IncomeException("El tipo de contrato es obligatorio.");
+		}
+		if (contratoEmpleado.getEmpleado() == null) {
+			throw new IncomeException("El contrato debe pertenecer a un colaborador.");
+		}
+	}
+
+	/**
+	 * @param valor	: Texto a revisar
+	 * @return		: true si es nulo o solo espacios
+	 */
+	private boolean esBlanco(String valor) {
+		return valor == null || valor.isBlank();
 	}
 
 }
