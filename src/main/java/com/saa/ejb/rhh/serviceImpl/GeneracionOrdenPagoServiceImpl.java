@@ -41,6 +41,7 @@ import com.saa.model.rhh.PeriodoNomina;
 import com.saa.model.rhh.ReglonNomina;
 import com.saa.model.rhh.ValorNoPagado;
 import com.saa.model.cxp.ProductoPago;
+import com.saa.model.tsr.BancoExterno;
 import com.saa.model.tsr.CuentaBancaria;
 import com.saa.model.tsr.Egreso;
 import com.saa.rubros.Estado;
@@ -79,6 +80,19 @@ import jakarta.persistence.PersistenceContext;
  * <p>El formato es dato: sale de <code>RHH.FMBN</code> y sus campos de <code>RHH.DFMB</code>,
  * espejo de salida de <code>FMRC</code>/<code>DFMR</code>. Si la empresa no tiene formato activo,
  * <code>generarArchivoBancario</code> dice que falta <b>crearlo</b>, no que falte codigo.</p>
+ *
+ * <p><b>El codigo de banco del campo <code>CODIGO_DEL_BANCO</code> no sale del snapshot.</b>
+ * <code>DRPGBNCO</code> solo guarda el NOMBRE del banco, para auditoria de a que banco se ordeno
+ * pagar aunque el empleado cambie de cuenta despues; ningun formato real acepta un nombre en ese
+ * campo. El codigo se resuelve EN VIVO, en cada generacion, desde
+ * <code>detalle.getCuentaBancariaEmpleado().getBanco().getTarjeta()</code>
+ * (<code>CBEM -&gt; TSR.BEXT.BEXTTRJT</code>), que es el codigo de institucion financiera del BCE
+ * pese a su nombre de columna --ver el javadoc de {@link com.saa.model.tsr.BancoExterno#getTarjeta()}--.
+ * Si la cuenta, el banco o el codigo faltan, <code>generarArchivoBancario</code> revienta
+ * nombrando al beneficiario en vez de mandar el campo vacio o el nombre: en el Banco Internacional
+ * un campo 12 vacio significa "cuenta del propio Internacional" y acredita a otro banco distinto
+ * del que corresponde (<code>docs/logica-negocio/pagos/FORMATO-ARCHIVO-BANCOS.md</code> §1.4,
+ * trampa 3).</p>
  *
  * <h3>El egreso de tesoreria</h3>
  *
@@ -552,7 +566,7 @@ public class GeneracionOrdenPagoServiceImpl implements GeneracionOrdenPagoServic
                     if (i > 0) {
                         linea.append(delimitador);
                     }
-                    linea.append(valor);
+                    linea.append(recorta(valor, campo));
                 }
             }
             archivo.append(linea).append(SALTO_LINEA);
@@ -617,9 +631,10 @@ public class GeneracionOrdenPagoServiceImpl implements GeneracionOrdenPagoServic
             case RhhCampoArchivoBancario.TIPO_DE_CUENTA:
                 return codigoTipoCuenta(detalle.getTipoCuenta(), mapaTipoCuenta);
             case RhhCampoArchivoBancario.CODIGO_DEL_BANCO:
-                // Sale del snapshot, que guarda el NOMBRE del banco: TSR.BNCO no tiene codigo
-                // de institucion. Ver la nota de la clase.
-                return texto(detalle.getBanco());
+                // El codigo BCE se resuelve EN VIVO desde la cuenta bancaria vigente del
+                // empleado, nunca del snapshot: DRPGBNCO solo guarda el NOMBRE. Ver la nota
+                // de la clase.
+                return codigoBceDelBanco(detalle);
             case RhhCampoArchivoBancario.VALOR:
                 return importe(detalle.getValor(), campo);
             case RhhCampoArchivoBancario.MONEDA:
@@ -706,6 +721,33 @@ public class GeneracionOrdenPagoServiceImpl implements GeneracionOrdenPagoServic
     }
 
     /**
+     * Resuelve el codigo de banco del BCE que exige el archivo, EN VIVO desde la cuenta
+     * bancaria vigente del empleado, nunca del snapshot de la orden.
+     *
+     * <p><code>BEXTTRJT</code> es el codigo de institucion financiera del BCE pese a su
+     * nombre de columna --ver el javadoc de {@link BancoExterno#getTarjeta()}--. Un banco sin
+     * codigo cargado no puede resolverse con nada razonable: no hay valor seguro que devolver,
+     * porque un campo vacio o el nombre del banco hacen que el Internacional acredite a la
+     * cuenta equivocada sin avisar.</p>
+     *
+     * @param detalle	: Linea de la orden de pago
+     * @return			: El codigo BCE del banco de la cuenta del empleado
+     * @throws IncomeException	: Si la cuenta, el banco o el codigo BCE faltan
+     */
+    private String codigoBceDelBanco(DetalleOrdenPagoNomina detalle) throws IncomeException {
+        CuentaBancariaEmpleado cuenta = detalle.getCuentaBancariaEmpleado();
+        BancoExterno banco = cuenta != null ? cuenta.getBanco() : null;
+        Long codigoBce = banco != null ? banco.getTarjeta() : null;
+        if (codigoBce == null) {
+            throw new IncomeException("No se puede generar el archivo: el banco '"
+                    + texto(detalle.getBanco()) + "' de " + texto(detalle.getNombreBeneficiario())
+                    + " (" + texto(detalle.getIdentificacion()) + ") no tiene código de institución"
+                    + " BCE. Cárguelo en Tesorería → Bancos y vuelva a generar.");
+        }
+        return codigoBce.toString();
+    }
+
+    /**
      * Formatea un importe segun los decimales y el separador que pide el campo.
      *
      * @param valor	: Importe
@@ -772,6 +814,28 @@ public class GeneracionOrdenPagoServiceImpl implements GeneracionOrdenPagoServic
         // derecha, que es lo habitual en nombres.
         return LADO_IZQUIERDO.equals(campo.getLadoRelleno())
                 ? paja.toString() + texto : texto + paja.toString();
+    }
+
+    /**
+     * Recorta el valor a la longitud del campo, en formato DELIMITADO. Sin relleno: en
+     * delimitado el separador ya marca donde termina cada campo, y rellenar agregaria
+     * caracteres que el banco no espera.
+     *
+     * <p>La longitud tambien aplica aqui y no solo en ancho fijo: el Internacional acepta como
+     * maximo 41 caracteres en el nombre del beneficiario y rechaza el archivo entero si algun
+     * campo se pasa (<code>docs/logica-negocio/pagos/FORMATO-ARCHIVO-BANCOS.md</code> §1).</p>
+     *
+     * @param valor	: Valor ya formateado
+     * @param campo	: Definicion del campo
+     * @return		: El valor recortado a la longitud, o tal cual si no tiene longitud definida
+     */
+    private String recorta(String valor, DetalleFormatoBancario campo) {
+        if (campo.getLongitud() == null || campo.getLongitud().intValue() <= 0) {
+            return valor;
+        }
+        String texto = valor != null ? valor : "";
+        int longitud = campo.getLongitud().intValue();
+        return texto.length() > longitud ? texto.substring(0, longitud) : texto;
     }
 
     /**
