@@ -167,3 +167,44 @@ caducidad) o una tabla de auditoría de corridas de `acreditar`/`caducarSaldos`.
 ahora porque no hace falta para lo que pide `revertirAcreditacion` hoy — la inferencia por
 `anioLimite` alcanza — y porque crearla sin necesidad concreta sería la misma clase de
 sobre-construcción que este proyecto evita en otros módulos.
+
+---
+
+## 2026-09-28 — 14 colaboradores activos sin saldo 2026: medido, y la trampa que deja re-correr `acreditar`
+
+**Reporte:** en «Nueva solicitud de vacaciones» algunos colaboradores muestran solo 2025 (caso
+Cossio Caicedo, 1715156574: 2025 = 3,54 días, sin fila 2026). Medido en producción con
+[`sql/e3-03`](sql/e3-03-diagnostico-vacaciones-sin-saldo-2026.sql) (equipo `omen-saa-3`):
+
+- La acreditación 2026 se corrió **una vez**, el **2026-08-27**, por `CONTABILIDAD`, y creó **7** filas.
+- **14 activos no tienen fila 2026, los 14 por la misma causa: todavía no cumplen su primer año.**
+  - 11 ingresaron entre el 2025-10-01 y el 2025-10-16. Su 2025 es un **saldo de apertura**
+    (`SLDVAPRT = 'S'`) proporcional, de entre 3,13 y 3,75 días. Cumplen el año entre el
+    2026-10-01 y el 2026-10-16.
+  - 2 ingresaron en enero de 2026 (cumplen en enero de 2027), sin saldo alguno.
+  - 1 ingresó el 2026-09-01 (Lalangui Rivera, id 221), sin contrato todavía: es el alta que
+    destapó el ORA-02290 de `CNTE` el mismo día.
+- **Ninguno es un defecto de datos ni un colaborador «olvidado».** El código hace lo que dice el
+  Art. 69 CT: el derecho nace al cumplir el año, y hasta entonces el único saldo gozable es el de
+  apertura.
+
+### ⛔ La trampa: re-correr `acreditar` después de su aniversario cuenta dos veces la apertura
+
+`acreditar` es idempotente y pareciera que alcanza con volver a correrlo en octubre. **No alcanza,
+y además duplica días.** Para quien ingresó el 2025-10-06:
+
+- La **apertura 2025** (3,54 días) es la parte ya devengada de su **primer año de servicio**
+  (2025-10-06 → 2026-10-05).
+- `acreditar` con corte posterior al 2026-10-06 da `aniosCumplidos = 1` y crea la fila 2026 con
+  **15 días completos**, que son el derecho de **ese mismo primer año**.
+- `diasDisponibles` suma los dos años no caducados, así que le quedarían **18,54 días donde le
+  corresponden 15**. Es la misma forma que el defecto del 2026-08-27 (sumar lo mismo en dos
+  filas), por otro camino.
+
+Los 7 que sí tienen 2026 no caen en esto porque su periodo arranca el 1 de enero (el
+`SLDVFCHI` de las 7 filas es 2026-01-01), así que apertura y año calendario coinciden.
+
+**Hasta que se decida y se implemente cómo se trata la apertura en la primera acreditación, NO
+re-correr `POST /sldv/acreditar` para 2026 después del 2026-10-01.** La decisión (acreditar al
+aniversario descontando la apertura, o devengo proporcional mensual) es del usuario y está
+pendiente al escribir esto.
