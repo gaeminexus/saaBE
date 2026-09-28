@@ -4527,3 +4527,10 @@ el valor crudo, una nota de crédito se vería negativa en pantalla y positiva e
   una novedad dejaba el documento entrampado). Los mensajes de esos commits son el registro.
 - En `INDICE-SCRIPTS-EQUIPO-2.md`, la fila del `e2-71` tiene incrustada la del `e2-72`, y
   `e2-37`/`38`/`39` aparecen dos veces, una como urgentes del 09-09.
+
+### 53.4 — Alcance y modo, definidos por el usuario el 2026-09-28
+
+- **Alcance:** `rhh` · `cxp` · `pagos` · `cnt` · `tsr` · `cxc` · **`sri`**. ⛔ **NO TOCAR: `crd`** (lo trabaja `omen-saa-1`).
+- **Modo directo autorizado:** los prompts se despachan por SendMessage a `omen-saa-2-be` y `omen-saa-2-fe`.
+- BE y FE arrancan **en paralelo** contra el contrato congelado. Despachados el 2026-09-28.
+- Hay un equipo nuevo, `omen-saa-3`, con alcance desconocido para este árbitro.

@@ -21,7 +21,13 @@ import javax.xml.stream.XMLStreamWriter;
 
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.sri.service.GeneradorAtsService;
+import com.saa.ejb.sri.service.dto.AirAts;
+import com.saa.ejb.sri.service.dto.AnuladoAts;
+import com.saa.ejb.sri.service.dto.CompraAts;
+import com.saa.ejb.sri.service.dto.CompraExcluidaAts;
+import com.saa.ejb.sri.service.dto.DetalleAts;
 import com.saa.ejb.sri.service.dto.ResultadoGeneracionAts;
+import com.saa.ejb.sri.service.dto.VentaAts;
 import com.saa.model.cxc.Establecimiento;
 import com.saa.model.cxc.Facturador;
 import com.saa.model.cxc.DetalleRetencionV2;
@@ -96,6 +102,41 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
 
     @Override
     public ResultadoGeneracionAts generarAts(Long idFacturador, int anio, int mes) throws Throwable {
+        ArmadoAts a = armar(idFacturador, anio, mes);
+
+        String nombreArchivoXml = String.format("AT%02d%04d.xml", mes, anio);
+        String nombreArchivoZip = String.format("AT%02d%04d.zip", mes, anio);
+        byte[] zip = empaquetar(nombreArchivoXml, a.xml);
+
+        if (zip.length > MAX_BYTES_ZIP) {
+            a.avisos.add("El ZIP generado pesa " + zip.length + " bytes, supera el máximo de "
+                    + MAX_BYTES_ZIP + " (8 MB) que acepta el portal del SRI (§3.1). Este servicio "
+                    + "no divide el período: hay que revisar el volumen antes de enviar.");
+        }
+
+        ResultadoGeneracionAts resultado = new ResultadoGeneracionAts();
+        resultado.setNombreArchivo(nombreArchivoZip);
+        resultado.setContenidoBase64(Base64.getEncoder().encodeToString(zip));
+        resultado.setTamanoBytes(zip.length);
+        resultado.setTotalCompras(a.compras.size());
+        resultado.setTotalVentas(a.ventas.size());
+        resultado.setTotalAnulados(a.anulados.size());
+        resultado.setTotalVentasDeclarado(redondear(a.totalVentasDeclarado));
+        resultado.setAvisos(a.avisos);
+
+        System.out.println("✓ ATS generado: " + nombreArchivoZip + " | compras=" + a.compras.size()
+                + " | ventas(agrupadas)=" + a.ventas.size() + " | anulados=" + a.anulados.size()
+                + " | avisos=" + a.avisos.size());
+        return resultado;
+    }
+
+    /**
+     * Extracción pura de {@link #generarAts} (§3.2 de docs/logica-negocio/sri/API-DETALLE-ATS.md):
+     * arma compras, ventas, anulados, retenciones y el XML del ATS, sin empaquetar el ZIP. La usan
+     * tanto {@link #generarAts} como {@link #detalleAts} — así los avisos y los enlaces de retención
+     * de la pantalla de detalle son exactamente los mismos que los del archivo.
+     */
+    private ArmadoAts armar(Long idFacturador, int anio, int mes) throws Throwable {
         System.out.println("=== generarAts | facturador=" + idFacturador + " | periodo=" + mes + "/" + anio + " ===");
 
         if (idFacturador == null) {
@@ -223,30 +264,254 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
 
         String xml = generarXml(facturador, periodo, compras, ventas, anulados, totalVentasDeclarado,
                 retencionesCompra, clavesRetencionUsadas, avisos);
-        String nombreArchivoXml = String.format("AT%02d%04d.xml", mes, anio);
-        String nombreArchivoZip = String.format("AT%02d%04d.zip", mes, anio);
-        byte[] zip = empaquetar(nombreArchivoXml, xml);
 
-        if (zip.length > MAX_BYTES_ZIP) {
-            avisos.add("El ZIP generado pesa " + zip.length + " bytes, supera el máximo de "
-                    + MAX_BYTES_ZIP + " (8 MB) que acepta el portal del SRI (§3.1). Este servicio "
-                    + "no divide el período: hay que revisar el volumen antes de enviar.");
+        return new ArmadoAts(facturador, periodo, compras, ventas, anulados, facturasIntermediario,
+                retencionesCompra, clavesRetencionUsadas, totalVentasDeclarado, xml, avisos);
+    }
+
+    @Override
+    public DetalleAts detalleAts(Long idFacturador, int anio, int mes) throws Throwable {
+        System.out.println("=== detalleAts | facturador=" + idFacturador + " | periodo=" + mes + "/" + anio + " ===");
+        ArmadoAts a = armar(idFacturador, anio, mes);
+
+        DetalleAts detalle = new DetalleAts();
+        detalle.setNombreArchivo(String.format("AT%02d%04d.xml", mes, anio));
+        detalle.setAnio(anio);
+        detalle.setMes(mes);
+
+        List<CompraAts> compras = new ArrayList<CompraAts>();
+        DetalleAts.TotalesCompras totalesCompras = new DetalleAts.TotalesCompras();
+        for (LineaCompra c : a.compras) {
+            CompraAts dto = mapearCompra(c, a.retencionesCompra);
+            compras.add(dto);
+            acumularTotalesCompras(totalesCompras, dto);
+        }
+        detalle.setCompras(compras);
+        detalle.setTotalesCompras(totalesCompras);
+
+        List<VentaAts> ventas = new ArrayList<VentaAts>();
+        DetalleAts.TotalesVentas totalesVentas = new DetalleAts.TotalesVentas();
+        for (LineaVenta v : a.ventas) {
+            VentaAts dto = mapearVenta(v);
+            ventas.add(dto);
+            acumularTotalesVentas(totalesVentas, dto);
+        }
+        detalle.setVentas(ventas);
+        detalle.setTotalesVentas(totalesVentas);
+
+        List<AnuladoAts> anulados = new ArrayList<AnuladoAts>();
+        for (LineaAnulado an : a.anulados) {
+            anulados.add(mapearAnulado(an));
+        }
+        detalle.setAnulados(anulados);
+
+        List<CompraExcluidaAts> excluidas = new ArrayList<CompraExcluidaAts>();
+        for (FacturaCompra fi : a.facturasIntermediario) {
+            excluidas.add(mapearExcluida(fi, a.retencionesCompra));
+        }
+        detalle.setExcluidas(excluidas);
+
+        // Mismo recorrido que el aviso "no quedó enlazada" de generarXml (§4.2 del contrato).
+        List<DetalleAts.RetencionNoEnlazada> noEnlazadas = new ArrayList<DetalleAts.RetencionNoEnlazada>();
+        for (Map.Entry<String, RetencionInfo> entrada : a.retencionesCompra.entrySet()) {
+            if (a.clavesRetencionUsadas.contains(entrada.getKey())) {
+                continue;
+            }
+            RetencionInfo ret = entrada.getValue();
+            String[] partes = entrada.getKey().split("\\|", 2);
+            String autorizacion = partes.length > 0 ? partes[0] : "";
+            String numDocSustento = partes.length > 1 ? partes[1] : "";
+            DetalleAts.RetencionNoEnlazada rne = new DetalleAts.RetencionNoEnlazada();
+            rne.setNumeroRetencion(nvl(ret.numeroRetencion, ""));
+            rne.setDocumentoSustento(nvl(ret.numDocRetenOriginal, numDocSustento));
+            rne.setAutorizacion(autorizacion);
+            noEnlazadas.add(rne);
+        }
+        detalle.setRetencionesNoEnlazadas(noEnlazadas);
+
+        detalle.setTotalVentasDeclarado(comoDeclarado(a.totalVentasDeclarado));
+        detalle.setAvisos(a.avisos);
+        return detalle;
+    }
+
+    // =====================================================================
+    // detalleAts — mapeo de las estructuras internas a los DTO (§4 del contrato)
+    // =====================================================================
+
+    /** §3.4: todo monto del detalle se declara como lo vería el SRI (Math.abs + 2 decimales). */
+    private double comoDeclarado(double valor) {
+        return Double.parseDouble(formatDecimal(valor));
+    }
+
+    private CompraAts mapearCompra(LineaCompra c, Map<String, RetencionInfo> retencionesCompra) {
+        String claveRetencion = claveRetencion(c);
+        RetencionInfo ret = claveRetencion != null ? retencionesCompra.get(claveRetencion) : null;
+
+        CompraAts dto = new CompraAts();
+        dto.setOrigen(c.origen);
+        dto.setIdDocumento(c.idDocumento);
+        dto.setTipoComprobante(c.tipoComprobante);
+        dto.setCodSustento(c.codSustento);
+        dto.setTpIdProv(tipoIdentificacionCompra(c.titular));
+        dto.setIdProv(nvl(c.titular.getIdentificacion(), ""));
+        String razonSocial = c.titular.getRazonSocial();
+        dto.setProveedor((razonSocial != null && !razonSocial.trim().isEmpty())
+                ? razonSocial : nvl(c.titular.getNombre(), ""));
+        dto.setEstablecimiento(nvl(c.establecimiento, ""));
+        dto.setPuntoEmision(nvl(c.puntoEmision, ""));
+        dto.setSecuencial(nvl(c.secuencial, ""));
+        dto.setNumeroDocumento(nvl(c.establecimiento, "") + "-" + nvl(c.puntoEmision, "") + "-" + nvl(c.secuencial, ""));
+        dto.setAutorizacion(nvl(c.autorizacion, ""));
+        dto.setFechaEmision(c.fechaEmision);
+        dto.setFechaRegistro(c.fechaRegistro != null ? c.fechaRegistro : c.fechaEmision);
+        dto.setFechaRegistroCapturada(c.fechaRegistro != null);
+
+        double baseNoGraIva = comoDeclarado(c.baseNoObjeto);
+        double baseImponible = comoDeclarado(c.base0);
+        double baseImpGrav = comoDeclarado(c.baseGravada);
+        double baseImpExe = comoDeclarado(c.baseExenta);
+        double montoIce = comoDeclarado(c.montoIce);
+        double montoIva = comoDeclarado(c.montoIva);
+        dto.setBaseNoGraIva(baseNoGraIva);
+        dto.setBaseImponible(baseImponible);
+        dto.setBaseImpGrav(baseImpGrav);
+        dto.setBaseImpExe(baseImpExe);
+        dto.setMontoIce(montoIce);
+        dto.setMontoIva(montoIva);
+        dto.setTotal(baseNoGraIva + baseImponible + baseImpGrav + baseImpExe + montoIce + montoIva);
+
+        double valRetBien10 = comoDeclarado(ret != null ? ret.valRetBien10 : 0.0);
+        double valRetServ20 = comoDeclarado(ret != null ? ret.valRetServ20 : 0.0);
+        double valorRetBienes = comoDeclarado(ret != null ? ret.valorRetBienes : 0.0);
+        double valRetServ50 = comoDeclarado(ret != null ? ret.valRetServ50 : 0.0);
+        double valorRetServicios = comoDeclarado(ret != null ? ret.valorRetServicios : 0.0);
+        double valRetServ100 = comoDeclarado(ret != null ? ret.valRetServ100 : 0.0);
+        dto.setValRetBien10(valRetBien10);
+        dto.setValRetServ20(valRetServ20);
+        dto.setValorRetBienes(valorRetBienes);
+        dto.setValRetServ50(valRetServ50);
+        dto.setValorRetServicios(valorRetServicios);
+        dto.setValRetServ100(valRetServ100);
+        dto.setRetencionIva(valRetBien10 + valRetServ20 + valorRetBienes + valRetServ50
+                + valorRetServicios + valRetServ100);
+
+        // Air: DetalleAir ya guarda strings formateados (formatDecimal con Math.abs) -- se
+        // convierten con Double.parseDouble, sin volver a pasar por comoDeclarado (§4.3).
+        List<AirAts> airList = new ArrayList<AirAts>();
+        double retencionRenta = 0.0;
+        if (ret != null) {
+            for (DetalleAir air : ret.airLineas) {
+                double valRetAir = Double.parseDouble(air.valRetAir);
+                AirAts airDto = new AirAts();
+                airDto.setCodRetAir(air.codRetAir);
+                airDto.setBaseImpAir(Double.parseDouble(air.baseImpAir));
+                airDto.setPorcentajeAir(Double.parseDouble(air.porcentajeAir));
+                airDto.setValRetAir(valRetAir);
+                airList.add(airDto);
+                retencionRenta += valRetAir;
+            }
+        }
+        dto.setAir(airList);
+        dto.setRetencionRenta(retencionRenta);
+
+        if (ret != null) {
+            dto.setNumeroRetencion(nvl(ret.estabRetencion1, "") + "-" + nvl(ret.ptoEmiRetencion1, "")
+                    + "-" + nvl(ret.secRetencion1, ""));
+            dto.setAutorizacionRetencion(ret.autRetencion1);
+            dto.setFechaRetencion(ret.fechaEmiRet1);
         }
 
-        ResultadoGeneracionAts resultado = new ResultadoGeneracionAts();
-        resultado.setNombreArchivo(nombreArchivoZip);
-        resultado.setContenidoBase64(Base64.getEncoder().encodeToString(zip));
-        resultado.setTamanoBytes(zip.length);
-        resultado.setTotalCompras(compras.size());
-        resultado.setTotalVentas(ventas.size());
-        resultado.setTotalAnulados(anulados.size());
-        resultado.setTotalVentasDeclarado(redondear(totalVentasDeclarado));
-        resultado.setAvisos(avisos);
+        List<String> formasPago = formasPagoDeclarables(c, ret);
+        dto.setFormasPago(formasPago);
+        double totalDocumento = c.base0 + c.baseNoObjeto + c.baseExenta + c.baseGravada + c.montoIva + c.montoIce;
+        dto.setFormasPagoDeclaradas(totalDocumento > 500.0 && !formasPago.isEmpty());
 
-        System.out.println("✓ ATS generado: " + nombreArchivoZip + " | compras=" + compras.size()
-                + " | ventas(agrupadas)=" + ventas.size() + " | anulados=" + anulados.size()
-                + " | avisos=" + avisos.size());
-        return resultado;
+        return dto;
+    }
+
+    private VentaAts mapearVenta(LineaVenta v) {
+        VentaAts dto = new VentaAts();
+        dto.setTpIdCliente(tipoIdentificacionVenta(v.titular));
+        dto.setIdCliente(nvl(v.titular.getIdentificacion(), ""));
+        String razonSocial = v.titular.getRazonSocial();
+        dto.setCliente((razonSocial != null && !razonSocial.trim().isEmpty())
+                ? razonSocial : nvl(v.titular.getNombre(), ""));
+        dto.setTipoComprobante(v.tipoComprobante);
+        dto.setNumeroComprobantes(v.numeroComprob);
+        dto.setIdsDocumento(new ArrayList<Long>(v.idsDocumento));
+        // baseNoGraIva SIEMPRE 0 -- el XML escribe "0.00" fijo (writeDetalleVenta, §4.4).
+        dto.setBaseNoGraIva(0.0);
+        dto.setBaseImponible(comoDeclarado(v.base0));
+        dto.setBaseImpGrav(comoDeclarado(v.baseGravada));
+        dto.setMontoIva(comoDeclarado(v.montoIva));
+        dto.setMontoIce(comoDeclarado(v.montoIce));
+        dto.setValorRetIva(comoDeclarado(v.valRetIva));
+        dto.setValorRetRenta(comoDeclarado(v.valRetRenta));
+        return dto;
+    }
+
+    private AnuladoAts mapearAnulado(LineaAnulado a) {
+        AnuladoAts dto = new AnuladoAts();
+        dto.setTipoComprobante(nvl(a.tipoComprobante, ""));
+        dto.setEstablecimiento(nvl(a.establecimiento, ""));
+        dto.setPuntoEmision(nvl(a.puntoEmision, ""));
+        dto.setSecuencial(nvl(a.secuencial, ""));
+        dto.setAutorizacion(nvl(a.autorizacion, ""));
+        return dto;
+    }
+
+    /** §4.5: una por factura de intermediario; numeroRetencion sólo si quedó enlazada (ÍTEM 13b). */
+    private CompraExcluidaAts mapearExcluida(FacturaCompra fi, Map<String, RetencionInfo> retencionesCompra) {
+        CompraExcluidaAts dto = new CompraExcluidaAts();
+        dto.setIdDocumento(fi.getId());
+        dto.setTipoComprobante(fi.getTipoComprobante());
+        dto.setIdProv(nvl(fi.getTitular().getIdentificacion(), ""));
+        String razonSocial = fi.getTitular().getRazonSocial();
+        dto.setProveedor((razonSocial != null && !razonSocial.trim().isEmpty())
+                ? razonSocial : nvl(fi.getTitular().getNombre(), ""));
+        dto.setNumeroDocumento(nvl(fi.getNumEstablecimiento(), "") + "-" + nvl(fi.getNumPtoEmision(), "")
+                + "-" + nvl(fi.getSecuencial(), ""));
+        dto.setFechaEmision(fi.getFecha() != null ? fi.getFecha().toLocalDate() : null);
+        double subtotal = nvl(fi.getSubtotal(), 0.0);
+        double montoIva = nvl(fi.getvIVA(), 0.0);
+        dto.setSubtotal(comoDeclarado(subtotal));
+        dto.setMontoIva(comoDeclarado(montoIva));
+        Double total = fi.getTotal();
+        dto.setTotal(comoDeclarado(total != null ? total.doubleValue() : subtotal + montoIva));
+        dto.setMotivo("INTERMEDIARIO");
+        if (fi.getAutorizacion() != null && !fi.getAutorizacion().trim().isEmpty()) {
+            String clave = fi.getAutorizacion() + "|" + com.saa.ejb.cxc.util.NumeroDocumentoSri.normalizarA15(
+                    fi.getNumEstablecimiento(), fi.getNumPtoEmision(), fi.getSecuencial());
+            RetencionInfo ret = retencionesCompra.get(clave);
+            if (ret != null) {
+                dto.setNumeroRetencion(nvl(ret.numeroRetencion, ""));
+            }
+        }
+        return dto;
+    }
+
+    private void acumularTotalesCompras(DetalleAts.TotalesCompras t, CompraAts c) {
+        t.setCantidad(t.getCantidad() + 1);
+        t.setBaseNoGraIva(t.getBaseNoGraIva() + c.getBaseNoGraIva());
+        t.setBaseImponible(t.getBaseImponible() + c.getBaseImponible());
+        t.setBaseImpGrav(t.getBaseImpGrav() + c.getBaseImpGrav());
+        t.setBaseImpExe(t.getBaseImpExe() + c.getBaseImpExe());
+        t.setMontoIce(t.getMontoIce() + c.getMontoIce());
+        t.setMontoIva(t.getMontoIva() + c.getMontoIva());
+        t.setTotal(t.getTotal() + c.getTotal());
+        t.setRetencionIva(t.getRetencionIva() + c.getRetencionIva());
+        t.setRetencionRenta(t.getRetencionRenta() + c.getRetencionRenta());
+    }
+
+    private void acumularTotalesVentas(DetalleAts.TotalesVentas t, VentaAts v) {
+        t.setCantidadLineas(t.getCantidadLineas() + 1);
+        t.setNumeroComprobantes(t.getNumeroComprobantes() + v.getNumeroComprobantes());
+        t.setBaseImponible(t.getBaseImponible() + v.getBaseImponible());
+        t.setBaseImpGrav(t.getBaseImpGrav() + v.getBaseImpGrav());
+        t.setMontoIva(t.getMontoIva() + v.getMontoIva());
+        t.setMontoIce(t.getMontoIce() + v.getMontoIce());
+        t.setValorRetIva(t.getValorRetIva() + v.getValorRetIva());
+        t.setValorRetRenta(t.getValorRetRenta() + v.getValorRetRenta());
     }
 
     // =====================================================================
@@ -329,7 +594,7 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
                     baseGravadaCompra(subtotal, subcero, noObjeto, exento, "Factura de compra", f.getId(), avisos), subcero,
                     noObjeto, exento,
                     nvl(f.getvIVA(), 0.0), nvl(f.getvICE(), 0.0),
-                    formasPagoFacturaCompra(f.getId())));
+                    formasPagoFacturaCompra(f.getId()), "FACTURA", f.getId()));
             if (f.getSustentoTributario() == null) {
                 avisos.add("Factura de compra " + f.getId() + " sin codSustento resuelto — no debería "
                         + "pasar (fase 2/6 lo resuelve siempre), revisar.");
@@ -413,7 +678,7 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
                     l.getAutorizacion(), l.getTitular(), l.getSustentoTributario(), l.getFechaRegistroContable(),
                     gravada, subcero, nvl(l.getSubnoobj(), 0.0), nvl(l.getSubexent(), 0.0),
                     nvl(l.getvIVA(), 0.0), nvl(l.getvICE(), 0.0),
-                    formasPagoLiquidacionCompra(l.getId())));
+                    formasPagoLiquidacionCompra(l.getId()), "LIQUIDACION", l.getId()));
             if (l.getFechaRegistroContable() == null) {
                 avisos.add("Liquidación de compra " + l.getId() + " sin fechaRegistro contable capturada: "
                         + "se usó la fecha de emisión como aproximación.");
@@ -451,7 +716,7 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
                             "Nota de crédito de compra", n.getId(), avisos), subcero,
                     nvl(n.getSubnoobj(), 0.0), nvl(n.getSubexent(), 0.0),
                     nvl(n.getvIVA(), 0.0), nvl(n.getvICE(), 0.0),
-                    java.util.Collections.<String>emptyList()));
+                    java.util.Collections.<String>emptyList(), "NOTA_CREDITO", n.getId()));
             if (n.getFechaRegistroContable() == null) {
                 avisos.add("Nota de crédito de compra " + n.getId() + " sin fechaRegistro contable "
                         + "capturada: se usó la fecha de emisión como aproximación.");
@@ -489,7 +754,7 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
                             "Nota de débito de compra", n.getId(), avisos), subcero,
                     nvl(n.getSubnoobj(), 0.0), nvl(n.getSubexent(), 0.0),
                     nvl(n.getvIVA(), 0.0), nvl(n.getvICE(), 0.0),
-                    java.util.Collections.<String>emptyList()));
+                    java.util.Collections.<String>emptyList(), "NOTA_DEBITO", n.getId()));
             if (n.getFechaRegistroContable() == null) {
                 avisos.add("Nota de débito de compra " + n.getId() + " sin fechaRegistro contable "
                         + "capturada: se usó la fecha de emisión como aproximación.");
@@ -842,13 +1107,7 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         // NI el bloque estabRetencion1..fechaEmiRet1 se escriben, tal como está en el archivo
         // autorizado para un documento sin retención.
         //
-        // ÍTEM 11 (2026-09-15): la clave ya no es sólo la autorización -- autorización + número de
-        // 15 dígitos del propio documento (establecimiento-puntoEmision-secuencial de esta compra),
-        // para no pegarle la retención de una nota de venta a otra del mismo talonario.
-        String claveRetencion = (c.autorizacion != null && !c.autorizacion.trim().isEmpty())
-                ? c.autorizacion + "|" + com.saa.ejb.cxc.util.NumeroDocumentoSri.normalizarA15(
-                        c.establecimiento, c.puntoEmision, c.secuencial)
-                : null;
+        String claveRetencion = claveRetencion(c);
         RetencionInfo ret = claveRetencion != null ? retenciones.get(claveRetencion) : null;
         if (ret != null) {
             clavesRetencionUsadas.add(claveRetencion);
@@ -880,11 +1139,7 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         // ya en 2 dígitos). Respaldo: DRC2.docResForPago (la línea de la retención), sólo si la
         // primaria vino vacía -- NotaCreditoCompra/NotaDebitoCompra no tienen tabla propia, así
         // que para esas dos el respaldo es la única fuente, igual que antes.
-        List<String> formasPago = !c.formasPagoPrimario.isEmpty()
-                ? c.formasPagoPrimario
-                : (ret != null && ret.formaPago != null
-                        ? java.util.Collections.singletonList(ret.formaPago)
-                        : java.util.Collections.<String>emptyList());
+        List<String> formasPago = formasPagoDeclarables(c, ret);
         // ÍTEM 30 (2026-09-11): UNA sola fórmula del umbral, usada por las dos ramas -- el ítem 28
         // la tenía duplicada en potencia (sólo en el "falta"), y el SRI reveló el reverso: exige
         // <formasDePago> cuando el documento supera USD 500 (confirmado, no de este mensaje --
@@ -1518,6 +1773,31 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         }
     }
 
+    /**
+     * Extraído de {@code writeDetalleCompra} (§3.2.4 del contrato): la clave con la que se busca
+     * la retención enlazada a una compra -- autorización + número de 15 dígitos del propio
+     * documento, null si no hay autorización (ÍTEM 11, 2026-09-15).
+     */
+    private String claveRetencion(LineaCompra c) {
+        return (c.autorizacion != null && !c.autorizacion.trim().isEmpty())
+                ? c.autorizacion + "|" + com.saa.ejb.cxc.util.NumeroDocumentoSri.normalizarA15(
+                        c.establecimiento, c.puntoEmision, c.secuencial)
+                : null;
+    }
+
+    /**
+     * Extraído de {@code writeDetalleCompra} (§3.2.4 del contrato): formas de pago declarables de
+     * una compra -- primero las del documento (ÍTEM 28, 2026-09-10); si vienen vacías, la de la
+     * retención como respaldo.
+     */
+    private List<String> formasPagoDeclarables(LineaCompra c, RetencionInfo ret) {
+        return !c.formasPagoPrimario.isEmpty()
+                ? c.formasPagoPrimario
+                : (ret != null && ret.formaPago != null
+                        ? java.util.Collections.singletonList(ret.formaPago)
+                        : java.util.Collections.<String>emptyList());
+    }
+
     private String nvl(String value, String porDefecto) {
         return (value != null && !value.trim().isEmpty()) ? value : porDefecto;
     }
@@ -1534,6 +1814,41 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
     // Estructuras internas — unifican los 4 tipos de compra / 3 de venta antes de escribir XML
     // =====================================================================
 
+    /**
+     * Resultado de {@link #armar}: todo lo que hace falta para empaquetar el ZIP ({@link #generarAts})
+     * o para mapear la pantalla de detalle ({@link #detalleAts}), API-DETALLE-ATS.md §3.2.
+     */
+    private static class ArmadoAts {
+        final Facturador facturador;
+        final YearMonth periodo;
+        final List<LineaCompra> compras;
+        final List<LineaVenta> ventas;
+        final List<LineaAnulado> anulados;
+        final List<FacturaCompra> facturasIntermediario;
+        final Map<String, RetencionInfo> retencionesCompra;
+        final Set<String> clavesRetencionUsadas;
+        final double totalVentasDeclarado;
+        final String xml;
+        final List<String> avisos;
+
+        ArmadoAts(Facturador facturador, YearMonth periodo, List<LineaCompra> compras, List<LineaVenta> ventas,
+                List<LineaAnulado> anulados, List<FacturaCompra> facturasIntermediario,
+                Map<String, RetencionInfo> retencionesCompra, Set<String> clavesRetencionUsadas,
+                double totalVentasDeclarado, String xml, List<String> avisos) {
+            this.facturador = facturador;
+            this.periodo = periodo;
+            this.compras = compras;
+            this.ventas = ventas;
+            this.anulados = anulados;
+            this.facturasIntermediario = facturasIntermediario;
+            this.retencionesCompra = retencionesCompra;
+            this.clavesRetencionUsadas = clavesRetencionUsadas;
+            this.totalVentasDeclarado = totalVentasDeclarado;
+            this.xml = xml;
+            this.avisos = avisos;
+        }
+    }
+
     private static class LineaCompra {
         final String tipoComprobante, establecimiento, puntoEmision, secuencial, autorizacion, codSustento;
         final LocalDate fechaEmision, fechaRegistro;
@@ -1542,11 +1857,15 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         /** ÍTEM 28 (2026-09-10): formas de pago DEL DOCUMENTO (no de la retención) -- vacía si el
          *  tipo de documento no tiene tabla propia (NotaCreditoCompra/NotaDebitoCompra). */
         final List<String> formasPagoPrimario;
+        /** Detalle del ATS (API-DETALLE-ATS.md §3.2.3): de qué tabla y con qué id viene esta línea,
+         *  para que la pantalla pueda enlazar de vuelta al documento (no lo usa el XML). */
+        final String origen;
+        final Long idDocumento;
 
         LineaCompra(String tipoComprobante, String establecimiento, String puntoEmision, String secuencial,
                 LocalDate fechaEmision, String autorizacion, Titular titular, String codSustento,
                 LocalDate fechaRegistro, double baseGravada, double base0, double baseNoObjeto, double baseExenta,
-                double montoIva, double montoIce, List<String> formasPagoPrimario) {
+                double montoIva, double montoIce, List<String> formasPagoPrimario, String origen, Long idDocumento) {
             this.tipoComprobante = tipoComprobante;
             this.establecimiento = establecimiento;
             this.puntoEmision = puntoEmision;
@@ -1563,6 +1882,8 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
             this.montoIva = montoIva;
             this.montoIce = montoIce;
             this.formasPagoPrimario = formasPagoPrimario;
+            this.origen = origen;
+            this.idDocumento = idDocumento;
         }
     }
 

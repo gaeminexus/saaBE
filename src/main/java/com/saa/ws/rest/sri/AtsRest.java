@@ -3,6 +3,7 @@ package com.saa.ws.rest.sri;
 import java.util.Map;
 
 import com.saa.ejb.sri.service.GeneradorAtsService;
+import com.saa.ejb.sri.service.dto.DetalleAts;
 import com.saa.ejb.sri.service.dto.ResultadoGeneracionAts;
 
 import jakarta.ejb.EJB;
@@ -54,6 +55,40 @@ public class AtsRest {
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("Error al generar el ATS: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
+     * Detalle del ATS de un período, para comparar en pantalla contra las tablas de documentos.
+     * Body: {"idFacturador": 1, "anio": 2026, "mes": 8}
+     * Respuesta 200: ver {@link DetalleAts}. Mismas validaciones que {@link #generar}, corre la
+     * misma lógica del generador — ver docs/logica-negocio/sri/API-DETALLE-ATS.md.
+     */
+    @POST
+    @Path("/detalle")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response detalle(Map<String, Object> datos) {
+        System.out.println("LLEGA AL SERVICIO POST /ats/detalle");
+        try {
+            Long idFacturador = toLong(datos != null ? datos.get("idFacturador") : null);
+            Integer anio = toInt(datos != null ? datos.get("anio") : null);
+            Integer mes = toInt(datos != null ? datos.get("mes") : null);
+            if (idFacturador == null || anio == null || mes == null) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity("Debe enviar idFacturador, anio y mes.")
+                        .type(MediaType.APPLICATION_JSON).build();
+            }
+            DetalleAts detalle = generadorAtsService.detalleAts(idFacturador, anio, mes);
+            return Response.status(Response.Status.OK).entity(detalle)
+                    .type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.IncomeException e) {
+            return Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al consultar el detalle del ATS: " + e.getMessage())
                     .type(MediaType.APPLICATION_JSON).build();
         }
     }

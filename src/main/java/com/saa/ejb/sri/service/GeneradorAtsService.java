@@ -1,5 +1,6 @@
 package com.saa.ejb.sri.service;
 
+import com.saa.ejb.sri.service.dto.DetalleAts;
 import com.saa.ejb.sri.service.dto.ResultadoGeneracionAts;
 
 import jakarta.ejb.Local;
@@ -32,5 +33,19 @@ public interface GeneradorAtsService {
      * @throws Throwable	: IncomeException si el facturador no existe o el período es inválido
      */
     ResultadoGeneracionAts generarAts(Long idFacturador, int anio, int mes) throws Throwable;
+
+    /**
+     * Detalle del ATS de un período para la pantalla de comparación (no genera archivo) — ver
+     * docs/logica-negocio/sri/API-DETALLE-ATS.md. Corre la misma lógica que {@link #generarAts}
+     * (el XML se genera y se descarta), así que los avisos y los enlaces de retención son
+     * exactamente los mismos que los del ZIP.
+     *
+     * @param idFacturador	: Id del facturador (CBR.FCDR.ID)
+     * @param anio			: Año del período (el de la fecha de REGISTRO CONTABLE, no de emisión)
+     * @param mes			: Mes del período, 1-12
+     * @return				: compras, ventas, anulados, excluidas y avisos del período
+     * @throws Throwable	: IncomeException si el facturador no existe o el período es inválido
+     */
+    DetalleAts detalleAts(Long idFacturador, int anio, int mes) throws Throwable;
 
 }
