@@ -29,6 +29,9 @@ public class PagoPorAprobar implements Serializable {
     private String concepto;
     private Double valor;
     private LocalDate fechaSolicitada;
+    private Long idTitular;
+    private Boolean tieneCuentaDestino;
+    private String cuentaDestino;
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
@@ -47,4 +50,13 @@ public class PagoPorAprobar implements Serializable {
 
     public LocalDate getFechaSolicitada() { return fechaSolicitada; }
     public void setFechaSolicitada(LocalDate fechaSolicitada) { this.fechaSolicitada = fechaSolicitada; }
+
+    public Long getIdTitular() { return idTitular; }
+    public void setIdTitular(Long idTitular) { this.idTitular = idTitular; }
+
+    public Boolean getTieneCuentaDestino() { return tieneCuentaDestino; }
+    public void setTieneCuentaDestino(Boolean tieneCuentaDestino) { this.tieneCuentaDestino = tieneCuentaDestino; }
+
+    public String getCuentaDestino() { return cuentaDestino; }
+    public void setCuentaDestino(String cuentaDestino) { this.cuentaDestino = cuentaDestino; }
 }

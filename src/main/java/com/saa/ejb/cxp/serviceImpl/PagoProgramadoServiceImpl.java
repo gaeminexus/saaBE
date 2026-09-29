@@ -1336,9 +1336,44 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 			dto.setConcepto(conceptoDe(pago));
 			dto.setValor(pago.getValor());
 			dto.setFechaSolicitada(pago.getFechaProgramada());
+			dto.setIdTitular(pago.getTitular() != null ? pago.getTitular().getCodigo() : null);
+			dto.setTieneCuentaDestino(Boolean.valueOf(tieneCuentaDestino(pago)));
+			dto.setCuentaDestino(cuentaDestinoTexto(pago));
 			resultado.add(dto);
 		}
 		return resultado;
+	}
+
+	/**
+	 * API-ASIGNAR-CUENTA-DESTINO.md §3.1: un solo criterio de "tiene cuenta de destino", que usan
+	 * tanto la guarda de {@link #aprobar} por transferencia como la proyección de {@link #porAprobar}
+	 * -- así la bandeja avisa exactamente lo mismo que rechaza la aprobación.
+	 */
+	private boolean tieneCuentaDestino(PagoProgramado pago) {
+		boolean tieneCuentaDestino = pago.getCuentaDestino() != null;
+		boolean tieneBeneficiarioOcasional = pago.getBeneficiarioBanco() != null
+				&& pago.getBeneficiarioTipoCuenta() != null
+				&& pago.getBeneficiarioCuenta() != null
+				&& !pago.getBeneficiarioCuenta().trim().isEmpty();
+		return tieneCuentaDestino || tieneBeneficiarioOcasional;
+	}
+
+	/**
+	 * API-ASIGNAR-CUENTA-DESTINO.md §3.2: texto de la cuenta de destino para la bandeja, null si
+	 * no tiene. Banco o nombre pueden venir nulos -- no puede reventar la bandeja por eso.
+	 */
+	private String cuentaDestinoTexto(PagoProgramado pago) {
+		CuentaBancariaTitular cuenta = pago.getCuentaDestino();
+		if (cuenta != null) {
+			String nombreBanco = cuenta.getBanco() != null ? cuenta.getBanco().getNombre() : null;
+			return nvl(nombreBanco, "") + " — " + nvl(cuenta.getNumeroCuenta(), "");
+		}
+		if (tieneCuentaDestino(pago)) {
+			// cuentaDestino es null acá, así que si tieneCuentaDestino da true es por el
+			// beneficiario ocasional completo (§3.1).
+			return nvl(pago.getBeneficiarioBanco().getNombre(), "") + " — " + pago.getBeneficiarioCuenta();
+		}
+		return null;
 	}
 
 	/**
@@ -1442,12 +1477,7 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		if (fp == FormaPagoProgramado.TRANSFERENCIA) {
 			List<Long> sinCuentaDestino = new ArrayList<>();
 			for (PagoProgramado pago : pagos) {
-				boolean tieneCuentaDestino = pago.getCuentaDestino() != null;
-				boolean tieneBeneficiarioOcasional = pago.getBeneficiarioBanco() != null
-						&& pago.getBeneficiarioTipoCuenta() != null
-						&& pago.getBeneficiarioCuenta() != null
-						&& !pago.getBeneficiarioCuenta().trim().isEmpty();
-				if (!tieneCuentaDestino && !tieneBeneficiarioOcasional) {
+				if (!tieneCuentaDestino(pago)) {
 					sinCuentaDestino.add(pago.getId());
 				}
 			}
@@ -2202,6 +2232,56 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		lote.setEstado(Long.valueOf(EstadoLotePago.RESPUESTA_PROCESADA));
 		lotePagoDaoService.save(lote, lote.getId());
 		em.flush();
+	}
+
+	// =====================================================================
+	// Asignación de cuenta de destino (API-ASIGNAR-CUENTA-DESTINO.md §3.3)
+	// =====================================================================
+
+	@Override
+	public Map<String, Object> asignarCuentaDestino(Long idPago, Long idCuentaDestinoTitular, Long idUsuario)
+			throws Throwable {
+		System.out.println("=== asignarCuentaDestino | pago=" + idPago + " | cuenta=" + idCuentaDestinoTitular + " ===");
+
+		if (idCuentaDestinoTitular == null) {
+			throw new IncomeException("Debe indicar la cuenta bancaria de destino.");
+		}
+		PagoProgramado pago = em.find(PagoProgramado.class, idPago);
+		if (pago == null) {
+			throw new IncomeException("No se encontró el pago con ID: " + idPago);
+		}
+		if (pago.getEstado() == null || pago.getEstado().intValue() != EstadoPagoProgramado.POR_APROBAR) {
+			throw new IncomeException("Solo se puede asignar la cuenta a un pago por aprobar: el pago "
+					+ idPago + " está en estado " + pago.getEstado() + ".");
+		}
+		if (pago.getTitular() == null) {
+			throw new IncomeException("El pago " + idPago + " no tiene un beneficiario registrado en el "
+					+ "maestro de titulares: su cuenta se carga en el origen del pago.");
+		}
+		CuentaBancariaTitular cuenta = em.find(CuentaBancariaTitular.class, idCuentaDestinoTitular);
+		if (cuenta == null) {
+			throw new IncomeException("No se encontró la cuenta bancaria del beneficiario con ID: "
+					+ idCuentaDestinoTitular);
+		}
+		if (cuenta.getTitular() != null
+				&& !cuenta.getTitular().getCodigo().equals(pago.getTitular().getCodigo())) {
+			throw new IncomeException("La cuenta bancaria de destino pertenece a otro titular, "
+					+ "no al beneficiario del pago.");
+		}
+		if (cuenta.getEstado() != null && cuenta.getEstado().intValue() == 0) {
+			throw new IncomeException("La cuenta bancaria " + cuenta.getNumeroCuenta() + " está inactiva.");
+		}
+
+		pago.setCuentaDestino(cuenta);
+		pagoProgramadoDaoService.save(pago, pago.getId());
+		em.flush();
+
+		Map<String, Object> resultado = new HashMap<>();
+		resultado.put("exito", true);
+		resultado.put("mensaje", "Cuenta de destino asignada al pago " + idPago + ".");
+		resultado.put("pago", idPago);
+		resultado.put("cuentaDestino", cuentaDestinoTexto(pago));
+		return resultado;
 	}
 
 	// =====================================================================

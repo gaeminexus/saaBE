@@ -275,6 +275,21 @@ public interface PagoProgramadoService extends EntityService<PagoProgramado> {
 			String hasta) throws Throwable;
 
 	/**
+	 * Asigna (o reasigna) la cuenta bancaria de destino de un pago POR_APROBAR, desde la
+	 * bandeja de aprobación de pagos — docs/logica-negocio/pagos/API-ASIGNAR-CUENTA-DESTINO.md
+	 * §3.3. No toca valor, estado, forma de pago, cuenta de origen ni contabilidad: solo graba
+	 * la cuenta de destino en el pago.
+	 *
+	 * @param idPago                 : Id del pago, debe estar POR_APROBAR
+	 * @param idCuentaDestinoTitular : Id de la cuenta bancaria del beneficiario (TSR.CTBN)
+	 * @param idUsuario              : Id del usuario que asigna
+	 * @return                       : Mapa con exito, mensaje, pago y cuentaDestino (texto)
+	 * @throws Throwable             : IncomeException si no se cumple alguna de las 7 validaciones
+	 */
+	Map<String, Object> asignarCuentaDestino(Long idPago, Long idCuentaDestinoTitular, Long idUsuario)
+			throws Throwable;
+
+	/**
 	 * Aprueba en bloque los pagos indicados: asigna la cuenta bancaria y la forma de pago
 	 * elegidas por tesorería, gira el cheque si corresponde y deja cada pago en
 	 * REGISTRADO (transferencia) o CONFIRMADO (cheque o débito automático, contabilizando

@@ -6,6 +6,7 @@
  */
 package com.saa.ejb.tsr.serviceImpl;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 import com.saa.basico.util.DatosBusqueda;
@@ -43,6 +44,11 @@ public class CuentaBancariaTitularServiceImpl implements CuentaBancariaTitularSe
     public void save(List<CuentaBancariaTitular> lista) throws Throwable {
         System.out.println("Ingresa al metodo save de CuentaBancariaTitular service");
         for (CuentaBancariaTitular registro : lista) {
+            // Arreglo C (API-ASIGNAR-CUENTA-DESTINO.md §3.4): solo en el alta -- la edición ya
+            // reenvía la fecha que tenía.
+            if (registro.getCodigo() == null && registro.getFechaCreacion() == null) {
+                registro.setFechaCreacion(LocalDateTime.now());
+            }
             cuentaBancariaTitularDaoService.save(registro, registro.getCodigo());
         }
     }
@@ -81,6 +87,11 @@ public class CuentaBancariaTitularServiceImpl implements CuentaBancariaTitularSe
         // Si codigo llega como 0 desde el cliente, se trata como nuevo registro (INSERT)
         if (cuentaBancariaTitular.getCodigo() != null && cuentaBancariaTitular.getCodigo() == 0L) {
             cuentaBancariaTitular.setCodigo(null);
+        }
+        // Arreglo C (API-ASIGNAR-CUENTA-DESTINO.md §3.4): solo en el alta -- la edición ya
+        // reenvía la fecha que tenía (titulares-v2:1338-1343). No se toca usuarioCreacion.
+        if (cuentaBancariaTitular.getCodigo() == null && cuentaBancariaTitular.getFechaCreacion() == null) {
+            cuentaBancariaTitular.setFechaCreacion(LocalDateTime.now());
         }
         validaIdentificacion(cuentaBancariaTitular);
         normalizaNombreTitularCuenta(cuentaBancariaTitular);

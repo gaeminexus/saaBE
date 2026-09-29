@@ -647,6 +647,36 @@ public class PagoProgramadoRest {
     }
 
     /**
+     * Asigna (o reasigna) la cuenta bancaria de destino de un pago POR_APROBAR, desde la
+     * bandeja de aprobación de pagos.
+     * Body esperado: { "idCuentaDestinoTitular": 267, "idUsuario": 5 }
+     * Ver docs/logica-negocio/pagos/API-ASIGNAR-CUENTA-DESTINO.md §3.3.
+     */
+    @POST
+    @Path("/cuentaDestino/{id}")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response cuentaDestino(@PathParam("id") Long id, Map<String, Object> datos) {
+        System.out.println("LLEGA AL SERVICIO POST /pgtr/cuentaDestino/" + id);
+        try {
+            Long idCuentaDestinoTitular = (datos != null) ? toLong(datos.get("idCuentaDestinoTitular")) : null;
+            Long idUsuario = (datos != null) ? toLong(datos.get("idUsuario")) : null;
+
+            Map<String, Object> resultado = pagoProgramadoService.asignarCuentaDestino(
+                    id, idCuentaDestinoTitular, idUsuario);
+            return Response.status(Response.Status.OK).entity(resultado)
+                    .type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.IncomeException e) {
+            return Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al asignar la cuenta de destino: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
      * Reversa un pago ya confirmado por el banco.
      * Body esperado: { "motivo": "...", "idUsuario": 5, "reversarAsiento": false, "fechaReverso": "2026-08-15" }
      *
