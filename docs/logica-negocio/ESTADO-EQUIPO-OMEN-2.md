@@ -4546,3 +4546,39 @@ el valor crudo, una nota de crédito se vería negativa en pantalla y positiva e
   campo.**
 - **Falta:** desplegar WAR + FE (sin SQL) y la prueba que solo el usuario puede hacer: regenerar el ATS
   de agosto y comparar el ZIP contra el último generado. Deben salir idénticos.
+
+## §54 — El pago 699: un pago que nace sin cuenta no tenía salida (2026-09-29)
+
+**Caso:** el pago 699 (egreso 50, ZOOM, 173,31) no se podía aprobar por transferencia. ZOOM tiene
+**una** cuenta activa, la 267, a nombre del colaborador que cobra. Salida del `e2-74`: el pago se
+registró hoy a las 12:38 **sin** `PGTRCTBN`, y es el único en esa situación.
+
+| Parte | Commit |
+|---|---|
+| Diagnóstico `e2-74` | `3f8e9119` |
+| Diseño y contrato (`pagos/API-ASIGNAR-CUENTA-DESTINO.md`) | `e80f4483` · FE `643fdd0` |
+| BE — `POST /pgtr/cuentaDestino/{id}`, campos de la bandeja, `CTBNFCRG` en el alta | `ad8b56ce` |
+| FE — «Asignar cuenta» en la bandeja, y el registro de egreso | FE `995aca5` |
+
+### 54.1 — Lo que hay que llevarse
+
+1. **Mi primera hipótesis estaba mal, y la corrigió el script.** Dije que el pago era del 09/09 y que
+   la cuenta se había cargado después. El 09/09 era la fecha **solicitada**. `PGTRFCRG` decía 12:38 de
+   hoy. **Se lee la columna de registro, no la que la pantalla rotula como fecha.**
+2. **No se pudo saber la causa porque ninguna cuenta nueva guardaba su fecha.** La ficha del titular
+   no la mandaba en el alta, y el backend no la ponía. Es el mismo muro del pago 394 (§42). Ahora el
+   backend la pone. **Un dato de auditoría faltante no se nota hasta el día que hace falta, y ese día
+   ya es tarde para el caso que lo reveló.**
+3. **La respuesta vacía disfrazada de error 500** (`selectByCriteria` sin filas) hacía que el registro
+   de egreso no distinguiera *«no tiene cuentas»* de *«falló la consulta»*. Cualquier pantalla que
+   liste con `selectByCriteria` tiene la misma ambigüedad.
+4. **Un criterio, un método:** «tiene cuenta de destino» vive ahora en `tieneCuentaDestino()`, y lo
+   usan la bandeja y la guarda de `aprobar`.
+
+### 54.2 — Abierto
+
+- **Desplegar WAR y FE**, sin SQL. Después, asignarle la cuenta 267 al pago 699 desde la bandeja.
+- 🟡 **`usuarioCreacion` siempre `'sistema'`:** el FE lo lee de `localStorage.getItem('userName')`, una
+  clave que nadie guarda. Está en **34 lugares**, en varios módulos. No se abrió frente.
+- ⚪ Los registros de pago de factura, liquidación y anticipo tienen su propio selector de cuenta, y no
+  se revisó si tienen el mismo agujero del registro de egreso.
