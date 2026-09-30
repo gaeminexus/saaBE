@@ -2,6 +2,10 @@
 -- 300 — CRD.PLVN: el numero de memorando pasa al formato completo (D26)
 -- FECHA: 2026-09-30 · EQUIPO: omen-saa-1 (CRD · EQUIPO B) · primer numero del rango 300-349
 --
+-- ⛔⛔ NO CORRER ESTE SCRIPT: se corrio en produccion el 2026-09-30 y su UPDATE fallo con ORA-00001
+--    (el "46" viejo chocaba con un GR-046-2026 declarado despues). No cambio ninguna fila, pero
+--    SI creo CRD.BKP_300_PLVN. Lo reemplaza el 301_PLVN_MEMORANDO_COMPUESTO_CON_CHOQUES.sql.
+--
 -- PARA QUE: desde la decision D26 el usuario escribe en pantalla solo el numero (46), y el
 -- sistema lo compone como ASOPREP-FCPC-CREDITO-GR-046-2026. Las declaraciones grabadas ANTES
 -- de ese cambio guardaron el numero pelado ("46") en PLVNNMMM, y asi se imprimen. Este script
