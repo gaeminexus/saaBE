@@ -1,4 +1,7 @@
-<!-- Rol de pagos consolidado del periodo (RHH). Estilo corporativo cnt/crd + logo ASOPREP-FCPC. Ver docs/logica-negocio/reportes/REPORTE-ROL-PAGO-CONSOLIDADO.md -->
+<!-- Rol de pagos consolidado del periodo (RHH). Estilo corporativo cnt/crd + logo ASOPREP-FCPC. Ver docs/logica-negocio/reportes/REPORTE-ROL-PAGO-CONSOLIDADO.md
+     e3-06 (2026-09-30): FONDOS_RESERVA/TOTAL_INGRESOS/TOTAL_DESCUENTOS suman el valor de
+     RHH.PVNM (tipo 4) para empleados con fondo de reserva ACUMULADO_EN_EL_IESS (CNTEFRMD=2),
+     que el motor no escribe como renglon. Ver docs/logica-negocio/reportes/REPORTE-ROL-PAGO-CONSOLIDADO.md. -->
 <jasperReport name="RPRT_ROLL_CNSL" language="java" pageWidth="842" pageHeight="595" orientation="Landscape" columnWidth="792" leftMargin="25" rightMargin="25" topMargin="20" bottomMargin="20" whenNoDataType="NoDataSection" uuid="c2000000-0000-0000-0000-000000000000">
 	<property name="com.jaspersoft.studio.data.defaultdataadapter" value="Oracle"/>
 	<property name="com.jaspersoft.studio.report.description" value="Rol consolidado de un periodo: una fila por empleado con ingresos, descuentos, neto y costo patronal."/>
@@ -11,35 +14,77 @@
 	<parameter name="P_USUARIO" class="java.lang.String">
 		<description><![CDATA[Usuario que genera el reporte (opcional)]]></description>
 	</parameter>
-	<query language="SQL"><![CDATA[SELECT
-    p.PRDNANOO                                                        AS PERIODO_ANIO,
-    p.PRDNMSEE                                                        AS PERIODO_MES,
-    p.PRDNFCHI                                                        AS PERIODO_DESDE,
-    p.PRDNFCHF                                                        AS PERIODO_HASTA,
-    NVL(p.PRDNNMEM, 0)                                                AS PERIODO_EMPLEADOS,
-    e.MPLDIDNT                                                        AS IDENTIFICACION,
-    NVL(e.MPLDAPLL, ' ') || ' ' || NVL(e.MPLDNMBR, ' ')               AS EMPLEADO,
-    NVL(n.NMNASLRB, 0)                                                AS SALARIO_BASE,
-    NVL(n.NMNADITR, 0)                                                AS DIAS_TRABAJADOS,
-    NVL(n.NMNABSIE, 0)                                                AS BASE_IESS,
-    NVL(n.NMNAFNRS, 0)                                                AS FONDOS_RESERVA,
-    NVL(n.NMNAAPPR, 0)                                                AS APORTE_PERSONAL,
-    NVL(n.NMNARTIR, 0)                                                AS RETENCION_IR,
-    NVL(n.NMNATING, 0)                                                AS TOTAL_INGRESOS,
-    NVL(n.NMNATDSC, 0)                                                AS TOTAL_DESCUENTOS,
-    NVL(n.NMNANETO, 0)                                                AS NETO,
-    NVL(n.NMNAAPPT, 0)                                                AS APORTE_PATRONAL,
-    NVL(n.NMNAIESC, 0)                                                AS APORTE_IECE_SECAP,
-    NVL(n.NMNATTPT, 0)                                                AS TOTAL_PATRONAL,
-    -- Costo total del empleador por este empleado: lo que recibe mas lo que aporta la empresa
-    NVL(n.NMNATING, 0) + NVL(n.NMNATTPT, 0)                           AS COSTO_EMPLEADOR,
-    NVL(r.RLPGNMRO, '(sin rol emitido)')                              AS NUMERO_ROL
-FROM RHH.PRDN p
-     JOIN RHH.NMNA n ON n.PRDNCDGO = p.PRDNCDGO
-     JOIN RHH.MPLD e ON e.MPLDCDGO = n.MPLDCDGO
-     LEFT JOIN RHH.RLPG r ON r.NMNACDGO = n.NMNACDGO
-WHERE p.PRDNCDGO = $P{P_PRDN_CODIGO}
-ORDER BY e.MPLDAPLL, e.MPLDNMBR, n.NMNACDGO]]></query>
+	<query language="SQL"><![CDATA[WITH BASE AS (
+    SELECT
+        p.PRDNANOO                                                        AS PERIODO_ANIO,
+        p.PRDNMSEE                                                        AS PERIODO_MES,
+        p.PRDNFCHI                                                        AS PERIODO_DESDE,
+        p.PRDNFCHF                                                        AS PERIODO_HASTA,
+        NVL(p.PRDNNMEM, 0)                                                AS PERIODO_EMPLEADOS,
+        e.MPLDIDNT                                                        AS IDENTIFICACION,
+        NVL(e.MPLDAPLL, ' ') || ' ' || NVL(e.MPLDNMBR, ' ')               AS EMPLEADO,
+        e.MPLDAPLL                                                        AS APELLIDOS_ORDEN,
+        e.MPLDNMBR                                                        AS NOMBRES_ORDEN,
+        n.NMNACDGO                                                        AS ID_NOMINA,
+        NVL(n.NMNASLRB, 0)                                                AS SALARIO_BASE,
+        NVL(n.NMNADITR, 0)                                                AS DIAS_TRABAJADOS,
+        NVL(n.NMNABSIE, 0)                                                AS BASE_IESS,
+        NVL(n.NMNAFNRS, 0)                                                AS FONDOS_RESERVA_BASE,
+        NVL(n.NMNAAPPR, 0)                                                AS APORTE_PERSONAL,
+        NVL(n.NMNARTIR, 0)                                                AS RETENCION_IR,
+        NVL(n.NMNATING, 0)                                                AS TOTAL_INGRESOS_BASE,
+        NVL(n.NMNATDSC, 0)                                                AS TOTAL_DESCUENTOS_BASE,
+        NVL(n.NMNANETO, 0)                                                AS NETO,
+        NVL(n.NMNAAPPT, 0)                                                AS APORTE_PATRONAL,
+        NVL(n.NMNAIESC, 0)                                                AS APORTE_IECE_SECAP,
+        NVL(n.NMNATTPT, 0)                                                AS TOTAL_PATRONAL,
+        NVL(r.RLPGNMRO, '(sin rol emitido)')                              AS NUMERO_ROL,
+        -- e3-06 (2026-09-30): fondos de reserva ACUMULADO_EN_EL_IESS (CNTEFRMD=2) no genera
+        -- renglon (ProcesoNominaServiceImpl:988-997), va a RHH.PVNM tipo 4. NMNAFNRS (y por lo
+        -- tanto NMNATING/NMNATDSC) no lo traen: se agrega aqui, una sola vez por fila.
+        NVL((
+            SELECT pv.PVNMVLOR
+            FROM   RHH.PVNM pv
+            WHERE  pv.MPLDCDGO = e.MPLDCDGO AND pv.PRDNCDGO = p.PRDNCDGO
+                   AND pv.PVNMTPPR = 4 AND pv.PVNMESTD = 1 AND ct.CNTEFRMD = 2
+        ), 0)                                                             AS FR_IESS_VALOR
+    FROM RHH.PRDN p
+         JOIN RHH.NMNA n ON n.PRDNCDGO = p.PRDNCDGO
+         JOIN RHH.MPLD e ON e.MPLDCDGO = n.MPLDCDGO
+         JOIN RHH.CNTE ct ON ct.CNTECDGO = n.CNTECDGO
+         LEFT JOIN RHH.RLPG r ON r.NMNACDGO = n.NMNACDGO
+    WHERE p.PRDNCDGO = $P{P_PRDN_CODIGO}
+)
+SELECT
+    PERIODO_ANIO                                                        AS PERIODO_ANIO,
+    PERIODO_MES                                                         AS PERIODO_MES,
+    PERIODO_DESDE                                                       AS PERIODO_DESDE,
+    PERIODO_HASTA                                                       AS PERIODO_HASTA,
+    PERIODO_EMPLEADOS                                                   AS PERIODO_EMPLEADOS,
+    IDENTIFICACION                                                      AS IDENTIFICACION,
+    EMPLEADO                                                            AS EMPLEADO,
+    SALARIO_BASE                                                        AS SALARIO_BASE,
+    DIAS_TRABAJADOS                                                     AS DIAS_TRABAJADOS,
+    BASE_IESS                                                           AS BASE_IESS,
+    FONDOS_RESERVA_BASE + FR_IESS_VALOR                                 AS FONDOS_RESERVA,
+    APORTE_PERSONAL                                                     AS APORTE_PERSONAL,
+    RETENCION_IR                                                        AS RETENCION_IR,
+    TOTAL_INGRESOS_BASE + FR_IESS_VALOR                                 AS TOTAL_INGRESOS,
+    TOTAL_DESCUENTOS_BASE + FR_IESS_VALOR                               AS TOTAL_DESCUENTOS,
+    NETO                                                                AS NETO,
+    APORTE_PATRONAL                                                     AS APORTE_PATRONAL,
+    APORTE_IECE_SECAP                                                   AS APORTE_IECE_SECAP,
+    TOTAL_PATRONAL                                                      AS TOTAL_PATRONAL,
+    -- Costo total del empleador: lo que recibe (ya con el fondo de reserva del IESS sumado
+    -- una sola vez, via TOTAL_INGRESOS) mas lo que aporta la empresa. No se duplica: TOTAL_
+    -- PATRONAL (NMNATTPT) sale de sumaPorTipo(renglones, APORTE_PATRONAL) sobre RNGL, y la
+    -- provision de fondo de reserva acumulado nunca crea un renglon (va solo a PVNM) -- por
+    -- eso no puede estar ya incluida ahi. Es el mismo criterio que MENSUALIZADO, cuyo fondo
+    -- de reserva SI es un renglon de ingreso y ya entraba a TOTAL_INGRESOS de antes.
+    (TOTAL_INGRESOS_BASE + FR_IESS_VALOR) + TOTAL_PATRONAL              AS COSTO_EMPLEADOR,
+    NUMERO_ROL                                                          AS NUMERO_ROL
+FROM BASE
+ORDER BY APELLIDOS_ORDEN, NOMBRES_ORDEN, ID_NOMINA]]></query>
 	<field name="PERIODO_ANIO" class="java.math.BigDecimal"/>
 	<field name="PERIODO_MES" class="java.math.BigDecimal"/>
 	<field name="PERIODO_DESDE" class="java.sql.Timestamp"/>

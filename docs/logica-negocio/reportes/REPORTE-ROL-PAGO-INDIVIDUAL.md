@@ -42,6 +42,35 @@ tipo declarado, así que `P_RLPG_CODIGO` puede llegar como número o como texto.
 - **Aportes patronales:** en un bloque aparte, marcado como informativo. No afectan al neto.
 - **Firma:** nombre, identificación y la leyenda de recepción.
 
+## Fondos de reserva acumulados en el IESS (e3-06, 2026-09-30)
+
+Un colaborador con `ContratoEmpleado.modalidadFondosReserva = ACUMULADO_EN_EL_IESS` (2,
+`CNTEFRMD`, hoy solo Ximena Viteri) no recibe el fondo de reserva mensualizado: el motor
+(`ProcesoNominaServiceImpl:988-997`) no genera un renglón de `RHH.RNGL` para ese concepto, genera
+una **provisión** en `RHH.PVNM` (`PVNMTPPR = 4`, `RhhTipoProvision.FONDOS_DE_RESERVA`) por
+período y empleado. Sin renglón, el rol no tenía ningún rastro del valor.
+
+**El reporte, no el motor, agrega dos filas sintéticas** cuando hay una `PVNM` de tipo 4 con
+`PVNMESTD = 1` (activa) para el período y el empleado de la nómina, y el contrato de esa nómina
+tiene `CNTEFRMD = 2`:
+
+- **Ingresos:** «Fondos de reserva (acumulados en el IESS)», con `PVNMVLOR`.
+- **Descuentos:** «Fondos de reserva depositados en el IESS», el mismo `PVNMVLOR`.
+
+Las dos van al final de su columna (`ORDEN_ORIG = 999999999` en el `ROW_NUMBER()` de los CTE
+`ING`/`DSC`). **Se netea a propósito**: deja constancia de que se le pagó (ingreso) y de que se
+retuvo para depositarlo en la planilla de fondos de reserva del IESS (descuento), sin mover un
+centavo del neto real — es plata que nunca pasa por la cuenta del colaborador. `TOTAL_INGRESOS` y
+`TOTAL_DESCUENTOS` del pie (`RLPGTTIN`/`RLPGTTDS`) suman el mismo valor en los dos, para cuadrar
+con las filas nuevas; `NETO_A_PAGAR` no cambia.
+
+**Cómo se resuelve el contrato de la nómina**: `RHH.NMNA.CNTECDGO` (FK `NOT NULL` a `RHH.CNTE`,
+`Nomina.getContrato()` del lado Java) — join directo, no hace falta ninguna resolución indirecta.
+
+Si no hay provisión de fondo de reserva para el período (sin derecho todavía, causal de salida
+antes del aniversario, o modalidad `MENSUALIZADO`, donde el fondo **ya** sale como renglón de
+ingreso normal), el reporte sale exactamente igual que antes de este cambio.
+
 ## El control de cuadre
 
 El pie compara la suma de los renglones contra los totales grabados en `RLPG`. Si difieren en

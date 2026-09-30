@@ -15,8 +15,24 @@
     SELECT
         r.RLPGNMRO                                                        AS NUMERO_ROL,
         r.RLPGFCHA                                                        AS FECHA_EMISION,
-        NVL(r.RLPGTTIN, 0)                                                AS ROL_INGRESOS,
-        NVL(r.RLPGTTDS, 0)                                                AS ROL_DESCUENTOS,
+        -- e3-06 (2026-09-30): fondos de reserva ACUMULADO_EN_EL_IESS (CNTEFRMD=2) no generan
+        -- renglon (ProcesoNominaServiceImpl:988-997 -- generan RHH.PVNM tipo 4 en vez de RNGL),
+        -- asi que el total grabado en RLPGTTIN/RLPGTTDS no los trae. Se suman aqui, en los DOS
+        -- totales por igual, para que cuadren con las filas que ING/DSC agregan mas abajo. El
+        -- contrato de la nomina sale de NMNA.CNTECDGO (FK NOT NULL a RHH.CNTE), no hay otro
+        -- camino: el motor lo resuelve igual, via Nomina.getContrato().
+        NVL(r.RLPGTTIN, 0) + NVL((
+            SELECT pv.PVNMVLOR
+            FROM   RHH.PVNM pv
+            WHERE  pv.MPLDCDGO = e.MPLDCDGO AND pv.PRDNCDGO = p.PRDNCDGO
+                   AND pv.PVNMTPPR = 4 AND pv.PVNMESTD = 1 AND ct.CNTEFRMD = 2
+        ), 0)                                                             AS ROL_INGRESOS,
+        NVL(r.RLPGTTDS, 0) + NVL((
+            SELECT pv.PVNMVLOR
+            FROM   RHH.PVNM pv
+            WHERE  pv.MPLDCDGO = e.MPLDCDGO AND pv.PRDNCDGO = p.PRDNCDGO
+                   AND pv.PVNMTPPR = 4 AND pv.PVNMESTD = 1 AND ct.CNTEFRMD = 2
+        ), 0)                                                             AS ROL_DESCUENTOS,
         NVL(r.RLPGNETO, 0)                                                AS ROL_NETO,
         NVL(r.RLPGRCBD, 'N')                                              AS ROL_RECIBIDO,
         e.MPLDIDNT                                                        AS IDENTIFICACION,
@@ -33,11 +49,20 @@
         NVL(n.NMNAIESC, 0)                                                AS APORTE_IECE_SECAP,
         NVL(n.NMNATTPT, 0)                                                AS TOTAL_PATRONAL,
         n.NMNACDGO                                                        AS ID_NOMINA,
+        -- Mismo valor que arriba, expuesto aparte para que ING/DSC lo agreguen como fila
+        -- (0 si no aplica: sin provision, o modalidad distinta de ACUMULADO_EN_EL_IESS).
+        NVL((
+            SELECT pv.PVNMVLOR
+            FROM   RHH.PVNM pv
+            WHERE  pv.MPLDCDGO = e.MPLDCDGO AND pv.PRDNCDGO = p.PRDNCDGO
+                   AND pv.PVNMTPPR = 4 AND pv.PVNMESTD = 1 AND ct.CNTEFRMD = 2
+        ), 0)                                                             AS FR_IESS_VALOR,
         -- Neto a pagar = neto de nomina + los renglones de valor no pagado (rol de motor
         -- 34 retenido / 35 recuperado), con el signo tal como los graba el motor
         -- (ProcesoNominaServiceImpl.agregaRenglonesValorNoPagado): 34 en RNGLVLRO negativo,
         -- 35 en positivo. Si no hay ningun renglon de esos roles el NVL deja 0 y el neto a
-        -- pagar coincide con el de nomina.
+        -- pagar coincide con el de nomina. Los fondos de reserva del IESS NO entran aqui: se
+        -- netean entre si (ingreso y egreso por el mismo valor), nunca mueven el neto a pagar.
         NVL(r.RLPGNETO, 0) + NVL((
             SELECT SUM(ra.RNGLVLRO)
             FROM   RHH.RNGL ra
@@ -49,30 +74,59 @@
            JOIN RHH.NMNA n ON n.NMNACDGO = r.NMNACDGO
            JOIN RHH.MPLD e ON e.MPLDCDGO = n.MPLDCDGO
            JOIN RHH.PRDN p ON p.PRDNCDGO = n.PRDNCDGO
+           JOIN RHH.CNTE ct ON ct.CNTECDGO = n.CNTECDGO
     WHERE  r.RLPGCDGO = $P{P_RLPG_CODIGO}
 ),
 -- Ingresos y descuentos numerados por separado (ROW_NUMBER) para emparejarlos uno a uno
 -- en PARES: es lo que permite mostrar dos columnas lado a lado con UN solo .jasper, sin
--- subreportes.
+-- subreportes. El fondo de reserva acumulado en el IESS (CAB.FR_IESS_VALOR, e3-06) se agrega
+-- como una fila mas al final de cada lado -- ORDEN_ORIG=999999999 lo deja siempre ultimo --
+-- cuando corresponde; si FR_IESS_VALOR es 0 el UNION ALL no aporta ninguna fila.
 ING AS (
-    SELECT rn.RNGLCDGO                                                    AS RNGLCDGO,
-           rn.RNGLVLRO                                                    AS VALOR,
-           NVL(cn.CPNMNMBR, NVL(rn.RNGLDSCR, 'Concepto'))                 AS CONCEPTO,
-           ROW_NUMBER() OVER (ORDER BY NVL(rn.RNGLORDN, 0), rn.RNGLCDGO)  AS RN
-    FROM   RHH.RNGL rn
-           LEFT JOIN RHH.CPNM cn ON cn.CPNMCDGO = rn.CPNMCDGO
-           JOIN CAB ON rn.NMNACDGO = CAB.ID_NOMINA
-    WHERE  NVL(rn.RNGLTPCN, 0) = 1
+    SELECT RNGLCDGO, VALOR, CONCEPTO,
+           ROW_NUMBER() OVER (ORDER BY ORDEN_ORIG, RNGLCDGO)              AS RN
+    FROM (
+        SELECT rn.RNGLCDGO                                                AS RNGLCDGO,
+               rn.RNGLVLRO                                                AS VALOR,
+               NVL(cn.CPNMNMBR, NVL(rn.RNGLDSCR, 'Concepto'))             AS CONCEPTO,
+               NVL(rn.RNGLORDN, 0)                                        AS ORDEN_ORIG
+        FROM   RHH.RNGL rn
+               LEFT JOIN RHH.CPNM cn ON cn.CPNMCDGO = rn.CPNMCDGO
+               JOIN CAB ON rn.NMNACDGO = CAB.ID_NOMINA
+        WHERE  NVL(rn.RNGLTPCN, 0) = 1
+
+        UNION ALL
+
+        SELECT CAST(NULL AS NUMBER)                                       AS RNGLCDGO,
+               CAB.FR_IESS_VALOR                                          AS VALOR,
+               'Fondos de reserva (acumulados en el IESS)'                AS CONCEPTO,
+               999999999                                                  AS ORDEN_ORIG
+        FROM   CAB
+        WHERE  CAB.FR_IESS_VALOR > 0
+    ) t
 ),
 DSC AS (
-    SELECT rn.RNGLCDGO                                                    AS RNGLCDGO,
-           rn.RNGLVLRO                                                    AS VALOR,
-           NVL(cn.CPNMNMBR, NVL(rn.RNGLDSCR, 'Concepto'))                 AS CONCEPTO,
-           ROW_NUMBER() OVER (ORDER BY NVL(rn.RNGLORDN, 0), rn.RNGLCDGO)  AS RN
-    FROM   RHH.RNGL rn
-           LEFT JOIN RHH.CPNM cn ON cn.CPNMCDGO = rn.CPNMCDGO
-           JOIN CAB ON rn.NMNACDGO = CAB.ID_NOMINA
-    WHERE  NVL(rn.RNGLTPCN, 0) = 2
+    SELECT RNGLCDGO, VALOR, CONCEPTO,
+           ROW_NUMBER() OVER (ORDER BY ORDEN_ORIG, RNGLCDGO)              AS RN
+    FROM (
+        SELECT rn.RNGLCDGO                                                AS RNGLCDGO,
+               rn.RNGLVLRO                                                AS VALOR,
+               NVL(cn.CPNMNMBR, NVL(rn.RNGLDSCR, 'Concepto'))             AS CONCEPTO,
+               NVL(rn.RNGLORDN, 0)                                        AS ORDEN_ORIG
+        FROM   RHH.RNGL rn
+               LEFT JOIN RHH.CPNM cn ON cn.CPNMCDGO = rn.CPNMCDGO
+               JOIN CAB ON rn.NMNACDGO = CAB.ID_NOMINA
+        WHERE  NVL(rn.RNGLTPCN, 0) = 2
+
+        UNION ALL
+
+        SELECT CAST(NULL AS NUMBER)                                       AS RNGLCDGO,
+               CAB.FR_IESS_VALOR                                          AS VALOR,
+               'Fondos de reserva depositados en el IESS'                 AS CONCEPTO,
+               999999999                                                  AS ORDEN_ORIG
+        FROM   CAB
+        WHERE  CAB.FR_IESS_VALOR > 0
+    ) t
 ),
 PARES AS (
     SELECT COALESCE(ING.RN, DSC.RN)                                       AS ORDEN_DETALLE,
