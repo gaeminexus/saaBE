@@ -4257,3 +4257,43 @@ Ese script mide exactamente eso.
 3. **Las pensiones de fin de mes** todavía no se generaron (`CRJBESPN = 0`), que es lo correcto: son
    de fin de mes. Ojo que **ese proceso tenía el mismo defecto de los `@QueryParam`** y ya está
    corregido en el mismo WAR.
+
+---
+
+# 2026-09-30 — Sesión nueva del árbitro: tablero puesto al día, sepelio destrabado, plazo vencido despachado
+
+**El tablero no registraba nada desde el 22-09.** Lo del 22 al 25-09 está en los commits (`bdab89fd`,
+`05bf5bda`, `sql/244`–`246`) y en `crd/DISENO-BENEFICIARIOS-Y-VALORES-DE-SEGURO.md` §10.
+
+## Scripts corridos en PRODUCCIÓN y con sus controles leídos por el árbitro
+- **`244`** (`CRJBASSG`): OK. El control 2.2 esperaba 16 columnas y dio **17**. Era un error del
+  árbitro: contó sólo las `@Column` y omitió `PJRQCDGO`, mapeada con `@JoinColumn`. Corregido en
+  `18889980`. Las 13 corridas (9/2025–9/2026) quedan con la columna en nulo (esquema viejo).
+- **`246`** (`CTAPRCLS`): OK. 11 configuraciones en 1 y una en 0: CTAP 12, tipo 27.
+  ⛔ **El WAR se había desplegado ANTES que el `246`**, y el pago del sepelio reventó con
+  ORA-00904 `CTAPRCLS`. Es la **tercera vez** del patrón H58/H75. Pendiente: que el usuario reintente
+  el pago.
+- **`247`** (`CRD.PLVN` + `CRD.DPLV`, plazo vencido): corrido **sólo en producción**, con **55
+  columnas** (la versión final, con `PLVNNMPS`). ⚠️ **En la base local no existe:** cualquier prueba
+  local de la pantalla revienta hasta correrlo allá.
+
+## Frentes abiertos hoy
+- **Plazo vencido fase 1** (`crd/DISENO-PASE-A-PLAZO-VENCIDO.md`, `crd/API-PASE-A-PLAZO-VENCIDO.md`,
+  decisiones D1–D23):
+  - BE despachado a `omen-saa-1-be`. Ítem 0 medido; su hallazgo corrigió el contrato: el número
+    impreso es `idAsoprep`, no `PRSTCDGO`.
+  - FE sin despachar hasta cerrar el siguiente frente.
+- **Cuotas parciales en los diálogos de Cobros Personales** (reporte del usuario):
+  - Los diálogos «Pagar cuotas», «Pagar con aportes» y «Abonar a capital» muestran `total` de la
+    cuota en vez del pendiente.
+  - FE puro, despachado a `omen-saa-1-fe`.
+  - Riesgo aparte, sin medir: cuotas PARCIAL sin filas en PGPR (migradas), que salen completas
+    igual.
+
+## Hallazgos
+- **El arreglo del 24-08 de la mora juntó dos reglas en una.** Sacó al estado 8 del cambio de estado
+  (correcto) y también del cálculo de mora, que el usuario ahora quiere (D6). Desde afuera parecía
+  una sola regla. ⇒ `sql/77` queda OBSOLETO (D10).
+- **Ningún código escribía `PRSTIDST = 8`.** Tampoco había la «pantalla de ejemplo» que recordaba el
+  usuario.
+- **Estado de cuota 9 «de plazo vencido»** existe en el FE y no en el BE.
