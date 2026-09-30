@@ -166,6 +166,8 @@ plata cobrada al partícipe. **Ver §6, pregunta A.**
 | D22 (L) | Desde cuándo deja de cobrarse el seguro | **Desde la fecha de corte de la declaración.** Las cuotas con vencimiento **≤ corte** conservan y deben su seguro; las **posteriores** quedan en **0**. Confirma la lectura del árbitro |
 | D23 (M) | ¿El seguro vuelve al revertir? | **Sí.** ⇒ **Se autoriza `CRD.DPLV`** para guardar el original por cuota |
 
+| D24 | ¿Sale sin permisos por rol? | **Sí** (2026-09-30). Sin `idPermiso`; la separación Crédito/Contabilidad queda como deuda del frente de seguridad |
+
 ⇒ **Diseño cerrado para la fase 1.** DDL: `sql/247`. Contrato: `API-PASE-A-PLAZO-VENCIDO.md`.
 
 ### ⚠️ La tensión que abre D19 frente a D18

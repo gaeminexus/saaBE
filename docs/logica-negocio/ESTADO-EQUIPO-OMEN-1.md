@@ -4297,3 +4297,16 @@ Ese script mide exactamente eso.
 - **Ningún código escribía `PRSTIDST = 8`.** Tampoco había la «pantalla de ejemplo» que recordaba el
   usuario.
 - **Estado de cuota 9 «de plazo vencido»** existe en el FE y no en el BE.
+
+## ✅ 2026-09-30 — El pago del sepelio salió bien
+
+Salió después del `246`, confirmado por el usuario. Con eso **el ciclo de sepelio completo funciona
+en producción**: recepción, beneficiarios, reparto y pago. Siguen abiertos:
+- el asiento neutro histórico `CRE-2026-09-0422`, sin decidir;
+- el aviso a `omen-saa-2` por las filas de `PGS` del `245`.
+
+## Decisión del usuario — plazo vencido sale SIN permisos por rol
+
+La pantalla va sin `idPermiso` y sin separar Crédito de Contabilidad: cualquiera con acceso a
+Créditos puede declarar, liquidar y revertir. La separación queda como deuda del frente de
+seguridad, que es de otro equipo, y no bloquea la salida.
