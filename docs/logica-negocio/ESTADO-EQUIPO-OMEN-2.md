@@ -4635,3 +4635,35 @@ registró hoy a las 12:38 **sin** `PGTRCTBN`, y es el único en esa situación.
 - Sugerencia suya, **sin decidir**: el mensaje de la guarda de `aprobar` no dice que la nómina consolidada
   (`RHH_NOMINA`) se aprueba con débito automático. El usuario se trabó ahí el 28-09. Si lo tocamos, les
   avisamos.
+
+## §56 — Cruzar el anticipo de un proveedor contra la factura de otro: ENTREGADO (2026-09-30)
+
+| Parte | Commit |
+|---|---|
+| Diseño y contrato (`cxp/API-CRUCE-ANTICIPO-OTRO-PROVEEDOR.md`) | `ec00c6db` · FE `3ab5cdc` · corrección `1599180e` |
+| FE: check «todos los proveedores» en el selector, y el aviso | FE `8cf0b3b` |
+| BE: flag, asiento de dos titulares, `PRCC` por titular del anticipo, reverso | `9db3dd5c` |
+| Además, en la cartera: la unidad `DÍAS` con tilde | `4a8c7b16` |
+
+### 56.1 — Lo que hay que llevarse
+
+1. **El pedido era de pantalla y el riesgo era contable.** Todo el cruce usaba **un solo titular, el de
+   la factura**, para el DEBE, el HABER, el `PRCC` y el reverso. Si solo se quitaba la validación, un
+   cruce A→B habría acreditado los anticipos **de B** y descuadrado a los dos en el seguimiento, sin
+   ningún error. Se midió antes de diseñar, no después de un reclamo.
+2. **Tres errores del árbitro en contratos, el mismo día, y los tres los marcó el ejecutor o una
+   medición:**
+   - «mayúsculas y sin espacios» no alcanza con `DÍAS` (lo destapó el `e2-75`);
+   - el literal `LIQUIDACION` en vez de `LIQUIDACION_COMPRA`;
+   - la falta del campo `identificacion` para poder filtrar por RUC.
+
+   Los tres son la misma falla: **escribir el contrato desde lo que el árbitro supone del código y no
+   desde el archivo abierto**. Es la trampa 1 del traspaso, trasladada de los `.sql` a los contratos.
+3. **Un diálogo compartido se extiende con opt-in.** El selector de documentos lo usa también la caja
+   chica.
+
+### 56.2 — Abierto, fuera de este frente
+
+- El estado de cuenta del proveedor de la factura muestra un abono con el número de un anticipo que no
+  es suyo.
+- El seguimiento de anticipos muestra la factura del cruce sin su proveedor.
