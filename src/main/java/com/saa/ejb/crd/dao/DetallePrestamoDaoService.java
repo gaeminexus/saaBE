@@ -386,5 +386,24 @@ public interface DetallePrestamoDaoService extends EntityDao<DetallePrestamo> {
 	 */
 	List<Long> selectPrestamosEnMoraSinCuotasVencidas(LocalDateTime fechaCorte) throws Throwable;
 
+	/**
+	 * TODAS las cuotas (entidades completas, con su grafo EAGER) de VARIOS préstamos a la vez,
+	 * en UNA consulta — para {@code GET /rest/plvn/candidatos} y {@code POST /rest/plvn/declarar}
+	 * (API-PASE-A-PLAZO-VENCIDO.md §2/§3): pueden ser cientos de préstamos, y una consulta por
+	 * préstamo sería un N+1 sobre una entidad cuyos {@code @ManyToOne} son EAGER.
+	 *
+	 * <p>Es un método NUEVO — no reemplaza ni cambia {@link #selectByPrestamo(Long)} ni los
+	 * demás {@code selectByPrestamo*} existentes, que siguen siendo por un solo préstamo.</p>
+	 *
+	 * <p>Fragmenta internamente en bloques de 900 (ORA-01795), mismo criterio que
+	 * {@code PagoPrestamoDaoService#selectDatosPagosVigentes}.</p>
+	 *
+	 * @param codigosPrestamo Códigos de préstamo
+	 * @return Cuotas de todos esos préstamos, ordenadas por préstamo y luego por número de
+	 *         cuota; vacía si la lista de entrada es nula o vacía
+	 * @throws Throwable Si ocurre algún error
+	 */
+	List<DetallePrestamo> selectByPrestamos(List<Long> codigosPrestamo) throws Throwable;
+
 }
 

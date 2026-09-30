@@ -70,8 +70,10 @@ public interface PrestamoDaoService extends EntityDao<Prestamo> {
     List<Prestamo> selectVigentesByEntidad(Long codigoEntidad) throws Throwable;
 
     /**
-     * Cuenta los préstamos de una entidad que estén en estado vigente (2), en mora (8) o plazo vencido (11).
+     * Cuenta los préstamos de una entidad que estén en estado vigente (2), de plazo vencido (8) o en mora (11).
      * Usado en la generación del G45 para determinar si una entidad tiene más de un préstamo activo.
+     * Corregido 2026-09-30 (API-PASE-A-PLAZO-VENCIDO.md §5): el javadoc tenía los códigos al
+     * revés — manda {@code com.saa.rubros.EstadoPrestamo}.
      * @param codigoEntidad ID numérico de la entidad
      * @return cantidad de préstamos en esos estados para la entidad
      */

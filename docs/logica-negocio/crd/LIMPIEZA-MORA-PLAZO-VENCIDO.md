@@ -1,5 +1,21 @@
 # LIMPIEZA — Mora residual en préstamos de plazo vencido
 
+> ## ⛔ OBSOLETO desde el 2026-09-30 (D10 de `API-PASE-A-PLAZO-VENCIDO.md` §10) — `sql/77` NO se corre
+>
+> Este documento y su script (`sql/77_LIMPIEZA_MORA_PLAZO_VENCIDO.sql`) partían de la premisa
+> **«un préstamo de plazo vencido nunca debió tener mora»** — cierta bajo el criterio del
+> 2026-08-24. El usuario la cambió al diseñar el pase a plazo vencido: **D6 dice que un préstamo
+> en 8 SIGUE generando mora**, y el proceso diario vuelve a calculársela
+> (`PROCESO-DIARIO-INTERES-MORA.md` §3/§4/§11, entrada 2026-09-30).
+>
+> **Consecuencia aceptada por el usuario (D10):** la mora que este documento proponía limpiar
+> **no se limpia** — la primera corrida del proceso diario después de ese cambio le vuelve a
+> cargar mora a esos préstamos de todos modos, desde su vencimiento. Correr `sql/77` ahora
+> borraría un dato que el sistema recalcula solo en la corrida siguiente, sin ganar nada.
+>
+> El resto de este documento queda como registro histórico de por qué existió la limpieza y
+> cómo se habría hecho — no como una tarea pendiente.
+
 **Fecha: 2026-08-27.** Documento de corrección de datos. Complementa
 `PROCESO-DIARIO-INTERES-MORA.md` §11 (historial del defecto) y
 `ESTADO-TRABAJO-EN-CURSO.md` §3 (Frente C). Script: `sql/77_LIMPIEZA_MORA_PLAZO_VENCIDO.sql`.

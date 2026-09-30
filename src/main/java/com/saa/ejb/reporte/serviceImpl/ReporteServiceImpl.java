@@ -31,6 +31,7 @@ import net.sf.jasperreports.engine.JasperPrint;
 import net.sf.jasperreports.engine.JasperReport;
 import net.sf.jasperreports.engine.data.JRBeanCollectionDataSource;
 import net.sf.jasperreports.engine.export.HtmlExporter;
+import net.sf.jasperreports.engine.export.ooxml.JRDocxExporter;
 import net.sf.jasperreports.engine.export.ooxml.JRXlsxExporter;
 import net.sf.jasperreports.engine.util.JRLoader;
 import net.sf.jasperreports.export.SimpleExporterInput;
@@ -382,7 +383,11 @@ public class ReporteServiceImpl implements ReporteService {
                 
             case "HTML":
                 return exportarHtml(jasperPrint);
-                
+
+            // Aditivo (API-PASE-A-PLAZO-VENCIDO.md §8, 2026-09-30): PDF, EXCEL y HTML no cambian.
+            case "DOCX":
+                return exportarDocx(jasperPrint);
+
             default:
                 LOGGER.log(Level.WARNING, "Formato no soportado: {0}, usando PDF", formato);
                 return JasperExportManager.exportReportToPdf(jasperPrint);
@@ -411,6 +416,22 @@ public class ReporteServiceImpl implements ReporteService {
         return outputStream.toByteArray();
     }
     
+    /**
+     * Exporta el reporte a formato Word (.docx). Aditivo: solo se agrega este método y el
+     * {@code case "DOCX"} de {@link #exportarReporte}; PDF, EXCEL y HTML no se tocan
+     * (API-PASE-A-PLAZO-VENCIDO.md §8).
+     */
+    private byte[] exportarDocx(JasperPrint jasperPrint) throws Exception {
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+
+        JRDocxExporter exporter = new JRDocxExporter();
+        exporter.setExporterInput(new SimpleExporterInput(jasperPrint));
+        exporter.setExporterOutput(new SimpleOutputStreamExporterOutput(outputStream));
+        exporter.exportReport();
+
+        return outputStream.toByteArray();
+    }
+
     /**
      * Exporta el reporte a formato HTML
      */

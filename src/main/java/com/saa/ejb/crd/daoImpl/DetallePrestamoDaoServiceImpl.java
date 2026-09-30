@@ -916,18 +916,22 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 
 		try {
 			// Cuota pendiente con vencimiento anterior al corte, en préstamos
-			// VIGENTE(2) o EN_MORA(11).
+			// VIGENTE(2), EN_MORA(11) o DE_PLAZO_VENCIDO(8).
 			//
-			// DE_PLAZO_VENCIDO(8) queda FUERA a propósito (corregido el 2026-08-24). Estuvo
-			// incluido desde el 2026-08-14 por copiar el universo del Grupo 2 del G48, y fue
-			// un defecto: el proceso reclasificaba a EN_MORA(11) TODOS los préstamos que
-			// estaban en DE PLAZO VENCIDO, perdiendo ese estado en producción.
-			// El G48 solo LEE; este proceso ESCRIBE el estado del préstamo, así que compartir
-			// el universo con un reporte no era correcto.
+			// DE_PLAZO_VENCIDO(8) VUELVE a entrar (D6/D10, API-PASE-A-PLAZO-VENCIDO.md §10,
+			// 2026-09-30): el usuario decidió que un préstamo en 8 SIGUE generando mora — se
+			// revisa recién cuando se cobra por la vía legal. Entre el 2026-08-14 y el
+			// 2026-08-24 el 8 ya había estado incluido y fue un defecto (ver
+			// PROCESO-DIARIO-INTERES-MORA.md §11): el proceso reclasificaba a EN_MORA(11) todo
+			// préstamo del universo con cuotas vencidas, y TODOS los que estaban en 8 entraban
+			// por ahí. La corrección de esta vuelta NO es la misma receta: el 8 entra al
+			// universo (esta consulta), pero `ProcesoMoraPrestamoServiceImpl.calcularMoraPrestamo`
+			// ya no cambia el estado del préstamo cuando es 8 — sólo le calcula y persiste la
+			// mora a sus cuotas. Los dos niveles quedan separados a propósito.
 			String jpql = "SELECT DISTINCT d.prestamo.codigo FROM DetallePrestamo d " +
 						 "WHERE (d.estado IS NULL OR d.estado NOT IN (:estadoPagada, :estadoCanceladaAnticipada)) " +
 						 "AND d.fechaVencimiento < :fechaCorte " +
-						 "AND d.prestamo.idEstado IN (:vigente, :enMora) " +
+						 "AND d.prestamo.idEstado IN (:vigente, :deplazoVencido, :enMora) " +
 						 "ORDER BY d.prestamo.codigo ASC";
 
 			Query query = em.createQuery(jpql);
@@ -935,6 +939,7 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 			query.setParameter("estadoCanceladaAnticipada", (long) com.saa.rubros.EstadoCuotaPrestamo.CANCELADA_ANTICIPADA);
 			query.setParameter("fechaCorte", fechaCorte);
 			query.setParameter("vigente", (long) com.saa.rubros.EstadoPrestamo.VIGENTE);
+			query.setParameter("deplazoVencido", (long) com.saa.rubros.EstadoPrestamo.DE_PLAZO_VENCIDO);
 			query.setParameter("enMora", (long) com.saa.rubros.EstadoPrestamo.EN_MORA);
 
 			List<Long> resultados = query.getResultList();
@@ -1016,6 +1021,36 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 			// NO lanzar excepción - retornar lista vacía para no detener el proceso
 			return new ArrayList<>();
 		}
+	}
+
+	@SuppressWarnings("unchecked")
+	@Override
+	public List<DetallePrestamo> selectByPrestamos(List<Long> codigosPrestamo) throws Throwable {
+		System.out.println("DetallePrestamoDaoServiceImpl.selectByPrestamos - prestamos solicitados: "
+			+ (codigosPrestamo != null ? codigosPrestamo.size() : 0));
+
+		if (codigosPrestamo == null || codigosPrestamo.isEmpty()) {
+			return new ArrayList<>();
+		}
+
+		String jpql = "SELECT d FROM DetallePrestamo d " +
+					 "WHERE d.prestamo.codigo IN :codigos " +
+					 "ORDER BY d.prestamo.codigo ASC, d.numeroCuota ASC";
+
+		// Fragmentado en bloques de 900: Oracle limita IN (...) a 1000 elementos (ORA-01795).
+		final int TAMANIO_BLOQUE = 900;
+		List<DetallePrestamo> resultados = new ArrayList<>();
+		for (int inicio = 0; inicio < codigosPrestamo.size(); inicio += TAMANIO_BLOQUE) {
+			List<Long> bloque = codigosPrestamo.subList(inicio,
+					Math.min(inicio + TAMANIO_BLOQUE, codigosPrestamo.size()));
+
+			Query query = em.createQuery(jpql);
+			query.setParameter("codigos", bloque);
+			resultados.addAll(query.getResultList());
+		}
+
+		System.out.println("  Cuotas encontradas: " + resultados.size());
+		return resultados;
 	}
 
 }

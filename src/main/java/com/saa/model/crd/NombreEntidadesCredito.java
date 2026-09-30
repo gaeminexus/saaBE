@@ -113,5 +113,7 @@ public interface NombreEntidadesCredito {
 	String CORRIDA_JUBILADOS = "CorridaJubilados";
 	String RECEPCION_VALOR_SEGURO = "RecepcionValorSeguro";
 	String CUENTA_BANCARIA_BENEFICIARIO = "CuentaBancariaBeneficiario";
+	String DECLARACION_PLAZO_VENCIDO = "DeclaracionPlazoVencido";
+	String DETALLE_PLAZO_VENCIDO = "DetallePlazoVencido";
 
 }

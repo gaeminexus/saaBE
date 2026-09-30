@@ -52,27 +52,34 @@ Es la misma sumatoria, escrita fila por fila en vez de agregada.
 |---|---|
 | Cuota pendiente | `DTPRESTD IS NULL OR DTPRESTD NOT IN (4 PAGADA, 7 CANCELADA_ANTICIPADA)` |
 | Cuota vencida | `DTPRFCVN < fechaCorte` (inicio del día: **la cuota que vence hoy todavía no está en mora**) |
-| Préstamo operable | **`PRSTIDST IN (2 VIGENTE, 11 EN_MORA)`** |
+| Préstamo operable | **`PRSTIDST IN (2 VIGENTE, 8 DE_PLAZO_VENCIDO, 11 EN_MORA)`** |
 
 Los préstamos en estado terminal (3, 4, 5) quedan fuera y el proceso **nunca** les toca el estado.
 
-### ⚠️ `DE_PLAZO_VENCIDO(8)` NO entra — corregido el 2026-08-24
+### ⚠️ `DE_PLAZO_VENCIDO(8)` VUELVE a entrar — decisión D6/D10, 2026-09-30
 
-**Este universo NO es el del Grupo 2 del G48**, aunque nació copiándolo. El G48 incluye el 8 y
-está bien que lo haga: **el G48 solo LEE la mora**. Este proceso **ESCRIBE el estado del
-préstamo**, y por eso no puede compartir universo con un reporte.
+**Este cambio revierte el criterio del 2026-08-24** (ver el historial más abajo), a pedido
+explícito del usuario al diseñar «Pase de préstamos EN MORA a DE PLAZO VENCIDO»
+(`API-PASE-A-PLAZO-VENCIDO.md` §10): un préstamo en 8 **sigue generando mora** — el valor se
+revisa recién cuando se cobra por la vía legal.
 
-Mientras el 8 estuvo incluido (del 2026-08-14 al 2026-08-24), el proceso reclasificó a
-`EN_MORA(11)` todos los préstamos que estaban en DE PLAZO VENCIDO. Ver §11.
-
-La exclusión está en **dos niveles**, a propósito:
+**No es la misma receta al revés.** La corrección del 24-08 sacó al 8 de DOS cosas a la vez: del
+universo del lote y del cambio de estado. Esta vuelta separa lo que aquella juntó:
 
 1. **En el universo del lote** — `DetallePrestamoDaoServiceImpl.selectPrestamosConCuotasVencidas`
-   filtra `idEstado IN (2, 11)`.
-2. **En una guarda dentro de `calcularMoraPrestamo`** — porque el endpoint
-   `POST /prst/calcularMora/{idPrestamo}` entra directamente a ese método y **se saltea la
-   consulta del universo**. Sin la guarda, un préstamo en 8 invocado a mano se seguiría
-   rompiendo.
+   vuelve a filtrar `idEstado IN (2, 8, 11)`: un préstamo en 8 con cuotas vencidas **sí** entra al
+   lote.
+2. **`ProcesoMoraPrestamoServiceImpl.calcularMoraPrestamo` ya NO sale temprano** para el 8: calcula
+   y persiste la mora de sus cuotas igual que a cualquier préstamo del universo.
+3. **Pero el bloque "Estado del préstamo" sigue protegiendo la clasificación**: un préstamo en 8
+   **nunca** cambia de estado desde este proceso — ni a 11 (como hacía el defecto del 24-08) ni se
+   regulariza a 2. Ver §4.
+
+Consecuencia aceptada por el usuario (D10): la primera corrida después del despliegue de este
+cambio le carga a los préstamos que ya estaban en 8 toda la mora acumulada desde su vencimiento —
+de golpe, porque la fórmula recalcula desde cero (§2) y no incrementalmente. **El `sql/77`
+(limpieza de la mora que dejó el defecto del 24-08) queda obsoleto y no se corre** — ver
+`LIMPIEZA-MORA-PLAZO-VENCIDO.md`.
 
 ---
 
@@ -97,7 +104,7 @@ La exclusión está en **dos niveles**, a propósito:
 
 | `PRSTIDST` de entrada | Situación | Efecto |
 |---|---|---|
-| **8 DE_PLAZO_VENCIDO** | cualquiera | **No se toca NADA**: ni el estado del préstamo, ni el de sus cuotas, ni la mora. Sale antes de calcular |
+| **8 DE_PLAZO_VENCIDO** | cualquiera | **Se calcula y persiste la mora de sus cuotas** (D6/D10, 2026-09-30), igual que cualquier préstamo del universo. **El ESTADO del préstamo NO se toca**: nunca pasa a 11 ni se regulariza a 2 |
 | 2 VIGENTE | tiene cuotas vencidas | `PRSTIDST → 11 (EN_MORA)` + `PRSTFCMD = now` |
 | 2 VIGENTE | sin cuotas vencidas | No se toca |
 | 11 EN_MORA | tiene cuotas vencidas | Se recalcula la mora; el estado ya es 11 y no cambia |
@@ -105,6 +112,10 @@ La exclusión está en **dos niveles**, a propósito:
 | 3, 4, 5 (terminales) | cualquiera | **No se toca el estado** |
 
 Nunca se escribe `ESPSCDGO` (es la FK al catálogo `CRD.ESPS`, no el estado operativo).
+
+> ⚠️ **Hasta el 2026-09-30 esta tabla decía que el 8 no se tocaba en absoluto** (ni mora ni
+> estado). Eso cambió por D6/D10 de `API-PASE-A-PLAZO-VENCIDO.md` §10: ahora SÍ se le calcula
+> mora, y SIGUE sin tocarse su estado. Las dos cosas están separadas a propósito — ver §3.
 
 > ⚠️ **La regularización siempre manda a 2 VIGENTE, nunca a 8.** El proceso no guarda el
 > estado anterior, así que no puede saber si un préstamo llegó a 11 porque de verdad se
@@ -336,6 +347,24 @@ SELECT DTPRCDGO FROM CRD.DTPR WHERE NVL(DTPRIDST,-1) <> NVL(DTPRESTD,-1);
 ---
 
 ## 11. Historial de defectos
+
+### 2026-09-30 — El 8 vuelve a generar mora (D6/D10), sin volver al defecto del 24-08
+
+No es un defecto: es la decisión del usuario al diseñar el pase a plazo vencido
+(`API-PASE-A-PLAZO-VENCIDO.md` §10), registrada acá porque cambia el comportamiento que el
+incidente de abajo (2026-08-24) dejó documentado como definitivo.
+
+**Qué cambia:** el universo del lote vuelve a incluir `idEstado IN (2, 8, 11)` y
+`calcularMoraPrestamo` ya no sale temprano para el 8 — le calcula y persiste la mora a sus
+cuotas. **Qué NO cambia:** el bloque que decide el estado del préstamo sigue sin tocar nunca un
+préstamo en 8, con una guarda explícita (`esDePlazoVencido`) en vez de depender de que la rama
+`tieneVencidas && estadoPrestamo != EN_MORA` no lo alcance por casualidad. Ver §3 y §4.
+
+**Por qué no es el mismo defecto al revés:** el del 24-08 juntaba dos cosas — el 8 entraba al
+universo Y el bloque de estado lo reclasificaba, porque ese bloque no distinguía el 8 del resto.
+Esta vuelta separa las dos: el 8 entra al universo (para la mora) pero el bloque de estado lo
+identifica y lo saltea explícitamente (para la clasificación). `sql/77` (limpieza del defecto de
+entonces) queda obsoleto — ver `LIMPIEZA-MORA-PLAZO-VENCIDO.md`.
 
 ### 2026-08-24 — Los préstamos en DE PLAZO VENCIDO fueron reclasificados a EN MORA
 

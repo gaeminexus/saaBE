@@ -62,7 +62,9 @@ public interface PrestamoService extends EntityService<Prestamo>{
 	java.util.List<Prestamo> selectByEstado(Long estado) throws Throwable;
 
 	/**
-	 * Cuenta los préstamos de una entidad en estado vigente (2), en mora (8) o plazo vencido (11).
+	 * Cuenta los préstamos de una entidad en estado vigente (2), de plazo vencido (8) o en mora (11).
+	 * Corregido 2026-09-30 (API-PASE-A-PLAZO-VENCIDO.md §5): el javadoc tenía los códigos al
+	 * revés — manda {@code com.saa.rubros.EstadoPrestamo}.
 	 */
 	long countVigentesMoraVencidosByEntidad(Long codigoEntidad) throws Throwable;
 

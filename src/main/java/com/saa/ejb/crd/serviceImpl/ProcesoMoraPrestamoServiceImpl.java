@@ -194,24 +194,12 @@ public class ProcesoMoraPrestamoServiceImpl implements ProcesoMoraPrestamoServic
             throw new IncomeException(ERR_PRESTAMO_NO_ENCONTRADO + ": no existe el préstamo " + idPrestamo);
         }
 
-        // GUARDA: DE_PLAZO_VENCIDO(8) queda fuera de este proceso (corregido el 2026-08-24).
-        //
-        // El universo del lote ya lo excluye (selectPrestamosConCuotasVencidas), pero el
-        // endpoint POST /prst/calcularMora/{idPrestamo} entra directamente acá salteándose esa
-        // consulta. Sin esta guarda, un préstamo en 8 invocado a mano se seguiría
-        // reclasificando a EN_MORA(11) más abajo. Defensa en los dos niveles.
-        //
-        // Se sale SIN calcular mora y SIN TOCAR NINGÚN ESTADO: ni el del préstamo ni el de sus
-        // cuotas. El resumen vuelve en cero, que es exactamente lo que ocurrió.
-        if (prestamo.getIdEstado() != null
-                && prestamo.getIdEstado().intValue() == EstadoPrestamo.DE_PLAZO_VENCIDO) {
-            System.out.println("      Préstamo " + idPrestamo + " en estado 8 (DE PLAZO VENCIDO):"
-                + " fuera del proceso de mora. No se calcula mora y no se toca ningún estado.");
-            resumen.setPrestamosProcesados(0);
-            resumen.setFechaFin(LocalDateTime.now());
-            return resumen;
-        }
-
+        // DE_PLAZO_VENCIDO(8): ya NO sale temprano (D6/D10, API-PASE-A-PLAZO-VENCIDO.md §10,
+        // 2026-09-30 — revierte el criterio del 2026-08-24). El usuario decidió que un préstamo
+        // en 8 SIGUE generando mora, así que de acá para abajo se calcula y persiste la mora de
+        // sus cuotas igual que para cualquier préstamo. Lo que este estado sigue protegiendo es
+        // SOLO el cambio de estado del préstamo: ni pasa a 11 ni se regulariza a 2 — ver la
+        // guarda más abajo, en el bloque "Estado del préstamo".
         LocalDateTime corte = corteDelDia(fecha);
 
         // Tasa de mora = tasa nominal del préstamo; mismo default que el G48 cuando falta
@@ -283,7 +271,17 @@ public class ProcesoMoraPrestamoServiceImpl implements ProcesoMoraPrestamoServic
         boolean tieneVencidas = vencidas != null && !vencidas.isEmpty();
         Long estadoPrestamo = prestamo.getIdEstado();
 
-        if (!esEstadoTerminalPrestamo(estadoPrestamo)) {
+        // DE_PLAZO_VENCIDO(8): NUNCA se toca su estado (D6/D10) — ni a EN_MORA(11) ni se
+        // regulariza a VIGENTE(2), aunque tenga (o deje de tener) cuotas vencidas. Arriba ya se
+        // le calculó y persistió la mora igual que a cualquier préstamo; lo único que este
+        // bloque protege es la clasificación.
+        boolean esDePlazoVencido = estadoPrestamo != null
+            && estadoPrestamo.intValue() == EstadoPrestamo.DE_PLAZO_VENCIDO;
+
+        if (esDePlazoVencido) {
+            System.out.println("      Préstamo " + idPrestamo + " en estado 8 (DE PLAZO VENCIDO):"
+                + " mora calculada y persistida en sus cuotas, estado del préstamo SIN TOCAR (D6/D10).");
+        } else if (!esEstadoTerminalPrestamo(estadoPrestamo)) {
             if (tieneVencidas
                     && estadoPrestamo != null && estadoPrestamo != EstadoPrestamo.EN_MORA) {
                 prestamo.setIdEstado(Long.valueOf(EstadoPrestamo.EN_MORA));
