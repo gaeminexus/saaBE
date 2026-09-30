@@ -51,6 +51,10 @@ de cartera mensual.
      Sin sumarlo, todo préstamo con un abono falla la invariante de capital. *Caso real: 62439, abono de
      4.236,80 en la cuota 38; medido contra su tabla el 2026-09-30.* Para el saldo **por cuota** se sigue
      usando sólo `capitalPagado` (el abono no es de esa cuota): el pago extra suma al cobrado de la fila.
+   - **Interés = interés + interés vencido**, en las dos puntas: regla `interes + interesVencido` (DTPR) y
+     pagado `interesPagado + interesVencidoPagado` (PGPR). Es la misma agregación de
+     `MotorPagoPrestamoServiceImpl.calcularSaldosCuota`. Casi siempre vale 0; incluirlo cierra el hueco.
+     *Lo levantó el ejecutor BE el 2026-09-30.*
 3. **Cinco invariantes** (diseño §4.4bis). Si una falla, el préstamo **no se puede declarar** y se dice cuál:
    - devengado = cobrado + saldo, fila por fila;
    - Σ saldos = total por cobrar;

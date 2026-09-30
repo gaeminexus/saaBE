@@ -41,7 +41,7 @@ WITH pagos AS (
     SELECT g.DTPRCDGO,
            SUM(NVL(g.PGPRCPPG, 0) + NVL(g.PGPRSLOT, 0)) AS CAP_PAG,   -- capital + PAGO EXTRA (abono): va al COBRADO
            SUM(NVL(g.PGPRCPPG, 0)) AS CAP_PAG_CUOTA,                -- solo capital de la cuota: va al SALDO
-           SUM(NVL(g.PGPRINPG, 0)) AS INT_PAG,
+           SUM(NVL(g.PGPRINPG, 0) + NVL(g.PGPRINVP, 0)) AS INT_PAG,   -- interes + interes vencido pagado
            SUM(NVL(g.PGPRDSGR, 0)) AS DSG_PAG,
            SUM(NVL(g.PGPRVLSI, 0)) AS SEG_PAG,
            SUM(NVL(g.PGPRMRPG, 0)) AS MOR_PAG
@@ -60,7 +60,7 @@ por_cuota AS (
            NVL(p.SEG_PAG, 0) AS SEG_PAG,
            NVL(p.MOR_PAG, 0) AS MOR_PAG,
            GREATEST(0, ROUND(NVL(d.DTPRCPTL, 0) - NVL(p.CAP_PAG_CUOTA, 0), 2)) AS SAL_CAP,
-           GREATEST(0, ROUND(NVL(d.DTPRINTR, 0) - NVL(p.INT_PAG, 0), 2)) AS SAL_INT,
+           GREATEST(0, ROUND(NVL(d.DTPRINTR, 0) + NVL(d.DTPRINVN, 0) - NVL(p.INT_PAG, 0), 2)) AS SAL_INT,
            GREATEST(0, ROUND(CASE WHEN TRUNC(d.DTPRFCVN) <= v.PLVNFCCR THEN NVL(d.DTPRDSGR, 0) ELSE 0 END
                              - NVL(p.DSG_PAG, 0), 2)) AS SAL_DSG,
            GREATEST(0, ROUND(CASE WHEN TRUNC(d.DTPRFCVN) <= v.PLVNFCCR THEN NVL(d.DTPRVLSI, 0) ELSE 0 END
