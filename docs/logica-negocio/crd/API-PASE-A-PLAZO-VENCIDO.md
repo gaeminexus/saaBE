@@ -39,6 +39,12 @@ de cartera mensual.
    - **Mora:** `ProcesoMoraPrestamoService.calcularMoraCuota(cuota, tasaDiaria, corte)` sobre las cuotas
      vencidas e impagas al corte. ⛔ **Nunca** el campo `mora` persistido.
    - En cada fila: saldo = devengado − cobrado.
+   - ⛔ **Cobrado = pagos válidos de `CRD.PGPR`** (no anulados), sumados por componente: la **misma
+     fuente** que usa `MotorPagoPrestamoServiceImpl.calcularSaldosCuota` (:121-188) y el frontend
+     (`saldo-prestamo.service.ts`). **No** las columnas `*Pagado` de `DTPR`: en créditos migrados no son
+     confiables, y `DTPR` no tiene columna de seguro de incendio pagado (ése sale de PGPR
+     `valorSeguroIncendio`). *Corrección del árbitro, 2026-09-30, antes de despachar: el diseño §4.4bis
+     decía Σ `capitalPagado` y compañía.*
 3. **Cinco invariantes** (diseño §4.4bis). Si una falla, el préstamo **no se puede declarar** y se dice cuál:
    - devengado = cobrado + saldo, fila por fila;
    - Σ saldos = total por cobrar;

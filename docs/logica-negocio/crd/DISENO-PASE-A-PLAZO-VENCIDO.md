@@ -288,6 +288,11 @@ Universo: **todas las cuotas del préstamo** (`CRD.DTPR`), incluidas las futuras
 | Última fecha de cobro | máx. `fechaPagado` |
 | Dividendo mensual | `Prestamo.valorCuota` ⚠️ contrastar con la cuota típica de la tabla |
 
+⛔ **Corrección 2026-09-30, antes de despachar:** la columna «Cobrado» de la tabla de arriba NO sale de
+las columnas `*Pagado` de `DTPR`, sino de los **pagos válidos de `CRD.PGPR`**: la misma fuente que
+`MotorPagoPrestamoServiceImpl.calcularSaldosCuota` y el frontend. En créditos migrados las columnas de
+`DTPR` no son confiables, y el seguro de incendio pagado sólo existe en PGPR. Manda el contrato §2.
+
 **Invariantes que el backend verifica ANTES de declarar un préstamo.** Si alguna no se cumple, ese
 préstamo **no se declara** y el lote entero se rechaza con el motivo de cada uno. No se emite un
 documento con números que no cuadran:
