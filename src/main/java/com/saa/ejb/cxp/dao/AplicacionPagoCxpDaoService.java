@@ -1,5 +1,7 @@
 package com.saa.ejb.cxp.dao;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 import com.saa.basico.util.EntityDao;
@@ -138,4 +140,120 @@ public interface AplicacionPagoCxpDaoService extends EntityDao<AplicacionPagoCxp
 	 */
 	List<AplicacionPagoCxp> selectCrucesByAnticipoOrigen(Long idAnticipo, boolean soloActivas)
 			throws Throwable;
+
+	// =====================================================================
+	// Cartera por pagar (docs/logica-negocio/cxp/API-CARTERA-CXP-CXC.md §3.2, P1-P4)
+	// =====================================================================
+
+	/**
+	 * P1 (facturas): documentos VIGENTES de {@code FacturaCompra} (factura y nota de venta, según
+	 * {@code tipoComprobante}) a una fecha de corte, proyección escalar -- nunca la entidad
+	 * completa, el grafo EAGER ya tumbó la base con ORA-04036 (§2.5).
+	 * <p>
+	 * Columnas del {@code Object[]}: 0 id, 1 tipoComprobante, 2 numEstablecimiento,
+	 * 3 numPtoEmision, 4 secuencial, 5 fecha, 6 total, 7 esIntermediario, 8 titular.codigo,
+	 * 9 titular.identificacion, 10 titular.razonSocial, 11 titular.nombre.
+	 * @param idEmpresa       : Id de la empresa
+	 * @param corteMasUnDia   : Medianoche del día siguiente a la fecha de corte -- {@code fecha}
+	 *                          de {@code FacturaCompra} es {@code LocalDateTime}, se filtra con
+	 *                          {@code fecha < corteMasUnDia}
+	 * @param idTitular       : Id del proveedor; null = todos
+	 * @return                : Filas de facturas/notas de venta vigentes, ordenadas por titular y fecha
+	 * @throws Throwable      : Excepcion
+	 */
+	List<Object[]> selectCarteraFacturasCompra(Long idEmpresa, LocalDateTime corteMasUnDia, Long idTitular)
+			throws Throwable;
+
+	/**
+	 * P1 (liquidaciones): equivalente de {@link #selectCarteraFacturasCompra} para
+	 * {@code LiquidacionCompraCompra}. Sin {@code esIntermediario}: esa marca solo existe en
+	 * {@code FCTC}.
+	 * <p>
+	 * Columnas del {@code Object[]}: 0 id, 1 tipoComprobante, 2 numEstablecimiento,
+	 * 3 numPtoEmision, 4 secuencial, 5 fecha, 6 total, 7 titular.codigo, 8 titular.identificacion,
+	 * 9 titular.razonSocial, 10 titular.nombre.
+	 * @param idEmpresa       : Id de la empresa
+	 * @param corteMasUnDia   : Medianoche del día siguiente a la fecha de corte
+	 * @param idTitular       : Id del proveedor; null = todos
+	 * @return                : Filas de liquidaciones vigentes, ordenadas por titular y fecha
+	 * @throws Throwable      : Excepcion
+	 */
+	List<Object[]> selectCarteraLiquidacionesCompra(Long idEmpresa, LocalDateTime corteMasUnDia, Long idTitular)
+			throws Throwable;
+
+	/**
+	 * P2 (facturas): suma de {@code montoAplicado} agrupada por documento y {@code tipoDocPago},
+	 * de las aplicaciones ACTIVAS aplicadas hasta la fecha de corte, sobre facturas que cumplen
+	 * las MISMAS condiciones de {@link #selectCarteraFacturasCompra} (join, nunca {@code in :ids}
+	 * -- §2.5). Sin agregación por titular: el {@code group by} ya es por documento.
+	 * <p>
+	 * Columnas del {@code Object[]}: 0 facturaCompra.id, 1 tipoDocPago, 2 sum(montoAplicado).
+	 * @param idEmpresa       : Id de la empresa
+	 * @param corteMasUnDia   : Medianoche del día siguiente a la fecha de corte (condición del documento)
+	 * @param fechaCorte      : Fecha de corte -- {@code fechaAplicacion <= fechaCorte}
+	 * @param idTitular       : Id del proveedor; null = todos
+	 * @return                : Filas (documento, tipo, suma)
+	 * @throws Throwable      : Excepcion
+	 */
+	List<Object[]> selectAplicacionesCarteraFacturaCompra(Long idEmpresa, LocalDateTime corteMasUnDia,
+			LocalDate fechaCorte, Long idTitular) throws Throwable;
+
+	/**
+	 * P2 (liquidaciones): equivalente de {@link #selectAplicacionesCarteraFacturaCompra} para
+	 * {@code liquidacionCompra}.
+	 * <p>
+	 * Columnas del {@code Object[]}: 0 liquidacionCompra.id, 1 tipoDocPago, 2 sum(montoAplicado).
+	 * @param idEmpresa       : Id de la empresa
+	 * @param corteMasUnDia   : Medianoche del día siguiente a la fecha de corte
+	 * @param fechaCorte      : Fecha de corte
+	 * @param idTitular       : Id del proveedor; null = todos
+	 * @return                : Filas (documento, tipo, suma)
+	 * @throws Throwable      : Excepcion
+	 */
+	List<Object[]> selectAplicacionesCarteraLiquidacionCompra(Long idEmpresa, LocalDateTime corteMasUnDia,
+			LocalDate fechaCorte, Long idTitular) throws Throwable;
+
+	/**
+	 * P3 (facturas): plazo y unidad de tiempo declarados en {@code FormaPagoFacturaCompra}, uno
+	 * por fila (un documento puede tener varias formas de pago con distinto plazo -- el mayor lo
+	 * decide el llamador, §3.4.1). Mismas condiciones de {@link #selectCarteraFacturasCompra} vía
+	 * join sobre {@code p.factura}.
+	 * <p>
+	 * Columnas del {@code Object[]}: 0 factura.id, 1 plazo, 2 unidadTiempo.
+	 * @param idEmpresa       : Id de la empresa
+	 * @param corteMasUnDia   : Medianoche del día siguiente a la fecha de corte
+	 * @param idTitular       : Id del proveedor; null = todos
+	 * @return                : Filas (documento, plazo, unidad)
+	 * @throws Throwable      : Excepcion
+	 */
+	List<Object[]> selectPlazosCarteraFacturaCompra(Long idEmpresa, LocalDateTime corteMasUnDia, Long idTitular)
+			throws Throwable;
+
+	/**
+	 * P3 (liquidaciones): equivalente de {@link #selectPlazosCarteraFacturaCompra} para
+	 * {@code FormaPagoLiquidacionCompraCompra}.
+	 * <p>
+	 * Columnas del {@code Object[]}: 0 liquidacion.id, 1 plazo, 2 unidadTiempo.
+	 * @param idEmpresa       : Id de la empresa
+	 * @param corteMasUnDia   : Medianoche del día siguiente a la fecha de corte
+	 * @param idTitular       : Id del proveedor; null = todos
+	 * @return                : Filas (documento, plazo, unidad)
+	 * @throws Throwable      : Excepcion
+	 */
+	List<Object[]> selectPlazosCarteraLiquidacionCompra(Long idEmpresa, LocalDateTime corteMasUnDia, Long idTitular)
+			throws Throwable;
+
+	/**
+	 * P4: saldo disponible de anticipos por proveedor, misma condición que
+	 * {@code AnticipoProveedorDaoServiceImpl.sumaSaldoDisponible} ({@code estado = CONFIRMADO},
+	 * {@code valor > 0}) pero agregada por titular en vez de recibir uno solo -- evita un bucle de
+	 * una consulta por proveedor (§2.4).
+	 * <p>
+	 * Columnas del {@code Object[]}: 0 titular.codigo, 1 sum(saldo).
+	 * @param idEmpresa       : Id de la empresa
+	 * @param idTitular       : Id del proveedor; null = todos
+	 * @return                : Filas (titular, saldo disponible)
+	 * @throws Throwable      : Excepcion
+	 */
+	List<Object[]> sumaSaldoDisponibleAnticiposPorTitular(Long idEmpresa, Long idTitular) throws Throwable;
 }

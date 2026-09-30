@@ -4,9 +4,12 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
@@ -15,6 +18,9 @@ import com.saa.ejb.cnt.service.AsientoService;
 import com.saa.ejb.cxc.dao.AnticipoClienteDaoService;
 import com.saa.ejb.cxc.dao.AplicacionPagoCxcDaoService;
 import com.saa.ejb.cxc.service.AplicacionPagoCxcService;
+import com.saa.ejb.cxp.service.dto.DocumentoCartera;
+import com.saa.ejb.cxp.service.dto.ReporteCartera;
+import com.saa.ejb.cxp.util.CarteraCalculo;
 import com.saa.ejb.reporte.service.ReporteService;
 import com.saa.ejb.tsr.dao.PersonaCuentaContableDaoService;
 import com.saa.ejb.tsr.service.MovimientoBancoService;
@@ -878,6 +884,72 @@ public class AplicacionPagoCxcServiceImpl implements AplicacionPagoCxcService {
 
 		System.out.println("✓ Estado de pago de la liquidación " + idLiquidacion + ": " + estadoPago);
 		return estadoPago;
+	}
+
+	// =====================================================================
+	// Cartera por cobrar (docs/logica-negocio/cxp/API-CARTERA-CXP-CXC.md §3.3/§3.4)
+	// =====================================================================
+
+	@Override
+	public ReporteCartera carteraPorCobrar(Long idEmpresa, LocalDate fechaCorte, Long idTitular) throws Throwable {
+		System.out.println("=== carteraPorCobrar | empresa=" + idEmpresa + " | corte=" + fechaCorte
+				+ " | titular=" + idTitular + " ===");
+		if (idEmpresa == null) {
+			throw new IncomeException("Debe indicar la empresa.");
+		}
+		LocalDate corte = (fechaCorte != null) ? fechaCorte : LocalDate.now();
+
+		List<Object[]> facturas = aplicacionPagoCxcDaoService.selectCarteraFacturas(idEmpresa, corte, idTitular);
+		Map<Long, List<Object[]>> aplicPorFactura = agruparPorDocumento(
+				aplicacionPagoCxcDaoService.selectAplicacionesCarteraFactura(idEmpresa, corte, idTitular));
+		Map<Long, List<Object[]>> plazosPorFactura = agruparPorDocumento(
+				aplicacionPagoCxcDaoService.selectPlazosCarteraFactura(idEmpresa, corte, idTitular));
+
+		Map<Long, Double> anticiposPorTitular = new HashMap<>();
+		for (Object[] fila : aplicacionPagoCxcDaoService.sumaSaldoDisponibleAnticiposPorTitular(idEmpresa, idTitular)) {
+			anticiposPorTitular.put((Long) fila[0], ((Number) fila[1]).doubleValue());
+		}
+
+		List<String> avisos = new ArrayList<>();
+		Set<String> unidadesDesconocidas = new LinkedHashSet<>();
+		List<DocumentoCartera> documentos = new ArrayList<>();
+
+		for (Object[] fila : facturas) {
+			Long id = (Long) fila[0];
+			DocumentoCartera doc = CarteraCalculo.calcularDocumento("FACTURA", id,
+					(String) fila[2], (String) fila[3], (String) fila[4], (LocalDate) fila[5],
+					((Number) fila[6]).doubleValue(), null, false,
+					(Long) fila[7], (String) fila[8], (String) fila[9], (String) fila[10],
+					aplicPorFactura.getOrDefault(id, Collections.<Object[]>emptyList()),
+					plazosPorFactura.getOrDefault(id, Collections.<Object[]>emptyList()),
+					corte, unidadesDesconocidas, avisos);
+			if (doc != null) {
+				documentos.add(doc);
+			}
+		}
+
+		return CarteraCalculo.armarReporte("POR_COBRAR", corte, documentos, anticiposPorTitular,
+				unidadesDesconocidas, avisos);
+	}
+
+	/**
+	 * Agrupa filas de P2/P3 por el id del documento (primera columna), quitándolo del resto --
+	 * ver el mismo helper en {@code AplicacionPagoCxpServiceImpl}.
+	 */
+	private Map<Long, List<Object[]>> agruparPorDocumento(List<Object[]> filas) {
+		Map<Long, List<Object[]>> agrupado = new HashMap<>();
+		for (Object[] fila : filas) {
+			Long id = (Long) fila[0];
+			List<Object[]> valores = agrupado.get(id);
+			if (valores == null) {
+				valores = new ArrayList<>();
+				agrupado.put(id, valores);
+			}
+			Object[] resto = new Object[fila.length - 1];
+			System.arraycopy(fila, 1, resto, 0, resto.length);
+			valores.add(resto);
+		}
+		return agrupado;
 	}
 
 	@Override

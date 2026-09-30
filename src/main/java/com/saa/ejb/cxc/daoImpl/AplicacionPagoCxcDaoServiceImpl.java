@@ -1,5 +1,6 @@
 package com.saa.ejb.cxc.daoImpl;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -8,6 +9,7 @@ import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.cxc.dao.AplicacionPagoCxcDaoService;
 import com.saa.model.cxc.AplicacionPagoCxc;
 import com.saa.model.cxc.Factura;
+import com.saa.rubros.EstadoAnticipoCliente;
 import com.saa.rubros.EstadoAplicacionPago;
 import com.saa.rubros.TipoDocPagoAplicacion;
 
@@ -310,6 +312,152 @@ public class AplicacionPagoCxcDaoServiceImpl extends EntityDaoImpl<AplicacionPag
         }
         if (estado != null) {
             query.setParameter("estado", estado);
+        }
+        return query.getResultList();
+    }
+
+    // =====================================================================
+    // Cartera por cobrar (docs/logica-negocio/cxp/API-CARTERA-CXP-CXC.md §3.2)
+    // =====================================================================
+
+    @Override
+    public List<Object[]> selectCarteraFacturas(Long idEmpresa, LocalDate fechaCorte, Long idTitular)
+            throws Throwable {
+        System.out.println("Ingresa al metodo selectCarteraFacturas con empresa: " + idEmpresa
+                + " | corte: " + fechaCorte + " | titular: " + idTitular);
+        // ÍTEM 6 (2026-09-30): Factura.empresa NO lo llena ningún proceso del backend (verificado
+        // -- ningún setEmpresa sobre Factura de venta, sólo sobre FacturaCompra); viaja tal cual
+        // lo manda el FE al emitir. La empresa contable real está en facturador.empresa (misma
+        // fuente que usa GeneradorAtsServiceImpl). Filtrar sólo por f.empresa perdía en silencio
+        // toda factura con esa columna nula. LEFT JOIN explícito a los dos caminos + OR: con
+        // navegación implícita Hibernate arma INNER JOIN igual, ambos lados a la vez, y el OR no
+        // salva nada -- la fila desaparece antes de llegar al WHERE (mismo bug de selectListado).
+        StringBuilder jpql = new StringBuilder(
+                " select f.id, f.tipoComprobante, f.numEstablecimiento, f.numPtoEmision, f.secuencial, " +
+                "        f.fecha, f.total, " +
+                "        f.titular.codigo, f.titular.identificacion, f.titular.razonSocial, f.titular.nombre " +
+                " from   Factura f " +
+                " left join f.empresa e " +
+                " left join f.facturador fc " +
+                " left join fc.empresa fe " +
+                " where  (e.codigo = :idEmpresa or fe.codigo = :idEmpresa) " +
+                " and    f.estado = :estadoAutorizada " +
+                " and    (f.estadoEmision is null or f.estadoEmision <> :estadoEmisionAnulada) " +
+                " and    f.fecha <= :fechaCorte " +
+                " and    f.titular is not null ");
+        if (idTitular != null) {
+            jpql.append(" and f.titular.codigo = :idTitular ");
+        }
+        jpql.append(" order by f.titular.codigo, f.fecha");
+
+        Query query = em.createQuery(jpql.toString());
+        query.setParameter("idEmpresa", idEmpresa);
+        query.setParameter("estadoAutorizada",
+                com.saa.ejb.sri.serviceImpl.CriterioVentaVigente.ESTADO_AUTORIZADA);
+        query.setParameter("estadoEmisionAnulada",
+                com.saa.ejb.sri.serviceImpl.CriterioVentaVigente.ESTADO_EMISION_ANULADA);
+        query.setParameter("fechaCorte", fechaCorte);
+        if (idTitular != null) {
+            query.setParameter("idTitular", idTitular);
+        }
+        return query.getResultList();
+    }
+
+    @Override
+    public List<Object[]> selectAplicacionesCarteraFactura(Long idEmpresa, LocalDate fechaCorte, Long idTitular)
+            throws Throwable {
+        System.out.println("Ingresa al metodo selectAplicacionesCarteraFactura con empresa: " + idEmpresa
+                + " | corte: " + fechaCorte + " | titular: " + idTitular);
+        // ÍTEM 6: mismo criterio de empresa que selectCarteraFacturas -- ver ese comentario.
+        // "join a.factura f" (INNER, no left): acá sólo interesan las aplicaciones que SÍ afectan
+        // una factura de venta (las de liquidación quedan fuera a propósito, CxC no las declara).
+        StringBuilder jpql = new StringBuilder(
+                " select a.factura.id, a.tipoDocPago, sum(a.montoAplicado) " +
+                " from   AplicacionPagoCxc a " +
+                " join   a.factura f " +
+                " left join f.empresa e " +
+                " left join f.facturador fc " +
+                " left join fc.empresa fe " +
+                " where  (e.codigo = :idEmpresa or fe.codigo = :idEmpresa) " +
+                " and    f.estado = :estadoAutorizada " +
+                " and    (f.estadoEmision is null or f.estadoEmision <> :estadoEmisionAnulada) " +
+                " and    f.fecha <= :fechaCorte " +
+                " and    a.estado = :activoAplic " +
+                " and    a.fechaAplicacion <= :fechaCorte ");
+        if (idTitular != null) {
+            jpql.append(" and f.titular.codigo = :idTitular ");
+        }
+        jpql.append(" group by a.factura.id, a.tipoDocPago");
+
+        Query query = em.createQuery(jpql.toString());
+        query.setParameter("idEmpresa", idEmpresa);
+        query.setParameter("estadoAutorizada",
+                com.saa.ejb.sri.serviceImpl.CriterioVentaVigente.ESTADO_AUTORIZADA);
+        query.setParameter("estadoEmisionAnulada",
+                com.saa.ejb.sri.serviceImpl.CriterioVentaVigente.ESTADO_EMISION_ANULADA);
+        query.setParameter("fechaCorte", fechaCorte);
+        query.setParameter("activoAplic", Long.valueOf(EstadoAplicacionPago.ACTIVO));
+        if (idTitular != null) {
+            query.setParameter("idTitular", idTitular);
+        }
+        return query.getResultList();
+    }
+
+    @Override
+    public List<Object[]> selectPlazosCarteraFactura(Long idEmpresa, LocalDate fechaCorte, Long idTitular)
+            throws Throwable {
+        System.out.println("Ingresa al metodo selectPlazosCarteraFactura con empresa: " + idEmpresa
+                + " | corte: " + fechaCorte + " | titular: " + idTitular);
+        // ÍTEM 6: mismo criterio de empresa que selectCarteraFacturas -- ver ese comentario.
+        StringBuilder jpql = new StringBuilder(
+                " select p.factura.id, p.plazo, p.unidadTiempo " +
+                " from   FormaPagoFactura p " +
+                " join   p.factura f " +
+                " left join f.empresa e " +
+                " left join f.facturador fc " +
+                " left join fc.empresa fe " +
+                " where  (e.codigo = :idEmpresa or fe.codigo = :idEmpresa) " +
+                " and    f.estado = :estadoAutorizada " +
+                " and    (f.estadoEmision is null or f.estadoEmision <> :estadoEmisionAnulada) " +
+                " and    f.fecha <= :fechaCorte ");
+        if (idTitular != null) {
+            jpql.append(" and f.titular.codigo = :idTitular ");
+        }
+
+        Query query = em.createQuery(jpql.toString());
+        query.setParameter("idEmpresa", idEmpresa);
+        query.setParameter("estadoAutorizada",
+                com.saa.ejb.sri.serviceImpl.CriterioVentaVigente.ESTADO_AUTORIZADA);
+        query.setParameter("estadoEmisionAnulada",
+                com.saa.ejb.sri.serviceImpl.CriterioVentaVigente.ESTADO_EMISION_ANULADA);
+        query.setParameter("fechaCorte", fechaCorte);
+        if (idTitular != null) {
+            query.setParameter("idTitular", idTitular);
+        }
+        return query.getResultList();
+    }
+
+    @Override
+    public List<Object[]> sumaSaldoDisponibleAnticiposPorTitular(Long idEmpresa, Long idTitular)
+            throws Throwable {
+        System.out.println("Ingresa al metodo sumaSaldoDisponibleAnticiposPorTitular con empresa: " + idEmpresa
+                + " | titular: " + idTitular);
+        StringBuilder jpql = new StringBuilder(
+                " select a.titular.codigo, sum(a.saldo) " +
+                " from   AnticipoCliente a " +
+                " where  a.empresa.codigo = :idEmpresa " +
+                " and    a.estado = :confirmado " +
+                " and    a.valor > 0 ");
+        if (idTitular != null) {
+            jpql.append(" and a.titular.codigo = :idTitular ");
+        }
+        jpql.append(" group by a.titular.codigo");
+
+        Query query = em.createQuery(jpql.toString());
+        query.setParameter("idEmpresa", idEmpresa);
+        query.setParameter("confirmado", Long.valueOf(EstadoAnticipoCliente.CONFIRMADO));
+        if (idTitular != null) {
+            query.setParameter("idTitular", idTitular);
         }
         return query.getResultList();
     }

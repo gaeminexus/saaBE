@@ -1,5 +1,7 @@
 package com.saa.ejb.cxp.daoImpl;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -8,6 +10,8 @@ import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.cxp.dao.AplicacionPagoCxpDaoService;
 import com.saa.model.cxp.AplicacionPagoCxp;
 import com.saa.model.cxp.FacturaCompra;
+import com.saa.rubros.Estado;
+import com.saa.rubros.EstadoAnticipoProveedor;
 import com.saa.rubros.EstadoAplicacionPago;
 import com.saa.rubros.TipoDocPagoAplicacion;
 
@@ -272,6 +276,221 @@ public class AplicacionPagoCxpDaoServiceImpl extends EntityDaoImpl<AplicacionPag
         query.setParameter("idAnticipo", idAnticipo);
         if (soloActivas) {
             query.setParameter("activo", Long.valueOf(EstadoAplicacionPago.ACTIVO));
+        }
+        return query.getResultList();
+    }
+
+    // =====================================================================
+    // Cartera por pagar (docs/logica-negocio/cxp/API-CARTERA-CXP-CXC.md §3.2, P1-P4)
+    // =====================================================================
+
+    // ESTADOEMISION = 3 (ANULADA) del lado compra -- mismo literal que usa
+    // GeneradorAtsServiceImpl.anuladosDe para las 4 entidades de venta/compra; no hay una
+    // interfaz de rubros para el lado compra (CriterioVentaVigente es explícitamente del lado
+    // venta, con otro significado de "estado").
+    private static final Long ESTADO_EMISION_ANULADA = Long.valueOf(3L);
+
+    @Override
+    public List<Object[]> selectCarteraFacturasCompra(Long idEmpresa, LocalDateTime corteMasUnDia,
+            Long idTitular) throws Throwable {
+        System.out.println("Ingresa al metodo selectCarteraFacturasCompra con empresa: " + idEmpresa
+                + " | corte: " + corteMasUnDia + " | titular: " + idTitular);
+        StringBuilder jpql = new StringBuilder(
+                " select f.id, f.tipoComprobante, f.numEstablecimiento, f.numPtoEmision, f.secuencial, " +
+                "        f.fecha, f.total, f.esIntermediario, " +
+                "        f.titular.codigo, f.titular.identificacion, f.titular.razonSocial, f.titular.nombre " +
+                " from   FacturaCompra f " +
+                " where  f.empresa.codigo = :idEmpresa " +
+                " and    f.estado = :activo " +
+                " and    (f.estadoEmision is null or f.estadoEmision <> :anulada) " +
+                " and    f.fecha < :corteMasUnDia " +
+                " and    f.titular is not null ");
+        if (idTitular != null) {
+            jpql.append(" and f.titular.codigo = :idTitular ");
+        }
+        jpql.append(" order by f.titular.codigo, f.fecha");
+
+        Query query = em.createQuery(jpql.toString());
+        query.setParameter("idEmpresa", idEmpresa);
+        query.setParameter("activo", Long.valueOf(Estado.ACTIVO));
+        query.setParameter("anulada", ESTADO_EMISION_ANULADA);
+        query.setParameter("corteMasUnDia", corteMasUnDia);
+        if (idTitular != null) {
+            query.setParameter("idTitular", idTitular);
+        }
+        return query.getResultList();
+    }
+
+    @Override
+    public List<Object[]> selectCarteraLiquidacionesCompra(Long idEmpresa, LocalDateTime corteMasUnDia,
+            Long idTitular) throws Throwable {
+        System.out.println("Ingresa al metodo selectCarteraLiquidacionesCompra con empresa: " + idEmpresa
+                + " | corte: " + corteMasUnDia + " | titular: " + idTitular);
+        StringBuilder jpql = new StringBuilder(
+                " select l.id, l.tipoComprobante, l.numEstablecimiento, l.numPtoEmision, l.secuencial, " +
+                "        l.fecha, l.total, " +
+                "        l.titular.codigo, l.titular.identificacion, l.titular.razonSocial, l.titular.nombre " +
+                " from   LiquidacionCompraCompra l " +
+                " where  l.empresa.codigo = :idEmpresa " +
+                " and    l.estado = :activo " +
+                " and    (l.estadoEmision is null or l.estadoEmision <> :anulada) " +
+                " and    l.fecha < :corteMasUnDia " +
+                " and    l.titular is not null ");
+        if (idTitular != null) {
+            jpql.append(" and l.titular.codigo = :idTitular ");
+        }
+        jpql.append(" order by l.titular.codigo, l.fecha");
+
+        Query query = em.createQuery(jpql.toString());
+        query.setParameter("idEmpresa", idEmpresa);
+        query.setParameter("activo", Long.valueOf(Estado.ACTIVO));
+        query.setParameter("anulada", ESTADO_EMISION_ANULADA);
+        query.setParameter("corteMasUnDia", corteMasUnDia);
+        if (idTitular != null) {
+            query.setParameter("idTitular", idTitular);
+        }
+        return query.getResultList();
+    }
+
+    @Override
+    public List<Object[]> selectAplicacionesCarteraFacturaCompra(Long idEmpresa, LocalDateTime corteMasUnDia,
+            LocalDate fechaCorte, Long idTitular) throws Throwable {
+        System.out.println("Ingresa al metodo selectAplicacionesCarteraFacturaCompra con empresa: " + idEmpresa
+                + " | corte: " + corteMasUnDia + " | titular: " + idTitular);
+        StringBuilder jpql = new StringBuilder(
+                " select a.facturaCompra.id, a.tipoDocPago, sum(a.montoAplicado) " +
+                " from   AplicacionPagoCxp a " +
+                " where  a.facturaCompra.empresa.codigo = :idEmpresa " +
+                " and    a.facturaCompra.estado = :activo " +
+                " and    (a.facturaCompra.estadoEmision is null or a.facturaCompra.estadoEmision <> :anulada) " +
+                " and    a.facturaCompra.fecha < :corteMasUnDia " +
+                " and    a.estado = :activoAplic " +
+                " and    a.fechaAplicacion <= :fechaCorte ");
+        if (idTitular != null) {
+            jpql.append(" and a.facturaCompra.titular.codigo = :idTitular ");
+        }
+        jpql.append(" group by a.facturaCompra.id, a.tipoDocPago");
+
+        Query query = em.createQuery(jpql.toString());
+        query.setParameter("idEmpresa", idEmpresa);
+        query.setParameter("activo", Long.valueOf(Estado.ACTIVO));
+        query.setParameter("anulada", ESTADO_EMISION_ANULADA);
+        query.setParameter("corteMasUnDia", corteMasUnDia);
+        query.setParameter("activoAplic", Long.valueOf(EstadoAplicacionPago.ACTIVO));
+        query.setParameter("fechaCorte", fechaCorte);
+        if (idTitular != null) {
+            query.setParameter("idTitular", idTitular);
+        }
+        return query.getResultList();
+    }
+
+    @Override
+    public List<Object[]> selectAplicacionesCarteraLiquidacionCompra(Long idEmpresa, LocalDateTime corteMasUnDia,
+            LocalDate fechaCorte, Long idTitular) throws Throwable {
+        System.out.println("Ingresa al metodo selectAplicacionesCarteraLiquidacionCompra con empresa: " + idEmpresa
+                + " | corte: " + corteMasUnDia + " | titular: " + idTitular);
+        StringBuilder jpql = new StringBuilder(
+                " select a.liquidacionCompra.id, a.tipoDocPago, sum(a.montoAplicado) " +
+                " from   AplicacionPagoCxp a " +
+                " where  a.liquidacionCompra.empresa.codigo = :idEmpresa " +
+                " and    a.liquidacionCompra.estado = :activo " +
+                " and    (a.liquidacionCompra.estadoEmision is null or a.liquidacionCompra.estadoEmision <> :anulada) " +
+                " and    a.liquidacionCompra.fecha < :corteMasUnDia " +
+                " and    a.estado = :activoAplic " +
+                " and    a.fechaAplicacion <= :fechaCorte ");
+        if (idTitular != null) {
+            jpql.append(" and a.liquidacionCompra.titular.codigo = :idTitular ");
+        }
+        jpql.append(" group by a.liquidacionCompra.id, a.tipoDocPago");
+
+        Query query = em.createQuery(jpql.toString());
+        query.setParameter("idEmpresa", idEmpresa);
+        query.setParameter("activo", Long.valueOf(Estado.ACTIVO));
+        query.setParameter("anulada", ESTADO_EMISION_ANULADA);
+        query.setParameter("corteMasUnDia", corteMasUnDia);
+        query.setParameter("activoAplic", Long.valueOf(EstadoAplicacionPago.ACTIVO));
+        query.setParameter("fechaCorte", fechaCorte);
+        if (idTitular != null) {
+            query.setParameter("idTitular", idTitular);
+        }
+        return query.getResultList();
+    }
+
+    @Override
+    public List<Object[]> selectPlazosCarteraFacturaCompra(Long idEmpresa, LocalDateTime corteMasUnDia,
+            Long idTitular) throws Throwable {
+        System.out.println("Ingresa al metodo selectPlazosCarteraFacturaCompra con empresa: " + idEmpresa
+                + " | corte: " + corteMasUnDia + " | titular: " + idTitular);
+        StringBuilder jpql = new StringBuilder(
+                " select p.factura.id, p.plazo, p.unidadTiempo " +
+                " from   FormaPagoFacturaCompra p " +
+                " where  p.factura.empresa.codigo = :idEmpresa " +
+                " and    p.factura.estado = :activo " +
+                " and    (p.factura.estadoEmision is null or p.factura.estadoEmision <> :anulada) " +
+                " and    p.factura.fecha < :corteMasUnDia ");
+        if (idTitular != null) {
+            jpql.append(" and p.factura.titular.codigo = :idTitular ");
+        }
+
+        Query query = em.createQuery(jpql.toString());
+        query.setParameter("idEmpresa", idEmpresa);
+        query.setParameter("activo", Long.valueOf(Estado.ACTIVO));
+        query.setParameter("anulada", ESTADO_EMISION_ANULADA);
+        query.setParameter("corteMasUnDia", corteMasUnDia);
+        if (idTitular != null) {
+            query.setParameter("idTitular", idTitular);
+        }
+        return query.getResultList();
+    }
+
+    @Override
+    public List<Object[]> selectPlazosCarteraLiquidacionCompra(Long idEmpresa, LocalDateTime corteMasUnDia,
+            Long idTitular) throws Throwable {
+        System.out.println("Ingresa al metodo selectPlazosCarteraLiquidacionCompra con empresa: " + idEmpresa
+                + " | corte: " + corteMasUnDia + " | titular: " + idTitular);
+        StringBuilder jpql = new StringBuilder(
+                " select p.liquidacion.id, p.plazo, p.unidadTiempo " +
+                " from   FormaPagoLiquidacionCompraCompra p " +
+                " where  p.liquidacion.empresa.codigo = :idEmpresa " +
+                " and    p.liquidacion.estado = :activo " +
+                " and    (p.liquidacion.estadoEmision is null or p.liquidacion.estadoEmision <> :anulada) " +
+                " and    p.liquidacion.fecha < :corteMasUnDia ");
+        if (idTitular != null) {
+            jpql.append(" and p.liquidacion.titular.codigo = :idTitular ");
+        }
+
+        Query query = em.createQuery(jpql.toString());
+        query.setParameter("idEmpresa", idEmpresa);
+        query.setParameter("activo", Long.valueOf(Estado.ACTIVO));
+        query.setParameter("anulada", ESTADO_EMISION_ANULADA);
+        query.setParameter("corteMasUnDia", corteMasUnDia);
+        if (idTitular != null) {
+            query.setParameter("idTitular", idTitular);
+        }
+        return query.getResultList();
+    }
+
+    @Override
+    public List<Object[]> sumaSaldoDisponibleAnticiposPorTitular(Long idEmpresa, Long idTitular)
+            throws Throwable {
+        System.out.println("Ingresa al metodo sumaSaldoDisponibleAnticiposPorTitular con empresa: " + idEmpresa
+                + " | titular: " + idTitular);
+        StringBuilder jpql = new StringBuilder(
+                " select a.titular.codigo, sum(a.saldo) " +
+                " from   AnticipoProveedor a " +
+                " where  a.empresa.codigo = :idEmpresa " +
+                " and    a.estado = :confirmado " +
+                " and    a.valor > 0 ");
+        if (idTitular != null) {
+            jpql.append(" and a.titular.codigo = :idTitular ");
+        }
+        jpql.append(" group by a.titular.codigo");
+
+        Query query = em.createQuery(jpql.toString());
+        query.setParameter("idEmpresa", idEmpresa);
+        query.setParameter("confirmado", Long.valueOf(EstadoAnticipoProveedor.CONFIRMADO));
+        if (idTitular != null) {
+            query.setParameter("idTitular", idTitular);
         }
         return query.getResultList();
     }

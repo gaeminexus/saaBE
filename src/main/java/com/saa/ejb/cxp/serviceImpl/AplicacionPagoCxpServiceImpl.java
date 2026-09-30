@@ -3,9 +3,12 @@ package com.saa.ejb.cxp.serviceImpl;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
@@ -14,6 +17,9 @@ import com.saa.ejb.cnt.service.AsientoService;
 import com.saa.ejb.cxp.dao.AnticipoProveedorDaoService;
 import com.saa.ejb.cxp.dao.AplicacionPagoCxpDaoService;
 import com.saa.ejb.cxp.service.AplicacionPagoCxpService;
+import com.saa.ejb.cxp.service.dto.DocumentoCartera;
+import com.saa.ejb.cxp.service.dto.ReporteCartera;
+import com.saa.ejb.cxp.util.CarteraCalculo;
 import com.saa.ejb.tsr.dao.PersonaCuentaContableDaoService;
 import com.saa.ejb.tsr.service.MovimientoBancoService;
 import com.saa.model.cnt.Asiento;
@@ -1187,6 +1193,100 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 		System.out.println("✓ Estado de pago de la liquidación " + idLiquidacionCompra + ": " + estadoPago
 				+ " | total=" + total + " | aplicado=" + aplicado + " | saldo=" + saldo);
 		return estadoPago;
+	}
+
+	// =====================================================================
+	// Cartera por pagar (docs/logica-negocio/cxp/API-CARTERA-CXP-CXC.md §3.3/§3.4)
+	// =====================================================================
+
+	@Override
+	public ReporteCartera carteraPorPagar(Long idEmpresa, LocalDate fechaCorte, Long idTitular) throws Throwable {
+		System.out.println("=== carteraPorPagar | empresa=" + idEmpresa + " | corte=" + fechaCorte
+				+ " | titular=" + idTitular + " ===");
+		if (idEmpresa == null) {
+			throw new IncomeException("Debe indicar la empresa.");
+		}
+		LocalDate corte = (fechaCorte != null) ? fechaCorte : LocalDate.now();
+		LocalDateTime corteMasUnDia = corte.plusDays(1).atStartOfDay();
+
+		List<Object[]> facturas = aplicacionPagoCxpDaoService.selectCarteraFacturasCompra(idEmpresa, corteMasUnDia, idTitular);
+		List<Object[]> liquidaciones = aplicacionPagoCxpDaoService.selectCarteraLiquidacionesCompra(idEmpresa, corteMasUnDia, idTitular);
+		Map<Long, List<Object[]>> aplicPorFactura = agruparPorDocumento(
+				aplicacionPagoCxpDaoService.selectAplicacionesCarteraFacturaCompra(idEmpresa, corteMasUnDia, corte, idTitular));
+		Map<Long, List<Object[]>> aplicPorLiquidacion = agruparPorDocumento(
+				aplicacionPagoCxpDaoService.selectAplicacionesCarteraLiquidacionCompra(idEmpresa, corteMasUnDia, corte, idTitular));
+		Map<Long, List<Object[]>> plazosPorFactura = agruparPorDocumento(
+				aplicacionPagoCxpDaoService.selectPlazosCarteraFacturaCompra(idEmpresa, corteMasUnDia, idTitular));
+		Map<Long, List<Object[]>> plazosPorLiquidacion = agruparPorDocumento(
+				aplicacionPagoCxpDaoService.selectPlazosCarteraLiquidacionCompra(idEmpresa, corteMasUnDia, idTitular));
+
+		Map<Long, Double> anticiposPorTitular = new HashMap<>();
+		for (Object[] fila : aplicacionPagoCxpDaoService.sumaSaldoDisponibleAnticiposPorTitular(idEmpresa, idTitular)) {
+			anticiposPorTitular.put((Long) fila[0], ((Number) fila[1]).doubleValue());
+		}
+
+		List<String> avisos = new ArrayList<>();
+		Set<String> unidadesDesconocidas = new LinkedHashSet<>();
+		List<DocumentoCartera> documentos = new ArrayList<>();
+
+		for (Object[] fila : facturas) {
+			Long id = (Long) fila[0];
+			String tipoDocumento = "02".equals(fila[1]) ? "NOTA_VENTA" : "FACTURA";
+			Number esIntermediario = (Number) fila[7];
+			Boolean intermediario = Boolean.valueOf(esIntermediario != null && esIntermediario.longValue() == 1L);
+			DocumentoCartera doc = CarteraCalculo.calcularDocumento(tipoDocumento, id,
+					(String) fila[2], (String) fila[3], (String) fila[4], fechaDeCartera(fila[5]),
+					((Number) fila[6]).doubleValue(), intermediario, true,
+					(Long) fila[8], (String) fila[9], (String) fila[10], (String) fila[11],
+					aplicPorFactura.getOrDefault(id, Collections.<Object[]>emptyList()),
+					plazosPorFactura.getOrDefault(id, Collections.<Object[]>emptyList()),
+					corte, unidadesDesconocidas, avisos);
+			if (doc != null) {
+				documentos.add(doc);
+			}
+		}
+		for (Object[] fila : liquidaciones) {
+			Long id = (Long) fila[0];
+			DocumentoCartera doc = CarteraCalculo.calcularDocumento("LIQUIDACION", id,
+					(String) fila[2], (String) fila[3], (String) fila[4], fechaDeCartera(fila[5]),
+					((Number) fila[6]).doubleValue(), null, true,
+					(Long) fila[7], (String) fila[8], (String) fila[9], (String) fila[10],
+					aplicPorLiquidacion.getOrDefault(id, Collections.<Object[]>emptyList()),
+					plazosPorLiquidacion.getOrDefault(id, Collections.<Object[]>emptyList()),
+					corte, unidadesDesconocidas, avisos);
+			if (doc != null) {
+				documentos.add(doc);
+			}
+		}
+
+		return CarteraCalculo.armarReporte("POR_PAGAR", corte, documentos, anticiposPorTitular,
+				unidadesDesconocidas, avisos);
+	}
+
+	/**
+	 * Agrupa filas de P2/P3 por el id del documento (primera columna), quitándolo del resto --
+	 * lo que queda es exactamente lo que {@link CarteraCalculo#calcularDocumento} espera recibir
+	 * por documento ({tipoDocPago, montoAplicado} o {plazo, unidadTiempo}).
+	 */
+	private Map<Long, List<Object[]>> agruparPorDocumento(List<Object[]> filas) {
+		Map<Long, List<Object[]>> agrupado = new HashMap<>();
+		for (Object[] fila : filas) {
+			Long id = (Long) fila[0];
+			List<Object[]> valores = agrupado.get(id);
+			if (valores == null) {
+				valores = new ArrayList<>();
+				agrupado.put(id, valores);
+			}
+			Object[] resto = new Object[fila.length - 1];
+			System.arraycopy(fila, 1, resto, 0, resto.length);
+			valores.add(resto);
+		}
+		return agrupado;
+	}
+
+	/** {@code FacturaCompra}/{@code LiquidacionCompraCompra}.fecha es {@code LocalDateTime}. */
+	private LocalDate fechaDeCartera(Object fecha) {
+		return ((LocalDateTime) fecha).toLocalDate();
 	}
 
 	@Override

@@ -1,5 +1,6 @@
 package com.saa.ejb.cxc.dao;
 
+import java.time.LocalDate;
 import java.util.List;
 
 import com.saa.basico.util.EntityDao;
@@ -146,4 +147,74 @@ public interface AplicacionPagoCxcDaoService extends EntityDao<AplicacionPagoCxc
 	 */
 	List<Object[]> selectListado(Long idEmpresa, Long idTitular, java.time.LocalDate desde,
 			java.time.LocalDate hasta, Long formaPago, Long estado) throws Throwable;
+
+	// =====================================================================
+	// Cartera por cobrar (docs/logica-negocio/cxp/API-CARTERA-CXP-CXC.md §3.2)
+	// =====================================================================
+
+	/**
+	 * P1: documentos VIGENTES de {@code Factura} a una fecha de corte, proyección escalar --
+	 * nunca la entidad completa (§2.5). Vigente = {@link com.saa.ejb.sri.serviceImpl.CriterioVentaVigente}
+	 * ({@code estado = ESTADO_AUTORIZADA} y {@code estadoEmision} nulo o {@code <> ESTADO_EMISION_ANULADA}),
+	 * no los literales de {@code Estado.ACTIVO} que usa el lado compra -- acá {@code estado} es el
+	 * flujo de emisión electrónica, no un flag activo/inactivo.
+	 * <p>
+	 * Sin liquidaciones ({@code CBR.LQCS} es una compra, su deuda ya está en CxP) ni caja chica
+	 * (ese tipo de aplicación no existe en CxC).
+	 * <p>
+	 * Columnas del {@code Object[]}: 0 id, 1 tipoComprobante, 2 numEstablecimiento,
+	 * 3 numPtoEmision, 4 secuencial, 5 fecha, 6 total, 7 titular.codigo, 8 titular.identificacion,
+	 * 9 titular.razonSocial, 10 titular.nombre.
+	 * @param idEmpresa  : Id de la empresa
+	 * @param fechaCorte : Fecha de corte -- {@code Factura.fecha} es {@code LocalDate},
+	 *                     se filtra con {@code fecha <= fechaCorte}
+	 * @param idTitular  : Id del cliente; null = todos
+	 * @return           : Filas de facturas vigentes, ordenadas por titular y fecha
+	 * @throws Throwable : Excepcion
+	 */
+	List<Object[]> selectCarteraFacturas(Long idEmpresa, LocalDate fechaCorte, Long idTitular) throws Throwable;
+
+	/**
+	 * P2: suma de {@code montoAplicado} agrupada por documento y {@code tipoDocPago}, de las
+	 * aplicaciones ACTIVAS aplicadas hasta la fecha de corte, sobre facturas que cumplen las
+	 * MISMAS condiciones de {@link #selectCarteraFacturas} (join, nunca {@code in :ids}).
+	 * <p>
+	 * Columnas del {@code Object[]}: 0 factura.id, 1 tipoDocPago, 2 sum(montoAplicado).
+	 * @param idEmpresa  : Id de la empresa
+	 * @param fechaCorte : Fecha de corte, para la condición del documento y para
+	 *                     {@code fechaAplicacion <= fechaCorte}
+	 * @param idTitular  : Id del cliente; null = todos
+	 * @return           : Filas (documento, tipo, suma)
+	 * @throws Throwable : Excepcion
+	 */
+	List<Object[]> selectAplicacionesCarteraFactura(Long idEmpresa, LocalDate fechaCorte, Long idTitular)
+			throws Throwable;
+
+	/**
+	 * P3: plazo y unidad de tiempo declarados en {@code FormaPagoFactura}, uno por fila (el mayor
+	 * lo decide el llamador, §3.4.1). Mismas condiciones de {@link #selectCarteraFacturas} vía
+	 * join sobre {@code p.factura}.
+	 * <p>
+	 * Columnas del {@code Object[]}: 0 factura.id, 1 plazo, 2 unidadTiempo.
+	 * @param idEmpresa  : Id de la empresa
+	 * @param fechaCorte : Fecha de corte
+	 * @param idTitular  : Id del cliente; null = todos
+	 * @return           : Filas (documento, plazo, unidad)
+	 * @throws Throwable : Excepcion
+	 */
+	List<Object[]> selectPlazosCarteraFactura(Long idEmpresa, LocalDate fechaCorte, Long idTitular)
+			throws Throwable;
+
+	/**
+	 * P4: saldo disponible de anticipos por cliente, misma condición que
+	 * {@code AnticipoClienteDaoServiceImpl.sumaSaldoDisponible} ({@code estado = CONFIRMADO},
+	 * {@code valor > 0}) pero agregada por titular en vez de recibir uno solo.
+	 * <p>
+	 * Columnas del {@code Object[]}: 0 titular.codigo, 1 sum(saldo).
+	 * @param idEmpresa  : Id de la empresa
+	 * @param idTitular  : Id del cliente; null = todos
+	 * @return           : Filas (titular, saldo disponible)
+	 * @throws Throwable : Excepcion
+	 */
+	List<Object[]> sumaSaldoDisponibleAnticiposPorTitular(Long idEmpresa, Long idTitular) throws Throwable;
 }

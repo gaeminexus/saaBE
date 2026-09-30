@@ -1,10 +1,14 @@
 package com.saa.ws.rest.cxp;
 
+import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Map;
 
 import com.saa.basico.util.DatosBusqueda;
+import com.saa.basico.util.IncomeException;
 import com.saa.ejb.cxp.service.AplicacionPagoCxpService;
+import com.saa.ejb.cxp.service.dto.ReporteCartera;
 import com.saa.model.cxp.AplicacionPagoCxp;
 
 import jakarta.ejb.EJB;
@@ -178,6 +182,41 @@ public class AplicacionPagoCxpRest {
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("Error al obtener el saldo de la liquidación de compra: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
+     * Cartera por pagar completa a una fecha de corte: todos los documentos con saldo
+     * pendiente (facturas, notas de venta y liquidaciones), con antigüedad, resumen por
+     * proveedor y anticipos disponibles. Ver docs/logica-negocio/cxp/API-CARTERA-CXP-CXC.md.
+     * @param idEmpresa  : Id de la empresa (obligatorio)
+     * @param fechaCorte : yyyy-MM-dd, opcional (por defecto hoy)
+     * @param idTitular  : Id del proveedor, opcional (por defecto todos)
+     */
+    @GET
+    @Path("/cartera")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response cartera(@QueryParam("idEmpresa") Long idEmpresa,
+            @QueryParam("fechaCorte") String fechaCorte,
+            @QueryParam("idTitular") Long idTitular) {
+        System.out.println("LLEGA AL SERVICIO GET /aplp/cartera");
+        try {
+            LocalDate corte = (fechaCorte != null && !fechaCorte.trim().isEmpty())
+                    ? LocalDate.parse(fechaCorte.trim()) : null;
+            ReporteCartera reporte = aplicacionPagoCxpService.carteraPorPagar(idEmpresa, corte, idTitular);
+            return Response.status(Response.Status.OK).entity(reporte)
+                    .type(MediaType.APPLICATION_JSON).build();
+        } catch (IncomeException e) {
+            return Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        } catch (DateTimeParseException e) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("fechaCorte inválida, use yyyy-MM-dd: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al consultar la cartera: " + e.getMessage())
                     .type(MediaType.APPLICATION_JSON).build();
         }
     }

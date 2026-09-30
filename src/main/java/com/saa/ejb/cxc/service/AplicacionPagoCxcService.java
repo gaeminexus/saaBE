@@ -231,6 +231,21 @@ public interface AplicacionPagoCxcService extends EntityService<AplicacionPagoCx
 	Long recalcularEstadoPagoLiquidacion(Long idLiquidacion) throws Throwable;
 
 	/**
+	 * Cartera por cobrar completa a una fecha de corte: todas las facturas de venta con saldo
+	 * pendiente, con antigüedad, resumen por cliente y anticipos disponibles —
+	 * docs/logica-negocio/cxp/API-CARTERA-CXP-CXC.md §3. Sin liquidaciones ({@code CBR.LQCS} es
+	 * una compra, su deuda ya está en CxP) ni caja chica (no existe ese tipo de aplicación acá).
+	 * Solo resta lo que ya está APLICADO, igual que {@link #saldoFactura(Long)}.
+	 * @param idEmpresa  : Id de la empresa
+	 * @param fechaCorte : Fecha de corte; null = hoy
+	 * @param idTitular  : Id del cliente; null = todos
+	 * @return           : Reporte con documentos, resumen por titular, totales y avisos
+	 * @throws Throwable : IncomeException si falta la empresa
+	 */
+	com.saa.ejb.cxp.service.dto.ReporteCartera carteraPorCobrar(Long idEmpresa, java.time.LocalDate fechaCorte,
+			Long idTitular) throws Throwable;
+
+	/**
 	 * Localiza la factura de venta a la que se refiere un documento por su
 	 * número. Lanza excepción si no existe o si hay más de una coincidencia.
 	 * @param numeroDocumento : Número del documento referenciado
