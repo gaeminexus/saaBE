@@ -14,6 +14,11 @@
 --       que solo quedaron en las columnas *PG de DTPR, o cuotas PAGADAS sin fila en PGPR.
 -- De la respuesta depende la regla. Por eso no se cambia el codigo antes de correr esto.
 --
+-- ✅ ACTUALIZADO 2026-09-30, con la tabla de amortizacion del 62439 que paso el usuario: la
+--    causa de ESE caso es un PAGO EXTRA (abono a capital) de 4.236,80 en la cuota 38, que se
+--    graba en PGPRSLOT / DTPRSLOT y NO en capital pagado. La regla se corrige para sumarlo. Los
+--    bloques 2 y 3 ya lo suman: lo que sigan mostrando como fallas son OTRAS causas.
+--
 -- SOLO LECTURA. SQL PURO. Correr los tres bloques y pasar la salida al arbitro.
 -- ⚠️ ULTIMO NUMERO del rango 200-249 de omen-saa-1: el proximo script necesita rango nuevo.
 -- =====================================================================================
@@ -55,7 +60,7 @@ SELECT p.PRSTCDGO, p.PRSTIDAS, p.PRSTMNSL AS MONTO, p.PRSTPLZO AS PLAZO, p.PRSTI
 --    Una fila con los conteos. Es lo que decide si la regla se ajusta o si son casos aislados.
 -- =====================================================================================
 WITH pg AS (
-    SELECT x.DTPRCDGO, SUM(NVL(x.PGPRCPPG, 0)) AS CAP
+    SELECT x.DTPRCDGO, SUM(NVL(x.PGPRCPPG, 0) + NVL(x.PGPRSLOT, 0)) AS CAP, SUM(NVL(x.PGPRSLOT, 0)) AS EXTRA
       FROM CRD.PGPR x WHERE NVL(x.PGPRANUL, 0) = 0 GROUP BY x.DTPRCDGO
 ),
 por_prestamo AS (
@@ -64,9 +69,9 @@ por_prestamo AS (
            SUM(CASE WHEN NVL(d.DTPRESTD,0) <> 7 THEN NVL(d.DTPRCPTL,0) ELSE 0 END) AS CAP_TABLA,
            SUM(CASE WHEN d.DTPRESTD = 7        THEN NVL(d.DTPRCPTL,0) ELSE 0 END) AS CAP_EN_CANCELADAS,
            SUM(CASE WHEN NVL(d.DTPRESTD,0) <> 7 THEN NVL(g.CAP,0)      ELSE 0 END) AS COBRADO_PGPR,
-           SUM(CASE WHEN NVL(d.DTPRESTD,0) <> 7 THEN NVL(d.DTPRCPPG,0) ELSE 0 END) AS COBRADO_DTPR,
+           SUM(CASE WHEN NVL(d.DTPRESTD,0) <> 7 THEN NVL(d.DTPRCPPG,0) + NVL(d.DTPRSLOT,0) ELSE 0 END) AS COBRADO_DTPR,
            SUM(CASE WHEN NVL(d.DTPRESTD,0) <> 7
-                    THEN GREATEST(0, NVL(d.DTPRCPTL,0) - NVL(g.CAP,0)) ELSE 0 END)  AS SALDO_REGLA_ACTUAL,
+                    THEN GREATEST(0, NVL(d.DTPRCPTL,0) - (NVL(g.CAP,0) - NVL(g.EXTRA,0))) ELSE 0 END)  AS SALDO_REGLA_ACTUAL,
            SUM(CASE WHEN d.DTPRESTD = 4 AND g.DTPRCDGO IS NULL THEN 1 ELSE 0 END)  AS PAGADAS_SIN_PGPR
       FROM CRD.PRST p
       JOIN CRD.DTPR d ON d.PRSTCDGO = p.PRSTCDGO
@@ -77,7 +82,7 @@ por_prestamo AS (
 SELECT COUNT(*)                                                                AS PRESTAMOS_EN_MORA,
        SUM(CASE WHEN ABS(SALDO_REGLA_ACTUAL - (MONTO - COBRADO_PGPR)) > 0.01 THEN 1 ELSE 0 END)
                                                                                AS FALLAN_HOY,
-       SUM(CASE WHEN ABS(CAP_TABLA - MONTO) > 0.01 THEN 1 ELSE 0 END)          AS TABLA_NO_SUMA_MONTO,
+       SUM(CASE WHEN ABS(CAP_TABLA - MONTO) > 0.01 THEN 1 ELSE 0 END)          AS TABLA_NO_SUMA_MONTO_SIN_EXTRA,
        SUM(CASE WHEN ABS(CAP_TABLA + CAP_EN_CANCELADAS - MONTO) > 0.01 THEN 1 ELSE 0 END)
                                                                                AS NO_SUMA_NI_CON_CANCELADAS,
        SUM(CASE WHEN PAGADAS_SIN_PGPR > 0 THEN 1 ELSE 0 END)                   AS CON_PAGADAS_SIN_PGPR,
@@ -89,7 +94,7 @@ SELECT COUNT(*)                                                                A
 -- 3. EL DETALLE DE LOS QUE FALLAN — las 40 diferencias mas grandes
 -- =====================================================================================
 WITH pg AS (
-    SELECT x.DTPRCDGO, SUM(NVL(x.PGPRCPPG, 0)) AS CAP
+    SELECT x.DTPRCDGO, SUM(NVL(x.PGPRCPPG, 0) + NVL(x.PGPRSLOT, 0)) AS CAP, SUM(NVL(x.PGPRSLOT, 0)) AS EXTRA
       FROM CRD.PGPR x WHERE NVL(x.PGPRANUL, 0) = 0 GROUP BY x.DTPRCDGO
 ),
 por_prestamo AS (
@@ -99,9 +104,9 @@ por_prestamo AS (
            SUM(CASE WHEN NVL(d.DTPRESTD,0) <> 7 THEN NVL(d.DTPRCPTL,0) ELSE 0 END) AS CAP_TABLA,
            SUM(CASE WHEN d.DTPRESTD = 7        THEN NVL(d.DTPRCPTL,0) ELSE 0 END) AS CAP_EN_CANCELADAS,
            SUM(CASE WHEN NVL(d.DTPRESTD,0) <> 7 THEN NVL(g.CAP,0)      ELSE 0 END) AS COBRADO_PGPR,
-           SUM(CASE WHEN NVL(d.DTPRESTD,0) <> 7 THEN NVL(d.DTPRCPPG,0) ELSE 0 END) AS COBRADO_DTPR,
+           SUM(CASE WHEN NVL(d.DTPRESTD,0) <> 7 THEN NVL(d.DTPRCPPG,0) + NVL(d.DTPRSLOT,0) ELSE 0 END) AS COBRADO_DTPR,
            SUM(CASE WHEN NVL(d.DTPRESTD,0) <> 7
-                    THEN GREATEST(0, NVL(d.DTPRCPTL,0) - NVL(g.CAP,0)) ELSE 0 END)  AS SALDO_REGLA_ACTUAL,
+                    THEN GREATEST(0, NVL(d.DTPRCPTL,0) - (NVL(g.CAP,0) - NVL(g.EXTRA,0))) ELSE 0 END)  AS SALDO_REGLA_ACTUAL,
            SUM(CASE WHEN d.DTPRESTD = 4 AND g.DTPRCDGO IS NULL THEN 1 ELSE 0 END)  AS PAGADAS_SIN_PGPR,
            SUM(CASE WHEN d.DTPRESTD = 4 THEN 1 ELSE 0 END)                         AS PAGADAS
       FROM CRD.PRST p

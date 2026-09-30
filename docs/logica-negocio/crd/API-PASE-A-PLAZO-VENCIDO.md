@@ -45,6 +45,12 @@ de cartera mensual.
      confiables, y `DTPR` no tiene columna de seguro de incendio pagado (ése sale de PGPR
      `valorSeguroIncendio`). *Corrección del árbitro, 2026-09-30, antes de despachar: el diseño §4.4bis
      decía Σ `capitalPagado` y compañía.*
+   - ⛔ **El capital cobrado incluye el PAGO EXTRA (`PGPR.saldoOtros`, `PGPRSLOT`).** Un abono a capital
+     se graba ahí con `capitalPagado = 0` (`AbonoCapitalPrestamoServiceImpl:232-240`; la migración, igual:
+     `PrestamoServiceImpl:947`), y rehace la tabla, así que Σ `capital` de las cuotas = monto − abonos.
+     Sin sumarlo, todo préstamo con un abono falla la invariante de capital. *Caso real: 62439, abono de
+     4.236,80 en la cuota 38; medido contra su tabla el 2026-09-30.* Para el saldo **por cuota** se sigue
+     usando sólo `capitalPagado` (el abono no es de esa cuota): el pago extra suma al cobrado de la fila.
 3. **Cinco invariantes** (diseño §4.4bis). Si una falla, el préstamo **no se puede declarar** y se dice cuál:
    - devengado = cobrado + saldo, fila por fila;
    - Σ saldos = total por cobrar;

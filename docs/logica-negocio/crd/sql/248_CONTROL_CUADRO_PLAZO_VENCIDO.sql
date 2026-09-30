@@ -12,6 +12,9 @@
 -- LAS REGLAS QUE REPRODUCE (diseno §4.4bis, contrato §2, correcciones del arbitro):
 --   * Universo: todas las cuotas del prestamo, EXCEPTO las CANCELADA_ANTICIPADA (7).
 --   * Cobrado = pagos de CRD.PGPR no anulados (PGPRANUL nulo o 0), por componente.
+--     ⛔ El capital cobrado SUMA el PAGO EXTRA (PGPRSLOT): el abono a capital se graba ahi, con
+--     PGPRCPPG en 0 (AbonoCapitalPrestamoServiceImpl:232-240; migracion PrestamoServiceImpl:947).
+--     Sin eso, todo prestamo con un abono falla la invariante de capital (caso 62439, 2026-09-30).
 --   * Por cuota, con piso en cero: saldo_i = max(0, regla_i - pagado_i).
 --     Devengado de la fila = cobrado + saldo (menos el capital: su devengado es el monto).
 --   * Capital e interes: todas las cuotas (aceleracion, D11).
@@ -36,7 +39,8 @@
 -- =====================================================================================
 WITH pagos AS (
     SELECT g.DTPRCDGO,
-           SUM(NVL(g.PGPRCPPG, 0)) AS CAP_PAG,
+           SUM(NVL(g.PGPRCPPG, 0) + NVL(g.PGPRSLOT, 0)) AS CAP_PAG,   -- capital + PAGO EXTRA (abono): va al COBRADO
+           SUM(NVL(g.PGPRCPPG, 0)) AS CAP_PAG_CUOTA,                -- solo capital de la cuota: va al SALDO
            SUM(NVL(g.PGPRINPG, 0)) AS INT_PAG,
            SUM(NVL(g.PGPRDSGR, 0)) AS DSG_PAG,
            SUM(NVL(g.PGPRVLSI, 0)) AS SEG_PAG,
@@ -55,7 +59,7 @@ por_cuota AS (
            NVL(p.DSG_PAG, 0) AS DSG_PAG,
            NVL(p.SEG_PAG, 0) AS SEG_PAG,
            NVL(p.MOR_PAG, 0) AS MOR_PAG,
-           GREATEST(0, ROUND(NVL(d.DTPRCPTL, 0) - NVL(p.CAP_PAG, 0), 2)) AS SAL_CAP,
+           GREATEST(0, ROUND(NVL(d.DTPRCPTL, 0) - NVL(p.CAP_PAG_CUOTA, 0), 2)) AS SAL_CAP,
            GREATEST(0, ROUND(NVL(d.DTPRINTR, 0) - NVL(p.INT_PAG, 0), 2)) AS SAL_INT,
            GREATEST(0, ROUND(CASE WHEN TRUNC(d.DTPRFCVN) <= v.PLVNFCCR THEN NVL(d.DTPRDSGR, 0) ELSE 0 END
                              - NVL(p.DSG_PAG, 0), 2)) AS SAL_DSG,
