@@ -658,14 +658,21 @@ public class DeclaracionPlazoVencidoServiceImpl implements DeclaracionPlazoVenci
             capitalCobrado += capitalPagadoCuota + abonoExtraCuota;
             saldoCapital += saldoCapitalCuota;
 
-            // Interés: "todas las cuotas" (D11), mismo tratamiento por cuota por consistencia.
+            // Interés: SOLO hasta la fecha de corte (D25, decisión del usuario 2026-09-30,
+            // corrige la aceleración total que regía hasta esta vuelta) — misma bandera que ya
+            // usan desgravamen y seguro. Sin prorrateo del período en curso: es la regla de la
+            // precancelación (ProcesoPagoPrestamoServiceImpl.calcularPrecancelacion) — las
+            // cuotas exigibles (vencimiento ≤ fin del día del corte) entran COMPLETAS, el interés
+            // de las futuras queda condonado (en 0). CAPITAL NO sigue esta regla: se sigue
+            // acelerando completo, todas las cuotas, con o sin vencer.
             // Suma DTPRINTR + DTPRINVN (interés vencido) del lado del devengado, e
             // interesPagado + interesVencidoPagado del lado del pagado — misma agregación que
             // MotorPagoPrestamoServiceImpl.calcularSaldosCuota, que ya trata el interés vencido
-            // como un componente propio. Hoy DTPRINVN casi siempre es 0 (PROCESO-DIARIO-INTERES-
-            // MORA.md §6), pero una cuota migrada con valor, o un pago que lo registre, dejaría
-            // el cuadro corto si no se suma (mismo defecto que el abono de capital, 2026-09-30).
-            double interesReglaCuota = nvl(cuota.getInteres()) + nvl(cuota.getInteresVencido());
+            // como un componente propio. El piso por cuota es igual al de desgravamen/seguro: un
+            // interés pagado por adelantado sobre una cuota futura no deja el saldo negativo —
+            // su devengado pasa a ser lo pagado, con saldo 0.
+            double interesReglaCuota = vencimientoEnElCorteOAntes
+                ? nvl(cuota.getInteres()) + nvl(cuota.getInteresVencido()) : 0.0;
             double interesPagadoTotalCuota = interesPagadoCuota + interesVencidoPagadoCuota;
             double saldoInteresCuota = Math.max(0.0, redondear(interesReglaCuota - interesPagadoTotalCuota));
             interesCobrado += interesPagadoTotalCuota;
