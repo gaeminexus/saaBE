@@ -1,6 +1,6 @@
 # DISEÑO — Pase de préstamos EN MORA a DE PLAZO VENCIDO, con orden de cobro y liquidación
 
-**Equipo:** `omen-saa-1` (CRD · equipo B) · **Abierto:** 2026-09-30 · **Estado:** ⛔ DISEÑO, NO DESPACHADO — decisiones D1–D16 tomadas; faltan G–K (§6.1).
+**Equipo:** `omen-saa-1` (CRD · equipo B) · **Abierto:** 2026-09-30 · **Estado:** ⛔ DISEÑO, NO DESPACHADO — decisiones D1–D19 tomadas; faltan L y M (bloquean), J y K (no bloquean) — §6.0.
 Faltan las decisiones del §6 antes de escribir el contrato de API y despachar.
 
 ---
@@ -144,6 +144,28 @@ plata cobrada al partícipe. **Ver §6, pregunta A.**
 | D15 (E) | Firmantes | **Líneas de firma en el reporte** (firman después el PDF). Nada quemado |
 | D16 (F) | Memorando | **Uno por préstamo.** El sistema **valida que el número no se repita** |
 
+### Tercera ronda — 2026-09-30
+
+| # | Pregunta | Decisión |
+|---|---|---|
+| D17 (G) | ¿La liquidación genera asiento? | **NO.** El usuario corrige su D14: *«tienes razón, fue mi error»*. D7 queda firme. ⇒ **El reverso no reversa ningún asiento**: una declaración LIQUIDADA se revierte igual que una DECLARADA (préstamo a 11, declaración a REVERTIDA) |
+| D18 (H) | Aceleración | **Sólo en los documentos y en la foto de `PLVN`.** La tabla de amortización **no se toca**: la mora sigue corriendo cuota a cuota con su vencimiento original |
+| D19 (I) | Qué seguro deja de cobrarse | **Los dos:** desgravamen e incendio |
+
+### ⚠️ La tensión que abre D19 frente a D18
+
+D18 dice que la tabla no se toca, pero para que el seguro **deje de cobrarse** (D13/D19) hay que
+escribir **cero** en `desgravamen` y `valorSeguroIncendio` de las cuotas futuras. Si no, el archivo
+Petro y cualquier cobro lo siguen sumando. Es la **única** escritura sobre las cuotas que hace este
+frente, y es sobre el seguro, no sobre las fechas ni el capital: D18 se sigue cumpliendo en lo que
+protege (el vencimiento y la mora).
+
+El reverso (D14) tiene que poder **devolver** esos valores, y **no hay dónde guardarlos**: `DTPRDSOR`
+(`desgravamenOriginal`) ya tiene dueño (`AbonoCapitalPrestamoServiceImpl:763`, `PrestamoServiceImpl:535`,
+`:732`) y reusarlo rompería el abono a capital. ⇒ Hace falta una **tabla de detalle** con el seguro
+original de cada cuota tocada: nombre propuesto **`CRD.DPLV`** (libre en el modelo, en `docs/` y en el
+registro, verificado el 2026-09-30). **Ver §6.1, preguntas L y M.**
+
 ---
 
 ## 4. Diseño propuesto (sujeto al §6)
@@ -268,7 +290,7 @@ El frente no se da por bueno hasta que ese contraste salga en cero diferencias s
 
 ### 4.5 Reverso (D8)
 
-`PRSTIDST` 8 → **siempre `EN_MORA` (11)** (D14; `PLVNESAN` queda sólo como registro). Lo hace el Jefe de Crédito. Si la declaración ya estaba LIQUIDADA, se reversan sus asientos (pendiente de la pregunta G: cuáles). La declaración queda
+`PRSTIDST` 8 → **siempre `EN_MORA` (11)** (D14; `PLVNESAN` queda sólo como registro). Lo hace el Jefe de Crédito. No hay asiento que reversar (D17), aunque la declaración ya esté LIQUIDADA. La declaración queda
 REVERTIDA con usuario, fecha y motivo; **nunca se borra**. El proceso de mora decide después, como con
 cualquier préstamo en 11.
 
@@ -288,7 +310,16 @@ cualquier préstamo en 11.
 
 ## 6. ⛔ Lo que falta decidir antes de despachar
 
-### 6.1 Abiertas después de la segunda ronda
+### 6.0 Abiertas después de la tercera ronda (G, H e I ya contestadas: D17–D19)
+
+| # | Pregunta | Por qué importa |
+|---|---|---|
+| **L** | **Desde cuándo deja de cobrarse el seguro.** Lectura del árbitro, que el usuario no ha confirmado explícitamente: el seguro de las cuotas **con vencimiento ≤ fecha de corte** se sigue debiendo (el ejemplo lo cobra: «saldo desgravamen 1.591,38»), y el de las cuotas **posteriores** se pone en cero | Es una escritura en la tabla de cuotas que afecta el archivo Petro y los cobros |
+| **M** | **Al revertir, ¿el seguro de las cuotas futuras vuelve?** Si vuelve, se autoriza la tabla de detalle `CRD.DPLV` para guardar el original. Si no vuelve (ya se pidió la nota de crédito a la aseguradora), no hace falta la tabla, pero el préstamo revertido queda sin seguro | Define si hace falta una segunda tabla nueva |
+| **J** | (sigue abierta) El formato del reporte a la aseguradora | Tercer documento; no bloquea el resto |
+| **K** | (sigue abierta) Nombres de PARA/CC editables en la pantalla, recordando el último usado | No bloquea el backend |
+
+### 6.1 Abiertas después de la segunda ronda — G, H e I CONTESTADAS (D17–D19); J y K pasan al §6.0
 
 | # | Pregunta | Por qué importa |
 |---|---|---|
