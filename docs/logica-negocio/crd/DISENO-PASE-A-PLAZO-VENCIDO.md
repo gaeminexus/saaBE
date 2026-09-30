@@ -1,6 +1,6 @@
 # DISEÑO — Pase de préstamos EN MORA a DE PLAZO VENCIDO, con orden de cobro y liquidación
 
-**Equipo:** `omen-saa-1` (CRD · equipo B) · **Abierto:** 2026-09-30 · **Estado:** ⛔ DISEÑO, NO DESPACHADO.
+**Equipo:** `omen-saa-1` (CRD · equipo B) · **Abierto:** 2026-09-30 · **Estado:** ⛔ DISEÑO, NO DESPACHADO — decisiones D1–D16 tomadas; faltan G–K (§6.1).
 Faltan las decisiones del §6 antes de escribir el contrato de API y despachar.
 
 ---
@@ -132,6 +132,18 @@ plata cobrada al partícipe. **Ver §6, pregunta A.**
 | D8 | Reversible | **Sí** |
 | D9 | Número de memorando | **Lo ingresa el usuario** (no hay secuencia del sistema) |
 
+### Segunda ronda — 2026-09-30 (respuestas a las preguntas A–F del §6)
+
+| # | Pregunta | Decisión |
+|---|---|---|
+| D10 (A) | Mora de los que **ya estaban** en 8 | **Les cae toda desde su vencimiento.** La primera corrida de las 02:00 después del WAR les carga la mora histórica completa, a sabiendas. ⇒ **El `sql/77` (limpieza de mora de los 8) queda OBSOLETO y NO se corre** |
+| D11 (B) | Aceleración | **Se acelera toda la deuda:** el saldo de capital incluye las cuotas no vencidas, **y el interés de esas cuotas también entra** |
+| D12 (C) | Tabla `CRD.PLVN` | **Autorizada** por el usuario |
+| D13 (C) | Seguro | **Un préstamo de plazo vencido ya no debe tener seguro.** El seguro de esas deudas se reporta a la aseguradora para que emita una **nota de crédito** |
+| D14 (D) | Reverso | Vuelve **siempre a `EN_MORA` (11)**. Lo hace el **Jefe de Crédito**. Si Contabilidad ya liquidó, **se reversan los asientos generados** |
+| D15 (E) | Firmantes | **Líneas de firma en el reporte** (firman después el PDF). Nada quemado |
+| D16 (F) | Memorando | **Uno por préstamo.** El sistema **valida que el número no se repita** |
+
 ---
 
 ## 4. Diseño propuesto (sujeto al §6)
@@ -212,9 +224,51 @@ Los nombres exactos de columna se fijan en el DDL. Esta tabla es la **intención
   despachar).
 - Firmantes, cargos y destinatarios: **no van quemados**. Ver §6, pregunta E.
 
+### 4.4bis ⛔ Reglas de cálculo — exigencia del usuario: *«el sistema debe realizar bien los cálculos»*
+
+Nada de este cuadro se deduce al implementar: cada fila tiene su fórmula escrita acá, y el ejecutor
+**mide antes de usar un campo** (regla de la casa: ante un campo ambiguo, medir antes que deducir).
+Universo: **todas las cuotas del préstamo** (`CRD.DTPR`), incluidas las futuras (D11), excluidas las
+`CANCELADA_ANTICIPADA (7)`. `corte` = la fecha elegida (D4).
+
+| Fila | Devengado | Cobrado | Saldo |
+|---|---|---|---|
+| Capital | `montoSolicitado` del préstamo ⚠️ confirmar que es «monto del préstamo» y no `montoLiquidacion` | Σ `capitalPagado` | Σ (`capital` − `capitalPagado`) |
+| Interés | Σ `interes` (**todas**, D11) | Σ `interesPagado` | devengado − cobrado |
+| Desgravamen | Σ `desgravamen` de las cuotas **con vencimiento ≤ corte** (pendiente de la pregunta I) | Σ `desgravamenPagado` | devengado − cobrado |
+| Seguro incendio | Σ `valorSeguroIncendio` (mismo criterio que desgravamen) | ⚠️ **no existe campo «pagado» en `DTPR`**: medir de dónde sale antes de implementar (ver H22, el seguro de incendio que se pierde en las cascadas) | devengado − cobrado |
+| Mora | Σ `calcularMoraCuota(cuota, tasaDiaria, corte)` sobre las cuotas vencidas e impagas **a la fecha de corte** — ⛔ **NUNCA** el `mora` persistido, que está calculado a la última corrida nocturna, no al corte | Σ `moraPagado` | devengado − cobrado |
+| **Totales** | — | Σ de los cobrados | Σ de los saldos = **total por cobrar** |
+
+| Dato | Regla |
+|---|---|
+| Plazo | `Prestamo.plazo` ⚠️ contrastar con el número de cuotas en `DTPR`; si difieren, se informa, no se elige en silencio |
+| Cuotas cobradas | cuotas en `PAGADA (4)` |
+| Cuotas pendientes | el resto (una `PARCIAL` es pendiente) |
+| Cuotas por vencer | pendientes con `fechaVencimiento > corte` |
+| Inicio de la mora | la `fechaVencimiento` más antigua entre las cuotas vencidas e impagas |
+| Última fecha de cobro | máx. `fechaPagado` |
+| Dividendo mensual | `Prestamo.valorCuota` ⚠️ contrastar con la cuota típica de la tabla |
+
+**Invariantes que el backend verifica ANTES de declarar un préstamo.** Si alguna no se cumple, ese
+préstamo **no se declara** y el lote entero se rechaza con el motivo de cada uno. No se emite un
+documento con números que no cuadran:
+
+1. En cada fila: devengado = cobrado + saldo (al centavo).
+2. Σ saldos = total por cobrar; Σ cobrados = total cobrado.
+3. Saldo de capital = monto − capital cobrado (si falla, la tabla del préstamo tiene un problema previo,
+   y eso hay que verlo antes de mandarlo a legal).
+4. Cuotas cobradas + pendientes = número de cuotas de la tabla.
+5. Ningún saldo negativo.
+
+**Verificación independiente (regla 11 del árbitro):** el árbitro escribe un `.sql` de control que
+recalcula el cuadro **directamente desde `CRD.DTPR`**, sin pasar por el código, y lo compara fila por
+fila contra la foto de `CRD.PLVN`. La mora del SQL se contrasta aparte, porque la fórmula vive en Java.
+El frente no se da por bueno hasta que ese contraste salga en cero diferencias sobre préstamos reales.
+
 ### 4.5 Reverso (D8)
 
-`PRSTIDST` 8 → el estado anterior guardado (`PLVNESAN`, normalmente 11). La declaración queda
+`PRSTIDST` 8 → **siempre `EN_MORA` (11)** (D14; `PLVNESAN` queda sólo como registro). Lo hace el Jefe de Crédito. Si la declaración ya estaba LIQUIDADA, se reversan sus asientos (pendiente de la pregunta G: cuáles). La declaración queda
 REVERTIDA con usuario, fecha y motivo; **nunca se borra**. El proceso de mora decide después, como con
 cualquier préstamo en 11.
 
@@ -233,6 +287,18 @@ cualquier préstamo en 11.
 ---
 
 ## 6. ⛔ Lo que falta decidir antes de despachar
+
+### 6.1 Abiertas después de la segunda ronda
+
+| # | Pregunta | Por qué importa |
+|---|---|---|
+| **G** | **D14 contra D7.** D7 dice que la liquidación **no** genera asiento propio (basta el cierre de cartera). D14 dice que al revertir una declaración liquidada **se reversan los asientos generados**. ¿Qué asientos? Si la liquidación no genera ninguno, no hay nada que reversar; los del cierre de cartera son mensuales por bandas y no por préstamo. **¿La liquidación SÍ debe generar un asiento** (y cuál: reclasificación a cartera vencida, cuentas de orden, otro)? | Cambia el paso 2 entero y pide una plantilla contable, que se reserva en `CNT.PLNS` |
+| **H** | **Aceleración: ¿sólo en los documentos o también en la tabla de amortización?** Recomendación del árbitro: **sólo en la foto y los documentos**, sin tocar las cuotas. Tocarlas (vencer todas a la fecha de corte) hace que la mora corra sobre el capital futuro desde la declaración, pero destruye la tabla original y hace el reverso (D14) casi imposible de dejar exacto | Con la tabla intacta, la mora sigue corriendo cuota a cuota según su vencimiento original |
+| **I** | **Seguro (D13): ¿cuál y desde cuándo?** ¿Desgravamen, incendio o los dos? ¿Deja de cobrarse **desde la fecha de declaración** (las cuotas futuras quedan sin seguro) o desde que empezó la mora? Lectura del árbitro: el seguro de las cuotas **ya vencidas** e impagas se sigue debiendo (el ejemplo lo cobra: «saldo desgravamen 1.591,38»), y el de las **futuras** se anula | Define el valor de «seguro» en la foto y qué se escribe en las cuotas futuras. El desgravamen entra al archivo Petro y a los cobros |
+| **J** | **El reporte a la aseguradora para la nota de crédito:** ¿qué formato, qué columnas, por qué período? ¿Hay un ejemplo? | Es un tercer documento. Sin formato no se despacha |
+| **K** | **Encabezado del memorando** (PARA: Representante Legal, CC: Contador General): ¿los nombres se escriben en la pantalla del paso 1 y se guardan en la foto? Propuesta: campos editables con el último valor usado; las **firmas** van en líneas, como dice D15 | Los nombres cambian cuando cambian las personas; no pueden ir quemados |
+
+### 6.2 Primera ronda — CONTESTADAS (ver D10–D16), se conserva el texto
 
 | # | Pregunta | Por qué importa |
 |---|---|---|
