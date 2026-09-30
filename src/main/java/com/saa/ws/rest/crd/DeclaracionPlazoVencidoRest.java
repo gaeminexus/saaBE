@@ -1,10 +1,14 @@
 package com.saa.ws.rest.crd;
 
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.zip.ZipOutputStream;
 
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.crd.dao.DeclaracionPlazoVencidoDaoService;
@@ -15,6 +19,7 @@ import com.saa.ejb.crd.service.dto.EncabezadoPlazoVencido;
 import com.saa.ejb.crd.service.dto.ResultadoDeclararPlazoVencido;
 import com.saa.ejb.crd.service.dto.ResultadoRevertirPlazoVencido;
 import com.saa.ejb.crd.service.dto.SolicitudDeclararPlazoVencido;
+import com.saa.ejb.crd.service.dto.SolicitudDocumentosPlazoVencido;
 import com.saa.ejb.crd.service.dto.SolicitudLiquidarPlazoVencido;
 import com.saa.ejb.crd.service.dto.SolicitudRevertirPlazoVencido;
 import com.saa.ejb.crd.util.NumeroALetrasUtil;
@@ -176,77 +181,10 @@ public class DeclaracionPlazoVencidoRest {
     public Response memorando(@PathParam("id") Long id, @QueryParam("formato") @DefaultValue("PDF") String formato) {
         System.out.println("LLEGA AL SERVICIO memorando - PLVN id: " + id + " - formato: " + formato);
         try {
-            if (!"PDF".equalsIgnoreCase(formato) && !"DOCX".equalsIgnoreCase(formato)) {
-                return Response.status(Response.Status.BAD_REQUEST)
-                    .entity("PARAMETRO_INVALIDO: formato debe ser PDF o DOCX")
-                    .type(MediaType.APPLICATION_JSON).build();
-            }
+            validarFormato(formato);
             DeclaracionPlazoVencido d = buscarEntidad(id);
-
-            // Todos los valores llegan YA FORMATEADOS como String (moneda ecuatoriana
-            // "$90.018,75", fechas "d/M/yyyy" o "dd-MM-yyyy" según la fila) — el diseño nuevo
-            // (2026-09-30, sobre el Word real del usuario) no delega el formato a Jasper.
-            Map<String, Object> parametros = new HashMap<>();
-            parametros.put("P_NUMERO_MEMORANDO", d.getNumeroMemorando());
-            parametros.put("P_PARA_NOMBRE", d.getParaNombre());
-            parametros.put("P_PARA_CARGO", d.getParaCargo());
-            parametros.put("P_CC_NOMBRE", d.getCcNombre());
-            parametros.put("P_CC_CARGO", d.getCcCargo());
-            parametros.put("P_TIPO_CREDITO", d.getTipoCredito());
-            parametros.put("P_NUMERO_PRESTAMO", d.getNumeroPrestamoImpreso());
-            parametros.put("P_FECHA_MEMO_TEXTO", fechaLarga(d.getFechaCorte()));
-            parametros.put("P_NOMBRE_PARTICIPE", d.getNombreParticipe());
-            parametros.put("P_CEDULA", d.getCedula());
-            parametros.put("P_FECHA_INICIAL_TEXTO", fechaSinCero(d.getFechaInicial()));
-            parametros.put("P_FECHA_FINAL_TEXTO", fechaSinCero(d.getFechaFinal()));
-            parametros.put("P_FECHA_ULTIMO_COBRO_TEXTO", d.getFechaUltimoCobro() != null ? fechaSinCero(d.getFechaUltimoCobro()) : "-");
-            parametros.put("P_MONTO_TEXTO", moneda(d.getMonto()));
-            parametros.put("P_CAPITAL_COBRADO_TEXTO", moneda(d.getCapitalCobrado()));
-            parametros.put("P_SALDO_CAPITAL_TEXTO", moneda(d.getSaldoCapital()));
-            parametros.put("P_INTERES_DEVENGADO_TEXTO", moneda(d.getInteresDevengado()));
-            parametros.put("P_INTERES_COBRADO_TEXTO", moneda(d.getInteresCobrado()));
-            parametros.put("P_INTERES_SALDO_TEXTO", moneda(d.getSaldoInteres()));
-            parametros.put("P_DESGRAVAMEN_DEVENGADO_TEXTO", moneda(d.getDesgravamenDevengado()));
-            parametros.put("P_DESGRAVAMEN_COBRADO_TEXTO", moneda(d.getDesgravamenCobrado()));
-            parametros.put("P_DESGRAVAMEN_SALDO_TEXTO", moneda(d.getSaldoDesgravamen()));
-            parametros.put("P_SEGURO_DEVENGADO_TEXTO", moneda(d.getSeguroDevengado()));
-            parametros.put("P_SEGURO_COBRADO_TEXTO", moneda(d.getSeguroCobrado()));
-            parametros.put("P_SEGURO_SALDO_TEXTO", moneda(d.getSaldoSeguro()));
-            parametros.put("P_MORA_DEVENGADA_TEXTO", moneda(d.getMoraDevengada()));
-            parametros.put("P_MORA_COBRADA_TEXTO", moneda(d.getMoraCobrada()));
-            parametros.put("P_MORA_SALDO_TEXTO", moneda(d.getSaldoMora()));
-            parametros.put("P_TOTAL_COBRADO_TEXTO", moneda(d.getTotalCobrado()));
-            parametros.put("P_TOTAL_POR_COBRAR_TEXTO", moneda(d.getTotalPorCobrar()));
-            parametros.put("P_FECHA_CORTE_GUION", fechaGuion(d.getFechaCorte()));
-            parametros.put("P_PLAZO_TEXTO", String.valueOf(d.getCuotasPlazo()));
-            parametros.put("P_CUOTAS_COBRADAS_TEXTO", String.valueOf(d.getCuotasCobradas()));
-            parametros.put("P_CUOTAS_PENDIENTES_TEXTO", String.valueOf(d.getCuotasPendientes()));
-            parametros.put("P_CUOTAS_POR_VENCER_TEXTO", String.valueOf(d.getCuotasPorVencer()));
-            parametros.put("P_DIVIDENDO_MENSUAL_TEXTO", moneda(d.getDividendoMensual()));
-            parametros.put("P_REVERTIDA", DeclaracionPlazoVencido.ESTADO_REVERTIDA == (d.getEstado() != null ? d.getEstado() : 0L));
-
-            // Párrafos con negrita embebida (markup="styled" en el .jrxml): se construyen acá,
-            // no en el reporte, porque la negrita cae solo sobre ciertos tramos del texto
-            // justificado (diseño 2026-09-30, sobre el Word real del usuario).
-            parametros.put("P_PARRAFO_APERTURA",
-                "Una vez realizada la revisión en el sistema SAA; y, del análisis del estado del Crédito "
-                + "<b>" + escapeHtml(d.getTipoCredito()) + " No. " + escapeHtml(d.getNumeroPrestamoImpreso()) + "</b>"
-                + ", otorgado por ASOPREP-FCPC a favor de <b>" + escapeHtml(d.getNombreParticipe()) + "</b>"
-                + ", portador de la cédula de identidad <b>No. " + escapeHtml(d.getCedula()) + "</b>, se desprende lo siguiente:");
-            parametros.put("P_PARRAFO_CIERRE_1",
-                "En virtud de lo expuesto y con el propósito de recuperación de los valores adeudados correspondientes al "
-                + "<b>Préstamo " + escapeHtml(d.getTipoCredito()) + " No. " + escapeHtml(d.getNumeroPrestamoImpreso())
-                + " se declara en estado de plazo vencido por incumplimiento de pago.</b>");
-
-            // generarReporte() llena con una CONEXIÓN JDBC: como este .jrxml no tiene <query>,
-            // el datasource da CERO filas y, con whenNoDataType="AllSectionsNoDetail", Jasper
-            // se salta el <detail> entero (title/pageHeader salen, el cuerpo no). Se usa
-            // generarReporteDesdeColeccion con UNA fila vacía para forzar exactamente una
-            // ejecución del detail — el reporte no lee el bean, todo sale de los parámetros
-            // (verificado 2026-09-30: ningún <field> declarado en el .jasper).
-            byte[] bytes = reporteService.generarReporteDesdeColeccion("crd", "RPRT_PLVN_MMRN",
-                parametros, java.util.Collections.singletonList(new java.util.HashMap<String, Object>()), formato);
-            return respuestaArchivo(bytes, formato, "ORDEN_DE_COBRO_" + nombreParaArchivo(d.getNombreParticipe()));
+            byte[] bytes = generarMemorando(d, formato);
+            return respuestaArchivo(bytes, formato, nombreArchivoMemorando(d));
         } catch (Throwable e) {
             return respuestaError(e);
         }
@@ -257,71 +195,269 @@ public class DeclaracionPlazoVencidoRest {
     public Response liquidacion(@PathParam("id") Long id, @QueryParam("formato") @DefaultValue("PDF") String formato) {
         System.out.println("LLEGA AL SERVICIO liquidacion - PLVN id: " + id + " - formato: " + formato);
         try {
-            if (!"PDF".equalsIgnoreCase(formato) && !"DOCX".equalsIgnoreCase(formato)) {
-                return Response.status(Response.Status.BAD_REQUEST)
-                    .entity("PARAMETRO_INVALIDO: formato debe ser PDF o DOCX")
-                    .type(MediaType.APPLICATION_JSON).build();
-            }
+            validarFormato(formato);
             DeclaracionPlazoVencido d = buscarEntidad(id);
-            if (d.getEstado() != null && d.getEstado() == DeclaracionPlazoVencido.ESTADO_DECLARADA) {
-                return Response.status(Response.Status.CONFLICT)
-                    .entity(DeclaracionPlazoVencidoService.ERR_NO_LIQUIDADA + ": la declaración " + id + " todavía no fue liquidada")
-                    .type(MediaType.APPLICATION_JSON).build();
+            if (!tieneLiquidacion(d)) {
+                throw new IncomeException(DeclaracionPlazoVencidoService.ERR_NO_LIQUIDADA
+                    + ": la declaración " + id + " todavía no fue liquidada");
             }
-
-            Map<String, Object> parametros = new HashMap<>();
-            parametros.put("P_CIUDAD", "Quito");
-            parametros.put("P_FECHA_EMISION_TEXTO", fechaLarga(d.getFechaCorteLiquidacion()));
-            parametros.put("P_NUMERO_PRESTAMO", d.getNumeroPrestamoImpreso());
-            parametros.put("P_NUMERO_MEMORANDO", d.getNumeroMemorando());
-            parametros.put("P_FECHA_MEMO_TEXTO", fechaLarga(d.getFechaCorte()));
-            parametros.put("P_TIPO_CREDITO", d.getTipoCredito());
-            parametros.put("P_FECHA_INICIAL_TEXTO", fechaLarga(d.getFechaInicial()));
-            parametros.put("P_MONTO_TEXTO", moneda(d.getMonto()));
-            parametros.put("P_FECHA_FINAL_TEXTO", fechaLarga(d.getFechaFinal()));
-            parametros.put("P_NOMBRE_PARTICIPE", d.getNombreParticipe());
-            parametros.put("P_CEDULA", d.getCedula());
-            parametros.put("P_CUOTAS_IMPAGAS", d.getLiquidacionCuotasImpagas() != null ? String.valueOf(d.getLiquidacionCuotasImpagas()) : "0");
-            parametros.put("P_CUOTAS_IMPAGAS_LETRAS", NumeroALetrasUtil.convertir(d.getLiquidacionCuotasImpagas()));
-            parametros.put("P_MES_INICIO_MORA", d.getFechaInicioMora() != null ? MESES[d.getFechaInicioMora().getMonthValue() - 1] : "");
-            parametros.put("P_ANIO_INICIO_MORA", d.getFechaInicioMora() != null ? String.valueOf(d.getFechaInicioMora().getYear()) : "");
-            parametros.put("P_FECHA_CORTE_GUION", fechaGuion(d.getFechaCorteLiquidacion()));
-            parametros.put("P_LQ_SALDO_CAPITAL_TEXTO", moneda(d.getLiquidacionSaldoCapital()));
-            parametros.put("P_LQ_INTERES_MORA_TEXTO", moneda(d.getLiquidacionMora()));
-            parametros.put("P_LQ_INTERES_VENCIDO_TEXTO", moneda(d.getLiquidacionInteres()));
-            parametros.put("P_LQ_DESGRAVAMEN_TEXTO", moneda(d.getLiquidacionDesgravamen()));
-            parametros.put("P_LQ_SEGURO_INCENDIO_TEXTO", moneda(d.getLiquidacionSeguro()));
-            parametros.put("P_LQ_TOTAL_TEXTO", moneda(d.getLiquidacionTotal()));
-            parametros.put("P_REVERTIDA", DeclaracionPlazoVencido.ESTADO_REVERTIDA == (d.getEstado() != null ? d.getEstado() : 0L));
-
-            parametros.put("P_PARRAFO_1",
-                "Mediante Memorando Nro. " + escapeHtml(d.getNumeroMemorando()) + " de " + fechaLarga(d.getFechaCorte())
-                + ", el jefe de Crédito remite la <b>ORDEN DE COBRO</b> del Préstamo " + escapeHtml(d.getTipoCredito())
-                + " No. " + escapeHtml(d.getNumeroPrestamoImpreso()) + " otorgado el " + fechaLarga(d.getFechaInicial())
-                + " por el valor de USD " + monedaSinSimbolo(d.getMonto()) + ", con vencimiento el " + fechaLarga(d.getFechaFinal())
-                + ", a favor de <b>" + escapeHtml(d.getNombreParticipe()) + "</b>, con cédula de ciudadanía No. <b>"
-                + escapeHtml(d.getCedula()) + "</b>; a través del cual, declara la referida obligación de "
-                + "<b><i>\"...plazo vencido por incumplimiento de pago.\"</i></b>");
-            parametros.put("P_PARRAFO_2",
-                "De lo expuesto y con la finalidad de regularizar el registro administrativo y contable de la obligación, "
-                + "procedo con la emisión de la liquidación contable, para lo cual se realizó la verificación de la información "
-                + "registrada en el sistema SAA, evidenciándose que <b>" + escapeHtml(d.getNombreParticipe()) + "</b>, mantiene "
-                + NumeroALetrasUtil.convertir(d.getLiquidacionCuotasImpagas()) + " ("
-                + (d.getLiquidacionCuotasImpagas() != null ? d.getLiquidacionCuotasImpagas() : 0) + ") cuotas impagas "
-                + "correspondientes al Crédito " + escapeHtml(d.getTipoCredito()) + " No. " + escapeHtml(d.getNumeroPrestamoImpreso())
-                + ", registrándose el inicio del estado de mora desde el mes de "
-                + (d.getFechaInicioMora() != null ? MESES[d.getFechaInicioMora().getMonthValue() - 1] : "")
-                + " de " + (d.getFechaInicioMora() != null ? String.valueOf(d.getFechaInicioMora().getYear()) : "")
-                + "; en tal razón, se procede a realizar la siguiente liquidación contable con corte al "
-                + fechaLarga(d.getFechaCorteLiquidacion()) + ", conforme el siguiente detalle:");
-
-            // Mismo motivo que en memorando(): sin <query>, generarReporte() (conexión JDBC) da
-            // cero filas y Jasper se salta el <detail>. Una fila vacía fuerza la ejecución.
-            byte[] bytes = reporteService.generarReporteDesdeColeccion("crd", "RPRT_PLVN_LQDC",
-                parametros, java.util.Collections.singletonList(new java.util.HashMap<String, Object>()), formato);
-            return respuestaArchivo(bytes, formato, "LIQUIDACION_" + nombreParaArchivo(d.getNombreParticipe()));
+            byte[] bytes = generarLiquidacion(d, formato);
+            return respuestaArchivo(bytes, formato, nombreArchivoLiquidacion(d));
         } catch (Throwable e) {
             return respuestaError(e);
+        }
+    }
+
+    /**
+     * Descarga masiva en un solo ZIP (§8bis): el memorando de cada declaración, más la
+     * liquidación cuando existe. Todo o nada — si un documento falla, no se devuelve un ZIP
+     * incompleto. NO envuelve el bucle en una transacción propia: cada documento pasa por
+     * {@code generarReporteDesdeColeccion}, que ya es {@code REQUIRES_NEW} en su propio EJB.
+     */
+    @POST
+    @Path("/documentos")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces("application/zip")
+    public Response documentos(SolicitudDocumentosPlazoVencido solicitud) {
+        System.out.println("LLEGA AL SERVICIO documentos - PLVN - ids: "
+            + (solicitud != null && solicitud.getIds() != null ? solicitud.getIds().size() : 0));
+        try {
+            List<Long> ids = solicitud != null ? solicitud.getIds() : null;
+            if (ids == null || ids.isEmpty()) {
+                throw new IncomeException(DeclaracionPlazoVencidoService.ERR_PARAMETRO_INVALIDO
+                    + ": ids es obligatorio y no puede estar vacío");
+            }
+            if (new LinkedHashSet<>(ids).size() != ids.size()) {
+                throw new IncomeException(DeclaracionPlazoVencidoService.ERR_PARAMETRO_INVALIDO
+                    + ": ids no puede tener repetidos");
+            }
+            if (ids.size() > 200) {
+                throw new IncomeException(DeclaracionPlazoVencidoService.ERR_PARAMETRO_INVALIDO
+                    + ": ids admite 200 como máximo (recibidos: " + ids.size() + ")");
+            }
+            String formato = solicitud.getFormato() != null && !solicitud.getFormato().trim().isEmpty()
+                ? solicitud.getFormato().trim() : "PDF";
+            validarFormato(formato);
+
+            // Cargar TODAS las declaraciones antes de generar un solo documento: si falta
+            // alguna, 404 con la lista completa de faltantes, sin haber generado nada todavía.
+            List<DeclaracionPlazoVencido> declaraciones = new ArrayList<>();
+            List<Long> faltantes = new ArrayList<>();
+            for (Long id : ids) {
+                DeclaracionPlazoVencido d;
+                try {
+                    d = declaracionPlazoVencidoDaoService.selectById(id, NombreEntidadesCredito.DECLARACION_PLAZO_VENCIDO);
+                } catch (NoResultException e) {
+                    d = null;
+                }
+                if (d == null) {
+                    faltantes.add(id);
+                } else {
+                    declaraciones.add(d);
+                }
+            }
+            if (!faltantes.isEmpty()) {
+                throw new IncomeException(DeclaracionPlazoVencidoService.ERR_DECLARACION_NO_ENCONTRADA
+                    + ": no existen las declaraciones " + faltantes);
+            }
+
+            ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+            try (ZipOutputStream zip = new ZipOutputStream(buffer)) {
+                for (DeclaracionPlazoVencido d : declaraciones) {
+                    byte[] memo;
+                    try {
+                        memo = generarMemorando(d, formato);
+                    } catch (Exception e) {
+                        throw new RuntimeException("No se pudo generar el memorando de la declaración "
+                            + d.getCodigo() + ": " + e.getMessage(), e);
+                    }
+                    agregarAlZip(zip, nombreArchivoMemorando(d) + extensionPara(formato), memo);
+
+                    if (tieneLiquidacion(d)) {
+                        byte[] liq;
+                        try {
+                            liq = generarLiquidacion(d, formato);
+                        } catch (Exception e) {
+                            throw new RuntimeException("No se pudo generar la liquidación de la declaración "
+                                + d.getCodigo() + ": " + e.getMessage(), e);
+                        }
+                        agregarAlZip(zip, nombreArchivoLiquidacion(d) + extensionPara(formato), liq);
+                    }
+                }
+            }
+
+            String nombreZip = "PLAZO_VENCIDO_"
+                + new java.text.SimpleDateFormat("yyyyMMdd_HHmm").format(new java.util.Date()) + ".zip";
+            return Response.ok(new ByteArrayInputStream(buffer.toByteArray()))
+                .header("Content-Disposition", "attachment; filename=\"" + nombreZip + "\"")
+                .header("Content-Type", "application/zip")
+                .build();
+        } catch (Throwable e) {
+            return respuestaError(e);
+        }
+    }
+
+    // ========================================================================
+    // Armado de documentos — COMPARTIDO entre la descarga individual (§8) y la masiva (§8bis).
+    // Un solo método por documento: nunca una copia del armado de parámetros.
+    // ========================================================================
+
+    /**
+     * Bytes del memorando de {@code d}, en {@code formato}. {@code generarReporte()} llena con
+     * una CONEXIÓN JDBC: como este {@code .jrxml} no tiene {@code <query>}, el datasource da
+     * CERO filas y, con {@code whenNoDataType="AllSectionsNoDetail"}, Jasper se salta el
+     * {@code <detail>} entero (title/pageHeader salen, el cuerpo no). Se usa
+     * {@code generarReporteDesdeColeccion} con UNA fila vacía para forzar exactamente una
+     * ejecución del detail — el reporte no lee el bean, todo sale de los parámetros (verificado
+     * 2026-09-30: ningún {@code <field>} declarado en el {@code .jasper}).
+     */
+    private byte[] generarMemorando(DeclaracionPlazoVencido d, String formato) throws Exception {
+        // Todos los valores llegan YA FORMATEADOS como String (moneda ecuatoriana
+        // "$90.018,75", fechas "d/M/yyyy" o "dd-MM-yyyy" según la fila) — el diseño nuevo
+        // (2026-09-30, sobre el Word real del usuario) no delega el formato a Jasper.
+        Map<String, Object> parametros = new HashMap<>();
+        parametros.put("P_NUMERO_MEMORANDO", d.getNumeroMemorando());
+        parametros.put("P_PARA_NOMBRE", d.getParaNombre());
+        parametros.put("P_PARA_CARGO", d.getParaCargo());
+        parametros.put("P_CC_NOMBRE", d.getCcNombre());
+        parametros.put("P_CC_CARGO", d.getCcCargo());
+        parametros.put("P_TIPO_CREDITO", d.getTipoCredito());
+        parametros.put("P_NUMERO_PRESTAMO", d.getNumeroPrestamoImpreso());
+        parametros.put("P_FECHA_MEMO_TEXTO", fechaLarga(d.getFechaCorte()));
+        parametros.put("P_NOMBRE_PARTICIPE", d.getNombreParticipe());
+        parametros.put("P_CEDULA", d.getCedula());
+        parametros.put("P_FECHA_INICIAL_TEXTO", fechaSinCero(d.getFechaInicial()));
+        parametros.put("P_FECHA_FINAL_TEXTO", fechaSinCero(d.getFechaFinal()));
+        parametros.put("P_FECHA_ULTIMO_COBRO_TEXTO", d.getFechaUltimoCobro() != null ? fechaSinCero(d.getFechaUltimoCobro()) : "-");
+        parametros.put("P_MONTO_TEXTO", moneda(d.getMonto()));
+        parametros.put("P_CAPITAL_COBRADO_TEXTO", moneda(d.getCapitalCobrado()));
+        parametros.put("P_SALDO_CAPITAL_TEXTO", moneda(d.getSaldoCapital()));
+        parametros.put("P_INTERES_DEVENGADO_TEXTO", moneda(d.getInteresDevengado()));
+        parametros.put("P_INTERES_COBRADO_TEXTO", moneda(d.getInteresCobrado()));
+        parametros.put("P_INTERES_SALDO_TEXTO", moneda(d.getSaldoInteres()));
+        parametros.put("P_DESGRAVAMEN_DEVENGADO_TEXTO", moneda(d.getDesgravamenDevengado()));
+        parametros.put("P_DESGRAVAMEN_COBRADO_TEXTO", moneda(d.getDesgravamenCobrado()));
+        parametros.put("P_DESGRAVAMEN_SALDO_TEXTO", moneda(d.getSaldoDesgravamen()));
+        parametros.put("P_SEGURO_DEVENGADO_TEXTO", moneda(d.getSeguroDevengado()));
+        parametros.put("P_SEGURO_COBRADO_TEXTO", moneda(d.getSeguroCobrado()));
+        parametros.put("P_SEGURO_SALDO_TEXTO", moneda(d.getSaldoSeguro()));
+        parametros.put("P_MORA_DEVENGADA_TEXTO", moneda(d.getMoraDevengada()));
+        parametros.put("P_MORA_COBRADA_TEXTO", moneda(d.getMoraCobrada()));
+        parametros.put("P_MORA_SALDO_TEXTO", moneda(d.getSaldoMora()));
+        parametros.put("P_TOTAL_COBRADO_TEXTO", moneda(d.getTotalCobrado()));
+        parametros.put("P_TOTAL_POR_COBRAR_TEXTO", moneda(d.getTotalPorCobrar()));
+        parametros.put("P_FECHA_CORTE_GUION", fechaGuion(d.getFechaCorte()));
+        parametros.put("P_PLAZO_TEXTO", String.valueOf(d.getCuotasPlazo()));
+        parametros.put("P_CUOTAS_COBRADAS_TEXTO", String.valueOf(d.getCuotasCobradas()));
+        parametros.put("P_CUOTAS_PENDIENTES_TEXTO", String.valueOf(d.getCuotasPendientes()));
+        parametros.put("P_CUOTAS_POR_VENCER_TEXTO", String.valueOf(d.getCuotasPorVencer()));
+        parametros.put("P_DIVIDENDO_MENSUAL_TEXTO", moneda(d.getDividendoMensual()));
+        parametros.put("P_REVERTIDA", DeclaracionPlazoVencido.ESTADO_REVERTIDA == (d.getEstado() != null ? d.getEstado() : 0L));
+
+        // Párrafos con negrita embebida (markup="styled" en el .jrxml): se construyen acá,
+        // no en el reporte, porque la negrita cae solo sobre ciertos tramos del texto
+        // justificado (diseño 2026-09-30, sobre el Word real del usuario).
+        parametros.put("P_PARRAFO_APERTURA",
+            "Una vez realizada la revisión en el sistema SAA; y, del análisis del estado del Crédito "
+            + "<b>" + escapeHtml(d.getTipoCredito()) + " No. " + escapeHtml(d.getNumeroPrestamoImpreso()) + "</b>"
+            + ", otorgado por ASOPREP-FCPC a favor de <b>" + escapeHtml(d.getNombreParticipe()) + "</b>"
+            + ", portador de la cédula de identidad <b>No. " + escapeHtml(d.getCedula()) + "</b>, se desprende lo siguiente:");
+        parametros.put("P_PARRAFO_CIERRE_1",
+            "En virtud de lo expuesto y con el propósito de recuperación de los valores adeudados correspondientes al "
+            + "<b>Préstamo " + escapeHtml(d.getTipoCredito()) + " No. " + escapeHtml(d.getNumeroPrestamoImpreso())
+            + " se declara en estado de plazo vencido por incumplimiento de pago.</b>");
+
+        return reporteService.generarReporteDesdeColeccion("crd", "RPRT_PLVN_MMRN",
+            parametros, java.util.Collections.singletonList(new java.util.HashMap<String, Object>()), formato);
+    }
+
+    /** Bytes de la liquidación de {@code d}, en {@code formato}. Mismo motivo que {@link #generarMemorando}. */
+    private byte[] generarLiquidacion(DeclaracionPlazoVencido d, String formato) throws Exception {
+        Map<String, Object> parametros = new HashMap<>();
+        parametros.put("P_CIUDAD", "Quito");
+        parametros.put("P_FECHA_EMISION_TEXTO", fechaLarga(d.getFechaCorteLiquidacion()));
+        parametros.put("P_NUMERO_PRESTAMO", d.getNumeroPrestamoImpreso());
+        parametros.put("P_NUMERO_MEMORANDO", d.getNumeroMemorando());
+        parametros.put("P_FECHA_MEMO_TEXTO", fechaLarga(d.getFechaCorte()));
+        parametros.put("P_TIPO_CREDITO", d.getTipoCredito());
+        parametros.put("P_FECHA_INICIAL_TEXTO", fechaLarga(d.getFechaInicial()));
+        parametros.put("P_MONTO_TEXTO", moneda(d.getMonto()));
+        parametros.put("P_FECHA_FINAL_TEXTO", fechaLarga(d.getFechaFinal()));
+        parametros.put("P_NOMBRE_PARTICIPE", d.getNombreParticipe());
+        parametros.put("P_CEDULA", d.getCedula());
+        parametros.put("P_CUOTAS_IMPAGAS", d.getLiquidacionCuotasImpagas() != null ? String.valueOf(d.getLiquidacionCuotasImpagas()) : "0");
+        parametros.put("P_CUOTAS_IMPAGAS_LETRAS", NumeroALetrasUtil.convertir(d.getLiquidacionCuotasImpagas()));
+        parametros.put("P_MES_INICIO_MORA", d.getFechaInicioMora() != null ? MESES[d.getFechaInicioMora().getMonthValue() - 1] : "");
+        parametros.put("P_ANIO_INICIO_MORA", d.getFechaInicioMora() != null ? String.valueOf(d.getFechaInicioMora().getYear()) : "");
+        parametros.put("P_FECHA_CORTE_GUION", fechaGuion(d.getFechaCorteLiquidacion()));
+        parametros.put("P_LQ_SALDO_CAPITAL_TEXTO", moneda(d.getLiquidacionSaldoCapital()));
+        parametros.put("P_LQ_INTERES_MORA_TEXTO", moneda(d.getLiquidacionMora()));
+        parametros.put("P_LQ_INTERES_VENCIDO_TEXTO", moneda(d.getLiquidacionInteres()));
+        parametros.put("P_LQ_DESGRAVAMEN_TEXTO", moneda(d.getLiquidacionDesgravamen()));
+        parametros.put("P_LQ_SEGURO_INCENDIO_TEXTO", moneda(d.getLiquidacionSeguro()));
+        parametros.put("P_LQ_TOTAL_TEXTO", moneda(d.getLiquidacionTotal()));
+        parametros.put("P_REVERTIDA", DeclaracionPlazoVencido.ESTADO_REVERTIDA == (d.getEstado() != null ? d.getEstado() : 0L));
+
+        parametros.put("P_PARRAFO_1",
+            "Mediante Memorando Nro. " + escapeHtml(d.getNumeroMemorando()) + " de " + fechaLarga(d.getFechaCorte())
+            + ", el jefe de Crédito remite la <b>ORDEN DE COBRO</b> del Préstamo " + escapeHtml(d.getTipoCredito())
+            + " No. " + escapeHtml(d.getNumeroPrestamoImpreso()) + " otorgado el " + fechaLarga(d.getFechaInicial())
+            + " por el valor de USD " + monedaSinSimbolo(d.getMonto()) + ", con vencimiento el " + fechaLarga(d.getFechaFinal())
+            + ", a favor de <b>" + escapeHtml(d.getNombreParticipe()) + "</b>, con cédula de ciudadanía No. <b>"
+            + escapeHtml(d.getCedula()) + "</b>; a través del cual, declara la referida obligación de "
+            + "<b><i>\"...plazo vencido por incumplimiento de pago.\"</i></b>");
+        parametros.put("P_PARRAFO_2",
+            "De lo expuesto y con la finalidad de regularizar el registro administrativo y contable de la obligación, "
+            + "procedo con la emisión de la liquidación contable, para lo cual se realizó la verificación de la información "
+            + "registrada en el sistema SAA, evidenciándose que <b>" + escapeHtml(d.getNombreParticipe()) + "</b>, mantiene "
+            + NumeroALetrasUtil.convertir(d.getLiquidacionCuotasImpagas()) + " ("
+            + (d.getLiquidacionCuotasImpagas() != null ? d.getLiquidacionCuotasImpagas() : 0) + ") cuotas impagas "
+            + "correspondientes al Crédito " + escapeHtml(d.getTipoCredito()) + " No. " + escapeHtml(d.getNumeroPrestamoImpreso())
+            + ", registrándose el inicio del estado de mora desde el mes de "
+            + (d.getFechaInicioMora() != null ? MESES[d.getFechaInicioMora().getMonthValue() - 1] : "")
+            + " de " + (d.getFechaInicioMora() != null ? String.valueOf(d.getFechaInicioMora().getYear()) : "")
+            + "; en tal razón, se procede a realizar la siguiente liquidación contable con corte al "
+            + fechaLarga(d.getFechaCorteLiquidacion()) + ", conforme el siguiente detalle:");
+
+        return reporteService.generarReporteDesdeColeccion("crd", "RPRT_PLVN_LQDC",
+            parametros, java.util.Collections.singletonList(new java.util.HashMap<String, Object>()), formato);
+    }
+
+    /** Estado 2 LIQUIDADA, o estado 3 REVERTIDA después de haber liquidado (PLVNFCLQ no nulo). */
+    private boolean tieneLiquidacion(DeclaracionPlazoVencido d) {
+        if (d.getEstado() == null) {
+            return false;
+        }
+        if (d.getEstado() == DeclaracionPlazoVencido.ESTADO_LIQUIDADA) {
+            return true;
+        }
+        return d.getEstado() == DeclaracionPlazoVencido.ESTADO_REVERTIDA && d.getFechaCorteLiquidacion() != null;
+    }
+
+    private String nombreArchivoMemorando(DeclaracionPlazoVencido d) {
+        return d.getNumeroPrestamoImpreso() + "_ORDEN_DE_COBRO_" + nombreParaArchivo(d.getNombreParticipe());
+    }
+
+    private String nombreArchivoLiquidacion(DeclaracionPlazoVencido d) {
+        return d.getNumeroPrestamoImpreso() + "_LIQUIDACION_" + nombreParaArchivo(d.getNombreParticipe());
+    }
+
+    /** {@code nombreArchivo} ya tiene que traer la extensión (ver {@link #extensionPara}). */
+    private void agregarAlZip(ZipOutputStream zip, String nombreArchivo, byte[] bytes) throws java.io.IOException {
+        zip.putNextEntry(new java.util.zip.ZipEntry(nombreArchivo));
+        zip.write(bytes);
+        zip.closeEntry();
+    }
+
+    /** ".pdf" o ".docx" según {@code formato} — misma regla que {@link #respuestaArchivo}. */
+    private String extensionPara(String formato) {
+        return "DOCX".equalsIgnoreCase(formato) ? ".docx" : ".pdf";
+    }
+
+    private void validarFormato(String formato) {
+        if (!"PDF".equalsIgnoreCase(formato) && !"DOCX".equalsIgnoreCase(formato)) {
+            throw new IncomeException(DeclaracionPlazoVencidoService.ERR_PARAMETRO_INVALIDO
+                + ": formato debe ser PDF o DOCX");
         }
     }
 
@@ -339,13 +475,11 @@ public class DeclaracionPlazoVencidoRest {
     }
 
     private Response respuestaArchivo(byte[] bytes, String formato, String nombreBase) {
-        boolean esDocx = "DOCX".equalsIgnoreCase(formato);
-        String contentType = esDocx
+        String contentType = "DOCX".equalsIgnoreCase(formato)
             ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             : "application/pdf";
-        String extension = esDocx ? ".docx" : ".pdf";
         return Response.ok(new ByteArrayInputStream(bytes))
-            .header("Content-Disposition", "attachment; filename=\"" + nombreBase + extension + "\"")
+            .header("Content-Disposition", "attachment; filename=\"" + nombreBase + extensionPara(formato) + "\"")
             .header("Content-Type", contentType)
             .build();
     }
