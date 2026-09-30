@@ -592,6 +592,8 @@ su DDL. La columna **Estado** lo dice; **`reservada` no es `autorizada`**.
 | `CRJB` | Corrida mensual de jubilados (cabecera de los dos procesos del mes) | CRD | **autorizada por el usuario 2026-09-07**; DDL en `crd/sql/212`, sin correr |
 | `LQEX` | Liquidación de ex-colaborador de la administración anterior (cabecera) | RHH (`omen-saa-3`) | **autorizada por el usuario 2026-09-30**; DDL en `rhh/sql/e3-05`, sin correr |
 | `DLEX` | Conceptos de la liquidación de ex-colaborador | RHH (`omen-saa-3`) | **autorizada por el usuario 2026-09-30**; DDL en `rhh/sql/e3-05`, sin correr |
+| `PLVN` | Declaración de plazo vencido de un préstamo (foto del memorando y de la liquidación) | CRD (`omen-saa-1`) | **autorizada por el usuario 2026-09-30** (D12); DDL en `crd/sql/247`, sin correr |
+| `DPLV` | Seguro original por cuota anulado al declarar plazo vencido (para el reverso) | CRD (`omen-saa-1`) | **autorizada por el usuario 2026-09-30** (D23); DDL en `crd/sql/247`, sin correr |
 
 ### Propuestos para los frentes nuevos — **verificar antes de usar**
 

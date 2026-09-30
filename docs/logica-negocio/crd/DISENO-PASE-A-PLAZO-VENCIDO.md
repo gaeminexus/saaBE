@@ -1,6 +1,6 @@
 # DISEÑO — Pase de préstamos EN MORA a DE PLAZO VENCIDO, con orden de cobro y liquidación
 
-**Equipo:** `omen-saa-1` (CRD · equipo B) · **Abierto:** 2026-09-30 · **Estado:** ⛔ DISEÑO, NO DESPACHADO — decisiones D1–D21 tomadas; faltan L y M, que bloquean el despacho — §6.0.
+**Equipo:** `omen-saa-1` (CRD · equipo B) · **Abierto:** 2026-09-30 · **Estado:** ⛔ DISEÑO, NO DESPACHADO — decisiones D1–D23 tomadas. FASE 1 LISTA PARA DESPACHAR (DDL `sql/247`, contrato `API-PASE-A-PLAZO-VENCIDO.md`). Fase 2 (reporte a la aseguradora) espera validación del usuario.
 Faltan las decisiones del §6 antes de escribir el contrato de API y despachar.
 
 ---
@@ -158,6 +158,15 @@ plata cobrada al partícipe. **Ver §6, pregunta A.**
 |---|---|---|
 | D20 (J) | Formato del reporte a la aseguradora | **No existe.** Se sugiere uno (§4.6); el usuario lo valida con la aseguradora antes de congelarlo |
 | D21 (K) | PARA / CC del memorando | **Campos en la pantalla del paso 1**, con el último valor usado como sugerencia, y guardados en la foto de `PLVN` para que la reimpresión sea idéntica |
+
+### Quinta ronda — 2026-09-30
+
+| # | Pregunta | Decisión |
+|---|---|---|
+| D22 (L) | Desde cuándo deja de cobrarse el seguro | **Desde la fecha de corte de la declaración.** Las cuotas con vencimiento **≤ corte** conservan y deben su seguro; las **posteriores** quedan en **0**. Confirma la lectura del árbitro |
+| D23 (M) | ¿El seguro vuelve al revertir? | **Sí.** ⇒ **Se autoriza `CRD.DPLV`** para guardar el original por cuota |
+
+⇒ **Diseño cerrado para la fase 1.** DDL: `sql/247`. Contrato: `API-PASE-A-PLAZO-VENCIDO.md`.
 
 ### ⚠️ La tensión que abre D19 frente a D18
 
