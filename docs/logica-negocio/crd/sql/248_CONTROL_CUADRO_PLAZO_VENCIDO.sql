@@ -17,7 +17,8 @@
 --     Sin eso, todo prestamo con un abono falla la invariante de capital (caso 62439, 2026-09-30).
 --   * Por cuota, con piso en cero: saldo_i = max(0, regla_i - pagado_i).
 --     Devengado de la fila = cobrado + saldo (menos el capital: su devengado es el monto).
---   * Capital e interes: todas las cuotas (aceleracion, D11).
+--   * Capital: todas las cuotas (aceleracion, D11).
+--   * Interes: solo cuotas con vencimiento <= fecha de corte (D25, como la precancelacion).
 --   * Desgravamen e incendio: solo las cuotas con vencimiento <= fecha de corte (D22).
 --
 -- ⚠️ LO QUE NO COMPARA: la MORA. Su formula vive en Java
@@ -60,7 +61,9 @@ por_cuota AS (
            NVL(p.SEG_PAG, 0) AS SEG_PAG,
            NVL(p.MOR_PAG, 0) AS MOR_PAG,
            GREATEST(0, ROUND(NVL(d.DTPRCPTL, 0) - NVL(p.CAP_PAG_CUOTA, 0), 2)) AS SAL_CAP,
-           GREATEST(0, ROUND(NVL(d.DTPRINTR, 0) + NVL(d.DTPRINVN, 0) - NVL(p.INT_PAG, 0), 2)) AS SAL_INT,
+           GREATEST(0, ROUND(CASE WHEN TRUNC(d.DTPRFCVN) <= v.PLVNFCCR          -- D25: interes solo hasta el corte
+                                  THEN NVL(d.DTPRINTR, 0) + NVL(d.DTPRINVN, 0) ELSE 0 END
+                             - NVL(p.INT_PAG, 0), 2)) AS SAL_INT,
            GREATEST(0, ROUND(CASE WHEN TRUNC(d.DTPRFCVN) <= v.PLVNFCCR THEN NVL(d.DTPRDSGR, 0) ELSE 0 END
                              - NVL(p.DSG_PAG, 0), 2)) AS SAL_DSG,
            GREATEST(0, ROUND(CASE WHEN TRUNC(d.DTPRFCVN) <= v.PLVNFCCR THEN NVL(d.DTPRVLSI, 0) ELSE 0 END

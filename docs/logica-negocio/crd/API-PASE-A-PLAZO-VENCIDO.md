@@ -34,7 +34,10 @@ de cartera mensual.
    montos, se ignorarían.
 2. **Fórmulas:** las del diseño §4.4bis, sin excepción. Resumen:
    - Universo: **todas** las cuotas del préstamo, excepto `CANCELADA_ANTICIPADA (7)`.
-   - **Capital e interés se aceleran** (D11): el devengado es el de **todas** las cuotas, vencidas o no.
+   - **Capital se acelera** (D11): el devengado es el de **todas** las cuotas, vencidas o no.
+   - ⛔ **Interés, sólo hasta la fecha de corte** (D25, corrige D11 el 2026-09-30): las cuotas con
+     `fechaVencimiento ≤ corte`, completas; las posteriores aportan 0. Sin prorrata. Misma regla que la
+     precancelación (`calcularPrecancelacion`: exigibles completas, interés de las futuras condonado).
    - **Desgravamen e incendio** (D22): el devengado es sólo el de las cuotas con `fechaVencimiento ≤ corte`.
    - **Mora:** `ProcesoMoraPrestamoService.calcularMoraCuota(cuota, tasaDiaria, corte)` sobre las cuotas
      vencidas e impagas al corte. ⛔ **Nunca** el campo `mora` persistido.

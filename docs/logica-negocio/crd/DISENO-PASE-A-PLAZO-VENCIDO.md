@@ -166,6 +166,7 @@ plata cobrada al partícipe. **Ver §6, pregunta A.**
 | D22 (L) | Desde cuándo deja de cobrarse el seguro | **Desde la fecha de corte de la declaración.** Las cuotas con vencimiento **≤ corte** conservan y deben su seguro; las **posteriores** quedan en **0**. Confirma la lectura del árbitro |
 | D23 (M) | ¿El seguro vuelve al revertir? | **Sí.** ⇒ **Se autoriza `CRD.DPLV`** para guardar el original por cuota |
 
+| **D25** | **El interés, ¿todo o hasta la fecha?** | **Sólo hasta la fecha de corte** (usuario, 2026-09-30, en producción: *«el valor de intereses sólo lo debe tomar en cuenta hasta la fecha en que se va a mandar de plazo vencido»*). **Corrige la mitad de D11:** el CAPITAL se sigue acelerando completo; el INTERÉS sólo de las cuotas con vencimiento ≤ corte, completas, sin prorrata del período en curso y sin interés futuro. Es la regla de `ProcesoPagoPrestamoServiceImpl.calcularPrecancelacion` (exigibles = vencimiento ≤ fin del día del corte; interés de las futuras, condonado). Árbitro: se eligió «sin prorrata» por ese precedente |
 | D24 | ¿Sale sin permisos por rol? | **Sí** (2026-09-30). Sin `idPermiso`; la separación Crédito/Contabilidad queda como deuda del frente de seguridad |
 
 ⇒ **Diseño cerrado para la fase 1.** DDL: `sql/247`. Contrato: `API-PASE-A-PLAZO-VENCIDO.md`.
