@@ -377,6 +377,27 @@ public interface AsientoContableService {
             String observaciones, String usuario) throws Throwable;
 
     /**
+     * ÍTEM 2 (docs/logica-negocio/cxp/API-CRUCE-ANTICIPO-OTRO-PROVEEDOR.md §3.4): variante para
+     * cruzar el anticipo de UN proveedor contra la factura de OTRO. Con
+     * {@code idTitularFactura.equals(idTitularAnticipo)} es exactamente
+     * {@link #generarAsientoAplicacionAnticipoProveedor(Long, Double, Long, int, java.time.LocalDate, String, String)}
+     * (esa variante ahora delega en ésta).
+     * <p>
+     * DEBE:  cuenta CxP del PROVEEDOR DE LA FACTURA (tipoCuenta=1, rol Proveedor)<br>
+     * HABER: cuenta de anticipos del PROVEEDOR DEL ANTICIPO (tipoCuenta=2, rol Proveedor)
+     *
+     * @param idTitularFactura  : Id del proveedor de la factura (o liquidación) que recibe el abono
+     * @param idTitularAnticipo : Id del proveedor dueño del anticipo que se consume
+     * @param valor             : Valor del anticipo que se cruza
+     * @param idEmpresa         : Id de la empresa contable
+     * @return                  : Asiento generado
+     * @throws Throwable        : Excepcion
+     */
+    Asiento generarAsientoAplicacionAnticipoProveedor(Long idTitularFactura, Long idTitularAnticipo,
+            Double valor, Long idEmpresa, int codigoAltTipoAsiento, java.time.LocalDate fechaAsiento,
+            String observaciones, String usuario) throws Throwable;
+
+    /**
      * Genera el asiento del cruce de un anticipo de cliente contra una factura
      * de venta (CXC).
      * <p>

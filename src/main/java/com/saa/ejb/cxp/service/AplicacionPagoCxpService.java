@@ -113,14 +113,21 @@ public interface AplicacionPagoCxpService extends EntityService<AplicacionPagoCx
 	 * @param idEmpresa            : Id de la empresa contable
 	 * @param idUsuario            : Id del usuario que registra
 	 * @param observacion          : Observación de la aplicación
+	 * @param permitirOtroProveedor : ÍTEM 1 (docs/logica-negocio/cxp/API-CRUCE-ANTICIPO-OTRO-PROVEEDOR.md
+	 *                               §3.2), false por defecto. Con true se salta SOLO la validación de
+	 *                               que el anticipo sea del proveedor de la factura — empresa, estado
+	 *                               CONFIRMADO y saldo del anticipo se siguen validando igual. El
+	 *                               asiento y el PRCC que se mueven pasan a ser los del proveedor
+	 *                               DEL ANTICIPO, no los de la factura (§3.3/§3.4).
 	 * @return                     : Mapa con exito, mensaje, lineas (una por anticipo),
 	 *                               totalCruzado, saldoAnticipos y los saldos del documento
-	 * @throws Throwable           : Excepcion si un anticipo no existe, no es del proveedor,
-	 *                               no está confirmado o no tiene saldo suficiente
+	 * @throws Throwable           : Excepcion si un anticipo no existe, no es del proveedor
+	 *                               (salvo permitirOtroProveedor), no está confirmado o no tiene
+	 *                               saldo suficiente
 	 */
 	Map<String, Object> aplicarAnticipos(Long idFacturaCompra, Long idLiquidacionCompra,
 			List<Map<String, Object>> detalles, String fechaAplicacion, Long idEmpresa,
-			Long idUsuario, String observacion) throws Throwable;
+			Long idUsuario, String observacion, boolean permitirOtroProveedor) throws Throwable;
 
 	/**
 	 * Registra el abono a la factura que produce un pago ya ejecutado por el

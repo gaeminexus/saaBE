@@ -306,6 +306,10 @@ public class AplicacionPagoCxpRest {
      * </pre>
      * O contra liquidación de compra, con "idLiquidacionCompra" en vez de
      * "idFacturaCompra" — mismo criterio de exclusividad que POST /aplp/anticipo.
+     * <p>
+     * "permitirOtroProveedor" (opcional, false por defecto): con true, cruza el anticipo de un
+     * proveedor contra la factura/liquidación de OTRO — ver
+     * docs/logica-negocio/cxp/API-CRUCE-ANTICIPO-OTRO-PROVEEDOR.md.
      */
     @POST
     @Path("/anticipos")
@@ -320,6 +324,7 @@ public class AplicacionPagoCxpRest {
             Long idEmpresa     = toLong(datos.get("idEmpresa"));
             Long idUsuario     = toLong(datos.get("idUsuario"));
             String observacion = (String) datos.get("observacion");
+            boolean permitirOtroProveedor = Boolean.TRUE.equals(datos.get("permitirOtroProveedor"));
 
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> anticipos =
@@ -343,7 +348,8 @@ public class AplicacionPagoCxpRest {
             }
 
             Map<String, Object> resultado = aplicacionPagoCxpService.aplicarAnticipos(
-                    idFactura, idLiquidacion, anticipos, fecha, idEmpresa, idUsuario, observacion);
+                    idFactura, idLiquidacion, anticipos, fecha, idEmpresa, idUsuario, observacion,
+                    permitirOtroProveedor);
             return Response.status(Response.Status.OK).entity(resultado)
                     .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {

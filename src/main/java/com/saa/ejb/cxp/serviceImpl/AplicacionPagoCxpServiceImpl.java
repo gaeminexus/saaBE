@@ -307,12 +307,12 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 	@Override
 	public Map<String, Object> aplicarAnticipos(Long idFacturaCompra, Long idLiquidacionCompra,
 			List<Map<String, Object>> detalles, String fechaAplicacion, Long idEmpresa,
-			Long idUsuario, String observacion) throws Throwable {
+			Long idUsuario, String observacion, boolean permitirOtroProveedor) throws Throwable {
 
 		System.out.println("=== aplicarAnticipos | factura=" + idFacturaCompra
 				+ " | liquidacion=" + idLiquidacionCompra
 				+ " | detalles=" + ((detalles != null) ? detalles.size() : 0)
-				+ " | empresa=" + idEmpresa + " ===");
+				+ " | empresa=" + idEmpresa + " | permitirOtroProveedor=" + permitirOtroProveedor + " ===");
 
 		if (detalles == null || detalles.isEmpty()) {
 			throw new IncomeException("Debe indicar al menos un anticipo a cruzar.");
@@ -354,7 +354,7 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 			}
 
 			AnticipoProveedor anticipo = em.find(AnticipoProveedor.class, idAnticipo);
-			validaAnticipoCruzable(anticipo, idAnticipo, idProveedor, idEmpresa, monto);
+			validaAnticipoCruzable(anticipo, idAnticipo, idProveedor, idEmpresa, monto, permitirOtroProveedor);
 			reparto.add(new Object[]{anticipo, monto});
 		}
 
@@ -430,16 +430,19 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 	 * @param idTitular  : Proveedor de la factura
 	 * @param idEmpresa  : Empresa de la operación
 	 * @param monto      : Monto que se pretende cruzar de ese anticipo
+	 * @param permitirOtroProveedor : ÍTEM 1 (API-CRUCE-ANTICIPO-OTRO-PROVEEDOR.md §3.2): con true
+	 *                               se salta SOLO esta validación de titular — empresa, estado y
+	 *                               saldo se siguen exigiendo igual.
 	 * @throws Throwable : Excepcion con el motivo exacto del rechazo
 	 */
 	private void validaAnticipoCruzable(AnticipoProveedor anticipo, Long idAnticipo,
-			Long idTitular, Long idEmpresa, Double monto) throws Throwable {
+			Long idTitular, Long idEmpresa, Double monto, boolean permitirOtroProveedor) throws Throwable {
 
 		if (anticipo == null) {
 			throw new IncomeException("No se encontró el anticipo con ID: " + idAnticipo);
 		}
-		if (anticipo.getTitular() == null
-				|| !idTitular.equals(anticipo.getTitular().getCodigo())) {
+		if (!permitirOtroProveedor && (anticipo.getTitular() == null
+				|| !idTitular.equals(anticipo.getTitular().getCodigo()))) {
 			throw new IncomeException("El anticipo " + idAnticipo + " no pertenece al proveedor "
 					+ "de la factura: no se puede cruzar.");
 		}
@@ -532,10 +535,10 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 			throw new IncomeException("No hay anticipos con saldo para cruzar.");
 		}
 
-		Titular titular = (factura != null) ? factura.getTitular() : liquidacion.getTitular();
+		Titular titularFactura = (factura != null) ? factura.getTitular() : liquidacion.getTitular();
 		String numeroDocumento = (factura != null) ? factura.getNumero() : liquidacion.getNumero();
 		String etiquetaDocumento = (factura != null) ? "Factura" : "Liquidación";
-		Long idProveedor = titular.getCodigo();
+		Long idTitularFactura = titularFactura.getCodigo();
 
 		double total = 0.0;
 		for (Object[] linea : reparto) {
@@ -549,20 +552,40 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 			validaMontoContraSaldoLiquidacion(liquidacion, total, null);
 		}
 
-		// 2. El saldo global del proveedor debe respaldar el cruce. Con el saldo
-		//    por anticipo esto es redundante, pero mientras PRCC siga siendo la
-		//    cuenta que mueve la contabilidad conviene detectar el descuadre
-		//    aquí y no a mitad del proceso.
-		PersonaCuentaContable cuentaAnticipos = obtenerCuentaAnticipos(idProveedor, idEmpresa);
-		double saldoAnticipos = (cuentaAnticipos.getSaldoInicial() != null)
-				? cuentaAnticipos.getSaldoInicial() : 0.0;
-		if (saldoAnticipos + TOLERANCIA < total) {
-			throw new IncomeException("El saldo de anticipos del proveedor '"
-					+ titular.getNombre() + "' es de $"
-					+ String.format(java.util.Locale.US, "%.2f", saldoAnticipos)
-					+ " y no alcanza para cruzar $"
-					+ String.format(java.util.Locale.US, "%.2f", total)
-					+ ". Revise el cuadre entre los anticipos y la cuenta contable.");
+		// 2. ÍTEM 3 (API-CRUCE-ANTICIPO-OTRO-PROVEEDOR.md §3.3): el saldo global que respalda el
+		//    cruce es el del TITULAR DE CADA ANTICIPO, no el de la factura -- se agrupa el reparto
+		//    por ese titular y se valida/lee su propio PRCC. Con un solo proveedor en el reparto
+		//    (el 100% de los cruces de hoy, porque siempre coincide con el de la factura) esto
+		//    hace exactamente lo mismo que antes: una sola lectura, un solo PRCC.
+		Map<Long, Titular> titularAnticipoPorId = new HashMap<>();
+		Map<Long, Double> totalPorTitularAnticipo = new HashMap<>();
+		for (Object[] linea : reparto) {
+			AnticipoProveedor anticipo = (AnticipoProveedor) linea[0];
+			Double monto = (Double) linea[1];
+			Titular titularAnticipo = anticipo.getTitular();
+			Long idTitularAnticipo = titularAnticipo.getCodigo();
+			titularAnticipoPorId.put(idTitularAnticipo, titularAnticipo);
+			totalPorTitularAnticipo.put(idTitularAnticipo,
+					(totalPorTitularAnticipo.containsKey(idTitularAnticipo)
+							? totalPorTitularAnticipo.get(idTitularAnticipo) : 0.0) + monto);
+		}
+
+		Map<Long, PersonaCuentaContable> cuentaAnticiposPorTitular = new HashMap<>();
+		for (Map.Entry<Long, Double> entrada : totalPorTitularAnticipo.entrySet()) {
+			Long idTitularAnticipo = entrada.getKey();
+			Titular titularAnticipo = titularAnticipoPorId.get(idTitularAnticipo);
+			PersonaCuentaContable cuentaAnticipos = obtenerCuentaAnticipos(idTitularAnticipo, idEmpresa);
+			double saldoAnticipos = (cuentaAnticipos.getSaldoInicial() != null)
+					? cuentaAnticipos.getSaldoInicial() : 0.0;
+			if (saldoAnticipos + TOLERANCIA < entrada.getValue()) {
+				throw new IncomeException("El saldo de anticipos del proveedor '"
+						+ titularAnticipo.getNombre() + "' es de $"
+						+ String.format(java.util.Locale.US, "%.2f", saldoAnticipos)
+						+ " y no alcanza para cruzar $"
+						+ String.format(java.util.Locale.US, "%.2f", entrada.getValue())
+						+ ". Revise el cuadre entre los anticipos y la cuenta contable.");
+			}
+			cuentaAnticiposPorTitular.put(idTitularAnticipo, cuentaAnticipos);
 		}
 
 		LocalDate fecha = parseFecha(fechaAplicacion);
@@ -571,16 +594,24 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 		for (Object[] linea : reparto) {
 			AnticipoProveedor anticipo = (AnticipoProveedor) linea[0];
 			Double monto = (Double) linea[1];
+			Titular titularAnticipo = anticipo.getTitular();
+			Long idTitularAnticipo = titularAnticipo.getCodigo();
+			// ÍTEM 3.3: con titulares iguales el sufijo queda vacío -- mismo texto que hoy.
+			boolean otroProveedor = !idTitularAnticipo.equals(idTitularFactura);
+			String sufijoOtroProveedor = otroProveedor ? " | anticipo de " + titularAnticipo.getNombre() : "";
 
-			String observacionAsiento = "Cruce de anticipo | Proveedor: " + titular.getNombre()
+			String observacionAsiento = "Cruce de anticipo | Proveedor: " + titularFactura.getNombre()
 					+ " | " + etiquetaDocumento + ": " + numeroDocumento
 					+ " | Anticipo: " + nvl(anticipo.getNumeroDoc(), "#" + anticipo.getId())
-					+ " | Valor: $" + String.format(java.util.Locale.US, "%.2f", monto);
+					+ " | Valor: $" + String.format(java.util.Locale.US, "%.2f", monto)
+					+ sufijoOtroProveedor;
 
-			// 3. Asiento contable del cruce (uno por anticipo consumido)
+			// 3. Asiento contable del cruce (uno por anticipo consumido). ÍTEM 2: la sobrecarga de
+			//    dos titulares -- DEBE a la cuenta de la factura, HABER a la del anticipo.
 			Asiento asiento = asientoContableService.generarAsientoAplicacionAnticipoProveedor(
-					idProveedor, monto, idEmpresa, TipoAsientos.APLICACION_ANTICIPO_PROVEEDOR,
-					fecha, observacionAsiento, usuarioNombre(idUsuario));
+					idTitularFactura, idTitularAnticipo, monto, idEmpresa,
+					TipoAsientos.APLICACION_ANTICIPO_PROVEEDOR, fecha, observacionAsiento,
+					usuarioNombre(idUsuario));
 
 			// 4. Descontar el saldo del anticipo consumido
 			double saldoAnterior = (anticipo.getSaldo() != null) ? anticipo.getSaldo() : 0.0;
@@ -591,11 +622,12 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 
 			// 5. Aplicación enlazada al anticipo de ORIGEN: es lo que permite
 			//    deshacer exactamente este abono si el anticipo se anula.
+			String observacionCruce = construyeObservacionCruce(anticipo, observacion) + sufijoOtroProveedor;
 			AplicacionPagoCxp aplicacion = (factura != null)
 					? nuevaAplicacion(factura, idEmpresa, TipoDocPagoAplicacion.ANTICIPO, monto, fecha,
-							construyeObservacionCruce(anticipo, observacion), usuarioNombre(idUsuario))
+							observacionCruce, usuarioNombre(idUsuario))
 					: nuevaAplicacionLiquidacion(liquidacion, idEmpresa, TipoDocPagoAplicacion.ANTICIPO, monto, fecha,
-							construyeObservacionCruce(anticipo, observacion), usuarioNombre(idUsuario));
+							observacionCruce, usuarioNombre(idUsuario));
 			aplicacion.setAsiento(asiento);
 			aplicacion.setAnticipoOrigen(anticipo);
 			aplicacion.setUsuario(em.find(Usuario.class, idUsuario));
@@ -611,11 +643,17 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 			lineas.add(detalle);
 		}
 
-		// 6. Descontar el saldo global del proveedor una sola vez, por el total
-		cuentaAnticipos.setSaldoInicial(redondea(saldoAnticipos - total));
-		em.merge(cuentaAnticipos);
-		System.out.println("✓ Saldo global de anticipos del proveedor " + idProveedor + ": "
-				+ saldoAnticipos + " → " + cuentaAnticipos.getSaldoInicial());
+		// 6. Descontar el saldo global de anticipos de CADA titular involucrado, una sola vez
+		//    por el total que le tocó (no por cada línea) -- igual que antes cuando es uno solo.
+		for (Map.Entry<Long, Double> entrada : totalPorTitularAnticipo.entrySet()) {
+			PersonaCuentaContable cuentaAnticipos = cuentaAnticiposPorTitular.get(entrada.getKey());
+			double saldoAnterior = (cuentaAnticipos.getSaldoInicial() != null)
+					? cuentaAnticipos.getSaldoInicial() : 0.0;
+			cuentaAnticipos.setSaldoInicial(redondea(saldoAnterior - entrada.getValue()));
+			em.merge(cuentaAnticipos);
+			System.out.println("✓ Saldo global de anticipos del proveedor " + entrada.getKey() + ": "
+					+ saldoAnterior + " → " + cuentaAnticipos.getSaldoInicial());
+		}
 
 		em.flush();
 
@@ -626,7 +664,20 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 				: "Se cruzaron " + lineas.size() + " anticipos correctamente.");
 		resultado.put("lineas", lineas);
 		resultado.put("totalCruzado", redondea(total));
-		resultado.put("saldoAnticipos", cuentaAnticipos.getSaldoInicial());
+		// Compatibilidad con los clientes que leen un solo saldo de anticipos: con titular único
+		// (el caso normal) es el mismo valor de siempre; con un cruce 100% de otro proveedor, el
+		// de ESE proveedor (es el PRCC que de verdad se movió); con una mezcla de varios
+		// titulares en un mismo cruce, null -- no hay un solo número que lo represente.
+		PersonaCuentaContable cuentaTitularFactura = cuentaAnticiposPorTitular.get(idTitularFactura);
+		Double saldoAnticiposRespuesta;
+		if (cuentaTitularFactura != null) {
+			saldoAnticiposRespuesta = cuentaTitularFactura.getSaldoInicial();
+		} else if (cuentaAnticiposPorTitular.size() == 1) {
+			saldoAnticiposRespuesta = cuentaAnticiposPorTitular.values().iterator().next().getSaldoInicial();
+		} else {
+			saldoAnticiposRespuesta = null;
+		}
+		resultado.put("saldoAnticipos", saldoAnticiposRespuesta);
 		// Compatibilidad con los clientes que leen un solo cruce
 		resultado.put("aplicacion", lineas.get(0).get("aplicacion"));
 		resultado.put("asiento", lineas.get(0).get("asiento"));
@@ -1535,9 +1586,17 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 							? aplicacion.getLiquidacionCompra().getTitular() : null;
 			Long idEmpresa = (aplicacion.getEmpresa() != null)
 					? aplicacion.getEmpresa().getCodigo() : null;
-			if (titularDocumento != null) {
+			// ÍTEM 4 (API-CRUCE-ANTICIPO-OTRO-PROVEEDOR.md §3.5): el PRCC que se repone es el del
+			// TITULAR DEL ANTICIPO (anticipoOrigen), no el del documento -- con un cruce entre
+			// proveedores es al anticipo al que hay que devolverle el saldo global, no a la
+			// factura. Los cruces sin anticipoOrigen (anteriores a la migración del 2026-08-20)
+			// siguen usando el titular del documento, como hoy: es lo único que tienen.
+			Titular titularReposicion = (aplicacion.getAnticipoOrigen() != null
+					&& aplicacion.getAnticipoOrigen().getTitular() != null)
+					? aplicacion.getAnticipoOrigen().getTitular() : titularDocumento;
+			if (titularReposicion != null) {
 				PersonaCuentaContable cuentaAnticipos =
-						obtenerCuentaAnticipos(titularDocumento.getCodigo(), idEmpresa);
+						obtenerCuentaAnticipos(titularReposicion.getCodigo(), idEmpresa);
 				double saldoActual = (cuentaAnticipos.getSaldoInicial() != null)
 						? cuentaAnticipos.getSaldoInicial() : 0.0;
 				cuentaAnticipos.setSaldoInicial(

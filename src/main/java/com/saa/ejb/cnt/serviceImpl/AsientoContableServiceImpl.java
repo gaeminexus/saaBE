@@ -794,34 +794,50 @@ public class AsientoContableServiceImpl implements AsientoContableService {
     public Asiento generarAsientoAplicacionAnticipoProveedor(Long idTitular, Double valor,
             Long idEmpresa, int codigoAltTipoAsiento, LocalDate fechaAsiento,
             String observaciones, String usuario) throws Throwable {
+        // ÍTEM 2 (API-CRUCE-ANTICIPO-OTRO-PROVEEDOR.md §3.4): delega en la variante de dos
+        // titulares, con el mismo titular a los dos lados -- resultado idéntico a antes.
+        return generarAsientoAplicacionAnticipoProveedor(idTitular, idTitular, valor, idEmpresa,
+                codigoAltTipoAsiento, fechaAsiento, observaciones, usuario);
+    }
 
-        System.out.println("=== generarAsientoAplicacionAnticipoProveedor | titular=" + idTitular
-                + " | valor=" + valor + " | empresa=" + idEmpresa + " ===");
+    @Override
+    public Asiento generarAsientoAplicacionAnticipoProveedor(Long idTitularFactura, Long idTitularAnticipo,
+            Double valor, Long idEmpresa, int codigoAltTipoAsiento, LocalDate fechaAsiento,
+            String observaciones, String usuario) throws Throwable {
 
-        validaDatosAplicacion(idTitular, valor, idEmpresa);
+        System.out.println("=== generarAsientoAplicacionAnticipoProveedor | titularFactura=" + idTitularFactura
+                + " | titularAnticipo=" + idTitularAnticipo + " | valor=" + valor + " | empresa=" + idEmpresa + " ===");
 
-        Titular titular = em.find(Titular.class, idTitular);
-        String nomProv = (titular != null) ? titular.getNombre() : String.valueOf(idTitular);
+        validaDatosAplicacion(idTitularFactura, valor, idEmpresa);
+        if (idTitularAnticipo == null) {
+            throw new IncomeException("Debe indicar el titular del anticipo.");
+        }
 
-        // â”€â”€ DEBE: cuenta CxP del proveedor (tipoCuenta=1) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        PlanCuenta cuentaProveedor = obtenerCuentaProveedorPorTipo(idTitular, idEmpresa, 1L);
+        Titular titularFactura = em.find(Titular.class, idTitularFactura);
+        String nomProvFactura = (titularFactura != null) ? titularFactura.getNombre() : String.valueOf(idTitularFactura);
+        Titular titularAnticipo = idTitularFactura.equals(idTitularAnticipo)
+                ? titularFactura : em.find(Titular.class, idTitularAnticipo);
+        String nomProvAnticipo = (titularAnticipo != null) ? titularAnticipo.getNombre() : String.valueOf(idTitularAnticipo);
+
+        // â”€â”€ DEBE: cuenta CxP del proveedor DE LA FACTURA (tipoCuenta=1) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        PlanCuenta cuentaProveedor = obtenerCuentaProveedorPorTipo(idTitularFactura, idEmpresa, 1L);
         if (cuentaProveedor == null) {
             throw new IncomeException(
-                    "El proveedor '" + nomProv + "' no tiene cuenta contable de facturas (Tipo 1) "
+                    "El proveedor '" + nomProvFactura + "' no tiene cuenta contable de facturas (Tipo 1) "
                     + "configurada en TesorerÃ­a â†’ Persona â†’ Cuentas Contables (Rol: Proveedor).");
         }
 
-        // â”€â”€ HABER: cuenta de anticipos del proveedor (tipoCuenta=2) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        PlanCuenta cuentaAnticipo = obtenerCuentaProveedorPorTipo(idTitular, idEmpresa, 2L);
+        // â”€â”€ HABER: cuenta de anticipos del proveedor DEL ANTICIPO (tipoCuenta=2) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        PlanCuenta cuentaAnticipo = obtenerCuentaProveedorPorTipo(idTitularAnticipo, idEmpresa, 2L);
         if (cuentaAnticipo == null) {
             throw new IncomeException(
-                    "El proveedor '" + nomProv + "' no tiene cuenta contable de anticipos (Tipo 2) "
+                    "El proveedor '" + nomProvAnticipo + "' no tiene cuenta contable de anticipos (Tipo 2) "
                     + "configurada en TesorerÃ­a â†’ Persona â†’ Cuentas Contables (Rol: Proveedor).");
         }
 
         List<DetalleAsiento> lineas = new ArrayList<>();
-        lineas.add(creaLinea(cuentaProveedor, "Cruce anticipo proveedor: " + nomProv, valor, true));
-        lineas.add(creaLinea(cuentaAnticipo,  "Anticipo aplicado: " + nomProv,        valor, false));
+        lineas.add(creaLinea(cuentaProveedor, "Cruce anticipo proveedor: " + nomProvFactura, valor, true));
+        lineas.add(creaLinea(cuentaAnticipo,  "Anticipo aplicado: " + nomProvAnticipo,        valor, false));
 
         return generarAsiento(idEmpresa, codigoAltTipoAsiento, fechaAsiento, observaciones,
                 usuario, lineas, Long.valueOf(ModuloSistema.CUENTAS_POR_PAGAR));
