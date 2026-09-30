@@ -4582,3 +4582,39 @@ registró hoy a las 12:38 **sin** `PGTRCTBN`, y es el único en esa situación.
   clave que nadie guarda. Está en **34 lugares**, en varios módulos. No se abrió frente.
 - ⚪ Los registros de pago de factura, liquidación y anticipo tienen su propio selector de cuenta, y no
   se revisó si tienen el mismo agujero del registro de egreso.
+
+## §55 — Cartera por pagar y por cobrar: ENTREGADA (2026-09-30) · retoma el §50
+
+| Parte | Commit |
+|---|---|
+| Diseño, contrato (`cxp/API-CARTERA-CXP-CXC.md`) y `e2-75` | `86764350` · FE `bfc1d6a` |
+| FE — pantalla única en CxP y CxC → Reportes | FE `826a441` |
+| BE — `GET /aplp/cartera`, `GET /aplc/cartera`, `CarteraCalculo` | `3c84dcf5` |
+
+### 55.1 — Lo que hay que llevarse
+
+1. **Todo lo que mueve un saldo es una fila de `APLP`/`APLC`**, con su tipo. Por eso «NC + retenciones +
+   anticipos + lo que el sistema ya resta» es una sola suma, y el saldo a una fecha de corte sale de
+   `fechaAplicacion`. No hay columna de vencimiento: se usa el `PLAZO` del XML.
+2. **Un path implícito de JPQL es un INNER JOIN, aunque esté dentro de un `OR`.** El ejecutor filtraba
+   las ventas con `f.empresa.codigo`, y **nada en el backend llena `Factura.empresa`**. Una factura sin
+   empresa se habría caído de la cartera sin error. Se corrigió con `left join` a la empresa de la
+   factura **o** a la del facturador. Lo detectó el árbitro al revisar, y el ejecutor **midió la premisa
+   antes de aplicarla**.
+3. Consultas agregadas y proyecciones escalares, sin `in :ids`: los dos antecedentes de caída de la base
+   (§50) quedaron escritos en el contrato **antes** de que nadie programara.
+
+### 55.2 — Alcance compartido con `omen-saa-3` (decisión del usuario, 2026-09-30)
+
+- `rhh` se **comparte** con `omen-saa-3`, que trabaja *Liquidaciones de ex-colaboradores*
+  (`RHH.LQEX`/`DLEX`, `rhh/sql/e3-05`).
+- Ese equipo **editó `PagoProgramadoServiceImpl`** (origen `RHH_LIQ_EXCOLABORADOR`), `OrigenPagoExterno`
+  y `NombreEntidadesRhh`, y creó `cxp/seguimiento/ResolutorLiquidacionExterna.java`. Nada de eso entró
+  en commits nuestros.
+- El usuario pidió coordinar con `omen-saa-3-arb` para que ningún equipo borre código del otro. El
+  mensaje está redactado y **espera la confirmación del usuario**.
+
+### 55.3 — Abierto
+
+- Desplegar el WAR y el FE, y contrastar los totales de la pantalla contra el `e2-75` **con la misma
+  fecha de corte**.
