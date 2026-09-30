@@ -302,4 +302,39 @@ public class PagoPrestamoDaoServiceImpl extends EntityDaoImpl<PagoPrestamo> impl
 		return total;
 	}
 
+	@Override
+	@SuppressWarnings("unchecked")
+	public List<Object[]> selectMaxFechaPagoByPrestamos(List<Long> codigosPrestamo) throws Throwable {
+		System.out.println("PagoPrestamoDaoService.selectMaxFechaPagoByPrestamos - préstamos solicitados: "
+				+ (codigosPrestamo != null ? codigosPrestamo.size() : 0));
+
+		if (codigosPrestamo == null || codigosPrestamo.isEmpty()) {
+			return new ArrayList<>();
+		}
+
+		// MAX AGRUPADO en la base, una fila por préstamo. Llega por p.detallePrestamo.prestamo.codigo
+		// (no p.prestamo.codigo, que puede venir NULL en pagos viejos) — mismo criterio que
+		// selectCapitalAbonadoEnMoraOParcialByPrestamos.
+		String jpql = "SELECT p.detallePrestamo.prestamo.codigo, MAX(p.fecha) " +
+			"FROM PagoPrestamo p " +
+			"WHERE p.detallePrestamo.prestamo.codigo IN :codigos " +
+			"AND (p.anulado IS NULL OR p.anulado = 0) " +
+			"GROUP BY p.detallePrestamo.prestamo.codigo";
+
+		// Fragmentado en bloques de 900: Oracle limita IN (...) a 1000 elementos (ORA-01795).
+		final int TAMANIO_BLOQUE = 900;
+		List<Object[]> resultados = new ArrayList<>();
+		for (int inicio = 0; inicio < codigosPrestamo.size(); inicio += TAMANIO_BLOQUE) {
+			List<Long> bloque = codigosPrestamo.subList(inicio,
+					Math.min(inicio + TAMANIO_BLOQUE, codigosPrestamo.size()));
+
+			Query query = em.createQuery(jpql);
+			query.setParameter("codigos", bloque);
+			resultados.addAll(query.getResultList());
+		}
+
+		System.out.println("  Préstamos con pago vigente: " + resultados.size());
+		return resultados;
+	}
+
 }

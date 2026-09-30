@@ -1,5 +1,18 @@
-<!-- Memorando / Orden de cobro del pase a plazo vencido (CRD). Sintaxis compacta, SIN <query>: se llena una sola vez desde la foto de CRD.PLVN, por parametros (API-PASE-A-PLAZO-VENCIDO.md §8). Estilo Tahoma, igual que RPRT_CRTF_ALDI. Los montos usan pattern="#,##0.00" (formateo nativo de JasperReports); los textos que pueden venir null se protegen con el ternario ($P{...} != null ? $P{...} : ""). -->
-<jasperReport name="RPRT_PLVN_MMRN" language="java" pageWidth="595" pageHeight="842" columnWidth="515" leftMargin="40" rightMargin="40" topMargin="40" bottomMargin="40" whenNoDataType="AllSectionsNoDetail" uuid="f1000001-0000-0000-0000-000000000001">
+<!-- Memorando / Orden de cobro del pase a plazo vencido (CRD). Rediseño 2026-09-30 sobre el Word
+     real del usuario (ver scratchpad del arbitro, ej-4f36-1/2.jpg). Sintaxis compacta, SIN
+     <query>: se llena una sola vez desde la foto de CRD.PLVN, todo por parametros YA
+     FORMATEADOS en DeclaracionPlazoVencidoRest (moneda "$90.018,75", fechas "d/M/yyyy" o
+     "dd-MM-yyyy" segun la fila)  — no se delega el formato a Jasper.
+     SIN fontName en NINGUN elemento (ni Tahoma ni Calibri): medido 2026-09-30 exportando un PDF
+     real que Tahoma NO esta disponible para el exportador de PDF de este entorno: Jasper la
+     reemplaza por una fuente por defecto y, al hacerlo, pierde la negrita en TODOS los casos
+     (elemento completo y markup=styled por igual). La fuente por defecto SI resuelve negrita
+     correctamente, asi que todo el reporte la usa, sin fijar fontName en ningun lado.
+     DEFECTO 1 (hoja 1 vacia): el logo va en pageHeader (se repite en cada hoja) y el cuerpo se
+     partio en DOS bandas de detail. La banda 1 declara altura 615  — mas que lo que ocupa su
+     contenido (~495)  — a proposito: llena el resto del espacio de la hoja 1 y empuja la banda 2
+     entera a la hoja 2, en vez de que Jasper intente repartir su contenido a la mitad. -->
+<jasperReport name="RPRT_PLVN_MMRN" language="java" pageWidth="595" pageHeight="842" columnWidth="515" leftMargin="40" rightMargin="40" topMargin="30" bottomMargin="30" whenNoDataType="AllSectionsNoDetail" uuid="f1000001-0000-0000-0000-000000000001">
 	<property name="com.jaspersoft.studio.data.defaultdataadapter" value="Oracle"/>
 	<property name="com.jaspersoft.studio.report.description" value="Memorando - orden de cobro de plazo vencido"/>
 	<parameter name="P_IMAGEN" class="java.awt.Image"><description><![CDATA[Logo del fondo. Lo inyecta ReporteServiceImpl.]]></description></parameter>
@@ -10,179 +23,218 @@
 	<parameter name="P_CC_CARGO" class="java.lang.String"/>
 	<parameter name="P_TIPO_CREDITO" class="java.lang.String"/>
 	<parameter name="P_NUMERO_PRESTAMO" class="java.lang.String"/>
-	<parameter name="P_FECHA_MEMO_TEXTO" class="java.lang.String"><description><![CDATA["08 de junio de 2026"]]></description></parameter>
+	<parameter name="P_FECHA_MEMO_TEXTO" class="java.lang.String"/>
 	<parameter name="P_NOMBRE_PARTICIPE" class="java.lang.String"/>
 	<parameter name="P_CEDULA" class="java.lang.String"/>
+	<parameter name="P_PARRAFO_APERTURA" class="java.lang.String"><description><![CDATA[HTML (markup=styled) con <b> ya embebido, armado en el REST.]]></description></parameter>
+	<parameter name="P_PARRAFO_CIERRE_1" class="java.lang.String"/>
 	<parameter name="P_FECHA_INICIAL_TEXTO" class="java.lang.String"/>
 	<parameter name="P_FECHA_FINAL_TEXTO" class="java.lang.String"/>
 	<parameter name="P_FECHA_ULTIMO_COBRO_TEXTO" class="java.lang.String"/>
-	<parameter name="P_MONTO" class="java.lang.Double"/>
-	<parameter name="P_CAPITAL_COBRADO" class="java.lang.Double"/>
-	<parameter name="P_SALDO_CAPITAL" class="java.lang.Double"/>
-	<parameter name="P_INTERES_DEVENGADO" class="java.lang.Double"/>
-	<parameter name="P_INTERES_COBRADO" class="java.lang.Double"/>
-	<parameter name="P_INTERES_SALDO" class="java.lang.Double"/>
-	<parameter name="P_DESGRAVAMEN_DEVENGADO" class="java.lang.Double"/>
-	<parameter name="P_DESGRAVAMEN_COBRADO" class="java.lang.Double"/>
-	<parameter name="P_DESGRAVAMEN_SALDO" class="java.lang.Double"/>
-	<parameter name="P_SEGURO_DEVENGADO" class="java.lang.Double"/>
-	<parameter name="P_SEGURO_COBRADO" class="java.lang.Double"/>
-	<parameter name="P_SEGURO_SALDO" class="java.lang.Double"/>
-	<parameter name="P_MORA_DEVENGADA" class="java.lang.Double"/>
-	<parameter name="P_MORA_COBRADA" class="java.lang.Double"/>
-	<parameter name="P_MORA_SALDO" class="java.lang.Double"/>
-	<parameter name="P_TOTAL_COBRADO" class="java.lang.Double"/>
-	<parameter name="P_TOTAL_POR_COBRAR" class="java.lang.Double"/>
-	<parameter name="P_FECHA_CORTE_TEXTO" class="java.lang.String"/>
-	<parameter name="P_PLAZO" class="java.lang.Long"/>
-	<parameter name="P_CUOTAS_COBRADAS" class="java.lang.Long"/>
-	<parameter name="P_CUOTAS_PENDIENTES" class="java.lang.Long"/>
-	<parameter name="P_CUOTAS_POR_VENCER" class="java.lang.Long"/>
-	<parameter name="P_DIVIDENDO_MENSUAL" class="java.lang.Double"/>
+	<parameter name="P_MONTO_TEXTO" class="java.lang.String"/>
+	<parameter name="P_CAPITAL_COBRADO_TEXTO" class="java.lang.String"/>
+	<parameter name="P_SALDO_CAPITAL_TEXTO" class="java.lang.String"/>
+	<parameter name="P_INTERES_DEVENGADO_TEXTO" class="java.lang.String"/>
+	<parameter name="P_INTERES_COBRADO_TEXTO" class="java.lang.String"/>
+	<parameter name="P_INTERES_SALDO_TEXTO" class="java.lang.String"/>
+	<parameter name="P_DESGRAVAMEN_DEVENGADO_TEXTO" class="java.lang.String"/>
+	<parameter name="P_DESGRAVAMEN_COBRADO_TEXTO" class="java.lang.String"/>
+	<parameter name="P_DESGRAVAMEN_SALDO_TEXTO" class="java.lang.String"/>
+	<parameter name="P_SEGURO_DEVENGADO_TEXTO" class="java.lang.String"/>
+	<parameter name="P_SEGURO_COBRADO_TEXTO" class="java.lang.String"/>
+	<parameter name="P_SEGURO_SALDO_TEXTO" class="java.lang.String"/>
+	<parameter name="P_MORA_DEVENGADA_TEXTO" class="java.lang.String"/>
+	<parameter name="P_MORA_COBRADA_TEXTO" class="java.lang.String"/>
+	<parameter name="P_MORA_SALDO_TEXTO" class="java.lang.String"/>
+	<parameter name="P_TOTAL_COBRADO_TEXTO" class="java.lang.String"/>
+	<parameter name="P_TOTAL_POR_COBRAR_TEXTO" class="java.lang.String"/>
+	<parameter name="P_FECHA_CORTE_GUION" class="java.lang.String"/>
+	<parameter name="P_PLAZO_TEXTO" class="java.lang.String"/>
+	<parameter name="P_CUOTAS_COBRADAS_TEXTO" class="java.lang.String"/>
+	<parameter name="P_CUOTAS_PENDIENTES_TEXTO" class="java.lang.String"/>
+	<parameter name="P_CUOTAS_POR_VENCER_TEXTO" class="java.lang.String"/>
+	<parameter name="P_DIVIDENDO_MENSUAL_TEXTO" class="java.lang.String"/>
 	<parameter name="P_REVERTIDA" class="java.lang.Boolean"/>
-	<parameter name="P_USUARIO" class="java.lang.String"/>
+
 	<background splitType="Stretch"/>
-	<title height="162" splitType="Stretch">
-		<element kind="image" uuid="f1000001-0000-0000-0000-000000000101" x="0" y="0" width="120" height="55" scaleImage="RetainShape" onErrorType="Blank" hImageAlign="Left" vImageAlign="Middle">
+
+	<!-- Logo Y titulo van los dos en pageHeader, no en title: JasperReports imprime "title" ANTES
+	     que "pageHeader" en la pagina 1 (al reves de lo intuitivo), asi que si el logo quedara en
+	     pageHeader por separado, saldria DEBAJO del "MEMORANDO Nro." en vez de arriba (medido
+	     2026-09-30, capturando el PDF real). Juntando los dos en pageHeader, el logo se repite en
+	     cada hoja arriba de todo, como pide el diseño, y el titulo con el la primera. -->
+	<pageHeader height="90" splitType="Stretch">
+		<element kind="image" uuid="f1000001-0000-0000-0000-000000000090" x="0" y="0" width="110" height="45" scaleImage="RetainShape" onErrorType="Blank" hImageAlign="Left" vImageAlign="Top">
 			<expression><![CDATA[$P{P_IMAGEN}]]></expression>
 		</element>
-		<element kind="staticText" uuid="f1000001-0000-0000-0000-000000000102" x="0" y="60" width="515" height="20" fontName="Tahoma" fontSize="13.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
-			<text><![CDATA[MEMORANDO]]></text>
-		</element>
-		<element kind="textField" uuid="f1000001-0000-0000-0000-000000000103" x="0" y="82" width="515" height="14" fontName="Tahoma" fontSize="9.0" bold="true" hTextAlign="Center" vTextAlign="Middle" forecolor="#C0392B">
+		<element kind="textField" uuid="f1000001-0000-0000-0000-000000000103" x="0" y="50" width="515" height="14" fontSize="9.0" bold="true" hTextAlign="Center" vTextAlign="Middle" forecolor="#C0392B">
 			<expression><![CDATA[Boolean.TRUE.equals($P{P_REVERTIDA}) ? "*** DECLARACIÓN REVERTIDA — DOCUMENTO SIN VALIDEZ VIGENTE ***" : ""]]></expression>
 		</element>
-		<element kind="textField" uuid="f1000001-0000-0000-0000-000000000104" x="0" y="100" width="515" height="14" fontName="Tahoma" fontSize="9.5" bold="true">
+		<element kind="textField" uuid="f1000001-0000-0000-0000-000000000104" x="0" y="68" width="515" height="22" fontSize="12.5" bold="true" hTextAlign="Center" vTextAlign="Middle">
 			<expression><![CDATA["MEMORANDO Nro. " + ($P{P_NUMERO_MEMORANDO} != null ? $P{P_NUMERO_MEMORANDO} : "")]]></expression>
 		</element>
-		<element kind="textField" uuid="f1000001-0000-0000-0000-000000000105" x="0" y="116" width="515" height="14" fontName="Tahoma" fontSize="9.5">
-			<expression><![CDATA["PARA: " + ($P{P_PARA_NOMBRE} != null ? $P{P_PARA_NOMBRE} : "") + " " + ($P{P_PARA_CARGO} != null ? $P{P_PARA_CARGO} : "")]]></expression>
-		</element>
-		<element kind="textField" uuid="f1000001-0000-0000-0000-000000000106" x="0" y="130" width="515" height="14" fontName="Tahoma" fontSize="9.5">
-			<expression><![CDATA["CC: " + ($P{P_CC_NOMBRE} != null ? $P{P_CC_NOMBRE} : "") + " " + ($P{P_CC_CARGO} != null ? $P{P_CC_CARGO} : "")]]></expression>
-		</element>
-		<element kind="staticText" uuid="f1000001-0000-0000-0000-000000000107" x="0" y="144" width="515" height="14" fontName="Tahoma" fontSize="9.5">
-			<text><![CDATA[DE: JEFE DE CREDITO]]></text>
-		</element>
-	</title>
-	<pageHeader height="0"/>
+	</pageHeader>
+
 	<detail>
-		<band height="700" splitType="Stretch">
-			<element kind="textField" uuid="f1000001-0000-0000-0000-000000000201" x="0" y="0" width="515" height="14" fontName="Tahoma" fontSize="9.5">
-				<expression><![CDATA["ASUNTO: ORDEN DE COBRO CREDITO " + ($P{P_TIPO_CREDITO} != null ? $P{P_TIPO_CREDITO} : "") + " No. " + ($P{P_NUMERO_PRESTAMO} != null ? $P{P_NUMERO_PRESTAMO} : "")]]></expression>
+		<!-- BANDA 1: encabezado + parrafo de apertura + tabla (filas 1 a 19, hasta TOTAL COBRADO) -->
+		<band height="615" splitType="Stretch">
+			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000001001" x="0" y="0" width="60" height="13" fontSize="9.5" bold="true"><text><![CDATA[PARA]]></text></element>
+			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000001002" x="60" y="0" width="10" height="13" fontSize="9.5" bold="true"><text><![CDATA[:]]></text></element>
+			<element kind="textField" uuid="f1000001-0000-0000-0000-000000001003" positionType="Float" x="75" y="0" width="440" height="13" fontSize="9.5" bold="true"><expression><![CDATA[$P{P_PARA_NOMBRE} != null ? $P{P_PARA_NOMBRE} : ""]]></expression></element>
+			<element kind="textField" uuid="f1000001-0000-0000-0000-000000001004" positionType="Float" x="75" y="13" width="440" height="13" fontSize="9.5" bold="true"><expression><![CDATA[$P{P_PARA_CARGO} != null ? $P{P_PARA_CARGO} : ""]]></expression></element>
+
+			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000001005" positionType="Float" x="0" y="32" width="60" height="13" fontSize="9.5" bold="true"><text><![CDATA[CC]]></text></element>
+			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000001006" positionType="Float" x="60" y="32" width="10" height="13" fontSize="9.5" bold="true"><text><![CDATA[:]]></text></element>
+			<element kind="textField" uuid="f1000001-0000-0000-0000-000000001007" positionType="Float" x="75" y="32" width="440" height="13" fontSize="9.5" bold="true"><expression><![CDATA[$P{P_CC_NOMBRE} != null ? $P{P_CC_NOMBRE} : ""]]></expression></element>
+			<element kind="textField" uuid="f1000001-0000-0000-0000-000000001008" positionType="Float" x="75" y="45" width="440" height="13" fontSize="9.5" bold="true"><expression><![CDATA[$P{P_CC_CARGO} != null ? $P{P_CC_CARGO} : ""]]></expression></element>
+
+			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000001009" positionType="Float" x="0" y="64" width="60" height="13" fontSize="9.5" bold="true"><text><![CDATA[DE]]></text></element>
+			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000001010" positionType="Float" x="60" y="64" width="10" height="13" fontSize="9.5" bold="true"><text><![CDATA[:]]></text></element>
+			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000001011" positionType="Float" x="75" y="64" width="440" height="13" fontSize="9.5" bold="true"><text><![CDATA[JEFE DE CREDITO]]></text></element>
+
+			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000001012" positionType="Float" x="0" y="83" width="60" height="13" fontSize="9.5" bold="true"><text><![CDATA[ASUNTO]]></text></element>
+			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000001013" positionType="Float" x="60" y="83" width="10" height="13" fontSize="9.5" bold="true"><text><![CDATA[:]]></text></element>
+			<element kind="textField" uuid="f1000001-0000-0000-0000-000000001014" positionType="Float" x="75" y="83" width="440" height="26" textAdjust="StretchHeight" fontSize="9.5" bold="true">
+				<expression><![CDATA["ORDEN DE COBRO CREDITO " + ($P{P_TIPO_CREDITO} != null ? $P{P_TIPO_CREDITO} : "") + " No. " + ($P{P_NUMERO_PRESTAMO} != null ? $P{P_NUMERO_PRESTAMO} : "")]]></expression>
 			</element>
-			<element kind="textField" uuid="f1000001-0000-0000-0000-000000000202" x="0" y="14" width="515" height="14" fontName="Tahoma" fontSize="9.5">
-				<expression><![CDATA["FECHA: " + ($P{P_FECHA_MEMO_TEXTO} != null ? $P{P_FECHA_MEMO_TEXTO} : "")]]></expression>
+
+			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000001015" positionType="Float" x="0" y="112" width="60" height="13" fontSize="9.5" bold="true"><text><![CDATA[FECHA]]></text></element>
+			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000001016" positionType="Float" x="60" y="112" width="10" height="13" fontSize="9.5" bold="true"><text><![CDATA[:]]></text></element>
+			<element kind="textField" uuid="f1000001-0000-0000-0000-000000001017" positionType="Float" x="75" y="112" width="440" height="13" fontSize="9.5" bold="true"><expression><![CDATA[$P{P_FECHA_MEMO_TEXTO} != null ? $P{P_FECHA_MEMO_TEXTO} : ""]]></expression></element>
+
+			<element kind="textField" uuid="f1000001-0000-0000-0000-000000001018" positionType="Float" x="0" y="134" width="515" height="60" markup="styled" textAdjust="StretchHeight" fontSize="9.5" hTextAlign="Justified" vTextAlign="Top">
+				<expression><![CDATA[$P{P_PARRAFO_APERTURA}]]></expression>
+				<paragraph lineSpacing="1_1_2"/>
 			</element>
-			<element kind="textField" uuid="f1000001-0000-0000-0000-000000000203" positionType="Float" x="0" y="36" width="515" height="70" fontName="Tahoma" fontSize="9.5" textAdjust="StretchHeight" hTextAlign="Justified" vTextAlign="Top">
-				<expression><![CDATA["Una vez realizada la revisión en el sistema SAA; y, del análisis del estado del Crédito "
-+ ($P{P_TIPO_CREDITO} != null ? $P{P_TIPO_CREDITO} : "") + " No. " + ($P{P_NUMERO_PRESTAMO} != null ? $P{P_NUMERO_PRESTAMO} : "")
-+ ", otorgado por ASOPREP-FCPC a favor de " + ($P{P_NOMBRE_PARTICIPE} != null ? $P{P_NOMBRE_PARTICIPE} : "")
-+ ", portador de la cédula de identidad No. " + ($P{P_CEDULA} != null ? $P{P_CEDULA} : "") + ", se desprende lo siguiente:"]]></expression>
-				<paragraph lineSpacing="1_1_2" spacingAfter="10"/>
+
+			<!-- Tabla, filas 1-19 -->
+			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000002000" positionType="Float" x="0" y="205" width="300" height="17" mode="Opaque" backcolor="#E8E8E8" fontSize="9.0" bold="true" vTextAlign="Middle">
+				<text><![CDATA[DESCRIPCIÓN]]></text>
+				<box leftPadding="4"><pen lineWidth="0.75" lineColor="#000000"/></box>
 			</element>
-			<element kind="line" uuid="f1000001-0000-0000-0000-000000000301" positionType="Float" x="0" y="112" width="515" height="1"><pen lineWidth="0.5" lineColor="#333333"/></element>
-
-			<!-- Cuadro: etiqueta a la izquierda, valor a la derecha. Paso de 13px por fila. -->
-			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000000320" positionType="Float" x="0" y="118" width="260" height="13" fontName="Tahoma" fontSize="8.5"><text><![CDATA[Fecha inicial del préstamo:]]></text></element>
-			<element kind="textField" uuid="f1000001-0000-0000-0000-000000000321" positionType="Float" x="260" y="118" width="255" height="13" fontName="Tahoma" fontSize="8.5" hTextAlign="Right"><expression><![CDATA[$P{P_FECHA_INICIAL_TEXTO} != null ? $P{P_FECHA_INICIAL_TEXTO} : ""]]></expression></element>
-
-			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000000322" positionType="Float" x="0" y="131" width="260" height="13" fontName="Tahoma" fontSize="8.5"><text><![CDATA[Fecha final del préstamo:]]></text></element>
-			<element kind="textField" uuid="f1000001-0000-0000-0000-000000000323" positionType="Float" x="260" y="131" width="255" height="13" fontName="Tahoma" fontSize="8.5" hTextAlign="Right"><expression><![CDATA[$P{P_FECHA_FINAL_TEXTO} != null ? $P{P_FECHA_FINAL_TEXTO} : ""]]></expression></element>
-
-			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000000324" positionType="Float" x="0" y="144" width="260" height="13" fontName="Tahoma" fontSize="8.5"><text><![CDATA[Última fecha de cobro:]]></text></element>
-			<element kind="textField" uuid="f1000001-0000-0000-0000-000000000325" positionType="Float" x="260" y="144" width="255" height="13" fontName="Tahoma" fontSize="8.5" hTextAlign="Right"><expression><![CDATA[$P{P_FECHA_ULTIMO_COBRO_TEXTO} != null ? $P{P_FECHA_ULTIMO_COBRO_TEXTO} : "Sin pagos"]]></expression></element>
-
-			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000000326" positionType="Float" x="0" y="157" width="260" height="13" fontName="Tahoma" fontSize="8.5" bold="true"><text><![CDATA[Monto del préstamo:]]></text></element>
-			<element kind="textField" uuid="f1000001-0000-0000-0000-000000000327" positionType="Float" x="260" y="157" width="255" height="13" fontName="Tahoma" fontSize="8.5" bold="true" hTextAlign="Right" pattern="#,##0.00"><expression><![CDATA[$P{P_MONTO}]]></expression></element>
-
-			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000000328" positionType="Float" x="0" y="170" width="260" height="13" fontName="Tahoma" fontSize="8.5"><text><![CDATA[Capital cobrado:]]></text></element>
-			<element kind="textField" uuid="f1000001-0000-0000-0000-000000000329" positionType="Float" x="260" y="170" width="255" height="13" fontName="Tahoma" fontSize="8.5" hTextAlign="Right" pattern="#,##0.00"><expression><![CDATA[$P{P_CAPITAL_COBRADO}]]></expression></element>
-
-			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000000330" positionType="Float" x="0" y="183" width="260" height="13" fontName="Tahoma" fontSize="8.5" bold="true"><text><![CDATA[Saldo capital vencido:]]></text></element>
-			<element kind="textField" uuid="f1000001-0000-0000-0000-000000000331" positionType="Float" x="260" y="183" width="255" height="13" fontName="Tahoma" fontSize="8.5" bold="true" hTextAlign="Right" pattern="#,##0.00"><expression><![CDATA[$P{P_SALDO_CAPITAL}]]></expression></element>
-
-			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000000332" positionType="Float" x="0" y="200" width="260" height="13" fontName="Tahoma" fontSize="8.5"><text><![CDATA[Interés devengado:]]></text></element>
-			<element kind="textField" uuid="f1000001-0000-0000-0000-000000000333" positionType="Float" x="260" y="200" width="255" height="13" fontName="Tahoma" fontSize="8.5" hTextAlign="Right" pattern="#,##0.00"><expression><![CDATA[$P{P_INTERES_DEVENGADO}]]></expression></element>
-			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000000380" positionType="Float" x="0" y="213" width="260" height="13" fontName="Tahoma" fontSize="8.5"><text><![CDATA[Interés cobrado:]]></text></element>
-			<element kind="textField" uuid="f1000001-0000-0000-0000-000000000381" positionType="Float" x="260" y="213" width="255" height="13" fontName="Tahoma" fontSize="8.5" hTextAlign="Right" pattern="#,##0.00"><expression><![CDATA[$P{P_INTERES_COBRADO}]]></expression></element>
-			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000000334" positionType="Float" x="0" y="226" width="260" height="13" fontName="Tahoma" fontSize="8.5" bold="true"><text><![CDATA[Saldo de interés:]]></text></element>
-			<element kind="textField" uuid="f1000001-0000-0000-0000-000000000335" positionType="Float" x="260" y="226" width="255" height="13" fontName="Tahoma" fontSize="8.5" bold="true" hTextAlign="Right" pattern="#,##0.00"><expression><![CDATA[$P{P_INTERES_SALDO}]]></expression></element>
-
-			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000000336" positionType="Float" x="0" y="243" width="260" height="13" fontName="Tahoma" fontSize="8.5"><text><![CDATA[Desgravamen devengado:]]></text></element>
-			<element kind="textField" uuid="f1000001-0000-0000-0000-000000000337" positionType="Float" x="260" y="243" width="255" height="13" fontName="Tahoma" fontSize="8.5" hTextAlign="Right" pattern="#,##0.00"><expression><![CDATA[$P{P_DESGRAVAMEN_DEVENGADO}]]></expression></element>
-			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000000382" positionType="Float" x="0" y="256" width="260" height="13" fontName="Tahoma" fontSize="8.5"><text><![CDATA[Desgravamen cobrado:]]></text></element>
-			<element kind="textField" uuid="f1000001-0000-0000-0000-000000000383" positionType="Float" x="260" y="256" width="255" height="13" fontName="Tahoma" fontSize="8.5" hTextAlign="Right" pattern="#,##0.00"><expression><![CDATA[$P{P_DESGRAVAMEN_COBRADO}]]></expression></element>
-			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000000338" positionType="Float" x="0" y="269" width="260" height="13" fontName="Tahoma" fontSize="8.5" bold="true"><text><![CDATA[Saldo de desgravamen:]]></text></element>
-			<element kind="textField" uuid="f1000001-0000-0000-0000-000000000339" positionType="Float" x="260" y="269" width="255" height="13" fontName="Tahoma" fontSize="8.5" bold="true" hTextAlign="Right" pattern="#,##0.00"><expression><![CDATA[$P{P_DESGRAVAMEN_SALDO}]]></expression></element>
-
-			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000000340" positionType="Float" x="0" y="286" width="260" height="13" fontName="Tahoma" fontSize="8.5"><text><![CDATA[Seguro incendio devengado:]]></text></element>
-			<element kind="textField" uuid="f1000001-0000-0000-0000-000000000341" positionType="Float" x="260" y="286" width="255" height="13" fontName="Tahoma" fontSize="8.5" hTextAlign="Right" pattern="#,##0.00"><expression><![CDATA[$P{P_SEGURO_DEVENGADO}]]></expression></element>
-			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000000384" positionType="Float" x="0" y="299" width="260" height="13" fontName="Tahoma" fontSize="8.5"><text><![CDATA[Seguro incendio cobrado:]]></text></element>
-			<element kind="textField" uuid="f1000001-0000-0000-0000-000000000385" positionType="Float" x="260" y="299" width="255" height="13" fontName="Tahoma" fontSize="8.5" hTextAlign="Right" pattern="#,##0.00"><expression><![CDATA[$P{P_SEGURO_COBRADO}]]></expression></element>
-			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000000342" positionType="Float" x="0" y="312" width="260" height="13" fontName="Tahoma" fontSize="8.5" bold="true"><text><![CDATA[Saldo de seguro incendio:]]></text></element>
-			<element kind="textField" uuid="f1000001-0000-0000-0000-000000000343" positionType="Float" x="260" y="312" width="255" height="13" fontName="Tahoma" fontSize="8.5" bold="true" hTextAlign="Right" pattern="#,##0.00"><expression><![CDATA[$P{P_SEGURO_SALDO}]]></expression></element>
-
-			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000000344" positionType="Float" x="0" y="329" width="260" height="13" fontName="Tahoma" fontSize="8.5"><text><![CDATA[Interés de mora devengado:]]></text></element>
-			<element kind="textField" uuid="f1000001-0000-0000-0000-000000000345" positionType="Float" x="260" y="329" width="255" height="13" fontName="Tahoma" fontSize="8.5" hTextAlign="Right" pattern="#,##0.00"><expression><![CDATA[$P{P_MORA_DEVENGADA}]]></expression></element>
-			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000000386" positionType="Float" x="0" y="342" width="260" height="13" fontName="Tahoma" fontSize="8.5"><text><![CDATA[Interés de mora cobrado:]]></text></element>
-			<element kind="textField" uuid="f1000001-0000-0000-0000-000000000387" positionType="Float" x="260" y="342" width="255" height="13" fontName="Tahoma" fontSize="8.5" hTextAlign="Right" pattern="#,##0.00"><expression><![CDATA[$P{P_MORA_COBRADA}]]></expression></element>
-			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000000346" positionType="Float" x="0" y="355" width="260" height="13" fontName="Tahoma" fontSize="8.5" bold="true"><text><![CDATA[Saldo de interés de mora:]]></text></element>
-			<element kind="textField" uuid="f1000001-0000-0000-0000-000000000347" positionType="Float" x="260" y="355" width="255" height="13" fontName="Tahoma" fontSize="8.5" bold="true" hTextAlign="Right" pattern="#,##0.00"><expression><![CDATA[$P{P_MORA_SALDO}]]></expression></element>
-
-			<element kind="line" uuid="f1000001-0000-0000-0000-000000000348" positionType="Float" x="0" y="372" width="515" height="1"><pen lineWidth="0.5" lineColor="#333333"/></element>
-
-			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000000349" positionType="Float" x="0" y="378" width="260" height="13" fontName="Tahoma" fontSize="8.5" bold="true"><text><![CDATA[Total cobrado:]]></text></element>
-			<element kind="textField" uuid="f1000001-0000-0000-0000-000000000350" positionType="Float" x="260" y="378" width="255" height="13" fontName="Tahoma" fontSize="8.5" bold="true" hTextAlign="Right" pattern="#,##0.00"><expression><![CDATA[$P{P_TOTAL_COBRADO}]]></expression></element>
-
-			<element kind="textField" uuid="f1000001-0000-0000-0000-000000000351" positionType="Float" x="0" y="393" width="260" height="20" fontName="Tahoma" fontSize="8.5" bold="true" textAdjust="StretchHeight"><expression><![CDATA["Total por cobrar al " + ($P{P_FECHA_CORTE_TEXTO} != null ? $P{P_FECHA_CORTE_TEXTO} : "") + ":"]]></expression></element>
-			<element kind="textField" uuid="f1000001-0000-0000-0000-000000000352" positionType="Float" x="260" y="393" width="255" height="20" fontName="Tahoma" fontSize="8.5" bold="true" hTextAlign="Right" pattern="#,##0.00"><expression><![CDATA[$P{P_TOTAL_POR_COBRAR}]]></expression></element>
-
-			<element kind="line" uuid="f1000001-0000-0000-0000-000000000353" positionType="Float" x="0" y="418" width="515" height="1"><pen lineWidth="0.5" lineColor="#333333"/></element>
-
-			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000000354" positionType="Float" x="0" y="424" width="260" height="13" fontName="Tahoma" fontSize="8.5"><text><![CDATA[Plazo (cuotas):]]></text></element>
-			<element kind="textField" uuid="f1000001-0000-0000-0000-000000000355" positionType="Float" x="260" y="424" width="255" height="13" fontName="Tahoma" fontSize="8.5" hTextAlign="Right" pattern="#,##0"><expression><![CDATA[$P{P_PLAZO}]]></expression></element>
-
-			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000000356" positionType="Float" x="0" y="437" width="260" height="13" fontName="Tahoma" fontSize="8.5"><text><![CDATA[Cuotas cobradas:]]></text></element>
-			<element kind="textField" uuid="f1000001-0000-0000-0000-000000000357" positionType="Float" x="260" y="437" width="255" height="13" fontName="Tahoma" fontSize="8.5" hTextAlign="Right" pattern="#,##0"><expression><![CDATA[$P{P_CUOTAS_COBRADAS}]]></expression></element>
-
-			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000000358" positionType="Float" x="0" y="450" width="260" height="13" fontName="Tahoma" fontSize="8.5"><text><![CDATA[Cuotas pendientes:]]></text></element>
-			<element kind="textField" uuid="f1000001-0000-0000-0000-000000000359" positionType="Float" x="260" y="450" width="255" height="13" fontName="Tahoma" fontSize="8.5" hTextAlign="Right" pattern="#,##0"><expression><![CDATA[$P{P_CUOTAS_PENDIENTES}]]></expression></element>
-
-			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000000360" positionType="Float" x="0" y="463" width="260" height="13" fontName="Tahoma" fontSize="8.5"><text><![CDATA[Cuotas pendientes hasta el plazo vencido:]]></text></element>
-			<element kind="textField" uuid="f1000001-0000-0000-0000-000000000361" positionType="Float" x="260" y="463" width="255" height="13" fontName="Tahoma" fontSize="8.5" hTextAlign="Right" pattern="#,##0"><expression><![CDATA[$P{P_CUOTAS_POR_VENCER}]]></expression></element>
-
-			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000000362" positionType="Float" x="0" y="476" width="260" height="13" fontName="Tahoma" fontSize="8.5"><text><![CDATA[Dividendo mensual:]]></text></element>
-			<element kind="textField" uuid="f1000001-0000-0000-0000-000000000363" positionType="Float" x="260" y="476" width="255" height="13" fontName="Tahoma" fontSize="8.5" hTextAlign="Right" pattern="#,##0.00"><expression><![CDATA[$P{P_DIVIDENDO_MENSUAL}]]></expression></element>
-
-			<element kind="textField" uuid="f1000001-0000-0000-0000-000000000400" positionType="Float" x="0" y="500" width="515" height="60" fontName="Tahoma" fontSize="9.5" textAdjust="StretchHeight" hTextAlign="Justified" vTextAlign="Top">
-				<expression><![CDATA["En virtud de lo expuesto y con el propósito de recuperación de los valores adeudados correspondientes al Préstamo "
-+ ($P{P_TIPO_CREDITO} != null ? $P{P_TIPO_CREDITO} : "") + " No. " + ($P{P_NUMERO_PRESTAMO} != null ? $P{P_NUMERO_PRESTAMO} : "")
-+ " se declara en estado de plazo vencido por incumplimiento de pago. "
-+ "Particular que comunico, a fin de que usted se sirva disponer a quien corresponda, se inicie el proceso establecido para este tipo de casos y demás acciones pertinentes."]]></expression>
-				<paragraph lineSpacing="1_1_2" spacingAfter="10"/>
+			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000002001" positionType="Float" x="300" y="205" width="215" height="17" mode="Opaque" backcolor="#E8E8E8" fontSize="9.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+				<text><![CDATA[VALORES]]></text>
+				<box rightPadding="4"><pen lineWidth="0.75" lineColor="#000000"/></box>
 			</element>
-			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000000401" positionType="Float" x="0" y="566" width="515" height="14" fontName="Tahoma" fontSize="9.5">
-				<text><![CDATA[Atentamente,]]></text>
+
+			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000002010" positionType="Float" x="0" y="222" width="300" height="15" fontSize="9.0" vTextAlign="Middle"><box leftPadding="4"><pen lineWidth="0.25" lineColor="#000000"/></box><text><![CDATA[FECHA INICIAL DEL PRESTAMO]]></text></element>
+			<element kind="textField" uuid="f1000001-0000-0000-0000-000000002011" positionType="Float" x="300" y="222" width="215" height="15" fontSize="9.0" hTextAlign="Right" vTextAlign="Middle"><box rightPadding="4"><pen lineWidth="0.25" lineColor="#000000"/></box><expression><![CDATA[$P{P_FECHA_INICIAL_TEXTO}]]></expression></element>
+
+			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000002020" positionType="Float" x="0" y="237" width="300" height="15" fontSize="9.0" vTextAlign="Middle"><box leftPadding="4"><pen lineWidth="0.25" lineColor="#000000"/></box><text><![CDATA[FECHA FINAL DEL PRESTAMO]]></text></element>
+			<element kind="textField" uuid="f1000001-0000-0000-0000-000000002021" positionType="Float" x="300" y="237" width="215" height="15" fontSize="9.0" hTextAlign="Right" vTextAlign="Middle"><box rightPadding="4"><pen lineWidth="0.25" lineColor="#000000"/></box><expression><![CDATA[$P{P_FECHA_FINAL_TEXTO}]]></expression></element>
+
+			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000002030" positionType="Float" x="0" y="252" width="300" height="15" fontSize="9.0" vTextAlign="Middle"><box leftPadding="4"><pen lineWidth="0.25" lineColor="#000000"/></box><text><![CDATA[ULTIMA FECHA DE COBRO]]></text></element>
+			<element kind="textField" uuid="f1000001-0000-0000-0000-000000002031" positionType="Float" x="300" y="252" width="215" height="15" fontSize="9.0" hTextAlign="Right" vTextAlign="Middle"><box rightPadding="4"><pen lineWidth="0.25" lineColor="#000000"/></box><expression><![CDATA[$P{P_FECHA_ULTIMO_COBRO_TEXTO}]]></expression></element>
+
+			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000002040" positionType="Float" x="0" y="267" width="300" height="15" fontSize="9.0" vTextAlign="Middle"><box leftPadding="4"><pen lineWidth="0.25" lineColor="#000000"/></box><text><![CDATA[MONTO DEL PRESTAMO]]></text></element>
+			<element kind="textField" uuid="f1000001-0000-0000-0000-000000002041" positionType="Float" x="300" y="267" width="215" height="15" fontSize="9.0" hTextAlign="Right" vTextAlign="Middle"><box rightPadding="4"><pen lineWidth="0.25" lineColor="#000000"/></box><expression><![CDATA[$P{P_MONTO_TEXTO}]]></expression></element>
+
+			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000002050" positionType="Float" x="0" y="282" width="300" height="15" fontSize="9.0" vTextAlign="Middle"><box leftPadding="4"><pen lineWidth="0.25" lineColor="#000000"/></box><text><![CDATA[CAPITAL COBRADO]]></text></element>
+			<element kind="textField" uuid="f1000001-0000-0000-0000-000000002051" positionType="Float" x="300" y="282" width="215" height="15" fontSize="9.0" hTextAlign="Right" vTextAlign="Middle"><box rightPadding="4"><pen lineWidth="0.25" lineColor="#000000"/></box><expression><![CDATA[$P{P_CAPITAL_COBRADO_TEXTO}]]></expression></element>
+
+			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000002060" positionType="Float" x="0" y="297" width="300" height="15" fontSize="9.0" bold="true" vTextAlign="Middle"><box leftPadding="4"><pen lineWidth="0.25" lineColor="#000000"/></box><text><![CDATA[SALDO CAPITAL VENCIDO]]></text></element>
+			<element kind="textField" uuid="f1000001-0000-0000-0000-000000002061" positionType="Float" x="300" y="297" width="215" height="15" fontSize="9.0" bold="true" hTextAlign="Right" vTextAlign="Middle"><box rightPadding="4"><pen lineWidth="0.25" lineColor="#000000"/></box><expression><![CDATA[$P{P_SALDO_CAPITAL_TEXTO}]]></expression></element>
+
+			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000002070" positionType="Float" x="0" y="312" width="300" height="15" fontSize="9.0" vTextAlign="Middle"><box leftPadding="4"><pen lineWidth="0.25" lineColor="#000000"/></box><text><![CDATA[INTERES DEVENGADO]]></text></element>
+			<element kind="textField" uuid="f1000001-0000-0000-0000-000000002071" positionType="Float" x="300" y="312" width="215" height="15" fontSize="9.0" hTextAlign="Right" vTextAlign="Middle"><box rightPadding="4"><pen lineWidth="0.25" lineColor="#000000"/></box><expression><![CDATA[$P{P_INTERES_DEVENGADO_TEXTO}]]></expression></element>
+
+			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000002080" positionType="Float" x="0" y="327" width="300" height="15" fontSize="9.0" vTextAlign="Middle"><box leftPadding="4"><pen lineWidth="0.25" lineColor="#000000"/></box><text><![CDATA[INTERES COBRADO]]></text></element>
+			<element kind="textField" uuid="f1000001-0000-0000-0000-000000002081" positionType="Float" x="300" y="327" width="215" height="15" fontSize="9.0" hTextAlign="Right" vTextAlign="Middle"><box rightPadding="4"><pen lineWidth="0.25" lineColor="#000000"/></box><expression><![CDATA[$P{P_INTERES_COBRADO_TEXTO}]]></expression></element>
+
+			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000002090" positionType="Float" x="0" y="342" width="300" height="15" fontSize="9.0" bold="true" vTextAlign="Middle"><box leftPadding="4"><pen lineWidth="0.25" lineColor="#000000"/></box><text><![CDATA[SALDO DE INTERES]]></text></element>
+			<element kind="textField" uuid="f1000001-0000-0000-0000-000000002091" positionType="Float" x="300" y="342" width="215" height="15" fontSize="9.0" bold="true" hTextAlign="Right" vTextAlign="Middle"><box rightPadding="4"><pen lineWidth="0.25" lineColor="#000000"/></box><expression><![CDATA[$P{P_INTERES_SALDO_TEXTO}]]></expression></element>
+
+			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000002100" positionType="Float" x="0" y="357" width="300" height="15" fontSize="9.0" vTextAlign="Middle"><box leftPadding="4"><pen lineWidth="0.25" lineColor="#000000"/></box><text><![CDATA[DESGRAVAMEN DEVENGADO]]></text></element>
+			<element kind="textField" uuid="f1000001-0000-0000-0000-000000002101" positionType="Float" x="300" y="357" width="215" height="15" fontSize="9.0" hTextAlign="Right" vTextAlign="Middle"><box rightPadding="4"><pen lineWidth="0.25" lineColor="#000000"/></box><expression><![CDATA[$P{P_DESGRAVAMEN_DEVENGADO_TEXTO}]]></expression></element>
+
+			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000002110" positionType="Float" x="0" y="372" width="300" height="15" fontSize="9.0" vTextAlign="Middle"><box leftPadding="4"><pen lineWidth="0.25" lineColor="#000000"/></box><text><![CDATA[DESGRAVAMEN COBRADO]]></text></element>
+			<element kind="textField" uuid="f1000001-0000-0000-0000-000000002111" positionType="Float" x="300" y="372" width="215" height="15" fontSize="9.0" hTextAlign="Right" vTextAlign="Middle"><box rightPadding="4"><pen lineWidth="0.25" lineColor="#000000"/></box><expression><![CDATA[$P{P_DESGRAVAMEN_COBRADO_TEXTO}]]></expression></element>
+
+			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000002120" positionType="Float" x="0" y="387" width="300" height="15" fontSize="9.0" bold="true" vTextAlign="Middle"><box leftPadding="4"><pen lineWidth="0.25" lineColor="#000000"/></box><text><![CDATA[SALDO DESGRAVAMEN]]></text></element>
+			<element kind="textField" uuid="f1000001-0000-0000-0000-000000002121" positionType="Float" x="300" y="387" width="215" height="15" fontSize="9.0" bold="true" hTextAlign="Right" vTextAlign="Middle"><box rightPadding="4"><pen lineWidth="0.25" lineColor="#000000"/></box><expression><![CDATA[$P{P_DESGRAVAMEN_SALDO_TEXTO}]]></expression></element>
+
+			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000002130" positionType="Float" x="0" y="402" width="300" height="15" fontSize="9.0" vTextAlign="Middle"><box leftPadding="4"><pen lineWidth="0.25" lineColor="#000000"/></box><text><![CDATA[SEGURO DEVENGADO]]></text></element>
+			<element kind="textField" uuid="f1000001-0000-0000-0000-000000002131" positionType="Float" x="300" y="402" width="215" height="15" fontSize="9.0" hTextAlign="Right" vTextAlign="Middle"><box rightPadding="4"><pen lineWidth="0.25" lineColor="#000000"/></box><expression><![CDATA[$P{P_SEGURO_DEVENGADO_TEXTO}]]></expression></element>
+
+			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000002140" positionType="Float" x="0" y="417" width="300" height="15" fontSize="9.0" vTextAlign="Middle"><box leftPadding="4"><pen lineWidth="0.25" lineColor="#000000"/></box><text><![CDATA[SEGURO COBRADO]]></text></element>
+			<element kind="textField" uuid="f1000001-0000-0000-0000-000000002141" positionType="Float" x="300" y="417" width="215" height="15" fontSize="9.0" hTextAlign="Right" vTextAlign="Middle"><box rightPadding="4"><pen lineWidth="0.25" lineColor="#000000"/></box><expression><![CDATA[$P{P_SEGURO_COBRADO_TEXTO}]]></expression></element>
+
+			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000002150" positionType="Float" x="0" y="432" width="300" height="15" fontSize="9.0" bold="true" vTextAlign="Middle"><box leftPadding="4"><pen lineWidth="0.25" lineColor="#000000"/></box><text><![CDATA[SALDO SEGURO]]></text></element>
+			<element kind="textField" uuid="f1000001-0000-0000-0000-000000002151" positionType="Float" x="300" y="432" width="215" height="15" fontSize="9.0" bold="true" hTextAlign="Right" vTextAlign="Middle"><box rightPadding="4"><pen lineWidth="0.25" lineColor="#000000"/></box><expression><![CDATA[$P{P_SEGURO_SALDO_TEXTO}]]></expression></element>
+
+			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000002160" positionType="Float" x="0" y="447" width="300" height="15" fontSize="9.0" vTextAlign="Middle"><box leftPadding="4"><pen lineWidth="0.25" lineColor="#000000"/></box><text><![CDATA[INTERES MORA DEVENGADO]]></text></element>
+			<element kind="textField" uuid="f1000001-0000-0000-0000-000000002161" positionType="Float" x="300" y="447" width="215" height="15" fontSize="9.0" hTextAlign="Right" vTextAlign="Middle"><box rightPadding="4"><pen lineWidth="0.25" lineColor="#000000"/></box><expression><![CDATA[$P{P_MORA_DEVENGADA_TEXTO}]]></expression></element>
+
+			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000002170" positionType="Float" x="0" y="462" width="300" height="15" fontSize="9.0" vTextAlign="Middle"><box leftPadding="4"><pen lineWidth="0.25" lineColor="#000000"/></box><text><![CDATA[INTERES DE MORA COBRADO]]></text></element>
+			<element kind="textField" uuid="f1000001-0000-0000-0000-000000002171" positionType="Float" x="300" y="462" width="215" height="15" fontSize="9.0" hTextAlign="Right" vTextAlign="Middle"><box rightPadding="4"><pen lineWidth="0.25" lineColor="#000000"/></box><expression><![CDATA[$P{P_MORA_COBRADA_TEXTO}]]></expression></element>
+
+			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000002180" positionType="Float" x="0" y="477" width="300" height="15" fontSize="9.0" bold="true" vTextAlign="Middle"><box leftPadding="4"><pen lineWidth="0.25" lineColor="#000000"/></box><text><![CDATA[SALDO INTERES DE MORA]]></text></element>
+			<element kind="textField" uuid="f1000001-0000-0000-0000-000000002181" positionType="Float" x="300" y="477" width="215" height="15" fontSize="9.0" bold="true" hTextAlign="Right" vTextAlign="Middle"><box rightPadding="4"><pen lineWidth="0.25" lineColor="#000000"/></box><expression><![CDATA[$P{P_MORA_SALDO_TEXTO}]]></expression></element>
+
+			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000002190" positionType="Float" x="0" y="492" width="300" height="15" fontSize="9.0" bold="true" vTextAlign="Middle"><box leftPadding="4"><pen lineWidth="0.25" lineColor="#000000"/></box><text><![CDATA[TOTAL COBRADO]]></text></element>
+			<element kind="textField" uuid="f1000001-0000-0000-0000-000000002191" positionType="Float" x="300" y="492" width="215" height="15" fontSize="9.0" bold="true" hTextAlign="Right" vTextAlign="Middle"><box rightPadding="4"><pen lineWidth="0.25" lineColor="#000000"/></box><expression><![CDATA[$P{P_TOTAL_COBRADO_TEXTO}]]></expression></element>
+		</band>
+
+		<!-- BANDA 2: tabla (filas 20 a 25) + cierre + firma. Empieza siempre en hoja 2 porque la
+		     banda 1 (arriba) ya consumió todo el resto de la hoja 1. -->
+		<band height="440" splitType="Stretch">
+			<element kind="textField" uuid="f1000001-0000-0000-0000-000000003000" x="0" y="0" width="300" height="17" mode="Opaque" backcolor="#E8E8E8" fontSize="9.0" bold="true" vTextAlign="Middle">
+				<expression><![CDATA["TOTAL POR COBRAR AL " + ($P{P_FECHA_CORTE_GUION} != null ? $P{P_FECHA_CORTE_GUION} : "")]]></expression>
+				<box leftPadding="4"><pen lineWidth="0.75" lineColor="#000000"/></box>
 			</element>
-			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000000402" positionType="Float" x="0" y="616" width="515" height="14" fontName="Tahoma" fontSize="9.5" bold="true">
-				<text><![CDATA[_______________________________]]></text>
+			<element kind="textField" uuid="f1000001-0000-0000-0000-000000003001" x="300" y="0" width="215" height="17" mode="Opaque" backcolor="#E8E8E8" fontSize="9.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
+				<expression><![CDATA[$P{P_TOTAL_POR_COBRAR_TEXTO}]]></expression>
+				<box rightPadding="4"><pen lineWidth="0.75" lineColor="#000000"/></box>
 			</element>
-			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000000403" positionType="Float" x="0" y="631" width="515" height="14" fontName="Tahoma" fontSize="9.5" bold="true">
-				<text><![CDATA[JEFE DE CREDITO]]></text>
+
+			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000003010" positionType="Float" x="0" y="17" width="300" height="15" fontSize="9.0" vTextAlign="Middle"><box leftPadding="4"><pen lineWidth="0.25" lineColor="#000000"/></box><text><![CDATA[PLAZO DEL PRESTAMO]]></text></element>
+			<element kind="textField" uuid="f1000001-0000-0000-0000-000000003011" positionType="Float" x="300" y="17" width="215" height="15" fontSize="9.0" hTextAlign="Right" vTextAlign="Middle"><box rightPadding="4"><pen lineWidth="0.25" lineColor="#000000"/></box><expression><![CDATA[$P{P_PLAZO_TEXTO}]]></expression></element>
+
+			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000003020" positionType="Float" x="0" y="32" width="300" height="15" fontSize="9.0" vTextAlign="Middle"><box leftPadding="4"><pen lineWidth="0.25" lineColor="#000000"/></box><text><![CDATA[CUOTAS COBRADAS]]></text></element>
+			<element kind="textField" uuid="f1000001-0000-0000-0000-000000003021" positionType="Float" x="300" y="32" width="215" height="15" fontSize="9.0" hTextAlign="Right" vTextAlign="Middle"><box rightPadding="4"><pen lineWidth="0.25" lineColor="#000000"/></box><expression><![CDATA[$P{P_CUOTAS_COBRADAS_TEXTO}]]></expression></element>
+
+			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000003030" positionType="Float" x="0" y="47" width="300" height="15" fontSize="9.0" vTextAlign="Middle"><box leftPadding="4"><pen lineWidth="0.25" lineColor="#000000"/></box><text><![CDATA[CUOTAS PENDIENTES]]></text></element>
+			<element kind="textField" uuid="f1000001-0000-0000-0000-000000003031" positionType="Float" x="300" y="47" width="215" height="15" fontSize="9.0" hTextAlign="Right" vTextAlign="Middle"><box rightPadding="4"><pen lineWidth="0.25" lineColor="#000000"/></box><expression><![CDATA[$P{P_CUOTAS_PENDIENTES_TEXTO}]]></expression></element>
+
+			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000003040" positionType="Float" x="0" y="62" width="300" height="15" fontSize="9.0" vTextAlign="Middle"><box leftPadding="4"><pen lineWidth="0.25" lineColor="#000000"/></box><text><![CDATA[CUOTAS PENDIENTES HASTA PLAZO VENCIDO]]></text></element>
+			<element kind="textField" uuid="f1000001-0000-0000-0000-000000003041" positionType="Float" x="300" y="62" width="215" height="15" fontSize="9.0" hTextAlign="Right" vTextAlign="Middle"><box rightPadding="4"><pen lineWidth="0.25" lineColor="#000000"/></box><expression><![CDATA[$P{P_CUOTAS_POR_VENCER_TEXTO}]]></expression></element>
+
+			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000003050" positionType="Float" x="0" y="77" width="300" height="15" fontSize="9.0" vTextAlign="Middle"><box leftPadding="4"><pen lineWidth="0.25" lineColor="#000000"/></box><text><![CDATA[DIVIDENDO MENSUAL]]></text></element>
+			<element kind="textField" uuid="f1000001-0000-0000-0000-000000003051" positionType="Float" x="300" y="77" width="215" height="15" fontSize="9.0" hTextAlign="Right" vTextAlign="Middle"><box rightPadding="4"><pen lineWidth="0.25" lineColor="#000000"/></box><expression><![CDATA[$P{P_DIVIDENDO_MENSUAL_TEXTO}]]></expression></element>
+
+			<element kind="textField" uuid="f1000001-0000-0000-0000-000000004000" positionType="Float" x="0" y="107" width="515" height="55" markup="styled" textAdjust="StretchHeight" fontSize="9.5" hTextAlign="Justified" vTextAlign="Top">
+				<expression><![CDATA[$P{P_PARRAFO_CIERRE_1}]]></expression>
+				<paragraph lineSpacing="1_1_2"/>
 			</element>
-			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000000404" positionType="Float" x="0" y="647" width="515" height="26" fontName="Tahoma" fontSize="8.0">
+			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000004001" positionType="Float" x="0" y="170" width="515" height="40" fontSize="9.5" hTextAlign="Justified" vTextAlign="Top">
+				<text><![CDATA[Particular que comunico, a fin de que usted se sirva disponer a quien corresponda, se inicie el proceso establecido para este tipo de casos y demás acciones pertinentes.]]></text>
+				<paragraph lineSpacing="1_1_2"/>
+			</element>
+
+			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000004010" positionType="Float" x="0" y="220" width="515" height="16" fontSize="9.5" bold="true" hTextAlign="Center"><text><![CDATA[Atentamente,]]></text></element>
+
+			<!-- Línea de firma (D15): centrada, ~200px, como el resto del bloque. -->
+			<element kind="line" uuid="f1000001-0000-0000-0000-000000004015" positionType="Float" x="158" y="275" width="200" height="1"><pen lineWidth="0.75" lineColor="#000000"/></element>
+
+			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000004020" positionType="Float" x="0" y="290" width="515" height="16" fontSize="9.5" bold="true" hTextAlign="Center"><text><![CDATA[JEFE DE CREDITO]]></text></element>
+			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000004021" positionType="Float" x="0" y="306" width="515" height="48" fontSize="9.0" bold="true" hTextAlign="Center">
 				<text><![CDATA[ASOCIACIÓN DEL FONDO COMPLEMENTARIO PREVISIONAL CERRADO ASOPREP-FCPC DE JUBILACIÓN Y CESANTÍA, DE LAS EMPRESAS PÚBLICAS DEL SECTOR HIDROCARBURÍFERO]]></text>
 			</element>
-			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000000405" positionType="Float" x="0" y="676" width="515" height="14" fontName="Tahoma" fontSize="9.0" italic="true">
-				<text><![CDATA[Adj. Tabla de Amortización]]></text>
-			</element>
+
+			<element kind="staticText" uuid="f1000001-0000-0000-0000-000000004030" positionType="Float" x="0" y="356" width="515" height="14" fontSize="9.0" italic="true"><text><![CDATA[Adj. Tabla de Amortización]]></text></element>
 		</band>
 	</detail>
-	<pageFooter height="24" splitType="Stretch">
-		<element kind="line" uuid="f1000001-0000-0000-0000-000000000501" x="0" y="4" width="515" height="1"><pen lineWidth="0.25" lineColor="#E2E8F0"/></element>
-		<element kind="textField" uuid="f1000001-0000-0000-0000-000000000502" x="0" y="8" width="515" height="12" forecolor="#A0AEC0" fontName="Tahoma" fontSize="6.5" vTextAlign="Middle">
-			<expression><![CDATA["ASOPREP-FCPC · Sistema de Administración de Aportes (SAA) · Memorando " + ($P{P_NUMERO_MEMORANDO} != null ? $P{P_NUMERO_MEMORANDO} : "") + ($P{P_USUARIO} != null ? (" · Emitido por " + $P{P_USUARIO}) : "")]]></expression>
+
+	<pageFooter height="45" splitType="Stretch">
+		<element kind="line" uuid="f1000001-0000-0000-0000-000000000501" x="0" y="0" width="515" height="1"><pen lineWidth="0.5" lineColor="#999999"/></element>
+		<element kind="staticText" uuid="f1000001-0000-0000-0000-000000000502" x="0" y="6" width="515" height="11" fontSize="7.5" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[Dirección: Quito. Av. de los Shyris N34 – 382 y Portugal, Edif. La Tribuna Piso 5]]></text>
+		</element>
+		<element kind="staticText" uuid="f1000001-0000-0000-0000-000000000503" x="0" y="19" width="515" height="11" fontSize="7.5" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[Correo Electrónico: asoprep.gerencia@asoprep.com.ec]]></text>
+		</element>
+		<element kind="staticText" uuid="f1000001-0000-0000-0000-000000000504" x="0" y="32" width="515" height="11" fontSize="7.5" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[Teléfono: 0983341626 - 022255112]]></text>
 		</element>
 	</pageFooter>
 </jasperReport>

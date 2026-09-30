@@ -178,4 +178,30 @@ public interface PagoPrestamoDaoService extends EntityDao<PagoPrestamo> {
 	 */
 	List<Object[]> selectAplicadoPorEntidadEnCarga(Long idCarga) throws Throwable;
 
+	/**
+	 * Última fecha de pago VIGENTE (anulado IS NULL OR anulado = 0) de VARIOS préstamos, con un
+	 * {@code MAX(p.fecha)} AGRUPADO en la base — una fila por préstamo, no una por pago. Para
+	 * {@code DeclaracionPlazoVencidoServiceImpl#construirCuadro} (API-PASE-A-PLAZO-VENCIDO.md
+	 * §3): en préstamos migrados, {@code DetallePrestamo.fechaPagado} suele venir {@code null}
+	 * aunque el préstamo sí tenga pagos reales en {@code CRD.PGPR}; esta consulta es la fuente
+	 * verdadera de "última fecha de cobro", con {@code fechaPagado} como respaldo cuando el
+	 * préstamo no tiene ningún pago vigente.
+	 *
+	 * <p>Llega al préstamo por {@code p.detallePrestamo.prestamo.codigo} (navega por la cuota),
+	 * NO por {@code p.prestamo.codigo}: esa FK directa puede venir {@code NULL} en pagos viejos
+	 * (mismo criterio que {@link #selectCapitalAbonadoEnMoraOParcialByPrestamos}).</p>
+	 *
+	 * <p>Fragmenta internamente en bloques de 900 (ORA-01795). Un préstamo sin ningún pago
+	 * vigente NO genera fila; el llamador trata la ausencia como "usar el respaldo".</p>
+	 *
+	 * <p>A propósito y al REVÉS de la convención de sus vecinos en esta clase, <b>NO atrapa la
+	 * excepción</b>: ver {@link #selectDatosPagosVigentes(List)}.</p>
+	 *
+	 * @param codigosPrestamo Códigos de préstamo
+	 * @return Filas {@code Object[]{Long idPrestamo, LocalDateTime maxFecha}}; SIN fila para los
+	 *         préstamos sin pagos vigentes
+	 * @throws Throwable Si ocurre algún error
+	 */
+	List<Object[]> selectMaxFechaPagoByPrestamos(List<Long> codigosPrestamo) throws Throwable;
+
 }

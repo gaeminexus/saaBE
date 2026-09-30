@@ -55,6 +55,15 @@ public class DeclaracionPlazoVencidoServiceImpl implements DeclaracionPlazoVenci
     /** Tolerancia de cuadre entre devengado/cobrado/saldo, en dólares. */
     private static final double TOLERANCIA = 0.01;
 
+    /**
+     * D26 (usuario, 2026-09-30, contrato §5, commit 08ae2d44): en pantalla se escribe SOLO el
+     * número del memorando (p.ej. «46») y el sistema lo compone con este prefijo —
+     * "ASOPREP-FCPC-CREDITO-GR-046-2026". A partir de acá TODO trabaja con el número compuesto:
+     * la unicidad (lote y base), lo que se graba en PLVNNMMM, los mensajes de error y las
+     * respuestas. Las declaraciones viejas con el número pelado las corrige {@code sql/300}.
+     */
+    private static final String PREFIJO_MEMORANDO = "ASOPREP-FCPC-CREDITO-GR-";
+
     @EJB
     private DeclaracionPlazoVencidoDaoService declaracionDaoService;
 
@@ -140,11 +149,13 @@ public class DeclaracionPlazoVencidoServiceImpl implements DeclaracionPlazoVenci
 
         Map<Long, List<DetallePrestamo>> cuotasPorPrestamo = cargarCuotasPorPrestamo(idsPrestamo);
         Map<Long, double[]> pagosPorCuota = cargarPagosPorCuota(cuotasPorPrestamo);
+        Map<Long, LocalDateTime> maxFechaPagoPorPrestamo = cargarMaxFechaPagoPorPrestamo(idsPrestamo);
 
         List<CandidatoPlazoVencido> candidatos = new ArrayList<>();
         for (Prestamo prestamo : prestamos) {
             List<DetallePrestamo> universo = universoCuotas(cuotasPorPrestamo.get(prestamo.getCodigo()));
-            candidatos.add(construirCuadro(prestamo, universo, pagosPorCuota, fechaCorte));
+            candidatos.add(construirCuadro(prestamo, universo, pagosPorCuota,
+                maxFechaPagoPorPrestamo.get(prestamo.getCodigo()), fechaCorte));
         }
         System.out.println("  Candidatos calculados: " + candidatos.size());
         return candidatos;
@@ -182,7 +193,8 @@ public class DeclaracionPlazoVencidoServiceImpl implements DeclaracionPlazoVenci
         }
         validarFechaCorte(solicitud.getFechaCorte());
 
-        // 2. numeroMemorando: obligatorio, no vacío, sin duplicados en el lote ni en CRD.PLVN
+        // 2. numeroMemorando: obligatorio, SOLO DÍGITOS (D26 — en pantalla se escribe solo el
+        // número, p.ej. «46», y el sistema lo compone), sin duplicados en el lote ni en CRD.PLVN
         Set<String> memorandosNormalizados = new HashSet<>();
         for (ItemDeclararPlazoVencido item : solicitud.getPrestamos()) {
             if (item.getIdPrestamo() == null || item.getNumeroMemorando() == null
@@ -190,6 +202,7 @@ public class DeclaracionPlazoVencidoServiceImpl implements DeclaracionPlazoVenci
                 throw new IncomeException(ERR_PARAMETRO_INVALIDO
                     + ": idPrestamo y numeroMemorando son obligatorios en cada préstamo del lote");
             }
+            item.setNumeroMemorando(componerNumeroMemorando(item.getNumeroMemorando()));
             String normalizado = item.getNumeroMemorando().trim().toUpperCase();
             if (!memorandosNormalizados.add(normalizado)) {
                 throw new IncomeException(ERR_MEMORANDO_DUPLICADO
@@ -235,12 +248,14 @@ public class DeclaracionPlazoVencidoServiceImpl implements DeclaracionPlazoVenci
         // 5. Recalcular el cuadro de cada préstamo y validar las cinco invariantes
         Map<Long, List<DetallePrestamo>> cuotasPorPrestamo = cargarCuotasPorPrestamo(idsPrestamo);
         Map<Long, double[]> pagosPorCuota = cargarPagosPorCuota(cuotasPorPrestamo);
+        Map<Long, LocalDateTime> maxFechaPagoPorPrestamo = cargarMaxFechaPagoPorPrestamo(idsPrestamo);
 
         Map<Long, CandidatoPlazoVencido> cuadrosPorPrestamo = new LinkedHashMap<>();
         for (ItemDeclararPlazoVencido item : solicitud.getPrestamos()) {
             Prestamo prestamo = prestamosPorId.get(item.getIdPrestamo());
             List<DetallePrestamo> universo = universoCuotas(cuotasPorPrestamo.get(prestamo.getCodigo()));
-            CandidatoPlazoVencido cuadro = construirCuadro(prestamo, universo, pagosPorCuota, solicitud.getFechaCorte());
+            CandidatoPlazoVencido cuadro = construirCuadro(prestamo, universo, pagosPorCuota,
+                maxFechaPagoPorPrestamo.get(prestamo.getCodigo()), solicitud.getFechaCorte());
             if (!cuadro.isValido()) {
                 throw new IncomeException(ERR_CALCULO_NO_CUADRA + ": préstamo " + prestamo.getCodigo()
                     + " - " + String.join(" | ", cuadro.getInconsistencias()));
@@ -418,9 +433,11 @@ public class DeclaracionPlazoVencidoServiceImpl implements DeclaracionPlazoVenci
             idsCuotas.add(cuota.getCodigo());
         }
         Map<Long, double[]> pagosPorCuota = agruparPagosPorCuota(pagoPrestamoDaoService.selectDatosPagosVigentes(idsCuotas));
+        Map<Long, LocalDateTime> maxFechaPagoPorPrestamo = cargarMaxFechaPagoPorPrestamo(List.of(idPrestamo));
 
         Prestamo prestamo = prestamoDaoService.find(new Prestamo(), idPrestamo);
-        CandidatoPlazoVencido cuadro = construirCuadro(prestamo, universo, pagosPorCuota, fechaCorte);
+        CandidatoPlazoVencido cuadro = construirCuadro(prestamo, universo, pagosPorCuota,
+            maxFechaPagoPorPrestamo.get(idPrestamo), fechaCorte);
 
         declaracion.setFechaCorteLiquidacion(fechaCorte);
         declaracion.setLiquidacionSaldoCapital(cuadro.getCapital().getSaldo());
@@ -590,7 +607,7 @@ public class DeclaracionPlazoVencidoServiceImpl implements DeclaracionPlazoVenci
      * invariantes verificadas (contrato §2/§3, diseño §4.4bis). No graba nada.
      */
     private CandidatoPlazoVencido construirCuadro(Prestamo prestamo, List<DetallePrestamo> universo,
-            Map<Long, double[]> pagosPorCuota, LocalDate corte) throws Throwable {
+            Map<Long, double[]> pagosPorCuota, LocalDateTime maxFechaPagoPrestamo, LocalDate corte) throws Throwable {
 
         CandidatoPlazoVencido c = new CandidatoPlazoVencido();
         c.setIdPrestamo(prestamo.getCodigo());
@@ -717,10 +734,14 @@ public class DeclaracionPlazoVencidoServiceImpl implements DeclaracionPlazoVenci
                     cuotasConSeguroAAnular++;
                 }
             }
+            // Respaldo: DTPRFCPG viene null en casi todo préstamo migrado, aunque sí tenga
+            // pagos reales en CRD.PGPR. maxFechaPagoPrestamo (MAX(PGPRFCHA) en lote) manda
+            // cuando existe; esto solo se usa si el préstamo no tiene NINGÚN pago vigente.
             if (cuota.getFechaPagado() != null && (ultimoCobro == null || cuota.getFechaPagado().isAfter(ultimoCobro))) {
                 ultimoCobro = cuota.getFechaPagado();
             }
         }
+        LocalDateTime fechaUltimoCobroFinal = maxFechaPagoPrestamo != null ? maxFechaPagoPrestamo : ultimoCobro;
 
         saldoCapital = redondear(saldoCapital);
         saldoInteres = redondear(saldoInteres);
@@ -745,7 +766,7 @@ public class DeclaracionPlazoVencidoServiceImpl implements DeclaracionPlazoVenci
         c.setCuotasPendientes(cuotasPendientes);
         c.setCuotasPorVencer(cuotasPorVencer);
         c.setCuotasConSeguroAAnular(cuotasConSeguroAAnular);
-        c.setFechaUltimoCobro(ultimoCobro != null ? ultimoCobro.toLocalDate() : null);
+        c.setFechaUltimoCobro(fechaUltimoCobroFinal != null ? fechaUltimoCobroFinal.toLocalDate() : null);
         c.setFechaInicioMora(inicioMora);
 
         if (prestamo.getPlazo() != null && prestamo.getPlazo() != universo.size()) {
@@ -864,6 +885,20 @@ public class DeclaracionPlazoVencidoServiceImpl implements DeclaracionPlazoVenci
     }
 
     /**
+     * Última fecha de pago vigente por préstamo, EN LOTE (una sola consulta para todos los
+     * préstamos, mismo criterio que los pagos por cuota). Respaldo de
+     * {@code DetallePrestamo.fechaPagado} para préstamos migrados, donde esa columna suele venir
+     * null aunque el préstamo sí tenga pagos reales (ítem 3, API-PASE-A-PLAZO-VENCIDO.md §3).
+     */
+    private Map<Long, LocalDateTime> cargarMaxFechaPagoPorPrestamo(List<Long> idsPrestamo) throws Throwable {
+        Map<Long, LocalDateTime> maxFechaPorPrestamo = new HashMap<>();
+        for (Object[] fila : pagoPrestamoDaoService.selectMaxFechaPagoByPrestamos(idsPrestamo)) {
+            maxFechaPorPrestamo.put((Long) fila[0], (LocalDateTime) fila[1]);
+        }
+        return maxFechaPorPrestamo;
+    }
+
+    /**
      * Agrupa las filas escalares de {@code PagoPrestamoDaoService#selectDatosPagosVigentes}
      * (una fila por PAGO, no por cuota) sumando por componente. Índices del arreglo resultado:
      * 0 desgravamen, 1 moraPagada, 2 interesVencidoPagado, 3 interesPagado, 4 capitalPagado,
@@ -900,6 +935,32 @@ public class DeclaracionPlazoVencidoServiceImpl implements DeclaracionPlazoVenci
         if (fechaCorte.isAfter(LocalDate.now())) {
             throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": la fecha de corte " + fechaCorte + " es futura");
         }
+    }
+
+    /**
+     * D26: valida que {@code numeroCrudo} sea SOLO dígitos (sin el prefijo, sin guiones, sin
+     * año) y mayor que 0, y lo compone como
+     * {@code PREFIJO_MEMORANDO + "%03d" + "-" + añoActual}. Un número de 4 o más dígitos queda
+     * tal cual — {@code "%03d"} solo rellena, nunca trunca.
+     */
+    private String componerNumeroMemorando(String numeroCrudo) {
+        String valor = numeroCrudo.trim();
+        if (!valor.matches("\\d+")) {
+            throw new IncomeException(ERR_PARAMETRO_INVALIDO
+                + ": el número de memorando debe ser solo el número, sin prefijo (recibido: '" + numeroCrudo + "')");
+        }
+        long numero;
+        try {
+            numero = Long.parseLong(valor);
+        } catch (NumberFormatException e) {
+            throw new IncomeException(ERR_PARAMETRO_INVALIDO
+                + ": el número de memorando '" + numeroCrudo + "' es demasiado grande");
+        }
+        if (numero <= 0) {
+            throw new IncomeException(ERR_PARAMETRO_INVALIDO
+                + ": el número de memorando debe ser mayor que 0 (recibido: '" + numeroCrudo + "')");
+        }
+        return PREFIJO_MEMORANDO + String.format("%03d", numero) + "-" + LocalDate.now().getYear();
     }
 
     private DeclaracionPlazoVencido buscarDeclaracion(Long idDeclaracion) throws Throwable {

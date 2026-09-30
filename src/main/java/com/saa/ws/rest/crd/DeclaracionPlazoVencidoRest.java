@@ -183,6 +183,9 @@ public class DeclaracionPlazoVencidoRest {
             }
             DeclaracionPlazoVencido d = buscarEntidad(id);
 
+            // Todos los valores llegan YA FORMATEADOS como String (moneda ecuatoriana
+            // "$90.018,75", fechas "d/M/yyyy" o "dd-MM-yyyy" según la fila) — el diseño nuevo
+            // (2026-09-30, sobre el Word real del usuario) no delega el formato a Jasper.
             Map<String, Object> parametros = new HashMap<>();
             parametros.put("P_NUMERO_MEMORANDO", d.getNumeroMemorando());
             parametros.put("P_PARA_NOMBRE", d.getParaNombre());
@@ -194,34 +197,46 @@ public class DeclaracionPlazoVencidoRest {
             parametros.put("P_FECHA_MEMO_TEXTO", fechaLarga(d.getFechaCorte()));
             parametros.put("P_NOMBRE_PARTICIPE", d.getNombreParticipe());
             parametros.put("P_CEDULA", d.getCedula());
-            parametros.put("P_FECHA_INICIAL_TEXTO", fechaCorta(d.getFechaInicial()));
-            parametros.put("P_FECHA_FINAL_TEXTO", fechaCorta(d.getFechaFinal()));
-            parametros.put("P_FECHA_ULTIMO_COBRO_TEXTO", fechaCorta(d.getFechaUltimoCobro()));
-            parametros.put("P_MONTO", d.getMonto());
-            parametros.put("P_CAPITAL_COBRADO", d.getCapitalCobrado());
-            parametros.put("P_SALDO_CAPITAL", d.getSaldoCapital());
-            parametros.put("P_INTERES_DEVENGADO", d.getInteresDevengado());
-            parametros.put("P_INTERES_COBRADO", d.getInteresCobrado());
-            parametros.put("P_INTERES_SALDO", d.getSaldoInteres());
-            parametros.put("P_DESGRAVAMEN_DEVENGADO", d.getDesgravamenDevengado());
-            parametros.put("P_DESGRAVAMEN_COBRADO", d.getDesgravamenCobrado());
-            parametros.put("P_DESGRAVAMEN_SALDO", d.getSaldoDesgravamen());
-            parametros.put("P_SEGURO_DEVENGADO", d.getSeguroDevengado());
-            parametros.put("P_SEGURO_COBRADO", d.getSeguroCobrado());
-            parametros.put("P_SEGURO_SALDO", d.getSaldoSeguro());
-            parametros.put("P_MORA_DEVENGADA", d.getMoraDevengada());
-            parametros.put("P_MORA_COBRADA", d.getMoraCobrada());
-            parametros.put("P_MORA_SALDO", d.getSaldoMora());
-            parametros.put("P_TOTAL_COBRADO", d.getTotalCobrado());
-            parametros.put("P_TOTAL_POR_COBRAR", d.getTotalPorCobrar());
-            parametros.put("P_FECHA_CORTE_TEXTO", fechaCorta(d.getFechaCorte()));
-            parametros.put("P_PLAZO", d.getCuotasPlazo());
-            parametros.put("P_CUOTAS_COBRADAS", d.getCuotasCobradas());
-            parametros.put("P_CUOTAS_PENDIENTES", d.getCuotasPendientes());
-            parametros.put("P_CUOTAS_POR_VENCER", d.getCuotasPorVencer());
-            parametros.put("P_DIVIDENDO_MENSUAL", d.getDividendoMensual());
+            parametros.put("P_FECHA_INICIAL_TEXTO", fechaSinCero(d.getFechaInicial()));
+            parametros.put("P_FECHA_FINAL_TEXTO", fechaSinCero(d.getFechaFinal()));
+            parametros.put("P_FECHA_ULTIMO_COBRO_TEXTO", d.getFechaUltimoCobro() != null ? fechaSinCero(d.getFechaUltimoCobro()) : "-");
+            parametros.put("P_MONTO_TEXTO", moneda(d.getMonto()));
+            parametros.put("P_CAPITAL_COBRADO_TEXTO", moneda(d.getCapitalCobrado()));
+            parametros.put("P_SALDO_CAPITAL_TEXTO", moneda(d.getSaldoCapital()));
+            parametros.put("P_INTERES_DEVENGADO_TEXTO", moneda(d.getInteresDevengado()));
+            parametros.put("P_INTERES_COBRADO_TEXTO", moneda(d.getInteresCobrado()));
+            parametros.put("P_INTERES_SALDO_TEXTO", moneda(d.getSaldoInteres()));
+            parametros.put("P_DESGRAVAMEN_DEVENGADO_TEXTO", moneda(d.getDesgravamenDevengado()));
+            parametros.put("P_DESGRAVAMEN_COBRADO_TEXTO", moneda(d.getDesgravamenCobrado()));
+            parametros.put("P_DESGRAVAMEN_SALDO_TEXTO", moneda(d.getSaldoDesgravamen()));
+            parametros.put("P_SEGURO_DEVENGADO_TEXTO", moneda(d.getSeguroDevengado()));
+            parametros.put("P_SEGURO_COBRADO_TEXTO", moneda(d.getSeguroCobrado()));
+            parametros.put("P_SEGURO_SALDO_TEXTO", moneda(d.getSaldoSeguro()));
+            parametros.put("P_MORA_DEVENGADA_TEXTO", moneda(d.getMoraDevengada()));
+            parametros.put("P_MORA_COBRADA_TEXTO", moneda(d.getMoraCobrada()));
+            parametros.put("P_MORA_SALDO_TEXTO", moneda(d.getSaldoMora()));
+            parametros.put("P_TOTAL_COBRADO_TEXTO", moneda(d.getTotalCobrado()));
+            parametros.put("P_TOTAL_POR_COBRAR_TEXTO", moneda(d.getTotalPorCobrar()));
+            parametros.put("P_FECHA_CORTE_GUION", fechaGuion(d.getFechaCorte()));
+            parametros.put("P_PLAZO_TEXTO", String.valueOf(d.getCuotasPlazo()));
+            parametros.put("P_CUOTAS_COBRADAS_TEXTO", String.valueOf(d.getCuotasCobradas()));
+            parametros.put("P_CUOTAS_PENDIENTES_TEXTO", String.valueOf(d.getCuotasPendientes()));
+            parametros.put("P_CUOTAS_POR_VENCER_TEXTO", String.valueOf(d.getCuotasPorVencer()));
+            parametros.put("P_DIVIDENDO_MENSUAL_TEXTO", moneda(d.getDividendoMensual()));
             parametros.put("P_REVERTIDA", DeclaracionPlazoVencido.ESTADO_REVERTIDA == (d.getEstado() != null ? d.getEstado() : 0L));
-            parametros.put("P_USUARIO", d.getUsuarioDeclaracion());
+
+            // Párrafos con negrita embebida (markup="styled" en el .jrxml): se construyen acá,
+            // no en el reporte, porque la negrita cae solo sobre ciertos tramos del texto
+            // justificado (diseño 2026-09-30, sobre el Word real del usuario).
+            parametros.put("P_PARRAFO_APERTURA",
+                "Una vez realizada la revisión en el sistema SAA; y, del análisis del estado del Crédito "
+                + "<b>" + escapeHtml(d.getTipoCredito()) + " No. " + escapeHtml(d.getNumeroPrestamoImpreso()) + "</b>"
+                + ", otorgado por ASOPREP-FCPC a favor de <b>" + escapeHtml(d.getNombreParticipe()) + "</b>"
+                + ", portador de la cédula de identidad <b>No. " + escapeHtml(d.getCedula()) + "</b>, se desprende lo siguiente:");
+            parametros.put("P_PARRAFO_CIERRE_1",
+                "En virtud de lo expuesto y con el propósito de recuperación de los valores adeudados correspondientes al "
+                + "<b>Préstamo " + escapeHtml(d.getTipoCredito()) + " No. " + escapeHtml(d.getNumeroPrestamoImpreso())
+                + " se declara en estado de plazo vencido por incumplimiento de pago.</b>");
 
             // generarReporte() llena con una CONEXIÓN JDBC: como este .jrxml no tiene <query>,
             // el datasource da CERO filas y, con whenNoDataType="AllSectionsNoDetail", Jasper
@@ -262,23 +277,43 @@ public class DeclaracionPlazoVencidoRest {
             parametros.put("P_FECHA_MEMO_TEXTO", fechaLarga(d.getFechaCorte()));
             parametros.put("P_TIPO_CREDITO", d.getTipoCredito());
             parametros.put("P_FECHA_INICIAL_TEXTO", fechaLarga(d.getFechaInicial()));
-            parametros.put("P_MONTO", d.getMonto());
+            parametros.put("P_MONTO_TEXTO", moneda(d.getMonto()));
             parametros.put("P_FECHA_FINAL_TEXTO", fechaLarga(d.getFechaFinal()));
             parametros.put("P_NOMBRE_PARTICIPE", d.getNombreParticipe());
             parametros.put("P_CEDULA", d.getCedula());
-            parametros.put("P_CUOTAS_IMPAGAS", d.getLiquidacionCuotasImpagas());
+            parametros.put("P_CUOTAS_IMPAGAS", d.getLiquidacionCuotasImpagas() != null ? String.valueOf(d.getLiquidacionCuotasImpagas()) : "0");
             parametros.put("P_CUOTAS_IMPAGAS_LETRAS", NumeroALetrasUtil.convertir(d.getLiquidacionCuotasImpagas()));
             parametros.put("P_MES_INICIO_MORA", d.getFechaInicioMora() != null ? MESES[d.getFechaInicioMora().getMonthValue() - 1] : "");
             parametros.put("P_ANIO_INICIO_MORA", d.getFechaInicioMora() != null ? String.valueOf(d.getFechaInicioMora().getYear()) : "");
-            parametros.put("P_FECHA_CORTE_TEXTO", fechaLarga(d.getFechaCorteLiquidacion()));
-            parametros.put("P_LQ_SALDO_CAPITAL", d.getLiquidacionSaldoCapital());
-            parametros.put("P_LQ_INTERES_MORA", d.getLiquidacionMora());
-            parametros.put("P_LQ_INTERES_VENCIDO", d.getLiquidacionInteres());
-            parametros.put("P_LQ_DESGRAVAMEN", d.getLiquidacionDesgravamen());
-            parametros.put("P_LQ_SEGURO_INCENDIO", d.getLiquidacionSeguro());
-            parametros.put("P_LQ_TOTAL", d.getLiquidacionTotal());
+            parametros.put("P_FECHA_CORTE_GUION", fechaGuion(d.getFechaCorteLiquidacion()));
+            parametros.put("P_LQ_SALDO_CAPITAL_TEXTO", moneda(d.getLiquidacionSaldoCapital()));
+            parametros.put("P_LQ_INTERES_MORA_TEXTO", moneda(d.getLiquidacionMora()));
+            parametros.put("P_LQ_INTERES_VENCIDO_TEXTO", moneda(d.getLiquidacionInteres()));
+            parametros.put("P_LQ_DESGRAVAMEN_TEXTO", moneda(d.getLiquidacionDesgravamen()));
+            parametros.put("P_LQ_SEGURO_INCENDIO_TEXTO", moneda(d.getLiquidacionSeguro()));
+            parametros.put("P_LQ_TOTAL_TEXTO", moneda(d.getLiquidacionTotal()));
             parametros.put("P_REVERTIDA", DeclaracionPlazoVencido.ESTADO_REVERTIDA == (d.getEstado() != null ? d.getEstado() : 0L));
-            parametros.put("P_USUARIO", d.getUsuarioLiquidacion());
+
+            parametros.put("P_PARRAFO_1",
+                "Mediante Memorando Nro. " + escapeHtml(d.getNumeroMemorando()) + " de " + fechaLarga(d.getFechaCorte())
+                + ", el jefe de Crédito remite la <b>ORDEN DE COBRO</b> del Préstamo " + escapeHtml(d.getTipoCredito())
+                + " No. " + escapeHtml(d.getNumeroPrestamoImpreso()) + " otorgado el " + fechaLarga(d.getFechaInicial())
+                + " por el valor de USD " + monedaSinSimbolo(d.getMonto()) + ", con vencimiento el " + fechaLarga(d.getFechaFinal())
+                + ", a favor de <b>" + escapeHtml(d.getNombreParticipe()) + "</b>, con cédula de ciudadanía No. <b>"
+                + escapeHtml(d.getCedula()) + "</b>; a través del cual, declara la referida obligación de "
+                + "<b><i>\"...plazo vencido por incumplimiento de pago.\"</i></b>");
+            parametros.put("P_PARRAFO_2",
+                "De lo expuesto y con la finalidad de regularizar el registro administrativo y contable de la obligación, "
+                + "procedo con la emisión de la liquidación contable, para lo cual se realizó la verificación de la información "
+                + "registrada en el sistema SAA, evidenciándose que <b>" + escapeHtml(d.getNombreParticipe()) + "</b>, mantiene "
+                + NumeroALetrasUtil.convertir(d.getLiquidacionCuotasImpagas()) + " ("
+                + (d.getLiquidacionCuotasImpagas() != null ? d.getLiquidacionCuotasImpagas() : 0) + ") cuotas impagas "
+                + "correspondientes al Crédito " + escapeHtml(d.getTipoCredito()) + " No. " + escapeHtml(d.getNumeroPrestamoImpreso())
+                + ", registrándose el inicio del estado de mora desde el mes de "
+                + (d.getFechaInicioMora() != null ? MESES[d.getFechaInicioMora().getMonthValue() - 1] : "")
+                + " de " + (d.getFechaInicioMora() != null ? String.valueOf(d.getFechaInicioMora().getYear()) : "")
+                + "; en tal razón, se procede a realizar la siguiente liquidación contable con corte al "
+                + fechaLarga(d.getFechaCorteLiquidacion()) + ", conforme el siguiente detalle:");
 
             // Mismo motivo que en memorando(): sin <query>, generarReporte() (conexión JDBC) da
             // cero filas y Jasper se salta el <detail>. Una fila vacía fuerza la ejecución.
@@ -342,11 +377,50 @@ public class DeclaracionPlazoVencidoRest {
         return String.format("%02d de %s de %d", fecha.getDayOfMonth(), MESES[fecha.getMonthValue() - 1], fecha.getYear());
     }
 
-    private String fechaCorta(LocalDate fecha) {
+    /** "d/M/yyyy", sin ceros a la izquierda — formato de las fechas dentro de la tabla (diseño 2026-09-30). */
+    private String fechaSinCero(LocalDate fecha) {
         if (fecha == null) {
             return "";
         }
-        return String.format("%02d/%02d/%d", fecha.getDayOfMonth(), fecha.getMonthValue(), fecha.getYear());
+        return fecha.getDayOfMonth() + "/" + fecha.getMonthValue() + "/" + fecha.getYear();
+    }
+
+    /** "dd-MM-yyyy" — formato de "TOTAL POR COBRAR AL ..." / "TOTAL ADEUDADO AL ...". */
+    private String fechaGuion(LocalDate fecha) {
+        if (fecha == null) {
+            return "";
+        }
+        return String.format("%02d-%02d-%d", fecha.getDayOfMonth(), fecha.getMonthValue(), fecha.getYear());
+    }
+
+    /**
+     * "$90.018,75" — moneda ecuatoriana (punto de miles, coma decimal), formateada en Java y NO
+     * delegada a un {@code pattern} de Jasper (evita depender del locale del reporte). Símbolos
+     * explícitos, no el locale del JVM — no depende de qué locale tenga instalado el servidor.
+     */
+    private String moneda(Double valor) {
+        return "$" + monedaSinSimbolo(valor);
+    }
+
+    /** Igual que {@link #moneda}, sin el "$" — para textos como "por el valor de USD 90.018,75". */
+    private String monedaSinSimbolo(Double valor) {
+        java.text.DecimalFormatSymbols simbolos = new java.text.DecimalFormatSymbols(java.util.Locale.US);
+        simbolos.setGroupingSeparator('.');
+        simbolos.setDecimalSeparator(',');
+        java.text.DecimalFormat formato = new java.text.DecimalFormat("#,##0.00", simbolos);
+        return formato.format(valor != null ? valor : 0.0);
+    }
+
+    /**
+     * Escapa para meter texto arbitrario (nombre, cédula) dentro de un textField con
+     * {@code markup="styled"}: sin esto, un nombre con "&" o "<" rompería el markup del reporte
+     * en vez de imprimirse tal cual.
+     */
+    private String escapeHtml(String texto) {
+        if (texto == null) {
+            return "";
+        }
+        return texto.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
     }
 
     /**

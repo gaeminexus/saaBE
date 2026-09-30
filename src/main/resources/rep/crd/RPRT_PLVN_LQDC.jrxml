@@ -1,115 +1,124 @@
-<!-- Liquidacion contable del pase a plazo vencido (CRD). Sintaxis compacta, SIN <query>: se llena desde la foto de CRD.PLVN, por parametros (API-PASE-A-PLAZO-VENCIDO.md §8). Estilo Tahoma, igual que RPRT_PLVN_MMRN. -->
-<jasperReport name="RPRT_PLVN_LQDC" language="java" pageWidth="595" pageHeight="842" columnWidth="515" leftMargin="40" rightMargin="40" topMargin="40" bottomMargin="40" whenNoDataType="AllSectionsNoDetail" uuid="f2000002-0000-0000-0000-000000000001">
+<!-- Liquidacion contable del pase a plazo vencido (CRD). Rediseño 2026-09-30 sobre el Word real
+     del usuario (ver scratchpad del arbitro, ej-bbd3-1.jpg). Sintaxis compacta, SIN query: se
+     llena una sola vez desde la foto de CRD.PLVN, todo por parametros YA FORMATEADOS en
+     DeclaracionPlazoVencidoRest. SIN fontName en ningun elemento, mismo criterio y mismo motivo
+     que RPRT_PLVN_MMRN (Tahoma no resuelve negrita en el exportador de PDF de este entorno). Una
+     sola hoja: el contenido entra comodo, no hace falta partir en bandas. -->
+<jasperReport name="RPRT_PLVN_LQDC" language="java" pageWidth="595" pageHeight="842" columnWidth="515" leftMargin="40" rightMargin="40" topMargin="30" bottomMargin="30" whenNoDataType="AllSectionsNoDetail" uuid="f2000002-0000-0000-0000-000000000001">
 	<property name="com.jaspersoft.studio.data.defaultdataadapter" value="Oracle"/>
 	<property name="com.jaspersoft.studio.report.description" value="Liquidacion contable de plazo vencido"/>
 	<parameter name="P_IMAGEN" class="java.awt.Image"><description><![CDATA[Logo del fondo. Lo inyecta ReporteServiceImpl.]]></description></parameter>
-	<parameter name="P_CIUDAD" class="java.lang.String"><description><![CDATA[Siempre "Quito"]]></description></parameter>
+	<parameter name="P_CIUDAD" class="java.lang.String"/>
 	<parameter name="P_FECHA_EMISION_TEXTO" class="java.lang.String"/>
 	<parameter name="P_NUMERO_PRESTAMO" class="java.lang.String"/>
 	<parameter name="P_NUMERO_MEMORANDO" class="java.lang.String"/>
 	<parameter name="P_FECHA_MEMO_TEXTO" class="java.lang.String"/>
 	<parameter name="P_TIPO_CREDITO" class="java.lang.String"/>
 	<parameter name="P_FECHA_INICIAL_TEXTO" class="java.lang.String"/>
-	<parameter name="P_MONTO" class="java.lang.Double"/>
+	<parameter name="P_MONTO_TEXTO" class="java.lang.String"/>
 	<parameter name="P_FECHA_FINAL_TEXTO" class="java.lang.String"/>
 	<parameter name="P_NOMBRE_PARTICIPE" class="java.lang.String"/>
 	<parameter name="P_CEDULA" class="java.lang.String"/>
-	<parameter name="P_CUOTAS_IMPAGAS" class="java.lang.Long"/>
+	<parameter name="P_CUOTAS_IMPAGAS" class="java.lang.String"/>
 	<parameter name="P_CUOTAS_IMPAGAS_LETRAS" class="java.lang.String"/>
 	<parameter name="P_MES_INICIO_MORA" class="java.lang.String"/>
 	<parameter name="P_ANIO_INICIO_MORA" class="java.lang.String"/>
-	<parameter name="P_FECHA_CORTE_TEXTO" class="java.lang.String"/>
-	<parameter name="P_LQ_SALDO_CAPITAL" class="java.lang.Double"/>
-	<parameter name="P_LQ_INTERES_MORA" class="java.lang.Double"/>
-	<parameter name="P_LQ_INTERES_VENCIDO" class="java.lang.Double"/>
-	<parameter name="P_LQ_DESGRAVAMEN" class="java.lang.Double"/>
-	<parameter name="P_LQ_SEGURO_INCENDIO" class="java.lang.Double"/>
-	<parameter name="P_LQ_TOTAL" class="java.lang.Double"/>
+	<parameter name="P_FECHA_CORTE_GUION" class="java.lang.String"/>
+	<parameter name="P_LQ_SALDO_CAPITAL_TEXTO" class="java.lang.String"/>
+	<parameter name="P_LQ_INTERES_MORA_TEXTO" class="java.lang.String"/>
+	<parameter name="P_LQ_INTERES_VENCIDO_TEXTO" class="java.lang.String"/>
+	<parameter name="P_LQ_DESGRAVAMEN_TEXTO" class="java.lang.String"/>
+	<parameter name="P_LQ_SEGURO_INCENDIO_TEXTO" class="java.lang.String"/>
+	<parameter name="P_LQ_TOTAL_TEXTO" class="java.lang.String"/>
+	<parameter name="P_PARRAFO_1" class="java.lang.String"><description><![CDATA[HTML (markup=styled), armado en el REST.]]></description></parameter>
+	<parameter name="P_PARRAFO_2" class="java.lang.String"/>
 	<parameter name="P_REVERTIDA" class="java.lang.Boolean"/>
-	<parameter name="P_USUARIO" class="java.lang.String"/>
+
 	<background splitType="Stretch"/>
-	<title height="120" splitType="Stretch">
-		<element kind="image" uuid="f2000002-0000-0000-0000-000000000101" x="0" y="0" width="120" height="55" scaleImage="RetainShape" onErrorType="Blank" hImageAlign="Left" vImageAlign="Middle">
+
+	<!-- Logo en el propio title (no en pageHeader): esta liquidación es de una sola hoja, no
+	     hace falta que se repita. Va antes del texto para que quede arriba de todo — "Quito,
+	     fecha" es right-aligned así que no se pisa con el logo a la izquierda. -->
+	<title height="100" splitType="Stretch">
+		<element kind="image" uuid="f2000002-0000-0000-0000-000000000090" x="0" y="0" width="110" height="45" scaleImage="RetainShape" onErrorType="Blank" hImageAlign="Left" vImageAlign="Top">
 			<expression><![CDATA[$P{P_IMAGEN}]]></expression>
 		</element>
-		<element kind="textField" uuid="f2000002-0000-0000-0000-000000000102" x="0" y="60" width="515" height="14" fontName="Tahoma" fontSize="9.5" bold="true" hTextAlign="Center">
+		<element kind="textField" uuid="f2000002-0000-0000-0000-000000000102" x="0" y="0" width="515" height="16" fontSize="9.5" hTextAlign="Right">
 			<expression><![CDATA[($P{P_CIUDAD} != null ? $P{P_CIUDAD} : "Quito") + ", " + ($P{P_FECHA_EMISION_TEXTO} != null ? $P{P_FECHA_EMISION_TEXTO} : "")]]></expression>
 		</element>
-		<element kind="textField" uuid="f2000002-0000-0000-0000-000000000103" x="0" y="80" width="515" height="18" fontName="Tahoma" fontSize="12.0" bold="true" hTextAlign="Center">
+		<element kind="textField" uuid="f2000002-0000-0000-0000-000000000103" x="0" y="55" width="515" height="20" fontSize="12.0" bold="true" hTextAlign="Center">
 			<expression><![CDATA["LIQUIDACIÓN CONTABLE CRÉDITO No. " + ($P{P_NUMERO_PRESTAMO} != null ? $P{P_NUMERO_PRESTAMO} : "")]]></expression>
 		</element>
-		<element kind="textField" uuid="f2000002-0000-0000-0000-000000000104" x="0" y="100" width="515" height="14" fontName="Tahoma" fontSize="9.0" bold="true" hTextAlign="Center" vTextAlign="Middle" forecolor="#C0392B">
+		<element kind="textField" uuid="f2000002-0000-0000-0000-000000000104" x="0" y="80" width="515" height="14" fontSize="9.0" bold="true" hTextAlign="Center" vTextAlign="Middle" forecolor="#C0392B">
 			<expression><![CDATA[Boolean.TRUE.equals($P{P_REVERTIDA}) ? "*** DECLARACIÓN REVERTIDA — DOCUMENTO SIN VALIDEZ VIGENTE ***" : ""]]></expression>
 		</element>
 	</title>
-	<pageHeader height="0"/>
+
 	<detail>
 		<band height="480" splitType="Stretch">
-			<element kind="textField" uuid="f2000002-0000-0000-0000-000000000201" positionType="Float" x="0" y="0" width="515" height="70" fontName="Tahoma" fontSize="9.5" textAdjust="StretchHeight" hTextAlign="Justified" vTextAlign="Top">
-				<expression><![CDATA["Mediante Memorando Nro. " + ($P{P_NUMERO_MEMORANDO} != null ? $P{P_NUMERO_MEMORANDO} : "")
-+ " de " + ($P{P_FECHA_MEMO_TEXTO} != null ? $P{P_FECHA_MEMO_TEXTO} : "") + ", el jefe de Crédito remite la ORDEN DE COBRO del Préstamo "
-+ ($P{P_TIPO_CREDITO} != null ? $P{P_TIPO_CREDITO} : "") + " No. " + ($P{P_NUMERO_PRESTAMO} != null ? $P{P_NUMERO_PRESTAMO} : "")
-+ " otorgado el " + ($P{P_FECHA_INICIAL_TEXTO} != null ? $P{P_FECHA_INICIAL_TEXTO} : "")
-+ " por el valor de USD " + new java.text.DecimalFormat("#,##0.00").format($P{P_MONTO} != null ? $P{P_MONTO} : 0.0)
-+ ", con vencimiento el " + ($P{P_FECHA_FINAL_TEXTO} != null ? $P{P_FECHA_FINAL_TEXTO} : "")
-+ ", a favor de " + ($P{P_NOMBRE_PARTICIPE} != null ? $P{P_NOMBRE_PARTICIPE} : "")
-+ ", con cédula de ciudadanía No. " + ($P{P_CEDULA} != null ? $P{P_CEDULA} : "")
-+ "; a través del cual, declara la referida obligación de \"plazo vencido por incumplimiento de pago\"."]]></expression>
-				<paragraph lineSpacing="1_1_2" spacingAfter="10"/>
+			<element kind="textField" uuid="f2000002-0000-0000-0000-000000000201" positionType="Float" x="0" y="0" width="515" height="90" markup="styled" textAdjust="StretchHeight" fontSize="9.5" hTextAlign="Justified" vTextAlign="Top">
+				<expression><![CDATA[$P{P_PARRAFO_1}]]></expression>
+				<paragraph lineSpacing="1_1_2"/>
 			</element>
 
-			<element kind="textField" uuid="f2000002-0000-0000-0000-000000000202" positionType="Float" x="0" y="76" width="515" height="90" fontName="Tahoma" fontSize="9.5" textAdjust="StretchHeight" hTextAlign="Justified" vTextAlign="Top">
-				<expression><![CDATA["De lo expuesto y con la finalidad de regularizar el registro administrativo y contable de la obligación, procedo con la emisión de la liquidación contable, para lo cual se realizó la verificación de la información registrada en el sistema SAA, evidenciándose que "
-+ ($P{P_NOMBRE_PARTICIPE} != null ? $P{P_NOMBRE_PARTICIPE} : "") + ", mantiene " + ($P{P_CUOTAS_IMPAGAS_LETRAS} != null ? $P{P_CUOTAS_IMPAGAS_LETRAS} : "")
-+ " (" + ($P{P_CUOTAS_IMPAGAS} != null ? String.valueOf($P{P_CUOTAS_IMPAGAS}) : "0") + ") cuotas impagas correspondientes al Crédito "
-+ ($P{P_TIPO_CREDITO} != null ? $P{P_TIPO_CREDITO} : "") + " No. " + ($P{P_NUMERO_PRESTAMO} != null ? $P{P_NUMERO_PRESTAMO} : "")
-+ ", registrándose el inicio del estado de mora desde el mes de " + ($P{P_MES_INICIO_MORA} != null ? $P{P_MES_INICIO_MORA} : "")
-+ " de " + ($P{P_ANIO_INICIO_MORA} != null ? $P{P_ANIO_INICIO_MORA} : "")
-+ "; en tal razón, se procede a realizar la siguiente liquidación contable con corte al "
-+ ($P{P_FECHA_CORTE_TEXTO} != null ? $P{P_FECHA_CORTE_TEXTO} : "") + ", conforme el siguiente detalle:"]]></expression>
-				<paragraph lineSpacing="1_1_2" spacingAfter="10"/>
+			<element kind="textField" uuid="f2000002-0000-0000-0000-000000000202" positionType="Float" x="0" y="96" width="515" height="90" markup="styled" textAdjust="StretchHeight" fontSize="9.5" hTextAlign="Justified" vTextAlign="Top">
+				<expression><![CDATA[$P{P_PARRAFO_2}]]></expression>
+				<paragraph lineSpacing="1_1_2"/>
 			</element>
 
-			<element kind="line" uuid="f2000002-0000-0000-0000-000000000300" positionType="Float" x="0" y="180" width="515" height="1"><pen lineWidth="0.5" lineColor="#333333"/></element>
-
-			<element kind="staticText" uuid="f2000002-0000-0000-0000-000000000301" positionType="Float" x="0" y="186" width="350" height="16" fontName="Tahoma" fontSize="9.5"><text><![CDATA[Saldo de capital vencido]]></text></element>
-			<element kind="textField" uuid="f2000002-0000-0000-0000-000000000302" positionType="Float" x="350" y="186" width="165" height="16" fontName="Tahoma" fontSize="9.5" hTextAlign="Right" pattern="#,##0.00"><expression><![CDATA[$P{P_LQ_SALDO_CAPITAL}]]></expression></element>
-
-			<element kind="staticText" uuid="f2000002-0000-0000-0000-000000000303" positionType="Float" x="0" y="202" width="350" height="16" fontName="Tahoma" fontSize="9.5"><text><![CDATA[Interés de mora]]></text></element>
-			<element kind="textField" uuid="f2000002-0000-0000-0000-000000000304" positionType="Float" x="350" y="202" width="165" height="16" fontName="Tahoma" fontSize="9.5" hTextAlign="Right" pattern="#,##0.00"><expression><![CDATA[$P{P_LQ_INTERES_MORA}]]></expression></element>
-
-			<element kind="staticText" uuid="f2000002-0000-0000-0000-000000000305" positionType="Float" x="0" y="218" width="350" height="16" fontName="Tahoma" fontSize="9.5"><text><![CDATA[Interés vencido]]></text></element>
-			<element kind="textField" uuid="f2000002-0000-0000-0000-000000000306" positionType="Float" x="350" y="218" width="165" height="16" fontName="Tahoma" fontSize="9.5" hTextAlign="Right" pattern="#,##0.00"><expression><![CDATA[$P{P_LQ_INTERES_VENCIDO}]]></expression></element>
-
-			<element kind="staticText" uuid="f2000002-0000-0000-0000-000000000307" positionType="Float" x="0" y="234" width="350" height="16" fontName="Tahoma" fontSize="9.5"><text><![CDATA[Seguro desgravamen vencido]]></text></element>
-			<element kind="textField" uuid="f2000002-0000-0000-0000-000000000308" positionType="Float" x="350" y="234" width="165" height="16" fontName="Tahoma" fontSize="9.5" hTextAlign="Right" pattern="#,##0.00"><expression><![CDATA[$P{P_LQ_DESGRAVAMEN}]]></expression></element>
-
-			<element kind="staticText" uuid="f2000002-0000-0000-0000-000000000309" positionType="Float" x="0" y="250" width="350" height="16" fontName="Tahoma" fontSize="9.5"><text><![CDATA[Seguro incendio vencido]]></text></element>
-			<element kind="textField" uuid="f2000002-0000-0000-0000-000000000310" positionType="Float" x="350" y="250" width="165" height="16" fontName="Tahoma" fontSize="9.5" hTextAlign="Right" pattern="#,##0.00"><expression><![CDATA[$P{P_LQ_SEGURO_INCENDIO}]]></expression></element>
-
-			<element kind="line" uuid="f2000002-0000-0000-0000-000000000311" positionType="Float" x="0" y="270" width="515" height="1"><pen lineWidth="0.5" lineColor="#333333"/></element>
-
-			<element kind="staticText" uuid="f2000002-0000-0000-0000-000000000312" positionType="Float" x="0" y="276" width="350" height="18" fontName="Tahoma" fontSize="10.0" bold="true"><text><![CDATA[TOTAL ADEUDADO]]></text></element>
-			<element kind="textField" uuid="f2000002-0000-0000-0000-000000000313" positionType="Float" x="350" y="276" width="165" height="18" fontName="Tahoma" fontSize="10.0" bold="true" hTextAlign="Right" pattern="#,##0.00"><expression><![CDATA[$P{P_LQ_TOTAL}]]></expression></element>
-
-			<element kind="staticText" uuid="f2000002-0000-0000-0000-000000000400" positionType="Float" x="0" y="320" width="515" height="14" fontName="Tahoma" fontSize="9.5">
-				<text><![CDATA[Atentamente,]]></text>
+			<element kind="staticText" uuid="f2000002-0000-0000-0000-000000000300" positionType="Float" x="0" y="196" width="300" height="17" mode="Opaque" backcolor="#E8E8E8" fontSize="9.0" bold="true" vTextAlign="Middle">
+				<text><![CDATA[DESCRIPCIÓN]]></text>
+				<box leftPadding="4"><pen lineWidth="0.75" lineColor="#000000"/></box>
 			</element>
-			<element kind="staticText" uuid="f2000002-0000-0000-0000-000000000401" positionType="Float" x="0" y="370" width="515" height="14" fontName="Tahoma" fontSize="9.5" bold="true">
-				<text><![CDATA[_______________________________]]></text>
+			<element kind="staticText" uuid="f2000002-0000-0000-0000-000000000301" positionType="Float" x="300" y="196" width="215" height="17" mode="Opaque" backcolor="#E8E8E8" fontSize="9.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+				<text><![CDATA[VALORES]]></text>
+				<box rightPadding="4"><pen lineWidth="0.75" lineColor="#000000"/></box>
 			</element>
-			<element kind="staticText" uuid="f2000002-0000-0000-0000-000000000402" positionType="Float" x="0" y="385" width="515" height="14" fontName="Tahoma" fontSize="9.5" bold="true">
-				<text><![CDATA[JEFE DE CONTABILIDAD]]></text>
+
+			<element kind="staticText" uuid="f2000002-0000-0000-0000-000000000310" positionType="Float" x="0" y="213" width="300" height="15" fontSize="9.0" vTextAlign="Middle"><text><![CDATA[SALDO DE CAPITAL VENCIDO]]></text><box leftPadding="4"><pen lineWidth="0.25" lineColor="#000000"/></box></element>
+			<element kind="textField" uuid="f2000002-0000-0000-0000-000000000311" positionType="Float" x="300" y="213" width="215" height="15" fontSize="9.0" hTextAlign="Right" vTextAlign="Middle"><expression><![CDATA[$P{P_LQ_SALDO_CAPITAL_TEXTO}]]></expression><box rightPadding="4"><pen lineWidth="0.25" lineColor="#000000"/></box></element>
+
+			<element kind="staticText" uuid="f2000002-0000-0000-0000-000000000320" positionType="Float" x="0" y="228" width="300" height="15" fontSize="9.0" vTextAlign="Middle"><text><![CDATA[INTERES MORA]]></text><box leftPadding="4"><pen lineWidth="0.25" lineColor="#000000"/></box></element>
+			<element kind="textField" uuid="f2000002-0000-0000-0000-000000000321" positionType="Float" x="300" y="228" width="215" height="15" fontSize="9.0" hTextAlign="Right" vTextAlign="Middle"><expression><![CDATA[$P{P_LQ_INTERES_MORA_TEXTO}]]></expression><box rightPadding="4"><pen lineWidth="0.25" lineColor="#000000"/></box></element>
+
+			<element kind="staticText" uuid="f2000002-0000-0000-0000-000000000330" positionType="Float" x="0" y="243" width="300" height="15" fontSize="9.0" vTextAlign="Middle"><text><![CDATA[INTERES VENCIDO]]></text><box leftPadding="4"><pen lineWidth="0.25" lineColor="#000000"/></box></element>
+			<element kind="textField" uuid="f2000002-0000-0000-0000-000000000331" positionType="Float" x="300" y="243" width="215" height="15" fontSize="9.0" hTextAlign="Right" vTextAlign="Middle"><expression><![CDATA[$P{P_LQ_INTERES_VENCIDO_TEXTO}]]></expression><box rightPadding="4"><pen lineWidth="0.25" lineColor="#000000"/></box></element>
+
+			<element kind="staticText" uuid="f2000002-0000-0000-0000-000000000340" positionType="Float" x="0" y="258" width="300" height="15" fontSize="9.0" vTextAlign="Middle"><text><![CDATA[SEGURO DESGRAVAMEN VENCIDO]]></text><box leftPadding="4"><pen lineWidth="0.25" lineColor="#000000"/></box></element>
+			<element kind="textField" uuid="f2000002-0000-0000-0000-000000000341" positionType="Float" x="300" y="258" width="215" height="15" fontSize="9.0" hTextAlign="Right" vTextAlign="Middle"><expression><![CDATA[$P{P_LQ_DESGRAVAMEN_TEXTO}]]></expression><box rightPadding="4"><pen lineWidth="0.25" lineColor="#000000"/></box></element>
+
+			<element kind="staticText" uuid="f2000002-0000-0000-0000-000000000350" positionType="Float" x="0" y="273" width="300" height="15" fontSize="9.0" vTextAlign="Middle"><text><![CDATA[SEGURO INCENDIO VENCIDO]]></text><box leftPadding="4"><pen lineWidth="0.25" lineColor="#000000"/></box></element>
+			<element kind="textField" uuid="f2000002-0000-0000-0000-000000000351" positionType="Float" x="300" y="273" width="215" height="15" fontSize="9.0" hTextAlign="Right" vTextAlign="Middle"><expression><![CDATA[$P{P_LQ_SEGURO_INCENDIO_TEXTO}]]></expression><box rightPadding="4"><pen lineWidth="0.25" lineColor="#000000"/></box></element>
+
+			<element kind="textField" uuid="f2000002-0000-0000-0000-000000000360" positionType="Float" x="0" y="288" width="300" height="17" mode="Opaque" backcolor="#E8E8E8" fontSize="9.5" bold="true" vTextAlign="Middle">
+				<expression><![CDATA["TOTAL ADEUDADO AL " + ($P{P_FECHA_CORTE_GUION} != null ? $P{P_FECHA_CORTE_GUION} : "")]]></expression>
+				<box leftPadding="4"><pen lineWidth="0.75" lineColor="#000000"/></box>
 			</element>
-			<element kind="staticText" uuid="f2000002-0000-0000-0000-000000000403" positionType="Float" x="0" y="401" width="515" height="14" fontName="Tahoma" fontSize="8.0">
-				<text><![CDATA[ASOPREP-FCPC]]></text>
+			<element kind="textField" uuid="f2000002-0000-0000-0000-000000000361" positionType="Float" x="300" y="288" width="215" height="17" mode="Opaque" backcolor="#E8E8E8" fontSize="9.5" bold="true" hTextAlign="Right" vTextAlign="Middle">
+				<expression><![CDATA[$P{P_LQ_TOTAL_TEXTO}]]></expression>
+				<box rightPadding="4"><pen lineWidth="0.75" lineColor="#000000"/></box>
 			</element>
+
+			<element kind="staticText" uuid="f2000002-0000-0000-0000-000000000400" positionType="Float" x="0" y="325" width="515" height="16" fontSize="9.5"><text><![CDATA[Atentamente,]]></text></element>
+
+			<!-- Línea de firma (D15): alineada a la izquierda, como el resto del bloque de firma. -->
+			<element kind="line" uuid="f2000002-0000-0000-0000-000000000405" positionType="Float" x="0" y="380" width="200" height="1"><pen lineWidth="0.75" lineColor="#000000"/></element>
+
+			<element kind="staticText" uuid="f2000002-0000-0000-0000-000000000410" positionType="Float" x="0" y="395" width="515" height="16" fontSize="9.5" bold="true"><text><![CDATA[JEFE DE CONTABILIDAD]]></text></element>
+			<element kind="staticText" uuid="f2000002-0000-0000-0000-000000000411" positionType="Float" x="0" y="411" width="515" height="16" fontSize="9.5" bold="true"><text><![CDATA[ASOPREP-FCPC]]></text></element>
 		</band>
 	</detail>
-	<pageFooter height="24" splitType="Stretch">
-		<element kind="line" uuid="f2000002-0000-0000-0000-000000000501" x="0" y="4" width="515" height="1"><pen lineWidth="0.25" lineColor="#E2E8F0"/></element>
-		<element kind="textField" uuid="f2000002-0000-0000-0000-000000000502" x="0" y="8" width="515" height="12" forecolor="#A0AEC0" fontName="Tahoma" fontSize="6.5" vTextAlign="Middle">
-			<expression><![CDATA["ASOPREP-FCPC · Sistema de Administración de Aportes (SAA) · Liquidación crédito " + ($P{P_NUMERO_PRESTAMO} != null ? $P{P_NUMERO_PRESTAMO} : "") + ($P{P_USUARIO} != null ? (" · Emitido por " + $P{P_USUARIO}) : "")]]></expression>
+
+	<pageFooter height="45" splitType="Stretch">
+		<element kind="line" uuid="f2000002-0000-0000-0000-000000000501" x="0" y="0" width="515" height="1"><pen lineWidth="0.5" lineColor="#999999"/></element>
+		<element kind="staticText" uuid="f2000002-0000-0000-0000-000000000502" x="0" y="6" width="515" height="11" fontSize="7.5" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[Dirección: Quito. Av. de los Shyris N34 – 382 y Portugal, Edif. La Tribuna Piso 5]]></text>
+		</element>
+		<element kind="staticText" uuid="f2000002-0000-0000-0000-000000000503" x="0" y="19" width="515" height="11" fontSize="7.5" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[Correo Electrónico: asoprep.gerencia@asoprep.com.ec]]></text>
+		</element>
+		<element kind="staticText" uuid="f2000002-0000-0000-0000-000000000504" x="0" y="32" width="515" height="11" fontSize="7.5" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[Teléfono: 0983341626 - 022255112]]></text>
 		</element>
 	</pageFooter>
 </jasperReport>
