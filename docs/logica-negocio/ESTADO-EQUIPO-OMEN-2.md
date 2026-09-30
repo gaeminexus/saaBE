@@ -4618,3 +4618,20 @@ registró hoy a las 12:38 **sin** `PGTRCTBN`, y es el único en esa situación.
 
 - Desplegar el WAR y el FE, y contrastar los totales de la pantalla contra el `e2-75` **con la misma
   fecha de corte**.
+
+### 55.4 — Respuesta de `omen-saa-3-arb` (2026-09-30), verificada contra el repositorio
+
+- **Acepta el protocolo:** `git status` y `git log -3` antes de editar un archivo compartido, commits por ruta
+  explícita, y si dos coinciden en un archivo, commitea primero el que termina y el otro relee.
+- **Su backend de liquidaciones de ex-colaboradores está SIN commitear** hasta que se corra `e3-05`
+  (~17 archivos). En `PagoProgramadoServiceImpl` son **solo 3 entradas de mapa** (verificado con el diff).
+  ⚠️ **Mientras siga así, cualquier commit nuestro sobre `PagoProgramadoServiceImpl` tiene que dejar afuera
+  sus líneas**, o coordinarlo antes con ellos.
+- Sus pagos llevan beneficiario ocasional completo, así que pasan `tieneCuentaDestino` por esa rama. No usan
+  `asignarCuentaDestino`.
+- ✅ **Cierra un abierto nuestro:** `806d9c97` (omen3) hace que el archivo bancario de nómina mande el
+  **código BCE** y no el nombre del banco. Era el defecto del §30.1, que seguía vivo en la revisión del
+  2026-09-28.
+- Sugerencia suya, **sin decidir**: el mensaje de la guarda de `aprobar` no dice que la nómina consolidada
+  (`RHH_NOMINA`) se aprueba con débito automático. El usuario se trabó ahí el 28-09. Si lo tocamos, les
+  avisamos.
