@@ -1,5 +1,6 @@
 package com.saa.ejb.cxp.util;
 
+import java.text.Normalizer;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -145,7 +146,7 @@ public final class CarteraCalculo {
                 continue;
             }
             String unidad = (String) fila[1];
-            String unidadNorm = (unidad != null) ? unidad.toUpperCase(Locale.ROOT).replace(" ", "") : "";
+            String unidadNorm = normalizarUnidad(unidad);
             long factor;
             if (unidadNorm.contains("DIA")) {
                 factor = 1L;
@@ -153,7 +154,7 @@ public final class CarteraCalculo {
                 factor = 7L;
             } else if (unidadNorm.contains("MES")) {
                 factor = 30L;
-            } else if (unidadNorm.contains("ANIO") || unidadNorm.contains("AÑO") || unidadNorm.contains("ANO")) {
+            } else if (unidadNorm.contains("ANIO") || unidadNorm.contains("ANO")) {
                 factor = 365L;
             } else {
                 unidadesDesconocidas.add(unidad);
@@ -165,6 +166,22 @@ public final class CarteraCalculo {
             }
         }
         return maximo;
+    }
+
+    /**
+     * ÍTEM 7 (2026-09-30, API-CARTERA-CXP-CXC.md §3.4.1): PGS.FPFM trae la unidad de tiempo con
+     * dos grafías -- 'DIAS' y 'DÍAS' con tilde (51 filas medidas, con plazos de hasta 15 días) --
+     * y {@code toUpperCase} solo no alcanza: {@code "DÍAS".contains("DIA")} da {@code false}. Se
+     * quitan los diacríticos (NFD + eliminar la marca combinante) ANTES de comparar; el texto
+     * ORIGINAL, con tilde, es el que se muestra en el aviso de unidad desconocida -- nunca el
+     * normalizado.
+     */
+    private static String normalizarUnidad(String unidad) {
+        if (unidad == null) {
+            return "";
+        }
+        String sinTildes = Normalizer.normalize(unidad, Normalizer.Form.NFD).replaceAll("\\p{M}", "");
+        return sinTildes.toUpperCase(Locale.ROOT).replace(" ", "");
     }
 
     /** §3.4.4. */
