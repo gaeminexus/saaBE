@@ -223,7 +223,14 @@ public class DeclaracionPlazoVencidoRest {
             parametros.put("P_REVERTIDA", DeclaracionPlazoVencido.ESTADO_REVERTIDA == (d.getEstado() != null ? d.getEstado() : 0L));
             parametros.put("P_USUARIO", d.getUsuarioDeclaracion());
 
-            byte[] bytes = reporteService.generarReporte("crd", "RPRT_PLVN_MMRN", parametros, formato);
+            // generarReporte() llena con una CONEXIÓN JDBC: como este .jrxml no tiene <query>,
+            // el datasource da CERO filas y, con whenNoDataType="AllSectionsNoDetail", Jasper
+            // se salta el <detail> entero (title/pageHeader salen, el cuerpo no). Se usa
+            // generarReporteDesdeColeccion con UNA fila vacía para forzar exactamente una
+            // ejecución del detail — el reporte no lee el bean, todo sale de los parámetros
+            // (verificado 2026-09-30: ningún <field> declarado en el .jasper).
+            byte[] bytes = reporteService.generarReporteDesdeColeccion("crd", "RPRT_PLVN_MMRN",
+                parametros, java.util.Collections.singletonList(new java.util.HashMap<String, Object>()), formato);
             return respuestaArchivo(bytes, formato, "ORDEN_DE_COBRO_" + nombreParaArchivo(d.getNombreParticipe()));
         } catch (Throwable e) {
             return respuestaError(e);
@@ -273,7 +280,10 @@ public class DeclaracionPlazoVencidoRest {
             parametros.put("P_REVERTIDA", DeclaracionPlazoVencido.ESTADO_REVERTIDA == (d.getEstado() != null ? d.getEstado() : 0L));
             parametros.put("P_USUARIO", d.getUsuarioLiquidacion());
 
-            byte[] bytes = reporteService.generarReporte("crd", "RPRT_PLVN_LQDC", parametros, formato);
+            // Mismo motivo que en memorando(): sin <query>, generarReporte() (conexión JDBC) da
+            // cero filas y Jasper se salta el <detail>. Una fila vacía fuerza la ejecución.
+            byte[] bytes = reporteService.generarReporteDesdeColeccion("crd", "RPRT_PLVN_LQDC",
+                parametros, java.util.Collections.singletonList(new java.util.HashMap<String, Object>()), formato);
             return respuestaArchivo(bytes, formato, "LIQUIDACION_" + nombreParaArchivo(d.getNombreParticipe()));
         } catch (Throwable e) {
             return respuestaError(e);
