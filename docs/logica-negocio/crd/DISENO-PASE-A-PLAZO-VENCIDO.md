@@ -351,6 +351,8 @@ cualquier préstamo en 11.
 
 ## 5. Hallazgos al levantar esto
 
+0. **El «No. 60123» no es `PRSTCDGO`:** es `Prestamo.idAsoprep` (`PRSTIDAS`), nullable, con respaldo en `codigo` — la convención de todas las pantallas. Lo midió el ejecutor BE antes de programar (ítem 0.a). Se agregó `PLVNNMPS` al `sql/247` (55 columnas), antes de correrlo.
+
 1. **No había pantalla de ejemplo**, y ningún código escribe el estado 8.
 2. **El arreglo del 24-08 juntó dos cosas en una:** sacó a los 8 del cambio de estado (correcto) y del
    cálculo de mora (que D6 ahora contradice). Desde afuera parecía una sola regla.

@@ -114,8 +114,10 @@ incoherencias (diseño §1).
   falla y con qué valores. **La pantalla muestra el préstamo, pero no deja seleccionarlo.**
 - `cuotasConSeguroAAnular`: cuántas cuotas posteriores al corte tienen desgravamen o incendio mayor a
   cero. Es lo que `declarar` va a poner en cero.
-- ⚠️ **`numeroPrestamo`: el ejecutor mide qué campo es** el «No. 60123» de los documentos. Candidato:
-  `PRSTCDGO`. **Si no es ese, reporta y se detiene.** No elige.
+- **`numeroPrestamo`** = `Prestamo.idAsoprep` (`PRSTIDAS`, número de operación en ASOPREP) y, si es nulo,
+  `codigo` (`PRSTCDGO`), como **texto**. Es la convención de todas las pantallas del frontend
+  (`idAsoprep ?? codigo`, 23 lugares). *Medido por el ejecutor BE el 2026-09-30: el candidato inicial
+  `PRSTCDGO` era incorrecto.* Al declarar se congela en `PLVNNMPS`, y los documentos imprimen eso.
 
 ---
 

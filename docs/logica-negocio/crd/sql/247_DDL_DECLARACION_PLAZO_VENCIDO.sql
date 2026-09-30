@@ -86,6 +86,7 @@ CREATE TABLE CRD.PLVN (
   PLVNCCCR  VARCHAR2(200),              -- CC: cargo
 
   -- Foto de identificacion (no se lee en vivo: un nombre puede corregirse despues)
+  PLVNNMPS  VARCHAR2(30)    NOT NULL,   -- numero de prestamo IMPRESO: PRSTIDAS (idAsoprep), o PRSTCDGO si es nulo
   PLVNNMPR  VARCHAR2(300),              -- nombre del participe
   PLVNIDPR  VARCHAR2(20),               -- cedula
   PLVNTPCR  VARCHAR2(200),              -- tipo de credito (nombre del producto)
@@ -149,6 +150,7 @@ COMMENT ON TABLE  CRD.PLVN           IS 'Declaracion de plazo vencido de un pres
 COMMENT ON COLUMN CRD.PLVN.PLVNESTD  IS '1 DECLARADA, 2 LIQUIDADA, 3 REVERTIDA. Constantes planas, sin rubro. Una REVERTIDA nunca se borra.';
 COMMENT ON COLUMN CRD.PLVN.PLVNESAN  IS 'PRSTIDST antes de declarar. Solo registro: el reverso vuelve siempre a 11 EN_MORA.';
 COMMENT ON COLUMN CRD.PLVN.PLVNNMMM  IS 'Numero de memorando ingresado por el usuario. Unico en toda la tabla, incluidas las revertidas: un documento emitido no se renumera.';
+COMMENT ON COLUMN CRD.PLVN.PLVNNMPS  IS 'Numero de prestamo tal como se imprimio: PRSTIDAS (numero de operacion ASOPREP) y, si es nulo, PRSTCDGO. Misma convencion que todas las pantallas (idAsoprep ?? codigo). Se congela para que la reimpresion no cambie si despues se carga el PRSTIDAS.';
 COMMENT ON COLUMN CRD.PLVN.PLVNFCCR  IS 'Fecha de corte del memorando. Desde el dia siguiente, las cuotas quedan sin seguro (CRD.DPLV).';
 COMMENT ON COLUMN CRD.PLVN.PLVNMRDV  IS 'Mora calculada AL CORTE con la formula de ProcesoMoraPrestamoService.calcularMoraCuota, no la persistida en DTPR.';
 
@@ -228,7 +230,7 @@ ALTER TABLE CRD.PLVN ADD CONSTRAINT CK_PLVN_SALDOS CHECK (
 -- 5. CONTROLES POSTERIORES — leer la salida, no asumir
 -- =====================================================================================
 
--- 5.1 Columnas de PLVN. Esperado: 54 filas. Revisar NULLABLE contra el bloque 1: el mapeo
+-- 5.1 Columnas de PLVN. Esperado: 55 filas. Revisar NULLABLE contra el bloque 1: el mapeo
 --     JPA no dice si una columna es obligatoria (H68); lo dice solo esta consulta.
 SELECT c.COLUMN_ID, c.COLUMN_NAME, c.DATA_TYPE, c.DATA_PRECISION, c.DATA_SCALE, c.NULLABLE
 FROM   ALL_TAB_COLUMNS c
