@@ -50,11 +50,17 @@ public interface PagoPrestamoDaoService extends EntityDao<PagoPrestamo> {
 	 * que una falla acá es una falla real del lote entero, no la fila mala de un bucle que no
 	 * debe abortar el resto. Debe propagarse como un 500 legítimo.</p>
 	 *
+	 * <p>{@code saldoOtros} (índice 7) se agregó el 2026-09-30, al FINAL, sin mover los seis
+	 * índices anteriores: es el "pago extra" / abono a capital, que
+	 * {@code AbonoCapitalPrestamoServiceImpl} graba con {@code capitalPagado = 0}
+	 * (API-PASE-A-PLAZO-VENCIDO.md §2). Verificado contra los llamadores existentes de este
+	 * método (ninguno depende del largo del arreglo) antes de agregarlo.</p>
+	 *
 	 * @param codigosDetallePrestamo Códigos de cuota (DetallePrestamo)
 	 * @return Filas {@code Object[]{Long idDetallePrestamo, Double desgravamen,
 	 *         Double moraPagada, Double interesVencidoPagado, Double interesPagado,
-	 *         Double capitalPagado, Double valorSeguroIncendio}}, ordenadas por cuota; lista
-	 *         vacía si {@code codigosDetallePrestamo} es nulo o vacío
+	 *         Double capitalPagado, Double valorSeguroIncendio, Double saldoOtros}}, ordenadas
+	 *         por cuota; lista vacía si {@code codigosDetallePrestamo} es nulo o vacío
 	 * @throws Throwable Si ocurre algún error
 	 */
 	List<Object[]> selectDatosPagosVigentes(List<Long> codigosDetallePrestamo) throws Throwable;

@@ -633,27 +633,44 @@ public class DeclaracionPlazoVencidoServiceImpl implements DeclaracionPlazoVenci
             double[] pagos = pagosPorCuota.get(cuota.getCodigo());
             double desgravamenPagadoCuota = pagos != null ? pagos[0] : 0.0;
             double moraPagadaCuota = pagos != null ? pagos[1] : 0.0;
+            double interesVencidoPagadoCuota = pagos != null ? pagos[2] : 0.0;
             double interesPagadoCuota = pagos != null ? pagos[3] : 0.0;
             double capitalPagadoCuota = pagos != null ? pagos[4] : 0.0;
             double seguroPagadoCuota = pagos != null ? pagos[5] : 0.0;
+            // PGPRSLOT — "pago extra" (abono a capital). Se graba con capitalPagado=0
+            // (AbonoCapitalPrestamoServiceImpl:232-240) y rehace la tabla, así que Σ capital de
+            // las cuotas = monto − abonos: sin sumarlo, el capital cobrado de la FILA queda
+            // corto y el saldo de capital de la fila no cuadra contra monto − cobrado (invariante
+            // 3). Caso real: préstamo 62439, abono de 4.236,80 en la cuota 38
+            // (API-PASE-A-PLAZO-VENCIDO.md §2, 2026-09-30).
+            double abonoExtraCuota = pagos != null ? pagos[6] : 0.0;
 
             boolean vencimientoEnElCorteOAntes = cuota.getFechaVencimiento() != null
                 && !cuota.getFechaVencimiento().toLocalDate().isAfter(corte);
             boolean vencidaAlCorte = cuota.getFechaVencimiento() != null
                 && cuota.getFechaVencimiento().toLocalDate().isBefore(corte);
 
-            // Capital: saldo por cuota, floreado en 0 (nunca negativo aunque una cuota puntual
-            // esté sobrepagada). El devengado de la FILA sigue siendo el monto del préstamo.
+            // Capital: el SALDO es por cuota, floreado en 0, y usa SOLO capitalPagado — el abono
+            // extra no es de esta cuota puntual, es una reducción del préstamo. El COBRADO de la
+            // FILA sí suma el abono extra (ver comentario de abonoExtraCuota arriba). El
+            // devengado de la FILA sigue siendo el monto del préstamo.
             double saldoCapitalCuota = Math.max(0.0, redondear(nvl(cuota.getCapital()) - capitalPagadoCuota));
-            capitalCobrado += capitalPagadoCuota;
+            capitalCobrado += capitalPagadoCuota + abonoExtraCuota;
             saldoCapital += saldoCapitalCuota;
 
             // Interés: "todas las cuotas" (D11), mismo tratamiento por cuota por consistencia.
-            double interesReglaCuota = nvl(cuota.getInteres());
-            double saldoInteresCuota = Math.max(0.0, redondear(interesReglaCuota - interesPagadoCuota));
-            interesCobrado += interesPagadoCuota;
+            // Suma DTPRINTR + DTPRINVN (interés vencido) del lado del devengado, e
+            // interesPagado + interesVencidoPagado del lado del pagado — misma agregación que
+            // MotorPagoPrestamoServiceImpl.calcularSaldosCuota, que ya trata el interés vencido
+            // como un componente propio. Hoy DTPRINVN casi siempre es 0 (PROCESO-DIARIO-INTERES-
+            // MORA.md §6), pero una cuota migrada con valor, o un pago que lo registre, dejaría
+            // el cuadro corto si no se suma (mismo defecto que el abono de capital, 2026-09-30).
+            double interesReglaCuota = nvl(cuota.getInteres()) + nvl(cuota.getInteresVencido());
+            double interesPagadoTotalCuota = interesPagadoCuota + interesVencidoPagadoCuota;
+            double saldoInteresCuota = Math.max(0.0, redondear(interesReglaCuota - interesPagadoTotalCuota));
+            interesCobrado += interesPagadoTotalCuota;
             saldoInteres += saldoInteresCuota;
-            interesDevengado += interesPagadoCuota + saldoInteresCuota;
+            interesDevengado += interesPagadoTotalCuota + saldoInteresCuota;
 
             // Desgravamen: devengado de la cuota es 0 si vence después del corte (D22) — un
             // adelanto pagado sobre una cuota futura no deja el saldo en negativo, se pisa en 0.
@@ -843,7 +860,8 @@ public class DeclaracionPlazoVencidoServiceImpl implements DeclaracionPlazoVenci
      * Agrupa las filas escalares de {@code PagoPrestamoDaoService#selectDatosPagosVigentes}
      * (una fila por PAGO, no por cuota) sumando por componente. Índices del arreglo resultado:
      * 0 desgravamen, 1 moraPagada, 2 interesVencidoPagado, 3 interesPagado, 4 capitalPagado,
-     * 5 valorSeguroIncendio — mismo orden que la proyección JPQL.
+     * 5 valorSeguroIncendio, 6 saldoOtros (pago extra, agregado 2026-09-30) — mismo orden que
+     * la proyección JPQL (desplazado -1 porque acá no se guarda el id de la cuota).
      */
     private Map<Long, double[]> agruparPagosPorCuota(List<Object[]> filas) {
         Map<Long, double[]> mapa = new HashMap<>();
@@ -852,13 +870,14 @@ public class DeclaracionPlazoVencidoServiceImpl implements DeclaracionPlazoVenci
         }
         for (Object[] fila : filas) {
             Long idCuota = (Long) fila[0];
-            double[] acumulado = mapa.computeIfAbsent(idCuota, k -> new double[6]);
+            double[] acumulado = mapa.computeIfAbsent(idCuota, k -> new double[7]);
             acumulado[0] += nvl((Double) fila[1]);
             acumulado[1] += nvl((Double) fila[2]);
             acumulado[2] += nvl((Double) fila[3]);
             acumulado[3] += nvl((Double) fila[4]);
             acumulado[4] += nvl((Double) fila[5]);
             acumulado[5] += nvl((Double) fila[6]);
+            acumulado[6] += nvl((Double) fila[7]);
         }
         return mapa;
     }

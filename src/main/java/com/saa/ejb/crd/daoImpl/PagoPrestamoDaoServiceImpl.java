@@ -101,8 +101,14 @@ public class PagoPrestamoDaoServiceImpl extends EntityDaoImpl<PagoPrestamo> impl
 		// Proyección ESCALAR a propósito: "SELECT p" instanciaba PagoPrestamo, y sus tres
 		// @ManyToOne (prestamo, detallePrestamo, cargaArchivo) son EAGER (default de JPA), cada
 		// uno con lo suyo — Hibernate hidrataba el grafo completo de cada pago.
+		// p.saldoOtros (PGPRSLOT) agregado el 2026-09-30, AL FINAL, índice 7: es el "pago extra"
+		// (abono a capital) — AbonoCapitalPrestamoServiceImpl:232-240 lo graba con
+		// capitalPagado=0, así que sin esto un abono desaparece del capital cobrado
+		// (API-PASE-A-PLAZO-VENCIDO.md §2, caso real préstamo 62439). Los índices 0-6 no se
+		// tocan: verificado que ningún llamador depende del largo del arreglo.
 		String jpql = "SELECT p.detallePrestamo.codigo, p.desgravamen, p.moraPagada, " +
-			"       p.interesVencidoPagado, p.interesPagado, p.capitalPagado, p.valorSeguroIncendio " +
+			"       p.interesVencidoPagado, p.interesPagado, p.capitalPagado, p.valorSeguroIncendio, " +
+			"       p.saldoOtros " +
 			"FROM PagoPrestamo p " +
 			"WHERE p.detallePrestamo.codigo IN :codigos " +
 			"AND (p.anulado IS NULL OR p.anulado = 0) " +
