@@ -264,7 +264,8 @@ seguidas** en `docs/logica-negocio/crd/sql/`.
 | **150–199** | **CRD · EQUIPO B** — ciclo del crédito y seguros · **agotado el 2026-09-05** |
 | **200–249** | **CRD · EQUIPO B** — continuación del anterior · **reservado 2026-09-05 por `omen-saa-1-arb`** |
 | **250–299** | **`lap-saa-1` (laptop)** · **reservado 2026-09-05** — ver el recuadro de abajo |
-| ≥ 300 | sin asignar |
+| **300–349** | **CRD · EQUIPO B** (`omen-saa-1`) — continuación del 200–249, agotado con el `249` · **reservado 2026-09-30 por `omen-saa-1-arb`** |
+| ≥ 350 | sin asignar |
 
 > ### ⛔ Una reserva escrita SÓLO en la bitácora del §5 no reserva nada — 2026-09-05
 >
