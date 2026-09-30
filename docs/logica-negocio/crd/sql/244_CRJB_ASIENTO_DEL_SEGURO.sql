@@ -57,7 +57,7 @@ SELECT c.COLUMN_NAME, c.DATA_TYPE, c.NULLABLE
   FROM ALL_TAB_COLUMNS c
  WHERE c.OWNER = 'CRD' AND c.TABLE_NAME = 'CRJB' AND c.COLUMN_NAME = 'CRJBASSG';
 
--- 0.2 Foto de las columnas de hoy. Esperado: 15 filas, sin CRJBASSG.
+-- 0.2 Foto de las columnas de hoy. Esperado: 16 filas, sin CRJBASSG (corregido 2026-09-30: decia 15 y olvidaba PJRQCDGO, la FK a la empresa, que la entidad mapea con @JoinColumn y no con @Column).
 SELECT c.COLUMN_NAME, c.DATA_TYPE, c.NULLABLE
   FROM ALL_TAB_COLUMNS c
  WHERE c.OWNER = 'CRD' AND c.TABLE_NAME = 'CRJB'
@@ -89,7 +89,7 @@ SELECT c.COLUMN_NAME, c.DATA_TYPE, c.NULLABLE
   FROM ALL_TAB_COLUMNS c
  WHERE c.OWNER = 'CRD' AND c.TABLE_NAME = 'CRJB' AND c.COLUMN_NAME = 'CRJBASSG';
 
--- 2.2 Las 16 columnas. Esperado: 16 filas, con CRJBASSG al final.
+-- 2.2 Las 17 columnas. Esperado: 17 filas, con CRJBASSG al final (corregido 2026-09-30: decia 16; medido en produccion, 17 es lo correcto).
 SELECT COUNT(*) AS COLUMNAS FROM ALL_TAB_COLUMNS c
  WHERE c.OWNER = 'CRD' AND c.TABLE_NAME = 'CRJB';
 
