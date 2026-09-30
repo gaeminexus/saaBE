@@ -1,6 +1,6 @@
 # DISEÑO — Pase de préstamos EN MORA a DE PLAZO VENCIDO, con orden de cobro y liquidación
 
-**Equipo:** `omen-saa-1` (CRD · equipo B) · **Abierto:** 2026-09-30 · **Estado:** ⛔ DISEÑO, NO DESPACHADO — decisiones D1–D19 tomadas; faltan L y M (bloquean), J y K (no bloquean) — §6.0.
+**Equipo:** `omen-saa-1` (CRD · equipo B) · **Abierto:** 2026-09-30 · **Estado:** ⛔ DISEÑO, NO DESPACHADO — decisiones D1–D21 tomadas; faltan L y M, que bloquean el despacho — §6.0.
 Faltan las decisiones del §6 antes de escribir el contrato de API y despachar.
 
 ---
@@ -152,6 +152,13 @@ plata cobrada al partícipe. **Ver §6, pregunta A.**
 | D18 (H) | Aceleración | **Sólo en los documentos y en la foto de `PLVN`.** La tabla de amortización **no se toca**: la mora sigue corriendo cuota a cuota con su vencimiento original |
 | D19 (I) | Qué seguro deja de cobrarse | **Los dos:** desgravamen e incendio |
 
+### Cuarta ronda — 2026-09-30
+
+| # | Pregunta | Decisión |
+|---|---|---|
+| D20 (J) | Formato del reporte a la aseguradora | **No existe.** Se sugiere uno (§4.6); el usuario lo valida con la aseguradora antes de congelarlo |
+| D21 (K) | PARA / CC del memorando | **Campos en la pantalla del paso 1**, con el último valor usado como sugerencia, y guardados en la foto de `PLVN` para que la reimpresión sea idéntica |
+
 ### ⚠️ La tensión que abre D19 frente a D18
 
 D18 dice que la tabla no se toca, pero para que el seguro **deje de cobrarse** (D13/D19) hay que
@@ -288,6 +295,38 @@ recalcula el cuadro **directamente desde `CRD.DTPR`**, sin pasar por el código,
 fila contra la foto de `CRD.PLVN`. La mora del SQL se contrasta aparte, porque la fórmula vive en Java.
 El frente no se da por bueno hasta que ese contraste salga en cero diferencias sobre préstamos reales.
 
+### 4.6 Reporte a la aseguradora (D13, D20) — FORMATO SUGERIDO, sin validar
+
+**Fase 2**: no bloquea el paso 1 ni el 2. Se despacha después de que el usuario lo valide con la
+aseguradora. En el sistema **no existe ninguna entidad «aseguradora»** (el frente de seguros por póliza
+tiene cero construido), así que el reporte se emite **por tipo de seguro**: desgravamen e incendio
+pueden ser de aseguradoras distintas, y cada una recibe sólo lo suyo.
+
+**Parámetros:** tipo de seguro (desgravamen | incendio) · rango de fechas de declaración.
+**Universo:** declaraciones de `PLVN` en ese rango, en estado DECLARADA o LIQUIDADA (las REVERTIDAS no
+entran; si una se revierte después de reportada, sale en el reporte siguiente con signo contrario,
+según lo que se decida en la pregunta M).
+
+| Columna | Origen |
+|---|---|
+| Nro. | secuencial del reporte |
+| Asegurado — apellidos y nombres | partícipe |
+| Cédula | partícipe |
+| Nro. de préstamo · tipo de crédito | préstamo / producto |
+| Fecha de otorgamiento · monto original | préstamo |
+| Nro. de memorando · fecha de declaración | `PLVN` |
+| Saldo de capital a la declaración | foto de `PLVN` (capital asegurado) |
+| Cuotas con seguro anulado | cantidad y rango (primera a última fecha de vencimiento) |
+| **Prima anulada** | Σ del seguro original de esas cuotas (desgravamen o incendio, según el parámetro) |
+
+**Pie:** total de préstamos, total de capital y **total de prima a acreditar**. Líneas de firma
+(Jefe de Crédito, Contador), como D15. PDF y Word, como D5.
+
+⚠️ **Lo que sólo la aseguradora puede decir, y hay que preguntarle:** si la nota de crédito se calcula
+sobre la **prima por cuota** que el sistema anula (lo que muestra este formato) o sobre la **prima que el
+fondo ya le pagó** por esos asegurados desde la declaración. Si es lo segundo, el valor sale de lo que
+tesorería pagó, no de las cuotas, y el reporte cambia.
+
 ### 4.5 Reverso (D8)
 
 `PRSTIDST` 8 → **siempre `EN_MORA` (11)** (D14; `PLVNESAN` queda sólo como registro). Lo hace el Jefe de Crédito. No hay asiento que reversar (D17), aunque la declaración ya esté LIQUIDADA. La declaración queda
@@ -316,8 +355,8 @@ cualquier préstamo en 11.
 |---|---|---|
 | **L** | **Desde cuándo deja de cobrarse el seguro.** Lectura del árbitro, que el usuario no ha confirmado explícitamente: el seguro de las cuotas **con vencimiento ≤ fecha de corte** se sigue debiendo (el ejemplo lo cobra: «saldo desgravamen 1.591,38»), y el de las cuotas **posteriores** se pone en cero | Es una escritura en la tabla de cuotas que afecta el archivo Petro y los cobros |
 | **M** | **Al revertir, ¿el seguro de las cuotas futuras vuelve?** Si vuelve, se autoriza la tabla de detalle `CRD.DPLV` para guardar el original. Si no vuelve (ya se pidió la nota de crédito a la aseguradora), no hace falta la tabla, pero el préstamo revertido queda sin seguro | Define si hace falta una segunda tabla nueva |
-| **J** | (sigue abierta) El formato del reporte a la aseguradora | Tercer documento; no bloquea el resto |
-| **K** | (sigue abierta) Nombres de PARA/CC editables en la pantalla, recordando el último usado | No bloquea el backend |
+| ~~J~~ | CONTESTADA (D20): se sugiere el formato del §4.6 | — |
+| ~~K~~ | CONTESTADA (D21) | — |
 
 ### 6.1 Abiertas después de la segunda ronda — G, H e I CONTESTADAS (D17–D19); J y K pasan al §6.0
 
