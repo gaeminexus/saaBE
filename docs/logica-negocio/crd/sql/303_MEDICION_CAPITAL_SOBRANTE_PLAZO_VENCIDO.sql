@@ -2,9 +2,11 @@
 -- 303 — MEDICION: prestamos donde cobrado + saldo de capital da MAS que el monto (solo lectura)
 -- FECHA: 2026-09-30 · EQUIPO: omen-saa-1 (CRD · EQUIPO B)
 --
--- EL CASO: la pantalla de Plazo Vencido deshabilita 61538, 65991, 64561, 63392 y 62890 con
+-- EL CASO: la pantalla de Plazo Vencido deshabilita 61538, 65991, 64561, 63392, 62890, 62086,
+-- 61839 y 60994 con
 -- «saldo de capital ≠ monto − capital cobrado», pero al reves que el 62439: aca SOBRA
--- (154,39 · 1.629,27 · 84,39 · 37,92 · 44,35). Dos hipotesis que este script separa:
+-- (154,39 · 1.629,27 · 84,39 · 37,92 · 44,35 · 159,14 · 9.757,74 · 11.352,03). Los dos ultimos son
+-- de otro orden de magnitud: puede ser otra causa. Hipotesis que este script separa:
 --   H1. Una o mas cuotas recibieron MAS capital pagado que su capital (sobrepago). El calculo
 --       pone el saldo de esa cuota en 0 (piso), asi que el exceso no descuenta y "sobra".
 --       → el bloque 1 muestra esas cuotas: SOBREPAGO > 0.
@@ -40,7 +42,7 @@ SELECT NVL(p.PRSTIDAS, p.PRSTCDGO) AS PRESTAMO,
   FROM CRD.PRST p
   JOIN CRD.DTPR d ON d.PRSTCDGO = p.PRSTCDGO
   JOIN pg g       ON g.DTPRCDGO = d.DTPRCDGO
- WHERE NVL(p.PRSTIDAS, p.PRSTCDGO) IN (61538, 65991, 64561, 63392, 62890)
+ WHERE NVL(p.PRSTIDAS, p.PRSTCDGO) IN (61538, 65991, 64561, 63392, 62890, 62086, 61839, 60994)
    AND NVL(d.DTPRESTD, 0) <> 7
    AND NVL(g.CAP_PAG, 0) - NVL(d.DTPRCPTL, 0) > 0.01
  ORDER BY 1, 2;
@@ -75,7 +77,7 @@ SELECT NVL(p.PRSTIDAS, p.PRSTCDGO)                     AS PRESTAMO,
   FROM CRD.PRST p
   JOIN CRD.DTPR d ON d.PRSTCDGO = p.PRSTCDGO
   LEFT JOIN pg g  ON g.DTPRCDGO = d.DTPRCDGO
- WHERE NVL(p.PRSTIDAS, p.PRSTCDGO) IN (61538, 65991, 64561, 63392, 62890)
+ WHERE NVL(p.PRSTIDAS, p.PRSTCDGO) IN (61538, 65991, 64561, 63392, 62890, 62086, 61839, 60994)
  GROUP BY NVL(p.PRSTIDAS, p.PRSTCDGO), p.PRSTMNSL
  ORDER BY 1;
 
