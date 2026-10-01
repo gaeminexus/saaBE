@@ -139,6 +139,11 @@ reversar nada. **Las dos cosas a la vez la cuentan dos veces.** Hay que elegir u
 | C4 (P6) | Asiento de reverso | **Uno separado por cobro.** |
 | C5 (P4) | ¿Reversar el pase a vencido/bandas del cierre, o cobrar desde la banda actual? | **Reversar**, dicho por el usuario en el requerimiento (§1, punto 4). ⇒ El definitivo cobra el capital desde la banda que tocaba **a la fecha de pago**, que es lo que **ya hace hoy** (§2.2), y un asiento SEPARADO en el mes de registro reversa lo que el cierre movió de esa cuota entre la fecha de pago y el último corte. |
 
+| C6 (P5) | Fecha de cada asiento | **① transitorio: fecha de REGISTRO en crédito. ② reparto, ③ definitivo y ④ reverso (nuevo, separado): fecha de PROCESO en crédito.** Ejemplo del usuario: depósito 30/09, registrado 10/10 → ① al 10/10; aprobado 11/10; procesado 12/10 → ②, ③ y ④ al 12/10. El ④ reversa lo contabilizado de esa cuota **después de la fecha de pago**: la mora abierta **y** el movimiento de bandas (por vencer → vencido), porque si el ③ cobra el capital desde la banda de la fecha de pago, sin el ④ la cuenta de vencido queda inflada. |
+| C7 | ¿Cómo se sabe qué reversar? | **Opción (b): el cierre de cartera guarda, de aquí en adelante, el DETALLE POR CUOTA de lo que contabiliza** (capital por banda, mora abierta), en una **tabla nueva AUTORIZADA** por el usuario. Para los cierres ya corridos se recalcula una sola vez. **Condición del usuario:** antes, inventariar TODO proceso que genere contabilidad de mora (y de bandas), para que la tabla guarde también lo de esos procesos. |
+| C8 (P7) | «Siempre reversar» | **Sólo para este frente.** `anularCobro`, `reversarProceso` y el reverso del cierre siguen como están. |
+| C9 | El otro equipo de créditos | **Sigue activo, pero este frente lo hace COMPLETO este equipo** (decisión del usuario). Se tocan archivos que el registro §4 asignaba al equipo A: avisarles con autorización del usuario. |
+
 ⚠️ **Consecuencia operativa de C1 + C2, que hay que decirle al usuario:** si los 11 cobros esperan sin
 procesarse y **el cierre de septiembre corre antes**, el cierre los va a ver impagos (lee el estado de
 hoy) y los va a pasar a vencido. Eso no rompe nada: es justo el caso que este cambio reversa. Pero
