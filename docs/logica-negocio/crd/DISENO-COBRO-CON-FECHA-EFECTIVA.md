@@ -194,6 +194,46 @@ subproceso, con los importes que usó cada paso: capital por banda y tipo, inter
 - `REGLAS-ASIENTOS-CONTABLES-CRD.md` está desactualizado: dice que el timer de mora está apagado
   (está activo desde el 09-09) y le faltan el cruce de valores y la entrega del préstamo.
 
+## 4quater. ⛔ 2026-09-30, noche — C6 EN PAUSA y el frente se parte en dos fases (usuario)
+
+> *«Por el momento dejemos las fechas de los asientos como estaban antes hasta mañana confirmar las
+> fechas con contabilidad. Lo que sí debe funcionar es el reverso de los intereses en mora en caso de
+> que se hayan generado.»*
+
+- **C6 suspendida.** Los asientos ①②③ del CBCR siguen fechados con `cobro.fecha`, como hoy. No se toca
+  hasta la confirmación de contabilidad.
+
+### FASE 1 — despachada el 2026-09-30: eliminar la mora generada después de la fecha de pago
+
+Al **procesar** un cobro con `cobro.fecha` **anterior a hoy**, ANTES de aplicar el pago a cada préstamo
+del cobro, se recalcula y **persiste** la mora de **todas sus cuotas impagas** a `cobro.fecha`:
+- Cuota con vencimiento **< fecha de pago**: `mora = calcularMoraCuota(cuota, tasa, fecha de pago)`.
+  Es la misma fórmula del proceso nocturno, así que sale menor o igual que la persistida.
+- Cuota con vencimiento **≥ fecha de pago**: `mora = 0` y `diasMora = 0`. Si estaba EN_MORA(5) por la
+  corrida nocturna, vuelve a su estado no vencido. Una PARCIAL no se toca.
+- `total` y `totalConSeguro` se recomponen **restando la mora anterior y sumando la nueva** (el mismo
+  patrón idempotente del proceso nocturno). `saldoMora = max(0, mora − mora pagada)`.
+- **El estado del PRÉSTAMO no se toca** acá: lo regulariza el proceso nocturno, como siempre.
+- Después el motor aplica el pago tal como hoy. Al leer la mora persistida, ahora lee la correcta.
+  H42 queda resuelto **para el camino CBCR** sin tocar el motor.
+- Las cuotas que queden PAGADAS conservan la mora correcta: el proceso nocturno ya no las toca. Las
+  que sigan impagas vuelven a acumular mora a la fecha de hoy esa misma noche, y es correcto, porque
+  siguen impagas.
+- **Trazabilidad:** por préstamo se loguea y se devuelve, en el resultado del proceso, cuánta mora se
+  eliminó. Es el insumo de la Fase 2.
+
+**Resuelve los 11 cobros del 30/09:** el cierre de septiembre no corrió (C1), así que no hay mora
+contabilizada que reversar, sólo la mora del sistema.
+
+### FASE 2 — después de que contabilidad confirme las fechas: el reverso CONTABLE
+
+Para cobros cuya fecha de pago es anterior a un **cierre ya corrido**: el ③ apertura y el ④ devengo de
+ese cierre abrieron mora con la persistida a la fecha de EJECUCIÓN del cierre (`CRCTFCRG`). El reverso
+es, por cuota, `mora abierta − mora a la fecha de pago`, en un asiento separado (C4). Más el pase a
+vencido/bandas (C5), cuya fecha (C6) está en pausa. De aquí en adelante, con la tabla de detalle por
+cuota del cierre (C7); para las corridas ya hechas, recalculado una vez con la fórmula y la fecha de
+ejecución guardada.
+
 ## 5. ⛔ Decisiones que faltan
 
 | # | Pregunta |
