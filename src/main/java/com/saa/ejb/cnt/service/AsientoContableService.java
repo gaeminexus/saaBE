@@ -398,6 +398,33 @@ public interface AsientoContableService {
             String observaciones, String usuario) throws Throwable;
 
     /**
+     * ÍTEM 2 (docs/logica-negocio/cxp/API-DEVOLUCION-ANTICIPO-PROVEEDOR.md §4.2): asiento de la
+     * devolución del saldo de anticipos de un proveedor (el proveedor deposita en nuestro banco),
+     * espejo del asiento con que nació el anticipo.
+     * <p>
+     * DEBE:  {@code obtenerCuentaBancaria(idCuentaBancaria)} → {@code cuentaBancaria.getPlanCuenta()}<br>
+     * HABER: cuenta de anticipos del proveedor (tipoCuenta=2, rol Proveedor)
+     * <p>
+     * Mismo tipo de asiento y mismo módulo que usa
+     * {@link #generarAsientoAnticipoProveedor(com.saa.model.cxp.AnticipoProveedor, Long, int, java.time.LocalDate, String)}
+     * (que se llama con {@code TipoAsientos.ANTICIPOS_PROVEEDOR}): el asiento de la devolución cae
+     * en la misma serie que el del anticipo que se está devolviendo.
+     *
+     * @param idTitular        : Id del proveedor dueño del anticipo que se devuelve
+     * @param idCuentaBancaria : Id de la cuenta bancaria propia donde entró el depósito
+     * @param valor            : Total del depósito
+     * @param idEmpresa        : Id de la empresa contable
+     * @param fechaAsiento     : Fecha del depósito
+     * @param observaciones    : Observación del asiento
+     * @param usuario          : Nombre del usuario que registra
+     * @return                 : Asiento generado
+     * @throws Throwable       : Excepcion
+     */
+    Asiento generarAsientoDevolucionAnticipoProveedor(Long idTitular, Long idCuentaBancaria, Double valor,
+            Long idEmpresa, java.time.LocalDate fechaAsiento, String observaciones, String usuario)
+            throws Throwable;
+
+    /**
      * Genera el asiento del cruce de un anticipo de cliente contra una factura
      * de venta (CXC).
      * <p>

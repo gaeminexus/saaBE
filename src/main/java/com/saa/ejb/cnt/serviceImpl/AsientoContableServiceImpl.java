@@ -787,6 +787,68 @@ public class AsientoContableServiceImpl implements AsientoContableService {
     }
 
     // ---------------------------------------------------------------
+    // generarAsientoDevolucionAnticipoProveedor (API-DEVOLUCION-ANTICIPO-PROVEEDOR.md §4.2)
+    // ---------------------------------------------------------------
+
+    @Override
+    public Asiento generarAsientoDevolucionAnticipoProveedor(Long idTitular, Long idCuentaBancaria,
+            Double valor, Long idEmpresa, LocalDate fechaAsiento, String observaciones, String usuario)
+            throws Throwable {
+
+        System.out.println("=== generarAsientoDevolucionAnticipoProveedor | titular=" + idTitular
+                + " | cuenta=" + idCuentaBancaria + " | valor=" + valor + " | empresa=" + idEmpresa + " ===");
+
+        validaDatosAplicacion(idTitular, valor, idEmpresa);
+
+        Titular titular = em.find(Titular.class, idTitular);
+        String nomProv = (titular != null) ? titular.getNombre() : String.valueOf(idTitular);
+
+        // DEBE: planCuenta de la cuenta bancaria propia donde entró el depósito
+        com.saa.model.tsr.CuentaBancaria cuentaBancaria = obtenerCuentaBancaria(idCuentaBancaria);
+        PlanCuenta cuentaBanco = cuentaBancaria.getPlanCuenta();
+
+        // HABER: cuenta de anticipos del proveedor (tipoCuenta=2, rol Proveedor)
+        PlanCuenta cuentaAnticipo = obtenerCuentaProveedorPorTipo(idTitular, idEmpresa, 2L);
+        if (cuentaAnticipo == null) {
+            throw new IncomeException(
+                    "El proveedor '" + nomProv + "' no tiene cuenta contable de anticipos (Tipo 2) "
+                    + "configurada en Tesorería → Persona → Cuentas Contables (Rol: Proveedor).");
+        }
+
+        List<DetalleAsiento> lineas = new ArrayList<>();
+
+        DetalleAsiento debe = new DetalleAsiento();
+        debe.setPlanCuenta(cuentaBanco);
+        debe.setNumeroCuenta(cuentaBanco.getCuentaContable());
+        debe.setNombreCuenta(cuentaBanco.getNombre());
+        debe.setDescripcion("Devolución de anticipo: " + nomProv
+                + " | Cta Banco: " + cuentaBancaria.getNumeroCuenta());
+        debe.setValorDebe(valor);
+        debe.setValorHaber(0.0);
+        lineas.add(debe);
+
+        DetalleAsiento haber = new DetalleAsiento();
+        haber.setPlanCuenta(cuentaAnticipo);
+        haber.setNumeroCuenta(cuentaAnticipo.getCuentaContable());
+        haber.setNombreCuenta(cuentaAnticipo.getNombre());
+        haber.setDescripcion("Devolución de anticipo: " + nomProv);
+        haber.setValorDebe(0.0);
+        haber.setValorHaber(valor);
+        lineas.add(haber);
+
+        String obs = "Devolución de anticipo: " + nomProv
+                + " | Valor: $" + String.format(java.util.Locale.US, "%.2f", valor);
+        if (observaciones != null && !observaciones.trim().isEmpty()) {
+            obs += " | " + observaciones.trim();
+        }
+
+        // Mismo tipo de asiento y mismo módulo que generarAsientoAnticipoProveedor: ese método
+        // llama al generarAsiento de 6 argumentos (sin módulo explícito), que internamente usa
+        // ModuloSistema.CUENTAS_POR_COBRAR -- verificado leyendo ese overload, no asumido.
+        return generarAsiento(idEmpresa, TipoAsientos.ANTICIPOS_PROVEEDOR, fechaAsiento, obs, usuario, lineas);
+    }
+
+    // ---------------------------------------------------------------
     // TesorerÃ­a: aplicaciÃ³n de pagos y cobros a facturas
     // ---------------------------------------------------------------
 

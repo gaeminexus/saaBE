@@ -13,6 +13,7 @@ import com.saa.ejb.cnt.service.AsientoContableService;
 import com.saa.ejb.cnt.service.AsientoService;
 import com.saa.ejb.cxp.dao.AnticipoProveedorDaoService;
 import com.saa.ejb.cxp.dao.AplicacionPagoCxpDaoService;
+import com.saa.ejb.cxp.dao.DevolucionAnticipoProveedorDaoService;
 import com.saa.ejb.cxp.dao.PagoProgramadoDaoService;
 import com.saa.ejb.cxp.service.AnticipoProveedorService;
 import com.saa.ejb.cxp.service.AplicacionPagoCxpService;
@@ -23,6 +24,7 @@ import com.saa.ejb.tsr.service.MovimientoBancoService;
 import com.saa.model.cnt.Asiento;
 import com.saa.model.cxp.AnticipoProveedor;
 import com.saa.model.cxp.AplicacionPagoCxp;
+import com.saa.model.cxp.DevolucionAnticipoProveedor;
 import com.saa.model.cxp.NombreEntidadesPago;
 import com.saa.model.cxp.PagoProgramado;
 import com.saa.model.scp.Empresa;
@@ -84,6 +86,9 @@ public class AnticipoProveedorServiceImpl implements AnticipoProveedorService {
 
     @EJB
     private AplicacionPagoCxpDaoService aplicacionPagoCxpDaoService;
+
+    @EJB
+    private DevolucionAnticipoProveedorDaoService devolucionAnticipoProveedorDaoService;
 
     @EJB
     private MovimientoBancoService movimientoBancoService;
@@ -598,6 +603,17 @@ public class AnticipoProveedorServiceImpl implements AnticipoProveedorService {
         AnticipoProveedor anticipo = em.find(AnticipoProveedor.class, idAnticipo);
         if (anticipo == null) {
             throw new IncomeException("No se encontró el anticipo con ID: " + idAnticipo);
+        }
+
+        // ÍTEM 5 (API-DEVOLUCION-ANTICIPO-PROVEEDOR.md §4.3): un anticipo con una devolución
+        // ACTIVA no se anula sin anular antes la devolución -- si no, el saldo queda mal (el PRCC
+        // ya se descontó por la devolución, y la reversión de cruces no lo sabe).
+        List<DevolucionAnticipoProveedor> devolucionesActivas =
+                devolucionAnticipoProveedorDaoService.selectActivasByAnticipo(idAnticipo);
+        if (!devolucionesActivas.isEmpty()) {
+            throw new IncomeException("El anticipo " + idAnticipo + " tiene la devolución "
+                    + devolucionesActivas.get(0).getCodigo() + " registrada: anúlela antes de "
+                    + "anular el anticipo.");
         }
 
         String bloqueo = motivoBloqueo(anticipo);
