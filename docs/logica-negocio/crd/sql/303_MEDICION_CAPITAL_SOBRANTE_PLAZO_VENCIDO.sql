@@ -88,3 +88,26 @@ SELECT NVL(p.PRSTIDAS, p.PRSTCDGO)                     AS PRESTAMO,
 --   * Si TABLA_MENOS_MONTO ≠ 0 → H2: la tabla no suma el monto. Hay que revisar esa tabla.
 --   * PAGADO_EN_CANCELADAS > 0 → pagos sobre cuotas CANCELADA_ANTICIPADA que el calculo hoy no
 --     cuenta. Tercera causa posible.
+
+
+-- =====================================================================================
+-- 3. (agregado 2026-09-30, con la salida de los bloques 1 y 2) — DE DONDE SALE EL "PAGO EXTRA"
+-- =====================================================================================
+-- Resultado de 1 y 2: NO hay sobrepago por cuota (bloque 1 vacio) y en 7 de los 8 la tabla suma
+-- EXACTO el monto, con capital pagado + saldo = monto. O sea: el PAGO EXTRA (PGPRSLOT) de estos
+-- prestamos NO redujo la tabla, al reves que el abono del 62439 (donde la tabla suma monto − extra).
+-- La pregunta es que fue ese pago extra: un abono que no rehizo la tabla, una migracion, u otra cosa.
+-- Una fila por pago con PGPRSLOT > 0.
+SELECT NVL(p.PRSTIDAS, p.PRSTCDGO) AS PRESTAMO,
+       g.PGPRCDGO, g.PGPRFCHA AS FECHA, g.PGPRFCRG AS REGISTRADO, g.PGPRTPOO AS TIPO,
+       d.DTPRNMCT AS CUOTA, d.DTPRESTD AS ESTADO_CUOTA,
+       g.PGPRVLRR AS VALOR, g.PGPRCPPG AS CAPITAL, g.PGPRSLOT AS PAGO_EXTRA,
+       NVL(g.PGPRANUL, 0) AS ANULADO,
+       SUBSTR(g.PGPROBSR, 1, 150) AS OBSERVACION
+  FROM CRD.PRST p
+  JOIN CRD.PGPR g ON g.PRSTCDGO = p.PRSTCDGO
+  LEFT JOIN CRD.DTPR d ON d.DTPRCDGO = g.DTPRCDGO
+ WHERE NVL(p.PRSTIDAS, p.PRSTCDGO) IN (61538, 65991, 64561, 63392, 62890, 62086, 61839, 60994, 62439)
+   AND NVL(g.PGPRSLOT, 0) <> 0
+ ORDER BY 1, g.PGPRFCHA;
+-- (62439 va de referencia: ahi el pago extra SI rehizo la tabla.)
