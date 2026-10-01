@@ -147,4 +147,43 @@ public interface ProcesoMoraPrestamoService {
      *         esa fecha, si {@code fechaVencimiento} es nula, o si el capital es 0/nulo
      */
     double calcularMoraCuota(DetallePrestamo cuota, double tasaDiaria, LocalDate fecha);
+
+    /**
+     * H42 (cobro tardío, FASE 1, {@code docs/logica-negocio/crd/DISENO-COBRO-CON-FECHA-EFECTIVA.md}
+     * §4quater): recalcula y <b>persiste</b> la mora de TODAS las cuotas no PAGADA(4) y no
+     * CANCELADA_ANTICIPADA(7) de un préstamo, a la fecha EFECTIVA de un pago que se procesa
+     * tarde — no a hoy. Se llama ANTES de aplicar el pago, para que el motor cobre la mora
+     * correcta en vez de la que calculó la corrida nocturna hasta anoche.
+     *
+     * <p>NO es una reutilización de {@link #calcularMoraPrestamo}: ese método recorre solo las
+     * cuotas YA vencidas a la fecha de corte y, si {@code diasMora <= 0}, hace {@code continue}
+     * dejando la mora vieja intacta — que es justo lo que hay que limpiar acá (una cuota cuyo
+     * vencimiento quedó posterior a la fecha de pago, pero anterior a hoy, ya tiene mora
+     * calculada de más por la corrida nocturna). Este método recorre TODAS las no terminales y
+     * decide la mora rama por rama:</p>
+     * <ul>
+     *   <li>{@code fechaVencimiento < fechaPago}: {@code moraNueva = calcularMoraCuota(cuota,
+     *       tasaDiariaDelPrestamo(prestamo, false), fechaPago)}, con sus días de mora hasta esa
+     *       fecha. El estado de la cuota no se toca acá (lo gobierna, como siempre, el proceso
+     *       diario).</li>
+     *   <li>{@code fechaVencimiento >= fechaPago}: {@code moraNueva = 0} y días de mora 0. Si la
+     *       cuota está EN_MORA(5) — la marcó la corrida nocturna sin que el pago lo supiera —
+     *       vuelve a PENDIENTE(1) en {@code estado} e {@code idEstado}. Una PARCIAL(6) no cambia
+     *       de estado: ya recibió un pago real y eso lo gobierna el motor.</li>
+     * </ul>
+     * {@code total}/{@code totalConSeguro} se recomponen con el mismo patrón idempotente de
+     * {@link #calcularMoraPrestamo} ({@code total - moraAnterior + moraNueva}), y
+     * {@code saldoMora = max(0, moraNueva - moraPagado)}.
+     *
+     * <p><b>El estado del PRÉSTAMO no se toca</b> — lo regulariza, como siempre, el proceso
+     * diario de esa misma noche.</p>
+     *
+     * @param idPrestamo Código del préstamo
+     * @param fechaPago  Fecha efectiva del pago (anterior a hoy); la mora de cada cuota se
+     *                   recalcula a esta fecha, no a la de hoy
+     * @return La mora total eliminada del préstamo: Σ(mora anterior − mora nueva) de todas las
+     *         cuotas recalculadas. Es el insumo de la FASE 2 (el reverso contable)
+     * @throws Throwable Si ocurre un error
+     */
+    double recalcularMoraALaFechaDePago(Long idPrestamo, LocalDate fechaPago) throws Throwable;
 }

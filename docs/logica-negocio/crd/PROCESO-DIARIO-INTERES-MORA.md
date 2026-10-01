@@ -421,3 +421,55 @@ el proceso no los vuelva a romper — ni en la corrida de las 02:00 ni desde el 
 **Un universo compartido entre un reporte y un proceso que escribe no es reutilización, es un
 acoplamiento peligroso.** Un reporte puede permitirse mirar de más; un proceso que persiste
 estados, no. Si algún día un reporte necesita este método, que escriba su propia consulta.
+
+## 12. Cobro tardío (H42, FASE 1) — recálculo de mora a la fecha efectiva de pago
+
+Despachado el 2026-09-30, `docs/logica-negocio/crd/DISENO-COBRO-CON-FECHA-EFECTIVA.md` §4quater
+(FASE 1). No es parte del lote nocturno descrito arriba — es un método aparte que corre dentro de
+`CobroCreditoServiceImpl.procesarCobro`, en la misma transacción del proceso.
+
+**Por qué existe:** un partícipe paga el día X pero crédito recién procesa el cobro días o meses
+después. Mientras tanto, la corrida nocturna de este mismo proceso le sigue sumando mora a la
+cuota cada noche, calculada hasta HOY — correcto, porque el pago todavía no se sabía. Pero al
+procesar el cobro, el motor de pagos (`aplicarPagoACuota` → `calcularSaldosRealesCuota`) lee la
+mora **persistida** (`DTPRMRAA`), no una recalculada a la fecha del pago, así que cobraba de más:
+toda la mora acumulada hasta la noche anterior al proceso, no solo hasta la fecha efectiva de
+pago (H42).
+
+**Qué hace `ProcesoMoraPrestamoService#recalcularMoraALaFechaDePago(idPrestamo, fechaPago)`:**
+recorre TODAS las cuotas del préstamo que no estén PAGADA(4) ni CANCELADA_ANTICIPADA(7) — no solo
+las "vencidas" de `selectCuotasVencidasByPrestamo`, porque una cuota con vencimiento posterior a
+`fechaPago` pero anterior a hoy puede tener mora de más que hay que bajar a cero, no solo dejar
+sin tocar:
+
+- `fechaVencimiento < fechaPago`: `mora = calcularMoraCuota(cuota, tasaDiaria, fechaPago)` — la
+  misma fórmula pura del proceso nocturno, evaluada a la fecha del pago. El estado de la cuota no
+  se toca en esta rama.
+- `fechaVencimiento >= fechaPago`: `mora = 0`, `diasMora = 0`. Si la cuota estaba EN_MORA(5) por
+  la corrida nocturna, vuelve a PENDIENTE(1). Una PARCIAL(6) no cambia de estado.
+- `total`/`totalConSeguro` se recomponen con el mismo patrón idempotente del proceso nocturno
+  (`total − moraAnterior + moraNueva`). `saldoMora = max(0, moraNueva − moraPagado)`.
+- El estado del PRÉSTAMO no se toca: lo sigue regularizando el proceso nocturno, como siempre.
+- Devuelve la mora total eliminada del préstamo (Σ mora anterior − mora nueva) — insumo de la
+  FASE 2 (el reverso contable, todavía no implementada).
+
+**Dónde se llama:** `CobroCreditoServiceImpl.procesarCobro`, apenas se conoce `tipoOperacion` y
+ANTES de despachar cualquier rama que aplique un pago (PAGO_CUOTA, PAGO_MULTIPLE, ABONO_CAPITAL,
+PRECANCELACION, y las líneas de préstamo de un COBRO_MIXTO — nunca las de aporte). Solo corre si
+`cobro.getFecha()` es anterior a hoy; un cobro del mismo día no tiene nada que corregir. Corre
+ANTES de la simulación de staleness de la precancelación (`simularPrecancelacion`) a propósito,
+aunque esa simulación ya recalcula su propia mora a la fecha con la misma fórmula pura (vía
+`recalcularMoraALaFecha` dentro de `calcularPrecancelacion`) y por eso su resultado no cambia la
+corra antes o después — no conviene depender de ese detalle de implementación. Al estar en la
+misma transacción del proceso, si el cobro se rechaza o el proceso falla más adelante, este
+recálculo se revierte con todo — **excepto** en el camino de rechazo automático por staleness de
+la precancelación, que SÍ hace commit (no lanza, solo marca el cobro RECHAZADO y retorna): ahí la
+mora corregida queda igual, porque es una corrección de datos legítima independiente de que ese
+cobro puntual se vuelva a registrar.
+
+`ResultadoProcesoCobro.moraEliminada` expone la suma por cobro, y cada préstamo se loguea aparte
+con el prefijo `[H42]`.
+
+**Qué NO hace esta fase:** no toca ningún asiento contable (C6 sigue en pausa) ni reversa lo que
+el cierre de cartera ya haya contabilizado de más (eso es la FASE 2, pendiente de la tabla de
+detalle por cuota del cierre, C7).

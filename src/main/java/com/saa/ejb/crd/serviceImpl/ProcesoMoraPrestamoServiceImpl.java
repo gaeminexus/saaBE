@@ -354,6 +354,86 @@ public class ProcesoMoraPrestamoServiceImpl implements ProcesoMoraPrestamoServic
     }
 
     // ========================================================================
+    // H42 — cobro tardío, FASE 1 (DISENO-COBRO-CON-FECHA-EFECTIVA.md §4quater)
+    // ========================================================================
+
+    @Override
+    public double recalcularMoraALaFechaDePago(Long idPrestamo, LocalDate fechaPago) throws Throwable {
+        if (idPrestamo == null) {
+            throw new IncomeException(ERR_PRESTAMO_NO_ENCONTRADO + ": idPrestamo es obligatorio");
+        }
+        if (fechaPago == null) {
+            throw new IncomeException(ERR_FECHA_INVALIDA + ": fechaPago es obligatoria");
+        }
+
+        Prestamo prestamo = prestamoDaoService.find(new Prestamo(), idPrestamo);
+        if (prestamo == null) {
+            throw new IncomeException(ERR_PRESTAMO_NO_ENCONTRADO + ": no existe el préstamo " + idPrestamo);
+        }
+
+        double tasaDiaria = tasaDiariaDelPrestamo(prestamo, false);
+
+        List<DetallePrestamo> todas = detallePrestamoDaoService.selectByPrestamo(idPrestamo);
+        double moraEliminada = 0.0;
+
+        if (todas != null) {
+            for (DetallePrestamo cuota : todas) {
+                Long estadoActual = cuota.getEstado();
+                if (estadoActual != null
+                        && (estadoActual == EstadoCuotaPrestamo.PAGADA
+                         || estadoActual == EstadoCuotaPrestamo.CANCELADA_ANTICIPADA)) {
+                    continue;
+                }
+                if (cuota.getFechaVencimiento() == null) {
+                    continue;
+                }
+                LocalDate vencimiento = cuota.getFechaVencimiento().toLocalDate();
+
+                double moraNueva;
+                long diasMora;
+                if (vencimiento.isBefore(fechaPago)) {
+                    moraNueva = calcularMoraCuota(cuota, tasaDiaria, fechaPago);
+                    diasMora = ChronoUnit.DAYS.between(vencimiento, fechaPago);
+                } else {
+                    moraNueva = 0.0;
+                    diasMora = 0L;
+                    if (estadoActual != null && estadoActual == EstadoCuotaPrestamo.EN_MORA) {
+                        cuota.setEstado((long) EstadoCuotaPrestamo.PENDIENTE);
+                        cuota.setIdEstado((long) EstadoCuotaPrestamo.PENDIENTE);
+                    }
+                    // PARCIAL(6) no cambia de estado — ya recibió un pago real, lo gobierna el motor.
+                }
+
+                // Mismo patrón idempotente que calcularMoraPrestamo: el total se recompone
+                // quitando la mora anterior y sumando la nueva.
+                double moraAnterior = nvl(cuota.getMora());
+                double totalBase = redondear(nvl(cuota.getTotal()) - moraAnterior);
+                double totalNuevo = redondear(totalBase + moraNueva);
+
+                cuota.setMora(moraNueva);
+                cuota.setMoraCalculada(moraNueva);
+                cuota.setDiasMora(diasMora);
+                cuota.setTotal(totalNuevo);
+                cuota.setTotalConSeguro(totalNuevo);
+                cuota.setSaldoMora(Math.max(0, redondear(moraNueva - nvl(cuota.getMoraPagado()))));
+
+                detallePrestamoService.saveSingle(cuota);
+
+                moraEliminada += redondear(moraAnterior - moraNueva);
+
+                System.out.println("      [H42] Cuota #" + cuota.getNumeroCuota()
+                    + " (préstamo " + idPrestamo + ") recalculada a la fecha de pago " + fechaPago
+                    + " - Mora: $" + moraAnterior + " → $" + moraNueva + " - Días: " + diasMora);
+            }
+        }
+
+        moraEliminada = redondear(moraEliminada);
+        System.out.println("  [H42] Préstamo " + idPrestamo + " - mora eliminada al recalcular a la"
+            + " fecha de pago " + fechaPago + ": $" + moraEliminada);
+        return moraEliminada;
+    }
+
+    // ========================================================================
     // Helpers
     // ========================================================================
 

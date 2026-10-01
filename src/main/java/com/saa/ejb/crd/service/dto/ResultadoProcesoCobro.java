@@ -13,6 +13,14 @@ public class ResultadoProcesoCobro {
     private Long estado;
     private boolean procesado;
     private String mensaje;
+    /**
+     * H42 (cobro tardío, FASE 1): suma, sobre todos los préstamos del cobro, de la mora que
+     * {@code ProcesoMoraPrestamoService#recalcularMoraALaFechaDePago} eliminó al recalcular a
+     * la fecha efectiva de pago — {@code 0.0} si {@code cobro.fecha} no era anterior a hoy, o
+     * si el tipo de operación no tiene préstamo (REGISTRO_APORTE) o ya tiene su propio
+     * staleness check (ACUERDO_CONDONACION). Insumo de la FASE 2 (reverso contable).
+     */
+    private double moraEliminada;
 
     public Long getIdCobro() {
         return idCobro;
@@ -44,5 +52,13 @@ public class ResultadoProcesoCobro {
 
     public void setMensaje(String mensaje) {
         this.mensaje = mensaje;
+    }
+
+    public double getMoraEliminada() {
+        return moraEliminada;
+    }
+
+    public void setMoraEliminada(double moraEliminada) {
+        this.moraEliminada = moraEliminada;
     }
 }

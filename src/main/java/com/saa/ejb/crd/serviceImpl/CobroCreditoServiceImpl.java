@@ -4,7 +4,9 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.cnt.dao.DetallePlantillaDaoService;
@@ -129,6 +131,9 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
 
     @EJB
     private CobroCreditoDaoService cobroCreditoDaoService;
+
+    @EJB
+    private com.saa.ejb.crd.service.ProcesoMoraPrestamoService procesoMoraPrestamoService;
 
     @EJB
     private CorridaCierreCarteraDaoService corridaCierreCarteraDaoService;
@@ -814,6 +819,48 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
         LocalDateTime fechaNegocio = cobro.getFecha() != null
                 ? cobro.getFecha().atStartOfDay() : LocalDateTime.now();
 
+        // H42 (cobro tardío, FASE 1 — DISENO-COBRO-CON-FECHA-EFECTIVA.md §4quater): si la fecha
+        // efectiva del pago es anterior a hoy, la mora que calculó la corrida nocturna hasta
+        // ANOCHE queda por encima de la que correspondía a esa fecha. Se recalcula y persiste
+        // ACÁ, para TODOS los préstamos del detalle, ANTES de llamar a cualquier motor de pago
+        // (pagarCuota, pagarMultiplesCuotas, abonoCapitalPrestamoService.aplicar, precancelar) —
+        // incluido antes de la simulación de staleness de la precancelación (~líneas más abajo):
+        // esa simulación ya recalcula su propia mora a la fecha con la misma fórmula pura
+        // (calcularMoraCuota, vía recalcularMoraALaFecha en calcularPrecancelacion), así que el
+        // resultado de la simulación no cambia la haga antes o después de este bloque — pero
+        // corre antes igual, para no depender de ese detalle de implementación. REGISTRO_APORTE
+        // no tiene préstamo (fuera de alcance) y ACUERDO_CONDONACION tiene su propio staleness
+        // check previo al motor (tampoco es H42: no hay "fecha efectiva" distinta de hoy ahí).
+        double moraEliminadaTotal = 0.0;
+        if (cobro.getFecha() != null && cobro.getFecha().isBefore(LocalDate.now())) {
+            Set<Long> prestamosDelCobro = new LinkedHashSet<>();
+            if (CrdTipoOperacionCobro.COBRO_MIXTO.equals(tipoOperacion)) {
+                for (DetalleCobroCredito linea : detalles) {
+                    if (linea.getTipoAporte() == null && linea.getPrestamo() != null) {
+                        prestamosDelCobro.add(linea.getPrestamo().getCodigo());
+                    }
+                }
+            } else if (CrdTipoOperacionCobro.PAGO_CUOTA.equals(tipoOperacion)
+                    || CrdTipoOperacionCobro.PAGO_MULTIPLE.equals(tipoOperacion)
+                    || CrdTipoOperacionCobro.ABONO_CAPITAL.equals(tipoOperacion)
+                    || CrdTipoOperacionCobro.PRECANCELACION.equals(tipoOperacion)) {
+                for (DetalleCobroCredito linea : detalles) {
+                    if (linea.getPrestamo() != null) {
+                        prestamosDelCobro.add(linea.getPrestamo().getCodigo());
+                    }
+                }
+            }
+            for (Long idPrestamoCobro : prestamosDelCobro) {
+                double moraEliminada = procesoMoraPrestamoService.recalcularMoraALaFechaDePago(
+                        idPrestamoCobro, cobro.getFecha());
+                moraEliminadaTotal += moraEliminada;
+                System.out.println("  [H42] Cobro " + idCobro + " - préstamo " + idPrestamoCobro
+                        + " - fecha de pago " + cobro.getFecha() + " (anterior a hoy) - mora eliminada: $"
+                        + moraEliminada);
+            }
+            moraEliminadaTotal = redondear(moraEliminadaTotal);
+        }
+
         if (CrdTipoOperacionCobro.PRECANCELACION.equals(tipoOperacion)) {
             DetalleCobroCredito linea = detalles.get(0);
 
@@ -877,6 +924,11 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
                 resultado.setEstado(cobro.getEstado());
                 resultado.setProcesado(false);
                 resultado.setMensaje(motivoRechazo);
+                // El recálculo H42 de arriba ya corrió y commiteó (corrige la mora persistida a
+                // la fecha de pago con independencia de que ESTE cobro se rechace o no); se
+                // informa igual para que quien lea el resultado sepa que el préstamo quedó con
+                // la mora corregida aunque el cobro no se haya podido procesar.
+                resultado.setMoraEliminada(moraEliminadaTotal);
                 return resultado;
             }
 
@@ -1137,6 +1189,7 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
         resultado.setEstado(cobro.getEstado());
         resultado.setProcesado(true);
         resultado.setMensaje("Cobro procesado.");
+        resultado.setMoraEliminada(moraEliminadaTotal);
         return resultado;
     }
 
