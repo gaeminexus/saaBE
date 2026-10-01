@@ -4667,3 +4667,36 @@ registró hoy a las 12:38 **sin** `PGTRCTBN`, y es el único en esa situación.
 - El estado de cuenta del proveedor de la factura muestra un abono con el número de un anticipo que no
   es suyo.
 - El seguimiento de anticipos muestra la factura del cruce sin su proveedor.
+
+## §57 — Devolución del saldo de anticipos de un proveedor: ENTREGADA (2026-10-01)
+
+| Parte | Commit |
+|---|---|
+| Diagnóstico `e2-76`, `e2-77` | `0faf06dd`, `6eb51ff4` |
+| Diseño, contrato, DDL `e2-78`, reserva de `DVPR`/`DDPR` | `d023743d` · FE `d55c4fe` |
+| FE — CxP → Pagos → Devolución de Anticipo | FE `9808248` |
+| BE — `/dvpr/registrar`, `/dvpr/anular`, `/dvpr/listar`, guarda en `anularAnticipo` | `d9753edf` |
+
+### 57.1 — Lo que hay que llevarse
+
+1. **El árbitro afirmó dos cosas falsas sobre el «saldo a favor» antes de ver los datos.** Primero dijo
+   que el saldo quedaba solo en contabilidad, por un cruce de retención rechazado. Las capturas del
+   usuario lo desmintieron. El `e2-77` mostró la verdad: **se pagó como anticipo el total de la factura
+   antes de restar la retención**, y el saldo del anticipo es exactamente la retención. Lo que
+   desempató no fue releer el código, fue **el dato**.
+2. **Ninguna anulación del sistema verificaba si el movimiento ya estaba conciliado.** Ingresos, pagos
+   y anticipos se pueden anular conciliados. La devolución es la primera que lo verifica. El ejecutor
+   **paró** al no encontrar un precedente, y se autorizó el criterio. Para las otras tres queda como
+   deuda.
+3. **El asiento de un anticipo de proveedor cae en el módulo CUENTAS_POR_COBRAR**: `generarAsiento`
+   de 6 argumentos lo fija así (`AsientoContableServiceImpl:473-475`). La devolución lo replica para
+   quedar en la misma serie. Es un hallazgo, no se cambió.
+4. **`IngresoServiceImpl.anularIngreso` se traga los errores** al anular el asiento y el movimiento:
+   puede dejar el ingreso «anulado» con el asiento vivo. La devolución no repite eso. El ingreso queda
+   como deuda.
+
+### 57.2 — ⛔ ORDEN DE DESPLIEGUE: el `e2-78` ANTES de cualquier WAR posterior a `d9753edf`
+
+`anularAnticipo` ahora consulta `PGS.DDPR`. **Un WAR de `main` sin el `e2-78` rompe la anulación de
+CUALQUIER anticipo de proveedor** (ORA-00942), además de la pantalla nueva. No es solo la función
+nueva: toca una que ya existía.
