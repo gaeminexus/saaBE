@@ -129,6 +129,22 @@ reversar nada. **Las dos cosas a la vez la cuentan dos veces.** Hay que elegir u
 
 ---
 
+## 4bis. Decisiones del usuario — 2026-09-30. NO re-litigar
+
+| # | Pregunta | Decisión |
+|---|---|---|
+| C1 (P1) | ¿Corrió el cierre de septiembre? | **No, todavía no.** |
+| C2 (P2) | Los 11 pagos de mañana | **Esperan al cambio completo.** No hay mitigación puntual. |
+| C3 (P3) | Límite de antigüedad de la fecha efectiva | **Sin límite.** |
+| C4 (P6) | Asiento de reverso | **Uno separado por cobro.** |
+| C5 (P4) | ¿Reversar el pase a vencido/bandas del cierre, o cobrar desde la banda actual? | **Reversar**, dicho por el usuario en el requerimiento (§1, punto 4). ⇒ El definitivo cobra el capital desde la banda que tocaba **a la fecha de pago**, que es lo que **ya hace hoy** (§2.2), y un asiento SEPARADO en el mes de registro reversa lo que el cierre movió de esa cuota entre la fecha de pago y el último corte. |
+
+⚠️ **Consecuencia operativa de C1 + C2, que hay que decirle al usuario:** si los 11 cobros esperan sin
+procesarse y **el cierre de septiembre corre antes**, el cierre los va a ver impagos (lee el estado de
+hoy) y los va a pasar a vencido. Eso no rompe nada: es justo el caso que este cambio reversa. Pero
+**genera trabajo de reverso** que se evita procesándolos antes del cierre, una vez desplegado el
+cambio. Si el cambio no llega antes del cierre, se procesan después y el reverso hace su trabajo.
+
 ## 5. ⛔ Decisiones que faltan
 
 | # | Pregunta |
