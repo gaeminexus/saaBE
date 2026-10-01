@@ -595,6 +595,8 @@ su DDL. La columna **Estado** lo dice; **`reservada` no es `autorizada`**.
 | `DLEX` | Conceptos de la liquidación de ex-colaborador | RHH (`omen-saa-3`) | **autorizada por el usuario 2026-09-30**; DDL en `rhh/sql/e3-05`, sin correr |
 | `PLVN` | Declaración de plazo vencido de un préstamo (foto del memorando y de la liquidación) | CRD (`omen-saa-1`) | **autorizada por el usuario 2026-09-30** (D12); DDL en `crd/sql/247`, sin correr |
 | `DPLV` | Seguro original por cuota anulado al declarar plazo vencido (para el reverso) | CRD (`omen-saa-1`) | **autorizada por el usuario 2026-09-30** (D23); DDL en `crd/sql/247`, sin correr |
+| `DVPR` | Devolución de saldo de anticipos de un proveedor (cabecera = el depósito) | PGS (`omen-saa-2`) | **autorizada por el usuario 2026-10-01**; DDL en `cxp/sql/e2-78`, sin correr. Verificada libre en `model/` (`DVAP` estaba ocupada) |
+| `DDPR` | Detalle de la devolución: cuánto devuelve cada anticipo (`PGS.ANTP`) | PGS (`omen-saa-2`) | **autorizada por el usuario 2026-10-01**; DDL en `cxp/sql/e2-78`, sin correr |
 
 ### Propuestos para los frentes nuevos — **verificar antes de usar**
 
