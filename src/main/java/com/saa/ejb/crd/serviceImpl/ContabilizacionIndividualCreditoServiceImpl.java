@@ -87,6 +87,9 @@ public class ContabilizacionIndividualCreditoServiceImpl implements Contabilizac
     @EJB
     private com.saa.ejb.crd.dao.DetallePrestamoDaoService detallePrestamoDaoService;
 
+    @EJB
+    private com.saa.ejb.crd.service.MotorPagoPrestamoService motorPagoPrestamoService;
+
     @Override
     public Long resolverPlantillaAplicacion(Long idEmpresa) throws Throwable {
         Long idPlantilla = plantillaService.codigoByAlterno(PlantillasCredito.APLICACION_PETRO, idEmpresa);
@@ -320,14 +323,36 @@ public class ContabilizacionIndividualCreditoServiceImpl implements Contabilizac
      * ese estado antes de que el préstamo pueda volver a operarse — así que "todas las cuotas
      * en estado 7 de este préstamo" identifica sin ambigüedad las de la precancelación vigente.
      *
-     * <p><b>Cuadre explícito</b>: la suma del capital de esas cuotas tiene que coincidir con
-     * {@code capitalFuturo} (el {@code saldoOtros} del pago) — si no, {@code IncomeException}
+     * <p><b>Cuadre explícito</b>: la suma del capital PENDIENTE de esas cuotas tiene que coincidir
+     * con {@code capitalFuturo} (el {@code saldoOtros} del pago) — si no, {@code IncomeException}
      * con los cuatro números (préstamo, cuántas cuotas encontró, cuánto suman, contra qué
      * capital futuro no cuadra), nunca un asiento armado a medias.
+     *
+     * <p>⛔ <b>Corrección 2026-09-30 (producción, préstamo 7912, cobro 149):</b> este método
+     * sumaba el capital BRUTO de cada cuota ({@code cuota.getCapital()}), pero
+     * {@code ProcesoPagoPrestamoServiceImpl.calcularPrecancelacion} arma {@code capitalFuturo}
+     * como Σ capital PENDIENTE (saldo = capital − Σ capitalPagado vigente de PGPR). Si una cuota
+     * futura ya tenía capital pagado (un PARCIAL, por ejemplo), el bruto queda por encima del
+     * pendiente y el control de cuadre falla con un sobrante que no existe — medido: cuota 18 del
+     * 7912, capital 52,03, pagado 1,76, pendiente 50,27; el bruto sumaba 372,54 contra un capital
+     * futuro real de 370,78. Ahora cada cuota banda por su PENDIENTE
+     * ({@code MotorPagoPrestamoService.calcularSaldosCuota}), la misma fuente que usó
+     * {@code calcularPrecancelacion} para construir {@code capitalFuturo}.</p>
+     *
+     * <p>⚓ <b>El universo no son solo las cuotas en estado 7.</b> Cuando el préstamo no tenía
+     * ninguna cuota pagada, {@code precancelar} elige como "ancla" (la que carga el
+     * {@code saldoOtros} del capital futuro) una de las propias cuotas futuras, y esa ancla
+     * queda en PAGADA(4), no en CANCELADA_ANTICIPADA(7) — ver {@code precancelar}, variable
+     * {@code anclaEsFutura}. Si no se la agrega, su capital pendiente desaparece del reparto por
+     * banda. Se detecta sin ambigüedad porque {@code ancla} ES el
+     * {@code DetallePrestamo} del propio {@code pago} de capital futuro (el llamador lo tiene a
+     * mano, nunca hace falta re-adivinarlo): si su capital pendiente es mayor que la tolerancia,
+     * es porque nada más lo pagó todavía — era una futura — y entra al reparto por su propio
+     * vencimiento. Si ya estaba en 0 (el caso normal: una cuota pagada hace tiempo), no se sostiene.</p>
      */
     private List<DetalleAsiento> lineasBandaCapitalFuturoPrecancelacion(Long idProducto, Long idEmpresa,
-            double capitalFuturo, Prestamo prestamo, LocalDate fechaCorte, String prefijoDescripcion)
-            throws Throwable {
+            double capitalFuturo, Prestamo prestamo, DetallePrestamo ancla, LocalDate fechaCorte,
+            String prefijoDescripcion) throws Throwable {
 
         List<DetallePrestamo> todas = detallePrestamoDaoService.selectByPrestamo(prestamo.getCodigo());
         List<DetallePrestamo> canceladasAnticipadamente = new ArrayList<>();
@@ -350,21 +375,34 @@ public class ContabilizacionIndividualCreditoServiceImpl implements Contabilizac
         List<EntradaBanda> entradas = new ArrayList<>();
         double totalCuotas = 0.0;
         for (DetallePrestamo cuota : canceladasAnticipadamente) {
-            double capitalCuota = redondear(nvl(cuota.getCapital()));
-            totalCuotas += capitalCuota;
+            double capitalPendienteCuota = redondear(motorPagoPrestamoService.calcularSaldosCuota(cuota).getSaldoCapital());
+            totalCuotas += capitalPendienteCuota;
             LocalDate vencimiento = cuota.getFechaVencimiento() != null
                     ? cuota.getFechaVencimiento().toLocalDate() : null;
-            entradas.add(new EntradaBanda(vencimiento, capitalCuota,
+            entradas.add(new EntradaBanda(vencimiento, capitalPendienteCuota,
                     "la cuota #" + cuota.getNumeroCuota() + " (cancelada anticipadamente)"));
+        }
+
+        // La ancla "futura" (ver javadoc): su capital pendiente no quedó en ninguna cuota 7.
+        if (ancla != null && ancla.getEstado() != null
+                && ancla.getEstado() != EstadoCuotaPrestamo.CANCELADA_ANTICIPADA) {
+            double capitalPendienteAncla = redondear(motorPagoPrestamoService.calcularSaldosCuota(ancla).getSaldoCapital());
+            if (capitalPendienteAncla > TOLERANCIA) {
+                totalCuotas += capitalPendienteAncla;
+                LocalDate vencimientoAncla = ancla.getFechaVencimiento() != null
+                        ? ancla.getFechaVencimiento().toLocalDate() : null;
+                entradas.add(new EntradaBanda(vencimientoAncla, capitalPendienteAncla,
+                        "la cuota #" + ancla.getNumeroCuota() + " (ancla del capital futuro, sin pago previo)"));
+            }
         }
         totalCuotas = redondear(totalCuotas);
 
         if (Math.abs(redondear(totalCuotas - capitalFuturo)) > TOLERANCIA) {
             throw new IncomeException(prefijoDescripcion + ": el préstamo " + prestamo.getCodigo()
-                    + " tiene " + canceladasAnticipadamente.size() + " cuota(s) en estado"
-                    + " CANCELADA_ANTICIPADA(7) que suman $" + totalCuotas + " de capital, pero no"
-                    + " coincide con el capital futuro del pago ($" + redondear(capitalFuturo)
-                    + "); no se puede armar el reparto por banda de la precancelación.");
+                    + " tiene " + entradas.size() + " cuota(s) futura(s) cuyo capital PENDIENTE suma $"
+                    + totalCuotas + ", pero no coincide con el capital futuro del pago ($"
+                    + redondear(capitalFuturo) + "); no se puede armar el reparto por banda de la"
+                    + " precancelación.");
         }
 
         Map<String, LineaBandaAcumulada> bandas = acumulaPorBanda(idProducto, idEmpresa, fechaCorte, entradas,
@@ -701,8 +739,11 @@ public class ContabilizacionIndividualCreditoServiceImpl implements Contabilizac
                                 + " (capital futuro de precancelación) no tiene préstamo asociado;"
                                 + " no se puede ubicar qué cuotas canceló.");
                     }
+                    // 'cuota' (= pago.getDetallePrestamo(), ya resuelta arriba) ES la ancla:
+                    // ProcesoPagoPrestamoServiceImpl.precancelar graba el PagoPrestamo del
+                    // capital futuro siempre contra la cuota ancla — no hace falta re-adivinarla.
                     lineas.addAll(lineasBandaCapitalFuturoPrecancelacion(producto.getCodigo(), idEmpresa,
-                            capital, prestamo, fechaCorte, prefijoDescripcion));
+                            capital, prestamo, cuota, fechaCorte, prefijoDescripcion));
                 } else {
                     if (cuota == null || cuota.getFechaVencimiento() == null) {
                         throw new IncomeException(prefijoDescripcion + ": el pago " + pago.getCodigo()
@@ -788,9 +829,13 @@ public class ContabilizacionIndividualCreditoServiceImpl implements Contabilizac
                     continue;
                 }
                 // MISMA fuente que la banda del capital futuro de precancelación
-                // (lineasBandaCapitalFuturoPrecancelacion): las cuotas CANCELADA_ANTICIPADA(7)
-                // del préstamo, cada una con su propio capital y vencimiento reales — nunca la
-                // cuota ancla.
+                // (lineasBandaCapitalFuturoPrecancelacion, corrección 2026-09-30): el capital
+                // PENDIENTE de las cuotas CANCELADA_ANTICIPADA(7) del préstamo, cada una con su
+                // propio vencimiento real — ya no el bruto (cuota.getCapital()), que puede estar
+                // por encima del pendiente si la cuota tenía un pago parcial previo. Y la ancla
+                // SÍ entra cuando era una futura (pago.getDetallePrestamo(): precancelar siempre
+                // graba ahí el PagoPrestamo del capital futuro) — queda en PAGADA, no en 7, pero
+                // su capital pendiente es parte del mismo capital futuro.
                 List<DetallePrestamo> todas = detallePrestamoDaoService.selectByPrestamo(prestamo.getCodigo());
                 if (todas != null) {
                     for (DetallePrestamo cuota : todas) {
@@ -798,8 +843,19 @@ public class ContabilizacionIndividualCreditoServiceImpl implements Contabilizac
                                 && cuota.getEstado() == EstadoCuotaPrestamo.CANCELADA_ANTICIPADA
                                 && cuota.getFechaVencimiento() != null
                                 && cuota.getFechaVencimiento().toLocalDate().isAfter(fechaCorteApertura)) {
-                            total += redondear(nvl(cuota.getCapital()));
+                            total += redondear(motorPagoPrestamoService.calcularSaldosCuota(cuota).getSaldoCapital());
                         }
+                    }
+                }
+                DetallePrestamo ancla = pago.getDetallePrestamo();
+                if (ancla != null && ancla.getEstado() != null
+                        && ancla.getEstado() != EstadoCuotaPrestamo.CANCELADA_ANTICIPADA
+                        && ancla.getFechaVencimiento() != null
+                        && ancla.getFechaVencimiento().toLocalDate().isAfter(fechaCorteApertura)) {
+                    double capitalPendienteAncla =
+                            redondear(motorPagoPrestamoService.calcularSaldosCuota(ancla).getSaldoCapital());
+                    if (capitalPendienteAncla > TOLERANCIA) {
+                        total += capitalPendienteAncla;
                     }
                 }
             }
