@@ -40,7 +40,8 @@
 -- =====================================================================================
 WITH pagos AS (
     SELECT g.DTPRCDGO,
-           SUM(NVL(g.PGPRCPPG, 0) + NVL(g.PGPRSLOT, 0)) AS CAP_PAG,   -- capital + PAGO EXTRA (abono): va al COBRADO
+           SUM(NVL(g.PGPRCPPG, 0) + CASE WHEN g.PGPRTPOO IN ('ABONO_CAPITAL','MIGRACION','PRECANCELACION')
+                                         THEN NVL(g.PGPRSLOT, 0) ELSE 0 END) AS CAP_PAG,   -- capital + PAGO EXTRA solo de esos tipos (no DEP)
            SUM(NVL(g.PGPRCPPG, 0)) AS CAP_PAG_CUOTA,                -- solo capital de la cuota: va al SALDO
            SUM(NVL(g.PGPRINPG, 0) + NVL(g.PGPRINVP, 0)) AS INT_PAG,   -- interes + interes vencido pagado
            SUM(NVL(g.PGPRDSGR, 0)) AS DSG_PAG,
