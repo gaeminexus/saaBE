@@ -150,6 +150,50 @@ hoy) y los va a pasar a vencido. Eso no rompe nada: es justo el caso que este ca
 **genera trabajo de reverso** que se evita procesándolos antes del cierre, una vez desplegado el
 cambio. Si el cambio no llega antes del cierre, se procesan después y el reverso hace su trabajo.
 
+## 4ter. INVENTARIO — todo proceso que contabiliza mora o bandas (condición de C7), 2026-09-30
+
+Barrido de todo `src/main/java` por un agente de solo lectura. Lo marcado con ✔ lo verificó el
+árbitro en el código.
+
+| Proceso | Mora | Bandas | Fecha del asiento | Rastro por cuota | ¿Contabiliza algo de una cuota DESPUÉS de su pago real? |
+|---|---|---|---|---|---|
+| CBCR ③ definitivo | H Σ mora pagada (persistida, H42) | H capital por banda a `cobro.fecha` | `cobro.fecha` | DSBN por pago y concepto, sin asiento enlazado | Es el pago mismo (A/B/C del §3) |
+| CBCR ② reparto | implícita en el total | — | `cobro.fecha` | no | Es el pago mismo |
+| Cierre ① vencidos | — | por vencer → vencido, banda 1 | 1ro del mes que se abre | **no (sólo ANCC agregado)** | **SÍ** |
+| Cierre ①.1 / ② cambio de bandas | — | diferencias por banda | 1ro del mes que se abre | **no (BDCC agregado)** | **SÍ** |
+| Cierre ③ apertura | **SÍ**: por cobrar incluye `DTPRMRAA − mora pagada` | — | 1ro del mes que se abre | **no** | **SÍ** |
+| Cierre ④ devengo | **SÍ**, pero sólo de cuotas que vencen en el mes que se abre | — | 1ro del mes que se abre | **no** | **SÍ** |
+| Cierre ⑥ neteo | **SÍ**: mismo total que ③ | — | fin del mes que se cierra | **no** | **SÍ** |
+| Proceso nocturno de mora | sin asiento: sólo escribe DTPR | — | — | no | genera la mora que ③/④/⑥ toman |
+| Petro aplicación | H Σ mora pagada | H capital por banda | último día del mes de afectación | **DSBN con asiento** | es un pago |
+| Cruce de valores / pagarConAportes / jubilados | H mora pagada (persistida) | H por banda | fecha del cruce | EVPR / PGPRASNT | es un pago |
+| Abono re-bandeo | no | reclasifica bandas | fecha del evento | EVPR / PGPRASNT | no aplica |
+| Precancelación directa, condonación | sí (condonada va a la línea de interés ordinario) | sí | fecha del evento / acuerdo | parcial o ninguno | es un pago |
+| Entrega del préstamo | no | por vencer por cuota | fechaInicio | no verificado | no aplica |
+| Provisiones (calificación de riesgo) | **no se contabilizan en ningún lado** | — | — | — | — |
+
+⇒ **Lo que hay que reversar al procesar un cobro tardío sale todo del CIERRE DE CARTERA**: ①, ①.1, ②,
+③, ④ y ⑥. Ningún otro proceso contabiliza mora o bandas de una cuota entre su pago real y el
+proceso, salvo los que SON pagos. ⇒ **La tabla de detalle va en el cierre**, por corrida, cuota y
+subproceso, con los importes que usó cada paso: capital por banda y tipo, interés, **mora** y seguros.
+
+### ⛔ Hallazgos que el inventario destapó y que NO son de este frente
+
+- **H80 — Los préstamos DE PLAZO VENCIDO (8) salen de TODO el cierre de cartera.** ✔
+  `CierreCarteraDaoServiceImpl:44-45`: `PRESTAMOS_VIVOS = PRSTIDST IN (VIGENTE, EN_MORA)`. Al declarar
+  un préstamo en plazo vencido, el cierre siguiente **deja de verlo**: no lo bandea, no lo mete en
+  apertura ni en neteo, no devenga su mora. Las cuentas de banda y por cobrar se quedan con el saldo
+  que tenía la última vez que estuvo en 11. Contradice el supuesto de la decisión D7 de plazo vencido
+  («basta el cierre de cartera»). **Afecta a las ~30 declaraciones ya hechas.** Decisión del usuario y
+  del contador.
+- **H81 — La mora de las cuotas YA vencidas nunca se devenga a ingreso.** ④ sólo devenga lo que vence
+  en el mes que se abre. Al cobrarla, se acredita `INTERES_MORA_POR_COBRAR` sin un débito previo que
+  la haya abierto, salvo en ③/⑥, que son totales. Pregunta para el contador.
+- **H42 alcanza más que el CBCR:** el cruce de valores, los jubilados y Petro también cobran la mora
+  persistida, no la de la fecha.
+- `REGLAS-ASIENTOS-CONTABLES-CRD.md` está desactualizado: dice que el timer de mora está apagado
+  (está activo desde el 09-09) y le faltan el cruce de valores y la entrega del préstamo.
+
 ## 5. ⛔ Decisiones que faltan
 
 | # | Pregunta |
