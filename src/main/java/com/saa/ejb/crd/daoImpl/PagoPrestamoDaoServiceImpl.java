@@ -5,6 +5,7 @@ import java.util.List;
 
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.crd.dao.PagoPrestamoDaoService;
+import com.saa.ejb.crd.service.ProcesoPagoPrestamoService;
 import com.saa.model.crd.PagoPrestamo;
 
 import jakarta.ejb.Stateless;
@@ -18,6 +19,22 @@ public class PagoPrestamoDaoServiceImpl extends EntityDaoImpl<PagoPrestamo> impl
 	// Inicializa persistence context
 	@PersistenceContext
 	EntityManager em;
+
+	/**
+	 * Tipos de {@code PagoPrestamo} (PGPRTPOO) cuyo {@code saldoOtros} (PGPRSLOT) es de verdad
+	 * un abono a capital, para {@link #selectDatosPagosVigentes}. NO todo {@code saldoOtros} es
+	 * capital: los pagos tipo "DEP" (migración vieja del 2025-04-03) lo usan para otra cosa, y
+	 * sumarlo como capital fabrica un sobrante inexistente (8 préstamos reales deshabilitados en
+	 * plazo vencido el 2026-09-30: 61538, 65991, 64561, 63392, 62890, 62086, 61839, 60994 — su
+	 * tabla de amortización ya suma exacto el monto sin ese extra). "MIGRACION" no tiene
+	 * constante propia (literal en {@code PrestamoServiceImpl:951}) porque es la única migración
+	 * donde el extra SÍ es un abono real (préstamo 62439).
+	 */
+	private static final List<String> TIPOS_PAGO_CON_ABONO_CAPITAL = List.of(
+		ProcesoPagoPrestamoService.TIPO_ABONO_CAPITAL,
+		ProcesoPagoPrestamoService.TIPO_PRECANCELACION,
+		"MIGRACION"
+	);
 
 	/**
 	 * Busca todos los pagos asociados a un DetallePrestamo específico
@@ -106,9 +123,18 @@ public class PagoPrestamoDaoServiceImpl extends EntityDaoImpl<PagoPrestamo> impl
 		// capitalPagado=0, así que sin esto un abono desaparece del capital cobrado
 		// (API-PASE-A-PLAZO-VENCIDO.md §2, caso real préstamo 62439). Los índices 0-6 no se
 		// tocan: verificado que ningún llamador depende del largo del arreglo.
+		//
+		// ⛔ Corrección 2026-09-30 (mismo día, producción): el índice 7 YA NO es
+		// "p.saldoOtros" crudo — es un CASE que lo filtra por TIPO_CON_ABONO_CAPITAL. Medido
+		// contra 8 préstamos reales (61538, 65991, 64561, 63392, 62890, 62086, 61839, 60994):
+		// todos tienen pagos tipo "DEP" de una migración vieja (2025-04-03) cuyo PGPRSLOT NO es
+		// capital — su tabla de amortización ya suma exacto el monto (capitalPagado + saldo =
+		// monto al centavo), y en el 65991 el "extra" de la cuota 0 es igual a su capital:
+		// sumarlo fabrica un sobrante que no existe. El 62439 (tipo "MIGRACION") sí es un abono
+		// real que rehizo la tabla — por eso el filtro es por TIPO de pago, no "todo PGPRSLOT".
 		String jpql = "SELECT p.detallePrestamo.codigo, p.desgravamen, p.moraPagada, " +
 			"       p.interesVencidoPagado, p.interesPagado, p.capitalPagado, p.valorSeguroIncendio, " +
-			"       p.saldoOtros " +
+			"       CASE WHEN p.tipo IN :tiposConAbonoCapital THEN p.saldoOtros ELSE 0.0 END " +
 			"FROM PagoPrestamo p " +
 			"WHERE p.detallePrestamo.codigo IN :codigos " +
 			"AND (p.anulado IS NULL OR p.anulado = 0) " +
@@ -123,6 +149,7 @@ public class PagoPrestamoDaoServiceImpl extends EntityDaoImpl<PagoPrestamo> impl
 
 			Query query = em.createQuery(jpql);
 			query.setParameter("codigos", bloque);
+			query.setParameter("tiposConAbonoCapital", TIPOS_PAGO_CON_ABONO_CAPITAL);
 			resultados.addAll(query.getResultList());
 		}
 

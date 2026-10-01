@@ -654,12 +654,14 @@ public class DeclaracionPlazoVencidoServiceImpl implements DeclaracionPlazoVenci
             double interesPagadoCuota = pagos != null ? pagos[3] : 0.0;
             double capitalPagadoCuota = pagos != null ? pagos[4] : 0.0;
             double seguroPagadoCuota = pagos != null ? pagos[5] : 0.0;
-            // PGPRSLOT — "pago extra" (abono a capital). Se graba con capitalPagado=0
-            // (AbonoCapitalPrestamoServiceImpl:232-240) y rehace la tabla, así que Σ capital de
-            // las cuotas = monto − abonos: sin sumarlo, el capital cobrado de la FILA queda
-            // corto y el saldo de capital de la fila no cuadra contra monto − cobrado (invariante
-            // 3). Caso real: préstamo 62439, abono de 4.236,80 en la cuota 38
-            // (API-PASE-A-PLAZO-VENCIDO.md §2, 2026-09-30).
+            // PGPRSLOT, YA FILTRADO por tipo de pago en
+            // PagoPrestamoDaoServiceImpl.selectDatosPagosVigentes (TIPOS_PAGO_CON_ABONO_CAPITAL):
+            // no todo "pago extra" es capital. Un abono real (ABONO_CAPITAL, PRECANCELACION, o
+            // la migración del 62439) se graba con capitalPagado=0 y rehace la tabla, así que Σ
+            // capital de las cuotas = monto − abonos (API-PASE-A-PLAZO-VENCIDO.md §2). Pero un
+            // pago tipo "DEP" (migración vieja del 2025-04-03) usa PGPRSLOT para otra cosa —
+            // sumarlo ahí fabricaba un sobrante inexistente en 8 préstamos reales (corrección
+            // 2026-09-30). Acá no hace falta mirar el tipo: ya viene en 0 si no corresponde.
             double abonoExtraCuota = pagos != null ? pagos[6] : 0.0;
 
             boolean vencimientoEnElCorteOAntes = cuota.getFechaVencimiento() != null
@@ -902,8 +904,10 @@ public class DeclaracionPlazoVencidoServiceImpl implements DeclaracionPlazoVenci
      * Agrupa las filas escalares de {@code PagoPrestamoDaoService#selectDatosPagosVigentes}
      * (una fila por PAGO, no por cuota) sumando por componente. Índices del arreglo resultado:
      * 0 desgravamen, 1 moraPagada, 2 interesVencidoPagado, 3 interesPagado, 4 capitalPagado,
-     * 5 valorSeguroIncendio, 6 saldoOtros (pago extra, agregado 2026-09-30) — mismo orden que
-     * la proyección JPQL (desplazado -1 porque acá no se guarda el id de la cuota).
+     * 5 valorSeguroIncendio, 6 saldoOtros YA FILTRADO por tipo de pago (pago extra que SÍ es
+     * capital; 0 si el pago es de un tipo como "DEP" donde no lo es — ver
+     * PagoPrestamoDaoServiceImpl.TIPOS_PAGO_CON_ABONO_CAPITAL) — mismo orden que la proyección
+     * JPQL (desplazado -1 porque acá no se guarda el id de la cuota).
      */
     private Map<Long, double[]> agruparPagosPorCuota(List<Object[]> filas) {
         Map<Long, double[]> mapa = new HashMap<>();
