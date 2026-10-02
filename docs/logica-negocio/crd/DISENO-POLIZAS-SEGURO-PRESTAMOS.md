@@ -84,6 +84,23 @@ Es el mismo proceso, con tres diferencias:
 
 ---
 
+## 3bis. Decisiones del usuario — 2026-10-02. NO re-litigar
+
+| # | Decisión |
+|---|---|
+| S1 | El reparto entre préstamos es **proporcional a la base enviada**: el **saldo de capital** en desgravamen y la **suma asegurada** en incendio. |
+| S2 | Dentro del préstamo, el reparto entre sus cuotas de la vigencia es **proporcional**, no en partes iguales. ⇒ Lectura del árbitro, por confirmar: proporcional al **saldo de capital de cada cuota**, que baja mes a mes, como hoy el desgravamen. |
+| S3 | Un préstamo que termina antes que la póliza carga **sólo la proporción de los meses que la póliza le cubre**. |
+| S4 | El valor de la póliza **REEMPLAZA** el desgravamen / incendio que esas cuotas tenían. |
+| S5 | **Préstamos nuevos durante la vigencia entran a la póliza vigente**, pero la novedad se envía a la aseguradora, que emite una **nota de débito**. Ese valor es el que se reparte en el préstamo nuevo. **Abono a capital y precancelación también se notifican** a la aseguradora, que emite un documento (ver §4, S10). |
+| S6 | Como S5. |
+| S7 | **Integración con CXP:** la factura le llega a crédito por mail, pero contabilidad puede descargar el XML y cargarlo en CXP primero. Hace falta: (a) **marcar** la factura como «de seguros» para que **no se pague hasta que crédito la distribuya**; (b) si ya estaba en CXP y crédito la sube, el sistema **la reconoce, avisa y la enlaza**, no la duplica; (c) **al cargarla desde CXP**, la opción de **marcarla de seguros** para que entre al proceso; (d) puede llevar **retención**. ⇒ Árbitro: CXP ya tiene clave de unicidad por `claveAcceso` (`DocumentoCxp`), y esa es la llave del enlace. |
+| S8 | El **prendario** sigue el mismo proceso que incendio. |
+| S9 | El centavo que sobra del reparto va **al préstamo de mayor valor**. |
+
+⚠️ **S7 toca CXP y TSR**, alcance de `omen-saa-2`: la marca en el documento, el bloqueo del pago y la
+opción en su pantalla de carga. Lo coordina el árbitro **con autorización del usuario**.
+
 ## 4. ⛔ Lo que falta decidir
 
 | # | Pregunta | Por qué importa |
@@ -96,4 +113,7 @@ Es el mismo proceso, con tres diferencias:
 | S6 | **Préstamo que sale antes** (precancela o abona y acorta): ¿qué pasa con el seguro de las cuotas que ya no existen? ¿Se le reclama a la aseguradora? | Hoy se calcula y se pierde (`ESTADO-EQUIPO-SEGUROS.md` §1.8) |
 | S7 | **CXP:** ¿crédito **crea** el documento por pagar (proveedor = aseguradora o broker, valor total, y las retenciones las pone CXP), o CXP registra la factura y crédito la **enlaza**? | Define la integración con otro equipo (`omen-saa-2`) |
 | S8 | **¿Seguro prendario?** Las cuentas existen (`1.4.90.15.03`). ¿Mismo proceso que incendio, con la suma asegurada del bien prendado? | Si no, la pantalla tiene dos tipos y no tres |
-| S9 | **Redondeo:** el centavo que sobra del prorrateo, ¿a qué préstamo o cuota va? | Que la suma de lo distribuido = el total de la factura, exacto |
+| S9 | ~~Redondeo~~ → contestada, §3bis | — |
+| **S10** | **Abono a capital / precancelación:** dijiste que la aseguradora emite una **nota de débito**. Lo normal sería una **nota de CRÉDITO** (devuelve la prima de lo que ya no se asegura). ¿Es de crédito? ¿El sistema genera el listado de novedades (inclusiones y exclusiones) para mandarle a la aseguradora? | Define si es un cobro o una devolución, y qué reporte hay que hacer |
+| **S11** | **S3, el remanente:** si a un préstamo que termina en 4 meses le toca sólo 4/12 de su parte, los 8/12 restantes de la factura **¿se reparten entre los demás préstamos, o quedan como diferencia** a reclamar a la aseguradora (nota de crédito)? | Si nadie lo absorbe, lo distribuido no suma el total de la factura |
+| **S12** | **S2:** ¿«proporcional» es al **saldo de capital de cada cuota**? | El reparto dentro del préstamo |
