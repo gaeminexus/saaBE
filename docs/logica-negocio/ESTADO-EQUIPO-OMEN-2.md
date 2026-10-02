@@ -4734,3 +4734,28 @@ anticipos confirmados.
 - **Abierto, decisión del usuario:** corregir las dos causas: que confirmar un anticipo falle si no
   puede sumar al PRCC, y que el saldo de la cuenta de anticipos (tipo 2) no se edite a mano, o que
   editarlo exija justificación.
+
+### 58.1 — 🔴 HALLAZGO del ítem 0: el `try/catch` por pago del lote bancario NO aísla nada
+
+Medido por `omen-saa-2-be` el 2026-10-02, antes de cambiar código:
+
+- `procesarRespuestaBanco` (`PagoProgramadoServiceImpl:2033-2047`) y `confirmarPagosManual`
+  (`:2135-2188`) recorren los pagos con un `try { contabilizarSegunOrigen } catch (Throwable)` **por
+  pago**. Parece que un pago que falla no afecta a los demás.
+- Pero los dos métodos corren con `REQUIRED`: **el lote entero es una sola transacción.** Y
+  `IncomeException` es `@ApplicationException(rollback = true)`. Cuando sale de **otro bean** (por
+  ejemplo `AnticipoProveedorServiceImpl.contabilizarAnticipoConfirmado`, o
+  `AplicacionPagoCxpServiceImpl.aplicarPagoTransferencia`, que valida el saldo), el contenedor marca la
+  transacción rollback-only **antes** de que el `catch` la atrape.
+- El método termina «bien», con su mapa de confirmados y errores, y al salir **se revierte TODO el
+  lote**. El llamador recibe `EJBTransactionRolledbackException`.
+
+**Esto ya pasa hoy** con cualquier validación que falle dentro de la confirmación de un lote. El
+arreglo es correr cada pago en su propia transacción (`REQUIRES_NEW`) dentro de
+`PagoProgramadoServiceImpl`. Ese archivo tiene cambios **sin commitear de `omen-saa-3`**: es un frente
+aparte, que hay que coordinar con ellos.
+
+**Decisión del árbitro para §3.1:** en proveedor, el saldo global igual falla en vez de callarse. Que el
+lote se revierta entero es preferible a un descuadre silencioso: con plata de por medio, todo o nada.
+En cliente, `confirmarAnticipo` disfrazaba ese error como *«Error al generar el asiento contable»*, con
+el asiento ya generado. La llamada sale de ese `catch`.
