@@ -335,6 +335,7 @@ public class DevolucionAnticipoProveedorServiceImpl implements DevolucionAnticip
                 + "fueron generados.");
         resultado.put("devolucion", devolucion.getCodigo());
         resultado.put("asiento", asiento.getNumeroAlterno());
+        resultado.put("idAsiento", asiento.getCodigo());
         return resultado;
     }
 
@@ -484,7 +485,8 @@ public class DevolucionAnticipoProveedorServiceImpl implements DevolucionAnticip
             item.put("estado", fila[4]);
             item.put("cuentaBancaria", nvl((String) fila[5], "") + " — " + nvl((String) fila[6], ""));
             item.put("numeroAsiento", fila[7]);
-            item.put("motivoAnulacion", fila[8]);
+            item.put("idAsiento", fila[8]);
+            item.put("motivoAnulacion", fila[9]);
             List<Map<String, Object>> detalle = detallePorDevolucion.get(id);
             item.put("detalle", (detalle != null) ? detalle : Collections.<Map<String, Object>>emptyList());
             resultado.add(item);

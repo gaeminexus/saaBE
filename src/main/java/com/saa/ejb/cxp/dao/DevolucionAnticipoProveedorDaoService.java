@@ -16,7 +16,7 @@ public interface DevolucionAnticipoProveedorDaoService extends EntityDao<Devoluc
 	 * <p>
 	 * Columnas del Object[]: 0 codigo, 1 fecha, 2 valor, 3 referencia, 4 estado,
 	 * 5 cuentaBancaria.banco.nombre, 6 cuentaBancaria.numeroCuenta, 7 asiento.numeroAlterno,
-	 * 8 motivoAnulacion.
+	 * 8 asiento.codigo (LEFT JOIN: null si la devolución no tiene asiento), 9 motivoAnulacion.
 	 * @param idEmpresa  : Id de la empresa
 	 * @param idTitular  : Id del proveedor; null = todos
 	 * @return           : Filas de devoluciones, más reciente primero

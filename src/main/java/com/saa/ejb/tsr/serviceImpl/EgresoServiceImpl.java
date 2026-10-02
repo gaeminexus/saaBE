@@ -177,6 +177,17 @@ public class EgresoServiceImpl implements EgresoService {
 				egreso.getId(), idCuentaBancariaOrigen, idCuentaDestinoTitular,
 				idUsuario, debitoAutomatico, referencia, formaPago);
 
+		// ÍTEM 2 (docs/logica-negocio/cnt/DISENO-IMPRIMIR-ASIENTO-DESDE-ORIGEN.md §2.2): con
+		// débito automático el pago contabiliza en este mismo paso -- si la respuesta trae
+		// asiento, el egreso ya lo tiene; se relee por id porque registrarPagoDeEgreso (otro
+		// bean, PagoProgramadoServiceImpl) es quien lo actualizó, no esta misma instancia.
+		if (resultado.get("asiento") != null) {
+			Egreso egresoActualizado = em.find(Egreso.class, egreso.getId());
+			if (egresoActualizado != null && egresoActualizado.getAsiento() != null) {
+				resultado.put("idAsiento", egresoActualizado.getAsiento().getCodigo());
+			}
+		}
+
 		resultado.put("egreso", egreso.getId());
 		return resultado;
 	}

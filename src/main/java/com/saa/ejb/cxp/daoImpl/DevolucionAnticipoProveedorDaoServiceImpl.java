@@ -44,11 +44,16 @@ public class DevolucionAnticipoProveedorDaoServiceImpl extends EntityDaoImpl<Dev
     public List<Object[]> selectListadoByEmpresaTitular(Long idEmpresa, Long idTitular) throws Throwable {
         System.out.println("Ingresa al metodo selectListadoByEmpresaTitular con empresa: " + idEmpresa
                 + " | titular: " + idTitular);
+        // ÍTEM 3 (docs/logica-negocio/cnt/DISENO-IMPRIMIR-ASIENTO-DESDE-ORIGEN.md §2.2): LEFT JOIN
+        // explícito a asiento -- en la práctica toda devolución lo tiene (se genera antes de
+        // persistir, en registrar), pero un path implícito arma INNER JOIN y perdería en silencio
+        // cualquier fila que no lo tuviera.
         StringBuilder jpql = new StringBuilder(
                 " select d.codigo, d.fecha, d.valor, d.referencia, d.estado, " +
                 "        d.cuentaBancaria.banco.nombre, d.cuentaBancaria.numeroCuenta, " +
-                "        d.asiento.numeroAlterno, d.motivoAnulacion " +
+                "        a.numeroAlterno, a.codigo, d.motivoAnulacion " +
                 " from   DevolucionAnticipoProveedor d " +
+                " left join d.asiento a " +
                 " where  d.empresa.codigo = :idEmpresa ");
         if (idTitular != null) {
             jpql.append(" and d.titular.codigo = :idTitular ");

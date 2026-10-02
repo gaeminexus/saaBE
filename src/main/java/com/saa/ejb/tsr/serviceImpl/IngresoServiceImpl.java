@@ -195,6 +195,7 @@ public class IngresoServiceImpl implements IngresoService {
 				+ "bancario fueron generados.");
 		resultado.put("ingreso", ingreso.getId());
 		resultado.put("asiento", asiento.getNumeroAlterno());
+		resultado.put("idAsiento", asiento.getCodigo());
 		return resultado;
 	}
 
