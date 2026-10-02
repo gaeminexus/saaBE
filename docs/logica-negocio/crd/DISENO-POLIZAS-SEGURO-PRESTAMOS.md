@@ -98,8 +98,12 @@ Es el mismo proceso, con tres diferencias:
 | S8 | El **prendario** sigue el mismo proceso que incendio. |
 | S9 | El centavo que sobra del reparto va **al préstamo de mayor valor**. |
 
+| S10 | **Abono a capital y precancelación:** la aseguradora emite una **NOTA DE CRÉDITO** (devuelve la prima de lo que ya no se asegura). Inclusiones (préstamos nuevos): **nota de DÉBITO**. |
+| S11 | Lo que no absorbe un préstamo que termina antes que la póliza **se reparte entre los DEMÁS préstamos** de la póliza. Lo distribuido suma siempre el total de la factura. |
+| S12 | Dentro del préstamo: proporcional al **saldo de capital de cada cuota**. |
+
 ⚠️ **S7 toca CXP y TSR**, alcance de `omen-saa-2`: la marca en el documento, el bloqueo del pago y la
-opción en su pantalla de carga. Lo coordina el árbitro **con autorización del usuario**.
+opción en su pantalla de carga. **Mensaje enviado a `omen-saa-2-arb` el 2026-10-02 con autorización del usuario.** Se espera su respuesta.
 
 ## 4. ⛔ Lo que falta decidir
 
