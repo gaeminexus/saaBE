@@ -126,6 +126,16 @@ public class PrestamoDaoServiceImpl extends EntityDaoImpl<Prestamo> implements P
     }
 
     @Override
+    public List<Prestamo> selectByEstados(List<Long> estados) throws Throwable {
+        if (estados == null || estados.isEmpty()) {
+            return new java.util.ArrayList<>();
+        }
+        Query query = em.createQuery("select p from Prestamo p where p.idEstado in :estados");
+        query.setParameter("estados", estados);
+        return query.getResultList();
+    }
+
+    @Override
     @SuppressWarnings("unchecked")
     public List<Prestamo> selectVigentesByEntidad(Long codigoEntidad) throws Throwable {
         System.out.println("PrestamoDaoServiceImpl.selectVigentesByEntidad - Entidad: "

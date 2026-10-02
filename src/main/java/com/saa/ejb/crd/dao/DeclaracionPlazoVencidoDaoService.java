@@ -54,4 +54,20 @@ public interface DeclaracionPlazoVencidoDaoService extends EntityDao<Declaracion
      * @throws Throwable Si ocurre un error
      */
     DeclaracionPlazoVencido selectUltima() throws Throwable;
+
+    /**
+     * Declaraciones VIVAS (DECLARADA o LIQUIDADA — nunca REVERTIDA) de alguno de
+     * {@code idsPrestamo}, con {@code fechaDeclaracion} dentro de {@code [desde, hasta]}, en
+     * lote. Pólizas de seguro, exclusión por plazo vencido
+     * ({@code docs/logica-negocio/crd/API-POLIZAS-SEGURO.md} §7): una declaración REVERTIDA no
+     * cuenta — el préstamo volvió a su estado normal.
+     *
+     * @param idsPrestamo préstamos a revisar
+     * @param desde       fecha de declaración desde (inclusive)
+     * @param hasta       fecha de declaración hasta (inclusive)
+     * @return declaraciones vivas en ese rango, con el préstamo ya cargado
+     * @throws Throwable Si ocurre un error
+     */
+    List<DeclaracionPlazoVencido> selectVivasByPrestamosYRango(List<Long> idsPrestamo,
+            java.time.LocalDateTime desde, java.time.LocalDateTime hasta) throws Throwable;
 }

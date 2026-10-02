@@ -115,5 +115,8 @@ public interface NombreEntidadesCredito {
 	String CUENTA_BANCARIA_BENEFICIARIO = "CuentaBancariaBeneficiario";
 	String DECLARACION_PLAZO_VENCIDO = "DeclaracionPlazoVencido";
 	String DETALLE_PLAZO_VENCIDO = "DetallePlazoVencido";
+	String DOCUMENTO_SEGURO = "DocumentoSeguro";
+	String PRESTAMO_SEGURO = "PrestamoSeguro";
+	String CUOTA_SEGURO = "CuotaSeguro";
 
 }

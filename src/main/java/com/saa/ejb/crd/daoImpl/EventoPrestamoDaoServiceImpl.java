@@ -80,4 +80,39 @@ public class EventoPrestamoDaoServiceImpl extends EntityDaoImpl<EventoPrestamo>
             return new ArrayList<>();
         }
     }
+
+    @SuppressWarnings("unchecked")
+    @Override
+    public List<EventoPrestamo> selectByPrestamosYTiposYRango(List<Long> idsPrestamo, List<String> tiposOperacion,
+            java.time.LocalDateTime desde, java.time.LocalDateTime hasta) throws Throwable {
+        System.out.println("EventoPrestamoDaoService.selectByPrestamosYTiposYRango - préstamos: "
+            + (idsPrestamo != null ? idsPrestamo.size() : 0) + " - tipos: " + tiposOperacion);
+
+        if (idsPrestamo == null || idsPrestamo.isEmpty() || tiposOperacion == null || tiposOperacion.isEmpty()
+                || desde == null || hasta == null) {
+            return new ArrayList<>();
+        }
+
+        // Fragmentado en bloques de 900 (límite de Oracle de 1000 elementos en IN, ORA-01795).
+        List<EventoPrestamo> resultado = new ArrayList<>();
+        int tamanoBloque = 900;
+        for (int inicio = 0; inicio < idsPrestamo.size(); inicio += tamanoBloque) {
+            List<Long> bloque = idsPrestamo.subList(inicio, Math.min(inicio + tamanoBloque, idsPrestamo.size()));
+            Query query = em.createQuery(
+                "SELECT e FROM EventoPrestamo e " +
+                "WHERE e.prestamo.codigo IN :idsPrestamo " +
+                "AND e.tipoOperacion IN :tipos " +
+                "AND e.estado = :estadoVigente " +
+                "AND e.fecha BETWEEN :desde AND :hasta " +
+                "ORDER BY e.prestamo.codigo ASC, e.fecha ASC"
+            );
+            query.setParameter("idsPrestamo", bloque);
+            query.setParameter("tipos", tiposOperacion);
+            query.setParameter("estadoVigente", 1L);
+            query.setParameter("desde", desde);
+            query.setParameter("hasta", hasta);
+            resultado.addAll(query.getResultList());
+        }
+        return resultado;
+    }
 }

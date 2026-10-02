@@ -36,4 +36,23 @@ public interface EventoPrestamoDaoService extends EntityDao<EventoPrestamo> {
      * @throws Throwable Si ocurre un error
      */
     List<EventoPrestamo> selectVigentesPosterioresByPrestamo(Long codigoPrestamo, Long codigoEvento) throws Throwable;
+
+    /**
+     * Eventos VIGENTES (estado = 1) de alguno de {@code idsPrestamo}, con {@code tipoOperacion}
+     * en {@code tipos} y {@code fecha} (la EFECTIVA, no la de registro) dentro de
+     * {@code [desde, hasta]} — en lote, nunca uno por préstamo. Pólizas de seguro, exclusiones
+     * por precancelación/abono a capital ({@code docs/logica-negocio/crd/API-POLIZAS-SEGURO.md}
+     * §7).
+     *
+     * @param idsPrestamo     préstamos a revisar
+     * @param tiposOperacion  valores de {@code EVPRTPOO} a incluir (p. ej. "PRECANCELACION",
+     *                        "ABONO_CAPITAL")
+     * @param desde           fecha efectiva desde (inclusive)
+     * @param hasta           fecha efectiva hasta (inclusive)
+     * @return eventos encontrados, con el préstamo ya cargado; vacía si algún parámetro de lista
+     *         es nulo o vacío
+     * @throws Throwable Si ocurre un error
+     */
+    List<EventoPrestamo> selectByPrestamosYTiposYRango(List<Long> idsPrestamo, List<String> tiposOperacion,
+            java.time.LocalDateTime desde, java.time.LocalDateTime hasta) throws Throwable;
 }

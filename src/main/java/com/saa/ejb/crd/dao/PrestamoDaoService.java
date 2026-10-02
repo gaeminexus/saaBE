@@ -47,6 +47,18 @@ public interface PrestamoDaoService extends EntityDao<Prestamo> {
     List<Prestamo> selectByEstado(Long estado) throws Throwable;
 
     /**
+     * Préstamos cuyo {@code idEstado} (PRSTIDST) está en cualquiera de {@code estados} — mismo
+     * criterio que {@link #selectByEstado(Long)}, pero para varios estados en una sola consulta
+     * (pólizas de seguro: elegibles con {@code PRSTIDST IN (2, 11)}, nunca dos llamadas y un
+     * merge en Java).
+     *
+     * @param estados estados a incluir (PRSTIDST)
+     * @return préstamos en cualquiera de esos estados; vacía si {@code estados} es nulo o vacío
+     * @throws Throwable Si ocurre un error
+     */
+    List<Prestamo> selectByEstados(List<Long> estados) throws Throwable;
+
+    /**
      * Préstamos VIGENTES de una entidad: todos los que NO están en uno de los tres estados
      * terminales — 3 CANCELADO, 4 CANCELADO_ANTICIPADO, 5 CANCELADO_POR_NOVACION.
      *

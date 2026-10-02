@@ -405,5 +405,21 @@ public interface DetallePrestamoDaoService extends EntityDao<DetallePrestamo> {
 	 */
 	List<DetallePrestamo> selectByPrestamos(List<Long> codigosPrestamo) throws Throwable;
 
+	/**
+	 * Cuotas por su propio código (DTPRCDGO), EN LOTE, TOLERANTE a que alguno ya no exista — un
+	 * simple {@code IN (...)} devuelve menos filas de las pedidas, nunca lanza. Para historia
+	 * por cuota que guarda el id suelto, sin relación ni FK, a propósito (H82: el abono a
+	 * capital y el reverso de operaciones BORRAN cuotas de DTPR) — {@code CRD.PSCT} (pólizas de
+	 * seguro) y {@code CRD.DPLV} (plazo vencido).
+	 *
+	 * <p>Fragmenta internamente en bloques de 900 (ORA-01795).</p>
+	 *
+	 * @param codigosCuota códigos de cuota (DTPRCDGO) a buscar
+	 * @return las cuotas que todavía existen de esos códigos; vacía si la lista de entrada es
+	 *         nula o vacía
+	 * @throws Throwable Si ocurre algún error
+	 */
+	List<DetallePrestamo> selectByCodigos(List<Long> codigosCuota) throws Throwable;
+
 }
 

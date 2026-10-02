@@ -1053,4 +1053,31 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 		return resultados;
 	}
 
+	@Override
+	public List<DetallePrestamo> selectByCodigos(List<Long> codigosCuota) throws Throwable {
+		System.out.println("DetallePrestamoDaoServiceImpl.selectByCodigos - cuotas solicitadas: "
+			+ (codigosCuota != null ? codigosCuota.size() : 0));
+
+		if (codigosCuota == null || codigosCuota.isEmpty()) {
+			return new ArrayList<>();
+		}
+
+		String jpql = "SELECT d FROM DetallePrestamo d WHERE d.codigo IN :codigos";
+
+		final int TAMANIO_BLOQUE = 900;
+		List<DetallePrestamo> resultados = new ArrayList<>();
+		for (int inicio = 0; inicio < codigosCuota.size(); inicio += TAMANIO_BLOQUE) {
+			List<Long> bloque = codigosCuota.subList(inicio,
+					Math.min(inicio + TAMANIO_BLOQUE, codigosCuota.size()));
+
+			Query query = em.createQuery(jpql);
+			query.setParameter("codigos", bloque);
+			resultados.addAll(query.getResultList());
+		}
+
+		System.out.println("  Cuotas encontradas: " + resultados.size() + " de " + codigosCuota.size()
+			+ " solicitadas");
+		return resultados;
+	}
+
 }

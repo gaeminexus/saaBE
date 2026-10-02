@@ -157,4 +157,31 @@ public class DeclaracionPlazoVencidoDaoServiceImpl extends EntityDaoImpl<Declara
             return null;
         }
     }
+
+    @Override
+    public List<DeclaracionPlazoVencido> selectVivasByPrestamosYRango(List<Long> idsPrestamo,
+            java.time.LocalDateTime desde, java.time.LocalDateTime hasta) throws Throwable {
+        System.out.println("DeclaracionPlazoVencidoDaoServiceImpl.selectVivasByPrestamosYRango - préstamos: "
+            + (idsPrestamo != null ? idsPrestamo.size() : 0));
+        if (idsPrestamo == null || idsPrestamo.isEmpty() || desde == null || hasta == null) {
+            return new java.util.ArrayList<>();
+        }
+        List<DeclaracionPlazoVencido> resultado = new java.util.ArrayList<>();
+        int tamanoBloque = 900;
+        for (int inicio = 0; inicio < idsPrestamo.size(); inicio += tamanoBloque) {
+            List<Long> bloque = idsPrestamo.subList(inicio, Math.min(inicio + tamanoBloque, idsPrestamo.size()));
+            Query query = em.createQuery(
+                "select d from DeclaracionPlazoVencido d where d.prestamo.codigo in :idsPrestamo"
+                + " and d.estado in (:declarada, :liquidada)"
+                + " and d.fechaDeclaracion between :desde and :hasta"
+                + " order by d.prestamo.codigo asc, d.fechaDeclaracion asc");
+            query.setParameter("idsPrestamo", bloque);
+            query.setParameter("declarada", DeclaracionPlazoVencido.ESTADO_DECLARADA);
+            query.setParameter("liquidada", DeclaracionPlazoVencido.ESTADO_LIQUIDADA);
+            query.setParameter("desde", desde);
+            query.setParameter("hasta", hasta);
+            resultado.addAll(query.getResultList());
+        }
+        return resultado;
+    }
 }
