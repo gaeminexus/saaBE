@@ -4,20 +4,27 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.rhh.dao.AcumuladoNominaDaoService;
 import com.saa.ejb.rhh.dao.ContratoEmpleadoDaoService;
+import com.saa.ejb.rhh.dao.DetalleLiquidacionExternaDaoService;
+import com.saa.ejb.rhh.dao.LiquidacionExternaDaoService;
 import com.saa.ejb.rhh.dao.SalidaOficialDaoService;
 import com.saa.ejb.rhh.service.GeneracionSalidasOficialesService;
 import com.saa.ejb.rhh.util.RedondeoNomina;
 import com.saa.model.rhh.ContratoEmpleado;
+import com.saa.model.rhh.DetalleLiquidacionExterna;
 import com.saa.model.rhh.Empleado;
+import com.saa.model.rhh.LiquidacionExterna;
 import com.saa.model.rhh.NombreEntidadesRhh;
 import com.saa.model.rhh.SalidaOficial;
 import com.saa.model.scp.Empresa;
 import com.saa.rubros.Estado;
+import com.saa.rubros.RhhConceptoLiquidacionExterna;
 import com.saa.rubros.RhhTipoAcumulado;
 import com.saa.rubros.RhhTipoSalidaOficial;
 
@@ -64,6 +71,14 @@ public class GeneracionSalidasOficialesServiceImpl implements GeneracionSalidasO
     @EJB
     private AcumuladoNominaDaoService acumuladoNominaDaoService;
 
+    // ===== INICIO liquidaciones de ex-colaboradores (e3-05, equipo omen-saa-3, 2026-09-30) =====
+    @EJB
+    private LiquidacionExternaDaoService liquidacionExternaDaoService;
+
+    @EJB
+    private DetalleLiquidacionExternaDaoService detalleLiquidacionExternaDaoService;
+    // ===== FIN liquidaciones de ex-colaboradores =====
+
     /* (non-Javadoc)
      * @see com.saa.ejb.rhh.service.GeneracionSalidasOficialesService#generarRdep(java.lang.Long, java.lang.Integer, java.lang.String)
      */
@@ -87,11 +102,96 @@ public class GeneracionSalidasOficialesServiceImpl implements GeneracionSalidasO
         // RETENCION_IR en el ejercicio, cobro, y hay que declararlo. Cesante o no.
         List<Empleado> declarables = acumuladoNominaDaoService.selectEmpleadosConAcumuladoEnAnio(
                 idEmpresa, anio);
-        if (declarables == null || declarables.isEmpty()) {
+        // e3-05 (2026-09-30): las liquidaciones de ex-colaboradores PAGADAS en el anio tambien
+        // declaran, aunque ACMN no tenga a nadie ese anio (empresa que solo pago rezagos de la
+        // administracion anterior). Por eso el guard de "nada que declarar" de abajo ahora
+        // mira las dos fuentes, no solo declarables.
+        List<LiquidacionExterna> liquidacionesExternasPagadas = liquidacionExternaDaoService
+                .selectPagadasByAnio(anio);
+        if ((declarables == null || declarables.isEmpty())
+                && (liquidacionesExternasPagadas == null || liquidacionesExternasPagadas.isEmpty())) {
             throw new IncomeException("Nadie tiene acumulados de " + anio + ": no hay nada que"
                     + " declarar en el RDEP. Compruebe que los periodos del ejercicio se cerraron"
                     + " --los acumulados solo se escriben al cerrar-- y que las liquidaciones del"
                     + " anio tienen la salida ejecutada.");
+        }
+
+        // Acumulador por identificacion, para que una liquidacion externa de alguien que
+        // tambien tiene ACMN (recontratado) SUME a la misma persona en vez de duplicarla
+        // (§8 del contrato). LinkedHashMap para mantener el orden de ACMN primero y los
+        // extras de LQEX despues, aunque el orden no lo exige el contrato.
+        Map<String, EmpleadoDeclarable> porIdentificacion = new LinkedHashMap<String, EmpleadoDeclarable>();
+
+        if (declarables != null) {
+            for (Empleado empleado : declarables) {
+                if (empleado == null) {
+                    continue;
+                }
+                Double gravado = acumulado(empleado.getCodigo(), anio, RhhTipoAcumulado.GRAVADO_IR);
+                Double aporte = acumulado(empleado.getCodigo(), anio, RhhTipoAcumulado.APORTE_PERSONAL);
+                Double retencion = acumulado(empleado.getCodigo(), anio, RhhTipoAcumulado.RETENCION_IR);
+
+                if (gravado.doubleValue() == 0D && retencion.doubleValue() == 0D) {
+                    // Un empleado sin ingreso gravado ni retencion en el ejercicio no se declara:
+                    // incluirlo con ceros ensucia el archivo y el DIMM lo rechaza.
+                    continue;
+                }
+                String identificacion = empleado.getIdentificacion();
+                EmpleadoDeclarable declarable = new EmpleadoDeclarable(identificacion,
+                        empleado.getApellidos(), empleado.getNombres());
+                declarable.gravado = gravado;
+                declarable.aporte = aporte;
+                declarable.retencion = retencion;
+                porIdentificacion.put(identificacion, declarable);
+            }
+        }
+
+        // e3-05 (2026-09-30, §8 del contrato): LQEX PAGADA cuya fechaPago cae en el anio.
+        // ingresoGravado = tipos 1, 4 y 8; aportePersonal = tipo 20; retencion = tipo 21.
+        // No se toca el calculo de ACMN de arriba.
+        if (liquidacionesExternasPagadas != null) {
+            for (LiquidacionExterna liquidacion : liquidacionesExternasPagadas) {
+                List<DetalleLiquidacionExterna> detalles = detalleLiquidacionExternaDaoService
+                        .selectByLiquidacion(liquidacion.getCodigo());
+                Double gravadoLqex = Double.valueOf(0D);
+                Double aporteLqex = Double.valueOf(0D);
+                Double retencionLqex = Double.valueOf(0D);
+                if (detalles != null) {
+                    for (DetalleLiquidacionExterna detalle : detalles) {
+                        if (detalle.getTipoConcepto() == null || detalle.getValor() == null) {
+                            continue;
+                        }
+                        long tipo = detalle.getTipoConcepto().longValue();
+                        if (RhhConceptoLiquidacionExterna.esGravadoIr(tipo)) {
+                            gravadoLqex = RedondeoNomina.suma(gravadoLqex, detalle.getValor());
+                        } else if (tipo == RhhConceptoLiquidacionExterna.APORTE_PERSONAL_IESS) {
+                            aporteLqex = RedondeoNomina.suma(aporteLqex, detalle.getValor());
+                        } else if (tipo == RhhConceptoLiquidacionExterna.RETENCION_IMPUESTO_RENTA) {
+                            retencionLqex = RedondeoNomina.suma(retencionLqex, detalle.getValor());
+                        }
+                    }
+                }
+                if (gravadoLqex.doubleValue() == 0D && retencionLqex.doubleValue() == 0D) {
+                    // Mismo criterio que ACMN arriba: sin gravado ni retencion, no se declara.
+                    continue;
+                }
+                String identificacion = liquidacion.getIdentificacion();
+                EmpleadoDeclarable existente = porIdentificacion.get(identificacion);
+                if (existente != null) {
+                    // Misma identificacion ya declarada por ACMN (ex-colaborador recontratado):
+                    // se suma, no se duplica.
+                    existente.gravado = RedondeoNomina.suma(existente.gravado, gravadoLqex);
+                    existente.aporte = RedondeoNomina.suma(existente.aporte, aporteLqex);
+                    existente.retencion = RedondeoNomina.suma(existente.retencion, retencionLqex);
+                } else {
+                    EmpleadoDeclarable nuevo = new EmpleadoDeclarable(identificacion,
+                            liquidacion.getApellidos(), liquidacion.getNombres());
+                    nuevo.gravado = gravadoLqex;
+                    nuevo.aporte = aporteLqex;
+                    nuevo.retencion = retencionLqex;
+                    porIdentificacion.put(identificacion, nuevo);
+                }
+            }
         }
 
         StringBuilder xml = new StringBuilder();
@@ -99,27 +199,14 @@ public class GeneracionSalidasOficialesServiceImpl implements GeneracionSalidasO
         xml.append("<rdep anio=\"").append(anio).append("\">\n");
 
         int declarados = 0;
-        for (Empleado empleado : declarables) {
-            if (empleado == null) {
-                continue;
-            }
-            Double gravado = acumulado(empleado.getCodigo(), anio, RhhTipoAcumulado.GRAVADO_IR);
-            Double aporte = acumulado(empleado.getCodigo(), anio, RhhTipoAcumulado.APORTE_PERSONAL);
-            Double retencion = acumulado(empleado.getCodigo(), anio, RhhTipoAcumulado.RETENCION_IR);
-
-            if (gravado.doubleValue() == 0D && retencion.doubleValue() == 0D) {
-                // Un empleado sin ingreso gravado ni retencion en el ejercicio no se declara:
-                // incluirlo con ceros ensucia el archivo y el DIMM lo rechaza.
-                continue;
-            }
-
+        for (EmpleadoDeclarable declarable : porIdentificacion.values()) {
             xml.append("  <empleado>\n");
-            xml.append("    <identificacion>").append(texto(empleado.getIdentificacion())).append("</identificacion>\n");
-            xml.append("    <apellidos>").append(texto(empleado.getApellidos())).append("</apellidos>\n");
-            xml.append("    <nombres>").append(texto(empleado.getNombres())).append("</nombres>\n");
-            xml.append("    <ingresoGravado>").append(gravado).append("</ingresoGravado>\n");
-            xml.append("    <aportePersonal>").append(aporte).append("</aportePersonal>\n");
-            xml.append("    <retencion>").append(retencion).append("</retencion>\n");
+            xml.append("    <identificacion>").append(texto(declarable.identificacion)).append("</identificacion>\n");
+            xml.append("    <apellidos>").append(texto(declarable.apellidos)).append("</apellidos>\n");
+            xml.append("    <nombres>").append(texto(declarable.nombres)).append("</nombres>\n");
+            xml.append("    <ingresoGravado>").append(declarable.gravado).append("</ingresoGravado>\n");
+            xml.append("    <aportePersonal>").append(declarable.aporte).append("</aportePersonal>\n");
+            xml.append("    <retencion>").append(declarable.retencion).append("</retencion>\n");
             xml.append("  </empleado>\n");
             declarados++;
         }
@@ -256,5 +343,24 @@ public class GeneracionSalidasOficialesServiceImpl implements GeneracionSalidasO
             return "";
         }
         return valor.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+    }
+
+    /**
+     * Acumulador de un &lt;empleado&gt; del RDEP, con lo que ya trae ACMN y lo que se le
+     * suma de LQEX (e3-05, §8): la misma identificacion nunca se declara dos veces.
+     */
+    private static final class EmpleadoDeclarable {
+        private final String identificacion;
+        private final String apellidos;
+        private final String nombres;
+        private Double gravado = Double.valueOf(0D);
+        private Double aporte = Double.valueOf(0D);
+        private Double retencion = Double.valueOf(0D);
+
+        private EmpleadoDeclarable(String identificacion, String apellidos, String nombres) {
+            this.identificacion = identificacion;
+            this.apellidos = apellidos;
+            this.nombres = nombres;
+        }
     }
 }

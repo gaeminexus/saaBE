@@ -91,4 +91,8 @@ public interface NombreEntidadesRhh {
     // ================= VALORES NO PAGADOS (script e2-26) =================
     String VALOR_NO_PAGADO               = "ValorNoPagado";
 
+    // ================= LIQUIDACIONES DE EX-COLABORADORES (e3-05) =================
+    String LIQUIDACION_EXTERNA           = "LiquidacionExterna";
+    String DETALLE_LIQUIDACION_EXTERNA   = "DetalleLiquidacionExterna";
+
 }

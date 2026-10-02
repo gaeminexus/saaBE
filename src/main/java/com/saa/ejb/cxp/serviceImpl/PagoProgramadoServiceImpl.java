@@ -3951,6 +3951,9 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 				new com.saa.ejb.cxp.seguimiento.ResolutorDesembolsoPrestamo());
 		m.put(OrigenPagoExterno.CRD_SEGURO_JUBILADOS,
 				new com.saa.ejb.cxp.seguimiento.ResolutorSeguroJubilados());
+		// e3-05 (2026-09-30): liquidaciones de ex-colaboradores de la administracion anterior.
+		m.put(OrigenPagoExterno.RHH_LIQUIDACION_EXCOLABORADOR,
+				new com.saa.ejb.cxp.seguimiento.ResolutorLiquidacionExterna());
 		return m;
 	}
 
@@ -3972,6 +3975,8 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		m.put(OrigenPagoExterno.CRD_PAGO_PENSION_COMPLEMENTARIA, "/menucreditos/jubilados");
 		m.put(OrigenPagoExterno.CRD_SEGURO_JUBILADOS, "/menucreditos/jubilados");
 		m.put(OrigenPagoExterno.CRD_DESEMBOLSO_PRESTAMO, "/menucreditos/prestamo-edit");
+		m.put(OrigenPagoExterno.RHH_LIQUIDACION_EXCOLABORADOR,
+				"/menurecursoshumanos/procesos/liquidaciones-excolaboradores");
 		return m;
 	}
 
@@ -3992,6 +3997,7 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		m.put(OrigenPagoExterno.CRD_PAGO_PENSION_COMPLEMENTARIA, "Pensión complementaria");
 		m.put(OrigenPagoExterno.CRD_SEGURO_JUBILADOS, "Seguro de jubilados");
 		m.put(OrigenPagoExterno.CRD_DESEMBOLSO_PRESTAMO, "Desembolso de préstamo");
+		m.put(OrigenPagoExterno.RHH_LIQUIDACION_EXCOLABORADOR, "Liquidación ex-colaborador");
 		return m;
 	}
 

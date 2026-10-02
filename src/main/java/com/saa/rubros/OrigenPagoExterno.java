@@ -107,4 +107,13 @@ public interface OrigenPagoExterno {
 	 */
 	public static final String RHH_PLANILLA_IESS = "RHH_PLANILLA_IESS";
 
+	/**
+	 * Liquidacion de un ex-colaborador de la administracion anterior (salida antes de 2026),
+	 * originada en RHH.LQEX. PGTRIDOR lleva el RHH.LQEX.LQEXCDGO correspondiente. Nace
+	 * POR_APROBAR (idCuentaBancariaOrigen null, debitoAutomatico false): no es un hecho ya
+	 * ocurrido, es una orden que Tesoreria aprueba y ejecuta. Ver
+	 * docs/logica-negocio/rhh/API-LIQUIDACION-EXCOLABORADORES.md §4.
+	 */
+	public static final String RHH_LIQUIDACION_EXCOLABORADOR = "RHH_LIQ_EXCOLABORADOR";
+
 }
