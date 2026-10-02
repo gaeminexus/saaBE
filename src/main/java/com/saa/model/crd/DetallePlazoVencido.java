@@ -48,10 +48,20 @@ public class DetallePlazoVencido implements Serializable {
     @JoinColumn(name = "PLVNCDGO", referencedColumnName = "PLVNCDGO")
     private DeclaracionPlazoVencido declaracion;
 
-    /** FK - Cuota (CRD.DTPR) a la que se le anuló el seguro. */
-    @ManyToOne
-    @JoinColumn(name = "DTPRCDGO", referencedColumnName = "DTPRCDGO")
-    private DetallePrestamo cuota;
+    /**
+     * DTPRCDGO de la cuota a la que se le anuló el seguro, SIN relación ni FK a propósito
+     * (H82, corregido 2026-10-02, sql/307 — ver {@code docs/logica-negocio/crd/sql/307_DPLV_QUITAR_FK_A_DTPR.sql}):
+     * el abono a capital y el reverso de operaciones BORRAN cuotas de DTPR
+     * ({@code AbonoCapitalPrestamoServiceImpl:194-203}, {@code ProcesoPagoPrestamoServiceImpl:1336}).
+     * Con un {@code @ManyToOne} EAGER (el diseño original), cargar un DPLV cuya cuota ya no
+     * existe revienta con {@code EntityNotFoundException} apenas Hibernate intenta hidratarlo —
+     * pasó en producción con préstamos declarados en plazo vencido que después recibieron un
+     * abono. DPLV es historia: conserva el id aunque la cuota ya no exista. Buscarla aparte, por
+     * este id, y tolerar que no exista (ver {@code revertir}, {@code cuotasNoRestituidas}).
+     */
+    @Basic
+    @Column(name = "DTPRCDGO")
+    private Long idCuota;
 
     /** DTPRDSGR (desgravamen) de la cuota, antes de anularlo. */
     @Basic
@@ -88,8 +98,8 @@ public class DetallePlazoVencido implements Serializable {
     public DeclaracionPlazoVencido getDeclaracion() { return declaracion; }
     public void setDeclaracion(DeclaracionPlazoVencido declaracion) { this.declaracion = declaracion; }
 
-    public DetallePrestamo getCuota() { return cuota; }
-    public void setCuota(DetallePrestamo cuota) { this.cuota = cuota; }
+    public Long getIdCuota() { return idCuota; }
+    public void setIdCuota(Long idCuota) { this.idCuota = idCuota; }
 
     public Double getDesgravamenOriginal() { return desgravamenOriginal; }
     public void setDesgravamenOriginal(Double desgravamenOriginal) { this.desgravamenOriginal = desgravamenOriginal; }

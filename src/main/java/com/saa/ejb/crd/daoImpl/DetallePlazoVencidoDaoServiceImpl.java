@@ -25,7 +25,7 @@ public class DetallePlazoVencidoDaoServiceImpl extends EntityDaoImpl<DetallePlaz
         return new String[]{
             "codigo",
             "declaracion",
-            "cuota",
+            "idCuota",
             "desgravamenOriginal",
             "valorSeguroIncendioOriginal",
             "totalOriginal",

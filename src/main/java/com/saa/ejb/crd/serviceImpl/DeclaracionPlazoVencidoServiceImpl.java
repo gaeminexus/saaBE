@@ -333,7 +333,7 @@ public class DeclaracionPlazoVencidoServiceImpl implements DeclaracionPlazoVenci
 
             DetallePlazoVencido dplv = new DetallePlazoVencido();
             dplv.setDeclaracion(declaracion);
-            dplv.setCuota(cuota);
+            dplv.setIdCuota(cuota.getCodigo());
             dplv.setDesgravamenOriginal(desgravamenOriginal);
             dplv.setValorSeguroIncendioOriginal(seguroOriginal);
             dplv.setTotalOriginal(cuota.getTotal());
@@ -491,12 +491,13 @@ public class DeclaracionPlazoVencidoServiceImpl implements DeclaracionPlazoVenci
             if (dplv.getFechaRestitucion() != null) {
                 continue;
             }
-            DetallePrestamo cuota = dplv.getCuota();
-            if (cuota == null) {
-                continue;
-            }
-            // Recargar para trabajar sobre el estado ACTUAL de la cuota, no el que traía dplv.
-            cuota = detallePrestamoDaoService.find(new DetallePrestamo(), cuota.getCodigo());
+            // H82 (2026-10-02): dplv.idCuota es un Long plano, SIN relación — la cuota puede
+            // haberse borrado desde que se declaró el plazo vencido (un abono a capital o un
+            // reverso de operación la borran de DTPR). Buscarla aparte y tolerar que no exista:
+            // antes era un @ManyToOne EAGER, y cargar ESTE MISMO 'anuladas' de selectByDeclaracion
+            // ya reventaba con EntityNotFoundException apenas Hibernate intentaba hidratarlo.
+            DetallePrestamo cuota = dplv.getIdCuota() != null
+                ? detallePrestamoDaoService.find(new DetallePrestamo(), dplv.getIdCuota()) : null;
             if (cuota == null || esPagadaOCancelada(cuota)) {
                 noRestituidas++;
                 continue;
