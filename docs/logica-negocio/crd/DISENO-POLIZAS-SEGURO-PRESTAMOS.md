@@ -121,3 +121,108 @@ opción en su pantalla de carga. **Mensaje enviado a `omen-saa-2-arb` el 2026-10
 | **S10** | **Abono a capital / precancelación:** dijiste que la aseguradora emite una **nota de débito**. Lo normal sería una **nota de CRÉDITO** (devuelve la prima de lo que ya no se asegura). ¿Es de crédito? ¿El sistema genera el listado de novedades (inclusiones y exclusiones) para mandarle a la aseguradora? | Define si es un cobro o una devolución, y qué reporte hay que hacer |
 | **S11** | **S3, el remanente:** si a un préstamo que termina en 4 meses le toca sólo 4/12 de su parte, los 8/12 restantes de la factura **¿se reparten entre los demás préstamos, o quedan como diferencia** a reclamar a la aseguradora (nota de crédito)? | Si nadie lo absorbe, lo distribuido no suma el total de la factura |
 | **S12** | **S2:** ¿«proporcional» es al **saldo de capital de cada cuota**? | El reparto dentro del préstamo |
+
+---
+
+## 5. DISEÑO TÉCNICO (2026-10-02)
+
+### 5.1 Ciclo de un documento de seguro
+
+```
+1 LISTADO_ENVIADO ─▶ 2 DOCUMENTO_REGISTRADO ─▶ 3 DISTRIBUIDO ─▶ 4 LIBERADO_A_PAGO
+        │                     │                       │
+        └──────────── 5 ANULADO ◀─────────────────────┘   (si estaba distribuido, se revierte en las cuotas)
+```
+
+1. **Generar el listado** (crédito). Por tipo de seguro, el sistema toma los préstamos:
+   - **desgravamen:** `PRSTIDST IN (2, 11)`, de cualquier producto. El 8 queda fuera (D13 de plazo
+     vencido);
+   - **incendio:** lo mismo, tipo de préstamo **2 HIPOTECARIO**;
+   - **prendario:** lo mismo, tipo **3 PRENDARIO**. Son los mismos códigos de `CobroPetroContableServiceImpl:98-99`.
+
+   La **base** es el saldo de capital en desgravamen, y `PRSTVLAS` (suma asegurada) en incendio y
+   prendario. ⛔ Un préstamo de incendio o prendario **sin suma asegurada** se lista marcado
+   «SIN SUMA ASEGURADA» y no puede pasar al paso 2 hasta cargarla. El listado **se guarda** (la foto de
+   lo enviado) y se exporta a Excel para la aseguradora o el broker.
+2. **Registrar el documento** que manda la aseguradora: factura (anual), nota de débito (inclusión) o
+   nota de crédito (exclusión). Se registra:
+   - número de póliza, número de documento y **clave de acceso del SRI**;
+   - aseguradora o broker con su RUC;
+   - fecha de emisión;
+   - **vigencia (inicio y fin)** y **tasa aplicada**;
+   - **valor total con impuestos**.
+3. **Distribuir** (vista previa y luego confirmar). Ver §5.3. Escribe en las cuotas y guarda el valor
+   anterior de cada una.
+4. **Liberar a pago:** se enlaza el documento de CXP por `claveAcceso` y se le quita el bloqueo. El
+   pago sigue el circuito normal de CXP y Tesorería. **Endpoint de `omen-saa-2`, contrato pendiente.**
+5. **Anular:** si estaba distribuido, **reversa** lo escrito en las cuotas. Si estaba liberado, primero
+   vuelve a bloquear en CXP.
+
+### 5.2 Tablas nuevas (`CRD`, nombres libres en el modelo y el registro, verificado el 2026-10-02)
+
+| Tabla | Una fila por | Qué guarda |
+|---|---|---|
+| **`POSG`** — documento de seguro | factura / ND / NC | tipo de seguro (1 desgravamen, 2 incendio, 3 prendario); clase (1 factura, 2 nota de débito, 3 nota de crédito); `POSGPADR` (la factura madre, para ND/NC); aseguradora, RUC, número de póliza, número de documento, `claveAcceso` (única); emisión, vigencia; tasa; valor total; estado (§5.1); el id del documento de CXP; auditoría por paso |
+| **`PSPR`** — préstamo en el documento | préstamo × documento | `PRSTCDGO`, **base enviada**, meses cubiertos, peso, **valor asignado**, cuotas en que se repartió, y la novedad (ORIGINAL / INCLUSIÓN / EXCLUSIÓN) |
+| **`PSCT`** — cuota afectada | cuota × documento | `DTPRCDGO`, campo tocado (DSGR o VLSI), **valor anterior**, valor nuevo, saldo de capital usado como peso, fecha de reverso |
+
+### 5.3 El cálculo de la distribución (S1, S2, S3, S9, S11, S12)
+
+- Cuotas de un préstamo **dentro de la vigencia**: `fechaVencimiento ∈ [inicio, fin]`, no PAGADA (4)
+  ni CANCELADA_ANTICIPADA (7). Una PARCIAL entra, pero su seguro no baja de lo ya pagado.
+- `mesesCubiertos_i` = esas cuotas del préstamo. `mesesVigencia` = meses de la póliza.
+- **Peso del préstamo:** `w_i = base_i × mesesCubiertos_i / mesesVigencia`. Un préstamo que termina
+  antes pesa menos (S3), y lo que no absorbe se reparte solo entre los demás (S11), porque
+  `valor_i = total × w_i / Σw`.
+- **Dentro del préstamo:** cada cuota recibe `valor_i × saldoInicialCapital_cuota / Σ saldoInicialCapital`
+  de sus cuotas de la vigencia (S12, `DTPRSICP`).
+- **Redondeo:** a 2 decimales. El sobrante de la póliza va al **préstamo de mayor valor** (S9), y dentro
+  de cada préstamo, a su **cuota de mayor valor**. Invariante dura: **Σ cuotas = Σ préstamos = total del
+  documento**, al centavo, o no se confirma.
+- **Escritura (S4, reemplaza):** desgravamen → `DTPRDSGR` (y `DTPRDSOR`/`DTPRDSFR` como hoy);
+  incendio/prendario → `DTPRVLSI`. `total` y `totalConSeguro` se ajustan **por diferencia**, sin pisar
+  la mora (lección del reverso de plazo vencido). Valor anterior en `PSCT`.
+
+### 5.4 Novedades durante la vigencia (S5, S10)
+
+- **Reporte de novedades** por rango de fechas, contra la póliza vigente de cada tipo:
+  - **INCLUSIONES:** préstamos que hoy cumplen la regla y no están en ningún documento vivo de la póliza
+    (los nuevos);
+  - **EXCLUSIONES:** préstamos del documento que se precancelaron, abonaron y acortaron, o se declararon
+    en plazo vencido.
+
+  Se exporta para la aseguradora.
+- **Nota de DÉBITO (inclusión):** se registra contra la factura madre con sus préstamos. Se distribuye
+  igual (§5.3) en los préstamos incluidos, cuotas dentro de la vigencia **restante**.
+- **Nota de CRÉDITO (exclusión):** se registra con sus préstamos y el valor. Reduce el seguro de las
+  cuotas **que todavía existan** de esos préstamos (abono que acorta), en proporción a su saldo. En una
+  precancelación las cuotas ya no existen: la nota **sólo se registra** y va a CXP.
+- ⚠️ **Abono a capital dentro de una vigencia:** hoy `AbonoCapitalPrestamoServiceImpl` **recalcula** el
+  desgravamen de las cuotas nuevas con la constante `1.12/1000` (`:638`) y preserva el incendio por
+  número de cuota (`:479-488`). Eso **pisaría** lo distribuido por la póliza. **Propuesta del árbitro:**
+  si el préstamo está en un documento vivo, el seguro pendiente de sus cuotas dentro de la vigencia se
+  **re-reparte** entre las cuotas nuevas en proporción a su saldo, en vez de la constante, y la nota de
+  crédito que llegue después lo reduce. Confirmar con el usuario (S13).
+
+### 5.5 Suma asegurada del bien
+
+- Captura manual por préstamo y **carga por Excel** (`IDAsoprep`, `suma asegurada`) sobre
+  `PRST.PRSTVLAS`. Antes de grabar, la carga muestra el resultado: los que actualiza, los
+  `IDAsoprep` que no existen, los que no son hipotecario/prendario, y los valores ≤ 0.
+- ⚠️ `ContabilidadPrestamoServiceImpl:929` ya lee `PRSTVLAS` para las cuentas de orden de la garantía
+  **al entregar el préstamo**. Cargarlo en préstamos ya entregados **no** genera ese asiento retroactivo.
+  Confirmar con el usuario si debe (S14).
+
+### 5.6 Contabilidad
+
+**Crédito no genera asientos en este proceso.** La factura, la ND y la NC se contabilizan en CXP: el
+activo de seguros pagados por anticipado (plantilla 18) y la retención. El cobro al partícipe ya
+descarga ese activo. Con esto queda cobrado por la vía Petro; por las demás vías depende de los asientos
+de cobro que ya existen.
+
+### 5.7 Preguntas nuevas
+
+| # | Pregunta |
+|---|---|
+| S13 | Abono a capital dentro de la vigencia: ¿se re-reparte el seguro de la póliza entre las cuotas nuevas (propuesta §5.4)? |
+| S14 | ¿Cargar la suma asegurada en préstamos ya entregados debe registrar la garantía en cuentas de orden? |
