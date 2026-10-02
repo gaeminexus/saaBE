@@ -118,7 +118,8 @@ SELECT 'BLOQUE 1b - despues' AS bloque, f.ID, f.NUMERO, f.FCTCEPAG,
  ORDER BY f.ID;
 
 -- =====================================================================================
--- BLOQUE 2 — POLIT HERRERIA (factura 150, 2.250,00). ⛔ COMENTADO hasta leer el BLOQUE 0c.
+-- BLOQUE 2 — POLIT HERRERIA (factura 150, 2.250,00). ⛔ NO USAR: reemplazado por el e2-85 (2026-10-02),
+-- después de que el BLOQUE 0c mostró que el anticipo de julio no existe en el sistema.
 -- Versión para el caso «el anticipo NO existe en el sistema» (cero filas con saldo en el 0c). Si el 0c
 -- muestra un anticipo con saldo ≈ 2.250, NO usar esto: el árbitro escribe la otra versión.
 -- =====================================================================================
