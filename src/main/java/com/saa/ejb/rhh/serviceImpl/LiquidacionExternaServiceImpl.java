@@ -1,5 +1,6 @@
 package com.saa.ejb.rhh.serviceImpl;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -9,22 +10,27 @@ import java.util.regex.Pattern;
 
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
+import com.saa.ejb.cnt.service.AsientoContableService;
 import com.saa.ejb.cxp.dao.PagoProgramadoDaoService;
 import com.saa.ejb.cxp.service.PagoProgramadoService;
 import com.saa.ejb.cxp.service.dto.BeneficiarioOcasional;
-import com.saa.ejb.cxp.service.dto.LineaContablePago;
 import com.saa.ejb.rhh.dao.DetalleLiquidacionExternaDaoService;
 import com.saa.ejb.rhh.dao.LiquidacionExternaDaoService;
 import com.saa.ejb.rhh.service.LiquidacionExternaService;
 import com.saa.ejb.rhh.util.RedondeoNomina;
+import com.saa.model.cnt.Asiento;
+import com.saa.model.cnt.DetalleAsiento;
+import com.saa.model.cnt.PlanCuenta;
 import com.saa.model.cxp.PagoProgramado;
 import com.saa.model.rhh.DetalleLiquidacionExterna;
 import com.saa.model.rhh.LiquidacionExterna;
 import com.saa.model.rhh.NombreEntidadesRhh;
 import com.saa.rubros.EstadoPagoProgramado;
+import com.saa.rubros.ModuloSistema;
 import com.saa.rubros.OrigenPagoExterno;
 import com.saa.rubros.RhhConceptoLiquidacionExterna;
 import com.saa.rubros.RhhEstadoLiquidacionExterna;
+import com.saa.rubros.TipoAsientos;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
@@ -62,6 +68,20 @@ public class LiquidacionExternaServiceImpl implements LiquidacionExternaService 
 
 	@EJB
 	private PagoProgramadoDaoService pagoProgramadoDaoService;
+
+	@EJB
+	private AsientoContableService asientoContableService;
+
+	/**
+	 * Auto-inyeccion: permite que sincronizaLista invoque sincronizarPago A TRAVES del proxy
+	 * EJB, para que cada liquidacion corra en su propia transaccion (REQUIRES_NEW) -- mismo
+	 * motivo que {@code PagoPensionComplementariaServiceImpl.self} (jubilados): una llamada
+	 * directa (this.sincronizarPago(...)) se saltearia el interceptor y la lista completa
+	 * quedaria en una sola transaccion, donde el asiento fallido de una liquidacion
+	 * abortaria la sincronizacion de todas las demas.
+	 */
+	@EJB
+	private LiquidacionExternaService self;
 
 	@PersistenceContext
 	private EntityManager em;
@@ -230,9 +250,9 @@ public class LiquidacionExternaServiceImpl implements LiquidacionExternaService 
 		if (liquidacion.getFechaSalida() == null) {
 			throw new IncomeException("La fecha de salida es obligatoria.");
 		}
-		if (liquidacion.getProductoPago() == null || liquidacion.getProductoPago().getId() == null) {
-			throw new IncomeException("El producto de pago es obligatorio.");
-		}
+		// REVISION 2026-10-02 (R1/R2): el producto de pago (D4) queda derogado -- cada
+		// concepto lleva su propia cuenta contable, exigida solo al enviar a tesoreria
+		// (ver enviarATesoreria), nunca al guardar.
 		if (!liquidacion.getFechaSalida().isBefore(LIMITE_FECHA_SALIDA)) {
 			throw new IncomeException(
 					"Esta pantalla es sólo para salidas anteriores a 2026. Use la liquidación de haberes.");
@@ -342,6 +362,19 @@ public class LiquidacionExternaServiceImpl implements LiquidacionExternaService 
 					+ " puede registrar el pago en la bandeja de tesorería.");
 		}
 
+		// REVISION 2026-10-02 (R1): la cuenta contable es obligatoria en CADA linea para
+		// enviar a tesoreria (no para guardar). Se revisan todas antes de seguir, no solo la
+		// primera que falte.
+		List<DetalleLiquidacionExterna> detalles = detalleLiquidacionExternaDaoService
+				.selectByLiquidacion(idLiquidacion);
+		for (DetalleLiquidacionExterna detalle : detalles) {
+			if (detalle.getCuentaContable() == null || detalle.getCuentaContable().getCodigo() == null) {
+				long tipo = detalle.getTipoConcepto() != null ? detalle.getTipoConcepto().longValue() : 0L;
+				throw new IncomeException(
+						"Falta la cuenta contable del concepto «" + RhhConceptoLiquidacionExterna.nombre(tipo) + "».");
+			}
+		}
+
 		// Idempotencia (§4): si ya existe un pago vigente de este origen y este id, no se
 		// crea otro -- se reusa.
 		List<PagoProgramado> vigentes = pagoProgramadoDaoService
@@ -352,11 +385,6 @@ public class LiquidacionExternaServiceImpl implements LiquidacionExternaService 
 			System.out.println("La liquidación " + idLiquidacion + " ya tenía un pago vigente (" + idPago
 					+ "): no se crea otro.");
 		} else {
-			if (liquidacion.getProductoPago() == null || liquidacion.getProductoPago().getId() == null) {
-				throw new IncomeException("La liquidación " + idLiquidacion + " no tiene producto de pago:"
-						+ " no se puede enviar a tesorería.");
-			}
-
 			String nombreCompleto = ((liquidacion.getApellidos() != null ? liquidacion.getApellidos() : "") + " "
 					+ (liquidacion.getNombres() != null ? liquidacion.getNombres() : "")).trim();
 
@@ -371,16 +399,16 @@ public class LiquidacionExternaServiceImpl implements LiquidacionExternaService 
 
 			String concepto = "Liquidación " + nombreCompleto + " - administración anterior";
 
-			LineaContablePago linea = new LineaContablePago();
-			linea.setIdProductoPago(liquidacion.getProductoPago().getId());
-			linea.setValor(liquidacion.getNeto());
-			linea.setConcepto(concepto);
-			List<LineaContablePago> desglose = new ArrayList<>();
-			desglose.add(linea);
-
+			// REVISION 2026-10-02 (R2): SIN desglose -- el asiento ya no lo genera Tesoreria
+			// (contabilizarPagoOrigenExterno solo arma DEBE contra el banco, y aqui hay
+			// varias cuentas al DEBE y descuentos al HABER). Tesoreria aprueba, paga y
+			// confirma sin asiento; registrarPagoDeOrigenExterno con desglose null es un
+			// camino ya soportado ("Sin desglose no hay contabilidad, y no es un error",
+			// PagoProgramadoServiceImpl.contabilizarPagoOrigenExterno) -- el asiento lo
+			// genera RRHH en sincronizarPago, al ver el pago CONFIRMADO.
 			Map<String, Object> resultadoPago = pagoProgramadoService.registrarPagoDeOrigenExterno(
 					OrigenPagoExterno.RHH_LIQUIDACION_EXCOLABORADOR, idLiquidacion, idEmpresa, null,
-					liquidacion.getNeto(), LocalDate.now().toString(), beneficiario, desglose, concepto, idUsuario,
+					liquidacion.getNeto(), LocalDate.now().toString(), beneficiario, null, concepto, idUsuario,
 					false, null);
 
 			idPago = (Long) resultadoPago.get("pago");
@@ -401,8 +429,14 @@ public class LiquidacionExternaServiceImpl implements LiquidacionExternaService 
 		return resultado;
 	}
 
+	// REQUIRES_NEW (no REQUIRED): sincronizaLista llama a este metodo A TRAVES de self por
+	// cada liquidacion EN_TESORERIA de una lista (getAll/selectByCriteria), y cada una tiene
+	// que correr en su propia transaccion -- si el asiento de una falla, las demas no se
+	// deben quedar sin sincronizar. El endpoint POST /lqex/sincronizarPago/{id} llama a este
+	// mismo metodo para una sola liquidacion, y REQUIRES_NEW no le cambia nada: ya era la
+	// unica transaccion de ese request.
 	@Override
-	@TransactionAttribute(TransactionAttributeType.REQUIRED)
+	@TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
 	public LiquidacionExterna sincronizarPago(Long idLiquidacion) throws Throwable {
 		System.out.println("=== sincronizarPago liquidacion externa | id=" + idLiquidacion + " ===");
 		return sincroniza(recuperaLiquidacion(idLiquidacion));
@@ -495,27 +529,24 @@ public class LiquidacionExternaServiceImpl implements LiquidacionExternaService 
 				|| liquidacion.getIdPago() == null) {
 			return liquidacion;
 		}
-		Object[] fila;
+		Long estadoPago;
 		try {
-			fila = (Object[]) em
-					.createQuery("select p.estado, p.fechaRespuesta, p.asiento.codigo from PagoProgramado p"
-							+ " where p.id = :id")
+			estadoPago = (Long) em.createQuery("select p.estado from PagoProgramado p where p.id = :id")
 					.setParameter("id", liquidacion.getIdPago())
 					.getSingleResult();
 		} catch (NoResultException e) {
 			return liquidacion;
 		}
-		Long estadoPago = (Long) fila[0];
 		if (estadoPago == null) {
 			return liquidacion;
 		}
 		int estado = estadoPago.intValue();
 		if (estado == EstadoPagoProgramado.CONFIRMADO) {
-			liquidacion.setFechaPago((LocalDate) fila[1]);
-			liquidacion.setIdAsiento((Long) fila[2]);
-			liquidacion.setEstado(Long.valueOf(RhhEstadoLiquidacionExterna.PAGADA));
-			liquidacion = liquidacionExternaDaoService.save(liquidacion, liquidacion.getCodigo());
-			System.out.println("✓ Liquidación externa " + liquidacion.getCodigo() + " sincronizada: PAGADA.");
+			// R2: el asiento lo genera RRHH aqui, no Tesoreria -- idAsiento/fechaPago/PAGADA
+			// se graban en la MISMA transaccion que el asiento (generaAsientoYPasaAPagada no
+			// atrapa su propia excepcion: si el asiento falla, nada de esto se graba y la
+			// liquidacion sigue EN_TESORERIA).
+			liquidacion = generaAsientoYPasaAPagada(liquidacion);
 		} else if (estado == EstadoPagoProgramado.RECHAZADO || estado == EstadoPagoProgramado.ANULADO) {
 			liquidacion.setIdPago(null);
 			liquidacion.setEstado(Long.valueOf(RhhEstadoLiquidacionExterna.REGISTRADA));
@@ -527,7 +558,142 @@ public class LiquidacionExternaServiceImpl implements LiquidacionExternaService 
 	}
 
 	/**
+	 * Genera el asiento del pago en RRHH (REVISIÓN 2026-10-02, R2) y pasa la liquidación a
+	 * PAGADA, en la MISMA transacción: si algo de esto falla (cuenta contable faltante,
+	 * descuadre, período cerrado, etc.), la excepción sube sin que se grabe nada -- la
+	 * liquidación sigue EN_TESORERIA, el pago no se pierde y se puede reintentar sincronizando
+	 * de nuevo.
+	 *
+	 * <p><b>DEBE:</b> cada ingreso a su cuenta contable (§R1, {@code DetalleLiquidacionExterna.
+	 * cuentaContable}). <b>HABER:</b> cada descuento a su cuenta, más el neto al banco.</p>
+	 *
+	 * <p><b>Cuenta del banco:</b> {@code PagoProgramado.cuentaBancaria.getPlanCuenta()} --
+	 * verificado contra el código real, no copiado del precedente que el encargo señalaba
+	 * ({@code OrdenBeneficioSocialServiceImpl.confirmarPago} /
+	 * {@code ContabilizacionNominaServiceImpl.contabilizarBajaProvisionBeneficioSocial}): esos
+	 * dos métodos sacan la línea de banco de una <i>plantilla de nómina</i>
+	 * ({@code ConfiguracionNomina.getPlantillaPago()} + {@code RhhLineaAsiento.BANCO}), nunca
+	 * leen {@code PagoProgramado.getCuentaBancaria()} -- ninguno de los dos le pasa siquiera el
+	 * {@code PagoProgramado} a la contabilización. El patrón que SÍ lee la cuenta bancaria real
+	 * del pago es {@code PagoProgramadoServiceImpl.contabilizarPagoOrigenExterno}
+	 * (líneas ~3147 y ~3191): es ese el que se copia aquí, porque es el que de verdad resuelve
+	 * lo que R2 pide ("la cuenta de origen del PagoProgramado y su cuenta contable").</p>
+	 *
+	 * @param liquidacion	: Liquidación EN_TESORERIA con el pago ya CONFIRMADO
+	 * @return				: La liquidación PAGADA
+	 * @throws Throwable	: IncomeException si falta alguna cuenta contable, el asiento no
+	 *						  cuadra, o cualquier otro error de {@code generarAsiento}
+	 */
+	private LiquidacionExterna generaAsientoYPasaAPagada(LiquidacionExterna liquidacion) throws Throwable {
+		PagoProgramado pago = em.find(PagoProgramado.class, liquidacion.getIdPago());
+		if (pago == null) {
+			throw new IncomeException("No se encontró el pago " + liquidacion.getIdPago()
+					+ " de la liquidación " + liquidacion.getCodigo() + ".");
+		}
+		if (pago.getCuentaBancaria() == null || pago.getCuentaBancaria().getPlanCuenta() == null) {
+			throw new IncomeException("La cuenta bancaria del pago " + pago.getId()
+					+ " no tiene cuenta contable configurada (Tesorería → Cuentas bancarias):"
+					+ " no se puede generar el asiento de la liquidación " + liquidacion.getCodigo() + ".");
+		}
+		LocalDate fechaRespuesta = pago.getFechaRespuesta() != null ? pago.getFechaRespuesta() : LocalDate.now();
+
+		List<DetalleLiquidacionExterna> detalles =
+				detalleLiquidacionExternaDaoService.selectByLiquidacion(liquidacion.getCodigo());
+		List<DetalleAsiento> lineas = new ArrayList<>();
+		BigDecimal sumaIngresos = BigDecimal.ZERO;
+		BigDecimal sumaDescuentos = BigDecimal.ZERO;
+		for (DetalleLiquidacionExterna detalle : detalles) {
+			if (detalle.getTipoConcepto() == null || detalle.getValor() == null) {
+				continue;
+			}
+			long tipo = detalle.getTipoConcepto().longValue();
+			if (detalle.getCuentaContable() == null) {
+				throw new IncomeException("El concepto «" + RhhConceptoLiquidacionExterna.nombre(tipo)
+						+ "» de la liquidación " + liquidacion.getCodigo()
+						+ " no tiene cuenta contable: no se puede generar el asiento.");
+			}
+			double valorLinea = RedondeoNomina.redondea(detalle.getValor()).doubleValue();
+			boolean esIngreso = RhhConceptoLiquidacionExterna.esIngreso(tipo);
+			String glosa = (detalle.getDescripcion() != null && !detalle.getDescripcion().trim().isEmpty())
+					? detalle.getDescripcion().trim() : RhhConceptoLiquidacionExterna.nombre(tipo);
+			lineas.add(creaLineaAsiento(detalle.getCuentaContable(), glosa, valorLinea, esIngreso));
+			if (esIngreso) {
+				sumaIngresos = sumaIngresos.add(BigDecimal.valueOf(valorLinea));
+			} else {
+				sumaDescuentos = sumaDescuentos.add(BigDecimal.valueOf(valorLinea));
+			}
+		}
+
+		double neto = RedondeoNomina.redondea(liquidacion.getNeto()).doubleValue();
+		String nombreCompleto = ((liquidacion.getApellidos() != null ? liquidacion.getApellidos() : "") + " "
+				+ (liquidacion.getNombres() != null ? liquidacion.getNombres() : "")).trim();
+		lineas.add(creaLineaAsiento(pago.getCuentaBancaria().getPlanCuenta(),
+				"Cta Banco: " + pago.getCuentaBancaria().getNumeroCuenta(), neto, false));
+
+		// Cuadra por construccion (R2): ingresos = descuentos + neto. Comparacion en centavos
+		// enteros, mismo criterio que PagoProgramadoServiceImpl.contabilizarSegunOrigen: no se
+		// absorbe un descuadre de redondeo en silencio.
+		long debeCentavos = Math.round(sumaIngresos.doubleValue() * 100d);
+		long haberCentavos = Math.round((sumaDescuentos.doubleValue() + neto) * 100d);
+		if (debeCentavos != haberCentavos) {
+			throw new IncomeException("Los conceptos de la liquidación " + liquidacion.getCodigo()
+					+ " no cuadran: ingresos $" + String.format("%.2f", sumaIngresos.doubleValue())
+					+ " contra descuentos + neto $"
+					+ String.format("%.2f", sumaDescuentos.doubleValue() + neto)
+					+ ". No se genera un asiento descuadrado.");
+		}
+
+		String observacion = "Pago de liquidación - " + nombreCompleto + " - administración anterior";
+		String usuario = (liquidacion.getUsuarioRegistro() != null && !liquidacion.getUsuarioRegistro().trim().isEmpty())
+				? liquidacion.getUsuarioRegistro() : "SISTEMA";
+
+		Asiento asiento = asientoContableService.generarAsiento(
+				liquidacion.getEmpresa().getCodigo(),
+				TipoAsientos.RECURSOS_HUMANOS,
+				fechaRespuesta,
+				observacion,
+				usuario,
+				lineas,
+				Long.valueOf(ModuloSistema.RECURSOS_HUMANOS));
+
+		liquidacion.setIdAsiento(asiento.getCodigo());
+		liquidacion.setFechaPago(fechaRespuesta);
+		liquidacion.setEstado(Long.valueOf(RhhEstadoLiquidacionExterna.PAGADA));
+		liquidacion = liquidacionExternaDaoService.save(liquidacion, liquidacion.getCodigo());
+		System.out.println("✓ Liquidación externa " + liquidacion.getCodigo()
+				+ " sincronizada: PAGADA | asiento=" + asiento.getCodigo());
+		return liquidacion;
+	}
+
+	/**
+	 * Arma una línea de asiento, mismo patrón que
+	 * {@code PagoProgramadoServiceImpl.creaLineaAsiento} (privado en esa clase, no reusable).
+	 *
+	 * @param cuenta		: Cuenta contable de la línea
+	 * @param descripcion	: Glosa de la línea
+	 * @param valor			: Valor, siempre positivo
+	 * @param esDebe		: true para DEBE, false para HABER
+	 * @return				: La línea, con el valor redondeado a 2 decimales
+	 */
+	private DetalleAsiento creaLineaAsiento(PlanCuenta cuenta, String descripcion, double valor, boolean esDebe) {
+		double valorRedondeado = RedondeoNomina.redondea(Double.valueOf(valor)).doubleValue();
+		DetalleAsiento linea = new DetalleAsiento();
+		linea.setPlanCuenta(cuenta);
+		linea.setNumeroCuenta(cuenta.getCuentaContable());
+		linea.setNombreCuenta(cuenta.getNombre());
+		linea.setDescripcion(descripcion);
+		linea.setValorDebe(esDebe ? valorRedondeado : 0.0);
+		linea.setValorHaber(esDebe ? 0.0 : valorRedondeado);
+		return linea;
+	}
+
+	/**
 	 * Sincroniza en el sitio cada liquidacion EN_TESORERIA de la lista (getAll/selectByCriteria, §6).
+	 *
+	 * <p>Cada liquidacion se sincroniza A TRAVES de {@code self}, en su propia transaccion
+	 * REQUIRES_NEW: si el asiento de una falla, se atrapa aqui y esa liquidacion se deja tal
+	 * como estaba (EN_TESORERIA) en la lista -- no debe abortar ni afectar la sincronizacion
+	 * de las demas.</p>
 	 *
 	 * @param lista			: Lista a sincronizar
 	 * @throws Throwable	: Excepcion
@@ -537,7 +703,12 @@ public class LiquidacionExternaServiceImpl implements LiquidacionExternaService 
 			LiquidacionExterna liquidacion = lista.get(i);
 			if (liquidacion.getEstado() != null
 					&& liquidacion.getEstado().intValue() == RhhEstadoLiquidacionExterna.EN_TESORERIA) {
-				lista.set(i, sincroniza(liquidacion));
+				try {
+					lista.set(i, self.sincronizarPago(liquidacion.getCodigo()));
+				} catch (Throwable e) {
+					System.err.println("No se pudo sincronizar la liquidación " + liquidacion.getCodigo()
+							+ ": " + e.getMessage() + ". Queda EN_TESORERIA.");
+				}
 			}
 		}
 	}

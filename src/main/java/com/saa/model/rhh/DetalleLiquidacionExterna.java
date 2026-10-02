@@ -4,6 +4,7 @@ import java.io.Serializable;
 import java.time.LocalDateTime;
 
 import com.saa.basico.util.EntidadAuditableFechaHora;
+import com.saa.model.cnt.PlanCuenta;
 
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
@@ -75,6 +76,17 @@ public class DetalleLiquidacionExterna implements Serializable, EntidadAuditable
 	private Double valor;
 
 	/**
+	 * Cuenta contable de movimiento (CNT.PLNN) de este concepto -- REVISIÓN 2026-10-02 (R1):
+	 * D4 queda derogada, ya no hay una sola cuenta por liquidación, cada línea elige la suya.
+	 * Obligatoria para enviar a Tesorería, no para guardar. Sin FK de base de datos (D6,
+	 * mismo patrón que {@code productoPago}/{@code banco} de {@link LiquidacionExterna}): una
+	 * FK entre esquemas exige {@code GRANT REFERENCES}.
+	 */
+	@ManyToOne
+	@JoinColumn(name = "DLEXPLNN", referencedColumnName = "PLNNCDGO")
+	private PlanCuenta cuentaContable;
+
+	/**
 	 * Orden de presentacion en el acta.
 	 */
 	@Basic
@@ -137,6 +149,14 @@ public class DetalleLiquidacionExterna implements Serializable, EntidadAuditable
 
 	public void setValor(Double valor) {
 		this.valor = valor;
+	}
+
+	public PlanCuenta getCuentaContable() {
+		return cuentaContable;
+	}
+
+	public void setCuentaContable(PlanCuenta cuentaContable) {
+		this.cuentaContable = cuentaContable;
 	}
 
 	public Long getOrden() {

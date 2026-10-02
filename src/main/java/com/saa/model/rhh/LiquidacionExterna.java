@@ -153,11 +153,14 @@ public class LiquidacionExterna implements Serializable, EntidadAuditableFechaHo
 	private Double neto;
 
 	/**
-	 * Producto de pago (PGS.PRDP) cuyo grupo apunta a la cuenta por pagar que se debita al
-	 * pagar (decision D4: una sola cuenta por liquidacion). Sin FK de base de datos (D6).
+	 * Producto de pago (PGS.PRDP). <b>Opcional desde la REVISIÓN 2026-10-02 (R2): D4 queda
+	 * derogada</b> -- ya no hay una sola cuenta por liquidacion que se debite al pagar; cada
+	 * concepto lleva su propia cuenta contable ({@link DetalleLiquidacionExterna#getCuentaContable()},
+	 * R1) y el asiento lo genera RRHH al confirmarse el pago, no Tesoreria. Sin FK de base de
+	 * datos (D6).
 	 */
 	@ManyToOne
-	@JoinColumn(name = "LQEXPRDP", referencedColumnName = "ID", nullable = false)
+	@JoinColumn(name = "LQEXPRDP", referencedColumnName = "ID")
 	private ProductoPago productoPago;
 
 	/**

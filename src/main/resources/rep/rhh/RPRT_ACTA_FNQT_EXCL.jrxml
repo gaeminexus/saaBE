@@ -36,18 +36,22 @@
     NVL(c.CSTRARTC, ' ')                                              AS ARTICULO,
     NVL(d.DLEXDSCR, CASE d.DLEXTPCN
         WHEN 1  THEN 'Remuneracion pendiente'
-        WHEN 2  THEN 'Decimo tercer sueldo'
-        WHEN 3  THEN 'Decimo cuarto sueldo'
-        WHEN 4  THEN 'Vacaciones no gozadas'
+        WHEN 2  THEN 'Vacaciones no gozadas'
+        WHEN 3  THEN 'Decimo tercer sueldo'
+        WHEN 4  THEN 'Decimo cuarto sueldo'
         WHEN 5  THEN 'Fondos de reserva'
         WHEN 6  THEN 'Bonificacion por desahucio'
-        WHEN 7  THEN 'Indemnizacion por despido'
-        WHEN 8  THEN 'Otro ingreso gravado'
-        WHEN 9  THEN 'Otro ingreso no gravado'
-        WHEN 20 THEN 'Aporte personal IESS'
+        WHEN 7  THEN 'Indemnizacion por despido intempestivo'
+        WHEN 8  THEN 'Participacion de utilidades'
+        WHEN 9  THEN 'Compensacion economica salario digno'
+        WHEN 10 THEN 'Otro ingreso gravado de IR'
+        WHEN 11 THEN 'Otro ingreso no gravado de IR'
+        WHEN 20 THEN 'Aporte personal al IESS'
         WHEN 21 THEN 'Retencion de impuesto a la renta'
-        WHEN 22 THEN 'Prestamo o anticipo'
-        WHEN 23 THEN 'Otro descuento'
+        WHEN 22 THEN 'Anticipo de quincena'
+        WHEN 23 THEN 'Anticipo de remuneracion'
+        WHEN 24 THEN 'Otros conceptos por cobrar'
+        WHEN 25 THEN 'Otros ingresos (uniformes y similares)'
         ELSE 'Concepto ' || d.DLEXTPCN
     END)                                                               AS RUBRO,
     NVL(d.DLEXTPCN, 1)                                                AS TIPO_CONCEPTO,

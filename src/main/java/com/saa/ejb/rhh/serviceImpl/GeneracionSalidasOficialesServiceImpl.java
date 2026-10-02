@@ -146,9 +146,11 @@ public class GeneracionSalidasOficialesServiceImpl implements GeneracionSalidasO
             }
         }
 
-        // e3-05 (2026-09-30, §8 del contrato): LQEX PAGADA cuya fechaPago cae en el anio.
-        // ingresoGravado = tipos 1, 4 y 8; aportePersonal = tipo 20; retencion = tipo 21.
-        // No se toca el calculo de ACMN de arriba.
+        // e3-05 (2026-09-30, §8) + REVISION R3 (2026-10-02): LQEX PAGADA cuya fechaPago cae en
+        // el anio. ingresoGravado = tipos 1, 2, 3, 4 y 10 (RhhConceptoLiquidacionExterna.
+        // esGravadoIrEnRdep, caso real verificado con el contador: remuneracion + vacaciones +
+        // decimo tercero + decimo cuarto = 2.316,22); aportePersonal = tipo 20; retencion =
+        // tipo 21. No se toca el calculo de ACMN de arriba.
         if (liquidacionesExternasPagadas != null) {
             for (LiquidacionExterna liquidacion : liquidacionesExternasPagadas) {
                 List<DetalleLiquidacionExterna> detalles = detalleLiquidacionExternaDaoService
@@ -162,7 +164,7 @@ public class GeneracionSalidasOficialesServiceImpl implements GeneracionSalidasO
                             continue;
                         }
                         long tipo = detalle.getTipoConcepto().longValue();
-                        if (RhhConceptoLiquidacionExterna.esGravadoIr(tipo)) {
+                        if (RhhConceptoLiquidacionExterna.esGravadoIrEnRdep(tipo)) {
                             gravadoLqex = RedondeoNomina.suma(gravadoLqex, detalle.getValor());
                         } else if (tipo == RhhConceptoLiquidacionExterna.APORTE_PERSONAL_IESS) {
                             aporteLqex = RedondeoNomina.suma(aporteLqex, detalle.getValor());

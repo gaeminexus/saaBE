@@ -33,6 +33,7 @@ public class DetalleLiquidacionExternaDaoServiceImpl extends EntityDaoImpl<Detal
 							"tipoConcepto",
 							"descripcion",
 							"valor",
+							"cuentaContable",
 							"orden",
 							"fechaRegistro",
 							"usuarioRegistro"};
