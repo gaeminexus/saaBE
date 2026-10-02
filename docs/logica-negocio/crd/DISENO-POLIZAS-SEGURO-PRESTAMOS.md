@@ -220,9 +220,30 @@ activo de seguros pagados por anticipado (plantilla 18) y la retención. El cobr
 descarga ese activo. Con esto queda cobrado por la vía Petro; por las demás vías depende de los asientos
 de cobro que ya existen.
 
+### 5.6bis S13 — DECIDIDO por el usuario (2026-10-02): el abono re-reparte el seguro de la póliza
+
+Si el préstamo tiene cuotas cubiertas por un documento vivo (`PSCT` sin `fechaReverso`, documento en
+estado 3 o 4) del tipo desgravamen y/o incendio-prendario:
+- antes de borrar las cuotas pendientes, `AbonoCapitalPrestamoServiceImpl` suma el seguro de póliza de
+  las cuotas que va a borrar **dentro de la vigencia**;
+- al crear las cuotas nuevas, ese monto se **re-reparte** entre las nuevas que caen dentro de la vigencia,
+  en proporción a su `DTPRSICP`, con el sobrante a la de mayor valor. **No** se usa la constante 1,12/1000
+  ni el incendio por número de cuota en esas cuotas;
+- los `PSCT` de las cuotas borradas quedan con `fechaReverso` (marca de «reemplazada»), y se crean `PSCT`
+  nuevos para las cuotas nuevas: `anterior` = lo que el abono les habría puesto, `nuevo` = lo
+  re-repartido;
+- después, la **nota de crédito** de la aseguradora por ese abono baja el seguro (§7 del contrato).
+
+### ⛔ H82 — Las tablas de historia por cuota NO pueden tener FK a `CRD.DTPR`
+
+El abono y el reverso de operaciones **borran** cuotas de `DTPR` y las vuelven a crear. Con la FK:
+- un préstamo con declaración de plazo vencido (`DPLV`, ya en producción) **no se puede abonar ni
+  reversar**: ORA-02292. Se corrige con el `sql/307`;
+- `PSCT` tenía el mismo diseño y se corrigió en el `306` **antes de correrlo**.
+
 ### 5.7 Preguntas nuevas
 
 | # | Pregunta |
 |---|---|
-| S13 | Abono a capital dentro de la vigencia: ¿se re-reparte el seguro de la póliza entre las cuotas nuevas (propuesta §5.4)? |
+| ~~S13~~ | **DECIDIDO: sí** (§5.6bis) |
 | S14 | ¿Cargar la suma asegurada en préstamos ya entregados debe registrar la garantía en cuentas de orden? |
