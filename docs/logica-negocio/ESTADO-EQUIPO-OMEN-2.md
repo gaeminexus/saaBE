@@ -4700,3 +4700,37 @@ registró hoy a las 12:38 **sin** `PGTRCTBN`, y es el único en esa situación.
 `anularAnticipo` ahora consulta `PGS.DDPR`. **Un WAR de `main` sin el `e2-78` rompe la anulación de
 CUALQUIER anticipo de proveedor** (ORA-00942), además de la pantalla nueva. No es solo la función
 nueva: toca una que ya existía.
+
+## §58 — El saldo global de anticipos (PRCC tipo 2) descuadrado en seis proveedores (2026-10-02)
+
+**Lo destapó la primera Devolución de Anticipo en producción.** EXPOAUTOPARTS no pudo devolver 23,94:
+su PRCC tipo 2 decía 15,30. **La validación hizo su trabajo**: si pasaba, el PRCC quedaba en −8,64.
+
+`e2-80` midió la familia: **seis proveedores** con el PRCC distinto de la suma de saldos de sus
+anticipos confirmados.
+
+| Proveedor | PRCC | Anticipos | Diferencia | Causa probable |
+|---|---:|---:|---:|---|
+| GAEMII NEXUS | 6.000 | 0 | +6.000 | saldo editado a mano, o de apertura |
+| VYM | 13,15 | 0 | +13,15 | ídem |
+| VARGAS BARAHONA | 0 | 320 | −320 | el confirmar no sumó |
+| EXPOAUTOPARTS | 15,30 | 23,94 | −8,64 | tocado por fuera: sus anticipos cuadran exacto |
+| JLCONTROL | 0 | 3,05 | −3,05 | el confirmar no sumó |
+| ALANIS NARVÁEZ | 0 | 2,50 | −2,50 | el confirmar no sumó |
+
+### Las dos causas, en el código
+
+1. **`AnticipoProveedorServiceImpl.actualizarSaldoInicialPrcc` (:1150-1170) se traga el error.** Si
+   no encuentra la cuenta o falla, imprime y sigue: el anticipo queda CONFIRMADO y el PRCC **no sube**.
+   Es la familia de la función que contesta mal en silencio (§35).
+2. **Titulares → «Editar saldo inicial»** (`titulares-v2.component.ts:811`) pisa el PRCC con cualquier
+   número, mientras los cruces y las devoluciones validan contra él.
+
+### Lo hecho y lo abierto
+
+- `e2-81` cuadra **solo** EXPOAUTOPARTS (→ 23,94) y JLCONTROL (→ 3,05), con guardas. Los otros cuatro
+  **no se tocan** hasta medirlos: GAEMII y VYM pueden tener anticipos migrados (estado 4) o saldos de
+  apertura legítimos, que el `e2-80` no sumó.
+- **Abierto, decisión del usuario:** corregir las dos causas: que confirmar un anticipo falle si no
+  puede sumar al PRCC, y que el saldo de la cuenta de anticipos (tipo 2) no se edite a mano, o que
+  editarlo exija justificación.
