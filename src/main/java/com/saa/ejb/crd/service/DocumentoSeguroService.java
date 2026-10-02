@@ -74,4 +74,18 @@ public interface DocumentoSeguroService {
 
     /** {@code GET /posg/{id}/prestamos} (contrato §8). */
     List<PrestamoSeguroDTO> getPrestamos(Long id) throws Throwable;
+
+    /**
+     * Reparto proporcional de {@code total} entre {@code pesos}, redondeado a 2 decimales con el
+     * sobrante al de mayor valor — la MISMA fórmula que usa la distribución de pólizas (diseño
+     * §5.3), expuesta para que el abono a capital (S13,
+     * {@code docs/logica-negocio/crd/DISENO-POLIZAS-SEGURO-PRESTAMOS.md} §5.6bis) re-reparta el
+     * seguro de una póliza viva entre las cuotas nuevas sin duplicar la lógica.
+     *
+     * @param pesos paralelo a cada cuota que recibe una parte (p. ej. su DTPRSICP); nulos tratados como 0
+     * @param total valor a repartir
+     * @return reparto en el MISMO orden que {@code pesos}; suma exactamente {@code total} al
+     *         centavo. {@code 0.0} en cada posición si {@code Σpesos <= 0}
+     */
+    double[] repartirPorPeso(List<Double> pesos, double total);
 }

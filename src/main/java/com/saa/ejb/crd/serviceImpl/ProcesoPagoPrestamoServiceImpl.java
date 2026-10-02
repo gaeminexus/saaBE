@@ -128,6 +128,10 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
     @EJB
     private HistDetallePrestamoDaoService histDetallePrestamoDaoService;
 
+    /** S13 — re-enlazar la póliza viva al restaurar cuotas desde HDTP al reversar un abono. */
+    @EJB
+    private com.saa.ejb.crd.dao.CuotaSeguroDaoService cuotaSeguroDaoService;
+
     @EJB
     private PagoPrestamoDaoService pagoPrestamoDaoService;
 
@@ -1323,6 +1327,25 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
                             + "); anúlelos primero");
                     }
                 }
+                // S13 — antes de borrar, cerrar los PSCT vigentes de estas cuotas (si una póliza
+                // viva las cubría, re-repartida al aplicar el abono). Marca qué (documento,
+                // campo) seguían vivos AL MOMENTO de este abono — nada pudo haberlos tocado
+                // entre medio: el LIFO de arriba (selectVigentesPosterioresByPrestamo) ya exige
+                // que este evento sea el ÚLTIMO del préstamo, así que "vigente ahora, justo antes
+                // de este reverso" es lo mismo que "vigente cuando el abono corrió".
+                List<Long> idsAEliminar = new ArrayList<>();
+                for (DetallePrestamo cuota : aEliminar) {
+                    idsAEliminar.add(cuota.getCodigo());
+                }
+                java.util.Set<String> polizasVivasAlMomentoDelAbono = new java.util.HashSet<>();
+                for (com.saa.model.crd.CuotaSeguro psct : cuotaSeguroDaoService.selectByCuotas(idsAEliminar)) {
+                    if (psct.getFechaReverso() == null) {
+                        polizasVivasAlMomentoDelAbono.add(psct.getDocumento().getCodigo() + "-" + psct.getCampo());
+                        psct.setFechaReverso(ahora);
+                        cuotaSeguroDaoService.save(psct, psct.getCodigo());
+                    }
+                }
+
                 for (DetallePrestamo cuota : aEliminar) {
                     // Los PGPR anulados que apunten a la cuota impedirían el DELETE por FK:
                     // se re-apuntan a la cuota restaurada más adelante no es posible, así que
@@ -1336,16 +1359,55 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
                     detallePrestamoDaoService.remove(cuota, cuota.getCodigo());
                     cuotasEliminadas++;
                 }
-            }
 
-            // Restaurar desde HDTP. El DTPRCDGO cambia: el original queda en HDTP.DTPRCDGO.
-            if (historicas != null) {
-                for (HistDetallePrestamo historica : historicas) {
-                    DetallePrestamo cuota = restaurarDesdeHistorico(historica, prestamo);
-                    // DAO directo: DetallePrestamoService.saveSingle fuerza estado = 1 en las
-                    // filas nuevas y perdería el estado original que se está restaurando.
-                    detallePrestamoDaoService.save(cuota, null);
-                    cuotasRestauradas++;
+                // S13 — PSCT de las cuotas ORIGINALES (antes del abono), por su DTPRCDGO viejo,
+                // para re-enlazar solo las que de verdad pertenecían a una póliza que seguía viva.
+                List<Long> idsOriginales = new ArrayList<>();
+                if (historicas != null) {
+                    for (HistDetallePrestamo historica : historicas) {
+                        if (historica.getCodigoOriginal() != null) {
+                            idsOriginales.add(historica.getCodigoOriginal());
+                        }
+                    }
+                }
+                Map<Long, List<com.saa.model.crd.CuotaSeguro>> psctPorCuotaOriginal = new LinkedHashMap<>();
+                for (com.saa.model.crd.CuotaSeguro psct : cuotaSeguroDaoService.selectByCuotas(idsOriginales)) {
+                    psctPorCuotaOriginal.computeIfAbsent(psct.getIdCuota(), k -> new ArrayList<>()).add(psct);
+                }
+
+                // Restaurar desde HDTP. El DTPRCDGO cambia: el original queda en HDTP.DTPRCDGO.
+                if (historicas != null) {
+                    for (HistDetallePrestamo historica : historicas) {
+                        DetallePrestamo cuota = restaurarDesdeHistorico(historica, prestamo);
+                        // DAO directo: DetallePrestamoService.saveSingle fuerza estado = 1 en las
+                        // filas nuevas y perdería el estado original que se está restaurando.
+                        cuota = detallePrestamoDaoService.save(cuota, null);
+                        cuotasRestauradas++;
+
+                        // S13 — re-enlazar: solo si la póliza de esa fila histórica seguía viva
+                        // al momento del abono (la misma que acabamos de cerrar arriba).
+                        List<com.saa.model.crd.CuotaSeguro> psctOriginales = historica.getCodigoOriginal() != null
+                            ? psctPorCuotaOriginal.get(historica.getCodigoOriginal()) : null;
+                        if (psctOriginales != null) {
+                            for (com.saa.model.crd.CuotaSeguro psctOriginal : psctOriginales) {
+                                String clave = psctOriginal.getDocumento().getCodigo() + "-" + psctOriginal.getCampo();
+                                if (!polizasVivasAlMomentoDelAbono.contains(clave)) {
+                                    continue; // esta póliza ya estaba anulada antes del abono: no se re-enlaza
+                                }
+                                double valorRestaurado = psctOriginal.getCampo() == com.saa.rubros.CampoSeguroCuota.DESGRAVAMEN
+                                    ? nvl(cuota.getDesgravamen()) : nvl(cuota.getValorSeguroIncendio());
+                                com.saa.model.crd.CuotaSeguro psctNuevo = new com.saa.model.crd.CuotaSeguro();
+                                psctNuevo.setDocumento(psctOriginal.getDocumento());
+                                psctNuevo.setPrestamoSeguro(psctOriginal.getPrestamoSeguro());
+                                psctNuevo.setIdCuota(cuota.getCodigo());
+                                psctNuevo.setCampo(psctOriginal.getCampo());
+                                psctNuevo.setSaldoInicialCapital(nvl(cuota.getSaldoInicialCapital()));
+                                psctNuevo.setValorAnterior(psctOriginal.getValorAnterior());
+                                psctNuevo.setValorNuevo(valorRestaurado);
+                                cuotaSeguroDaoService.save(psctNuevo, null);
+                            }
+                        }
+                    }
                 }
             }
             System.out.println("  ♻️ Cuotas eliminadas: " + cuotasEliminadas

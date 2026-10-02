@@ -94,6 +94,13 @@ public class AbonoCapitalPrestamoServiceImpl implements AbonoCapitalPrestamoServ
     @EJB
     private FechaService fechaService;
 
+    /** S13 — re-reparto del seguro de una póliza viva entre las cuotas nuevas del abono. */
+    @EJB
+    private com.saa.ejb.crd.dao.CuotaSeguroDaoService cuotaSeguroDaoService;
+
+    @EJB
+    private com.saa.ejb.crd.service.DocumentoSeguroService documentoSeguroService;
+
     // ========================================================================
     // Simulación
     // ========================================================================
@@ -212,6 +219,45 @@ public class AbonoCapitalPrestamoServiceImpl implements AbonoCapitalPrestamoServ
             nuevas.add(cuota);
         }
         System.out.println("  📄 Cuotas nuevas generadas: " + nuevas.size());
+
+        // 3bis. S13 — cerrar los PSCT vigentes de la póliza sobre las cuotas que se acaban de
+        // borrar y abrir unos nuevos sobre las cuotas nuevas, con el valor re-repartido. Vacío
+        // si aplicarReRepartoPolizaViva (dentro de calcular(), más arriba) no encontró ninguna
+        // póliza viva — comportamiento idéntico al de antes de S13.
+        if (!calculo.reRepartosAplicados.isEmpty()) {
+            Map<Long, DetallePrestamo> nuevasPorNumero = new java.util.HashMap<>();
+            for (DetallePrestamo nueva : nuevas) {
+                if (nueva.getNumeroCuota() != null) {
+                    nuevasPorNumero.put(Math.round(nueva.getNumeroCuota()), nueva);
+                }
+            }
+            for (ReRepartoPoliza r : calculo.reRepartosAplicados) {
+                for (com.saa.model.crd.CuotaSeguro psctVieja : cuotaSeguroDaoService.selectByCuotas(r.idsCuotaVieja)) {
+                    if (psctVieja.getFechaReverso() == null && psctVieja.getCampo() != null
+                            && psctVieja.getCampo() == r.campo) {
+                        psctVieja.setFechaReverso(LocalDateTime.now());
+                        cuotaSeguroDaoService.save(psctVieja, psctVieja.getCodigo());
+                    }
+                }
+                for (Map.Entry<Long, Double> entrada : r.montoRerepartido.entrySet()) {
+                    DetallePrestamo nueva = nuevasPorNumero.get(entrada.getKey());
+                    if (nueva == null) {
+                        continue;
+                    }
+                    com.saa.model.crd.CuotaSeguro psctNueva = new com.saa.model.crd.CuotaSeguro();
+                    psctNueva.setDocumento(r.documento);
+                    psctNueva.setPrestamoSeguro(r.prestamoSeguro);
+                    psctNueva.setIdCuota(nueva.getCodigo());
+                    psctNueva.setCampo(r.campo);
+                    psctNueva.setSaldoInicialCapital(nvl(nueva.getSaldoInicialCapital()));
+                    psctNueva.setValorAnterior(r.valorQueElAbonoHabriaPuesto.get(entrada.getKey()));
+                    psctNueva.setValorNuevo(entrada.getValue());
+                    cuotaSeguroDaoService.save(psctNueva, null);
+                }
+            }
+            System.out.println("  🔁 S13 - PSCT re-repartidos sobre " + calculo.reRepartosAplicados.size()
+                + " póliza(s)/campo(s)");
+        }
 
         // 4. Cuota ANCLA donde se acumula el abono en DTPRSLOT
         DetallePrestamo ancla = detallePrestamoDaoService.selectUltimaCuotaPagada(prestamo.getCodigo());
@@ -356,6 +402,25 @@ public class AbonoCapitalPrestamoServiceImpl implements AbonoCapitalPrestamoServ
         private double seguroIncendioLiberado;
         private List<DetallePrestamo> cuotasAHistorizar = new ArrayList<>();
         private List<CuotaProyectada> tabla = new ArrayList<>();
+        /**
+         * S13 — una entrada por (póliza viva, campo) que el abono tocó, para que
+         * {@code aplicar()} cierre los PSCT viejos y abra los nuevos DESPUÉS de que las cuotas
+         * nuevas tengan código real. Vacía si no había ninguna póliza viva sobre
+         * {@code cuotasAHistorizar} — mismo comportamiento que antes de S13.
+         */
+        private List<ReRepartoPoliza> reRepartosAplicados = new ArrayList<>();
+    }
+
+    /** S13 — una póliza viva (documento + campo) cuyo seguro se re-repartió al abonar. */
+    private static class ReRepartoPoliza {
+        private com.saa.model.crd.DocumentoSeguro documento;
+        private com.saa.model.crd.PrestamoSeguro prestamoSeguro;
+        private long campo;
+        private List<Long> idsCuotaVieja = new ArrayList<>();
+        /** Clave: numeroCuota (redondeado) de la cuota NUEVA. */
+        private Map<Long, Double> valorQueElAbonoHabriaPuesto = new java.util.HashMap<>();
+        /** Clave: numeroCuota (redondeado) de la cuota NUEVA. Suma exacta al monto re-repartido. */
+        private Map<Long, Double> montoRerepartido = new java.util.HashMap<>();
     }
 
     /**
@@ -503,6 +568,13 @@ public class AbonoCapitalPrestamoServiceImpl implements AbonoCapitalPrestamoServ
 
         // --- Tabla proyectada ---------------------------------------------------
         construirTablaProyectada(calculo, modalidad, n, numeroInicial, vencimientos, primeraPendiente);
+
+        // S13 (diseño §5.6bis): si alguna de las cuotas que se van a borrar (pendientes) tiene un
+        // seguro vigente de una póliza, ese valor NO puede perderse con la constante 1,12/1000 ni
+        // con el "seguro por número de cuota" de arriba — se re-reparte entre las cuotas NUEVAS
+        // que caen dentro de la MISMA vigencia, proporcional a su propio saldo inicial de capital.
+        // Sin póliza viva sobre 'pendientes', este método no toca nada (comportamiento de siempre).
+        aplicarReRepartoPolizaViva(calculo, pendientes);
 
         // Requerimiento futuro (2026-08-29, anotado y NO implementado — no se construye el
         // proceso de reembolso): en modalidad 1 (acorta plazo), si la tabla nueva tiene menos
@@ -670,6 +742,118 @@ public class AbonoCapitalPrestamoServiceImpl implements AbonoCapitalPrestamoServ
             calculo.tabla.add(proyectada);
 
             saldo = saldoDespues;
+        }
+    }
+
+    /**
+     * S13 (diseño §5.6bis): re-reparte el seguro de cada póliza viva que cubría alguna de
+     * {@code pendientes} entre las cuotas NUEVAS de {@code calculo.tabla} que caen dentro de su
+     * MISMA vigencia, proporcional a su propio saldo inicial de capital — reusa
+     * {@link com.saa.ejb.crd.service.DocumentoSeguroService#repartirPorPeso}, la MISMA fórmula
+     * que la distribución de pólizas, nunca una copia. Sobrescribe
+     * {@code CuotaProyectada.desgravamen}/{@code .seguroIncendio}/{@code .total} de las cuotas
+     * afectadas y deja en {@code calculo.reRepartosAplicados} lo que {@code aplicar()} necesita
+     * para cerrar los PSCT viejos y abrir los nuevos una vez que las cuotas nuevas tengan código.
+     *
+     * <p>Agrupa por (documento, campo): un préstamo puede tener una póliza viva de desgravamen Y
+     * otra de incendio/prendario a la vez, cada una con su propia vigencia. Sin ninguna póliza
+     * viva sobre {@code pendientes}, no hace nada — el abono funciona exactamente como antes de
+     * S13.</p>
+     *
+     * @throws IncomeException {@link AbonoCapitalPrestamoService#ERR_POLIZA_SIN_CUOTAS_EN_VIGENCIA}
+     *         si una póliza viva no tiene NINGUNA cuota nueva dentro de su vigencia — no hay
+     *         dónde re-repartir su seguro sin perderlo, así que no se aplica el abono.
+     */
+    private void aplicarReRepartoPolizaViva(CalculoAbono calculo, List<DetallePrestamo> pendientes)
+            throws Throwable {
+        List<Long> idsCuotaVieja = new ArrayList<>();
+        for (DetallePrestamo cuota : pendientes) {
+            idsCuotaVieja.add(cuota.getCodigo());
+        }
+        List<com.saa.model.crd.CuotaSeguro> todas = cuotaSeguroDaoService.selectByCuotas(idsCuotaVieja);
+
+        // Agrupar las VIGENTES por (documento, campo) — las ya reversadas (otra póliza anulada
+        // antes de este abono) no tienen nada que re-repartir.
+        Map<String, List<com.saa.model.crd.CuotaSeguro>> porDocumentoCampo = new java.util.HashMap<>();
+        for (com.saa.model.crd.CuotaSeguro psct : todas) {
+            if (psct.getFechaReverso() != null) {
+                continue;
+            }
+            String clave = psct.getDocumento().getCodigo() + "-" + psct.getCampo();
+            porDocumentoCampo.computeIfAbsent(clave, k -> new ArrayList<>()).add(psct);
+        }
+        if (porDocumentoCampo.isEmpty()) {
+            return;
+        }
+
+        for (List<com.saa.model.crd.CuotaSeguro> grupo : porDocumentoCampo.values()) {
+            com.saa.model.crd.CuotaSeguro primero = grupo.get(0);
+            com.saa.model.crd.DocumentoSeguro documento = primero.getDocumento();
+            long campo = primero.getCampo();
+
+            double montoARerepartir = 0.0;
+            List<Long> idsViejas = new ArrayList<>();
+            for (com.saa.model.crd.CuotaSeguro psct : grupo) {
+                montoARerepartir += nvl(psct.getValorNuevo());
+                idsViejas.add(psct.getIdCuota());
+            }
+            montoARerepartir = redondear(montoARerepartir);
+            if (montoARerepartir <= TOLERANCIA) {
+                continue;
+            }
+
+            LocalDate inicioVigencia = documento.getFechaInicio();
+            LocalDate finVigencia = documento.getFechaFin();
+            List<CuotaProyectada> enVigencia = new ArrayList<>();
+            for (CuotaProyectada proyectada : calculo.tabla) {
+                LocalDate vencimiento = proyectada.getFechaVencimiento() != null
+                    ? proyectada.getFechaVencimiento().toLocalDate() : null;
+                if (vencimiento != null && inicioVigencia != null && finVigencia != null
+                        && !vencimiento.isBefore(inicioVigencia) && !vencimiento.isAfter(finVigencia)) {
+                    enVigencia.add(proyectada);
+                }
+            }
+            if (enVigencia.isEmpty()) {
+                throw new IncomeException(AbonoCapitalPrestamoService.ERR_POLIZA_SIN_CUOTAS_EN_VIGENCIA
+                    + ": la póliza (documento " + documento.getCodigo() + ") cubre cuotas que este abono"
+                    + " va a reemplazar, pero ninguna cuota de la tabla nueva cae dentro de su vigencia ["
+                    + inicioVigencia + ", " + finVigencia + "]; no hay dónde re-repartir su seguro de $"
+                    + montoARerepartir + " sin perderlo");
+            }
+
+            List<Double> pesos = new ArrayList<>();
+            for (CuotaProyectada proyectada : enVigencia) {
+                pesos.add(nvl(proyectada.getCapital()) + nvl(proyectada.getSaldoCapital())); // DTPRSICP de la fila nueva
+            }
+            double[] repartido = documentoSeguroService.repartirPorPeso(pesos, montoARerepartir);
+
+            ReRepartoPoliza registro = new ReRepartoPoliza();
+            registro.documento = documento;
+            registro.prestamoSeguro = primero.getPrestamoSeguro();
+            registro.campo = campo;
+            registro.idsCuotaVieja = idsViejas;
+
+            for (int i = 0; i < enVigencia.size(); i++) {
+                CuotaProyectada proyectada = enVigencia.get(i);
+                Long clave = Math.round(proyectada.getNumeroCuota());
+                double nuevoValor = repartido[i];
+
+                if (campo == com.saa.rubros.CampoSeguroCuota.DESGRAVAMEN) {
+                    registro.valorQueElAbonoHabriaPuesto.put(clave, nvl(proyectada.getDesgravamen()));
+                    double diferencia = redondear(nuevoValor - nvl(proyectada.getDesgravamen()));
+                    proyectada.setDesgravamen(nuevoValor);
+                    proyectada.setTotal(redondear(nvl(proyectada.getTotal()) + diferencia));
+                } else {
+                    registro.valorQueElAbonoHabriaPuesto.put(clave, nvl(proyectada.getSeguroIncendio()));
+                    double diferencia = redondear(nuevoValor - nvl(proyectada.getSeguroIncendio()));
+                    proyectada.setSeguroIncendio(nuevoValor);
+                    proyectada.setTotal(redondear(nvl(proyectada.getTotal()) + diferencia));
+                }
+                registro.montoRerepartido.put(clave, nuevoValor);
+            }
+            calculo.reRepartosAplicados.add(registro);
+            System.out.println("  🔁 S13 - póliza " + documento.getCodigo() + " (campo " + campo
+                + "): re-repartido $" + montoARerepartir + " entre " + enVigencia.size() + " cuota(s) nueva(s)");
         }
     }
 

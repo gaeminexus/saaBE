@@ -37,4 +37,20 @@ public interface CuotaSeguroDaoService extends EntityDao<CuotaSeguro> {
      */
     List<CuotaSeguro> selectVigentesByCuotasYCampoExcluyendo(List<Long> idsCuota, Long campo,
             List<Long> idsDocumentoExcluir) throws Throwable;
+
+    /**
+     * TODAS las filas (vigentes o ya reversadas) de cualquiera de {@code idsCuota}, en una sola
+     * consulta — «PSCT por id de cuota», el único punto de esta búsqueda (S13,
+     * {@code docs/logica-negocio/crd/DISENO-POLIZAS-SEGURO-PRESTAMOS.md} §5.6bis). Dos usos:
+     * (a) el abono a capital, ANTES de historizar sus cuotas pendientes, para saber qué pólizas
+     * vivas tocan y cuánto re-repartir; (b) el reverso del abono, para re-enlazar por
+     * {@code HistDetallePrestamo.codigoOriginal} solo si el PSCT original seguía vigente al
+     * momento del abono.
+     *
+     * @param idsCuota códigos de cuota (CRD.DTPR) a buscar, vivan o no
+     * @return filas encontradas, con el documento y el préstamo-dentro-del-documento ya cargados;
+     *         vacía si {@code idsCuota} es nulo o vacío
+     * @throws Throwable Si ocurre un error
+     */
+    List<CuotaSeguro> selectByCuotas(List<Long> idsCuota) throws Throwable;
 }

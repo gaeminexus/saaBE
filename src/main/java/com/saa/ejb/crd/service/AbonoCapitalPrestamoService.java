@@ -40,6 +40,12 @@ public interface AbonoCapitalPrestamoService {
     String ERR_MODALIDAD_INVALIDA = "MODALIDAD_INVALIDA";
     /** 422 - El préstamo no tiene cuotas pendientes que re-amortizar */
     String ERR_SIN_CUOTAS_PENDIENTES = "SIN_CUOTAS_PENDIENTES";
+    /**
+     * 422 - Una póliza de seguro viva cubre cuotas que el abono va a borrar (S13), pero ninguna
+     * cuota de la tabla nueva cae dentro de su vigencia — no hay dónde re-repartir el seguro sin
+     * perderlo. No se aplica el abono.
+     */
+    String ERR_POLIZA_SIN_CUOTAS_EN_VIGENCIA = "POLIZA_SIN_CUOTAS_EN_VIGENCIA";
 
     /**
      * Calcula cómo quedaría el préstamo tras el abono, SIN escribir nada.

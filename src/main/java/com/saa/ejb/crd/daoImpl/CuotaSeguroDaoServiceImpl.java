@@ -23,7 +23,7 @@ public class CuotaSeguroDaoServiceImpl extends EntityDaoImpl<CuotaSeguro> implem
     public String[] obtieneCampos() {
         System.out.println("Ingresa al metodo (campos) CuotaSeguro");
         return new String[]{
-            "codigo", "documento", "prestamoSeguro", "cuota", "campo",
+            "codigo", "documento", "prestamoSeguro", "idCuota", "campo",
             "saldoInicialCapital", "valorAnterior", "valorNuevo", "fechaReverso"
         };
     }
@@ -65,6 +65,25 @@ public class CuotaSeguroDaoServiceImpl extends EntityDaoImpl<CuotaSeguro> implem
             query.setParameter("idsCuota", bloque);
             query.setParameter("campo", campo);
             query.setParameter("excluir", excluir);
+            resultado.addAll(query.getResultList());
+        }
+        return resultado;
+    }
+
+    @Override
+    public List<CuotaSeguro> selectByCuotas(List<Long> idsCuota) throws Throwable {
+        System.out.println("CuotaSeguroDaoServiceImpl.selectByCuotas - cuotas: "
+            + (idsCuota != null ? idsCuota.size() : 0));
+        if (idsCuota == null || idsCuota.isEmpty()) {
+            return new ArrayList<>();
+        }
+        List<CuotaSeguro> resultado = new ArrayList<>();
+        int tamanoBloque = 900;
+        for (int inicio = 0; inicio < idsCuota.size(); inicio += tamanoBloque) {
+            List<Long> bloque = idsCuota.subList(inicio, Math.min(inicio + tamanoBloque, idsCuota.size()));
+            Query query = em.createQuery(
+                "select c from CuotaSeguro c where c.idCuota in :idsCuota order by c.codigo asc");
+            query.setParameter("idsCuota", bloque);
             resultado.addAll(query.getResultList());
         }
         return resultado;

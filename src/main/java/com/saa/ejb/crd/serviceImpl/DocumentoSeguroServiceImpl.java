@@ -1282,6 +1282,24 @@ public class DocumentoSeguroServiceImpl implements DocumentoSeguroService {
             : String.valueOf(prestamo.getCodigo());
     }
 
+    @Override
+    public double[] repartirPorPeso(List<Double> pesos, double total) {
+        if (pesos == null || pesos.isEmpty()) {
+            return new double[0];
+        }
+        double sumaPesos = 0.0;
+        for (Double peso : pesos) {
+            sumaPesos += nvl(peso);
+        }
+        double[] raw = new double[pesos.size()];
+        if (sumaPesos > 0.0) {
+            for (int i = 0; i < pesos.size(); i++) {
+                raw[i] = total * nvl(pesos.get(i)) / sumaPesos;
+            }
+        }
+        return redondearConSobranteAlMayor(raw, total);
+    }
+
     /** Redondea cada valor a 2 decimales y pone el sobrante/faltante en el de mayor valor. */
     private double[] redondearConSobranteAlMayor(double[] valoresRaw, double objetivo) {
         double[] redondeados = new double[valoresRaw.length];
