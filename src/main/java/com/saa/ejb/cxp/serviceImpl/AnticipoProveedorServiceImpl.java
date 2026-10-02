@@ -1143,31 +1143,43 @@ public class AnticipoProveedorServiceImpl implements AnticipoProveedorService {
      * @param idEmpresa  : Id de la empresa contable
      * @param rolPersona : {@link RolPersona#CLIENTE} o {@link RolPersona#PROVEEDOR}
      * @param valor      : Valor a sumar (negativo para restar)
+     * @throws Throwable : IncomeException si el proveedor no tiene la cuenta configurada
+     *
+     * ÍTEM 1 (docs/logica-negocio/cxp/DISENO-SALDO-GLOBAL-ANTICIPOS.md §3.1): sin try/catch -- si
+     * no hay cuenta, la operación entera no se hace. Es preferible a un anticipo confirmado con
+     * el saldo global descuadrado (seis proveedores así, medidos en el e2-80).
+     * <p>
+     * ⚠️ Dentro de {@code procesarRespuestaBanco} o {@code confirmarPagosManual}
+     * ({@code PagoProgramadoServiceImpl}) esta excepción revierte el LOTE entero, no sólo el pago
+     * que falló: es {@code @ApplicationException(rollback = true)}, y el contenedor marca la
+     * transacción en el momento en que cruza el límite de este bean (la llamada
+     * {@code anticipoProveedorService.contabilizarAnticipoConfirmado(...)} desde
+     * {@code PagoProgramadoServiceImpl:3769}) -- el {@code try/catch} por pago de esos dos métodos
+     * no la aísla, aunque lo parezca: para cuando lo atrapa, el contenedor ya pidió el rollback.
+     * Medido y decidido así a propósito (§3.1 del diseño): con plata de por medio, todo o nada.
      */
     private void actualizarSaldoInicialPrcc(Long idTitular, Long idEmpresa,
-            int rolPersona, Double valor) {
-        try {
-            java.util.List<PersonaCuentaContable> lista = personaCuentaContableDaoService
-                    .selectByTitularRolTipoCuenta(idEmpresa, idTitular, rolPersona, 2L);
+            int rolPersona, Double valor) throws Throwable {
+        java.util.List<PersonaCuentaContable> lista = personaCuentaContableDaoService
+                .selectByTitularRolTipoCuenta(idEmpresa, idTitular, rolPersona, 2L);
 
-            if (lista.isEmpty()) {
-                System.err.println("⚠ actualizarSaldoInicialPrcc: no se encontró PRCC "
-                        + "para titular=" + idTitular + " empresa=" + idEmpresa
-                        + " tipoCuenta=2 rol=" + rolPersona);
-                return;
-            }
-
-            // Sólo la cuenta del rol pedido: si hubiera más de una fila para el
-            // mismo rol se toma la primera, nunca se acumula en varias.
-            PersonaCuentaContable pcc = lista.get(0);
-            double saldoActual = pcc.getSaldoInicial() != null ? pcc.getSaldoInicial() : 0.0;
-            pcc.setSaldoInicial(saldoActual + valor);
-            em.merge(pcc);
-            System.out.println("✓ PRCC id=" + pcc.getCodigo()
-                    + " saldoInicial actualizado: " + saldoActual + " → " + pcc.getSaldoInicial());
-        } catch (Throwable e) {
-            System.err.println("✗ Error actualizarSaldoInicialPrcc: " + e.getMessage());
-            e.printStackTrace();
+        if (lista.isEmpty()) {
+            Titular titular = em.find(Titular.class, idTitular);
+            String nombre = (titular != null) ? titular.getNombre() : String.valueOf(idTitular);
+            String accion = (valor != null && valor < 0) ? "anular" : "confirmar";
+            throw new IncomeException("El proveedor '" + nombre + "' no tiene cuenta contable de "
+                    + "anticipos (Tipo 2, Rol: Proveedor) configurada para la empresa " + idEmpresa
+                    + ": no se puede " + accion + " el anticipo. Configúrela en Tesorería → "
+                    + "Persona → Cuentas Contables.");
         }
+
+        // Sólo la cuenta del rol pedido: si hubiera más de una fila para el
+        // mismo rol se toma la primera, nunca se acumula en varias.
+        PersonaCuentaContable pcc = lista.get(0);
+        double saldoActual = pcc.getSaldoInicial() != null ? pcc.getSaldoInicial() : 0.0;
+        pcc.setSaldoInicial(saldoActual + valor);
+        em.merge(pcc);
+        System.out.println("✓ PRCC id=" + pcc.getCodigo()
+                + " saldoInicial actualizado: " + saldoActual + " → " + pcc.getSaldoInicial());
     }
 }

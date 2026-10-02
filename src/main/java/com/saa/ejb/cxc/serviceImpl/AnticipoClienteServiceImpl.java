@@ -279,8 +279,10 @@ public class AnticipoClienteServiceImpl implements AnticipoClienteService {
         }
 
         // 4. Generar asiento contable
+        Asiento asiento = null;
+        boolean confirmado = false;
         try {
-            Asiento asiento = asientoContableService.generarAsientoAnticipo(
+            asiento = asientoContableService.generarAsientoAnticipo(
                     anticipo, TipoAsientos.ANTICIPOS_CLIENTE,
                     usuario != null ? usuario : "SISTEMA");
 
@@ -288,13 +290,7 @@ public class AnticipoClienteServiceImpl implements AnticipoClienteService {
             anticipo.setEstado(2L); // 2 = Confirmado
             anticipo.setAsiento(asiento);
             anticipo = anticipoDaoService.save(anticipo, anticipo.getId());
-
-            // 6. Sumar el valor al saldoInicial de PersonaCuentaContable (tipoCuenta=2, rol Cliente)
-            actualizarSaldoInicialPrcc(
-                    anticipo.getTitular().getCodigo(),
-                    anticipo.getEmpresa().getCodigo(),
-                    RolPersona.CLIENTE,
-                    anticipo.getValor());
+            confirmado = true;
 
             resultado.put("exito", true);
             resultado.put("estado", "CONFIRMADO");
@@ -313,6 +309,22 @@ public class AnticipoClienteServiceImpl implements AnticipoClienteService {
             resultado.put("error", e.getMessage());
             System.err.println("✗ Error en confirmarAnticipo: " + e.getMessage());
             e.printStackTrace();
+        }
+
+        // ÍTEM 1 (docs/logica-negocio/cxp/DISENO-SALDO-GLOBAL-ANTICIPOS.md §3.1): FUERA del catch
+        // de arriba a propósito -- ese catch es del asiento, no de esto. La excepción de
+        // actualizarSaldoInicialPrcc se propaga tal cual, sin disfrazarse de "Error al generar el
+        // asiento contable". ÍTEM 1c: "confirmado" (no "asiento != null") -- si el asiento salió
+        // bien pero el save posterior del anticipo falla, el catch lo atrapa y asiento queda
+        // no-null igual, aunque el anticipo NO haya quedado Confirmado; subir el PRCC en ese caso
+        // sería el mismo descuadre por otro camino. "confirmado" sólo pasa a true en la última
+        // línea del try, después del save que deja el estado en 2.
+        if (confirmado) {
+            actualizarSaldoInicialPrcc(
+                    anticipo.getTitular().getCodigo(),
+                    anticipo.getEmpresa().getCodigo(),
+                    RolPersona.CLIENTE,
+                    anticipo.getValor());
         }
 
         return resultado;
@@ -966,32 +978,35 @@ public class AnticipoClienteServiceImpl implements AnticipoClienteService {
      * @param idEmpresa  : Id de la empresa contable
      * @param rolPersona : {@link RolPersona#CLIENTE} o {@link RolPersona#PROVEEDOR}
      * @param valor      : Valor a sumar (negativo para restar)
+     * @throws Throwable : IncomeException si el cliente no tiene la cuenta configurada
+     *
+     * ÍTEM 1 (docs/logica-negocio/cxp/DISENO-SALDO-GLOBAL-ANTICIPOS.md §3.1): sin try/catch -- si
+     * no hay cuenta, la operación entera no se hace. Es preferible a un anticipo confirmado con
+     * el saldo global descuadrado.
      */
     private void actualizarSaldoInicialPrcc(Long idTitular, Long idEmpresa,
-            int rolPersona, Double valor) {
-        try {
-            java.util.List<PersonaCuentaContable> lista = personaCuentaContableDaoService
-                    .selectByTitularRolTipoCuenta(idEmpresa, idTitular, rolPersona, 2L);
+            int rolPersona, Double valor) throws Throwable {
+        java.util.List<PersonaCuentaContable> lista = personaCuentaContableDaoService
+                .selectByTitularRolTipoCuenta(idEmpresa, idTitular, rolPersona, 2L);
 
-            if (lista.isEmpty()) {
-                System.err.println("⚠ actualizarSaldoInicialPrcc: no se encontró PRCC "
-                        + "para titular=" + idTitular + " empresa=" + idEmpresa
-                        + " rol=" + rolPersona + " tipoCuenta=2");
-                return;
-            }
-
-            // Sólo la cuenta del rol pedido: si hubiera más de una fila para el
-            // mismo rol se toma la primera, nunca se acumula en varias.
-            PersonaCuentaContable pcc = lista.get(0);
-            double saldoActual = pcc.getSaldoInicial() != null ? pcc.getSaldoInicial() : 0.0;
-            pcc.setSaldoInicial(saldoActual + valor);
-            em.merge(pcc);
-            System.out.println("✓ PRCC id=" + pcc.getCodigo()
-                    + " saldoInicial actualizado: " + saldoActual + " → " + pcc.getSaldoInicial());
-        } catch (Throwable e) {
-            System.err.println("✗ Error actualizarSaldoInicialPrcc: " + e.getMessage());
-            e.printStackTrace();
+        if (lista.isEmpty()) {
+            com.saa.model.tsr.Titular titular = em.find(com.saa.model.tsr.Titular.class, idTitular);
+            String nombre = (titular != null) ? titular.getNombre() : String.valueOf(idTitular);
+            String accion = (valor != null && valor < 0) ? "anular" : "confirmar";
+            throw new com.saa.basico.util.IncomeException("El cliente '" + nombre + "' no tiene "
+                    + "cuenta contable de anticipos (Tipo 2, Rol: Cliente) configurada para la "
+                    + "empresa " + idEmpresa + ": no se puede " + accion + " el anticipo. "
+                    + "Configúrela en Tesorería → Persona → Cuentas Contables.");
         }
+
+        // Sólo la cuenta del rol pedido: si hubiera más de una fila para el
+        // mismo rol se toma la primera, nunca se acumula en varias.
+        PersonaCuentaContable pcc = lista.get(0);
+        double saldoActual = pcc.getSaldoInicial() != null ? pcc.getSaldoInicial() : 0.0;
+        pcc.setSaldoInicial(saldoActual + valor);
+        em.merge(pcc);
+        System.out.println("✓ PRCC id=" + pcc.getCodigo()
+                + " saldoInicial actualizado: " + saldoActual + " → " + pcc.getSaldoInicial());
     }
 
     @Override
