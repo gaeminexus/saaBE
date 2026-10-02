@@ -246,4 +246,4 @@ El abono y el reverso de operaciones **borran** cuotas de `DTPR` y las vuelven a
 | # | Pregunta |
 |---|---|
 | ~~S13~~ | **DECIDIDO: sí** (§5.6bis) |
-| S14 | ¿Cargar la suma asegurada en préstamos ya entregados debe registrar la garantía en cuentas de orden? |
+| ~~S14~~ | **DECIDIDO (2026-10-02): NO.** Para los préstamos viejos esa contabilidad de garantía en cuentas de orden **ya se generó en su momento**. Cargar la suma asegurada sólo guarda el dato para la póliza; no genera ningún asiento. |
