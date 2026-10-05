@@ -198,14 +198,19 @@ public interface ProvisionInteresService {
             throws Throwable;
 
     /**
-     * ÍTEM 5, §6.2/§7bis — cobro tardío: exceso de mora PROVISIONADA. Cuando
-     * {@code ProcesoMoraPrestamoService#recalcularMoraALaFechaDePagoDetalle} recalcula la mora
-     * de una cuota a la baja (la mora que provisionó un cierre anterior era mayor que la que de
-     * verdad corresponde a la fecha efectiva de pago), lo provisionado de más se reversa con un
-     * {@code MVIC} tipo 3 (REVERSO_POR_COBRO_TARDIO), componente MORA — acotado al saldo
-     * REALMENTE provisionado de cada cuota (nunca más, igual que {@link #reversarPorPagos}), y
-     * UN asiento {@code D 149905 / H 470510} (misma plantilla 36, mismo lado que el reverso
-     * normal: esto también es "ya no va a cobrarse").
+     * ÍTEM 5, §6.2/§7bis — cobro tardío: exceso de mora PROVISIONADA. El saldo provisionado de
+     * cada cuota tiene que quedar en lo que de verdad se debe a la fecha efectiva de pago, ni un
+     * centavo menos — no en el "exceso" bruto de la recalculación.
+     *
+     * <p><b>Fórmula (corregida 2026-10-05, el árbitro encontró el defecto de la primera
+     * versión):</b> por cuota, {@code pendiente = max(0, moraNueva − moraPagada ANTES de este
+     * cobro)}; {@code aReversar = max(0, saldoProvisionadoMora − pendiente)}. {@code moraPagada}
+     * es la que ya está en {@code CRD.PGPR} vigente ANTES de que este cobro aplique su propio
+     * pago (el motor corre después de este método) — el tipo 2 de este mismo cobro reversa,
+     * aparte, lo que SÍ se cobre de ese {@code pendiente}: nunca los dos tocan el mismo dólar.
+     * La primera versión reversaba {@code min(moraAnterior − moraNueva, saldoProvisionado)}, que
+     * ignoraba que {@code moraNueva} puede seguir siendo mora legítima todavía por cobrar — eso
+     * reversaba de más.</p>
      *
      * <p>No es el tipo 5/6 (devengo e inverso del devengo, §6.2): ese es un hecho DISTINTO,
      * sobre cuentas de ingreso/por cobrar, no sobre la provisión — se resuelve aparte.</p>
@@ -230,8 +235,19 @@ public interface ProvisionInteresService {
      * PROVISIONADO de {@link #reversarExcesoProvisionPorCobroTardio}, otra cuenta, otro hecho
      * económico). El devengo (MVIC tipo 5, paso ④) reconoció ingreso por una mora que, a la
      * fecha efectiva de pago, resultó menor — el exceso de ingreso ya reconocido se reversa con
-     * un {@code MVIC} tipo 6 (REVERSO_DEVENGO_POR_COBRO_TARDIO), componente MORA, acotado al
-     * saldo DEVENGADO de cada cuota ({@code MovimientoInteresCuotaDaoService#selectSaldoDevengadoPorCuotas}).
+     * un {@code MVIC} tipo 6 (REVERSO_DEVENGO_POR_COBRO_TARDIO), componente MORA.
+     *
+     * <p><b>Fórmula (corregida 2026-10-05, el árbitro encontró el defecto de la primera
+     * versión):</b> por cuota, {@code aReversar = max(0, devengado − moraNueva)}, con
+     * {@code devengado} = saldo del libro ({@code MovimientoInteresCuotaDaoService
+     * #selectSaldoDevengadoPorCuotas}, tipo 5 − tipo 6) o el tope de transición. <b>La mora
+     * PAGADA no se resta acá</b>: el devengo es ingreso GANADO, esté cobrado o no — lo único que
+     * lo reversa es que la mora recalculada a la fecha de pago haya quedado por DEBAJO de lo
+     * devengado. La primera versión reversaba {@code min(moraAnterior − moraNueva, devengado)},
+     * que podía reversar TODO el devengo aunque la mora recalculada siguiera siendo mayor que lo
+     * devengado (ejemplo real: devengado 0,13, moraNueva 1,20 — no había nada que reversar, y la
+     * primera versión reversaba igual los 0,13 porque el exceso bruto —moraAnterior 6,60 menos
+     * moraNueva 1,20— era mayor).</p>
      *
      * <p>Asiento ESPEJO del devengo (plantilla 17/DEVENGO_INTERESES, MISMOS papeles
      * {@code INTERES_MORA_POR_COBRAR}/{@code INGRESO_INTERES_MORA} que ya usa

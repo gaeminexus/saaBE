@@ -1031,6 +1031,11 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
             // aportes) — nunca lo manda el cliente. Con esto seteado, contabilizarPrecancelacion
             // sabe que ESTE método ya genera el asiento (CBCRASN2) y no debe generar el suyo.
             solicitud.setIdCobroCredito(idCobro);
+            // Defecto corregido 2026-10-05: sin esto, precancelar() caía al default
+            // fechaAfectacion = fecha (la de pago, antigua en un cobro tardío) y
+            // validarFechaAfectacionPrecancelacion reventaba con PERIODO_CERRADO sobre un
+            // período ya cerrado — justo el caso que este frente existe para resolver.
+            solicitud.setFechaAfectacion(cobro.getFechaAfectacion());
             // precancelar() no se toca: ya sabía sumar valorEfectivo + aportes y consumirlos
             // con consumirAportes desde antes de este cambio.
             ResultadoPrecancelacion resultado = procesoPagoPrestamoService.precancelar(solicitud);

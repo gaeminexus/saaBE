@@ -91,6 +91,27 @@ public class CorridaCierreCarteraDaoServiceImpl extends EntityDaoImpl<CorridaCie
     }
 
     @Override
+    public CorridaCierreCartera selectEjecutadaByFechaProceso(Long idEmpresa, java.time.LocalDate fechaProceso)
+            throws Throwable {
+        System.out.println("Ingresa al metodo selectEjecutadaByFechaProceso de CorridaCierreCartera"
+                + " - empresa: " + idEmpresa + " fechaProceso: " + fechaProceso);
+        Query query = em.createQuery(
+                " select c from CorridaCierreCartera c " +
+                " where  c.empresa.codigo = :idEmpresa " +
+                " and    c.estado         = :activo " +
+                " and    c.idEstado       = :ejecutada " +
+                " and    c.fechaProceso   = :fechaProceso " +
+                " order by c.codigo desc");
+        query.setParameter("idEmpresa", idEmpresa);
+        query.setParameter("activo", Long.valueOf(Estado.ACTIVO));
+        query.setParameter("ejecutada", Long.valueOf(EstadoCorridaCierreCartera.EJECUTADA));
+        query.setParameter("fechaProceso", fechaProceso);
+        query.setMaxResults(1);
+        List<CorridaCierreCartera> resultado = query.getResultList();
+        return resultado.isEmpty() ? null : resultado.get(0);
+    }
+
+    @Override
     public List<CorridaCierreCartera> selectByEmpresa(Long idEmpresa) throws Throwable {
         System.out.println("Ingresa al metodo selectByEmpresa de CorridaCierreCartera"
                 + " - empresa: " + idEmpresa);

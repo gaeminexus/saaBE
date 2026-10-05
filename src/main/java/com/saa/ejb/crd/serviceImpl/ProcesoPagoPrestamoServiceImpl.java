@@ -117,6 +117,9 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
     private PrestamoDaoService prestamoDaoService;
 
     @EJB
+    private com.saa.ejb.cnt.service.PeriodoService periodoService;
+
+    @EJB
     private PrestamoService prestamoService;
 
     @EJB
@@ -1001,6 +1004,37 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
         return desglose;
     }
 
+    /**
+     * API-FECHA-AFECTACION-COBRO.md §1/§2bis, reimplementado acá (no reusa
+     * {@code CobroCreditoServiceImpl#validarFechaAfectacion} porque ese método es privado de esa
+     * clase y deriva {@code idEmpresa} de una {@code CuentaBancaria} que esta solicitud no
+     * tiene — acá ya viene directo en {@code solicitud.getIdEmpresa()}). Mismos códigos 400.
+     */
+    private void validarFechaAfectacionPrecancelacion(LocalDate fechaAfectacion, LocalDate fechaPago,
+            Long idEmpresa) throws Throwable {
+        if (fechaAfectacion == null) {
+            throw new IncomeException("FECHA_AFECTACION_OBLIGATORIA: fechaAfectacion es obligatoria");
+        }
+        if (fechaPago != null && fechaAfectacion.isBefore(fechaPago)) {
+            throw new IncomeException("FECHA_AFECTACION_MENOR_A_PAGO: la fecha de afectación "
+                    + fechaAfectacion + " no puede ser anterior a la fecha de pago " + fechaPago);
+        }
+        if (fechaAfectacion.isAfter(LocalDate.now())) {
+            throw new IncomeException("FECHA_AFECTACION_FUTURA: la fecha de afectación " + fechaAfectacion
+                    + " es futura");
+        }
+        if (idEmpresa == null) {
+            throw new IncomeException("idEmpresa es obligatorio para verificar el período de la fecha de"
+                    + " afectación.");
+        }
+        try {
+            periodoService.verificaPeriodoAbierto(idEmpresa, fechaAfectacion);
+        } catch (IncomeException e) {
+            throw new IncomeException("PERIODO_CERRADO: el período contable de la fecha de afectación "
+                    + fechaAfectacion + " está cerrado — " + e.getMessage());
+        }
+    }
+
     @Override
     @TransactionAttribute(TransactionAttributeType.REQUIRED)
     public ResultadoPrecancelacion precancelar(SolicitudPrecancelacion solicitud) throws Throwable {
@@ -1021,6 +1055,21 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
             throw new IncomeException(ERR_FECHA_INVALIDA + ": la fecha " + fecha + " es futura");
         }
         LocalDateTime fechaHora = fecha.isEqual(LocalDate.now()) ? LocalDateTime.now() : fecha.atStartOfDay();
+
+        // API-FECHA-AFECTACION-COBRO.md §2bis: opcional, por defecto `fecha` — mismas reglas
+        // del §1 que ya valida CobroCreditoServiceImpl#validarFechaAfectacion, reimplementadas
+        // acá porque ese método es privado de esa clase y toma idEmpresa de una CuentaBancaria
+        // que acá no existe (precancelación directa ya trae idEmpresa en la solicitud).
+        LocalDate fechaAfectacionEfectiva = solicitud.getFechaAfectacion() != null
+                ? solicitud.getFechaAfectacion() : fecha;
+        // CASO B (idCobroCredito != null, viene de CobroCreditoServiceImpl.procesarCobro): esa
+        // fecha de afectación YA se validó al registrar/reenviar el cobro (§1), y el período lo
+        // vuelve a controlar el asiento (CBCRASN2) cuando se genere — validarla DE NUEVO acá
+        // sobre la fecha de PAGO real (que puede ser vieja) rompía con PERIODO_CERRADO toda
+        // precancelación tardía por depósito (defecto encontrado y corregido 2026-10-05).
+        if (solicitud.getIdCobroCredito() == null) {
+            validarFechaAfectacionPrecancelacion(fechaAfectacionEfectiva, fecha, solicitud.getIdEmpresa());
+        }
 
         CalculoPrecancelacion calculo = calcularPrecancelacion(prestamo, fecha, false);
         SimulacionPrecancelacion simulacion = calculo.simulacion;
@@ -1064,6 +1113,7 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
             solicitud.getObservacion(), fechaHora, evento.getCodigo(),
             solicitud.getRutaDocumentoRespaldo(), solicitud.getIdEmpresa(),
             solicitud.getIdCobroCredito());
+        ctx.setFechaAfectacion(fechaAfectacionEfectiva);
 
         // 2. Pagar la deuda exigible cuota por cuota (sin cascada)
         double valorExigiblePagado = 0.0;

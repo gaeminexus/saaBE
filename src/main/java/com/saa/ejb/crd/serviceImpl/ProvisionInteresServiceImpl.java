@@ -27,6 +27,7 @@ import com.saa.model.cnt.Asiento;
 import com.saa.model.cnt.DetalleAsiento;
 import com.saa.model.cnt.DetallePlantilla;
 import com.saa.model.cnt.PlanCuenta;
+import com.saa.model.crd.CorridaCierreCartera;
 import com.saa.model.crd.DetallePrestamo;
 import com.saa.model.crd.MovimientoInteresCuota;
 import com.saa.model.crd.PagoPrestamo;
@@ -78,6 +79,9 @@ public class ProvisionInteresServiceImpl implements ProvisionInteresService {
 
     @EJB
     private com.saa.ejb.cnt.dao.PlanCuentaDaoService planCuentaDaoService;
+
+    @EJB
+    private com.saa.ejb.crd.dao.CorridaCierreCarteraDaoService corridaCierreCarteraDaoService;
 
     @Override
     public Map<Long, double[]> saldoProvisionadoPorCuotas(List<Long> idsCuota) throws Throwable {
@@ -455,33 +459,39 @@ public class ProvisionInteresServiceImpl implements ProvisionInteresService {
             return resultado;
         }
 
-        Map<Long, Double> excesoPorCuota = new LinkedHashMap<>();
+        Map<Long, Double> moraNuevaPorCuota = new LinkedHashMap<>();
         List<Long> idsCuota = new ArrayList<>();
         for (Object[] fila : detalleMora) {
             Long idCuota = (Long) fila[0];
-            double moraAnterior = (Double) fila[1];
             double moraNueva = (Double) fila[2];
-            double exceso = Math.max(0.0, redondear(moraAnterior - moraNueva));
-            if (exceso <= TOLERANCIA) {
-                continue;
-            }
-            excesoPorCuota.put(idCuota, exceso);
+            moraNuevaPorCuota.put(idCuota, moraNueva);
             idsCuota.add(idCuota);
         }
-        if (excesoPorCuota.isEmpty()) {
-            return resultado;
-        }
 
+        // Corrección del árbitro (2026-10-05): el tope no es el exceso (moraAnterior −
+        // moraNueva) — eso ignora que moraNueva puede seguir siendo mora LEGÍTIMA, todavía por
+        // cobrar. El saldo provisionado tiene que quedar en lo que de verdad se debe a la fecha
+        // de pago, ni un centavo menos: pendiente = max(0, moraNueva − moraPagada ANTES de este
+        // cobro); lo que sobra del saldo provisionado sobre ese pendiente es lo que se reversa.
+        // El tipo 2 de este mismo cobro reversa, aparte, lo que SÍ se cobre de ese pendiente —
+        // nunca los dos a la vez sobre el mismo dólar.
         Map<Long, double[]> saldoProvisionado = saldoProvisionadoPorCuotas(idsCuota);
+        Map<Long, double[]> pagosPorCuota = cargarPagosPorCuota(idsCuota);
         Map<Long, Double> aReversarPorCuota = new LinkedHashMap<>();
         double totalGeneral = 0.0;
-        for (Map.Entry<Long, Double> entrada : excesoPorCuota.entrySet()) {
-            double[] provisionado = saldoProvisionado.getOrDefault(entrada.getKey(), new double[2]);
-            double aReversar = Math.max(0.0, redondear(Math.min(entrada.getValue(), provisionado[1])));
+        for (Map.Entry<Long, Double> entrada : moraNuevaPorCuota.entrySet()) {
+            Long idCuota = entrada.getKey();
+            double moraNueva = entrada.getValue();
+            double[] pagos = pagosPorCuota.get(idCuota);
+            double moraPagada = pagos != null ? pagos[1] : 0.0;
+            double pendiente = Math.max(0.0, redondear(moraNueva - moraPagada));
+            double[] provisionado = saldoProvisionado.getOrDefault(idCuota, new double[2]);
+            double saldoProvisionadoMora = provisionado[1];
+            double aReversar = Math.max(0.0, redondear(saldoProvisionadoMora - pendiente));
             if (aReversar <= TOLERANCIA) {
                 continue;
             }
-            aReversarPorCuota.put(entrada.getKey(), aReversar);
+            aReversarPorCuota.put(idCuota, aReversar);
             totalGeneral += aReversar;
         }
         if (aReversarPorCuota.isEmpty()) {
@@ -521,6 +531,54 @@ public class ProvisionInteresServiceImpl implements ProvisionInteresService {
         return resultado;
     }
 
+    /**
+     * ÍTEM T — tope de transición para una cuota sin ningún {@code MVIC} tipo 5/6 (su devengo,
+     * si lo hubo, se hizo antes de que existiera el libro). Reconstruye con la fórmula pura,
+     * {@code calcularMoraCuota}, contra la corrida EJECUTADA que abrió el mes del vencimiento de
+     * la cuota — SOLO si esa corrida tiene 0 filas de MVIC (si tiene alguna, ya es de la era del
+     * libro, y la ausencia de fila para ESTA cuota es un dato real, no una laguna de
+     * transición: el tope queda en 0). Sin corrida, el tope es 0.
+     *
+     * <p>{@code mora pagada} se acota a {@code PGPRFCHA <= corrida.fechaRegistro} (el día REAL
+     * en que esa corrida corrió, {@code CRCTFCRG} — NUNCA {@code fechaProceso}, que es solo el
+     * día 1 calendario del mes y siempre da 0 días de mora para cualquier cuota del universo de
+     * ④; aprobado por el árbitro 2026-10-05 tras descartar esa primera propuesta).</p>
+     *
+     * <p>Regla vigente SOLO para la transición: desde el cierre de septiembre de 2026 en
+     * adelante, toda corrida ya escribe su propio MVIC tipo 5 y este método nunca se alcanza
+     * para ellas (siempre habrá entrada en {@code saldoDevengado}).</p>
+     */
+    private double topeTransicionDevengo(Long idCuota, Long idEmpresa, Prestamo prestamoDelExceso)
+            throws Throwable {
+        DetallePrestamo cuota = detallePrestamoDaoService.find(new DetallePrestamo(), idCuota);
+        if (cuota == null || cuota.getFechaVencimiento() == null) {
+            return 0.0;
+        }
+        LocalDate vencimiento = cuota.getFechaVencimiento().toLocalDate();
+        LocalDate fechaProcesoCandidata = vencimiento.withDayOfMonth(1);
+        CorridaCierreCartera corrida = corridaCierreCarteraDaoService.selectEjecutadaByFechaProceso(idEmpresa,
+            fechaProcesoCandidata);
+        if (corrida == null || corrida.getFechaRegistro() == null) {
+            return 0.0;
+        }
+        if (movimientoInteresCuotaDaoService.existeAlgunoByCorrida(corrida.getCodigo())) {
+            return 0.0;
+        }
+
+        Prestamo prestamo = prestamoDelExceso != null ? prestamoDelExceso : cuota.getPrestamo();
+        double tasaDiaria = procesoMoraPrestamoService.tasaDiariaDelPrestamo(prestamo, false);
+        LocalDate fechaRealEjecucion = corrida.getFechaRegistro().toLocalDate();
+        double moraCalculada = procesoMoraPrestamoService.calcularMoraCuota(cuota, tasaDiaria, fechaRealEjecucion);
+
+        double moraPagadaHastaEsaFecha = 0.0;
+        for (PagoPrestamo pago : pagoPrestamoDaoService.selectVigentesByIdDetallePrestamo(idCuota)) {
+            if (pago.getFecha() != null && !pago.getFecha().toLocalDate().isAfter(fechaRealEjecucion)) {
+                moraPagadaHastaEsaFecha += nvl(pago.getMoraPagada());
+            }
+        }
+        return Math.max(0.0, redondear(moraCalculada - moraPagadaHastaEsaFecha));
+    }
+
     @Override
     public ResultadoReversoProvision reversarExcesoDevengoPorCobroTardio(Long idPrestamo,
             List<Object[]> detalleMora, Long idEmpresa, LocalDate fecha, String origen, Long idOrigen,
@@ -532,43 +590,54 @@ public class ProvisionInteresServiceImpl implements ProvisionInteresService {
             return resultado;
         }
 
-        Map<Long, Double> excesoPorCuota = new LinkedHashMap<>();
+        Map<Long, Double> moraNuevaPorCuota = new LinkedHashMap<>();
         List<Long> idsCuota = new ArrayList<>();
         for (Object[] fila : detalleMora) {
             Long idCuota = (Long) fila[0];
-            double moraAnterior = (Double) fila[1];
             double moraNueva = (Double) fila[2];
-            double exceso = Math.max(0.0, redondear(moraAnterior - moraNueva));
-            if (exceso <= TOLERANCIA) {
-                continue;
-            }
-            excesoPorCuota.put(idCuota, exceso);
+            moraNuevaPorCuota.put(idCuota, moraNueva);
             idsCuota.add(idCuota);
-        }
-        if (excesoPorCuota.isEmpty()) {
-            return resultado;
         }
 
         Map<Long, Double> saldoDevengado = movimientoInteresCuotaDaoService.selectSaldoDevengadoPorCuotas(idsCuota);
+        Prestamo prestamo = prestamoDaoService.find(new Prestamo(), idPrestamo);
+        Long idTipoPrestamo = prestamo != null && prestamo.getProducto() != null
+                && prestamo.getProducto().getTipoPrestamo() != null
+                ? prestamo.getProducto().getTipoPrestamo().getCodigo() : null;
+
+        // Corrección del árbitro (2026-10-05): el devengo es INGRESO GANADO, esté cobrado o no
+        // — la mora pagada NO se resta acá (eso lo hace el tipo 2 de este mismo cobro, sobre la
+        // parte que de verdad se cobra). Lo único que puede exceder el devengo es que la mora
+        // recalculada a la fecha de pago (moraNueva) haya quedado por DEBAJO de lo devengado:
+        // ese exceso de ingreso ya reconocido es lo único que se reversa.
         Map<Long, Double> aReversarPorCuota = new LinkedHashMap<>();
         double totalGeneral = 0.0;
-        for (Map.Entry<Long, Double> entrada : excesoPorCuota.entrySet()) {
-            double devengado = nvl(saldoDevengado.get(entrada.getKey()));
-            double aReversar = Math.max(0.0, redondear(Math.min(entrada.getValue(), devengado)));
+        for (Map.Entry<Long, Double> entrada : moraNuevaPorCuota.entrySet()) {
+            Long idCuota = entrada.getKey();
+            double moraNueva = entrada.getValue();
+            double devengado;
+            if (saldoDevengado.containsKey(idCuota)) {
+                devengado = nvl(saldoDevengado.get(idCuota));
+            } else {
+                // ÍTEM T, transición (aprobado por el árbitro 2026-10-05, caso real 67023/89):
+                // esta cuota no tiene NINGÚN MVIC tipo 5/6 — su devengo, si lo hubo, se hizo
+                // antes de que existiera el libro. El devengado sale de reconstruir la fórmula
+                // pura contra la corrida EJECUTADA que abrió el mes de su vencimiento, siempre
+                // que esa corrida tenga 0 filas de MVIC (si tiene alguna, ya es de la era del
+                // libro y la ausencia de fila para ESTA cuota es real, no una laguna de transición).
+                devengado = topeTransicionDevengo(idCuota, idEmpresa, prestamo);
+            }
+            double aReversar = Math.max(0.0, redondear(devengado - moraNueva));
             if (aReversar <= TOLERANCIA) {
                 continue;
             }
-            aReversarPorCuota.put(entrada.getKey(), aReversar);
+            aReversarPorCuota.put(idCuota, aReversar);
             totalGeneral += aReversar;
         }
         if (aReversarPorCuota.isEmpty()) {
             return resultado;
         }
 
-        Prestamo prestamo = prestamoDaoService.find(new Prestamo(), idPrestamo);
-        Long idTipoPrestamo = prestamo != null && prestamo.getProducto() != null
-                && prestamo.getProducto().getTipoPrestamo() != null
-                ? prestamo.getProducto().getTipoPrestamo().getCodigo() : null;
         if (idTipoPrestamo == null) {
             throw new IncomeException("El préstamo " + idPrestamo + " tiene exceso de mora devengada que"
                 + " reversar por cobro tardío, pero su producto no tiene tipo de préstamo asignado.");

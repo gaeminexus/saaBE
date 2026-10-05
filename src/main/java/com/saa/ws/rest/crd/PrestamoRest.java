@@ -1451,7 +1451,10 @@ public class PrestamoRest {
 
     /** Códigos de negocio que se responden como 400 BAD REQUEST */
     private static final List<String> CODIGOS_400 = Arrays.asList(
-        "PARAMETRO_INVALIDO");
+        "PARAMETRO_INVALIDO",
+        // API-FECHA-AFECTACION-COBRO.md §2bis (precancelación con fecha de afectación)
+        "FECHA_AFECTACION_OBLIGATORIA", "FECHA_AFECTACION_MENOR_A_PAGO", "FECHA_AFECTACION_FUTURA",
+        "PERIODO_CERRADO");
 
     /**
      * Mapea la excepción de un proceso de pago al status HTTP de §8, usando el CÓDIGO con el

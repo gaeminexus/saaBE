@@ -88,4 +88,16 @@ public interface MovimientoInteresCuotaDaoService extends EntityDao<MovimientoIn
      * @throws Throwable Si ocurre un error
      */
     java.util.Map<Long, Double> selectSaldoDevengadoPorCuotas(List<Long> idsCuota) throws Throwable;
+
+    /**
+     * ¿Existe AL MENOS UN {@code MovimientoInteresCuota} (de cualquier tipo, vigente o anulado)
+     * enlazado a esta corrida? ÍTEM T (transición del tipo 6): si la respuesta es que NO, la
+     * corrida es anterior a que existiera el libro — condición necesaria para reconstruir el
+     * devengo con la fórmula pura en vez de asumir "nada que reversar".
+     *
+     * @param idCorrida código de la corrida (CRD.CRCT)
+     * @return {@code true} si hay al menos una fila de MVIC con esa corrida
+     * @throws Throwable Si ocurre un error
+     */
+    boolean existeAlgunoByCorrida(Long idCorrida) throws Throwable;
 }

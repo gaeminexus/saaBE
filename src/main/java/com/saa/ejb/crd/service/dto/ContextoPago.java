@@ -1,5 +1,6 @@
 package com.saa.ejb.crd.service.dto;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 /**
@@ -54,6 +55,15 @@ public class ContextoPago {
      * comportamiento. Ver PLAN-FASE3-MOTOR-PAGOS.md §4.1.
      */
     private Long idCargaArchivo;
+
+    /**
+     * Fecha de afectación contable (API-FECHA-AFECTACION-COBRO.md §2bis) — {@code null} para
+     * los llamadores que todavía no la exponen (`pagarCuota`, `pagarConAportes`): sus hooks de
+     * contabilidad siguen fechando con {@code fechaPago}, como siempre. Solo
+     * {@code precancelar()} la setea hoy. Cuando venga null, el hook de contabilidad usa
+     * {@code fechaPago} como fallback — nunca al revés.
+     */
+    private LocalDate fechaAfectacion;
 
     public ContextoPago() {
     }
@@ -128,5 +138,13 @@ public class ContextoPago {
 
     public void setIdCargaArchivo(Long idCargaArchivo) {
         this.idCargaArchivo = idCargaArchivo;
+    }
+
+    public LocalDate getFechaAfectacion() {
+        return fechaAfectacion;
+    }
+
+    public void setFechaAfectacion(LocalDate fechaAfectacion) {
+        this.fechaAfectacion = fechaAfectacion;
     }
 }

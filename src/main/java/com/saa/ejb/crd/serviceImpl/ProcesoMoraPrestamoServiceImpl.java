@@ -15,6 +15,7 @@ import com.saa.ejb.crd.service.DetallePrestamoService;
 import com.saa.ejb.crd.service.ProcesoMoraPrestamoService;
 import com.saa.ejb.crd.service.dto.ResultadoCalculoMora;
 import com.saa.model.crd.DetallePrestamo;
+import com.saa.model.crd.PagoPrestamo;
 import com.saa.model.crd.Prestamo;
 import com.saa.rubros.EstadoCuotaPrestamo;
 import com.saa.rubros.EstadoPrestamo;
@@ -50,6 +51,9 @@ public class ProcesoMoraPrestamoServiceImpl implements ProcesoMoraPrestamoServic
 
     @EJB
     private PrestamoDaoService prestamoDaoService;
+
+    @EJB
+    private com.saa.ejb.crd.dao.PagoPrestamoDaoService pagoPrestamoDaoService;
 
     /**
      * Auto-inyección: permite que el bucle del lote invoque {@code calcularMoraPrestamo} a
@@ -399,6 +403,26 @@ public class ProcesoMoraPrestamoServiceImpl implements ProcesoMoraPrestamoServic
                 if (cuota.getFechaVencimiento() == null) {
                     continue;
                 }
+
+                // Regla del usuario (2026-10-05, caso real 67023/88): si la cuota YA tiene un
+                // PGPR vigente de OTRO evento con fecha POSTERIOR a este cobro tardío (pagos
+                // fuera de orden cronológico), no se toca — se queda con la mora tal como se
+                // pagó. Recalcularla acá la bajaría por debajo de lo que ese pago posterior ya
+                // cobró, y el tipo 3/tipo 6 reversarían de más. No hay bloqueo ni aviso: la
+                // cuota simplemente no entra al detalle devuelto.
+                boolean tienePagoPosterior = false;
+                for (PagoPrestamo pagoExistente : pagoPrestamoDaoService
+                        .selectVigentesByIdDetallePrestamo(cuota.getCodigo())) {
+                    if (pagoExistente.getFecha() != null
+                            && pagoExistente.getFecha().toLocalDate().isAfter(fechaPago)) {
+                        tienePagoPosterior = true;
+                        break;
+                    }
+                }
+                if (tienePagoPosterior) {
+                    continue;
+                }
+
                 LocalDate vencimiento = cuota.getFechaVencimiento().toLocalDate();
 
                 double moraNueva;

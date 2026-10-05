@@ -125,4 +125,17 @@ public class MovimientoInteresCuotaDaoServiceImpl extends EntityDaoImpl<Movimien
         }
         return resultado;
     }
+
+    @Override
+    public boolean existeAlgunoByCorrida(Long idCorrida) throws Throwable {
+        System.out.println("MovimientoInteresCuotaDaoServiceImpl.existeAlgunoByCorrida - corrida: " + idCorrida);
+        if (idCorrida == null) {
+            return false;
+        }
+        Query query = em.createQuery(
+            "select count(m) from MovimientoInteresCuota m where m.corrida.codigo = :idCorrida");
+        query.setParameter("idCorrida", idCorrida);
+        Long cantidad = (Long) query.getSingleResult();
+        return cantidad != null && cantidad > 0L;
+    }
 }

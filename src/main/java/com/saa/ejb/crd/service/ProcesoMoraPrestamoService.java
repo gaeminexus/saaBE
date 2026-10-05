@@ -195,6 +195,15 @@ public interface ProcesoMoraPrestamoService {
      * cuota, cuánta mora PROVISIONADA (tipo 3) y cuánta mora DEVENGADA (tipo 5, tipo 6) quedó de
      * más, y eso no se puede derivar del total agregado que devuelve el método original.
      *
+     * <p><b>Regla de pagos fuera de orden (decisión del usuario, 2026-10-05, caso real
+     * 67023/cuota 88):</b> una cuota que YA tiene un {@code PagoPrestamo} VIGENTE de OTRO
+     * evento con {@code PGPRFCHA} POSTERIOR a este {@code fechaPago} NO se recalcula — se queda
+     * con la mora tal como quedó de ese pago posterior, y simplemente no aparece en el detalle
+     * devuelto. Recalcularla igual la bajaría por debajo de lo que ese pago ya cobró, y el
+     * reverso de provisión/devengo del cobro tardío (tipo 3/tipo 6) reversaría de más contra un
+     * saldo que en la realidad ya no existe. Sin bloqueo ni aviso — es tolerancia silenciosa,
+     * decisión expresa del usuario, no un defecto.</p>
+     *
      * @param idPrestamo Código del préstamo
      * @param fechaPago  Fecha efectiva del pago
      * @return Filas {@code [idCuota (Long), moraAnterior (Double), moraNueva (Double)]}, SOLO

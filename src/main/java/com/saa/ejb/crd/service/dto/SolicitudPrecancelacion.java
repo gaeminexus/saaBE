@@ -52,6 +52,15 @@ public class SolicitudPrecancelacion {
      */
     private Long idCobroCredito;
 
+    /**
+     * Fecha de afectación contable (API-FECHA-AFECTACION-COBRO.md §2bis), OPCIONAL — si no
+     * viene, vale {@code fecha}. Solo tiene efecto en CASO A (llamada directa, sin depósito):
+     * fecha el asiento de {@code contabilizarPrecancelacion} y el reverso de la provisión de
+     * intereses. {@code fecha} (arriba) sigue siendo la fecha de pago real: la de los PGPR, el
+     * recálculo de mora y la clasificación por banda — eso NO cambia.
+     */
+    private LocalDate fechaAfectacion;
+
     public SolicitudPrecancelacion() {
     }
 
@@ -125,5 +134,13 @@ public class SolicitudPrecancelacion {
 
     public void setIdCobroCredito(Long idCobroCredito) {
         this.idCobroCredito = idCobroCredito;
+    }
+
+    public LocalDate getFechaAfectacion() {
+        return fechaAfectacion;
+    }
+
+    public void setFechaAfectacion(LocalDate fechaAfectacion) {
+        this.fechaAfectacion = fechaAfectacion;
     }
 }

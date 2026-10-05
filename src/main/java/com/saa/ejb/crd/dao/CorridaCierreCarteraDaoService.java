@@ -54,4 +54,20 @@ public interface CorridaCierreCarteraDaoService extends EntityDao<CorridaCierreC
      * @throws Throwable : Excepcion
      */
     List<CorridaCierreCartera> selectByEmpresa(Long idEmpresa) throws Throwable;
+
+    /**
+     * La corrida EJECUTADA (nunca REVERSADA) cuyo {@code fechaProceso} es EXACTAMENTE la dada —
+     * es decir, la que ABRIÓ el mes de ese {@code fechaProceso}, y por lo tanto cuyo sub-proceso
+     * ④ (devengo) cubría los vencimientos de TODO ese mes. ÍTEM T (transición del tipo 6,
+     * cobro tardío): para una cuota sin ningún {@code MVIC} tipo 5, es la corrida candidata a
+     * reconstruir con {@code calcularMoraCuota(cuota, tasa, corrida.fechaRegistro)}.
+     *
+     * @param idEmpresa    Código de la empresa (SCP.PJRQ)
+     * @param fechaProceso Primer día del mes que esa corrida abrió (el vencimiento de la cuota,
+     *                     llevado al día 1 de su propio mes)
+     * @return La corrida, o {@code null} si nunca se ejecutó un cierre para ese mes
+     * @throws Throwable Si ocurre un error
+     */
+    CorridaCierreCartera selectEjecutadaByFechaProceso(Long idEmpresa, java.time.LocalDate fechaProceso)
+            throws Throwable;
 }

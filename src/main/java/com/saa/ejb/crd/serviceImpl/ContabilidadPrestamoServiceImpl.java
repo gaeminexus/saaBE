@@ -659,11 +659,25 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
         String observacionBase = prefijo + (ctx.getObservacion() != null ? ": " + ctx.getObservacion() : "");
         String observacion = observacionConParticipeYPrestamos(evento.getPrestamo(), pagos, observacionBase);
 
-        Asiento asiento = asientoContableService.generarAsiento(idEmpresa, TipoAsientos.CREDITOS, fechaCorte,
+        // API-FECHA-AFECTACION-COBRO.md §2bis: el asiento (y el reverso de provisión, más
+        // abajo) se fechan con la fecha de AFECTACIÓN — fechaCorte (arriba) sigue siendo la de
+        // PAGO real, para banda/PGPR/apertura, que no cambia. ctx.getFechaAfectacion() viene
+        // null para cualquier llamador que no la setee todavía (pagarConAportes, pagarCuota):
+        // ahí el fallback es fechaCorte, igual que hoy.
+        LocalDate fechaAsiento = ctx.getFechaAfectacion() != null ? ctx.getFechaAfectacion() : fechaCorte;
+
+        Asiento asiento = asientoContableService.generarAsiento(idEmpresa, TipoAsientos.CREDITOS, fechaAsiento,
                 observacion, ctx.getUsuario(), lineas, Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR));
 
         System.out.println("  ✅ contabilizarPrecancelacion OK - Asiento: " + asiento.getCodigo()
                 + " - Evento: " + ctx.getIdEvento() + " - Monto: $" + totalDebe);
+
+        // ÍTEM 4 (gap cerrado 2026-10-05): reverso de la provisión de intereses por lo que esta
+        // precancelación liquidó — CASO A únicamente (verificado en el guard de arriba): en
+        // CASO B ya lo hace CobroCreditoServiceImpl.procesarCobro sobre los mismos pagos, y
+        // hacerlo acá también lo duplicaría.
+        provisionInteresService.reversarPorPagos(pagos, idEmpresa, fechaAsiento, "PRECANCELACION",
+                ctx.getIdEvento(), ctx.getUsuario());
 
         return asiento.getCodigo();
     }
