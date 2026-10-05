@@ -62,6 +62,23 @@ public interface EgresoService extends EntityService<Egreso> {
 			String observacion, Long idUsuario, Long formaPago) throws Throwable;
 
 	/**
+	 * Igual que {@link #procesarEgreso(Long, Long, Long, String, Double, String, Long, Long,
+	 * boolean, String, String, Long, Long)}, con la opción de pagar con el saldo de un anticipo
+	 * del proveedor en vez de salir por banco — docs/logica-negocio/tsr/
+	 * DISENO-EGRESO-CON-SALDO-DE-ANTICIPO.md §3.2. Con {@code idAnticipo} no nulo: el titular es
+	 * obligatorio, {@code idCuentaBancariaOrigen}/{@code idCuentaDestinoTitular}/
+	 * {@code debitoAutomatico}/{@code referencia}/{@code formaPago} se ignoran (no hay banco ni
+	 * pago programado), el egreso queda PAGADO en el acto con su propio asiento, y se descuenta el
+	 * saldo del anticipo y el PRCC de anticipos del proveedor. {@code null} = el flujo de
+	 * siempre, sin cambios.
+	 * @param idAnticipo : Id del anticipo (PGS.ANTP) cuyo saldo paga el egreso; null = flujo normal
+	 */
+	Map<String, Object> procesarEgreso(Long idEmpresa, Long idTitular, Long idProductoPago,
+			String descripcion, Double valor, String fecha, Long idCuentaBancariaOrigen,
+			Long idCuentaDestinoTitular, boolean debitoAutomatico, String referencia,
+			String observacion, Long idUsuario, Long formaPago, Long idAnticipo) throws Throwable;
+
+	/**
 	 * Anula un egreso pendiente de pago. Si tiene un pago Registrado lo anula
 	 * también; si el pago está En archivo o Confirmado, la anulación se
 	 * bloquea (procesar la respuesta del banco o revertir el pago primero).

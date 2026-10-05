@@ -1045,6 +1045,42 @@ public class AsientoContableServiceImpl implements AsientoContableService {
     }
 
     @Override
+    public Asiento generarAsientoEgresoContraAnticipo(Long idProductoPago, Long idTitular, Double valor,
+            Long idEmpresa, LocalDate fechaAsiento, String observaciones, String usuario) throws Throwable {
+
+        System.out.println("=== generarAsientoEgresoContraAnticipo | producto=" + idProductoPago
+                + " | titular=" + idTitular + " | valor=" + valor + " | empresa=" + idEmpresa + " ===");
+
+        if (idEmpresa == null) {
+            throw new IncomeException("Debe indicar la empresa contable.");
+        }
+        if (valor == null || valor <= 0) {
+            throw new IncomeException("El valor del egreso debe ser mayor a cero.");
+        }
+
+        Titular titular = em.find(Titular.class, idTitular);
+        String nomProv = (titular != null) ? titular.getNombre() : String.valueOf(idTitular);
+
+        // DEBE: cuenta del grupo del producto CXP, igual que generarAsientoEgresoTesoreria
+        PlanCuenta cuentaGasto = obtenerCuentaGrupoProductoPago(idProductoPago);
+
+        // HABER: cuenta de anticipos del proveedor (tipoCuenta=2, rol Proveedor)
+        PlanCuenta cuentaAnticipo = obtenerCuentaProveedorPorTipo(idTitular, idEmpresa, 2L);
+        if (cuentaAnticipo == null) {
+            throw new IncomeException(
+                    "El proveedor '" + nomProv + "' no tiene cuenta contable de anticipos (Tipo 2) "
+                    + "configurada en Tesorería → Persona → Cuentas Contables (Rol: Proveedor).");
+        }
+
+        List<DetalleAsiento> lineas = new ArrayList<>();
+        lineas.add(creaLinea(cuentaGasto, "Egreso pagado con anticipo: " + nomProv, valor, true));
+        lineas.add(creaLinea(cuentaAnticipo, "Egreso pagado con anticipo: " + nomProv, valor, false));
+
+        return generarAsiento(idEmpresa, TipoAsientos.EGRESO_TESORERIA, fechaAsiento, observaciones,
+                usuario, lineas, Long.valueOf(ModuloSistema.TESORERIA));
+    }
+
+    @Override
     public Asiento generarAsientoIngresoTesoreria(Long idProductoCobro, String concepto, Double valor,
             Long idCuentaBancaria, Long idEmpresa, int codigoAltTipoAsiento,
             LocalDate fechaAsiento, String observaciones, String usuario) throws Throwable {

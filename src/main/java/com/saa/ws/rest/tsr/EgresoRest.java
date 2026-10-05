@@ -67,6 +67,12 @@ public class EgresoRest {
      *   "idUsuario": 5,
      *   "formaPago": 3                    (opcional: 1=Efectivo 2=Transferencia 3=Cheque
      *                                       4=Débito automático; default 2 o 4 según debitoAutomatico)
+     *   "idAnticipo": 9                   (opcional: paga el egreso con el saldo de este anticipo
+     *                                       del proveedor en vez de salir por banco -- ver
+     *                                       docs/logica-negocio/tsr/DISENO-EGRESO-CON-SALDO-DE-ANTICIPO.md.
+     *                                       Con idAnticipo, idCuentaBancariaOrigen/idCuentaDestinoTitular/
+     *                                       debitoAutomatico/referencia/formaPago se ignoran: el
+     *                                       egreso queda PAGADO en el acto, sin pago ni movimiento bancario)
      * }
      */
     @POST
@@ -89,6 +95,7 @@ public class EgresoRest {
             String observacion  = (String) datos.get("observacion");
             Long idUsuario      = toLong(datos.get("idUsuario"));
             Long formaPago      = toLong(datos.get("formaPago"));
+            Long idAnticipo     = toLong(datos.get("idAnticipo"));
 
             if (idEmpresa == null || idProducto == null || valor == null) {
                 return Response.status(Response.Status.BAD_REQUEST)
@@ -98,7 +105,7 @@ public class EgresoRest {
 
             Map<String, Object> resultado = egresoService.procesarEgreso(idEmpresa, idTitular,
                     idProducto, descripcion, valor, fecha, idCuentaOrigen, idCuentaDest,
-                    debitoAut, referencia, observacion, idUsuario, formaPago);
+                    debitoAut, referencia, observacion, idUsuario, formaPago, idAnticipo);
             return Response.status(Response.Status.CREATED).entity(resultado)
                     .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {

@@ -26,6 +26,7 @@ import com.saa.model.cxp.AnticipoProveedor;
 import com.saa.model.cxp.AplicacionPagoCxp;
 import com.saa.model.cxp.DevolucionAnticipoProveedor;
 import com.saa.model.cxp.NombreEntidadesPago;
+import com.saa.model.tsr.Egreso;
 import com.saa.model.cxp.PagoProgramado;
 import com.saa.model.scp.Empresa;
 import com.saa.model.scp.Usuario;
@@ -33,6 +34,7 @@ import com.saa.model.tsr.PersonaCuentaContable;
 import com.saa.model.tsr.Titular;
 import com.saa.rubros.EstadoAnticipoProveedor;
 import com.saa.rubros.EstadoAplicacionPago;
+import com.saa.rubros.EstadoEgresoTesoreria;
 import com.saa.rubros.EstadoPagoProgramado;
 import com.saa.rubros.FormaPagoProgramado;
 import com.saa.rubros.RolPersona;
@@ -614,6 +616,22 @@ public class AnticipoProveedorServiceImpl implements AnticipoProveedorService {
             throw new IncomeException("El anticipo " + idAnticipo + " tiene la devolución "
                     + devolucionesActivas.get(0).getCodigo() + " registrada: anúlela antes de "
                     + "anular el anticipo.");
+        }
+
+        // ÍTEM 4 (docs/logica-negocio/tsr/DISENO-EGRESO-CON-SALDO-DE-ANTICIPO.md §3.4): mismo
+        // criterio que la guarda de devoluciones de arriba, para un egreso pagado con el saldo de
+        // este anticipo. Consulta propia con em: no hay un DAO de Egreso autorizado en este
+        // encargo (sólo esta guarda, en este archivo).
+        @SuppressWarnings("unchecked")
+        List<Egreso> egresosVivosDelAnticipo = em.createQuery(
+                "select e from Egreso e where e.anticipo.id = :idAnticipo and e.estado <> :anulado")
+                .setParameter("idAnticipo", idAnticipo)
+                .setParameter("anulado", Long.valueOf(EstadoEgresoTesoreria.ANULADO))
+                .getResultList();
+        if (!egresosVivosDelAnticipo.isEmpty()) {
+            throw new IncomeException("El anticipo " + idAnticipo + " pagó el egreso "
+                    + egresosVivosDelAnticipo.get(0).getId() + ": anúlelo antes de anular el "
+                    + "anticipo.");
         }
 
         String bloqueo = motivoBloqueo(anticipo);

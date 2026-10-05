@@ -5,6 +5,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 import com.saa.model.cnt.Asiento;
+import com.saa.model.cxp.AnticipoProveedor;
 import com.saa.model.cxp.ProductoPago;
 import com.saa.model.scp.Empresa;
 import com.saa.model.scp.Usuario;
@@ -147,6 +148,16 @@ public class Egreso implements Serializable {
     private String observacion;
 
     /**
+     * Anticipo del proveedor con cuyo saldo se pagó este egreso (docs/logica-negocio/tsr/
+     * DISENO-EGRESO-CON-SALDO-DE-ANTICIPO.md). Nulo para los egresos de siempre, pagados por
+     * banco a través del circuito de PagoProgramado: éste no lo usa, no hay pago ni movimiento
+     * bancario cuando el egreso se paga con un anticipo. FK a PGS.ANTP.
+     */
+    @ManyToOne
+    @JoinColumn(name = "EGRSANTP", referencedColumnName = "ANTPCDGO")
+    private AnticipoProveedor anticipo;
+
+    /**
      * Usuario que registra el egreso. FK a SCP.PJRQ.
      */
     @ManyToOne
@@ -213,6 +224,9 @@ public class Egreso implements Serializable {
 
     public String getObservacion() { return observacion; }
     public void setObservacion(String observacion) { this.observacion = observacion; }
+
+    public AnticipoProveedor getAnticipo() { return anticipo; }
+    public void setAnticipo(AnticipoProveedor anticipo) { this.anticipo = anticipo; }
 
     public Usuario getUsuario() { return usuario; }
     public void setUsuario(Usuario usuario) { this.usuario = usuario; }

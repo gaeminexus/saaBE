@@ -488,6 +488,33 @@ public interface AsientoContableService {
             java.time.LocalDate fechaAsiento, String observaciones, String usuario) throws Throwable;
 
     /**
+     * ÍTEM 2 (docs/logica-negocio/tsr/DISENO-EGRESO-CON-SALDO-DE-ANTICIPO.md §3.2): asiento de un
+     * egreso de tesorería pagado con el saldo de un anticipo del proveedor (gasto sin sustento:
+     * viáticos, etc.), sin banco de por medio.
+     * <p>
+     * DEBE:  cuenta del grupo del producto CXP, igual que {@link #generarAsientoEgresoTesoreria}<br>
+     * HABER: cuenta de anticipos del proveedor ({@code obtenerCuentaProveedorPorTipo}, tipoCuenta=2,
+     * rol Proveedor)
+     * <p>
+     * Mismo tipo de asiento y mismo módulo que {@link #generarAsientoEgresoTesoreria}:
+     * {@code TipoAsientos.EGRESO_TESORERIA}, módulo {@code ModuloSistema.TESORERIA}.
+     *
+     * @param idProductoPago : Id del producto CXP que clasifica el gasto (PGS.PRDP)
+     * @param idTitular      : Id del proveedor dueño del anticipo que se consume
+     * @param valor          : Valor del egreso
+     * @param idEmpresa      : Id de la empresa contable
+     * @param fechaAsiento   : Fecha del egreso
+     * @param observaciones  : Observación del asiento
+     * @param usuario        : Nombre del usuario que registra
+     * @return                 : Asiento generado
+     * @throws Throwable       : Excepcion (producto sin grupo, grupo sin cuenta, o proveedor sin
+     *                           cuenta de anticipos)
+     */
+    Asiento generarAsientoEgresoContraAnticipo(Long idProductoPago, Long idTitular, Double valor,
+            Long idEmpresa, java.time.LocalDate fechaAsiento, String observaciones, String usuario)
+            throws Throwable;
+
+    /**
      * Genera el asiento de un ingreso de tesorería sin documento físico
      * (TSR.INGR): intereses ganados, créditos bancarios, etc.
      * <p>
