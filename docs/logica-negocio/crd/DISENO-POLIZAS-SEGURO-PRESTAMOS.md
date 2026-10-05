@@ -247,3 +247,16 @@ El abono y el reverso de operaciones **borran** cuotas de `DTPR` y las vuelven a
 |---|---|
 | ~~S13~~ | **DECIDIDO: sí** (§5.6bis) |
 | ~~S14~~ | **DECIDIDO (2026-10-02): NO.** Para los préstamos viejos esa contabilidad de garantía en cuentas de orden **ya se generó en su momento**. Cargar la suma asegurada sólo guarda el dato para la póliza; no genera ningún asiento. |
+
+## 6. S15 — 2026-10-05: los préstamos con el PLAZO TERMINADO no entran al listado
+
+**Medido con el `sql/312`**, cruzando el listado del sistema contra la factura de desgravamen de la aseguradora:
+- Los 12 préstamos que el sistema listó y la aseguradora no facturó tenían **todas** sus cuotas pendientes ya
+  vencidas a la fecha de corte: el plazo ya había terminado. 7 de ellos con residuos de centavos (57598:
+  0,15 de capital real; el «575,27» comparado era el saldo inicial de la cuota, que no descuenta pagos).
+- Los 23 que la aseguradora facturó y el sistema no listó estaban **cancelados** (estados 3 y 4) el 29 y el
+  30-09: la aseguradora facturó con una lista anterior. Eso es una NC de exclusión, no un defecto.
+
+**Decisión del usuario:** en el listado (§3 del contrato, todos los tipos) sólo entran préstamos con **al menos una
+cuota no PAGADA ni CANCELADA ANTICIPADA con vencimiento > fecha de corte**. Un préstamo con el plazo terminado
+queda fuera aunque siga debiendo.
