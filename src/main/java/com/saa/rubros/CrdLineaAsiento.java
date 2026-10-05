@@ -177,6 +177,23 @@ public interface CrdLineaAsiento {
 	 */
 	public static final int GASTO_CONDONACION_PRESTAMOS = 70;
 
+	// ── Provisión de intereses (paso ⑦ del cierre, sql/310) ──────────────────
+
+	/**
+	 * DEBE de la provisión mensual de intereses (ordinario + mora) no cobrados — 4.7.05.10
+	 * "Intereses inversiones privativas" (correo de contabilidad, catálogo de la Super). El
+	 * reverso por cobro la usa del lado HABER. Plantilla alterno 36, una línea por tipo de
+	 * préstamo (R4).
+	 */
+	public static final int PROVISION_INTERESES_GASTO = 80;
+
+	/**
+	 * HABER de la provisión — 1.4.99.05 "Provisiones intereses inversiones privativas". El
+	 * reverso por cobro la usa del lado DEBE. Plantilla alterno 36, una línea por tipo de
+	 * préstamo (R4).
+	 */
+	public static final int PROVISION_INTERESES = 81;
+
 	// ── Cuadre ──────────────────────────────────────────────────────────────
 
 	/**

@@ -85,6 +85,23 @@ public interface CierreCarteraDaoService {
     List<Object[]> selectInteresPorTipoPrestamoEnRango(LocalDate desde, LocalDate hasta) throws Throwable;
 
     /**
+     * Versión POR CUOTA de {@link #selectInteresPorTipoPrestamoEnRango} — mismo universo
+     * ({@code PRSTIDST IN (2, 11)}, sin el 8), mismo rango y la MISMA fuente (mora
+     * {@code DTPRMRAA} PERSISTIDA, nunca recalculada — a diferencia del paso ⑦, acá no aplica
+     * P9), pero una fila por cuota en vez de un total agregado. Para el libro
+     * {@code CRD.MVIC} tipo 5 (DEVENGO_MORA) del sub-proceso ④ — el total que el asiento ya
+     * asienta (vía {@link #selectInteresPorTipoPrestamoEnRango}) sigue siendo la fuente de
+     * verdad de la LÍNEA contable; esta consulta es solo para el detalle por cuota del libro.
+     *
+     * @param desde Primer día del rango (inclusive) — {@code fechaProceso}
+     * @param hasta Último día del rango (inclusive) — {@code fechaCorteApertura}
+     * @return Filas {@code [idCuota (Long), idPrestamo (Long), idTipoPrestamo (Long),
+     *         moraDevengada (Double)]}, solo las que dan {@code > 0}
+     * @throws Throwable Si ocurre un error
+     */
+    List<Object[]> selectCuotasDevengoMoraEnRango(LocalDate desde, LocalDate hasta) throws Throwable;
+
+    /**
      * Total por cobrar de préstamos de las cuotas con vencimiento hasta la fecha:
      * capital + interés + mora + desgravamen + seguro de incendio, todos por su SALDO real.
      *

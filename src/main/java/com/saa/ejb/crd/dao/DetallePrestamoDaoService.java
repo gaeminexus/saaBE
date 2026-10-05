@@ -421,5 +421,22 @@ public interface DetallePrestamoDaoService extends EntityDao<DetallePrestamo> {
 	 */
 	List<DetallePrestamo> selectByCodigos(List<Long> codigosCuota) throws Throwable;
 
+	/**
+	 * Universo del paso ⑦ del cierre de cartera (provisión de intereses, EN LOTE, UNA sola
+	 * consulta para toda la cartera — nunca una por préstamo): cuotas de préstamos
+	 * {@code PRSTIDST IN (2, 8, 11)} (P8 — el ÚNICO paso del cierre que SÍ ve al 8, DE_PLAZO_VENCIDO),
+	 * no PAGADAS (4) ni CANCELADAS ANTICIPADAMENTE (7), con {@code fechaVencimiento <= corte}.
+	 * Las PARCIALES(6) entran. {@code docs/logica-negocio/crd/DISENO-PROVISION-INTERESES-Y-FECHA-AFECTACION.md}
+	 * §4.
+	 *
+	 * <p>{@code join fetch} del préstamo y su tipo (para resolver la cuenta por tipo de
+	 * préstamo, R4) — igual que {@code selectMenorCuotaAnteriorAlMesGlobal}.</p>
+	 *
+	 * @param corte fecha de corte (fin del mes que se cierra); se compara al final de ese día
+	 * @return cuotas del universo, con el préstamo y su producto/tipo ya cargados
+	 * @throws Throwable Si ocurre algún error
+	 */
+	List<DetallePrestamo> selectCuotasProvisionables(java.time.LocalDateTime corte) throws Throwable;
+
 }
 

@@ -4,8 +4,10 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import com.saa.basico.util.IncomeException;
@@ -42,7 +44,9 @@ import com.saa.ejb.crd.service.dto.ResultadoAplicacionAcuerdo;
 import com.saa.ejb.crd.service.dto.ResultadoAplicacionPago;
 import com.saa.ejb.crd.service.dto.ResultadoPagoMultiple;
 import com.saa.ejb.crd.service.dto.ResultadoPrecancelacion;
+import com.saa.ejb.crd.service.dto.ItemReclasificacionBanda;
 import com.saa.ejb.crd.service.dto.ResultadoProcesoCobro;
+import com.saa.ejb.crd.service.dto.ResultadoReversoProvision;
 import com.saa.ejb.crd.service.dto.ResultadoRegistroAporte;
 import com.saa.ejb.crd.service.dto.ResultadoRegistroCobro;
 import com.saa.ejb.crd.service.dto.SimulacionPrecancelacion;
@@ -216,6 +220,9 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
 
     @EJB
     private com.saa.ejb.crd.service.DistribucionBandaService distribucionBandaService;
+
+    @EJB
+    private com.saa.ejb.crd.service.ProvisionInteresService provisionInteresService;
 
     @Override
     public ResultadoRegistroCobro registrarCobro(SolicitudRegistroCobro solicitud) throws Throwable {
@@ -537,6 +544,22 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
                     "Anulación del cobro " + idCobro + ": " + motivo.trim());
         }
 
+        // ÍTEM 4, diseño §5/0c: re-provisión, una sola vez, de lo que este cobro había
+        // reversado al procesar — CASO B del javadoc de ContabilidadPrestamoService#contabilizarReverso
+        // (el asiento es de CBCR, no del hook por evento; acá es donde corresponde). Solo si
+        // llegó a PROCESADO: antes de eso nunca se generó ningún MVIC tipo 2 que compensar.
+        if (estado == CrdEstadoCobro.PROCESADO) {
+            List<PagoPrestamo> pagosAnuladosDelCobro = new ArrayList<>();
+            for (DetalleCobroCredito detalle : detalleCobroCreditoDaoService.selectByCobro(idCobro)) {
+                if (detalle.getEventoPrestamo() != null) {
+                    pagosAnuladosDelCobro.addAll(pagoPrestamoDaoService.selectByEvento(
+                        detalle.getEventoPrestamo().getCodigo()));
+                }
+            }
+            provisionInteresService.reProvisionarPorAnulacion(pagosAnuladosDelCobro, derivarEmpresaCobro(cobro),
+                LocalDate.now(), "REVERSO_CBCR", idCobro, usuario);
+        }
+
         cobro.setEstado(Long.valueOf(CrdEstadoCobro.ANULADO));
         cobro.setUsuarioAnulacion(usuario);
         cobro.setFechaAnulacion(LocalDateTime.now());
@@ -649,6 +672,19 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
         // Paso 2 — reversar TODAS las líneas del detalle (mismo bucle que anularCobro, ver
         // reversarLineasProcesadas).
         reversarLineasProcesadas(cobro, usuario, motivoLinea);
+
+        // ÍTEM 4, diseño §5/0c: re-provisión de lo que este cobro había reversado al procesar.
+        // Tiene que ir ACÁ, antes del paso 6 (desenganchar el detalle): después de eso
+        // detalle.getEventoPrestamo() ya es null y no hay cómo llegar a los pagos.
+        List<PagoPrestamo> pagosAnuladosDelReverso = new ArrayList<>();
+        for (DetalleCobroCredito detalle : detalleCobroCreditoDaoService.selectByCobro(idCobro)) {
+            if (detalle.getEventoPrestamo() != null) {
+                pagosAnuladosDelReverso.addAll(pagoPrestamoDaoService.selectByEvento(
+                    detalle.getEventoPrestamo().getCodigo()));
+            }
+        }
+        provisionInteresService.reProvisionarPorAnulacion(pagosAnuladosDelReverso, derivarEmpresaCobro(cobro),
+            LocalDate.now(), "REVERSO_CBCR", idCobro, usuario);
 
         // ACUERDO_CONDONACION (2026-09-07, CORRECCION-REVERSO-ACUERDO-CONDONACION.md): además
         // del reverso de línea de arriba, el acuerdo mismo tiene que volver a VIGENTE, y
@@ -849,6 +885,11 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
         // no tiene préstamo (fuera de alcance) y ACUERDO_CONDONACION tiene su propio staleness
         // check previo al motor (tampoco es H42: no hay "fecha efectiva" distinta de hoy ahí).
         double moraEliminadaTotal = 0.0;
+        Long idAsientoCobroTardioTotal = null;
+        // ÍTEM 5, tipo 8: acumula, por pago, la banda de CAPITAL que registrarDistribucionBandaEvento
+        // ya resolvió al bandear — "la banda a la fecha de pago" que el tipo 8 reusa sin
+        // recalcular (aprobado por el árbitro 2026-10-05).
+        Map<Long, ResultadoClasificacionBanda> clasificacionBandaPorPago = new LinkedHashMap<>();
         if (cobro.getFecha() != null && cobro.getFecha().isBefore(LocalDate.now())) {
             Set<Long> prestamosDelCobro = new LinkedHashSet<>();
             if (CrdTipoOperacionCobro.COBRO_MIXTO.equals(tipoOperacion)) {
@@ -868,12 +909,38 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
                 }
             }
             for (Long idPrestamoCobro : prestamosDelCobro) {
-                double moraEliminada = procesoMoraPrestamoService.recalcularMoraALaFechaDePago(
+                List<Object[]> detalleMora = procesoMoraPrestamoService.recalcularMoraALaFechaDePagoDetalle(
                         idPrestamoCobro, cobro.getFecha());
+                double moraEliminada = 0.0;
+                for (Object[] fila : detalleMora) {
+                    moraEliminada += redondear((Double) fila[1] - (Double) fila[2]);
+                }
+                moraEliminada = redondear(moraEliminada);
                 moraEliminadaTotal += moraEliminada;
                 System.out.println("  [H42] Cobro " + idCobro + " - préstamo " + idPrestamoCobro
                         + " - fecha de pago " + cobro.getFecha() + " (anterior a hoy) - mora eliminada: $"
                         + moraEliminada);
+
+                // ÍTEM 5, §6.2/§7bis: el exceso de mora PROVISIONADA por un cierre anterior,
+                // ahora que se sabe la mora real a la fecha efectiva de pago, se reversa con su
+                // propio asiento — separado del asiento normal del cobro, con la misma fecha
+                // de afectación.
+                if (configuracionContabilidadService.contabilidadActiva()) {
+                    ResultadoReversoProvision reversoTardio = provisionInteresService
+                        .reversarExcesoProvisionPorCobroTardio(idPrestamoCobro, detalleMora,
+                            derivarEmpresaCobro(cobro), cobro.getFechaAfectacion(), "CBCR_TARDIO", idCobro,
+                            usuario);
+                    if (reversoTardio.getIdAsiento() != null) {
+                        idAsientoCobroTardioTotal = reversoTardio.getIdAsiento();
+                    }
+                    ResultadoReversoProvision reversoDevengoTardio = provisionInteresService
+                        .reversarExcesoDevengoPorCobroTardio(idPrestamoCobro, detalleMora,
+                            derivarEmpresaCobro(cobro), cobro.getFechaAfectacion(), "CBCR_TARDIO", idCobro,
+                            usuario);
+                    if (reversoDevengoTardio.getIdAsiento() != null) {
+                        idAsientoCobroTardioTotal = reversoDevengoTardio.getIdAsiento();
+                    }
+                }
             }
             moraEliminadaTotal = redondear(moraEliminadaTotal);
         }
@@ -968,14 +1035,16 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
             // con consumirAportes desde antes de este cambio.
             ResultadoPrecancelacion resultado = procesoPagoPrestamoService.precancelar(solicitud);
             enlazarEvento(linea, resultado.getIdEvento());
-            registrarDistribucionBandaEvento(idCobro, derivarEmpresaCobro(cobro), resultado.getIdEvento(), usuario);
+            clasificacionBandaPorPago.putAll(registrarDistribucionBandaEvento(idCobro, derivarEmpresaCobro(cobro),
+                resultado.getIdEvento(), usuario));
 
         } else if (CrdTipoOperacionCobro.PAGO_CUOTA.equals(tipoOperacion)) {
             DetalleCobroCredito linea = detalles.get(0);
             ResultadoAplicacionPago resultado = procesoPagoPrestamoService.pagarCuota(
                     aSolicitudPagoCuota(cobro, linea, usuario));
             enlazarEvento(linea, resultado.getIdEvento());
-            registrarDistribucionBandaEvento(idCobro, derivarEmpresaCobro(cobro), resultado.getIdEvento(), usuario);
+            clasificacionBandaPorPago.putAll(registrarDistribucionBandaEvento(idCobro, derivarEmpresaCobro(cobro),
+                resultado.getIdEvento(), usuario));
 
         } else if (CrdTipoOperacionCobro.PAGO_MULTIPLE.equals(tipoOperacion)) {
             SolicitudPagoMultiple solicitud = new SolicitudPagoMultiple();
@@ -993,8 +1062,8 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
             List<ResultadoAplicacionPago> resultados = resultado.getResultados();
             for (int i = 0; i < detalles.size(); i++) {
                 enlazarEvento(detalles.get(i), resultados.get(i).getIdEvento());
-                registrarDistribucionBandaEvento(idCobro, derivarEmpresaCobro(cobro),
-                    resultados.get(i).getIdEvento(), usuario);
+                clasificacionBandaPorPago.putAll(registrarDistribucionBandaEvento(idCobro,
+                    derivarEmpresaCobro(cobro), resultados.get(i).getIdEvento(), usuario));
             }
 
         } else if (CrdTipoOperacionCobro.ABONO_CAPITAL.equals(tipoOperacion)) {
@@ -1012,7 +1081,8 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
             solicitud.setIdEmpresa(derivarEmpresaCobro(cobro));
             ResultadoAbonoCapital resultado = abonoCapitalPrestamoService.aplicar(solicitud);
             enlazarEvento(linea, resultado.getIdEvento());
-            registrarDistribucionBandaEvento(idCobro, derivarEmpresaCobro(cobro), resultado.getIdEvento(), usuario);
+            clasificacionBandaPorPago.putAll(registrarDistribucionBandaEvento(idCobro, derivarEmpresaCobro(cobro),
+                resultado.getIdEvento(), usuario));
 
         } else if (CrdTipoOperacionCobro.REGISTRO_APORTE.equals(tipoOperacion)) {
             // Varias líneas desde 2026-08-31 (un partícipe puede aportar cesantía Y
@@ -1067,7 +1137,8 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
 
             ResultadoAplicacionAcuerdo resultado = acuerdoCondonacionService.aplicarAcuerdo(idAcuerdo, usuario);
             enlazarEvento(linea, resultado.getIdEvento());
-            registrarDistribucionBandaEvento(idCobro, derivarEmpresaCobro(cobro), resultado.getIdEvento(), usuario);
+            clasificacionBandaPorPago.putAll(registrarDistribucionBandaEvento(idCobro, derivarEmpresaCobro(cobro),
+                resultado.getIdEvento(), usuario));
 
         } else if (CrdTipoOperacionCobro.COBRO_MIXTO.equals(tipoOperacion)) {
             // Un depósito = un cobro = una aprobación = un reverso (defecto de producción del
@@ -1103,8 +1174,8 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
                     ResultadoAplicacionPago resultadoPago = procesoPagoPrestamoService.pagarCuota(
                             aSolicitudPagoCuota(cobro, linea, usuario));
                     enlazarEvento(linea, resultadoPago.getIdEvento());
-                    registrarDistribucionBandaEvento(idCobro, derivarEmpresaCobro(cobro),
-                        resultadoPago.getIdEvento(), usuario);
+                    clasificacionBandaPorPago.putAll(registrarDistribucionBandaEvento(idCobro,
+                        derivarEmpresaCobro(cobro), resultadoPago.getIdEvento(), usuario));
                 }
             }
 
@@ -1177,6 +1248,9 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
             }
         }
 
+        double provisionReversadaTotal = 0.0;
+        Long idAsientoReversoProvisionTotal = null;
+
         // Tres asientos por cobro (2026-08-31, decisión del usuario): 1=transitorio (ya
         // generado al registrar), 2=REPARTO (CBCRASRP, nuevo), 3=definitivo (CBCRASN2, sin
         // cambios). Los dos de acá abajo, detrás del mismo gate y con el mismo criterio que
@@ -1193,6 +1267,71 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
             cobro.setAsientoReparto(asientoReparto);
             Asiento asientoDefinitivo = generarAsientoDefinitivo(cobro, detallesActualizados, capitalFuturo);
             cobro.setAsientoDefinitivo(asientoDefinitivo);
+
+            // ÍTEM 4, diseño §5: reverso de la provisión de intereses por lo efectivamente
+            // cobrado en ESTE cobro — todos los pagos de todos los eventos que generaron los
+            // detalles del cobro (préstamos distintos entre sí, posible en un PAGO_MULTIPLE).
+            List<PagoPrestamo> pagosDelCobro = new ArrayList<>();
+            for (DetalleCobroCredito detalle : detallesActualizados) {
+                if (detalle.getEventoPrestamo() != null) {
+                    pagosDelCobro.addAll(pagoPrestamoDaoService.selectByEvento(
+                        detalle.getEventoPrestamo().getCodigo()));
+                }
+            }
+            Long idEmpresaCobro = derivarEmpresaCobro(cobro);
+            ResultadoReversoProvision reverso = provisionInteresService.reversarPorPagos(pagosDelCobro,
+                idEmpresaCobro, cobro.getFechaAfectacion(), "CBCR", cobro.getCodigo(), usuario);
+            provisionReversadaTotal = reverso.getTotalReversado();
+            idAsientoReversoProvisionTotal = reverso.getIdAsiento();
+
+            // ÍTEM 5, tipo 8 (gate corregido por el árbitro 2026-10-05): solo si existe una
+            // corrida EJECUTADA antes de la fecha de afectación Y la fecha REAL de pago es
+            // anterior al corte de esa corrida — ese es el caso en que el cierre clasificó por
+            // banda un capital que, en la realidad, ya estaba pagado antes de ese corte.
+            if (cobro.getFechaAfectacion() != null && cobro.getFecha() != null) {
+                CorridaCierreCartera corridaAnterior = corridaCierreCarteraDaoService.selectUltimaEjecutadaAntesDe(
+                    idEmpresaCobro, Long.valueOf(cobro.getFechaAfectacion().getYear()),
+                    Long.valueOf(cobro.getFechaAfectacion().getMonthValue()));
+                if (corridaAnterior != null && corridaAnterior.getFechaCorte() != null
+                        && cobro.getFecha().isBefore(corridaAnterior.getFechaCorte())) {
+                    List<ItemReclasificacionBanda> itemsReclasificacion = new ArrayList<>();
+                    for (PagoPrestamo pago : pagosDelCobro) {
+                        ResultadoClasificacionBanda bandaFechaPago = clasificacionBandaPorPago.get(pago.getCodigo());
+                        if (bandaFechaPago == null || bandaFechaPago.getBanda() == null
+                                || pago.getDetallePrestamo() == null
+                                || pago.getDetallePrestamo().getFechaVencimiento() == null) {
+                            continue;
+                        }
+                        DetallePrestamo cuota = pago.getDetallePrestamo();
+                        Prestamo prestamoCuota = cuota.getPrestamo();
+                        if (prestamoCuota == null || prestamoCuota.getProducto() == null) {
+                            continue;
+                        }
+                        long[] tipoYDias = contabilizacionIndividualCreditoService.tipoCarteraYDias(
+                            cuota.getFechaVencimiento().toLocalDate(), corridaAnterior.getFechaCorte());
+                        ResultadoClasificacionBanda bandaUltimoCierre = clasificadorBandaService.clasificar(
+                            prestamoCuota.getProducto().getCodigo(), idEmpresaCobro, tipoYDias[0], tipoYDias[1],
+                            corridaAnterior.getFechaProceso());
+
+                        double capital = redondear(nvl(pago.getCapitalPagado())
+                            + (esTipoPagoConAbonoCapital(pago.getTipo()) ? nvl(pago.getSaldoOtros()) : 0.0));
+
+                        ItemReclasificacionBanda item = new ItemReclasificacionBanda();
+                        item.setIdCuota(cuota.getCodigo());
+                        item.setIdPrestamo(prestamoCuota.getCodigo());
+                        item.setCapital(capital);
+                        item.setBandaUltimoCierre(bandaUltimoCierre);
+                        item.setBandaFechaPago(bandaFechaPago);
+                        itemsReclasificacion.add(item);
+                    }
+                    ResultadoReversoProvision reclasificacion = provisionInteresService
+                        .registrarReclasificacionBandaPorCobroTardio(itemsReclasificacion, idEmpresaCobro,
+                            cobro.getFechaAfectacion(), "CBCR_TARDIO", cobro.getCodigo(), usuario);
+                    if (reclasificacion.getIdAsiento() != null) {
+                        idAsientoCobroTardioTotal = reclasificacion.getIdAsiento();
+                    }
+                }
+            }
         } else {
             System.out.println("CobroCreditoService.procesarCobro - contabilidad de CRD INACTIVA:"
                     + " cobro " + idCobro + " procesado sin generar asientos de reparto/definitivo.");
@@ -1207,6 +1346,9 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
         resultado.setProcesado(true);
         resultado.setMensaje("Cobro procesado.");
         resultado.setMoraEliminada(moraEliminadaTotal);
+        resultado.setProvisionReversada(provisionReversadaTotal);
+        resultado.setIdAsientoReversoProvision(idAsientoReversoProvisionTotal);
+        resultado.setIdAsientoCobroTardio(idAsientoCobroTardioTotal);
         return resultado;
     }
 
@@ -1726,14 +1868,28 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
      * origen, la condonación tiene que quedar EXCLUIDA de ese contraste — si no, va a parecer
      * plata que apareció de la nada.</p>
      */
-    private void registrarDistribucionBandaEvento(Long idCobro, Long idEmpresa, Long idEvento, String usuario)
-            throws Throwable {
+    private Map<Long, ResultadoClasificacionBanda> registrarDistribucionBandaEvento(Long idCobro, Long idEmpresa,
+            Long idEvento, String usuario) throws Throwable {
         if (idEvento == null) {
-            return;
+            return new LinkedHashMap<>();
         }
         List<PagoPrestamo> pagos = pagoPrestamoDaoService.selectByEvento(idEvento);
-        distribucionBandaService.registrarDistribucionPorPagos(
+        // ÍTEM 5, tipo 8 (aprobado por el árbitro 2026-10-05): este es el único cálculo de "banda
+        // a la fecha de pago" que existe — se devuelve para que procesarCobro lo reutilice sin
+        // volver a clasificar los mismos pagos.
+        return distribucionBandaService.registrarDistribucionPorPagos(
             DsbnOrigen.COBRO_INDIVIDUAL, idCobro, idEmpresa, pagos, usuario);
+    }
+
+    /**
+     * Mismo criterio que {@code PagoPrestamoDaoServiceImpl.TIPOS_PAGO_CON_ABONO_CAPITAL}
+     * (ÍTEM 5, tipo 8) — no reimplementado ahí porque esa lista es privada de ese DAO y acá
+     * hace falta para UN pago en la mano, no una consulta en lote.
+     */
+    private boolean esTipoPagoConAbonoCapital(String tipoPago) {
+        return ProcesoPagoPrestamoService.TIPO_ABONO_CAPITAL.equals(tipoPago)
+                || ProcesoPagoPrestamoService.TIPO_PRECANCELACION.equals(tipoPago)
+                || "MIGRACION".equals(tipoPago);
     }
 
     private Long derivarEmpresaCobro(CobroCredito cobro) throws Throwable {

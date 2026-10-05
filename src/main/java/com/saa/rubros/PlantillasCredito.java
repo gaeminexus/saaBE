@@ -204,6 +204,15 @@ public interface PlantillasCredito {
 	 */
 	public static final int PAGO_PENSION_COMPLEMENTARIA = 35;
 
+	/**
+	 * «CRD PROVISION INTERESES» — el paso ⑦ del cierre de cartera (provisión de intereses y
+	 * mora no cobrados) y sus reversos por cobro. D {@code CrdLineaAsiento.PROVISION_INTERESES_GASTO}
+	 * (papel 80, 4.7.05.10) / H {@code CrdLineaAsiento.PROVISION_INTERESES} (papel 81, 1.4.99.05),
+	 * una línea de cada una POR TIPO DE PRÉSTAMO (R4, {@code DTPLAXL2 = TPPRCDGO}), igual que la
+	 * plantilla 21 de interés. sql/310, 2026-10-05.
+	 */
+	public static final int PROVISION_INTERESES = 36;
+
 	// NOTA (2026-08-31): "RECLASIFICACION APORTE O COBRO EN EXCESO" (alterno 27) se evaluó
 	// para el asiento de reclasificación de la devolución de aportes y se descartó — el
 	// usuario confirmó que se devuelve CUALQUIER tipo de aporte, no solo los tres con cuenta

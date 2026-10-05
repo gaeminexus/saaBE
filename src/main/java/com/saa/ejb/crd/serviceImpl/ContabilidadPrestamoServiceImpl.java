@@ -119,6 +119,9 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
     @EJB
     private com.saa.ejb.cnt.dao.PlanCuentaDaoService planCuentaDaoService;
 
+    @EJB
+    private com.saa.ejb.crd.service.ProvisionInteresService provisionInteresService;
+
     // =====================================================================
     // Fase 1 — cruce de valores (pagarConAportes). Asiento levantado en
     // LEVANTAMIENTO-ALIMENTACION-CONTABLE-CREDITOS.md §3.5: D cuentas de aporte del socio,
@@ -221,6 +224,10 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
 
         System.out.println("  ✅ contabilizarPagoConAportes OK - Asiento: " + asiento.getCodigo()
                 + " - Evento: " + ctx.getIdEvento() + " - Monto: $" + valorOperacion);
+
+        // ÍTEM 4, diseño §5: reverso de la provisión de intereses por lo que este cruce liquidó.
+        provisionInteresService.reversarPorPagos(pagos, idEmpresa, fechaCorte, "CRUCE", ctx.getIdEvento(),
+                ctx.getUsuario());
 
         return asiento.getCodigo();
     }
@@ -756,6 +763,19 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
                                 ? ": " + eventoAnulado.getMotivoAnulacion() : ""));
         System.out.println("  ↩️ Asiento " + eventoAnulado.getNumeroAsiento() + " reversado"
                 + " (evento " + eventoAnulado.getCodigo() + ")");
+
+        // ÍTEM 4, diseño §5/0c: re-provisión, una sola vez, de lo que este evento (ya con sus
+        // PagoPrestamo marcados anulado=1 por anularOperacion) había reversado al cobrar. La
+        // empresa sale del MISMO asiento que se acaba de anular (es el que de verdad lo generó).
+        List<PagoPrestamo> pagosAnulados = pagoPrestamoDaoService.selectByEvento(eventoAnulado.getCodigo());
+        Asiento asientoAnulado = asientoService.selectById(eventoAnulado.getNumeroAsiento());
+        Long idEmpresaReverso = asientoAnulado != null && asientoAnulado.getEmpresa() != null
+                ? asientoAnulado.getEmpresa().getCodigo() : null;
+        if (idEmpresaReverso != null) {
+            provisionInteresService.reProvisionarPorAnulacion(pagosAnulados, idEmpresaReverso, LocalDate.now(),
+                    "REVERSO_" + eventoAnulado.getTipoOperacion(), eventoAnulado.getCodigo(), usuario);
+        }
+
         return eventoAnulado.getNumeroAsiento();
     }
 

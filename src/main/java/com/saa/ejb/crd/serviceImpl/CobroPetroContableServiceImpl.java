@@ -142,6 +142,9 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
     private PlanCuentaDaoService planCuentaDaoService;
 
     @EJB
+    private com.saa.ejb.crd.service.ProvisionInteresService provisionInteresService;
+
+    @EJB
     private CuentaBancariaDaoService cuentaBancariaDaoService;
 
     @EJB
@@ -1100,6 +1103,10 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
         // principio de este método, con o sin este asiento).
         distribucionBandaService.actualizarAsiento(
             com.saa.rubros.DsbnOrigen.CARGA_PETRO, idCarga, asiento.getCodigo());
+
+        // ÍTEM 4, diseño §5: reverso de la provisión de intereses por lo cobrado en esta carga
+        // Petro. Petro no deshace (diseño 0c): no hay re-provisión que enganchar acá.
+        provisionInteresService.reversarPorPagos(pagos, idEmpresa, fechaAsiento, "PETRO", idCarga, "SISTEMA");
     }
 
     // =====================================================================

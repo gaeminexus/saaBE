@@ -90,6 +90,13 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
     @EJB
     private CierreCarteraDaoService cierreCarteraDaoService;
 
+    /** Paso ⑦ (provisión de intereses) y la anulación de MVIC al reversar una corrida. */
+    @EJB
+    private com.saa.ejb.crd.service.ProvisionInteresService provisionInteresService;
+
+    @EJB
+    private com.saa.ejb.crd.dao.MovimientoInteresCuotaDaoService movimientoInteresCuotaDaoService;
+
     @EJB
     private CorridaCierreCarteraDaoService corridaCierreCarteraDaoService;
 
@@ -319,6 +326,12 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
             asientoCierreCarteraDaoService.save(registro, registro.getCodigo());
         }
 
+        // MVIC de la corrida (tipos 1, 5 y 7 — contrato API-FECHA-AFECTACION-COBRO.md §4,
+        // que prevalece sobre el "tipo 1 y 5" del diseño original de provisión de intereses):
+        // se marcan ANULADOS, nunca se borran — mismo criterio que el resto del reverso.
+        int mvicAnulados = movimientoInteresCuotaDaoService.anularByCorrida(idCorrida, usuario);
+        System.out.println("  MVIC anulados de la corrida " + idCorrida + ": " + mvicAnulados);
+
         // Las filas NO se borran: el snapshot y los registros de asiento quedan marcados,
         // que es lo que hace auditable el reverso.
         corrida.setIdEstado(Long.valueOf(EstadoCorridaCierreCartera.REVERSADA));
@@ -454,6 +467,9 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
         avisaExcesoCobro(desglose, resultado.getAdvertencias(), solicitud);
 
         resultado.getSubProcesos().add(armaNeteo(solicitud, fechaCorte, desglose));
+        // ⑦ Provisión de intereses: fechado al CORTE (no a fechaProceso, a diferencia de los
+        // seis anteriores) — "a fin de cada mes" (§1.1 del diseño de provisión de intereses).
+        resultado.getSubProcesos().add(armaProvisionIntereses(solicitud, fechaCorte));
 
         // Un descuadre se avisa en la previsualizacion en vez de reventar: contabilidad
         // tiene que poder VER el asiento defectuoso para entender que falta. La ejecucion
@@ -904,6 +920,49 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
 
         cierra(sub, "No hay interes ni mora pendientes de devengar al corte.");
         cuadra(sub, CrdLineaAsiento.INGRESO_INTERES_ORDINARIO);
+        return sub;
+    }
+
+    // =====================================================================
+    // Sub-proceso ⑦ — provisión de intereses (sin número en la pizarra original, 2026-10-05)
+    // =====================================================================
+
+    /**
+     * ⑦ Provisión de intereses y mora NO cobrados al corte, que todavía no se habían
+     * provisionado (P1/P2). D {@code PROVISION_INTERESES_GASTO} (470510) / H
+     * {@code PROVISION_INTERESES} (149905), por tipo de préstamo (R4) — plantilla alterno 36.
+     * Fechado al CORTE (fin del mes que se cierra), a diferencia de los seis anteriores
+     * (fechaProceso): "a fin de cada mes", pedido del usuario (§1.1 del diseño).
+     *
+     * <p>Universo {@code PRSTIDST IN (2, 8, 11)} (P8) — el ÚNICO paso de todo el cierre que ve
+     * al 8 (DE_PLAZO_VENCIDO). Los seis anteriores siguen con {@code PRESTAMOS_VIVOS = (2, 11)},
+     * sin cambios (D27 espera al contador).</p>
+     *
+     * <p>Solo arma las LÍNEAS del asiento — el detalle por cuota (MVIC tipo 1) se registra
+     * DESPUÉS, en {@link #generaAsiento}, porque recién ahí existe el código de la corrida.</p>
+     */
+    private SubProcesoCierre armaProvisionIntereses(SolicitudCierreCartera solicitud, LocalDate corte)
+            throws Throwable {
+
+        SubProcesoCierre sub = nuevoSubProceso(SubProcesoCierreCartera.PROVISION_INTERESES,
+                "Provisión de intereses", "⑦", corte,
+                "CRD provisión de intereses " + periodo(solicitud));
+
+        Long idPlantilla = resuelvePlantilla(PlantillasCredito.PROVISION_INTERESES,
+                "provisión de intereses", solicitud.getIdEmpresa());
+
+        for (java.util.Map.Entry<Long, double[]> entrada
+                : provisionInteresService.calcularProvisionPorTipoPrestamo(corte).entrySet()) {
+            Long idTipoPrestamo = entrada.getKey();
+            double total = redondeaDouble(Double.valueOf(entrada.getValue()[0] + entrada.getValue()[1]));
+            agregaPorTipo(sub, idPlantilla, CrdLineaAsiento.PROVISION_INTERESES_GASTO, idTipoPrestamo, total,
+                    "Provisión intereses inversiones privativas " + periodo(solicitud));
+            agregaPorTipo(sub, idPlantilla, CrdLineaAsiento.PROVISION_INTERESES, idTipoPrestamo, total,
+                    "Provisiones intereses inversiones privativas " + periodo(solicitud));
+        }
+
+        cierra(sub, "No hay interes ni mora pendiente de provisionar al corte.");
+        cuadra(sub, CrdLineaAsiento.PROVISION_INTERESES);
         return sub;
     }
 
@@ -1468,6 +1527,31 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
         registro.setIpRegistro(solicitud.getIp());
         registro.setFechaRegistro(ahora);
         asientoCierreCarteraDaoService.save(registro, null);
+
+        // Paso ⑦: el detalle por cuota (MVIC tipo 1) recién ahora, con el código de la corrida y
+        // del asiento ya grabados. Recalcula entero — no confía en las líneas ya armadas arriba.
+        if (sub.getSubProceso() != null
+                && sub.getSubProceso().intValue() == SubProcesoCierreCartera.PROVISION_INTERESES) {
+            provisionInteresService.registrarProvisionCierre(corrida.getCodigo(), asiento.getCodigo(),
+                    sub.getFecha(), solicitud.getUsuario());
+        }
+
+        // Paso ④: el detalle por cuota (MVIC tipo 5) — mismo rango que calculó la línea del
+        // asiento (fechaProceso -> fechaCorteApertura, ver calcula()); se recalcula acá porque
+        // generaAsiento no recibe esos dos parámetros, mismo criterio que arriba.
+        if (sub.getSubProceso() != null
+                && sub.getSubProceso().intValue() == SubProcesoCierreCartera.DEVENGO_INTERESES) {
+            LocalDate fechaProcesoCorrida = corrida.getFechaProceso();
+            LocalDate fechaCorteAperturaCorrida = fechaProcesoCorrida.withDayOfMonth(
+                    fechaProcesoCorrida.lengthOfMonth());
+            Map<Long, Double> totalMoraPorTipo = new java.util.HashMap<>();
+            for (Object[] fila : cierreCarteraDaoService.selectInteresPorTipoPrestamoEnRango(
+                    fechaProcesoCorrida, fechaCorteAperturaCorrida)) {
+                totalMoraPorTipo.put((Long) fila[0], (Double) fila[2]);
+            }
+            provisionInteresService.registrarDevengoMoraCierre(corrida.getCodigo(), asiento.getCodigo(),
+                    fechaProcesoCorrida, fechaCorteAperturaCorrida, totalMoraPorTipo, solicitud.getUsuario());
+        }
     }
 
     /**

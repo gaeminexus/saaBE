@@ -1080,4 +1080,27 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 		return resultados;
 	}
 
+	@Override
+	@SuppressWarnings("unchecked")
+	public List<DetallePrestamo> selectCuotasProvisionables(java.time.LocalDateTime corte) throws Throwable {
+		System.out.println("DetallePrestamoDaoServiceImpl.selectCuotasProvisionables - corte: " + corte);
+		Query query = em.createQuery(
+			" select d from DetallePrestamo d " +
+			" join fetch d.prestamo p " +
+			" left join fetch p.producto prod " +
+			" left join fetch prod.tipoPrestamo " +
+			" where p.idEstado in (" + com.saa.rubros.EstadoPrestamo.VIGENTE + ", "
+				+ com.saa.rubros.EstadoPrestamo.DE_PLAZO_VENCIDO + ", "
+				+ com.saa.rubros.EstadoPrestamo.EN_MORA + ") " +
+			"   and (d.estado is null or d.estado not in ("
+				+ com.saa.rubros.EstadoCuotaPrestamo.PAGADA + ", "
+				+ com.saa.rubros.EstadoCuotaPrestamo.CANCELADA_ANTICIPADA + ")) " +
+			"   and d.fechaVencimiento <= :corte "
+		);
+		query.setParameter("corte", corte);
+		List<DetallePrestamo> resultado = query.getResultList();
+		System.out.println("  Cuotas provisionables encontradas: " + resultado.size());
+		return resultado;
+	}
+
 }

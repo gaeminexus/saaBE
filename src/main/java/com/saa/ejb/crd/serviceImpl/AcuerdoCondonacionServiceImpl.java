@@ -144,6 +144,9 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
     @EJB
     private PlanCuentaDaoService planCuentaDaoService;
 
+    @EJB
+    private com.saa.ejb.crd.service.ProvisionInteresService provisionInteresService;
+
     /**
      * Confirma el acuerdo Y registra su cobro en CBCR en el MISMO acto (§5 del plan,
      * rediseñado el 2026-08-30: ya no hay aprobación de condonación previa). El préstamo NO
@@ -633,6 +636,18 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
         // definir (§6.2), falla FUERTE con un mensaje claro — no genera un asiento a medias.
         if (configuracionContabilidadService.contabilidadActiva()) {
             generarAsientoCondonacion(acuerdo, prestamo, pendientes, capitalCondonado, interesCondonado, fecha);
+
+            // ÍTEM 4, diseño §5/7bis/R2: la parte CONDONADA (nunca pasó por el PagoPrestamo K9)
+            // también reduce lo provisionado. `pendientes` (donde cae esta condonación) y
+            // `ancla` (donde cae el tipo 2 que CBCR reversa al procesar el cobro, más tarde) son
+            // conjuntos DISJUNTOS — ancla ya está PAGADA, pendientes la excluye por construcción
+            // — así que el orden entre los dos no cambia el resultado final de ninguna cuota.
+            if (acuerdo.getEmpresa() != null) {
+                double interesCondonadoSolo = valorConceptoCondonado(detalles, CrdConceptoPrestamo.INTERES);
+                double moraCondonadaSolo = valorConceptoCondonado(detalles, CrdConceptoPrestamo.MORA);
+                provisionInteresService.condonarProvision(pendientes, interesCondonadoSolo, moraCondonadaSolo,
+                        acuerdo.getEmpresa().getCodigo(), fecha, "CONDONACION", idAcuerdo, usuario);
+            }
         } else {
             System.out.println("  AcuerdoCondonacionService.aplicarAcuerdo - contabilidad de CRD"
                     + " INACTIVA: acuerdo " + idAcuerdo + " aplicado sin generar asiento de condonación.");

@@ -118,5 +118,6 @@ public interface NombreEntidadesCredito {
 	String DOCUMENTO_SEGURO = "DocumentoSeguro";
 	String PRESTAMO_SEGURO = "PrestamoSeguro";
 	String CUOTA_SEGURO = "CuotaSeguro";
+	String MOVIMIENTO_INTERES_CUOTA = "MovimientoInteresCuota";
 
 }

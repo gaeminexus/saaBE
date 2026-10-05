@@ -5,6 +5,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.List;
 
 import com.saa.basico.util.IncomeException;
@@ -359,6 +360,17 @@ public class ProcesoMoraPrestamoServiceImpl implements ProcesoMoraPrestamoServic
 
     @Override
     public double recalcularMoraALaFechaDePago(Long idPrestamo, LocalDate fechaPago) throws Throwable {
+        double moraEliminada = 0.0;
+        for (Object[] fila : recalcularMoraALaFechaDePagoDetalle(idPrestamo, fechaPago)) {
+            double moraAnterior = (Double) fila[1];
+            double moraNueva = (Double) fila[2];
+            moraEliminada += redondear(moraAnterior - moraNueva);
+        }
+        return redondear(moraEliminada);
+    }
+
+    @Override
+    public List<Object[]> recalcularMoraALaFechaDePagoDetalle(Long idPrestamo, LocalDate fechaPago) throws Throwable {
         if (idPrestamo == null) {
             throw new IncomeException(ERR_PRESTAMO_NO_ENCONTRADO + ": idPrestamo es obligatorio");
         }
@@ -374,7 +386,7 @@ public class ProcesoMoraPrestamoServiceImpl implements ProcesoMoraPrestamoServic
         double tasaDiaria = tasaDiariaDelPrestamo(prestamo, false);
 
         List<DetallePrestamo> todas = detallePrestamoDaoService.selectByPrestamo(idPrestamo);
-        double moraEliminada = 0.0;
+        List<Object[]> detalle = new ArrayList<>();
 
         if (todas != null) {
             for (DetallePrestamo cuota : todas) {
@@ -419,7 +431,7 @@ public class ProcesoMoraPrestamoServiceImpl implements ProcesoMoraPrestamoServic
 
                 detallePrestamoService.saveSingle(cuota);
 
-                moraEliminada += redondear(moraAnterior - moraNueva);
+                detalle.add(new Object[]{cuota.getCodigo(), moraAnterior, moraNueva});
 
                 System.out.println("      [H42] Cuota #" + cuota.getNumeroCuota()
                     + " (préstamo " + idPrestamo + ") recalculada a la fecha de pago " + fechaPago
@@ -427,10 +439,9 @@ public class ProcesoMoraPrestamoServiceImpl implements ProcesoMoraPrestamoServic
             }
         }
 
-        moraEliminada = redondear(moraEliminada);
-        System.out.println("  [H42] Préstamo " + idPrestamo + " - mora eliminada al recalcular a la"
-            + " fecha de pago " + fechaPago + ": $" + moraEliminada);
-        return moraEliminada;
+        System.out.println("  [H42] Préstamo " + idPrestamo + " - cuotas recalculadas a la fecha de pago "
+            + fechaPago + ": " + detalle.size());
+        return detalle;
     }
 
     // ========================================================================

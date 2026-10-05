@@ -1,6 +1,7 @@
 package com.saa.ejb.crd.service;
 
 import java.time.LocalDate;
+import java.util.List;
 
 import com.saa.ejb.crd.service.dto.ResultadoCalculoMora;
 import com.saa.model.crd.DetallePrestamo;
@@ -186,4 +187,21 @@ public interface ProcesoMoraPrestamoService {
      * @throws Throwable Si ocurre un error
      */
     double recalcularMoraALaFechaDePago(Long idPrestamo, LocalDate fechaPago) throws Throwable;
+
+    /**
+     * Mismo recálculo que {@link #recalcularMoraALaFechaDePago} (de hecho, esa delega en este:
+     * una sola implementación, nunca dos copias) pero con el detalle POR CUOTA — ÍTEM 5 del
+     * frente de provisión de intereses (cobro tardío, §6.2/§7bis) necesita saber, cuota por
+     * cuota, cuánta mora PROVISIONADA (tipo 3) y cuánta mora DEVENGADA (tipo 5, tipo 6) quedó de
+     * más, y eso no se puede derivar del total agregado que devuelve el método original.
+     *
+     * @param idPrestamo Código del préstamo
+     * @param fechaPago  Fecha efectiva del pago
+     * @return Filas {@code [idCuota (Long), moraAnterior (Double), moraNueva (Double)]}, SOLO
+     *         las cuotas realmente recalculadas por este método (no terminales, con
+     *         vencimiento); una cuota con {@code moraAnterior == moraNueva} igual aparece (el
+     *         llamador filtra "sin cambio" si le importa, acá no se descarta nada)
+     * @throws Throwable Si ocurre un error
+     */
+    List<Object[]> recalcularMoraALaFechaDePagoDetalle(Long idPrestamo, LocalDate fechaPago) throws Throwable;
 }

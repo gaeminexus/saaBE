@@ -115,6 +115,33 @@ public class CierreCarteraDaoServiceImpl implements CierreCarteraDaoService {
     }
 
     @Override
+    public List<Object[]> selectCuotasDevengoMoraEnRango(LocalDate desde, LocalDate hasta) throws Throwable {
+        System.out.println("Ingresa al metodo selectCuotasDevengoMoraEnRango - desde: " + desde
+                + " - hasta: " + hasta);
+        Query query = em.createNativeQuery(
+                " SELECT d.DTPRCDGO, p.PRSTCDGO, pr.TPPRCDGO, "
+                + "        GREATEST(NVL(d.DTPRMRAA,0) - NVL(g.mora,0), 0) "
+                + " FROM   CRD.DTPR d "
+                + " JOIN   CRD.PRST p  ON p.PRSTCDGO = d.PRSTCDGO "
+                + " JOIN   CRD.PRDC pr ON pr.PRDCCDGO = p.PRDCCDGO "
+                + " LEFT JOIN " + PAGOS_VIGENTES + " ON g.DTPRCDGO = d.DTPRCDGO "
+                + " WHERE  " + PRESTAMOS_VIVOS
+                + " AND    " + CUOTAS_PENDIENTES
+                + " AND    TRUNC(d.DTPRFCVN) BETWEEN :desde AND :hasta "
+                + " AND    pr.TPPRCDGO IS NOT NULL "
+                + " AND    GREATEST(NVL(d.DTPRMRAA,0) - NVL(g.mora,0), 0) > 0 "
+                + " ORDER BY pr.TPPRCDGO, d.DTPRCDGO");
+        query.setParameter("desde", Date.valueOf(desde));
+        query.setParameter("hasta", Date.valueOf(hasta));
+        List<Object[]> filas = query.getResultList();
+        List<Object[]> resultado = new ArrayList<Object[]>();
+        for (Object[] fila : filas) {
+            resultado.add(new Object[]{ aLong(fila[0]), aLong(fila[1]), aLong(fila[2]), aDouble(fila[3]) });
+        }
+        return resultado;
+    }
+
+    @Override
     public List<Object[]> selectCobrablePrestamosHasta(LocalDate hasta) throws Throwable {
         System.out.println("Ingresa al metodo selectCobrablePrestamosHasta - hasta: " + hasta);
         Query query = em.createNativeQuery(
