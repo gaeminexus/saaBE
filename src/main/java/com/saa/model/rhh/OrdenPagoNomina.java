@@ -19,6 +19,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.NamedQueries;
 import jakarta.persistence.NamedQuery;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 
 /**
  * Orden de pago del neto de un periodo de nomina.
@@ -155,6 +156,15 @@ public class OrdenPagoNomina implements Serializable, EntidadAuditableFechaHora 
     @Column(name = "RDPGUSRR", length = 60)
     private String usuarioRegistro;
 
+    /**
+     * true si la orden se paga por empleado (sin pago consolidado RHH_NOMINA); false si tiene
+     * un pago consolidado RHH_NOMINA vigente o no, para cualquier (origen, idOrigen=RDPGCDGO).
+     * Transitorio: no se persiste, lo pobla {@code GeneracionOrdenPagoService} para la pantalla
+     * de RRHH -- docs/logica-negocio/rhh/API-PAGO-NOMINA-POR-EMPLEADO.md §4, ITEM 8.
+     */
+    @Transient
+    private Boolean pagoPorEmpleado;
+
     // =============================
     // Getters y Setters
     // =============================
@@ -285,5 +295,13 @@ public class OrdenPagoNomina implements Serializable, EntidadAuditableFechaHora 
 
     public void setUsuarioRegistro(String usuarioRegistro) {
         this.usuarioRegistro = usuarioRegistro;
+    }
+
+    public Boolean getPagoPorEmpleado() {
+        return pagoPorEmpleado;
+    }
+
+    public void setPagoPorEmpleado(Boolean pagoPorEmpleado) {
+        this.pagoPorEmpleado = pagoPorEmpleado;
     }
 }

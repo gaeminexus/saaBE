@@ -53,6 +53,9 @@ public class OrdenPagoNominaRest {
         System.out.println("LLEGA AL SERVICIO getAll - ORDEN_PAGO_NOMINA");
         try {
             List<OrdenPagoNomina> lista = ordenPagoNominaDaoService.selectAll(NombreEntidadesRhh.ORDEN_PAGO_NOMINA);
+            // ITEM 8 (API-PAGO-NOMINA-POR-EMPLEADO.md §4): pagoPorEmpleado transitorio, una
+            // sola consulta para toda la lista.
+            lista = generacionOrdenPagoService.poblarPagoPorEmpleado(lista);
             return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener registros: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
@@ -69,6 +72,7 @@ public class OrdenPagoNominaRest {
             if (registro == null) {
                 return Response.status(Response.Status.NOT_FOUND).entity("Registro con ID " + id + " no encontrado").type(MediaType.APPLICATION_JSON).build();
             }
+            registro = generacionOrdenPagoService.poblarPagoPorEmpleado(registro);
             return Response.status(Response.Status.OK).entity(registro).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener registro: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
@@ -109,6 +113,7 @@ public class OrdenPagoNominaRest {
         System.out.println("selectByCriteria de ORDEN_PAGO_NOMINA");
         try {
             List<OrdenPagoNomina> lista = ordenPagoNominaService.selectByCriteria(registros);
+            lista = generacionOrdenPagoService.poblarPagoPorEmpleado(lista);
             return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.BAD_REQUEST).entity("Error en busqueda: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
@@ -197,6 +202,23 @@ public class OrdenPagoNominaRest {
             return Response.status(Response.Status.OK).entity(orden).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al confirmar la orden de pago: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
+     * Sincroniza, por cada DRPG pendiente, el estado de su pago en tesoreria -- como los
+     * jubilados. docs/logica-negocio/rhh/API-PAGO-NOMINA-POR-EMPLEADO.md §3.3/§4.
+     */
+    @POST
+    @Path("/sincronizarPagos/{id}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response sincronizarPagos(@PathParam("id") Long id) {
+        System.out.println("LLEGA AL SERVICIO sincronizarPagos - ORDEN_PAGO_NOMINA, orden: " + id);
+        try {
+            OrdenPagoNomina orden = generacionOrdenPagoService.sincronizarPagos(id);
+            return Response.status(Response.Status.OK).entity(orden).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al sincronizar los pagos de la orden: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
     }
 

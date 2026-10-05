@@ -8,13 +8,16 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.cxp.service.PagoProgramadoService;
 import com.saa.ejb.cxp.service.dto.BeneficiarioOcasional;
+import com.saa.ejb.cxp.service.dto.LineaContablePago;
 import com.saa.ejb.rhh.dao.CuentaBancariaEmpleadoDaoService;
 import com.saa.ejb.rhh.dao.DetalleFormatoBancarioDaoService;
 import com.saa.ejb.rhh.dao.DetalleOrdenPagoNominaDaoService;
@@ -25,6 +28,7 @@ import com.saa.ejb.rhh.dao.PeriodoNominaDaoService;
 import com.saa.ejb.rhh.dao.ReglonNominaDaoService;
 import com.saa.ejb.rhh.dao.ValorNoPagadoDaoService;
 import com.saa.ejb.tsr.dao.EgresoDaoService;
+import com.saa.ejb.rhh.service.CierreCuotasDescuentoService;
 import com.saa.ejb.rhh.service.ContabilizacionNominaService;
 import com.saa.ejb.rhh.service.GeneracionOrdenPagoService;
 import com.saa.ejb.rhh.util.RedondeoNomina;
@@ -44,11 +48,11 @@ import com.saa.model.cxp.ProductoPago;
 import com.saa.model.tsr.BancoExterno;
 import com.saa.model.tsr.CuentaBancaria;
 import com.saa.model.tsr.Egreso;
-import com.saa.rubros.Estado;
 import com.saa.rubros.EstadoEgresoTesoreria;
 import com.saa.rubros.EstadoPagoProgramado;
 import com.saa.rubros.OrigenPagoExterno;
 import com.saa.rubros.RhhCampoArchivoBancario;
+import com.saa.rubros.RhhEstadoDetalleOrdenPago;
 import com.saa.rubros.RhhEstadoOrdenPago;
 import com.saa.rubros.RhhEstadoValorNoPagado;
 import com.saa.rubros.RhhFormatoArchivoMarcacion;
@@ -61,6 +65,7 @@ import jakarta.ejb.Stateless;
 import jakarta.ejb.TransactionAttribute;
 import jakarta.ejb.TransactionAttributeType;
 import jakarta.persistence.EntityManager;
+import jakarta.persistence.NoResultException;
 import jakarta.persistence.PersistenceContext;
 
 /**
@@ -170,6 +175,19 @@ public class GeneracionOrdenPagoServiceImpl implements GeneracionOrdenPagoServic
     private ReglonNominaDaoService reglonNominaDaoService;
     // ===== FIN enganche valores no pagados =====
 
+    // ===== INICIO nomina por empleado (docs/logica-negocio/rhh/API-PAGO-NOMINA-POR-EMPLEADO.md) =====
+    /**
+     * Mismo motivo que {@code PagoPensionComplementariaServiceImpl.self}: un metodo privado de
+     * este bean corre en la transaccion de quien lo llama, y {@code sincronizaUnDetalle} necesita
+     * {@code REQUIRES_NEW} de verdad -- solo el proxy del EJB lo honra, nunca {@code this.metodo()}.
+     */
+    @EJB
+    private GeneracionOrdenPagoService self;
+
+    @EJB
+    private CierreCuotasDescuentoService cierreCuotasDescuentoService;
+    // ===== FIN nomina por empleado =====
+
     /* (non-Javadoc)
      * @see com.saa.ejb.rhh.service.GeneracionOrdenPagoService#generar(java.lang.Long, java.lang.Long, java.lang.String, java.lang.Long)
      */
@@ -197,8 +215,18 @@ public class GeneracionOrdenPagoServiceImpl implements GeneracionOrdenPagoServic
             orden.setFechaRegistro(LocalDateTime.now());
             orden.setUsuarioRegistro(usuario);
         } else {
-            // Regeneracion de una orden todavia no acreditada: se rehace el detalle para que
-            // un cambio de cuenta bancaria del empleado quede reflejado.
+            // Nomina por empleado: cada DRPG es el idOrigen de su propio PagoProgramado
+            // (RHH_NOMINA_EMPLEADO). Regenerar el detalle sin esta guarda borraria filas DRPG
+            // que algun pago vivo en tesoreria todavia referencia por id -- las huerfanaria sin
+            // avisar. Si ya no queda ningun pago vivo (todos RECHAZADO/ANULADO, o la orden es
+            // del camino viejo y nunca tuvo pagos por empleado), se puede rehacer el detalle
+            // igual que siempre, para que un cambio de cuenta bancaria del empleado se refleje.
+            if (tieneAlgunDrpgConPagoVivo(orden.getCodigo())) {
+                throw new IncomeException("La orden de pago " + orden.getCodigo() + " ya tiene pagos de"
+                        + " empleados vigentes en tesoreria: no se puede regenerar sin perder su rastro."
+                        + " Use 'Actualizar pagos' para seguir el estado de cada empleado, o 'Reenviar'"
+                        + " para corregir uno rechazado.");
+            }
             detalleOrdenPagoNominaDaoService.eliminaByOrdenPago(orden.getCodigo());
         }
 
@@ -279,33 +307,36 @@ public class GeneracionOrdenPagoServiceImpl implements GeneracionOrdenPagoServic
     }
 
     /**
-     * Registra el pago consolidado de la orden en la bandeja de aprobacion de tesoreria
-     * (frente 2, decision D1 del usuario, 2026-09-01).
+     * Registra UN pago por cada DRPG de la orden en la bandeja de aprobacion de tesoreria,
+     * como los jubilados -- docs/logica-negocio/rhh/API-PAGO-NOMINA-POR-EMPLEADO.md §3.1.
+     * Reemplaza al pago consolidado RHH_NOMINA (que sigue existiendo, intacto, para las
+     * ordenes viejas que ya lo tienen -- {@link #confirmar} y {@link #generarArchivoBancario}
+     * las distinguen por eso).
      *
-     * <p>Sin desglose contable y sin cuenta bancaria de origen: RRHH sigue contabilizando el
-     * pago con <code>ContabilizacionNominaService.contabilizarPago</code> y la plantilla
-     * <code>CFNMPLPG</code> (eso no se toca), y la bandeja actua solo como control y
-     * aprobacion. El pago nace <code>POR_APROBAR</code> porque
-     * <code>idCuentaBancariaOrigen</code> viaja en null -es el unico mecanismo,
-     * <code>PagoProgramadoServiceImpl</code> decide el estado inicial exclusivamente por eso.</p>
+     * <p>Cada linea lleva su propio desglose contable con el producto NOMINA: a diferencia del
+     * pago consolidado (sin desglose, porque RRHH contabilizaba aparte), aqui es tesoreria
+     * quien genera el asiento de cada pago al confirmarlo (N3), con el camino generico que ya
+     * usa un desglose para armar el DEBE.</p>
      *
-     * <p>Idempotente por (origen, idOrigen): si <code>generar</code> se vuelve a correr sobre
-     * una orden que ya tiene un pago vivo en la bandeja (POR_APROBAR, REGISTRADO, EN_ARCHIVO o
-     * CONFIRMADO), no se registra un segundo pago para el mismo total.</p>
+     * <p>Todo o nada: corre dentro de la transaccion de {@link #generar}, asi que si un
+     * empleado falla (p.ej. el producto NOMINA no existe para la empresa) no queda ningun
+     * pago nuevo registrado, ni de este ni de los que ya se hubieran procesado en esta misma
+     * pasada.</p>
      *
-     * @param orden			: Orden de pago ya guardada, con el total definitivo
+     * <p>Idempotente por DRPG: un detalle con un pago vivo (cualquier estado salvo RECHAZADO o
+     * ANULADO) no se vuelve a registrar. En la practica, dado que regenerar una orden con algun
+     * pago vivo ya esta bloqueado mas arriba en {@link #generar} (DRPG huerfanos), esta guarda
+     * nunca deberia dispararse hoy -- se deja igual, explicitamente pedida por el contrato,
+     * como defensa si ese bloqueo cambiara.</p>
+     *
+     * @param orden			: Orden de pago ya guardada, con el detalle (DRPG) ya persistido
      * @param idUsuario		: Id de SCP.PJRQ del usuario que ejecuta, FK real que exige
      *						  registrarPagoDeOrigenExterno — nunca se resuelve por nombre, ver
      *						  el Javadoc de {@link com.saa.ejb.rhh.service.GeneracionOrdenPagoService#generar}
-     * @throws Throwable	: IncomeException si la orden no tiene empresa o falta idUsuario
+     * @throws Throwable	: IncomeException si falta empresa/idUsuario, o si un empleado falla
+     *						  (nombrandolo)
      */
     private void registraPagoEnBandeja(OrdenPagoNomina orden, Long idUsuario) throws Throwable {
-        if (tienePagoVivoEnBandeja(orden.getCodigo())) {
-            System.out.println("La orden de pago " + orden.getCodigo()
-                    + " ya tiene un pago vivo en la bandeja de tesoreria: no se registra otro.");
-            return;
-        }
-
         Long idEmpresa = orden.getEmpresa() != null ? orden.getEmpresa().getCodigo() : null;
         if (idEmpresa == null) {
             throw new IncomeException("La orden de pago " + orden.getCodigo() + " no tiene empresa:"
@@ -313,25 +344,177 @@ public class GeneracionOrdenPagoServiceImpl implements GeneracionOrdenPagoServic
         }
         exigeIdUsuario(idUsuario, "generar");
 
-        // Beneficiario informativo: la orden es un pago consolidado a muchos empleados, no a
-        // una sola persona, y sin desglose este registro no genera archivo de transferencias
-        // propio (el archivo bancario real ya lo arma generarArchivoBancario() desde
-        // RHH.DRPG). El nombre y la identificacion aqui son solo lo que la bandeja muestra.
+        List<DetalleOrdenPagoNomina> detalles = detalleOrdenPagoNominaDaoService
+                .selectByOrdenPago(orden.getCodigo());
+        if (detalles == null || detalles.isEmpty()) {
+            return;
+        }
+
+        Long idProductoNomina = idProductoNomina(idEmpresa);
+        String periodoTexto = orden.getPeriodoNomina().getMes() + "/" + orden.getPeriodoNomina().getAnio();
+
+        for (DetalleOrdenPagoNomina detalle : detalles) {
+            try {
+                registraPagoDeUnDetalle(orden, detalle, idProductoNomina, periodoTexto, idUsuario);
+            } catch (Throwable e) {
+                throw new IncomeException("No se pudo registrar el pago del empleado "
+                        + detalle.getNombreBeneficiario() + " (" + detalle.getIdentificacion() + "), detalle "
+                        + detalle.getCodigo() + " de la orden " + orden.getCodigo() + ": " + e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * Registra el pago de UN DRPG. Ver {@link #registraPagoEnBandeja}.
+     */
+    private void registraPagoDeUnDetalle(OrdenPagoNomina orden, DetalleOrdenPagoNomina detalle,
+            Long idProductoNomina, String periodoTexto, Long idUsuario) throws Throwable {
+        if (tienePagoVivoPorDrpg(detalle.getCodigo())) {
+            System.out.println("El detalle " + detalle.getCodigo() + " ya tiene un pago vivo en la"
+                    + " bandeja de tesoreria: no se registra otro.");
+            return;
+        }
+
         BeneficiarioOcasional beneficiario = new BeneficiarioOcasional();
-        beneficiario.setNombre("Nomina " + orden.getPeriodoNomina().getMes() + "/"
-                + orden.getPeriodoNomina().getAnio() + " - " + orden.getNumeroEmpleados() + " empleado(s)");
-        beneficiario.setIdentificacion(orden.getNumero());
+        beneficiario.setNombre(detalle.getNombreBeneficiario());
+        beneficiario.setIdentificacion(detalle.getIdentificacion());
+        if (detalle.getCuentaBancariaEmpleado() != null && detalle.getCuentaBancariaEmpleado().getBanco() != null) {
+            beneficiario.setIdBancoExterno(detalle.getCuentaBancariaEmpleado().getBanco().getCodigo());
+        }
+        beneficiario.setTipoCuenta(detalle.getTipoCuenta());
+        beneficiario.setNumeroCuenta(detalle.getNumeroCuenta());
+
+        LineaContablePago linea = new LineaContablePago();
+        linea.setIdProductoPago(idProductoNomina);
+        linea.setValor(detalle.getValor());
+        linea.setConcepto("Nomina " + periodoTexto);
+        List<LineaContablePago> desglose = new ArrayList<LineaContablePago>();
+        desglose.add(linea);
+
+        String observacion = "Nomina " + periodoTexto + " - " + detalle.getNombreBeneficiario();
 
         Map<String, Object> resultado = pagoProgramadoService.registrarPagoDeOrigenExterno(
-                OrigenPagoExterno.RHH_NOMINA, orden.getCodigo(), idEmpresa,
-                null, orden.getTotal(),
+                OrigenPagoExterno.RHH_NOMINA_EMPLEADO, detalle.getCodigo(), orden.getEmpresa().getCodigo(),
+                null, detalle.getValor(),
                 orden.getFechaEmision() != null ? orden.getFechaEmision().toString() : null,
-                beneficiario, null,
-                "Pago de nomina " + orden.getNumero(),
+                beneficiario, desglose, observacion,
                 idUsuario, false, orden.getNumero());
 
-        System.out.println("Pago de la orden " + orden.getCodigo() + " registrado en la bandeja"
-                + " de tesoreria: idPago=" + resultado.get("pago") + ", estado=" + resultado.get("estado"));
+        System.out.println("Pago del detalle " + detalle.getCodigo() + " (empleado "
+                + detalle.getNombreBeneficiario() + ") de la orden " + orden.getCodigo()
+                + " registrado en la bandeja de tesoreria: idPago=" + resultado.get("pago")
+                + ", estado=" + resultado.get("estado"));
+    }
+
+    /**
+     * Indica si el DRPG ya tiene un pago vivo (cualquier estado salvo RECHAZADO o ANULADO) en
+     * <code>PGS.PGTR</code> para el origen <code>RHH_NOMINA_EMPLEADO</code>. Analogo a
+     * {@link #tienePagoVivoEnBandeja}, pero por detalle en vez de por orden.
+     *
+     * @param idDetalle		: Codigo del detalle (RHH.DRPG.DRPGCDGO)
+     * @return				: true si ya existe un pago que no esta RECHAZADO ni ANULADO
+     * @throws Throwable	: Excepcion
+     */
+    @SuppressWarnings("unchecked")
+    private boolean tienePagoVivoPorDrpg(Long idDetalle) throws Throwable {
+        List<PagoProgramado> vivos = em.createQuery(" select   p "
+                + " from     PagoProgramado p "
+                + " where    p.origenExterno = :origen "
+                + "          and p.idOrigen = :idOrigen "
+                + "          and p.estado <> :rechazado "
+                + "          and p.estado <> :anulado ")
+                .setParameter("origen", OrigenPagoExterno.RHH_NOMINA_EMPLEADO)
+                .setParameter("idOrigen", idDetalle)
+                .setParameter("rechazado", Long.valueOf(EstadoPagoProgramado.RECHAZADO))
+                .setParameter("anulado", Long.valueOf(EstadoPagoProgramado.ANULADO))
+                .getResultList();
+        return !vivos.isEmpty();
+    }
+
+    /**
+     * Indica si ALGUN DRPG de la orden tiene un pago vivo bajo RHH_NOMINA_EMPLEADO. La usa la
+     * guarda de regeneracion en {@link #generar}: ver la nota en ese metodo.
+     *
+     * @param idOrdenPago	: Codigo de la orden de pago
+     * @return				: true si algun DRPG de la orden tiene un pago vivo
+     * @throws Throwable	: Excepcion
+     */
+    @SuppressWarnings("unchecked")
+    private boolean tieneAlgunDrpgConPagoVivo(Long idOrdenPago) throws Throwable {
+        List<Long> idsDrpg = em.createQuery(" select   d.codigo "
+                + " from     DetalleOrdenPagoNomina d "
+                + " where    d.ordenPagoNomina.codigo = :idOrdenPago ")
+                .setParameter("idOrdenPago", idOrdenPago)
+                .getResultList();
+        if (idsDrpg.isEmpty()) {
+            return false;
+        }
+        // IN (:ids) con una lista en Java, no una subconsulta correlacionada: mismo patron ya
+        // probado en este proyecto (ValorNoPagadoDaoServiceImpl.selectVivosByEmpleado, "and
+        // t.estado in (:estados)").
+        List<PagoProgramado> vivos = em.createQuery(" select   p "
+                + " from     PagoProgramado p "
+                + " where    p.origenExterno = :origen "
+                + "          and p.idOrigen in (:idsDrpg) "
+                + "          and p.estado <> :rechazado "
+                + "          and p.estado <> :anulado ")
+                .setParameter("origen", OrigenPagoExterno.RHH_NOMINA_EMPLEADO)
+                .setParameter("idsDrpg", idsDrpg)
+                .setParameter("rechazado", Long.valueOf(EstadoPagoProgramado.RECHAZADO))
+                .setParameter("anulado", Long.valueOf(EstadoPagoProgramado.ANULADO))
+                .getResultList();
+        return !vivos.isEmpty();
+    }
+
+    /**
+     * Indica si la orden es del camino NUEVO (nomina por empleado): nace sin ningun pago
+     * consolidado RHH_NOMINA. Lo usan {@link #confirmar} y {@link #generarArchivoBancario}
+     * (§3.5/§3.6 del contrato) para responder distinto segun el camino.
+     *
+     * @param idOrdenPago	: Codigo de la orden de pago
+     * @return				: true si la orden NUNCA tuvo un pago RHH_NOMINA (nueva); false si
+     *						  tiene uno, vivo o muerto (vieja)
+     * @throws Throwable	: Excepcion
+     */
+    @SuppressWarnings("unchecked")
+    private boolean esOrdenNueva(Long idOrdenPago) throws Throwable {
+        List<PagoProgramado> pagos = em.createQuery(" select   p "
+                + " from     PagoProgramado p "
+                + " where    p.origenExterno = :origen "
+                + "          and p.idOrigen = :idOrigen ")
+                .setParameter("origen", OrigenPagoExterno.RHH_NOMINA)
+                .setParameter("idOrigen", idOrdenPago)
+                .setMaxResults(1)
+                .getResultList();
+        return pagos.isEmpty();
+    }
+
+    /**
+     * Localiza el id del producto de pago de nomina por su codigo dentro de la empresa.
+     * Mismo patron que <code>PlanillaIessServiceImpl.buscaProductoPago</code>
+     * (docs/logica-negocio/rhh/API-PLANILLA-IESS.md), citado por el contrato -- se escribe
+     * aparte en vez de reusar {@link #localizaProductoNomina} (que ya existe en esta misma
+     * clase para el egreso consolidado) porque ese otro devuelve la ENTIDAD completa con un
+     * mensaje de error propio del egreso, y aqui solo hace falta el id para
+     * {@link LineaContablePago#setIdProductoPago}, con un mensaje que nombra el pago por
+     * empleado en vez del egreso consolidado.
+     *
+     * @param idEmpresa		: Id de la empresa
+     * @return				: El id del producto
+     * @throws Throwable	: IncomeException si no existe
+     */
+    private Long idProductoNomina(Long idEmpresa) throws Throwable {
+        try {
+            return (Long) em.createQuery("select p.id from ProductoPago p where p.codigo = :codigo "
+                    + "and p.empresa.codigo = :idEmpresa")
+                    .setParameter("codigo", CODIGO_PRODUCTO_NOMINA)
+                    .setParameter("idEmpresa", idEmpresa)
+                    .getSingleResult();
+        } catch (NoResultException e) {
+            throw new IncomeException("No existe el producto de pago con codigo '" + CODIGO_PRODUCTO_NOMINA
+                    + "' para la empresa " + idEmpresa + ". Ejecute sql/15_INSERT_PRODUCTO_PAGO_NOMINA.sql:"
+                    + " el pago por empleado necesita su id para el desglose contable.");
+        }
     }
 
     /**
@@ -508,6 +691,16 @@ public class GeneracionOrdenPagoServiceImpl implements GeneracionOrdenPagoServic
                 + idOrdenPago);
 
         OrdenPagoNomina orden = recuperaOrden(idOrdenPago);
+        if (!esHistorico(orden.getPeriodoNomina()) && esOrdenNueva(idOrdenPago)) {
+            // §3.6: esta orden se paga por empleado. El archivo lo genera Tesoreria al aprobar
+            // el lote de pagos (uno por DRPG), no RRHH. Los periodos HISTORICOS nunca pasaron
+            // por la bandeja (ni con RHH_NOMINA ni con RHH_NOMINA_EMPLEADO): esOrdenNueva los
+            // clasificaria mal como "nuevos" si no se excluyeran aqui -- §3.1, sin cambios.
+            throw new IncomeException("La orden de pago " + idOrdenPago + " se paga por empleado desde"
+                    + " Tesoreria: el archivo bancario ya no lo genera RRHH. Apruebe los pagos en la"
+                    + " bandeja de Tesoreria y use 'Actualizar pagos' para seguir el estado de cada"
+                    + " empleado.");
+        }
         if (orden.getEmpresa() == null || orden.getEmpresa().getCodigo() == null) {
             throw new IncomeException("La orden de pago " + idOrdenPago + " no tiene empresa:"
                     + " sin ella no se puede resolver el formato del archivo bancario.");
@@ -859,6 +1052,15 @@ public class GeneracionOrdenPagoServiceImpl implements GeneracionOrdenPagoServic
                 + idOrdenPago);
 
         OrdenPagoNomina orden = recuperaOrden(idOrdenPago);
+        if (!esHistorico(orden.getPeriodoNomina()) && esOrdenNueva(idOrdenPago)) {
+            // §3.6: esta orden se paga por empleado, un pago por DRPG confirmado por separado
+            // en Tesoreria -- no hay un solo "confirmar" para toda la orden. Los periodos
+            // HISTORICOS siguen por este mismo confirmar(), sin cambios (§3.1): nunca tuvieron
+            // ningun pago en la bandeja, ni RHH_NOMINA ni RHH_NOMINA_EMPLEADO, y esOrdenNueva
+            // los clasificaria mal si no se excluyeran aqui.
+            throw new IncomeException("Esta orden se paga por empleado: use 'Actualizar pagos' en vez"
+                    + " de confirmar la orden completa.");
+        }
         if (orden.getFechaAcreditacion() != null) {
             throw new IncomeException("La orden de pago " + idOrdenPago + " ya se acredito el "
                     + orden.getFechaAcreditacion() + ".");
@@ -1064,11 +1266,29 @@ public class GeneracionOrdenPagoServiceImpl implements GeneracionOrdenPagoServic
         detalle.setOrdenPagoNomina(orden);
         detalle.setEmpleado(empleado);
         detalle.setNomina(nomina);
-        detalle.setCuentaBancariaEmpleado(cuenta);
         detalle.setValor(RedondeoNomina.redondea(valor));
+        actualizaSnapshotCuenta(detalle, cuenta, empleado);
 
-        // Snapshot: se copia ahora y no se relee nunca. Si el empleado cambia de banco el mes
-        // que viene, esta orden sigue mostrando a que cuenta se ordeno pagar.
+        detalle.setRechazado(NO);
+        detalle.setEstado(Long.valueOf(RhhEstadoDetalleOrdenPago.PENDIENTE));
+        detalle.setFechaRegistro(LocalDateTime.now());
+        detalle.setUsuarioRegistro(usuario);
+        return detalle;
+    }
+
+    /**
+     * Copia el snapshot de datos bancarios de una cuenta del empleado al detalle. Comun a
+     * {@link #nuevoDetalle} (alta) y a {@link #reenviar} (snapshot al reenviar un rechazado):
+     * se copia ahora y no se relee nunca. Si el empleado cambia de banco despues, el detalle
+     * sigue mostrando a que cuenta se ordeno pagar en ese momento.
+     *
+     * @param detalle	: Detalle a actualizar
+     * @param cuenta	: Cuenta bancaria vigente del empleado
+     * @param empleado	: Empleado beneficiario
+     */
+    private void actualizaSnapshotCuenta(DetalleOrdenPagoNomina detalle, CuentaBancariaEmpleado cuenta,
+            Empleado empleado) {
+        detalle.setCuentaBancariaEmpleado(cuenta);
         detalle.setNumeroCuenta(cuenta.getNumeroCuenta());
         detalle.setTipoCuenta(cuenta.getTipoCuenta());
         detalle.setBanco(cuenta.getBanco() != null ? cuenta.getBanco().getNombre() : null);
@@ -1077,12 +1297,6 @@ public class GeneracionOrdenPagoServiceImpl implements GeneracionOrdenPagoServic
         detalle.setNombreBeneficiario(cuenta.getTitular() != null
                 ? cuenta.getTitular()
                 : (empleado.getApellidos() + " " + empleado.getNombres()));
-
-        detalle.setRechazado(NO);
-        detalle.setEstado(Long.valueOf(Estado.ACTIVO));
-        detalle.setFechaRegistro(LocalDateTime.now());
-        detalle.setUsuarioRegistro(usuario);
-        return detalle;
     }
 
     /**
@@ -1239,6 +1453,329 @@ public class GeneracionOrdenPagoServiceImpl implements GeneracionOrdenPagoServic
                     + " obligatorio y el egreso consolidado de la nomina no se puede crear sin el.");
         }
         return lista.get(0);
+    }
+
+    // =====================================================================
+    // Nomina por empleado: sincronizar pagos y reenviar un rechazado
+    // (docs/logica-negocio/rhh/API-PAGO-NOMINA-POR-EMPLEADO.md §3.3/§3.4)
+    // =====================================================================
+
+    /* (non-Javadoc)
+     * @see com.saa.ejb.rhh.service.GeneracionOrdenPagoService#sincronizarPagos(java.lang.Long)
+     */
+    @Override
+    @TransactionAttribute(TransactionAttributeType.REQUIRED)
+    public OrdenPagoNomina sincronizarPagos(Long idOrdenPago) throws Throwable {
+        System.out.println("Ingresa al metodo sincronizarPagos de generacionOrdenPago service, orden: "
+                + idOrdenPago);
+
+        OrdenPagoNomina orden = recuperaOrden(idOrdenPago);
+        PeriodoNomina periodo = orden.getPeriodoNomina();
+        if (periodo == null) {
+            throw new IncomeException("La orden de pago " + idOrdenPago
+                    + " no tiene periodo de nomina asociado.");
+        }
+        if (esHistorico(periodo)) {
+            throw new IncomeException("El periodo de la orden " + idOrdenPago + " es HISTORICO: nunca"
+                    + " paso por la bandeja de tesoreria, no hay pagos de empleados que sincronizar.");
+        }
+        if (!esOrdenNueva(idOrdenPago)) {
+            throw new IncomeException("La orden de pago " + idOrdenPago + " tiene un pago consolidado"
+                    + " (RHH_NOMINA): use Confirmar, no Actualizar pagos.");
+        }
+
+        List<DetalleOrdenPagoNomina> detalles = detalleOrdenPagoNominaDaoService.selectByOrdenPago(idOrdenPago);
+        List<String> errores = new ArrayList<String>();
+        for (DetalleOrdenPagoNomina detalle : detalles) {
+            if (!Long.valueOf(RhhEstadoDetalleOrdenPago.PENDIENTE).equals(detalle.getEstado())) {
+                continue;
+            }
+            try {
+                // Por el proxy (self), no this: necesita su propia REQUIRES_NEW -- un error en
+                // un empleado no frena a los demas.
+                self.sincronizaUnDetalle(detalle.getCodigo());
+            } catch (Throwable e) {
+                errores.add("Detalle " + detalle.getCodigo() + " (" + detalle.getNombreBeneficiario()
+                        + "): " + e.getMessage());
+                System.out.println("ATENCION: fallo la sincronizacion del detalle " + detalle.getCodigo()
+                        + " de la orden " + idOrdenPago + ": " + e.getMessage());
+            }
+        }
+
+        // Reclasifica el estado de la orden con el DRPG ya actualizado por sincronizaUnDetalle.
+        detalles = detalleOrdenPagoNominaDaoService.selectByOrdenPago(idOrdenPago);
+        boolean algunoPendiente = false;
+        boolean algunoRechazado = false;
+        for (DetalleOrdenPagoNomina detalle : detalles) {
+            int estado = detalle.getEstado() != null
+                    ? detalle.getEstado().intValue() : RhhEstadoDetalleOrdenPago.PENDIENTE;
+            if (estado == RhhEstadoDetalleOrdenPago.PENDIENTE) {
+                algunoPendiente = true;
+            } else if (estado == RhhEstadoDetalleOrdenPago.RECHAZADO) {
+                algunoRechazado = true;
+            }
+        }
+
+        orden = recuperaOrden(idOrdenPago);
+        orden.setEstado(Long.valueOf(algunoPendiente ? RhhEstadoOrdenPago.GENERADA
+                : (algunoRechazado ? RhhEstadoOrdenPago.RECHAZADA_PARCIAL : RhhEstadoOrdenPago.CONFIRMADA)));
+        orden = ordenPagoNominaDaoService.save(orden, orden.getCodigo());
+
+        // Efectos de la orden (periodo PAGADO + cierre de cuotas/anticipos), UNA SOLA VEZ: la
+        // primera vez que ya no queda ningun DRPG pendiente -- guardado por el propio estado
+        // del periodo, sin bandera aparte. SIN asiento consolidado (N3): cada pago ya generó
+        // el suyo en Tesoreria al confirmarse (via el desglose de registraPagoDeUnDetalle).
+        if (!algunoPendiente && !Long.valueOf(RhhEstadoPeriodoNomina.PAGADO).equals(periodo.getEstado())) {
+            periodo.setEstado(Long.valueOf(RhhEstadoPeriodoNomina.PAGADO));
+            periodoNominaDaoService.save(periodo, periodo.getCodigo());
+
+            // Mismo motivo que en ContabilizacionNominaServiceImpl.contabilizarPago: EJB aparte
+            // con su propia REQUIRES_NEW, para que un fallo adentro no tumbe el periodo PAGADO
+            // que esta transaccion ya esta a punto de comitear.
+            try {
+                cierreCuotasDescuentoService.descuentaCuotasDelPeriodo(periodo.getCodigo(), idOrdenPago,
+                        orden.getUsuarioRegistro());
+            } catch (Throwable e) {
+                System.out.println("ATENCION: fallo el cierre de cuotas de descuentos recurrentes del"
+                        + " periodo " + periodo.getCodigo() + " (orden " + idOrdenPago + "). El periodo"
+                        + " ya quedo PAGADO; revise a mano el saldo de"
+                        + " CuotaDescuento/DescuentoRecurrente/AnticipoEmpleado. Motivo: " + e.getMessage());
+            }
+        }
+
+        if (!errores.isEmpty()) {
+            System.out.println("Sincronizacion de la orden " + idOrdenPago + " con " + errores.size()
+                    + " error(es): " + errores);
+        }
+
+        return orden;
+    }
+
+    /* (non-Javadoc)
+     * @see com.saa.ejb.rhh.service.GeneracionOrdenPagoService#sincronizaUnDetalle(java.lang.Long)
+     */
+    @Override
+    @TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
+    public void sincronizaUnDetalle(Long idDetalle) throws Throwable {
+        DetalleOrdenPagoNomina detalle = detalleOrdenPagoNominaDaoService.selectById(idDetalle,
+                NombreEntidadesRhh.DETALLE_ORDEN_PAGO_NOMINA);
+        if (detalle == null) {
+            throw new IncomeException("No existe el detalle " + idDetalle + ".");
+        }
+        if (!Long.valueOf(RhhEstadoDetalleOrdenPago.PENDIENTE).equals(detalle.getEstado())) {
+            // Ya resuelto en una pasada anterior: idempotente.
+            return;
+        }
+
+        PagoProgramado pago = ultimoPagoDeOrigen(OrigenPagoExterno.RHH_NOMINA_EMPLEADO, idDetalle);
+        if (pago == null) {
+            throw new IncomeException("El detalle " + idDetalle + " no tiene ningun pago registrado en"
+                    + " la bandeja de tesoreria (PGS.PGTR).");
+        }
+
+        int estado = pago.getEstado() != null ? pago.getEstado().intValue() : -1;
+        if (estado == EstadoPagoProgramado.CONFIRMADO) {
+            detalle.setEstado(Long.valueOf(RhhEstadoDetalleOrdenPago.PAGADO));
+            detalle.setRechazado(NO);
+            detalle.setMotivoRechazo(null);
+            detalleOrdenPagoNominaDaoService.save(detalle, detalle.getCodigo());
+
+            // Efecto del empleado (§3.3): cierra su valor no pagado recuperado de P-1, si tenia.
+            cierraValorNoPagadoDeEmpleado(detalle.getOrdenPagoNomina(), detalle.getEmpleado().getCodigo());
+
+            System.out.println("Detalle " + idDetalle + " PAGADO (pago " + pago.getId() + ").");
+        } else if (estado == EstadoPagoProgramado.RECHAZADO || estado == EstadoPagoProgramado.ANULADO) {
+            detalle.setEstado(Long.valueOf(RhhEstadoDetalleOrdenPago.RECHAZADO));
+            detalle.setRechazado(SI);
+            detalle.setMotivoRechazo(pago.getMotivo());
+            detalleOrdenPagoNominaDaoService.save(detalle, detalle.getCodigo());
+            System.out.println("Detalle " + idDetalle + " RECHAZADO (pago " + pago.getId() + "): "
+                    + pago.getMotivo());
+        } else {
+            System.out.println("Detalle " + idDetalle + ": el pago " + pago.getId() + " sigue en estado "
+                    + estado + ", sin cambios.");
+        }
+    }
+
+    /**
+     * Cierra, para UN empleado ya confirmado por Tesoreria, el valor no pagado RETENIDO del
+     * periodo anterior (P-1) que se recupero en su neto de este periodo (P).
+     *
+     * <p>Copia del cuerpo-por-empleado de
+     * <code>ContabilizacionNominaServiceImpl.cierraValoresNoPagadosRecuperados</code> (privado
+     * en esa clase, period-wide) -- verificado antes de escribir (confirmacion (a) del
+     * contrato, API-PAGO-NOMINA-POR-EMPLEADO.md §3.3) que esa logica es autocontenida por
+     * empleado: solo mira el VNPG de ESE empleado en P-1, nunca a otro, asi que separarla por
+     * empleado da el mismo resultado para quien ya se confirmo. No se llama al metodo de
+     * ContabilizacionNominaServiceImpl porque ese recorre TODAS las nominas del periodo, no una.</p>
+     *
+     * @param orden			: Orden de pago a la que pertenece el DRPG ya confirmado
+     * @param idEmpleado	: Id del empleado confirmado
+     * @throws Throwable	: Excepcion
+     */
+    private void cierraValorNoPagadoDeEmpleado(OrdenPagoNomina orden, Long idEmpleado) throws Throwable {
+        PeriodoNomina periodo = orden.getPeriodoNomina();
+        if (periodo == null || periodo.getEmpresa() == null || periodo.getFechaInicio() == null) {
+            return;
+        }
+        PeriodoNomina periodoAnterior = periodoNominaDaoService.selectByFechaEmpresa(
+                periodo.getEmpresa().getCodigo(), periodo.getFechaInicio().minusDays(1));
+        if (periodoAnterior == null) {
+            return;
+        }
+        ValorNoPagado registro = valorNoPagadoDaoService
+                .selectVivoByEmpleadoPeriodo(idEmpleado, periodoAnterior.getCodigo());
+        if (registro == null || !Long.valueOf(RhhEstadoValorNoPagado.RETENIDO).equals(registro.getEstado())) {
+            return;
+        }
+        registro.setEstado(Long.valueOf(RhhEstadoValorNoPagado.PAGADO));
+        registro.setOrdenPago(orden);
+        registro.setPeriodoRecuperacion(periodo);
+        valorNoPagadoDaoService.save(registro, registro.getCodigo());
+        System.out.println("Valor no pagado " + registro.getCodigo() + " del empleado " + idEmpleado
+                + " recuperado y marcado PAGADO con la orden " + orden.getCodigo()
+                + " (sincronizacion por empleado).");
+    }
+
+    /* (non-Javadoc)
+     * @see com.saa.ejb.rhh.service.GeneracionOrdenPagoService#reenviar(java.lang.Long, java.lang.Long)
+     */
+    @Override
+    @TransactionAttribute(TransactionAttributeType.REQUIRED)
+    public DetalleOrdenPagoNomina reenviar(Long idDetalle, Long idUsuario) throws Throwable {
+        System.out.println("Ingresa al metodo reenviar de generacionOrdenPago service, detalle: " + idDetalle);
+
+        DetalleOrdenPagoNomina detalle = detalleOrdenPagoNominaDaoService.selectById(idDetalle,
+                NombreEntidadesRhh.DETALLE_ORDEN_PAGO_NOMINA);
+        if (detalle == null) {
+            throw new IncomeException("No existe el detalle " + idDetalle + ".");
+        }
+        if (!Long.valueOf(RhhEstadoDetalleOrdenPago.RECHAZADO).equals(detalle.getEstado())) {
+            throw new IncomeException("El detalle " + idDetalle + " no esta RECHAZADO (estado actual "
+                    + detalle.getEstado() + "): solo se puede reenviar un pago rechazado.");
+        }
+        exigeIdUsuario(idUsuario, "reenviar");
+
+        Empleado empleado = detalle.getEmpleado();
+        List<CuentaBancariaEmpleado> cuentas = cuentaBancariaEmpleadoDaoService
+                .selectActivasByEmpleado(empleado.getCodigo());
+        if (cuentas == null || cuentas.isEmpty()) {
+            throw new IncomeException("El empleado " + empleado.getIdentificacion() + " ("
+                    + empleado.getApellidos() + " " + empleado.getNombres() + ") no tiene ninguna cuenta"
+                    + " bancaria activa: corrijala en su ficha antes de reenviar.");
+        }
+
+        // Reenviar NO re-reparte: esta fila sigue siendo la misma cuenta de siempre, ya
+        // corregida en la ficha del empleado (misma CBEMCDGO, otros datos). Si el empleado
+        // ahora tiene varias cuentas activas y ninguna coincide con la de este detalle, no se
+        // puede adivinar cual corregir.
+        CuentaBancariaEmpleado cuenta = null;
+        if (cuentas.size() == 1) {
+            cuenta = cuentas.get(0);
+        } else {
+            for (CuentaBancariaEmpleado candidata : cuentas) {
+                if (detalle.getCuentaBancariaEmpleado() != null
+                        && candidata.getCodigo().equals(detalle.getCuentaBancariaEmpleado().getCodigo())) {
+                    cuenta = candidata;
+                    break;
+                }
+            }
+            if (cuenta == null) {
+                throw new IncomeException("El empleado " + empleado.getIdentificacion() + " tiene "
+                        + cuentas.size() + " cuentas bancarias activas y ninguna coincide con la que este"
+                        + " pago rechazado usaba: no se puede reenviar sin saber a cual corregirle el"
+                        + " envio. Deje una sola cuenta activa, o reactive la misma que se uso"
+                        + " originalmente, y vuelva a intentar.");
+            }
+        }
+
+        actualizaSnapshotCuenta(detalle, cuenta, empleado);
+        detalle.setRechazado(NO);
+        detalle.setMotivoRechazo(null);
+        detalle.setEstado(Long.valueOf(RhhEstadoDetalleOrdenPago.PENDIENTE));
+        detalle = detalleOrdenPagoNominaDaoService.save(detalle, detalle.getCodigo());
+
+        OrdenPagoNomina orden = detalle.getOrdenPagoNomina();
+        Long idProductoNomina = idProductoNomina(orden.getEmpresa().getCodigo());
+        String periodoTexto = orden.getPeriodoNomina().getMes() + "/" + orden.getPeriodoNomina().getAnio();
+        // El pago anterior de este mismo DRPG esta RECHAZADO/ANULADO: la guarda anti-duplicados
+        // de tienePagoVivoPorDrpg (dentro de registraPagoDeUnDetalle) lo deja pasar.
+        registraPagoDeUnDetalle(orden, detalle, idProductoNomina, periodoTexto, idUsuario);
+
+        // La orden vuelve a tener un DRPG pendiente: la proxima sincronizarPagos la reclasifica
+        // (o esta misma llamada, si el frontend la encadena).
+        orden.setEstado(Long.valueOf(RhhEstadoOrdenPago.GENERADA));
+        ordenPagoNominaDaoService.save(orden, orden.getCodigo());
+
+        System.out.println("Detalle " + idDetalle + " reenviado con la cuenta " + cuenta.getCodigo() + ".");
+        return detalle;
+    }
+
+    /* (non-Javadoc)
+     * @see com.saa.ejb.rhh.service.GeneracionOrdenPagoService#detalleConEstadoPago(java.lang.Long)
+     */
+    @Override
+    @TransactionAttribute(TransactionAttributeType.SUPPORTS)
+    public List<DetalleOrdenPagoNomina> detalleConEstadoPago(Long idOrdenPago) throws Throwable {
+        List<DetalleOrdenPagoNomina> detalles = detalleOrdenPagoNominaDaoService.selectByOrdenPago(idOrdenPago);
+        for (DetalleOrdenPagoNomina detalle : detalles) {
+            PagoProgramado pago = ultimoPagoDeOrigen(OrigenPagoExterno.RHH_NOMINA_EMPLEADO, detalle.getCodigo());
+            if (pago != null) {
+                detalle.setIdPago(pago.getId());
+                detalle.setEstadoPago(pago.getEstado());
+            }
+        }
+        return detalles;
+    }
+
+    /* (non-Javadoc)
+     * @see com.saa.ejb.rhh.service.GeneracionOrdenPagoService#poblarPagoPorEmpleado(java.util.List)
+     */
+    @Override
+    @TransactionAttribute(TransactionAttributeType.SUPPORTS)
+    @SuppressWarnings("unchecked")
+    public List<OrdenPagoNomina> poblarPagoPorEmpleado(List<OrdenPagoNomina> ordenes) throws Throwable {
+        if (ordenes == null || ordenes.isEmpty()) {
+            return ordenes;
+        }
+        // UNA sola consulta para toda la lista (ITEM 8, contrato §4): el universo de ordenes
+        // con pago consolidado RHH_NOMINA es chico -una por periodo, como mucho, de los
+        // periodos del camino viejo- y no vale la pena filtrarlo por los ids de la pagina;
+        // traerlo completo evita un IN largo y, sobre todo, evita una consulta por orden.
+        List<Long> conPagoConsolidado = em.createQuery(" select   p.idOrigen "
+                + " from     PagoProgramado p "
+                + " where    p.origenExterno = :origen ")
+                .setParameter("origen", OrigenPagoExterno.RHH_NOMINA)
+                .getResultList();
+        Set<Long> ordenesViejas = new HashSet<Long>(conPagoConsolidado);
+        for (OrdenPagoNomina orden : ordenes) {
+            // periodoNomina es @ManyToOne sin fetch explicito -> EAGER por defecto de JPA: ya
+            // viene cargado con la orden, sin consulta aparte. Un periodo HISTORICO nunca pasa
+            // por la bandeja (ni RHH_NOMINA ni RHH_NOMINA_EMPLEADO), asi que el criterio de
+            // "pago consolidado" por si solo lo clasificaria mal como pagoPorEmpleado=true, y
+            // la pantalla le mostraria 'Actualizar pagos' en vez de 'Confirmar' -- esOrdenNueva
+            // tiene la misma trampa, corregida igual en confirmar()/generarArchivoBancario()
+            // con el mismo esHistorico(:661).
+            boolean historico = orden.getPeriodoNomina() == null || esHistorico(orden.getPeriodoNomina());
+            orden.setPagoPorEmpleado(Boolean.valueOf(!historico && !ordenesViejas.contains(orden.getCodigo())));
+        }
+        return ordenes;
+    }
+
+    /* (non-Javadoc)
+     * @see com.saa.ejb.rhh.service.GeneracionOrdenPagoService#poblarPagoPorEmpleado(com.saa.model.rhh.OrdenPagoNomina)
+     */
+    @Override
+    @TransactionAttribute(TransactionAttributeType.SUPPORTS)
+    public OrdenPagoNomina poblarPagoPorEmpleado(OrdenPagoNomina orden) throws Throwable {
+        if (orden == null) {
+            return null;
+        }
+        // Mismo criterio que la lista: un periodo HISTORICO nunca pasa por la bandeja, nunca es
+        // pagoPorEmpleado aunque esOrdenNueva (sin pago RHH_NOMINA) de true.
+        boolean historico = orden.getPeriodoNomina() == null || esHistorico(orden.getPeriodoNomina());
+        orden.setPagoPorEmpleado(Boolean.valueOf(!historico && esOrdenNueva(orden.getCodigo())));
+        return orden;
     }
 
 }

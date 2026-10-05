@@ -1,7 +1,9 @@
 package com.saa.ejb.rhh.service;
 
 import java.time.LocalDate;
+import java.util.List;
 
+import com.saa.model.rhh.DetalleOrdenPagoNomina;
 import com.saa.model.rhh.OrdenPagoNomina;
 
 import jakarta.ejb.Local;
@@ -87,5 +89,85 @@ public interface GeneracionOrdenPagoService {
     @TransactionAttribute(TransactionAttributeType.REQUIRED)
     OrdenPagoNomina confirmar(Long idOrdenPago, LocalDate fechaAcreditacion, String usuario, Long idUsuario)
             throws Throwable;
+
+    // ===== INICIO nomina por empleado (docs/logica-negocio/rhh/API-PAGO-NOMINA-POR-EMPLEADO.md) =====
+
+    /**
+     * Sincroniza, por cada DRPG PENDIENTE de la orden, el estado de su pago en la bandeja de
+     * tesoreria -- como los jubilados. Exclusivo de ordenes nuevas (sin pago consolidado
+     * RHH_NOMINA) y de periodos NO historicos.
+     *
+     * <p>La primera vez que la orden queda sin ningun DRPG pendiente, aplica los efectos de la
+     * orden (periodo en PAGADO, cierre de cuotas/anticipos) SIN asiento consolidado: cada pago
+     * ya genero el suyo en Tesoreria al confirmarse.</p>
+     *
+     * @param idOrdenPago	: Id de la orden de pago
+     * @return				: La orden con su estado recalculado
+     * @throws Throwable	: IncomeException si la orden es HISTORICA o del camino viejo (RHH_NOMINA)
+     */
+    @TransactionAttribute(TransactionAttributeType.REQUIRED)
+    OrdenPagoNomina sincronizarPagos(Long idOrdenPago) throws Throwable;
+
+    /**
+     * Sincroniza UN DRPG. En su propia transaccion (REQUIRES_NEW): solo invocable a traves del
+     * proxy del EJB (nunca <code>this.sincronizaUnDetalle(...)</code>), para que un error en un
+     * empleado no marque rollback-only la transaccion de {@link #sincronizarPagos}, que ya
+     * pudo haber confirmado a otros.
+     *
+     * @param idDetalle		: Id del detalle (RHH.DRPG)
+     * @throws Throwable	: Excepcion
+     */
+    @TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
+    void sincronizaUnDetalle(Long idDetalle) throws Throwable;
+
+    /**
+     * Reenvia UN DRPG rechazado: relee la cuenta activa actual del empleado, actualiza el
+     * snapshot, limpia el rechazo y registra un pago nuevo con el mismo idOrigen. No re-reparte
+     * el neto entre cuentas; reenvia solo esta fila con su valor.
+     *
+     * @param idDetalle		: Id del detalle (RHH.DRPG) RECHAZADO
+     * @param idUsuario		: Id de SCP.PJRQ del usuario que ejecuta
+     * @return				: El detalle reenviado, PENDIENTE de nuevo
+     * @throws Throwable	: IncomeException si el detalle no esta RECHAZADO, o si no se puede
+     *						  determinar una cuenta sin ambiguedad
+     */
+    @TransactionAttribute(TransactionAttributeType.REQUIRED)
+    DetalleOrdenPagoNomina reenviar(Long idDetalle, Long idUsuario) throws Throwable;
+
+    /**
+     * Detalle de una orden con los transitorios <code>idPago</code>/<code>estadoPago</code> del
+     * ultimo pago de cada DRPG, para la pantalla de RRHH.
+     *
+     * @param idOrdenPago	: Id de la orden de pago
+     * @return				: El detalle de la orden, con los transitorios poblados
+     * @throws Throwable	: Excepcion
+     */
+    @TransactionAttribute(TransactionAttributeType.SUPPORTS)
+    List<DetalleOrdenPagoNomina> detalleConEstadoPago(Long idOrdenPago) throws Throwable;
+
+    /**
+     * Pobla el transitorio {@code OrdenPagoNomina.pagoPorEmpleado} de TODA la lista, con UNA
+     * sola consulta (no una por orden): false si la orden tiene un pago consolidado RHH_NOMINA
+     * -cualquier estado-, true si no. Mismo criterio que decide el camino viejo/nuevo en
+     * {@link #confirmar}/{@link #generarArchivoBancario} (contrato §4, ITEM 8).
+     *
+     * @param ordenes	: Lista a poblar, modificada in-place
+     * @return			: La misma lista, para encadenar
+     * @throws Throwable	: Excepcion
+     */
+    @TransactionAttribute(TransactionAttributeType.SUPPORTS)
+    List<OrdenPagoNomina> poblarPagoPorEmpleado(List<OrdenPagoNomina> ordenes) throws Throwable;
+
+    /**
+     * Igual que {@link #poblarPagoPorEmpleado(List)}, para una sola orden (getId).
+     *
+     * @param orden		: Orden a poblar
+     * @return			: La misma orden
+     * @throws Throwable	: Excepcion
+     */
+    @TransactionAttribute(TransactionAttributeType.SUPPORTS)
+    OrdenPagoNomina poblarPagoPorEmpleado(OrdenPagoNomina orden) throws Throwable;
+
+    // ===== FIN nomina por empleado =====
 
 }

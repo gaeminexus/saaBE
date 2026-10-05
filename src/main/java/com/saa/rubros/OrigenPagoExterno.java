@@ -116,4 +116,18 @@ public interface OrigenPagoExterno {
 	 */
 	public static final String RHH_LIQUIDACION_EXCOLABORADOR = "RHH_LIQ_EXCOLABORADOR";
 
+	/**
+	 * Pago de sueldo de UN empleado, uno por cada RHH.DRPG de una orden de nomina (bandeja
+	 * de tesoreria "como los jubilados", decision del usuario N1-N3, 2026-09-30 --
+	 * docs/logica-negocio/rhh/API-PAGO-NOMINA-POR-EMPLEADO.md). PGTRIDOR lleva el
+	 * RHH.DRPG.DRPGCDGO correspondiente.
+	 *
+	 * <p>NO reemplaza a {@link #RHH_NOMINA}: una orden vieja con un pago consolidado
+	 * RHH_NOMINA vigente sigue por ese camino (confirmar/contabilizarPago uno solo para
+	 * toda la orden); este origen nuevo es exclusivo de las ordenes que nacen sin ese pago
+	 * consolidado, con un PagoProgramado por empleado y el asiento generado por Tesoreria
+	 * al confirmar cada uno (N3) en vez de uno consolidado desde RRHH.</p>
+	 */
+	public static final String RHH_NOMINA_EMPLEADO = "RHH_NOMINA_EMPLEADO";
+
 }

@@ -16,6 +16,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.NamedQueries;
 import jakarta.persistence.NamedQuery;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 
 /**
  * Detalle por empleado de la orden de pago de nomina.
@@ -153,6 +154,21 @@ public class DetalleOrdenPagoNomina implements Serializable, EntidadAuditableFec
     @Column(name = "DRPGUSRR", length = 60)
     private String usuarioRegistro;
 
+    /**
+     * Id del ultimo pago (PGS.PGTR) de este DRPG en la bandeja de tesoreria. Transitorio: no
+     * se persiste, lo pobla {@code GeneracionOrdenPagoService.detalleConEstadoPago} para la
+     * pantalla de RRHH -- docs/logica-negocio/rhh/API-PAGO-NOMINA-POR-EMPLEADO.md §4.
+     */
+    @Transient
+    private Long idPago;
+
+    /**
+     * Estado de ese ultimo pago ({@code com.saa.rubros.EstadoPagoProgramado}). Transitorio,
+     * mismo origen que {@link #idPago}.
+     */
+    @Transient
+    private Long estadoPago;
+
     // =============================
     // Getters y Setters
     // =============================
@@ -283,5 +299,21 @@ public class DetalleOrdenPagoNomina implements Serializable, EntidadAuditableFec
 
     public void setUsuarioRegistro(String usuarioRegistro) {
         this.usuarioRegistro = usuarioRegistro;
+    }
+
+    public Long getIdPago() {
+        return idPago;
+    }
+
+    public void setIdPago(Long idPago) {
+        this.idPago = idPago;
+    }
+
+    public Long getEstadoPago() {
+        return estadoPago;
+    }
+
+    public void setEstadoPago(Long estadoPago) {
+        this.estadoPago = estadoPago;
     }
 }
