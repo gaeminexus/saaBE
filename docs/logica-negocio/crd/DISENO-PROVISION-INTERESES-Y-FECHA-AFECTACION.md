@@ -89,8 +89,8 @@ Una fila por **movimiento** (nunca se actualiza ni se borra):
   componente con valor > 0.
 - **Primera corrida (septiembre, P5):** el saldo provisionado es 0 en todas las cuotas, así que provisiona todo
   lo vencido y no cobrado al 30-09.
-- **Reversar una corrida** (`CierreCarteraServiceImpl.reversar`, que ya existe): sus `MVIC` tipo 1 y 5 se dan de
-  baja junto con sus asientos. Es el único caso en que un `MVIC` deja de contar. Se marca, no se borra.
+- **Reversar una corrida** (`CierreCarteraServiceImpl.reversar`, que ya existe): sus `MVIC` tipo **1, 5 y 7** se dan
+  de baja (`MVICANUL = 1`) junto con sus asientos. Es el único caso en que un `MVIC` deja de contar. Se marca, no se borra.
 - **Cuentas:** dos papeles nuevos en `CrdLineaAsiento` (por ejemplo `PROVISION_INTERESES_GASTO` → 4.7.05.10 y
   `PROVISION_INTERESES` → 1.4.99.05), en una **plantilla nueva, alterno 36** «CRD PROVISION INTERESES»
   (se reserva en el registro §2c, que dice 1–33 ocupados; el 34 y el 35 existen). La configura un `.sql`.
@@ -204,3 +204,13 @@ tipo (`DTPLAXL2 = TPPRCDGO`), así que si mañana contabilidad abre subcuentas p
 4. Cobro tardío (6.2).
 
 **El cierre de septiembre espera a 1–3.**
+
+## 9. Precisiones del ítem 0 del backend (2026-10-05, aprobadas por el árbitro)
+- **Condonación (R2):** el acuerdo cierra TODAS las cuotas pendientes. Se reversa el saldo provisionado completo
+  de cada cuota que cierra, con tope en ese saldo. Orden: primero el tipo 2 por la parte pagada del acuerdo y
+  después el tipo 9 sobre lo que quede. Σ tipo 9 puede no coincidir con `interesCondonado`, porque el acuerdo
+  guarda el condonado agregado por concepto, no por cuota.
+- **Petro no tiene reverso** de una carga ya procesada (`reversarRecepcion` lo rechaza), así que no hay
+  re-provisión en ese canal. Si se construye, va ahí.
+- La re-provisión por deshacer un cobro CBCR va en `ProcesoPagoPrestamoServiceImpl.anularOperacion`, el único
+  punto que anula PGPR para `anularCobro` y `reversarProceso`.
