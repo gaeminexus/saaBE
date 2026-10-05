@@ -7,7 +7,9 @@ package com.saa.ejb.cxp.serviceImpl;
  * y el registro manual de nota de venta (FacturaCompraServiceImpl, BE-8) la usan, cada una recorriendo
  * su detalle una vez.
  * <ul>
- * <li>0 -> tarifa 0% &middot; 6 -> no objeto &middot; 7 -> exento &middot; 5 -> 5% &middot; 8 -> 8%.</li>
+ * <li>0 -> tarifa 0% &middot; 6 -> no objeto &middot; 7 -> tarifa 0% (decisión del usuario
+ * 2026-10-05: el DIMM no muestra la base exenta; ver ESTADO-EQUIPO-OMEN-2.md &sect;59) &middot;
+ * 5 -> 5% &middot; 8 -> 8%.</li>
  * <li>2, 3, 4, 10 (12%, 14%, 15%, 13%) y cualquier otro codigo: sin bucket propio; quedan en la
  * gravada, que es la resta (SUBTOTAL menos los cinco buckets).</li>
  * <li>{@code null} NO es gravado: es "no se sabe". No entra a ningun bucket y se traza; su base
@@ -42,7 +44,7 @@ class BasesPorTarifa {
         switch (codigoPorcentaje.intValue()) {
             case 0: base0 += base; break;
             case 6: noObjeto += base; break;
-            case 7: exenta += base; break;
+            case 7: base0 += base; break; // decisión del usuario 2026-10-05: el DIMM no muestra la base exenta (§59)
             case 5: base5 += base; break;
             case 8: base8 += base; break;
             default: break; // 2, 3, 4, 10: gravada, por resta
