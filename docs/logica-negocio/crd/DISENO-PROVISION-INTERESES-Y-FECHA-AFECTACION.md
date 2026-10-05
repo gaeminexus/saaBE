@@ -214,3 +214,12 @@ tipo (`DTPLAXL2 = TPPRCDGO`), así que si mañana contabilidad abre subcuentas p
   re-provisión en ese canal. Si se construye, va ahí.
 - La re-provisión por deshacer un cobro CBCR va en `ProcesoPagoPrestamoServiceImpl.anularOperacion`, el único
   punto que anula PGPR para `anularCobro` y `reversarProceso`.
+- **MVIC tipo 7 queda RESERVADO y SIN USO** (2026-10-05). La banda de una cuota en el último cierre se
+  **reconstruye** en el cobro tardío, sin foto. Se calcula con `tipoCarteraYDias(fechaVencimiento, corte de la última
+  corrida no reversada)`, que es pura, y los rangos de `BandaProductoDetalle` vigentes a la `fechaProceso` de esa
+  corrida. Es el mismo resolvedor que usa `distribuye()`, extraído a un método común.
+  La banda a la fecha de pago es la misma que ya usó el ③ (`haberDesdeEvento`), y el capital, el que el ③ acreditó.
+  Una foto por cuota en cada cierre habría sido enorme y no agrega información.
+- **MVIC tipo 5** se graba por cuota en el ④, con la misma consulta y la misma fuente (`DTPRMRAA` persistida) que el
+  total del asiento. Si la suma por tipo de préstamo no coincide con el asiento, el asiento manda y la diferencia
+  queda en el log.
