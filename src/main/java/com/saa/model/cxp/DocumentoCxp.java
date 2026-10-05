@@ -144,6 +144,21 @@ public class DocumentoCxp implements Serializable {
     @Basic @Column(name = "DCXPESRM")
     private Long esReembolso;
 
+    /**
+     * Marca de seguros de la bandeja (docs/logica-negocio/cxp/API-DOCUMENTOS-SEGUROS-CXP.md §5.2):
+     * 0=No 1=Sí (DCXPESSG). Para el documento que todavía no se registró (pendiente de
+     * clasificar productos, D5): {@code registrarDesdeXml} la llena ANTES de intentar el
+     * registro, y cuando contabilidad termina de clasificar y registra desde Gestión de
+     * Documentos, el registro toma esta marca si el body no trae {@code esSeguro}. Inicializado
+     * en 0L: columna NOT NULL DEFAULT 0, mismo motivo que {@code FacturaCompra.esIntermediario}.
+     */
+    @Basic @Column(name = "DCXPESSG", nullable = false)
+    private Long esSeguro = 0L;
+
+    /** Documento de seguro de crédito enlazado (DCXPPOSG → CRD.POSG.POSGCDGO), de la bandeja. */
+    @Basic @Column(name = "DCXPPOSG")
+    private Long idDocumentoSeguro;
+
     // --- Descarga automática del XML desde el SRI (§5.1 del plan) ---
     // Las cuatro son NULL-ables: los documentos históricos se cargaron a mano y
     // no tienen resultado del SRI. Un origenXml nulo se lee como "manual,
@@ -227,6 +242,10 @@ public class DocumentoCxp implements Serializable {
     public void setPeriodoContable(Periodo periodoContable) { this.periodoContable = periodoContable; }
     public Long getEsReembolso() { return esReembolso; }
     public void setEsReembolso(Long esReembolso) { this.esReembolso = esReembolso; }
+    public Long getEsSeguro() { return esSeguro; }
+    public void setEsSeguro(Long esSeguro) { this.esSeguro = esSeguro; }
+    public Long getIdDocumentoSeguro() { return idDocumentoSeguro; }
+    public void setIdDocumentoSeguro(Long idDocumentoSeguro) { this.idDocumentoSeguro = idDocumentoSeguro; }
     public Long getOrigenXml() { return origenXml; }
     public void setOrigenXml(Long origenXml) { this.origenXml = origenXml; }
     public String getResultadoSri() { return resultadoSri; }

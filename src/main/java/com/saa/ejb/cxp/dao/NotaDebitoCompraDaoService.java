@@ -16,4 +16,15 @@ public interface NotaDebitoCompraDaoService extends EntityDao<NotaDebitoCompra> 
 	 * @throws Throwable	: Excepcion
 	 */
 	List<NotaDebitoCompra> selectPendientesSustento(Long idEmpresa) throws Throwable;
+
+	/**
+	 * Nota de débito de compra por clave de acceso del SRI y empresa (docs/logica-negocio/cxp/
+	 * API-DOCUMENTOS-SEGUROS-CXP.md §5.1). Mismo criterio que
+	 * {@code FacturaCompraDaoService.selectByClaveEmpresa}.
+	 * @param clave      : Clave de acceso de 49 dígitos del SRI
+	 * @param idEmpresa  : Id de la empresa
+	 * @return           : Notas de débito con esa clave en esa empresa (normalmente 0 o 1)
+	 * @throws Throwable : Excepcion
+	 */
+	List<NotaDebitoCompra> selectByClaveEmpresa(String clave, Long idEmpresa) throws Throwable;
 }

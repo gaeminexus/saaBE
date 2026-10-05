@@ -331,6 +331,25 @@ public class FacturaCompra implements Serializable {
         public Long getIdProductoIntermediario() { return idProductoIntermediario; }
         public void setIdProductoIntermediario(Long idProductoIntermediario) { this.idProductoIntermediario = idProductoIntermediario; }
 
+        // ─── Documento de seguros (docs/logica-negocio/cxp/API-DOCUMENTOS-SEGUROS-CXP.md) ────
+        // e2-79. Se marca al REGISTRAR, igual que esIntermediario; D1: una factura con
+        // estadoSeguro=1 (BLOQUEADO) no se puede pagar por ninguna puerta hasta que crédito la
+        // libere (estadoSeguro=2). Inicializado en 0L: la columna es NOT NULL DEFAULT 0, y
+        // Hibernate siempre nombra la columna en el INSERT (mismo motivo que esIntermediario, 2 líneas arriba).
+
+        /** Estado de seguros (FCTCESSG): 0 no es de seguros, 1 BLOQUEADO, 2 LIBERADO. Ver {@link com.saa.rubros.EstadoSeguroDocumentoCxp}. */
+        @Basic @Column(name = "FCTCESSG", nullable = false)
+        private Long estadoSeguro = 0L;
+
+        /** Documento de seguro de crédito enlazado (FCTCPOSG → CRD.POSG.POSGCDGO). Null hasta que crédito enlaza. */
+        @Basic @Column(name = "FCTCPOSG")
+        private Long idDocumentoSeguro;
+
+        public Long getEstadoSeguro() { return estadoSeguro; }
+        public void setEstadoSeguro(Long estadoSeguro) { this.estadoSeguro = estadoSeguro; }
+        public Long getIdDocumentoSeguro() { return idDocumentoSeguro; }
+        public void setIdDocumentoSeguro(Long idDocumentoSeguro) { this.idDocumentoSeguro = idDocumentoSeguro; }
+
         public Long getEsReembolso() { return esReembolso; }
         public void setEsReembolso(Long esReembolso) { this.esReembolso = esReembolso; }
         public String getCodDocReembolso() { return codDocReembolso; }

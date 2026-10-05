@@ -181,6 +181,23 @@ public class NotaCreditoCompra implements Serializable {
         @Basic @Column(name = "NTCCUSAN", length = 200)
         private String usuarioAnulacion;
 
+        // ─── Documento de seguros (docs/logica-negocio/cxp/API-DOCUMENTOS-SEGUROS-CXP.md) ────
+        // e2-79. D4: una NC de seguros se aplica a la factura al registrarse, igual que hoy; la
+        // marca solo informa a crédito que falta liberarla.
+
+        /** Estado de seguros (NTCCESSG): 0 no es de seguros, 1 BLOQUEADO, 2 LIBERADO. Ver {@link com.saa.rubros.EstadoSeguroDocumentoCxp}. */
+        @Basic @Column(name = "NTCCESSG", nullable = false)
+        private Long estadoSeguro = 0L;
+
+        /** Documento de seguro de crédito enlazado (NTCCPOSG → CRD.POSG.POSGCDGO). Null hasta que crédito enlaza. */
+        @Basic @Column(name = "NTCCPOSG")
+        private Long idDocumentoSeguro;
+
+        public Long getEstadoSeguro() { return estadoSeguro; }
+        public void setEstadoSeguro(Long estadoSeguro) { this.estadoSeguro = estadoSeguro; }
+        public Long getIdDocumentoSeguro() { return idDocumentoSeguro; }
+        public void setIdDocumentoSeguro(Long idDocumentoSeguro) { this.idDocumentoSeguro = idDocumentoSeguro; }
+
         public Long getId() { return id; }
 	public void setId(Long id) { this.id = id; }
 	public String getTipoComprobante() { return tipoComprobante; }

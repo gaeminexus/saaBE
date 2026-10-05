@@ -7,9 +7,14 @@ import java.util.List;
 import java.util.Map;
 
 import com.saa.basico.util.DatosBusqueda;
+import com.saa.ejb.cxp.dao.FacturaCompraDaoService;
+import com.saa.ejb.cxp.dao.PagoProgramadoDaoService;
 import com.saa.ejb.cxp.service.ConflictoNegocioException;
 import com.saa.ejb.cxp.service.PagoProgramadoService;
+import com.saa.model.cxp.FacturaCompra;
+import com.saa.model.cxp.NombreEntidadesCompra;
 import com.saa.model.cxp.PagoProgramado;
+import com.saa.rubros.EstadoSeguroDocumentoCxp;
 
 import jakarta.ejb.EJB;
 import jakarta.ws.rs.Consumes;
@@ -50,6 +55,12 @@ public class PagoProgramadoRest {
 
     @EJB
     private PagoProgramadoService pagoProgramadoService;
+
+    @EJB
+    private FacturaCompraDaoService facturaCompraDaoService;
+
+    @EJB
+    private PagoProgramadoDaoService pagoProgramadoDaoService;
 
     @Context
     private UriInfo context;
@@ -280,6 +291,32 @@ public class PagoProgramadoRest {
                         .type(MediaType.APPLICATION_JSON).build();
             }
 
+            // Candado 2 (docs/logica-negocio/cxp/API-DOCUMENTOS-SEGUROS-CXP.md §3): provisional
+            // acá en el REST mientras PagoProgramadoServiceImpl tenga cambios ajenos (§3,
+            // trampa 2) -- no tocar ese archivo. Fail-open a propósito, para no tapar un error
+            // real de id inválido con un mensaje de este candado: si no se pudo verificar
+            // (factura inexistente, etc.), el respaldo es el candado 1
+            // (AplicacionPagoCxpServiceImpl.saveSingle) al confirmar -- el servicio de pagos en
+            // sí no sabe nada de seguros.
+            if (idFactura != null) {
+                try {
+                    FacturaCompra factura = facturaCompraDaoService.selectById(idFactura,
+                            NombreEntidadesCompra.FACTURA_COMPRA);
+                    if (factura != null && factura.getEstadoSeguro() != null
+                            && factura.getEstadoSeguro().longValue() == EstadoSeguroDocumentoCxp.BLOQUEADO) {
+                        return Response.status(Response.Status.BAD_REQUEST)
+                                .entity("La factura " + factura.getNumero() + " de "
+                                        + (factura.getTitular() != null ? factura.getTitular().getNombre() : "proveedor")
+                                        + " es de seguros y está pendiente de distribución en crédito: "
+                                        + "no se puede pagar hasta que crédito la libere.")
+                                .type(MediaType.APPLICATION_JSON).build();
+                    }
+                } catch (Throwable ignored) {
+                    // No se pudo verificar: el respaldo es el candado 1
+                    // (AplicacionPagoCxpServiceImpl.saveSingle) al confirmar.
+                }
+            }
+
             Map<String, Object> resultado = (idLiquidacion != null)
                     ? pagoProgramadoService.registrarPagoLiquidacion(idLiquidacion,
                             idCuentaOrigen, idCuentaDest, valor, fecha, idEmpresa, idUsuario,
@@ -428,6 +465,31 @@ public class PagoProgramadoRest {
                 return Response.status(Response.Status.BAD_REQUEST)
                         .entity("Debe enviar idsPagos, idCuentaBancaria y formaPago.")
                         .type(MediaType.APPLICATION_JSON).build();
+            }
+
+            // Candado 3 (docs/logica-negocio/cxp/API-DOCUMENTOS-SEGUROS-CXP.md §3): mismo
+            // criterio que el candado 2 de /pgtr, provisional en el REST. Rechaza el LOTE
+            // entero si alguno de los pagos es de una factura de seguros bloqueada. Fail-open
+            // a propósito -- ver el comentario del candado 2 de /pgtr más arriba.
+            try {
+                List<PagoProgramado> pagos = pagoProgramadoDaoService.selectByIds(idsPagos);
+                List<String> bloqueados = new ArrayList<>();
+                for (PagoProgramado p : pagos) {
+                    FacturaCompra f = p.getFacturaCompra();
+                    if (f != null && f.getEstadoSeguro() != null
+                            && f.getEstadoSeguro().longValue() == EstadoSeguroDocumentoCxp.BLOQUEADO) {
+                        bloqueados.add("pago " + p.getId() + " (factura " + f.getNumero() + ")");
+                    }
+                }
+                if (!bloqueados.isEmpty()) {
+                    return Response.status(Response.Status.BAD_REQUEST)
+                            .entity("De seguros, pendientes de distribución en crédito, no se pueden "
+                                    + "aprobar hasta que crédito los libere: " + String.join(", ", bloqueados))
+                            .type(MediaType.APPLICATION_JSON).build();
+                }
+            } catch (Throwable ignored) {
+                // No se pudo verificar: el respaldo es el candado 1
+                // (AplicacionPagoCxpServiceImpl.saveSingle) al confirmar.
             }
 
             Map<String, Object> resultado = pagoProgramadoService.aprobar(idsPagos, idCuentaBancaria,

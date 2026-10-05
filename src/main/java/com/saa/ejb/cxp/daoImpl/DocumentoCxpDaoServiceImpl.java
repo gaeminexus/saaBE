@@ -1,4 +1,5 @@
 package com.saa.ejb.cxp.daoImpl;
+import java.util.List;
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.cxp.dao.DocumentoCxpDaoService;
 import com.saa.model.cxp.DocumentoCxp;
@@ -17,8 +18,16 @@ public class DocumentoCxpDaoServiceImpl extends EntityDaoImpl<DocumentoCxp> impl
             "estadoDocumento","pathXml","fechaCargaXml","usuarioCargaXml",
             "idDocumentoBD","tipoTablaDestino","fechaRegistroBD","usuarioRegistroBD",
             "fechaReversion","usuarioReversion","novedad","estadoNovedad","observacion",
-            "periodoContable","esReembolso",
+            "periodoContable","esReembolso","esSeguro","idDocumentoSeguro",
             "origenXml","resultadoSri","mensajeSri","fechaDescargaSri"
         };
+    }
+
+    @Override
+    public DocumentoCxp selectByClave(String claveAcceso) throws Throwable {
+        List<DocumentoCxp> lista = em.createNamedQuery("DocumentoCxpByClave", DocumentoCxp.class)
+                .setParameter("claveAcceso", claveAcceso)
+                .getResultList();
+        return lista.isEmpty() ? null : lista.get(0);
     }
 }

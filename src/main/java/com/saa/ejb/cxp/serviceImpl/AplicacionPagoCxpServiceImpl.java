@@ -121,6 +121,31 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 			if (aplicacion.getFechaRegistro() == null) {
 				aplicacion.setFechaRegistro(LocalDateTime.now());
 			}
+
+			// §3.1 (docs/logica-negocio/cxp/API-DOCUMENTOS-SEGUROS-CXP.md): último candado --
+			// cubre cruce de anticipo y caja chica ANTES de que se mueva nada, y a cualquier
+			// llamador interno. La retención (3) y la NC (2) no sacan dinero: no se bloquean.
+			// Se relee la factura por id (no se confía en aplicacion.getFacturaCompra() tal
+			// como llegó): un llamador puede armarla con un stub de solo id (un new
+			// FacturaCompra() con setId, o un objeto deserializado del JSON), y ahí
+			// estadoSeguro vendría null aunque la factura esté bloqueada -- siendo el último
+			// candado, no puede depender de cómo armó el objeto quien llama.
+			if (aplicacion.getFacturaCompra() != null && aplicacion.getFacturaCompra().getId() != null
+					&& aplicacion.getTipoDocPago() != null) {
+				int tipo = aplicacion.getTipoDocPago().intValue();
+				boolean mueveDinero = tipo == TipoDocPagoAplicacion.COBRO_DIRECTO
+						|| tipo == TipoDocPagoAplicacion.ANTICIPO
+						|| tipo == TipoDocPagoAplicacion.CAJA_CHICA;
+				com.saa.model.cxp.FacturaCompra factura =
+						em.find(com.saa.model.cxp.FacturaCompra.class, aplicacion.getFacturaCompra().getId());
+				if (mueveDinero && factura != null && factura.getEstadoSeguro() != null
+						&& factura.getEstadoSeguro().longValue() == com.saa.rubros.EstadoSeguroDocumentoCxp.BLOQUEADO) {
+					throw new IncomeException("La factura " + factura.getNumero() + " de "
+							+ (factura.getTitular() != null ? factura.getTitular().getNombre() : "proveedor")
+							+ " es de seguros y está pendiente de distribución en crédito: no se puede "
+							+ "pagar hasta que crédito la libere.");
+				}
+			}
 		}
 		aplicacion = aplicacionPagoCxpDaoService.save(aplicacion, aplicacion.getId());
 		em.flush();

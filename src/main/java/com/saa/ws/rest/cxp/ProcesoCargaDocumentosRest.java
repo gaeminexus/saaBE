@@ -4,13 +4,17 @@ import java.util.List;
 import java.util.Map;
 
 import com.saa.basico.ejb.FileService;
+import com.saa.basico.ejb.UsuarioDaoService;
 import com.saa.ejb.cxp.dao.GrupoProductoPagoDaoService;
 import com.saa.ejb.cxp.service.ClasificacionProductosLoteService;
+import com.saa.ejb.cxp.service.DocumentoSeguroCxpService;
 import com.saa.ejb.cxp.service.ProcesoCargaDocumentosService;
 import com.saa.ejb.cxp.service.ProcesoLoteCxpService;
 import com.saa.model.cxp.DocumentoCxp;
 import com.saa.model.cxp.GrupoProductoPago;
 import com.saa.model.cxp.NombreEntidadesPago;
+import com.saa.model.scp.NombreEntidadesSistema;
+import com.saa.model.scp.Usuario;
 
 import jakarta.ejb.EJB;
 import jakarta.ws.rs.*;
@@ -45,6 +49,8 @@ public class ProcesoCargaDocumentosRest {
     @EJB private ClasificacionProductosLoteService clasificacionProductosLoteService;
     @EJB private GrupoProductoPagoDaoService   grupoProductoPagoDaoService;
     @EJB private FileService                   fileService;
+    @EJB private DocumentoSeguroCxpService     documentoSeguroCxpService;
+    @EJB private UsuarioDaoService             usuarioDaoService;
     @Context private UriInfo context;
 
     public ProcesoCargaDocumentosRest() {}
@@ -139,6 +145,15 @@ public class ProcesoCargaDocumentosRest {
                 }
             }
 
+            // Marca de seguros (docs/logica-negocio/cxp/API-DOCUMENTOS-SEGUROS-CXP.md §4), mismo
+            // criterio que esReembolso/esIntermediario: opcional, por defecto false.
+            boolean esSeguro = false;
+            if (params.containsKey("esSeguro")) {
+                Object v = params.get("esSeguro");
+                esSeguro = (v instanceof Boolean) ? (Boolean) v
+                        : ("1".equals(v != null ? v.toString() : "") || "true".equalsIgnoreCase(v != null ? v.toString() : ""));
+            }
+
             String subDir = "docs/xml/cxp";
             String nombreArchivo = doc.getClaveAcceso() + ".xml";
             String pathDestino = params.get("pathDestino") != null
@@ -148,7 +163,8 @@ public class ProcesoCargaDocumentosRest {
                             nombreArchivo, subDir);
 
             Map<String, Object> resultado = procesoCargaDocumentosService
-                    .cargarXmlYRegistrar(idDocumentoCxp, contenidoXml, pathDestino, idEmpresa, idUsuario);
+                    .cargarXmlYRegistrar(idDocumentoCxp, contenidoXml, pathDestino, idEmpresa, idUsuario,
+                            esSeguro, null);
 
             boolean valido = Boolean.TRUE.equals(resultado.get("valido"));
             if (!valido) {
@@ -169,6 +185,48 @@ public class ProcesoCargaDocumentosRest {
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity(errorMap("Error al procesar XML: " + e.getMessage()))
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    // =========================================================
+    // §5.2 (docs/logica-negocio/cxp/API-DOCUMENTOS-SEGUROS-CXP.md): crear desde el XML, ya
+    // marcado de seguros (D2). Lo usa crédito cuando el documento todavía no está registrado.
+    // Delega enteramente en DocumentoSeguroCxpService: este REST no lleva lógica propia.
+    // =========================================================
+    @POST
+    @Path("/registrarDesdeXml")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response registrarDesdeXml(Map<String, Object> params) {
+        System.out.println("=== REST registrarDesdeXml ===");
+        try {
+            String contenidoXml = (String) params.get("contenidoXml");
+            Long idEmpresa = Long.valueOf(params.get("idEmpresa").toString());
+            Long idUsuario = Long.valueOf(params.get("idUsuario").toString());
+            Long idDocumentoSeguro = (params.get("idDocumentoSeguro") != null)
+                    ? Long.valueOf(params.get("idDocumentoSeguro").toString())
+                    : null;
+
+            // §5.0.2: el REST recibe idUsuario; el service @Local recibe el nombre.
+            Usuario usuario = usuarioDaoService.selectById(idUsuario, NombreEntidadesSistema.USUARIO);
+            if (usuario == null)
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity(errorMap("No se encontró el usuario con ID: " + idUsuario))
+                        .type(MediaType.APPLICATION_JSON).build();
+
+            Map<String, Object> resultado = documentoSeguroCxpService.registrarDesdeXml(
+                    contenidoXml, idEmpresa, usuario.getNombre(), idDocumentoSeguro);
+
+            return Response.status(Response.Status.OK)
+                    .entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.IncomeException e) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(errorMap(e.getMessage()))
+                    .type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity(errorMap("Error en documentos de seguros: " + e.getMessage()))
                     .type(MediaType.APPLICATION_JSON).build();
         }
     }
@@ -306,9 +364,20 @@ public class ProcesoCargaDocumentosRest {
                     ? params.get("observacionAdicional").toString()
                     : null;
 
+            // Marca de seguros (docs/logica-negocio/cxp/API-DOCUMENTOS-SEGUROS-CXP.md §4), mismo
+            // criterio que esIntermediario: opcional, por defecto false.
+            boolean esSeguro = false;
+            if (params.containsKey("esSeguro")) {
+                Object v = params.get("esSeguro");
+                esSeguro = (v instanceof Boolean)
+                        ? (Boolean) v
+                        : ("1".equals(v.toString()) || "true".equalsIgnoreCase(v.toString()));
+            }
+
             Map<String, Object> resultado = procesoCargaDocumentosService
                     .registrarDocumentoBD(idDocumentoCxp, idEmpresa, idUsuario,
-                            esIntermediario, idProductoIntermediario, observacionAdicional);
+                            esIntermediario, idProductoIntermediario, observacionAdicional,
+                            esSeguro, null);
 
             // Bloqueantes (productos sin clasificar, tipo asiento no configurado, etc.)
             if (Boolean.TRUE.equals(resultado.get("pendienteClasificacion"))) {

@@ -13,7 +13,17 @@ public class FacturaCompraDaoServiceImpl extends EntityDaoImpl<FacturaCompra> im
 	@PersistenceContext EntityManager em;
 	@Override
 	public String[] obtieneCampos() {
-		return new String[]{"id","tipoComprobante","empresa","titular","tipoDoc","numero","numEstablecimiento","numPtoEmision","secuencial","ambiente","clave","fecha","observacion","subtotal","subcero","subtotal5","subtotal8","pIVA","vIVA","vIVA5","vIVA8","vICE","vIRBPNR","descuento","porDescuento","propina","subsidio","totalSinSub","ahorroSub","total","ptoEmision","usuario","pathGen","autorizacion","fechaAutorizacion","formaPago","estado","estadoEmision","estadoPago","asiento","esReembolso","codDocReembolso","totalComprobantesReembolso","totalBaseImponibleReembolso","totalImpuestoReembolso","sustentoTributario","fechaRegistroContable","motivoAnulacion","fechaAnulacion","usuarioAnulacion","esIntermediario","idProductoIntermediario"};
+		return new String[]{"id","tipoComprobante","empresa","titular","tipoDoc","numero","numEstablecimiento","numPtoEmision","secuencial","ambiente","clave","fecha","observacion","subtotal","subcero","subtotal5","subtotal8","pIVA","vIVA","vIVA5","vIVA8","vICE","vIRBPNR","descuento","porDescuento","propina","subsidio","totalSinSub","ahorroSub","total","ptoEmision","usuario","pathGen","autorizacion","fechaAutorizacion","formaPago","estado","estadoEmision","estadoPago","asiento","esReembolso","codDocReembolso","totalComprobantesReembolso","totalBaseImponibleReembolso","totalImpuestoReembolso","sustentoTributario","fechaRegistroContable","motivoAnulacion","fechaAnulacion","usuarioAnulacion","esIntermediario","idProductoIntermediario","estadoSeguro","idDocumentoSeguro"};
+	}
+
+	@Override
+	public List<FacturaCompra> selectByClaveEmpresa(String clave, Long idEmpresa) throws Throwable {
+		TypedQuery<FacturaCompra> query = em.createQuery(
+				"select f from FacturaCompra f where f.clave = :clave and f.empresa.codigo = :idEmpresa",
+				FacturaCompra.class);
+		query.setParameter("clave", clave);
+		query.setParameter("idEmpresa", idEmpresa);
+		return query.getResultList();
 	}
 
 	@Override

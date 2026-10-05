@@ -26,4 +26,16 @@ public interface FacturaCompraDaoService extends EntityDao<FacturaCompra> {
 	 * @throws Throwable : Excepcion
 	 */
 	List<FacturaCompra> selectActivasByTitular(Long idTitular) throws Throwable;
+
+	/**
+	 * Factura de compra por clave de acceso del SRI y empresa (docs/logica-negocio/cxp/
+	 * API-DOCUMENTOS-SEGUROS-CXP.md §5.1), para que crédito la ubique antes de enlazarla a su
+	 * póliza. La clave no es única a nivel de BD en esta tabla (sin constraint), así que se
+	 * devuelve una lista; en la práctica hay a lo sumo una fila por clave+empresa.
+	 * @param clave      : Clave de acceso de 49 dígitos del SRI
+	 * @param idEmpresa  : Id de la empresa
+	 * @return           : Facturas con esa clave en esa empresa (normalmente 0 o 1)
+	 * @throws Throwable : Excepcion
+	 */
+	List<FacturaCompra> selectByClaveEmpresa(String clave, Long idEmpresa) throws Throwable;
 }

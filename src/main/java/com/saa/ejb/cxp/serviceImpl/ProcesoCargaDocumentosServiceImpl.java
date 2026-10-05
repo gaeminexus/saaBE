@@ -563,8 +563,19 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
     public Map<String, Object> cargarXmlYRegistrar(Long idDocumentoCxp, String contenidoXml,
                                                     String pathDestino, Long idEmpresa,
                                                     Long idUsuario) throws Throwable {
+        return cargarXmlYRegistrar(idDocumentoCxp, contenidoXml, pathDestino, idEmpresa, idUsuario,
+                false, null);
+    }
 
-        System.out.println("=== cargarXmlYRegistrar idDocumentoCxp=" + idDocumentoCxp);
+    @Override
+    public Map<String, Object> cargarXmlYRegistrar(Long idDocumentoCxp, String contenidoXml,
+                                                    String pathDestino, Long idEmpresa, Long idUsuario,
+                                                    Boolean esSeguro, Long idDocumentoSeguro)
+            throws Throwable {
+
+        System.out.println("=== cargarXmlYRegistrar idDocumentoCxp=" + idDocumentoCxp
+                + " esSeguro=" + esSeguro);
+        boolean esSeguroEfectivo = Boolean.TRUE.equals(esSeguro);
 
         DocumentoCxp doc = documentoCxpDaoService.selectById(idDocumentoCxp,
                 NombreEntidadesCompra.DOCUMENTO_CXP);
@@ -605,11 +616,14 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
 
         try {
             if (TIPO_FACTURA.equalsIgnoreCase(tipo)) {
-                resultadoBD = registrarFacturaCompra(doc, contenidoXml, idEmpresa, idUsuario);
+                resultadoBD = registrarFacturaCompra(doc, contenidoXml, idEmpresa, idUsuario,
+                        false, null, esSeguroEfectivo, idDocumentoSeguro);
             } else if (TIPO_NOTA_CREDITO.equalsIgnoreCase(tipo)) {
-                resultadoBD = registrarNotaCreditoCompra(doc, contenidoXml, idEmpresa, idUsuario);
+                resultadoBD = registrarNotaCreditoCompra(doc, contenidoXml, idEmpresa, idUsuario,
+                        esSeguroEfectivo, idDocumentoSeguro);
             } else if (TIPO_NOTA_DEBITO.equalsIgnoreCase(tipo)) {
-                resultadoBD = registrarNotaDebitoCompra(doc, contenidoXml, idEmpresa, idUsuario);
+                resultadoBD = registrarNotaDebitoCompra(doc, contenidoXml, idEmpresa, idUsuario,
+                        esSeguroEfectivo, idDocumentoSeguro);
             } else if (TIPO_LIQUIDACION.equalsIgnoreCase(tipo)) {
                 resultadoBD = registrarLiquidacionCompraCompra(doc, contenidoXml, idEmpresa, idUsuario);
             } else if (TIPO_RETENCION.equalsIgnoreCase(tipo) || TIPO_RETENCION_V2.equalsIgnoreCase(tipo)) {
@@ -786,6 +800,35 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         return pendientes;
     }
 
+    @Override
+    public Map<String, String> extraerCamposBasicosXml(String contenidoXml) throws Throwable {
+        Map<String, String> campos = new HashMap<>();
+
+        String claveAcceso = getXmlValueOuter(contenidoXml, "claveAccesoConsultada");
+        if (claveAcceso.isEmpty()) claveAcceso = getXmlValueOuter(contenidoXml, "claveAcceso");
+
+        Document xmlDoc = parsearXmlComprobante(contenidoXml);
+
+        if (claveAcceso.isEmpty()) claveAcceso = getXmlValue(xmlDoc, "claveAcceso");
+
+        String ruc = getXmlValue(xmlDoc, "ruc");
+        if (ruc.isEmpty()) ruc = getXmlValue(xmlDoc, "rucEmisor");
+
+        String estab = getXmlValue(xmlDoc, "estab");
+        String ptoEmi = getXmlValue(xmlDoc, "ptoEmi");
+        String secuencial = getXmlValue(xmlDoc, "secuencial");
+        String serie = (!estab.isEmpty() && !ptoEmi.isEmpty() && !secuencial.isEmpty())
+                ? estab + "-" + ptoEmi + "-" + secuencial : "";
+
+        campos.put("claveAcceso", claveAcceso);
+        campos.put("rucEmisor", ruc);
+        campos.put("razonSocialEmisor", getXmlValue(xmlDoc, "razonSocial"));
+        campos.put("tipoComprobante", getXmlValue(xmlDoc, "codDoc"));
+        campos.put("serieComprobante", serie);
+        campos.put("importeTotal", getXmlValue(xmlDoc, "importeTotal"));
+        return campos;
+    }
+
     // =========================================================
     // FASE 3: Registro en BD desde XML  →  opera sobre DocumentoCxp
     // =========================================================
@@ -799,9 +842,18 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
     public Map<String, Object> registrarDocumentoBD(Long idDocumentoCxp, Long idEmpresa, Long idUsuario,
                                                       Boolean esIntermediario, Long idProductoIntermediario)
             throws Throwable {
+        return registrarDocumentoBD(idDocumentoCxp, idEmpresa, idUsuario, esIntermediario,
+                idProductoIntermediario, false, null);
+    }
+
+    @Override
+    public Map<String, Object> registrarDocumentoBD(Long idDocumentoCxp, Long idEmpresa, Long idUsuario,
+                                                      Boolean esIntermediario, Long idProductoIntermediario,
+                                                      Boolean esSeguro, Long idDocumentoSeguro)
+            throws Throwable {
 
         System.out.println("=== registrarDocumentoBD idDocumentoCxp=" + idDocumentoCxp
-                + " esIntermediario=" + esIntermediario);
+                + " esIntermediario=" + esIntermediario + " esSeguro=" + esSeguro);
 
         DocumentoCxp doc = documentoCxpDaoService.selectById(idDocumentoCxp,
                 NombreEntidadesCompra.DOCUMENTO_CXP);
@@ -822,6 +874,15 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                     + ". Si es una factura de reembolso pendiente, ingrese los documentos sustento "
                     + "y contabilicela; si desea volver a registrarla, reviertala primero.");
 
+        // D5 / §5.2 trampa (API-DOCUMENTOS-SEGUROS-CXP.md): la marca de un documento que quedó
+        // pendiente de clasificar vive en la bandeja (DCXPESSG/DCXPPOSG, puesta por
+        // registrarDesdeXml ANTES de intentar el registro). Si el body no trae esSeguro, se toma
+        // la de la DCXP para que Gestión de Documentos no tenga que volver a marcarlo.
+        boolean efectivoEsSeguro = Boolean.TRUE.equals(esSeguro)
+                || (doc.getEsSeguro() != null && doc.getEsSeguro() == 1L);
+        Long efectivoIdDocumentoSeguro = (idDocumentoSeguro != null) ? idDocumentoSeguro
+                : doc.getIdDocumentoSeguro();
+
         String xmlContent = leerArchivoXml(doc);
         String tipo = doc.getTipoComprobante();
         Map<String, Object> resultado;
@@ -829,11 +890,14 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         try {
             if (TIPO_FACTURA.equalsIgnoreCase(tipo)) {
                 resultado = registrarFacturaCompra(doc, xmlContent, idEmpresa, idUsuario,
-                        Boolean.TRUE.equals(esIntermediario), idProductoIntermediario);
+                        Boolean.TRUE.equals(esIntermediario), idProductoIntermediario,
+                        efectivoEsSeguro, efectivoIdDocumentoSeguro);
             } else if (TIPO_NOTA_CREDITO.equalsIgnoreCase(tipo)) {
-                resultado = registrarNotaCreditoCompra(doc, xmlContent, idEmpresa, idUsuario);
+                resultado = registrarNotaCreditoCompra(doc, xmlContent, idEmpresa, idUsuario,
+                        efectivoEsSeguro, efectivoIdDocumentoSeguro);
             } else if (TIPO_NOTA_DEBITO.equalsIgnoreCase(tipo)) {
-                resultado = registrarNotaDebitoCompra(doc, xmlContent, idEmpresa, idUsuario);
+                resultado = registrarNotaDebitoCompra(doc, xmlContent, idEmpresa, idUsuario,
+                        efectivoEsSeguro, efectivoIdDocumentoSeguro);
             } else if (TIPO_LIQUIDACION.equalsIgnoreCase(tipo)) {
                 resultado = registrarLiquidacionCompraCompra(doc, xmlContent, idEmpresa, idUsuario);
             } else if (TIPO_RETENCION.equalsIgnoreCase(tipo) || TIPO_RETENCION_V2.equalsIgnoreCase(tipo)) {
@@ -930,6 +994,42 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
 
         return registrarDocumentoBD(idDocumentoCxp, idEmpresa, idUsuario, esIntermediario,
                 idProductoIntermediario);
+    }
+
+    @Override
+    public Map<String, Object> registrarDocumentoBD(Long idDocumentoCxp, Long idEmpresa, Long idUsuario,
+                                                      Boolean esIntermediario, Long idProductoIntermediario,
+                                                      String observacionAdicional, Boolean esSeguro,
+                                                      Long idDocumentoSeguro)
+            throws Throwable {
+
+        System.out.println("=== registrarDocumentoBD (con observación adicional y marca de seguros) "
+                + "idDocumentoCxp=" + idDocumentoCxp);
+
+        // Mismo criterio que la sobrecarga de 6 parámetros: la observación adicional se valida y
+        // graba ANTES de cualquier bloqueante, y recién después sigue el flujo normal de registro.
+        DocumentoCxp doc = documentoCxpDaoService.selectById(idDocumentoCxp,
+                NombreEntidadesCompra.DOCUMENTO_CXP);
+        if (doc == null)
+            throw new Exception("DocumentoCxp no encontrado: " + idDocumentoCxp);
+
+        if (doc.getEstadoDocumento() == null || doc.getEstadoDocumento() != ESTADO_XML_CARGADO)
+            throw new Exception("El documento debe tener estado XML_CARGADO (2). Estado actual: "
+                    + doc.getEstadoDocumento());
+
+        String obs = observacionAdicional == null ? null : observacionAdicional.trim();
+        if (obs != null && obs.isEmpty())
+            obs = null;
+        if (obs != null && obs.length() > 500)
+            throw new com.saa.basico.util.IncomeException(
+                    "La observación adicional admite hasta 500 caracteres (se recibieron "
+                    + obs.length() + ").");
+
+        doc.setObservacionAdicional(obs);
+        documentoCxpDaoService.save(doc, doc.getId());
+
+        return registrarDocumentoBD(idDocumentoCxp, idEmpresa, idUsuario, esIntermediario,
+                idProductoIntermediario, esSeguro, idDocumentoSeguro);
     }
 
     // =========================================================
@@ -1345,20 +1445,29 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
 
     private Map<String, Object> registrarFacturaCompra(DocumentoCxp doc, String xmlContent,
                                                         Long idEmpresa, Long idUsuario) throws Throwable {
-        return registrarFacturaCompra(doc, xmlContent, idEmpresa, idUsuario, false, null);
+        return registrarFacturaCompra(doc, xmlContent, idEmpresa, idUsuario, false, null, false, null);
     }
 
     /**
      * Igual que {@link #registrarFacturaCompra(DocumentoCxp, String, Long, Long)}, con la opción
      * de marcar la factura como de INTERMEDIARIO
-     * (docs/logica-negocio/cxp/DISENO-FACTURA-INTERMEDIARIO.md). Válida el producto ANTES de
+     * (docs/logica-negocio/cxp/DISENO-FACTURA-INTERMEDIARIO.md), y/o de SEGUROS
+     * (docs/logica-negocio/cxp/API-DOCUMENTOS-SEGUROS-CXP.md). Válida el producto ANTES de
      * crear cualquier registro (proveedor/producto auto-creados, FacturaCompra, detalles): un
      * bloqueante acá no debe dejar huérfanos a medio crear.
      */
     private Map<String, Object> registrarFacturaCompra(DocumentoCxp doc, String xmlContent,
                                                         Long idEmpresa, Long idUsuario,
-                                                        boolean esIntermediario, Long idProductoIntermediario)
+                                                        boolean esIntermediario, Long idProductoIntermediario,
+                                                        boolean esSeguro, Long idDocumentoSeguro)
             throws Throwable {
+        // D6 (API-DOCUMENTOS-SEGUROS-CXP.md §4): las dos marcas son excluyentes. Antes de crear
+        // nada -- mismo criterio que el bloqueante de intermediario de abajo.
+        if (esSeguro && esIntermediario) {
+            throw new com.saa.basico.util.IncomeException(
+                    "Un documento de seguros no puede ser de intermediario.");
+        }
+
         Document xmlDoc = parsearXmlComprobante(xmlContent);
         Empresa empresa = em.find(Empresa.class, idEmpresa);
         Usuario usuario = em.find(Usuario.class, idUsuario);
@@ -1635,6 +1744,14 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         if (esIntermediario) {
             factura.setEsIntermediario(1L);
             factura.setIdProductoIntermediario(idProductoIntermediario);
+        }
+
+        // ── Factura de seguros (D1 API-DOCUMENTOS-SEGUROS-CXP.md): BLOQUEADA hasta que
+        // crédito la libere. El enlace al POSGCDGO puede llegar ya acá (registrarDesdeXml) o
+        // quedar en null hasta que crédito lo setee con `enlazar`.
+        if (esSeguro) {
+            factura.setEstadoSeguro(Long.valueOf(com.saa.rubros.EstadoSeguroDocumentoCxp.BLOQUEADO));
+            factura.setIdDocumentoSeguro(idDocumentoSeguro);
         }
 
         // ── IVA de la cabecera (<totalConImpuestos>) ──────────────────────────
@@ -2714,7 +2831,9 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
 
 
     private Map<String, Object> registrarNotaCreditoCompra(DocumentoCxp doc, String xmlContent,
-                                                            Long idEmpresa, Long idUsuario) throws Throwable {
+                                                            Long idEmpresa, Long idUsuario,
+                                                            boolean esSeguro, Long idDocumentoSeguro)
+            throws Throwable {
         Document xmlDoc = parsearXmlComprobante(xmlContent);
         Empresa empresa = em.find(Empresa.class, idEmpresa);
         Usuario usuario = em.find(Usuario.class, idUsuario);
@@ -2777,6 +2896,13 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         nc.setUsuario(usuario);
         nc.setEstado(Long.valueOf(Estado.ACTIVO));
         nc.setEstadoEmision(2L);
+
+        // D4 (API-DOCUMENTOS-SEGUROS-CXP.md): la NC de seguros se marca y se APLICA igual que
+        // hoy -- la marca solo informa a crédito que falta liberarla.
+        if (esSeguro) {
+            nc.setEstadoSeguro(Long.valueOf(com.saa.rubros.EstadoSeguroDocumentoCxp.BLOQUEADO));
+            nc.setIdDocumentoSeguro(idDocumentoSeguro);
+        }
 
         // La factura de compra afectada ya se verificó en el PASO 2 como
         // bloqueante FACTURA_COMPRA_NO_ENCONTRADA, con la misma consulta que usa
@@ -2861,7 +2987,9 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
     }
 
     private Map<String, Object> registrarNotaDebitoCompra(DocumentoCxp doc, String xmlContent,
-                                                           Long idEmpresa, Long idUsuario) throws Throwable {
+                                                           Long idEmpresa, Long idUsuario,
+                                                           boolean esSeguro, Long idDocumentoSeguro)
+            throws Throwable {
         Document xmlDoc = parsearXmlComprobante(xmlContent);
         Empresa empresa = em.find(Empresa.class, idEmpresa);
         Usuario usuario = em.find(Usuario.class, idUsuario);
@@ -2923,6 +3051,14 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         nd.setUsuario(usuario);
         nd.setEstado(Long.valueOf(Estado.ACTIVO));
         nd.setEstadoEmision(2L);
+
+        // D3 (API-DOCUMENTOS-SEGUROS-CXP.md): la ND de seguros se contabiliza igual, pero el
+        // salto de la aplicación a la factura (no debe subir su saldo) vive en
+        // registrarAplicacionPagoCxp, que lee estadoSeguro de esta misma fila.
+        if (esSeguro) {
+            nd.setEstadoSeguro(Long.valueOf(com.saa.rubros.EstadoSeguroDocumentoCxp.BLOQUEADO));
+            nd.setIdDocumentoSeguro(idDocumentoSeguro);
+        }
 
         // La factura de compra afectada ya se verificó en el PASO 2 como
         // bloqueante FACTURA_COMPRA_NO_ENCONTRADA.
@@ -4912,8 +5048,17 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                 com.saa.model.cxp.NotaDebitoCompra nd =
                         em.find(com.saa.model.cxp.NotaDebitoCompra.class, idDocBD);
                 if (nd != null) {
-                    aplicacionPagoCxpService.aplicarNotaDebito(nd, asiento, idEmpresa, "SISTEMA");
-                    resultado.put("aplicacionPago", "Nota de débito aplicada a la factura afectada.");
+                    // D3 (API-DOCUMENTOS-SEGUROS-CXP.md): una ND de seguros BLOQUEADA se
+                    // contabiliza (el asiento ya se generó arriba) pero NO se aplica a la
+                    // factura -- no debe subirle el saldo hasta que crédito la libere.
+                    if (nd.getEstadoSeguro() != null
+                            && nd.getEstadoSeguro().longValue() == com.saa.rubros.EstadoSeguroDocumentoCxp.BLOQUEADO) {
+                        resultado.put("aplicacionPago", "Nota de débito de seguros: contabilizada, "
+                                + "sin aplicar a la factura hasta que crédito la libere.");
+                    } else {
+                        aplicacionPagoCxpService.aplicarNotaDebito(nd, asiento, idEmpresa, "SISTEMA");
+                        resultado.put("aplicacionPago", "Nota de débito aplicada a la factura afectada.");
+                    }
                 }
             } else if ("RETENCION_COMPRA".equals(tipo)) {
                 // La retención que nos emite el cliente abona una factura de VENTA.

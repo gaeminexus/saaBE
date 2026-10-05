@@ -179,6 +179,23 @@ public class NotaDebitoCompra implements Serializable {
 	@Basic @Column(name = "NTDCUSAN", length = 200)
 	private String usuarioAnulacion;
 
+	// ─── Documento de seguros (docs/logica-negocio/cxp/API-DOCUMENTOS-SEGUROS-CXP.md) ────
+	// e2-79. D3: una ND de seguros BLOQUEADA se contabiliza igual, pero no se aplica a la
+	// factura (no sube su saldo) hasta que crédito la libere.
+
+	/** Estado de seguros (NTDCESSG): 0 no es de seguros, 1 BLOQUEADO, 2 LIBERADO. Ver {@link com.saa.rubros.EstadoSeguroDocumentoCxp}. */
+	@Basic @Column(name = "NTDCESSG", nullable = false)
+	private Long estadoSeguro = 0L;
+
+	/** Documento de seguro de crédito enlazado (NTDCPOSG → CRD.POSG.POSGCDGO). Null hasta que crédito enlaza. */
+	@Basic @Column(name = "NTDCPOSG")
+	private Long idDocumentoSeguro;
+
+	public Long getEstadoSeguro() { return estadoSeguro; }
+	public void setEstadoSeguro(Long estadoSeguro) { this.estadoSeguro = estadoSeguro; }
+	public Long getIdDocumentoSeguro() { return idDocumentoSeguro; }
+	public void setIdDocumentoSeguro(Long idDocumentoSeguro) { this.idDocumentoSeguro = idDocumentoSeguro; }
+
 	public Long getId() { return id; }
 	public void setId(Long id) { this.id = id; }
 	public String getTipoComprobante() { return tipoComprobante; }

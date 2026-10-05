@@ -56,6 +56,22 @@ public interface ProcesoCargaDocumentosService {
                                              Long idUsuario) throws Throwable;
 
     /**
+     * Igual que {@link #cargarXmlYRegistrar(Long, String, String, Long, Long)}, con la opción de
+     * marcar el documento de SEGUROS (docs/logica-negocio/cxp/API-DOCUMENTOS-SEGUROS-CXP.md).
+     * La usa {@code DocumentoSeguroCxpService.registrarDesdeXml} (crédito) y el
+     * {@code POST /carga-documentos/procesarXml} de siempre.
+     *
+     * @param esSeguro         true si el documento es de seguros (default false si null)
+     * @param idDocumentoSeguro CRD.POSG.POSGCDGO a enlazar; null si todavía no se conoce (lo
+     *                          enlaza crédito después con {@code enlazar})
+     * @throws com.saa.basico.util.IncomeException si esSeguro=true y el documento ya viene
+     *         marcado de intermediario (no pueden ser las dos cosas)
+     */
+    Map<String, Object> cargarXmlYRegistrar(Long idDocumentoCxp, String contenidoXml,
+                                             String pathDestino, Long idEmpresa, Long idUsuario,
+                                             Boolean esSeguro, Long idDocumentoSeguro) throws Throwable;
+
+    /**
      * Verifica si una FacturaCompra tiene productos en el grupo "PENDIENTE DE CLASIFICAR".
      * Debe llamarse antes de generar el asiento contable de una factura de compra.
      *
@@ -63,6 +79,21 @@ public interface ProcesoCargaDocumentosService {
      * @return Lista de nombres de productos pendientes de clasificar (vacía = puede contabilizar)
      */
     List<String> obtenerProductosPendientesDeClasificar(Long idFacturaCompra) throws Throwable;
+
+    /**
+     * Extrae los campos básicos de cabecera de un comprobante XML del SRI, para crear un
+     * {@code DocumentoCxp} "desde cero" cuando no vino por la carga del TXT
+     * (docs/logica-negocio/cxp/API-DOCUMENTOS-SEGUROS-CXP.md §5.2, usado por
+     * {@code DocumentoSeguroCxpService.registrarDesdeXml}). Mismo parseo que usa la carga
+     * normal -- no se duplica la lógica de leer el XML, sólo se expone.
+     * @param contenidoXml : XML del comprobante (o la respuesta de autorización con el
+     *                       comprobante en CDATA, como llega siempre)
+     * @return             : Mapa con "claveAcceso", "rucEmisor", "razonSocialEmisor",
+     *                       "tipoComprobante" (codDoc), "serieComprobante", "importeTotal";
+     *                       cadena vacía para el que no esté en el XML
+     * @throws Throwable   : Excepcion si el XML ni siquiera parsea
+     */
+    Map<String, String> extraerCamposBasicosXml(String contenidoXml) throws Throwable;
 
     /**
      * FASE 2: Valida y registra el XML de un DocumentoCxp específico. estadoDocumento=2.
@@ -122,6 +153,26 @@ public interface ProcesoCargaDocumentosService {
             throws Throwable;
 
     /**
+     * Igual que {@link #registrarDocumentoBD(Long, Long, Long, Boolean, Long)}, con la opción de
+     * marcar el documento de SEGUROS (docs/logica-negocio/cxp/API-DOCUMENTOS-SEGUROS-CXP.md §4).
+     * Si {@code esSeguro} viene en false/null pero el {@code DocumentoCxp} ya tiene
+     * {@code DCXPESSG=1} (marcado antes por {@code registrarDesdeXml} mientras esperaba
+     * clasificación, §5.2), el registro toma esa marca igual — el check del diálogo de
+     * Gestión de Documentos llega deshabilitado en ese caso, pero por si acaso no se confía
+     * solo en el body.
+     *
+     * @param esSeguro          true si el documento es de seguros (default false si null)
+     * @param idDocumentoSeguro CRD.POSG.POSGCDGO a enlazar si ya se conoce; normalmente null acá
+     *                          (se enlaza después con {@code DocumentoSeguroCxpService.enlazar})
+     * @throws com.saa.basico.util.IncomeException si esSeguro (o la marca de la DCXP) coincide
+     *         con esIntermediario=true: «Un documento de seguros no puede ser de intermediario.»
+     */
+    Map<String, Object> registrarDocumentoBD(Long idDocumentoCxp, Long idEmpresa, Long idUsuario,
+                                              Boolean esIntermediario, Long idProductoIntermediario,
+                                              Boolean esSeguro, Long idDocumentoSeguro)
+            throws Throwable;
+
+    /**
      * Igual que {@link #registrarDocumentoBD(Long, Long, Long, Boolean, Long)}, con la observación
      * adicional del usuario (docs/logica-negocio/cxp/PLAN-OBSERVACION-ASIENTO-DOCUMENTOS-CXP.md §2).
      * Es la ÚNICA sobrecarga que escribe {@code DocumentoCxp.observacionAdicional} (PGS.DCXP.DCXPOBAD):
@@ -136,6 +187,18 @@ public interface ProcesoCargaDocumentosService {
     Map<String, Object> registrarDocumentoBD(Long idDocumentoCxp, Long idEmpresa, Long idUsuario,
                                               Boolean esIntermediario, Long idProductoIntermediario,
                                               String observacionAdicional)
+            throws Throwable;
+
+    /**
+     * Igual que {@link #registrarDocumentoBD(Long, Long, Long, Boolean, Long, String)}, con la
+     * marca de SEGUROS. Es la que usa {@code POST /carga-documentos/registrarBD}: el único
+     * llamador que necesita observación adicional y marca de seguros a la vez.
+     * @see #registrarDocumentoBD(Long, Long, Long, Boolean, Long, Boolean, Long)
+     */
+    Map<String, Object> registrarDocumentoBD(Long idDocumentoCxp, Long idEmpresa, Long idUsuario,
+                                              Boolean esIntermediario, Long idProductoIntermediario,
+                                              String observacionAdicional, Boolean esSeguro,
+                                              Long idDocumentoSeguro)
             throws Throwable;
 
     /**
