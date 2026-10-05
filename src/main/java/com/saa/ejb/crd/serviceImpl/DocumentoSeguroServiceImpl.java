@@ -187,19 +187,46 @@ public class DocumentoSeguroServiceImpl implements DocumentoSeguroService {
             }
         }
 
-        List<ItemCandidato> resultado = new ArrayList<>();
-        if (tipoSeguro == TipoSeguro.DESGRAVAMEN) {
-            // Base en LOTE (ÍTEM 0c/ÍTEM 3): nunca una consulta por préstamo.
-            List<Long> idsPrestamo = new ArrayList<>();
-            for (Prestamo p : filtrados) {
-                idsPrestamo.add(p.getCodigo());
-            }
-            Map<Long, List<DetallePrestamo>> cuotasPorPrestamo = cargarCuotasPorPrestamo(idsPrestamo);
-            Map<Long, double[]> pagosPorCuota = cargarPagosPorCuota(cuotasPorPrestamo);
+        // Base en LOTE (ÍTEM 0c/ÍTEM 3): nunca una consulta por préstamo. Se carga SIEMPRE,
+        // para los tres tipos — S15 (plazo terminado) la necesita incendio/prendario también,
+        // no solo desgravamen.
+        List<Long> idsPrestamo = new ArrayList<>();
+        for (Prestamo p : filtrados) {
+            idsPrestamo.add(p.getCodigo());
+        }
+        Map<Long, List<DetallePrestamo>> cuotasPorPrestamo = cargarCuotasPorPrestamo(idsPrestamo);
+        Map<Long, double[]> pagosPorCuota = tipoSeguro == TipoSeguro.DESGRAVAMEN
+            ? cargarPagosPorCuota(cuotasPorPrestamo) : null;
 
-            for (Prestamo p : filtrados) {
+        List<ItemCandidato> resultado = new ArrayList<>();
+        for (Prestamo p : filtrados) {
+            List<DetallePrestamo> cuotas = cuotasPorPrestamo.get(p.getCodigo());
+
+            // S15 (decisión del usuario, sql/312): el plazo terminado queda fuera del listado —
+            // hace falta al menos una cuota no PAGADA(4)/no CANCELADA_ANTICIPADA(7) con
+            // vencimiento POSTERIOR a fechaCorte. Una cuota que vence el mismo día del corte no
+            // alcanza (mismo criterio "> corte", no ">="). Sin eso, el préstamo no es candidato
+            // en NINGUNO de los tres tipos de seguro, aunque siga VIGENTE/EN_MORA.
+            boolean tienePlazoVigente = false;
+            if (cuotas != null) {
+                for (DetallePrestamo cuota : cuotas) {
+                    if (esPagadaOCancelada(cuota) || cuota.getFechaVencimiento() == null) {
+                        continue;
+                    }
+                    if (cuota.getFechaVencimiento().toLocalDate().isAfter(fechaCorte)) {
+                        tienePlazoVigente = true;
+                        break;
+                    }
+                }
+            }
+            if (!tienePlazoVigente) {
+                continue;
+            }
+
+            ItemCandidato item = new ItemCandidato();
+            item.prestamo = p;
+            if (tipoSeguro == TipoSeguro.DESGRAVAMEN) {
                 double saldoCapital = 0.0;
-                List<DetallePrestamo> cuotas = cuotasPorPrestamo.get(p.getCodigo());
                 if (cuotas != null) {
                     for (DetallePrestamo cuota : cuotas) {
                         if (esPagadaOCancelada(cuota)) {
@@ -210,21 +237,14 @@ public class DocumentoSeguroServiceImpl implements DocumentoSeguroService {
                         saldoCapital += Math.max(0.0, redondear(nvl(cuota.getCapital()) - capitalPagado));
                     }
                 }
-                ItemCandidato item = new ItemCandidato();
-                item.prestamo = p;
                 item.base = redondear(saldoCapital);
                 item.sinSumaAsegurada = false;
-                resultado.add(item);
-            }
-        } else {
-            for (Prestamo p : filtrados) {
-                ItemCandidato item = new ItemCandidato();
-                item.prestamo = p;
+            } else {
                 double suma = nvl(p.getValorAsegurado());
                 item.base = redondear(suma);
                 item.sinSumaAsegurada = suma <= 0.0;
-                resultado.add(item);
             }
+            resultado.add(item);
         }
         return resultado;
     }
