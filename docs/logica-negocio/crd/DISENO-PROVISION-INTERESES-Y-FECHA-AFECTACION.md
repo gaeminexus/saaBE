@@ -1,6 +1,6 @@
 # DISEÑO — Provisión de intereses no cobrados, fecha de afectación del cobro y reverso por cobro tardío
 
-**Equipo:** `omen-saa-1` · **Abierto:** 2026-10-05 · **Estado:** DISEÑO CERRADO salvo las cuentas por tipo de préstamo (§7bis). DDL: `sql/309`.
+**Equipo:** `omen-saa-1` · **Abierto:** 2026-10-05 · **Estado:** DISEÑO CERRADO. DDL: `sql/309`; plantilla: `sql/310`.
 **Reemplaza y cierra** la decisión C6 (en pausa) de `crd/DISENO-COBRO-CON-FECHA-EFECTIVA.md`, y le da forma
 a su Fase 2.
 **Origen:** correo de contabilidad (Ing. Steven Cevallos) del 2026-09-17, *«Control de Intereses Por Cobrar
@@ -190,10 +190,10 @@ provisiones, y el devengo de mora de los cierres viejos no tiene detalle por cuo
   cambiaron de banda dentro de «por vencer». No se reclasifican.
 - Cierres anteriores a septiembre 2026 (R3).
 
-### ⛔ Falta un dato para escribir la plantilla 36
-**El número de cuenta de cada tipo de préstamo** para `470510` y `149905`. ¿Hay subcuentas por tipo (por
-ejemplo `4.7.05.10.01` quirografario…) o es la **misma cuenta** para los tres, separada sólo por el auxiliar?
-Hasta saberlo, el `.sql` de la plantilla no se escribe. El código no depende de esto: usa los papeles.
+### Plantilla 36 — decidido por el usuario (2026-10-05)
+**Hoy la MISMA cuenta para los tres tipos de préstamo** (4.7.05.10 y 1.4.99.05). Las líneas igual quedan una por
+tipo (`DTPLAXL2 = TPPRCDGO`), así que si mañana contabilidad abre subcuentas por tipo **se cambia el
+`PLNNCDGO` de esa línea** sin tocar código. Script: **`crd/sql/310`**.
 
 ## 8. Orden de construcción
 
