@@ -140,10 +140,22 @@ public class CobroCreditoRest {
             return Response.status(Response.Status.CREATED).entity(resultado)
                     .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
-                    .entity("Error al registrar el cobro: " + e.getMessage())
-                    .type(MediaType.APPLICATION_JSON).build();
+            return respuestaErrorFechaAfectacion(e, "Error al registrar el cobro: ");
         }
+    }
+
+    /**
+     * {@code FECHA_AFECTACION_OBLIGATORIA}/{@code _MENOR_A_PAGO}/{@code _FUTURA} y
+     * {@code PERIODO_CERRADO} (contrato §1) son 400, no 500 — el resto de los errores de este
+     * REST sigue devolviendo 500 como siempre (no se toca fuera de este caso puntual).
+     */
+    private Response respuestaErrorFechaAfectacion(Throwable e, String prefijo) {
+        String mensaje = e.getMessage() != null ? e.getMessage() : "Error inesperado";
+        String codigo = mensaje.contains(":") ? mensaje.substring(0, mensaje.indexOf(':')).trim() : "";
+        boolean esFechaAfectacion = codigo.startsWith("FECHA_AFECTACION_") || "PERIODO_CERRADO".equals(codigo);
+        int status = esFechaAfectacion ? Response.Status.BAD_REQUEST.getStatusCode()
+                : Response.Status.INTERNAL_SERVER_ERROR.getStatusCode();
+        return Response.status(status).entity(prefijo + mensaje).type(MediaType.APPLICATION_JSON).build();
     }
 
     /**
@@ -204,9 +216,7 @@ public class CobroCreditoRest {
                     correccion != null ? correccion.getUsuario() : null, correccion);
             return Response.status(Response.Status.OK).entity(cobro).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
-            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
-                    .entity("Error al reenviar el cobro " + id + ": " + e.getMessage())
-                    .type(MediaType.APPLICATION_JSON).build();
+            return respuestaErrorFechaAfectacion(e, "Error al reenviar el cobro " + id + ": ");
         }
     }
 

@@ -30,6 +30,10 @@ public class FilaSeguimientoCobro {
     /** Fecha del DEPÓSITO (CBCRFCHA), no la de registro. */
     private LocalDate fechaCobro;
 
+    /** Fecha de AFECTACIÓN contable (CBCRFCAF) — con la que salen los asientos del cobro.
+     * {@code docs/logica-negocio/crd/API-FECHA-AFECTACION-COBRO.md} §2. */
+    private LocalDate fechaAfectacion;
+
     private String referencia;
 
     private Double valor;
@@ -125,6 +129,14 @@ public class FilaSeguimientoCobro {
 
     public void setFechaCobro(LocalDate fechaCobro) {
         this.fechaCobro = fechaCobro;
+    }
+
+    public LocalDate getFechaAfectacion() {
+        return fechaAfectacion;
+    }
+
+    public void setFechaAfectacion(LocalDate fechaAfectacion) {
+        this.fechaAfectacion = fechaAfectacion;
     }
 
     public String getReferencia() {

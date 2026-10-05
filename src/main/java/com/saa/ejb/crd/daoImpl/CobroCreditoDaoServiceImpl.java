@@ -34,6 +34,7 @@ public class CobroCreditoDaoServiceImpl extends EntityDaoImpl<CobroCredito>
             "rutaRespaldo",
             "valor",
             "fecha",
+            "fechaAfectacion",
             "observacion",
             "usuarioRegistro",
             "fechaRegistro",

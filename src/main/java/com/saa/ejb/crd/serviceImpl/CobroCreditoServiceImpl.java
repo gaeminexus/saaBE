@@ -135,6 +135,10 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
     @EJB
     private com.saa.ejb.crd.service.ProcesoMoraPrestamoService procesoMoraPrestamoService;
 
+    /** Fecha de afectación (ex-C6): el período contable tiene que estar abierto para contabilizarla. */
+    @EJB
+    private com.saa.ejb.cnt.service.PeriodoService periodoService;
+
     @EJB
     private CorridaCierreCarteraDaoService corridaCierreCarteraDaoService;
 
@@ -230,6 +234,7 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
         cobro.setRutaRespaldo(solicitud.getRutaRespaldo().trim());
         cobro.setValor(redondear(solicitud.getValor()));
         cobro.setFecha(solicitud.getFecha());
+        cobro.setFechaAfectacion(solicitud.getFechaAfectacion());
         cobro.setObservacion(solicitud.getObservacion());
         cobro.setUsuarioRegistro(solicitud.getUsuario());
         cobro.setFechaRegistro(LocalDateTime.now());
@@ -369,6 +374,12 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
         solicitudValidacion.setRutaRespaldo(correccion.getRutaRespaldo());
         solicitudValidacion.setValor(correccion.getValor());
         solicitudValidacion.setFecha(correccion.getFecha());
+        // fechaAfectacion es OPCIONAL en la corrección (contrato §2): si no viene, se revalida
+        // la que el cobro ya tenía — nunca se queda sin fecha de afectación, y un período que se
+        // cerró entre el registro y el reenvío igual se detecta acá.
+        LocalDate fechaAfectacionEfectiva = correccion.getFechaAfectacion() != null
+                ? correccion.getFechaAfectacion() : cobro.getFechaAfectacion();
+        solicitudValidacion.setFechaAfectacion(fechaAfectacionEfectiva);
         solicitudValidacion.setObservacion(correccion.getObservacion());
         solicitudValidacion.setUsuario(usuario);
         solicitudValidacion.setDetalles(correccion.getDetalles());
@@ -389,7 +400,10 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
         boolean cambioMonto = Math.abs(redondear(correccion.getValor()) - redondear(nvl(cobro.getValor()))) > TOLERANCIA_CUADRE;
         boolean cambioCuenta = cobro.getCuentaBancaria() == null
                 || !cobro.getCuentaBancaria().getCodigo().equals(correccion.getIdCuentaBancaria());
-        boolean rehacerAsiento = cambioMonto || cambioCuenta;
+        // fechaAfectacion fija la fecha del transitorio (contrato §2): si cambia, se rehace
+        // igual que con el monto o la cuenta, aunque no haya cambiado ninguno de los dos.
+        boolean cambioFechaAfectacion = !java.util.Objects.equals(cobro.getFechaAfectacion(), fechaAfectacionEfectiva);
+        boolean rehacerAsiento = cambioMonto || cambioCuenta || cambioFechaAfectacion;
 
         if (rehacerAsiento && cobro.getAsientoTransitorio() != null) {
             asientoService.anulaAsiento(cobro.getAsientoTransitorio().getCodigo(), usuario,
@@ -413,6 +427,7 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
         cobro.setRutaRespaldo(correccion.getRutaRespaldo().trim());
         cobro.setValor(redondear(correccion.getValor()));
         cobro.setFecha(correccion.getFecha());
+        cobro.setFechaAfectacion(fechaAfectacionEfectiva);
         cobro.setObservacion(correccion.getObservacion());
         cobro.setEstado(Long.valueOf(CrdEstadoCobro.REGISTRADO));
         cobro.setUsuarioRegistro(usuario);
@@ -724,6 +739,8 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
             fila.setValor(cobro.getValor());
             fila.setUsuarioRegistro(cobro.getUsuarioRegistro());
             fila.setFechaRegistro(cobro.getFechaRegistro());
+            fila.setFecha(cobro.getFecha());
+            fila.setFechaAfectacion(cobro.getFechaAfectacion());
             filas.add(fila);
         }
 
@@ -1288,6 +1305,46 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
     }
 
     /**
+     * Fecha de AFECTACIÓN contable (ex-C6) — {@code docs/logica-negocio/crd/API-FECHA-AFECTACION-COBRO.md}
+     * §1: obligatoria, nunca menor que la fecha de pago, no futura, y su período contable
+     * tiene que estar abierto (se reusa {@code PeriodoService.verificaPeriodoAbierto}, la misma
+     * verificación de {@code /prdo/verificaPeriodoAbierto} en cnt — no una copia).
+     *
+     * @param fechaAfectacion la fecha a validar
+     * @param fechaPago       {@code solicitud.getFecha()} — la fecha de pago real
+     * @param cuentaBancaria  ya resuelta por el llamador, para derivar la empresa contable
+     *                        (mismo camino que {@code derivarEmpresaCobro}, antes de que exista
+     *                        el {@code CobroCredito})
+     */
+    private void validarFechaAfectacion(LocalDate fechaAfectacion, LocalDate fechaPago, CuentaBancaria cuentaBancaria)
+            throws Throwable {
+        if (fechaAfectacion == null) {
+            throw new IncomeException("FECHA_AFECTACION_OBLIGATORIA: fechaAfectacion es obligatoria");
+        }
+        if (fechaPago != null && fechaAfectacion.isBefore(fechaPago)) {
+            throw new IncomeException("FECHA_AFECTACION_MENOR_A_PAGO: la fecha de afectación "
+                    + fechaAfectacion + " no puede ser anterior a la fecha de pago " + fechaPago);
+        }
+        if (fechaAfectacion.isAfter(LocalDate.now())) {
+            throw new IncomeException("FECHA_AFECTACION_FUTURA: la fecha de afectación " + fechaAfectacion
+                    + " es futura");
+        }
+        Long idEmpresa = cuentaBancaria != null && cuentaBancaria.getPlanCuenta() != null
+                && cuentaBancaria.getPlanCuenta().getEmpresa() != null
+                ? cuentaBancaria.getPlanCuenta().getEmpresa().getCodigo() : null;
+        if (idEmpresa == null) {
+            throw new IncomeException("La cuenta bancaria no tiene empresa contable asignada; no se"
+                    + " puede verificar el período de la fecha de afectación.");
+        }
+        try {
+            periodoService.verificaPeriodoAbierto(idEmpresa, fechaAfectacion);
+        } catch (IncomeException e) {
+            throw new IncomeException("PERIODO_CERRADO: el período contable de la fecha de afectación "
+                    + fechaAfectacion + " está cerrado — " + e.getMessage());
+        }
+    }
+
+    /**
      * @param idCobroExcluido    Solo lo manda {@code editarYReenviarCobro}: el cobro que se
      *                           está corrigiendo no debe chocar contra su propia referencia.
      * @param referenciaOriginal La referencia YA GUARDADA del cobro que se corrige (recortada
@@ -1325,8 +1382,9 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
             throw new IncomeException("idCuentaBancaria es obligatorio: todo cobro es depósito o"
                     + " transferencia a una cuenta bancaria de la institución");
         }
+        CuentaBancaria cuentaBancariaValidacion;
         try {
-            cuentaBancariaDaoService.selectById(solicitud.getIdCuentaBancaria(),
+            cuentaBancariaValidacion = cuentaBancariaDaoService.selectById(solicitud.getIdCuentaBancaria(),
                     NombreEntidadesTesoreria.CUENTA_BANCARIA);
         } catch (NoResultException e) {
             throw new IncomeException("No existe la cuenta bancaria " + solicitud.getIdCuentaBancaria());
@@ -1381,6 +1439,8 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
         if (solicitud.getFecha() == null) {
             throw new IncomeException("La fecha del cobro es obligatoria");
         }
+
+        validarFechaAfectacion(solicitud.getFechaAfectacion(), solicitud.getFecha(), cuentaBancariaValidacion);
 
         if (solicitud.getDetalles() == null || solicitud.getDetalles().isEmpty()) {
             throw new IncomeException("El cobro debe tener al menos una línea de detalle");
@@ -1722,7 +1782,10 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
         haber.setValorHaber(cobro.getValor());
         lineas.add(haber);
 
-        return asientoContableService.generarAsiento(idEmpresa, TipoAsientos.CREDITOS, cobro.getFecha(),
+        // Fecha de AFECTACIÓN (ex-C6, contrato API-FECHA-AFECTACION-COBRO.md §1-§2): los tres
+        // asientos del cobro se fechan con ella, nunca con cobro.getFecha() (la de pago real,
+        // que sigue gobernando PGPR/EVPR/aportes y la clasificación de banda del definitivo).
+        return asientoContableService.generarAsiento(idEmpresa, TipoAsientos.CREDITOS, cobro.getFechaAfectacion(),
                 observacionEnriquecida(cobro, null, "Cobro crédito " + cobro.getCodigo()
                         + " - registro pendiente de aprobación"
                         + (cobro.getObservacion() != null ? ": " + cobro.getObservacion() : "")),
@@ -1982,7 +2045,7 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
                     + ". No se genera un asiento desbalanceado.");
         }
 
-        return asientoContableService.generarAsiento(idEmpresa, TipoAsientos.CREDITOS, cobro.getFecha(),
+        return asientoContableService.generarAsiento(idEmpresa, TipoAsientos.CREDITOS, cobro.getFechaAfectacion(),
                 observacionEnriquecida(cobro, detalles, "Cobro crédito " + cobro.getCodigo() + " - reparto"
                         + (cobro.getObservacion() != null ? ": " + cobro.getObservacion() : "")),
                 cobro.getUsuarioProceso(), lineas, Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR));
@@ -2162,7 +2225,10 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
                     + " (diferencia $" + diferencia + "). No se genera un asiento desbalanceado.");
         }
 
-        return asientoContableService.generarAsiento(idEmpresa, TipoAsientos.CREDITOS, fechaCorte,
+        // El asiento se fecha con la de AFECTACIÓN; fechaCorte (cobro.getFecha(), la de pago
+        // real) sigue siendo la que clasifica la banda del capital arriba (haberDesdeEvento,
+        // C5 — eso NO cambia) y la que usa calcularCapitalFuturoDelCobro.
+        return asientoContableService.generarAsiento(idEmpresa, TipoAsientos.CREDITOS, cobro.getFechaAfectacion(),
                 observacionEnriquecida(cobro, detalles, "Cobro crédito " + cobro.getCodigo()
                         + " - asiento definitivo"
                         + (cobro.getObservacion() != null ? ": " + cobro.getObservacion() : "")),
@@ -2222,6 +2288,7 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
             fila.setEstado(cobro.getEstado());
             fila.setNombreEstado(textoEstado(cobro.getEstado()));
             fila.setFechaCobro(cobro.getFecha());
+            fila.setFechaAfectacion(cobro.getFechaAfectacion());
             fila.setReferencia(cobro.getReferencia());
             fila.setValor(cobro.getValor());
 

@@ -33,6 +33,12 @@ public class SolicitudRegistroCobro {
     /** Fecha del cobro (la del depósito, NO la de captura). Obligatorio. */
     private LocalDate fecha;
 
+    /**
+     * Fecha de AFECTACIÓN contable del cobro. Obligatoria. {@code >= fecha}, no futura, y su
+     * período contable tiene que estar abierto — {@code docs/logica-negocio/crd/API-FECHA-AFECTACION-COBRO.md} §1.
+     */
+    private LocalDate fechaAfectacion;
+
     /** Observación general del cobro. */
     private String observacion;
 
@@ -96,6 +102,14 @@ public class SolicitudRegistroCobro {
 
     public void setFecha(LocalDate fecha) {
         this.fecha = fecha;
+    }
+
+    public LocalDate getFechaAfectacion() {
+        return fechaAfectacion;
+    }
+
+    public void setFechaAfectacion(LocalDate fechaAfectacion) {
+        this.fechaAfectacion = fechaAfectacion;
     }
 
     public String getObservacion() {

@@ -92,6 +92,17 @@ public class CobroCredito implements Serializable {
     @Column(name = "CBCRFCHA")
     private LocalDate fecha;
 
+    /**
+     * Fecha de AFECTACIÓN contable — con ella se hacen TODOS los asientos del cobro
+     * (transitorio, reparto, definitivo, reverso de provisión y cobro tardío). Nunca menor que
+     * {@code fecha} (CK_CBCR_FECHA_AFECTACION). {@code fecha} sigue gobernando los pagos de
+     * crédito (PGPR, EVPR, aportes) y la clasificación de banda del capital.
+     * {@code docs/logica-negocio/crd/API-FECHA-AFECTACION-COBRO.md}.
+     */
+    @Basic
+    @Column(name = "CBCRFCAF")
+    private LocalDate fechaAfectacion;
+
     /** Observación del usuario. */
     @Basic
     @Column(name = "CBCROBSR", length = 2000)
@@ -275,6 +286,14 @@ public class CobroCredito implements Serializable {
 
     public void setFecha(LocalDate fecha) {
         this.fecha = fecha;
+    }
+
+    public LocalDate getFechaAfectacion() {
+        return fechaAfectacion;
+    }
+
+    public void setFechaAfectacion(LocalDate fechaAfectacion) {
+        this.fechaAfectacion = fechaAfectacion;
     }
 
     public String getObservacion() {

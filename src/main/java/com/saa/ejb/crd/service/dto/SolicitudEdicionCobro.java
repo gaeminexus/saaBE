@@ -17,6 +17,8 @@ public class SolicitudEdicionCobro {
     private String rutaRespaldo;
     private Double valor;
     private LocalDate fecha;
+    /** Opcional: si viene, reemplaza la fecha de afectación del cobro y se valida igual que al registrar. */
+    private LocalDate fechaAfectacion;
     private String observacion;
     private List<DetalleRegistroCobroDTO> detalles;
     private String usuario;
@@ -59,6 +61,14 @@ public class SolicitudEdicionCobro {
 
     public void setFecha(LocalDate fecha) {
         this.fecha = fecha;
+    }
+
+    public LocalDate getFechaAfectacion() {
+        return fechaAfectacion;
+    }
+
+    public void setFechaAfectacion(LocalDate fechaAfectacion) {
+        this.fechaAfectacion = fechaAfectacion;
     }
 
     public String getObservacion() {

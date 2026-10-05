@@ -1870,6 +1870,7 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
             case SubProcesoCierreCartera.APERTURA:                 return "Apertura del periodo de credito";
             case SubProcesoCierreCartera.DEVENGO_INTERESES:        return "Devengo de intereses a ingresos";
             case SubProcesoCierreCartera.NETEO:                    return "Neteo de planillas";
+            case SubProcesoCierreCartera.PROVISION_INTERESES:      return "Provisión de intereses";
             default:                                               return String.valueOf(subProceso);
         }
     }
@@ -1886,6 +1887,7 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
             case SubProcesoCierreCartera.APERTURA:                 return "③";
             case SubProcesoCierreCartera.DEVENGO_INTERESES:        return "④";
             case SubProcesoCierreCartera.NETEO:                    return "⑥";
+            case SubProcesoCierreCartera.PROVISION_INTERESES:      return "⑦";
             default:                                               return null;
         }
     }

@@ -1,5 +1,6 @@
 package com.saa.ejb.crd.service.dto;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 /**
@@ -25,6 +26,14 @@ public class FilaBandejaAprobacion {
     private String usuarioRegistro;
 
     private LocalDateTime fechaRegistro;
+
+    /**
+     * Fecha de pago y de afectación contable — SOLO para {@code tipo = "COBRO_CREDITO"}; una
+     * fila {@code "CARGA_PETRO"} las deja en {@code null} (Petro no tiene ese par de fechas,
+     * tiene mes/año de afectación propio). {@code docs/logica-negocio/crd/API-FECHA-AFECTACION-COBRO.md} §2.
+     */
+    private LocalDate fecha;
+    private LocalDate fechaAfectacion;
 
     public String getTipo() {
         return tipo;
@@ -72,5 +81,21 @@ public class FilaBandejaAprobacion {
 
     public void setFechaRegistro(LocalDateTime fechaRegistro) {
         this.fechaRegistro = fechaRegistro;
+    }
+
+    public LocalDate getFecha() {
+        return fecha;
+    }
+
+    public void setFecha(LocalDate fecha) {
+        this.fecha = fecha;
+    }
+
+    public LocalDate getFechaAfectacion() {
+        return fechaAfectacion;
+    }
+
+    public void setFechaAfectacion(LocalDate fechaAfectacion) {
+        this.fechaAfectacion = fechaAfectacion;
     }
 }

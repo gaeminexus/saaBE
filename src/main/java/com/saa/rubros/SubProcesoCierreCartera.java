@@ -60,4 +60,13 @@ public interface SubProcesoCierreCartera {
 	/** ⑥ Neteo de planillas: reversa lo NO cobrado. Se fecha el último día del mes cerrado. */
 	public static final int NETEO = 6;
 
+	/**
+	 * ⑦ Provisión de intereses (ordinario y mora) no cobrados — sin número en la pizarra
+	 * original, agregado 2026-10-05 ({@code docs/logica-negocio/crd/DISENO-PROVISION-INTERESES-Y-FECHA-AFECTACION.md}
+	 * §4). D 470510 / H 149905, por tipo de préstamo. Fechado al CORTE (fin del mes que se
+	 * cierra), no al proceso como los seis anteriores. Universo {@code PRSTIDST IN (2, 8, 11)}:
+	 * el único sub-proceso que SÍ ve a los préstamos DE PLAZO VENCIDO (P8).
+	 */
+	public static final int PROVISION_INTERESES = 7;
+
 }
