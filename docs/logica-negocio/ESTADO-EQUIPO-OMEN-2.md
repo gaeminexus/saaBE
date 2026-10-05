@@ -4759,3 +4759,24 @@ aparte, que hay que coordinar con ellos.
 lote se revierta entero es preferible a un descuadre silencioso: con plata de por medio, todo o nada.
 En cliente, `confirmarAnticipo` disfrazaba ese error como *«Error al generar el asiento contable»*, con
 el asiento ya generado. La llamada sale de ese `catch`.
+
+## §59 — El exento (código 7) se declara como base 0%: el DIMM no muestra la base exenta (2026-10-05)
+
+**Origen:** contabilidad reportó dos veces una diferencia de 0,39 en el ATS de agosto. Son los intereses por
+mora de las planillas de E.E. Quito y CNEL. El XML los trae con código 7 (exento), y desde el `e2-66` el ATS
+los declara en `baseImpExe`. **La grilla de compras del DIMM no muestra la base exenta**: solo muestra base
+0%, base distinta de 0% y no objeto. Así, la factura 134308072 suma 24,47 en vez de 24,63.
+
+**Decisión del usuario, 2026-10-05 — opción B:**
+- (A) los datos desde agosto: `SUBCERO += SUBEXENT`, `SUBEXENT = 0` en FCTC, NTCC, NTDC y LQCC → `sri/sql/e2-88`.
+  Julio no se toca, porque ya está declarado.
+- (B) el código: `BasesPorTarifa` (`ejb/cxp/serviceImpl/BasesPorTarifa.java:45`), el `case 7` suma en `base0`.
+  Es el único lugar donde la carga reparte por tarifa, y lo usan los cuatro documentos.
+
+El IVA no cambia. El detalle conserva `CODIGOIVASRI = 7`, que es lo que dice el XML del proveedor. La columna
+`SUBEXENT` y el `baseImpExe` del ATS quedan, pero ya no reciben valores de la carga.
+
+> **Lo que hay que llevarse:** el `e2-66` tenía razón según el XSD del ATS, y aun así el usuario final no
+> podía cuadrar. **La herramienta con la que se verifica la declaración (el DIMM) define qué es «correcto»
+> para quien declara**, tanto como el XSD. Se midió el XML y el código; no se miró la pantalla en la que
+> contabilidad iba a comparar.
