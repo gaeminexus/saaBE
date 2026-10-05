@@ -16,6 +16,7 @@ import com.saa.model.rhh.Empleado;
 import com.saa.model.rhh.ParametroNomina;
 import com.saa.model.rhh.SaldoVacaciones;
 import com.saa.rubros.RhhEstadoPeriodoNomina;
+import com.saa.rubros.RhhModalidadVacaciones;
 import com.saa.rubros.RhhTipoAcumulado;
 import com.saa.rubros.RhhTipoProvision;
 
@@ -95,6 +96,12 @@ public class AcreditacionVacacionesServiceImpl implements AcreditacionVacaciones
 		// Primero caducan los saldos vencidos: asi el arrastre no lleva dias muertos.
 		caducarSaldos(idEmpresa, fechaCorte, usuario);
 
+		// e3-07 (2026-10-02): modalidad de acreditacion parametrizable. null o 1 (POR_ANIVERSARIO)
+		// es el camino de abajo, sin cambiar una linea; 2 (DEVENGO_MENSUAL) bifurca a
+		// acreditarDevengoMensual, que implementa §4 del contrato aparte.
+		boolean devengoMensual = prnm.getModalidadVacaciones() != null
+				&& prnm.getModalidadVacaciones().intValue() == RhhModalidadVacaciones.DEVENGO_MENSUAL;
+
 		int acreditados = 0;
 		List<ContratoEmpleado> contratos = contratoEmpleadoDaoService.selectActivosEnPeriodo(
 				idEmpresa, LocalDate.of(anio.intValue(), 1, 1), fechaCorte);
@@ -106,6 +113,13 @@ public class AcreditacionVacacionesServiceImpl implements AcreditacionVacaciones
 			if (ingreso == null) {
 				System.out.println("Empleado " + empleado.getIdentificacion()
 						+ " sin fecha de ingreso: no se puede acreditar su periodo.");
+				continue;
+			}
+
+			if (devengoMensual) {
+				if (acreditarDevengoMensual(contrato, empleado, ingreso, anio, fechaCorte, prnm, usuario)) {
+					acreditados++;
+				}
 				continue;
 			}
 
@@ -556,6 +570,112 @@ public class AcreditacionVacacionesServiceImpl implements AcreditacionVacaciones
 			adicionales = maximo - base;
 		}
 		return Double.valueOf((double) (base + adicionales));
+	}
+
+	/**
+	 * Acredita el saldo de un contrato con la modalidad DEVENGO_MENSUAL (§4 del contrato
+	 * docs/logica-negocio/rhh/API-VACACIONES-MODALIDAD-ACREDITACION.md): 1,25 dias por mes
+	 * con la escala base de PRNM, en el saldo del anio calendario de {@code fechaCorte}.
+	 *
+	 * <p><b>Sin el corte de "menos de un ano no acredita"</b> de la modalidad por aniversario:
+	 * aqui se devenga desde el primer dia (con menos de un ano rigen los dias base, porque
+	 * {@link #diasQueLeCorresponden} con aniosCumplidos=0 ya devuelve la base sin adicionales).</p>
+	 *
+	 * <p><b>Idempotente</b>: igual que la modalidad por aniversario, recalcula los dias
+	 * asignados sin tocar los usados -- volver a correr con otra fecha de corte del mismo
+	 * anio solo actualiza {@code diasAsignados}/{@code diasPendientes}.</p>
+	 *
+	 * @param contrato		: Contrato del empleado
+	 * @param empleado		: Empleado
+	 * @param ingreso		: Fecha de ingreso ya resuelta (MPLDFCIN o CNTEFCHI)
+	 * @param anio			: Anio de fechaCorte, año del saldo a acreditar
+	 * @param fechaCorte	: Fecha de corte de la corrida
+	 * @param prnm			: Parametros del anio
+	 * @param usuario		: Usuario que ejecuta
+	 * @return				: true si se acredito algo; false si hasta quedo antes de desde
+	 *						  (fechaCorte cae antes del ingreso) y no hay nada que acreditar
+	 * @throws Throwable	: Excepcion
+	 */
+	private boolean acreditarDevengoMensual(ContratoEmpleado contrato, Empleado empleado, LocalDate ingreso,
+			Integer anio, LocalDate fechaCorte, ParametroNomina prnm, String usuario) throws Throwable {
+
+		LocalDate primerDiaAnio = LocalDate.of(anio.intValue(), 1, 1);
+		LocalDate desde = ingreso.isAfter(primerDiaAnio) ? ingreso : primerDiaAnio;
+
+		// hasta = el menor entre fechaCorte y la fecha de terminacion del contrato, si la
+		// tiene. Mismo orden de precedencia que ya usa el motor para "fin real" de un
+		// contrato a mitad de periodo (ProcesoNominaServiceImpl:1184-1187 y :1857-1860):
+		// fechaTerminacion primero (la efectiva), fechaFin como respaldo.
+		LocalDate hasta = fechaCorte;
+		if (contrato.getFechaTerminacion() != null && contrato.getFechaTerminacion().isBefore(hasta)) {
+			hasta = contrato.getFechaTerminacion();
+		} else if (contrato.getFechaFin() != null && contrato.getFechaFin().isBefore(hasta)) {
+			hasta = contrato.getFechaFin();
+		}
+
+		if (hasta.isBefore(desde)) {
+			// fechaCorte cae antes del ingreso: no se acredita nada.
+			return false;
+		}
+
+		long dias360 = dias360Inclusivos(desde, hasta);
+		int aniosCumplidos = aniosDeServicio(ingreso, hasta);
+		Double diasAnuales = diasQueLeCorresponden(aniosCumplidos, prnm);
+		Double diasAsignados = RedondeoNomina.redondeaCantidad(
+				Double.valueOf(diasAnuales.doubleValue() * dias360 / 360D));
+
+		SaldoVacaciones saldo = saldoVacacionesDaoService.selectByEmpleadoYAnio(empleado.getCodigo(), anio);
+		if (saldo == null) {
+			saldo = new SaldoVacaciones();
+			saldo.setEmpleado(empleado);
+			saldo.setAnio(anio);
+			saldo.setDiasUsados(Double.valueOf(0D));
+			saldo.setDiasPagados(Double.valueOf(0D));
+			saldo.setCaducado(NO);
+			saldo.setAperturaMigracion(NO);
+			saldo.setEstado(Long.valueOf(1L));
+			saldo.setFechaRegistro(LocalDate.now());
+		}
+
+		// Idempotencia: se recalculan los dias asignados sin tocar los ya usados -- mismo
+		// criterio que la modalidad por aniversario.
+		Double usados = saldo.getDiasUsados() != null ? saldo.getDiasUsados() : Double.valueOf(0D);
+		Double arrastre = arrastreDelPeriodoAnterior(empleado.getCodigo(), anio);
+		Double diasAdicionales = RedondeoNomina.redondeaCantidad(Double.valueOf(
+				diasAnuales.doubleValue() - prnm.getDiasVacaciones().doubleValue()));
+
+		saldo.setFechaInicio(desde);
+		saldo.setFechaFin(LocalDate.of(anio.intValue(), 12, 31));
+		saldo.setDiasAsignados(diasAsignados);
+		saldo.setDiasAdicionales(diasAdicionales);
+		saldo.setDiasArrastrados(RedondeoNomina.redondeaCantidad(arrastre));
+		saldo.setDiasPendientes(RedondeoNomina.redondeaCantidad(Double.valueOf(
+				diasAsignados.doubleValue() - usados.doubleValue())));
+		saldo.setValorDia(valorDiaVacaciones(empleado.getCodigo(), fechaCorte));
+		saldo.setUsuarioRegistro(usuario);
+		saldoVacacionesDaoService.save(saldo, saldo.getCodigo());
+		return true;
+	}
+
+	/**
+	 * Dias inclusivos entre dos fechas en base 30/360 europea (el dia 31, o cualquiera
+	 * posterior al 30, cuenta como 30): <code>(a2-a1)*360 + (m2-m1)*30 + (min(d2,30)-min(d1,30)) + 1</code>.
+	 *
+	 * <p>Verificado a mano contra los tres casos medidos del §2 del contrato
+	 * docs/logica-negocio/rhh/API-VACACIONES-MODALIDAD-ACREDITACION.md: 2025-10-06 a
+	 * 2025-12-31 = 85; 2026-01-01 a 2026-08-26 = 236; 2025-06-25 a 2025-12-31 = 186. Los tres
+	 * se repiten en el reporte de este item.</p>
+	 *
+	 * @param desde	: Fecha inicial, inclusive
+	 * @param hasta	: Fecha final, inclusive
+	 * @return		: Dias en base 30/360
+	 */
+	private long dias360Inclusivos(LocalDate desde, LocalDate hasta) {
+		int d1 = Math.min(desde.getDayOfMonth(), 30);
+		int d2 = Math.min(hasta.getDayOfMonth(), 30);
+		return (long) (hasta.getYear() - desde.getYear()) * 360
+				+ (long) (hasta.getMonthValue() - desde.getMonthValue()) * 30
+				+ (d2 - d1) + 1;
 	}
 
 	/**

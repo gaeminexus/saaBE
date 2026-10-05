@@ -58,6 +58,7 @@ public class ParametroNominaDaoServiceImpl extends EntityDaoImpl<ParametroNomina
 							"anioVacacionAdicional",
 							"maxDiasVacaciones",
 							"aniosCaducidadVacaciones",
+							"modalidadVacaciones",
 							"porcentajeDesahucio",
 							"indemnizacionMinima",
 							"indemnizacionMaxima",

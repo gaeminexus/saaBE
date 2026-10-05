@@ -275,6 +275,18 @@ public class ParametroNomina implements Serializable, EntidadAuditableFechaHora 
     private Integer aniosCaducidadVacaciones;
 
     /**
+     * Modalidad de acreditacion de vacaciones del anio: {@code null} o
+     * {@link com.saa.rubros.RhhModalidadVacaciones#POR_ANIVERSARIO} (1, hoy) o
+     * {@link com.saa.rubros.RhhModalidadVacaciones#DEVENGO_MENSUAL} (2, 1,25 dias por mes).
+     * CHECK IN (1, 2) con DEFAULT 1. Un {@code null} se trata como 1
+     * ({@code AcreditacionVacacionesServiceImpl}), para que un anio sin el parametro cargado
+     * siga como antes de e3-07.
+     */
+    @Basic
+    @Column(name = "PRNMMDVC")
+    private Long modalidadVacaciones;
+
+    /**
      * Porcentaje de bonificacion por desahucio sobre la ultima remuneracion.
      */
     @Basic
@@ -553,6 +565,14 @@ public class ParametroNomina implements Serializable, EntidadAuditableFechaHora 
 
     public void setAniosCaducidadVacaciones(Integer aniosCaducidadVacaciones) {
         this.aniosCaducidadVacaciones = aniosCaducidadVacaciones;
+    }
+
+    public Long getModalidadVacaciones() {
+        return modalidadVacaciones;
+    }
+
+    public void setModalidadVacaciones(Long modalidadVacaciones) {
+        this.modalidadVacaciones = modalidadVacaciones;
     }
 
     public Double getPorcentajeDesahucio() {

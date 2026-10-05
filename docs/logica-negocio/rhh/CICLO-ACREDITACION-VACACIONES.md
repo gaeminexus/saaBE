@@ -208,3 +208,18 @@ Los 7 que sí tienen 2026 no caen en esto porque su periodo arranca el 1 de ener
 re-correr `POST /sldv/acreditar` para 2026 después del 2026-10-01.** La decisión (acreditar al
 aniversario descontando la apertura, o devengo proporcional mensual) es del usuario y está
 pendiente al escribir esto.
+
+## Modalidad de acreditación parametrizable (e3-07, 2026-10-02)
+
+La decisión que la sección anterior dejaba pendiente ya se tomó: **devengo proporcional
+mensual**, 1,25 días por mes. Es la modalidad **2** (`DEVENGO_MENSUAL`) de
+`RHH.PRNM.PRNMMDVC`, parametrizable por año y empresa — la modalidad **1**
+(`POR_ANIVERSARIO`, o `null`) es exactamente todo lo descrito arriba en este documento, sin
+cambiar una línea.
+
+`acreditar` bifurca al principio del bucle por contrato según `prnm.getModalidadVacaciones()`:
+con 2, delega en `acreditarDevengoMensual` (días 30/360 europea inclusivos entre el 1 de enero
+—o el ingreso, el que sea mayor— y el menor entre `fechaCorte` y el fin del contrato; sin el
+corte de "menos de un año no acredita"; saldo del año calendario; idempotente igual que la
+modalidad 1). Contrato completo, con la fórmula y las verificaciones:
+`docs/logica-negocio/rhh/API-VACACIONES-MODALIDAD-ACREDITACION.md`.

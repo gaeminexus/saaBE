@@ -44,3 +44,17 @@ SELECT CONSTRAINT_NAME, SEARCH_CONDITION_VC FROM ALL_CONSTRAINTS
 -- REVERSO (comentado; sólo antes de desplegar el WAR que la mapea)
 -- ALTER TABLE RHH.PRNM DROP CONSTRAINT CK_PRNMMDVC;
 -- ALTER TABLE RHH.PRNM DROP COLUMN PRNMMDVC;
+
+-- =====================================================================================
+-- VARIANTE SIN PL/SQL — la que se usó el 2026-10-05 en producción
+-- En DBeaver el BLOQUE 1 no se ejecutó (probablemente por el comentario con q'[...]'), sin dar
+-- error. Con el BLOQUE 0 en cero filas, estas sentencias sueltas hacen lo mismo. El último
+-- UPDATE tiene que afectar exactamente 1 fila. Resultado del 2026-10-05: 2025 -> 1, 2026 -> 2,
+-- CK_PRNMMDVC creada.
+-- =====================================================================================
+-- ALTER TABLE RHH.PRNM ADD (PRNMMDVC NUMBER DEFAULT 1);
+-- UPDATE RHH.PRNM SET PRNMMDVC = 1 WHERE PRNMMDVC IS NULL;
+-- ALTER TABLE RHH.PRNM ADD CONSTRAINT CK_PRNMMDVC CHECK (PRNMMDVC IN (1, 2));
+-- COMMENT ON COLUMN RHH.PRNM.PRNMMDVC IS 'Modalidad de acreditacion de vacaciones: 1 por aniversario, 2 devengo mensual';
+-- UPDATE RHH.PRNM SET PRNMMDVC = 2 WHERE PJRQCDGO = 1236 AND PRNMANOO = 2026;
+-- COMMIT;
