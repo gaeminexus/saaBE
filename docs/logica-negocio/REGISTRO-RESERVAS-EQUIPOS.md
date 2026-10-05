@@ -414,6 +414,7 @@ Alternos 1–33 ocupados. **Reservar acá antes de crear una nueva.**
 | Alterno | Nombre | Equipo | Estado |
 |---|---|---|---|
 | 34 | `ENTREGA DE PRESTAMO QUIROGRAFARIO` | **CRD · EQUIPO B** | reservado 2026-08-31, aprobado por el árbitro del equipo A (verificó que él solo consulta las plantillas 21, 25, 27, 28 y 29, sin crear ninguna) |
+| 36 | `CRD PROVISION INTERESES` (provision de intereses no cobrados y sus reversos; la 35 ya existe: pago de pensiones) | **CRD · EQUIPO B** (`omen-saa-1`) | reservado 2026-10-05 |
 
 ⚠️ **Trampa al escribir los `DTPLAXL1` de una plantilla nueva** (avisada por el equipo A, ya les costó
 un bug en la condonación): de las plantillas de CRD **solo la 21 está renumerada al catálogo
@@ -598,6 +599,7 @@ su DDL. La columna **Estado** lo dice; **`reservada` no es `autorizada`**.
 | `POSG` | Documento de seguro de préstamos (factura / ND / NC de la aseguradora) | CRD (`omen-saa-1`) | **autorizada por el usuario 2026-10-02**; DDL en `crd/sql/306`, sin correr |
 | `PSPR` | Préstamo dentro de un documento de seguro (base enviada y valor asignado) | CRD (`omen-saa-1`) | **autorizada 2026-10-02**; `crd/sql/306` |
 | `PSCT` | Cuota afectada por un documento de seguro (valor anterior, para reversar) | CRD (`omen-saa-1`) | **autorizada 2026-10-02**; `crd/sql/306` |
+| `MVIC` | Libro de movimientos por cuota: provision, devengo y clasificacion del cierre, y sus reversos por cobro | CRD (`omen-saa-1`) | **autorizada por el usuario 2026-10-05**; DDL `crd/sql/309` |
 | `DVPR` | Devolución de saldo de anticipos de un proveedor (cabecera = el depósito) | PGS (`omen-saa-2`) | **autorizada por el usuario 2026-10-01**; DDL en `cxp/sql/e2-78`, sin correr. Verificada libre en `model/` (`DVAP` estaba ocupada) |
 | `DDPR` | Detalle de la devolución: cuánto devuelve cada anticipo (`PGS.ANTP`) | PGS (`omen-saa-2`) | **autorizada por el usuario 2026-10-01**; DDL en `cxp/sql/e2-78`, sin correr |
 

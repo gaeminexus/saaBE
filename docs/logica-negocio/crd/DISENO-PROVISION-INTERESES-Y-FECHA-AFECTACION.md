@@ -1,6 +1,6 @@
 # DISEÑO — Provisión de intereses no cobrados, fecha de afectación del cobro y reverso por cobro tardío
 
-**Equipo:** `omen-saa-1` · **Abierto:** 2026-10-05 · **Estado:** ⛔ DISEÑO; faltan las preguntas del §7.
+**Equipo:** `omen-saa-1` · **Abierto:** 2026-10-05 · **Estado:** DISEÑO CERRADO salvo las cuentas por tipo de préstamo (§7bis). DDL: `sql/309`.
 **Reemplaza y cierra** la decisión C6 (en pausa) de `crd/DISENO-COBRO-CON-FECHA-EFECTIVA.md`, y le da forma
 a su Fase 2.
 **Origen:** correo de contabilidad (Ing. Steven Cevallos) del 2026-09-17, *«Control de Intereses Por Cobrar
@@ -158,6 +158,42 @@ provisiones, y el devengo de mora de los cierres viejos no tiene detalle por cuo
 | R4 | **El asiento de provisión del cierre:** ¿uno solo por el total, o separado por tipo de préstamo (como las líneas de interés)? | Define si la plantilla usa la dimensión tipo de préstamo |
 
 ---
+
+## 7bis. Respuestas del usuario — 2026-10-05
+
+| # | Decisión |
+|---|---|
+| R1 | **Bandas: SÍ siguen en el alcance.** El cobro tardío reversa también el pase a vencido y entre bandas que hizo el cierre. |
+| R2 | **Condonación: SÍ reversa la provisión** del interés y la mora condonados (`MVIC` tipo 9, origen CONDONACION). |
+| R3 | **Aceptado:** el reverso por cobro tardío sólo actúa sobre lo contabilizado **desde el cierre de septiembre 2026**, que es el primero con libro. |
+| R4 | **El asiento de provisión va separado por tipo de préstamo** (quirografario / hipotecario / prendario): líneas con `DTPLAXL2 = TPPRCDGO`, como las de interés. |
+| — | **`CRD.MVIC` AUTORIZADA** por el usuario. La clasificación de capital por banda (R1) va **en la misma tabla** (componente 3, tipos 7 y 8): no se pide otra. DDL: `sql/309`. |
+
+### Bandas por cobro tardío (R1), con el libro
+
+- **El cierre registra la clasificación** (`MVIC` tipo 7, componente 3): tipo de cartera, banda y capital pendiente
+  a la fecha de corte, para cada cuota con **vencimiento ≤ fin del mes que se abre**. Cubre las vencidas y las
+  que vencen el mes siguiente. Las de vencimiento más lejano sólo se mueven entre bandas por vencer, no se
+  registran y el reverso no las toca (§7ter).
+- **El cobro tardío:** si una cuota pagada tiene una clasificación del último cierre posterior a la fecha de pago
+  en una banda **distinta** de la banda que tenía a la fecha de pago (la que usa el ③), se genera:
+  - **D banda a la fecha de pago / H banda del último cierre**, por el capital pagado de esa cuota (con tope en el
+    capital clasificado);
+  - un `MVIC` tipo 8;
+  - todo en el asiento separado del cobro tardío, con fecha de afectación.
+
+  Así, el ③ descarga la banda de la fecha de pago y este asiento devuelve el capital desde donde el cierre lo
+  había dejado.
+
+### 7ter. Lo que queda fuera, a propósito
+- Cuotas con vencimiento posterior al mes que se abre, pagadas por adelantado y reportadas tarde: sólo
+  cambiaron de banda dentro de «por vencer». No se reclasifican.
+- Cierres anteriores a septiembre 2026 (R3).
+
+### ⛔ Falta un dato para escribir la plantilla 36
+**El número de cuenta de cada tipo de préstamo** para `470510` y `149905`. ¿Hay subcuentas por tipo (por
+ejemplo `4.7.05.10.01` quirografario…) o es la **misma cuenta** para los tres, separada sólo por el auxiliar?
+Hasta saberlo, el `.sql` de la plantilla no se escribe. El código no depende de esto: usa los papeles.
 
 ## 8. Orden de construcción
 
