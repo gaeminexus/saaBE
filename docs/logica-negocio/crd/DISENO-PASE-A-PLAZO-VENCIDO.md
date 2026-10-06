@@ -408,3 +408,8 @@ cualquier préstamo en 11.
 - Se aplica desde el cierre de septiembre / apertura de octubre de 2026. La transición se mide antes de programar:
   el ③ de la apertura de septiembre incluyó al grupo A como 11 y no incluyó al grupo B, así que el ⑥ y el ② de este
   cierre no deben dejar residuo ni duplicar capital.
+- **Interés futuro de los 105 históricos sin declaración (grupo B), decisión del usuario del 2026-10-05: opción a).**
+  Se tratan igual que mora: el interés de sus cuotas se devenga y se provisiona a medida que vencen. La
+  exclusión de D25 aplica **solo** a los préstamos con una declaración viva en `CRD.PLVN` (grupo A, 152).
+  Medición en `sql/315`: el grupo B tiene 351.699,55 de interés futuro, de los cuales 5.963,61 vencen en
+  octubre de 2026.
