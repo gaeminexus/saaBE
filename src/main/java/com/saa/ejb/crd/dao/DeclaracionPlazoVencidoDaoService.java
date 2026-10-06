@@ -70,4 +70,20 @@ public interface DeclaracionPlazoVencidoDaoService extends EntityDao<Declaracion
      */
     List<DeclaracionPlazoVencido> selectVivasByPrestamosYRango(List<Long> idsPrestamo,
             java.time.LocalDateTime desde, java.time.LocalDateTime hasta) throws Throwable;
+
+    /**
+     * {@code fechaCorte} (PLVNFCCR) de la declaración VIVA (DECLARADA o LIQUIDADA) de varios
+     * préstamos, en lote — D25/D27 (2026-10-05): el paso ⑦ (provisión de intereses) necesita
+     * esto para excluir, de un préstamo DE_PLAZO_VENCIDO (8), el interés de sus cuotas con
+     * vencimiento posterior a esa fecha (ya condonado, aunque no persistido en {@code DTPRINTR}
+     * — ver {@code CierreCarteraDaoServiceImpl#CONDONADO_INTERES_PLAZO_VENCIDO}, la misma
+     * regla). La mora NO se excluye: D25 solo condona interés.
+     *
+     * @param idsPrestamo códigos de préstamo (CRD.PRST) a consultar
+     * @return mapa {@code idPrestamo -> fechaCorte}; un préstamo sin declaración viva no
+     *         aparece (el llamador trata "ausente" como "sin condonación"). Vacío si
+     *         {@code idsPrestamo} es nulo o vacío
+     * @throws Throwable Si ocurre un error
+     */
+    java.util.Map<Long, LocalDate> selectFechaCorteVivaByPrestamos(List<Long> idsPrestamo) throws Throwable;
 }

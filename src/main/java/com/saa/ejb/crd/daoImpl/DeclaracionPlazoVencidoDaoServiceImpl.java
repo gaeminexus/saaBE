@@ -184,4 +184,29 @@ public class DeclaracionPlazoVencidoDaoServiceImpl extends EntityDaoImpl<Declara
         }
         return resultado;
     }
+
+    @Override
+    public java.util.Map<Long, java.time.LocalDate> selectFechaCorteVivaByPrestamos(List<Long> idsPrestamo)
+            throws Throwable {
+        System.out.println("DeclaracionPlazoVencidoDaoServiceImpl.selectFechaCorteVivaByPrestamos - préstamos: "
+            + (idsPrestamo != null ? idsPrestamo.size() : 0));
+        java.util.Map<Long, java.time.LocalDate> resultado = new java.util.HashMap<>();
+        if (idsPrestamo == null || idsPrestamo.isEmpty()) {
+            return resultado;
+        }
+        int tamanoBloque = 900;
+        for (int inicio = 0; inicio < idsPrestamo.size(); inicio += tamanoBloque) {
+            List<Long> bloque = idsPrestamo.subList(inicio, Math.min(inicio + tamanoBloque, idsPrestamo.size()));
+            Query query = em.createQuery(
+                "select d.prestamo.codigo, d.fechaCorte from DeclaracionPlazoVencido d"
+                + " where d.prestamo.codigo in :idsPrestamo and d.estado in (:declarada, :liquidada)");
+            query.setParameter("idsPrestamo", bloque);
+            query.setParameter("declarada", DeclaracionPlazoVencido.ESTADO_DECLARADA);
+            query.setParameter("liquidada", DeclaracionPlazoVencido.ESTADO_LIQUIDADA);
+            for (Object[] fila : (List<Object[]>) query.getResultList()) {
+                resultado.put((Long) fila[0], (java.time.LocalDate) fila[1]);
+            }
+        }
+        return resultado;
+    }
 }

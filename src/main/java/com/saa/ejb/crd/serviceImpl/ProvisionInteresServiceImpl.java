@@ -34,6 +34,7 @@ import com.saa.model.crd.PagoPrestamo;
 import com.saa.model.crd.Prestamo;
 import com.saa.rubros.ComponenteMovimientoInteresCuota;
 import com.saa.rubros.CrdLineaAsiento;
+import com.saa.rubros.EstadoPrestamo;
 import com.saa.rubros.ModuloSistema;
 import com.saa.rubros.PlantillasCredito;
 import com.saa.rubros.TipoAsientos;
@@ -82,6 +83,9 @@ public class ProvisionInteresServiceImpl implements ProvisionInteresService {
 
     @EJB
     private com.saa.ejb.crd.dao.CorridaCierreCarteraDaoService corridaCierreCarteraDaoService;
+
+    @EJB
+    private com.saa.ejb.crd.dao.DeclaracionPlazoVencidoDaoService declaracionPlazoVencidoDaoService;
 
     @Override
     public Map<Long, double[]> saldoProvisionadoPorCuotas(List<Long> idsCuota) throws Throwable {
@@ -874,6 +878,20 @@ public class ProvisionInteresServiceImpl implements ProvisionInteresService {
         Map<Long, double[]> pagosPorCuota = cargarPagosPorCuota(idsCuota);
         Map<Long, double[]> saldoProvisionado = saldoProvisionadoPorCuotas(idsCuota);
 
+        // D25/D27 (2026-10-05): un préstamo DE_PLAZO_VENCIDO (8) ya tiene condonado el interés
+        // de sus cuotas con vencimiento posterior al corte de su declaración PLVN — la MISMA
+        // regla que CierreCarteraDaoServiceImpl#CONDONADO_INTERES_PLAZO_VENCIDO aplica en ④, acá
+        // en Java porque el paso ⑦ no es SQL nativo. La mora NO se condona, sigue igual.
+        List<Long> idsPrestamoEn8 = new ArrayList<>();
+        for (DetallePrestamo cuota : cuotas) {
+            if (cuota.getPrestamo() != null && cuota.getPrestamo().getIdEstado() != null
+                    && cuota.getPrestamo().getIdEstado() == EstadoPrestamo.DE_PLAZO_VENCIDO) {
+                idsPrestamoEn8.add(cuota.getPrestamo().getCodigo());
+            }
+        }
+        Map<Long, LocalDate> fechaCorteDeclaracionPorPrestamo =
+            declaracionPlazoVencidoDaoService.selectFechaCorteVivaByPrestamos(idsPrestamoEn8);
+
         List<ItemProvisionCuota> items = new ArrayList<>();
         for (DetallePrestamo cuota : cuotas) {
             Prestamo prestamo = cuota.getPrestamo();
@@ -882,7 +900,16 @@ public class ProvisionInteresServiceImpl implements ProvisionInteresService {
             double ivPagado = pagos != null ? pagos[2] : 0.0;
             double moraPagada = pagos != null ? pagos[1] : 0.0;
 
-            double pendienteInteres = Math.max(0.0, redondear(
+            boolean interesCondonado = false;
+            if (prestamo != null && prestamo.getIdEstado() != null
+                    && prestamo.getIdEstado() == EstadoPrestamo.DE_PLAZO_VENCIDO
+                    && cuota.getFechaVencimiento() != null) {
+                LocalDate fechaCorteDeclaracion = fechaCorteDeclaracionPorPrestamo.get(prestamo.getCodigo());
+                interesCondonado = fechaCorteDeclaracion != null
+                    && cuota.getFechaVencimiento().toLocalDate().isAfter(fechaCorteDeclaracion);
+            }
+
+            double pendienteInteres = interesCondonado ? 0.0 : Math.max(0.0, redondear(
                 nvl(cuota.getInteres()) + nvl(cuota.getInteresVencido()) - interesPagado - ivPagado));
 
             double tasaDiaria = procesoMoraPrestamoService.tasaDiariaDelPrestamo(prestamo, false);

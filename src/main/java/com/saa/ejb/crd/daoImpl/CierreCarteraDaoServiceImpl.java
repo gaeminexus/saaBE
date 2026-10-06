@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import com.saa.ejb.crd.dao.CierreCarteraDaoService;
+import com.saa.model.crd.DeclaracionPlazoVencido;
 import com.saa.rubros.CrdTipoMovimientoAporte;
 import com.saa.rubros.Estado;
 import com.saa.rubros.EstadoContrato;
@@ -40,9 +41,18 @@ public class CierreCarteraDaoServiceImpl implements CierreCarteraDaoService {
     /**
      * Estados de préstamo VIVO. Es {@code PRSTIDST}, no {@code ESPSCDGO}
      * (tabla de trampas de CLAUDE.md).
+     *
+     * <p><b>D27 (2026-10-05, decisión del usuario):</b> incluye DE_PLAZO_VENCIDO (8) — para la
+     * contabilidad del cierre, el 8 se trata IGUAL que EN_MORA (11): su capital está en las
+     * mismas cuentas de capital y entra a todos los sub-procesos, con la misma clasificación
+     * por banda según días vencidos. Antes de este cambio el cierre sólo veía {@code (2, 11)}
+     * (H80) — ver {@code DISENO-PASE-A-PLAZO-VENCIDO.md} D27 y la transición del ⑥ (neteo) en
+     * {@code CierreCarteraServiceImpl#armaNeteo}, que para la PRIMERA corrida después de este
+     * cambio sigue usando el universo VIEJO (el que su ③ anterior realmente abrió).</p>
      */
     private static final String PRESTAMOS_VIVOS =
-            " p.PRSTIDST IN (" + EstadoPrestamo.VIGENTE + ", " + EstadoPrestamo.EN_MORA + ") ";
+            " p.PRSTIDST IN (" + EstadoPrestamo.VIGENTE + ", " + EstadoPrestamo.DE_PLAZO_VENCIDO + ", "
+            + EstadoPrestamo.EN_MORA + ") ";
 
     /**
      * Cuotas NO liquidadas. El {@code IS NULL} explícito es necesario: en Oracle un
@@ -51,6 +61,32 @@ public class CierreCarteraDaoServiceImpl implements CierreCarteraDaoService {
     private static final String CUOTAS_PENDIENTES =
             " (d.DTPRESTD IS NULL OR d.DTPRESTD NOT IN ("
             + EstadoCuotaPrestamo.PAGADA + ", " + EstadoCuotaPrestamo.CANCELADA_ANTICIPADA + ")) ";
+
+    /**
+     * D25/D27 (2026-10-05): un préstamo DE_PLAZO_VENCIDO (8) ya tiene condonado el interés de
+     * sus cuotas FUTURAS (vencimiento posterior al corte de su declaración PLVN) — medido y
+     * confirmado contra el código de {@code DeclaracionPlazoVencidoServiceImpl}: la condonación
+     * es solo de CÁLCULO (memorando/liquidación), nunca se persiste en {@code DTPRINTR}, así
+     * que sin este filtro el paso ④ (devengo) devengaría a ingreso un interés que el préstamo
+     * ya no debe. Solo afecta el INTERÉS — la mora NO está condonada por D25, así que esta
+     * expresión se usa en el {@code SUM} del interés, nunca en el {@code WHERE} (excluir la fila
+     * entera también perdería su mora, que sí corresponde devengar).
+     *
+     * <p>{@code MIN(v.PLVNFCCR)}, no una subconsulta escalar sin agregar (corregido 2026-10-05,
+     * hallazgo del árbitro): el índice {@code UX_PLVN_PRESTAMO_VIVO} debería dejar a lo sumo una
+     * declaración VIVA por préstamo, pero una subconsulta escalar sin {@code MIN} revienta con
+     * ORA-01427 si alguna vez hay más de una fila (dato corrupto, condición de carrera, lo que
+     * sea) — y un caso raro así no puede tumbar el cierre entero. Si un préstamo en 8 no tuviera
+     * ninguna declaración viva (no debería pasar), el {@code MIN} da NULL y la expresión completa
+     * da NULL → el {@code CASE} la trata como falsa y el interés se cuenta normal (no se arriesga
+     * a condonar algo no verificable).</p>
+     */
+    private static final String CONDONADO_INTERES_PLAZO_VENCIDO =
+            " (p.PRSTIDST = " + EstadoPrestamo.DE_PLAZO_VENCIDO + " AND d.DTPRFCVN > ("
+            + "   SELECT MIN(v.PLVNFCCR) FROM CRD.PLVN v"
+            + "    WHERE v.PRSTCDGO = p.PRSTCDGO AND v.PLVNESTD IN ("
+            + DeclaracionPlazoVencido.ESTADO_DECLARADA + ", " + DeclaracionPlazoVencido.ESTADO_LIQUIDADA + ")"
+            + " )) ";
 
     /**
      * Pagos vigentes agregados por cuota. {@code PGPRANUL} nulo cubre los pagos históricos
@@ -92,7 +128,8 @@ public class CierreCarteraDaoServiceImpl implements CierreCarteraDaoService {
                 + " - hasta: " + hasta);
         Query query = em.createNativeQuery(
                 " SELECT pr.TPPRCDGO, "
-                + "        SUM(GREATEST(NVL(d.DTPRINTR,0) - NVL(g.intr,0), 0)), "
+                + "        SUM(CASE WHEN " + CONDONADO_INTERES_PLAZO_VENCIDO
+                + "                 THEN 0 ELSE GREATEST(NVL(d.DTPRINTR,0) - NVL(g.intr,0), 0) END), "
                 + "        SUM(GREATEST(NVL(d.DTPRMRAA,0) - NVL(g.mora,0), 0)) "
                 + " FROM   CRD.DTPR d "
                 + " JOIN   CRD.PRST p  ON p.PRSTCDGO = d.PRSTCDGO "
@@ -147,7 +184,8 @@ public class CierreCarteraDaoServiceImpl implements CierreCarteraDaoService {
         Query query = em.createNativeQuery(
                 " SELECT p.PRDCCDGO, "
                 + "        SUM(GREATEST(NVL(d.DTPRCPTL,0) - NVL(g.cap,0), 0)), "
-                + "        SUM(GREATEST(NVL(d.DTPRINTR,0) - NVL(g.intr,0), 0)), "
+                + "        SUM(CASE WHEN " + CONDONADO_INTERES_PLAZO_VENCIDO
+                + "                 THEN 0 ELSE GREATEST(NVL(d.DTPRINTR,0) - NVL(g.intr,0), 0) END), "
                 + "        SUM(GREATEST(NVL(d.DTPRMRAA,0) - NVL(g.mora,0), 0)), "
                 + "        SUM(GREATEST(NVL(d.DTPRDSGR,0) - NVL(g.dsgr,0), 0)), "
                 + "        SUM(GREATEST(NVL(d.DTPRVLSI,0) - NVL(g.segi,0), 0)), "
@@ -162,6 +200,47 @@ public class CierreCarteraDaoServiceImpl implements CierreCarteraDaoService {
                 + " GROUP BY p.PRDCCDGO "
                 + " ORDER BY p.PRDCCDGO");
         query.setParameter("hasta", Date.valueOf(hasta));
+        List<Object[]> filas = query.getResultList();
+        List<Object[]> resultado = new ArrayList<Object[]>();
+        for (Object[] fila : filas) {
+            resultado.add(new Object[]{ aLong(fila[0]), aDouble(fila[1]), aDouble(fila[2]),
+                    aDouble(fila[3]), aDouble(fila[4]), aDouble(fila[5]), aLong(fila[6]) });
+        }
+        return resultado;
+    }
+
+    @Override
+    public List<Object[]> selectCobrablePrestamosHastaTransicionPlazoVencido(LocalDate hasta,
+            LocalDate fechaCorteAnterior) throws Throwable {
+        System.out.println("Ingresa al metodo selectCobrablePrestamosHastaTransicionPlazoVencido - hasta: "
+                + hasta + " - fechaCorteAnterior: " + fechaCorteAnterior);
+        String universoTransicion =
+                " (p.PRSTIDST IN (" + EstadoPrestamo.VIGENTE + ", " + EstadoPrestamo.EN_MORA + ")"
+                + "  OR (p.PRSTIDST = " + EstadoPrestamo.DE_PLAZO_VENCIDO + " AND EXISTS ("
+                + "       SELECT 1 FROM CRD.PLVN v WHERE v.PRSTCDGO = p.PRSTCDGO"
+                + "        AND v.PLVNESTD IN (" + DeclaracionPlazoVencido.ESTADO_DECLARADA + ", "
+                + DeclaracionPlazoVencido.ESTADO_LIQUIDADA + ")"
+                + "        AND v.PLVNFCCR > :fechaCorteAnterior))) ";
+        Query query = em.createNativeQuery(
+                " SELECT p.PRDCCDGO, "
+                + "        SUM(GREATEST(NVL(d.DTPRCPTL,0) - NVL(g.cap,0), 0)), "
+                + "        SUM(CASE WHEN " + CONDONADO_INTERES_PLAZO_VENCIDO
+                + "                 THEN 0 ELSE GREATEST(NVL(d.DTPRINTR,0) - NVL(g.intr,0), 0) END), "
+                + "        SUM(GREATEST(NVL(d.DTPRMRAA,0) - NVL(g.mora,0), 0)), "
+                + "        SUM(GREATEST(NVL(d.DTPRDSGR,0) - NVL(g.dsgr,0), 0)), "
+                + "        SUM(GREATEST(NVL(d.DTPRVLSI,0) - NVL(g.segi,0), 0)), "
+                + "        COUNT(*) "
+                + " FROM   CRD.DTPR d "
+                + " JOIN   CRD.PRST p ON p.PRSTCDGO = d.PRSTCDGO "
+                + " LEFT JOIN " + PAGOS_VIGENTES + " ON g.DTPRCDGO = d.DTPRCDGO "
+                + " WHERE  " + universoTransicion
+                + " AND    " + CUOTAS_PENDIENTES
+                + " AND    TRUNC(d.DTPRFCVN) <= :hasta "
+                + " AND    p.PRDCCDGO IS NOT NULL "
+                + " GROUP BY p.PRDCCDGO "
+                + " ORDER BY p.PRDCCDGO");
+        query.setParameter("hasta", Date.valueOf(hasta));
+        query.setParameter("fechaCorteAnterior", Date.valueOf(fechaCorteAnterior));
         List<Object[]> filas = query.getResultList();
         List<Object[]> resultado = new ArrayList<Object[]>();
         for (Object[] fila : filas) {

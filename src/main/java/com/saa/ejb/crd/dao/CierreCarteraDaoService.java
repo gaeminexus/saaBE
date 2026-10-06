@@ -115,6 +115,29 @@ public interface CierreCarteraDaoService {
     List<Object[]> selectCobrablePrestamosHasta(LocalDate hasta) throws Throwable;
 
     /**
+     * Igual que {@link #selectCobrablePrestamosHasta}, pero con el universo de LA TRANSICIÓN
+     * D27 (2026-10-05): {@code (2, 11)} + los préstamos en 8 (DE_PLAZO_VENCIDO) con una
+     * declaración PLVN VIVA (DECLARADA o LIQUIDADA) cuya {@code fechaCorte} sea POSTERIOR a
+     * {@code fechaCorteAnterior} — es decir, "lo que el ③ de la corrida anterior realmente
+     * abrió" (el grupo A: ya estaba en 11, entró como 11; el grupo B, declarado antes de esa
+     * corrida anterior, quedó fuera, y sigue fuera acá).
+     *
+     * <p>Solo para {@code CierreCarteraServiceImpl#armaNeteo} de la PRIMERA corrida después de
+     * D27 — se usa cuando la corrida anterior (la que abrió el mes que se cierra) no tiene
+     * ningún {@code MVIC} ({@code MovimientoInteresCuotaDaoService#existeAlgunoByCorrida}): esa
+     * es la marca de que corrió con el código viejo {@code (2, 11)}, antes de este cambio. Si
+     * la corrida anterior SÍ tiene MVIC, el ⑥ usa {@link #selectCobrablePrestamosHasta} normal,
+     * con el universo nuevo — el mismo que usó su propio ③.</p>
+     *
+     * @param hasta             Último día a considerar (inclusive) — el corte de ESTE cierre
+     * @param fechaCorteAnterior Corte de la corrida ANTERIOR (la que abrió el mes que se cierra)
+     * @return Mismas filas que {@link #selectCobrablePrestamosHasta}
+     * @throws Throwable Si ocurre un error
+     */
+    List<Object[]> selectCobrablePrestamosHastaTransicionPlazoVencido(LocalDate hasta, LocalDate fechaCorteAnterior)
+            throws Throwable;
+
+    /**
      * Aporte mensual esperado de los partícipes activos: la vigencia ABIERTA de CRD.VGCN del
      * contrato ACTIVO de cada entidad en estado ACTIVO (1) o ACTIVO_EN_MORA (8), por tipo de
      * aporte (9 jubilación, 11 cesantía). Migrado de {@code CRD.HSTR} a {@code CRD.VGCN} en

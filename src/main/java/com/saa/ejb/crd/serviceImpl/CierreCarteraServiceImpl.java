@@ -466,7 +466,7 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
                 controlaArchivoPetro(solicitud, desglose, resultado.getAdvertencias()));
         avisaExcesoCobro(desglose, resultado.getAdvertencias(), solicitud);
 
-        resultado.getSubProcesos().add(armaNeteo(solicitud, fechaCorte, desglose));
+        resultado.getSubProcesos().add(armaNeteo(solicitud, fechaCorte, fechaCorteAnterior, desglose));
         // ⑦ Provisión de intereses: fechado al CORTE (no a fechaProceso, a diferencia de los
         // seis anteriores) — "a fin de cada mes" (§1.1 del diseño de provisión de intereses).
         resultado.getSubProcesos().add(armaProvisionIntereses(solicitud, fechaCorte));
@@ -995,14 +995,36 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
      * @return          : El sub-proceso con sus líneas
      */
     private SubProcesoCierre armaNeteo(SolicitudCierreCartera solicitud, LocalDate corte,
-            DesgloseAportesCierre desglose) throws Throwable {
+            LocalDate fechaCorteAnterior, DesgloseAportesCierre desglose) throws Throwable {
 
         SubProcesoCierre sub = nuevoSubProceso(SubProcesoCierreCartera.NETEO,
                 "Neteo de planillas", "⑥", corte,
                 "CRD neteo de planillas " + periodo(solicitud));
 
+        // D27, transición (2026-10-05): el ⑥ tiene que netear EXACTAMENTE lo que abrió el ③ de
+        // la corrida anterior (la que abrió el mes que se está cerrando) — nunca lo recalculado
+        // con el universo de HOY, si ese universo cambió desde entonces. La marca de que la
+        // corrida anterior corrió con el código viejo (2, 11), sin el 8 (D27): no tiene NINGÚN
+        // MVIC (el libro nació junto con el universo nuevo). Si tiene MVIC, ya es de la era
+        // nueva y el ⑥ usa el mismo universo que su propio ③ (el normal, de hoy).
+        CorridaCierreCartera corridaAnterior = corridaCierreCarteraDaoService.selectUltimaEjecutadaAntesDe(
+                solicitud.getIdEmpresa(), solicitud.getAnio(), solicitud.getMes());
+        boolean transicionD27 = corridaAnterior != null
+                && !movimientoInteresCuotaDaoService.existeAlgunoByCorrida(corridaAnterior.getCodigo());
+
+        List<Object[]> cobrable = transicionD27
+                ? cierreCarteraDaoService.selectCobrablePrestamosHastaTransicionPlazoVencido(corte,
+                        fechaCorteAnterior)
+                : cierreCarteraDaoService.selectCobrablePrestamosHasta(corte);
+        if (transicionD27) {
+            System.out.println("  CierreCarteraServiceImpl.armaNeteo - D27 transición: la corrida anterior ("
+                + (corridaAnterior != null ? corridaAnterior.getCodigo() : null)
+                + ") no tiene MVIC — el ⑥ usa el universo (2, 11) + declarados-8-después-de-"
+                + fechaCorteAnterior + ", no el universo nuevo completo.");
+        }
+
         double noCobradoPrestamos = 0D;
-        for (Object[] fila : cierreCarteraDaoService.selectCobrablePrestamosHasta(corte)) {
+        for (Object[] fila : cobrable) {
             for (int i = 1; i <= 5; i++) {
                 noCobradoPrestamos = noCobradoPrestamos + ((Double) fila[i]).doubleValue();
             }
