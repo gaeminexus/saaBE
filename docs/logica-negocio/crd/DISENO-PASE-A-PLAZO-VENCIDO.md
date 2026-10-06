@@ -399,3 +399,12 @@ cualquier préstamo en 11.
 | **D** | El reverso: ¿vuelve siempre a `EN_MORA`, o al estado que tenía? ¿Quién puede revertir: Crédito, Contabilidad o los dos? ¿Se puede revertir después de liquidado? | Define las guardas del endpoint |
 | **E** | Firmantes: ¿de dónde salen los nombres y cargos (Representante Legal, Contador/Jefe de Contabilidad, Jefe de Crédito)? ¿Del usuario que ejecuta cada paso, de un parámetro, o se escriben en la pantalla? | No pueden quedar quemados en la plantilla |
 | **F** | El número de memorando: ¿se valida que no se repita? ¿Todo el lote lleva un solo memorando o uno por préstamo? | En el ejemplo es uno por préstamo |
+
+## D27 — decisión del usuario (2026-10-05)
+- El capital de los préstamos DE PLAZO VENCIDO (8), grupo A y grupo B, **está en las mismas cuentas de capital**
+  que el resto de la cartera.
+- **Para la contabilidad, el 8 se trata IGUAL que EN MORA (11):** entra a todos los subprocesos del cierre, con la
+  misma clasificación por banda según los días vencidos.
+- Se aplica desde el cierre de septiembre / apertura de octubre de 2026. La transición se mide antes de programar:
+  el ③ de la apertura de septiembre incluyó al grupo A como 11 y no incluyó al grupo B, así que el ⑥ y el ② de este
+  cierre no deben dejar residuo ni duplicar capital.
