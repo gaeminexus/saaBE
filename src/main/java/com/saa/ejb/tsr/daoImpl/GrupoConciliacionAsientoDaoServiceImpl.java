@@ -50,17 +50,19 @@ public class GrupoConciliacionAsientoDaoServiceImpl extends EntityDaoImpl<GrupoC
 
     /**
      * Filtro común de "arrastre" (ver
-     * docs/logica-negocio/tsr/DISENO-CONCILIACION-PARTIDAS-EN-TRANSITO.md §7): una fila cuyo
-     * asiento cae dentro del rango pedido, O una fila cuyo asiento es el de un TSR.MVCB que sea
-     * el origen (MVCBCDGO) de una TSR.DTCN tipo 1/2 todavía Pendiente - un depósito en tránsito
-     * o cheque girado declarado en un cierre anterior y aún sin saldar.
+     * docs/logica-negocio/tsr/DISENO-CONCILIACION-PARTIDAS-EN-TRANSITO.md §7, §10.4): una fila
+     * cuyo asiento cae dentro del rango pedido, O la LÍNEA exacta declarada como TSR.DTCN tipo
+     * 1/2 todavía Pendiente - un depósito en tránsito o cheque girado de un cierre anterior y
+     * aún sin saldar. §10.4 (2026-08-27): el ancla pasó de MVCBCDGO (nullable, informativo) a
+     * DTCNDTAS (dt.detalleAsiento); arrastrar por d.asiento.codigo vía movimientoBanco traía
+     * TODAS las líneas de ese asiento y, peor, no veía nada si la partida se declaró sin MVCB.
      */
     private static final String FRAGMENTO_ARRASTRE_ASIENTO =
             " ( d.asiento.fechaAsiento between :primerDia and :ultimoDia " +
-            "   or d.asiento.codigo in ( " +
-            "       select dt.movimientoBanco.asiento.codigo from DetalleTransito dt " +
+            "   or d.codigo in ( " +
+            "       select dt.detalleAsiento.codigo from DetalleTransito dt " +
             "       where dt.tipo in (:tipoDeposito, :tipoCheque) and dt.estado = :pendienteTransito " +
-            "       and dt.movimientoBanco is not null " +
+            "       and dt.detalleAsiento is not null " +
             "   ) " +
             " ) ";
 
