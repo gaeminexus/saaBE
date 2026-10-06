@@ -1,6 +1,7 @@
 package com.saa.ejb.rpr.service;
 
 import com.saa.model.rpr.DetalleEjecucionReporte;
+import com.saa.model.rpr.EjecucionReporte;
 
 import jakarta.ejb.Local;
 
@@ -41,6 +42,32 @@ public interface GeneracionUnReporteService {
      *                     {@link #marcarResultado} con el resultado, en OTRA transacción
      */
     long generarUno(DetalleEjecucionReporte ejrd) throws Throwable;
+
+    /**
+     * Crea el EJRC y los 12 EJRD en estado PENDIENTE, en su PROPIA transacción
+     * {@code REQUIRES_NEW}, CONFIRMADA antes de que el orquestador arranque el bucle —
+     * defecto real de producción, 2026-10-05 (ejecución NUEVA de septiembre 2026): antes esta
+     * creación vivía en la transacción externa (REQUIRED) de
+     * {@code GeneracionReportesServiceImpl#ejecutarGeneracion}, sin confirmar todavía cuando
+     * {@link #marcarResultado} (REQUIRES_NEW, OTRA conexión/transacción) intentaba
+     * {@code ejrdService.selectById(idEjrd)} del primer EJRD — esa fila no existía aún para esa
+     * transacción, y la consulta reventaba con {@code NoResultException}. "La ejecución nueva
+     * nunca se probó" después del 2026-09-08: la rama de CORRECCIÓN funcionaba porque ahí los
+     * EJRD ya estaban confirmados de una corrida anterior.
+     *
+     * <p>El orquestador, después de llamar a esto, recupera los EJRD con
+     * {@code DetalleEjecucionReporteService#selectPendientesYNovedadesByEjecucion(idEjrc)} — la
+     * MISMA consulta que ya usaba la rama de corrección — en vez de que este método devuelva la
+     * lista: así las dos ramas (nueva y corrección) convergen al mismo código después de este
+     * punto, sin necesidad de un segundo tipo de retorno.</p>
+     *
+     * @param mes     : Mes del reporte (1-12)
+     * @param anio    : Año del reporte
+     * @param usuario : Usuario que dispara la generación
+     * @return         : El EJRC recién creado y CONFIRMADO, con su código ya asignado
+     * @throws Throwable : Excepcion
+     */
+    EjecucionReporte crearEjecucion(Long mes, Long anio, String usuario) throws Throwable;
 
     /**
      * Graba el resultado (OK o con novedades) de UN reporte, en su PROPIA transacción —

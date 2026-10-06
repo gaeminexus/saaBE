@@ -3,6 +3,7 @@ package com.saa.ejb.rpr.serviceImpl;
 import java.time.LocalDate;
 
 import com.saa.ejb.rpr.service.DetalleEjecucionReporteService;
+import com.saa.ejb.rpr.service.EjecucionReporteService;
 import com.saa.ejb.rpr.service.GeneracionG40Service;
 import com.saa.ejb.rpr.service.GeneracionG41Service;
 import com.saa.ejb.rpr.service.GeneracionG42Service;
@@ -17,6 +18,7 @@ import com.saa.ejb.rpr.service.GeneracionG50Service;
 import com.saa.ejb.rpr.service.GeneracionG51Service;
 import com.saa.ejb.rpr.service.GeneracionUnReporteService;
 import com.saa.model.rpr.DetalleEjecucionReporte;
+import com.saa.model.rpr.EjecucionReporte;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
@@ -31,7 +33,20 @@ import jakarta.ejb.TransactionAttributeType;
 @Stateless
 public class GeneracionUnReporteServiceImpl implements GeneracionUnReporteService {
 
+    // Estados EJRC/EJRD y tipos de reporte — MISMOS valores que
+    // GeneracionReportesServiceImpl, duplicados a propósito (igual criterio que
+    // LIMITE_NOVEDADES_EJRD/truncar más abajo): son dos beans, cada uno con sus propias
+    // constantes privadas, sin un rubro compartido para esto todavía.
+    private static final Long EJRC_EN_PROCESO = 1L;
+    private static final Long EJRD_PENDIENTE  = 3L;
+    private static final Long TIPO_INICIAL    = 1L;
+    private static final String[] TIPOS_REPORTE = {
+        "G40", "G41", "G42", "G43", "G44", "G46", "G45",
+        "G47", "G48", "G49", "G50", "G51"
+    };
+
     @EJB private DetalleEjecucionReporteService ejrdService;
+    @EJB private EjecucionReporteService        ejrcService;
     @EJB private GeneracionG40Service           g40Service;
     @EJB private GeneracionG41Service           g41Service;
     @EJB private GeneracionG42Service           g42Service;
@@ -69,6 +84,33 @@ public class GeneracionUnReporteServiceImpl implements GeneracionUnReporteServic
             default:
                 throw new Exception("Logica de generacion no implementada para: " + ejrd.getTipoReporte());
         }
+    }
+
+    @Override
+    @TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
+    public EjecucionReporte crearEjecucion(Long mes, Long anio, String usuario) throws Throwable {
+        System.out.println("GeneracionUnReporteService.crearEjecucion - mes: " + mes + " - anio: " + anio
+                + " - usuario: " + usuario);
+        EjecucionReporte ejrc = new EjecucionReporte();
+        ejrc.setMes(mes);
+        ejrc.setAnio(anio);
+        ejrc.setUsuario(usuario);
+        ejrc.setFechaGeneracion(LocalDate.now());
+        ejrc.setTipoEjecucion(TIPO_INICIAL);
+        ejrc.setEstado(EJRC_EN_PROCESO);
+        ejrc.setObservaciones("Ejecucion inicial generada automaticamente");
+        ejrc = ejrcService.saveSingle(ejrc);
+        System.out.println("  EJRC creado con id: " + ejrc.getCodigo());
+
+        for (String tipoReporte : TIPOS_REPORTE) {
+            DetalleEjecucionReporte ejrd = new DetalleEjecucionReporte();
+            ejrd.setEjecucionReporte(ejrc);
+            ejrd.setTipoReporte(tipoReporte);
+            ejrd.setEstado(EJRD_PENDIENTE);
+            ejrd = ejrdService.saveSingle(ejrd);
+            System.out.println("  EJRD creado para " + tipoReporte + " con id: " + ejrd.getCodigo());
+        }
+        return ejrc;
     }
 
     @Override

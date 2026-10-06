@@ -25,17 +25,9 @@ public class GeneracionReportesServiceImpl implements GeneracionReportesService 
     // Estados EJRD
     private static final Long EJRD_OK            = 1L;
     private static final Long EJRD_CON_NOVEDADES = 2L;
-    private static final Long EJRD_PENDIENTE     = 3L;
 
     // Tipo ejecución EJRC
-    private static final Long TIPO_INICIAL       = 1L;
     private static final Long TIPO_CORRECCION    = 2L;
-
-    // Tipos de reporte
-    private static final String[] TIPOS_REPORTE = {
-        "G40", "G41", "G42", "G43", "G44", "G46", "G45",
-        "G47", "G48", "G49", "G50", "G51"
-    };
 
     @EJB private EjecucionReporteService        ejrcService;
     @EJB private DetalleEjecucionReporteService ejrdService;
@@ -88,31 +80,19 @@ public class GeneracionReportesServiceImpl implements GeneracionReportesService 
 
         } else {
             // ---------------------------------------------------
-            // 4. Crear nueva cabecera EJRC
+            // 4-5. Crear la cabecera EJRC y los 12 EJRD en PENDIENTE — EN SU PROPIA
+            // transacción REQUIRES_NEW, CONFIRMADA antes de seguir (defecto real de
+            // producción, 2026-10-05: acá vivía el bug — este bloque corría en la
+            // transacción externa REQUIRED de este método, sin confirmar todavía cuando
+            // marcarResultado (REQUIRES_NEW, línea ~137 de abajo) intentaba leer el primer
+            // EJRD por id y no lo encontraba — NoResultException. Ver el javadoc de
+            // GeneracionUnReporteService#crearEjecucion).
             // ---------------------------------------------------
-            ejrc = new EjecucionReporte();
-            ejrc.setMes(mes);
-            ejrc.setAnio(anio);
-            ejrc.setUsuario(usuario);
-            ejrc.setFechaGeneracion(LocalDate.now());
-            ejrc.setTipoEjecucion(TIPO_INICIAL);
-            ejrc.setEstado(EJRC_EN_PROCESO);
-            ejrc.setObservaciones("Ejecucion inicial generada automaticamente");
-            ejrc = ejrcService.saveSingle(ejrc);
-            System.out.println("EJRC creado con id: " + ejrc.getCodigo());
-
-            // ---------------------------------------------------
-            // 5. Crear los 12 EJRD en estado Pendiente
-            // ---------------------------------------------------
-            for (String tipoReporte : TIPOS_REPORTE) {
-                DetalleEjecucionReporte ejrd = new DetalleEjecucionReporte();
-                ejrd.setEjecucionReporte(ejrc);
-                ejrd.setTipoReporte(tipoReporte);
-                ejrd.setEstado(EJRD_PENDIENTE);
-                ejrd = ejrdService.saveSingle(ejrd);
-                ejrdsAProcesar.add(ejrd);
-                System.out.println("EJRD creado para " + tipoReporte + " con id: " + ejrd.getCodigo());
-            }
+            ejrc = unReporteService.crearEjecucion(mes, anio, usuario);
+            // Misma consulta que ya usa la rama de corrección (línea ~82) — con esto las
+            // dos ramas convergen al mismo código de acá en adelante, los 12 EJRD recién
+            // creados y YA CONFIRMADOS en la base.
+            ejrdsAProcesar = ejrdService.selectPendientesYNovedadesByEjecucion(ejrc.getCodigo());
         }
 
         // -------------------------------------------------------
