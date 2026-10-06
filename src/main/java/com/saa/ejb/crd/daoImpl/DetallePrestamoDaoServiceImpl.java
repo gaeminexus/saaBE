@@ -1086,10 +1086,10 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 		System.out.println("DetallePrestamoDaoServiceImpl.selectCuotasProvisionables - corte: " + corte);
 		Query query = em.createQuery(
 			" select d from DetallePrestamo d " +
-			" join fetch d.prestamo p " +
-			" left join fetch p.producto prod " +
-			" left join fetch prod.tipoPrestamo " +
-			" where p.idEstado in (" + com.saa.rubros.EstadoPrestamo.VIGENTE + ", "
+			" join fetch d.prestamo " +
+			" left join fetch d.prestamo.producto " +
+			" left join fetch d.prestamo.producto.tipoPrestamo " +
+			" where d.prestamo.idEstado in (" + com.saa.rubros.EstadoPrestamo.VIGENTE + ", "
 				+ com.saa.rubros.EstadoPrestamo.DE_PLAZO_VENCIDO + ", "
 				+ com.saa.rubros.EstadoPrestamo.EN_MORA + ") " +
 			"   and (d.estado is null or d.estado not in ("
