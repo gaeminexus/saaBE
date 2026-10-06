@@ -1139,9 +1139,13 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
             double adeudadoActual = valorPorConcepto(actual, concepto);
             double diferencia = Math.abs(adeudadoActual - nvl(valorAdeudado));
             if (diferencia > TOLERANCIA) {
-                return "Concepto " + nombreConcepto(concepto) + " del préstamo " + idPrestamo
-                        + ": adeudado informado $" + valorAdeudado + ", adeudado real $" + adeudadoActual
-                        + ". Verifique y vuelva a registrar el acuerdo.";
+                // Mensaje accionable (2026-10-06, pedido del árbitro): no solo informa la
+                // diferencia, dice los DOS pasos — anular lo registrado y volver a registrar —
+                // para que crédito no se quede adivinando si puede reusar el mismo acuerdo.
+                return "El adeudado del concepto " + nombreConcepto(concepto) + " del préstamo " + idPrestamo
+                        + " cambió desde que se registró el acuerdo (informado $" + valorAdeudado
+                        + ", real hoy $" + adeudadoActual + "). Anule este acuerdo y regístrelo de nuevo"
+                        + " con el adeudado actual.";
             }
         }
         return null;

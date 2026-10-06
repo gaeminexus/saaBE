@@ -947,6 +947,31 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
         saldos.setTotalPendiente(totalAjustado);
     }
 
+    /**
+     * Desglose de lo ADEUDADO de un préstamo, para el acuerdo de pago con condonación (Frente
+     * K) — ver {@code AcuerdoCondonacionServiceImpl#verificarAdeudados} y la previsualización
+     * (`GET /rest/accn/.../desglose`, `AcuerdoCondonacionRest`). Único llamador: la condonación
+     * siempre liquida el préstamo POR COMPLETO (pagado + condonado = adeudado, sin remanente),
+     * así que lo que este método diga "adeudado" es, literal, lo que el usuario tiene que
+     * repartir entre pagar y condonar.
+     *
+     * <p><b>Bug corregido 2026-10-06 (reportado por el usuario — un acuerdo sobre un préstamo
+     * con cuotas futuras mostraba el interés de TODAS las cuotas, incluidas las que todavía no
+     * vencen, como "adeudado").</b> MISMA regla que {@code calcularPrecancelacion} (nunca
+     * reimplementada: reusa {@code selectCuotasExigibles}, la fuente de verdad de qué cuota es
+     * exigible a una fecha) y el mismo fundamento de D25 (plazo vencido): el interés de una
+     * cuota que todavía no vence NO se debe todavía — no es que se "condone", nunca fue una
+     * deuda. Por eso:</p>
+     * <ul>
+     *   <li>Cuotas EXIGIBLES (vencimiento ≤ {@code fecha}): los 5 conceptos completos, como
+     *       siempre.</li>
+     *   <li>Cuotas FUTURAS (pendientes que no son exigibles): SOLO capital. Interés, mora,
+     *       desgravamen y seguro de esas cuotas no entran a ningún total — si entraran, el
+     *       acuerdo (que exige pagado+condonado = adeudado, sin remanente) obligaría al usuario
+     *       a "condonar" interés que el préstamo nunca debió, inflando el gasto contable del
+     *       asiento de condonación con plata que no era real.</li>
+     * </ul>
+     */
     @Override
     public DesgloseConceptosPrestamo calcularDesgloseConceptos(Long idPrestamo, LocalDate fecha) throws Throwable {
         System.out.println("ProcesoPagoPrestamoService.calcularDesgloseConceptos - Préstamo: " + idPrestamo
@@ -957,8 +982,11 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
             throw new IncomeException(ERR_PRESTAMO_NO_ENCONTRADO + ": no existe el préstamo " + idPrestamo);
         }
         LocalDate fechaCorte = fecha != null ? fecha : LocalDate.now();
+        LocalDateTime finDelDia = fechaCorte.atTime(23, 59, 59);
 
         double tasaDiaria = procesoMoraPrestamoService.tasaDiariaDelPrestamo(prestamo, true);
+        List<DetallePrestamo> exigibles =
+            detallePrestamoDaoService.selectCuotasExigibles(prestamo.getCodigo(), finDelDia);
         List<DetallePrestamo> pendientes =
             detallePrestamoDaoService.selectCuotasPendientesByPrestamoOrdenadas(prestamo.getCodigo());
 
@@ -971,9 +999,11 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
         double mora = 0.0;
         double desgravamen = 0.0;
         double seguroIncendio = 0.0;
+        Set<Long> codigosExigibles = new HashSet<>();
 
-        if (pendientes != null) {
-            for (DetallePrestamo cuota : pendientes) {
+        if (exigibles != null) {
+            for (DetallePrestamo cuota : exigibles) {
+                codigosExigibles.add(cuota.getCodigo());
                 // Solo lectura: calcularSaldosCuota (la variante PURA), nunca
                 // calcularSaldosRealesCuota, que autocorrige y persiste.
                 SaldosCuota saldos = motorPagoPrestamoService.calcularSaldosCuota(cuota);
@@ -987,6 +1017,17 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
                 mora += saldos.getSaldoMora();
                 desgravamen += saldos.getSaldoDesgravamen();
                 seguroIncendio += saldos.getSaldoSeguroIncendio();
+            }
+        }
+
+        // Futuras (pendientes que no son exigibles): SOLO capital — ver el javadoc del método.
+        if (pendientes != null) {
+            for (DetallePrestamo cuota : pendientes) {
+                if (codigosExigibles.contains(cuota.getCodigo())) {
+                    continue;
+                }
+                SaldosCuota saldos = motorPagoPrestamoService.calcularSaldosCuota(cuota);
+                capital += saldos.getSaldoCapital();
             }
         }
 
