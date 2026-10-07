@@ -427,6 +427,19 @@ public class FacturaCompraServiceImpl implements FacturaCompraService {
 			bloqueantes.add(b);
 		}
 
+		// 2e. Subtotal en 0 con total > 0 (sri/sql/e2-93, e2-94): la pantalla rotula el
+		// subtotal "Subtotal (grav.)" y el usuario, al no ser gravada, lo deja en 0 -- el
+		// recálculo de subcero de abajo (subtotal - no objeto - exento) pisa entonces el
+		// subcero real con 0. Se rechaza en vez de inventar el subtotal desde el detalle.
+		if (nvlDouble(solicitud.getSubtotal()) < 0.005 && nvlDouble(solicitud.getTotal()) > 0.005) {
+			Map<String, Object> b = new HashMap<>();
+			b.put("tipo", "SUBTOTAL_EN_CERO");
+			b.put("detalle", "El subtotal (sin impuestos) de la nota de venta está en 0 pero el "
+					+ "total es " + solicitud.getTotal() + ". Una nota de venta sin IVA lleva el "
+					+ "subtotal igual al total: ingrese el subtotal.");
+			bloqueantes.add(b);
+		}
+
 		if (!bloqueantes.isEmpty()) {
 			System.out.println("⚠ Registro de nota de venta detenido. Bloqueantes: " + bloqueantes);
 			Map<String, Object> r = new HashMap<>();
