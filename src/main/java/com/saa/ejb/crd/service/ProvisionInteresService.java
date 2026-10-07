@@ -184,8 +184,9 @@ public interface ProvisionInteresService {
      * @param interesCondonado total de interés ORDINARIO condonado (sin mora)
      * @param moraCondonada    total de MORA condonada
      * @param idEmpresa       empresa contable del asiento
-     * @param fecha           fecha contable (la del acuerdo, {@code acuerdo.getFecha()} —
-     *                        NUNCA {@code LocalDate.now()}, regla §3 de condonación)
+     * @param fecha           fecha contable del asiento — la fecha de AFECTACIÓN del acuerdo
+     *                        (API-ACUERDOS-CONDONACION.md, 2026-10-06; antes de ese campo,
+     *                        {@code acuerdo.getFecha()}), NUNCA {@code LocalDate.now()}
      * @param origen          literal corto para {@code MVIC.origen} (p.ej. {@code "CONDONACION"})
      * @param idOrigen        código del acuerdo
      * @param usuario         quién aplica el acuerdo

@@ -182,6 +182,16 @@ public class AcuerdoCondonacionRest {
             return Response.status(Response.Status.CREATED).entity(acuerdo)
                     .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
+            // API-FECHA-AFECTACION-COBRO.md §1 (2026-10-06): estos códigos son error de
+            // VALIDACIÓN del cliente (fecha mal puesta, período cerrado), no un fallo del
+            // servidor — el resto de este endpoint sigue en 500, igual que antes.
+            String mensaje = e.getMessage() != null ? e.getMessage() : "";
+            if (mensaje.startsWith("FECHA_AFECTACION_OBLIGATORIA") || mensaje.startsWith("FECHA_AFECTACION_MENOR_A_PAGO")
+                    || mensaje.startsWith("FECHA_AFECTACION_FUTURA") || mensaje.startsWith("PERIODO_CERRADO")) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity(mensaje)
+                        .type(MediaType.APPLICATION_JSON).build();
+            }
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("Error al registrar el acuerdo: " + e.getMessage())
                     .type(MediaType.APPLICATION_JSON).build();

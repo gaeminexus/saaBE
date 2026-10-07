@@ -1,5 +1,7 @@
 package com.saa.ejb.crd.service;
 
+import java.time.LocalDate;
+
 import com.saa.ejb.crd.service.dto.ResultadoAplicacionAcuerdo;
 import com.saa.ejb.crd.service.dto.SolicitudRegistroAcuerdo;
 import com.saa.model.crd.AcuerdoCondonacion;
@@ -132,12 +134,21 @@ public interface AcuerdoCondonacionService {
      * parte esté terminada, este método debe fallar fuerte (no generar un asiento a medias),
      * no completarlo silenciosamente con una cuenta adivinada.
      *
-     * @param idAcuerdo  : Código del acuerdo
-     * @param usuario    : Usuario que procesa (el mismo que procesa el CBCR)
+     * @param idAcuerdo        : Código del acuerdo
+     * @param usuario          : Usuario que procesa (el mismo que procesa el CBCR)
+     * @param fechaAfectacion  : Fecha de afectación contable (API-ACUERDOS-CONDONACION.md,
+     *                           2026-10-06) — fecha el asiento de condonación, el del cruce de
+     *                           aportes y el reverso de provisión. NUNCA la fecha de pago
+     *                           ({@code acuerdo.getFecha()}, que sigue gobernando cuotas/PGPR/
+     *                           mora sin cambios). Los dos callers (el self-call 100% aportes
+     *                           de {@code registrarAcuerdo} y {@code CobroCreditoServiceImpl}
+     *                           para el camino con depósito) ya la resuelven con el mismo
+     *                           fallback a la fecha de pago antes de llegar acá.
      * @return           : Resultado con el evento, el préstamo y su estado final
      * @throws Throwable : Si el acuerdo no existe, no está VIGENTE, o ya fue aplicado
      */
-    ResultadoAplicacionAcuerdo aplicarAcuerdo(Long idAcuerdo, String usuario) throws Throwable;
+    ResultadoAplicacionAcuerdo aplicarAcuerdo(Long idAcuerdo, String usuario, LocalDate fechaAfectacion)
+            throws Throwable;
 
     /**
      * Anula el acuerdo — se llama SOLO en cascada desde

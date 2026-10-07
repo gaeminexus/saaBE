@@ -301,14 +301,18 @@ public interface ProcesoPagoPrestamoService {
     void recalcularMoraALaFecha(SaldosCuota saldos, DetallePrestamo cuota, double tasaDiaria, LocalDate fecha);
 
     /**
-     * Desglose de TODO lo pendiente del préstamo a una fecha, por los 5 conceptos de
+     * Desglose de lo ADEUDADO del préstamo a una fecha, por los 5 conceptos de
      * {@link com.saa.rubros.CrdConceptoPrestamo} — capital, interés, mora (recalculada
      * fresca), desgravamen y seguro de incendio. SIEMPRE de solo lectura
      * ({@code calcularSaldosCuota}, la variante PURA) — nunca autocorrige ni persiste nada.
      *
-     * A diferencia de {@link #simularPrecancelacion}, no separa exigibles de futuras: un
-     * acuerdo de condonación liquida el préstamo completo en el acto (K1), no hay componente
-     * "futuro" que tratar distinto.
+     * <p><b>Corregido 2026-10-06: SÍ separa exigibles de futuras</b>, igual criterio que
+     * {@link #simularPrecancelacion} (reusa {@code selectCuotasExigibles}, nunca
+     * reimplementado) — un acuerdo de condonación liquida el préstamo completo en el acto (K1),
+     * pero eso no significa que el interés de una cuota futura sea "adeudado": de las cuotas que
+     * todavía no vencen a {@code fecha}, solo el CAPITAL entra al desglose; su interés, mora,
+     * desgravamen y seguro no son deuda todavía, y contarlos infla lo que el acuerdo obliga a
+     * repartir entre pagado y condonado.</p>
      *
      * @param idPrestamo : Código del préstamo
      * @param fecha      : Fecha de corte; si es null se usa hoy
@@ -316,4 +320,20 @@ public interface ProcesoPagoPrestamoService {
      * @throws Throwable : Si el préstamo no existe
      */
     DesgloseConceptosPrestamo calcularDesgloseConceptos(Long idPrestamo, LocalDate fecha) throws Throwable;
+
+    /**
+     * API-FECHA-AFECTACION-COBRO.md §1 — valida la fecha de afectación contable con las MISMAS
+     * reglas que ya usa CBCR, compartidas acá para que nadie las reimplemente (acuerdo de
+     * condonación 100% aportes, precancelación directa, y cualquier otro camino directo que
+     * necesite esta fecha sin pasar por un {@code CobroCredito}/{@code CuentaBancaria}).
+     * Códigos 400: {@code FECHA_AFECTACION_OBLIGATORIA}, {@code FECHA_AFECTACION_MENOR_A_PAGO},
+     * {@code FECHA_AFECTACION_FUTURA}, {@code PERIODO_CERRADO}.
+     *
+     * @param fechaAfectacion fecha de afectación contable a validar
+     * @param fechaPago       fecha de pago real de la operación — {@code fechaAfectacion} no
+     *                        puede ser anterior a esta
+     * @param idEmpresa       empresa contable cuyo período se verifica
+     * @throws Throwable {@code IncomeException} con uno de los 4 códigos de arriba si no pasa
+     */
+    void validarFechaAfectacion(LocalDate fechaAfectacion, LocalDate fechaPago, Long idEmpresa) throws Throwable;
 }

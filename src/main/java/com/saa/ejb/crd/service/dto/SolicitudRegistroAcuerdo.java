@@ -30,6 +30,14 @@ public class SolicitudRegistroAcuerdo {
     /** Fecha de negocio del acuerdo (y del cobro). Obligatorio. */
     private LocalDate fecha;
 
+    /**
+     * Fecha de afectación contable (API-ACUERDOS-CONDONACION.md, sección «fechaAfectacion»,
+     * API-FECHA-AFECTACION-COBRO.md §2) — OPCIONAL; si no viene, vale {@link #fecha}. Con
+     * depósito, se pasa tal cual al {@code CobroCredito} del depósito. Con 100% aportes (sin
+     * CBCR), fecha el asiento de condonación y el del cruce del acuerdo.
+     */
+    private LocalDate fechaAfectacion;
+
     /** Observación del usuario. */
     private String observacion;
 
@@ -101,6 +109,14 @@ public class SolicitudRegistroAcuerdo {
 
     public void setFecha(LocalDate fecha) {
         this.fecha = fecha;
+    }
+
+    public LocalDate getFechaAfectacion() {
+        return fechaAfectacion;
+    }
+
+    public void setFechaAfectacion(LocalDate fechaAfectacion) {
+        this.fechaAfectacion = fechaAfectacion;
     }
 
     public String getObservacion() {

@@ -1140,7 +1140,8 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
                 return resultado;
             }
 
-            ResultadoAplicacionAcuerdo resultado = acuerdoCondonacionService.aplicarAcuerdo(idAcuerdo, usuario);
+            ResultadoAplicacionAcuerdo resultado = acuerdoCondonacionService.aplicarAcuerdo(idAcuerdo, usuario,
+                cobro.getFechaAfectacion());
             enlazarEvento(linea, resultado.getIdEvento());
             clasificacionBandaPorPago.putAll(registrarDistribucionBandaEvento(idCobro, derivarEmpresaCobro(cobro),
                 resultado.getIdEvento(), usuario));

@@ -166,6 +166,16 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
 
         Prestamo prestamo = validar(solicitud);
 
+        // API-ACUERDOS-CONDONACION.md, sección «fechaAfectacion» (2026-10-06): opcional, por
+        // defecto la fecha de pago. Se valida ACÁ, temprano, antes de escribir nada — para los
+        // dos caminos por igual (con depósito, CBCR la vuelve a validar más abajo al registrar
+        // el cobro, con los mismos valores de ESTA solicitud: doble validación inofensiva, no
+        // el caso de "fecha vieja" que sí justifica saltarla en precancelación CASO B).
+        LocalDate fechaAfectacionEfectiva = solicitud.getFechaAfectacion() != null
+                ? solicitud.getFechaAfectacion() : solicitud.getFecha();
+        procesoPagoPrestamoService.validarFechaAfectacion(fechaAfectacionEfectiva, solicitud.getFecha(),
+                solicitud.getIdEmpresa());
+
         AcuerdoCondonacion acuerdo = new AcuerdoCondonacion();
         acuerdo.setEntidad(prestamo.getEntidad());
         acuerdo.setPrestamo(prestamo);
@@ -228,7 +238,7 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
             // llegue — un saldo que ya está en el sistema no tiene ese riesgo). Se aplica en
             // la MISMA transacción de este registro: self-call directo, no por el proxy del
             // EJB, para que quede en la misma unidad atómica que el registro.
-            aplicarAcuerdo(acuerdo.getCodigo(), solicitud.getUsuario());
+            aplicarAcuerdo(acuerdo.getCodigo(), solicitud.getUsuario(), fechaAfectacionEfectiva);
             return acuerdoCondonacionDaoService.selectById(acuerdo.getCodigo(),
                     NombreEntidadesCredito.ACUERDO_CONDONACION);
         }
@@ -243,6 +253,7 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
         solicitudCobro.setRutaRespaldo(solicitud.getRutaRespaldo());
         solicitudCobro.setValor(valorPagarDeposito);
         solicitudCobro.setFecha(solicitud.getFecha());
+        solicitudCobro.setFechaAfectacion(fechaAfectacionEfectiva);
         solicitudCobro.setObservacion(solicitud.getObservacion());
         solicitudCobro.setUsuario(solicitud.getUsuario());
         DetalleRegistroCobroDTO lineaCobro = new DetalleRegistroCobroDTO();
@@ -481,8 +492,10 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
     // =====================================================================
 
     @Override
-    public ResultadoAplicacionAcuerdo aplicarAcuerdo(Long idAcuerdo, String usuario) throws Throwable {
-        System.out.println("AcuerdoCondonacionService.aplicarAcuerdo - acuerdo: " + idAcuerdo);
+    public ResultadoAplicacionAcuerdo aplicarAcuerdo(Long idAcuerdo, String usuario, LocalDate fechaAfectacion)
+            throws Throwable {
+        System.out.println("AcuerdoCondonacionService.aplicarAcuerdo - acuerdo: " + idAcuerdo
+                + " - fechaAfectacion: " + fechaAfectacion);
         if (usuario == null || usuario.trim().isEmpty()) {
             throw new IncomeException("usuario es obligatorio");
         }
@@ -505,6 +518,12 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
         // distintos de los que se aprobaron, sin que nada lo detecte.
         LocalDate fecha = acuerdo.getFecha();
         LocalDateTime fechaHora = fecha.atStartOfDay();
+        // API-ACUERDOS-CONDONACION.md, API-FECHA-AFECTACION-COBRO.md §2: distinta de `fecha`
+        // (pago real — PGPR, mora, staleness, NUNCA se toca) — el asiento de condonación y el
+        // reverso de provisión se fechan con ESTA. Si el llamador no la pasó explícita (no
+        // debería pasar: los dos callers siempre la resuelven con el mismo fallback a `fecha`
+        // antes de llegar acá), cae a `fecha` — nunca a hoy.
+        LocalDate fechaAsiento = fechaAfectacion != null ? fechaAfectacion : fecha;
 
         double capitalPagado = valorConceptoPagado(detalles, CrdConceptoPrestamo.CAPITAL);
         double interesPagado = valorConceptoPagado(detalles, CrdConceptoPrestamo.INTERES);
@@ -635,7 +654,8 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
         // (hoy) esto ni se intenta. Con el flag encendido y la línea de gasto todavía sin
         // definir (§6.2), falla FUERTE con un mensaje claro — no genera un asiento a medias.
         if (configuracionContabilidadService.contabilidadActiva()) {
-            generarAsientoCondonacion(acuerdo, prestamo, pendientes, capitalCondonado, interesCondonado, fecha);
+            generarAsientoCondonacion(acuerdo, prestamo, pendientes, capitalCondonado, interesCondonado, fecha,
+                    fechaAsiento);
 
             // ÍTEM 4, diseño §5/7bis/R2: la parte CONDONADA (nunca pasó por el PagoPrestamo K9)
             // también reduce lo provisionado. `pendientes` (donde cae esta condonación) y
@@ -646,7 +666,7 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
                 double interesCondonadoSolo = valorConceptoCondonado(detalles, CrdConceptoPrestamo.INTERES);
                 double moraCondonadaSolo = valorConceptoCondonado(detalles, CrdConceptoPrestamo.MORA);
                 provisionInteresService.condonarProvision(pendientes, interesCondonadoSolo, moraCondonadaSolo,
-                        acuerdo.getEmpresa().getCodigo(), fecha, "CONDONACION", idAcuerdo, usuario);
+                        acuerdo.getEmpresa().getCodigo(), fechaAsiento, "CONDONACION", idAcuerdo, usuario);
             }
         } else {
             System.out.println("  AcuerdoCondonacionService.aplicarAcuerdo - contabilidad de CRD"
@@ -670,7 +690,7 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
                 renglon.setValor(linea.getValor());
                 aportes.add(renglon);
             }
-            generarAsientoCruceAportesAcuerdo(acuerdo, aportes, pago, fecha);
+            generarAsientoCruceAportesAcuerdo(acuerdo, aportes, pago, fecha, fechaAsiento);
         }
 
         ResultadoAplicacionAcuerdo resultado = new ResultadoAplicacionAcuerdo();
@@ -694,7 +714,7 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
      */
     private void generarAsientoCondonacion(AcuerdoCondonacion acuerdo, Prestamo prestamo,
             List<DetallePrestamo> pendientes, double capitalCondonado, double interesCondonado,
-            LocalDate fecha) throws Throwable {
+            LocalDate fecha, LocalDate fechaAsiento) throws Throwable {
         if (capitalCondonado <= 0.0 && interesCondonado <= 0.0) {
             System.out.println("  AcuerdoCondonacionService.generarAsientoCondonacion - acuerdo "
                     + acuerdo.getCodigo() + " no condonó nada; no se genera asiento.");
@@ -897,7 +917,7 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
             observacionCondonacion += " | idAsoprep: " + prestamo.getIdAsoprep();
         }
 
-        Asiento asiento = asientoContableService.generarAsiento(idEmpresa, TipoAsientos.CREDITOS, fecha,
+        Asiento asiento = asientoContableService.generarAsiento(idEmpresa, TipoAsientos.CREDITOS, fechaAsiento,
                 observacionCondonacion,
                 acuerdo.getUsuarioRegistro(), lineasFinal, Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR));
 
@@ -925,7 +945,7 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
      * este método.
      */
     private void generarAsientoCruceAportesAcuerdo(AcuerdoCondonacion acuerdo, List<DesgloseAporte> aportes,
-            PagoPrestamo pago, LocalDate fecha) throws Throwable {
+            PagoPrestamo pago, LocalDate fechaPago, LocalDate fechaAsiento) throws Throwable {
         if (acuerdo.getEmpresa() == null) {
             throw new IncomeException("El acuerdo " + acuerdo.getCodigo()
                     + " no tiene empresa asignada; no se puede generar el asiento del cruce de aportes.");
@@ -945,7 +965,7 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
         // regla (saldoOtros si es > 0, si no capitalPagado) que usan CBCRASN2 y el cruce de
         // valores, en vez de una tercera copia divergente.
         lineas.addAll(contabilizacionIndividualCreditoService.haberDesdePagos(
-                java.util.Collections.singletonList(pago), idEmpresa, idPlantillaAplicacion, fecha, prefijo));
+                java.util.Collections.singletonList(pago), idEmpresa, idPlantillaAplicacion, fechaPago, prefijo));
 
         if (lineas.isEmpty()) {
             System.out.println("  AcuerdoCondonacionService.generarAsientoCruceAportesAcuerdo - acuerdo "
@@ -981,7 +1001,7 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
             observacionCruce += " | idAsoprep: " + prestamo.getIdAsoprep();
         }
 
-        Asiento asiento = asientoContableService.generarAsiento(idEmpresa, TipoAsientos.CREDITOS, fecha,
+        Asiento asiento = asientoContableService.generarAsiento(idEmpresa, TipoAsientos.CREDITOS, fechaAsiento,
                 observacionCruce,
                 acuerdo.getUsuarioRegistro(), lineas, Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR));
 

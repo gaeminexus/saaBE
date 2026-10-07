@@ -1046,12 +1046,10 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
     }
 
     /**
-     * API-FECHA-AFECTACION-COBRO.md §1/§2bis, reimplementado acá (no reusa
-     * {@code CobroCreditoServiceImpl#validarFechaAfectacion} porque ese método es privado de esa
-     * clase y deriva {@code idEmpresa} de una {@code CuentaBancaria} que esta solicitud no
-     * tiene — acá ya viene directo en {@code solicitud.getIdEmpresa()}). Mismos códigos 400.
+     * @see ProcesoPagoPrestamoService#validarFechaAfectacion
      */
-    private void validarFechaAfectacionPrecancelacion(LocalDate fechaAfectacion, LocalDate fechaPago,
+    @Override
+    public void validarFechaAfectacion(LocalDate fechaAfectacion, LocalDate fechaPago,
             Long idEmpresa) throws Throwable {
         if (fechaAfectacion == null) {
             throw new IncomeException("FECHA_AFECTACION_OBLIGATORIA: fechaAfectacion es obligatoria");
@@ -1109,7 +1107,7 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
         // sobre la fecha de PAGO real (que puede ser vieja) rompía con PERIODO_CERRADO toda
         // precancelación tardía por depósito (defecto encontrado y corregido 2026-10-05).
         if (solicitud.getIdCobroCredito() == null) {
-            validarFechaAfectacionPrecancelacion(fechaAfectacionEfectiva, fecha, solicitud.getIdEmpresa());
+            validarFechaAfectacion(fechaAfectacionEfectiva, fecha, solicitud.getIdEmpresa());
         }
 
         CalculoPrecancelacion calculo = calcularPrecancelacion(prestamo, fecha, false);
