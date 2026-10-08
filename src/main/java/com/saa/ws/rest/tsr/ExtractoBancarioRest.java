@@ -213,6 +213,12 @@ public class ExtractoBancarioRest {
             ResumenImportacionExtracto resumen = importacionExtractoBancarioService
                     .validar(archivoInputStream, archivoNombre, idCuentaBancaria, idPeriodo);
             return Response.status(Response.Status.OK).entity(resumen).type(MediaType.APPLICATION_JSON).build();
+        } catch (IncomeException e) {
+            // obtenerCuenta/obtenerPeriodoAbierto (ImportacionExtractoBancarioServiceImpl.validar):
+            // cuenta inexistente, periodo no seleccionado/inexistente, o periodo cerrado -- error
+            // del usuario, no del servidor -- 400 sin prefijo, para que el FE muestre el mensaje tal cual.
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("Error al validar importacion de extracto bancario: " + e.getMessage())
@@ -264,6 +270,12 @@ public class ExtractoBancarioRest {
                     archivoNombre, idCuentaBancaria, idPeriodo, idEmpresa, usuarioCreacion);
             return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON)
                     .build();
+        } catch (IncomeException e) {
+            // ejecutarImportacion (ImportacionExtractoBancarioServiceImpl.confirmar): archivo ya
+            // cargado previamente, cuenta/periodo inexistente o periodo cerrado -- error del
+            // usuario, no del servidor -- 400 sin prefijo, para que el FE muestre el mensaje tal cual.
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("Error al confirmar importacion de extracto bancario: " + e.getMessage())
