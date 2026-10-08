@@ -12,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 import com.saa.basico.util.DatosBusqueda;
+import com.saa.basico.util.IncomeException;
 import com.saa.ejb.tsr.dao.ExtractoBancarioDaoService;
 import com.saa.ejb.tsr.service.ExtractoBancarioService;
 import com.saa.ejb.tsr.service.ImportacionExtractoBancarioService;
@@ -317,6 +318,13 @@ public class ExtractoBancarioRest {
             ResumenImportacionExtracto resultado = importacionExtractoBancarioService.recargar(archivoInputStream,
                     archivoNombre, idCuentaBancaria, idPeriodo, idEmpresa, usuarioCreacion);
             return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (IncomeException e) {
+            // Guardas de negocio de ImportacionExtractoBancarioServiceImpl.recargar (filas
+            // conciliadas, partidas en tránsito, período cerrado, conciliación verificada,
+            // archivo ya cargado): error del usuario, no del servidor -- 400 sin prefijo, para
+            // que el FE muestre el mensaje tal cual.
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("Error al recargar extracto bancario: " + e.getMessage())
