@@ -25,9 +25,14 @@
   devuelve un extracto. Mensaje:
   *«Ya existe un extracto cargado para esta cuenta y este período (extracto #N, «archivo»). Para
   reemplazarlo use «Recargar extracto».»*
-- `validar` muestra lo mismo **antes** de confirmar. El usuario se entera en la vista previa y no al final.
-- `recargar` **no** cambia: borra el anterior e importa el nuevo. Se reordena para que la guarda G-A no
-  la frene: la validación va en `confirmar`/`validar`, **no** dentro de `ejecutarImportacion`.
+- **`validar` NO lleva G-A** (corregido el 2026-10-12, antes de commitear). La primera versión de esta spec
+  la ponía también en `validar`, y eso rompía la recarga: la pantalla
+  (`cargar-extracto-bancario.component.ts`, `recargarExtracto()`) exige el `resumen` de `/importar/validar`
+  antes de recargar, así que con un extracto activo la vista previa daba 400 y «Recargar» quedaba
+  inalcanzable. La pantalla ya sabe de antemano si existe extracto (`existeExtractoPrevio`, por
+  `resumenPorPeriodo`) y muestra el botón «Recargar»: la vista previa no necesita frenar.
+- `recargar` **no** cambia: borra el anterior e importa el nuevo. La guarda G-A va solo en `confirmar`,
+  **no** dentro de `ejecutarImportacion`, porque `recargar` también la usa.
 
 **G-B. No se carga un extracto sin movimientos cuando los saldos dicen que los hubo.**
 - Si el parser devuelve 0 filas **y** el saldo inicial es distinto del saldo final (con la tolerancia que ya

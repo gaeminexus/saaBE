@@ -138,6 +138,46 @@ falta saber antes de diseñar:
 
 **Primer paso:** un inventario de solo lectura (BE). El diseño se escribe con el inventario en la mano.
 
+### Inventario (omen-saa-2-be, 2026-10-12; lo que dice «verificado» lo leyó en el código)
+
+**Cómo se elige hoy el tipo.** `AsientoContableServiceImpl.generarAsiento` (l.469/478) **no usa plantilla**:
+resuelve el tipo con `tipoAsientoService.codigoByAlterno(codigoAlterno, idEmpresa)`. El prefijo del número
+sale de las **3 primeras letras del nombre** del tipo (`AsientoServiceImpl.asignaNumeroAlterno` ~l.239), así
+que `DIA-` existe porque en BD hay un tipo cuyo nombre empieza con «DIA». `TipoAsientos` **no tiene constante
+de DIARIO**. Las dos familias de constantes (legacy 0–7 y alternos modernos) **chocan en valores** (2, 4, 5 y 1).
+Qué fila de BD hay detrás de cada alterno falta medirlo con un script.
+
+**Ningún código genera `DIA-`**: son asientos manuales. El `e2-82` muestra que contabilidad ya hacía **a mano
+como diario** los mismos procesos que el sistema hoy genera como Egreso (`DIA-2026-07-0002` caja chica,
+`DIA-2026-07-0036` cruce de anticipo).
+
+**Procesos del alcance que generan Ingreso/Egreso SIN línea de banco:**
+
+| Método (`AsientoContableServiceImpl`) | Llamado desde | Tipo hoy |
+|---|---|---|
+| `generarAsientoEgresoContraAnticipo` (l.1048) | `tsr/EgresoServiceImpl:312` (`a4e1e042`) | 5 EGRESO_TESORERIA |
+| `generarAsientoAplicacionAnticipoProveedor` (l.866) | `cxp/AplicacionPagoCxpServiceImpl:636` | 5 APLICACION_ANTICIPO_PROVEEDOR |
+| `generarAsientoAplicacionAnticipoCliente` (l.909) | `cxc/AplicacionPagoCxcServiceImpl:516` | 4 APLICACION_ANTICIPO_CLIENTE |
+| `generarAsientoGastoCajaChica` (l.1120) | `tsr/MovimientoCajaChicaServiceImpl:242` | 5 (fijo) |
+| `generarAsientoAplicacionCajaChica` (l.1150) | `cxp/AplicacionPagoCxpServiceImpl:978` | 5 (fijo) |
+| `generarAsientoAjusteCajaChica` (l.1216) | `tsr/CierreCajaChicaServiceImpl:241` | 5 (fijo) |
+| `generarAsientoAnticipo` (l.562) | `cxc/AnticipoClienteServiceImpl:285` | 4 — **no determinable**: depende de si la cuenta tipo 3 del cliente es un banco |
+
+La devolución de anticipo **sí** lleva banco: no entra. Tampoco los cobros y pagos por transferencia, los
+ingresos y egresos de tesorería, la reposición de caja chica ni el anticipo a empleado.
+
+**Preguntas para Ana antes de diseñar:**
+1. ¿La regla es solo para lo que hoy sale como Ingreso/Egreso, o para **todo** asiento sin banco? (RRHH tipo 6 y
+   los documentos de compra/venta tipo 2/3 tampoco llevan banco.)
+2. Los reversos conservan el tipo del original: un reverso de un Egreso viejo, ¿sigue siendo Egreso?
+3. El código legacy de tsr (`insertarCabeceraAsiento`: cheques, cobros, depósitos, débitos/créditos, cierre de
+   caja) no se clasificó a fondo. ¿Se usa todavía?
+
+**crd** (de `omen-saa-1`; todos usan `TipoAsientos.CREDITOS`, no Ingreso/Egreso, así que en principio quedan
+fuera del pedido literal): condonaciones, cruce de aportes, jubilación, cierre de cartera, cobros
+(transitorio/reparto/definitivo), Petro, contabilización de préstamos, devolución de aportes, pensión
+complementaria, provisiones, recepción de seguros. Solo se nombran.
+
 ---
 
 ## P6 y P7 — Informativos

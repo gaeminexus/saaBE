@@ -57,6 +57,9 @@ import jakarta.ejb.TransactionAttributeType;
 @Stateless
 public class ImportacionExtractoBancarioServiceImpl implements ImportacionExtractoBancarioService {
 
+    /** Tolerancia para comparar saldos del extracto (el servicio no tenia ninguna; ver GUARDA-CARGA-EXTRACTO.md G-B). */
+    private static final double TOLERANCIA_SALDO = 0.005;
+
     @EJB
     private CuentaBancariaDaoService cuentaBancariaDaoService;
 
@@ -111,6 +114,8 @@ public class ImportacionExtractoBancarioServiceImpl implements ImportacionExtrac
 
         BankStatementParser parser = BankStatementParserFactory.resolver(cuenta);
         ParsedStatement parsed = parser.parse(new ByteArrayInputStream(bytes), cuenta);
+        // G-B (GUARDA-CARGA-EXTRACTO.md): sin filas pero con saldos distintos se rechaza.
+        validarMovimientosVsSaldos(parsed);
 
         ResumenImportacionExtracto resumen = new ResumenImportacionExtracto();
         resumen.setIdCuentaBancaria(idCuentaBancaria);
@@ -145,6 +150,9 @@ public class ImportacionExtractoBancarioServiceImpl implements ImportacionExtrac
         System.out.println("Ingresa al metodo confirmar (importacion extracto) con idCuentaBancaria: "
                 + idCuentaBancaria + ", idPeriodo: " + idPeriodo + ", idEmpresa: " + idEmpresa
                 + ", archivo: " + nombreArchivo);
+        // G-A (GUARDA-CARGA-EXTRACTO.md): un solo extracto activo por cuenta y periodo. Va aqui y no en
+        // ejecutarImportacion porque recargar() tambien la usa y debe poder reemplazar el anterior.
+        validarSinExtractoActivo(idCuentaBancaria, idPeriodo);
         return ejecutarImportacion(archivo, nombreArchivo, idCuentaBancaria, idPeriodo, idEmpresa, usuarioCreacion)
                 .extracto;
     }
@@ -306,6 +314,8 @@ public class ImportacionExtractoBancarioServiceImpl implements ImportacionExtrac
 
         BankStatementParser parser = BankStatementParserFactory.resolver(cuenta);
         ParsedStatement parsed = parser.parse(new ByteArrayInputStream(bytes), cuenta);
+        // G-B (GUARDA-CARGA-EXTRACTO.md): aplica a confirmar y a recargar.
+        validarMovimientosVsSaldos(parsed);
 
         LocalDateTime ahora = LocalDateTime.now();
 
@@ -384,6 +394,40 @@ public class ImportacionExtractoBancarioServiceImpl implements ImportacionExtrac
             System.out.println("No se pudo actualizar el tablero de cumplimiento tras confirmar importacion: "
                     + e.getMessage());
         }
+    }
+
+    /**
+     * G-A (GUARDA-CARGA-EXTRACTO.md): rechaza la carga si la cuenta ya tiene un extracto activo en el
+     * periodo; para reemplazarlo existe "Recargar extracto".
+     */
+    private void validarSinExtractoActivo(Long idCuentaBancaria, Long idPeriodo) throws Throwable {
+        ExtractoBancario activo = extractoBancarioDaoService.selectByCuentaYPeriodo(idCuentaBancaria, idPeriodo);
+        if (activo != null) {
+            throw new IncomeException("Ya existe un extracto cargado para esta cuenta y este periodo (extracto #"
+                    + activo.getCodigo() + ", " + activo.getArchivoNombre()
+                    + "). Para reemplazarlo use \"Recargar extracto\".");
+        }
+    }
+
+    /**
+     * G-B (GUARDA-CARGA-EXTRACTO.md): 0 filas con saldo inicial distinto del final es un archivo que el
+     * parser no supo leer, no un mes sin movimientos. Con saldos iguales o nulos se acepta y se agrega la
+     * advertencia al resumen.
+     */
+    private void validarMovimientosVsSaldos(ParsedStatement parsed) throws Throwable {
+        if (!parsed.getDetalles().isEmpty()) {
+            return;
+        }
+        Double inicial = parsed.getSaldoInicial();
+        Double fin = parsed.getSaldoFinal();
+        if (inicial != null && fin != null && Math.abs(inicial - fin) > TOLERANCIA_SALDO) {
+            throw new IncomeException("El archivo no tiene movimientos reconocibles, pero el saldo inicial ("
+                    + inicial + ") y el final (" + fin + ") son distintos. Revise que el formato del archivo "
+                    + "sea el que entrega el banco para esta cuenta.");
+        }
+        List<String> advertencias = new ArrayList<>(parsed.getAdvertencias());
+        advertencias.add("El extracto no tiene movimientos");
+        parsed.setAdvertencias(advertencias);
     }
 
     private CuentaBancaria obtenerCuenta(Long idCuentaBancaria) throws Throwable {
