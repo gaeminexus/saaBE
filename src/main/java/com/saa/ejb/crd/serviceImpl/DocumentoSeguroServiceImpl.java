@@ -119,7 +119,35 @@ public class DocumentoSeguroServiceImpl implements DocumentoSeguroService {
             throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": usuario es obligatorio");
         }
 
+        // S16.5: la lista presente y vacía es un error, no "todos".
+        if (solicitud.getIdsPrestamo() != null && solicitud.getIdsPrestamo().isEmpty()) {
+            throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": elija al menos un préstamo");
+        }
+
         List<ItemCandidato> candidatos = calcularCandidatos(solicitud.getTipoSeguro(), solicitud.getFechaCorte());
+
+        // S16.2/S16.3: con idsPrestamo se trabaja solo con los elegidos; cada id tiene que estar
+        // entre los candidatos recalculados acá (la base nunca la manda el FE). Un id repetido
+        // cuenta una vez. Todo esto va ANTES de grabar nada.
+        if (solicitud.getIdsPrestamo() != null) {
+            java.util.Set<Long> elegidos = new java.util.LinkedHashSet<>(solicitud.getIdsPrestamo());
+            List<ItemCandidato> filtrados = new ArrayList<>();
+            for (ItemCandidato item : candidatos) {
+                if (elegidos.remove(item.prestamo.getCodigo())) {
+                    filtrados.add(item);
+                }
+            }
+            if (!elegidos.isEmpty()) {
+                List<String> noElegibles = new ArrayList<>();
+                for (Long id : elegidos) {
+                    noElegibles.add(String.valueOf(id));
+                }
+                throw new IncomeException(ERR_PRESTAMO_NO_ELEGIBLE
+                    + ": los siguientes préstamos no son candidatos para este tipo de seguro y fecha de corte: "
+                    + String.join(", ", noElegibles));
+            }
+            candidatos = filtrados;
+        }
 
         if (solicitud.getTipoSeguro() != TipoSeguro.DESGRAVAMEN) {
             List<String> sinSuma = new ArrayList<>();
@@ -1006,6 +1034,31 @@ public class DocumentoSeguroServiceImpl implements DocumentoSeguroService {
                 + " ya está registrada en el documento " + existente.getCodigo());
         }
 
+        // Primer pase (S16.9): se resuelve cada préstamo y su base ANTES de grabar la nota. Una ND
+        // de incendio/prendario con un préstamo sin suma asegurada se rechaza; la NC no cambia.
+        List<Prestamo> prestamosNota = new ArrayList<>();
+        List<Double> basesNota = new ArrayList<>();
+        List<String> sinSuma = new ArrayList<>();
+        boolean validaSuma = solicitud.getClase() == ClaseDocumentoSeguro.NOTA_DEBITO
+            && factura.getTipoSeguro() != TipoSeguro.DESGRAVAMEN;
+        for (Long idPrestamo : solicitud.getPrestamos()) {
+            Prestamo prestamo = prestamoDaoService.find(new Prestamo(), idPrestamo);
+            if (prestamo == null) {
+                throw new IncomeException(ERR_PRESTAMO_NO_ENCONTRADO + ": no existe el préstamo " + idPrestamo);
+            }
+            double base = baseActualDe(prestamo, factura.getTipoSeguro());
+            if (validaSuma && base <= 0.0) {
+                sinSuma.add(numeroPrestamoDe(prestamo));
+            }
+            prestamosNota.add(prestamo);
+            basesNota.add(base);
+        }
+        if (!sinSuma.isEmpty()) {
+            throw new IncomeException(ERR_HAY_PRESTAMOS_SIN_SUMA_ASEGURADA
+                + ": los siguientes préstamos no tienen suma asegurada (PRSTVLAS): "
+                + String.join(", ", sinSuma));
+        }
+
         DocumentoSeguro nota = new DocumentoSeguro();
         nota.setTipoSeguro(factura.getTipoSeguro());
         nota.setClase(solicitud.getClase());
@@ -1027,12 +1080,9 @@ public class DocumentoSeguroServiceImpl implements DocumentoSeguroService {
 
         long novedad = solicitud.getClase() == ClaseDocumentoSeguro.NOTA_DEBITO
             ? NovedadPrestamoSeguro.INCLUSION : NovedadPrestamoSeguro.EXCLUSION;
-        for (Long idPrestamo : solicitud.getPrestamos()) {
-            Prestamo prestamo = prestamoDaoService.find(new Prestamo(), idPrestamo);
-            if (prestamo == null) {
-                throw new IncomeException(ERR_PRESTAMO_NO_ENCONTRADO + ": no existe el préstamo " + idPrestamo);
-            }
-            double base = baseActualDe(prestamo, factura.getTipoSeguro());
+        for (int i = 0; i < prestamosNota.size(); i++) {
+            Prestamo prestamo = prestamosNota.get(i);
+            double base = basesNota.get(i);
             PrestamoSeguro ps = new PrestamoSeguro();
             ps.setDocumento(nota);
             ps.setPrestamo(prestamo);

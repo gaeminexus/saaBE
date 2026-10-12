@@ -471,7 +471,8 @@ public class DocumentoSeguroRest {
                 || SumaAseguradaService.ERR_PRESTAMO_NO_ENCONTRADO.equals(codigo)) {
             status = Response.Status.NOT_FOUND.getStatusCode();
         } else if (DocumentoSeguroService.ERR_SIN_CUOTAS_EN_VIGENCIA.equals(codigo)
-                || DocumentoSeguroService.ERR_DISTRIBUCION_NO_CUADRA.equals(codigo)) {
+                || DocumentoSeguroService.ERR_DISTRIBUCION_NO_CUADRA.equals(codigo)
+                || DocumentoSeguroService.ERR_PRESTAMO_NO_ELEGIBLE.equals(codigo)) {
             status = HTTP_REGLA_DE_NEGOCIO;
         } else if (DocumentoSeguroService.ERR_HAY_PRESTAMOS_SIN_SUMA_ASEGURADA.equals(codigo)
                 || DocumentoSeguroService.ERR_ESTADO_INVALIDO.equals(codigo)

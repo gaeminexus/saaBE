@@ -9,6 +9,8 @@ public class SolicitudGenerarListado {
     private LocalDate fechaCorte;
     private String usuario;
     private String observacion;
+    /** S16: préstamos elegidos. Null = comportamiento anterior (todos los candidatos). */
+    private java.util.List<Long> idsPrestamo;
 
     public Long getTipoSeguro() { return tipoSeguro; }
     public void setTipoSeguro(Long tipoSeguro) { this.tipoSeguro = tipoSeguro; }
@@ -21,4 +23,7 @@ public class SolicitudGenerarListado {
 
     public String getObservacion() { return observacion; }
     public void setObservacion(String observacion) { this.observacion = observacion; }
+
+    public java.util.List<Long> getIdsPrestamo() { return idsPrestamo; }
+    public void setIdsPrestamo(java.util.List<Long> idsPrestamo) { this.idsPrestamo = idsPrestamo; }
 }
