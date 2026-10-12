@@ -260,3 +260,32 @@ El abono y el reverso de operaciones **borran** cuotas de `DTPR` y las vuelven a
 **Decisión del usuario:** en el listado (§3 del contrato, todos los tipos) sólo entran préstamos con **al menos una
 cuota no PAGADA ni CANCELADA ANTICIPADA con vencimiento > fecha de corte**. Un préstamo con el plazo terminado
 queda fuera aunque siga debiendo.
+
+## 7. S16 — 2026-10-12: el listado se genera con los préstamos que el usuario elige
+
+**El pedido (usuario, 2026-10-12):** al cargar el seguro de incendio de los hipotecarios hay préstamos
+que todavía no entran en la póliza porque están en regularización. Hoy `POST /posg/listado` responde
+409 `HAY_PRESTAMOS_SIN_SUMA_ASEGURADA` si **un solo** candidato no tiene suma asegurada, y la pantalla
+deshabilita «Generar listado». El proceso queda bloqueado por préstamos que nadie quiere incluir.
+
+**Decisión del árbitro.** El usuario ofreció dos salidas: dejar fuera a los que no tienen suma, o elegir
+a mano. Se hacen las dos con un solo mecanismo:
+
+| # | Regla |
+|---|---|
+| S16.1 | La vista previa muestra una casilla por préstamo. Vienen **marcados** todos los que tienen base > 0 y **desmarcados y bloqueados** los que no tienen suma asegurada. Con eso, «dejar fuera a los sin suma» es lo que sale por defecto, y el usuario puede desmarcar más. |
+| S16.2 | `POST /posg/listado` acepta `idsPrestamo` (opcional). Si viene, el documento se crea **solo** con esos préstamos. El servidor **recalcula** los candidatos y la base, igual que hoy. No confía en la base que manda el FE. |
+| S16.3 | Cada id de `idsPrestamo` tiene que estar entre los candidatos de ese tipo y esa fecha de corte. Si alguno no está, la respuesta es 422 `PRESTAMO_NO_ELEGIBLE` con la lista y no se graba nada. Un id repetido se toma una vez. |
+| S16.4 | Si un id elegido **no tiene suma asegurada** (incendio o prendario), la respuesta sigue siendo 409 `HAY_PRESTAMOS_SIN_SUMA_ASEGURADA`, pero ahora con solo esos ids. Un préstamo con base 0 no recibe prima al distribuir (§5.3), así que meterlo es un error. |
+| S16.5 | `idsPrestamo` presente y vacío da 400 `PARAMETRO_INVALIDO` («elija al menos un préstamo»). |
+| S16.6 | **Sin `idsPrestamo`** el comportamiento es el de hoy, 409 incluido, para no romper a ningún cliente viejo. El FE nuevo **siempre** manda la lista. |
+| S16.7 | Vale para los tres tipos. En desgravamen nunca hay «sin suma», pero el usuario también puede desmarcar. |
+| S16.8 | Si después se regulariza, el préstamo que quedó fuera aparece **solo** en `GET /posg/{idFactura}/novedades` como inclusión. Entra a la póliza con una **nota de débito** (S5), sin nada nuevo que construir. |
+| S16.9 | **Hueco que cierra este cambio:** `POST /posg/{idFactura}/nota` con clase 2 (ND) de incendio o prendario hoy acepta un préstamo sin suma asegurada y lo graba con base 0. Ahora se rechaza con 409 `HAY_PRESTAMOS_SIN_SUMA_ASEGURADA` y la lista. La NC no cambia, porque reparte por el `DTPRSICP` de las cuotas y no por la base. |
+
+**Sin DDL ni SQL.** La exclusión no se guarda en ningún lado: un préstamo fuera del documento
+simplemente no tiene `PSPR`. El Excel que se le manda a la aseguradora (`GET /posg/{id}/listado/excel`)
+sale de los `PSPR`, así que solo trae lo elegido. El Excel de la **vista previa** sigue trayendo todos
+los candidatos: es una consulta, no el listado.
+
+**Contrato:** `API-POLIZAS-SEGURO.md` §3 y §7, con espejo en saaFE.
