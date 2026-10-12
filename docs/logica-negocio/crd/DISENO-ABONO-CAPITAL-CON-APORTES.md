@@ -102,3 +102,44 @@ En un abono, casi todo el capital es futuro. Con depósito 300 + aportes 200, el
 - Renombrar `CRD.DAPR`.
 - Reservar el saldo de aportes al registrar (AA8 cubre ese caso con el rechazo automático).
 - Pagar cuotas con aportes mixto. Hoy `pagarConAportes` es 100% aportes y no cambia.
+
+---
+
+## 7. Implementación — 2026-10-12
+
+| Parte | Commit | Verificado |
+|---|---|---|
+| Contrato y diseño | saaBE `616cae9d`, `c550fb0c`, `9623168c`; espejo saaFE `4f5a460` | — |
+| BE, ítems 1–4 | saaBE `8e6766dd` | `mvn -q compile` (árbitro) |
+| BE, ajustes 1 y 2 | ver el commit que sigue a `8e6766dd` | `mvn -q compile` (árbitro) |
+| FE, ítems 1–3 | saaFE `5bf4376` | `ng build --configuration development` (árbitro) |
+
+**Nada se probó en ejecución.** Los asientos se cuadraron a mano para cuatro casos: 300+200; borde 50+450; 100+300 sin capital futuro; y 100% depósito, que queda idéntico a hoy.
+
+### 7.1 Desvíos aprobados respecto del §5
+- El servicio del camino directo vive en `AbonoCapitalPrestamoService.abonarConAportes`, no en `ProcesoPagoPrestamoService`. `AbonoCapital` ya depende de `ProcesoPago`, y ponerlo al revés creaba un ciclo de EJB.
+- El pre-chequeo de AA8 usa métodos que **no lanzan** (`motivoDesgloseAportesInvalido`, `motivoAbonoInviable`). Ver H83.
+- `calcularCapitalFuturoDelCobro` devuelve `{efectivo, tramoAbiertoPagadoConAportes}`. El bruto dice explícitamente si hubo corrida (ajuste 1).
+- `lineasCierreApertura` quedó expuesto en `ContabilidadPrestamoService`, como la única copia de la resolución de D 2.3.02.10 / H 1.4.05.10. El camino directo y el CBCR la comparten.
+
+### 7.2 Hallazgos
+- **H83 — Un rechazo «automático» que atrapa un `IncomeException` cruzando el proxy EJB no persiste.**
+  - `IncomeException` es `@ApplicationException(rollback = true)`. Al cruzar el proxy marca la transacción como rollback-only **aunque se atrape**.
+  - El RECHAZADO que se graba después se pierde al hacer commit: el cobro queda APROBADO y el REST da error.
+  - La precancelación mixta lo tenía así desde el 2026-08-30. Se corrigió en el ajuste 2.
+  - **Por qué costaba verlo:** el código «se lee» correcto (try/catch → rechazar) y nunca se ejecutó, porque no hubo precancelaciones mixtas (`sql/321`).
+  - **Regla:** dentro de un método transaccional, una validación que debe terminar en un estado grabado se consulta con un método que devuelve el motivo, nunca con uno que lanza.
+- **H84 — Un 0,0 centinela que significaba dos cosas.**
+  - En el cálculo del capital futuro, «0» significaba a la vez «no hay corrida de apertura» y «no queda capital futuro».
+  - En el segundo caso, la apertura pagada con aportes quedaba sin cerrar.
+  - Lo encontró el árbitro al revisar la entrega y se corrigió en el ajuste 1.
+- **El reenvío de un cobro no copia `idAcuerdo`** de sus líneas, y eso afecta a ACUERDO_CONDONACION. Lo vio el BE y no se tocó porque está fuera de este frente. Queda como deuda.
+
+### 7.3 Pruebas que faltan (local, con el WAR y el FE desplegados juntos)
+1. **Abono mixto** con depósito 300 + aportes {11: 200}, en un mes con corrida previa. Después de procesar: reparto con Debe positivo y chico; aportes en el Debe del definitivo; transitoria neta en 0; saldo de aportes −200.
+2. **Borde:** depósito 50 + aportes 450, con capital futuro < 450. En el definitivo debe aparecer el par D 2.3.02.10 / H 1.4.05.10 por la diferencia.
+3. **AA8:** registrar y aprobar un abono mixto, gastar el aporte por otra vía y procesar. El cobro debe quedar RECHAZADO por SISTEMA y **seguir así al recargar**.
+4. **100% aportes directo:** un solo asiento. Luego `POST /prst/anularOperacion`: asiento anulado, aporte restituido y tabla restaurada. Probar también sin fecha de afectación (400) y con saldo insuficiente (422).
+5. **Reenvío** de un abono mixto rechazado, con los aportes corregidos.
+6. **`GET /cbcr/getId`** de un cobro mixto y de uno sin aportes (`[]`), y la tabla «Aportes consumidos» en la bandeja de contabilidad.
+7. **Precancelación mixta** con aportes mayores que lo exigible, en un mes con corrida. Antes no se podía procesar.

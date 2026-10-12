@@ -1012,12 +1012,15 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
                         + "); el préstamo cambió entre el registro y el proceso. Verifique y"
                         + " vuelva a registrar.";
             } else if (!aportesParaPrecancelar.isEmpty()) {
-                try {
-                    procesoPagoPrestamoService.validarDesgloseAportes(aportesParaPrecancelar,
-                            cobro.getEntidad());
-                } catch (IncomeException e) {
+                // Variante que NO lanza (2026-10-12): validarDesgloseAportes cruzando el proxy EJB
+                // lanzaba una IncomeException @ApplicationException(rollback=true) que marcaba la
+                // transacción rollback-only aunque se atrapara acá, y el RECHAZADO que se guarda
+                // abajo se perdía al commit.
+                String motivoAportes = procesoPagoPrestamoService.motivoDesgloseAportesInvalido(
+                        aportesParaPrecancelar, cobro.getEntidad());
+                if (motivoAportes != null) {
                     motivoRechazo = "Rechazado automáticamente por el sistema: el saldo de aportes"
-                            + " cambió entre el registro y el proceso — " + e.getMessage();
+                            + " cambió entre el registro y el proceso — " + motivoAportes;
                 }
             }
             if (motivoRechazo != null) {
@@ -2219,7 +2222,7 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
      * asientos se comportan exactamente como hoy, con el total completo, porque sin período
      * abierto no hay apertura que cerrar de más (§5.1 de la especificación).</p>
      */
-    private double calcularCapitalFuturoBrutoDelCobro(CobroCredito cobro, List<DetalleCobroCredito> detalles)
+    private FuturoBruto calcularCapitalFuturoBrutoDelCobro(CobroCredito cobro, List<DetalleCobroCredito> detalles)
             throws Throwable {
         Long idEmpresa = derivarEmpresaCobro(cobro);
         Long anio = Long.valueOf(cobro.getFecha().getYear());
@@ -2233,7 +2236,7 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
                     + ": no se encontró la corrida de cierre de cartera que abrió " + mes + "/" + anio
                     + " en empresa " + idEmpresa + "; los asientos 2 y 3 cierran la apertura por el total, sin"
                     + " partir.");
-            return 0.0;
+            return new FuturoBruto(false, 0.0);
         }
         // fechaProceso es el 01 del mes que esa corrida abrió; el corte de ESA apertura es su
         // último día — NUNCA corrida.getFechaCorte() (eso es el corte del CIERRE del mes
@@ -2250,7 +2253,22 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
             capitalFuturo += contabilizacionIndividualCreditoService.capitalFuturoPosteriorACorte(
                     pagos, fechaCorteApertura, "Cobro " + cobro.getCodigo());
         }
-        return redondear(capitalFuturo);
+        return new FuturoBruto(true, redondear(capitalFuturo));
+    }
+
+    /**
+     * Capital futuro bruto del cobro + si había corrida de apertura. Se separan a propósito:
+     * {@code valor == 0} es ambiguo (sin corrida = no hay apertura que cerrar; con corrida y sin
+     * capital futuro = los aportes pagaron solo lo abierto) y el tramo de AA10 se decide distinto.
+     */
+    private static final class FuturoBruto {
+        private final boolean hayCorrida;
+        private final double valor;
+
+        private FuturoBruto(boolean hayCorrida, double valor) {
+            this.hayCorrida = hayCorrida;
+            this.valor = valor;
+        }
     }
 
     /** Resultado de {@link #calcularCapitalFuturoDelCobro}: los números que comparten los asientos 2 y 3. */
@@ -2297,7 +2315,8 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
      */
     private CapitalFuturoCobro calcularCapitalFuturoDelCobro(CobroCredito cobro, List<DetalleCobroCredito> detalles)
             throws Throwable {
-        double bruto = calcularCapitalFuturoBrutoDelCobro(cobro, detalles);
+        FuturoBruto futuroBruto = calcularCapitalFuturoBrutoDelCobro(cobro, detalles);
+        double bruto = futuroBruto.valor;
         double aportes = 0.0;
         for (DetalleCobroCredito detalle : detalles) {
             aportes += totalAportesDeLinea(detalle);
@@ -2307,9 +2326,11 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
             return new CapitalFuturoCobro(bruto, 0.0);
         }
         double efectivo = redondear(Math.max(0.0, bruto - aportes));
-        // Sin corrida previa (bruto = 0.0 por "no hay apertura que cerrar") no hay tramo abierto
-        // que cerrar tampoco: mismo criterio que agregaCierreAperturaCaminoDirecto.
-        double tramo = bruto > 0.0 ? redondear(Math.max(0.0, aportes - bruto)) : 0.0;
+        // Sin corrida previa no hay apertura que cerrar, tampoco por el tramo de los aportes
+        // (mismo criterio que agregaCierreAperturaCaminoDirecto). CON corrida, el tramo es
+        // max(0, aportes − bruto) también cuando bruto = 0 (no queda capital futuro: los aportes
+        // pagaron solo lo abierto, y toda esa parte hay que cerrarla).
+        double tramo = futuroBruto.hayCorrida ? redondear(Math.max(0.0, aportes - bruto)) : 0.0;
         System.out.println("CobroCreditoService.calcularCapitalFuturoDelCobro - cobro " + cobro.getCodigo()
                 + ": capital futuro bruto $" + bruto + ", aportes consumidos $" + aportes
                 + " → capital futuro efectivo $" + efectivo + ", tramo abierto pagado con aportes $" + tramo);
