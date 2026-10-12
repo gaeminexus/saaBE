@@ -54,6 +54,7 @@ En un abono, casi todo el capital es futuro. Con depósito 300 + aportes 200, el
 - **Abono mixto con depósito 300 + aportes 200:** el capital futuro ronda los 492. El Debe del reparto sale −192 y el cuadre de `:2204` revienta. **El cobro no se puede procesar.** El asiento definitivo tampoco cuadraría.
 - **Precancelación mixta: tiene el MISMO defecto, y está hoy en producción.** Nada lo evita. Se salva solo si no hay corrida de apertura previa o si los aportes son chicos.
   - El impacto en producción lo mide `sql/321` (solo lectura). Una precancelación atascada debería quedar en estado APROBADO, porque la excepción hace rollback.
+  - ✅ **`sql/321` corrido en producción el 2026-10-12: los tres bloques vacíos.** Nunca se registró una precancelación mixta, así que el defecto no tocó producción. Por eso nadie lo había reportado: el camino nunca se usó. No hay nada que regularizar.
 - **El camino directo:** el cruce y el re-bandeo se pueden juntar en un asiento. Además necesita `agregaCierreAperturaCaminoDirecto`, por `T − capitalFuturo`.
 
 ### 4.2 Decisiones del árbitro sobre la corrección
