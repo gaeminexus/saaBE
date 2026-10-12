@@ -31,6 +31,7 @@ import com.saa.ejb.crd.service.AcuerdoCondonacionService;
 import com.saa.ejb.crd.service.AporteService;
 import com.saa.ejb.crd.service.CobroCreditoService;
 import com.saa.ejb.crd.service.ConfiguracionContabilidadService;
+import com.saa.ejb.crd.service.ContabilidadPrestamoService;
 import com.saa.ejb.crd.service.ProcesoPagoPrestamoService;
 import com.saa.ejb.crd.service.dto.BandaProductoDetalle;
 import com.saa.ejb.crd.service.dto.DesgloseAporte;
@@ -193,6 +194,10 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
 
     @EJB
     private AbonoCapitalPrestamoService abonoCapitalPrestamoService;
+
+    /** AA10: solo para las dos líneas de cierre de apertura (lineasCierreApertura). */
+    @EJB
+    private ContabilidadPrestamoService contabilidadPrestamoService;
 
     @EJB
     private AporteService aporteService;
@@ -425,6 +430,14 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
         // EventoPrestamo/PagoAporte porque el cobro nunca se procesó (solo se llega acá desde
         // RECHAZADO), así que no hay nada que preservar.
         for (DetalleCobroCredito lineaVieja : detalleCobroCreditoDaoService.selectByCobro(idCobro)) {
+            // 2026-10-12: los aportes consumidos (CRD.DAPR) cuelgan de la línea por FK — se
+            // borran ANTES que ella; sin esto el reenvío de una precancelación/abono mixto
+            // rechazado reventaba por la FK, o dejaba huérfano el desglose viejo.
+            for (DetalleAportePrecancelacion aporteViejo
+                    : detalleAportePrecancelacionDaoService.selectByDetalleCobro(lineaVieja.getCodigo())) {
+                detalleAportePrecancelacionDaoService.remove(new DetalleAportePrecancelacion(),
+                        aporteViejo.getCodigo());
+            }
             detalleCobroCreditoDaoService.remove(new DetalleCobroCredito(), lineaVieja.getCodigo());
         }
 
@@ -454,7 +467,18 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
             }
             linea.setPeriodoDevengo(lineaSolicitud.getPeriodoDevengo());
             linea.setObservacion(lineaSolicitud.getObservacion());
-            detalleCobroCreditoDaoService.save(linea, null);
+            linea = detalleCobroCreditoDaoService.save(linea, null);
+
+            // Mismo guardado de aportes que registrarCobro (validar() ya los revisó arriba).
+            if (lineaSolicitud.getAportes() != null && !lineaSolicitud.getAportes().isEmpty()) {
+                for (DesgloseAporte renglon : lineaSolicitud.getAportes()) {
+                    DetalleAportePrecancelacion lineaAporte = new DetalleAportePrecancelacion();
+                    lineaAporte.setDetalleCobroCredito(linea);
+                    lineaAporte.setTipoAporte(buscarTipoAporte(renglon.getIdTipoAporte()));
+                    lineaAporte.setValor(redondear(renglon.getValor()));
+                    detalleAportePrecancelacionDaoService.save(lineaAporte, null);
+                }
+            }
         }
 
         if (rehacerAsiento && configuracionContabilidadService.contabilidadActiva()) {
@@ -1073,9 +1097,70 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
 
         } else if (CrdTipoOperacionCobro.ABONO_CAPITAL.equals(tipoOperacion)) {
             DetalleCobroCredito linea = detalles.get(0);
+
+            // Abono mixto (2026-10-12, AA1/AA4/AA8): linea.getValor() es SOLO el depósito; los
+            // aportes consumidos viven en CRD.DAPR y el abono total es depósito + Σ aportes.
+            List<DetalleAportePrecancelacion> desgloseAbonoGuardado =
+                    detalleAportePrecancelacionDaoService.selectByDetalleCobro(linea.getCodigo());
+            double totalAportesAbono = 0.0;
+            List<DesgloseAporte> aportesParaAbono = new ArrayList<>();
+            for (DetalleAportePrecancelacion lineaAporte : desgloseAbonoGuardado) {
+                totalAportesAbono += nvl(lineaAporte.getValor());
+                DesgloseAporte renglon = new DesgloseAporte();
+                renglon.setIdTipoAporte(lineaAporte.getTipoAporte().getCodigo());
+                renglon.setValor(lineaAporte.getValor());
+                aportesParaAbono.add(renglon);
+            }
+            totalAportesAbono = redondear(totalAportesAbono);
+            double valorTotalAbono = redondear(nvl(linea.getValor()) + totalAportesAbono);
+
+            // Pre-chequeo de SOLO LECTURA (AA8), solo si hay aportes: el saldo de aportes NO se
+            // reserva al registrar, y la simulación se repite con el TOTAL. Si algo falló, el
+            // cobro pasa a RECHAZADO por SISTEMA (mismo comportamiento que la precancelación
+            // mixta). Se usan las variantes que NO lanzan (motivo*): una IncomeException cruzando
+            // el proxy EJB marcaría la transacción rollback-only y el RECHAZADO no se guardaría.
+            if (!aportesParaAbono.isEmpty()) {
+                String motivoRechazo = procesoPagoPrestamoService.motivoDesgloseAportesInvalido(
+                        aportesParaAbono, cobro.getEntidad());
+                if (motivoRechazo != null) {
+                    motivoRechazo = "Rechazado automáticamente por el sistema: el saldo de aportes"
+                            + " cambió entre el registro y el proceso — " + motivoRechazo;
+                } else {
+                    String motivoSimulacion = abonoCapitalPrestamoService.motivoAbonoInviable(
+                            linea.getPrestamo().getCodigo(), valorTotalAbono,
+                            linea.getModalidad() != null ? linea.getModalidad().intValue() : 0);
+                    if (motivoSimulacion != null) {
+                        motivoRechazo = "Rechazado automáticamente por el sistema: el abono total ($"
+                                + valorTotalAbono + " = depósito $" + linea.getValor() + " + aportes $"
+                                + totalAportesAbono + ") ya no se puede aplicar al préstamo — "
+                                + motivoSimulacion;
+                    }
+                }
+                if (motivoRechazo != null) {
+                    cobro.setEstado(Long.valueOf(CrdEstadoCobro.RECHAZADO));
+                    cobro.setUsuarioRechazo("SISTEMA");
+                    cobro.setFechaRechazo(LocalDateTime.now());
+                    cobro.setMotivoRechazo(motivoRechazo);
+                    cobroCreditoDaoService.save(cobro, cobro.getCodigo());
+
+                    ResultadoProcesoCobro resultadoRechazo = new ResultadoProcesoCobro();
+                    resultadoRechazo.setIdCobro(idCobro);
+                    resultadoRechazo.setEstado(cobro.getEstado());
+                    resultadoRechazo.setProcesado(false);
+                    resultadoRechazo.setMensaje(motivoRechazo);
+                    resultadoRechazo.setMoraEliminada(moraEliminadaTotal);
+                    return resultadoRechazo;
+                }
+            }
+
             SolicitudAbonoCapital solicitud = new SolicitudAbonoCapital();
             solicitud.setIdPrestamo(linea.getPrestamo().getCodigo());
-            solicitud.setValor(linea.getValor());
+            // Con aportes, el abono se aplica por el TOTAL; sin aportes valorTotalAbono == linea.getValor().
+            solicitud.setValor(valorTotalAbono);
+            solicitud.setAportes(aportesParaAbono.isEmpty() ? null : aportesParaAbono);
+            // Discriminador de origen: con cobro, el cruce de aportes lo genera CBCRASN2 y el
+            // hook contable del abono solo hace el re-bandeo (nunca lo manda el cliente).
+            solicitud.setIdCobroCredito(idCobro);
             solicitud.setModalidad(linea.getModalidad() != null ? linea.getModalidad().intValue() : null);
             solicitud.setUsuario(usuario);
             solicitud.setObservacion(observacionLinea(cobro, linea));
@@ -1221,6 +1306,11 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
                     continue;
                 }
                 cobradoPrestamos += nvl(lineaVerificar.getValor());
+                // ABONO_CAPITAL mixto (2026-10-12): el PGPR del abono lleva depósito + aportes,
+                // y DCBC.valor es solo el depósito; los aportes viven en CRD.DAPR.
+                if (CrdTipoOperacionCobro.ABONO_CAPITAL.equals(tipoOperacion)) {
+                    cobradoPrestamos += totalAportesDeLinea(lineaVerificar);
+                }
                 if (lineaVerificar.getEventoPrestamo() != null) {
                     for (PagoPrestamo pagoVerificar
                             : pagoPrestamoDaoService.selectByEvento(lineaVerificar.getEventoPrestamo().getCodigo())) {
@@ -1268,10 +1358,12 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
             // Capital futuro (2026-09-05): calculado UNA sola vez acá y compartido entre los
             // asientos 2 y 3, para que las dos restas contra la cuenta de apertura salgan del
             // mismo número. Ver el javadoc de calcularCapitalFuturoDelCobro.
-            double capitalFuturo = calcularCapitalFuturoDelCobro(cobro, detallesActualizados);
+            CapitalFuturoCobro futuroCobro = calcularCapitalFuturoDelCobro(cobro, detallesActualizados);
+            double capitalFuturo = futuroCobro.efectivo;
             Asiento asientoReparto = generarAsientoReparto(cobro, detallesActualizados, capitalFuturo);
             cobro.setAsientoReparto(asientoReparto);
-            Asiento asientoDefinitivo = generarAsientoDefinitivo(cobro, detallesActualizados, capitalFuturo);
+            Asiento asientoDefinitivo = generarAsientoDefinitivo(cobro, detallesActualizados, capitalFuturo,
+                    futuroCobro.tramoAbiertoPagadoConAportes);
             cobro.setAsientoDefinitivo(asientoDefinitivo);
 
             // ÍTEM 4, diseño §5: reverso de la provisión de intereses por lo efectivamente
@@ -1775,7 +1867,12 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
             // acá se CONSUME saldo del socio, su saldo BAJA). Reusar el mismo campo para los
             // dos sentidos del dinero es la clase de ambigüedad que corrompe saldos sin dar
             // ningún error.
-            if (esPrecancelacion) {
+            //
+            // 2026-10-12, abono a capital con aportes (AA1/AA4): ABONO_CAPITAL también admite
+            // aportes. El valor de la línea sigue siendo SOLO el depósito (obligatorio y > 0,
+            // ya validado arriba); el abono total es depósito + Σ aportes y se simula recién
+            // al procesar.
+            if (esPrecancelacion || esAbono) {
                 if (linea.getAportes() != null && !linea.getAportes().isEmpty()) {
                     // Solo valida que el desglose sea sano y financiable AHORA (tipo vigente +
                     // saldo suficiente) — no se compara contra el total de la precancelación:
@@ -1785,7 +1882,7 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
                     procesoPagoPrestamoService.validarDesgloseAportes(linea.getAportes(), entidad);
                 }
             } else if (linea.getAportes() != null && !linea.getAportes().isEmpty()) {
-                throw new IncomeException("aportes solo aplica a PRECANCELACION; en "
+                throw new IncomeException("aportes solo aplica a PRECANCELACION y ABONO_CAPITAL; en "
                         + solicitud.getTipoOperacion() + " no se admite");
             }
         }
@@ -2122,7 +2219,7 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
      * asientos se comportan exactamente como hoy, con el total completo, porque sin período
      * abierto no hay apertura que cerrar de más (§5.1 de la especificación).</p>
      */
-    private double calcularCapitalFuturoDelCobro(CobroCredito cobro, List<DetalleCobroCredito> detalles)
+    private double calcularCapitalFuturoBrutoDelCobro(CobroCredito cobro, List<DetalleCobroCredito> detalles)
             throws Throwable {
         Long idEmpresa = derivarEmpresaCobro(cobro);
         Long anio = Long.valueOf(cobro.getFecha().getYear());
@@ -2154,6 +2251,69 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
                     pagos, fechaCorteApertura, "Cobro " + cobro.getCodigo());
         }
         return redondear(capitalFuturo);
+    }
+
+    /** Resultado de {@link #calcularCapitalFuturoDelCobro}: los números que comparten los asientos 2 y 3. */
+    private static final class CapitalFuturoCobro {
+        /** Capital futuro que NO cubrieron los aportes (AA9): lo que reparto y definitivo restan. */
+        private final double efectivo;
+        /** Tramo abierto pagado con aportes (AA10): Σ aportes − capital futuro, si es positivo. */
+        private final double tramoAbiertoPagadoConAportes;
+
+        private CapitalFuturoCobro(double efectivo, double tramoAbiertoPagadoConAportes) {
+            this.efectivo = efectivo;
+            this.tramoAbiertoPagadoConAportes = tramoAbiertoPagadoConAportes;
+        }
+    }
+
+    /**
+     * Σ de los aportes CONSUMIDOS (CRD.DAPR) de una línea del cobro; 0 si no tiene o si la línea no
+     * es de préstamo. Solo PRECANCELACION y ABONO_CAPITAL pueden tenerlos.
+     */
+    private double totalAportesDeLinea(DetalleCobroCredito linea) throws Throwable {
+        if (linea == null || linea.getPrestamo() == null) {
+            return 0.0;
+        }
+        double total = 0.0;
+        for (DetalleAportePrecancelacion consumido
+                : detalleAportePrecancelacionDaoService.selectByDetalleCobro(linea.getCodigo())) {
+            total += nvl(consumido.getValor());
+        }
+        return redondear(total);
+    }
+
+    /**
+     * AA9 (2026-10-12, DISENO-ABONO-CAPITAL-CON-APORTES.md §4.2): el capital futuro que se
+     * descuenta del reparto y del definitivo es el que NO cubrieron los aportes:
+     * {@code efectivo = max(0, capitalFuturoBruto − Σ DAPR del cobro)}. Sin esto, en un abono (o
+     * precancelación) mixto el Debe del reparto ({@code cobro.valor − capitalFuturo}, con
+     * {@code cobro.valor} = solo el depósito) sale negativo y el cuadre lo rechaza. Se calcula UNA
+     * sola vez acá para que los dos asientos sigan saliendo del mismo número. Con 100% depósito
+     * (Σ DAPR = 0) es idéntico al cálculo de antes.
+     *
+     * <p>AA10: si los aportes superan al capital futuro bruto, el tramo
+     * {@code Σ DAPR − capitalFuturoBruto} pagó parte de lo que estaba abierto en la apertura y el
+     * reparto (que solo mueve el depósito) no lo puede cerrar; lo cierra el asiento definitivo.</p>
+     */
+    private CapitalFuturoCobro calcularCapitalFuturoDelCobro(CobroCredito cobro, List<DetalleCobroCredito> detalles)
+            throws Throwable {
+        double bruto = calcularCapitalFuturoBrutoDelCobro(cobro, detalles);
+        double aportes = 0.0;
+        for (DetalleCobroCredito detalle : detalles) {
+            aportes += totalAportesDeLinea(detalle);
+        }
+        aportes = redondear(aportes);
+        if (aportes <= 0.0) {
+            return new CapitalFuturoCobro(bruto, 0.0);
+        }
+        double efectivo = redondear(Math.max(0.0, bruto - aportes));
+        // Sin corrida previa (bruto = 0.0 por "no hay apertura que cerrar") no hay tramo abierto
+        // que cerrar tampoco: mismo criterio que agregaCierreAperturaCaminoDirecto.
+        double tramo = bruto > 0.0 ? redondear(Math.max(0.0, aportes - bruto)) : 0.0;
+        System.out.println("CobroCreditoService.calcularCapitalFuturoDelCobro - cobro " + cobro.getCodigo()
+                + ": capital futuro bruto $" + bruto + ", aportes consumidos $" + aportes
+                + " → capital futuro efectivo $" + efectivo + ", tramo abierto pagado con aportes $" + tramo);
+        return new CapitalFuturoCobro(efectivo, tramo);
     }
 
     private Asiento generarAsientoReparto(CobroCredito cobro, List<DetalleCobroCredito> detalles,
@@ -2238,7 +2398,7 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
     // =====================================================================
 
     private Asiento generarAsientoDefinitivo(CobroCredito cobro, List<DetalleCobroCredito> detalles,
-            double capitalFuturo) throws Throwable {
+            double capitalFuturo, double tramoAbiertoPagadoConAportes) throws Throwable {
         Long idEmpresa = derivarEmpresaCobro(cobro);
         Long idPlantillaAplicacion = contabilizacionIndividualCreditoService.resolverPlantillaAplicacion(idEmpresa);
         LocalDate fechaCorte = cobro.getFecha();
@@ -2261,7 +2421,9 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
             // La mitad de aportes CONSUMIDOS (precancelación mixta / acuerdo mixto, §5 de la
             // especificación) se agrega más abajo, por línea, para no perder la referencia a
             // linea.getCodigo()/getAcuerdoCondonacion() en DAPR/DAAP.
-            if (CrdTipoOperacionCobro.PRECANCELACION.equals(tipoOperacion)) {
+            // ABONO_CAPITAL mixto (2026-10-12): mismo cruce que la precancelación mixta.
+            if (CrdTipoOperacionCobro.PRECANCELACION.equals(tipoOperacion)
+                    || CrdTipoOperacionCobro.ABONO_CAPITAL.equals(tipoOperacion)) {
                 List<DetalleAportePrecancelacion> consumidos =
                         detalleAportePrecancelacionDaoService.selectByDetalleCobro(detalle.getCodigo());
                 if (!consumidos.isEmpty()) {
@@ -2363,9 +2525,21 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
             debe.add(debeTransitoriaFuturo);
         }
 
+        // AA10: el tramo abierto que se pagó con aportes (Σ aportes > capital futuro) lo cierra el
+        // definitivo con las mismas dos líneas del camino directo (D 2.3.02.10 / H 1.4.05.10),
+        // resueltas por ContabilidadPrestamoService#lineasCierreApertura — una sola copia de la
+        // resolución de cuentas. Las dos líneas se netean entre sí (autobalanceadas), así que el
+        // cuadre por construcción de más abajo no cambia.
+        List<DetalleAsiento> lineasCierreTramoAportes = new ArrayList<>();
+        if (tramoAbiertoPagadoConAportes > 0.0) {
+            lineasCierreTramoAportes.addAll(contabilidadPrestamoService.lineasCierreApertura(idEmpresa,
+                    tramoAbiertoPagadoConAportes, "cobro " + cobro.getCodigo() + " (tramo pagado con aportes)"));
+        }
+
         List<DetalleAsiento> lineas = new ArrayList<>();
         lineas.addAll(debe);
         lineas.addAll(haber);
+        lineas.addAll(lineasCierreTramoAportes);
 
         // Cuadre por construcción: D = suma de "por aplicar" (totales[0]+totalPrestamosCerrado,
         // lo mismo que acreditó el asiento de reparto) MÁS la línea de transitoria por

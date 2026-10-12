@@ -64,6 +64,28 @@ public interface ContabilidadPrestamoService {
     Long contabilizarAbonoCapital(EventoPrestamo evento, Long idEmpresa) throws Throwable;
 
     /**
+     * Abono a capital 100% con aportes, llamada DIRECTA (sin cobro CBCR) — AA5/AA6, 2026-10-12.
+     * Genera UN solo asiento que junta el cruce de aportes consumidos, el cierre de apertura por
+     * {@code T − capitalFuturo} y el re-bandeo; se usa EN LUGAR de {@link #contabilizarAbonoCapital}
+     * (que con cobro sigue haciendo solo el re-bandeo).
+     *
+     * @param movimientos     aportes consumidos por el abono (no vacío)
+     * @param fechaAfectacion fecha contable del asiento; si es null se usa la fecha del evento
+     * @return Código del asiento, o null si la contabilidad no está activa
+     */
+    Long contabilizarAbonoCapitalConAportes(EventoPrestamo evento, List<MovimientoAporte> movimientos,
+            Long idEmpresa, java.time.LocalDate fechaAfectacion) throws Throwable;
+
+    /**
+     * Las dos líneas que cierran la apertura del lado préstamos por {@code monto} (D 2.3.02.10
+     * aux 4 / H 1.4.05.10 aux 2, plantilla de apertura). Lo usa el asiento DEFINITIVO de CBCR
+     * (AA10) para cerrar el tramo abierto que se pagó con aportes, con la misma resolución de
+     * cuentas del camino directo.
+     */
+    java.util.List<com.saa.model.cnt.DetalleAsiento> lineasCierreApertura(Long idEmpresa, double monto,
+            String descripcionOperacion) throws Throwable;
+
+    /**
      * Cruce de valores de una precancelación con aportes CONSUMIDOS — SOLO cuando la llamada
      * es directa (2026-08-31, circuito de cobros con aportes, decisión del usuario). Si
      * {@code ctx.getIdCobroCredito()} viene con valor, la operación nació de

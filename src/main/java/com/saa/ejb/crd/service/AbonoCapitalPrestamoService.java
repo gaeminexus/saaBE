@@ -69,4 +69,28 @@ public interface AbonoCapitalPrestamoService {
      * @throws Throwable Si ocurre un error
      */
     ResultadoAbonoCapital aplicar(SolicitudAbonoCapital solicitud) throws Throwable;
+
+    /**
+     * Pre-chequeo de SOLO LECTURA que NUNCA lanza: simula el abono con el valor TOTAL (depósito +
+     * aportes) y devuelve el motivo por el que no se puede aplicar, o {@code null} si es viable.
+     * Lo usa {@code CobroCreditoServiceImpl.procesarCobro} (AA8) para decidir el rechazo
+     * automático por SISTEMA sin lanzar una {@code IncomeException} a través del proxy EJB, que
+     * marcaría la transacción rollback-only y se llevaría el RECHAZADO.
+     */
+    String motivoAbonoInviable(Long idPrestamo, double valorTotal, int modalidad);
+
+    /**
+     * Abono a capital 100% con aportes del partícipe, llamada DIRECTA que se aplica en el acto, sin
+     * cobro CBCR ni aprobación de contabilidad (AA1/AA5, 2026-10-12). El abono es {@code Σ aportes}.
+     * Valida el desglose y la fecha de afectación (mismas reglas que la precancelación directa),
+     * aplica el abono con el valor total y consume los aportes enlazados al PagoPrestamo (AA7);
+     * genera UN solo asiento (AA6) que se guarda en {@code EVPR.numeroAsiento} y {@code PGPR.asiento}.
+     *
+     * @return El {@link ResultadoAbonoCapital} de siempre + los movimientos de aporte
+     * @throws Throwable {@code SALDO_APORTES_INSUFICIENTE}, {@code TIPO_APORTE_NO_VIGENTE},
+     *                   {@code DESGLOSE_INVALIDO}, errores de fecha de afectación y las reglas del
+     *                   abono ({@code PRESTAMO_NO_AL_DIA}, {@code ABONO_CUBRE_CAPITAL}, ...)
+     */
+    com.saa.ejb.crd.service.dto.ResultadoAbonoCapitalConAportes abonarConAportes(
+            com.saa.ejb.crd.service.dto.SolicitudAbonoCapitalConAportes solicitud) throws Throwable;
 }

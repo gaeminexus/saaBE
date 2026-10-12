@@ -185,6 +185,19 @@ public interface ProcesoPagoPrestamoService {
             com.saa.model.crd.Entidad entidad) throws Throwable;
 
     /**
+     * Igual que {@link #validarDesgloseAportes} pero NUNCA lanza: devuelve el motivo del rechazo
+     * (el mensaje de la {@code IncomeException}) o {@code null} si el desglose es válido y
+     * financiable. Existe porque {@code IncomeException} es {@code @ApplicationException(rollback
+     * = true)}: lanzada a través del proxy EJB desde dentro de una transacción ajena la marca
+     * rollback-only aunque el llamador la atrape, y el pre-chequeo de
+     * {@code CobroCreditoServiceImpl.procesarCobro} necesita poder persistir el RECHAZADO
+     * (abono con aportes, 2026-10-12, AA8). La validación se hace con self-call dentro de este
+     * bean, que no marca nada.
+     */
+    String motivoDesgloseAportesInvalido(List<com.saa.ejb.crd.service.dto.DesgloseAporte> aportes,
+            com.saa.model.crd.Entidad entidad);
+
+    /**
      * Consume un desglose de aportes contra un {@code PagoPrestamo} ya existente (§7.4): por
      * cada renglón, revalida el saldo DENTRO de la transacción (guardarraíl anti-carrera —
      * entre el registro y el proceso de un acuerdo de condonación con parte en depósito pueden

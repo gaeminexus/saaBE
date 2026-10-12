@@ -705,6 +705,18 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
         return redondear(total);
     }
 
+    @Override
+    public String motivoDesgloseAportesInvalido(List<DesgloseAporte> aportes, Entidad entidad) {
+        try {
+            validarDesgloseAportes(aportes, entidad);
+            return null;
+        } catch (IncomeException e) {
+            return e.getMessage();
+        } catch (Throwable e) {
+            return "No se pudo validar el desglose de aportes: " + e.getMessage();
+        }
+    }
+
     /**
      * Crea la fila NEGATIVA en CRD.APRT y su PagoAporte por cada renglón del desglose (§7.4 3a-3c).
      *

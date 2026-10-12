@@ -21,6 +21,7 @@ import com.saa.ejb.crd.service.SimulacionPrestamoService;
 import com.saa.ejb.crd.service.dto.CuotaProyectada;
 import com.saa.ejb.crd.service.dto.ParametrosAmortizacion;
 import com.saa.ejb.crd.service.dto.ResultadoAbonoCapital;
+import com.saa.ejb.crd.service.dto.ResultadoAbonoCapitalConAportes;
 import com.saa.ejb.crd.service.dto.ResultadoCalculoMora;
 import com.saa.ejb.crd.service.dto.ResultadoAnulacion;
 import com.saa.ejb.crd.service.dto.ComprobantePagoMultipleDatos;
@@ -33,6 +34,7 @@ import com.saa.ejb.crd.service.dto.ResultadoSimulacionReestructuracion;
 import com.saa.ejb.crd.service.dto.SimulacionAbonoCapital;
 import com.saa.ejb.crd.service.dto.SimulacionPrecancelacion;
 import com.saa.ejb.crd.service.dto.SolicitudAbonoCapital;
+import com.saa.ejb.crd.service.dto.SolicitudAbonoCapitalConAportes;
 import com.saa.ejb.crd.service.dto.SolicitudAnulacion;
 import com.saa.ejb.crd.service.dto.SolicitudComprobantePagoMultiple;
 import com.saa.ejb.crd.service.dto.SolicitudDecisionPrestamo;
@@ -1037,6 +1039,70 @@ public class PrestamoRest {
     /** dd/MM/yyyy — convertirTiposParametros de ReporteServiceImpl no convierte fechas ni booleanos. */
     private String formatoFecha(LocalDateTime fecha) {
         return fecha != null ? fecha.format(DateTimeFormatter.ofPattern("dd/MM/yyyy")) : null;
+    }
+
+    /**
+     * Abono a capital 100% con aportes del partícipe, aplicado en el acto (sin CBCR ni aprobación
+     * de contabilidad). Contrato: docs/logica-negocio/crd/API-ABONO-CAPITAL-CON-APORTES.md §2.
+     * {@code POST /prst/abonarCapital} sigue cerrado con 409 y NO se toca (AA5).
+     *
+     * @param solicitud { idEmpresa, idPrestamo, modalidad, aportes[{idTipoAporte, valor}], usuario,
+     *                  observacion, fecha, fechaAfectacion, rutaDocumentoRespaldo }
+     * @return 200 con { exito, etapa, mensaje, resultado, movimientosAporte }
+     */
+    @POST
+    @Path("/abonarCapitalConAportes")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response abonarCapitalConAportes(SolicitudAbonoCapitalConAportes solicitud) {
+        System.out.println("LLEGA AL SERVICIO ABONAR CAPITAL CON APORTES - Préstamo: "
+            + (solicitud != null ? solicitud.getIdPrestamo() : null));
+
+        if (solicitud == null) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
+                "Debe enviar el cuerpo de la solicitud", "PARAMETRO_INVALIDO");
+        }
+        if (solicitud.getIdEmpresa() == null) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
+                "Debe indicar la empresa (idEmpresa)", "PARAMETRO_INVALIDO");
+        }
+        if (solicitud.getIdPrestamo() == null) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
+                "Debe indicar el préstamo (idPrestamo)", "PARAMETRO_INVALIDO");
+        }
+        if (solicitud.getModalidad() == null || (solicitud.getModalidad() != 1 && solicitud.getModalidad() != 2)) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
+                "La modalidad es obligatoria y debe ser 1 (reduce plazo) o 2 (reduce cuota)", "PARAMETRO_INVALIDO");
+        }
+        if (solicitud.getAportes() == null || solicitud.getAportes().isEmpty()) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
+                "Debe indicar el desglose de aportes", "PARAMETRO_INVALIDO");
+        }
+        if (solicitud.getUsuario() == null || solicitud.getUsuario().trim().isEmpty()) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
+                "Debe indicar el usuario que ejecuta el abono", "PARAMETRO_INVALIDO");
+        }
+
+        try {
+            ResultadoAbonoCapitalConAportes respuesta = abonoCapitalPrestamoService.abonarConAportes(solicitud);
+            ResultadoAbonoCapital resultado = respuesta.getResultado();
+
+            Map<String, Object> cuerpo = new LinkedHashMap<>();
+            cuerpo.put("exito", Boolean.TRUE);
+            cuerpo.put("etapa", ETAPA_APLICACION);
+            cuerpo.put("mensaje", "Abono a capital con aportes aplicado por $" + resultado.getValorAbono()
+                + ". Plazo: " + resultado.getPlazoAnterior() + " → " + resultado.getPlazoNuevo() + " cuotas.");
+            cuerpo.put("resultado", resultado);
+            cuerpo.put("movimientosAporte", respuesta.getMovimientosAporte());
+
+            return Response.status(Response.Status.OK)
+                    .entity(cuerpo).type(MediaType.APPLICATION_JSON).build();
+
+        } catch (Throwable e) {
+            System.err.println("ERROR al abonar capital con aportes: " + e.getMessage());
+            e.printStackTrace();
+            return respuestaErrorNegocio(e);
+        }
     }
 
     /**

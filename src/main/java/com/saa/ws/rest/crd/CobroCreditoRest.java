@@ -1,11 +1,14 @@
 package com.saa.ws.rest.crd;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 
 import com.saa.ejb.crd.dao.CobroCreditoDaoService;
+import com.saa.ejb.crd.dao.DetalleAportePrecancelacionDaoService;
 import com.saa.ejb.crd.dao.DetalleCobroCreditoDaoService;
 import com.saa.ejb.crd.service.CobroCreditoService;
+import com.saa.ejb.crd.service.dto.AporteConsumidoCobro;
 import com.saa.ejb.crd.service.dto.FilaBandejaAprobacion;
 import com.saa.ejb.crd.service.dto.FilaSeguimientoCobro;
 import com.saa.ejb.crd.service.dto.ResultadoProcesoCobro;
@@ -14,6 +17,7 @@ import com.saa.ejb.crd.service.dto.SolicitudAprobacionCobro;
 import com.saa.ejb.crd.service.dto.SolicitudEdicionCobro;
 import com.saa.ejb.crd.service.dto.SolicitudRegistroCobro;
 import com.saa.model.crd.CobroCredito;
+import com.saa.model.crd.DetalleAportePrecancelacion;
 import com.saa.model.crd.DetalleCobroCredito;
 import com.saa.model.crd.NombreEntidadesCredito;
 
@@ -49,6 +53,9 @@ public class CobroCreditoRest {
     private DetalleCobroCreditoDaoService detalleCobroCreditoDaoService;
 
     @EJB
+    private DetalleAportePrecancelacionDaoService detalleAportePrecancelacionDaoService;
+
+    @EJB
     private CobroCreditoService cobroCreditoService;
 
     public CobroCreditoRest() {
@@ -72,13 +79,29 @@ public class CobroCreditoRest {
     @Path("/getId/{id}")
     @Produces(MediaType.APPLICATION_JSON)
     public Response getId(@PathParam("id") Long id) {
+        System.out.println("LLEGA AL SERVICIO GET getId - CBCR - id: " + id);
         try {
             CobroCredito cobro = cobroCreditoDaoService.selectById(id, NombreEntidadesCredito.COBRO_CREDITO);
             List<DetalleCobroCredito> detalles = detalleCobroCreditoDaoService.selectByCobro(id);
+            // Aportes CONSUMIDOS por las líneas (precancelación/abono mixtos, CRD.DAPR): nunca
+            // null, lista vacía si el cobro no consume aportes (API-ABONO-CAPITAL-CON-APORTES §1.1).
+            List<AporteConsumidoCobro> consumidos = new ArrayList<>();
+            for (DetalleCobroCredito linea : detalles) {
+                for (DetalleAportePrecancelacion aporte
+                        : detalleAportePrecancelacionDaoService.selectByDetalleCobro(linea.getCodigo())) {
+                    AporteConsumidoCobro fila = new AporteConsumidoCobro();
+                    fila.setIdDetalleCobro(linea.getCodigo());
+                    fila.setIdTipoAporte(aporte.getTipoAporte() != null ? aporte.getTipoAporte().getCodigo() : null);
+                    fila.setNombreTipoAporte(aporte.getTipoAporte() != null ? aporte.getTipoAporte().getNombre() : null);
+                    fila.setValor(aporte.getValor());
+                    consumidos.add(fila);
+                }
+            }
             return Response.status(Response.Status.OK)
                     .entity(new Object() {
                         public final CobroCredito cabecera = cobro;
                         public final List<DetalleCobroCredito> detalle = detalles;
+                        public final List<AporteConsumidoCobro> aportesConsumidos = consumidos;
                     })
                     .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {

@@ -24,12 +24,17 @@ import com.saa.ejb.crd.service.PrestamoService;
 import com.saa.ejb.crd.service.ProcesoMoraPrestamoService;
 import com.saa.ejb.crd.service.ProcesoPagoPrestamoService;
 import com.saa.ejb.crd.service.dto.CuotaProyectada;
+import com.saa.ejb.crd.service.dto.DesgloseAporte;
+import com.saa.ejb.crd.service.dto.MovimientoAporte;
 import com.saa.ejb.crd.service.dto.ResultadoAbonoCapital;
+import com.saa.ejb.crd.service.dto.ResultadoAbonoCapitalConAportes;
 import com.saa.ejb.crd.service.dto.SimulacionAbonoCapital;
 import com.saa.ejb.crd.service.dto.SolicitudAbonoCapital;
+import com.saa.ejb.crd.service.dto.SolicitudAbonoCapitalConAportes;
 import com.saa.model.crd.DetallePrestamo;
 import com.saa.model.crd.EventoPrestamo;
 import com.saa.model.crd.HistDetallePrestamo;
+import com.saa.model.crd.NombreEntidadesCredito;
 import com.saa.model.crd.PagoPrestamo;
 import com.saa.model.crd.Prestamo;
 import com.saa.rubros.EstadoCuotaPrestamo;
@@ -131,6 +136,19 @@ public class AbonoCapitalPrestamoServiceImpl implements AbonoCapitalPrestamoServ
         return simulacion;
     }
 
+    @Override
+    public String motivoAbonoInviable(Long idPrestamo, double valorTotal, int modalidad) {
+        try {
+            // Misma ruta de solo lectura que simular(), por self-call: no cruza el proxy EJB.
+            calcular(idPrestamo, redondear(valorTotal), modalidad, LocalDate.now(), true);
+            return null;
+        } catch (IncomeException e) {
+            return e.getMessage();
+        } catch (Throwable e) {
+            return "No se pudo simular el abono: " + e.getMessage();
+        }
+    }
+
     // ========================================================================
     // Aplicación
     // ========================================================================
@@ -138,6 +156,90 @@ public class AbonoCapitalPrestamoServiceImpl implements AbonoCapitalPrestamoServ
     @Override
     @TransactionAttribute(TransactionAttributeType.REQUIRED)
     public ResultadoAbonoCapital aplicar(SolicitudAbonoCapital solicitud) throws Throwable {
+        return aplicarConMovimientos(solicitud).resultado;
+    }
+
+    /** Resultado interno de {@link #aplicarConMovimientos}: el abono + los aportes consumidos. */
+    private static final class AplicacionAbono {
+        private ResultadoAbonoCapital resultado;
+        private List<MovimientoAporte> movimientos = new ArrayList<>();
+    }
+
+    @Override
+    @TransactionAttribute(TransactionAttributeType.REQUIRED)
+    public ResultadoAbonoCapitalConAportes abonarConAportes(SolicitudAbonoCapitalConAportes solicitud)
+            throws Throwable {
+        System.out.println("AbonoCapitalPrestamoService.abonarConAportes - Préstamo: "
+            + (solicitud != null ? solicitud.getIdPrestamo() : null));
+
+        if (solicitud == null) {
+            throw new IncomeException(ProcesoPagoPrestamoService.ERR_PARAMETRO_INVALIDO
+                + ": no se recibió el cuerpo de la solicitud");
+        }
+        if (solicitud.getIdEmpresa() == null) {
+            throw new IncomeException(ProcesoPagoPrestamoService.ERR_PARAMETRO_INVALIDO
+                + ": idEmpresa es obligatorio: es la empresa contable sobre la que se genera el asiento");
+        }
+        if (solicitud.getIdPrestamo() == null) {
+            throw new IncomeException(ProcesoPagoPrestamoService.ERR_PARAMETRO_INVALIDO
+                + ": idPrestamo es obligatorio");
+        }
+        if (solicitud.getModalidad() == null || (solicitud.getModalidad() != 1 && solicitud.getModalidad() != 2)) {
+            throw new IncomeException(ProcesoPagoPrestamoService.ERR_PARAMETRO_INVALIDO
+                + ": modalidad es obligatoria y debe ser 1 (reduce plazo) o 2 (reduce cuota)");
+        }
+        if (solicitud.getUsuario() == null || solicitud.getUsuario().trim().isEmpty()) {
+            throw new IncomeException(ProcesoPagoPrestamoService.ERR_PARAMETRO_INVALIDO
+                + ": usuario es obligatorio");
+        }
+
+        Prestamo prestamo;
+        try {
+            prestamo = prestamoDaoService.selectById(solicitud.getIdPrestamo(), NombreEntidadesCredito.PRESTAMO);
+        } catch (jakarta.persistence.NoResultException e) {
+            throw new IncomeException(ProcesoPagoPrestamoService.ERR_PRESTAMO_NO_ENCONTRADO
+                + ": no existe el préstamo " + solicitud.getIdPrestamo());
+        }
+        if (prestamo.getEntidad() == null || prestamo.getEntidad().getCodigo() == null) {
+            throw new IncomeException(ProcesoPagoPrestamoService.ERR_PARAMETRO_INVALIDO + ": el préstamo "
+                + prestamo.getCodigo() + " no tiene partícipe asociado; no se puede abonar con aportes");
+        }
+
+        // El abono ES Σ aportes; validarDesgloseAportes devuelve ese total (no vacío, > 0, sin
+        // tipos repetidos, vigentes y con saldo).
+        double total = procesoPagoPrestamoService.validarDesgloseAportes(solicitud.getAportes(),
+            prestamo.getEntidad());
+
+        LocalDate fecha = solicitud.getFecha() != null ? solicitud.getFecha() : LocalDate.now();
+        // Mismas reglas que la precancelación directa (API-FECHA-AFECTACION-COBRO.md §2bis):
+        // obligatoria, no menor a la fecha de pago, no futura, período abierto. Se reutiliza la
+        // validación compartida, no se reescribe.
+        procesoPagoPrestamoService.validarFechaAfectacion(solicitud.getFechaAfectacion(), fecha,
+            solicitud.getIdEmpresa());
+
+        SolicitudAbonoCapital interna = new SolicitudAbonoCapital();
+        interna.setIdPrestamo(solicitud.getIdPrestamo());
+        interna.setValor(total);
+        interna.setModalidad(solicitud.getModalidad());
+        interna.setUsuario(solicitud.getUsuario());
+        interna.setObservacion(solicitud.getObservacion());
+        interna.setFecha(fecha);
+        interna.setRutaDocumentoRespaldo(solicitud.getRutaDocumentoRespaldo());
+        interna.setIdEmpresa(solicitud.getIdEmpresa());
+        interna.setAportes(solicitud.getAportes());
+        // Llamada directa: sin cobro. Con esto aplicarConMovimientos genera el asiento ÚNICO (AA6).
+        interna.setIdCobroCredito(null);
+        interna.setFechaAfectacion(solicitud.getFechaAfectacion());
+
+        AplicacionAbono aplicacion = aplicarConMovimientos(interna);
+
+        ResultadoAbonoCapitalConAportes respuesta = new ResultadoAbonoCapitalConAportes();
+        respuesta.setResultado(aplicacion.resultado);
+        respuesta.setMovimientosAporte(aplicacion.movimientos);
+        return respuesta;
+    }
+
+    private AplicacionAbono aplicarConMovimientos(SolicitudAbonoCapital solicitud) throws Throwable {
         System.out.println("AbonoCapitalPrestamoService.aplicar - Préstamo: "
             + (solicitud != null ? solicitud.getIdPrestamo() : null));
 
@@ -169,6 +271,24 @@ public class AbonoCapitalPrestamoServiceImpl implements AbonoCapitalPrestamoServ
         LocalDateTime fechaHora = fecha.isEqual(LocalDate.now()) ? LocalDateTime.now() : fecha.atStartOfDay();
 
         double valor = redondear(solicitud.getValor() != null ? solicitud.getValor() : 0.0);
+
+        // Abono con aportes (2026-10-12, AA1/AA4): con aportes, valor es el abono TOTAL
+        // (depósito + Σ aportes) y los aportes no pueden exceder ese total. La validación de
+        // fondo (tipo vigente, saldo) la hace consumirAportes dentro de la transacción.
+        List<DesgloseAporte> aportes = solicitud.getAportes();
+        boolean conAportes = aportes != null && !aportes.isEmpty();
+        if (conAportes) {
+            double sumaAportes = 0.0;
+            for (DesgloseAporte renglon : aportes) {
+                sumaAportes += renglon != null && renglon.getValor() != null ? renglon.getValor() : 0.0;
+            }
+            if (redondear(sumaAportes) > valor + TOLERANCIA) {
+                throw new IncomeException(ProcesoPagoPrestamoService.ERR_DESGLOSE_INVALIDO
+                    + ": los aportes ($" + redondear(sumaAportes) + ") exceden el valor total del abono ($"
+                    + valor + ")");
+            }
+        }
+
         CalculoAbono calculo = calcular(solicitud.getIdPrestamo(), valor, solicitud.getModalidad(), fecha, false);
         Prestamo prestamo = calculo.prestamo;
 
@@ -301,6 +421,20 @@ public class AbonoCapitalPrestamoServiceImpl implements AbonoCapitalPrestamoServ
         pago.setRutaDocumentoRespaldo(solicitud.getRutaDocumentoRespaldo());
         pago = pagoPrestamoService.saveSingle(pago);
 
+        // 5bis. Abono con aportes: consume el saldo del partícipe y enlaza cada PagoAporte a ESTE
+        // PagoPrestamo (AA7) — así anularOperacion → revertirAportes lo restituye sin tocar la
+        // anulación. Mismo patrón que precancelar (paso 6).
+        List<MovimientoAporte> movimientosAporte = new ArrayList<>();
+        if (conAportes) {
+            if (prestamo.getEntidad() == null || prestamo.getEntidad().getCodigo() == null) {
+                throw new IncomeException(ProcesoPagoPrestamoService.ERR_PARAMETRO_INVALIDO + ": el préstamo "
+                    + prestamo.getCodigo() + " no tiene partícipe asociado; no se puede abonar con aportes");
+            }
+            String glosa = "ABONO CAPITAL " + prestamo.getCodigo() + " - Evento " + evento.getCodigo();
+            movimientosAporte = procesoPagoPrestamoService.consumirAportes(prestamo.getEntidad(), aportes,
+                fechaHora, solicitud.getUsuario(), glosa, pago, solicitud.getRutaDocumentoRespaldo());
+        }
+
         // 6. Actualizar el préstamo
         if (solicitud.getModalidad() == 1) {
             prestamo.setPlazo(calculo.plazoNuevo);
@@ -326,7 +460,18 @@ public class AbonoCapitalPrestamoServiceImpl implements AbonoCapitalPrestamoServ
         evento = eventoPrestamoService.saveSingle(evento);
 
         // 8. Hook contable — re-bandeo (2026-08-31, Fase 3)
-        Long numeroAsiento = contabilidadPrestamoService.contabilizarAbonoCapital(evento, solicitud.getIdEmpresa());
+        // AA6: llamada DIRECTA con aportes (sin cobro CBCR) → UN solo asiento que junta el cruce
+        // de aportes, el cierre de apertura y el re-bandeo, EN LUGAR del hook de siempre (dos
+        // asientos dejarían uno vivo al anular, que solo reversa EVPR.numeroAsiento). Con cobro,
+        // el cruce y el cierre los genera CBCRASN2 y este hook solo hace el re-bandeo, como hoy.
+        Long numeroAsiento;
+        if (conAportes && solicitud.getIdCobroCredito() == null) {
+            numeroAsiento = contabilidadPrestamoService.contabilizarAbonoCapitalConAportes(evento,
+                movimientosAporte, solicitud.getIdEmpresa(),
+                solicitud.getFechaAfectacion() != null ? solicitud.getFechaAfectacion() : fecha);
+        } else {
+            numeroAsiento = contabilidadPrestamoService.contabilizarAbonoCapital(evento, solicitud.getIdEmpresa());
+        }
         if (numeroAsiento != null) {
             evento.setNumeroAsiento(numeroAsiento);
             eventoPrestamoService.saveSingle(evento);
@@ -359,7 +504,10 @@ public class AbonoCapitalPrestamoServiceImpl implements AbonoCapitalPrestamoServ
             + " - Plazo: " + evento.getPlazoAnterior() + " → " + calculo.plazoNuevo
             + " - Cuota: " + calculo.cuotaVigente + " → " + calculo.cuotaNueva);
 
-        return resultado;
+        AplicacionAbono aplicacion = new AplicacionAbono();
+        aplicacion.resultado = resultado;
+        aplicacion.movimientos = movimientosAporte;
+        return aplicacion;
     }
 
     // ========================================================================

@@ -383,6 +383,25 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
             return;
         }
 
+        lineas.addAll(lineasCierreApertura(idEmpresa, totalCierre, descripcionOperacion));
+    }
+
+    /**
+     * Las dos líneas que cierran la apertura del lado préstamos por {@code monto}: DEBE
+     * 2.3.02.10 (préstamos por aplicar) / HABER 1.4.05.10 (préstamos por cobrar), invertidas a
+     * propósito respecto de la plantilla de apertura (ver el javadoc de
+     * {@link #agregaCierreAperturaCaminoDirecto}). Extraído el 2026-10-12 (AA10) para que
+     * {@code CobroCreditoServiceImpl#generarAsientoDefinitivo} cierre con la MISMA resolución de
+     * cuentas el tramo abierto que se pagó con aportes en un abono/precancelación mixto — una
+     * sola copia de esa resolución, nunca dos.
+     *
+     * @param monto positivo; el llamador decide si hay algo que cerrar
+     */
+    @Override
+    public List<DetalleAsiento> lineasCierreApertura(Long idEmpresa, double monto, String descripcionOperacion)
+            throws Throwable {
+        double totalCierre = redondear(monto);
+        List<DetalleAsiento> lineas = new ArrayList<>();
         Long idPlantillaApertura = plantillaService.codigoByAlterno(PlantillasCredito.APERTURA_PLANILLA_MENSUAL,
                 idEmpresa);
         if (idPlantillaApertura == null) {
@@ -438,6 +457,7 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
         haberPorCobrar.setValorDebe(0.0);
         haberPorCobrar.setValorHaber(totalCierre);
         lineas.add(haberPorCobrar);
+        return lineas;
     }
 
     // =====================================================================
@@ -479,23 +499,14 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
     // del servidor (derivarEmpresaCobro), nunca elegido por un cliente.
     // =====================================================================
 
-    @Override
-    public Long contabilizarAbonoCapital(EventoPrestamo evento, Long idEmpresa) throws Throwable {
-        System.out.println("ContabilidadPrestamoService.contabilizarAbonoCapital - Evento: "
-                + (evento != null ? evento.getCodigo() : null));
-
-        if (!configuracionContabilidadService.contabilidadActiva()) {
-            System.out.println("  Contabilidad de CRD INACTIVA: abono a capital procesado sin"
-                    + " generar asiento de re-bandeo.");
-            return null;
-        }
-        if (evento == null || evento.getCodigo() == null) {
-            throw new IncomeException("No se puede contabilizar el re-bandeo del abono: falta el evento.");
-        }
-        if (idEmpresa == null) {
-            throw new IncomeException("No se puede contabilizar el re-bandeo del abono " + evento.getCodigo()
-                    + ": falta idEmpresa.");
-        }
+    /**
+     * Las líneas de re-bandeo del abono (reclasificación entre bandas del capital que sigue vivo
+     * tras la re-amortización) — extraído el 2026-10-12 para que {@link #contabilizarAbonoCapital}
+     * y {@link #contabilizarAbonoCapitalConAportes} (AA6, asiento único) usen LA MISMA lectura de
+     * HDTP/DTPR y la misma reclasificación, nunca dos copias.
+     */
+    private List<DetalleAsiento> lineasReBandeoAbono(EventoPrestamo evento, Long idEmpresa, LocalDate fechaCorte,
+            String prefijo) throws Throwable {
         Prestamo prestamo = evento.getPrestamo();
         if (prestamo == null || prestamo.getProducto() == null) {
             throw new IncomeException("El evento " + evento.getCodigo()
@@ -531,11 +542,32 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
                     + prestamo.getCodigo() + ".");
         }
 
+        List<DetalleAsiento> lineas = contabilizacionIndividualCreditoService.lineasReclasificacionAbonoCapital(
+                idProducto, idEmpresa, historizadas, nvl(evento.getValor()), nuevas, fechaCorte, prefijo);
+        return lineas;
+    }
+
+    @Override
+    public Long contabilizarAbonoCapital(EventoPrestamo evento, Long idEmpresa) throws Throwable {
+        System.out.println("ContabilidadPrestamoService.contabilizarAbonoCapital - Evento: "
+                + (evento != null ? evento.getCodigo() : null));
+
+        if (!configuracionContabilidadService.contabilidadActiva()) {
+            System.out.println("  Contabilidad de CRD INACTIVA: abono a capital procesado sin"
+                    + " generar asiento de re-bandeo.");
+            return null;
+        }
+        if (evento == null || evento.getCodigo() == null) {
+            throw new IncomeException("No se puede contabilizar el re-bandeo del abono: falta el evento.");
+        }
+        if (idEmpresa == null) {
+            throw new IncomeException("No se puede contabilizar el re-bandeo del abono " + evento.getCodigo()
+                    + ": falta idEmpresa.");
+        }
         LocalDate fechaCorte = evento.getFecha() != null ? evento.getFecha().toLocalDate() : LocalDate.now();
         String prefijo = "Re-bandeo abono a capital - evento " + evento.getCodigo();
 
-        List<DetalleAsiento> lineas = contabilizacionIndividualCreditoService.lineasReclasificacionAbonoCapital(
-                idProducto, idEmpresa, historizadas, nvl(evento.getValor()), nuevas, fechaCorte, prefijo);
+        List<DetalleAsiento> lineas = lineasReBandeoAbono(evento, idEmpresa, fechaCorte, prefijo);
 
         if (lineas.isEmpty()) {
             System.out.println("  ContabilidadPrestamoService.contabilizarAbonoCapital - evento "
@@ -550,6 +582,121 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
         System.out.println("  ✅ contabilizarAbonoCapital OK (re-bandeo) - Asiento: " + asiento.getCodigo()
                 + " - Evento: " + evento.getCodigo());
 
+        return asiento.getCodigo();
+    }
+
+    // =====================================================================
+    // Abono a capital 100% con aportes, camino DIRECTO (2026-10-12, AA5/AA6) — UN SOLO asiento.
+    //
+    // Junta en el mismo asiento: (1) el cruce — D cuentas de aporte consumidas / H capital por
+    // banda (haberDesdePagos, que para un abono reparte por las cuotas historizadas en HDTP),
+    // (2) el cierre de apertura por T − capitalFuturo (agregaCierreAperturaCaminoDirecto: sin
+    // cobro nadie más cierra la apertura) y (3) el re-bandeo del saldo que queda
+    // (lineasReBandeoAbono, el mismo que el hook de siempre). Las tres partes cuadran por
+    // separado, así que la suma cuadra. Un solo asiento porque un evento tiene un solo
+    // EVPR.numeroAsiento y contabilizarReverso anula solo ese: con dos, anular el abono dejaría
+    // uno vivo.
+    //
+    // Con cobro CBCR este método NO se usa: el cruce y el cierre los genera CBCRASN2
+    // (CobroCreditoServiceImpl) y el hook contabilizarAbonoCapital solo hace el re-bandeo.
+    // =====================================================================
+
+    @Override
+    public Long contabilizarAbonoCapitalConAportes(EventoPrestamo evento, List<MovimientoAporte> movimientos,
+            Long idEmpresa, LocalDate fechaAfectacion) throws Throwable {
+        System.out.println("ContabilidadPrestamoService.contabilizarAbonoCapitalConAportes - Evento: "
+                + (evento != null ? evento.getCodigo() : null));
+
+        if (!configuracionContabilidadService.contabilidadActiva()) {
+            System.out.println("  Contabilidad de CRD INACTIVA: abono con aportes procesado sin generar asiento.");
+            return null;
+        }
+        if (evento == null || evento.getCodigo() == null) {
+            throw new IncomeException("No se puede contabilizar el abono con aportes: falta el evento.");
+        }
+        if (idEmpresa == null) {
+            throw new IncomeException("No se puede contabilizar el abono con aportes del evento "
+                    + evento.getCodigo() + ": falta idEmpresa.");
+        }
+        if (movimientos == null || movimientos.isEmpty()) {
+            throw new IncomeException("El abono con aportes del evento " + evento.getCodigo()
+                    + " no trae movimientos de aporte consumidos; no se puede armar el cruce.");
+        }
+
+        Long idPlantillaAplicacion = contabilizacionIndividualCreditoService.resolverPlantillaAplicacion(idEmpresa);
+        String prefijo = "Abono a capital con aportes - evento " + evento.getCodigo();
+        LocalDate fechaCorte = evento.getFecha() != null ? evento.getFecha().toLocalDate() : LocalDate.now();
+
+        // (1) Cruce: DEBE aportes consumidos (MovimientoAporte.valor viaja negativo al consumir).
+        List<DesgloseAporte> desgloseConsumido = new ArrayList<>();
+        double totalDebe = 0.0;
+        for (MovimientoAporte movimiento : movimientos) {
+            double valor = redondear(Math.abs(nvl(movimiento.getValor())));
+            DesgloseAporte renglon = new DesgloseAporte();
+            renglon.setIdTipoAporte(movimiento.getIdTipoAporte());
+            renglon.setValor(valor);
+            desgloseConsumido.add(renglon);
+            totalDebe += valor;
+        }
+        totalDebe = redondear(totalDebe);
+
+        List<DetalleAsiento> lineas = new ArrayList<>();
+        lineas.addAll(contabilizacionIndividualCreditoService.lineasCruceAportesConsumidos(idPlantillaAplicacion,
+                desgloseConsumido, prefijo));
+
+        // HABER: capital por banda del abono (haberDesdePagos, la MISMA regla de CBCRASN2).
+        List<PagoPrestamo> pagos = pagoPrestamoDaoService.selectByEvento(evento.getCodigo());
+        List<DetalleAsiento> haber = contabilizacionIndividualCreditoService.haberDesdePagos(pagos, idEmpresa,
+                idPlantillaAplicacion, fechaCorte, prefijo);
+        lineas.addAll(haber);
+
+        double totalHaber = 0.0;
+        for (DetalleAsiento linea : haber) {
+            totalHaber += nvl(linea.getValorHaber()) - nvl(linea.getValorDebe());
+        }
+        totalHaber = redondear(totalHaber);
+
+        // Cuadre del cruce contra el valor de la operación (el abono ES lo que pagaron los aportes).
+        double valorOperacion = redondear(nvl(evento.getValor()));
+        if (Math.abs(redondear(totalDebe - valorOperacion)) > TOLERANCIA_CUADRE
+                || Math.abs(redondear(totalHaber - valorOperacion)) > TOLERANCIA_CUADRE) {
+            throw new IncomeException("El cruce del abono con aportes no cuadra: aportes consumidos $"
+                    + totalDebe + ", capital clasificado $" + totalHaber + ", valor del abono $"
+                    + valorOperacion + " (evento " + evento.getCodigo() + "). No se genera un asiento"
+                    + " desbalanceado.");
+        }
+
+        // (2) Cierre de apertura del camino directo, por T − capitalFuturo.
+        agregaCierreAperturaCaminoDirecto(lineas, idEmpresa, totalHaber, pagos, fechaCorte,
+                "abono con aportes evento " + evento.getCodigo());
+
+        // (3) Re-bandeo del capital que sigue vivo.
+        lineas.addAll(lineasReBandeoAbono(evento, idEmpresa, fechaCorte, prefijo));
+
+        double sumaDebe = 0.0;
+        double sumaHaber = 0.0;
+        for (DetalleAsiento linea : lineas) {
+            sumaDebe += nvl(linea.getValorDebe());
+            sumaHaber += nvl(linea.getValorHaber());
+        }
+        if (Math.abs(redondear(sumaDebe - sumaHaber)) > TOLERANCIA_CUADRE) {
+            throw new IncomeException("El asiento del abono con aportes del evento " + evento.getCodigo()
+                    + " no cuadra: DEBE $" + redondear(sumaDebe) + " vs HABER $" + redondear(sumaHaber)
+                    + ". No se genera un asiento desbalanceado.");
+        }
+
+        String observacion = observacionConParticipeYPrestamos(evento.getPrestamo(), pagos,
+                prefijo + (evento.getObservacion() != null && !evento.getObservacion().trim().isEmpty()
+                        ? ": " + evento.getObservacion() : ""));
+        // El asiento se fecha con la de AFECTACIÓN (patrón de contabilizarPrecancelacion);
+        // fechaCorte sigue siendo la de pago real, para banda/apertura.
+        LocalDate fechaAsiento = fechaAfectacion != null ? fechaAfectacion : fechaCorte;
+
+        Asiento asiento = asientoContableService.generarAsiento(idEmpresa, TipoAsientos.CREDITOS, fechaAsiento,
+                observacion, evento.getUsuario(), lineas, Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR));
+
+        System.out.println("  ✅ contabilizarAbonoCapitalConAportes OK - Asiento: " + asiento.getCodigo()
+                + " - Evento: " + evento.getCodigo() + " - Monto: $" + totalDebe);
         return asiento.getCodigo();
     }
 
