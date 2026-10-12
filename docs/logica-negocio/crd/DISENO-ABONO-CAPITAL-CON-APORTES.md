@@ -49,6 +49,20 @@ En un abono, casi todo el capital es futuro. Con depósito 300 + aportes 200, el
 
 **La precancelación mixta tiene la misma forma** y nadie reportó el problema, así que puede haber un detalle que lo evita y no se ve leyendo. **No se programa el asiento a ciegas:** el ítem 0 del BE lo mide con un caso concreto y lo reporta antes de escribir la parte contable.
 
+### 4.1 ✅ Medido por el ítem 0 (`omen-saa-1-be`, 2026-10-12): el riesgo es REAL, y ya existe en producción
+
+- **Abono mixto con depósito 300 + aportes 200:** el capital futuro ronda los 492. El Debe del reparto sale −192 y el cuadre de `:2204` revienta. **El cobro no se puede procesar.** El asiento definitivo tampoco cuadraría.
+- **Precancelación mixta: tiene el MISMO defecto, y está hoy en producción.** Nada lo evita. Se salva solo si no hay corrida de apertura previa o si los aportes son chicos.
+  - El impacto en producción lo mide `sql/321` (solo lectura). Una precancelación atascada debería quedar en estado APROBADO, porque la excepción hace rollback.
+- **El camino directo:** el cruce y el re-bandeo se pueden juntar en un asiento. Además necesita `agregaCierreAperturaCaminoDirecto`, por `T − capitalFuturo`.
+
+### 4.2 Decisiones del árbitro sobre la corrección
+
+| # | Decisión |
+|---|---|
+| **AA9** | **En CBCR, el capital futuro que se descuenta del reparto y del definitivo es el que NO cubrieron los aportes.** `capitalFuturoEfectivo = max(0, capitalFuturo − Σ DAPR del cobro)`, calculado una sola vez en `calcularCapitalFuturoDelCobro`, para que el reparto y el definitivo sigan saliendo del mismo número. Es el principio que el camino directo ya aplica: lo que se cierra contra la apertura es `T − capitalFuturo`, sin importar quién lo pagó (`agregaCierreAperturaCaminoDirecto:376`). Con 100% depósito el resultado es idéntico al de hoy. **Corrige también la precancelación mixta.** |
+| **AA10** | **Caso borde: los aportes superan al capital futuro (`A > capitalFuturo`).** Los aportes pagaron también parte de lo que estaba abierto, y ese tramo (`A − capitalFuturo`) no lo puede cerrar el reparto, que solo mueve el depósito. Se cierra en el **asiento definitivo** con las mismas dos líneas que usa el camino directo (D `2.3.02.10` / H `1.4.05.10`, plantilla 1, aux 4 y 2, `agregaCierreAperturaCaminoDirecto`), por `A − capitalFuturo`. **Regla única: el tramo abierto que se pagó con aportes se cierra igual, venga del camino directo o del CBCR.** Se puede revisar si el contador dice otra cosa. |
+
 ## 5. Plan de trabajo
 
 ### Backend (`omen-saa-1-be`) — solo `crd`
