@@ -120,6 +120,32 @@ elige entre los estados. El «Excel» es en realidad el **CSV** que arma el nave
 
 ---
 
+### P4 — Decisiones del árbitro tras el primer despacho (2026-10-12)
+
+Los ítems P4.1 y P4.3 están en `main` (saaFE `760b167`). P4.2 y P4.4 se detuvieron en sus condiciones de parada,
+y las dos detenciones eran correctas:
+
+- **P4.2, de dónde salen la razón social y el RUC.** La `Empresa` de la sesión solo trae `nombre`. La fuente es
+  el **Facturador** (`CBR.FCDR`: `RAZONSOCIAL`, `NUMDOC`), que tiene FK a la empresa contable (`EMPRESA` →
+  `PJRQCDGO`) y ya se lee en el FE con `FacturadorService.getAll()` (facturas, liquidaciones). Regla:
+  - el facturador cuya `empresa.codigo` es la de la sesión;
+  - razón social = `razonSocial`, y si falta, `nombre` del facturador; si no hay facturador, `empresa.nombre`;
+  - fila de RUC = `RUC: <numDoc>`; si no hay facturador o hay varios con distinto `numDoc`, la fila de RUC se omite;
+  - si el servicio falla, se exporta igual, sin la fila de RUC. El encabezado no puede impedir la descarga.
+- **P4.2, `ExportService.exportToCSV`.** Se autoriza un parámetro **opcional y aditivo** (filas previas al
+  encabezado). Sin el parámetro, el CSV sale **byte por byte igual** que hoy, para todos los llamadores
+  existentes. Ningún otro llamador se toca.
+- **P4.4, el signo** (medido por el ejecutor en `TempReportesServiceImpl`):
+  - **sin centros de costo**, `valorActual` sale positivo en el lado natural → **resultado = v5 − v4**;
+  - **con centros de costo** (`actualizaDebeHaberMovimientoCentro`, `…PlanByCentro`), todo sale como
+    saldo + debe − haber → los ingresos llegan negativos → **resultado = (−v5) − v4**.
+
+  Se implementa así. **Antes de desplegar**, el usuario o financiero comparan la cifra contra el estado de
+  resultados de septiembre en PDF, con y sin centros de costo. Las demás reglas no cambian: si faltan las dos
+  cuentas, no hay fila; si falta una, vale 0. Que el plan use 4 = gastos y 5 = ingresos se verifica con ese
+  mismo PDF.
+- **El ítem del menú** «Estado de Resultados» está dentro de un bloque comentado: no se ve. No se toca.
+
 ## P5 — Asientos de DIARIO para lo que no toca BANCOS
 
 **Lo que pidió Ana** (06-10, recordado el 08-10): *«a partir de octubre, los registros contables en los que
