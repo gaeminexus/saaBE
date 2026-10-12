@@ -138,6 +138,30 @@ falta saber antes de diseñar:
 
 **Primer paso:** un inventario de solo lectura (BE). El diseño se escribe con el inventario en la mano.
 
+### ⚠ Decisión del usuario (2026-10-12): esta es la regla, no la lectura literal del correo
+
+> *«Desde octubre, todo asiento del sistema que afecte la cuenta de bancos debe salir como ingreso o egreso de
+> tesorería, dependiendo de si es en el debe o haber. El resto de asientos que sigan saliendo con el tipo de
+> asiento del módulo. Ningún asiento generado por el sistema debe salir como tipo diario.»*
+
+En consecuencia:
+- **Banco en el DEBE → Ingreso de tesorería; banco en el HABER → Egreso de tesorería.** Vale para **todos** los
+  módulos, también los que hoy usan otro tipo aunque toquen banco (p. ej. `crd` usa `CREDITOS`).
+- **Sin banco → el tipo del módulo que lo genera.** Los siete procesos del inventario de abajo, que hoy salen
+  como Ingreso/Egreso sin banco, **cambian de tipo**, pero **no a Diario**.
+- **Diario queda solo para los asientos manuales** de contabilidad.
+- Las preguntas 1 y 3 de abajo quedan resueltas por la regla. **Siguen abiertas:**
+  (a) qué tipo lleva un asiento con banco en el debe **y** en el haber (transferencia entre cuentas propias);
+  (b) qué es «el tipo del módulo» para lo de `tsr` sin banco (caja chica): no hay un tipo de tesorería que no sea
+  Ingreso/Egreso;
+  (c) los reversos de asientos anteriores a octubre;
+  (d) `crd` toca banco y usa `CREDITOS`: el cambio le toca a `omen-saa-1`, y el aviso a su árbitro necesita la
+  autorización del usuario.
+- **Medición:** `cnt/sql/e2-99`. Cruza los asientos de octubre por tipo, módulo y lado del banco, y lista los
+  que incumplen. El diseño se escribe con eso.
+- El correo a Ana del 2026-10-12 decía que esos procesos «pasarían a salir como Diario». Lo **contradice** esta
+  regla y hay que corregirlo.
+
 ### Inventario (omen-saa-2-be, 2026-10-12; lo que dice «verificado» lo leyó en el código)
 
 **Cómo se elige hoy el tipo.** `AsientoContableServiceImpl.generarAsiento` (l.469/478) **no usa plantilla**:
