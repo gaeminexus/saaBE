@@ -23,7 +23,7 @@
 | Orden de desembolso | Se guarda en `PRSTIDPG`. CXP ya trae `anularPago` con la regla `motivoNoAnular`, que usan devoluciones, rhh y tsr. |
 | Reverso de asiento | `AsientoService.reversionAsiento(idAsiento, fechaReverso)` existe y se usa en otros procesos. |
 | Pagaré impreso | **No existe** (`rep/crd/` no tiene ninguno). |
-| Tabla de amortización impresa de un préstamo real | **No existe.** Lo que hay son los simuladores (`RPRT_SMLC_*`). |
+| Tabla de amortización impresa de un préstamo real | **Ya existía:** `RPRT_TBLA_ACML` (corregido 2026-10-13; el árbitro lo había dado por inexistente). Se extiende con ANULADO (12) y ANULADA (9). |
 | Cuentas contables en el código | **Ninguna** literal en `crd` (barrido por regex del 2026-10-13). Ver §6. |
 | Producto de pago del desembolso | **Quemado** como `976L` en `PrestamoServiceImpl`. No es una cuenta, pero es un id de configuración. Se elimina en §6.2. |
 
@@ -47,7 +47,7 @@
 
 | Reporte | Contenido | Parámetro |
 |---|---|---|
-| `RPRT_PRST_TBLA` — tabla de amortización | Cabecera: idAsoprep, partícipe, cédula, producto, monto, tasa, plazo, fecha de inicio, estado. Detalle por cuota: número, vencimiento, capital, interés, seguros u otros rubros si existen, cuota total y saldo de capital. Totales al pie. | `P_PRSTCDGO` |
+| `RPRT_TBLA_ACML` — tabla de amortización | Cabecera: idAsoprep, partícipe, cédula, producto, monto, tasa, plazo, fecha de inicio, estado. Detalle por cuota: número, vencimiento, capital, interés, seguros u otros rubros si existen, cuota total y saldo de capital. Totales al pie. | `P_PRSTCDGO` |
 | `RPRT_PRST_PGRE` — pagaré | Pagaré a la orden por el monto del préstamo: lugar y fecha, monto en números y en letras, deudor con cédula, plazo, tasa, número de cuotas, cuota, interés de mora según la ley, y las firmas del deudor. ⚠️ **TEXTO LEGAL PROVISIONAL** hasta que el usuario entregue el modelo de pagaré del cliente: lleva al pie «MODELO PROVISIONAL — validar con asesoría legal». | `P_PRSTCDGO` |
 
 Los dos se generan con `POST /rest/rprt/generar` (`modulo: "crd"`) y llevan `.jrxml` en sintaxis
