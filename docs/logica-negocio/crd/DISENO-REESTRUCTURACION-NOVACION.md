@@ -67,3 +67,43 @@ cancelación del original y la pantalla. El asiento queda detrás de una guarda 
 
 `ALTER TABLE CRD.PRST ADD (PRSTPROR NUMBER, PRSTVLSS NUMBER(18,2))`, más el índice sobre
 `PRSTPROR`. Va antes del WAR.
+
+---
+
+## 6. Mapeo de las plantillas — medido con el `sql/326` (2026-10-13, empresa 1236)
+
+Las líneas `aux1` 1–5 (DEBE bandas del nuevo) y 6–10 (HABER bandas del original), y en 6/7 también
+11–12 (HABER `1.3.04.05/.10`, la cartera vencida del original), **no se usan**: las bandas salen de
+`CRD.BNDP` de cada producto (tipo de cartera 1 por vencer y 2 vencida), como en la entrega y el cobro.
+Las filas de la empresa 300 que también trae la consulta (RETENCIONES, TARJETAS, MOTIVOS…) no son de
+crédito: se ignoran porque `codigoByAlterno` filtra por empresa.
+
+| Alterno | Interés (HABER) | Mora (HABER) | Desgravamen (HABER) | Seguro incendio/prendario (HABER) | Orden y socios por pagar |
+|---|---|---|---|---|---|
+| 2, 3 (novación) | — | — | — | — | aux **11** HABER 7.3.01.05 y aux **12** DEBE 7.4.01.05 por el **capital del original** (sale su pagaré); aux **13** DEBE 7.3.01.05 y aux **14** HABER 7.4.01.05 por el **monto del nuevo** (entra el pagaré nuevo); aux **15** HABER 2.3.90.90.10 por el **neto** |
+| 4, 5, 10, 14 (por vencer) | — | — | — | — | — |
+| 6, 7 (quiro. con atraso) | aux **13** (1.4.02.05) | aux **14** (1.4.02.05) | aux **15** (1.4.90.90.10) | **no tiene** | — |
+| 11 (prendario con atraso) | aux **11** (1.4.02.10) | aux **12** (1.4.02.10) | aux **13** (1.4.90.90.10) | aux **14** (1.4.90.15.03) | — |
+| 15 (hipotecario con atraso) | aux **11** (1.4.02.10 ⚠) | aux **12** (1.4.02.10 ⚠) | aux **13** (1.4.90.90.10) | aux **14** (1.4.90.15.02) | — |
+
+**Cuadre.** Reestructuración: DEBE bandas del nuevo (monto = VS) = HABER bandas del original
+(capital) + interés + mora + desgravamen + seguro. Novación: DEBE bandas del nuevo (M) + D12 (C) +
+D13 (M) = HABER bandas del original (C) + H11 (C) + H14 (M) + H15 (M − C). Las dos cuadran cuando
+VS = C, que es lo que garantiza RN10 (sin atraso).
+
+**Regla de selección, que reemplaza a «con atraso / sin atraso» del §4.** Si el VS tiene **cualquier**
+componente distinto del capital (interés, mora o seguros > 0,005), se usa la variante con líneas:
+6, 7, 11 o 15. Si no, la de solo bandas: 4, 5, 10 o 14. Así nunca queda un concepto sin línea donde
+asentarse. Una reestructuración quirografaria con **seguro de incendio** pendiente da error, porque
+6 y 7 no tienen esa línea; un quirografario no lleva incendio.
+
+**Hallazgos para contabilidad (no bloquean, la cuenta se cambia en la plantilla):**
+- **H85** — En la plantilla 15 (hipotecario), el interés y la mora van a `1.4.02.10` **«INTERESES POR
+  PRÉSTAMOS PRENDARIOS»**. La de hipotecarios sería `1.4.02.15`. Ya estaba en el levantamiento §7.
+- **H86** — La plantilla 14 se llama «REESTRUCTURA DE CREDITO **PRENDARIO** POR VENCER», pero usa las
+  cuentas hipotecarias (1.3.11 y 1.3.09). Solo el nombre está mal.
+- **H87** — Los productos 21 HIPOTECARIO NOVACION y 22 PRENDARIO NOVACION **no tienen bandas por
+  vencer** (tipo 1), solo vencidas. Hoy da igual, porque su novación se rechaza por falta de plantilla.
+- **H88** — Las líneas de interés y mora acreditan **interés por cobrar (1.4.02)**. Eso supone que el
+  cierre de cartera ya lo devengó. El interés de una cuota vencida **en el mes en curso**, antes del
+  cierre, podría no estar devengado todavía. Hay que confirmarlo con el contador.
