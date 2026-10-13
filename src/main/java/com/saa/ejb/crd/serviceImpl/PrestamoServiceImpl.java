@@ -286,14 +286,14 @@ public class PrestamoServiceImpl implements PrestamoService {
     /**
      * Producto de pago (PGS.PRDP.ID) cuyo grupo apunta a la cuenta {@code 2.3.90.90.10 SOCIOS
      * POR PAGAR} — el que CXP usa para armar el DEBE del asiento de bancos al confirmar el
-     * desembolso. <b>TODO(sql/157):</b> pendiente de que el usuario corra ese script y lo
-     * resuelva (PLAN-DESEMBOLSO-PRESTAMO.md §4.3).
+     * desembolso. Creado con sql/322 el 2026-10-13, grupo 79, cuenta 2.3.90.90.10
+     * (PLAN-DESEMBOLSO-PRESTAMO.md §4.3).
      *
      * <p>Mientras sea {@code null}, {@link #aprobar} falla ruidoso en vez de mandar el
      * desglose vacío o un id inventado: con el producto equivocado, tesorería paga y el
      * asiento descarga una cuenta que no es, cuadrado igual y sin ningún error.</p>
      */
-    private static final Long ID_PRODUCTO_PAGO_SOCIOS_POR_PAGAR = null;
+    private static final Long ID_PRODUCTO_PAGO_SOCIOS_POR_PAGAR = 976L;
 
     @Override
     public Prestamo aprobar(Long idPrestamo, String usuario, String observacion, Long idEmpresa, Long idUsuario)
