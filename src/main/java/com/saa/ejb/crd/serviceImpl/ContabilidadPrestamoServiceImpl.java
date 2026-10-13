@@ -112,6 +112,9 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
     private com.saa.ejb.cnt.dao.DetallePlantillaDaoService detallePlantillaDaoService;
 
     @EJB
+    private com.saa.ejb.crd.service.MotorPagoPrestamoService motorPagoPrestamoService;
+
+    @EJB
     private com.saa.ejb.cxp.dao.ProductoPagoDaoService productoPagoDaoService;
 
     /** PLAN-ENTREGA-BANDAS-DINAMICAS.md: la entrega clasifica el capital con el mismo modelo
@@ -1102,57 +1105,9 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
         String prefijo = "Entrega préstamo " + prestamo.getCodigo();
         LocalDate fechaInicio = prestamo.getFechaInicio().toLocalDate();
 
-        // DEBE: capital clasificado con el MISMO modelo dinámico de bandas que ya usa el cobro
-        // (ClasificadorBandaService / CRD.BNDP), no la escalera fija de 5 tramos de antes
-        // (PLAN-ENTREGA-BANDAS-DINAMICAS.md). Es una entrega, no un cobro: TODAS las cuotas
-        // están por vencer, y los días se cuentan desde la fecha de inicio del préstamo hasta
-        // el vencimiento de cada cuota — por eso se le pasa fechaInicio como "fecha de corte"
-        // a POR_VENCER, nunca VENCIDO.
-        Map<Long, LineaBandaCapitalAcumulada> bandasEntrega = new LinkedHashMap<>();
-        for (DetallePrestamo cuota : cuotas) {
-            if (cuota.getFechaVencimiento() == null || cuota.getCapital() == null) {
-                continue;
-            }
-            LocalDate vencimiento = cuota.getFechaVencimiento().toLocalDate();
-            long dias = Math.max(1, ChronoUnit.DAYS.between(fechaInicio, vencimiento));
-            ResultadoClasificacionBanda resultado = clasificadorBandaService.clasificar(
-                    prestamo.getProducto().getCodigo(), idEmpresa,
-                    Long.valueOf(TipoCarteraBanda.POR_VENCER), Long.valueOf(dias), fechaInicio);
-            BandaProductoDetalle banda = resultado.getBanda();
-            LineaBandaCapitalAcumulada acumulada = bandasEntrega.computeIfAbsent(
-                    banda.getNumero(), k -> new LineaBandaCapitalAcumulada(banda));
-            acumulada.valor += cuota.getCapital();
-        }
-
-        List<DetalleAsiento> lineas = new ArrayList<>();
-        double totalCapital = 0.0;
-        for (LineaBandaCapitalAcumulada acumulada : bandasEntrega.values()) {
-            double valorBanda = redondear(acumulada.valor);
-            if (valorBanda <= TOLERANCIA_CUADRE) {
-                continue;
-            }
-            // Mismo guardarraíl que el cobro (ContabilizacionIndividualCreditoServiceImpl.
-            // lineaBandaCapital): sin cuenta asignada en CRD.BNDP, la entrega no se contabiliza
-            // (sql/176 verifica esto ANTES de desplegar — ver PLAN-ENTREGA-BANDAS-DINAMICAS.md §3).
-            if (acumulada.banda.getIdPlanCuenta() == null) {
-                throw new IncomeException("La banda " + acumulada.banda.getNumero() + " del producto "
-                        + prestamo.getProducto().getCodigo() + " no tiene cuenta contable asignada en"
-                        + " CRD.BNDP; no se puede armar el asiento de entrega del préstamo "
-                        + prestamo.getCodigo() + ".");
-            }
-            PlanCuenta cuenta = planCuentaDaoService.selectById(acumulada.banda.getIdPlanCuenta(),
-                    NombreEntidadesContabilidad.PLAN_CUENTA);
-            DetalleAsiento linea = new DetalleAsiento();
-            linea.setPlanCuenta(cuenta);
-            linea.setNumeroCuenta(acumulada.banda.getCuentaContable());
-            linea.setNombreCuenta(acumulada.banda.getNombreCuenta());
-            linea.setDescripcion(prefijo + " - banda " + acumulada.banda.getNumero());
-            linea.setValorDebe(valorBanda);
-            linea.setValorHaber(0.0);
-            lineas.add(linea);
-            totalCapital += valorBanda;
-        }
-        totalCapital = redondear(totalCapital);
+        LineasBandas bandasNuevo = lineasBandasEntrega(prestamo, cuotas, idEmpresa, prefijo);
+        List<DetalleAsiento> lineas = bandasNuevo.lineas;
+        double totalCapital = bandasNuevo.total;
 
         if (Math.abs(redondear(totalCapital - montoOperacion)) > TOLERANCIA_CUADRE) {
             throw new IncomeException("El capital distribuido en bandas del préstamo "
@@ -1214,6 +1169,252 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
         System.out.println("  ✅ contabilizarEntrega OK - Préstamo: " + prestamo.getCodigo()
                 + " - Asiento: " + asiento.getCodigo() + " - Monto: $" + totalCapital);
 
+        return asiento.getCodigo();
+    }
+
+    /** Líneas DEBE de capital por banda de un préstamo + su total. */
+    private static class LineasBandas {
+        private final List<DetalleAsiento> lineas;
+        private final double total;
+
+        private LineasBandas(List<DetalleAsiento> lineas, double total) {
+            this.lineas = lineas;
+            this.total = total;
+        }
+    }
+
+    /**
+     * DEBE de capital por banda, una línea por banda (rutina de la entrega, extraída para que la
+     * reestructuración y la novación usen EXACTAMENTE la misma).
+     */
+    private LineasBandas lineasBandasEntrega(Prestamo prestamo, List<DetallePrestamo> cuotas, Long idEmpresa,
+            String prefijo) throws Throwable {
+        LocalDate fechaInicio = prestamo.getFechaInicio().toLocalDate();
+
+        // DEBE: capital clasificado con el MISMO modelo dinámico de bandas que ya usa el cobro
+        // (ClasificadorBandaService / CRD.BNDP), no la escalera fija de 5 tramos de antes
+        // (PLAN-ENTREGA-BANDAS-DINAMICAS.md). Es una entrega, no un cobro: TODAS las cuotas
+        // están por vencer, y los días se cuentan desde la fecha de inicio del préstamo hasta
+        // el vencimiento de cada cuota — por eso se le pasa fechaInicio como "fecha de corte"
+        // a POR_VENCER, nunca VENCIDO.
+        Map<Long, LineaBandaCapitalAcumulada> bandasEntrega = new LinkedHashMap<>();
+        for (DetallePrestamo cuota : cuotas) {
+            if (cuota.getFechaVencimiento() == null || cuota.getCapital() == null) {
+                continue;
+            }
+            LocalDate vencimiento = cuota.getFechaVencimiento().toLocalDate();
+            long dias = Math.max(1, ChronoUnit.DAYS.between(fechaInicio, vencimiento));
+            ResultadoClasificacionBanda resultado = clasificadorBandaService.clasificar(
+                    prestamo.getProducto().getCodigo(), idEmpresa,
+                    Long.valueOf(TipoCarteraBanda.POR_VENCER), Long.valueOf(dias), fechaInicio);
+            BandaProductoDetalle banda = resultado.getBanda();
+            LineaBandaCapitalAcumulada acumulada = bandasEntrega.computeIfAbsent(
+                    banda.getNumero(), k -> new LineaBandaCapitalAcumulada(banda));
+            acumulada.valor += cuota.getCapital();
+        }
+
+        List<DetalleAsiento> lineas = new ArrayList<>();
+        double totalCapital = 0.0;
+        for (LineaBandaCapitalAcumulada acumulada : bandasEntrega.values()) {
+            double valorBanda = redondear(acumulada.valor);
+            if (valorBanda <= TOLERANCIA_CUADRE) {
+                continue;
+            }
+            // Mismo guardarraíl que el cobro (ContabilizacionIndividualCreditoServiceImpl.
+            // lineaBandaCapital): sin cuenta asignada en CRD.BNDP, la entrega no se contabiliza
+            // (sql/176 verifica esto ANTES de desplegar — ver PLAN-ENTREGA-BANDAS-DINAMICAS.md §3).
+            if (acumulada.banda.getIdPlanCuenta() == null) {
+                throw new IncomeException("La banda " + acumulada.banda.getNumero() + " del producto "
+                        + prestamo.getProducto().getCodigo() + " no tiene cuenta contable asignada en"
+                        + " CRD.BNDP; no se puede armar el asiento de entrega del préstamo "
+                        + prestamo.getCodigo() + ".");
+            }
+            PlanCuenta cuenta = planCuentaDaoService.selectById(acumulada.banda.getIdPlanCuenta(),
+                    NombreEntidadesContabilidad.PLAN_CUENTA);
+            DetalleAsiento linea = new DetalleAsiento();
+            linea.setPlanCuenta(cuenta);
+            linea.setNumeroCuenta(acumulada.banda.getCuentaContable());
+            linea.setNombreCuenta(acumulada.banda.getNombreCuenta());
+            linea.setDescripcion(prefijo + " - banda " + acumulada.banda.getNumero());
+            linea.setValorDebe(valorBanda);
+            linea.setValorHaber(0.0);
+            lineas.add(linea);
+            totalCapital += valorBanda;
+        }
+        totalCapital = redondear(totalCapital);
+        return new LineasBandas(lineas, totalCapital);
+    }
+
+    // =====================================================================
+    // Reestructuración y novación (DISENO-REESTRUCTURACION-NOVACION.md §3 y §4).
+    // =====================================================================
+
+    /** Familia del producto (CRD.TPPR) en mayúsculas; vacío si no se sabe. */
+    private String familiaDeSustitucion(Prestamo prestamo) {
+        if (prestamo == null || prestamo.getProducto() == null || prestamo.getProducto().getTipoPrestamo() == null
+                || prestamo.getProducto().getTipoPrestamo().getNombre() == null) {
+            return "";
+        }
+        return prestamo.getProducto().getTipoPrestamo().getNombre().trim().toUpperCase();
+    }
+
+    @Override
+    public int alternoSustitucion(Prestamo original, boolean esNovacion, boolean conAtraso) throws Throwable {
+        String familia = familiaDeSustitucion(original);
+        boolean originalNovado = original.getEsNovacion() != null && original.getEsNovacion() == 1L;
+        boolean originalReestructurado = original.getReestructurado() != null && original.getReestructurado() == 1L;
+        if (esNovacion) {
+            if ("QUIROGRAFARIO".equals(familia)) {
+                return originalReestructurado
+                    ? PlantillasCredito.NOVACION_QUIROGRAFARIO_REESTRUCTURADO
+                    : PlantillasCredito.NOVACION_QUIROGRAFARIO;
+            }
+            if ("PRENDARIO".equals(familia) || "HIPOTECARIO".equals(familia)) {
+                throw new IncomeException("No hay plantilla contable de novación para la familia " + familia
+                    + "; contabilidad debe crearla antes de novar un préstamo " + familia.toLowerCase() + ".");
+            }
+        } else {
+            if ("QUIROGRAFARIO".equals(familia)) {
+                if (originalNovado) {
+                    return conAtraso ? PlantillasCredito.REESTRUCTURACION_QUIROGRAFARIO_RENOVADO_ATRASO
+                        : PlantillasCredito.REESTRUCTURACION_QUIROGRAFARIO_RENOVADO;
+                }
+                return conAtraso ? PlantillasCredito.REESTRUCTURACION_QUIROGRAFARIO_ATRASO
+                    : PlantillasCredito.REESTRUCTURACION_QUIROGRAFARIO;
+            }
+            if ("PRENDARIO".equals(familia)) {
+                return conAtraso ? PlantillasCredito.REESTRUCTURACION_PRENDARIO_ATRASO
+                    : PlantillasCredito.REESTRUCTURACION_PRENDARIO;
+            }
+            if ("HIPOTECARIO".equals(familia)) {
+                return conAtraso ? PlantillasCredito.REESTRUCTURACION_HIPOTECARIO_ATRASO
+                    : PlantillasCredito.REESTRUCTURACION_HIPOTECARIO;
+            }
+        }
+        throw new IncomeException("La familia '" + familia + "' del préstamo " + original.getCodigo()
+            + " no tiene plantilla contable de " + (esNovacion ? "novación" : "reestructuración")
+            + ". Solo QUIROGRAFARIO, PRENDARIO y HIPOTECARIO.");
+    }
+
+    @Override
+    public String motivoSinPlantillaSustitucion(Prestamo original, boolean esNovacion, boolean conAtraso)
+            throws Throwable {
+        try {
+            alternoSustitucion(original, esNovacion, conAtraso); // llamada interna: no cruza el proxy
+            return null;
+        } catch (IncomeException e) {
+            return e.getMessage();
+        }
+    }
+
+    /**
+     * ⛔ PENDIENTE del sql/326: las líneas NO-banda de la plantilla de la operación (interés
+     * vencido, mora y seguros capitalizados en la reestructuración; cuentas de orden y SOCIOS POR
+     * PAGAR por el neto en la novación). Las posiciones {@code aux1} de esas plantillas no están
+     * levantadas; hasta tener la salida del sql/326 este método LANZA, igual que se hizo con el
+     * producto de pago 976: ruidoso, no un asiento a medias.
+     */
+    private List<DetalleAsiento> lineasNoBandaSustitucion(Long idPlantilla, int alterno,
+            com.saa.ejb.crd.service.dto.DesgloseConceptosPrestamo desglose, boolean esNovacion, double neto,
+            String prefijo) throws Throwable {
+        throw new IncomeException("Falta el mapeo de la plantilla " + alterno + " (sql/326): no se puede armar el"
+            + " asiento de la " + (esNovacion ? "novación" : "reestructuración")
+            + " hasta levantar las líneas de interés, mora, seguros" + (esNovacion ? ", orden y socios por pagar" : "")
+            + " de esa plantilla.");
+    }
+
+    @Override
+    public Long contabilizarSustitucion(Prestamo nuevo, List<DetallePrestamo> cuotasNuevo, Prestamo original,
+            com.saa.ejb.crd.service.dto.DesgloseConceptosPrestamo desglose, boolean esNovacion, double neto,
+            boolean conAtraso, Long idEmpresa, String usuario) throws Throwable {
+        System.out.println("ContabilidadPrestamoService.contabilizarSustitucion - nuevo: "
+            + (nuevo != null ? nuevo.getCodigo() : null) + " - original: "
+            + (original != null ? original.getCodigo() : null));
+        if (!configuracionContabilidadService.contabilidadActiva()) {
+            System.out.println("  Contabilidad de CRD INACTIVA: sustitución sin asiento.");
+            return null;
+        }
+        if (idEmpresa == null) {
+            throw new IncomeException("No se puede contabilizar la sustitución: falta idEmpresa.");
+        }
+        if (nuevo.getFechaInicio() == null) {
+            throw new IncomeException("El préstamo " + nuevo.getCodigo()
+                + " no tiene fecha de inicio; no se puede distribuir el capital en bandas por plazo.");
+        }
+
+        // Plantilla de la operación y sus líneas no-banda: primero, para fallar antes del trabajo caro.
+        int alterno = alternoSustitucion(original, esNovacion, conAtraso);
+        Long idPlantilla = plantillaService.codigoByAlterno(alterno, idEmpresa);
+        if (idPlantilla == null) {
+            throw new IncomeException("No existe la plantilla contable alterno " + alterno
+                + " para la empresa " + idEmpresa + ".");
+        }
+        String prefijo = (esNovacion ? "Novación" : "Reestructuración") + " préstamo " + original.getCodigo()
+            + " → " + nuevo.getCodigo();
+        List<DetalleAsiento> lineasNoBanda = lineasNoBandaSustitucion(idPlantilla, alterno, desglose,
+            esNovacion, neto, prefijo);
+
+        // DEBE: capital del NUEVO por banda (la rutina de la entrega).
+        LineasBandas bandasNuevo = lineasBandasEntrega(nuevo, cuotasNuevo, idEmpresa, prefijo);
+        double montoNuevo = nvl(nuevo.getMontoSolicitado());
+        if (Math.abs(redondear(bandasNuevo.total - montoNuevo)) > TOLERANCIA_CUADRE) {
+            throw new IncomeException("El capital del préstamo nuevo distribuido en bandas ($" + bandasNuevo.total
+                + ") no coincide con su monto ($" + montoNuevo + "). No se genera un asiento desbalanceado.");
+        }
+
+        // HABER: capital del ORIGINAL por banda, con la clasificación de cada cuota pendiente a hoy
+        // (por vencer o vencida) — la misma rutina del cobro / la precancelación.
+        LocalDate hoy = LocalDate.now();
+        Long idProductoOriginal = original.getProducto() != null ? original.getProducto().getCodigo() : null;
+        if (idProductoOriginal == null) {
+            throw new IncomeException("El préstamo original " + original.getCodigo() + " no tiene producto.");
+        }
+        Map<String, DetalleAsiento> haberOriginal = new LinkedHashMap<>();
+        double totalHaberCapital = 0.0;
+        for (DetallePrestamo cuota : detallePrestamoDaoService.selectCuotasPendientesByPrestamoOrdenadas(original.getCodigo())) {
+            double capitalCuota = redondear(motorPagoPrestamoService.calcularSaldosCuota(cuota).getSaldoCapital());
+            if (capitalCuota <= 0.0) {
+                continue;
+            }
+            if (cuota.getFechaVencimiento() == null) {
+                throw new IncomeException("La cuota " + cuota.getNumeroCuota() + " del préstamo original "
+                    + original.getCodigo() + " no tiene fecha de vencimiento; no se puede clasificar por banda.");
+            }
+            DetalleAsiento linea = contabilizacionIndividualCreditoService.lineaBandaCapital(idProductoOriginal,
+                idEmpresa, capitalCuota, cuota.getFechaVencimiento().toLocalDate(), hoy, prefijo + " (original)");
+            DetalleAsiento acumulada = haberOriginal.get(linea.getDescripcion());
+            if (acumulada == null) {
+                haberOriginal.put(linea.getDescripcion(), linea);
+            } else {
+                acumulada.setValorHaber(redondear(acumulada.getValorHaber() + linea.getValorHaber()));
+            }
+            totalHaberCapital = redondear(totalHaberCapital + capitalCuota);
+        }
+        if (Math.abs(redondear(totalHaberCapital - desglose.getCapitalPendiente())) > TOLERANCIA_CUADRE) {
+            throw new IncomeException("El capital pendiente del original por cuotas ($" + totalHaberCapital
+                + ") no coincide con su desglose ($" + desglose.getCapitalPendiente() + ").");
+        }
+
+        List<DetalleAsiento> lineas = new ArrayList<>(bandasNuevo.lineas);
+        lineas.addAll(haberOriginal.values());
+        lineas.addAll(lineasNoBanda);
+
+        double totalDebe = 0.0;
+        double totalHaber = 0.0;
+        for (DetalleAsiento linea : lineas) {
+            totalDebe += nvl(linea.getValorDebe());
+            totalHaber += nvl(linea.getValorHaber());
+        }
+        totalDebe = redondear(totalDebe);
+        totalHaber = redondear(totalHaber);
+        if (Math.abs(redondear(totalDebe - totalHaber)) > TOLERANCIA_CUADRE) {
+            throw new IncomeException("El asiento de la sustitución del préstamo " + original.getCodigo()
+                + " no cuadra: DEBE $" + totalDebe + ", HABER $" + totalHaber + ". No se genera un asiento desbalanceado.");
+        }
+
+        Asiento asiento = asientoContableService.generarAsiento(idEmpresa, TipoAsientos.CREDITOS, hoy, prefijo,
+            usuario, lineas, Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR));
+        System.out.println("  ✅ contabilizarSustitucion OK - Asiento: " + asiento.getCodigo());
         return asiento.getCodigo();
     }
 

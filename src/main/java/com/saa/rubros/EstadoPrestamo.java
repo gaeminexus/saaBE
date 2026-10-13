@@ -33,5 +33,7 @@ public interface EstadoPrestamo {
 	public static final int EN_MORA = 11;
 	/** Préstamo otorgado y anulado (DISENO-ANULACION-PRESTAMO-E-IMPRESOS.md). Nuevo 2026-10-13. */
 	public static final int ANULADO = 12;
+	/** Original cancelado por una reestructuración (DISENO-REESTRUCTURACION-NOVACION.md RN11). Terminal. Nuevo 2026-10-13. */
+	public static final int CANCELADO_POR_REESTRUCTURACION = 13;
 
 }

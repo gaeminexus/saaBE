@@ -1810,10 +1810,18 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
                     throw new IncomeException("El préstamo " + linea.getIdPrestamo()
                             + " no pertenece a la entidad " + solicitud.getIdEntidad());
                 }
-                // Solo el ANULADO (12), sin lista blanca: un préstamo anulado no recibe cobros.
-                if (prestamo.getIdEstado() != null
-                        && prestamo.getIdEstado() == com.saa.rubros.EstadoPrestamo.ANULADO) {
-                    throw new IncomeException("el préstamo " + linea.getIdPrestamo() + " está ANULADO");
+                // Solo estos tres estados, sin lista blanca: un préstamo anulado (12), cancelado por
+                // reestructuración (13) o cancelado por novación (5) no recibe cobros.
+                if (prestamo.getIdEstado() != null) {
+                    long estadoPrestamo = prestamo.getIdEstado();
+                    String nombreEstado = estadoPrestamo == com.saa.rubros.EstadoPrestamo.ANULADO ? "ANULADO"
+                        : estadoPrestamo == com.saa.rubros.EstadoPrestamo.CANCELADO_POR_REESTRUCTURACION
+                            ? "CANCELADO POR REESTRUCTURACIÓN"
+                        : estadoPrestamo == com.saa.rubros.EstadoPrestamo.CANCELADO_POR_NOVACION
+                            ? "CANCELADO POR NOVACIÓN" : null;
+                    if (nombreEstado != null) {
+                        throw new IncomeException("el préstamo " + linea.getIdPrestamo() + " está " + nombreEstado);
+                    }
                 }
                 if (linea.getIdTipoAporte() != null || linea.getPeriodoDevengo() != null) {
                     throw new IncomeException("idTipoAporte/periodoDevengo solo aplican a"

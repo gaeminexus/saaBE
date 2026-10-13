@@ -27,6 +27,7 @@ import com.saa.ejb.crd.service.CalculadoraAmortizacionService;
 import com.saa.ejb.crd.service.ContabilidadPrestamoService;
 import com.saa.ejb.crd.service.MotorPagoPrestamoService;
 import com.saa.ejb.crd.service.PrestamoService;
+import com.saa.ejb.crd.service.dto.ContextoSustitucion;
 import com.saa.ejb.crd.service.dto.CuotaProyectada;
 import com.saa.ejb.crd.service.dto.ParametrosAmortizacion;
 import com.saa.ejb.crd.service.dto.SaldoPrestamoResumen;
@@ -64,6 +65,9 @@ public class PrestamoServiceImpl implements PrestamoService {
 
     @EJB
     private com.saa.ejb.cnt.service.AsientoService asientoService;
+
+    @EJB
+    private com.saa.ejb.crd.service.SustitucionPrestamoService sustitucionPrestamoService;
 
     @EJB
     private com.saa.ejb.crd.dao.DetalleCobroCreditoDaoService detalleCobroCreditoDaoService;
@@ -155,6 +159,33 @@ public class PrestamoServiceImpl implements PrestamoService {
             prestamo.setUsuarioAnulacion(existente.getUsuarioAnulacion());
             prestamo.setFechaAnulacion(existente.getFechaAnulacion());
             prestamo.setMotivoAnulacion(existente.getMotivoAnulacion());
+        }
+        // Reestructuración y novación (RN12): VS y banderas las escribe el servidor al aprobar.
+        // idPrestamoOriginal solo se acepta en el alta o mientras el préstamo esté en 1 o 6.
+        if (existente == null) {
+            prestamo.setValorSustitucion(null);
+            prestamo.setReestructurado(null);
+            prestamo.setEsNovacion(null);
+            prestamo.setMontoNovacion(null);
+        } else {
+            prestamo.setValorSustitucion(existente.getValorSustitucion());
+            prestamo.setReestructurado(existente.getReestructurado());
+            prestamo.setEsNovacion(existente.getEsNovacion());
+            prestamo.setMontoNovacion(existente.getMontoNovacion());
+            Long estadoPrevio = existente.getIdEstado();
+            boolean editableOriginal = estadoPrevio != null && (estadoPrevio == EstadoPrestamo.GENERADO
+                || estadoPrevio == EstadoPrestamo.PENDIENTE_DE_APROBACION);
+            if (!editableOriginal) {
+                prestamo.setIdPrestamoOriginal(existente.getIdPrestamoOriginal());
+            }
+        }
+        boolean validaSustitucion = prestamo.getIdPrestamoOriginal() != null && (existente == null
+            || (existente.getIdEstado() != null && (existente.getIdEstado() == EstadoPrestamo.GENERADO
+                || existente.getIdEstado() == EstadoPrestamo.PENDIENTE_DE_APROBACION)));
+        if (validaSustitucion) {
+            // El original es del mismo partícipe, está vivo, cumple RN4, RN9 y RN10, y el monto
+            // cumple RN7 (reestructuración) o RN8 (novación). Lanza con el motivo.
+            sustitucionPrestamoService.validarAlGuardar(prestamo);
         }
         if (existente == null) {
             prestamo.setIdAsoprep(null);
@@ -324,6 +355,8 @@ public class PrestamoServiceImpl implements PrestamoService {
             case EstadoPrestamo.CANCELADO_POR_REVISAR: return "CANCELADO_POR_REVISAR (9)";
             case EstadoPrestamo.VIGENTE_POR_REVISAR: return "VIGENTE_POR_REVISAR (10)";
             case EstadoPrestamo.EN_MORA: return "EN_MORA (11)";
+            case EstadoPrestamo.ANULADO: return "ANULADO (12)";
+            case EstadoPrestamo.CANCELADO_POR_REESTRUCTURACION: return "CANCELADO_POR_REESTRUCTURACION (13)";
             default: return "estado " + codigo;
         }
     }
@@ -365,6 +398,10 @@ public class PrestamoServiceImpl implements PrestamoService {
                 + " no tiene un monto solicitado válido; no se puede aprobar.");
         }
 
+        // Reestructuración / novación: recalcula el VS y aplica RN7 y RN8 ANTES de gastar el número.
+        ContextoSustitucion sustitucion = prestamo.getIdPrestamoOriginal() != null
+            ? sustitucionPrestamoService.prepararAprobacion(prestamo) : null;
+
         // 1b. U6.1: idAsoprep = MAX(PRSTIDAS) + 1, ANTES de la orden de pago y del asiento, con
         // flush en el acto: si otra aprobación tomó el mismo número, el índice único lo avisa
         // acá y no después del trabajo caro. Sin secuencia (U6.2): el número vive en esta misma
@@ -391,9 +428,14 @@ public class PrestamoServiceImpl implements PrestamoService {
         // DevolucionAporteServiceImpl:540 ("un log que anuncia éxito antes de que la operación
         // pueda fallar es peor que no tener log"): si CXP rechaza la orden, no se toca el
         // asiento ni el estado del préstamo.
-        Long idPago;
+        // RN8: la novación desembolsa solo el NETO (monto − VS). RN7: la reestructuración no mueve
+        // dinero al socio, así que no hay orden de desembolso (PRSTIDPG queda nulo).
+        boolean generaOrden = sustitucion == null || sustitucion.isNovacion();
+        double valorOrden = sustitucion != null ? sustitucion.getNeto() : monto;
+        Long idPago = null;
+        if (generaOrden) {
         try {
-            List<LineaContablePago> desglose = armarDesgloseEntrega(prestamo, monto, idEmpresa);
+            List<LineaContablePago> desglose = armarDesgloseEntrega(prestamo, valorOrden, idEmpresa);
             BeneficiarioOcasional beneficiario = armaBeneficiarioPrestamo(prestamo.getEntidad());
             String observacionPago = "Desembolso préstamo N° " + prestamo.getCodigo()
                 + (prestamo.getEntidad() != null ? " - " + prestamo.getEntidad().getRazonSocial() : "");
@@ -403,7 +445,7 @@ public class PrestamoServiceImpl implements PrestamoService {
             // al aprobar.
             Map<String, Object> respuesta = pagoProgramadoService.registrarPagoDeOrigenExterno(
                 OrigenPagoExterno.CRD_DESEMBOLSO_PRESTAMO, prestamo.getCodigo(),
-                idEmpresa, null, monto, LocalDate.now().toString(),
+                idEmpresa, null, valorOrden, LocalDate.now().toString(),
                 beneficiario, desglose, observacionPago, idUsuario,
                 false, null);
 
@@ -420,10 +462,21 @@ public class PrestamoServiceImpl implements PrestamoService {
             throw new IncomeException("No se pudo generar la orden de pago del desembolso del"
                 + " préstamo " + idPrestamo + ": " + e.getMessage());
         }
+        }
 
-        // 3. Asiento de entrega, con la plantilla del producto.
-        Long idAsientoEntrega = contabilidadPrestamoService.contabilizarEntrega(prestamo, cuotas, idEmpresa,
-            monto, usuario);
+        // 3. Asiento de entrega, con la plantilla del producto — o, si el préstamo sustituye a
+        // otro, el asiento del traslado (bandas del nuevo y del original + líneas no-banda).
+        Long idAsientoEntrega;
+        if (sustitucion == null) {
+            idAsientoEntrega = contabilidadPrestamoService.contabilizarEntrega(prestamo, cuotas, idEmpresa,
+                monto, usuario);
+        } else {
+            idAsientoEntrega = contabilidadPrestamoService.contabilizarSustitucion(prestamo, cuotas,
+                sustitucion.getOriginal(), sustitucion.getDesglose(), sustitucion.isNovacion(),
+                sustitucion.getNeto(), sustitucion.isConAtraso(), idEmpresa, usuario);
+            // RN11/RN12: cancela el original DESPUÉS del asiento (que necesita sus saldos vivos).
+            sustitucionPrestamoService.cancelarOriginal(prestamo, sustitucion, idAsientoEntrega, usuario);
+        }
 
         // 4. Estado, auditoría y PRSTIDPG.
         prestamo.setIdEstado(Long.valueOf(EstadoPrestamo.VIGENTE));
@@ -507,6 +560,12 @@ public class PrestamoServiceImpl implements PrestamoService {
         if (idEstado == null || (idEstado != EstadoPrestamo.VIGENTE && idEstado != EstadoPrestamo.EN_MORA)) {
             return "El préstamo " + idPrestamo + " está en estado " + nombreEstadoPrestamo(idEstado)
                 + "; solo se puede anular un préstamo VIGENTE (2) o EN_MORA (11).";
+        }
+
+        // RN13: un préstamo que sustituyó a otro no se anula en esta fase (habría que resucitar el original).
+        if (prestamo.getIdPrestamoOriginal() != null) {
+            return "El préstamo " + idPrestamo + " sustituyó al préstamo " + prestamo.getIdPrestamoOriginal()
+                + " (reestructuración o novación); no se puede anular en esta fase, habría que resucitar el original.";
         }
 
         // AN4: sin el id del asiento de entrega no hay cómo reversarlo.

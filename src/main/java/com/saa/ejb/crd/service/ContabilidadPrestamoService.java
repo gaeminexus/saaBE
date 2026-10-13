@@ -141,6 +141,32 @@ public interface ContabilidadPrestamoService {
      */
     Long resolverProductoPagoDesembolso(Prestamo prestamo, Long idEmpresa) throws Throwable;
 
+    /**
+     * Alterno de la plantilla contable de una reestructuración o novación (§4 del diseño), según la
+     * familia del original, el tipo, si el original es novado/reestructurado y si tiene atraso.
+     * Lanza {@code IncomeException} si no hay plantilla (novación de prendario o hipotecario).
+     */
+    int alternoSustitucion(Prestamo original, boolean esNovacion, boolean conAtraso) throws Throwable;
+
+    /**
+     * Igual que {@link #alternoSustitucion} pero NO lanza: devuelve el motivo, o {@code null} si hay
+     * plantilla. Existe porque una {@code IncomeException} que cruza el proxy EJB marca la
+     * transacción como rollback aunque se atrape.
+     */
+    String motivoSinPlantillaSustitucion(Prestamo original, boolean esNovacion, boolean conAtraso) throws Throwable;
+
+    /**
+     * Asiento del traslado de una reestructuración o novación, al aprobar el préstamo NUEVO (§3):
+     * DEBE bandas del nuevo (rutina de la entrega) y HABER bandas del original (clasificación del
+     * cobro a hoy: por vencer o vencida), más las líneas no-banda de la plantilla
+     * ({@code lineasNoBandaSustitucion}, hoy pendiente del sql/326).
+     *
+     * @return código del asiento, o null si la contabilidad de CRD está inactiva
+     */
+    Long contabilizarSustitucion(Prestamo nuevo, List<DetallePrestamo> cuotasNuevo, Prestamo original,
+            com.saa.ejb.crd.service.dto.DesgloseConceptosPrestamo desglose, boolean esNovacion, double neto,
+            boolean conAtraso, Long idEmpresa, String usuario) throws Throwable;
+
     Long contabilizarEntrega(Prestamo prestamo, List<DetallePrestamo> cuotas, Long idEmpresa,
             double montoOperacion, String usuario) throws Throwable;
 }

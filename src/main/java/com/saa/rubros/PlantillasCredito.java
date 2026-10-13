@@ -221,4 +221,30 @@ public interface PlantillasCredito {
 	// configuración por tipo de aporte + empresa), no de una plantilla — ver
 	// docs/logica-negocio/crd/MAPEO-CUENTAS-TIPO-APORTE.md y el javadoc de CuentaTipoAporte.
 
+
+	// ---------------------------------------------------------------------------------------------
+	// Reestructuración y novación (DISENO-REESTRUCTURACION-NOVACION.md §4). Alternos de plantilla:
+	// son la LLAVE para encontrarla, igual que 9/13/34 de la entrega; la cuenta la decide la plantilla.
+	// ---------------------------------------------------------------------------------------------
+
+	/** Novación de quirografario normal (sin atraso, RN10). */
+	public static final int NOVACION_QUIROGRAFARIO = 2;
+	/** Novación de quirografario reestructurado. */
+	public static final int NOVACION_QUIROGRAFARIO_REESTRUCTURADO = 3;
+	/** Reestructuración de quirografario normal, sin atraso. */
+	public static final int REESTRUCTURACION_QUIROGRAFARIO = 4;
+	/** Reestructuración de quirografario renovado (novado), sin atraso. */
+	public static final int REESTRUCTURACION_QUIROGRAFARIO_RENOVADO = 5;
+	/** Reestructuración de quirografario normal, con atraso. */
+	public static final int REESTRUCTURACION_QUIROGRAFARIO_ATRASO = 6;
+	/** Reestructuración de quirografario renovado (novado), con atraso. */
+	public static final int REESTRUCTURACION_QUIROGRAFARIO_RENOVADO_ATRASO = 7;
+	/** Reestructuración de prendario, sin atraso. */
+	public static final int REESTRUCTURACION_PRENDARIO = 10;
+	/** Reestructuración de prendario, con atraso. */
+	public static final int REESTRUCTURACION_PRENDARIO_ATRASO = 11;
+	/** Reestructuración de hipotecario, sin atraso. */
+	public static final int REESTRUCTURACION_HIPOTECARIO = 14;
+	/** Reestructuración de hipotecario, con atraso. */
+	public static final int REESTRUCTURACION_HIPOTECARIO_ATRASO = 15;
 }

@@ -75,6 +75,9 @@ public class PrestamoRest {
     private PrestamoService prestamoService;
 
     @EJB
+    private com.saa.ejb.crd.service.SustitucionPrestamoService sustitucionPrestamoService;
+
+    @EJB
     private ProcesoPagoPrestamoService procesoPagoPrestamoService;
 
     @EJB
@@ -252,6 +255,9 @@ public class PrestamoRest {
                     .type(MediaType.APPLICATION_JSON)
                     .build();
         } catch (Throwable e) {
+            if (esRechazoDeSustitucion(registro, e)) {
+                return respuestaFallo(HTTP_REGLA_DE_NEGOCIO, ETAPA_VALIDACION, e.getMessage(), "");
+            }
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("Error al actualizar préstamo: " + e.getMessage())
                     .type(MediaType.APPLICATION_JSON)
@@ -277,6 +283,9 @@ public class PrestamoRest {
                     .type(MediaType.APPLICATION_JSON)
                     .build();
         } catch (Throwable e) {
+            if (esRechazoDeSustitucion(registro, e)) {
+                return respuestaFallo(HTTP_REGLA_DE_NEGOCIO, ETAPA_VALIDACION, e.getMessage(), "");
+            }
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("Error al crear préstamo: " + e.getMessage())
                     .type(MediaType.APPLICATION_JSON)
@@ -392,6 +401,39 @@ public class PrestamoRest {
                     .entity("Error al aprobar el préstamo: " + e.getMessage())
                     .type(MediaType.APPLICATION_JSON)
                     .build();
+        }
+    }
+
+    /**
+     * Un préstamo que sustituye a otro (idPrestamoOriginal) rechazado por una regla de negocio:
+     * 422 con {@code mensaje} (API-REESTRUCTURACION-NOVACION.md §3). El resto de los guardados
+     * conserva su comportamiento de siempre.
+     */
+    private boolean esRechazoDeSustitucion(Prestamo registro, Throwable e) {
+        return registro != null && registro.getIdPrestamoOriginal() != null
+                && e instanceof com.saa.basico.util.IncomeException;
+    }
+
+    /**
+     * Préstamos del partícipe que se pueden reestructurar o novar a hoy, cada uno con su valor de
+     * sustitución. API-REESTRUCTURACION-NOVACION.md §2.
+     *
+     * @param tipo REESTRUCTURACION o NOVACION
+     */
+    @GET
+    @Path("/sustituibles/{idEntidad}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response sustituibles(@PathParam("idEntidad") Long idEntidad, @QueryParam("tipo") String tipo) {
+        System.out.println("SUSTITUIBLES - Entidad: " + idEntidad + ", tipo: " + tipo);
+        if (!"REESTRUCTURACION".equals(tipo) && !"NOVACION".equals(tipo)) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
+                    "tipo debe ser REESTRUCTURACION o NOVACION", "PARAMETRO_INVALIDO");
+        }
+        try {
+            return Response.ok(sustitucionPrestamoService.sustituibles(idEntidad, tipo))
+                    .type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return respuestaErrorNegocio(e);
         }
     }
 

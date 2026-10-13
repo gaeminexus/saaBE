@@ -344,11 +344,32 @@ public class Prestamo implements Serializable {
     private String motivoAnulacion;
 
     // ============================================================
+    // Reestructuración y novación (DISENO-REESTRUCTURACION-NOVACION.md, RN12).
+    // ⛔ Requieren crd/sql/327 (ALTER TABLE CRD.PRST ADD (PRSTPROR, PRSTVLSS)) ANTES de desplegar.
+    // ============================================================
+
+    /** Préstamo original que este préstamo sustituye (reestructuración o novación). Sin FK. */
+    @Basic
+    @Column(name = "PRSTPROR")
+    private Long idPrestamoOriginal;
+
+    /** Valor de sustitución (VS) calculado al aprobar. Lo escribe solo el servidor. */
+    @Basic
+    @Column(name = "PRSTVLSS")
+    private Double valorSustitucion;
+
+    // ============================================================
     // Getters y Setters
     // ============================================================
 
     public Long getCodigo() { return codigo; }
     public void setCodigo(Long codigo) { this.codigo = codigo; }
+
+    public Long getIdPrestamoOriginal() { return idPrestamoOriginal; }
+    public void setIdPrestamoOriginal(Long idPrestamoOriginal) { this.idPrestamoOriginal = idPrestamoOriginal; }
+
+    public Double getValorSustitucion() { return valorSustitucion; }
+    public void setValorSustitucion(Double valorSustitucion) { this.valorSustitucion = valorSustitucion; }
 
     public Long getIdAsientoEntrega() { return idAsientoEntrega; }
     public void setIdAsientoEntrega(Long idAsientoEntrega) { this.idAsientoEntrega = idAsientoEntrega; }

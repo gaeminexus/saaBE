@@ -1357,6 +1357,10 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
 
         LocalDateTime ahora = LocalDateTime.now();
         String tipo = evento.getTipoOperacion();
+        if ("REESTRUCTURACION".equals(tipo) || "NOVACION".equals(tipo)) {
+            throw new IncomeException(ERR_ESTADO_NO_PERMITE
+                + ": una reestructuración o novación no se anula desde el historial");
+        }
 
         ResultadoAnulacion resultado = new ResultadoAnulacion();
         resultado.setIdEvento(evento.getCodigo());
@@ -1857,12 +1861,19 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
             && (idEstado == EstadoPrestamo.CANCELADO
              || idEstado == EstadoPrestamo.CANCELADO_ANTICIPADO
              || idEstado == EstadoPrestamo.CANCELADO_POR_NOVACION
-             || idEstado == EstadoPrestamo.ANULADO);
+             || idEstado == EstadoPrestamo.ANULADO
+             || idEstado == EstadoPrestamo.CANCELADO_POR_REESTRUCTURACION);
     }
 
-    /** Texto del estado para el rechazo: el ANULADO se nombra, los demás van por su número. */
+    /** Texto del estado para el rechazo: el ANULADO y el 13 se nombran, los demás van por su número. */
     private String textoEstadoTerminal(Long idEstado) {
-        return idEstado != null && idEstado == EstadoPrestamo.ANULADO ? "ANULADO (12)" : String.valueOf(idEstado);
+        if (idEstado != null && idEstado == EstadoPrestamo.ANULADO) {
+            return "ANULADO (12)";
+        }
+        if (idEstado != null && idEstado == EstadoPrestamo.CANCELADO_POR_REESTRUCTURACION) {
+            return "CANCELADO_POR_REESTRUCTURACION (13)";
+        }
+        return String.valueOf(idEstado);
     }
 
     /** Monto con 2 decimales y punto decimal, independiente del locale del servidor. */
