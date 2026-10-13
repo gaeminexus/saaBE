@@ -316,3 +316,33 @@ compilación (`mvn -q clean compile` y `npm run build`, los dos exit 0) y lectur
    Un `PUT` con payload parcial **graba `NULL`** en las columnas que no vengan, en cualquier módulo
    del sistema. Documentado en `docs/general/MERGE-DESNUDO-EN-ENTITYDAOIMPL.md`. Es lo que obligó a
    que `guardarEdicion()` lea antes de escribir. **Sin dueño.**
+
+---
+
+## 7. U6 — 2026-10-13: el sistema asigna el idAsoprep al APROBAR
+
+**Decisión del usuario (2026-10-13), textual:** *«El sistema debe asignar el idAsoprep. Toma el max
+idAsoprep de prestamos y hay que sumarle 1. Esta numeracion jamas se debe perder ni saltar. Y el id
+se debe asignar al aprobar.»*
+
+Para el cliente, `PRSTIDAS` (`Prestamo.idAsoprep`) **es** el número del préstamo. Hasta hoy lo
+escribía a mano el usuario en «Ingreso», y si el campo quedaba vacío el FE mandaba **0**.
+
+### Reglas (árbitro, a partir de la decisión)
+
+| # | Regla |
+|---|---|
+| U6.1 | `aprobar` asigna `idAsoprep = MAX(PRSTIDAS) + 1`, con el MAX tomado sobre **todo** `CRD.PRST`. Se asigna **antes** de la orden de pago y del asiento, y se hace `flush` en el acto. Así, si dos aprobaciones chocan, la segunda se entera antes de hacer el trabajo caro. |
+| U6.2 | **Sin saltos.** No se usa una secuencia de Oracle: una secuencia salta con el caché y con cada rollback. El número vive dentro de la misma transacción que la aprobación: si `aprobar` falla por cualquier motivo (asiento, orden, período), el rollback se lleva el número y nadie lo consume. |
+| U6.3 | **Sin duplicados.** Un índice **único** sobre `PRSTIDAS` es la garantía real (DDL `sql/324`, después de medir con el `sql/323`). Si dos aprobaciones simultáneas calculan el mismo MAX, la segunda espera a que la primera confirme y recibe ORA-00001. Ese error se traduce a: «Otro préstamo se aprobó al mismo tiempo y tomó el número N; vuelva a aprobar». Todo se revierte. El reintento toma N+1. |
+| U6.4 | **Sin pérdidas.** Un préstamo aprobado conserva su número para siempre: `saveSingle` ya **no** acepta un `idAsoprep` que venga del cliente. En un préstamo nuevo o no aprobado (estados 1, 6 y 7) lo deja en `null`. En uno existente conserva el valor que ya tiene la base, aunque el FE mande otro. El rechazado (7) nunca recibe número. |
+| U6.5 | Un préstamo que se aprueba y **ya trae** un `idAsoprep` (tipeado antes de este cambio) **no se renumera**: conserva el suyo. Si eso es un problema lo dirá el `sql/323`, bloque 3. |
+| U6.6 | **Pantalla:** en «Ingreso», «ID Asoprep» pasa a ser de solo lectura y deja de ser obligatorio. Con préstamo sin número muestra «Se asigna al aprobar»; con préstamo aprobado, el número. El FE manda `idAsoprep: null` y nunca 0. Después de aprobar, la pantalla muestra el número asignado en el mensaje de éxito y en el campo. |
+| U6.7 | `cargarTablaAmortizacionDesdeExcel` deja de validar el `idAsoprep`: ya no lo escribe nadie más que `aprobar`. |
+
+### ⚠️ Lo que el MAX hereda de los datos migrados
+
+El MAX se toma sobre los datos tal como están. Un número mal tipeado en un préstamo migrado (un
+`999999` en vez de `60123`) haría que el **próximo** préstamo salga como `1000000`, y desde ahí la
+serie quedaría corrida para siempre. El **bloque 5 del `sql/323`** muestra los diez números más altos
+con su fecha, para verificarlo **antes** de desplegar.
