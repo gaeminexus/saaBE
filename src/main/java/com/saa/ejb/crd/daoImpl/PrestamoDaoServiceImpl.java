@@ -20,6 +20,14 @@ public class PrestamoDaoServiceImpl extends EntityDaoImpl<Prestamo> implements P
     EntityManager em;
 
     @Override
+    public Long selectMaxIdAsoprep() throws Throwable {
+        System.out.println("PrestamoDaoService.selectMaxIdAsoprep");
+        // Sin try/catch a propósito: un error no puede convertirse en "no hay ninguno".
+        Object maximo = em.createQuery("SELECT MAX(p.idAsoprep) FROM Prestamo p").getSingleResult();
+        return maximo != null ? ((Number) maximo).longValue() : null;
+    }
+
+    @Override
     public Prestamo selectByIdAsoprep(Long idAsoprep) throws Throwable {
         if (idAsoprep == null) {
             return null;

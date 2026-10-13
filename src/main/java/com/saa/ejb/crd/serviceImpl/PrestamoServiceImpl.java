@@ -46,9 +46,15 @@ import com.saa.rubros.OrigenPagoExterno;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
+import jakarta.persistence.PersistenceException;
 
 @Stateless
 public class PrestamoServiceImpl implements PrestamoService {
+
+    @PersistenceContext
+    private EntityManager em;
 
     @EJB
     private PrestamoDaoService prestamoDaoService;
@@ -116,11 +122,20 @@ public class PrestamoServiceImpl implements PrestamoService {
     public Prestamo saveSingle(Prestamo prestamo) throws Throwable {
         System.out.println("saveSingle - Prestamo");
         
-        // Validar si el idAsoprep ya existe en otro préstamo
-        if (prestamo.getIdAsoprep() != null) {
-            validarIdAsoprepUnico(prestamo.getIdAsoprep(), prestamo.getCodigo());
+        // U6.4: el idAsoprep ya no lo manda el cliente, lo asigna aprobar(). Se resuelve ANTES
+        // del merge: el merge pisaría la instancia gestionada con lo que mandó el cliente.
+        Prestamo existente = prestamo.getCodigo() != null
+            ? prestamoDaoService.find(new Prestamo(), prestamo.getCodigo()) : null;
+        if (existente == null) {
+            prestamo.setIdAsoprep(null);
+        } else {
+            Long estadoBase = existente.getIdEstado();
+            boolean noAprobado = estadoBase != null && (estadoBase == EstadoPrestamo.GENERADO
+                || estadoBase == EstadoPrestamo.PENDIENTE_DE_APROBACION
+                || estadoBase == EstadoPrestamo.RECHAZADO);
+            prestamo.setIdAsoprep(noAprobado ? null : existente.getIdAsoprep());
         }
-        
+
         if(prestamo.getCodigo() == null){
         	// N5/ciclo de otorgamiento: Estado.ACTIVO era del catálogo equivocado (mismo defecto
         	// N5 de las cuotas). Un préstamo nuevo nace PENDIENTE_DE_APROBACION (6), no en la
@@ -332,6 +347,28 @@ public class PrestamoServiceImpl implements PrestamoService {
                 + " no tiene un monto solicitado válido; no se puede aprobar.");
         }
 
+        // 1b. U6.1: idAsoprep = MAX(PRSTIDAS) + 1, ANTES de la orden de pago y del asiento, con
+        // flush en el acto: si otra aprobación tomó el mismo número, el índice único lo avisa
+        // acá y no después del trabajo caro. Sin secuencia (U6.2): el número vive en esta misma
+        // transacción y el rollback se lo lleva. Si ya trae número no se renumera (U6.5).
+        if (prestamo.getIdAsoprep() == null) {
+            Long maximo = prestamoDaoService.selectMaxIdAsoprep();
+            Long idAsoprepNuevo = (maximo != null ? maximo : 0L) + 1L;
+            prestamo.setIdAsoprep(idAsoprepNuevo);
+            try {
+                em.flush();
+            } catch (PersistenceException e) {
+                if (esViolacionDeUnicidad(e)) {
+                    throw new IncomeException("Otro préstamo se aprobó al mismo tiempo y tomó el número "
+                        + idAsoprepNuevo + "; vuelva a aprobar.");
+                }
+                throw e;
+            }
+            System.out.println("Préstamo " + idPrestamo + ": idAsoprep asignado = " + idAsoprepNuevo);
+        } else {
+            System.out.println("Préstamo " + idPrestamo + ": conserva su idAsoprep = " + prestamo.getIdAsoprep());
+        }
+
         // 2. Orden de pago del desembolso, PRIMERO — mismo criterio que
         // DevolucionAporteServiceImpl:540 ("un log que anuncia éxito antes de que la operación
         // pueda fallar es peor que no tener log"): si CXP rechaza la orden, no se toca el
@@ -383,6 +420,23 @@ public class PrestamoServiceImpl implements PrestamoService {
         System.out.println("Préstamo " + idPrestamo + " aprobado por " + usuario + " - orden de pago "
             + idPago + (idAsientoEntrega != null ? " - asiento de entrega " + idAsientoEntrega : ""));
         return prestamo;
+    }
+
+    /** ORA-00001 (índice único violado) en algún punto de la cadena de causas. */
+    private boolean esViolacionDeUnicidad(Throwable e) {
+        for (Throwable causa = e; causa != null; causa = causa.getCause()) {
+            if (causa instanceof java.sql.SQLException && ((java.sql.SQLException) causa).getErrorCode() == 1) {
+                return true;
+            }
+            String mensaje = causa.getMessage();
+            if (mensaje != null && mensaje.contains("ORA-00001")) {
+                return true;
+            }
+            if (causa.getCause() == causa) {
+                break;
+            }
+        }
+        return false;
     }
 
     /** Ver el javadoc de {@link #ID_PRODUCTO_PAGO_SOCIOS_POR_PAGAR}. */
@@ -655,11 +709,8 @@ public class PrestamoServiceImpl implements PrestamoService {
             throw new IncomeException("Préstamo con ID " + idPrestamo + " no encontrado");
         }
         
-        // Validar si el idAsoprep ya existe en otro préstamo
-        if (prestamo.getIdAsoprep() != null) {
-            validarIdAsoprepUnico(prestamo.getIdAsoprep(), prestamo.getCodigo());
-        }
-        
+        // U6.7: ya no se valida el idAsoprep acá; solo aprobar() lo escribe.
+
         List<DetallePrestamo> detalles = new ArrayList<>();
         double totalCapital = 0.0;
         double totalInteres = 0.0;

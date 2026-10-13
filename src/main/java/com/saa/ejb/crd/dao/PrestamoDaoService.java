@@ -137,5 +137,18 @@ public interface PrestamoDaoService extends EntityDao<Prestamo> {
      * @throws Throwable Si ocurre algún error
      */
     List<Object[]> selectCodigosYEstadoExistentes(List<Long> codigos) throws Throwable;
+
+    /**
+     * Mayor {@code idAsoprep} (PRSTIDAS) de TODO {@code CRD.PRST}, sin filtrar por estado
+     * (U6.1 de PLAN-CICLO-OTORGAMIENTO.md: {@code aprobar} asigna MAX + 1).
+     *
+     * <p>A diferencia de otras búsquedas de este DAO, <b>NO absorbe errores</b>: si la consulta
+     * falla, lanza. Devolver {@code null} por un error haría arrancar la numeración en 1 y
+     * duplicaría números.</p>
+     *
+     * @return el mayor idAsoprep, o {@code null} si ningún préstamo tiene uno
+     * @throws Throwable Si ocurre algún error
+     */
+    Long selectMaxIdAsoprep() throws Throwable;
 }
 
