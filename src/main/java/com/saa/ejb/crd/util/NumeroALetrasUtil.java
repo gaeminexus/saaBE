@@ -63,6 +63,60 @@ public final class NumeroALetrasUtil {
         if (dolares > 999_999_999L) {
             return String.valueOf(dolares) + " con " + String.format("%02d", centavos) + "/100 dólares";
         }
+        return dolaresEnLetras(dolares) + " con " + String.format("%02d", centavos) + "/100 "
+            + (dolares == 1L ? "dólar" : "dólares");
+    }
+
+    /**
+     * Monto con el formato EXACTO del pagaré del cliente (MODELO_DE_PAGARE_V2, IM4):
+     * {@code 64800} → {@code "SESENTA Y CUATRO MIL OCHOCIENTOS DÓLARES DE LOS ESTADOS UNIDOS DE AMÉRICA CON 00/100"}.
+     * Va en mayúsculas y con la leyenda completa; el «(USD: …)» lo agrega el reporte. Por encima de
+     * 999.999.999 devuelve el número crudo, igual que {@link #convertirMonto}.
+     */
+    public static String convertirMontoModelo(Double monto) {
+        double valor = monto != null ? Math.abs(monto) : 0.0;
+        long centavosTotales = Math.round(valor * 100.0);
+        long dolares = centavosTotales / 100L;
+        String centavos = String.format("%02d", (int) (centavosTotales % 100L));
+        String letras = dolares > 999_999_999L ? String.valueOf(dolares) : dolaresEnLetras(dolares).toUpperCase();
+        return letras + (dolares == 1L ? " DÓLAR" : " DÓLARES") + " DE LOS ESTADOS UNIDOS DE AMÉRICA CON " + centavos + "/100";
+    }
+
+    /**
+     * Tasa con el formato del pagaré: {@code 9.0} → {@code "NUEVE CON 00/100"}; {@code 9.25} →
+     * {@code "NUEVE CON 25/100"}. El «(9.0) %» lo agrega el reporte con {@link #formatearTasaModelo}.
+     */
+    public static String convertirTasaModelo(Double tasa) {
+        double valor = tasa != null ? Math.abs(tasa) : 0.0;
+        long centesimas = Math.round(valor * 100.0);
+        return convertir(centesimas / 100L).toUpperCase() + " CON " + String.format("%02d", (int) (centesimas % 100L)) + "/100";
+    }
+
+    /** Tasa como la imprime el modelo dentro del paréntesis: {@code 9} → {@code "9.0"}, {@code 9.25} → {@code "9.25"}. */
+    public static String formatearTasaModelo(Double tasa) {
+        java.math.BigDecimal t = java.math.BigDecimal.valueOf(tasa != null ? tasa : 0.0)
+            .setScale(2, java.math.RoundingMode.HALF_UP).stripTrailingZeros();
+        if (t.scale() < 1) {
+            t = t.setScale(1);
+        }
+        return t.toPlainString();
+    }
+
+    /** Monto como lo imprime el modelo junto al «USD:» de las letras: {@code 64800} → {@code "64.800,00"}. */
+    public static String formatearMontoEc(Double monto) {
+        java.text.DecimalFormatSymbols simbolos = new java.text.DecimalFormatSymbols();
+        simbolos.setDecimalSeparator(',');
+        simbolos.setGroupingSeparator('.');
+        return new java.text.DecimalFormat("#,##0.00", simbolos).format(monto != null ? monto : 0.0);
+    }
+
+    /** Cuota como la imprime el modelo junto al «USD.»: {@code 746.97} → {@code "746.97"} (punto decimal, sin miles). */
+    public static String formatearCuotaModelo(Double cuota) {
+        return String.format(java.util.Locale.US, "%.2f", cuota != null ? cuota : 0.0);
+    }
+
+    /** Dólares enteros (0-999.999.999) en letras minúsculas, con la apócope de «veintiún mil», «un millón». */
+    private static String dolaresEnLetras(long dolares) {
         String letras;
         if (dolares == 0L) {
             letras = "cero";
@@ -76,8 +130,7 @@ public final class NumeroALetrasUtil {
         }
         // Apócope del último "uno" y de los multiplicadores: «veintiún mil», «un dólar».
         letras = letras.replace("veintiuno mil", "veintiún mil").replace("uno mil", "un mil");
-        letras = apocopar(letras);
-        return letras + " con " + String.format("%02d", centavos) + "/100 " + (dolares == 1L ? "dólar" : "dólares");
+        return apocopar(letras);
     }
 
     private static String apocopar(String texto) {

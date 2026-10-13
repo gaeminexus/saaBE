@@ -3,6 +3,8 @@ package com.saa.ejb.reporte.service;
 import java.util.List;
 import java.util.Map;
 
+import com.saa.model.reporte.ReporteLoteItem;
+
 import jakarta.ejb.Local;
 
 /**
@@ -49,5 +51,11 @@ public interface ReporteService {
     /**
      * Valida que el módulo sea válido
      */
+    /**
+     * Un solo PDF con varios reportes del mismo módulo, en el orden pedido. Cada uno se llena
+     * igual que en {@link #generarReporte}. Si uno falla, falla todo y el mensaje dice cuál.
+     */
+    public byte[] generarReporteLote(String modulo, List<ReporteLoteItem> reportes) throws Exception;
+
     public boolean esModuloValido(String modulo);
 }

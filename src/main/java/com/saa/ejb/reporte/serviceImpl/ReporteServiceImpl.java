@@ -20,6 +20,7 @@ import javax.naming.NamingException;
 import javax.sql.DataSource;
 
 import com.saa.ejb.reporte.service.ReporteService;
+import com.saa.model.reporte.ReporteLoteItem;
 
 import jakarta.ejb.Stateless;
 import jakarta.ejb.TransactionAttribute;
@@ -31,6 +32,7 @@ import net.sf.jasperreports.engine.JasperPrint;
 import net.sf.jasperreports.engine.JasperReport;
 import net.sf.jasperreports.engine.data.JRBeanCollectionDataSource;
 import net.sf.jasperreports.engine.export.HtmlExporter;
+import net.sf.jasperreports.pdf.JRPdfExporter;
 import net.sf.jasperreports.engine.export.ooxml.JRDocxExporter;
 import net.sf.jasperreports.engine.export.ooxml.JRXlsxExporter;
 import net.sf.jasperreports.engine.util.JRLoader;
@@ -91,6 +93,54 @@ public class ReporteServiceImpl implements ReporteService {
     @TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
     public byte[] generarReporte(String modulo, String nombreReporte, 
                                   Map<String, Object> parametros, String formato) throws Exception {
+        JasperPrint jasperPrint = llenarReporte(modulo, nombreReporte, parametros);
+        try {
+            // Exportar según el formato solicitado
+            return exportarReporte(jasperPrint, formato);
+        } catch (Exception e) {
+            LOGGER.log(Level.SEVERE, "Error al generar reporte", e);
+            throw new Exception("Error al generar el reporte: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Genera UN solo PDF con varios reportes, en el orden pedido (DISENO-IMPRESOS-OTORGAMIENTO.md §4).
+     * Cada reporte se llena con {@link #llenarReporte}, exactamente el mismo camino de
+     * {@link #generarReporte} (misma inyección de P_IMAGEN, misma conversión de tipos, misma
+     * conexión JDBC); después se exporta una sola vez. Si uno falla, falla todo y el mensaje dice cuál.
+     */
+    @TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
+    public byte[] generarReporteLote(String modulo, List<ReporteLoteItem> reportes) throws Exception {
+        List<JasperPrint> impresos = new java.util.ArrayList<>();
+        for (ReporteLoteItem item : reportes) {
+            try {
+                impresos.add(llenarReporte(modulo, item.getNombreReporte(), item.getParametros()));
+            } catch (Exception e) {
+                throw new Exception("Falló el reporte " + item.getNombreReporte() + " del lote: " + e.getMessage(), e);
+            }
+        }
+        try {
+            ByteArrayOutputStream salida = new ByteArrayOutputStream();
+            JRPdfExporter exporter = new JRPdfExporter();
+            exporter.setExporterInput(SimpleExporterInput.getInstance(impresos));
+            exporter.setExporterOutput(new SimpleOutputStreamExporterOutput(salida));
+            exporter.exportReport();
+            return salida.toByteArray();
+        } catch (Exception e) {
+            LOGGER.log(Level.SEVERE, "Error al exportar el lote de reportes", e);
+            throw new Exception("Error al exportar el lote de reportes: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Carga el .jasper, inyecta el logo, convierte los tipos de los parámetros y llena el reporte
+     * con la conexión JDBC. Es el cuerpo común de {@link #generarReporte} y {@link #generarReporteLote}.
+     */
+    private JasperPrint llenarReporte(String modulo, String nombreReporte,
+                                      Map<String, Object> parametros) throws Exception {
+        if (parametros == null) {
+            parametros = new java.util.HashMap<>();
+        }
         
         // ── Alias de reportes ────────────────────────────────────────────────
         // La retención simple no tiene JRXML propio: siempre se usa el V2.
@@ -105,8 +155,8 @@ public class ReporteServiceImpl implements ReporteService {
         }
         // ────────────────────────────────────────────────────────────────────
 
-        LOGGER.log(Level.INFO, "Generando reporte: modulo={0}, nombre={1}, formato={2}", 
-                   new Object[]{modulo, nombreReporte, formato});
+        LOGGER.log(Level.INFO, "Generando reporte: modulo={0}, nombre={1}", 
+                   new Object[]{modulo, nombreReporte});
         
         Connection conn = null;
         try {
@@ -198,10 +248,7 @@ public class ReporteServiceImpl implements ReporteService {
             convertirTiposParametros(jasperReport, parametros);
 
             // Llenar el reporte con datos
-            JasperPrint jasperPrint = JasperFillManager.fillReport(jasperReport, parametros, conn);
-            
-            // Exportar según el formato solicitado
-            return exportarReporte(jasperPrint, formato);
+            return JasperFillManager.fillReport(jasperReport, parametros, conn);
             
         } catch (Exception e) {
             LOGGER.log(Level.SEVERE, "Error al generar reporte", e);

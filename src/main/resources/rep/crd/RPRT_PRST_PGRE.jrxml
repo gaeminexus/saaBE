@@ -1,112 +1,179 @@
-<!-- Pagaré del préstamo otorgado (CRD). DISENO-ANULACION-PRESTAMO-E-IMPRESOS.md §4.
-     Sintaxis compacta. Se llena por <query> con el parámetro P_PRSTCDGO (una fila): sin SELECT *,
-     columnas explícitas. SIN fontName (ni Tahoma): el exportador PDF pierde la negrita con Tahoma.
-     El monto en letras sale de NumeroALetrasUtil.convertirMonto (clase del WAR, crd.util); el
-     verificador de llenado necesita target/classes en el classpath para resolverla.
-     ⚠️ TEXTO LEGAL PROVISIONAL hasta que el cliente entregue su modelo de pagaré: el pie lo dice. -->
+<!-- Pagaré a la orden del préstamo otorgado (CRD) — MODELO V2 DEL CLIENTE.
+     DISENO-IMPRESOS-OTORGAMIENTO.md (IM1–IM9). Sintaxis compacta. Se llena por <query> con P_PRSTCDGO
+     (una fila), sin SELECT *, columnas explícitas. SIN fontName (ni Tahoma): el exportador PDF pierde la negrita.
+     IM1: el texto fijo es LITERAL del modelo del cliente (incluidas las formas «(emos)», «mis(nuestos)» y sus
+     erratas): no se corrige ni se conjuga. Lo único que varía son los campos.
+     IM2: un dato sin fuente sale como línea para llenar a mano (________); no se inventa.
+     IM3: el número es PRSTIDAS (idAsoprep); sin él sale la marca BORRADOR y el número en blanco.
+     IM4: letras y formatos del modelo con NumeroALetrasUtil (clase del WAR, crd.util): el verificador de
+     llenado y el compilador necesitan sólo esa .class en el classpath. -->
 <jasperReport name="RPRT_PRST_PGRE" language="java" pageWidth="595" pageHeight="842" columnWidth="515" leftMargin="40" rightMargin="40" topMargin="30" bottomMargin="30" whenNoDataType="AllSectionsNoDetail" uuid="a2000001-0000-0000-0000-000000000001">
 	<property name="com.jaspersoft.studio.data.defaultdataadapter" value="Oracle"/>
-	<property name="com.jaspersoft.studio.report.description" value="Pagaré del préstamo (modelo provisional)"/>
+	<property name="com.jaspersoft.studio.report.description" value="Pagaré a la orden — modelo V2 del cliente"/>
 	<parameter name="P_PRSTCDGO" class="java.lang.Long"><description><![CDATA[Código del préstamo (CRD.PRST.PRSTCDGO).]]></description></parameter>
 	<parameter name="P_IMAGEN" class="java.awt.Image"><description><![CDATA[Logo. Lo inyecta ReporteServiceImpl.]]></description></parameter>
-	<query language="SQL"><![CDATA[SELECT p.PRSTCDGO                       AS CODIGO_PRESTAMO,
-       NVL(p.PRSTIDAS, p.PRSTCDGO)       AS NUMERO_PRESTAMO,
-       TRIM(e.ENTDRZNS)                  AS NOMBRES,
-       TRIM(e.ENTDNMID)                  AS IDENTIFICACION,
-       pr.PRDCNMBR                       AS PRODUCTO,
-       p.PRSTMNSL                        AS MONTO,
-       p.PRSTPLZO                        AS PLAZO_MESES,
-       p.PRSTTSAA                        AS TASA_ANUAL,
-       p.PRSTVLCT                        AS VALOR_CUOTA,
-       TRUNC(p.PRSTFCHA)                 AS FECHA_CONCESION,
-       TRUNC(p.PRSTFCIN)                 AS FECHA_PRIMERA_CUOTA,
-       TRUNC(p.PRSTFCFN)                 AS FECHA_ULTIMA_CUOTA,
-       p.PRSTIDST                        AS ID_ESTADO
+	<query language="SQL"><![CDATA[SELECT p.PRSTCDGO                              AS CODIGO_PRESTAMO,
+       p.PRSTIDAS                              AS ID_ASOPREP,
+       p.PRSTIDST                              AS ID_ESTADO,
+       p.PRSTMNSL                              AS MONTO,
+       p.PRSTPLZO                              AS PLAZO,
+       p.PRSTTSAA                              AS TASA_ANUAL,
+       p.PRSTVLCT                              AS VALOR_CUOTA,
+       UPPER(TRIM(tp.TPPRNMBR))                AS TIPO_CREDITO,
+       TRIM(e.ENTDRZNS)                        AS DEUDOR_NOMBRES,
+       TRIM(e.ENTDNMID)                        AS DEUDOR_CEDULA,
+       TRIM(cy.CNYGNMBR)                       AS CONYUGE_NOMBRES,
+       TRIM(cy.CNYGCDLA)                       AS CONYUGE_CEDULA,
+       COALESCE(TRIM(dr.DRCCCLPR || CASE WHEN dr.DRCCNMRO IS NOT NULL THEN ' ' || TRIM(dr.DRCCNMRO) END
+                                 || CASE WHEN dr.DRCCCLSC IS NOT NULL THEN ' y ' || TRIM(dr.DRCCCLSC) END),
+                TRIM(dr.DRCCDSCR))             AS DIRECCION,
+       UPPER(TRIM(cd.CDDDNMBR))                AS CIUDAD,
+       TRIM(bx.BEXTNMBR)                       AS BANCO,
+       TRIM(cb.CNBPNMRO)                       AS NRO_CUENTA,
+       CASE cb.CNBPTPCN WHEN 1 THEN 'AHORROS' WHEN 2 THEN 'CORRIENTE' END AS TIPO_CUENTA
   FROM CRD.PRST p
-  JOIN CRD.ENTD e  ON e.ENTDCDGO  = p.ENTDCDGO
-  JOIN CRD.PRDC pr ON pr.PRDCCDGO = p.PRDCCDGO
+  JOIN CRD.ENTD e   ON e.ENTDCDGO  = p.ENTDCDGO
+  JOIN CRD.PRDC pr  ON pr.PRDCCDGO = p.PRDCCDGO
+  LEFT JOIN CRD.TPPR tp ON tp.TPPRCDGO = pr.TPPRCDGO
+  LEFT JOIN CRD.CNYG cy ON cy.CNYGCDGO = (SELECT MAX(c2.CNYGCDGO) FROM CRD.CNYG c2
+                                           WHERE c2.ENTDCDGO = e.ENTDCDGO AND NVL(c2.CNYGIDST, 1) = 1)
+  LEFT JOIN CRD.DRCC dr ON dr.DRCCCDGO = (SELECT MAX(d2.DRCCCDGO) KEEP (DENSE_RANK FIRST ORDER BY NVL(d2.DRCCPRDF, 0) DESC, d2.DRCCCDGO DESC)
+                                            FROM CRD.DRCC d2
+                                           WHERE d2.ENTDCDGO = e.ENTDCDGO AND NVL(d2.DRCCIDST, 1) = 1
+                                             AND NVL(d2.DRCCTRBJ, 0) <> 1
+                                             AND NOT EXISTS (SELECT 1 FROM CRD.DRTR t WHERE t.DRCCCDGO = d2.DRCCCDGO))
+  LEFT JOIN CRD.PRRQ pq ON pq.PRRQCDGO = dr.PRRQCDGO
+  LEFT JOIN CRD.CDDD cd ON cd.CDDDCDGO = pq.CDDDCDGO
+  LEFT JOIN CRD.CNBP cb ON cb.CNBPCDGO = (SELECT MAX(c3.CNBPCDGO) FROM CRD.CNBP c3
+                                           WHERE c3.ENTDCDGO = e.ENTDCDGO AND NVL(c3.CNBPIDST, 1) = 1)
+  LEFT JOIN TSR.BEXT bx ON bx.BEXTCDGO = cb.BEXTCDGO
  WHERE p.PRSTCDGO = $P{P_PRSTCDGO}]]></query>
 	<field name="CODIGO_PRESTAMO" class="java.math.BigDecimal"/>
-	<field name="NUMERO_PRESTAMO" class="java.math.BigDecimal"/>
-	<field name="NOMBRES" class="java.lang.String"/>
-	<field name="IDENTIFICACION" class="java.lang.String"/>
-	<field name="PRODUCTO" class="java.lang.String"/>
+	<field name="ID_ASOPREP" class="java.math.BigDecimal"/>
+	<field name="ID_ESTADO" class="java.math.BigDecimal"/>
 	<field name="MONTO" class="java.math.BigDecimal"/>
-	<field name="PLAZO_MESES" class="java.math.BigDecimal"/>
+	<field name="PLAZO" class="java.math.BigDecimal"/>
 	<field name="TASA_ANUAL" class="java.math.BigDecimal"/>
 	<field name="VALOR_CUOTA" class="java.math.BigDecimal"/>
-	<field name="FECHA_CONCESION" class="java.sql.Timestamp"/>
-	<field name="FECHA_PRIMERA_CUOTA" class="java.sql.Timestamp"/>
-	<field name="FECHA_ULTIMA_CUOTA" class="java.sql.Timestamp"/>
-	<field name="ID_ESTADO" class="java.math.BigDecimal"/>
+	<field name="TIPO_CREDITO" class="java.lang.String"/>
+	<field name="DEUDOR_NOMBRES" class="java.lang.String"/>
+	<field name="DEUDOR_CEDULA" class="java.lang.String"/>
+	<field name="CONYUGE_NOMBRES" class="java.lang.String"/>
+	<field name="CONYUGE_CEDULA" class="java.lang.String"/>
+	<field name="DIRECCION" class="java.lang.String"/>
+	<field name="CIUDAD" class="java.lang.String"/>
+	<field name="BANCO" class="java.lang.String"/>
+	<field name="NRO_CUENTA" class="java.lang.String"/>
+	<field name="TIPO_CUENTA" class="java.lang.String"/>
+
+	<!-- Variables: cada una arma un pedazo del modelo; lo vacío sale como línea para llenar a mano (IM2). -->
+	<variable name="V_NUMERO" class="java.lang.String">
+		<expression><![CDATA[$F{ID_ASOPREP} != null ? $F{ID_ASOPREP}.toBigInteger().toString() : "________"]]></expression>
+	</variable>
+	<variable name="V_MONTO_TXT" class="java.lang.String">
+		<expression><![CDATA[$F{MONTO} != null ? com.saa.ejb.crd.util.NumeroALetrasUtil.convertirMontoModelo(Double.valueOf($F{MONTO}.doubleValue())) + ", (USD: " + com.saa.ejb.crd.util.NumeroALetrasUtil.formatearMontoEc(Double.valueOf($F{MONTO}.doubleValue())) + ")" : "________________"]]></expression>
+	</variable>
+	<variable name="V_CUOTA_TXT" class="java.lang.String">
+		<expression><![CDATA[$F{VALOR_CUOTA} != null ? com.saa.ejb.crd.util.NumeroALetrasUtil.convertirMontoModelo(Double.valueOf($F{VALOR_CUOTA}.doubleValue())) + " (USD. " + com.saa.ejb.crd.util.NumeroALetrasUtil.formatearCuotaModelo(Double.valueOf($F{VALOR_CUOTA}.doubleValue())) + ")" : "________________"]]></expression>
+	</variable>
+	<variable name="V_PLAZO_TXT" class="java.lang.String">
+		<expression><![CDATA[$F{PLAZO} != null ? com.saa.ejb.crd.util.NumeroALetrasUtil.convertir(Long.valueOf($F{PLAZO}.longValue())).toUpperCase() + " (" + $F{PLAZO}.toBigInteger().toString() + ")" : "________"]]></expression>
+	</variable>
+	<variable name="V_PLAZO_NUM" class="java.lang.String">
+		<expression><![CDATA[$F{PLAZO} != null ? $F{PLAZO}.toBigInteger().toString() : "________"]]></expression>
+	</variable>
+	<variable name="V_TASA_TXT" class="java.lang.String">
+		<expression><![CDATA[$F{TASA_ANUAL} != null ? com.saa.ejb.crd.util.NumeroALetrasUtil.convertirTasaModelo(Double.valueOf($F{TASA_ANUAL}.doubleValue())) + " (" + com.saa.ejb.crd.util.NumeroALetrasUtil.formatearTasaModelo(Double.valueOf($F{TASA_ANUAL}.doubleValue())) + ") %" : "________"]]></expression>
+	</variable>
+	<variable name="V_TASA_HDR" class="java.lang.String">
+		<expression><![CDATA[$F{TASA_ANUAL} != null ? com.saa.ejb.crd.util.NumeroALetrasUtil.formatearMontoEc(Double.valueOf($F{TASA_ANUAL}.doubleValue())) + "%" : "________"]]></expression>
+	</variable>
+	<variable name="V_TIPO" class="java.lang.String">
+		<expression><![CDATA[$F{TIPO_CREDITO} != null && !$F{TIPO_CREDITO}.isEmpty() ? $F{TIPO_CREDITO} : "____________"]]></expression>
+	</variable>
+	<variable name="V_HAY_CONYUGE" class="java.lang.Boolean">
+		<expression><![CDATA[$F{CONYUGE_NOMBRES} != null && !$F{CONYUGE_NOMBRES}.isEmpty()]]></expression>
+	</variable>
+	<variable name="V_DEUDOR_NOMBRES" class="java.lang.String">
+		<expression><![CDATA[$F{DEUDOR_NOMBRES} != null && !$F{DEUDOR_NOMBRES}.isEmpty() ? $F{DEUDOR_NOMBRES} : "______________________"]]></expression>
+	</variable>
+	<variable name="V_DEUDOR_CEDULA" class="java.lang.String">
+		<expression><![CDATA[$F{DEUDOR_CEDULA} != null && !$F{DEUDOR_CEDULA}.isEmpty() ? $F{DEUDOR_CEDULA} : "____________"]]></expression>
+	</variable>
+	<variable name="V_CONYUGE_TXT" class="java.lang.String">
+		<expression><![CDATA[$V{V_HAY_CONYUGE} ? ", y " + $F{CONYUGE_NOMBRES} + ", cédula de ciudadanía " + ($F{CONYUGE_CEDULA} != null && !$F{CONYUGE_CEDULA}.isEmpty() ? $F{CONYUGE_CEDULA} : "____________") : ""]]></expression>
+	</variable>
+	<variable name="V_DIRECCION" class="java.lang.String">
+		<expression><![CDATA[$F{DIRECCION} != null && !$F{DIRECCION}.isEmpty() ? $F{DIRECCION} : "______________________"]]></expression>
+	</variable>
+	<variable name="V_CIUDAD" class="java.lang.String">
+		<expression><![CDATA[$F{CIUDAD} != null && !$F{CIUDAD}.isEmpty() ? $F{CIUDAD} : "__________"]]></expression>
+	</variable>
+	<variable name="V_TIPO_CUENTA" class="java.lang.String">
+		<expression><![CDATA[$F{TIPO_CUENTA} != null ? $F{TIPO_CUENTA} : "__________"]]></expression>
+	</variable>
+	<variable name="V_NRO_CUENTA" class="java.lang.String">
+		<expression><![CDATA[$F{NRO_CUENTA} != null && !$F{NRO_CUENTA}.isEmpty() ? $F{NRO_CUENTA} : "______________"]]></expression>
+	</variable>
+	<variable name="V_BANCO" class="java.lang.String">
+		<expression><![CDATA[$F{BANCO} != null && !$F{BANCO}.isEmpty() ? $F{BANCO} : "______________"]]></expression>
+	</variable>
 
 	<background splitType="Stretch"/>
 
-	<pageHeader height="95" splitType="Stretch">
-		<element kind="image" uuid="a2000001-0000-0000-0000-000000000010" x="0" y="0" width="110" height="45" scaleImage="RetainShape" onErrorType="Blank" hImageAlign="Left" vImageAlign="Top">
+	<pageHeader height="52" splitType="Stretch">
+		<element kind="image" uuid="a2000001-0000-0000-0000-000000000010" x="0" y="0" width="110" height="46" scaleImage="RetainShape" onErrorType="Blank" hImageAlign="Left" vImageAlign="Top">
 			<expression><![CDATA[$P{P_IMAGEN}]]></expression>
 		</element>
-		<element kind="textField" uuid="a2000001-0000-0000-0000-000000000011" x="0" y="48" width="515" height="14" fontSize="9.0" bold="true" hTextAlign="Center" vTextAlign="Middle" forecolor="#C0392B">
-			<expression><![CDATA[($F{ID_ESTADO} != null && ($F{ID_ESTADO}.intValue() == 12 || $F{ID_ESTADO}.intValue() == 7)) ? "*** PRÉSTAMO " + ($F{ID_ESTADO}.intValue() == 12 ? "ANULADO" : "RECHAZADO") + " — DOCUMENTO SIN VALIDEZ ***" : ""]]></expression>
-		</element>
-		<element kind="staticText" uuid="a2000001-0000-0000-0000-000000000012" x="0" y="66" width="515" height="22" fontSize="14.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
-			<text><![CDATA[PAGARÉ A LA ORDEN]]></text>
+		<!-- IM3: sin idAsoprep el pagaré es un borrador; un préstamo anulado o rechazado no vale. -->
+		<element kind="textField" uuid="a2000001-0000-0000-0000-000000000011" x="115" y="8" width="400" height="34" fontSize="11.0" bold="true" hTextAlign="Right" vTextAlign="Middle" forecolor="#C0392B">
+			<expression><![CDATA[$F{ID_ESTADO} != null && $F{ID_ESTADO}.intValue() == 12 ? "*** PRÉSTAMO ANULADO — DOCUMENTO SIN VALIDEZ ***" : ($F{ID_ESTADO} != null && $F{ID_ESTADO}.intValue() == 7 ? "*** PRÉSTAMO RECHAZADO — DOCUMENTO SIN VALIDEZ ***" : ($F{ID_ASOPREP} == null ? "BORRADOR — sin número hasta aprobar" : ""))]]></expression>
 		</element>
 	</pageHeader>
 
 	<detail>
-		<band height="520" splitType="Stretch">
-			<element kind="textField" uuid="a2000001-0000-0000-0000-000000001001" x="0" y="0" width="260" height="14" fontSize="10.0" bold="true">
-				<expression><![CDATA["Pagaré N.º " + ($F{NUMERO_PRESTAMO} != null ? $F{NUMERO_PRESTAMO}.toBigInteger().toString() : "")]]></expression>
+		<band height="165" splitType="Stretch">
+			<element kind="staticText" uuid="a2000001-0000-0000-0000-000000001001" x="0" y="0" width="515" height="30" fontSize="10.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+				<text><![CDATA[ASOCIACION DEL FONDO COMPLEMENTARIO PREVISIONAL CERRADO ASOPREP-FCPC, DE JUBILACION Y CESANTIA, DE LAS EMPRESAS PUBLICAS DEL SECTOR HIDROCARBURIFERO]]></text>
 			</element>
-			<element kind="textField" uuid="a2000001-0000-0000-0000-000000001002" x="260" y="0" width="255" height="14" fontSize="10.0" bold="true" hTextAlign="Right">
-				<expression><![CDATA["VALOR: US$ " + ($F{MONTO} != null ? String.format(java.util.Locale.US, "%,.2f", $F{MONTO}) : "")]]></expression>
+			<element kind="textField" uuid="a2000001-0000-0000-0000-000000001002" positionType="Float" x="0" y="34" width="515" height="26" fontSize="14.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+				<expression><![CDATA["PAGARÉ A LA ORDEN No." + $V{V_NUMERO}]]></expression>
 			</element>
-			<element kind="textField" uuid="a2000001-0000-0000-0000-000000001003" x="0" y="20" width="515" height="14" fontSize="10.0">
-				<expression><![CDATA["Lugar y fecha: ______________________, " + ($F{FECHA_CONCESION} != null ? new java.text.SimpleDateFormat("dd/MM/yyyy").format($F{FECHA_CONCESION}) : "____/____/________")]]></expression>
+			<element kind="textField" uuid="a2000001-0000-0000-0000-000000001003" positionType="Float" x="0" y="68" width="515" height="70" textAdjust="StretchHeight" fontSize="9.0" hTextAlign="Justified" vTextAlign="Top">
+				<expression><![CDATA["Por valor recibido de: " + $V{V_MONTO_TXT} + "\nCrédito No: " + $V{V_NUMERO} + "\nTipo de Crédito: " + $V{V_TIPO} + "\nTasa de interés: " + $V{V_TASA_HDR} + "\nNo. De vencimientos (Cuotas): " + $V{V_PLAZO_NUM}]]></expression>
 			</element>
-
-			<element kind="textField" uuid="a2000001-0000-0000-0000-000000001010" positionType="Float" x="0" y="48" width="515" height="60" markup="styled" textAdjust="StretchHeight" fontSize="10.5" hTextAlign="Justified" vTextAlign="Top">
-				<expression><![CDATA["Yo, <b>" + ($F{NOMBRES} != null ? $F{NOMBRES} : "") + "</b>, con cédula de identidad N.º <b>" + ($F{IDENTIFICACION} != null ? $F{IDENTIFICACION} : "") + "</b>, debo y pagaré incondicionalmente a la orden de la entidad acreedora la cantidad de <b>" + com.saa.ejb.crd.util.NumeroALetrasUtil.convertirMonto($F{MONTO} != null ? Double.valueOf($F{MONTO}.doubleValue()) : null).toUpperCase() + "</b> (US$ " + ($F{MONTO} != null ? String.format(java.util.Locale.US, "%,.2f", $F{MONTO}) : "") + "), valor que he recibido en calidad de préstamo (" + ($F{PRODUCTO} != null ? $F{PRODUCTO} : "") + ", préstamo N.º " + ($F{NUMERO_PRESTAMO} != null ? $F{NUMERO_PRESTAMO}.toBigInteger().toString() : "") + ")."]]></expression>
-				<paragraph lineSpacing="1_1_2"/>
-			</element>
-
-			<element kind="textField" uuid="a2000001-0000-0000-0000-000000001011" positionType="Float" x="0" y="122" width="515" height="60" markup="styled" textAdjust="StretchHeight" fontSize="10.5" hTextAlign="Justified" vTextAlign="Top">
-				<expression><![CDATA["Pagaré esta suma en <b>" + ($F{PLAZO_MESES} != null ? $F{PLAZO_MESES}.toBigInteger().toString() : "") + "</b> cuotas mensuales de <b>US$ " + ($F{VALOR_CUOTA} != null ? String.format(java.util.Locale.US, "%,.2f", $F{VALOR_CUOTA}) : "") + "</b> cada una, que comprenden capital, interés y seguros, con vencimiento de la primera cuota el <b>" + ($F{FECHA_PRIMERA_CUOTA} != null ? new java.text.SimpleDateFormat("dd/MM/yyyy").format($F{FECHA_PRIMERA_CUOTA}) : "") + "</b> y de la última el <b>" + ($F{FECHA_ULTIMA_CUOTA} != null ? new java.text.SimpleDateFormat("dd/MM/yyyy").format($F{FECHA_ULTIMA_CUOTA}) : "") + "</b>, conforme a la tabla de amortización que forma parte de este pagaré."]]></expression>
-				<paragraph lineSpacing="1_1_2"/>
-			</element>
-
-			<element kind="textField" uuid="a2000001-0000-0000-0000-000000001012" positionType="Float" x="0" y="196" width="515" height="30" markup="styled" textAdjust="StretchHeight" fontSize="10.5" hTextAlign="Justified" vTextAlign="Top">
-				<expression><![CDATA["El préstamo devenga un interés de <b>" + ($F{TASA_ANUAL} != null ? String.format(java.util.Locale.US, "%.2f", $F{TASA_ANUAL}) : "") + "%</b> anual sobre saldos."]]></expression>
-				<paragraph lineSpacing="1_1_2"/>
-			</element>
-
-			<element kind="staticText" uuid="a2000001-0000-0000-0000-000000001013" positionType="Float" x="0" y="240" width="515" height="45" fontSize="10.5" hTextAlign="Justified" vTextAlign="Top">
-				<text><![CDATA[En caso de mora reconozco el interés de mora a la tasa máxima que fije la ley, sobre las cuotas vencidas, sin perjuicio de los demás efectos legales.]]></text>
-				<paragraph lineSpacing="1_1_2"/>
-			</element>
-
-			<element kind="staticText" uuid="a2000001-0000-0000-0000-000000001014" positionType="Float" x="0" y="296" width="515" height="60" fontSize="10.5" hTextAlign="Justified" vTextAlign="Top">
-				<text><![CDATA[Si dejo de pagar una o más cuotas, el acreedor podrá dar por vencido el plazo y exigir el pago total de lo adeudado. Renuncio a fuero y domicilio y me someto a los jueces competentes del lugar de suscripción de este pagaré.]]></text>
-				<paragraph lineSpacing="1_1_2"/>
-			</element>
-
-			<element kind="line" uuid="a2000001-0000-0000-0000-000000001020" positionType="Float" x="0" y="440" width="220" height="1"/>
-			<element kind="staticText" uuid="a2000001-0000-0000-0000-000000001021" positionType="Float" x="0" y="444" width="220" height="14" fontSize="10.0" bold="true">
-				<text><![CDATA[DEUDOR — firma]]></text>
-			</element>
-			<element kind="textField" uuid="a2000001-0000-0000-0000-000000001022" positionType="Float" x="0" y="458" width="300" height="14" fontSize="10.0">
-				<expression><![CDATA[$F{NOMBRES} != null ? $F{NOMBRES} : ""]]></expression>
-			</element>
-			<element kind="textField" uuid="a2000001-0000-0000-0000-000000001023" positionType="Float" x="0" y="472" width="300" height="14" fontSize="10.0">
-				<expression><![CDATA["C.I. " + ($F{IDENTIFICACION} != null ? $F{IDENTIFICACION} : "")]]></expression>
+			<element kind="textField" uuid="a2000001-0000-0000-0000-000000001004" positionType="Float" x="0" y="142" width="515" height="20" textAdjust="StretchHeight" fontSize="9.0" hTextAlign="Justified" vTextAlign="Top">
+				<expression><![CDATA["Yo (nosotros), " + $V{V_DEUDOR_NOMBRES} + ", cédula de ciudadanía " + $V{V_DEUDOR_CEDULA} + $V{V_CONYUGE_TXT} + ", con domicilio en: " + $V{V_DIRECCION} + ", en la ciudad de " + $V{V_CIUDAD} + "\n\nDebo (emos) y pagaré (emos), solidaria e incondicionalmente, en la ciudad de QUITO, a la orden de la ASOCIACION DEL FONDO COMPLEMENTARIO PREVISIONAL CERRADO ASOPREP-FCPC, DE JUBILACION Y CESANTIA DE LAS EMPRESAS PUBLICAS DEL SECTOR HIDROCARBURIFERO, la cantidad de: " + $V{V_MONTO_TXT} + ". Esta suma me (nos) obligo (amos) pagarla en la misma moneda, esto es, en dólares de los Estados Unidos de América, en " + $V{V_PLAZO_TXT} + " cuotas mensuales, iguales y sucesivas de " + $V{V_CUOTA_TXT} + ", más el valor del seguro de desgravamen que se gravará sobre saldos de capital. \n\nEl capital devengará intereses que se computarán a razón del " + $V{V_TASA_TXT} + " anual. La tasa de interés expresamente la reconozco(cemos) como reajustable. En cumplimiento de todo lo estipulado me(nos) obligo(amos) con todos mis(nuestos) bienes presentes o futuros, propios y gananciales.\n\nLas cuotas referidas previamente y que se detallan el atabla de amortización adjunta No. " + $V{V_NUMERO} + ", comprenden el capital y los intereses sobre el saldo deudor del capital, a lo que se sumará los intereses de mora de ser el caso, seguros de desgravamen, vehicular, contra incendio y líneas aliadas según corresponda, así como cualquier otro valor establecido por ley, que expresamente me(nos) obligo(amos) a pagarlos.\n\nDichos valores los pagaré (emos) a través del rol de pagos o débito bancario, de acuerdo a la tabla de amortización. En caso de no cubrir con el rol de pagos, autorizo (amos) voluntaria y expresamente a la ASOCIACION DEL FONDO COMPLEMENTARIO PREVISIONAL CERRADO ASOPREP-FCPC, DE JUBILACION Y CESANTIA DE LAS EMPRESAS PUBLICAS DEL SECTOR HIDROCARBURIFERO, que me (nos) debite de la cuenta " + $V{V_TIPO_CUENTA} + " No. " + $V{V_NRO_CUENTA} + " de la Institución Financiera " + $V{V_BANCO} + ".\n\nLas cuotas referidas en el apartado anterior, comprenden el capital y los intereses sobre el saldo deudor del capital, más los intereses de mora de ser el caso, así como cualquier otro valor no pagado y aquellos establecidos por ley.\n\nAutorizo de forma irrevocable a la ASOCIACION DEL FONDO COMPLEMENTARIO PREVISIONAL CERRADO ASOPREP-FCPC, DE JUBILACION Y CESANTIA DE LAS EMPRESAS PUBLICAS DEL SECTOR HIDROCARBURIFERO, o a la persona que sea cesionaria de los efectos u obligaciones contenidas o derivadas del presente documento, para que toda la información de riesgos crediticios, sea consultada, transferida y actualizada periódicamente a los Buros de Crédito u otras Entidades que puedan reemplazar a tales instituciones. Me(nos) comprometo(emos) ante la ASOCIACION DEL FONDO COMPLEMENTARIO PREVISIONAL CERRADO ASOPREP-FCPC, DE JUBILACION Y CESANTIA DE LAS EMPRESAS PUBLICAS DEL SECTOR HIDROCARBURIFERO, a notificar oportunamente, cualquier cambio importante respecto a los datos y declaraciones constantes en este documento y deslindo(amos) de toda responsabilidad a la ASOCIACION DEL FONDO COMPLEMENTARIO PREVISIONAL CERRADO ASOPREP-FCPC, DE JUBILACION Y CESANTIA DE LAS EMPRESAS PUBLICAS DEL SECTOR HIDROCARBURIFERO, en caso de no hacerlo.\n\nSe deja expresa constancia que la ASOCIACION DEL FONDO COMPLEMENTARIO PREVISIONAL CERRADO ASOPREP-FCPC, DE JUBILACION Y CESANTIA DE LAS EMPRESAS PUBLICAS DEL SECTOR HIDROCARBURIFERO, a su sola decisión, podrá ceder todos los derechos emanados de este Pagaré a la Orden, a cualquier persona natural y/o jurídica por lo que él(la/los) suscriptor(a/es) desde ya acepta(n) la pertinente cesión de derechos, incluso se da(n) por notificado(s) del traspaso del crédito. En tal virtud, la o las cesiones que se realicen, surtirán pleno efecto respecto al(los) Deudor(es), su(s) avalista(s) solidario(s) y respecto de terceros.\n\nEn caso de desvinculación laboral de la Empresa Pública EPPETROECUADOR, autorizo(amos) expresamente a la ASOCIACION DEL FONDO COMPLEMENTARIO PREVISIONAL CERRADO ASOPREP-FCPC, DE JUBILACION Y CESANTIA DE LAS EMPRESAS PUBLICAS DEL SECTOR HIDROCARBURIFERO, declarar de plazo vencido la totalidad de la obligación y que el saldo total pendiente de pago, se me debite de los valores que me corresponden por cesantía, jubilación, cuenta individual de pensión complementaria, o de cualquier otro valor que deba devolverme por cualquier concepto.\n\nEn caso de que el débito mencionado en el párrafo anterior no alcance a cubrir la totalidad de la deuda, el acreedor quedará facultado a tomar todas las acciones legales de cobro para recuperar el saldo pendiente por vencido el plazo de este pagaré, exigiendo el pago total del saldo pendiente.\n\nDeclaro(amos) tener conocimiento de nuestro derecho a realizar pagos anticipados sobre el importe de esta deuda sin que ello genere ningún tipo de penalidad o recargo adicional.\n\nEn caso de mora pagaré(emos), sobre los valores de capital no cancelados, desde la fecha de vencimiento de la obligación hasta su pago total, la tasa de interés vigente al momento del vencimiento más el recargo por mora máximo establecido por el Banco Central del Ecuador.\n\nAdemás, son de mi(nuestra), cuenta los impuestos y tasas que genere este pagaré a la orden, así como todos los gastos judiciales y/o extrajudiciales que demande el cobro del mismo, incluyendo honorarios de abogados, bastando para establecer su monto la simple afirmación que el acreedor haga al respecto.\n\nAcepto(amos) expresamente que en caso de mora en el pago de tres o más de los vencimientos estipulados en la tabla de amortización No. " + $V{V_NUMERO} + ", el acreedor podrá declarar de plazo vencido todo el saldo del importe de este pagaré que esté por vencer y proceder al reclamo judicial o extrajudicial de todo lo debido, para lo cual será suficiente la sola afirmación del acreedor en este sentido.\n\nRenuncio(amos) a mi(nuestro) domicilio, y me(nos) someto(emos) a los jueces de la Provincia de Pichincha, con sede en la ciudad de Quito. El presente título valor se emite sin protesto, eximiento al acreedor de su presentación para el pago y de avisos por falta de este. Dejo(amos) constancia expresa que el plazo de la vista correrá a partir de la fecha de aceptación que suscribo(imos) en este pagaré a la orden."]]></expression>
 			</element>
 		</band>
 	</detail>
 
-	<pageFooter height="30" splitType="Stretch">
-		<element kind="staticText" uuid="a2000001-0000-0000-0000-000000009001" x="0" y="8" width="515" height="16" fontSize="9.0" bold="true" hTextAlign="Center" vTextAlign="Middle" forecolor="#C0392B">
-			<text><![CDATA[MODELO PROVISIONAL — validar con asesoría legal]]></text>
+	<!-- Firmas: una sola vez (IM6). Sin cónyuge sale sólo el deudor. La banda no se parte entre páginas. -->
+	<summary height="86" splitType="Prevent">
+		<element kind="staticText" uuid="a2000001-0000-0000-0000-000000002001" x="0" y="6" width="240" height="14" fontSize="9.0" bold="true">
+			<text><![CDATA[FIRMA DEL DEUDOR]]></text>
 		</element>
-	</pageFooter>
+		<element kind="line" uuid="a2000001-0000-0000-0000-000000002002" x="0" y="42" width="220" height="1"/>
+		<element kind="textField" uuid="a2000001-0000-0000-0000-000000002003" x="0" y="45" width="240" height="14" fontSize="9.0">
+			<expression><![CDATA[$V{V_DEUDOR_NOMBRES}]]></expression>
+		</element>
+		<element kind="textField" uuid="a2000001-0000-0000-0000-000000002004" x="0" y="59" width="240" height="14" fontSize="9.0">
+			<expression><![CDATA["C.C.: " + $V{V_DEUDOR_CEDULA}]]></expression>
+		</element>
+		<element kind="staticText" uuid="a2000001-0000-0000-0000-000000002005" x="270" y="6" width="240" height="14" fontSize="9.0" bold="true">
+			<printWhenExpression><![CDATA[$V{V_HAY_CONYUGE}]]></printWhenExpression>
+			<text><![CDATA[FIRMA DEL CONYUGE]]></text>
+		</element>
+		<element kind="line" uuid="a2000001-0000-0000-0000-000000002006" x="270" y="42" width="220" height="1">
+			<printWhenExpression><![CDATA[$V{V_HAY_CONYUGE}]]></printWhenExpression>
+		</element>
+		<element kind="textField" uuid="a2000001-0000-0000-0000-000000002007" x="270" y="45" width="240" height="14" fontSize="9.0">
+			<printWhenExpression><![CDATA[$V{V_HAY_CONYUGE}]]></printWhenExpression>
+			<expression><![CDATA[$F{CONYUGE_NOMBRES}]]></expression>
+		</element>
+		<element kind="textField" uuid="a2000001-0000-0000-0000-000000002008" x="270" y="59" width="240" height="14" fontSize="9.0">
+			<printWhenExpression><![CDATA[$V{V_HAY_CONYUGE}]]></printWhenExpression>
+			<expression><![CDATA["C.C.: " + ($F{CONYUGE_CEDULA} != null && !$F{CONYUGE_CEDULA}.isEmpty() ? $F{CONYUGE_CEDULA} : "____________")]]></expression>
+		</element>
+	</summary>
 </jasperReport>

@@ -48,7 +48,7 @@ con el **fill verificado** (CLAUDE.md, sección de reportes). Ninguno usa `fontN
 | IM14 | **Casillas ☐.** La fuente por defecto del PDF no tiene el carácter `☐`, así que se dibujan como rectángulos (`kind="rectangle"`) o con texto que sí exista, como `[ X ]` o `[   ]`. Se confirma **mirando el PDF**. |
 | IM15 | **Pie de la solicitud:** «Impreso por: `P_USUARIO` · Fecha de impresión: fecha y hora · Página X de Y». |
 | IM16 | **Un solo PDF al otorgar.** Al **aprobar** con éxito, la pantalla genera **un PDF con los tres documentos en orden**: solicitud, pagaré y tabla. Así se imprime de una vez y el navegador no bloquea tres ventanas. Para eso hay un endpoint **genérico** de lote en `rprt` (§4), que reusa el llenado actual de cada reporte y concatena los `JasperPrint`. Además quedan los botones individuales: «Imprimir solicitud», «Imprimir pagaré», «Imprimir tabla» y «Imprimir documentos», que saca los tres. |
-| IM17 | **Cuándo se puede imprimir cada uno:** la solicitud desde GENERADO (1) o PENDIENTE (6) en adelante, salvo RECHAZADO (7). El pagaré igual, pero sin número hasta aprobar (IM3). La tabla como hoy. «Imprimir documentos» solo con idAsoprep, es decir, ya aprobado. |
+| IM17 | **Cuándo se puede imprimir cada uno:** la solicitud desde GENERADO (1) o PENDIENTE (6) en adelante, salvo RECHAZADO (7). El pagaré necesita la tabla y se bloquea en RECHAZADO y en ANULADO (12); sin número hasta aprobar (IM3). La tabla como hoy. «Imprimir documentos» solo con idAsoprep, es decir, ya aprobado. |
 
 ## 4. Endpoint nuevo — `POST /rest/rprt/generarLote`
 

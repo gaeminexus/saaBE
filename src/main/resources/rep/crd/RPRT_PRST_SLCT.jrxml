@@ -1,0 +1,870 @@
+<!-- Solicitud de crédito (CRD) — formato FOR-CRE-SOL-01 del cliente.
+     DISENO-IMPRESOS-OTORGAMIENTO.md (IM1, IM2, IM10–IM15). Sintaxis compacta. Se llena por <query> con P_PRSTCDGO
+     (una fila): sin SELECT *, columnas explícitas. SIN fontName (ni Tahoma): el exportador PDF pierde la negrita.
+     IM1: el texto fijo es LITERAL del modelo (generado desde el texto del cliente). IM2: un dato sin fuente sale como
+     línea para llenar a mano. IM14: las casillas son rectángulos dibujados (la fuente del PDF no trae el carácter).
+     El anexo «Diccionario de campos» NO se imprime. Las secciones 6 y 7 (uso de Crédito) van en página aparte.
+     Los montos se formatean con NumeroALetrasUtil.formatearMontoEc (clase del WAR, crd.util). -->
+<jasperReport name="RPRT_PRST_SLCT" language="java" pageWidth="595" pageHeight="842" columnWidth="535" leftMargin="30" rightMargin="30" topMargin="25" bottomMargin="25" whenNoDataType="AllSectionsNoDetail" uuid="a3000001-0000-0000-0000-000000000000">
+	<property name="com.jaspersoft.studio.data.defaultdataadapter" value="Oracle"/>
+	<property name="com.jaspersoft.studio.report.description" value="Solicitud de crédito (FOR-CRE-SOL-01)"/>
+	<parameter name="P_PRSTCDGO" class="java.lang.Long"><description><![CDATA[Código del préstamo (CRD.PRST.PRSTCDGO).]]></description></parameter>
+	<parameter name="P_IMAGEN" class="java.awt.Image"><description><![CDATA[Logo. Lo inyecta ReporteServiceImpl.]]></description></parameter>
+	<parameter name="P_USUARIO" class="java.lang.String"><description><![CDATA[Usuario que imprime (pie de página).]]></description></parameter>
+	<parameter name="P_SALDO_CREDITOS_VIGENTES" class="java.math.BigDecimal"><description><![CDATA[Opcional: saldo de los créditos vigentes del partícipe. No hay fuente en SQL (el saldo lo calcula el servicio de saldos); sin valor sale en blanco.]]></description></parameter>
+	<query language="SQL"><![CDATA[SELECT p.PRSTCDGO                                   AS NRO_SOLICITUD,
+       COALESCE(TRUNC(p.PRSTFCRG), TRUNC(p.PRSTFCHA)) AS FECHA_SOLICITUD,
+       p.PRSTIDST                                   AS ID_ESTADO,
+       e.ENTDCDGO                                   AS CODIGO_PARTICIPE,
+       TRIM(e.ENTDRZNS)                             AS NOMBRES_APELLIDOS,
+       TRIM(e.ENTDNMID)                             AS CEDULA,
+       TRIM(e.ENTDFCNC)                             AS FECHA_NACIMIENTO,
+       TRIM(ec.ESCVNMBR)                            AS ESTADO_CIVIL,
+       TRIM(pt.PRTCLGRT)                            AS EMPLEADOR,
+       CASE e.ENTDIDST WHEN 1 THEN 'ACTIVO' WHEN 8 THEN 'ACTIVO'
+                       WHEN 3 THEN 'JUBILADO' WHEN 6 THEN 'JUBILADO' WHEN 7 THEN 'JUBILADO' END AS CONDICION,
+       TRIM(pt.PRTCCRGA)                            AS CARGO,
+       TRUNC(pt.PRTCFCIT)                           AS FECHA_INGRESO,
+       COALESCE(TRIM(dr.DRCCCLPR || CASE WHEN dr.DRCCNMRO IS NOT NULL THEN ' ' || TRIM(dr.DRCCNMRO) END
+                                 || CASE WHEN dr.DRCCCLSC IS NOT NULL THEN ' y ' || TRIM(dr.DRCCCLSC) END),
+                TRIM(dr.DRCCDSCR))                  AS DIRECCION,
+       COALESCE(TRIM(e.ENTDTLFN), TRIM(dr.DRCCTLFN)) AS TELEFONO,
+       COALESCE(TRIM(e.ENTDMVLI), TRIM(dr.DRCCCLLR)) AS CELULAR,
+       COALESCE(TRIM(e.ENTDCRPR), TRIM(e.ENTDCRIN)) AS EMAIL,
+       UPPER(TRIM(tp.TPPRNMBR))                     AS TIPO_PRESTAMO,
+       p.PRSTTSAA                                   AS TASA,
+       p.PRSTMNSL                                   AS MONTO,
+       p.PRSTPLZO                                   AS NRO_CUOTAS,
+       p.PRSTVLCT                                   AS CUOTA_ESTIMADA,
+       TRIM(mv.MTVPNMBR)                            AS DESTINO_CREDITO,
+       p.PRSTPROR                                   AS ID_ORIGINAL,
+       NVL(p.PRSTESNV, 0)                           AS ES_NOVACION,
+       NVL(p.PRSTRSTR, 0)                           AS REESTRUCTURADO,
+       po.PRSTIDAS                                  AS NRO_OP_ANTERIOR,
+       (SELECT SUM(a.APRTVLRR) FROM CRD.APRT a
+          JOIN CRD.TPAP ta ON ta.TPAPCDGO = a.TPAPCDGO
+         WHERE a.ENTDCDGO = e.ENTDCDGO AND ta.TPAPIDST = 1) AS SALDO_CTA_INDIVIDUAL,
+       (SELECT pe.PRECTTIN FROM CRD.PREC pe
+         WHERE pe.PRECCDGO = (SELECT MAX(pe2.PRECCDGO) FROM CRD.PREC pe2
+                               WHERE pe2.PRSTCDGO = p.PRSTCDGO AND NVL(pe2.PRECIDST, 1) = 1)) AS INGRESO_MENSUAL,
+       (SELECT SUM(v.PRSTVLCT) FROM CRD.PRST v
+         WHERE v.ENTDCDGO = e.ENTDCDGO AND v.PRSTCDGO <> p.PRSTCDGO
+           AND v.PRSTIDST IN (2, 8, 11))            AS CUOTAS_VIGENTES,
+       CASE WHEN p.PRSTPROR IS NULL THEN p.PRSTMNSL
+            WHEN p.PRSTVLSS IS NOT NULL THEN p.PRSTMNSL - p.PRSTVLSS END AS VALOR_LIQUIDO,
+       TRIM(bx.BEXTNMBR)                            AS BANCO,
+       CASE cb.CNBPTPCN WHEN 1 THEN 'AHORROS' WHEN 2 THEN 'CORRIENTE' END AS TIPO_CUENTA,
+       TRIM(cb.CNBPNMRO)                            AS NRO_CUENTA,
+       TRIM(p.PRSTUSRG)                             AS USUARIO_ELABORA,
+       TRIM(p.PRSTUSAP)                             AS APROBADOR
+  FROM CRD.PRST p
+  JOIN CRD.ENTD e   ON e.ENTDCDGO  = p.ENTDCDGO
+  JOIN CRD.PRDC pr  ON pr.PRDCCDGO = p.PRDCCDGO
+  LEFT JOIN CRD.TPPR tp ON tp.TPPRCDGO = pr.TPPRCDGO
+  LEFT JOIN CRD.MTVP mv ON mv.MTVPCDGO = p.MTVPCDGO
+  LEFT JOIN CRD.PRST po ON po.PRSTCDGO = p.PRSTPROR
+  LEFT JOIN CRD.ESCV ec ON ec.ESCVCDGO = e.ESCVCDGO
+  LEFT JOIN CRD.PRTC pt ON pt.PRTCCDGO = (SELECT MAX(t2.PRTCCDGO) FROM CRD.PRTC t2 WHERE t2.ENTDCDGO = e.ENTDCDGO)
+  LEFT JOIN CRD.DRCC dr ON dr.DRCCCDGO = (SELECT MAX(d2.DRCCCDGO) KEEP (DENSE_RANK FIRST ORDER BY NVL(d2.DRCCPRDF, 0) DESC, d2.DRCCCDGO DESC)
+                                            FROM CRD.DRCC d2
+                                           WHERE d2.ENTDCDGO = e.ENTDCDGO AND NVL(d2.DRCCIDST, 1) = 1
+                                             AND NVL(d2.DRCCTRBJ, 0) <> 1
+                                             AND NOT EXISTS (SELECT 1 FROM CRD.DRTR t WHERE t.DRCCCDGO = d2.DRCCCDGO))
+  LEFT JOIN CRD.CNBP cb ON cb.CNBPCDGO = (SELECT MAX(c3.CNBPCDGO) FROM CRD.CNBP c3
+                                           WHERE c3.ENTDCDGO = e.ENTDCDGO AND NVL(c3.CNBPIDST, 1) = 1)
+  LEFT JOIN TSR.BEXT bx ON bx.BEXTCDGO = cb.BEXTCDGO
+ WHERE p.PRSTCDGO = $P{P_PRSTCDGO}]]></query>
+	<field name="NRO_SOLICITUD" class="java.math.BigDecimal"/>
+	<field name="FECHA_SOLICITUD" class="java.sql.Timestamp"/>
+	<field name="ID_ESTADO" class="java.math.BigDecimal"/>
+	<field name="CODIGO_PARTICIPE" class="java.math.BigDecimal"/>
+	<field name="NOMBRES_APELLIDOS" class="java.lang.String"/>
+	<field name="CEDULA" class="java.lang.String"/>
+	<field name="FECHA_NACIMIENTO" class="java.lang.String"/>
+	<field name="ESTADO_CIVIL" class="java.lang.String"/>
+	<field name="EMPLEADOR" class="java.lang.String"/>
+	<field name="CONDICION" class="java.lang.String"/>
+	<field name="CARGO" class="java.lang.String"/>
+	<field name="FECHA_INGRESO" class="java.sql.Timestamp"/>
+	<field name="DIRECCION" class="java.lang.String"/>
+	<field name="TELEFONO" class="java.lang.String"/>
+	<field name="CELULAR" class="java.lang.String"/>
+	<field name="EMAIL" class="java.lang.String"/>
+	<field name="TIPO_PRESTAMO" class="java.lang.String"/>
+	<field name="TASA" class="java.math.BigDecimal"/>
+	<field name="MONTO" class="java.math.BigDecimal"/>
+	<field name="NRO_CUOTAS" class="java.math.BigDecimal"/>
+	<field name="CUOTA_ESTIMADA" class="java.math.BigDecimal"/>
+	<field name="DESTINO_CREDITO" class="java.lang.String"/>
+	<field name="ID_ORIGINAL" class="java.math.BigDecimal"/>
+	<field name="ES_NOVACION" class="java.math.BigDecimal"/>
+	<field name="REESTRUCTURADO" class="java.math.BigDecimal"/>
+	<field name="NRO_OP_ANTERIOR" class="java.math.BigDecimal"/>
+	<field name="SALDO_CTA_INDIVIDUAL" class="java.math.BigDecimal"/>
+	<field name="INGRESO_MENSUAL" class="java.math.BigDecimal"/>
+	<field name="CUOTAS_VIGENTES" class="java.math.BigDecimal"/>
+	<field name="VALOR_LIQUIDO" class="java.math.BigDecimal"/>
+	<field name="BANCO" class="java.lang.String"/>
+	<field name="TIPO_CUENTA" class="java.lang.String"/>
+	<field name="NRO_CUENTA" class="java.lang.String"/>
+	<field name="USUARIO_ELABORA" class="java.lang.String"/>
+	<field name="APROBADOR" class="java.lang.String"/>
+
+	<background splitType="Stretch"/>
+
+	<detail>
+		<band height="738" splitType="Stretch">
+			<element kind="rectangle" uuid="a3000001-0000-0000-0000-000000000001" x="0" y="0" width="130" height="62" mode="Transparent">
+				<pen lineWidth="0.75" lineColor="#000000"/>
+			</element>
+			<element kind="image" uuid="a3000001-0000-0000-0000-000000000002" x="4" y="4" width="122" height="54" scaleImage="RetainShape" onErrorType="Blank" hImageAlign="Center" vImageAlign="Middle">
+				<expression><![CDATA[$P{P_IMAGEN}]]></expression>
+			</element>
+			<element kind="rectangle" uuid="a3000001-0000-0000-0000-000000000003" x="130" y="0" width="265" height="62" mode="Transparent">
+				<pen lineWidth="0.75" lineColor="#000000"/>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000004" x="130" y="6" width="265" height="24" fontSize="15.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+				<text><![CDATA[ASOPREP - FCPC]]></text>
+				<box leftPadding="3" rightPadding="3"/>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000005" x="130" y="31" width="265" height="24" fontSize="15.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+				<text><![CDATA[SOLICITUD DE CRÉDITO]]></text>
+				<box leftPadding="3" rightPadding="3"/>
+			</element>
+			<element kind="rectangle" uuid="a3000001-0000-0000-0000-000000000006" x="395" y="0" width="140" height="62" mode="Transparent">
+				<pen lineWidth="0.75" lineColor="#000000"/>
+			</element>
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000007" x="395" y="6" width="140" height="16" fontSize="9.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+				<expression><![CDATA["No. Solicitud: " + ($F{NRO_SOLICITUD} != null ? $F{NRO_SOLICITUD}.toBigInteger().toString() : "________")]]></expression>
+				<box leftPadding="5" rightPadding="5"/>
+			</element>
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000008" x="395" y="23" width="140" height="16" fontSize="9.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+				<expression><![CDATA["Fecha: " + ($F{FECHA_SOLICITUD} != null ? new java.text.SimpleDateFormat("yyyy-MM-dd").format($F{FECHA_SOLICITUD}) : "____________")]]></expression>
+				<box leftPadding="5" rightPadding="5"/>
+			</element>
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000009" x="395" y="40" width="140" height="16" fontSize="9.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+				<expression><![CDATA["Código: FOR-CRE-SOL-01"]]></expression>
+				<box leftPadding="5" rightPadding="5"/>
+			</element>
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000010" x="0" y="66" width="535" height="12" forecolor="#C0392B" fontSize="9.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+				<expression><![CDATA[$F{ID_ESTADO} != null && $F{ID_ESTADO}.intValue() == 12 ? "*** PRÉSTAMO ANULADO ***" : ($F{ID_ESTADO} != null && $F{ID_ESTADO}.intValue() == 7 ? "*** PRÉSTAMO RECHAZADO ***" : "")]]></expression>
+				<box leftPadding="3" rightPadding="3"/>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000011" x="0" y="79" width="535" height="24" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+				<text><![CDATA[Asociación del Fondo Complementario Previsional Cerrado ASOPREP-FCPC, de Jubilación y Cesantía, de las Empresas Públicas del Sector Hidrocarburífero]]></text>
+				<box leftPadding="3" rightPadding="3"/>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000012" x="0" y="104" width="535" height="11" fontSize="8.5" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[Señores]]></text>
+				<box leftPadding="3" rightPadding="3"/>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000013" x="0" y="115" width="535" height="11" fontSize="8.5" bold="true" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[ASOPREP - FCPC]]></text>
+				<box leftPadding="3" rightPadding="3"/>
+			</element>
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000014" x="0" y="128" width="535" height="46" fontSize="8.0" hTextAlign="Justified" vTextAlign="Top" textAdjust="StretchHeight">
+				<expression><![CDATA["Yo, " + ($F{NOMBRES_APELLIDOS} != null && !$F{NOMBRES_APELLIDOS}.isEmpty() ? $F{NOMBRES_APELLIDOS} : "______________________") + ", con C.C. " + ($F{CEDULA} != null && !$F{CEDULA}.isEmpty() ? $F{CEDULA} : "____________") + ", en mi calidad de Partícipe de ASOPREP-FCPC, solicito se apruebe el siguiente préstamo contra mis haberes, sujetándome a la Política de Crédito, instructivos y reglamentos vigentes. Expresamente autorizo a " + ($F{EMPLEADOR} != null && !$F{EMPLEADOR}.isEmpty() ? $F{EMPLEADOR} : "______________________") + " que, de mi remuneración en el Rol de Pagos, se descuenten las cuotas de conformidad con la tabla de amortización respectiva, a favor de ASOPREP-FCPC."]]></expression>
+				<box leftPadding="0" rightPadding="0"/>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000015" x="0" y="177" width="535" height="13" mode="Opaque" backcolor="#1F3864" forecolor="#FFFFFF" fontSize="9.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[1. DATOS DEL PARTÍCIPE]]></text>
+				<box leftPadding="4" rightPadding="4"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000016" x="0" y="190" width="112" height="14" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[Apellidos y nombres]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000017" x="112" y="190" width="423" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<expression><![CDATA[($F{NOMBRES_APELLIDOS} != null && !$F{NOMBRES_APELLIDOS}.isEmpty() ? $F{NOMBRES_APELLIDOS} : "____________")]]></expression>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000018" x="0" y="204" width="112" height="14" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[Cédula]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000019" x="112" y="204" width="150" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<expression><![CDATA[($F{CEDULA} != null && !$F{CEDULA}.isEmpty() ? $F{CEDULA} : "____________")]]></expression>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000020" x="262" y="204" width="130" height="14" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[Código partícipe]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000021" x="392" y="204" width="143" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<expression><![CDATA[($F{CODIGO_PARTICIPE} != null ? $F{CODIGO_PARTICIPE}.toBigInteger().toString() : "________")]]></expression>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000022" x="0" y="218" width="112" height="14" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[Fecha de nacimiento]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000023" x="112" y="218" width="150" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<expression><![CDATA[($F{FECHA_NACIMIENTO} != null && !$F{FECHA_NACIMIENTO}.isEmpty() ? $F{FECHA_NACIMIENTO} : "____________")]]></expression>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000024" x="262" y="218" width="130" height="14" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[Estado civil]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000025" x="392" y="218" width="143" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<expression><![CDATA[($F{ESTADO_CIVIL} != null && !$F{ESTADO_CIVIL}.isEmpty() ? $F{ESTADO_CIVIL} : "____________")]]></expression>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000026" x="0" y="232" width="112" height="14" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[Empleador]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000027" x="112" y="232" width="150" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<expression><![CDATA[($F{EMPLEADOR} != null && !$F{EMPLEADOR}.isEmpty() ? $F{EMPLEADOR} : "____________")]]></expression>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000028" x="262" y="232" width="130" height="14" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[Condición]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000029" x="392" y="232" width="143" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<expression><![CDATA[($F{CONDICION} != null && !$F{CONDICION}.isEmpty() ? $F{CONDICION} : "____________")]]></expression>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000030" x="0" y="246" width="112" height="14" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[Cargo]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000031" x="112" y="246" width="150" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<expression><![CDATA[($F{CARGO} != null && !$F{CARGO}.isEmpty() ? $F{CARGO} : "____________")]]></expression>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000032" x="262" y="246" width="130" height="14" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[Fecha de ingreso]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000033" x="392" y="246" width="143" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<expression><![CDATA[($F{FECHA_INGRESO} != null ? new java.text.SimpleDateFormat("yyyy-MM-dd").format($F{FECHA_INGRESO}) : "____________")]]></expression>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000034" x="0" y="260" width="112" height="14" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[Dirección domicilio]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000035" x="112" y="260" width="423" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<expression><![CDATA[($F{DIRECCION} != null && !$F{DIRECCION}.isEmpty() ? $F{DIRECCION} : "____________")]]></expression>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000036" x="0" y="274" width="112" height="14" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[Teléfono / celular]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000037" x="112" y="274" width="150" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<expression><![CDATA[($F{TELEFONO} != null && !$F{TELEFONO}.isEmpty() ? $F{TELEFONO} : "________") + " / " + ($F{CELULAR} != null && !$F{CELULAR}.isEmpty() ? $F{CELULAR} : "________")]]></expression>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000038" x="262" y="274" width="130" height="14" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[Correo electrónico]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000039" x="392" y="274" width="143" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<expression><![CDATA[($F{EMAIL} != null && !$F{EMAIL}.isEmpty() ? $F{EMAIL} : "____________")]]></expression>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000040" x="0" y="292" width="535" height="13" mode="Opaque" backcolor="#1F3864" forecolor="#FFFFFF" fontSize="9.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[2. DATOS DEL CRÉDITO SOLICITADO]]></text>
+				<box leftPadding="4" rightPadding="4"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000041" x="0" y="305" width="112" height="14" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[Tipo de préstamo]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000042" x="112" y="305" width="150" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<expression><![CDATA[($F{TIPO_PRESTAMO} != null && !$F{TIPO_PRESTAMO}.isEmpty() ? $F{TIPO_PRESTAMO} : "____________")]]></expression>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000043" x="262" y="305" width="130" height="14" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[Tasa de interés]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000044" x="392" y="305" width="143" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<expression><![CDATA[($F{TASA} != null ? com.saa.ejb.crd.util.NumeroALetrasUtil.formatearMontoEc(Double.valueOf($F{TASA}.doubleValue())) : "______") + "% anual"]]></expression>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000045" x="0" y="319" width="112" height="14" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[Monto solicitado]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000046" x="112" y="319" width="150" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<expression><![CDATA["USD " + ($F{MONTO} != null ? com.saa.ejb.crd.util.NumeroALetrasUtil.formatearMontoEc(Double.valueOf($F{MONTO}.doubleValue())) : "____________")]]></expression>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000047" x="262" y="319" width="130" height="14" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[Número de cuotas]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000048" x="392" y="319" width="143" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<expression><![CDATA[($F{NRO_CUOTAS} != null ? $F{NRO_CUOTAS}.toBigInteger().toString() : "________")]]></expression>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000049" x="0" y="333" width="112" height="14" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[Frecuencia de pago]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000050" x="112" y="333" width="150" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<expression><![CDATA["________ días"]]></expression>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000051" x="262" y="333" width="130" height="14" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[Cuota estimada]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000052" x="392" y="333" width="143" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<expression><![CDATA["USD " + ($F{CUOTA_ESTIMADA} != null ? com.saa.ejb.crd.util.NumeroALetrasUtil.formatearMontoEc(Double.valueOf($F{CUOTA_ESTIMADA}.doubleValue())) : "____________")]]></expression>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000053" x="0" y="347" width="112" height="14" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[Destino del crédito]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000054" x="112" y="347" width="423" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<expression><![CDATA[($F{DESTINO_CREDITO} != null && !$F{DESTINO_CREDITO}.isEmpty() ? $F{DESTINO_CREDITO} : "____________")]]></expression>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000055" x="0" y="361" width="112" height="14" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[Operación]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000056" x="112" y="361" width="423" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<expression><![CDATA[""]]></expression>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="rectangle" uuid="a3000001-0000-0000-0000-000000000057" x="118" y="364" width="9" height="9" mode="Transparent">
+				<pen lineWidth="0.75" lineColor="#000000"/>
+			</element>
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000058" x="115" y="362" width="15" height="12" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+				<printWhenExpression><![CDATA[!($F{ID_ORIGINAL} != null || $F{ES_NOVACION}.intValue() == 1 || $F{REESTRUCTURADO}.intValue() == 1)]]></printWhenExpression>
+				<expression><![CDATA["X"]]></expression>
+				<box leftPadding="0" rightPadding="0"/>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000059" x="130" y="361" width="40" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[Nuevo]]></text>
+				<box leftPadding="3" rightPadding="3"/>
+			</element>
+			<element kind="rectangle" uuid="a3000001-0000-0000-0000-000000000060" x="184" y="364" width="9" height="9" mode="Transparent">
+				<pen lineWidth="0.75" lineColor="#000000"/>
+			</element>
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000061" x="181" y="362" width="15" height="12" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+				<printWhenExpression><![CDATA[$F{ID_ORIGINAL} != null || $F{ES_NOVACION}.intValue() == 1 || $F{REESTRUCTURADO}.intValue() == 1]]></printWhenExpression>
+				<expression><![CDATA["X"]]></expression>
+				<box leftPadding="0" rightPadding="0"/>
+			</element>
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000062" x="196" y="361" width="333" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<expression><![CDATA["Refinanciamiento / novación de la operación No. " + ($F{NRO_OP_ANTERIOR} != null ? $F{NRO_OP_ANTERIOR}.toBigInteger().toString() : "__________")]]></expression>
+				<box leftPadding="3" rightPadding="3"/>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000063" x="0" y="380" width="535" height="13" mode="Opaque" backcolor="#1F3864" forecolor="#FFFFFF" fontSize="9.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[3. RESUMEN DE CAPACIDAD DE PAGO Y GARANTÍA (uso del sistema)]]></text>
+				<box leftPadding="4" rightPadding="4"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000064" x="0" y="393" width="112" height="14" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[Saldo cuenta individual]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000065" x="112" y="393" width="150" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<expression><![CDATA["USD " + ($F{SALDO_CTA_INDIVIDUAL} != null ? com.saa.ejb.crd.util.NumeroALetrasUtil.formatearMontoEc(Double.valueOf($F{SALDO_CTA_INDIVIDUAL}.doubleValue())) : "____________")]]></expression>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000066" x="262" y="393" width="130" height="14" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[Saldo créditos vigentes]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000067" x="392" y="393" width="143" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<expression><![CDATA["USD " + ($P{P_SALDO_CREDITOS_VIGENTES} != null ? com.saa.ejb.crd.util.NumeroALetrasUtil.formatearMontoEc(Double.valueOf($P{P_SALDO_CREDITOS_VIGENTES}.doubleValue())) : "____________")]]></expression>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000068" x="0" y="407" width="112" height="14" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[Ingreso mensual (rol)]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000069" x="112" y="407" width="150" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<expression><![CDATA["USD " + ($F{INGRESO_MENSUAL} != null ? com.saa.ejb.crd.util.NumeroALetrasUtil.formatearMontoEc(Double.valueOf($F{INGRESO_MENSUAL}.doubleValue())) : "____________")]]></expression>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000070" x="262" y="407" width="130" height="14" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[Descuentos de ley y otros]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000071" x="392" y="407" width="143" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<expression><![CDATA["USD ____________"]]></expression>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000072" x="0" y="421" width="112" height="14" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[Cuotas vigentes ASOPREP]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000073" x="112" y="421" width="150" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<expression><![CDATA["USD " + ($F{CUOTAS_VIGENTES} != null ? com.saa.ejb.crd.util.NumeroALetrasUtil.formatearMontoEc(Double.valueOf($F{CUOTAS_VIGENTES}.doubleValue())) : "____________")]]></expression>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000074" x="262" y="421" width="130" height="14" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[Capacidad de pago]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000075" x="392" y="421" width="143" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<expression><![CDATA["USD ____________"]]></expression>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000076" x="0" y="435" width="112" height="14" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[Monto máximo a otorgar]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000077" x="112" y="435" width="150" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<expression><![CDATA["USD ____________"]]></expression>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000078" x="262" y="435" width="130" height="14" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[Valor líquido a recibir]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000079" x="392" y="435" width="143" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<expression><![CDATA["USD " + ($F{VALOR_LIQUIDO} != null ? com.saa.ejb.crd.util.NumeroALetrasUtil.formatearMontoEc(Double.valueOf($F{VALOR_LIQUIDO}.doubleValue())) : "____________")]]></expression>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000080" x="0" y="453" width="535" height="13" mode="Opaque" backcolor="#1F3864" forecolor="#FFFFFF" fontSize="9.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[4. AUTORIZACIÓN DE DESCUENTO Y ACREDITACIÓN]]></text>
+				<box leftPadding="4" rightPadding="4"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000081" x="0" y="468" width="535" height="33" fontSize="8.0" hTextAlign="Justified" vTextAlign="Top" textAdjust="StretchHeight">
+				<expression><![CDATA["Ratifico mi autorización a " + ($F{EMPLEADOR} != null && !$F{EMPLEADOR}.isEmpty() ? $F{EMPLEADOR} : "______________________") + " para que me descuente mensualmente por Rol de Pagos el aporte, así como la cuota mensual correspondiente por los créditos que mantengo en ASOPREP-FCPC, y solicito que el valor que me corresponde por el crédito " + ($F{TIPO_PRESTAMO} != null && !$F{TIPO_PRESTAMO}.isEmpty() ? $F{TIPO_PRESTAMO} : "____________") + " que me encuentro tramitando se deposite a la siguiente cuenta, de la cual soy titular:"]]></expression>
+				<box leftPadding="0" rightPadding="0"/>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000082" x="0" y="501" width="112" height="14" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[Banco]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000083" x="112" y="501" width="423" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<expression><![CDATA[($F{BANCO} != null && !$F{BANCO}.isEmpty() ? $F{BANCO} : "____________")]]></expression>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000084" x="0" y="515" width="112" height="14" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[Tipo de cuenta]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000085" x="112" y="515" width="423" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<expression><![CDATA[($F{TIPO_CUENTA} != null && !$F{TIPO_CUENTA}.isEmpty() ? $F{TIPO_CUENTA} : "____________")]]></expression>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000086" x="0" y="529" width="112" height="14" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[Número]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000087" x="112" y="529" width="423" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<expression><![CDATA[($F{NRO_CUENTA} != null && !$F{NRO_CUENTA}.isEmpty() ? $F{NRO_CUENTA} : "____________")]]></expression>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000088" x="0" y="547" width="535" height="13" mode="Opaque" backcolor="#1F3864" forecolor="#FFFFFF" fontSize="9.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[5. AUTORIZACIONES Y DECLARACIONES DEL PARTÍCIPE]]></text>
+				<box leftPadding="4" rightPadding="4"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000089" x="0" y="563" width="535" height="125" fontSize="7.5" hTextAlign="Justified" vTextAlign="Top" textAdjust="StretchHeight">
+				<expression><![CDATA["a) Burós y referencias crediticias: Autorizo expresa e irrevocablemente a la ASOCIACIÓN DEL FONDO COMPLEMENTARIO PREVISIONAL CERRADO ASOPREP-FCPC, DE JUBILACIÓN Y CESANTÍA, DE LAS EMPRESAS PÚBLICAS DEL SECTOR HIDROCARBURÍFERO, o a quien sea el futuro cesionario, beneficiario o acreedor del crédito solicitado o del documento o título cambiario que lo respalde, para que obtenga cuantas veces sean necesarias, de cualquier fuente de información, incluidos los burós de crédito, mi información de riesgos crediticios; y, de igual forma, para que pueda transferir o entregar dicha información a los burós de crédito o a las entidades que los sustituyan, a cualquier persona jurídica que preste servicios de referencias crediticias, a la Central de Riesgos si fuera pertinente y/o a cualquier persona natural o jurídica que brinde servicios de cobranza.\nb) Garantía con cuenta individual: Acepto que, en caso de incumplimiento, cese o desvinculación, los valores adeudados a ASOPREP-FCPC sean compensados con el saldo de mi cuenta individual, de conformidad con la normativa vigente.\nc) Licitud de fondos: Declaro que los recursos con los que cancelaré el presente crédito provienen de actividades lícitas y que no serán destinados a ninguna actividad relacionada con el lavado de activos, financiamiento del terrorismo u otros delitos.\nd) Protección de datos personales: Conforme a la Ley Orgánica de Protección de Datos Personales, autorizo a ASOPREP-FCPC el tratamiento de mis datos personales para fines de análisis, otorgamiento, administración y recuperación del crédito.\ne) Veracidad: Declaro bajo juramento que la información y documentación entregadas son legítimas y verdaderas y, en consecuencia, eximo a ASOPREP-FCPC de toda responsabilidad si éstas fueran falsas o erróneas. Asimismo, autorizo expresamente a ASOPREP-FCPC a realizar el análisis que considere pertinente e informar a las autoridades competentes si fuera el caso."]]></expression>
+				<box leftPadding="0" rightPadding="0"/>
+			</element>
+			<element kind="line" positionType="Float" uuid="a3000001-0000-0000-0000-000000000090" x="150" y="705" width="235" height="1"/>
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000091" x="100" y="708" width="335" height="12" positionType="Float" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+				<expression><![CDATA[($F{NOMBRES_APELLIDOS} != null && !$F{NOMBRES_APELLIDOS}.isEmpty() ? $F{NOMBRES_APELLIDOS} : "")]]></expression>
+				<box leftPadding="3" rightPadding="3"/>
+			</element>
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000092" x="100" y="720" width="335" height="12" positionType="Float" fontSize="8.0" hTextAlign="Center" vTextAlign="Middle">
+				<expression><![CDATA["Firma del Partícipe — C.C. " + ($F{CEDULA} != null && !$F{CEDULA}.isEmpty() ? $F{CEDULA} : "")]]></expression>
+				<box leftPadding="3" rightPadding="3"/>
+			</element>
+		</band>
+		<band height="468" splitType="Stretch">
+			<element kind="break" uuid="a3000001-0000-0000-0000-000000000093" x="0" y="0" width="535" height="1"/>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000094" x="0" y="6" width="535" height="13" mode="Opaque" backcolor="#1F3864" forecolor="#FFFFFF" fontSize="9.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[6. REQUISITOS Y VERIFICACIÓN DOCUMENTAL (uso de Crédito)]]></text>
+				<box leftPadding="4" rightPadding="4"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000095" x="0" y="19" width="25" height="14" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+				<text><![CDATA[No.]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000096" x="25" y="19" width="285" height="14" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+				<text><![CDATA[Requisito]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000097" x="310" y="19" width="50" height="14" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+				<text><![CDATA[Cumple]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000098" x="360" y="19" width="55" height="14" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+				<text><![CDATA[No aplica]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000099" x="415" y="19" width="120" height="14" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+				<text><![CDATA[Observación]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000100" x="0" y="33" width="25" height="24" fontSize="8.0" hTextAlign="Center" vTextAlign="Middle">
+				<text><![CDATA[1]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000101" x="25" y="33" width="285" height="24" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[Solicitud de crédito firmada por el partícipe]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000102" x="310" y="33" width="50" height="24" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000103" x="360" y="33" width="55" height="24" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000104" x="415" y="33" width="120" height="24" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="rectangle" uuid="a3000001-0000-0000-0000-000000000105" x="330" y="40" width="10" height="10" mode="Transparent">
+				<pen lineWidth="0.75" lineColor="#000000"/>
+			</element>
+			<element kind="rectangle" uuid="a3000001-0000-0000-0000-000000000106" x="382" y="40" width="10" height="10" mode="Transparent">
+				<pen lineWidth="0.75" lineColor="#000000"/>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000107" x="0" y="57" width="25" height="24" fontSize="8.0" hTextAlign="Center" vTextAlign="Middle">
+				<text><![CDATA[2]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000108" x="25" y="57" width="285" height="24" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[Copia de cédula de ciudadanía vigente (legible, a color)]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000109" x="310" y="57" width="50" height="24" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000110" x="360" y="57" width="55" height="24" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000111" x="415" y="57" width="120" height="24" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="rectangle" uuid="a3000001-0000-0000-0000-000000000112" x="330" y="64" width="10" height="10" mode="Transparent">
+				<pen lineWidth="0.75" lineColor="#000000"/>
+			</element>
+			<element kind="rectangle" uuid="a3000001-0000-0000-0000-000000000113" x="382" y="64" width="10" height="10" mode="Transparent">
+				<pen lineWidth="0.75" lineColor="#000000"/>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000114" x="0" y="81" width="25" height="24" fontSize="8.0" hTextAlign="Center" vTextAlign="Middle">
+				<text><![CDATA[3]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000115" x="25" y="81" width="285" height="24" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[Último rol de pagos o certificado de ingresos (jubilados: último comprobante de pensión)]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000116" x="310" y="81" width="50" height="24" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000117" x="360" y="81" width="55" height="24" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000118" x="415" y="81" width="120" height="24" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="rectangle" uuid="a3000001-0000-0000-0000-000000000119" x="330" y="88" width="10" height="10" mode="Transparent">
+				<pen lineWidth="0.75" lineColor="#000000"/>
+			</element>
+			<element kind="rectangle" uuid="a3000001-0000-0000-0000-000000000120" x="382" y="88" width="10" height="10" mode="Transparent">
+				<pen lineWidth="0.75" lineColor="#000000"/>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000121" x="0" y="105" width="25" height="24" fontSize="8.0" hTextAlign="Center" vTextAlign="Middle">
+				<text><![CDATA[4]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000122" x="25" y="105" width="285" height="24" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[Certificado bancario de la cuenta a acreditar, a nombre del partícipe (vigencia no mayor a 30 días)]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000123" x="310" y="105" width="50" height="24" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000124" x="360" y="105" width="55" height="24" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000125" x="415" y="105" width="120" height="24" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="rectangle" uuid="a3000001-0000-0000-0000-000000000126" x="330" y="112" width="10" height="10" mode="Transparent">
+				<pen lineWidth="0.75" lineColor="#000000"/>
+			</element>
+			<element kind="rectangle" uuid="a3000001-0000-0000-0000-000000000127" x="382" y="112" width="10" height="10" mode="Transparent">
+				<pen lineWidth="0.75" lineColor="#000000"/>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000128" x="0" y="129" width="25" height="24" fontSize="8.0" hTextAlign="Center" vTextAlign="Middle">
+				<text><![CDATA[5]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000129" x="25" y="129" width="285" height="24" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[Planilla de servicio básico (dirección domicilio, no mayor a 3 meses)]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000130" x="310" y="129" width="50" height="24" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000131" x="360" y="129" width="55" height="24" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000132" x="415" y="129" width="120" height="24" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="rectangle" uuid="a3000001-0000-0000-0000-000000000133" x="330" y="136" width="10" height="10" mode="Transparent">
+				<pen lineWidth="0.75" lineColor="#000000"/>
+			</element>
+			<element kind="rectangle" uuid="a3000001-0000-0000-0000-000000000134" x="382" y="136" width="10" height="10" mode="Transparent">
+				<pen lineWidth="0.75" lineColor="#000000"/>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000135" x="0" y="153" width="25" height="24" fontSize="8.0" hTextAlign="Center" vTextAlign="Middle">
+				<text><![CDATA[6]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000136" x="25" y="153" width="285" height="24" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[Formulario «Conozca a su Cliente» / declaración de licitud de fondos actualizada]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000137" x="310" y="153" width="50" height="24" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000138" x="360" y="153" width="55" height="24" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000139" x="415" y="153" width="120" height="24" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="rectangle" uuid="a3000001-0000-0000-0000-000000000140" x="330" y="160" width="10" height="10" mode="Transparent">
+				<pen lineWidth="0.75" lineColor="#000000"/>
+			</element>
+			<element kind="rectangle" uuid="a3000001-0000-0000-0000-000000000141" x="382" y="160" width="10" height="10" mode="Transparent">
+				<pen lineWidth="0.75" lineColor="#000000"/>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000142" x="0" y="177" width="25" height="24" fontSize="8.0" hTextAlign="Center" vTextAlign="Middle">
+				<text><![CDATA[7]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000143" x="25" y="177" width="285" height="24" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[Consulta de buró de crédito y listas de observados (adjunta por Crédito)]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000144" x="310" y="177" width="50" height="24" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000145" x="360" y="177" width="55" height="24" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000146" x="415" y="177" width="120" height="24" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="rectangle" uuid="a3000001-0000-0000-0000-000000000147" x="330" y="184" width="10" height="10" mode="Transparent">
+				<pen lineWidth="0.75" lineColor="#000000"/>
+			</element>
+			<element kind="rectangle" uuid="a3000001-0000-0000-0000-000000000148" x="382" y="184" width="10" height="10" mode="Transparent">
+				<pen lineWidth="0.75" lineColor="#000000"/>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000149" x="0" y="201" width="25" height="24" fontSize="8.0" hTextAlign="Center" vTextAlign="Middle">
+				<text><![CDATA[8]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000150" x="25" y="201" width="285" height="24" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[Verificación de saldo de cuenta individual y créditos vigentes en sistema]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000151" x="310" y="201" width="50" height="24" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000152" x="360" y="201" width="55" height="24" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000153" x="415" y="201" width="120" height="24" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="rectangle" uuid="a3000001-0000-0000-0000-000000000154" x="330" y="208" width="10" height="10" mode="Transparent">
+				<pen lineWidth="0.75" lineColor="#000000"/>
+			</element>
+			<element kind="rectangle" uuid="a3000001-0000-0000-0000-000000000155" x="382" y="208" width="10" height="10" mode="Transparent">
+				<pen lineWidth="0.75" lineColor="#000000"/>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000156" x="0" y="225" width="25" height="24" fontSize="8.0" hTextAlign="Center" vTextAlign="Middle">
+				<text><![CDATA[9]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000157" x="25" y="225" width="285" height="24" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[Pagaré y tabla de amortización firmados por el partícipe]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000158" x="310" y="225" width="50" height="24" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000159" x="360" y="225" width="55" height="24" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000160" x="415" y="225" width="120" height="24" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="rectangle" uuid="a3000001-0000-0000-0000-000000000161" x="330" y="232" width="10" height="10" mode="Transparent">
+				<pen lineWidth="0.75" lineColor="#000000"/>
+			</element>
+			<element kind="rectangle" uuid="a3000001-0000-0000-0000-000000000162" x="382" y="232" width="10" height="10" mode="Transparent">
+				<pen lineWidth="0.75" lineColor="#000000"/>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000163" x="0" y="249" width="25" height="24" fontSize="8.0" hTextAlign="Center" vTextAlign="Middle">
+				<text><![CDATA[10]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000164" x="25" y="249" width="285" height="24" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[Otros requisitos según tipo de préstamo: ________________________]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000165" x="310" y="249" width="50" height="24" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000166" x="360" y="249" width="55" height="24" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000167" x="415" y="249" width="120" height="24" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="rectangle" uuid="a3000001-0000-0000-0000-000000000168" x="330" y="256" width="10" height="10" mode="Transparent">
+				<pen lineWidth="0.75" lineColor="#000000"/>
+			</element>
+			<element kind="rectangle" uuid="a3000001-0000-0000-0000-000000000169" x="382" y="256" width="10" height="10" mode="Transparent">
+				<pen lineWidth="0.75" lineColor="#000000"/>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000170" x="0" y="276" width="535" height="12" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[Nota: la solicitud no será tramitada mientras no se encuentren completos los requisitos aplicables.]]></text>
+				<box leftPadding="3" rightPadding="3"/>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000171" x="0" y="293" width="535" height="13" mode="Opaque" backcolor="#1F3864" forecolor="#FFFFFF" fontSize="9.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[7. RESOLUCIÓN]]></text>
+				<box leftPadding="4" rightPadding="4"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000172" x="0" y="306" width="112" height="14" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[Monto pre aprobado]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000173" x="112" y="306" width="150" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<expression><![CDATA["USD ____________________"]]></expression>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000174" x="262" y="306" width="130" height="14" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[Plazo pre aprobado]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000175" x="392" y="306" width="143" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<expression><![CDATA["________ cuotas"]]></expression>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000176" x="0" y="320" width="112" height="14" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[Estado]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000177" x="112" y="320" width="150" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<expression><![CDATA[""]]></expression>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="rectangle" uuid="a3000001-0000-0000-0000-000000000178" x="118" y="323" width="9" height="9" mode="Transparent">
+				<pen lineWidth="0.75" lineColor="#000000"/>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000179" x="130" y="320" width="60" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[Aprobado]]></text>
+				<box leftPadding="3" rightPadding="3"/>
+			</element>
+			<element kind="rectangle" uuid="a3000001-0000-0000-0000-000000000180" x="194" y="323" width="9" height="9" mode="Transparent">
+				<pen lineWidth="0.75" lineColor="#000000"/>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000181" x="206" y="320" width="60" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[Negado]]></text>
+				<box leftPadding="3" rightPadding="3"/>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000182" x="262" y="320" width="130" height="14" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[Nivel de aprobación]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000183" x="392" y="320" width="143" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<expression><![CDATA["____________________"]]></expression>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000184" x="0" y="334" width="112" height="60" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[Observaciones]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000185" x="112" y="334" width="423" height="60" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<expression><![CDATA[""]]></expression>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="line" uuid="a3000001-0000-0000-0000-000000000186" x="8" y="428" width="162" height="1"/>
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000187" x="0" y="430" width="178" height="12" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+				<expression><![CDATA[($F{USUARIO_ELABORA} != null && !$F{USUARIO_ELABORA}.isEmpty() ? $F{USUARIO_ELABORA} : "")]]></expression>
+				<box leftPadding="3" rightPadding="3"/>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000188" x="0" y="442" width="178" height="22" fontSize="8.0" hTextAlign="Center" vTextAlign="Top">
+				<text><![CDATA[Elaborado por — Asistente de Crédito]]></text>
+				<box leftPadding="3" rightPadding="3"/>
+			</element>
+			<element kind="line" uuid="a3000001-0000-0000-0000-000000000189" x="186" y="428" width="162" height="1"/>
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000190" x="178" y="430" width="178" height="12" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+				<expression><![CDATA[""]]></expression>
+				<box leftPadding="3" rightPadding="3"/>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000191" x="178" y="442" width="178" height="22" fontSize="8.0" hTextAlign="Center" vTextAlign="Top">
+				<text><![CDATA[Revisado por — Jefe de Crédito]]></text>
+				<box leftPadding="3" rightPadding="3"/>
+			</element>
+			<element kind="line" uuid="a3000001-0000-0000-0000-000000000192" x="364" y="428" width="162" height="1"/>
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000193" x="356" y="430" width="178" height="12" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+				<expression><![CDATA[($F{APROBADOR} != null && !$F{APROBADOR}.isEmpty() ? $F{APROBADOR} : "")]]></expression>
+				<box leftPadding="3" rightPadding="3"/>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000194" x="356" y="442" width="178" height="22" fontSize="8.0" hTextAlign="Center" vTextAlign="Top">
+				<text><![CDATA[Aprobado por — Gerencia General / CAD]]></text>
+				<box leftPadding="3" rightPadding="3"/>
+			</element>
+		</band>
+	</detail>
+
+	<!-- IM15: Impreso por · fecha y hora de impresión · Página X de Y -->
+	<pageFooter height="22" splitType="Stretch">
+		<element kind="line" uuid="a3000001-0000-0000-0000-900000000001" x="0" y="2" width="535" height="1"/>
+		<element kind="textField" uuid="a3000001-0000-0000-0000-900000000002" x="0" y="5" width="400" height="14" fontSize="8.0" vTextAlign="Middle">
+			<expression><![CDATA["Impreso por: " + ($P{P_USUARIO} != null ? $P{P_USUARIO} : "") + "  ·  Fecha de impresión: " + new java.text.SimpleDateFormat("dd/MM/yyyy HH:mm").format(new java.util.Date())]]></expression>
+		</element>
+		<element kind="textField" uuid="a3000001-0000-0000-0000-900000000003" x="415" y="5" width="85" height="14" fontSize="8.0" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA["Página " + $V{PAGE_NUMBER} + " de"]]></expression>
+		</element>
+		<element kind="textField" uuid="a3000001-0000-0000-0000-900000000004" x="500" y="5" width="35" height="14" fontSize="8.0" vTextAlign="Middle" evaluationTime="Report">
+			<expression><![CDATA[" " + $V{PAGE_NUMBER}]]></expression>
+		</element>
+	</pageFooter>
+</jasperReport>

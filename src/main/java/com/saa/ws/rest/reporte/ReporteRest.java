@@ -4,6 +4,8 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import com.saa.ejb.reporte.service.ReporteService;
+import com.saa.model.reporte.ReporteLoteItem;
+import com.saa.model.reporte.ReporteLoteRequest;
 import com.saa.model.reporte.ReporteRequest;
 import com.saa.model.reporte.ReporteResponse;
 
@@ -131,6 +133,61 @@ public class ReporteRest {
         }
     }
     
+    /**
+     * Un solo PDF con varios reportes (DISENO-IMPRESOS-OTORGAMIENTO.md §4).
+     *
+     * POST /rest/rprt/generarLote
+     * Body: { "modulo": "crd", "formato": "PDF",
+     *         "reportes": [ { "nombreReporte": "RPRT_PRST_SLCT", "parametros": { "P_PRSTCDGO": 5555 } }, ... ] }
+     *
+     * 400 si el formato no es PDF, la lista viene vacía o falta el módulo o un nombre; 500 si falla
+     * alguno (el mensaje dice cuál) — no se entrega un PDF incompleto.
+     */
+    @POST
+    @Path("/generarLote")
+    @Produces({"application/pdf", "application/json"})
+    public Response generarReporteLote(ReporteLoteRequest request) {
+        System.out.println("ReporteRest.generarReporteLote: " + request);
+        try {
+            if (request == null || request.getModulo() == null || request.getModulo().trim().isEmpty()) {
+                return respuestaLoteInvalida("El módulo es requerido");
+            }
+            if (!reporteService.esModuloValido(request.getModulo())) {
+                return respuestaLoteInvalida("Módulo no válido. Debe ser: cnt, tsr, crd, cxc, cxp o rhh");
+            }
+            if (request.getFormato() == null || !"PDF".equalsIgnoreCase(request.getFormato().trim())) {
+                return respuestaLoteInvalida("El lote solo se entrega en formato PDF");
+            }
+            if (request.getReportes() == null || request.getReportes().isEmpty()) {
+                return respuestaLoteInvalida("La lista de reportes está vacía");
+            }
+            for (ReporteLoteItem item : request.getReportes()) {
+                if (item == null || item.getNombreReporte() == null || item.getNombreReporte().trim().isEmpty()) {
+                    return respuestaLoteInvalida("Cada reporte del lote necesita su nombreReporte");
+                }
+            }
+
+            byte[] pdf = reporteService.generarReporteLote(request.getModulo(), request.getReportes());
+            return Response.ok(pdf)
+                .header("Content-Disposition", "attachment; filename=\"" + request.getModulo() + "_lote.pdf\"")
+                .header("Content-Type", "application/pdf")
+                .build();
+        } catch (Throwable e) {
+            LOGGER.log(Level.SEVERE, "Error al generar el lote de reportes", e);
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                .entity(new ReporteResponse(false, "Error al generar el lote: " + e.getMessage()))
+                .type(MediaType.APPLICATION_JSON)
+                .build();
+        }
+    }
+
+    private Response respuestaLoteInvalida(String mensaje) {
+        return Response.status(Response.Status.BAD_REQUEST)
+            .entity(new ReporteResponse(false, mensaje))
+            .type(MediaType.APPLICATION_JSON)
+            .build();
+    }
+
     /**
      * Lista los módulos disponibles
      * GET /rest/rprt/modulos
