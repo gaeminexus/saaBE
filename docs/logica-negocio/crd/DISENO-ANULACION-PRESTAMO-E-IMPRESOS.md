@@ -48,7 +48,7 @@
 | Reporte | Contenido | Parámetro |
 |---|---|---|
 | `RPRT_TBLA_ACML` — tabla de amortización | Cabecera: idAsoprep, partícipe, cédula, producto, monto, tasa, plazo, fecha de inicio, estado. Detalle por cuota: número, vencimiento, capital, interés, seguros u otros rubros si existen, cuota total y saldo de capital. Totales al pie. | `P_PRSTCDGO` |
-| `RPRT_PRST_PGRE` — pagaré | Pagaré a la orden por el monto del préstamo: lugar y fecha, monto en números y en letras, deudor con cédula, plazo, tasa, número de cuotas, cuota, interés de mora según la ley, y las firmas del deudor. ⚠️ **TEXTO LEGAL PROVISIONAL** hasta que el usuario entregue el modelo de pagaré del cliente: lleva al pie «MODELO PROVISIONAL — validar con asesoría legal». | `P_PRSTCDGO` |
+| `RPRT_PRST_PGRE` — pagaré | ⛔ **Reemplazado el 2026-10-13 por el MODELO V2 del cliente: ver `DISENO-IMPRESOS-OTORGAMIENTO.md`.** Lo que sigue es histórico. Pagaré a la orden por el monto del préstamo: lugar y fecha, monto en números y en letras, deudor con cédula, plazo, tasa, número de cuotas, cuota, interés de mora según la ley, y las firmas del deudor. ⚠️ **TEXTO LEGAL PROVISIONAL** hasta que el usuario entregue el modelo de pagaré del cliente: lleva al pie «MODELO PROVISIONAL — validar con asesoría legal». | `P_PRSTCDGO` |
 
 Los dos se generan con `POST /rest/rprt/generar` (`modulo: "crd"`) y llevan `.jrxml` en sintaxis
 **compacta** más `.jasper` compilado y verificado con `verificar-fill-jasper.bat`. Si el reporte se
