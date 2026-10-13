@@ -55,3 +55,43 @@ endpoints, mismo cuerpo, solo nuevos motivos de 400.
   (`EXBCESTD`).
 - No se investiga por qué el parser no reconoció las filas de 42, 56 y 57. Si el ejecutor ve la causa
   leyendo el código, la reporta; no la arregla en este cambio.
+
+## Recarga: la pantalla y el backend deben usar el MISMO criterio de «ya hay extracto» (2026-10-13)
+
+**Síntoma (producción, Pacífico 7713878, septiembre 2026):** la pantalla dice *«Esta cuenta y período ya
+tienen un extracto cargado. Use "Recargar Extracto"»*, oculta «Confirmar», y al recargar el backend responde
+*«No existe un extracto cargado para esta cuenta y este periodo. Use la carga normal (confirmar)»*. La
+usuaria queda sin ningún botón que funcione.
+
+**Causa (verificada en el código):**
+- La pantalla (`cargar-extracto-bancario.component.ts`, `existeExtractoPrevio`) usa `extractoCargado` de
+  `/cnct/resumenPorPeriodo`, que es **cobertura de fechas** sin mirar el período
+  (`ExtractoBancarioDaoServiceImpl.selectCuentasConCobertura`).
+- `recargar` y la guarda G-A de `confirmar` usan **el período** (`selectByCuentaYPeriodo`).
+- Un extracto activo registrado en otro período con fechas que tocan el mes elegido hace que los dos lados
+  discrepen. Cuál es en este caso lo dice `tsr/sql/e2-102`.
+
+**Regla:** la decisión «Confirmar o Recargar» se toma con el criterio **por período**, el mismo que aplican
+`recargar` y G-A. `extractoCargado` NO cambia de significado (lo usan la conciliación y el Tablero de
+Cumplimiento para «nunca se cargó extracto de estas fechas»).
+
+**BACKEND**
+1. `ResumenConciliacionCuenta`: campo nuevo `Long idExtractoPeriodo` (getter/setter, javadoc): el código del
+   extracto activo de esa cuenta registrado en ese período, o `null`.
+2. `ConciliacionContableMatchServiceImpl.resumenPorPeriodo`: lo llena con
+   `extractoBancarioDaoService.selectByCuentaYPeriodo(cuenta.getCodigo(), idPeriodo)`. No tocar
+   `extractoCargado` ni lo demás.
+3. `ImportacionExtractoBancarioServiceImpl.recargar`, guarda 1: si no hay extracto en el período, el mensaje
+   dice además si hay uno de otro período que cubre esas fechas (`selectByCuentaYCobertura` con
+   primer/último día del período, solo activos): *«No hay un extracto cargado en este período para esta
+   cuenta. El extracto #N («archivo», del dd/MM/yyyy al dd/MM/yyyy) está registrado en otro período. Use la
+   carga normal (Validar y Confirmar).»* Si no hay ninguno, el mensaje de hoy.
+
+**FRONTEND**
+1. `existeExtractoPrevio = fila?.idExtractoPeriodo != null` (en vez de `extractoCargado`). Agregar el campo
+   al modelo/interfaz del resumen.
+2. Si `extractoCargado` es true pero `idExtractoPeriodo` es null: se muestra «Confirmar» (carga normal) y un
+   aviso informativo, no de bloqueo: *«Hay un extracto de otro período que cubre estas fechas. Se cargará
+   este archivo como el extracto de este período.»*
+
+**Contrato:** solo se agrega un campo a la respuesta de `/cnct/resumenPorPeriodo`. Nada se quita.
