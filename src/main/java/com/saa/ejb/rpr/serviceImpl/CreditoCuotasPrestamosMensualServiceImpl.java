@@ -140,6 +140,11 @@ public class CreditoCuotasPrestamosMensualServiceImpl implements CreditoCuotasPr
         if (cierre != null
                 && Long.valueOf(EstadoCorridaCierreCartera.EJECUTADA).equals(cierre.getIdEstado())) {
             resultado = new ArrayList<>();
+            // ITEM 5 (2026-10-13): CRD.BDCC no guarda la etiqueta de la banda —
+            // CierreCarteraServiceImpl.armaDesdeGrabado la deja en null al reconstruir el
+            // snapshot grabado. Se resuelve acá, derivada de la parametrización vigente al
+            // corte de la corrida (nunca tocando BDCC ni CierreCarteraServiceImpl).
+            Map<String, List<BandaProductoDetalle>> cacheBandasCierre = new HashMap<>();
             for (BandaSnapshotCierre fila : cierre.getSnapshot()) {
                 ResumenBandaCcpm r = new ResumenBandaCcpm();
                 r.setIdProducto(fila.getIdProducto());
@@ -147,7 +152,24 @@ public class CreditoCuotasPrestamosMensualServiceImpl implements CreditoCuotasPr
                 r.setTipoCartera(fila.getTipoCartera());
                 r.setNombreTipoCartera(fila.getNombreTipoCartera());
                 r.setNumeroBanda(fila.getNumeroBanda());
-                r.setEtiquetaBanda(fila.getEtiquetaBanda());
+                String etiqueta = fila.getEtiquetaBanda();
+                if (etiqueta == null) {
+                    // La etiqueta es una comodidad de presentación, no un dato financiero: si
+                    // la parametrización cambió después de la corrida y resolverRangos ya no
+                    // encuentra configuración vigente al corte, no tiene que tumbar el resto
+                    // del resumen (que sí es correcto) por una sola etiqueta sin resolver.
+                    try {
+                        etiqueta = etiquetaBandaDesdeParametrizacion(fila.getIdProducto(), idEmpresa,
+                                fila.getTipoCartera(), fila.getNumeroBanda(), cierre.getFechaCorte(),
+                                cacheBandasCierre);
+                    } catch (Throwable e) {
+                        System.out.println("CCPM resumenBandas - no se pudo resolver etiquetaBanda para"
+                                + " producto " + fila.getIdProducto() + " tipoCartera " + fila.getTipoCartera()
+                                + " banda " + fila.getNumeroBanda() + ": " + e.getMessage());
+                        etiqueta = null;
+                    }
+                }
+                r.setEtiquetaBanda(etiqueta);
                 r.setCuenta(fila.getCuenta());
                 r.setNombreCuenta(fila.getNombreCuenta());
                 r.setCapital(fila.getCapital());
@@ -167,6 +189,31 @@ public class CreditoCuotasPrestamosMensualServiceImpl implements CreditoCuotasPr
                 .thenComparing(ResumenBandaCcpm::getTipoCartera, Comparator.nullsLast(Comparator.naturalOrder()))
                 .thenComparing(ResumenBandaCcpm::getNumeroBanda, Comparator.nullsLast(Comparator.naturalOrder())));
         return resultado;
+    }
+
+    /**
+     * Etiqueta de una banda del snapshot GRABADO (CRD.BDCC no la guarda), resuelta contra la
+     * parametrización vigente al corte de la corrida — cacheada por "idProducto-tipoCartera"
+     * como {@link #calculaResumenPreliminar}. Si ninguna banda de la configuración vigente
+     * coincide en número con la del snapshot, devuelve null: no se inventa texto (ITEM 5).
+     */
+    private String etiquetaBandaDesdeParametrizacion(Long idProducto, Long idEmpresa, Long tipoCartera,
+            Long numeroBanda, LocalDate corte, Map<String, List<BandaProductoDetalle>> cache) throws Throwable {
+        if (idProducto == null || tipoCartera == null || numeroBanda == null) {
+            return null;
+        }
+        String clave = idProducto + "-" + tipoCartera;
+        List<BandaProductoDetalle> bandas = cache.get(clave);
+        if (bandas == null) {
+            bandas = clasificadorBandaService.resolverRangos(idProducto, idEmpresa, tipoCartera, corte);
+            cache.put(clave, bandas);
+        }
+        for (BandaProductoDetalle banda : bandas) {
+            if (numeroBanda.equals(banda.getNumero())) {
+                return banda.getEtiqueta();
+            }
+        }
+        return null;
     }
 
     /**
