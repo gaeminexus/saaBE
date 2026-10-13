@@ -20,6 +20,7 @@
 | 7 | rol de pagos: fondo de reserva acumulado en el IESS como ingreso y egreso | ✅ entregado (solo reporte) | `1c2a1b87` |
 | 8 | rhh — nómina pagada por empleado desde Tesorería, como jubilados | ✅ BE+FE. **Falta:** que el contador apunte el producto NOMINA a Sueldos por pagar; decisión sobre cerrar periodo con rechazados sin reenviar | `10b0dcb9`, `04215778`, saaFE `7def402` |
 | 9 | Página comercial de SAA para gaeminexus.com | ✅ prototipo y `index.html` entregados; publicar es del usuario | — |
+| 11 | rpr — provisiones del G48 y del resumen financiero (CCPM): un campo sale siempre en 0 | 🔵 diagnosticado en código; e3-11 (solo lectura) para medir. Toca `rpr`/crd, territorio de `omen-saa-1` (CCPM lo rediseña `laptop1`, `8ee56349`): **coordinar antes de despachar** | e3-11 |
 | 10 | regulatorio — `CAMBIOS-SAA.md` (cuadre con la Superintendencia de Bancos) | 🔵 C1 entregado (periodos ordenados por fecha), C6 inventariado. **Bloqueado:** carpeta `cuadreSuper` y coordinación con `omen-saa-1` para C3/C4/C6/C8. Plan en `docs/regulatorio/PLAN-CAMBIOS-SAA-OMEN3.md` | `d88ba7e2`, saaFE `b448367`, e3-08/e3-09 |
 
 ## Hallazgos (lo que costaba ver)
@@ -35,4 +36,10 @@
 - **Tesorería y RRHH tienen dos motores de archivo bancario.** El formato del Internacional estaba cargado en el de Tesorería y el de RRHH (`RHH.FMBN`) estaba vacío.
 - **Re-correr «Acreditar vacaciones» después del aniversario duplicaría la apertura** de quien ingresó en 2025: 15 días completos más su apertura proporcional del mismo año de servicio.
 - **Ninguna liquidación de haberes se paga por Tesorería**: la cuenta 70 `LIQUIDACIONES_POR_PAGAR` se acredita y nada la debita. Y el finiquito escribe el RDEP con el año de la fecha de salida, no la de pago. Detalle en `rhh/API-LIQUIDACION-EXCOLABORADORES.md` §9.
+- **Provisiones G48/CCPM (2026-10-13):** `CCPM.provisionConstituida` está cableada a 0
+  (`GeneracionCCPMServiceImpl:83,367`). El CCPM califica y provisiona con una tabla escrita en el
+  código (`:521-582`, hipotecario = productos 7/8/21), mientras el G48 usa `CRD.CFCR/ESCR` desde el
+  2026-09-02: pueden divergir. La «constituida» del G48 es la *requerida* del G48 anterior, no el
+  saldo contable de `1.3.99.xx`; y si la EJRC más reciente del mes anterior tiene el EJRD de G48 sin
+  filas, todo el mes sale en 0 sin aviso (`GeneracionG48ServiceImpl.cargarProvisionAnterior`).
 - **La nómina consolidada (`RHH_NOMINA`) se aprueba con Débito automático**, no por transferencia: el archivo por empleado lo arma RRHH, no Tesorería. El mensaje de la guarda no lo dice (mejora pendiente, `PagoProgramadoServiceImpl` es territorio común).
