@@ -28,5 +28,7 @@ public interface EstadoCuotaPrestamo {
 	public static final int PARCIAL = 6;
 	public static final int CANCELADA_ANTICIPADA = 7;
 	public static final int VENCIDA = 8;
+	/** Cuota de un préstamo ANULADO (DISENO-ANULACION-PRESTAMO-E-IMPRESOS.md AN7). Nuevo 2026-10-13. */
+	public static final int ANULADA = 9;
 
 }

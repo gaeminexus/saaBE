@@ -21,6 +21,17 @@ import jakarta.ejb.Local;
  */
 @Local
 public interface ProductoPagoDaoService  extends EntityDao<ProductoPago>  {
+
+	/**
+	 * Productos de pago ACTIVOS de una empresa cuyo grupo tiene la cuenta contable indicada. Solo
+	 * lectura. Lo usa CRD para deducir el producto del desembolso de la cuenta de la plantilla de
+	 * entrega (DISENO-ANULACION-PRESTAMO-E-IMPRESOS.md 6.2). NO absorbe errores.
+	 * @param idEmpresa		: Id de la empresa del producto
+	 * @param idPlanCuenta	: Id de la cuenta contable del grupo del producto
+	 * @return				: Productos activos; lista vacia si no hay
+	 * @throws Throwable	: Excepcion
+	 */
+	List<ProductoPago> selectActivosByEmpresaYCuentaGrupo(Long idEmpresa, Long idPlanCuenta) throws Throwable;
 	
 	/**
 	 * Recupera los productos de pago de una empresa

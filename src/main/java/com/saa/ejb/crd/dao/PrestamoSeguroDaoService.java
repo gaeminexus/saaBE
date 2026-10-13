@@ -20,6 +20,13 @@ public interface PrestamoSeguroDaoService extends EntityDao<PrestamoSeguro> {
     List<PrestamoSeguro> selectByDocumento(Long idDocumento) throws Throwable;
 
     /**
+     * Filas PSPR de un préstamo cuyo documento (POSG) NO está anulado (estado distinto de
+     * {@code EstadoDocumentoSeguro.ANULADO}). Solo lectura; no absorbe errores. Lo usa la guarda
+     * de anulación del préstamo (AN6).
+     */
+    List<PrestamoSeguro> selectVivosByPrestamo(Long idPrestamo) throws Throwable;
+
+    /**
      * Las filas de VARIOS documentos en una sola consulta (familia factura + sus ND/NC), para
      * las novedades (§7) y el choque {@code CUOTA_YA_CUBIERTA} (§5) sin N+1.
      *

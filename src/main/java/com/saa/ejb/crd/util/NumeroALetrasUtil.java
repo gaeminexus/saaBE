@@ -49,6 +49,47 @@ public final class NumeroALetrasUtil {
         return resto == 0 ? textoMiles : textoMiles + " " + convertirHastaMil(resto);
     }
 
+    /**
+     * Monto en dólares en letras, para el pagaré: {@code 5000.5} → {@code "cinco mil con 50/100 dólares"}.
+     * Cubre hasta 999.999.999 dólares; por encima devuelve el número crudo (visible, no un texto
+     * silenciosamente incompleto). Aplica la apócope («veintiún mil», «treinta y un dólares»).
+     * Lo llama el {@code .jrxml} del pagaré (RPRT_PRST_PGRE).
+     */
+    public static String convertirMonto(Double monto) {
+        double valor = monto != null ? Math.abs(monto) : 0.0;
+        long centavosTotales = Math.round(valor * 100.0);
+        long dolares = centavosTotales / 100L;
+        int centavos = (int) (centavosTotales % 100L);
+        if (dolares > 999_999_999L) {
+            return String.valueOf(dolares) + " con " + String.format("%02d", centavos) + "/100 dólares";
+        }
+        String letras;
+        if (dolares == 0L) {
+            letras = "cero";
+        } else if (dolares < 1_000_000L) {
+            letras = convertir(dolares);
+        } else {
+            long millones = dolares / 1_000_000L;
+            long resto = dolares % 1_000_000L;
+            String textoMillones = (millones == 1L) ? "un millón" : apocopar(convertir(millones)) + " millones";
+            letras = resto == 0L ? textoMillones : textoMillones + " " + convertir(resto);
+        }
+        // Apócope del último "uno" y de los multiplicadores: «veintiún mil», «un dólar».
+        letras = letras.replace("veintiuno mil", "veintiún mil").replace("uno mil", "un mil");
+        letras = apocopar(letras);
+        return letras + " con " + String.format("%02d", centavos) + "/100 " + (dolares == 1L ? "dólar" : "dólares");
+    }
+
+    private static String apocopar(String texto) {
+        if (texto.endsWith("veintiuno")) {
+            return texto.substring(0, texto.length() - "veintiuno".length()) + "veintiún";
+        }
+        if (texto.endsWith("uno")) {
+            return texto.substring(0, texto.length() - 3) + "un";
+        }
+        return texto;
+    }
+
     private static String convertirHastaMil(int n) {
         if (n == 100) {
             return "cien";

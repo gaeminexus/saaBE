@@ -36,6 +36,7 @@ import com.saa.ejb.crd.service.dto.SimulacionPrecancelacion;
 import com.saa.ejb.crd.service.dto.SolicitudAbonoCapital;
 import com.saa.ejb.crd.service.dto.SolicitudAbonoCapitalConAportes;
 import com.saa.ejb.crd.service.dto.SolicitudAnulacion;
+import com.saa.ejb.crd.service.dto.SolicitudAnularPrestamo;
 import com.saa.ejb.crd.service.dto.SolicitudComprobantePagoMultiple;
 import com.saa.ejb.crd.service.dto.SolicitudDecisionPrestamo;
 import com.saa.ejb.crd.service.dto.SolicitudPagoConAportes;
@@ -391,6 +392,76 @@ public class PrestamoRest {
                     .entity("Error al aprobar el préstamo: " + e.getMessage())
                     .type(MediaType.APPLICATION_JSON)
                     .build();
+        }
+    }
+
+    /** NoResultException de selectById, que cruzando el proxy EJB llega envuelta en EJBException. */
+    private boolean esPrestamoInexistente(Throwable e) {
+        for (Throwable causa = e; causa != null; causa = causa.getCause()) {
+            if (causa instanceof jakarta.persistence.NoResultException) {
+                return true;
+            }
+            if (causa.getCause() == causa) {
+                break;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * ¿Se puede anular el préstamo? {@code { puede, motivo }}. Usa la MISMA función que
+     * {@link #anular}, para que las dos puertas nunca discrepen. API-CICLO-OTORGAMIENTO.md 7.1.
+     */
+    @GET
+    @Path("/{id}/puedeAnular")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response puedeAnular(@PathParam("id") Long id) {
+        System.out.println("PUEDE ANULAR PRÉSTAMO - ID: " + id);
+        try {
+            Prestamo prestamo = prestamoService.selectById(id);
+            String motivo = prestamoService.motivoNoAnulable(prestamo);
+            Map<String, Object> cuerpo = new LinkedHashMap<>();
+            cuerpo.put("puede", motivo == null);
+            cuerpo.put("motivo", motivo);
+            return Response.ok(cuerpo).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            if (esPrestamoInexistente(e)) {
+                return respuestaFallo(Response.Status.NOT_FOUND.getStatusCode(), ETAPA_VALIDACION,
+                        "Préstamo con ID " + id + " no encontrado", "");
+            }
+            return respuestaErrorNegocio(e);
+        }
+    }
+
+    /**
+     * Anula un préstamo otorgado: anula la orden de desembolso, reversa el asiento de entrega con la
+     * fecha de hoy y deja el préstamo en ANULADO (12). Todo o nada. API-CICLO-OTORGAMIENTO.md 7.2.
+     *
+     * @return 200 con el Préstamo; 400 sin motivo/usuario/idEmpresa/idUsuario; 404 si no existe;
+     *         422 con {@code mensaje} si no se puede
+     */
+    @POST
+    @Path("/anular/{id}")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response anular(@PathParam("id") Long id, SolicitudAnularPrestamo solicitud) {
+        System.out.println("ANULAR PRÉSTAMO - ID: " + id);
+        if (solicitud == null || solicitud.getMotivo() == null || solicitud.getMotivo().trim().isEmpty()
+                || solicitud.getUsuario() == null || solicitud.getUsuario().trim().isEmpty()
+                || solicitud.getIdEmpresa() == null || solicitud.getIdUsuario() == null) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
+                    "Faltan datos: motivo, usuario, idEmpresa e idUsuario son obligatorios.", "PARAMETRO_INVALIDO");
+        }
+        try {
+            Prestamo prestamo = prestamoService.anular(id, solicitud.getUsuario(), solicitud.getMotivo(),
+                    solicitud.getIdEmpresa(), solicitud.getIdUsuario());
+            return Response.ok(prestamo).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            if (esPrestamoInexistente(e)) {
+                return respuestaFallo(Response.Status.NOT_FOUND.getStatusCode(), ETAPA_VALIDACION,
+                        "Préstamo con ID " + id + " no encontrado", "");
+            }
+            return respuestaErrorNegocio(e);
         }
     }
 

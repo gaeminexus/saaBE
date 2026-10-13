@@ -19,6 +19,17 @@ public interface PagoPrestamoDaoService extends EntityDao<PagoPrestamo> {
 	 */
 	List<PagoPrestamo> selectByIdDetallePrestamo(Long codigoDetallePrestamo);
 
+	/**
+	 * Pagos VIGENTES (anulado nulo o 0) de TODAS las cuotas de un préstamo. Solo lectura. A
+	 * diferencia de {@link #selectVigentesByIdDetallePrestamo}, NO absorbe errores: la guarda
+	 * de anulación del préstamo (AN2) no puede tomar un fallo de consulta por "no hay pagos".
+	 *
+	 * @param idPrestamo : Id del préstamo
+	 * @return           : Pagos vigentes; lista vacía si no tiene
+	 * @throws Throwable : Si la consulta falla
+	 */
+	List<PagoPrestamo> selectVigentesByPrestamo(Long idPrestamo) throws Throwable;
+
 	// ========================================================================
 	// SERVICIOS DE PAGO DE PRÉSTAMOS (§5.2 ESPECIFICACION-SERVICIOS-PAGO-PRESTAMOS.md)
 	// ========================================================================

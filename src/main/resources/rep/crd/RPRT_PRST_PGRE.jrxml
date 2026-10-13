@@ -1,0 +1,112 @@
+<!-- Pagaré del préstamo otorgado (CRD). DISENO-ANULACION-PRESTAMO-E-IMPRESOS.md §4.
+     Sintaxis compacta. Se llena por <query> con el parámetro P_PRSTCDGO (una fila): sin SELECT *,
+     columnas explícitas. SIN fontName (ni Tahoma): el exportador PDF pierde la negrita con Tahoma.
+     El monto en letras sale de NumeroALetrasUtil.convertirMonto (clase del WAR, crd.util); el
+     verificador de llenado necesita target/classes en el classpath para resolverla.
+     ⚠️ TEXTO LEGAL PROVISIONAL hasta que el cliente entregue su modelo de pagaré: el pie lo dice. -->
+<jasperReport name="RPRT_PRST_PGRE" language="java" pageWidth="595" pageHeight="842" columnWidth="515" leftMargin="40" rightMargin="40" topMargin="30" bottomMargin="30" whenNoDataType="AllSectionsNoDetail" uuid="a2000001-0000-0000-0000-000000000001">
+	<property name="com.jaspersoft.studio.data.defaultdataadapter" value="Oracle"/>
+	<property name="com.jaspersoft.studio.report.description" value="Pagaré del préstamo (modelo provisional)"/>
+	<parameter name="P_PRSTCDGO" class="java.lang.Long"><description><![CDATA[Código del préstamo (CRD.PRST.PRSTCDGO).]]></description></parameter>
+	<parameter name="P_IMAGEN" class="java.awt.Image"><description><![CDATA[Logo. Lo inyecta ReporteServiceImpl.]]></description></parameter>
+	<query language="SQL"><![CDATA[SELECT p.PRSTCDGO                       AS CODIGO_PRESTAMO,
+       NVL(p.PRSTIDAS, p.PRSTCDGO)       AS NUMERO_PRESTAMO,
+       TRIM(e.ENTDRZNS)                  AS NOMBRES,
+       TRIM(e.ENTDNMID)                  AS IDENTIFICACION,
+       pr.PRDCNMBR                       AS PRODUCTO,
+       p.PRSTMNSL                        AS MONTO,
+       p.PRSTPLZO                        AS PLAZO_MESES,
+       p.PRSTTSAA                        AS TASA_ANUAL,
+       p.PRSTVLCT                        AS VALOR_CUOTA,
+       TRUNC(p.PRSTFCHA)                 AS FECHA_CONCESION,
+       TRUNC(p.PRSTFCIN)                 AS FECHA_PRIMERA_CUOTA,
+       TRUNC(p.PRSTFCFN)                 AS FECHA_ULTIMA_CUOTA,
+       p.PRSTIDST                        AS ID_ESTADO
+  FROM CRD.PRST p
+  JOIN CRD.ENTD e  ON e.ENTDCDGO  = p.ENTDCDGO
+  JOIN CRD.PRDC pr ON pr.PRDCCDGO = p.PRDCCDGO
+ WHERE p.PRSTCDGO = $P{P_PRSTCDGO}]]></query>
+	<field name="CODIGO_PRESTAMO" class="java.math.BigDecimal"/>
+	<field name="NUMERO_PRESTAMO" class="java.math.BigDecimal"/>
+	<field name="NOMBRES" class="java.lang.String"/>
+	<field name="IDENTIFICACION" class="java.lang.String"/>
+	<field name="PRODUCTO" class="java.lang.String"/>
+	<field name="MONTO" class="java.math.BigDecimal"/>
+	<field name="PLAZO_MESES" class="java.math.BigDecimal"/>
+	<field name="TASA_ANUAL" class="java.math.BigDecimal"/>
+	<field name="VALOR_CUOTA" class="java.math.BigDecimal"/>
+	<field name="FECHA_CONCESION" class="java.sql.Timestamp"/>
+	<field name="FECHA_PRIMERA_CUOTA" class="java.sql.Timestamp"/>
+	<field name="FECHA_ULTIMA_CUOTA" class="java.sql.Timestamp"/>
+	<field name="ID_ESTADO" class="java.math.BigDecimal"/>
+
+	<background splitType="Stretch"/>
+
+	<pageHeader height="95" splitType="Stretch">
+		<element kind="image" uuid="a2000001-0000-0000-0000-000000000010" x="0" y="0" width="110" height="45" scaleImage="RetainShape" onErrorType="Blank" hImageAlign="Left" vImageAlign="Top">
+			<expression><![CDATA[$P{P_IMAGEN}]]></expression>
+		</element>
+		<element kind="textField" uuid="a2000001-0000-0000-0000-000000000011" x="0" y="48" width="515" height="14" fontSize="9.0" bold="true" hTextAlign="Center" vTextAlign="Middle" forecolor="#C0392B">
+			<expression><![CDATA[($F{ID_ESTADO} != null && ($F{ID_ESTADO}.intValue() == 12 || $F{ID_ESTADO}.intValue() == 7)) ? "*** PRÉSTAMO " + ($F{ID_ESTADO}.intValue() == 12 ? "ANULADO" : "RECHAZADO") + " — DOCUMENTO SIN VALIDEZ ***" : ""]]></expression>
+		</element>
+		<element kind="staticText" uuid="a2000001-0000-0000-0000-000000000012" x="0" y="66" width="515" height="22" fontSize="14.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[PAGARÉ A LA ORDEN]]></text>
+		</element>
+	</pageHeader>
+
+	<detail>
+		<band height="520" splitType="Stretch">
+			<element kind="textField" uuid="a2000001-0000-0000-0000-000000001001" x="0" y="0" width="260" height="14" fontSize="10.0" bold="true">
+				<expression><![CDATA["Pagaré N.º " + ($F{NUMERO_PRESTAMO} != null ? $F{NUMERO_PRESTAMO}.toBigInteger().toString() : "")]]></expression>
+			</element>
+			<element kind="textField" uuid="a2000001-0000-0000-0000-000000001002" x="260" y="0" width="255" height="14" fontSize="10.0" bold="true" hTextAlign="Right">
+				<expression><![CDATA["VALOR: US$ " + ($F{MONTO} != null ? String.format(java.util.Locale.US, "%,.2f", $F{MONTO}) : "")]]></expression>
+			</element>
+			<element kind="textField" uuid="a2000001-0000-0000-0000-000000001003" x="0" y="20" width="515" height="14" fontSize="10.0">
+				<expression><![CDATA["Lugar y fecha: ______________________, " + ($F{FECHA_CONCESION} != null ? new java.text.SimpleDateFormat("dd/MM/yyyy").format($F{FECHA_CONCESION}) : "____/____/________")]]></expression>
+			</element>
+
+			<element kind="textField" uuid="a2000001-0000-0000-0000-000000001010" positionType="Float" x="0" y="48" width="515" height="60" markup="styled" textAdjust="StretchHeight" fontSize="10.5" hTextAlign="Justified" vTextAlign="Top">
+				<expression><![CDATA["Yo, <b>" + ($F{NOMBRES} != null ? $F{NOMBRES} : "") + "</b>, con cédula de identidad N.º <b>" + ($F{IDENTIFICACION} != null ? $F{IDENTIFICACION} : "") + "</b>, debo y pagaré incondicionalmente a la orden de la entidad acreedora la cantidad de <b>" + com.saa.ejb.crd.util.NumeroALetrasUtil.convertirMonto($F{MONTO} != null ? Double.valueOf($F{MONTO}.doubleValue()) : null).toUpperCase() + "</b> (US$ " + ($F{MONTO} != null ? String.format(java.util.Locale.US, "%,.2f", $F{MONTO}) : "") + "), valor que he recibido en calidad de préstamo (" + ($F{PRODUCTO} != null ? $F{PRODUCTO} : "") + ", préstamo N.º " + ($F{NUMERO_PRESTAMO} != null ? $F{NUMERO_PRESTAMO}.toBigInteger().toString() : "") + ")."]]></expression>
+				<paragraph lineSpacing="1_1_2"/>
+			</element>
+
+			<element kind="textField" uuid="a2000001-0000-0000-0000-000000001011" positionType="Float" x="0" y="122" width="515" height="60" markup="styled" textAdjust="StretchHeight" fontSize="10.5" hTextAlign="Justified" vTextAlign="Top">
+				<expression><![CDATA["Pagaré esta suma en <b>" + ($F{PLAZO_MESES} != null ? $F{PLAZO_MESES}.toBigInteger().toString() : "") + "</b> cuotas mensuales de <b>US$ " + ($F{VALOR_CUOTA} != null ? String.format(java.util.Locale.US, "%,.2f", $F{VALOR_CUOTA}) : "") + "</b> cada una, que comprenden capital, interés y seguros, con vencimiento de la primera cuota el <b>" + ($F{FECHA_PRIMERA_CUOTA} != null ? new java.text.SimpleDateFormat("dd/MM/yyyy").format($F{FECHA_PRIMERA_CUOTA}) : "") + "</b> y de la última el <b>" + ($F{FECHA_ULTIMA_CUOTA} != null ? new java.text.SimpleDateFormat("dd/MM/yyyy").format($F{FECHA_ULTIMA_CUOTA}) : "") + "</b>, conforme a la tabla de amortización que forma parte de este pagaré."]]></expression>
+				<paragraph lineSpacing="1_1_2"/>
+			</element>
+
+			<element kind="textField" uuid="a2000001-0000-0000-0000-000000001012" positionType="Float" x="0" y="196" width="515" height="30" markup="styled" textAdjust="StretchHeight" fontSize="10.5" hTextAlign="Justified" vTextAlign="Top">
+				<expression><![CDATA["El préstamo devenga un interés de <b>" + ($F{TASA_ANUAL} != null ? String.format(java.util.Locale.US, "%.2f", $F{TASA_ANUAL}) : "") + "%</b> anual sobre saldos."]]></expression>
+				<paragraph lineSpacing="1_1_2"/>
+			</element>
+
+			<element kind="staticText" uuid="a2000001-0000-0000-0000-000000001013" positionType="Float" x="0" y="240" width="515" height="45" fontSize="10.5" hTextAlign="Justified" vTextAlign="Top">
+				<text><![CDATA[En caso de mora reconozco el interés de mora a la tasa máxima que fije la ley, sobre las cuotas vencidas, sin perjuicio de los demás efectos legales.]]></text>
+				<paragraph lineSpacing="1_1_2"/>
+			</element>
+
+			<element kind="staticText" uuid="a2000001-0000-0000-0000-000000001014" positionType="Float" x="0" y="296" width="515" height="60" fontSize="10.5" hTextAlign="Justified" vTextAlign="Top">
+				<text><![CDATA[Si dejo de pagar una o más cuotas, el acreedor podrá dar por vencido el plazo y exigir el pago total de lo adeudado. Renuncio a fuero y domicilio y me someto a los jueces competentes del lugar de suscripción de este pagaré.]]></text>
+				<paragraph lineSpacing="1_1_2"/>
+			</element>
+
+			<element kind="line" uuid="a2000001-0000-0000-0000-000000001020" positionType="Float" x="0" y="440" width="220" height="1"/>
+			<element kind="staticText" uuid="a2000001-0000-0000-0000-000000001021" positionType="Float" x="0" y="444" width="220" height="14" fontSize="10.0" bold="true">
+				<text><![CDATA[DEUDOR — firma]]></text>
+			</element>
+			<element kind="textField" uuid="a2000001-0000-0000-0000-000000001022" positionType="Float" x="0" y="458" width="300" height="14" fontSize="10.0">
+				<expression><![CDATA[$F{NOMBRES} != null ? $F{NOMBRES} : ""]]></expression>
+			</element>
+			<element kind="textField" uuid="a2000001-0000-0000-0000-000000001023" positionType="Float" x="0" y="472" width="300" height="14" fontSize="10.0">
+				<expression><![CDATA["C.I. " + ($F{IDENTIFICACION} != null ? $F{IDENTIFICACION} : "")]]></expression>
+			</element>
+		</band>
+	</detail>
+
+	<pageFooter height="30" splitType="Stretch">
+		<element kind="staticText" uuid="a2000001-0000-0000-0000-000000009001" x="0" y="8" width="515" height="16" fontSize="9.0" bold="true" hTextAlign="Center" vTextAlign="Middle" forecolor="#C0392B">
+			<text><![CDATA[MODELO PROVISIONAL — validar con asesoría legal]]></text>
+		</element>
+	</pageFooter>
+</jasperReport>

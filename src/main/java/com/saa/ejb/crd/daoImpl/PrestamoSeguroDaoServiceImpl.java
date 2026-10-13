@@ -42,6 +42,17 @@ public class PrestamoSeguroDaoServiceImpl extends EntityDaoImpl<PrestamoSeguro>
     }
 
     @Override
+    public List<PrestamoSeguro> selectVivosByPrestamo(Long idPrestamo) throws Throwable {
+        System.out.println("PrestamoSeguroDaoServiceImpl.selectVivosByPrestamo - idPrestamo: " + idPrestamo);
+        Query query = em.createQuery(
+            "select p from PrestamoSeguro p where p.prestamo.codigo = :idPrestamo "
+            + "and p.documento.estado <> :anulado order by p.codigo asc");
+        query.setParameter("idPrestamo", idPrestamo);
+        query.setParameter("anulado", com.saa.rubros.EstadoDocumentoSeguro.ANULADO);
+        return query.getResultList();
+    }
+
+    @Override
     public List<PrestamoSeguro> selectByDocumentos(List<Long> idsDocumento) throws Throwable {
         System.out.println("PrestamoSeguroDaoServiceImpl.selectByDocumentos - cantidad: "
             + (idsDocumento != null ? idsDocumento.size() : 0));

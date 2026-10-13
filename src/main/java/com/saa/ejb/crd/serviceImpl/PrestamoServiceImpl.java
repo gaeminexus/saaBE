@@ -63,6 +63,21 @@ public class PrestamoServiceImpl implements PrestamoService {
     private DetallePrestamoDaoService detallePrestamoDaoService;
 
     @EJB
+    private com.saa.ejb.cnt.service.AsientoService asientoService;
+
+    @EJB
+    private com.saa.ejb.crd.dao.DetalleCobroCreditoDaoService detalleCobroCreditoDaoService;
+
+    @EJB
+    private com.saa.ejb.crd.dao.AcuerdoCondonacionDaoService acuerdoCondonacionDaoService;
+
+    @EJB
+    private com.saa.ejb.crd.dao.PrestamoSeguroDaoService prestamoSeguroDaoService;
+
+    @EJB
+    private com.saa.ejb.crd.dao.CorridaCierreCarteraDaoService corridaCierreCarteraDaoService;
+
+    @EJB
     private PagoPrestamoDaoService pagoPrestamoDaoService;
 
     @EJB
@@ -126,6 +141,21 @@ public class PrestamoServiceImpl implements PrestamoService {
         // del merge: el merge pisaría la instancia gestionada con lo que mandó el cliente.
         Prestamo existente = prestamo.getCodigo() != null
             ? prestamoDaoService.find(new Prestamo(), prestamo.getCodigo()) : null;
+        // Las columnas de la anulación (PRSTASEN/ASRV/USAN/FCAN/MTAN) las escriben solo aprobar() y
+        // anular(): el cliente no las manda ni las pisa con un PUT que traiga otro valor.
+        if (existente == null) {
+            prestamo.setIdAsientoEntrega(null);
+            prestamo.setIdAsientoReverso(null);
+            prestamo.setUsuarioAnulacion(null);
+            prestamo.setFechaAnulacion(null);
+            prestamo.setMotivoAnulacion(null);
+        } else {
+            prestamo.setIdAsientoEntrega(existente.getIdAsientoEntrega());
+            prestamo.setIdAsientoReverso(existente.getIdAsientoReverso());
+            prestamo.setUsuarioAnulacion(existente.getUsuarioAnulacion());
+            prestamo.setFechaAnulacion(existente.getFechaAnulacion());
+            prestamo.setMotivoAnulacion(existente.getMotivoAnulacion());
+        }
         if (existente == null) {
             prestamo.setIdAsoprep(null);
         } else {
@@ -298,18 +328,6 @@ public class PrestamoServiceImpl implements PrestamoService {
         }
     }
 
-    /**
-     * Producto de pago (PGS.PRDP.ID) cuyo grupo apunta a la cuenta {@code 2.3.90.90.10 SOCIOS
-     * POR PAGAR} — el que CXP usa para armar el DEBE del asiento de bancos al confirmar el
-     * desembolso. Creado con sql/322 el 2026-10-13, grupo 79, cuenta 2.3.90.90.10
-     * (PLAN-DESEMBOLSO-PRESTAMO.md §4.3).
-     *
-     * <p>Mientras sea {@code null}, {@link #aprobar} falla ruidoso en vez de mandar el
-     * desglose vacío o un id inventado: con el producto equivocado, tesorería paga y el
-     * asiento descarga una cuenta que no es, cuadrado igual y sin ningún error.</p>
-     */
-    private static final Long ID_PRODUCTO_PAGO_SOCIOS_POR_PAGAR = 976L;
-
     @Override
     public Prestamo aprobar(Long idPrestamo, String usuario, String observacion, Long idEmpresa, Long idUsuario)
             throws Throwable {
@@ -375,7 +393,7 @@ public class PrestamoServiceImpl implements PrestamoService {
         // asiento ni el estado del préstamo.
         Long idPago;
         try {
-            List<LineaContablePago> desglose = armarDesgloseEntrega(prestamo, monto);
+            List<LineaContablePago> desglose = armarDesgloseEntrega(prestamo, monto, idEmpresa);
             BeneficiarioOcasional beneficiario = armaBeneficiarioPrestamo(prestamo.getEntidad());
             String observacionPago = "Desembolso préstamo N° " + prestamo.getCodigo()
                 + (prestamo.getEntidad() != null ? " - " + prestamo.getEntidad().getRazonSocial() : "");
@@ -412,6 +430,7 @@ public class PrestamoServiceImpl implements PrestamoService {
         prestamo.setUsuarioAprobacion(usuario);
         prestamo.setFechaAprobacion(LocalDateTime.now());
         prestamo.setIdPagoProgramado(idPago);
+        prestamo.setIdAsientoEntrega(idAsientoEntrega); // AN4: sin este id no hay cómo reversar
         if (observacion != null && !observacion.trim().isEmpty()) {
             prestamo.setObservacion(concatenarObservacion(prestamo.getObservacion(), observacion));
         }
@@ -439,15 +458,15 @@ public class PrestamoServiceImpl implements PrestamoService {
         return false;
     }
 
-    /** Ver el javadoc de {@link #ID_PRODUCTO_PAGO_SOCIOS_POR_PAGAR}. */
-    private List<LineaContablePago> armarDesgloseEntrega(Prestamo prestamo, double monto) throws Throwable {
-        if (ID_PRODUCTO_PAGO_SOCIOS_POR_PAGAR == null) {
-            throw new IncomeException("No se puede aprobar el préstamo " + prestamo.getCodigo()
-                + ": falta resolver el producto de pago de SOCIOS POR PAGAR (2.3.90.90.10,"
-                + " sql/157). El desembolso queda bloqueado hasta completar esa configuración.");
-        }
+    /**
+     * Desglose de la orden de desembolso. El producto de pago NO está quemado: se deduce de la
+     * cuenta SOCIOS POR PAGAR de la plantilla de entrega del préstamo (§6.2 de
+     * DISENO-ANULACION-PRESTAMO-E-IMPRESOS.md). Cero o más de un producto → IncomeException.
+     */
+    private List<LineaContablePago> armarDesgloseEntrega(Prestamo prestamo, double monto, Long idEmpresa)
+            throws Throwable {
         LineaContablePago linea = new LineaContablePago();
-        linea.setIdProductoPago(ID_PRODUCTO_PAGO_SOCIOS_POR_PAGAR);
+        linea.setIdProductoPago(contabilidadPrestamoService.resolverProductoPagoDesembolso(prestamo, idEmpresa));
         linea.setValor(monto);
         linea.setConcepto("Desembolso préstamo " + prestamo.getCodigo()
             + (prestamo.getEntidad() != null ? " - " + prestamo.getEntidad().getRazonSocial() : ""));
@@ -468,6 +487,197 @@ public class PrestamoServiceImpl implements PrestamoService {
             beneficiario.setIdentificacion(entidad.getNumeroIdentificacion());
         }
         return beneficiario;
+    }
+
+    // =====================================================================
+    // Anulación del préstamo otorgado (DISENO-ANULACION-PRESTAMO-E-IMPRESOS.md, AN1–AN11)
+    // =====================================================================
+
+    @Override
+    public String motivoNoAnulable(Prestamo prestamo) throws Throwable {
+        System.out.println("PrestamoService.motivoNoAnulable - Préstamo: "
+            + (prestamo != null ? prestamo.getCodigo() : null));
+        if (prestamo == null) {
+            return "El préstamo no existe.";
+        }
+        Long idPrestamo = prestamo.getCodigo();
+
+        // AN1: solo VIGENTE (2) o EN_MORA (11).
+        Long idEstado = prestamo.getIdEstado();
+        if (idEstado == null || (idEstado != EstadoPrestamo.VIGENTE && idEstado != EstadoPrestamo.EN_MORA)) {
+            return "El préstamo " + idPrestamo + " está en estado " + nombreEstadoPrestamo(idEstado)
+                + "; solo se puede anular un préstamo VIGENTE (2) o EN_MORA (11).";
+        }
+
+        // AN4: sin el id del asiento de entrega no hay cómo reversarlo.
+        if (prestamo.getIdAsientoEntrega() == null) {
+            return "No se encuentra el asiento de entrega del préstamo " + idPrestamo
+                + " (PRSTASEN vacío, aprobado antes de este cambio); reverse manualmente.";
+        }
+
+        // AN2 — vía 1: pagos aplicados (PGPR vigentes).
+        int pagos = pagoPrestamoDaoService.selectVigentesByPrestamo(idPrestamo).size();
+        if (pagos > 0) {
+            return "El préstamo " + idPrestamo + " tiene " + pagos + " pago(s) aplicado(s) (CRD.PGPR);"
+                + " solo se anula un préstamo sin ningún pago.";
+        }
+
+        // AN2 — vía 2: detalles de cobro en un cobro REGISTRADO, APROBADO o PROCESADO.
+        int cobros = 0;
+        for (com.saa.model.crd.DetalleCobroCredito detalle : detalleCobroCreditoDaoService.selectByPrestamo(idPrestamo)) {
+            Long estadoCobro = detalle.getCobroCredito() != null ? detalle.getCobroCredito().getEstado() : null;
+            if (estadoCobro != null && (estadoCobro == com.saa.rubros.CrdEstadoCobro.REGISTRADO
+                    || estadoCobro == com.saa.rubros.CrdEstadoCobro.APROBADO
+                    || estadoCobro == com.saa.rubros.CrdEstadoCobro.PROCESADO)) {
+                cobros++;
+            }
+        }
+        if (cobros > 0) {
+            return "El préstamo " + idPrestamo + " tiene " + cobros + " detalle(s) de cobro (CRD.DCBC) en un"
+                + " cobro REGISTRADO, APROBADO o PROCESADO; anule o rechace esos cobros primero.";
+        }
+
+        // AN2 — vía 5: acuerdos de condonación VIGENTE o APLICADO.
+        int acuerdos = 0;
+        for (com.saa.model.crd.AcuerdoCondonacion acuerdo : acuerdoCondonacionDaoService.selectByPrestamo(idPrestamo)) {
+            Long estadoAcuerdo = acuerdo.getEstado();
+            if (estadoAcuerdo != null && (estadoAcuerdo == com.saa.rubros.CrdEstadoAcuerdoCondonacion.VIGENTE
+                    || estadoAcuerdo == com.saa.rubros.CrdEstadoAcuerdoCondonacion.APLICADO)) {
+                acuerdos++;
+            }
+        }
+        if (acuerdos > 0) {
+            return "El préstamo " + idPrestamo + " tiene " + acuerdos + " acuerdo(s) de condonación"
+                + " (CRD.ACCN) VIGENTE o APLICADO; anúlelos primero.";
+        }
+
+        // AN6: póliza de seguro viva.
+        int polizas = prestamoSeguroDaoService.selectVivosByPrestamo(idPrestamo).size();
+        if (polizas > 0) {
+            return "El préstamo " + idPrestamo + " está en " + polizas + " documento(s) de póliza de seguro"
+                + " vivo(s) (CRD.PSPR); sáquelo primero por nota de crédito.";
+        }
+
+        // AN5 (guarda aproximada, decisión del árbitro): no hay rastro por préstamo de un cierre de
+        // cartera, así que se bloquea si hay una corrida EJECUTADA de la empresa del asiento de
+        // entrega con período >= el de la aprobación.
+        com.saa.model.cnt.Asiento asientoEntrega = asientoService.selectById(prestamo.getIdAsientoEntrega());
+        if (asientoEntrega != null && asientoEntrega.getEmpresa() != null) {
+            java.time.LocalDate referencia = prestamo.getFechaAprobacion() != null
+                ? prestamo.getFechaAprobacion().toLocalDate() : asientoEntrega.getFechaAsiento();
+            if (referencia != null) {
+                long periodoAprobacion = referencia.getYear() * 100L + referencia.getMonthValue();
+                com.saa.model.crd.CorridaCierreCartera masAntigua = null;
+                for (com.saa.model.crd.CorridaCierreCartera corrida
+                        : corridaCierreCarteraDaoService.selectByEmpresa(asientoEntrega.getEmpresa().getCodigo())) {
+                    boolean ejecutada = corrida.getIdEstado() != null
+                        && corrida.getIdEstado() == com.saa.rubros.EstadoCorridaCierreCartera.EJECUTADA;
+                    boolean activa = corrida.getEstado() == null || corrida.getEstado() == Estado.ACTIVO;
+                    if (ejecutada && activa && corrida.getAnio() != null && corrida.getMes() != null
+                            && corrida.getAnio() * 100L + corrida.getMes() >= periodoAprobacion) {
+                        masAntigua = corrida; // la lista viene de la más reciente a la más antigua
+                    }
+                }
+                if (masAntigua != null) {
+                    return "Ya existe el cierre de cartera de " + String.format("%02d", masAntigua.getMes())
+                        + "/" + masAntigua.getAnio() + ", posterior a la aprobación; reverse el cierre antes de anular.";
+                }
+            }
+        }
+
+        // AN3: la orden de desembolso en CXP — se pregunta con la misma regla que usa anularPago.
+        if (prestamo.getIdPagoProgramado() != null) {
+            Map<String, Object> seguimiento = pagoProgramadoService.obtenerSeguimiento(prestamo.getIdPagoProgramado());
+            if (seguimiento == null) {
+                return "No se encontró la orden de desembolso " + prestamo.getIdPagoProgramado() + " en tesorería.";
+            }
+            // Orden ya ANULADA (tesorería la anuló por su lado) o RECHAZADA: estado terminal, no salió
+            // dinero. No bloquea: se salta anularPago y se sigue con el reverso del asiento.
+            Object acciones = ordenDesembolsoTerminal(seguimiento) ? null : seguimiento.get("acciones");
+            if (acciones instanceof Map) {
+                Map<?, ?> mapaAcciones = (Map<?, ?>) acciones;
+                if (Boolean.FALSE.equals(mapaAcciones.get("puedeAnular"))) {
+                    Object motivoCxp = mapaAcciones.get("motivoNoAnular");
+                    return motivoCxp != null ? motivoCxp.toString()
+                        : "La orden de desembolso " + prestamo.getIdPagoProgramado() + " no se puede anular.";
+                }
+            }
+        }
+        return null;
+    }
+
+    /** La orden de CXP está ANULADA (5) o RECHAZADA (4): terminal, no hay nada que anular en tesorería. */
+    private boolean ordenDesembolsoTerminal(Map<String, Object> seguimiento) {
+        if (seguimiento == null || !(seguimiento.get("pago") instanceof Map)) {
+            return false;
+        }
+        Object estado = ((Map<?, ?>) seguimiento.get("pago")).get("estado");
+        if (!(estado instanceof Number)) {
+            return false;
+        }
+        int valor = ((Number) estado).intValue();
+        return valor == com.saa.rubros.EstadoPagoProgramado.ANULADO
+            || valor == com.saa.rubros.EstadoPagoProgramado.RECHAZADO;
+    }
+
+    @Override
+    public Prestamo anular(Long idPrestamo, String usuario, String motivo, Long idEmpresa, Long idUsuario)
+            throws Throwable {
+        System.out.println("Anulando préstamo ID: " + idPrestamo + " - Usuario: " + usuario);
+        if (usuario == null || usuario.trim().isEmpty()) {
+            throw new IncomeException("No se puede anular el préstamo " + idPrestamo + ": falta el usuario.");
+        }
+        if (motivo == null || motivo.trim().isEmpty()) {
+            throw new IncomeException("No se puede anular el préstamo " + idPrestamo + ": falta el motivo.");
+        }
+        if (idEmpresa == null || idUsuario == null) {
+            throw new IncomeException("No se puede anular el préstamo " + idPrestamo
+                + ": faltan idEmpresa o idUsuario.");
+        }
+
+        Prestamo prestamo = prestamoDaoService.selectById(idPrestamo, NombreEntidadesCredito.PRESTAMO);
+        if (prestamo == null) {
+            throw new IncomeException("Préstamo con ID " + idPrestamo + " no encontrado");
+        }
+
+        // Validaciones (AN1, AN2, AN4, AN5, AN6 y la regla de CXP): la misma función que el GET.
+        String motivoNoAnulable = motivoNoAnulable(prestamo);
+        if (motivoNoAnulable != null) {
+            throw new IncomeException(motivoNoAnulable);
+        }
+
+        // AN3: la orden de desembolso. Si CXP no deja, su texto sale tal cual y no se toca nada.
+        if (prestamo.getIdPagoProgramado() != null
+                && !ordenDesembolsoTerminal(pagoProgramadoService.obtenerSeguimiento(prestamo.getIdPagoProgramado()))) {
+            pagoProgramadoService.anularPago(prestamo.getIdPagoProgramado(),
+                "Anulación del préstamo " + idPrestamo + ": " + motivo.trim(), idUsuario);
+        }
+
+        // AN4/AN11: reverso del asiento de entrega, fechado hoy. Si el período de hoy no está
+        // abierto, contabilidad lanza y la transacción entera se revierte.
+        com.saa.model.cnt.Asiento asientoOriginal = asientoService.reversionAsiento(
+            prestamo.getIdAsientoEntrega(), LocalDate.now());
+        prestamo.setIdAsientoReverso(asientoOriginal != null ? asientoOriginal.getIdReversion() : null);
+
+        // AN7: cuotas a ANULADA.
+        List<DetallePrestamo> cuotas = detallePrestamoDaoService.selectByPrestamo(idPrestamo);
+        if (cuotas != null) {
+            for (DetallePrestamo cuota : cuotas) {
+                cuota.setEstado(Long.valueOf(EstadoCuotaPrestamo.ANULADA));
+                cuota.setIdEstado(Long.valueOf(EstadoCuotaPrestamo.ANULADA));
+                detallePrestamoDaoService.save(cuota, cuota.getCodigo());
+            }
+        }
+
+        // AN7/AN8/AN9: estado ANULADO y auditoría. El idAsoprep NO se toca.
+        prestamo.setIdEstado(Long.valueOf(EstadoPrestamo.ANULADO));
+        prestamo.setUsuarioAnulacion(usuario.trim());
+        prestamo.setFechaAnulacion(LocalDateTime.now());
+        prestamo.setMotivoAnulacion(motivo.trim());
+        prestamo = prestamoDaoService.save(prestamo, prestamo.getCodigo());
+        System.out.println("Préstamo " + idPrestamo + " anulado por " + usuario + " - asiento de reverso "
+            + prestamo.getIdAsientoReverso());
+        return prestamo;
     }
 
     @Override

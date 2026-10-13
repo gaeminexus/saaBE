@@ -31,5 +31,7 @@ public interface EstadoPrestamo {
 	public static final int CANCELADO_POR_REVISAR = 9;
 	public static final int VIGENTE_POR_REVISAR = 10;
 	public static final int EN_MORA = 11;
+	/** Préstamo otorgado y anulado (DISENO-ANULACION-PRESTAMO-E-IMPRESOS.md). Nuevo 2026-10-13. */
+	public static final int ANULADO = 12;
 
 }

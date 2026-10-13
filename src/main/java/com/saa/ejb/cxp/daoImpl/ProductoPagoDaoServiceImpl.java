@@ -31,6 +31,22 @@ public class ProductoPagoDaoServiceImpl extends EntityDaoImpl<ProductoPago>  imp
 	@PersistenceContext
 	EntityManager em;
 	
+	@SuppressWarnings("unchecked")
+	@Override
+	public List<ProductoPago> selectActivosByEmpresaYCuentaGrupo(Long idEmpresa, Long idPlanCuenta) throws Throwable {
+		System.out.println("ProductoPagoDaoService.selectActivosByEmpresaYCuentaGrupo - empresa: " + idEmpresa
+				+ " - cuenta: " + idPlanCuenta);
+		Query query = em.createQuery("select p from ProductoPago p "
+				+ "where p.empresa.codigo = :empresa "
+				+ "and p.estado = :activo "
+				+ "and p.grupoProducto.planCuenta.codigo = :cuenta "
+				+ "order by p.id");
+		query.setParameter("empresa", idEmpresa);
+		query.setParameter("activo", Long.valueOf(Estado.ACTIVO));
+		query.setParameter("cuenta", idPlanCuenta);
+		return query.getResultList();
+	}
+
 	/* (non-Javadoc)
 	 * @see com.compuseg.income.parametrizacion.ejb.dao.ProductoPagoDaoService#obtieneCampos()
 	 */

@@ -75,6 +75,21 @@ public class PagoPrestamoDaoServiceImpl extends EntityDaoImpl<PagoPrestamo> impl
 
 	@Override
 	@SuppressWarnings("unchecked")
+	public List<PagoPrestamo> selectVigentesByPrestamo(Long idPrestamo) throws Throwable {
+		System.out.println("PagoPrestamoDaoService.selectVigentesByPrestamo - Prestamo: " + idPrestamo);
+		// anulado IS NULL cubre los pagos históricos anteriores al ALTER de CRD.PGPR. Sin
+		// try/catch a propósito: un error no puede convertirse en "sin pagos".
+		Query query = em.createQuery(
+			"SELECT p FROM PagoPrestamo p " +
+			"WHERE p.prestamo.codigo = :idPrestamo " +
+			"AND (p.anulado IS NULL OR p.anulado = 0) " +
+			"ORDER BY p.codigo ASC");
+		query.setParameter("idPrestamo", idPrestamo);
+		return query.getResultList();
+	}
+
+	@Override
+	@SuppressWarnings("unchecked")
 	public List<PagoPrestamo> selectVigentesByIdDetallePrestamo(Long codigoDetallePrestamo) {
 		System.out.println("PagoPrestamoDaoService.selectVigentesByIdDetallePrestamo - DetallePrestamo: " + codigoDetallePrestamo);
 

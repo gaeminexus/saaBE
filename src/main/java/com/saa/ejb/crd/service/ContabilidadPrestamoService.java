@@ -130,6 +130,17 @@ public interface ContabilidadPrestamoService {
      * @throws Throwable {@code IncomeException} si el producto no tiene plantilla asignada, si
      *                    falta una línea en la plantilla, o si el asiento no cuadra
      */
+    /**
+     * Deduce el producto de pago (PGS.PRDP) del desembolso: la cuenta de la línea SOCIOS POR PAGAR
+     * de la plantilla de entrega del préstamo (el mismo alterno y aux1 de {@link #contabilizarEntrega})
+     * → los productos ACTIVOS de la empresa cuyo grupo tenga esa cuenta. Exactamente uno; cero o más
+     * de uno lanza {@code IncomeException} con la cuenta y la lista (no se elige al azar).
+     * DISENO-ANULACION-PRESTAMO-E-IMPRESOS.md 6.2.
+     *
+     * @return id del producto de pago
+     */
+    Long resolverProductoPagoDesembolso(Prestamo prestamo, Long idEmpresa) throws Throwable;
+
     Long contabilizarEntrega(Prestamo prestamo, List<DetallePrestamo> cuotas, Long idEmpresa,
             double montoOperacion, String usuario) throws Throwable;
 }

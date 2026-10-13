@@ -10,6 +10,7 @@ import java.util.Map;
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.cnt.service.AsientoContableService;
 import com.saa.ejb.cnt.service.AsientoService;
+import com.saa.model.cxp.ProductoPago;
 import com.saa.ejb.crd.dao.CorridaCierreCarteraDaoService;
 import com.saa.ejb.crd.dao.DetallePrestamoDaoService;
 import com.saa.ejb.crd.dao.HistDetallePrestamoDaoService;
@@ -109,6 +110,9 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
 
     @EJB
     private com.saa.ejb.cnt.dao.DetallePlantillaDaoService detallePlantillaDaoService;
+
+    @EJB
+    private com.saa.ejb.cxp.dao.ProductoPagoDaoService productoPagoDaoService;
 
     /** PLAN-ENTREGA-BANDAS-DINAMICAS.md: la entrega clasifica el capital con el mismo modelo
      * dinámico que ya usa el cobro (ContabilizacionIndividualCreditoServiceImpl.lineaBandaCapital),
@@ -964,6 +968,85 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
         }
     }
 
+    /** Plantilla de entrega de un préstamo: alterno + posiciones aux1 (una sola fuente para el
+     * asiento de entrega y para deducir el producto de pago del desembolso). */
+    private record PlantillaEntrega(int alterno, MapeoPlantillaEntrega mapeo) {
+    }
+
+    /** Familia del producto (CRD.TPPR) → plantilla de entrega. Cualquier otra se rechaza. */
+    private PlantillaEntrega resolverPlantillaEntrega(Prestamo prestamo) throws Throwable {
+        if (prestamo.getProducto() == null || prestamo.getProducto().getTipoPrestamo() == null) {
+            throw new IncomeException("El préstamo " + prestamo.getCodigo()
+                    + " no tiene producto o tipo de préstamo asignado; no se puede resolver la"
+                    + " plantilla del asiento de entrega.");
+        }
+        String tipoPrestamoNombre = prestamo.getProducto().getTipoPrestamo().getNombre();
+        String familia = (tipoPrestamoNombre != null) ? tipoPrestamoNombre.trim().toUpperCase() : "";
+        if ("PRENDARIO".equals(familia)) {
+            return new PlantillaEntrega(PlantillasCredito.ENTREGA_PRENDARIO,
+                    new MapeoPlantillaEntrega(6, 7, 8, 9));
+        } else if ("HIPOTECARIO".equals(familia)) {
+            return new PlantillaEntrega(PlantillasCredito.ENTREGA_HIPOTECARIO,
+                    new MapeoPlantillaEntrega(6, 7, 8, 9));
+        } else if ("QUIROGRAFARIO".equals(familia)) {
+            return new PlantillaEntrega(PlantillasCredito.ENTREGA_QUIROGRAFARIO,
+                    new MapeoPlantillaEntrega(6, 7, null, 8));
+        }
+        throw new IncomeException("El producto " + prestamo.getProducto().getNombre()
+                + " (tipo de préstamo '" + tipoPrestamoNombre + "') no tiene plantilla de"
+                + " asiento de entrega configurada. Solo PRENDARIO (alterno 9), HIPOTECARIO"
+                + " (13) y QUIROGRAFARIO (34) la tienen; no se elige una plantilla por"
+                + " defecto para el préstamo " + prestamo.getCodigo() + ".");
+    }
+
+    @Override
+    public Long resolverProductoPagoDesembolso(Prestamo prestamo, Long idEmpresa) throws Throwable {
+        System.out.println("ContabilidadPrestamoService.resolverProductoPagoDesembolso - Préstamo: "
+                + (prestamo != null ? prestamo.getCodigo() : null));
+        if (prestamo == null || prestamo.getCodigo() == null) {
+            throw new IncomeException("No se puede resolver el producto de pago: falta el préstamo.");
+        }
+        if (idEmpresa == null) {
+            throw new IncomeException("No se puede resolver el producto de pago del préstamo "
+                    + prestamo.getCodigo() + ": falta idEmpresa.");
+        }
+        PlantillaEntrega plantillaEntrega = resolverPlantillaEntrega(prestamo);
+        Long idPlantilla = plantillaService.codigoByAlterno(plantillaEntrega.alterno(), idEmpresa);
+        if (idPlantilla == null) {
+            throw new IncomeException("No existe la plantilla contable alterno " + plantillaEntrega.alterno()
+                    + " para la empresa " + idEmpresa + ".");
+        }
+        int aux1 = plantillaEntrega.mapeo().auxSociosPorPagar();
+        DetallePlantilla linea = detallePlantillaDaoService.selectByPlantillaYAuxiliar(idPlantilla, aux1);
+        if (linea == null || linea.getPlanCuenta() == null) {
+            throw new IncomeException("La plantilla alterno " + plantillaEntrega.alterno()
+                    + " no tiene la línea aux1=" + aux1 + " (SOCIOS POR PAGAR).");
+        }
+        PlanCuenta cuenta = linea.getPlanCuenta();
+        List<ProductoPago> productos = productoPagoDaoService.selectActivosByEmpresaYCuentaGrupo(
+                idEmpresa, cuenta.getCodigo());
+        String cuentaTexto = cuenta.getCuentaContable() + " (" + cuenta.getNombre() + ")";
+        if (productos == null || productos.isEmpty()) {
+            throw new IncomeException("No hay un producto de pago activo en la empresa " + idEmpresa
+                    + " cuyo grupo tenga la cuenta " + cuentaTexto + ", que es la de SOCIOS POR PAGAR de la"
+                    + " plantilla de entrega alterno " + plantillaEntrega.alterno()
+                    + ". Cree el producto en CXP (grupo con esa cuenta).");
+        }
+        if (productos.size() > 1) {
+            StringBuilder lista = new StringBuilder();
+            for (ProductoPago producto : productos) {
+                if (lista.length() > 0) {
+                    lista.append(", ");
+                }
+                lista.append(producto.getId()).append(" «").append(producto.getNombre()).append("»");
+            }
+            throw new IncomeException("Hay más de un producto de pago activo en la empresa " + idEmpresa
+                    + " cuyo grupo tiene la cuenta " + cuentaTexto + ": " + lista
+                    + ". Deje uno solo; no se elige uno al azar.");
+        }
+        return productos.get(0).getId();
+    }
+
     @Override
     public Long contabilizarEntrega(Prestamo prestamo, List<DetallePrestamo> cuotas, Long idEmpresa,
             double montoOperacion, String usuario) throws Throwable {
@@ -1001,27 +1084,9 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
         // plantilla — pero eso puede significar que un producto que SÍ debería tener
         // plantilla quede bloqueado. Reportado al árbitro; confirmar antes de dar por
         // cerrado este ítem.
-        String tipoPrestamoNombre = prestamo.getProducto().getTipoPrestamo().getNombre();
-        String familia = (tipoPrestamoNombre != null) ? tipoPrestamoNombre.trim().toUpperCase() : "";
-
-        int alterno;
-        MapeoPlantillaEntrega mapeo;
-        if ("PRENDARIO".equals(familia)) {
-            alterno = PlantillasCredito.ENTREGA_PRENDARIO;
-            mapeo = new MapeoPlantillaEntrega(6, 7, 8, 9);
-        } else if ("HIPOTECARIO".equals(familia)) {
-            alterno = PlantillasCredito.ENTREGA_HIPOTECARIO;
-            mapeo = new MapeoPlantillaEntrega(6, 7, 8, 9);
-        } else if ("QUIROGRAFARIO".equals(familia)) {
-            alterno = PlantillasCredito.ENTREGA_QUIROGRAFARIO;
-            mapeo = new MapeoPlantillaEntrega(6, 7, null, 8);
-        } else {
-            throw new IncomeException("El producto " + prestamo.getProducto().getNombre()
-                    + " (tipo de préstamo '" + tipoPrestamoNombre + "') no tiene plantilla de"
-                    + " asiento de entrega configurada. Solo PRENDARIO (alterno 9), HIPOTECARIO"
-                    + " (13) y QUIROGRAFARIO (34) la tienen; no se elige una plantilla por"
-                    + " defecto para el préstamo " + prestamo.getCodigo() + ".");
-        }
+        PlantillaEntrega plantillaEntrega = resolverPlantillaEntrega(prestamo);
+        int alterno = plantillaEntrega.alterno();
+        MapeoPlantillaEntrega mapeo = plantillaEntrega.mapeo();
 
         Long idPlantilla = plantillaService.codigoByAlterno(alterno, idEmpresa);
         if (idPlantilla == null) {

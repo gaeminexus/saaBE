@@ -134,4 +134,23 @@ public interface PrestamoService extends EntityService<Prestamo>{
 	java.util.List<com.saa.ejb.crd.service.dto.SaldoPrestamoResumen> calcularSaldosEnLote(
 			java.util.List<Long> codigosPrestamo) throws Throwable;
 
+
+    /**
+     * Motivo por el que un préstamo NO se puede anular, o {@code null} si se puede. Es la ÚNICA
+     * fuente de las reglas AN1, AN2, AN4 (asiento), AN5, AN6 y la regla de la orden de CXP (AN3):
+     * la usan {@code GET /prst/{id}/puedeAnular} y {@link #anular}, para que nunca discrepen.
+     * Solo lectura; no lanza por una regla de negocio.
+     * DISENO-ANULACION-PRESTAMO-E-IMPRESOS.md.
+     */
+    String motivoNoAnulable(Prestamo prestamo) throws Throwable;
+
+    /**
+     * Anula un préstamo otorgado (VIGENTE o EN_MORA sin ningún pago): anula la orden de desembolso
+     * en CXP, REVERSA el asiento de entrega con la fecha de hoy, pasa las cuotas a ANULADA y el
+     * préstamo a ANULADO (12). Todo en una transacción (AN10): si algo falla, no queda nada a medias.
+     *
+     * @throws IncomeException si no se puede, con el motivo
+     */
+    Prestamo anular(Long idPrestamo, String usuario, String motivo, Long idEmpresa, Long idUsuario)
+            throws Throwable;
 }

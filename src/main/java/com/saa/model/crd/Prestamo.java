@@ -313,11 +313,57 @@ public class Prestamo implements Serializable {
     private Long idPagoProgramado;
 
     // ============================================================
+    // Anulación del préstamo otorgado (DISENO-ANULACION-PRESTAMO-E-IMPRESOS.md, AN4/AN9).
+    // ⛔ Requieren crd/sql/325 (ALTER TABLE CRD.PRST ADD ...) ANTES de desplegar: Hibernate
+    // incluye toda columna mapeada en el SELECT, y sin el DDL toda lectura de CRD.PRST revienta.
+    // ============================================================
+
+    /** Id del asiento de entrega (CNT.ASNT) generado al aprobar. Sin FK a propósito. */
+    @Basic
+    @Column(name = "PRSTASEN")
+    private Long idAsientoEntrega;
+
+    /** Id del asiento de reverso de la entrega, generado al anular. */
+    @Basic
+    @Column(name = "PRSTASRV")
+    private Long idAsientoReverso;
+
+    /** Usuario que anuló el préstamo. */
+    @Basic
+    @Column(name = "PRSTUSAN", length = 50)
+    private String usuarioAnulacion;
+
+    /** Fecha y hora de la anulación. */
+    @Basic
+    @Column(name = "PRSTFCAN")
+    private LocalDateTime fechaAnulacion;
+
+    /** Motivo de la anulación (obligatorio al anular). */
+    @Basic
+    @Column(name = "PRSTMTAN", length = 1000)
+    private String motivoAnulacion;
+
+    // ============================================================
     // Getters y Setters
     // ============================================================
 
     public Long getCodigo() { return codigo; }
     public void setCodigo(Long codigo) { this.codigo = codigo; }
+
+    public Long getIdAsientoEntrega() { return idAsientoEntrega; }
+    public void setIdAsientoEntrega(Long idAsientoEntrega) { this.idAsientoEntrega = idAsientoEntrega; }
+
+    public Long getIdAsientoReverso() { return idAsientoReverso; }
+    public void setIdAsientoReverso(Long idAsientoReverso) { this.idAsientoReverso = idAsientoReverso; }
+
+    public String getUsuarioAnulacion() { return usuarioAnulacion; }
+    public void setUsuarioAnulacion(String usuarioAnulacion) { this.usuarioAnulacion = usuarioAnulacion; }
+
+    public LocalDateTime getFechaAnulacion() { return fechaAnulacion; }
+    public void setFechaAnulacion(LocalDateTime fechaAnulacion) { this.fechaAnulacion = fechaAnulacion; }
+
+    public String getMotivoAnulacion() { return motivoAnulacion; }
+    public void setMotivoAnulacion(String motivoAnulacion) { this.motivoAnulacion = motivoAnulacion; }
 
     public Long getIdAsoprep() { return idAsoprep; }
     public void setIdAsoprep(Long idAsoprep) { this.idAsoprep = idAsoprep; }
