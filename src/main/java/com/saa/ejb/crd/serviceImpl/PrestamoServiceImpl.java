@@ -473,7 +473,7 @@ public class PrestamoServiceImpl implements PrestamoService {
         } else {
             idAsientoEntrega = contabilidadPrestamoService.contabilizarSustitucion(prestamo, cuotas,
                 sustitucion.getOriginal(), sustitucion.getDesglose(), sustitucion.isNovacion(),
-                sustitucion.getNeto(), sustitucion.isConAtraso(), idEmpresa, usuario);
+                sustitucion.getNeto(), sustitucion.isConLineas(), idEmpresa, usuario);
             // RN11/RN12: cancela el original DESPUÉS del asiento (que necesita sus saldos vivos).
             sustitucionPrestamoService.cancelarOriginal(prestamo, sustitucion, idAsientoEntrega, usuario);
         }

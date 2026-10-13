@@ -13,6 +13,8 @@ public class ContextoSustitucion {
     private double valorSustitucion;
     private DesgloseConceptosPrestamo desglose;
     private boolean conAtraso;
+    /** El VS trae interés, mora, desgravamen o seguro &gt; 0,005: se usa la plantilla CON líneas. */
+    private boolean conLineas;
     /** Novación: monto − VS (lo que se le desembolsa al socio). Reestructuración: 0. */
     private double neto;
 
@@ -27,6 +29,9 @@ public class ContextoSustitucion {
 
     public DesgloseConceptosPrestamo getDesglose() { return desglose; }
     public void setDesglose(DesgloseConceptosPrestamo desglose) { this.desglose = desglose; }
+
+    public boolean isConLineas() { return conLineas; }
+    public void setConLineas(boolean conLineas) { this.conLineas = conLineas; }
 
     public boolean isConAtraso() { return conAtraso; }
     public void setConAtraso(boolean conAtraso) { this.conAtraso = conAtraso; }

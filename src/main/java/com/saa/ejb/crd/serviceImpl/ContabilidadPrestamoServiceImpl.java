@@ -1258,8 +1258,52 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
         return prestamo.getProducto().getTipoPrestamo().getNombre().trim().toUpperCase();
     }
 
+    /** aux1 de cada concepto HABER en las plantillas de reestructuración CON líneas (§6 del diseño). */
+    private static final class LineasConcepto {
+        private final int interes;
+        private final int mora;
+        private final int desgravamen;
+        /** 0 = la plantilla no tiene línea de seguro de incendio/prendario. */
+        private final int seguro;
+
+        private LineasConcepto(int interes, int mora, int desgravamen, int seguro) {
+            this.interes = interes;
+            this.mora = mora;
+            this.desgravamen = desgravamen;
+            this.seguro = seguro;
+        }
+    }
+
+    /** Alternos de reestructuración con líneas → sus aux1 (medido con el sql/326, empresa 1236). */
+    private static LineasConcepto lineasConceptoDe(int alterno) {
+        switch (alterno) {
+            case PlantillasCredito.REESTRUCTURACION_QUIROGRAFARIO_ATRASO:
+            case PlantillasCredito.REESTRUCTURACION_QUIROGRAFARIO_RENOVADO_ATRASO:
+                return new LineasConcepto(13, 14, 15, 0);
+            case PlantillasCredito.REESTRUCTURACION_PRENDARIO_ATRASO:
+            case PlantillasCredito.REESTRUCTURACION_HIPOTECARIO_ATRASO:
+                return new LineasConcepto(11, 12, 13, 14);
+            default:
+                return null;
+        }
+    }
+
+    /** ¿El VS tiene algo más que capital? (interés, mora, desgravamen o seguro > 0,005). */
+    private static boolean tieneConceptosDistintosDeCapital(
+            com.saa.ejb.crd.service.dto.DesgloseConceptosPrestamo desglose) {
+        return desglose != null && (desglose.getInteresPendiente() > 0.005 || desglose.getMoraPendiente() > 0.005
+            || desglose.getDesgravamenPendiente() > 0.005 || desglose.getSeguroIncendioPendiente() > 0.005);
+    }
+
+    /**
+     * Alterno de la plantilla. REGLA DE SELECCIÓN (§6 del diseño, reemplaza a «con atraso / sin
+     * atraso» del §4): si el VS tiene cualquier componente distinto del capital se usa la variante
+     * CON líneas (6, 7, 11 o 15); si no, la de solo bandas (4, 5, 10 o 14). La novación sigue en 2 o 3.
+     *
+     * @param conLineas el VS tiene interés, mora, desgravamen o seguro &gt; 0,005
+     */
     @Override
-    public int alternoSustitucion(Prestamo original, boolean esNovacion, boolean conAtraso) throws Throwable {
+    public int alternoSustitucion(Prestamo original, boolean esNovacion, boolean conLineas) throws Throwable {
         String familia = familiaDeSustitucion(original);
         boolean originalNovado = original.getEsNovacion() != null && original.getEsNovacion() == 1L;
         boolean originalReestructurado = original.getReestructurado() != null && original.getReestructurado() == 1L;
@@ -1276,18 +1320,18 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
         } else {
             if ("QUIROGRAFARIO".equals(familia)) {
                 if (originalNovado) {
-                    return conAtraso ? PlantillasCredito.REESTRUCTURACION_QUIROGRAFARIO_RENOVADO_ATRASO
+                    return conLineas ? PlantillasCredito.REESTRUCTURACION_QUIROGRAFARIO_RENOVADO_ATRASO
                         : PlantillasCredito.REESTRUCTURACION_QUIROGRAFARIO_RENOVADO;
                 }
-                return conAtraso ? PlantillasCredito.REESTRUCTURACION_QUIROGRAFARIO_ATRASO
+                return conLineas ? PlantillasCredito.REESTRUCTURACION_QUIROGRAFARIO_ATRASO
                     : PlantillasCredito.REESTRUCTURACION_QUIROGRAFARIO;
             }
             if ("PRENDARIO".equals(familia)) {
-                return conAtraso ? PlantillasCredito.REESTRUCTURACION_PRENDARIO_ATRASO
+                return conLineas ? PlantillasCredito.REESTRUCTURACION_PRENDARIO_ATRASO
                     : PlantillasCredito.REESTRUCTURACION_PRENDARIO;
             }
             if ("HIPOTECARIO".equals(familia)) {
-                return conAtraso ? PlantillasCredito.REESTRUCTURACION_HIPOTECARIO_ATRASO
+                return conLineas ? PlantillasCredito.REESTRUCTURACION_HIPOTECARIO_ATRASO
                     : PlantillasCredito.REESTRUCTURACION_HIPOTECARIO;
             }
         }
@@ -1297,10 +1341,18 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
     }
 
     @Override
-    public String motivoSinPlantillaSustitucion(Prestamo original, boolean esNovacion, boolean conAtraso)
-            throws Throwable {
+    public String motivoSinPlantillaSustitucion(Prestamo original, boolean esNovacion, boolean conLineas,
+            com.saa.ejb.crd.service.dto.DesgloseConceptosPrestamo desglose) throws Throwable {
         try {
-            alternoSustitucion(original, esNovacion, conAtraso); // llamada interna: no cruza el proxy
+            int alterno = alternoSustitucion(original, esNovacion, conLineas); // llamada interna: no cruza el proxy
+            // Un componente > 0,005 sin línea en esa plantilla (seguro de incendio en 6 o 7).
+            LineasConcepto lineas = lineasConceptoDe(alterno);
+            if (!esNovacion && lineas != null && lineas.seguro == 0 && desglose != null
+                    && desglose.getSeguroIncendioPendiente() > 0.005) {
+                return "El préstamo " + original.getCodigo() + " tiene seguro de incendio pendiente ($"
+                    + redondear(desglose.getSeguroIncendioPendiente()) + ") y la plantilla " + alterno
+                    + " de reestructuración de quirografario no tiene línea para ese concepto.";
+            }
             return null;
         } catch (IncomeException e) {
             return e.getMessage();
@@ -1308,25 +1360,95 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
     }
 
     /**
-     * ⛔ PENDIENTE del sql/326: las líneas NO-banda de la plantilla de la operación (interés
-     * vencido, mora y seguros capitalizados en la reestructuración; cuentas de orden y SOCIOS POR
-     * PAGAR por el neto en la novación). Las posiciones {@code aux1} de esas plantillas no están
-     * levantadas; hasta tener la salida del sql/326 este método LANZA, igual que se hizo con el
-     * producto de pago 976: ruidoso, no un asiento a medias.
+     * Líneas NO-banda de la plantilla de la operación (DISENO-REESTRUCTURACION-NOVACION.md §6,
+     * medido con el sql/326, empresa 1236). Las bandas (aux1 1–10, y 11–12 en 6/7) NO se usan: salen
+     * de CRD.BNDP de cada producto. Cada línea se busca por su aux1 en la plantilla de la empresa
+     * ({@code selectByPlantillaYAuxiliar}, como {@code lineaEntrega}); la cuenta la decide la plantilla.
+     *
+     * <ul>
+     *   <li><b>4, 5, 10, 14</b> (solo bandas): sin líneas. Si aun así el VS trae un componente &gt; 0,005,
+     *       error (la selección del alterno lo evita).</li>
+     *   <li><b>6, 7</b> (quirografario con líneas): HABER interés aux 13, mora aux 14, desgravamen aux 15;
+     *       sin línea de seguro de incendio.</li>
+     *   <li><b>11</b> (prendario) y <b>15</b> (hipotecario): HABER interés aux 11, mora aux 12,
+     *       desgravamen aux 13, seguro aux 14.</li>
+     *   <li><b>2, 3</b> (novación): aux 11 HABER y aux 12 DEBE por el CAPITAL del original (sale su
+     *       pagaré); aux 13 DEBE y aux 14 HABER por el MONTO del nuevo (entra el pagaré nuevo);
+     *       aux 15 HABER (SOCIOS POR PAGAR) por el NETO.</li>
+     * </ul>
+     * Las líneas en 0 se omiten. Un componente &gt; 0,005 sin línea en la plantilla lanza con el
+     * concepto. Un alterno que NO esté en esta tabla sigue lanzando «falta el mapeo» (no se adivina).
      */
     private List<DetalleAsiento> lineasNoBandaSustitucion(Long idPlantilla, int alterno,
             com.saa.ejb.crd.service.dto.DesgloseConceptosPrestamo desglose, boolean esNovacion, double neto,
-            String prefijo) throws Throwable {
-        throw new IncomeException("Falta el mapeo de la plantilla " + alterno + " (sql/326): no se puede armar el"
-            + " asiento de la " + (esNovacion ? "novación" : "reestructuración")
-            + " hasta levantar las líneas de interés, mora, seguros" + (esNovacion ? ", orden y socios por pagar" : "")
-            + " de esa plantilla.");
+            double montoNuevo, String prefijo) throws Throwable {
+        List<DetalleAsiento> lineas = new ArrayList<>();
+
+        if (alterno == PlantillasCredito.NOVACION_QUIROGRAFARIO
+                || alterno == PlantillasCredito.NOVACION_QUIROGRAFARIO_REESTRUCTURADO) {
+            double capital = redondear(desglose.getCapitalPendiente());
+            lineas.add(lineaEntrega(idPlantilla, 11, capital, false, alterno,
+                prefijo + " - orden: sale el pagaré del original"));
+            lineas.add(lineaEntrega(idPlantilla, 12, capital, true, alterno,
+                prefijo + " - garantía: sale el pagaré del original"));
+            lineas.add(lineaEntrega(idPlantilla, 13, montoNuevo, true, alterno,
+                prefijo + " - orden: entra el pagaré del nuevo"));
+            lineas.add(lineaEntrega(idPlantilla, 14, montoNuevo, false, alterno,
+                prefijo + " - garantía: entra el pagaré del nuevo"));
+            lineas.add(lineaEntrega(idPlantilla, 15, neto, false, alterno,
+                prefijo + " - socios por pagar (neto)"));
+            return lineas;
+        }
+
+        boolean sinLineas = alterno == PlantillasCredito.REESTRUCTURACION_QUIROGRAFARIO
+            || alterno == PlantillasCredito.REESTRUCTURACION_QUIROGRAFARIO_RENOVADO
+            || alterno == PlantillasCredito.REESTRUCTURACION_PRENDARIO
+            || alterno == PlantillasCredito.REESTRUCTURACION_HIPOTECARIO;
+        LineasConcepto concepto = lineasConceptoDe(alterno);
+        if (!sinLineas && concepto == null) {
+            throw new IncomeException("Falta el mapeo de la plantilla " + alterno + " (sql/326): ese alterno no está"
+                + " en la tabla del §6 de DISENO-REESTRUCTURACION-NOVACION.md.");
+        }
+
+        double interes = redondear(desglose.getInteresPendiente());
+        double mora = redondear(desglose.getMoraPendiente());
+        double desgravamen = redondear(desglose.getDesgravamenPendiente());
+        double seguro = redondear(desglose.getSeguroIncendioPendiente());
+        if (sinLineas) {
+            if (interes > 0.005 || mora > 0.005 || desgravamen > 0.005 || seguro > 0.005) {
+                throw new IncomeException("La plantilla " + alterno + " es de solo bandas y el valor de sustitución"
+                    + " trae interés $" + interes + ", mora $" + mora + ", desgravamen $" + desgravamen
+                    + " y seguro $" + seguro + ": no hay dónde asentarlos.");
+            }
+            return lineas;
+        }
+        if (interes > 0.005) {
+            lineas.add(lineaEntrega(idPlantilla, concepto.interes, interes, false, alterno,
+                prefijo + " - interés vencido capitalizado"));
+        }
+        if (mora > 0.005) {
+            lineas.add(lineaEntrega(idPlantilla, concepto.mora, mora, false, alterno,
+                prefijo + " - mora capitalizada"));
+        }
+        if (desgravamen > 0.005) {
+            lineas.add(lineaEntrega(idPlantilla, concepto.desgravamen, desgravamen, false, alterno,
+                prefijo + " - desgravamen vencido capitalizado"));
+        }
+        if (seguro > 0.005) {
+            if (concepto.seguro == 0) {
+                throw new IncomeException("La plantilla " + alterno + " no tiene línea para el seguro de incendio"
+                    + " ($" + seguro + ") del valor de sustitución.");
+            }
+            lineas.add(lineaEntrega(idPlantilla, concepto.seguro, seguro, false, alterno,
+                prefijo + " - seguro vencido capitalizado"));
+        }
+        return lineas;
     }
 
     @Override
     public Long contabilizarSustitucion(Prestamo nuevo, List<DetallePrestamo> cuotasNuevo, Prestamo original,
             com.saa.ejb.crd.service.dto.DesgloseConceptosPrestamo desglose, boolean esNovacion, double neto,
-            boolean conAtraso, Long idEmpresa, String usuario) throws Throwable {
+            boolean conLineas, Long idEmpresa, String usuario) throws Throwable {
         System.out.println("ContabilidadPrestamoService.contabilizarSustitucion - nuevo: "
             + (nuevo != null ? nuevo.getCodigo() : null) + " - original: "
             + (original != null ? original.getCodigo() : null));
@@ -1343,7 +1465,7 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
         }
 
         // Plantilla de la operación y sus líneas no-banda: primero, para fallar antes del trabajo caro.
-        int alterno = alternoSustitucion(original, esNovacion, conAtraso);
+        int alterno = alternoSustitucion(original, esNovacion, conLineas);
         Long idPlantilla = plantillaService.codigoByAlterno(alterno, idEmpresa);
         if (idPlantilla == null) {
             throw new IncomeException("No existe la plantilla contable alterno " + alterno
@@ -1351,12 +1473,12 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
         }
         String prefijo = (esNovacion ? "Novación" : "Reestructuración") + " préstamo " + original.getCodigo()
             + " → " + nuevo.getCodigo();
+        double montoNuevo = nvl(nuevo.getMontoSolicitado());
         List<DetalleAsiento> lineasNoBanda = lineasNoBandaSustitucion(idPlantilla, alterno, desglose,
-            esNovacion, neto, prefijo);
+            esNovacion, neto, montoNuevo, prefijo);
 
         // DEBE: capital del NUEVO por banda (la rutina de la entrega).
         LineasBandas bandasNuevo = lineasBandasEntrega(nuevo, cuotasNuevo, idEmpresa, prefijo);
-        double montoNuevo = nvl(nuevo.getMontoSolicitado());
         if (Math.abs(redondear(bandasNuevo.total - montoNuevo)) > TOLERANCIA_CUADRE) {
             throw new IncomeException("El capital del préstamo nuevo distribuido en bandas ($" + bandasNuevo.total
                 + ") no coincide con su monto ($" + montoNuevo + "). No se genera un asiento desbalanceado.");

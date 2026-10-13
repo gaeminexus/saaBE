@@ -143,17 +143,20 @@ public interface ContabilidadPrestamoService {
 
     /**
      * Alterno de la plantilla contable de una reestructuración o novación (§4 del diseño), según la
-     * familia del original, el tipo, si el original es novado/reestructurado y si tiene atraso.
+     * familia del original, el tipo, si el original es novado/reestructurado y si el VS trae algún
+     * componente distinto del capital ({@code conLineas}: interés, mora, desgravamen o seguro &gt; 0,005;
+     * regla del §6 que reemplaza a «con atraso»).
      * Lanza {@code IncomeException} si no hay plantilla (novación de prendario o hipotecario).
      */
-    int alternoSustitucion(Prestamo original, boolean esNovacion, boolean conAtraso) throws Throwable;
+    int alternoSustitucion(Prestamo original, boolean esNovacion, boolean conLineas) throws Throwable;
 
     /**
      * Igual que {@link #alternoSustitucion} pero NO lanza: devuelve el motivo, o {@code null} si hay
      * plantilla. Existe porque una {@code IncomeException} que cruza el proxy EJB marca la
      * transacción como rollback aunque se atrape.
      */
-    String motivoSinPlantillaSustitucion(Prestamo original, boolean esNovacion, boolean conAtraso) throws Throwable;
+    String motivoSinPlantillaSustitucion(Prestamo original, boolean esNovacion, boolean conLineas,
+            com.saa.ejb.crd.service.dto.DesgloseConceptosPrestamo desglose) throws Throwable;
 
     /**
      * Asiento del traslado de una reestructuración o novación, al aprobar el préstamo NUEVO (§3):
@@ -165,7 +168,7 @@ public interface ContabilidadPrestamoService {
      */
     Long contabilizarSustitucion(Prestamo nuevo, List<DetallePrestamo> cuotasNuevo, Prestamo original,
             com.saa.ejb.crd.service.dto.DesgloseConceptosPrestamo desglose, boolean esNovacion, double neto,
-            boolean conAtraso, Long idEmpresa, String usuario) throws Throwable;
+            boolean conLineas, Long idEmpresa, String usuario) throws Throwable;
 
     Long contabilizarEntrega(Prestamo prestamo, List<DetallePrestamo> cuotas, Long idEmpresa,
             double montoOperacion, String usuario) throws Throwable;

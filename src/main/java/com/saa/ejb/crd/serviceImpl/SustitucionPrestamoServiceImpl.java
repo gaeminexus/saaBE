@@ -75,6 +75,7 @@ public class SustitucionPrestamoServiceImpl implements SustitucionPrestamoServic
         private double valorSustitucion;
         private DesgloseConceptosPrestamo desglose;
         private boolean conAtraso;
+        private boolean conLineas;
         private Producto sugerido;
     }
 
@@ -204,6 +205,7 @@ public class SustitucionPrestamoServiceImpl implements SustitucionPrestamoServic
         contexto.setValorSustitucion(ev.valorSustitucion);
         contexto.setDesglose(ev.desglose);
         contexto.setConAtraso(ev.conAtraso);
+        contexto.setConLineas(ev.conLineas);
         contexto.setNeto(neto);
         return contexto;
     }
@@ -322,8 +324,20 @@ public class SustitucionPrestamoServiceImpl implements SustitucionPrestamoServic
             return ev;
         }
 
+        // Regla de selección del §6: cualquier componente distinto del capital → plantilla CON líneas.
+        ev.conLineas = ev.desglose.getInteresPendiente() > 0.005 || ev.desglose.getMoraPendiente() > 0.005
+            || ev.desglose.getDesgravamenPendiente() > 0.005 || ev.desglose.getSeguroIncendioPendiente() > 0.005;
+        // La novación cuadra solo con VS = capital (§6): una cuota que vence hoy trae interés exigible.
+        if (novacion && ev.conLineas) {
+            ev.motivo = "El préstamo " + original.getCodigo() + " tiene interés, mora o seguros exigibles hoy"
+                + " (una cuota que vence hoy); la novación exige que el valor de sustitución sea solo capital."
+                + " Pague esa cuota primero.";
+            return ev;
+        }
+
         // La plantilla contable de la operación (p. ej. novación de prendario o hipotecario: no hay).
-        String sinPlantilla = contabilidadPrestamoService.motivoSinPlantillaSustitucion(original, novacion, ev.conAtraso);
+        String sinPlantilla = contabilidadPrestamoService.motivoSinPlantillaSustitucion(original, novacion,
+            ev.conLineas, ev.desglose);
         if (sinPlantilla != null) {
             ev.motivo = sinPlantilla;
             return ev;
