@@ -522,6 +522,40 @@ public class PrestamoServiceImpl implements PrestamoService {
                 + " solo se anula un préstamo sin ningún pago.";
         }
 
+        // AN2 — directa sobre las cuotas (pedido del usuario): ninguna cuota pagada. Estado
+        // (DTPRESTD) PAGADA 4 / PARCIAL 6 / CANCELADA_ANTICIPADA 7, o cualquier monto pagado > 0,005.
+        List<DetallePrestamo> cuotasDelPrestamo = detallePrestamoDaoService.selectByPrestamo(idPrestamo);
+        int cuotasConPagos = 0;
+        DetallePrestamo primeraConPagos = null;
+        if (cuotasDelPrestamo != null) {
+            for (DetallePrestamo cuota : cuotasDelPrestamo) {
+                Long estadoCuota = cuota.getEstado();
+                boolean estadoPagado = estadoCuota != null
+                    && (estadoCuota == EstadoCuotaPrestamo.PAGADA
+                        || estadoCuota == EstadoCuotaPrestamo.PARCIAL
+                        || estadoCuota == EstadoCuotaPrestamo.CANCELADA_ANTICIPADA);
+                boolean montoPagado = nvl(cuota.getCapitalPagado()) > 0.005
+                    || nvl(cuota.getInteresPagado()) > 0.005
+                    || nvl(cuota.getMoraPagado()) > 0.005
+                    || nvl(cuota.getDesgravamenPagado()) > 0.005
+                    || nvl(cuota.getInteresVendidoPagado()) > 0.005
+                    || nvl(cuota.getAbono()) > 0.005;
+                if (estadoPagado || montoPagado) {
+                    cuotasConPagos++;
+                    if (primeraConPagos == null || nvl(cuota.getNumeroCuota()) < nvl(primeraConPagos.getNumeroCuota())) {
+                        primeraConPagos = cuota;
+                    }
+                }
+            }
+        }
+        if (cuotasConPagos > 0) {
+            Double numeroPrimera = primeraConPagos.getNumeroCuota();
+            return "El préstamo " + idPrestamo + " tiene " + cuotasConPagos + " cuota(s) con pagos (la primera: cuota #"
+                + (numeroPrimera != null ? String.valueOf(numeroPrimera.longValue()) : "?") + ", estado "
+                + textoEstadoCuota(primeraConPagos.getEstado())
+                + "); solo se anula un préstamo sin ninguna cuota pagada.";
+        }
+
         // AN2 — vía 2: detalles de cobro en un cobro REGISTRADO, APROBADO o PROCESADO.
         int cobros = 0;
         for (com.saa.model.crd.DetalleCobroCredito detalle : detalleCobroCreditoDaoService.selectByPrestamo(idPrestamo)) {
@@ -604,6 +638,24 @@ public class PrestamoServiceImpl implements PrestamoService {
             }
         }
         return null;
+    }
+
+    private String textoEstadoCuota(Long estado) {
+        if (estado == null) {
+            return "sin estado";
+        }
+        switch (estado.intValue()) {
+            case EstadoCuotaPrestamo.PENDIENTE: return "PENDIENTE (1)";
+            case EstadoCuotaPrestamo.ACTIVA: return "ACTIVA (2)";
+            case EstadoCuotaPrestamo.EMITIDA: return "EMITIDA (3)";
+            case EstadoCuotaPrestamo.PAGADA: return "PAGADA (4)";
+            case EstadoCuotaPrestamo.EN_MORA: return "EN_MORA (5)";
+            case EstadoCuotaPrestamo.PARCIAL: return "PARCIAL (6)";
+            case EstadoCuotaPrestamo.CANCELADA_ANTICIPADA: return "CANCELADA_ANTICIPADA (7)";
+            case EstadoCuotaPrestamo.VENCIDA: return "VENCIDA (8)";
+            case EstadoCuotaPrestamo.ANULADA: return "ANULADA (9)";
+            default: return "estado " + estado;
+        }
     }
 
     /** La orden de CXP está ANULADA (5) o RECHAZADA (4): terminal, no hay nada que anular en tesorería. */
