@@ -1810,6 +1810,11 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
                     throw new IncomeException("El préstamo " + linea.getIdPrestamo()
                             + " no pertenece a la entidad " + solicitud.getIdEntidad());
                 }
+                // Solo el ANULADO (12), sin lista blanca: un préstamo anulado no recibe cobros.
+                if (prestamo.getIdEstado() != null
+                        && prestamo.getIdEstado() == com.saa.rubros.EstadoPrestamo.ANULADO) {
+                    throw new IncomeException("el préstamo " + linea.getIdPrestamo() + " está ANULADO");
+                }
                 if (linea.getIdTipoAporte() != null || linea.getPeriodoDevengo() != null) {
                     throw new IncomeException("idTipoAporte/periodoDevengo solo aplican a"
                             + " REGISTRO_APORTE");

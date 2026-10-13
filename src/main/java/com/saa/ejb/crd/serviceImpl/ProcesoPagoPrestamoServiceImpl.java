@@ -1711,7 +1711,8 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
         }
         if (esEstadoTerminalPrestamo(prestamo.getIdEstado())) {
             throw new IncomeException(ERR_ESTADO_NO_PERMITE + ": el préstamo " + prestamo.getCodigo()
-                + " está en estado " + prestamo.getIdEstado() + " (terminal) y no admite la operación");
+                + " está en estado " + textoEstadoTerminal(prestamo.getIdEstado())
+                + " (terminal) y no admite la operación");
         }
         return prestamo;
     }
@@ -1855,7 +1856,13 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
         return idEstado != null
             && (idEstado == EstadoPrestamo.CANCELADO
              || idEstado == EstadoPrestamo.CANCELADO_ANTICIPADO
-             || idEstado == EstadoPrestamo.CANCELADO_POR_NOVACION);
+             || idEstado == EstadoPrestamo.CANCELADO_POR_NOVACION
+             || idEstado == EstadoPrestamo.ANULADO);
+    }
+
+    /** Texto del estado para el rechazo: el ANULADO se nombra, los demás van por su número. */
+    private String textoEstadoTerminal(Long idEstado) {
+        return idEstado != null && idEstado == EstadoPrestamo.ANULADO ? "ANULADO (12)" : String.valueOf(idEstado);
     }
 
     /** Monto con 2 decimales y punto decimal, independiente del locale del servidor. */

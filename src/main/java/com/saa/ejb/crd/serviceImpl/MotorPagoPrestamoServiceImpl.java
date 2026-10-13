@@ -294,7 +294,7 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
         }
         if (esEstadoTerminalPrestamo(prestamo.getIdEstado())) {
             throw new IncomeException("El préstamo " + idPrestamo + " está en un estado terminal ("
-                + prestamo.getIdEstado() + ") y no admite pagos");
+                + textoEstadoTerminal(prestamo.getIdEstado()) + ") y no admite pagos");
         }
 
         ResultadoAplicacionPago resultado = new ResultadoAplicacionPago();
@@ -803,7 +803,13 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
         return idEstado != null
             && (idEstado == EstadoPrestamo.CANCELADO
              || idEstado == EstadoPrestamo.CANCELADO_ANTICIPADO
-             || idEstado == EstadoPrestamo.CANCELADO_POR_NOVACION);
+             || idEstado == EstadoPrestamo.CANCELADO_POR_NOVACION
+             || idEstado == EstadoPrestamo.ANULADO);
+    }
+
+    /** Texto del estado para el rechazo: el ANULADO se nombra, los demás van por su número. */
+    private String textoEstadoTerminal(Long idEstado) {
+        return idEstado != null && idEstado == EstadoPrestamo.ANULADO ? "ANULADO (12)" : String.valueOf(idEstado);
     }
 
     /** Deuda bruta de la cuota incluyendo mora e interés vencido (DTPRTTLL no los incluye). */
