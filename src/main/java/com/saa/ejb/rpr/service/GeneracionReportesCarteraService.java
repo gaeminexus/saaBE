@@ -9,13 +9,15 @@ public interface GeneracionReportesCarteraService {
 
     /**
      * Ejecuta la generación de los 3 reportes de cartera: CPRM, CJBM y CCPM.
-     * 
+     *
      * @param mes Mes de ejecución (1-12)
      * @param anio Año de ejecución
      * @param usuario Usuario que ejecuta la generación
+     * @param idEmpresa Empresa a generar (CCPM, 2026-10-13); si es nulo, CCPM intenta
+     *                  resolverla sola — ver {@code GeneracionCCPMService#generar}
      * @return EjecucionReporteCartera creado con el resultado
      */
-    EjecucionReporteCartera ejecutarGeneracion(Long mes, Long anio, String usuario) throws Throwable;
+    EjecucionReporteCartera ejecutarGeneracion(Long mes, Long anio, String usuario, Long idEmpresa) throws Throwable;
 
     /**
      * Elimina la ejecución existente (y sus hijos CCPM, CJBM, CPRM) y vuelve a generar.

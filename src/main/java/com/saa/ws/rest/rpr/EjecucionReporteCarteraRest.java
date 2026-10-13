@@ -116,12 +116,14 @@ public class EjecucionReporteCarteraRest {
     public Response ejecutar(SolicitudGeneracionCartera solicitud) {
         System.out.println("LLEGA AL SERVICIO POST ejcc/ejecutar - mes: "
                 + solicitud.getMes() + ", anio: " + solicitud.getAnio()
-                + ", usuario: " + solicitud.getUsuario());
+                + ", usuario: " + solicitud.getUsuario()
+                + ", idEmpresa: " + solicitud.getIdEmpresa());
         try {
             EjecucionReporteCartera resultado = generacionReportesCarteraService.ejecutarGeneracion(
                     solicitud.getMes(),
                     solicitud.getAnio(),
-                    solicitud.getUsuario()
+                    solicitud.getUsuario(),
+                    solicitud.getIdEmpresa()
             );
             return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
@@ -179,11 +181,21 @@ public class EjecucionReporteCarteraRest {
         private Long anio;
         private String usuario;
 
+        /**
+         * Empresa a generar (2026-10-13, CCPM adopta las bandas del cierre). Opcional
+         * mientras el frontend no la mande: CCPM intenta resolverla sola si hay una única
+         * empresa con configuración de bandas vigente — ver
+         * {@code GeneracionCCPMServiceImpl#resolverEmpresaUnicaConBandas}.
+         */
+        private Long idEmpresa;
+
         public Long getMes() { return mes; }
         public void setMes(Long mes) { this.mes = mes; }
         public Long getAnio() { return anio; }
         public void setAnio(Long anio) { this.anio = anio; }
         public String getUsuario() { return usuario; }
         public void setUsuario(String usuario) { this.usuario = usuario; }
+        public Long getIdEmpresa() { return idEmpresa; }
+        public void setIdEmpresa(Long idEmpresa) { this.idEmpresa = idEmpresa; }
     }
 }

@@ -123,6 +123,24 @@ public class CierreCarteraDaoServiceImpl implements CierreCarteraDaoService {
     }
 
     @Override
+    public List<Object[]> selectCuotasPendientesPorPrestamo(Long idEmpresa) throws Throwable {
+        System.out.println("Ingresa al metodo selectCuotasPendientesPorPrestamo"
+                + " - empresa: " + idEmpresa);
+        Query query = em.createNativeQuery(
+                " SELECT p.PRSTCDGO, p.PRDCCDGO, d.DTPRCDGO, d.DTPRNMCT, TRUNC(d.DTPRFCVN), "
+                + "        GREATEST(NVL(d.DTPRCPTL,0) - NVL(g.cap,0), 0) "
+                + " FROM   CRD.DTPR d "
+                + " JOIN   CRD.PRST p ON p.PRSTCDGO = d.PRSTCDGO "
+                + " LEFT JOIN " + PAGOS_VIGENTES + " ON g.DTPRCDGO = d.DTPRCDGO "
+                + " WHERE  " + PRESTAMOS_VIVOS
+                + " AND    " + CUOTAS_PENDIENTES
+                + " AND    d.DTPRFCVN IS NOT NULL "
+                + " AND    p.PRDCCDGO IS NOT NULL "
+                + " ORDER BY p.PRSTCDGO, TRUNC(d.DTPRFCVN)");
+        return normalizaCuotasPorPrestamo(query.getResultList());
+    }
+
+    @Override
     public List<Object[]> selectInteresPorTipoPrestamoEnRango(LocalDate desde, LocalDate hasta) throws Throwable {
         System.out.println("Ingresa al metodo selectInteresPorTipoPrestamoEnRango - desde: " + desde
                 + " - hasta: " + hasta);
@@ -355,6 +373,24 @@ public class CierreCarteraDaoServiceImpl implements CierreCarteraDaoService {
         for (Object[] fila : filas) {
             resultado.add(new Object[]{
                 aLong(fila[0]), aFecha(fila[1]), aDouble(fila[2]), aLong(fila[3]) });
+        }
+        return resultado;
+    }
+
+    /**
+     * Normaliza las filas de {@link #selectCuotasPendientesPorPrestamo}: mismos tipos crudos
+     * que {@link #normalizaVencimientos} (fecha como Timestamp/Date según driver, números como
+     * BigDecimal), con la fecha en la quinta posición en vez de la segunda.
+     *
+     * @param filas : Filas crudas de la consulta nativa
+     * @return      : Filas {@code [Long, Long, Long, Long, LocalDate, Double]}
+     */
+    private List<Object[]> normalizaCuotasPorPrestamo(List<Object[]> filas) {
+        List<Object[]> resultado = new ArrayList<Object[]>();
+        for (Object[] fila : filas) {
+            resultado.add(new Object[]{
+                aLong(fila[0]), aLong(fila[1]), aLong(fila[2]), aLong(fila[3]),
+                aFecha(fila[4]), aDouble(fila[5]) });
         }
         return resultado;
     }

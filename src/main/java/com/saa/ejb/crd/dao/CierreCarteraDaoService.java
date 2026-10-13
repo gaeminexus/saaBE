@@ -63,6 +63,29 @@ public interface CierreCarteraDaoService {
     List<Object[]> selectCapitalPorProductoYVencimiento(Long idEmpresa) throws Throwable;
 
     /**
+     * Cuotas pendientes de la cartera viva, UNA FILA POR CUOTA — el mismo universo de
+     * {@link #selectCapitalPorProductoYVencimiento}, sin agrupar por producto/vencimiento.
+     *
+     * <p>2026-10-13 (CCPM adopta las bandas del cierre, `DISENO-CCPM-BANDAS-COMO-EL-CIERRE.md`):
+     * CCPM necesita el capital pendiente a nivel de PRÉSTAMO, no de producto, para clasificar
+     * cada cuota con {@code ContabilizacionIndividualCreditoService.tipoCarteraYDias} y
+     * {@code ClasificadorBandaService}. Mismas constantes {@code PRESTAMOS_VIVOS},
+     * {@code CUOTAS_PENDIENTES} y {@code PAGOS_VIGENTES} que la consulta hermana — no se
+     * duplican.</p>
+     *
+     * <p><b>Sin {@code HAVING}:</b> a diferencia de la consulta hermana, acá SÍ vienen las
+     * cuotas con capital pendiente en 0 — CCPM necesita contarlas (cantidad de cuotas por
+     * banda), no solo sumar su capital.</p>
+     *
+     * @param idEmpresa  : Empresa; hoy no filtra (CRD no guarda empresa en el préstamo) y
+     *                     se recibe para no cambiar la firma cuando lo haga
+     * @return           : Filas {@code [idPrestamo (Long), idProducto (Long), idCuota (Long),
+     *                     numeroCuota (Long), vencimiento (LocalDate), capitalPendiente (Double)]}
+     * @throws Throwable : Excepcion
+     */
+    List<Object[]> selectCuotasPendientesPorPrestamo(Long idEmpresa) throws Throwable;
+
+    /**
      * Interés ordinario y mora pendientes de las cuotas con vencimiento EN EL RANGO
      * {@code [desde, hasta]} (ambos inclusive), agrupados por TIPO DE PRÉSTAMO (quirografario /
      * hipotecario / prendario), que es la dimensión por la que cambia la cuenta contable del

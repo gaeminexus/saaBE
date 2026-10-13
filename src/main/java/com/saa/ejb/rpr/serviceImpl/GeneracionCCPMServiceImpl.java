@@ -4,25 +4,35 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.YearMonth;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import com.saa.basico.util.IncomeException;
+import com.saa.ejb.crd.dao.CierreCarteraDaoService;
+import com.saa.ejb.crd.dao.ConfiguracionBandaProductoDaoService;
+import com.saa.ejb.crd.service.ClasificadorBandaService;
+import com.saa.ejb.crd.service.ContabilizacionIndividualCreditoService;
 import com.saa.ejb.crd.service.DetallePrestamoService;
+import com.saa.ejb.crd.service.dto.BandaProductoDetalle;
 import com.saa.ejb.rpr.dao.CreditoCuotasPrestamosMensualDaoService;
 import com.saa.ejb.rpr.service.CreditoParticipesMensualService;
 import com.saa.ejb.rpr.service.EjecucionReporteCarteraService;
 import com.saa.ejb.rpr.service.GeneracionCCPMService;
+import com.saa.model.crd.ConfiguracionBandaProducto;
 import com.saa.model.crd.DetallePrestamo;
+import com.saa.model.crd.NombreEntidadesCredito;
 import com.saa.model.crd.Prestamo;
 import com.saa.model.rpr.CreditoCuotasPrestamosMensual;
 import com.saa.model.rpr.CreditoParticipesMensual;
 import com.saa.model.rpr.EjecucionReporteCartera;
+import com.saa.rubros.Estado;
 import com.saa.rubros.EstadoParticipeEntidad;
+import com.saa.rubros.TipoCarteraBanda;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
@@ -31,6 +41,24 @@ import jakarta.ejb.Stateless;
  * Servicio de generación del reporte CCPM (Crédito Cuotas Préstamos Mensual).
  * Lógica similar al G48 pero con campos adicionales: valorDesgravamen y valorIncendio.
  * OPTIMIZADO: provisionConstituida = 0 (sin dependencia de histórico del mes anterior).
+ *
+ * <p><b>2026-10-13 — CCPM adopta la clasificación de bandas del cierre de cartera</b>
+ * ({@code docs/logica-negocio/reportes/DISENO-CCPM-BANDAS-COMO-EL-CIERRE.md}). El universo de
+ * préstamos, el capital pendiente y la clasificación por banda YA NO son propios de CCPM: son
+ * el mismo universo del cierre de cartera ({@link CierreCarteraDaoService
+ * #selectCuotasPendientesPorPrestamo}), clasificado cuota por cuota con
+ * {@link ContabilizacionIndividualCreditoService#tipoCarteraYDias} y
+ * {@link ClasificadorBandaService}. La fórmula de "vencido/por vencer + días" NO se reimplementa
+ * acá — llamar a esos dos servicios es lo único que hace este archivo con los días.</p>
+ *
+ * <p>Los grupos 1 (cuotas del mes) / 2 (menor cuota anterior) del diseño viejo DESAPARECEN como
+ * fuente del universo y del capital. Sobreviven como concepto para los campos que este cambio
+ * NO toca (interés ordinario/mora/del mes, desgravamen, incendio, calificación,
+ * valorSujetoProvision, provisión, cuenta individual, fechas, montoSolicitado): cada préstamo
+ * sigue necesitando UNA cuota "ancla" para esos campos, redefinida así — la cuota VENCIDA más
+ * antigua si el préstamo tiene mora (equivalente al viejo grupo 2), o la cuota POR VENCER más
+ * próxima si está al día (equivalente al viejo grupo 1). Ver el reporte de la entrega del
+ * 2026-10-13 para el detalle de qué cuota quedó como ancla de cada préstamo.</p>
  */
 @Stateless
 public class GeneracionCCPMServiceImpl implements GeneracionCCPMService {
@@ -39,9 +67,13 @@ public class GeneracionCCPMServiceImpl implements GeneracionCCPMService {
     @EJB private CreditoParticipesMensualService           cprmService;
     @EJB private CreditoCuotasPrestamosMensualDaoService   ccpmDaoService;
     @EJB private EjecucionReporteCarteraService            ejccService;
+    @EJB private CierreCarteraDaoService                   cierreCarteraDaoService;
+    @EJB private ClasificadorBandaService                  clasificadorBandaService;
+    @EJB private ContabilizacionIndividualCreditoService    contabilizacionIndividualCreditoService;
+    @EJB private ConfiguracionBandaProductoDaoService       configuracionBandaProductoDaoService;
 
     @Override
-    public long generar(EjecucionReporteCartera ejecucion) throws Throwable {
+    public long generar(EjecucionReporteCartera ejecucion, Long idEmpresaParametro) throws Throwable {
         System.out.println("Ingresa al metodo generar CCPM");
 
         long mes  = ejecucion.getMes();
@@ -54,15 +86,23 @@ public class GeneracionCCPMServiceImpl implements GeneracionCCPMService {
         // el centavo del cobro 54 y el descuadre del cierre de cartera: un borde escrito con
         // "casi" en vez de exacto.
         LocalDateTime fechaFin    = LocalDate.of((int) anio, (int) mes, ultimoDia).atTime(LocalTime.MAX);
-        LocalDate     fechaFinDate = fechaFin.toLocalDate();
+        LocalDate     corte       = fechaFin.toLocalDate();
 
         System.out.println("CCPM - Rango: " + fechaInicio + " a " + fechaFin);
+
+        // -------------------------------------------------------
+        // 0. Empresa: la manda el frontend; mientras no lo haga, se resuelve sola si hay una
+        //    unica configuracion de bandas vigente.
+        // -------------------------------------------------------
+        Long idEmpresa = idEmpresaParametro != null ? idEmpresaParametro : resolverEmpresaUnicaConBandas(corte);
+        System.out.println("CCPM - Empresa: " + idEmpresa);
 
         // -------------------------------------------------------
         // 1. Cargar valorTotalCuentaIndividual desde CPRM del mismo mes.
         //    El nuevo modelo CPRM tiene UN REGISTRO POR entidad+tipoAporte,
         //    cada uno con su propio campo "total". El valorTotalCuentaIndividual
         //    es la SUMA de todos esos totales para cada entidad.
+        //    (sin cambios respecto de antes de este item)
         // -------------------------------------------------------
         Map<Long, Double> mapaValorCuentaIndividual = new HashMap<>();
         try {
@@ -85,116 +125,168 @@ public class GeneracionCCPMServiceImpl implements GeneracionCCPMService {
         System.out.println("CCPM - provisionConstituida: se establece en 0 (sin dependencia de histórico)");
 
         // -------------------------------------------------------
-        // 3. GRUPO 1: Cuotas con fechaVencimiento en el mes, estado != 7
+        // 3. Universo y capital: el MISMO que el cierre de cartera. Una fila por cuota
+        //    pendiente (CierreCarteraDaoService#selectCuotasPendientesPorPrestamo), agrupada
+        //    por préstamo. Reemplaza los grupos 1/2 de siempre (selectCuotasDelMesGlobal,
+        //    selectMenorCuotaAnteriorAlMesGlobal) como fuente del universo.
         // -------------------------------------------------------
-        List<DetallePrestamo> grupo1 = detallePrestamoService.selectCuotasDelMesGlobal(fechaInicio, fechaFin);
-        System.out.println("CCPM - Grupo 1 (cuotas del mes): " + grupo1.size());
-
-        // -------------------------------------------------------
-        // 4. GRUPO 2: Menor cuota por préstamo anterior al mes
-        // -------------------------------------------------------
-        List<DetallePrestamo> grupo2 = detallePrestamoService.selectMenorCuotaAnteriorAlMesGlobal(fechaInicio, fechaFin);
-        System.out.println("CCPM - Grupo 2 (menor cuota anterior): " + grupo2.size());
-
-        // -------------------------------------------------------
-        // 5. Consolidar evitando duplicados
-        // -------------------------------------------------------
-        Set<Long> prestamosEnGrupo1 = new HashSet<>();
-        for (DetallePrestamo d : grupo1) {
-            if (d.getPrestamo() != null) prestamosEnGrupo1.add(d.getPrestamo().getCodigo());
-        }
-
-        List<DetallePrestamo> cuotasAProcesar = new ArrayList<>(grupo1);
-        for (DetallePrestamo d : grupo2) {
-            if (d.getPrestamo() != null && !prestamosEnGrupo1.contains(d.getPrestamo().getCodigo())) {
-                cuotasAProcesar.add(d);
+        List<Object[]> cuotasPendientes = cierreCarteraDaoService.selectCuotasPendientesPorPrestamo(idEmpresa);
+        Map<Long, List<Object[]>> cuotasPorPrestamo = new LinkedHashMap<>();
+        for (Object[] fila : cuotasPendientes) {
+            Long idPrestamo = (Long) fila[0];
+            List<Object[]> lista = cuotasPorPrestamo.get(idPrestamo);
+            if (lista == null) {
+                lista = new ArrayList<>();
+                cuotasPorPrestamo.put(idPrestamo, lista);
             }
+            lista.add(fila);
         }
-        System.out.println("CCPM - Total cuotas a procesar: " + cuotasAProcesar.size());
+        System.out.println("CCPM - Universo (mismo que el cierre): " + cuotasPorPrestamo.size()
+                + " prestamos, " + cuotasPendientes.size() + " cuotas pendientes");
 
-        if (cuotasAProcesar.isEmpty()) {
+        if (cuotasPorPrestamo.isEmpty()) {
             System.out.println("CCPM - Sin cuotas. CCPM vacío, OK.");
             return 0L;
         }
 
         // -------------------------------------------------------
-        // 5b. Cargar datos del grupo 2 en batch (optimización N+1)
+        // 4. Clasificar cada cuota por banda, con cache de rangos por producto+tipoCartera —
+        //    igual que CierreCarteraServiceImpl#cargaBandas. Solo el lado POR VENCER se
+        //    bandea: CCPM no tiene columnas de banda para el lado VENCIDO.
         // -------------------------------------------------------
-        List<DetallePrestamo> cuotasGrupo2 = new ArrayList<>();
-        for (DetallePrestamo d : cuotasAProcesar) {
-            if (d.getPrestamo() != null && !prestamosEnGrupo1.contains(d.getPrestamo().getCodigo())) {
-                cuotasGrupo2.add(d);
+        Map<String, List<BandaProductoDetalle>> cacheBandas = new HashMap<>();
+
+        Map<Long, Double>   valorPorVencerPorPrestamo  = new HashMap<>();
+        Map<Long, Double>   valorVencidoPorPrestamo    = new HashMap<>();
+        Map<Long, double[]> bandasPorVencerPorPrestamo = new HashMap<>();
+        Map<Long, Long>     diasMorosidadPorPrestamo   = new HashMap<>();
+        Map<Long, Long>     anclaCuotaPorPrestamo      = new HashMap<>();
+        Map<Long, Boolean>  hasVencidaPorPrestamo      = new HashMap<>();
+
+        for (Map.Entry<Long, List<Object[]>> entrada : cuotasPorPrestamo.entrySet()) {
+            Long idPrestamo = entrada.getKey();
+            List<Object[]> cuotas = entrada.getValue();
+            Long idProducto = (Long) cuotas.get(0)[1];
+
+            double valorPorVencer = 0.0;
+            double valorVencido = 0.0;
+            double[] bandasPV = new double[5];
+            long diasMorosidadMax = 0L;
+            Long anclaVencidaId = null;
+            LocalDate anclaVencidaFecha = null;
+            Long anclaPorVencerId = null;
+            LocalDate anclaPorVencerFecha = null;
+
+            for (Object[] c : cuotas) {
+                Long idCuota = (Long) c[2];
+                LocalDate vencimiento = (LocalDate) c[4];
+                Double capitalPendiente = (Double) c[5];
+
+                long[] td = contabilizacionIndividualCreditoService.tipoCarteraYDias(vencimiento, corte);
+                long tipoCartera = td[0];
+                long dias = td[1];
+
+                if (tipoCartera == TipoCarteraBanda.POR_VENCER) {
+                    valorPorVencer += capitalPendiente;
+                    List<BandaProductoDetalle> bandas = bandasDe(idProducto, idEmpresa,
+                            (long) TipoCarteraBanda.POR_VENCER, corte, cacheBandas);
+                    if (bandas.size() > 5) {
+                        throw new IncomeException("CCPM: el producto " + idProducto + " tiene "
+                                + bandas.size() + " bandas POR VENCER configuradas y CCPM solo"
+                                + " tiene columnas para 5 (1a30..Mas360). Hay que decidir como"
+                                + " mapear las bandas sobrantes antes de seguir.");
+                    }
+                    BandaProductoDetalle banda = clasificadorBandaService.clasificarEnBandas(bandas, dias);
+                    int idx = banda.getNumero().intValue() - 1;
+                    if (idx >= 0 && idx < bandasPV.length) {
+                        bandasPV[idx] += capitalPendiente;
+                    }
+                    if (anclaPorVencerFecha == null || vencimiento.isBefore(anclaPorVencerFecha)) {
+                        anclaPorVencerFecha = vencimiento;
+                        anclaPorVencerId = idCuota;
+                    }
+                } else {
+                    valorVencido += capitalPendiente;
+                    if (dias > diasMorosidadMax) {
+                        diasMorosidadMax = dias;
+                    }
+                    if (anclaVencidaFecha == null || vencimiento.isBefore(anclaVencidaFecha)) {
+                        anclaVencidaFecha = vencimiento;
+                        anclaVencidaId = idCuota;
+                    }
+                }
+            }
+
+            boolean hasVencida = anclaVencidaId != null;
+            Long ancla = hasVencida ? anclaVencidaId : anclaPorVencerId;
+
+            valorPorVencerPorPrestamo.put(idPrestamo, valorPorVencer);
+            valorVencidoPorPrestamo.put(idPrestamo, valorVencido);
+            bandasPorVencerPorPrestamo.put(idPrestamo, bandasPV);
+            diasMorosidadPorPrestamo.put(idPrestamo, diasMorosidadMax);
+            hasVencidaPorPrestamo.put(idPrestamo, hasVencida);
+            if (ancla != null) {
+                anclaCuotaPorPrestamo.put(idPrestamo, ancla);
             }
         }
-        System.out.println("CCPM - Cuotas grupo 2 para optimizar: " + cuotasGrupo2.size());
 
-        // Recolectar PKs de las cuotas origen del grupo 2 (sirve para ambos batch)
-        List<Long> codigosCuotasMora = new ArrayList<>();
-        for (DetallePrestamo cuota : cuotasGrupo2) {
-            if (cuota.getPrestamo() != null) {
-                codigosCuotasMora.add(cuota.getCodigo());
+        // -------------------------------------------------------
+        // 5. Campos que este item NO toca (interés ordinario/mora/del mes, desgravamen,
+        //    incendio): misma lógica de siempre, con la ancla redefinida en el paso 4 — la
+        //    cuota vencida más antigua (equivalente al viejo grupo 2) o, si el préstamo está
+        //    al día, se leen directo de la cuota ancla más abajo (equivalente al viejo grupo 1).
+        // -------------------------------------------------------
+        List<Long> anclasConMora = new ArrayList<>();
+        List<Long> prestamosConMora = new ArrayList<>();
+        for (Map.Entry<Long, Boolean> entrada : hasVencidaPorPrestamo.entrySet()) {
+            if (Boolean.TRUE.equals(entrada.getValue())) {
+                Long idPrestamo = entrada.getKey();
+                Long ancla = anclaCuotaPorPrestamo.get(idPrestamo);
+                if (ancla != null) {
+                    anclasConMora.add(ancla);
+                    prestamosConMora.add(idPrestamo);
+                }
             }
         }
 
-        // Ejecutar consultas batch
-        Map<Long, Object[]> mapaSumasGrupo2 = new HashMap<>();
-        if (!codigosCuotasMora.isEmpty()) {
-            List<Object[]> sumasGrupo2 = detallePrestamoService.selectSumaCapitalInteresGrupo2Batch(
-                codigosCuotasMora, fechaInicio, fechaFin
-            );
-            for (Object[] suma : sumasGrupo2) {
+        // suma[0]=codigoPrestamo, [1]=capital (IGNORADO: lo reemplaza valorVencido del paso 4),
+        // [2]=interes, [3]=desgravamen, [4]=incendio.
+        Map<Long, Object[]> mapaSumasConMora = new HashMap<>();
+        if (!anclasConMora.isEmpty()) {
+            List<Object[]> sumas = detallePrestamoService.selectSumaCapitalInteresGrupo2Batch(
+                    anclasConMora, fechaInicio, fechaFin);
+            for (Object[] suma : sumas) {
                 Long codPrest = (Long) suma[0];
-                mapaSumasGrupo2.put(codPrest, new Object[]{suma[1], suma[2], suma[3], suma[4]});
+                mapaSumasConMora.put(codPrest, new Object[]{ suma[2], suma[3], suma[4] });
             }
-            System.out.println("CCPM - Sumas grupo 2 cargadas en batch: " + mapaSumasGrupo2.size());
         }
 
-        Map<Long, Double> mapaMoraGrupo2 = new HashMap<>();
-        if (!codigosCuotasMora.isEmpty()) {
-            List<Object[]> morasGrupo2 = detallePrestamoService.calcularInteresMoraBatch(
-                codigosCuotasMora, fechaFin
-            );
-            for (Object[] mora : morasGrupo2) {
+        Map<Long, Double> mapaMoraConMora = new HashMap<>();
+        if (!anclasConMora.isEmpty()) {
+            List<Object[]> moras = detallePrestamoService.calcularInteresMoraBatch(anclasConMora, fechaFin);
+            for (Object[] mora : moras) {
                 Long codCuota = (Long) mora[0];
                 Double valorMora = mora[1] != null ? (Double) mora[1] : 0.0;
-                mapaMoraGrupo2.put(codCuota, valorMora);
+                mapaMoraConMora.put(codCuota, valorMora);
             }
-            System.out.println("CCPM - Moras grupo 2 cargadas en batch: " + mapaMoraGrupo2.size());
         }
 
-        // Carga batch de la cuota del mes de ejecución para el Grupo 2:
-        // el valorPorVencer del Grupo 2 debe calcularse con saldoInicialCapital - capital
-        // de la cuota que cae DENTRO del mes de ejecución, no de la cuota en mora.
-        // Map<codigoPrestamo, valorPorVencer = saldoInicialCapital - capital>
-        Map<Long, Double> mapaValorPorVencerGrupo2 = new HashMap<>();
-        Map<Long, Double> mapaInteresOrdinarioDelMesGrupo2 = new HashMap<>();
-        if (!cuotasGrupo2.isEmpty()) {
-            List<Long> codsPrestamosGrupo2 = new ArrayList<>();
-            for (DetallePrestamo d : cuotasGrupo2) {
-                if (d.getPrestamo() != null) codsPrestamosGrupo2.add(d.getPrestamo().getCodigo());
+        Map<Long, Double> mapaInteresOrdinarioDelMesConMora = new HashMap<>();
+        if (!prestamosConMora.isEmpty()) {
+            List<Object[]> saldos = detallePrestamoService.selectSaldoInicialCapitalDelMesBatch(
+                    prestamosConMora, fechaInicio, fechaFin);
+            for (Object[] fila : saldos) {
+                Long codPrest = (Long) fila[0];
+                Double interesDelMes = fila[3] != null ? ((Number) fila[3]).doubleValue() : 0.0;
+                mapaInteresOrdinarioDelMesConMora.put(codPrest, interesDelMes);
             }
-            List<Object[]> saldosDelMes = detallePrestamoService.selectSaldoInicialCapitalDelMesBatch(
-                codsPrestamosGrupo2, fechaInicio, fechaFin
-            );
-            for (Object[] fila : saldosDelMes) {
-                Long   codPrest          = (Long)   fila[0];
-                Double saldoInicialCap   = fila[1] != null ? ((Number) fila[1]).doubleValue() : 0.0;
-                Double interesDelMes     = fila[3] != null ? ((Number) fila[3]).doubleValue() : 0.0;
-                // CORRECCIÓN: valorPorVencer = saldoInicialCapital completo de la cuota del mes,
-                // ya que esa cuota NO va a vencido (por política del fondo no está en mora hasta
-                // que pase el último día del mes). El capital del mes queda en "por vencer".
-                mapaValorPorVencerGrupo2.put(codPrest, saldoInicialCap);
-                mapaInteresOrdinarioDelMesGrupo2.put(codPrest, interesDelMes);
-            }
-            System.out.println("CCPM - ValorPorVencer Grupo 2 cargados en batch: " + mapaValorPorVencerGrupo2.size());
         }
 
         // Delta de mora: interesMoraActual - interesMoraEjecucionAnterior (por numeroOperacion).
         // Si es la primera ejecución o no existe registro anterior, el delta queda en 0.
-        // Map<numeroOperacion, interesMoraAnterior>
+        // (sin cambios respecto de antes de este item)
         Map<String, Double> mapaInteresMoraAnterior = new HashMap<>();
         try {
-            // Calcular mes/año de la ejecución anterior
             long mesAnterior  = mes == 1 ? 12 : mes - 1;
             long anioAnterior = mes == 1 ? anio - 1 : anio;
             List<EjecucionReporteCartera> ejecucionesAnteriores =
@@ -218,130 +310,69 @@ public class GeneracionCCPMServiceImpl implements GeneracionCCPMService {
         }
 
         // -------------------------------------------------------
-        // 5c. Desglose de capital por vencer en 5 períodos.
-        //     GRUPO 1: cuotas con fechaVencimiento > fechaFin (posteriores al mes de ejecución).
-        //              Índice 0 = próxima cuota tras el cierre del mes = bucket 1-30 días.
-        //     GRUPO 2: cuotas con fechaVencimiento >= fechaInicio (desde el inicio del mes inclusive),
-        //              porque la cuota del mes NO está en mora y debe ir al bucket 1-30 días (cv30).
-        //              Índice 0 = cuota del mes de ejecución = bucket 1-30 días.
-        // -------------------------------------------------------
-        List<Long> codsPrestamosGrupo1Desglose = new ArrayList<>();
-        List<Long> codsPrestamosGrupo2Desglose = new ArrayList<>();
-        for (DetallePrestamo d : cuotasAProcesar) {
-            if (d.getPrestamo() == null) continue;
-            if (prestamosEnGrupo1.contains(d.getPrestamo().getCodigo())) {
-                codsPrestamosGrupo1Desglose.add(d.getPrestamo().getCodigo());
-            } else {
-                codsPrestamosGrupo2Desglose.add(d.getPrestamo().getCodigo());
-            }
-        }
-
-        Map<Long, List<Double>> mapaCapitalesFuturos = new HashMap<>();
-        Map<Long, Double> mapaSaldoOtrosFuturos = new HashMap<>();
-
-        // Grupo 1: cuotas posteriores al mes de ejecución
-        if (!codsPrestamosGrupo1Desglose.isEmpty()) {
-            List<Object[]> filas = detallePrestamoService.selectCapitalCuotasFuturasBatch(
-                codsPrestamosGrupo1Desglose, fechaFin
-            );
-            for (Object[] fila : filas) {
-                Long   codPrest   = (Long)   fila[0];
-                Double capital    = fila[2] != null ? ((Number) fila[2]).doubleValue() : 0.0;
-                Double saldoOtros = fila[3] != null ? ((Number) fila[3]).doubleValue() : 0.0;
-                mapaCapitalesFuturos.computeIfAbsent(codPrest, k -> new ArrayList<>()).add(capital);
-                mapaSaldoOtrosFuturos.merge(codPrest, saldoOtros, Double::sum);
-            }
-            System.out.println("CCPM - Desglose capital Grupo 1 cargado: " + codsPrestamosGrupo1Desglose.size() + " préstamos");
-        }
-
-        // Grupo 2: desde el inicio del mes inclusive (la cuota del mes cae en cv30)
-        if (!codsPrestamosGrupo2Desglose.isEmpty()) {
-            List<Object[]> filas = detallePrestamoService.selectCapitalCuotasDesdeInicioMesBatch(
-                codsPrestamosGrupo2Desglose, fechaInicio
-            );
-            for (Object[] fila : filas) {
-                Long   codPrest   = (Long)   fila[0];
-                Double capital    = fila[2] != null ? ((Number) fila[2]).doubleValue() : 0.0;
-                Double saldoOtros = fila[3] != null ? ((Number) fila[3]).doubleValue() : 0.0;
-                mapaCapitalesFuturos.computeIfAbsent(codPrest, k -> new ArrayList<>()).add(capital);
-                mapaSaldoOtrosFuturos.merge(codPrest, saldoOtros, Double::sum);
-            }
-            System.out.println("CCPM - Desglose capital Grupo 2 cargado (desde inicio mes): " + codsPrestamosGrupo2Desglose.size() + " préstamos");
-        }
-
-        // -------------------------------------------------------
-        // 6. Por cada cuota → generar un registro en CCPM
+        // 6. Una fila CCPM por préstamo del universo (sin duplicados: cada préstamo aparece
+        //    una sola vez en cuotasPorPrestamo).
         // -------------------------------------------------------
         long contador = 0L;
         Set<String> entidadesConValorAsignado = new HashSet<>();
+        List<String> detalleAnclas = new ArrayList<>();
 
-        for (DetallePrestamo cuota : cuotasAProcesar) {
+        for (Long idPrestamo : cuotasPorPrestamo.keySet()) {
             try {
-                Prestamo prestamo = cuota.getPrestamo();
-                if (prestamo == null) continue;
-
-                boolean esGrupo1 = prestamosEnGrupo1.contains(prestamo.getCodigo());
-
-                // Calcular días de morosidad
-                Long diasMorosidad = 0L;
-                if (cuota.getEstado() != null && !cuota.getEstado().equals(4L)) {
-                    if (cuota.getFechaVencimiento() != null) {
-                        LocalDate fechaVencimiento = cuota.getFechaVencimiento().toLocalDate();
-                        diasMorosidad = ChronoUnit.DAYS.between(fechaVencimiento, fechaFinDate);
-                        if (diasMorosidad < 0) diasMorosidad = 0L;
-                    }
+                Long idAncla = anclaCuotaPorPrestamo.get(idPrestamo);
+                if (idAncla == null) {
+                    System.out.println("CCPM - prestamo " + idPrestamo
+                        + " sin cuota ancla (no deberia pasar con cuotas pendientes) - se omite");
+                    continue;
                 }
-                System.out.println("CCPM LLEGA 10 ");
+                DetallePrestamo ancla = detallePrestamoService.selectById(idAncla);
+                Prestamo prestamo = ancla.getPrestamo();
+                if (prestamo == null) {
+                    continue;
+                }
+
+                boolean hasVencida = Boolean.TRUE.equals(hasVencidaPorPrestamo.get(idPrestamo));
+
+                Double valorPorVencer = valorPorVencerPorPrestamo.getOrDefault(idPrestamo, 0.0);
+                Double valorVencido   = valorVencidoPorPrestamo.getOrDefault(idPrestamo, 0.0);
+                Long   diasMorosidad  = diasMorosidadPorPrestamo.getOrDefault(idPrestamo, 0L);
+                double[] bandasPV     = bandasPorVencerPorPrestamo.get(idPrestamo);
+
                 String calificacionPropia = calcularCalificacion(diasMorosidad,
                     (prestamo.getProducto() != null ? prestamo.getProducto().getCodigo() : null));
 
-                // Valor por vencer:
-                // Grupo 1: saldoInicialCapital - capital de la cuota del mes (la cuota que se está procesando).
-                // Grupo 2: saldoInicialCapital - capital de la cuota que cae DENTRO del mes de ejecución,
-                //          no de la cuota en mora que se está insertando.
-                Double valorPorVencer;
-                if (esGrupo1) {
-                    Double saldoInicialCapital = cuota.getSaldoInicialCapital() != null ? cuota.getSaldoInicialCapital() : 0.0;
-                    Double capitalCuota        = cuota.getCapital()             != null ? cuota.getCapital()             : 0.0;
-                    valorPorVencer = Math.max(0.0, saldoInicialCapital - capitalCuota);
+                // --- Campos NO tocados por este item: misma lógica de siempre, ancla redefinida ---
+                Double interesOrdinario;
+                Double valorDesgravamen;
+                Double valorIncendio;
+                Double interesOrdinarioDelMes;
+                Double interesMora = 0.0;
+
+                if (hasVencida) {
+                    Object[] sumas = mapaSumasConMora.get(prestamo.getCodigo());
+                    interesOrdinario = (sumas != null && sumas[0] != null) ? (Double) sumas[0] : 0.0;
+                    valorDesgravamen = (sumas != null && sumas[1] != null) ? (Double) sumas[1] : 0.0;
+                    valorIncendio    = (sumas != null && sumas[2] != null) ? (Double) sumas[2] : 0.0;
+                    interesOrdinarioDelMes = mapaInteresOrdinarioDelMesConMora.getOrDefault(prestamo.getCodigo(), 0.0);
+                    interesMora = mapaMoraConMora.getOrDefault(idAncla, 0.0);
                 } else {
-                    // Tomar del mapa pre-cargado; si no hay cuota en el mes para ese préstamo → 0
-                    valorPorVencer = mapaValorPorVencerGrupo2.getOrDefault(prestamo.getCodigo(), 0.0);
+                    interesOrdinario      = ancla.getInteres()             != null ? ancla.getInteres()             : 0.0;
+                    valorDesgravamen      = ancla.getDesgravamen()         != null ? ancla.getDesgravamen()         : 0.0;
+                    valorIncendio         = ancla.getValorSeguroIncendio() != null ? ancla.getValorSeguroIncendio() : 0.0;
+                    interesOrdinarioDelMes = interesOrdinario;
                 }
 
-                // Valor vencido, interés ordinario, desgravamen e incendio
-                Double valorVencido = 0.0;
-                Double interesOrdinario = 0.0;
-                Double valorDesgravamen = 0.0;
-                Double valorIncendio    = 0.0;
-                Double interesOrdinarioDelMes = 0.0;
-                System.out.println("CCPM LLEGA 9 ");
-                if (esGrupo1) {
-                    valorVencido          = 0.0;
-                    interesOrdinario      = cuota.getInteres()             != null ? cuota.getInteres()             : 0.0;
-                    valorDesgravamen      = cuota.getDesgravamen()         != null ? cuota.getDesgravamen()         : 0.0;
-                    valorIncendio         = cuota.getValorSeguroIncendio() != null ? cuota.getValorSeguroIncendio() : 0.0;
-                    interesOrdinarioDelMes = interesOrdinario; // Grupo 1: la cuota ya es la del mes
-                } else {
-                    // Obtener del mapa pre-cargado (grupo 2): sumas acumuladas de todas las cuotas vencidas
-                    Object[] sumas = mapaSumasGrupo2.get(prestamo.getCodigo());
-                    if (sumas != null) {
-                        valorVencido     = sumas[0] != null ? (Double) sumas[0] : 0.0;
-                        interesOrdinario = sumas[1] != null ? (Double) sumas[1] : 0.0;
-                        valorDesgravamen = sumas[2] != null ? (Double) sumas[2] : 0.0;
-                        valorIncendio    = sumas[3] != null ? (Double) sumas[3] : 0.0;
-                    }
-                    // interesOrdinarioDelMes: el interés de la cuota con fechaVencimiento dentro del mes
-                    interesOrdinarioDelMes = mapaInteresOrdinarioDelMesGrupo2.getOrDefault(prestamo.getCodigo(), 0.0);
-                }
-                System.out.println("CCPM LLEGA 8 ");
+                detalleAnclas.add("prestamo=" + prestamo.getIdAsoprep() + " (codigo=" + idPrestamo
+                    + ") ancla=" + idAncla + " numeroCuota=" + ancla.getNumeroCuota()
+                    + " vencimiento=" + ancla.getFechaVencimiento()
+                    + " [" + (hasVencida ? "cuota vencida mas antigua" : "cuota por vencer mas proxima") + "]");
 
-                // Valor total cuenta individual
+                // Valor total cuenta individual (sin cambios)
                 Double valorCuentaIndividual = 0.0;
                 String identificacionEntidad = null;
                 if (prestamo.getEntidad() != null) {
                     Long estadoEntidad = prestamo.getEntidad().getIdEstado();
-                    
+
                     // Jubilado complementario: el valor de cuenta individual es siempre 0
                     if (estadoEntidad != null
                             && estadoEntidad == EstadoParticipeEntidad.JUBILADO_COMPLEMENTARIO) {
@@ -356,9 +387,8 @@ public class GeneracionCCPMServiceImpl implements GeneracionCCPMService {
                         }
                     }
                 }
-                System.out.println("CCPM LLEGA 7 ");
-                // Valor sujeto a provisión
-                // max(0, (valorPorVencer + valorVencido) - valorTotalCuentaIndividual)
+
+                // Valor sujeto a provisión: max(0, (valorPorVencer + valorVencido) - valorTotalCuentaIndividual)
                 Double valorSujetoProvision = Math.max(0.0, (valorPorVencer + valorVencido) - valorCuentaIndividual);
 
                 // Provisión requerida original
@@ -367,13 +397,6 @@ public class GeneracionCCPMServiceImpl implements GeneracionCCPMService {
                 // Provisión constituida = 0 (no depender del histórico)
                 Double provisionConstituida = 0.0;
 
-                // Interés mora
-                Double interesMora = 0.0;
-                if (!esGrupo1) {
-                    // Obtener del mapa pre-cargado (grupo 2)
-                    interesMora = mapaMoraGrupo2.getOrDefault(cuota.getCodigo(), 0.0);
-                }
-                System.out.println("CCPM LLEGA 6 ");
                 // Número de operación
                 String numeroOperacion = prestamo.getIdAsoprep() != null
                         ? String.valueOf(prestamo.getIdAsoprep()) : null;
@@ -392,7 +415,7 @@ public class GeneracionCCPMServiceImpl implements GeneracionCCPMService {
                         && !prestamo.getProducto().getNombre().isEmpty()) {
                     ccpm.setTipoCredito(prestamo.getProducto().getNombre());
                 }
-                System.out.println("CCPM LLEGA 5 ");
+
                 ccpm.setDiasMorosidad(diasMorosidad);
                 ccpm.setCalificacionPropia(calificacionPropia);
                 double tasaInteres = (prestamo.getInteresNominal() != null && prestamo.getInteresNominal() > 0.0)
@@ -405,7 +428,6 @@ public class GeneracionCCPMServiceImpl implements GeneracionCCPMService {
                 ccpm.setInteresOrdinarioDelMes(interesOrdinarioDelMes);
                 ccpm.setInteresMora(interesMora);
                 // Delta de mora: max(0, interesMoraActual - interesMoraEjecucionAnterior).
-                // Si es la primera ejecución o no existe registro anterior, queda en 0.
                 double interesMoraAnterior = numeroOperacion != null
                     ? mapaInteresMoraAnterior.getOrDefault(numeroOperacion, 0.0) : 0.0;
                 double interesMoraDelMes = Math.max(0.0, interesMora - interesMoraAnterior);
@@ -417,15 +439,15 @@ public class GeneracionCCPMServiceImpl implements GeneracionCCPMService {
                 ccpm.setProvisionRequeridaOriginal(provisionRequeridaOriginal);
                 ccpm.setProvisionConstituida(provisionConstituida);
                 ccpm.setTipoSistemaAmortizacion("FR");
-                ccpm.setCuotaCredito(cuota.getCuota() != null ? cuota.getCuota() : 0.0);
+                ccpm.setCuotaCredito(ancla.getCuota() != null ? ancla.getCuota() : 0.0);
                 // El dividendo es la cuota a cobrar SIN mora: desde que existe el proceso diario
                 // de mora (ProcesoMoraPrestamoService) DTPRTTLL la incluye, y este reporte ya
                 // lleva la mora en su propia columna. Restarla mantiene el CCPM exactamente
                 // igual que antes y evita reportarla dos veces.
-                ccpm.setDividendo(dividendoSinMora(cuota));
+                ccpm.setDividendo(dividendoSinMora(ancla));
 
-                if (cuota.getFechaVencimiento() != null) {
-                    ccpm.setFechaExigibilidad(cuota.getFechaVencimiento().toLocalDate());
+                if (ancla.getFechaVencimiento() != null) {
+                    ccpm.setFechaExigibilidad(ancla.getFechaVencimiento().toLocalDate());
                 }
 
                 // Fecha del préstamo (PRST.PRSTFCHA)
@@ -441,81 +463,103 @@ public class GeneracionCCPMServiceImpl implements GeneracionCCPMService {
                 // — no lo escribe ninguna línea del backend, así que un null real tiene que
                 // llegar como null hasta el informe, no como un monto de cero.
                 ccpm.setMontoSolicitado(prestamo.getMontoSolicitado());
-                System.out.println("CCPM LLEGA 4 ");
-                // ** ASIGNAR NUEVOS CAMPOS: desgravamen e incendio **
+
                 ccpm.setValorDesgravamen(valorDesgravamen);
                 ccpm.setValorIncendio(valorIncendio);
 
-                // ** ASIGNAR DESGLOSE DE CAPITAL POR VENCER EN PERÍODOS **
-                // Para ambos grupos: cuotas con fechaVencimiento > fechaFin (siguiente al mes de ejecución).
-                // Índice 0 = próxima cuota tras el cierre del mes = bucket 1-30 días.
-                List<Double> capitales = mapaCapitalesFuturos.getOrDefault(prestamo.getCodigo(), new ArrayList<>());
-                Double cv30  = sumarRango(capitales, 0,  0);
-                Double cv90  = sumarRango(capitales, 1,  3);
-                Double cv180 = sumarRango(capitales, 4,  6);
-                Double cv360 = sumarRango(capitales, 7,  11);
-                Double cvMas = sumarRango(capitales, 12, Integer.MAX_VALUE - 1);
-                System.out.println("CCPM LLEGA 3 ");
-                // Sumar saldoOtros a la última banda con valor
-                Double saldoOtrosFuturos = mapaSaldoOtrosFuturos.getOrDefault(prestamo.getCodigo(), 0.0);
-                if (saldoOtrosFuturos > 0.0) {
-                    if      (cvMas > 0.0)  cvMas += saldoOtrosFuturos;
-                    else if (cv360 > 0.0)  cv360 += saldoOtrosFuturos;
-                    else if (cv180 > 0.0)  cv180 += saldoOtrosFuturos;
-                    else if (cv90  > 0.0)  cv90  += saldoOtrosFuturos;
-                    else                   cv30  += saldoOtrosFuturos;
-                }
-
-                // -- CONTROL DE CONSISTENCIA Y AJUSTE FINAL --
-                // Ajustar cualquier diferencia (redondeo, etc.) en la última banda para forzar el cuadre.
-                double sumaDesglose = cv30 + cv90 + cv180 + cv360 + cvMas;
-                double diferencia   = valorPorVencer - sumaDesglose;
-                long   estadoDesglose = 1L; // Asumir que siempre cuadra tras el ajuste
-
-                if (diferencia != 0.0) {
-                    if (Math.abs(diferencia) >= 1.0) {
-                        System.out.println("CCPM ADVERTENCIA prestamo=" + prestamo.getIdAsoprep()
-                            + " | valorPorVencer=" + valorPorVencer
-                            + " | sumaDesglose=" + sumaDesglose
-                            + " | diferencia=" + diferencia + " (se ajustará)");
-                    }
-                    // Absorber la diferencia en el bucket de mayor plazo con saldo > 0.
-                    if      (cvMas > 0.0)  cvMas += diferencia;
-                    else if (cv360 > 0.0)  cv360 += diferencia;
-                    else if (cv180 > 0.0)  cv180 += diferencia;
-                    else if (cv90  > 0.0)  cv90  += diferencia;
-                    else                   cv30  += diferencia;
-                }
-                System.out.println("CCPM LLEGA 2 ");
-
-                ccpm.setCapitalPorVencer1a30(cv30);
-                ccpm.setCapitalPorVencer31a90(cv90);
-                ccpm.setCapitalPorVencer91a180(cv180);
-                ccpm.setCapitalPorVencer181a360(cv360);
-                ccpm.setCapitalPorVencerMas360(cvMas);
-                ccpm.setEstadoDesglose(estadoDesglose);
+                ccpm.setCapitalPorVencer1a30(bandasPV[0]);
+                ccpm.setCapitalPorVencer31a90(bandasPV[1]);
+                ccpm.setCapitalPorVencer91a180(bandasPV[2]);
+                ccpm.setCapitalPorVencer181a360(bandasPV[3]);
+                ccpm.setCapitalPorVencerMas360(bandasPV[4]);
+                // Siempre 1: con la misma fórmula para el total (valorPorVencer, paso 4) y para
+                // el desglose (bandasPV, mismo paso), cuadran por construcción — no hay "ajuste
+                // final" que absorba una diferencia (se eliminó junto con el bloque viejo).
+                ccpm.setEstadoDesglose(1L);
 
                 ccpm.setEjecucionReporte(ejecucion);
 
                 ccpmDaoService.save(ccpm, null);
                 System.out.println("CCPM INSERT prestamo: " + prestamo.getIdAsoprep()
-                    + " cuota: " + cuota.getNumeroCuota()
-                    + " grupo: " + (esGrupo1 ? "1" : "2")
+                    + " ancla: " + idAncla
+                    + " grupo: " + (hasVencida ? "vencido" : "por vencer")
                     + " cv30=" + ccpm.getCapitalPorVencer1a30()
                     + " cv90=" + ccpm.getCapitalPorVencer31a90()
                     + " cv180=" + ccpm.getCapitalPorVencer91a180()
                     + " cv360=" + ccpm.getCapitalPorVencer181a360()
                     + " cvMas=" + ccpm.getCapitalPorVencerMas360());
                 contador++;
-                System.out.println("CCPM LLEGA 1 ");
             } catch (Throwable e) {
-                System.out.println("CCPM ERROR cuota " + cuota.getCodigo() + ": " + e.getMessage());
+                System.out.println("CCPM ERROR prestamo " + idPrestamo + ": " + e.getMessage());
                 e.printStackTrace();
             }
         }
 
         System.out.println("CCPM generado con " + contador + " registros");
+        System.out.println("CCPM - detalle de anclas (item 8, para verificacion del arbitro):");
+        for (String linea : detalleAnclas) {
+            System.out.println("CCPM ANCLA " + linea);
+        }
         return contador;
+    }
+
+    /**
+     * Bandas del producto+tipoCartera, cacheadas — igual que
+     * {@code CierreCarteraServiceImpl#cargaBandas}, pero resolviendo on-demand en vez de
+     * precargar toda la parametrización de la empresa (CCPM solo necesita las combinaciones
+     * que de verdad aparecen en el universo de hoy).
+     */
+    private List<BandaProductoDetalle> bandasDe(Long idProducto, Long idEmpresa, Long tipoCartera,
+            LocalDate corte, Map<String, List<BandaProductoDetalle>> cache) throws Throwable {
+        String clave = idProducto + "-" + tipoCartera;
+        List<BandaProductoDetalle> bandas = cache.get(clave);
+        if (bandas == null) {
+            bandas = clasificadorBandaService.resolverRangos(idProducto, idEmpresa, tipoCartera, corte);
+            cache.put(clave, bandas);
+        }
+        return bandas;
+    }
+
+    /**
+     * Resuelve la empresa cuando quien llama no la indica explícitamente: la única que tenga
+     * configuración de bandas vigente a la fecha. Falla fuerte si hay cero o más de una — hoy
+     * solo existe la empresa 1236, pero el día que haya una segunda, adivinar sería silencioso.
+     *
+     * <p>Fallback deliberado (2026-10-13, DISENO-CCPM-BANDAS-COMO-EL-CIERRE.md §2.1): existe
+     * SOLO hasta que el frontend mande {@code idEmpresa} en la solicitud. {@code selectAll()}
+     * aquí es sobre {@code CRD.CBPR} —la parametrización de bandas, un puñado de filas— no
+     * sobre una tabla transaccional: no es el {@code selectAll()} que CLAUDE.md prohíbe en
+     * procesos de carga/generación/consultas pesadas.</p>
+     */
+    private Long resolverEmpresaUnicaConBandas(LocalDate fecha) throws Throwable {
+        List<ConfiguracionBandaProducto> todas = configuracionBandaProductoDaoService
+                .selectAll(NombreEntidadesCredito.CONFIGURACION_BANDA_PRODUCTO);
+        Set<Long> empresas = new HashSet<>();
+        for (ConfiguracionBandaProducto c : todas) {
+            if (c.getEmpresa() == null || c.getProducto() == null) {
+                continue;
+            }
+            if (c.getEstado() == null || !c.getEstado().equals(Long.valueOf(Estado.ACTIVO))) {
+                continue;
+            }
+            if (c.getFechaDesde() != null && c.getFechaDesde().isAfter(fecha)) {
+                continue;
+            }
+            if (c.getFechaHasta() != null && c.getFechaHasta().isBefore(fecha)) {
+                continue;
+            }
+            empresas.add(c.getEmpresa().getCodigo());
+        }
+        if (empresas.isEmpty()) {
+            throw new IncomeException("CCPM: no hay ninguna empresa con configuracion de bandas"
+                    + " vigente al " + fecha + ". El frontend tiene que enviar idEmpresa explicitamente.");
+        }
+        if (empresas.size() > 1) {
+            throw new IncomeException("CCPM: hay " + empresas.size()
+                    + " empresas con configuracion de bandas vigente (" + empresas
+                    + "); el frontend tiene que enviar idEmpresa explicitamente, no se puede adivinar.");
+        }
+        return empresas.iterator().next();
     }
 
     private Double calcularProvision(Double valorSujetoProvision, String calificacion) {
@@ -534,25 +578,6 @@ public class GeneracionCCPMServiceImpl implements GeneracionCCPMService {
             default:   porcentaje = 0.0;    break;
         }
         return valorSujetoProvision * porcentaje;
-    }
-
-    /**
-     * Suma los elementos de la lista en el rango [desdeIdx, hastaIdx] (ambos inclusivos).
-     * Si el rango excede el tamaño de la lista, suma solo hasta el último elemento disponible.
-     * @param lista    Lista de capitales ordenada por numeroCuota ASC (índice 0 = siguiente cuota tras ejecución)
-     * @param desdeIdx índice de inicio (0-based)
-     * @param hastaIdx índice de fin (0-based, inclusive); usar Integer.MAX_VALUE - 1 para "hasta el final"
-     * @return suma de los capitales en el rango, 0.0 si no hay elementos
-     */
-    private Double sumarRango(List<Double> lista, int desdeIdx, int hastaIdx) {
-        if (lista == null || lista.isEmpty() || desdeIdx >= lista.size()) return 0.0;
-        int fin = Math.min(hastaIdx, lista.size() - 1);
-        double suma = 0.0;
-        for (int i = desdeIdx; i <= fin; i++) {
-            Double v = lista.get(i);
-            if (v != null) suma += v;
-        }
-        return suma;
     }
 
     private String calcularCalificacion(Long diasMorosidad, Long codigoProducto) {

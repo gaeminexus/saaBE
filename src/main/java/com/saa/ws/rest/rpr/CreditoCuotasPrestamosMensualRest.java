@@ -94,4 +94,29 @@ public class CreditoCuotasPrestamosMensualRest {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error en selectByCriteria CreditoCuotasPrestamosMensual: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
     }
+
+    /**
+     * Resumen financiero de crédito por (producto, tipoCartera, banda), para el mes de una
+     * ejecución de reportes de cartera — con la MISMA regla de bandas que el cierre de
+     * cartera (2026-10-13, DISENO-CCPM-BANDAS-COMO-EL-CIERRE.md §2.2). Reemplaza el cálculo
+     * que hoy hace informes-mensuales-credito.component.ts en el navegador.
+     * URL: GET /rest/ccpm/resumenBandas/{idEjcc}
+     */
+    @GET @Path("/resumenBandas/{idEjcc}") @Produces(MediaType.APPLICATION_JSON)
+    public Response resumenBandas(@PathParam("idEjcc") Long idEjcc) {
+        System.out.println("LLEGA AL SERVICIO GET ccpm/resumenBandas/" + idEjcc);
+        try {
+            return Response.status(Response.Status.OK)
+                    .entity(creditoCuotasPrestamosMensualService.resumenBandas(idEjcc))
+                    .type(MediaType.APPLICATION_JSON).build();
+        } catch (jakarta.persistence.NoResultException e) {
+            return Response.status(Response.Status.NOT_FOUND)
+                    .entity("No existe la ejecucion de reportes de cartera (EJCC) " + idEjcc)
+                    .type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error en resumenBandas CreditoCuotasPrestamosMensual: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
 }

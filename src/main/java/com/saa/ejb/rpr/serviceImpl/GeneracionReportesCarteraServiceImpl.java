@@ -29,8 +29,8 @@ public class GeneracionReportesCarteraServiceImpl implements GeneracionReportesC
     @EJB private LimpiezaReportesService                limpiezaReportesService;
 
     @Override
-    public EjecucionReporteCartera ejecutarGeneracion(Long mes, Long anio, String usuario) throws Throwable {
-        System.out.println("Ingresa al metodo ejecutarGeneracion de reportes de cartera - mes: " + mes + ", anio: " + anio + ", usuario: " + usuario);
+    public EjecucionReporteCartera ejecutarGeneracion(Long mes, Long anio, String usuario, Long idEmpresa) throws Throwable {
+        System.out.println("Ingresa al metodo ejecutarGeneracion de reportes de cartera - mes: " + mes + ", anio: " + anio + ", usuario: " + usuario + ", idEmpresa: " + idEmpresa);
 
         // -------------------------------------------------------
         // 1. Validar que no exista una ejecución previa para este mes/año
@@ -106,7 +106,7 @@ public class GeneracionReportesCarteraServiceImpl implements GeneracionReportesC
             System.out.println("========================================");
             System.out.println("Generando CCPM (Crédito Cuotas Préstamos Mensual)...");
             System.out.println("========================================");
-            long registrosCCPM = ccpmService.generar(ejcc);
+            long registrosCCPM = ccpmService.generar(ejcc, idEmpresa);
             observaciones.append("CCPM: ").append(registrosCCPM).append(" registros.");
             totalRegistros += registrosCCPM;
             System.out.println("CCPM completado: " + registrosCCPM + " registros");
@@ -155,7 +155,9 @@ public class GeneracionReportesCarteraServiceImpl implements GeneracionReportesC
         ejccService.remove(ids);
         System.out.println("Ejecución EJCC " + codigoEjecucion + " eliminada");
 
-        // 4. Volver a generar
-        return ejecutarGeneracion(mes, anio, usuario);
+        // 4. Volver a generar. idEmpresa en null: la ejecucion vieja no la guardaba, asi que
+        // CCPM vuelve a resolverla sola (GeneracionCCPMService#generar) igual que una
+        // ejecucion nueva sin empresa explicita.
+        return ejecutarGeneracion(mes, anio, usuario, null);
     }
 }
