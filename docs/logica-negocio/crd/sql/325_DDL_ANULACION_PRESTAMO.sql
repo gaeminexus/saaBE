@@ -94,8 +94,13 @@ BEGIN
       JOIN SCP.PDTR b ON b.PRBRCDGO = a.PRBRCDGO
      WHERE a.PDTRALTR = 7  AND UPPER(a.PDTRDSCR) LIKE '%RECHAZ%'
        AND b.PDTRALTR = 11 AND UPPER(b.PDTRDSCR) LIKE '%MORA%';
+    -- CORREGIDO 2026-10-13: en la base del usuario este rubro NO se encontro (0). El codigo no
+    -- lee los nombres de estado de la base (usa constantes; el FE y los reportes tienen su
+    -- propio mapa), asi que el detalle de catalogo es documental: si no se identifica de forma
+    -- unica, se OMITE y se avisa, en vez de detener el script.
     IF v_n <> 1 THEN
-        RAISE_APPLICATION_ERROR(-20001, 'Rubro de estado del prestamo no identificado de forma unica: ' || v_n);
+        DBMS_OUTPUT.PUT_LINE('AVISO: rubro de estado del prestamo no identificado (' || v_n || '): se omite ANULADO(12)');
+        v_rubro_prestamo := NULL;
     END IF;
 
     SELECT COUNT(DISTINCT a.PRBRCDGO), MIN(a.PRBRCDGO) INTO v_n, v_rubro_cuota
@@ -104,7 +109,8 @@ BEGIN
      WHERE a.PDTRALTR = 7 AND UPPER(a.PDTRDSCR) LIKE '%CANCELAD%'
        AND b.PDTRALTR = 8 AND UPPER(b.PDTRDSCR) LIKE '%VENCID%';
     IF v_n <> 1 THEN
-        RAISE_APPLICATION_ERROR(-20002, 'Rubro de estado de la cuota no identificado de forma unica: ' || v_n);
+        DBMS_OUTPUT.PUT_LINE('AVISO: rubro de estado de la cuota no identificado (' || v_n || '): se omite ANULADA(9)');
+        v_rubro_cuota := NULL;
     END IF;
 
     SELECT COUNT(*) INTO v_n FROM SCP.PDTR
