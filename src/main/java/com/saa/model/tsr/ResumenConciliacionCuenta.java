@@ -26,6 +26,8 @@ import java.time.LocalDateTime;
  * todo" - ambos casos daban totalPendientesExtracto=0 y eran indistinguibles
  * en la pantalla antes de este campo (mismo chequeo de cobertura que ya usa
  * el Tablero de Cumplimiento, ver ExtractoBancarioDaoService.selectCuentasConCobertura).</p>
+ * <p>idExtractoPeriodo: código del extracto ACTIVO de esa cuenta registrado en ESE período
+ * (mismo criterio que recargar y la guarda G-A de confirmar), o null.</p>
  */
 public class ResumenConciliacionCuenta implements Serializable {
 
@@ -39,6 +41,7 @@ public class ResumenConciliacionCuenta implements Serializable {
     private String usuarioVerifica;
     private LocalDateTime fechaVerificacion;
     private Boolean extractoCargado;
+    private Long idExtractoPeriodo;
 
     public CuentaBancaria getCuentaBancaria() {
         return cuentaBancaria;
@@ -102,5 +105,13 @@ public class ResumenConciliacionCuenta implements Serializable {
 
     public void setExtractoCargado(Boolean extractoCargado) {
         this.extractoCargado = extractoCargado;
+    }
+
+    public Long getIdExtractoPeriodo() {
+        return idExtractoPeriodo;
+    }
+
+    public void setIdExtractoPeriodo(Long idExtractoPeriodo) {
+        this.idExtractoPeriodo = idExtractoPeriodo;
     }
 }

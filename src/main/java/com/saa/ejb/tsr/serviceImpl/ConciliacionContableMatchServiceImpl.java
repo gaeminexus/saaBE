@@ -41,6 +41,7 @@ import com.saa.model.tsr.ConciliacionContable;
 import com.saa.model.tsr.CuentaBancaria;
 import com.saa.model.tsr.DetalleExtractoBancario;
 import com.saa.model.tsr.DetalleTransito;
+import com.saa.model.tsr.ExtractoBancario;
 import com.saa.model.tsr.GrupoConciliacionAsiento;
 import com.saa.model.tsr.GrupoConciliacionContable;
 import com.saa.model.tsr.GrupoConciliacionExtracto;
@@ -765,6 +766,11 @@ public class ConciliacionContableMatchServiceImpl implements ConciliacionContabl
             ResumenConciliacionCuenta fila = new ResumenConciliacionCuenta();
             fila.setCuentaBancaria(cuenta);
             fila.setExtractoCargado(conCobertura.contains(cuenta.getCodigo()));
+            // Extracto activo registrado en ESTE periodo: el mismo criterio de recargar y de la guarda G-A
+            // (GUARDA-CARGA-EXTRACTO.md), para que la pantalla decida Confirmar o Recargar igual que el backend.
+            ExtractoBancario delPeriodo = extractoBancarioDaoService
+                    .selectByCuentaYPeriodo(cuenta.getCodigo(), idPeriodo);
+            fila.setIdExtractoPeriodo(delPeriodo != null ? delPeriodo.getCodigo() : null);
 
             ConciliacionContable existente = conciliacionContableDaoService
                     .selectByCuentaYPeriodo(cuenta.getCodigo(), idPeriodo);

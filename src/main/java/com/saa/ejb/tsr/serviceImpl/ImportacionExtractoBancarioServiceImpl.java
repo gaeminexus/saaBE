@@ -168,6 +168,24 @@ public class ImportacionExtractoBancarioServiceImpl implements ImportacionExtrac
         // Guarda 1: debe existir un extracto para poder recargarlo.
         ExtractoBancario anterior = extractoBancarioDaoService.selectByCuentaYPeriodo(idCuentaBancaria, idPeriodo);
         if (anterior == null) {
+            // La pantalla decide por cobertura de fechas y este metodo por periodo (GUARDA-CARGA-EXTRACTO.md,
+            // "Recarga: el MISMO criterio"): si hay un extracto activo de otro periodo que cubre estas
+            // fechas, se dice cual es para que el usuario no quede sin salida.
+            Periodo periodoRecarga = periodoService.selectById(idPeriodo);
+            if (periodoRecarga != null) {
+                List<ExtractoBancario> cubren = extractoBancarioDaoService.selectByCuentaYCobertura(
+                        idCuentaBancaria, periodoRecarga.getPrimerDia(), periodoRecarga.getUltimoDia());
+                DateTimeFormatter fmt = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+                for (ExtractoBancario otro : cubren) {
+                    if (otro.getEstado() != null && otro.getEstado().intValue() == Estado.ACTIVO) {
+                        throw new IncomeException("No hay un extracto cargado en este periodo para esta cuenta. "
+                                + "El extracto #" + otro.getCodigo() + " (\"" + otro.getArchivoNombre()
+                                + "\", del " + otro.getFechaDesde().format(fmt) + " al "
+                                + otro.getFechaHasta().format(fmt) + ") esta registrado en otro periodo. "
+                                + "Use la carga normal (Validar y Confirmar).");
+                    }
+                }
+            }
             throw new IncomeException("No existe un extracto cargado para esta cuenta y este periodo. "
                     + "Use la carga normal (confirmar), no la recarga.");
         }
