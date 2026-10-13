@@ -46,16 +46,17 @@ SELECT r.PRBRCDGO, r.PRBRDSCR, d.PDTRCDGO, d.PDTRALTR, d.PDTRDSCR, d.PDTRESTD
 
 
 -- ==========================================================================
--- BLOQUE 0.C - (!) La secuencia de PDTR no esta atrasada
+-- BLOQUE 0.C - (!) Codigos libres en el bloque de omen-saa-1 (PDTR 1300-1399)
 -- ==========================================================================
--- Los detalles nuevos de un rubro EXISTENTE se toman por NEXTVAL (mismo criterio que el
--- registro de reservas aplico a los detalles 34/35 del rubro 221), no del bloque reservado.
-SELECT s.LAST_NUMBER AS PROXIMO_SECUENCIA,
-       (SELECT MAX(PDTRCDGO) FROM SCP.PDTR) AS MAX_PDTRCDGO,
-       CASE WHEN s.LAST_NUMBER > (SELECT MAX(PDTRCDGO) FROM SCP.PDTR)
-            THEN 'OK' ELSE 'ATRASADA - descomentar el ajuste del bloque 2' END AS ESTADO
-  FROM ALL_SEQUENCES s
- WHERE s.SEQUENCE_OWNER = 'SCP' AND s.SEQUENCE_NAME = 'SQ_PDTRCDGO';
+-- CORREGIDO 2026-10-13: SCP.SQ_PDTRCDGO NO EXISTE en la base (ORA-02289 al correr la primera
+-- version). Como los scripts 70/81/83/87/97, el PK se da explicito, del bloque reservado al
+-- equipo en REGISTRO-RESERVAS-EQUIPOS.md §2 (CRD EQUIPO B = omen-saa-1: 1300-1399).
+SELECT NVL(MAX(PDTRCDGO), 1299) AS ULTIMO_USADO_DEL_BLOQUE,
+       NVL(MAX(PDTRCDGO), 1299) + 1 AS PROXIMO,
+       NVL(MAX(PDTRCDGO), 1299) + 2 AS SIGUIENTE
+  FROM SCP.PDTR
+ WHERE PDTRCDGO BETWEEN 1300 AND 1399;
+-- (!) PROXIMO y SIGUIENTE tienen que ser <= 1399. Son los que usa el bloque 2.
 
 
 -- ==========================================================================
@@ -79,26 +80,15 @@ COMMENT ON COLUMN CRD.PRST.PRSTMTAN IS 'Motivo de la anulacion';
 -- ==========================================================================
 -- BLOQUE 2 - Estado 12 ANULADO (prestamo) y 9 ANULADA (cuota)
 -- ==========================================================================
--- Copia la fila molde (alterno 7 de cada rubro) y solo cambia PK, alterno y nombre.
+-- Toma del molde (alterno 7 de cada rubro) el rubro y el estado; PK del bloque del equipo.
 -- Se detiene con error si no identifica cada rubro de forma unica, o si el alterno nuevo
 -- ya existe. Correr el bloque PL/SQL completo.
 DECLARE
     v_rubro_prestamo NUMBER;
     v_rubro_cuota    NUMBER;
     v_n              NUMBER;
-    -- Ajuste de secuencia: solo si el 0.C dijo ATRASADA, descomentar estas dos lineas.
-    -- v_max NUMBER; v_sig NUMBER;
+    v_pk             NUMBER;
 BEGIN
-    -- BEGIN ajuste opcional de secuencia
-    -- SELECT MAX(PDTRCDGO) INTO v_max FROM SCP.PDTR;
-    -- SELECT SCP.SQ_PDTRCDGO.NEXTVAL INTO v_sig FROM DUAL;
-    -- IF v_sig <= v_max THEN
-    --   EXECUTE IMMEDIATE 'ALTER SEQUENCE SCP.SQ_PDTRCDGO INCREMENT BY ' || (v_max - v_sig + 1);
-    --   SELECT SCP.SQ_PDTRCDGO.NEXTVAL INTO v_sig FROM DUAL;
-    --   EXECUTE IMMEDIATE 'ALTER SEQUENCE SCP.SQ_PDTRCDGO INCREMENT BY 1';
-    -- END IF;
-    -- END ajuste opcional
-
     SELECT COUNT(DISTINCT a.PRBRCDGO), MIN(a.PRBRCDGO) INTO v_n, v_rubro_prestamo
       FROM SCP.PDTR a
       JOIN SCP.PDTR b ON b.PRBRCDGO = a.PRBRCDGO
@@ -124,18 +114,26 @@ BEGIN
         RAISE_APPLICATION_ERROR(-20003, 'El alterno 12 (prestamo) o 9 (cuota) ya existe: no se vuelve a crear');
     END IF;
 
+    -- PK explicito del bloque 1300-1399 (no hay secuencia).
+    SELECT NVL(MAX(PDTRCDGO), 1299) + 1 INTO v_pk FROM SCP.PDTR WHERE PDTRCDGO BETWEEN 1300 AND 1399;
+    IF v_pk + 1 > 1399 THEN
+        RAISE_APPLICATION_ERROR(-20004, 'Bloque PDTR 1300-1399 agotado');
+    END IF;
+
+    -- Se copia del molde (alterno 7) solo PRBRCDGO y PDTRESTD. Valor numerico = alterno y
+    -- valor texto = el codigo, como en los demas detalles de rubro (scripts 81/83/87/97).
     INSERT INTO SCP.PDTR (PDTRCDGO, PRBRCDGO, PDTRDSCR, PDTRVLRN, PDTRVLRV, PDTRALTR, PDTRESTD)
-    SELECT SCP.SQ_PDTRCDGO.NEXTVAL, d.PRBRCDGO, 'ANULADO', d.PDTRVLRN, d.PDTRVLRV, 12, d.PDTRESTD
+    SELECT v_pk, d.PRBRCDGO, 'ANULADO', 12, 'ANULADO', 12, d.PDTRESTD
       FROM SCP.PDTR d
      WHERE d.PRBRCDGO = v_rubro_prestamo AND d.PDTRALTR = 7;
 
     INSERT INTO SCP.PDTR (PDTRCDGO, PRBRCDGO, PDTRDSCR, PDTRVLRN, PDTRVLRV, PDTRALTR, PDTRESTD)
-    SELECT SCP.SQ_PDTRCDGO.NEXTVAL, d.PRBRCDGO, 'ANULADA', d.PDTRVLRN, d.PDTRVLRV, 9, d.PDTRESTD
+    SELECT v_pk + 1, d.PRBRCDGO, 'ANULADA', 9, 'ANULADA', 9, d.PDTRESTD
       FROM SCP.PDTR d
      WHERE d.PRBRCDGO = v_rubro_cuota AND d.PDTRALTR = 7;
 
-    DBMS_OUTPUT.PUT_LINE('Rubro prestamo ' || v_rubro_prestamo || ' + ANULADO(12); rubro cuota '
-                         || v_rubro_cuota || ' + ANULADA(9)');
+    DBMS_OUTPUT.PUT_LINE('PDTR ' || v_pk || ': rubro ' || v_rubro_prestamo || ' ANULADO(12); PDTR '
+                         || (v_pk + 1) || ': rubro ' || v_rubro_cuota || ' ANULADA(9)');
 END;
 /
 
@@ -157,7 +155,7 @@ SELECT d.PRBRCDGO, d.PDTRCDGO, d.PDTRALTR, d.PDTRDSCR, d.PDTRESTD
  WHERE (d.PDTRALTR = 12 AND d.PDTRDSCR = 'ANULADO')
     OR (d.PDTRALTR = 9  AND d.PDTRDSCR = 'ANULADA')
  ORDER BY d.PRBRCDGO;
--- (!) 2 filas, cada una en el rubro que mostro el bloque 0.B, con el mismo PDTRESTD que su molde.
+-- (!) 2 filas, cada una en el rubro que mostro el bloque 0.B, con PDTRCDGO en 1300-1399.
 
 
 -- ==========================================================================
