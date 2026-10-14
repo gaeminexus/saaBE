@@ -23,7 +23,7 @@ services:
       - "1531:1521"          # producción sigue en 1521 y el cuadre en 1522
     environment:
       ORACLE_PWD: ${PRUEBAS_PWD}
-      PROD_HOST: host.docker.internal
+      PROD_HOST: ${PROD_HOST:-host.docker.internal}   # en .2.3: 192.168.2.4 (ver .env.example)
       PROD_PORT: "1521"
       PROD_SERVICE: FREEPDB1
       PROD_SYSTEM_PWD: ${PROD_SYSTEM_PWD}
