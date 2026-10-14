@@ -22,6 +22,7 @@
 | 9 | Página comercial de SAA para gaeminexus.com | ✅ prototipo y `index.html` entregados; publicar es del usuario | — |
 | 11 | rpr — provisiones del G48 y del resumen financiero (CCPM): un campo sale siempre en 0 | 🔵 diagnosticado en código; e3-11 (solo lectura) para medir. Toca `rpr`/crd, territorio de `omen-saa-1` (CCPM lo rediseña `laptop1`, `8ee56349`): **coordinar antes de despachar** | e3-11 |
 | 10 | regulatorio — `CAMBIOS-SAA.md` (cuadre con la Superintendencia de Bancos) | 🔵 C1 entregado (periodos ordenados por fecha), C6 inventariado. **Bloqueado:** carpeta `cuadreSuper` y coordinación con `omen-saa-1` para C3/C4/C6/C8. Plan en `docs/regulatorio/PLAN-CAMBIOS-SAA-OMEN3.md` | `d88ba7e2`, saaFE `b448367`, e3-08/e3-09 |
+| 12 | infra — ambientes de prueba en los servidores del cliente | 🔵 `.2.4` listo (ASOPREP CUADRE, 8180, base 1531); `.2.3` clonando. **Falta:** interruptor de correo (no facturar en pruebas), `saa-uploads`. Bitácora en `docs/infra/AMBIENTES-PRUEBA-SERVIDORES-CLIENTE.md` | `e409ef62`, `6801d9ef`, `fa8d0d7c`, `704ec2de` |
 
 ## Hallazgos (lo que costaba ver)
 
@@ -43,3 +44,5 @@
   saldo contable de `1.3.99.xx`; y si la EJRC más reciente del mes anterior tiene el EJRD de G48 sin
   filas, todo el mes sale en 0 sin aviso (`GeneracionG48ServiceImpl.cargarProvisionAnterior`).
 - **La nómina consolidada (`RHH_NOMINA`) se aprueba con Débito automático**, no por transferencia: el archivo por empleado lo arma RRHH, no Tesorería. El mensaje de la guarda no lo dice (mejora pendiente, `PagoProgramadoServiceImpl` es territorio común).
+- **`SCP.PJRQ` tiene dos empresas `ASOPREP` (1236 y 1237) y además guarda los usuarios**; la sesión usa la 1236 escrita a mano en el login del FE. Cualquier `UPDATE` por nombre en `PJRQ` toca más de lo que parece.
+- **Un WildFly de pruebas copiado de producción sigue apuntando al 1521 si se olvida una línea**: se verifica por las conexiones TCP del proceso (`jboss.home.dir` → puerto), no por el XML.

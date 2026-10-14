@@ -1,6 +1,6 @@
 # Ambientes de prueba en los servidores del cliente (`.2.4` y `.2.3`)
 
-**Autor:** `omen-saa-3-arb` · **Fecha:** 2026-10-13 · **Estado:** diseño, nada ejecutado todavía.
+**Autor:** `omen-saa-3-arb` · **Fecha:** 2026-10-13 · **Estado:** `.2.4` montado y en uso (ASOPREP CUADRE) el 2026-10-14; `.2.3` en montaje. Lo que de verdad se hizo está en **«Cómo quedó»** al final: manda sobre los pasos de diseño.
 
 ## Qué se quiere
 
@@ -139,3 +139,47 @@ Los usuarios van a confundir pruebas con producción.
 
 Se repiten los pasos 1, 3 y la neutralización: borrar los esquemas en pruebas y volver a importar.
 Conviene un `.bat` por servidor cuando el procedimiento quede probado.
+
+## Cómo quedó (bitácora 2026-10-13/14, ejecutado por el usuario por escritorio remoto)
+
+Archivos: `docs/infra/pruebas/` (copiados a `D:\saa-pruebas` en cada servidor).
+
+| | `.2.4` (producción) | `.2.3` (`SRVDEV1`) |
+|---|---|---|
+| Base de producción | contenedor **`saa-oracle-23ai`** (Docker Desktop lo muestra como `oracle-23ai`, que es el *servicio*), 1521 | no hay; clona la del `.2.4` por la red (`PROD_HOST=192.168.2.4`) |
+| Base de pruebas | `saa-pruebas`, 1531, volumen `saa-pruebas_saa-pruebas-data` | ídem |
+| WildFly de pruebas | `D:\wildfly38-pruebas` (copia de `D:\wildfly38`), +100: 8180 / 8543 / 10090 | copia del de pruebas del `.2.4`; arranca con `-b 0.0.0.0` |
+| Nombre de empresa (`SCP.PJRQ` 1236) | **ASOPREP CUADRE** ✅ | **ASOPREP PRUEBAS** |
+| Firewall | — | 8180 abierto (la consola 10090 queda solo en `127.0.0.1`) |
+| Otros en el servidor | `D:\Seguridad\Seguridad2\seguridad2.jar` también conecta al 1521 de producción (ajeno) | contenedores `asoprep-*` (.NET + SQL Server, de `D:soprepApp`), apagados; no se tocan |
+
+Lo que difiere del diseño, aprendido en el montaje:
+
+1. **La imagen `database/free` trae la base prearmada y se salta `setup/`**: el clon no corre solo.
+   Se lanza a mano, con la clave de SYSTEM de producción por variable de entorno (nunca en el `.env`):
+   ```powershell
+   $s = Read-Host 'Clave de SYSTEM de produccion' -AsSecureString
+   $env:PROD_SYSTEM_PWD = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($s))
+   docker exec -e PROD_SYSTEM_PWD saa-pruebas bash /opt/oracle/scripts/setup/01-clonar-produccion.sh
+   $env:PROD_SYSTEM_PWD = $null
+   ```
+2. **No hay database link como SYS** (ORA-28009): el enlace es como SYSTEM. `clonar-produccion-a-pruebas.ps1`
+   (expdp como sys + `docker cp`) queda como alternativa, no se llegó a usar.
+3. **WildFly de pruebas**: única edición del XML = `connection-url` → `@localhost:1531/FREEPDB1`. Todo lo
+   demás va al final de `bin\standalone.conf.bat`:
+   `-Djboss.socket.binding.port-offset=100 -Dsaa.upload.dir=D:/saa-pruebas/uploads/ -Duser.home=D:/saa-pruebas/home -Xms1024m -Xmx2048m -XX:MetaspaceSize=256m -XX:MaxMetaspaceSize=1024m`.
+   Antes del primer arranque se borran `standalone\log`, `tmp`, `data	x-object-store`, `data	imer-service-data`.
+4. **Nombre de empresa**: `SCP.PJRQ` guarda empresas *y* usuarios, y producción tiene **dos** filas
+   `ASOPREP` (1236 nivel 2, 1237 nivel 1). La sesión usa la **1236**, fija en saaFE
+   `login.component.ts:31`. Script: `pruebas/sql/renombrar-empresa-pruebas.sql`. El navegador guarda el
+   nombre al iniciar sesión: hay que salir y cerrar todas las ventanas para verlo.
+5. **Comprobar a qué base va cada WildFly** (cada `jboss.home.dir` con un solo puerto: 1521 producción, 1531 pruebas):
+   ```powershell
+   Get-NetTCPConnection -State Established -RemotePort 1521,1531 |
+     ForEach-Object { $p = Get-CimInstance Win32_Process -Filter "ProcessId=$($_.OwningProcess)"; [pscustomobject]@{Puerto=$_.RemotePort; Ruta=($p.CommandLine -replace '.*-Djboss.home.dir=("?)([^" ]+).*','$2')} } |
+     Sort-Object Puerto, Ruta -Unique
+   ```
+6. **Docker Desktop vive en la sesión de Windows** de quien lo abrió: cerrar sesión (no desconectar) apaga las bases de pruebas.
+
+Pendiente: interruptor de correo en pruebas (`EmailFacturaServiceImpl`, sin decidir; mientras tanto **no
+emitir facturas** en pruebas), copia de `saa-uploads`, consola con usuario propio, servicio de Windows.
