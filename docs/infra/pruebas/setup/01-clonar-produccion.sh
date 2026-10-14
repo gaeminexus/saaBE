@@ -1,7 +1,8 @@
 #!/bin/bash
 # =============================================================================================
-# Clona los esquemas del SAA de producción en esta base de PRUEBAS (solo en el PRIMER arranque).
-# Lo ejecuta la imagen de Oracle después de crear la base (/opt/oracle/scripts/setup).
+# Clona los esquemas del SAA de producción en esta base de PRUEBAS (base vacía).
+# La imagen database/free trae la base prearmada y NO corre /opt/oracle/scripts/setup: se lanza a
+# mano con docker exec (ver docs/infra/pruebas/REFRESCAR-PRUEBAS.md).
 #
 # Producción SOLO se LEE: un database link de esta base hacia producción, e impdp con
 # NETWORK_LINK y FLASHBACK_TIME (foto coherente, sin archivo de dump y sin detener nada).
@@ -27,6 +28,17 @@ clon_principal() {
 
   if [ -z "$PROD_SYSTEM_PWD" ]; then
     echo "=== CLON DE PRODUCCION: falta PROD_SYSTEM_PWD en el .env; la base queda VACIA" | tee -a "$CLON_LOG"
+    return
+  fi
+
+  # 0. Solo sobre una base VACÍA: con los esquemas ya creados, impdp SALTA las tablas existentes y
+  #    pruebas se quedaría con datos viejos aunque el control parezca bueno. Para refrescar, vaciar
+  #    antes con sql/borrar-esquemas-pruebas.sql.
+  local existentes
+  existentes=$(clon_sql "select count(*) from dba_users where oracle_maintained = 'N' and username <> 'PDBADMIN';" | tr -d '[:space:]')
+  if [ "$existentes" != "0" ]; then
+    echo "=== CLON DE PRODUCCION: esta base ya tiene $existentes esquema(s). No se clona encima." | tee -a "$CLON_LOG"
+    echo "=== Para refrescar: detener el WildFly de pruebas y correr sql/borrar-esquemas-pruebas.sql" | tee -a "$CLON_LOG"
     return
   fi
 
@@ -65,6 +77,19 @@ end;
   # 4. Importación directa desde producción
   impdp "$CLON_CONN" network_link=PROD schemas="$esquemas" flashback_time=systimestamp \
         nologfile=y 2>&1 | tee -a "$CLON_LOG"
+
+  # 4b. Estadísticas: por network_link las de los índices no se importan (ORA-20000 «Unable to set
+  #     values for index», ~100 avisos inofensivos). Sin ellas el optimizador consulta a ciegas.
+  echo "=== Recalculando estadisticas de $esquemas" | tee -a "$CLON_LOG"
+  clon_sql "
+begin
+  for e in (select regexp_substr('$esquemas', '[^,]+', 1, level) s from dual
+            connect by regexp_substr('$esquemas', '[^,]+', 1, level) is not null) loop
+    dbms_stats.gather_schema_stats(e.s, cascade => true);
+    dbms_output.put_line('estadisticas OK: ' || e.s);
+  end loop;
+end;
+/" | tee -a "$CLON_LOG"
 
   # 5. Control: mismas filas aquí y en producción (antes de borrar el enlace)
   clon_sql "
