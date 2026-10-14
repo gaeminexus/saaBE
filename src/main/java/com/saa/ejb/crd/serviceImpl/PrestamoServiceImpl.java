@@ -398,6 +398,18 @@ public class PrestamoServiceImpl implements PrestamoService {
                 + " no tiene un monto solicitado válido; no se puede aprobar.");
         }
 
+        // GA2: un prendario o hipotecario sin suma asegurada no registra su garantía en cuentas
+        // de orden. Se rechaza ANTES de numerar y de contabilizar, para no perder ningún idAsoprep.
+        // La familia se resuelve igual que la plantilla de entrega (Producto.tipoPrestamo.nombre).
+        String tipoPrestamoNombre = (prestamo.getProducto() != null && prestamo.getProducto().getTipoPrestamo() != null
+            && prestamo.getProducto().getTipoPrestamo().getNombre() != null)
+            ? prestamo.getProducto().getTipoPrestamo().getNombre().trim().toUpperCase() : "";
+        if (("PRENDARIO".equals(tipoPrestamoNombre) || "HIPOTECARIO".equals(tipoPrestamoNombre))
+                && (prestamo.getValorAsegurado() == null || prestamo.getValorAsegurado() <= 0.0)) {
+            throw new IncomeException("Falta la suma asegurada del bien: sin ella no se registra la garantía"
+                + " en cuentas de orden");
+        }
+
         // Reestructuración / novación: recalcula el VS y aplica RN7 y RN8 ANTES de gastar el número.
         ContextoSustitucion sustitucion = prestamo.getIdPrestamoOriginal() != null
             ? sustitucionPrestamoService.prepararAprobacion(prestamo) : null;

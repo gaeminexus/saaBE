@@ -1116,18 +1116,18 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
                     + " desbalanceado.");
         }
 
-        // ⚠️ "El bien" (aux1=8 en 9/13, ausente en 34): esta línea depende de
-        // Prestamo.valorAsegurado (PRSTVLAS), y esa columna NO TIENE ESCRITOR HOY —
-        // verificado por el árbitro el 2026-09-01 (ESTADO-EQUIPO-SEGUROS.md §1.3: una de
-        // las cuatro columnas de seguro de CRD.PRST mapeadas y presentes en la base que
-        // nadie escribe). Mientras eso no cambie, valorBien siempre da 0 y esta línea
-        // NUNCA se genera — un prendario o hipotecario queda sin registrar su garantía en
-        // cuentas de orden, y el asiento cuadra igual (no avisa: es justamente el modo de
-        // falla que este diseño evita en todo lo demás). No es un bug de este método: leer
-        // valorAsegurado era lo razonable con el código de hoy. Pendiente de sql/157
-        // bloque 6 antes del primer prendario/hipotecario real — no bloquea quirografario
-        // (sin línea de bien).
+        // "El bien" (aux1=8 en 9/13, ausente en 34): esta línea depende de
+        // Prestamo.valorAsegurado (PRSTVLAS). Hoy lo escriben SumaAseguradaService (pólizas)
+        // y el ingreso del préstamo (saveSingle). aprobar() ya rechaza con 422 un prendario o
+        // hipotecario sin suma asegurada; aquí queda como defensa: si la plantilla tiene línea
+        // de bien y el valor es <= 0, se falla con mensaje en vez de omitir la línea, porque
+        // omitirla dejaba la garantía sin registrar en cuentas de orden y el asiento cuadraba igual.
         double valorBien = (mapeo.auxBien() != null) ? redondear(nvl(prestamo.getValorAsegurado())) : 0.0;
+        if (mapeo.auxBien() != null && valorBien <= 0.0) {
+            throw new IncomeException("Falta la suma asegurada del bien del préstamo "
+                    + prestamo.getCodigo() + ": sin ella no se registra la garantía en cuentas de orden."
+                    + " No se genera el asiento de entrega.");
+        }
 
         // DEBE: cuenta de orden "cartera de créditos" — espeja el DEBE real (totalCapital) MÁS
         // el valor del bien, para cuadrar contra las dos líneas HABER de garantía de abajo.

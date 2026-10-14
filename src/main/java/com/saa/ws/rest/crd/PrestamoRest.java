@@ -397,6 +397,10 @@ public class PrestamoRest {
                     .type(MediaType.APPLICATION_JSON)
                     .build();
         } catch (Throwable e) {
+            // GA2: un rechazo de regla de negocio (IncomeException) sale 422 con { mensaje }.
+            if (e instanceof com.saa.basico.util.IncomeException) {
+                return respuestaErrorNegocio(e);
+            }
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("Error al aprobar el préstamo: " + e.getMessage())
                     .type(MediaType.APPLICATION_JSON)
