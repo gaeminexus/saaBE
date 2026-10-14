@@ -12,9 +12,11 @@
 --   Ningun codigo compara el texto 'ASOPREP' de la empresa (el "ASOPREP" del archivo Petro es
 --   una constante aparte, GeneracionArchivoPetroServiceImpl:81).
 --
--- OJO: SCP.PJRQ guarda empresas Y usuarios (com.saa.model.scp.Usuario mapea la misma tabla).
---      Por eso se cambia UNA sola fila, la llamada exactamente 'ASOPREP'; si hay 0 o mas de 1,
---      no se cambia nada.
+-- OJO: SCP.PJRQ guarda empresas Y usuarios (com.saa.model.scp.Usuario mapea la misma tabla), y en
+--      produccion hay DOS filas llamadas 'ASOPREP' (1236 nivel 2 y 1237 nivel 1, visto en el .4 el
+--      2026-10-14). La empresa de la sesion esta fija en el login: const EMPRESA = 1236
+--      (saaFE login.component.ts:31). Por eso se cambia SOLO PJRQCDGO = 1236, y solo si todavia se
+--      llama 'ASOPREP'.
 --
 -- Guardas:
 --   1. Se corre SIEMPRE con "docker exec -i saa-pruebas ...": la conexion es la del contenedor de
@@ -34,6 +36,7 @@
 
 whenever sqlerror exit failure rollback
 set serveroutput on feedback off verify off heading on pages 100 lines 200
+column PJRQNMBR format a40
 
 prompt === ANTES: filas de SCP.PJRQ que contienen ASOPREP
 select PJRQCDGO, PJRQNMBR, PJRQNVLL, PJRQCDPD from SCP.PJRQ
@@ -53,12 +56,15 @@ begin
     raise_application_error(-20002, 'hay ' || v_prod || ' facturador(es) en ambiente SRI de PRODUCCION: esta base NO parece la de pruebas. No se cambia nada.');
   end if;
 
-  select count(*) into v_filas from SCP.PJRQ where PJRQNMBR = 'ASOPREP';
+  select count(*) into v_filas from SCP.PJRQ where PJRQCDGO = 1236 and PJRQNMBR = 'ASOPREP';
   if v_filas <> 1 then
-    raise_application_error(-20003, 'se esperaba exactamente 1 fila con PJRQNMBR = ''ASOPREP'' y hay ' || v_filas || '. No se cambia nada; pega la lista de ANTES.');
+    raise_application_error(-20003, 'la fila PJRQCDGO = 1236 no existe o ya no se llama ''ASOPREP''. No se cambia nada; pega la lista de ANTES.');
   end if;
 
-  update SCP.PJRQ set PJRQNMBR = v_nombre where PJRQNMBR = 'ASOPREP';
+  update SCP.PJRQ set PJRQNMBR = v_nombre where PJRQCDGO = 1236 and PJRQNMBR = 'ASOPREP';
+  if sql%rowcount <> 1 then
+    raise_application_error(-20004, 'se cambiaron ' || sql%rowcount || ' filas en vez de 1. Se deshace.');
+  end if;
   dbms_output.put_line('filas cambiadas: ' || sql%rowcount || '  ->  ' || v_nombre);
   commit;
 end;
@@ -72,6 +78,6 @@ exit
 
 -- ---------------------------------------------------------------------------------------------
 -- REVERSO (solo en la base de pruebas, con el mismo docker exec):
---   update SCP.PJRQ set PJRQNMBR = 'ASOPREP' where PJRQNMBR in ('ASOPREP CUADRE', 'ASOPREP PRUEBAS');
+--   update SCP.PJRQ set PJRQNMBR = 'ASOPREP' where PJRQCDGO = 1236 and PJRQNMBR in ('ASOPREP CUADRE', 'ASOPREP PRUEBAS');
 --   commit;
 -- ---------------------------------------------------------------------------------------------
