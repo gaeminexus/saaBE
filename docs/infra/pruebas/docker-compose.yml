@@ -1,0 +1,42 @@
+# Base de PRUEBAS del SAA: copia de producción en su propio contenedor.
+# Diseño: docs/infra/AMBIENTES-PRUEBA-SERVIDORES-CLIENTE.md
+#
+# Uso (en el servidor, desde ESTA carpeta, nunca desde la de producción):
+#   1. copiar .env.example como .env y llenar las claves
+#   2. docker compose up -d
+#   3. docker logs -f saa-pruebas    → esperar "CLON DE PRODUCCION TERMINADO"
+#
+# La primera vez el contenedor crea la base vacía y luego corre setup/01-clonar-produccion.sh,
+# que importa los esquemas del SAA directamente desde producción (Data Pump por database link,
+# sin archivo intermedio y sin detener producción). Las siguientes veces solo arranca.
+#
+# ⛔ El "name" de abajo separa este proyecto del de producción ("saa"). No lo cambies:
+#    con el mismo nombre, un "docker compose down" aquí podría bajar la base de producción.
+name: saa-pruebas
+
+services:
+  saa-pruebas:
+    image: ${IMAGEN_ORACLE}
+    container_name: saa-pruebas
+    restart: unless-stopped
+    ports:
+      - "1531:1521"          # producción sigue en 1521 y el cuadre en 1522
+    environment:
+      ORACLE_PWD: ${PRUEBAS_PWD}
+      PROD_HOST: host.docker.internal
+      PROD_PORT: "1521"
+      PROD_SERVICE: FREEPDB1
+      PROD_SYSTEM_PWD: ${PROD_SYSTEM_PWD}
+    volumes:
+      - saa-pruebas-data:/opt/oracle/oradata
+      - ./setup:/opt/oracle/scripts/setup:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD-SHELL", "echo 'SELECT 1 FROM DUAL;' | sqlplus -S system/$$ORACLE_PWD@localhost:1521/FREEPDB1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+volumes:
+  saa-pruebas-data:

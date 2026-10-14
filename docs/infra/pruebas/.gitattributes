@@ -1,0 +1,2 @@
+# bash dentro del contenedor no tolera CRLF: los .sh se quedan con LF también en Windows
+*.sh text eol=lf
