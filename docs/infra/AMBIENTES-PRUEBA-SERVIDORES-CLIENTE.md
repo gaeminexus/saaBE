@@ -9,8 +9,8 @@ idéntica a la de producción:
 
 | Servidor | Hoy tiene | Se agrega |
 |---|---|---|
-| `192.168.2.4` (**PRODUCCIÓN**) | Docker con la base de producción, WildFly en `D:` | contenedor `saa-oracle-pruebas` + WildFly de pruebas en `D:` |
-| `192.168.2.3` | Docker, WildFly en `D:` | contenedor `saa-oracle-pruebas` + WildFly de pruebas en `D:` |
+| `192.168.2.4` (**PRODUCCIÓN**) | Docker con la base de producción, WildFly en `D:` | contenedor `saa-pruebas` + WildFly de pruebas en `D:` |
+| `192.168.2.3` | Docker, WildFly en `D:` | contenedor `saa-pruebas` + WildFly de pruebas en `D:` |
 
 ## Regla de oro
 
@@ -84,8 +84,8 @@ docker cp <contenedor-prod>:/opt/oracle/oradata/dump D:\saa-pruebas\dump
 ### 2. Contenedor de pruebas
 
 ```powershell
-docker run -d --name saa-oracle-pruebas -p 1531:1521 `
-  -e ORACLE_PWD=<pwd-pruebas> -v saa-oracle-pruebas-data:/opt/oracle/oradata `
+docker run -d --name saa-pruebas -p 1531:1521 `
+  -e ORACLE_PWD=<pwd-pruebas> -v saa-pruebas-data:/opt/oracle/oradata `
   --memory 4g <misma-imagen-que-prod>
 ```
 
@@ -96,9 +96,9 @@ docker run -d --name saa-oracle-pruebas -p 1531:1521 `
 ### 3. Importar
 
 ```bash
-docker cp D:\saa-pruebas\dump saa-oracle-pruebas:/opt/oracle/oradata/dump
+docker cp D:\saa-pruebas\dump saa-pruebas:/opt/oracle/oradata/dump
 # como SYS en el PDB de pruebas: CREATE DIRECTORY DP_DIR AS '/opt/oracle/oradata/dump';
-docker exec saa-oracle-pruebas bash -c "impdp system/<pwd-pruebas>@FREEPDB1 directory=DP_DIR dumpfile=saa_%U.dmp logfile=imp_saa.log parallel=2"
+docker exec saa-pruebas bash -c "impdp system/<pwd-pruebas>@FREEPDB1 directory=DP_DIR dumpfile=saa_%U.dmp logfile=imp_saa.log parallel=2"
 ```
 
 - Control: el conteo de objetos por esquema (`DBA_OBJECTS`) y de filas de 5 tablas clave (`CRD.PRST`,
