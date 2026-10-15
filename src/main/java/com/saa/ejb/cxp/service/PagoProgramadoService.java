@@ -436,6 +436,27 @@ public interface PagoProgramadoService extends EntityService<PagoProgramado> {
 			throws Throwable;
 
 	/**
+	 * Confirma UN pago de la confirmacion manual en su propia transaccion
+	 * (REQUIRES_NEW): el asiento, el movimiento bancario, la aplicacion y el
+	 * cambio de estado de ese pago se graban juntos o no se graba nada de el.
+	 * Lo llama {@link #confirmarPagosManual} por la vista de negocio del bean,
+	 * nunca con this. Ver docs/logica-negocio/pagos/CONFIRMACION-MANUAL-UN-PAGO-POR-TRANSACCION.md
+	 *
+	 * @param idPago     : Id del pago a confirmar
+	 * @param refPago    : Referencia bancaria ya resuelta para este pago (null = no se toca)
+	 * @param fecha      : Fecha real del pago (fecha del asiento)
+	 * @param nota       : Nota a agregar a la observacion (null = ninguna)
+	 * @param idUsuario  : Id del usuario que confirma
+	 * @return           : Mapa con "rechazo" (texto) si el pago no existe o no esta en estado
+	 *                     confirmable (no se toco nada); si se confirmo, "advertencia" (texto,
+	 *                     solo si quedo confirmado sin contabilidad) e "idLote" (Long, si tiene)
+	 * @throws Throwable : Cualquier falla de la contabilizacion; la transaccion de este pago
+	 *                     queda en rollback y no afecta a los demas
+	 */
+	Map<String, Object> confirmarUnPagoManual(Long idPago, String refPago, LocalDate fecha,
+			String nota, Long idUsuario) throws Throwable;
+
+	/**
 	 * Anula un pago que aún no fue confirmado por el banco.
 	 * @param idPago     : Id del pago
 	 * @param motivo     : Motivo de la anulación

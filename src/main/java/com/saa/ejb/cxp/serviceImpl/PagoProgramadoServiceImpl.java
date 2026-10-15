@@ -77,7 +77,9 @@ import com.saa.rubros.OrigenPagoExterno;
 import com.saa.rubros.TipoAsientos;
 import com.saa.rubros.TipoMovimientoConciliacion;
 
+import jakarta.annotation.Resource;
 import jakarta.ejb.EJB;
+import jakarta.ejb.SessionContext;
 import jakarta.ejb.Stateless;
 import jakarta.ejb.TransactionAttribute;
 import jakarta.ejb.TransactionAttributeType;
@@ -143,6 +145,9 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 
 	@EJB
 	private com.saa.ejb.rhh.dao.ConceptoNominaDaoService conceptoNominaDaoService;
+
+	@Resource
+	private SessionContext sessionContext;
 
 	@PersistenceContext
 	private EntityManager em;
@@ -2113,25 +2118,12 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		List<String> advertencias = new ArrayList<>();
 		List<Long> lotesTocados = new ArrayList<>();
 
+		// Cada pago se confirma en su propia transaccion (REQUIRES_NEW), por la
+		// vista de negocio del bean y no con this: ver
+		// docs/logica-negocio/pagos/CONFIRMACION-MANUAL-UN-PAGO-POR-TRANSACCION.md
+		PagoProgramadoService self = sessionContext.getBusinessObject(PagoProgramadoService.class);
+
 		for (Long idPago : idsPagos) {
-
-			PagoProgramado pago = em.find(PagoProgramado.class, idPago);
-			if (pago == null) {
-				errores.add("No se encontró el pago " + idPago + ".");
-				continue;
-			}
-
-			// Solo se confirma lo que todavía está esperando al banco. Un pago
-			// ya confirmado tiene contabilidad hecha y volver a aplicarlo la
-			// duplicaría; uno rechazado o anulado ya cerró su ciclo.
-			int estado = (pago.getEstado() != null) ? pago.getEstado().intValue() : 0;
-			if (estado != EstadoPagoProgramado.REGISTRADO
-					&& estado != EstadoPagoProgramado.EN_ARCHIVO) {
-				errores.add("El pago " + idPago + " está " + descripcionEstado(pago.getEstado())
-						+ " y no se puede confirmar.");
-				continue;
-			}
-
 			try {
 				// Resolucion de referencia, por pago: 1) referenciasPorPago si trae una
 				// entrada para este id, 2) si no, la referencia unica de siempre (ref),
@@ -2140,57 +2132,31 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 				String refPago = (refEspecifica != null && !refEspecifica.trim().isEmpty())
 						? refEspecifica.trim() : ref;
 
-				pago.setFechaRespuesta(fecha);
-				if (refPago != null) {
-					pago.setReferenciaBanco(refPago);
-				}
-				if (nota != null) {
-					pago.setObservacion((pago.getObservacion() != null
-							&& !pago.getObservacion().trim().isEmpty())
-									? pago.getObservacion() + " | " + nota : nota);
-				}
+				Map<String, Object> r = self.confirmarUnPagoManual(idPago, refPago, fecha, nota, idUsuario);
 
-				// Mismo camino contable que la respuesta del banco: el asiento
-				// depende del proceso que originó el pago. La confirmación no
-				// depende de él -null es un caso previsto, no un error-, pero
-				// SÍ hace falta saber si salió null para avisarlo (ver abajo):
-				// antes se descartaba y el usuario se enteraba mirando el log
-				// del servidor, no la pantalla.
-				Asiento asientoGenerado = contabilizarSegunOrigen(pago, idUsuario);
-
-				pago.setEstado(Long.valueOf(EstadoPagoProgramado.CONFIRMADO));
-				pagoProgramadoDaoService.save(pago, pago.getId());
+				if (r.get("rechazo") != null) {
+					errores.add((String) r.get("rechazo"));
+					continue;
+				}
 				confirmados++;
-
-				// ===== INICIO aviso "confirmado sin contabilidad" (equipo omen-saa-2) =====
-				// contabilizarSegunOrigen sólo devuelve null en un caso: pago.origenExterno
-				// != null sin desglose en PGS.DPGT (ver su javadoc). No es un error -el
-				// asiento lo genera el módulo de origen al confirmar su propio proceso-,
-				// pero hasta ahora sólo quedaba dicho en un System.out del servidor: el
-				// usuario veía "confirmado" en pantalla y no se enteraba de que la
-				// contabilidad seguía pendiente en otro lado. Caso real 2026-09-08: pago
-				// 348 de RHH_BENEFICIO_SOCIAL, décimos.
-				if (asientoGenerado == null && pago.getOrigenExterno() != null) {
-					advertencias.add("Pago " + idPago + ": quedó CONFIRMADO sin contabilidad. El asiento"
-							+ " lo genera el módulo de origen (" + pago.getOrigenExterno()
-							+ ", documento " + pago.getIdOrigen() + ") al confirmar su propio proceso allá"
-							+ " -no en tesorería-, así que hay que ir a ese módulo y confirmarlo también.");
+				if (r.get("advertencia") != null) {
+					advertencias.add((String) r.get("advertencia"));
 				}
-				// ===== FIN aviso "confirmado sin contabilidad" =====
-
-				if (pago.getLote() != null && !lotesTocados.contains(pago.getLote().getId())) {
-					lotesTocados.add(pago.getLote().getId());
+				Long idLote = (Long) r.get("idLote");
+				if (idLote != null && !lotesTocados.contains(idLote)) {
+					lotesTocados.add(idLote);
 				}
 			} catch (Throwable t) {
-				errores.add("Pago " + idPago + ": no se pudo confirmar - " + t.getMessage());
+				errores.add("Pago " + idPago + ": no se pudo confirmar - " + mensajeCausaRaiz(t));
 				System.err.println("⚠ Error confirmando manualmente el pago " + idPago + ": "
-						+ t.getMessage());
+						+ mensajeCausaRaiz(t));
+				t.printStackTrace();
 			}
 		}
 
-		em.flush();
-
-		// Un lote sin pagos pendientes ya no espera respuesta del banco.
+		// Un lote sin pagos pendientes ya no espera respuesta del banco. Los pagos ya
+		// quedaron confirmados y con commit en sus transacciones; este metodo no los
+		// cargo en su em, asi que la lectura de abajo ve el estado real.
 		for (Long idLote : lotesTocados) {
 			cierraLoteSiNoQuedanPendientes(idLote);
 		}
@@ -2210,6 +2176,94 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 			resultado.put("advertencias", advertencias);
 		}
 		return resultado;
+	}
+
+	/**
+	 * Mensaje de la causa raiz: baja por getCause() hasta la ultima causa con
+	 * mensaje no nulo; si ninguna lo tiene, el nombre de la clase de la excepcion.
+	 */
+	private static String mensajeCausaRaiz(Throwable t) {
+		String mensaje = null;
+		Throwable actual = t;
+		int guarda = 0;
+		while (actual != null && guarda++ < 20) {
+			if (actual.getMessage() != null) {
+				mensaje = actual.getMessage();
+			}
+			actual = actual.getCause();
+		}
+		return (mensaje != null) ? mensaje : t.getClass().getName();
+	}
+
+	@Override
+	@TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
+	public Map<String, Object> confirmarUnPagoManual(Long idPago, String refPago, LocalDate fecha,
+			String nota, Long idUsuario) throws Throwable {
+		System.out.println("=== confirmarUnPagoManual | pago=" + idPago + " ===");
+
+		Map<String, Object> r = new HashMap<>();
+		try {
+			PagoProgramado pago = em.find(PagoProgramado.class, idPago);
+			if (pago == null) {
+				r.put("rechazo", "No se encontró el pago " + idPago + ".");
+				return r;
+			}
+
+			// Solo se confirma lo que todavía está esperando al banco. Un pago
+			// ya confirmado tiene contabilidad hecha y volver a aplicarlo la
+			// duplicaría; uno rechazado o anulado ya cerró su ciclo.
+			int estado = (pago.getEstado() != null) ? pago.getEstado().intValue() : 0;
+			if (estado != EstadoPagoProgramado.REGISTRADO
+					&& estado != EstadoPagoProgramado.EN_ARCHIVO) {
+				r.put("rechazo", "El pago " + idPago + " está " + descripcionEstado(pago.getEstado())
+						+ " y no se puede confirmar.");
+				return r;
+			}
+
+			pago.setFechaRespuesta(fecha);
+			if (refPago != null) {
+				pago.setReferenciaBanco(refPago);
+			}
+			if (nota != null) {
+				pago.setObservacion((pago.getObservacion() != null
+						&& !pago.getObservacion().trim().isEmpty())
+								? pago.getObservacion() + " | " + nota : nota);
+			}
+
+			// Mismo camino contable que la respuesta del banco: el asiento
+			// depende del proceso que originó el pago. La confirmación no
+			// depende de él -null es un caso previsto, no un error-, pero
+			// SÍ hace falta saber si salió null para avisarlo.
+			Asiento asientoGenerado = contabilizarSegunOrigen(pago, idUsuario);
+
+			pago.setEstado(Long.valueOf(EstadoPagoProgramado.CONFIRMADO));
+			pagoProgramadoDaoService.save(pago, pago.getId());
+
+			// ===== INICIO aviso "confirmado sin contabilidad" (equipo omen-saa-2) =====
+			// contabilizarSegunOrigen sólo devuelve null en un caso: pago.origenExterno
+			// != null sin desglose en PGS.DPGT (ver su javadoc). No es un error -el
+			// asiento lo genera el módulo de origen al confirmar su propio proceso-,
+			// pero el usuario debe enterarse en pantalla de que la contabilidad sigue
+			// pendiente en otro lado. Caso real 2026-09-08: pago 348 de
+			// RHH_BENEFICIO_SOCIAL, décimos.
+			if (asientoGenerado == null && pago.getOrigenExterno() != null) {
+				r.put("advertencia", "Pago " + idPago + ": quedó CONFIRMADO sin contabilidad. El asiento"
+						+ " lo genera el módulo de origen (" + pago.getOrigenExterno()
+						+ ", documento " + pago.getIdOrigen() + ") al confirmar su propio proceso allá"
+						+ " -no en tesorería-, así que hay que ir a ese módulo y confirmarlo también.");
+			}
+			// ===== FIN aviso "confirmado sin contabilidad" =====
+
+			if (pago.getLote() != null) {
+				r.put("idLote", pago.getLote().getId());
+			}
+			return r;
+		} catch (Throwable t) {
+			// Una excepcion verificada que no sea @ApplicationException(rollback=true)
+			// haria commit de lo que ya se grabo de este pago: se fuerza el rollback.
+			sessionContext.setRollbackOnly();
+			throw t;
+		}
 	}
 
 	/**
