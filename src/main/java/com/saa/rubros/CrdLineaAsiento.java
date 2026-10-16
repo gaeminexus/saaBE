@@ -143,6 +143,13 @@ public interface CrdLineaAsiento {
 	public static final int APORTES_PENSION_COMPLEMENTARIA = 53;
 
 	/**
+	 * Aporte tipo 22 (JUBILACION RETIRO VOLUNTARIO), plantilla 21. Pasivo
+	 * {@code 2.1.02.25.05 CTA INDIVIDUAL PASIVOS JUBILACION}. Decisión del usuario del
+	 * 2026-10-16; la línea la crea {@code docs/logica-negocio/crd/sql/330_LINEA_APORTE_22_PLANTILLA_21.sql}.
+	 */
+	public static final int APORTES_JUBILACION_RETIRO_VOLUNTARIO = 54;
+
+	/**
 	 * Seguro de préstamo HIPOTECARIO. Activo, {@code 1.4.90.15.02}. Sin dimensión de tipo de
 	 * préstamo propia (a diferencia de intereses): cada tipo con seguro de incendio tiene su
 	 * propio código de línea, no un aux2.

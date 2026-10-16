@@ -45,7 +45,7 @@ import jakarta.ejb.Stateless;
 @Stateless
 public class ContabilizacionIndividualCreditoServiceImpl implements ContabilizacionIndividualCreditoService {
 
-    /** CRD.TPAP.TPAPCDGO de los únicos tres tipos con cuenta en la plantilla 21 (aux1 50/51/52).
+    /** CRD.TPAP.TPAPCDGO de los tipos con cuenta en la plantilla 21 (aux1 50/51/52; 53 y 54 más abajo).
      * Mismos valores que {@code CobroCreditoServiceImpl}/{@code CobroPetroContableServiceImpl}
      * — catálogo de negocio estable, no una resolución que pueda divergir. */
     private static final long TIPO_APORTE_JUBILACION = 9L;
@@ -63,6 +63,10 @@ public class ContabilizacionIndividualCreditoServiceImpl implements Contabilizac
      * Ver el JavaDoc completo de {@link CrdLineaAsiento#APORTES_PENSION_COMPLEMENTARIA}.
      */
     private static final long TIPO_APORTE_PENSION_COMPLEMENTARIA = 23L;
+    /** CRD.TPAP.TPAPCDGO 22, JUBILACION RETIRO VOLUNTARIO. Pasivo {@code 2.1.02.25.05}, aux1 54 de la
+     * plantilla 21 (decisión del usuario 2026-10-16, {@code sql/330}). Solo el cruce; el cobro/registro
+     * de aportes 22 es otra decisión. */
+    private static final long TIPO_APORTE_JUBILACION_RETIRO_VOLUNTARIO = 22L;
 
     private static final double TOLERANCIA = 0.01;
 
@@ -924,9 +928,12 @@ public class ContabilizacionIndividualCreditoServiceImpl implements Contabilizac
         if (idTipoAporte != null && idTipoAporte == TIPO_APORTE_PENSION_COMPLEMENTARIA) {
             return CrdLineaAsiento.APORTES_PENSION_COMPLEMENTARIA;
         }
+        if (idTipoAporte != null && idTipoAporte == TIPO_APORTE_JUBILACION_RETIRO_VOLUNTARIO) {
+            return CrdLineaAsiento.APORTES_JUBILACION_RETIRO_VOLUNTARIO;
+        }
         throw new IncomeException("El tipo de aporte " + idTipoAporte + " no tiene cuenta contable"
                 + " parametrizada (hoy solo 9 jubilación, 11 cesantía, 2 adicional, 23 pensión"
-                + " complementaria); no se puede contabilizar.");
+                + " complementaria, 22 jubilación retiro voluntario); no se puede contabilizar.");
     }
 
     private DetalleAsiento lineaHaberDesdePlantilla(DetallePlantilla plantilla, double valor, String descripcion) {
