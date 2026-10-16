@@ -96,7 +96,7 @@ Orden: por saldo, de mayor a menor.
 | 12 | RENDIMIENTO CESANTIA PERSONAL | RE | 6,00 M | `2.1.01.05.02` RENDIMIENTOS PERSONALES CESANTIA | `2.3.01.05.02` LIQUIDACION INTERESES CESANTIA |
 | 15 | RENDIMIENTO JUBILACION PATRONAL | RE | 5,56 M | `2.1.02.10.02` RENDIMIENTOS PATRONALES JUBILACION | `2.3.01.10.02` LIQUIDACION INTERESES JUBILACION |
 | 23 | PENSION COMPLEMENTARIA | PE | 4,59 M | `2.1.02.25.01` CTA INDIVIDUAL DE PENSIONES COMPLEMENTARIAS | `2.3.01.10.03` PENSIONES COMPLEMENTARIAS POR PAGAR |
-| 22 | JUBILACION RETIRO VOLUNTARIO | JU | 3,25 M | **?** `2.1.02.20` o `2.1.02.25.05` — hay dos candidatas | `2.3.01.10.01` |
+| 22 | JUBILACION RETIRO VOLUNTARIO | JU | 3,25 M | ✅ `2.1.02.25.05` CTA INDIVIDUAL PASIVOS JUBILACION (usuario, 2026-10-16; plantilla 21 aux1 54, `sql/330`) | `2.3.01.10.01` |
 | 19 | RENDIMIENTO RESERVA MATEMATICA | RE | 1,68 M | **?** no hay cuenta de reservas en `2.1.0x` | **?** |
 | 13 | JUBILACION PATRONAL | JU | 1,02 M | `2.1.02.10.01` APORTES PATRONALES JUBILACION | `2.3.01.10.01` |
 | 21 | CESANTIA RETIRO VOLUNTARIO | CE | 0,80 M | `2.1.01.20.05` CTA INDIVIDUAL PASIVOS CESANTIA | `2.3.01.05.01` |
@@ -113,6 +113,7 @@ nombre no basta:
 - **22 JUBILACION RETIRO VOLUNTARIO:** existen `2.1.02.20` (*retiro voluntario CON relación
   laboral*) y `2.1.02.25.x` (*SIN relación laboral*). El tipo de aporte no distingue las dos
   situaciones. ¿Cuál corresponde, o hacen falta dos tipos?
+  **✅ Resuelto 2026-10-16 por el usuario: `2.1.02.25.05`** (para el cruce contra préstamo).
 - **17, 18, 19, 20 (reservas):** no hay ninguna cuenta de reservas colgando de `2.1.01` ni de
   `2.1.02`, y los cuatro tienen `TPAPIDST = 99`. **¿Se devuelven o no?** Si no, no se mapean y el
   código sigue abortando con mensaje claro, que es correcto.
