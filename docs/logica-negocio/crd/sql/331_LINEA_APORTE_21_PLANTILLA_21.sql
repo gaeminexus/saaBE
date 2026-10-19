@@ -2,6 +2,9 @@
 -- 331 — Cuenta del aporte 21 (CESANTIA RETIRO VOLUNTARIO) en la plantilla 21 (aux1 = 55)
 -- Equipo omen-saa-1 · 2026-10-19
 --
+-- ✅ EJECUTADO EN PRODUCCION el 2026-10-19 (salida verificada por omen-saa-1-arb). NO volver a correr
+--    el bloque 3. Bloque 5 del 331: CTAP y plantilla 21 coinciden para 9, 11, 21, 22 y 23.
+--
 -- Por que: el usuario (2026-10-19) senalo la cuenta del aporte 21 junto con la del 22
 --   (sql/330), para operar las cuentas de RETIRO VOLUNTARIO desde la pantalla de cobros:
 --   21 CESANTIA RETIRO VOLUNTARIO -> 2.1.01.20.05 CTA INDIVIDUAL PASIVOS CESANTIA

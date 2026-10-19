@@ -2,6 +2,9 @@
 -- 330 — Cuenta del aporte 22 (JUBILACION RETIRO VOLUNTARIO) en la plantilla 21 (aux1 = 54)
 -- Equipo omen-saa-1 · 2026-10-16
 --
+-- ✅ EJECUTADO EN PRODUCCION el 2026-10-19 (salida verificada por omen-saa-1-arb). NO volver a correr
+--    el bloque 3. Bloque 5 del 331: CTAP y plantilla 21 coinciden para 9, 11, 21, 22 y 23.
+--
 -- Sintoma: el cruce de una cuota con el saldo de aportes falla con
 --   "El tipo de aporte 22 no tiene cuenta contable parametrizada (hoy solo 9 jubilacion,
 --    11 cesantia, 2 adicional, 23 pension complementaria)".
