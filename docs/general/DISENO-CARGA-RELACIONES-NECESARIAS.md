@@ -83,3 +83,30 @@ Por cada entidad:
 ## Reverso
 Fase 0: quitar el `ContextResolver` (vuelve el mapeador por defecto). Fases 2–3: quitar `fetch = LAZY`
 en el campo afectado. Ninguna fase toca la base de datos.
+
+## Inventario FE (omen-saa-3-fe, solo lectura, 2026-10-19)
+Análisis estático de `.ts`/`.html`; el FE **nunca envía** objetos anidados al grabar estas entidades
+(solo ids y DTO planos), así que la grabación no depende de lo que llegue anidado.
+
+| Entidad | Relación | Lo que lee el FE | Decisión |
+|---|---|---|---|
+| ANTE `AnticipoEmpleado` | `empleado` | identificacion, apellidos, nombres | **EAGER** |
+| | `pagoProgramado`, `asiento`, `usuario*` | nada | LAZY |
+| PGTR `PagoProgramado` | `facturaCompra`, `liquidacionCompra` | id, numero | EAGER |
+| | `egreso` | descripcion + `asiento`(codigo, numeroAlterno) | EAGER (2 niveles) |
+| | `anticipo`, `aplicacion` | `asiento`(codigo, numeroAlterno) | EAGER (2 niveles) |
+| | `asiento` | codigo, numeroAlterno | EAGER |
+| | `titular` | codigo, nombre | EAGER |
+| | `cuentaBancaria` | codigo, numero (no el banco) | EAGER |
+| | `cheque` | numero | EAGER |
+| | `cuentaDestino`, `usuario` | nada | LAZY |
+| DVAN `DevolucionAnticipo` | `cuentaBancaria` | `banco.nombre`, numeroCuenta | EAGER (2 niveles) |
+| | `anticipo`, `asiento`, `usuario` | nada | LAZY |
+| DVCT `DevolucionCuotaAnticipo` | todas | el FE no la usa | LAZY (sujeto al inventario BE) |
+
+Excepción para la fase 2: **`CargaArchivo.usuarioCarga` (crd) lee `.nombre`** (`consulta-archivos-petro.component.ts:225`,
+`detalle-consulta-carga.component.html:71`, `prestamo-dash.component.ts:1179`): ese campo queda EAGER.
+Todas las demás lecturas de `empresa.X`/`usuario.X` con X ≠ `codigo` son de la sesión, no de relaciones.
+
+Mayor ganancia de ANTE: `pagoProgramado` LAZY corta la cadena PGTR completa (≈346 en la medición relativa)
+al abrir un anticipo. Falta el inventario BE (qué `getX().getY()` se usan y si es fuera de transacción).
