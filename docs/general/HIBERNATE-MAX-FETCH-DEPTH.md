@@ -4,9 +4,9 @@
 
 ## El problema
 Producción falló con `ORA-04036` (PGA por encima del límite de 4 GB) al confirmar el pago 769.
-Al cargar un `AnticipoEmpleado` (`RHH.ANTE`) por id, Hibernate arma **un solo SELECT con 127 LEFT JOIN**.
+Al cargar un `AnticipoEmpleado` (`RHH.ANTE`) por id, Hibernate arma **un solo SELECT con 431 LEFT JOIN** (contados sobre el SQL del log del 2026-10-19). De esos, 254 son `SCP.PJRQ` (empresa/usuario, 127) y `SCP.PGSP` (su jerarquía, 127): cada entidad trae su `Empresa`, y cada `Empresa`/`Usuario` trae su `Jerarquia`, ambas EAGER. Le siguen la cadena del asiento (`CNT.ASNT` 16, `MYRZ` 16, `PRDO` 32, `PLNT` 16) y titular/persona (`TSR.TTLR` 17, `CRD.PSSS` 17).
 
-## La consulta de 127 JOIN
+## La consulta de 431 JOIN
 Casi toda relación `@ManyToOne` del proyecto es `EAGER` (el valor por defecto de JPA). La cadena es:
 `ANTE → PagoProgramado (15 relaciones) → Asiento → Periodo → Empresa → Jerarquia → …`
 y cada rama se vuelve a expandir. La `Empresa` 1236 llega a repetirse unas 116 veces en el mismo JOIN.
