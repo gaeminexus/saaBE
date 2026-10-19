@@ -31,8 +31,9 @@ Una fila por nómina del período: cédula, empleado, días trabajados, sueldo b
 ingresos, aporte personal, retención de IR, total de descuentos, **neto**, total patronal y
 costo del empleador. Ordenado por apellidos.
 
-El pie totaliza ingresos, descuentos, neto, patronal y costo, y cierra con una frase que resume
-el neto pagado y el costo total.
+El pie totaliza sueldo base, ingresos, aporte personal, retención de IR, descuentos, neto,
+patronal y costo, y cierra con una frase que resume el neto pagado y el costo total. Los días
+trabajados **no se totalizan** (la celda del pie bajo esa columna queda vacía).
 
 **`FONDOS_RESERVA` (e3-06, 2026-09-30)**: para un colaborador `MENSUALIZADO` sale de
 `NMNA.NMNAFNRS` (un renglón normal); para uno `ACUMULADO_EN_EL_IESS` (`ContratoEmpleado.

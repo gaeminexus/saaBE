@@ -124,6 +124,15 @@ ORDER BY APELLIDOS_ORDEN, NOMBRES_ORDEN, ID_NOMINA]]></query>
 	<variable name="V_COSTO" class="java.math.BigDecimal" calculation="Sum" resetType="Report">
 		<expression><![CDATA[$F{COSTO_EMPLEADOR}]]></expression>
 	</variable>
+	<variable name="V_SUELDO_BASE" class="java.math.BigDecimal" calculation="Sum" resetType="Report">
+		<expression><![CDATA[$F{SALARIO_BASE}]]></expression>
+	</variable>
+	<variable name="V_APORTE_PERSONAL" class="java.math.BigDecimal" calculation="Sum" resetType="Report">
+		<expression><![CDATA[$F{APORTE_PERSONAL}]]></expression>
+	</variable>
+	<variable name="V_RETENCION_IR" class="java.math.BigDecimal" calculation="Sum" resetType="Report">
+		<expression><![CDATA[$F{RETENCION_IR}]]></expression>
+	</variable>
 	<background splitType="Stretch"/>
 	<title height="72" splitType="Stretch">
 		<element kind="image" uuid="c2000000-0000-0000-0000-000000000101" x="0" y="4" width="110" height="52" scaleImage="RetainShape" onErrorType="Blank" hImageAlign="Center" vImageAlign="Middle">
@@ -253,17 +262,29 @@ ORDER BY APELLIDOS_ORDEN, NOMBRES_ORDEN, ID_NOMINA]]></query>
 		</element>
 	</pageFooter>
 	<summary height="60" splitType="Stretch">
-		<element kind="textField" uuid="c2000000-0000-0000-0000-000000000501" mode="Opaque" x="0" y="0" width="352" height="16" backcolor="#EDF2F7" forecolor="#1A202C" fontName="Tahoma" fontSize="7.0" bold="true" vTextAlign="Middle">
+		<element kind="textField" uuid="c2000000-0000-0000-0000-000000000501" mode="Opaque" x="0" y="0" width="240" height="16" backcolor="#EDF2F7" forecolor="#1A202C" fontName="Tahoma" fontSize="7.0" bold="true" vTextAlign="Middle">
 			<expression><![CDATA["TOTALES DEL PERIODO — " + $V{V_EMPLEADOS} + ($V{V_EMPLEADOS}.intValue() == 1 ? " empleado" : " empleados")]]></expression>
 			<box leftPadding="4"><pen lineWidth="0.5" lineColor="#4A5568"/></box>
+		</element>
+		<element kind="staticText" uuid="c2000000-0000-0000-0000-000000000508" mode="Opaque" x="240" y="0" width="42" height="16" backcolor="#EDF2F7" fontName="Tahoma" fontSize="7.0" vTextAlign="Middle">
+			<text><![CDATA[]]></text>
+			<box><pen lineWidth="0.5" lineColor="#4A5568"/></box>
+		</element>
+		<element kind="textField" uuid="c2000000-0000-0000-0000-000000000509" mode="Opaque" x="282" y="0" width="70" height="16" backcolor="#EDF2F7" pattern="$#,##0.00" fontName="Tahoma" fontSize="7.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA[$V{V_SUELDO_BASE}]]></expression>
+			<box rightPadding="4"><pen lineWidth="0.5" lineColor="#4A5568"/></box>
 		</element>
 		<element kind="textField" uuid="c2000000-0000-0000-0000-000000000502" mode="Opaque" x="352" y="0" width="70" height="16" backcolor="#EDF2F7" pattern="$#,##0.00" fontName="Tahoma" fontSize="7.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
 			<expression><![CDATA[$V{V_INGRESOS}]]></expression>
 			<box rightPadding="4"><pen lineWidth="0.5" lineColor="#4A5568"/></box>
 		</element>
-		<element kind="staticText" uuid="c2000000-0000-0000-0000-000000000503" mode="Opaque" x="422" y="0" width="126" height="16" backcolor="#EDF2F7" fontName="Tahoma" fontSize="7.0" vTextAlign="Middle">
-			<text><![CDATA[]]></text>
-			<box><pen lineWidth="0.5" lineColor="#4A5568"/></box>
+		<element kind="textField" uuid="c2000000-0000-0000-0000-000000000511" mode="Opaque" x="422" y="0" width="66" height="16" backcolor="#EDF2F7" pattern="$#,##0.00" fontName="Tahoma" fontSize="7.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA[$V{V_APORTE_PERSONAL}]]></expression>
+			<box rightPadding="4"><pen lineWidth="0.5" lineColor="#4A5568"/></box>
+		</element>
+		<element kind="textField" uuid="c2000000-0000-0000-0000-000000000512" mode="Opaque" x="488" y="0" width="60" height="16" backcolor="#EDF2F7" pattern="$#,##0.00" fontName="Tahoma" fontSize="7.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA[$V{V_RETENCION_IR}]]></expression>
+			<box rightPadding="4"><pen lineWidth="0.5" lineColor="#4A5568"/></box>
 		</element>
 		<element kind="textField" uuid="c2000000-0000-0000-0000-000000000504" mode="Opaque" x="548" y="0" width="70" height="16" backcolor="#EDF2F7" pattern="$#,##0.00" fontName="Tahoma" fontSize="7.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
 			<expression><![CDATA[$V{V_DESCUENTOS}]]></expression>
