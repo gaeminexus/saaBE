@@ -86,3 +86,24 @@ SELECT p.PLNSCDAL AS ALTERNO, d.DTPLAXL1 AS AUX1, d.DTPLMVMN AS MOVIMIENTO,
 --  WHERE d.DTPLAXL1 = 55
 --    AND d.PLNSCDGO = (SELECT p.PLNSCDGO FROM CNT.PLNS p WHERE p.PLNSCDAL = 21 AND p.PJRQCDGO = 1236);
 -- COMMIT;
+
+
+-- BLOQUE 5 — (solo lectura, 2026-10-19) Coherencia con CRD.CTAP (devolucion de aportes).
+--   La devolucion debita la cuenta de PASIVO de CRD.CTAP; el cobro y el cruce acreditan/debitan la
+--   de la plantilla 21. Para los tipos 9, 11, 21, 22 y 23 las dos tienen que ser LA MISMA cuenta.
+--   (!) Si COINCIDE sale 'NO' en alguna fila, o un tipo no sale: avisar al arbitro con la salida
+--       (no se corrige aca: CTAP tiene su propia pantalla).
+SELECT t.TPAPCDGO AS TIPO, t.TPAPNMBR AS TIPO_NOMBRE,
+       np.PLNNCNTA AS CTAP_PASIVO, c.CTAPESTD AS CTAP_ESTADO,
+       nd.PLNNCNTA AS PLANTILLA21_CUENTA, d.DTPLAXL1 AS AUX1,
+       CASE WHEN np.PLNNCNTA = nd.PLNNCNTA THEN 'SI' ELSE 'NO' END AS COINCIDE
+  FROM CRD.TPAP t
+  LEFT JOIN CRD.CTAP c ON c.TPAPCDGO = t.TPAPCDGO AND c.PJRQCDGO = 1236
+  LEFT JOIN CNT.PLNN np ON np.PLNNCDGO = c.CTAPPLNP
+  LEFT JOIN CNT.PLNS p ON p.PLNSCDAL = 21 AND p.PJRQCDGO = 1236
+  LEFT JOIN CNT.DTPL d ON d.PLNSCDGO = p.PLNSCDGO
+                      AND d.DTPLAXL1 = CASE t.TPAPCDGO WHEN 11 THEN 50 WHEN 9 THEN 51 WHEN 23 THEN 53
+                                                       WHEN 22 THEN 54 WHEN 21 THEN 55 END
+  LEFT JOIN CNT.PLNN nd ON nd.PLNNCDGO = d.PLNNCDGO
+ WHERE t.TPAPCDGO IN (9, 11, 21, 22, 23)
+ ORDER BY t.TPAPCDGO;
