@@ -32,3 +32,13 @@ Quitar la línea `hibernate.max_fetch_depth` (y su comentario) de `persistence.x
 - Más consultas pequeñas por pantalla (SELECT por id): es lo esperado.
 - Ninguna consulta gigante (decenas de JOIN) ni `ORA-04036`.
 - Si alguna pantalla se vuelve lenta por exceso de SELECT, subir el valor a 3 y medir antes de dejarlo.
+
+## Jerarquia de Empresa/Usuario en SELECT aparte
+**Cambio:** en `model/scp/Empresa.java` y `model/scp/Usuario.java`, el campo `jerarquia` lleva
+`@Fetch(FetchMode.SELECT)` (`org.hibernate.annotations`), sin tocar `@ManyToOne`, `@JoinColumn`, getters ni NamedQueries.
+**Por qué:** de los 431 LEFT JOIN al cargar un `AnticipoEmpleado`, 254 eran `SCP.PJRQ` y `SCP.PGSP`
+(cada Empresa/Usuario traía su Jerarquia por JOIN). Nadie lee la jerarquia de la empresa ni del usuario.
+**Efecto:** la relación sigue EAGER y el JSON y la grabación no cambian; solo se lee con un SELECT por id.
+**Revertir:** quitar la anotación `@Fetch(FetchMode.SELECT)` y sus dos imports de ambas clases.
+**Dependencia:** `hibernate-core` se agregó al `pom.xml` como `provided` 6.6.31.Final (solo para compilar la
+anotación; WildFly la provee y no entra al WAR). Hay que subir la versión si se actualiza el WildFly.

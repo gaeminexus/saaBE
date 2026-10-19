@@ -14,6 +14,8 @@ import jakarta.persistence.NamedQueries;
 import jakarta.persistence.NamedQuery;
 import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.Fetch;
+import org.hibernate.annotations.FetchMode;
 
 /**
  * @author GaemiSoft
@@ -38,7 +40,9 @@ public class Usuario implements Serializable {
 	@GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "SQ_PJRQCDGO")
 	private Long codigo;
 
+	// Jerarquia en SELECT aparte: cortaba 254 de 431 JOIN al cargar ANTE (2026-10-19)
 	@ManyToOne
+	@Fetch(FetchMode.SELECT)
 	@JoinColumn(name = "PGSPCDGO", referencedColumnName = "PGSPCDGO")
 	private Jerarquia jerarquia;
 

@@ -200,6 +200,14 @@
       <scope>provided</scope>
     </dependency>
 
+    <!-- Hibernate: solo para compilar las anotaciones (@Fetch); WildFly la provee, no se empaqueta -->
+    <dependency>
+      <groupId>org.hibernate.orm</groupId>
+      <artifactId>hibernate-core</artifactId>
+      <version>6.6.31.Final</version>
+      <scope>provided</scope>
+    </dependency>
+
   </dependencies>
 
   <build>

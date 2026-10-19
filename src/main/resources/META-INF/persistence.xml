@@ -9,7 +9,7 @@
     <properties>
       <property name="hibernate.dialect" value="org.hibernate.dialect.OracleDialect"/>
       <property name="hibernate.show_sql" value="false"/>
-      <!-- 2026-10-19: ORA-04036 (PGA) por un SELECT de 127 LEFT JOIN al cargar ANTE/PGTR por id: toda la
+      <!-- 2026-10-19: ORA-04036 (PGA) por un SELECT de 431 LEFT JOIN al cargar ANTE/PGTR por id: toda la
            cadena de @ManyToOne es EAGER. Con profundidad 2 lo que pasa de ahi se lee con SELECT aparte;
            las relaciones siguen EAGER, el objeto y el JSON no cambian. LAZY se descarto: las entidades
            se serializan directo a JSON. Ver docs/general/HIBERNATE-MAX-FETCH-DEPTH.md -->
