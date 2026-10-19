@@ -150,6 +150,13 @@ public interface CrdLineaAsiento {
 	public static final int APORTES_JUBILACION_RETIRO_VOLUNTARIO = 54;
 
 	/**
+	 * Aporte tipo 21 (CESANTIA RETIRO VOLUNTARIO), plantilla 21. Pasivo
+	 * {@code 2.1.01.20.05 CTA INDIVIDUAL PASIVOS CESANTIA}. Decisión del usuario del
+	 * 2026-10-19; la línea la crea {@code docs/logica-negocio/crd/sql/331_*.sql}.
+	 */
+	public static final int APORTES_CESANTIA_RETIRO_VOLUNTARIO = 55;
+
+	/**
 	 * Seguro de préstamo HIPOTECARIO. Activo, {@code 1.4.90.15.02}. Sin dimensión de tipo de
 	 * préstamo propia (a diferencia de intereses): cada tipo con seguro de incendio tiene su
 	 * propio código de línea, no un aux2.

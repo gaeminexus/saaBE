@@ -45,7 +45,7 @@ import jakarta.ejb.Stateless;
 @Stateless
 public class ContabilizacionIndividualCreditoServiceImpl implements ContabilizacionIndividualCreditoService {
 
-    /** CRD.TPAP.TPAPCDGO de los tipos con cuenta en la plantilla 21 (aux1 50/51/52; 53 y 54 más abajo).
+    /** CRD.TPAP.TPAPCDGO de los tipos con cuenta en la plantilla 21 (aux1 50/51/52; 53, 54 y 55 más abajo).
      * Mismos valores que {@code CobroCreditoServiceImpl}/{@code CobroPetroContableServiceImpl}
      * — catálogo de negocio estable, no una resolución que pueda divergir. */
     private static final long TIPO_APORTE_JUBILACION = 9L;
@@ -67,6 +67,9 @@ public class ContabilizacionIndividualCreditoServiceImpl implements Contabilizac
      * plantilla 21 (decisión del usuario 2026-10-16, {@code sql/330}). Solo el cruce; el cobro/registro
      * de aportes 22 es otra decisión. */
     private static final long TIPO_APORTE_JUBILACION_RETIRO_VOLUNTARIO = 22L;
+    /** CRD.TPAP.TPAPCDGO 21, CESANTIA RETIRO VOLUNTARIO. Pasivo {@code 2.1.01.20.05}, aux1 55 de la
+     * plantilla 21 (decisión del usuario 2026-10-19, {@code sql/331}). */
+    private static final long TIPO_APORTE_CESANTIA_RETIRO_VOLUNTARIO = 21L;
 
     private static final double TOLERANCIA = 0.01;
 
@@ -931,9 +934,12 @@ public class ContabilizacionIndividualCreditoServiceImpl implements Contabilizac
         if (idTipoAporte != null && idTipoAporte == TIPO_APORTE_JUBILACION_RETIRO_VOLUNTARIO) {
             return CrdLineaAsiento.APORTES_JUBILACION_RETIRO_VOLUNTARIO;
         }
+        if (idTipoAporte != null && idTipoAporte == TIPO_APORTE_CESANTIA_RETIRO_VOLUNTARIO) {
+            return CrdLineaAsiento.APORTES_CESANTIA_RETIRO_VOLUNTARIO;
+        }
         throw new IncomeException("El tipo de aporte " + idTipoAporte + " no tiene cuenta contable"
                 + " parametrizada (hoy solo 9 jubilación, 11 cesantía, 2 adicional, 23 pensión"
-                + " complementaria, 22 jubilación retiro voluntario); no se puede contabilizar.");
+                + " complementaria, 22 jubilación retiro voluntario, 21 cesantía retiro voluntario); no se puede contabilizar.");
     }
 
     private DetalleAsiento lineaHaberDesdePlantilla(DetallePlantilla plantilla, double valor, String descripcion) {

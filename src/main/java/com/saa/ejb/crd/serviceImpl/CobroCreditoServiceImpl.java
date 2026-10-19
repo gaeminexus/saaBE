@@ -113,7 +113,8 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
     /**
      * CRD.TPAP.TPAPCDGO — tipos de aporte con cuenta contable en la plantilla 21 (aux1
      * 51/50/52 respectivamente). Confirmado con el usuario 2026-08-29: eran los únicos que
-     * se registraban manualmente en la práctica. Cualquier otro tipo se rechaza en el
+     * se registraban manualmente en la práctica (después se sumaron el 23, el 21 y el 22; ver
+     * abajo y {@link #esTipoAporteContabilizable}). Cualquier otro tipo se rechaza en el
      * registro (ver {@link #esTipoAporteContabilizable}).
      */
     private static final long TIPO_APORTE_JUBILACION = 9L;
@@ -133,6 +134,15 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
      * préstamos — sigue siendo exclusivo de cesantía y jubilación.
      */
     private static final long TIPO_APORTE_PENSION_COMPLEMENTARIA = 23L;
+
+    /**
+     * CRD.TPAP.TPAPCDGO 21 (CESANTIA RETIRO VOLUNTARIO, aux1 55) y 22 (JUBILACION RETIRO
+     * VOLUNTARIO, aux1 54) de la plantilla 21. Habilitados el 2026-10-19 (decisión del usuario,
+     * API-COBROS-APORTES-RETIRO-VOLUNTARIO.md): depósito vía CBCR y débito con pagarConAportes.
+     * Sin restricción de estado del partícipe y sin contrato ni vigencia.
+     */
+    private static final long TIPO_APORTE_CESANTIA_RETIRO_VOLUNTARIO = 21L;
+    private static final long TIPO_APORTE_JUBILACION_RETIRO_VOLUNTARIO = 22L;
 
     @EJB
     private CobroCreditoDaoService cobroCreditoDaoService;
@@ -1769,9 +1779,9 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
                 } catch (NoResultException e) {
                     throw new IncomeException("No existe el tipo de aporte " + linea.getIdTipoAporte());
                 }
-                // Solo 9 (jubilación), 11 (cesantía), 2 (aporte adicional) y 23 (pensión
-                // complementaria) tienen cuenta contable asignada en la plantilla 21 (aux1
-                // 51/50/52/53) — verificado contra CNT.PLNS/DTPL, no todos los tipos vigentes
+                // Solo 9 (jubilación), 11 (cesantía), 2 (aporte adicional), 23 (pensión
+                // complementaria), 21 y 22 (retiro voluntario) tienen cuenta contable asignada
+                // en la plantilla 21 (aux1 51/50/52/53/55/54) — verificado contra CNT.PLNS/DTPL, no todos los tipos vigentes
                 // de CRD.TPAP tienen una. Rechazar acá, no al procesar: mejor que falle en el
                 // registro que dejarlo pasar y reventar después de aprobado, con el dinero ya
                 // adentro.
@@ -1916,7 +1926,9 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
     private boolean esTipoAporteContabilizable(Long idTipoAporte) {
         return idTipoAporte != null && (idTipoAporte == TIPO_APORTE_JUBILACION
                 || idTipoAporte == TIPO_APORTE_CESANTIA || idTipoAporte == TIPO_APORTE_ADICIONAL
-                || idTipoAporte == TIPO_APORTE_PENSION_COMPLEMENTARIA);
+                || idTipoAporte == TIPO_APORTE_PENSION_COMPLEMENTARIA
+                || idTipoAporte == TIPO_APORTE_CESANTIA_RETIRO_VOLUNTARIO
+                || idTipoAporte == TIPO_APORTE_JUBILACION_RETIRO_VOLUNTARIO);
     }
 
     private boolean esTipoOperacionValido(String tipoOperacion) {
