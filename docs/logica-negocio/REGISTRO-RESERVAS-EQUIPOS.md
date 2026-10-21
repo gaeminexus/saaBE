@@ -457,6 +457,13 @@ crd(eqB): ...      cxp(eq3): ...      registro(eq3): ...      docs(eq2): ...
 | `omen-saa-2` | `eq2` |
 | cxp/cxc/pagos/tsr/rhh/sri (`omen-saa-3`) | `eq3` |
 | cxp/cxc/pagos/tsr/rhh/sri (`lap-saa-1`, **laptop**) | `lap1` |
+| app móvil ASOPREP (`omen-app-1`): `usap` y `/movil` en `saaBE`, más `saaAPP` y `saaBEMobile` | `app1` |
+
+> **`app1` rige desde el 2026-10-21** (lo eligió el usuario). Antes de esa fecha, los commits de
+> la app móvil en `saaBE` salieron como `crd(omen1)` o `crd(usap)`, igual que los de `omen-saa-1`.
+> Por ejemplo `c9c10b97`, `05da5655`, `42bafd46` y `7b5e7ba2` son de la app móvil. Para
+> atribuirlos hay que mirar los archivos: `ws/movil/`, `UsuarioApp*` y `docs/logica-negocio/crd/`
+> con "movil" o "usap" en el nombre son de `app1`.
 
 **Prefijo de scripts `.sql` de `lap-saa-1`: `lap1-`**, según el §2b (prefijo por equipo fuera de
 `crd/sql/`). Se eligió `lap1` y no `eq1` a propósito: nombra la **máquina**, que es lo que de verdad
