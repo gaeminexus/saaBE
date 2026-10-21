@@ -1,4 +1,4 @@
-# API de credenciales de la app movil (`CRD.USAP`) — 6 endpoints
+# API de credenciales de la app movil (`CRD.USAP`) — 7 endpoints
 
 **Fecha:** 2026-09-03 · **Estado:** implementado en SaaBE, pendiente de prueba E2E contra BD local.
 **DDL:** `docs/logica-negocio/crd/sql/DDL-USUARIO-APP-MOVIL.sql`
@@ -14,9 +14,9 @@ usan la app — no es la tabla de usuarios del sistema.
 App movil  --HTTPS-->  SaaMovilBE (192.168.2.3, internet)  --HTTP intranet-->  SaaBE (192.168.2.4)
 ```
 
-## Los 6 endpoints
+## Los 7 endpoints
 
-Todos son `POST`, todos reciben y devuelven `application/json`. Ruta base: `/SaaBE/rest/usap`.
+Los 6 primeros son `POST`; el 7 es un `GET`. Todos devuelven `application/json`. Ruta base: `/SaaBE/rest/usap`.
 
 | # | Endpoint | Body | Quien lo llama | Respuesta OK |
 |---|---|---|---|---|
@@ -26,8 +26,9 @@ Todos son `POST`, todos reciben y devuelven `application/json`. Ruta base: `/Saa
 | 4 | `resetearClave` | `{identificacion, claveTemporal, usuario}` | **Intranet** (desbloqueo de rutina) | `UsuarioAppDTO`, 200 |
 | 5 | `reactivar` | `{identificacion, claveTemporal, usuario}` | **Intranet** (revertir borrado de cuenta) | `UsuarioAppDTO`, 200 |
 | 6 | `desactivar` | `{identificacion, clave}` | SaaMovilBE (borrado de cuenta) | `{"mensaje": "Cuenta desactivada"}` |
+| 7 | `GET estado/{identificacion}` | — (cédula en la URL) | **Intranet** (oficina, consulta el estado) | `UsuarioAppDTO`, 200 · **404** `{"mensaje"}` si no hay cuenta |
 
-> ⛔ **Los 3, 4 y 5 no se exponen jamas hacia internet.** El WAR de borde no los enruta. Son
+> ⛔ **Los 3, 4, 5 y 7 no se exponen jamas hacia internet.** El WAR de borde no los enruta. Son
 > de intranet, para la pantalla de oficina. Si aparecen en `SaaMovilBE`, es un defecto grave.
 
 ### `ValidarCredencialResponse` — contrato congelado con SaaMovilBE
@@ -44,7 +45,7 @@ con el equipo de `SaaMovilBE` antes, no despues.
 `nombres` y `apellidos` **pueden venir null** — salen de `CRD.PRSN`, y una entidad sin fila
 ahi (persona juridica) los deja vacios. No es error y no bloquea el login.
 
-### `UsuarioAppDTO` — solo intranet, no congelado
+### `UsuarioAppDTO` — solo intranet, no congelado (lo devuelven 3, 4, 5 y 7)
 
 `codigo, idEntidad, identificacion, estado (1/2/3), intentosFallidos, bloqueadoHasta,
 debeCambiarClave, fechaCreacion, fechaUltimoAcceso, usuarioRegistro`.
@@ -64,6 +65,7 @@ eso a proposito**, y no hay que "corregirlo":
 |---|---|---|
 | **401** | credenciales invalidas | 1, 2 (clave **actual** mala), 6 |
 | **400** | regla de negocio / validacion | 2 (clave **nueva** debil), 3, 4, 5 |
+| **404** | la identificacion no tiene cuenta | 7 |
 | **500** | fallo real (Oracle caido, bug) | todos |
 
 **Por que importa el 400 en `cambiarClave`.** La app tiene un manejador global de 401 que
@@ -117,7 +119,7 @@ app, no los datos del participe**: la relacion con el fondo se rige por el contr
 2. **`UsuarioAppRest` NO publica `getAll` ni `getId`**, contra el patron estandar de la casa.
    Publicarlos expondria el hash de todas las claves en un GET sin filtro, en un backend que
    ademas no tiene autenticacion. **No los agregues.**
-3. Por el mismo motivo, 3/4/5 devuelven `UsuarioAppDTO` y **no la entidad `UsuarioApp`** —
+3. Por el mismo motivo, 3/4/5/7 devuelven `UsuarioAppDTO` y **no la entidad `UsuarioApp`** —
    serializar la entidad devolveria `claveHash` al cliente. Ya paso una vez durante el
    desarrollo y se corrigio.
 4. Cualquier endpoint nuevo sobre esta tabla: revisar lo anterior **antes** de publicarlo.

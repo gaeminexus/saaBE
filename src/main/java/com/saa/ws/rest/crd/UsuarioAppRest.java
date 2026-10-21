@@ -1,6 +1,7 @@
 package com.saa.ws.rest.crd;
 
 import com.saa.basico.util.IncomeException;
+import com.saa.ejb.crd.dao.UsuarioAppDaoService;
 import com.saa.ejb.crd.service.UsuarioAppService;
 import com.saa.ejb.crd.service.ValidacionException;
 import com.saa.ejb.crd.service.dto.SolicitudCambiarClaveUsuarioApp;
@@ -15,8 +16,10 @@ import com.saa.model.crd.UsuarioApp;
 
 import jakarta.ejb.EJB;
 import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.GET;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
+import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
@@ -27,7 +30,7 @@ import jakarta.ws.rs.core.Response;
  *
  * A propósito NO expone {@code getAll}/{@code getId} genéricos: la entidad guarda el hash
  * de la clave y listarla/consultarla por REST sin restricción sería exponer ese hash
- * innecesariamente. Todo el acceso pasa por los 6 verbos de negocio de abajo — y por el
+ * innecesariamente. Todo el acceso pasa por los 6 verbos de negocio de abajo (más el GET {@code estado}, de consulta) — y por el
  * mismo motivo, {@code crear}/{@code resetearClave}/{@code reactivar} devuelven
  * {@link UsuarioAppDTO}, nunca la entidad completa (ver {@link #aDTO}).
  *
@@ -62,6 +65,9 @@ public class UsuarioAppRest {
 
     @EJB
     private UsuarioAppService usuarioAppService;
+
+    @EJB
+    private UsuarioAppDaoService usuarioAppDaoService;
 
     public UsuarioAppRest() {
     }
@@ -225,6 +231,33 @@ public class UsuarioAppRest {
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("Error al desactivar la cuenta: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
+     * GET /rest/usap/estado/{identificacion} — estado de la cuenta de la app de un partícipe,
+     * para la pantalla de oficina. Solo intranet: vive únicamente en {@code /rest}, no en
+     * {@code /movil}. Una cédula a la vez, sin listar. Devuelve {@link UsuarioAppDTO}, nunca
+     * la entidad (lleva {@code claveHash}). 404 si la cédula no tiene cuenta.
+     */
+    @GET
+    @Path("/estado/{identificacion}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response estado(@PathParam("identificacion") String identificacion) {
+        System.out.println("LLEGA AL SERVICIO GET estado - USAP - identificacion: " + identificacion);
+        try {
+            String cedula = identificacion == null ? "" : identificacion.trim();
+            UsuarioApp usap = cedula.isEmpty() ? null : usuarioAppDaoService.selectByIdentificacion(cedula);
+            if (usap == null) {
+                return Response.status(Response.Status.NOT_FOUND)
+                        .entity(mensaje("La identificacion no tiene cuenta en la app movil"))
+                        .type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.status(Response.Status.OK).entity(aDTO(usap)).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al consultar el estado de la cuenta: " + e.getMessage())
                     .type(MediaType.APPLICATION_JSON).build();
         }
     }
