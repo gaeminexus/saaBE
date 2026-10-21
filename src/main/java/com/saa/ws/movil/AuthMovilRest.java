@@ -4,7 +4,9 @@ import com.saa.basico.util.IncomeException;
 import com.saa.ejb.crd.service.UsuarioAppService;
 import com.saa.ejb.crd.service.ValidacionException;
 import com.saa.ejb.crd.service.dto.SolicitudCambiarClaveUsuarioApp;
+import com.saa.ejb.crd.service.dto.SolicitudConfirmarRecuperacionUsuarioApp;
 import com.saa.ejb.crd.service.dto.SolicitudDesactivarUsuarioApp;
+import com.saa.ejb.crd.service.dto.SolicitudSolicitarRecuperacionUsuarioApp;
 import com.saa.ejb.crd.service.dto.SolicitudValidarCredencial;
 import com.saa.ejb.crd.service.dto.ValidarCredencialResponse;
 import com.saa.ws.movil.dto.MensajeMovilDTO;
@@ -29,6 +31,9 @@ import jakarta.ws.rs.core.Response;
 @ClaveMovilRequerida
 @Path("auth")
 public class AuthMovilRest {
+
+    private static final String MSG_SOLICITUD_RECUPERACION = "Si tu cedula tiene cuenta en la app y un correo "
+            + "personal registrado en ASOPREP, te enviamos un codigo. Si no te llega, acercate a la oficina.";
 
     @EJB
     private UsuarioAppService usuarioAppService;
@@ -94,6 +99,54 @@ public class AuthMovilRest {
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity(mensaje("Error al desactivar la cuenta"))
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
+     * POST /movil/auth/solicitarRecuperacion — "olvidé mi clave", paso 1. SIEMPRE el mismo 200 y el
+     * mismo texto (haya o no cuenta, correo, freno o fallo del SMTP): el texto vive aquí, en un
+     * solo lugar. Solo una falla real (Oracle caído) da 500.
+     */
+    @POST
+    @Path("/solicitarRecuperacion")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response solicitarRecuperacion(SolicitudSolicitarRecuperacionUsuarioApp solicitud) {
+        System.out.println("LLEGA AL SERVICIO POST solicitarRecuperacion - MOVIL");
+        try {
+            usuarioAppService.solicitarRecuperacion(solicitud);
+            return Response.status(Response.Status.OK).entity(mensaje(MSG_SOLICITUD_RECUPERACION))
+                    .type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            System.err.println("solicitarRecuperacion - MOVIL: " + e.getClass().getName() + ": " + e.getMessage());
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity(mensaje("Error al solicitar la recuperacion"))
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
+     * POST /movil/auth/confirmarRecuperacion — "olvidé mi clave", paso 2. 400 (nunca 401: la app
+     * lo tomaría como sesión vencida) con el mensaje genérico del código o el de la regla de clave.
+     */
+    @POST
+    @Path("/confirmarRecuperacion")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response confirmarRecuperacion(SolicitudConfirmarRecuperacionUsuarioApp solicitud) {
+        System.out.println("LLEGA AL SERVICIO POST confirmarRecuperacion - MOVIL");
+        try {
+            usuarioAppService.confirmarRecuperacion(solicitud);
+            return Response.status(Response.Status.OK).entity(mensaje("Clave actualizada"))
+                    .type(MediaType.APPLICATION_JSON).build();
+        } catch (IncomeException e) {
+            return Response.status(Response.Status.BAD_REQUEST).entity(mensaje(e.getMessage()))
+                    .type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            System.err.println("confirmarRecuperacion - MOVIL: " + e.getClass().getName() + ": " + e.getMessage());
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity(mensaje("Error al confirmar la recuperacion"))
                     .type(MediaType.APPLICATION_JSON).build();
         }
     }

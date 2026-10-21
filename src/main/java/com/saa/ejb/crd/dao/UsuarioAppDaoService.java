@@ -61,4 +61,29 @@ public interface UsuarioAppDaoService extends EntityDao<UsuarioApp> {
      */
     UsuarioApp registrarIntentoFallido(Long codigo, int maxIntentos, LocalDateTime ahora, long minutosBloqueo)
             throws Throwable;
+
+    /**
+     * Cuenta las entidades cuyo correo personal ({@code ENTD.ENTDCRPR}) es este, comparando
+     * {@code lower(trim(...))}. Sirve para NO mandar un código a un correo compartido por más de
+     * una entidad. Vive aquí y no en {@code EntidadDaoService} porque ese DAO es de otro equipo.
+     *
+     * @param correo     : Correo ya normalizado (trim + minúsculas)
+     * @return           : Cantidad de entidades con ese correo personal
+     * @throws Throwable : Excepcion
+     */
+    long contarEntidadesPorCorreoPersonal(String correo) throws Throwable;
+
+    /**
+     * Suma un intento fallido al código de recuperación vigente, en una transacción PROPIA
+     * ({@code REQUIRES_NEW}) por la misma razón que {@link #registrarIntentoFallido}: el llamador
+     * lanza una excepción con rollback justo después y un {@code save} en su transacción se
+     * perdería (alguien podría probar el millón de códigos sin límite). Relee la fila con
+     * {@code PESSIMISTIC_WRITE}. Al llegar a {@code maxIntentos} anula el código (hash, vencimiento
+     * e intentos a nulo): el partícipe debe pedir otro. NO absorbe errores.
+     *
+     * @param codigo      : Código (PK) de la credencial
+     * @param maxIntentos : Intentos que anulan el código
+     * @throws Throwable  : Excepcion
+     */
+    void registrarIntentoCodigoRecuperacion(Long codigo, int maxIntentos) throws Throwable;
 }

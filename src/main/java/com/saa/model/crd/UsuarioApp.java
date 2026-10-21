@@ -95,6 +95,36 @@ public class UsuarioApp implements Serializable {
     @Column(name = "USAPUSAR", length = 50)
     private String usuarioRegistro;
 
+    /** Hash PBKDF2 del código de recuperación vigente (mismo formato que claveHash). Nulo = sin código. NUNCA se expone. */
+    @Basic
+    @Column(name = "USAPCRHS", length = 256)
+    private String codigoRecuperacionHash;
+
+    /** Vencimiento del código de recuperación vigente. */
+    @Basic
+    @Column(name = "USAPCRVN")
+    private LocalDateTime codigoRecuperacionVence;
+
+    /** Intentos fallidos sobre el código de recuperación vigente. */
+    @Basic
+    @Column(name = "USAPCRIN")
+    private Long codigoRecuperacionIntentos;
+
+    /** Hora del último envío de código (freno de 60 s). */
+    @Basic
+    @Column(name = "USAPCRUE")
+    private LocalDateTime recuperacionUltimoEnvio;
+
+    /** Inicio de la ventana de 24 h para contar envíos. */
+    @Basic
+    @Column(name = "USAPCRVE")
+    private LocalDateTime recuperacionVentanaInicio;
+
+    /** Envíos de código dentro de la ventana de 24 h. */
+    @Basic
+    @Column(name = "USAPCRNE")
+    private Long recuperacionEnvios;
+
     public Long getCodigo() {
         return codigo;
     }
@@ -181,5 +211,53 @@ public class UsuarioApp implements Serializable {
 
     public void setUsuarioRegistro(String usuarioRegistro) {
         this.usuarioRegistro = usuarioRegistro;
+    }
+
+    public String getCodigoRecuperacionHash() {
+        return codigoRecuperacionHash;
+    }
+
+    public void setCodigoRecuperacionHash(String codigoRecuperacionHash) {
+        this.codigoRecuperacionHash = codigoRecuperacionHash;
+    }
+
+    public LocalDateTime getCodigoRecuperacionVence() {
+        return codigoRecuperacionVence;
+    }
+
+    public void setCodigoRecuperacionVence(LocalDateTime codigoRecuperacionVence) {
+        this.codigoRecuperacionVence = codigoRecuperacionVence;
+    }
+
+    public Long getCodigoRecuperacionIntentos() {
+        return codigoRecuperacionIntentos;
+    }
+
+    public void setCodigoRecuperacionIntentos(Long codigoRecuperacionIntentos) {
+        this.codigoRecuperacionIntentos = codigoRecuperacionIntentos;
+    }
+
+    public LocalDateTime getRecuperacionUltimoEnvio() {
+        return recuperacionUltimoEnvio;
+    }
+
+    public void setRecuperacionUltimoEnvio(LocalDateTime recuperacionUltimoEnvio) {
+        this.recuperacionUltimoEnvio = recuperacionUltimoEnvio;
+    }
+
+    public LocalDateTime getRecuperacionVentanaInicio() {
+        return recuperacionVentanaInicio;
+    }
+
+    public void setRecuperacionVentanaInicio(LocalDateTime recuperacionVentanaInicio) {
+        this.recuperacionVentanaInicio = recuperacionVentanaInicio;
+    }
+
+    public Long getRecuperacionEnvios() {
+        return recuperacionEnvios;
+    }
+
+    public void setRecuperacionEnvios(Long recuperacionEnvios) {
+        this.recuperacionEnvios = recuperacionEnvios;
     }
 }

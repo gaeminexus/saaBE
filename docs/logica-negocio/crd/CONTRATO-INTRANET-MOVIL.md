@@ -24,7 +24,7 @@ confiar en que el borde no los enrute — desde el path que el borde ve, no exis
 ```
                     /SaaBE/rest/...    ~200 recursos, incluye destructivos  <- intranet, NO lo toca el borde
 192.168.2.4  SaaBE
-                    /SaaBE/movil/...   lista blanca, solo lectura + 3 auth  <- unico que consume el borde
+                    /SaaBE/movil/...   lista blanca, solo lectura + 5 auth  <- unico que consume el borde
 ```
 
 ## 2. ⛔ Las dos trampas de JAX-RS que hay que resolver ANTES de escribir el primer recurso
@@ -71,7 +71,7 @@ entero de intranet** (el SaaFE dejaría de funcionar).
 
 ## 4. Reglas transversales del path `/movil`
 
-1. **Solo `GET`, y los 3 `POST` de `/auth`.** Ni un `PUT`, ni un `DELETE`, ni un `POST` de
+1. **Solo `GET`, y los 5 `POST` de `/auth`** (los 3 originales y los 2 de recuperación de clave). Ni un `PUT`, ni un `DELETE`, ni un `POST` de
    escritura de negocio. Si un frente futuro necesita escribir, se discute antes; no se agrega.
 2. **Nunca se serializa una entidad JPA cruda.** Todo sale como DTO plano del paquete móvil.
    Motivo concreto y ya medido: `GET /rest/prst/porEntidad/{id}` devuelve `Prestamo` con sus
@@ -115,6 +115,13 @@ Base: `http://192.168.2.4:8080/SaaBE/movil`
 | POST | `/auth/validarCredencial` | `{identificacion, clave}` | `ValidarCredencialResponse` · 401 genérico |
 | POST | `/auth/cambiarClave` | `{identificacion, claveActual, claveNueva}` | 200 · **401** clave actual mala · **400** clave nueva débil |
 | POST | `/auth/desactivar` | `{identificacion, clave}` | 200 · 401 |
+| POST | `/auth/solicitarRecuperacion` | `{identificacion}` | **SIEMPRE 200** `{"mensaje": "Si tu cedula tiene cuenta en la app y un correo personal registrado en ASOPREP, te enviamos un codigo. Si no te llega, acercate a la oficina."}` — mismo texto haya o no cuenta, correo, freno de envíos o fallo del SMTP · 500 solo si falla de verdad |
+| POST | `/auth/confirmarRecuperacion` | `{identificacion, codigo, claveNueva}` (`codigo` es **texto**) | 200 `{"mensaje": "Clave actualizada"}` · **400** `{"mensaje": "Codigo invalido o vencido"}` (sin cuenta, sin código, vencido, agotado, no coincide, o no son 6 dígitos) · **400** con el texto de la regla de `cambiarClave` si la clave nueva es débil · 500 |
+
+**La recuperación de clave ("olvidé mi clave")** se describe en `DISENO-RECUPERACION-CLAVE-CORREO-APP-MOVIL.md`.
+Los dos endpoints delegan en `UsuarioAppService`, son públicos para el borde (el partícipe no tiene sesión) y
+**solo existen en `/movil`: no se agregan a `/rest/usap`**. Los dos devuelven 400, nunca 401. Con esto la lista
+blanca queda en **9 `GET` + 6 `POST`** (los 5 de `/auth` y `/simulador/simular`).
 
 ⚠️ **El 400 de `cambiarClave` se propaga tal cual, no se colapsa a 401.** La app trata cualquier
 401 como sesión vencida y hace logout; si una clave nueva débil devolviera 401, todo partícipe
@@ -288,6 +295,7 @@ Antes de cada despliegue, tres controles — dos se leen y uno se corre:
 | 2026-09-07 | Implementado (`3666a6c`) y revisado por el árbitro. Se agrega la §5.4 con la forma real de cada respuesta, se precisa la regla 7 (prohibía `getAll` por su nombre y no por su motivo, y frenó de más el endpoint de productos) y se anota que `selectVigentesByEntidad` absorbe errores y devuelve lista vacía |
 | 2026-09-07 | Cerrado `/simulador/productos` (`48f8c2c`): la lista blanca queda completa. Se documenta que tasa y plazo por producto no existen hoy en `saaBE` para ningún consumidor |
 | 2026-09-07 | Se documenta el catálogo real de `PRSTIDST` (11 estados, de `com.saa.rubros.EstadoPrestamo`) y cómo se agrupa para el filtro de la app, que había quedado sin poder implementarse |
+| 2026-10-21 | `/auth/solicitarRecuperacion` y `/auth/confirmarRecuperacion` (código de 6 dígitos al correo personal). La lista blanca pasa de 9 GET + 4 POST a **9 GET + 6 POST**. Requiere el DDL `sql/DDL-USUARIO-APP-MOVIL-RECUPERACION.sql` corrido ANTES del WAR y la sesión JNDI `java:jboss/mail/AppMovil` en el servidor |
 | 2026-09-14 | §5.4: `CuotaPrestamoMovilDTO` suma `desgravamen`, `seguroIncendio` y `total` — la tabla de amortización de la app mostraba solo `cuota` (capital + interés). `total` viaja crudo: **no** se replica el fallback del motor para `DTPRTTLL` nulo. Medición de nulos y de si el total cuadra: `sql/MEDICION-CUOTAS-APP-MOVIL.sql` |
 
 ---

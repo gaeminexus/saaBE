@@ -1,10 +1,12 @@
 package com.saa.ejb.crd.service;
 
 import com.saa.ejb.crd.service.dto.SolicitudCambiarClaveUsuarioApp;
+import com.saa.ejb.crd.service.dto.SolicitudConfirmarRecuperacionUsuarioApp;
 import com.saa.ejb.crd.service.dto.SolicitudCrearUsuarioApp;
 import com.saa.ejb.crd.service.dto.SolicitudDesactivarUsuarioApp;
 import com.saa.ejb.crd.service.dto.SolicitudReactivarUsuarioApp;
 import com.saa.ejb.crd.service.dto.SolicitudResetearClaveUsuarioApp;
+import com.saa.ejb.crd.service.dto.SolicitudSolicitarRecuperacionUsuarioApp;
 import com.saa.ejb.crd.service.dto.SolicitudValidarCredencial;
 import com.saa.ejb.crd.service.dto.ValidarCredencialResponse;
 import com.saa.model.crd.UsuarioApp;
@@ -108,4 +110,27 @@ public interface UsuarioAppService {
      *                     credenciales no validan
      */
     void desactivar(SolicitudDesactivarUsuarioApp solicitud) throws Throwable;
+
+    /**
+     * "Olvidé mi clave", paso 1: manda un código de 6 dígitos al correo personal
+     * ({@code ENTD.ENTDCRPR}). <b>Nunca lanza {@code IncomeException}</b> y no distingue casos
+     * hacia afuera: sin cuenta, cuenta ELIMINADA, sin correo, correo con mala forma o repetido en
+     * otra entidad, freno de envíos (60 s entre envíos, 5 por 24 h) y fallo del correo terminan
+     * igual, sin enviar nada. Una cuenta BLOQUEADA sí puede pedir código. Solo una falla real
+     * (Oracle caído) sube como excepción.
+     *
+     * @param solicitud  : identificación
+     * @throws Throwable : Solo fallas reales
+     */
+    void solicitarRecuperacion(SolicitudSolicitarRecuperacionUsuarioApp solicitud) throws Throwable;
+
+    /**
+     * "Olvidé mi clave", paso 2: valida el código y fija la clave nueva.
+     *
+     * @param solicitud  : identificación, código (texto de 6 dígitos) y clave nueva
+     * @throws ValidacionException : (400) código inválido/vencido/agotado — mensaje genérico — o
+     *                     clave nueva que no cumple la política de {@link #cambiarClave}
+     * @throws Throwable : Fallas reales
+     */
+    void confirmarRecuperacion(SolicitudConfirmarRecuperacionUsuarioApp solicitud) throws Throwable;
 }

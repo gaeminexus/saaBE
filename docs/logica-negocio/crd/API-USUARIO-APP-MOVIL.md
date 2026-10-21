@@ -114,6 +114,53 @@ seguia en 0 intentos). Reglas para no reintroducirlo:
 `SaaMovilBE` agrega ademas su propio rate limiting por IP en `/auth/login` — es una capa
 distinta y adicional, no reemplaza a esta.
 
+## Recuperación de clave con código al correo ("olvidé mi clave")
+
+Diseño completo: `DISENO-RECUPERACION-CLAVE-CORREO-APP-MOVIL.md`. Solo por `/movil/auth`
+(`solicitarRecuperacion`, `confirmarRecuperacion`); **no están en `/rest/usap`**.
+
+**Columnas nuevas de `CRD.USAP`** (DDL: `sql/DDL-USUARIO-APP-MOVIL-RECUPERACION.sql`, todas nullable;
+`UsuarioAppDTO` **no** las lleva):
+
+| Columna | Campo de la entidad | Qué es |
+|---|---|---|
+| `USAPCRHS` | `codigoRecuperacionHash` | hash PBKDF2 del código vigente (mismo formato que `USAPCLVE`); nulo = sin código |
+| `USAPCRVN` | `codigoRecuperacionVence` | vencimiento (envío + 15 min) |
+| `USAPCRIN` | `codigoRecuperacionIntentos` | intentos fallidos sobre ese código |
+| `USAPCRUE` | `recuperacionUltimoEnvio` | hora del último envío (freno de 60 s) |
+| `USAPCRVE` | `recuperacionVentanaInicio` | inicio de la ventana de 24 h de envíos |
+| `USAPCRNE` | `recuperacionEnvios` | envíos dentro de esa ventana (máximo 5) |
+
+⛔ **El DDL va ANTES del WAR.** La entidad mapea estas columnas: un WAR desplegado sin ellas hace
+fallar **todo** acceso a USAP (login de la app y pantalla de oficina), no solo la recuperación.
+
+**Ciclo del código:**
+
+1. `solicitarRecuperacion`: responde **siempre** el mismo 200. Solo envía si hay cuenta no ELIMINADA
+   (una BLOQUEADA sí), `ENTD.ENTDCRPR` con forma de correo y **una sola entidad** con ese correo
+   (`lower/trim`), no hay un envío de hace menos de 60 s y van menos de 5 envíos en 24 h. Genera 6 dígitos
+   con `SecureRandom`, guarda **solo el hash** y manda el correo.
+2. `confirmarRecuperacion`: lo que no sean 6 dígitos, cuenta inexistente o ELIMINADA, sin código o vencido
+   → 400 genérico `Codigo invalido o vencido`. Código que no coincide → suma un intento y 400 genérico; al
+   5.º intento el código se anula. Con el código bueno se valida la clave nueva (misma regla que
+   `cambiarClave`; si es débil → 400 con ese texto y **el código no se consume**). Si todo está bien:
+   clave nueva, `debeCambiarClave = 0`, cuenta ACTIVA, intentos de login en 0, `bloqueadoHasta` nulo,
+   código anulado (un solo uso). **No toca `USAPUSAR`**: ese campo es el rastro de la oficina.
+
+⛔ **Los intentos fallidos del código se graban en transacción propia**, por el mismo motivo que los del
+login (ver arriba): `ValidacionException` hereda `IncomeException` (`rollback = true`) y desharía un
+`save`. `UsuarioAppDaoService.registrarIntentoCodigoRecuperacion` es `REQUIRES_NEW` con
+`PESSIMISTIC_WRITE`, y se llama por la referencia `@EJB`. No lo cambies a un `save` en el Service.
+Corolario: `confirmarRecuperacion` **no bloquea la fila** en su transacción (el lock de la transacción
+propia esperaría al de la de afuera), así que dos confirmaciones simultáneas con el código correcto
+podrían ganar las dos; el efecto es el mismo (la clave la fija quien tiene el código).
+
+**Correo:** destino solo `ENTD.ENTDCRPR` (nunca el institucional). La sesión se busca con
+`InitialContext.lookup("java:jboss/mail/AppMovil")` **al enviar, nunca con `@Resource`**: con `@Resource`,
+si la sesión no está en el servidor falla el despliegue del WAR entero y se cae el SAA. Si el lookup o el
+envío fallan, se escribe la causa en `System.err` (sin el código) y la respuesta sigue siendo el mismo 200.
+El texto no lleva enlaces ni la cédula. La sesión `AppMovil` la configura el usuario en el `.4`.
+
 ## Estados y el ciclo de la cuenta
 
 | Estado | Valor | Como se llega | Como se sale |

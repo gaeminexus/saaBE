@@ -92,4 +92,33 @@ public class UsuarioAppDaoServiceImpl extends EntityDaoImpl<UsuarioApp>
         }
         return usap;
     }
+
+    @Override
+    public long contarEntidadesPorCorreoPersonal(String correo) throws Throwable {
+        System.out.println("Ingresa al metodo contarEntidadesPorCorreoPersonal de UsuarioApp");
+        Query query = em.createQuery(
+                " select count(e) from Entidad e " +
+                " where  lower(trim(e.correoPersonal)) = :correo");
+        query.setParameter("correo", correo);
+        Number total = (Number) query.getSingleResult();
+        return total != null ? total.longValue() : 0L;
+    }
+
+    @Override
+    @TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
+    public void registrarIntentoCodigoRecuperacion(Long codigo, int maxIntentos) throws Throwable {
+        System.out.println("Ingresa al metodo registrarIntentoCodigoRecuperacion de UsuarioApp - codigo: " + codigo);
+        UsuarioApp usap = em.find(UsuarioApp.class, codigo, LockModeType.PESSIMISTIC_WRITE);
+        if (usap == null || usap.getCodigoRecuperacionHash() == null) {
+            return;
+        }
+        long intentos = (usap.getCodigoRecuperacionIntentos() != null ? usap.getCodigoRecuperacionIntentos() : 0L) + 1;
+        if (intentos >= maxIntentos) {
+            usap.setCodigoRecuperacionHash(null);
+            usap.setCodigoRecuperacionVence(null);
+            usap.setCodigoRecuperacionIntentos(null);
+        } else {
+            usap.setCodigoRecuperacionIntentos(intentos);
+        }
+    }
 }
