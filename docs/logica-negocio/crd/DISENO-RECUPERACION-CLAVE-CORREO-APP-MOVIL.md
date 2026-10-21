@@ -15,6 +15,42 @@
 > `bc3468a`). Esto **se suma** a esa vía, no la reemplaza: un partícipe sin correo sigue yendo a la
 > oficina.
 
+## Resultado de la medición (2026-10-21)
+
+`MEDICION-CORREO-PARTICIPES-APP-MOVIL.sql`, corrido por el usuario:
+
+| | Entidades | |
+|---|---|---|
+| Total en `CRD.ENTD` | 7.300 | |
+| Con algo escrito en `ENTDCRPR` | 1.907 | 26 % |
+| Con forma de correo | 1.875 | 25,7 % |
+| **Con forma de correo y único** (B2) | **1.873** | **25,7 % — a estos les sirve la función** |
+| Con cuenta en la app (USAP) | 4 | de esos, 3 con correo usable |
+
+Lo que dicen:
+
+1. **A uno de cada cuatro partícipes le sirve la recuperación por correo.** Los otros tres siguen
+   yendo a la oficina. El 7.300 incluye todas las entidades, también las inactivas, así que el
+   porcentaje sobre partícipes activos puede ser distinto. No se midió.
+2. **Los correos repetidos casi no existen.** Fuera de la basura (`na`, `n/a`, `s/n`), solo hay
+   **un** correo real repetido (`jmlojan@...`, en 2 entidades). La regla de "correo único" deja
+   fuera a 2 partícipes y se queda, porque el riesgo que cubre es real aunque hoy sea chico.
+3. **La bandera `ENTDCPVR` no sirve como filtro.** 1.619 entidades con correo válido tienen la
+   bandera en 0. Se ignora, como estaba previsto.
+4. **La basura es variada y el filtro la separa bien.** `NA`, `S/N`, `3`, `.`, dominios sin punto
+   (`@GMAIL`, `gmailcom`), espacios en medio, formato `Nombre <correo>`. Ninguno pasa el filtro.
+   **Lo que el filtro NO detecta:** un dominio mal escrito pero bien formado (p. ej.
+   `autollok.com`). A esos el código no les llega nunca, y el partícipe ve el mismo mensaje
+   genérico y va a la oficina. Es aceptable.
+5. **Hay correos de Petroecuador en el campo personal** (`@eppetroecuador.ec`). Un jubilado o un
+   ex empleado puede haber perdido el acceso a esa casilla. No se midió cuántos.
+6. **USAP tiene 4 cuentas.** El 2026-09-11 tenía 0: el enrolamiento en oficina ya empezó.
+
+**Consecuencia práctica, para el usuario:** el momento de arreglar el correo es **el
+enrolamiento en oficina**. El empleado ya tiene al partícipe delante, y puede confirmar o
+corregir su correo personal en la ficha antes de crearle la cuenta. Sin eso, el 74 % de los que
+se enrolen nunca va a poder recuperar la clave por su cuenta.
+
 ## Por qué código y no clave temporal
 
 Con una clave temporal al correo, **cualquiera que sepa una cédula** (es dato público) le anula la
