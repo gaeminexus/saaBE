@@ -92,6 +92,25 @@ comparten los tres endpoints que autentican (1, 2 y 6): no se puede evadir el bl
 claves por `cambiarClave`. Un bloqueo vencido se levanta solo en el siguiente intento. El
 login exitoso resetea el contador y graba `USAPFCUA`.
 
+**⛔ El intento fallido se graba en transaccion propia — no lo "simplifiques" a un `save`.**
+`UsuarioAppDaoService.registrarIntentoFallido` corre con `REQUIRES_NEW`, relee la fila con
+`PESSIMISTIC_WRITE`, suma el intento y bloquea al llegar a 5. Hasta 2026-10-21 el contador se
+guardaba con un `save` dentro de la misma transaccion del metodo publico, y despues se lanzaba
+`IncomeException`, que esta anotada `@ApplicationException(rollback = true)`: el rollback
+deshacia el `save`. Resultado: `USAPINTF` nunca subia, ninguna cuenta se bloqueaba y se podian
+probar claves sin limite (confirmado en vivo por el usuario: varias claves malas y la cuenta
+seguia en 0 intentos). Reglas para no reintroducirlo:
+
+- Vive en el **DAO** (otro EJB) y se llama por la referencia `@EJB`. Un metodo `REQUIRES_NEW`
+  en el mismo Service llamado como `this.metodo()` no pasa por el proxy del contenedor y **no
+  abre transaccion nueva**, sin ningun aviso.
+- En el camino de clave mala, `autenticar` **no modifica la entidad ni hace `save`**: un cambio
+  pendiente de la transaccion de afuera sobre esa fila podria dejar esperando al `PESSIMISTIC_WRITE`
+  de la de adentro. El desbloqueo por vencimiento en memoria solo se aplica en el camino de clave
+  buena; para clave mala lo resuelve el metodo del DAO.
+- El lock evita que dos intentos en paralelo lean el mismo contador y se salten el limite.
+- El metodo del DAO no absorbe errores: si falla, que falle.
+
 `SaaMovilBE` agrega ademas su propio rate limiting por IP en `/auth/login` — es una capa
 distinta y adicional, no reemplaza a esta.
 

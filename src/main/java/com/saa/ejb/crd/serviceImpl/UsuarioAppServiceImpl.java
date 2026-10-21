@@ -255,33 +255,32 @@ public class UsuarioAppServiceImpl implements UsuarioAppService {
         }
 
         LocalDateTime ahora = LocalDateTime.now();
+        boolean bloqueoVencido = false;
         if (estado != null && estado.intValue() == EstadoUsuarioApp.BLOQUEADO) {
             if (usap.getBloqueadoHasta() != null && ahora.isBefore(usap.getBloqueadoHasta())) {
                 throw new IncomeException(MSG_CREDENCIALES_INVALIDAS);
             }
-            // El bloqueo temporal ya expiró: se reactiva para permitir un nuevo intento.
-            usap.setEstado(Long.valueOf(EstadoUsuarioApp.ACTIVO));
-            usap.setIntentosFallidos(0L);
-            usap.setBloqueadoHasta(null);
+            bloqueoVencido = true;
         }
 
         if (!verificarClave(clave, usap.getClaveHash())) {
-            long intentos = nvl(usap.getIntentosFallidos()) + 1;
-            usap.setIntentosFallidos(intentos);
-            if (intentos >= MAX_INTENTOS_FALLIDOS) {
-                usap.setEstado(Long.valueOf(EstadoUsuarioApp.BLOQUEADO));
-                usap.setBloqueadoHasta(ahora.plusMinutes(MINUTOS_BLOQUEO));
-            }
-            usuarioAppDaoService.save(usap, usap.getCodigo());
+            // El intento fallido se graba en una transacción PROPIA (REQUIRES_NEW en el DAO):
+            // la IncomeException de abajo es rollback=true y desharía un save hecho acá. Por eso
+            // NO se toca la entidad ni se hace save en este camino, y la llamada pasa por la
+            // referencia @EJB (proxy del contenedor), nunca por this. Si el bloqueo ya venció, el
+            // DAO reinicia el contador antes de sumar.
+            usuarioAppDaoService.registrarIntentoFallido(usap.getCodigo(), MAX_INTENTOS_FALLIDOS, ahora,
+                    MINUTOS_BLOQUEO);
             throw new IncomeException(MSG_CREDENCIALES_INVALIDAS);
         }
 
+        if (bloqueoVencido) {
+            // El bloqueo temporal ya expiró y la clave es buena: se reactiva la cuenta.
+            usap.setEstado(Long.valueOf(EstadoUsuarioApp.ACTIVO));
+            usap.setBloqueadoHasta(null);
+        }
         usap.setIntentosFallidos(0L);
         return usuarioAppDaoService.save(usap, usap.getCodigo());
-    }
-
-    private long nvl(Long valor) {
-        return valor != null ? valor : 0L;
     }
 
     private boolean esVacio(String valor) {
