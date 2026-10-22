@@ -7,6 +7,7 @@ import java.util.Map;
 
 import com.saa.ejb.crd.dao.CxcKardexParticipeDaoService;
 import com.saa.ejb.crd.dao.CxcParticipeDaoService;
+import com.saa.ejb.crd.dao.DetallePrestamoDaoService;
 import com.saa.ejb.crd.dao.PrestamoDaoService;
 import com.saa.ejb.crd.service.PrestamoService;
 import com.saa.ejb.crd.service.SaldoAporteService;
@@ -56,6 +57,9 @@ public class CuentaIndividualMovilRest {
     @EJB
     private PrestamoService prestamoService;
 
+    @EJB
+    private DetallePrestamoDaoService detallePrestamoDaoService;
+
     @GET
     @Path("/{idEntidad}")
     @Produces(MediaType.APPLICATION_JSON)
@@ -75,7 +79,8 @@ public class CuentaIndividualMovilRest {
             Map<Long, SaldoPrestamoResumen> saldos = calcularSaldos(codigos);
             List<com.saa.ws.movil.dto.PrestamoMovilDTO> prestamosDto = new ArrayList<>();
             for (Prestamo prestamo : prestamosVigentes) {
-                prestamosDto.add(MovilMappers.aDTO(prestamo, saldos.get(prestamo.getCodigo())));
+                prestamosDto.add(MovilMappers.aDTO(prestamo, saldos.get(prestamo.getCodigo()),
+                        MovilMappers.cargarCuotas(detallePrestamoDaoService, prestamo.getCodigo())));
             }
             dto.setPrestamosConSaldo(prestamosDto);
 

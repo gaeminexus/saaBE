@@ -46,6 +46,32 @@ public class PrestamoMovilDTO {
     private Long diasVencido;
     private Long idEstado;
 
+    /** TPPRCDGO del tipo del producto del prestamo; null si falta. */
+    private Long idTipoPrestamo;
+
+    /** Nombre del tipo de prestamo. */
+    private String nombreTipoPrestamo;
+
+    /** true si idTipoPrestamo == 1 (QUIROGRAFARIO): la garantia de los aportes solo cubre esos productos. */
+    private Boolean cubiertoPorAportes;
+
+    /** Vencimiento minimo de las cuotas validas (estado != ANULADA). null si no hay cuotas. */
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss")
+    private LocalDateTime fechaPrimeraCuota;
+
+    /** Vencimiento maximo de las cuotas validas (estado != ANULADA). */
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss")
+    private LocalDateTime fechaUltimaCuota;
+
+    /** Misma regla que participe-dash del SAA (obtenerSaldoDesdeUltimaPagada). Ver CONTRATO-INTRANET-MOVIL.md. */
+    private Double saldoCapitalPendiente;
+
+    /** montoSolicitado - saldoCapitalPendiente, a 2 decimales; null si alguno es null. */
+    private Double capitalPagado;
+
+    /** Total de la cuota PAGADA/CANCELADA_ANTICIPADA de mayor numeroCuota; null si no hay. */
+    private Double valorUltimaCuotaPagada;
+
     public Long getCodigo() {
         return codigo;
     }
@@ -204,5 +230,69 @@ public class PrestamoMovilDTO {
 
     public void setIdEstado(Long idEstado) {
         this.idEstado = idEstado;
+    }
+
+    public Long getIdTipoPrestamo() {
+        return idTipoPrestamo;
+    }
+
+    public void setIdTipoPrestamo(Long idTipoPrestamo) {
+        this.idTipoPrestamo = idTipoPrestamo;
+    }
+
+    public String getNombreTipoPrestamo() {
+        return nombreTipoPrestamo;
+    }
+
+    public void setNombreTipoPrestamo(String nombreTipoPrestamo) {
+        this.nombreTipoPrestamo = nombreTipoPrestamo;
+    }
+
+    public Boolean getCubiertoPorAportes() {
+        return cubiertoPorAportes;
+    }
+
+    public void setCubiertoPorAportes(Boolean cubiertoPorAportes) {
+        this.cubiertoPorAportes = cubiertoPorAportes;
+    }
+
+    public LocalDateTime getFechaPrimeraCuota() {
+        return fechaPrimeraCuota;
+    }
+
+    public void setFechaPrimeraCuota(LocalDateTime fechaPrimeraCuota) {
+        this.fechaPrimeraCuota = fechaPrimeraCuota;
+    }
+
+    public LocalDateTime getFechaUltimaCuota() {
+        return fechaUltimaCuota;
+    }
+
+    public void setFechaUltimaCuota(LocalDateTime fechaUltimaCuota) {
+        this.fechaUltimaCuota = fechaUltimaCuota;
+    }
+
+    public Double getSaldoCapitalPendiente() {
+        return saldoCapitalPendiente;
+    }
+
+    public void setSaldoCapitalPendiente(Double saldoCapitalPendiente) {
+        this.saldoCapitalPendiente = saldoCapitalPendiente;
+    }
+
+    public Double getCapitalPagado() {
+        return capitalPagado;
+    }
+
+    public void setCapitalPagado(Double capitalPagado) {
+        this.capitalPagado = capitalPagado;
+    }
+
+    public Double getValorUltimaCuotaPagada() {
+        return valorUltimaCuotaPagada;
+    }
+
+    public void setValorUltimaCuotaPagada(Double valorUltimaCuotaPagada) {
+        this.valorUltimaCuotaPagada = valorUltimaCuotaPagada;
     }
 }

@@ -233,9 +233,9 @@ suposición: los campos son los que declaran los DTO de `com.saa.ws.movil.dto`. 
 
 | DTO | Campos |
 |---|---|
-| `ParticipeMovilDTO` | `idEntidad:Long, identificacion:String, nombres:String, apellidos:String, correoPersonal:String, correoInstitucional:String, telefono:String, movil:String` |
-| `PrestamoMovilDTO` | `codigo:Long, idAsoprep:Long, idProducto:Long, nombreProducto:String, fecha *(texto)*, fechaInicio *(texto)*, fechaFin *(texto)*, plazo:Long, montoSolicitado:Double, valorCuota:Double, tasa:Double, totalPagado:Double, saldoCapital:Double, saldoInteres:Double, saldoPorVencer:Double, saldoVencido:Double, saldoTotal:Double, moraCalculada:Double, diasVencido:Long, idEstado:Long` |
-| `CuotaPrestamoMovilDTO` | `codigo:Long, numeroCuota:Double, fechaVencimiento *(texto)*, capital:Double, interes:Double, mora:Double, cuota:Double, desgravamen:Double, seguroIncendio:Double, total:Double, saldoCapital:Double, saldo:Double, estado:Long, fechaPagado *(texto)*, capitalPagado:Double, interesPagado:Double, diasMora:Long` — `desgravamen` = `DTPRDSGR`, `seguroIncendio` = `DTPRVLSI`, `total` = `DTPRTTLL` **crudo, nulo si es nulo** (agregados el 2026-09-14, ver `saaAPP/docs/ORDEN-CUOTAS-DESGLOSE-Y-ESTADO-2026-09-14.md`). `estado` es `DTPRESTD`, catálogo `EstadoCuotaPrestamo` |
+| `ParticipeMovilDTO` | `idEntidad:Long, identificacion:String, nombres:String, apellidos:String, correoPersonal:String, correoInstitucional:String, telefono:String, movil:String` **+ (2026-10-22, §9):** `fechaPrimerAporte *(texto)*, idEstadoParticipe:Long, estadoParticipe:String` |
+| `PrestamoMovilDTO` | `codigo:Long, idAsoprep:Long, idProducto:Long, nombreProducto:String, fecha *(texto)*, fechaInicio *(texto)*, fechaFin *(texto)*, plazo:Long, montoSolicitado:Double, valorCuota:Double, tasa:Double, totalPagado:Double, saldoCapital:Double, saldoInteres:Double, saldoPorVencer:Double, saldoVencido:Double, saldoTotal:Double, moraCalculada:Double, diasVencido:Long, idEstado:Long` **+ (2026-10-22, §9):** `idTipoPrestamo:Long, nombreTipoPrestamo:String, cubiertoPorAportes:Boolean, fechaPrimeraCuota *(texto)*, fechaUltimaCuota *(texto)*, saldoCapitalPendiente:Double, capitalPagado:Double, valorUltimaCuotaPagada:Double` |
+| `CuotaPrestamoMovilDTO` | `codigo:Long, numeroCuota:Double, fechaVencimiento *(texto)*, capital:Double, interes:Double, mora:Double, cuota:Double, desgravamen:Double, seguroIncendio:Double, total:Double, saldoCapital:Double, saldo:Double, estado:Long, fechaPagado *(texto)*, capitalPagado:Double, interesPagado:Double, diasMora:Long, pagoExtra:Double` *(pagoExtra agregado 2026-10-22, §9)* — `desgravamen` = `DTPRDSGR`, `seguroIncendio` = `DTPRVLSI`, `total` = `DTPRTTLL` **crudo, nulo si es nulo** (agregados el 2026-09-14, ver `saaAPP/docs/ORDEN-CUOTAS-DESGLOSE-Y-ESTADO-2026-09-14.md`). `estado` es `DTPRESTD`, catálogo `EstadoCuotaPrestamo` |
 | `SaldoTipoAporte` *(reutilizado tal cual)* | `idTipoAporte:Long, nombre:String, saldo:Double` |
 | `EstadoCuentaAportesMovilDTO` | `idEntidad:Long, identificacion:String, razonSocial:String, totalFaltante:Double, rangoPorDefectoAplicado:boolean, desdeAplicado:String (yyyy-MM), hastaAplicado:String (yyyy-MM), periodos:[...]` |
 | `PeriodoEstadoCuentaMovilDTO` | `periodo:String, idTipoAporte:Long, nombreTipoAporte:String, esperado:Double, aportado:Double, faltante:Double, estado:String, movimientos:[...]` |
@@ -296,6 +296,7 @@ Antes de cada despliegue, tres controles — dos se leen y uno se corre:
 | 2026-09-07 | Cerrado `/simulador/productos` (`48f8c2c`): la lista blanca queda completa. Se documenta que tasa y plazo por producto no existen hoy en `saaBE` para ningún consumidor |
 | 2026-09-07 | Se documenta el catálogo real de `PRSTIDST` (11 estados, de `com.saa.rubros.EstadoPrestamo`) y cómo se agrupa para el filtro de la app, que había quedado sin poder implementarse |
 | 2026-10-21 | `/auth/solicitarRecuperacion` y `/auth/confirmarRecuperacion` (código de 6 dígitos al correo personal). La lista blanca pasa de 9 GET + 4 POST a **9 GET + 6 POST**. Requiere el DDL `sql/DDL-USUARIO-APP-MOVIL-RECUPERACION.sql` corrido ANTES del WAR y la sesión JNDI `java:jboss/mail/AppMovil` en el servidor |
+| 2026-10-22 | §9: campos nuevos en `PrestamoMovilDTO` (8), `CuotaPrestamoMovilDTO` (`pagoExtra`) y `ParticipeMovilDTO` (3), por las observaciones del cliente. Sin rutas nuevas |
 | 2026-09-14 | §5.4: `CuotaPrestamoMovilDTO` suma `desgravamen`, `seguroIncendio` y `total` — la tabla de amortización de la app mostraba solo `cuota` (capital + interés). `total` viaja crudo: **no** se replica el fallback del motor para `DTPRTTLL` nulo. Medición de nulos y de si el total cuadra: `sql/MEDICION-CUOTAS-APP-MOVIL.sql` |
 
 ---
@@ -365,3 +366,39 @@ ninguna pantalla — solo usa `saldoTotal` y, en modelos, `saldoCapital`.
 persiste el estado de la cuota** cuando detecta inconsistencia: una consulta desde el teléfono no
 debe escribir en la base. `calcularSaldosEnLote` del `PrestamoService` es la variante pura y es la
 que va — verificado que no llama a `save`/`merge`/`persist`.
+
+---
+
+## 9. Campos nuevos por las observaciones del cliente (2026-10-22)
+
+> Orden: `saaAPP/docs/ORDEN-OBSERVACIONES-CLIENTE-2026-10-21.md`, parte 1. **Sin rutas nuevas**: `/movil`
+> sigue en 9 GET + 6 POST. Solo se agregan campos a tres DTO. Las fechas llevan
+> `@JsonFormat(STRING, "yyyy-MM-dd'T'HH:mm:ss")` como `fechaInicio`: nunca arreglo Jackson.
+
+**`PrestamoMovilDTO`** (lo traen `/prestamos/...` y `/cuenta-individual/...`: usan el mismo mapper). Las
+cuotas se cargan **una vez por préstamo** (`DetallePrestamoDaoService.selectByPrestamo`) y de ahí salen
+los seis campos derivados. *Cuotas válidas* = las de `estado != 9` (ANULADA). Si esa carga falla, el
+préstamo sale con esos seis campos en `null` y la respuesta sigue siendo 200 (la absorción es solo de la
+carga).
+
+| Campo | Regla |
+|---|---|
+| `idTipoPrestamo` / `nombreTipoPrestamo` | `producto.tipoPrestamo.codigo` (`TPPRCDGO`) / `.nombre`. `null` si falta |
+| `cubiertoPorAportes` | `true` si `idTipoPrestamo == 1` (QUIROGRAFARIO); `false` en cualquier otro caso, `null` incluido. La regla vive en el servidor |
+| `fechaPrimeraCuota` / `fechaUltimaCuota` | mínimo / máximo `fechaVencimiento` de las cuotas válidas |
+| `saldoCapitalPendiente` | `idEstado` (`PRSTIDST`) 3, 4, 5 o 13 → `0`. Si no, `saldoCapital` de la cuota PAGADA (4) de mayor `numeroCuota` (`null` si ese campo es `null`: no se inventa). Sin cuotas pagadas → `montoSolicitado`. Es la regla de `participe-dash` (`obtenerSaldoDesdeUltimaPagada`) |
+| `capitalPagado` | `montoSolicitado − saldoCapitalPendiente`, a 2 decimales; `null` si alguno es `null` |
+| `valorUltimaCuotaPagada` | `total` de la cuota con estado 4 o 7 de mayor `numeroCuota`; si `total` es `null`, `cuota + desgravamen + seguroIncendio` (cada `null` = 0). `null` si no hay ninguna |
+
+Los campos que ya existían (`saldoCapital`, `saldoTotal`, `totalPagado`, `valorCuota`, `fechaInicio`,
+`fechaFin`) **no cambian de valor**.
+
+**`CuotaPrestamoMovilDTO`:** `pagoExtra` = `DTPRSLOT` (`saldoOtros`) tal cual; el `null` se conserva.
+
+**`ParticipeMovilDTO`:**
+
+| Campo | Regla |
+|---|---|
+| `fechaPrimerAporte` | mínimo `APRTFCTR` de `selectMovimientosPorEntidadYRangoDevengo` con un rango que lo abarca todo (1900-01 a 2999-12). **Es la misma consulta que alimenta `/aportes/{id}/movimientos`, que filtra solo por entidad: no excluye anulados ni reversados**, y por lo tanto esto tampoco. `null` si no hay aportes o si la consulta falla |
+| `idEstadoParticipe` | `CRD.ENTD.ENTDIDST` tal cual |
+| `estadoParticipe` | `ESPRNMBR` de `CRD.ESPR` donde **`ESPRCDEX` (código alterno) = `ENTDIDST`**, no el PK `ESPRCDGO`: tras `MIGRACION-ESTADO-PARTICIPE.md`, `ENTDIDST` guarda el alterno. `null` si el código no está en el catálogo |

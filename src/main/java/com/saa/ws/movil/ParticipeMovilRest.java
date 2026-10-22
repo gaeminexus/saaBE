@@ -1,8 +1,15 @@
 package com.saa.ws.movil;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.List;
+
+import com.saa.ejb.crd.dao.AporteDaoService;
 import com.saa.ejb.crd.dao.EntidadDaoService;
+import com.saa.ejb.crd.dao.EstadoParticipeDaoService;
 import com.saa.ejb.crd.dao.ParticipeDaoService;
 import com.saa.model.crd.Entidad;
+import com.saa.model.crd.EstadoParticipe;
 import com.saa.model.crd.NombreEntidadesCredito;
 import com.saa.ws.movil.dto.MensajeMovilDTO;
 import com.saa.ws.movil.dto.ParticipeMovilDTO;
@@ -30,6 +37,12 @@ public class ParticipeMovilRest {
 
     @EJB
     private ParticipeDaoService participeDaoService;
+
+    @EJB
+    private EstadoParticipeDaoService estadoParticipeDaoService;
+
+    @EJB
+    private AporteDaoService aporteDaoService;
 
     @GET
     @Path("/{idEntidad}")
@@ -70,11 +83,62 @@ public class ParticipeMovilRest {
             dto.setNombres(entidad.getRazonSocial());
             dto.setApellidos(null);
 
+            // ENTDIDST guarda el código ALTERNO (ESPRCDEX) del catálogo CRD.ESPR, NO su PK
+            // (MIGRACION-ESTADO-PARTICIPE.md; mismo criterio que EntidadDaoServiceImpl y
+            // CertificadoServiceImpl). Un código fuera del catálogo sale null, no un texto inventado.
+            dto.setIdEstadoParticipe(entidad.getIdEstado());
+            dto.setEstadoParticipe(nombreEstadoParticipe(entidad.getIdEstado()));
+            dto.setFechaPrimerAporte(fechaPrimerAporte(idEntidad));
+
             return Response.status(Response.Status.OK).entity(dto).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity(new MensajeMovilDTO("Error al obtener el perfil del partícipe"))
                     .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /** Catálogo CRD.ESPR (acotado, ~9 filas): se busca por código alterno ESPRCDEX. */
+    private String nombreEstadoParticipe(Long codigoAlterno) throws Throwable {
+        if (codigoAlterno == null) {
+            return null;
+        }
+        List<EstadoParticipe> estados = estadoParticipeDaoService.selectAll(NombreEntidadesCredito.ESTADO_PARTICIPE);
+        if (estados != null) {
+            for (EstadoParticipe estado : estados) {
+                if (codigoAlterno.equals(estado.getCodigoExterno())) {
+                    return estado.getNombre();
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Fecha (APRTFCTR) del aporte más antiguo de la entidad. Reusa la MISMA consulta que alimenta
+     * {@code /movil/aportes/.../movimientos} ({@code selectMovimientosPorEntidadYRangoDevengo}), con
+     * un rango que lo abarca todo: esa consulta filtra solo por entidad (más el rango de devengo,
+     * incluyendo periodo nulo), sin excluir anulados ni reversados. Si falla, devuelve null: el
+     * perfil no debe caerse por un dato decorativo.
+     */
+    private LocalDateTime fechaPrimerAporte(Long idEntidad) {
+        try {
+            List<Object[]> filas = aporteDaoService.selectMovimientosPorEntidadYRangoDevengo(
+                    idEntidad, LocalDate.of(1900, 1, 1), LocalDate.of(2999, 12, 1));
+            LocalDateTime primera = null;
+            if (filas != null) {
+                for (Object[] fila : filas) {
+                    LocalDateTime fecha = (LocalDateTime) fila[3];
+                    if (fecha != null && (primera == null || fecha.isBefore(primera))) {
+                        primera = fecha;
+                    }
+                }
+            }
+            return primera;
+        } catch (Throwable e) {
+            System.err.println("ParticipeMovilRest.fechaPrimerAporte - entidad " + idEntidad + ": "
+                    + e.getClass().getName() + ": " + e.getMessage());
+            return null;
         }
     }
 

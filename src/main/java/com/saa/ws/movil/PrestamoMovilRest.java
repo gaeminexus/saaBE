@@ -62,7 +62,8 @@ public class PrestamoMovilRest {
             Map<Long, SaldoPrestamoResumen> saldos = calcularSaldos(codigos);
             List<PrestamoMovilDTO> dtos = new ArrayList<>();
             for (Prestamo prestamo : prestamos) {
-                dtos.add(MovilMappers.aDTO(prestamo, saldos.get(prestamo.getCodigo())));
+                dtos.add(MovilMappers.aDTO(prestamo, saldos.get(prestamo.getCodigo()),
+                        MovilMappers.cargarCuotas(detallePrestamoDaoService, prestamo.getCodigo())));
             }
             return Response.status(Response.Status.OK).entity(dtos).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
@@ -84,7 +85,8 @@ public class PrestamoMovilRest {
             }
             Map<Long, SaldoPrestamoResumen> saldos = calcularSaldos(Collections.singletonList(prestamo.getCodigo()));
             return Response.status(Response.Status.OK)
-                    .entity(MovilMappers.aDTO(prestamo, saldos.get(prestamo.getCodigo())))
+                    .entity(MovilMappers.aDTO(prestamo, saldos.get(prestamo.getCodigo()),
+                            MovilMappers.cargarCuotas(detallePrestamoDaoService, prestamo.getCodigo())))
                     .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return errorInterno("Error al obtener el préstamo");

@@ -31,6 +31,9 @@ public class CuotaPrestamoMovilDTO {
     private Double interesPagado;
     private Long diasMora;
 
+    /** DTPRSLOT (saldoOtros), tal cual; el null se conserva. Es la columna "Pago Extra" del SAA. */
+    private Double pagoExtra;
+
     public Long getCodigo() {
         return codigo;
     }
@@ -165,5 +168,13 @@ public class CuotaPrestamoMovilDTO {
 
     public void setDiasMora(Long diasMora) {
         this.diasMora = diasMora;
+    }
+
+    public Double getPagoExtra() {
+        return pagoExtra;
+    }
+
+    public void setPagoExtra(Double pagoExtra) {
+        this.pagoExtra = pagoExtra;
     }
 }

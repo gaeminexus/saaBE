@@ -1,5 +1,9 @@
 package com.saa.ws.movil.dto;
 
+import java.time.LocalDateTime;
+
+import com.fasterxml.jackson.annotation.JsonFormat;
+
 /**
  * Perfil consolidado del partícipe para {@code GET /movil/participe/{idEntidad}}. Recortado a
  * propósito (§5.2 del contrato): identificación, nombres, apellidos y contacto — nada de columnas
@@ -15,6 +19,16 @@ public class ParticipeMovilDTO {
     private String correoInstitucional;
     private String telefono;
     private String movil;
+
+    /** Fecha (APRTFCTR) del aporte mas antiguo de la entidad; null si no tiene aportes. */
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss")
+    private LocalDateTime fechaPrimerAporte;
+
+    /** CRD.ENTD.ENTDIDST, que guarda el codigo alterno ESPRCDEX del catalogo CRD.ESPR (no su PK). */
+    private Long idEstadoParticipe;
+
+    /** ESPRNMBR del catalogo, resuelto por ESPRCDEX = ENTDIDST; null si el codigo no esta en el catalogo. */
+    private String estadoParticipe;
 
     public Long getIdEntidad() {
         return idEntidad;
@@ -78,5 +92,29 @@ public class ParticipeMovilDTO {
 
     public void setMovil(String movil) {
         this.movil = movil;
+    }
+
+    public LocalDateTime getFechaPrimerAporte() {
+        return fechaPrimerAporte;
+    }
+
+    public void setFechaPrimerAporte(LocalDateTime fechaPrimerAporte) {
+        this.fechaPrimerAporte = fechaPrimerAporte;
+    }
+
+    public Long getIdEstadoParticipe() {
+        return idEstadoParticipe;
+    }
+
+    public void setIdEstadoParticipe(Long idEstadoParticipe) {
+        this.idEstadoParticipe = idEstadoParticipe;
+    }
+
+    public String getEstadoParticipe() {
+        return estadoParticipe;
+    }
+
+    public void setEstadoParticipe(String estadoParticipe) {
+        this.estadoParticipe = estadoParticipe;
     }
 }
