@@ -54,7 +54,7 @@ public class PrestamoMovilRest {
     public Response porEntidad(@PathParam("idEntidad") Long idEntidad) {
         System.out.println("LLEGA AL SERVICIO GET prestamos/{idEntidad} - MOVIL - idEntidad: " + idEntidad);
         try {
-            List<Prestamo> prestamos = prestamoDaoService.selectByEntidad(idEntidad);
+            List<Prestamo> prestamos = MovilMappers.soloVisiblesEnMovil(prestamoDaoService.selectByEntidad(idEntidad));
             List<Long> codigos = new ArrayList<>();
             for (Prestamo prestamo : prestamos) {
                 codigos.add(prestamo.getCodigo());
@@ -148,6 +148,10 @@ public class PrestamoMovilRest {
             return null;
         }
         if (prestamo.getEntidad() == null || !prestamo.getEntidad().getCodigo().equals(idEntidad)) {
+            return null;
+        }
+        // Sin idAsoprep no existe para /movil: mismo 404 que uno de otra entidad (cubre detalle y cuotas).
+        if (!MovilMappers.visibleEnMovil(prestamo)) {
             return null;
         }
         return prestamo;

@@ -297,6 +297,7 @@ Antes de cada despliegue, tres controles — dos se leen y uno se corre:
 | 2026-09-07 | Se documenta el catálogo real de `PRSTIDST` (11 estados, de `com.saa.rubros.EstadoPrestamo`) y cómo se agrupa para el filtro de la app, que había quedado sin poder implementarse |
 | 2026-10-21 | `/auth/solicitarRecuperacion` y `/auth/confirmarRecuperacion` (código de 6 dígitos al correo personal). La lista blanca pasa de 9 GET + 4 POST a **9 GET + 6 POST**. Requiere el DDL `sql/DDL-USUARIO-APP-MOVIL-RECUPERACION.sql` corrido ANTES del WAR y la sesión JNDI `java:jboss/mail/AppMovil` en el servidor |
 | 2026-10-22 | §9: campos nuevos en `PrestamoMovilDTO` (8), `CuotaPrestamoMovilDTO` (`pagoExtra`) y `ParticipeMovilDTO` (3), por las observaciones del cliente. Sin rutas nuevas |
+| 2026-10-22 | §9: los préstamos sin `idAsoprep` no salen por `/movil` (listas los saltan; detalle y cuotas dan 404) |
 | 2026-09-14 | §5.4: `CuotaPrestamoMovilDTO` suma `desgravamen`, `seguroIncendio` y `total` — la tabla de amortización de la app mostraba solo `cuota` (capital + interés). `total` viaja crudo: **no** se replica el fallback del motor para `DTPRTTLL` nulo. Medición de nulos y de si el total cuadra: `sql/MEDICION-CUOTAS-APP-MOVIL.sql` |
 
 ---
@@ -402,3 +403,10 @@ Los campos que ya existían (`saldoCapital`, `saldoTotal`, `totalPagado`, `valor
 | `fechaPrimerAporte` | mínimo `APRTFCTR` de `selectMovimientosPorEntidadYRangoDevengo` con un rango que lo abarca todo (1900-01 a 2999-12). **Es la misma consulta que alimenta `/aportes/{id}/movimientos`, que filtra solo por entidad: no excluye anulados ni reversados**, y por lo tanto esto tampoco. `null` si no hay aportes o si la consulta falla |
 | `idEstadoParticipe` | `CRD.ENTD.ENTDIDST` tal cual |
 | `estadoParticipe` | `ESPRNMBR` de `CRD.ESPR` donde **`ESPRCDEX` (código alterno) = `ENTDIDST`**, no el PK `ESPRCDGO`: tras `MIGRACION-ESTADO-PARTICIPE.md`, `ENTDIDST` guarda el alterno. `null` si el código no está en el catálogo |
+
+**Préstamos sin `idAsoprep` (2026-10-22, decisión del usuario).** Un préstamo con `idAsoprep`
+(`PRSTIDAS`) en `null` **no existe para `/movil`**, en ningún endpoint: `GET /prestamos/{idEntidad}` y
+`prestamosConSaldo` de `GET /cuenta-individual/{idEntidad}` lo saltan (sin calcularle saldo ni cargarle
+cuotas, y por eso tampoco se resta del disponible); `GET /prestamos/{idEntidad}/{idPrestamo}` y
+`.../cuotas` dan **404** `No existe el préstamo indicado`, el mismo que un préstamo de otra entidad
+(`buscarDeEntidad`). El filtro va antes de `calcularSaldos` y de `cargarCuotas`.

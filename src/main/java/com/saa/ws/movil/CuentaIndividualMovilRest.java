@@ -71,7 +71,8 @@ public class CuentaIndividualMovilRest {
 
             dto.setSaldosAportes(saldoAporteService.saldosPorEntidad(idEntidad));
 
-            List<Prestamo> prestamosVigentes = prestamoDaoService.selectVigentesByEntidad(idEntidad);
+            List<Prestamo> prestamosVigentes =
+                    MovilMappers.soloVisiblesEnMovil(prestamoDaoService.selectVigentesByEntidad(idEntidad));
             List<Long> codigos = new ArrayList<>();
             for (Prestamo prestamo : prestamosVigentes) {
                 codigos.add(prestamo.getCodigo());

@@ -1,6 +1,7 @@
 package com.saa.ws.movil;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
 import com.saa.ejb.crd.dao.DetallePrestamoDaoService;
@@ -62,6 +63,24 @@ final class MovilMappers {
         dto.setIdEstado(prestamo.getIdEstado());
         completarConTipoYCuotas(dto, prestamo, cuotas);
         return dto;
+    }
+
+    /**
+     * Un préstamo sin {@code idAsoprep} ({@code PRSTIDAS} nulo) no existe para {@code /movil}
+     * (decisión del usuario, 2026-10-22). Se aplica ANTES de calcular saldos y de cargar cuotas.
+     */
+    static boolean visibleEnMovil(Prestamo prestamo) {
+        return prestamo != null && prestamo.getIdAsoprep() != null;
+    }
+
+    static List<Prestamo> soloVisiblesEnMovil(List<Prestamo> prestamos) {
+        List<Prestamo> visibles = new ArrayList<>();
+        for (Prestamo prestamo : prestamos) {
+            if (visibleEnMovil(prestamo)) {
+                visibles.add(prestamo);
+            }
+        }
+        return visibles;
     }
 
     /** Tipo de producto con que se identifica a los créditos que cubre la garantía de los aportes. */
