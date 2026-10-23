@@ -46,7 +46,7 @@ public class CalculadoraAmortizacionServiceImpl implements CalculadoraAmortizaci
 
     /**
      * Segunda ola, pedido 2 (2026-08-27): factor del seguro de desgravamen sobre el saldo de
-     * capital de cada cuota, confirmado por el usuario ({@code saldo * 1.12 / 1000}, NO el
+     * capital de cada cuota, confirmado por el usuario ({@code saldo * 0.9 / 1000}, NO el
      * capital amortizado en la cuota). Solo se aplica cuando
      * {@code ParametrosAmortizacion.calcularDesgravamenSobreSaldo} es {@code true} — ver su
      * javadoc.
@@ -55,8 +55,16 @@ public class CalculadoraAmortizacionServiceImpl implements CalculadoraAmortizaci
      * {@code AbonoCapitalPrestamoServiceImpl} (mismo paquete) la reutiliza para el mismo
      * cálculo en su propio bucle de amortización — mismo motivo, una sola cifra, dos motores
      * que la comparten en vez de cada uno con su copia (lo que ya se desincronizó una vez).</p>
+     *
+     * <p><b>Cambio 2026-10-23:</b> la tasa pasó de 1,12 a 0,9 por mil por decisión del usuario.
+     * Aplica a simuladores, generación real y abono a capital (todos usan esta constante). Los
+     * préstamos ya generados conservan el desgravamen que tenían en sus DTPR.</p>
+     *
+     * <p><b>Cifra provisional:</b> el usuario anunció un proceso de carga de seguros en el que
+     * la tasa va a cambiar; es probable que deje de ser constante y venga de la póliza o de un
+     * parámetro. Hoy sigue siendo una constante a propósito.</p>
      */
-    static final double FACTOR_DESGRAVAMEN_SOBRE_SALDO = 1.12 / 1000.0;
+    static final double FACTOR_DESGRAVAMEN_SOBRE_SALDO = 0.9 / 1000.0;
 
     @EJB
     private FechaService fechaService;

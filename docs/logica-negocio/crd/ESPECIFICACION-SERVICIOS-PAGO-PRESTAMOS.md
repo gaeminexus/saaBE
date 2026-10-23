@@ -1256,7 +1256,7 @@ confirmación con negocio; si no se confirma, basta con poner ambos en 0.0 en
 **⚠️ SUPUESTO CORREGIDO — 2026-08-29, era un defecto, no quedó pendiente de confirmación.** El
 párrafo de arriba describe el estado de 2026-08-14 y ya no es el comportamiento actual:
 - El **desgravamen** ya no usa ningún valor fijo copiado de una cuota: se calcula por cuota como
-  `saldoDeCapitalAntesDeAmortizar × 1.12/1000`, mismo motor y misma constante que
+  `saldoDeCapitalAntesDeAmortizar × 0.9/1000 (desde 2026-10-23; antes 1.12/1000)`, mismo motor y misma constante que
   `CalculadoraAmortizacionServiceImpl.FACTOR_DESGRAVAMEN_SOBRE_SALDO` (compartida, no duplicada).
 - El **seguro de incendio** sigue siendo fijo por cuota (eso sí era correcto), pero ya NO se copia
   de una sola fila (la última reemplazada) hacia toda la tabla nueva: se preserva por NÚMERO DE

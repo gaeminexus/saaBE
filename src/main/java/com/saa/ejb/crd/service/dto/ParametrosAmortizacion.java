@@ -35,7 +35,7 @@ public class ParametrosAmortizacion {
 
     /**
      * Segunda ola, pedido 2 (2026-08-27); ampliado 2026-08-29: si es {@code true}, el desgravamen
-     * de CADA cuota se calcula como {@code saldoDeCapitalDeLaCuota * 1.12 / 1000} y
+     * de CADA cuota se calcula como {@code saldoDeCapitalDeLaCuota * 0.9 / 1000} y
      * {@link #desgravamenPorCuota} se ignora — incluida la cuota 0 de gracia, si la hay
      * ({@code CalculadoraAmortizacionServiceImpl.agregarCuotaCero} respeta el mismo flag).
      * {@code false}/{@code null} (el valor por defecto) conserva el comportamiento viejo:

@@ -870,7 +870,7 @@ public class PrestamoServiceImpl implements PrestamoService {
         params.setTieneCuotaCero(tieneCuotaCero != null && tieneCuotaCero == 1L);
         // U1 (decisión del usuario, 2026-08-31 — REVISION-MOTOR-ANTES-DE-OTORGAMIENTO.md §8):
         // el desgravamen del generador real se calcula con la misma fórmula que el simulador
-        // (saldo * 1.12/1000 antes de amortizar cada cuota), para que la tabla que el sistema
+        // (saldo * 0.9/1000 antes de amortizar cada cuota), para que la tabla que el sistema
         // genera coincida con la simulación que el socio firma. Efecto aceptado: la cuota 0 de
         // gracia cobra desgravamen sobre el capital completo, porque durante la gracia el
         // capital está íntegramente expuesto.

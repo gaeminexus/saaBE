@@ -850,7 +850,7 @@ public class AbonoCapitalPrestamoServiceImpl implements AbonoCapitalPrestamoServ
             double cuota = redondear(capitalCuota + interes);
 
             // Bug corregido 2026-08-29: el desgravamen NO es un valor fijo por cuota (era el
-            // defecto del 2026-08-28, corregido a medias). Es saldo de capital × 1.12/1000,
+            // defecto del 2026-08-28, corregido a medias). Es saldo de capital × 0.9/1000,
             // igual que CalculadoraAmortizacionServiceImpl.calcularFrancesa/calcularAlemana —
             // MISMA constante compartida, no una copia. CRÍTICO: sobre `saldo` (el saldo ANTES
             // de amortizar esta cuota, la misma variable que ya usa `interes` arriba), NUNCA

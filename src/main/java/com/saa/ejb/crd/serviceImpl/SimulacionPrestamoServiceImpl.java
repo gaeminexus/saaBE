@@ -74,7 +74,7 @@ public class SimulacionPrestamoServiceImpl implements SimulacionPrestamoService 
         System.out.println("SimulacionPrestamoServiceImpl.simularCreditoNuevo");
 
         // Segunda ola, pedido 2 (2026-08-27): el desgravamen de la simulación de crédito nuevo
-        // SIEMPRE sale del saldo de capital de cada cuota (saldo * 1.12 / 1000), no de un valor
+        // SIEMPRE sale del saldo de capital de cada cuota (saldo * 0.9 / 1000), no de un valor
         // fijo — se fuerza acá, sin importar lo que traiga el request, porque es un requisito
         // de este simulador puntual (la reestructuración y el generador real NO cambian: siguen
         // con el valor fijo de ParametrosAmortizacion.desgravamenPorCuota).
@@ -289,7 +289,7 @@ public class SimulacionPrestamoServiceImpl implements SimulacionPrestamoService 
         // Bug corregido 2026-08-29: la reestructuración calculaba el desgravamen con un valor
         // FIJO copiado de ultimaPendiente, igual que abono a capital antes de su propio fix.
         // Mismo criterio que simularCreditoNuevo: el desgravamen SIEMPRE sale del saldo de
-        // capital de cada cuota (saldo * 1.12/1000), nunca de un valor fijo. Verificado que el
+        // capital de cada cuota (saldo * 0.9/1000), nunca de un valor fijo. Verificado que el
         // flag alcanza TODAS las filas de este motor, incluida la cuota 0 de gracia si la hay
         // (CalculadoraAmortizacionServiceImpl.agregarCuotaCero respeta el mismo flag) — con el
         // flag en true, params.getDesgravamenPorCuota() no se lee en ningún punto del cálculo,

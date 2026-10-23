@@ -405,7 +405,7 @@ En términos de `ParametrosAmortizacion`, para `PrestamoServiceImpl.generarAmort
 
 | Parámetro | Valor | Por qué |
 |---|---|---|
-| `calcularDesgravamenSobreSaldo` | `true` | Es la fórmula del simulador: `saldo * 1.12 / 1000` sobre el saldo de capital **antes** de amortizar cada cuota (`FACTOR_DESGRAVAMEN_SOBRE_SALDO`, confirmada por el usuario el 2026-08-27) |
+| `calcularDesgravamenSobreSaldo` | `true` | Es la fórmula del simulador: `saldo * 0.9 / 1000` sobre el saldo de capital **antes** de amortizar cada cuota (`FACTOR_DESGRAVAMEN_SOBRE_SALDO`, confirmada por el usuario el 2026-08-27)  **Vigente desde 2026-10-23: 0.9 por mil** (antes 1.12; decisión del usuario, cifra provisional hasta el proceso de carga de seguros). |
 | `desgravamenPorCuota` | `0.0` | Queda sin uso cuando el flag de arriba está en `true`; se manda en cero para no dejar un valor muerto que confunda |
 | `seguroIncendioPorCuota` | `0.0` | **Decisión explícita, no un pendiente olvidado**: el importe de incendio no se cobra mientras no exista la póliza que lo respalde |
 

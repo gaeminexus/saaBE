@@ -111,7 +111,7 @@ contrato**; se listan para que no sorprendan al revisar en pantalla:
 |---|---|---|---|
 | `saldo` (`DTPRSLDO`) | Capital pendiente | **Total de la cuota** | Defecto D5: los otros seis escritores del sistema escriben el importe por cobrar |
 | `estado` / `idEstado` | `1` (de `Estado.ACTIVO`) | `1` (de `EstadoCuotaPrestamo.PENDIENTE`) | Defecto N5. **El valor no cambia**, cambia de qué catálogo sale |
-| `desgravamen` | Siempre `0.00` | **Calculado**: `saldo * 1.12 / 1000` sobre el saldo de capital antes de amortizar cada cuota | Decisión U1 del usuario: la tabla real tiene que coincidir con lo que muestra el simulador |
+| `desgravamen` | Siempre `0.00` | **Calculado**: `saldo * 0.9 / 1000` sobre el saldo de capital antes de amortizar cada cuota | Decisión U1 del usuario: la tabla real tiene que coincidir con lo que muestra el simulador. **Vigente desde 2026-10-23: 0.9 por mil** (antes 1.12; decisión del usuario, cifra provisional hasta el proceso de carga de seguros). |
 
 Y en la cabecera del préstamo:
 
