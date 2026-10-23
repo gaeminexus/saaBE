@@ -67,10 +67,15 @@ final class MovilMappers {
 
     /**
      * Un préstamo sin {@code idAsoprep} ({@code PRSTIDAS} nulo) no existe para {@code /movil}
-     * (decisión del usuario, 2026-10-22). Se aplica ANTES de calcular saldos y de cargar cuotas.
+     * (decisión del usuario, 2026-10-22). Un préstamo ANULADO ({@code PRSTIDST = EstadoPrestamo.ANULADO})
+     * tampoco (decisión del usuario, 2026-10-23). Se aplica ANTES de calcular saldos y de cargar cuotas.
      */
     static boolean visibleEnMovil(Prestamo prestamo) {
-        return prestamo != null && prestamo.getIdAsoprep() != null;
+        if (prestamo == null || prestamo.getIdAsoprep() == null) {
+            return false;
+        }
+        Long idEstado = prestamo.getIdEstado();
+        return idEstado == null || idEstado.intValue() != EstadoPrestamo.ANULADO;
     }
 
     static List<Prestamo> soloVisiblesEnMovil(List<Prestamo> prestamos) {

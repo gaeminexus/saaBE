@@ -298,6 +298,7 @@ Antes de cada despliegue, tres controles — dos se leen y uno se corre:
 | 2026-10-21 | `/auth/solicitarRecuperacion` y `/auth/confirmarRecuperacion` (código de 6 dígitos al correo personal). La lista blanca pasa de 9 GET + 4 POST a **9 GET + 6 POST**. Requiere el DDL `sql/DDL-USUARIO-APP-MOVIL-RECUPERACION.sql` corrido ANTES del WAR y la sesión JNDI `java:jboss/mail/AppMovil` en el servidor |
 | 2026-10-22 | §9: campos nuevos en `PrestamoMovilDTO` (8), `CuotaPrestamoMovilDTO` (`pagoExtra`) y `ParticipeMovilDTO` (3), por las observaciones del cliente. Sin rutas nuevas |
 | 2026-10-22 | §9: los préstamos sin `idAsoprep` no salen por `/movil` (listas los saltan; detalle y cuotas dan 404) |
+| 2026-10-23 | §9: los préstamos ANULADOS (`PRSTIDST` = 12) tampoco salen por `/movil`, mismo filtro que los sin `idAsoprep` |
 | 2026-09-14 | §5.4: `CuotaPrestamoMovilDTO` suma `desgravamen`, `seguroIncendio` y `total` — la tabla de amortización de la app mostraba solo `cuota` (capital + interés). `total` viaja crudo: **no** se replica el fallback del motor para `DTPRTTLL` nulo. Medición de nulos y de si el total cuadra: `sql/MEDICION-CUOTAS-APP-MOVIL.sql` |
 
 ---
@@ -410,3 +411,8 @@ Los campos que ya existían (`saldoCapital`, `saldoTotal`, `totalPagado`, `valor
 cuotas, y por eso tampoco se resta del disponible); `GET /prestamos/{idEntidad}/{idPrestamo}` y
 `.../cuotas` dan **404** `No existe el préstamo indicado`, el mismo que un préstamo de otra entidad
 (`buscarDeEntidad`). El filtro va antes de `calcularSaldos` y de `cargarCuotas`.
+
+**Préstamos ANULADOS (2026-10-23, decisión del usuario).** Un préstamo con `idEstado` (`PRSTIDST`) = 12
+(`EstadoPrestamo.ANULADO`) tampoco existe para `/movil`: pasa por el mismo filtro (`MovilMappers.visibleEnMovil`)
+y por lo tanto el comportamiento es idéntico al de los sin `idAsoprep` (listas lo saltan sin restar del
+disponible; detalle y cuotas dan 404). Un `idEstado` nulo no se excluye.
