@@ -61,7 +61,7 @@ final class MovilMappers {
         dto.setDiasVencido(prestamo.getDiasVencido());
         // idEstado - PRSTIDST, el estado vigente. NUNCA estadoPrestamo (ESPSCDGO) - ver CLAUDE.md.
         dto.setIdEstado(prestamo.getIdEstado());
-        completarConTipoYCuotas(dto, prestamo, cuotas);
+        completarConTipoYCuotas(dto, prestamo, saldo, cuotas);
         return dto;
     }
 
@@ -109,16 +109,30 @@ final class MovilMappers {
 
     /**
      * Campos de la observación 1/9/20 del cliente (2026-10-21). Reglas en CONTRATO-INTRANET-MOVIL.md
-     * §5.4. {@code cuotas == null} (no se pudieron cargar) deja en {@code null} los seis campos que
-     * dependen de ellas; el tipo de préstamo sale del producto y no depende de las cuotas.
+     * §5.4. {@code cuotas == null} (no se pudieron cargar) deja en {@code null} los campos que
+     * dependen de ellas; el tipo de préstamo sale del producto y {@code saldoCapitalPendiente}/
+     * {@code capitalPagado} salen del motor de saldos ({@code saldo}), ninguno depende de las cuotas.
      */
     private static void completarConTipoYCuotas(PrestamoMovilDTO dto, Prestamo prestamo,
-            List<DetallePrestamo> cuotas) {
+            SaldoPrestamoResumen saldo, List<DetallePrestamo> cuotas) {
         TipoPrestamo tipo = prestamo.getProducto() != null ? prestamo.getProducto().getTipoPrestamo() : null;
         Long idTipo = tipo != null ? tipo.getCodigo() : null;
         dto.setIdTipoPrestamo(idTipo);
         dto.setNombreTipoPrestamo(tipo != null ? tipo.getNombre() : null);
         dto.setCubiertoPorAportes(idTipo != null && idTipo.longValue() == TIPO_PRESTAMO_QUIROGRAFARIO);
+
+        // saldoCapitalPendiente (decisión 2026-10-23): cancelado -> 0; si no, el saldoCapital del motor
+        // de saldos (capital que falta de las cuotas pendientes, con los pagos parciales descontados).
+        // Sin saldo (el lote no trajo el préstamo) -> null: nunca se inventa.
+        Double pendiente;
+        if (estaCancelado(prestamo.getIdEstado())) {
+            pendiente = 0.0;
+        } else {
+            pendiente = saldo != null ? saldo.getSaldoCapital() : null;
+        }
+        dto.setSaldoCapitalPendiente(pendiente);
+        dto.setCapitalPagado(pendiente != null && prestamo.getMontoSolicitado() != null
+                ? redondear(prestamo.getMontoSolicitado() - pendiente) : null);
 
         if (cuotas == null) {
             return;
@@ -126,7 +140,6 @@ final class MovilMappers {
 
         LocalDateTime primera = null;
         LocalDateTime ultima = null;
-        DetallePrestamo ultimaPagada = null;       // mayor numeroCuota con estado 4 (PAGADA)
         DetallePrestamo ultimaCubierta = null;     // mayor numeroCuota con estado 4 o 7
         for (DetallePrestamo cuota : cuotas) {
             Long estado = cuota.getEstado();
@@ -144,9 +157,6 @@ final class MovilMappers {
             }
             if (estado != null && cuota.getNumeroCuota() != null) {
                 int e = estado.intValue();
-                if (e == EstadoCuotaPrestamo.PAGADA && mayor(cuota, ultimaPagada)) {
-                    ultimaPagada = cuota;
-                }
                 if ((e == EstadoCuotaPrestamo.PAGADA || e == EstadoCuotaPrestamo.CANCELADA_ANTICIPADA)
                         && mayor(cuota, ultimaCubierta)) {
                     ultimaCubierta = cuota;
@@ -155,20 +165,6 @@ final class MovilMappers {
         }
         dto.setFechaPrimeraCuota(primera);
         dto.setFechaUltimaCuota(ultima);
-
-        // saldoCapitalPendiente: misma regla que participe-dash del SAA (obtenerSaldoDesdeUltimaPagada),
-        // más el caso de los cancelados. Nunca se inventa el número.
-        Double pendiente;
-        if (estaCancelado(prestamo.getIdEstado())) {
-            pendiente = 0.0;
-        } else if (ultimaPagada != null) {
-            pendiente = ultimaPagada.getSaldoCapital();
-        } else {
-            pendiente = prestamo.getMontoSolicitado();
-        }
-        dto.setSaldoCapitalPendiente(pendiente);
-        dto.setCapitalPagado(pendiente != null && prestamo.getMontoSolicitado() != null
-                ? redondear(prestamo.getMontoSolicitado() - pendiente) : null);
 
         if (ultimaCubierta != null) {
             Double total = ultimaCubierta.getTotal();

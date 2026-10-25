@@ -299,6 +299,7 @@ Antes de cada despliegue, tres controles — dos se leen y uno se corre:
 | 2026-10-22 | §9: campos nuevos en `PrestamoMovilDTO` (8), `CuotaPrestamoMovilDTO` (`pagoExtra`) y `ParticipeMovilDTO` (3), por las observaciones del cliente. Sin rutas nuevas |
 | 2026-10-22 | §9: los préstamos sin `idAsoprep` no salen por `/movil` (listas los saltan; detalle y cuotas dan 404) |
 | 2026-10-23 | §9: los préstamos ANULADOS (`PRSTIDST` = 12) tampoco salen por `/movil`, mismo filtro que los sin `idAsoprep` |
+| 2026-10-23 | §5.4/§9: `saldoCapitalPendiente` sale del motor de saldos (`saldo.saldoCapital`) y no de la última cuota PAGADA; `capitalPagado` se deriva de ahí. Caso del cliente: préstamo idAsoprep 68003, antes 44,93, ahora lo que calcula el motor |
 | 2026-09-14 | §5.4: `CuotaPrestamoMovilDTO` suma `desgravamen`, `seguroIncendio` y `total` — la tabla de amortización de la app mostraba solo `cuota` (capital + interés). `total` viaja crudo: **no** se replica el fallback del motor para `DTPRTTLL` nulo. Medición de nulos y de si el total cuadra: `sql/MEDICION-CUOTAS-APP-MOVIL.sql` |
 
 ---
@@ -388,7 +389,7 @@ carga).
 | `idTipoPrestamo` / `nombreTipoPrestamo` | `producto.tipoPrestamo.codigo` (`TPPRCDGO`) / `.nombre`. `null` si falta |
 | `cubiertoPorAportes` | `true` si `idTipoPrestamo == 1` (QUIROGRAFARIO); `false` en cualquier otro caso, `null` incluido. La regla vive en el servidor |
 | `fechaPrimeraCuota` / `fechaUltimaCuota` | mínimo / máximo `fechaVencimiento` de las cuotas válidas |
-| `saldoCapitalPendiente` | `idEstado` (`PRSTIDST`) 3, 4, 5 o 13 → `0`. Si no, `saldoCapital` de la cuota PAGADA (4) de mayor `numeroCuota` (`null` si ese campo es `null`: no se inventa). Sin cuotas pagadas → `montoSolicitado`. Es la regla de `participe-dash` (`obtenerSaldoDesdeUltimaPagada`) |
+| `saldoCapitalPendiente` | **(regla del 2026-10-23)** `idEstado` (`PRSTIDST`) 3, 4, 5 o 13 → `0`. Si no, `saldoCapital` del `SaldoPrestamoResumen` del motor de saldos (`MotorPagoPrestamoService`: capital que falta de las cuotas pendientes, con los pagos parciales ya descontados); es el mismo número que sale en `saldoCapital`. `null` si el lote no trajo el préstamo: no se inventa. **Ya no depende de las cuotas**; se retiró la regla de la última cuota PAGADA (`obtenerSaldoDesdeUltimaPagada` del `participe-dash`), que no cuadraba con las cuotas pendientes |
 | `capitalPagado` | `montoSolicitado − saldoCapitalPendiente`, a 2 decimales; `null` si alguno es `null` |
 | `valorUltimaCuotaPagada` | `total` de la cuota con estado 4 o 7 de mayor `numeroCuota`; si `total` es `null`, `cuota + desgravamen + seguroIncendio` (cada `null` = 0). `null` si no hay ninguna |
 
