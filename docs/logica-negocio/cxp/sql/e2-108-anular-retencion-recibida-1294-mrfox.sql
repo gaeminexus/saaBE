@@ -34,6 +34,18 @@ SELECT 'BLOQUE 1c - retencion v1' AS bloque, r.ID, r.NUMERO, r.FECHA, r.ESTADO, 
   LEFT JOIN CNT.ASNT a ON a.ASNTCDGO = r.ASIENTO
  WHERE r.ID = (SELECT DCXPIDBD FROM PGS.DCXP WHERE DCXPCDGO = 1294 AND DCXPTBTD = 'RETENCION_COMPRA');
 
+-- BLOQUE 1d — (agregado 2026-10-27) ¿La retención sigue abonando la factura de VENTA del cliente?
+-- El BLOQUE 2 NO reversa esta aplicación ni toca el asiento. ESPERADO: CERO filas con APLCESTD = 1.
+-- Si sale alguna fila ACTIVA (1): NO correr el BLOQUE 2 — la factura de venta quedaría con 218,84 de menos
+-- en su saldo. Pásame el resultado.
+SELECT 'BLOQUE 1d - abono a la factura de venta' AS bloque, ap.APLCCDGO, ap.APLCTDPG, ap.APLCMAPL, ap.APLCESTD,
+       ap.APLCASNT, f.ID AS id_factura_venta, f.NUMERO AS factura_venta, f.TOTAL AS total_factura,
+       (SELECT NVL(SUM(x.APLCMAPL), 0) FROM CBR.APLC x WHERE x.APLCFCTR = f.ID AND x.APLCESTD = 1) AS aplicado_activo
+  FROM CBR.APLC ap
+  LEFT JOIN CBR.FCTR f ON f.ID = ap.APLCFCTR
+ WHERE ap.APLCRCV2 = (SELECT DCXPIDBD FROM PGS.DCXP WHERE DCXPCDGO = 1294 AND DCXPTBTD = 'RETENCION_COMPRA_V2')
+    OR ap.APLCRTCM = (SELECT DCXPIDBD FROM PGS.DCXP WHERE DCXPCDGO = 1294 AND DCXPTBTD = 'RETENCION_COMPRA');
+
 -- =====================================================================================
 -- BLOQUE 2 — CORRECCIÓN. Correr SOLO si el bloque 1 salió como se espera.
 -- =====================================================================================
