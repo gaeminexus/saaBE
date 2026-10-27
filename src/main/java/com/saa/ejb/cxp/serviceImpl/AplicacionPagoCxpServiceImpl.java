@@ -1177,6 +1177,17 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 		String observacionAsiento = "Pago con caja chica | Proveedor: " + titularDocumento.getNombre()
 				+ (factura != null ? " | Factura: " : " | Liquidación: ") + numeroDocumento
 				+ " | Valor: $" + String.format(java.util.Locale.US, "%.2f", monto);
+		// El concepto del gasto (MVCH descripción) y su observación, si es distinta, van en las
+		// Observaciones del asiento: es lo que la contabilidad busca al revisarlo
+		// (docs/logica-negocio/PEDIDOS-CONTABILIDAD-2026-10-27.md §2.2). El largo lo recorta el generador.
+		String conceptoGasto = (movimiento.getDescripcion() != null) ? movimiento.getDescripcion().trim() : "";
+		String observacionGasto = (movimiento.getObservacion() != null) ? movimiento.getObservacion().trim() : "";
+		if (!conceptoGasto.isEmpty()) {
+			observacionAsiento += " | " + conceptoGasto;
+		}
+		if (!observacionGasto.isEmpty() && !observacionGasto.equals(conceptoGasto)) {
+			observacionAsiento += " | " + observacionGasto;
+		}
 
 		Asiento asiento = asientoContableService.generarAsientoAplicacionCajaChica(
 				idTitularGasto, monto, idPlanCuentaCaja, idEmpresa, fecha, observacionAsiento,

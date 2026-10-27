@@ -1156,6 +1156,15 @@ public class AsientoContableServiceImpl implements AsientoContableService {
     // Caja chica
     // ---------------------------------------------------------------
 
+    /**
+     * Recorta la observación al largo de la columna de observaciones del asiento (ASNTOBSR, 2000), para
+     * que un concepto largo agregado al texto no aborte el grabado del asiento.
+     */
+    private String recortaObservacionAsiento(String observaciones) {
+        return (observaciones != null && observaciones.length() > 2000)
+                ? observaciones.substring(0, 2000) : observaciones;
+    }
+
     @Override
     public Asiento generarAsientoGastoCajaChica(Long idProductoPago, String nombreCaja, String descripcion,
             Double valor, Long idPlanCuentaCaja, Long idEmpresa, LocalDate fechaAsiento,
@@ -1163,6 +1172,8 @@ public class AsientoContableServiceImpl implements AsientoContableService {
 
         System.out.println("=== generarAsientoGastoCajaChica | producto=" + idProductoPago
                 + " | valor=" + valor + " | caja=" + nombreCaja + " ===");
+
+        observaciones = recortaObservacionAsiento(observaciones);
 
         if (idEmpresa == null) {
             throw new IncomeException("Debe indicar la empresa contable.");
@@ -1192,6 +1203,8 @@ public class AsientoContableServiceImpl implements AsientoContableService {
 
         System.out.println("=== generarAsientoAplicacionCajaChica | titular=" + idTitular
                 + " | valor=" + valor + " ===");
+
+        observaciones = recortaObservacionAsiento(observaciones);
 
         validaDatosAplicacion(idTitular, valor, idEmpresa);
 
@@ -1259,6 +1272,8 @@ public class AsientoContableServiceImpl implements AsientoContableService {
 
         System.out.println("=== generarAsientoAjusteCajaChica | caja=" + idPlanCuentaCaja
                 + " | valor=" + valor + " | sobrante=" + sobrante + " ===");
+
+        observaciones = recortaObservacionAsiento(observaciones);
 
         if (idEmpresa == null) {
             throw new IncomeException("Debe indicar la empresa contable.");

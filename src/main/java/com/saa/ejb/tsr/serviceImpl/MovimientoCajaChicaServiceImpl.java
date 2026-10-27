@@ -238,6 +238,12 @@ public class MovimientoCajaChicaServiceImpl implements MovimientoCajaChicaServic
 					+ " | " + descripcion.trim()
 					+ " | Doc: " + nvl(numeroDocumento, "")
 					+ " | Valor: $" + String.format(java.util.Locale.US, "%.2f", valor);
+			// El concepto (descripción) ya va arriba; la observación del gasto se agrega si es distinta
+			// (docs/logica-negocio/PEDIDOS-CONTABILIDAD-2026-10-27.md §2.2). El largo lo recorta el generador.
+			if (observacion != null && !observacion.trim().isEmpty()
+					&& !observacion.trim().equals(descripcion.trim())) {
+				observacionAsiento += " | " + observacion.trim();
+			}
 
 			asientoGenerado = asientoContableService.generarAsientoGastoCajaChica(
 					idProducto, caja.getNombre(), descripcion.trim(), valor, caja.getPlanCuenta().getCodigo(),

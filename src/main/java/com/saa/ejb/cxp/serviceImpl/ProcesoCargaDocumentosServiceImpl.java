@@ -582,6 +582,10 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         if (doc == null)
             throw new Exception("DocumentoCxp no encontrado: " + idDocumentoCxp);
 
+        // Usuario real que dispara el registro: es el que queda en el asiento y en las aplicaciones.
+        // Se resuelve ANTES de cambiar nada: sin idUsuario válido no se registra (nunca "SISTEMA").
+        String usuarioAsiento = nombreUsuarioObligatorio(idUsuario);
+
         // ── 1. Validar XML contra el documento esperado ──
         List<Map<String, Object>> errores = validarXmlContraDocumento(contenidoXml, doc);
         if (!errores.isEmpty()) {
@@ -671,7 +675,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
             // ── Generar asiento contable (CXP) ────────────────────────────────
             // Solo si el registro fue exitoso (ESTADO_REGISTRADO_BD).
             // Si el asiento falla NO revertimos el registro — se advierte en el resultado.
-            generarAsientoCxp(doc, resultadoBD, idEmpresa);
+            generarAsientoCxp(doc, usuarioAsiento, resultadoBD, idEmpresa);
 
         } catch (Exception e) {
             // El marcado NO puede hacerse sobre `doc` en esta transacción: al
@@ -860,6 +864,10 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         if (doc == null)
             throw new Exception("DocumentoCxp no encontrado: " + idDocumentoCxp);
 
+        // Usuario real que dispara el registro: es el que queda en el asiento y en las aplicaciones.
+        // Se resuelve ANTES de cambiar nada: sin idUsuario válido no se registra (nunca "SISTEMA").
+        String usuarioAsiento = nombreUsuarioObligatorio(idUsuario);
+
         if (doc.getEstadoDocumento() == null || doc.getEstadoDocumento() != ESTADO_XML_CARGADO)
             throw new Exception("El documento debe tener estado XML_CARGADO (2). Estado actual: "
                     + doc.getEstadoDocumento());
@@ -932,7 +940,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
             // ── Generar asiento contable (CXP) ────────────────────────────────
             // Solo si el registro fue exitoso (ESTADO_REGISTRADO_BD).
             // Si el asiento falla NO revertimos el registro — se advierte en el resultado.
-            generarAsientoCxp(doc, resultado, idEmpresa);
+            generarAsientoCxp(doc, usuarioAsiento, resultado, idEmpresa);
 
         } catch (Exception e) {
             // El marcado NO puede hacerse sobre `doc` en esta transacción: al
@@ -1200,6 +1208,9 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
 
         System.out.println("=== recontabilizarDocumento idDocumentoCxp=" + idDocumentoCxp);
 
+        // Usuario real que dispara la recontabilización (nunca "SISTEMA"): se valida antes de tocar nada.
+        String usuario = nombreUsuarioObligatorio(idUsuario);
+
         DocumentoCxp doc = documentoCxpDaoService.selectById(idDocumentoCxp,
                 NombreEntidadesCompra.DOCUMENTO_CXP);
         if (doc == null)
@@ -1236,7 +1247,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                     fc.getFecha() != null ? fc.getFecha().toLocalDate() : java.time.LocalDate.now(),
                     conObservacionAdicional("Factura compra (recontabilizada): "
                             + nvlStr(fc.getNumero(), String.valueOf(idDocBD)), doc),
-                    "SISTEMA");
+                    usuario);
         } catch (Throwable t) {
             // Se deja el documento en XML_CARGADO: si la cuenta sigue mal, el usuario corrige y
             // vuelve a intentar sin tener que rehacer el paso 1.
@@ -1434,6 +1445,25 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                     + " pago(s) programado(s) vigente(s) [" + ids + "]. Anúlelos primero desde "
                     + "la bandeja de pagos.");
         }
+    }
+
+    /**
+     * Nombre del usuario (SCP.PJRQ, PJRQNMBR: el mismo que muestra el asiento) a partir de su id, para
+     * grabarlo en el asiento y en las aplicaciones de lo que dispara una persona desde la bandeja. Mismo
+     * patrón que el resto del proyecto (em.find(Usuario) + getNombre), pero SIN el relleno "SISTEMA":
+     * idUsuario nulo o inexistente es un error de negocio, no un usuario automático.
+     */
+    private String nombreUsuarioObligatorio(Long idUsuario) throws Throwable {
+        if (idUsuario == null) {
+            throw new com.saa.basico.util.IncomeException(
+                    "Debe indicar el usuario (idUsuario) que realiza la operación: queda registrado en el asiento.");
+        }
+        Usuario usuario = em.find(Usuario.class, idUsuario);
+        if (usuario == null || usuario.getNombre() == null || usuario.getNombre().trim().isEmpty()) {
+            throw new com.saa.basico.util.IncomeException(
+                    "No se encontró el usuario con ID " + idUsuario + ": no se puede registrar la operación.");
+        }
+        return usuario.getNombre().trim();
     }
 
     private String nvlStr(String v, String porDefecto) {
@@ -2252,6 +2282,8 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
     @Override
     public Map<String, Object> contabilizarReembolso(Long idFacturaCompra, Long idEmpresa, Long idUsuario) throws Throwable {
         System.out.println("contabilizarReembolso idFacturaCompra=" + idFacturaCompra + " empresa=" + idEmpresa);
+        // Usuario real que dispara la contabilización (nunca "SISTEMA"): se valida antes de tocar nada.
+        String usuario = nombreUsuarioObligatorio(idUsuario);
         FacturaCompra fc = em.find(FacturaCompra.class, idFacturaCompra);
         if (fc == null) throw new com.saa.basico.util.IncomeException("FacturaCompra no encontrada: " + idFacturaCompra);
 
@@ -2359,7 +2391,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                 + " | Proveedor: " + (fc.getTitular() != null ? fc.getTitular().getNombre() : ""), doc);
         com.saa.model.cnt.Asiento asiento = asientoContableService.generarAsientoFacturaCompra(
                 idFacturaCompra, idEmpresa, com.saa.rubros.TipoAsientos.FACTURAS_COMPRA,
-                fechaDoc, obs, "SISTEMA");
+                fechaDoc, obs, usuario);
 
         // Actualizar FCTC con referencia al asiento y pasar DCXP a estado 3
         fc.setAsiento(asiento);
@@ -4927,7 +4959,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
      * @param resultado Mapa de respuesta donde se añadirán "asiento" o "advertenciaAsiento"
      * @param idEmpresa ID de la empresa receptora (empresa contable)
      */
-    private void generarAsientoCxp(DocumentoCxp doc,
+    private void generarAsientoCxp(DocumentoCxp doc, String usuario,
                                     Map<String, Object> resultado,
                                     Long idEmpresa) throws Exception {
         try {
@@ -5033,7 +5065,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                 try { asiento = asientoContableService.generarAsientoFacturaCompra(
                         idDocBD, idEmpresa,
                         com.saa.rubros.TipoAsientos.FACTURAS_COMPRA,
-                        fechaDoc, "Factura compra: " + obsBase, "SISTEMA"); }
+                        fechaDoc, "Factura compra: " + obsBase, usuario); }
                 catch (UnsupportedOperationException uoe) { throw uoe; }
                 catch (Throwable t) { throw new Exception(t.getMessage(), t); }
 
@@ -5043,7 +5075,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                 try { asiento = asientoContableService.generarAsientoNotaCreditoCompra(
                         idDocBD, idEmpresa,
                         com.saa.rubros.TipoAsientos.NOTAS_CREDITO_COMPRA,
-                        fechaDoc, "NC compra: " + obsBase, "SISTEMA"); }
+                        fechaDoc, "NC compra: " + obsBase, usuario); }
                 catch (UnsupportedOperationException uoe) { throw uoe; }
                 catch (Throwable t) { throw new Exception(t.getMessage(), t); }
 
@@ -5053,7 +5085,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                 try { asiento = asientoContableService.generarAsientoNotaDebitoCompra(
                         idDocBD, idEmpresa,
                         com.saa.rubros.TipoAsientos.NOTAS_DEBITO_COMPRA,
-                        fechaDoc, "ND compra: " + obsBase, "SISTEMA"); }
+                        fechaDoc, "ND compra: " + obsBase, usuario); }
                 catch (UnsupportedOperationException uoe) { throw uoe; }
                 catch (Throwable t) { throw new Exception(t.getMessage(), t); }
 
@@ -5063,7 +5095,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                 try { asiento = asientoContableService.generarAsientoLiquidacionCompraCompra(
                         idDocBD, idEmpresa,
                         com.saa.rubros.TipoAsientos.LIQUIDACIONES_COMPRA_RECIBIDAS,
-                        fechaDoc, "Liquidación compra: " + obsBase, "SISTEMA"); }
+                        fechaDoc, "Liquidación compra: " + obsBase, usuario); }
                 catch (UnsupportedOperationException uoe) { throw uoe; }
                 catch (Throwable t) { throw new Exception(t.getMessage(), t); }
 
@@ -5073,7 +5105,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                 try { asiento = asientoContableService.generarAsientoRetencionCompra(
                         idDocBD, idEmpresa,
                         com.saa.rubros.TipoAsientos.RETENCIONES_RECIBIDAS,
-                        fechaDoc, "Retención compra: " + obsBase, "SISTEMA"); }
+                        fechaDoc, "Retención compra: " + obsBase, usuario); }
                 catch (UnsupportedOperationException uoe) { throw uoe; }
                 catch (Throwable t) { throw new Exception(t.getMessage(), t); }
 
@@ -5083,7 +5115,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                 try { asiento = asientoContableService.generarAsientoRetencionCompraV2(
                         idDocBD, idEmpresa,
                         com.saa.rubros.TipoAsientos.RETENCIONES_RECIBIDAS_V2,
-                        fechaDoc, "Retención compra V2: " + obsBase, "SISTEMA"); }
+                        fechaDoc, "Retención compra V2: " + obsBase, usuario); }
                 catch (UnsupportedOperationException uoe) { throw uoe; }
                 catch (Throwable t) { throw new Exception(t.getMessage(), t); }
             }
@@ -5108,7 +5140,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                 // ── Registrar el abono/cargo sobre la factura de compra ───────
                 // Va en la misma transacción que el asiento: si el pago no se
                 // puede registrar, se revierte todo el registro del documento.
-                registrarAplicacionPagoCxp(tipo, idDocBD, asiento, idEmpresa, resultado);
+                registrarAplicacionPagoCxp(tipo, idDocBD, asiento, idEmpresa, usuario, resultado);
             }
 
         } catch (UnsupportedOperationException uoe) {
@@ -5148,7 +5180,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
      * @throws Exception : Si no se puede registrar la aplicación de pago
      */
     private void registrarAplicacionPagoCxp(String tipo, Long idDocBD,
-            com.saa.model.cnt.Asiento asiento, Long idEmpresa,
+            com.saa.model.cnt.Asiento asiento, Long idEmpresa, String usuario,
             Map<String, Object> resultado) throws Exception {
         try {
             if ("NOTA_CREDITO_COMPRA".equals(tipo)) {
@@ -5160,7 +5192,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                     // pone advertenciaAplicacion en el resultado (la clave solo existe en ese caso).
                     // Ver docs/logica-negocio/cxp/NC-EXCEDE-SALDO-FACTURA.md §3.
                     com.saa.model.cxp.AplicacionPagoCxp aplicada =
-                            aplicacionPagoCxpService.aplicarNotaCredito(nc, asiento, idEmpresa, "SISTEMA", resultado);
+                            aplicacionPagoCxpService.aplicarNotaCredito(nc, asiento, idEmpresa, usuario, resultado);
                     resultado.put("aplicacionPago", aplicada != null
                             ? "Nota de crédito aplicada a la factura afectada."
                             : "Nota de crédito registrada sin aplicar: la factura afectada no tiene saldo.");
@@ -5177,7 +5209,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                         resultado.put("aplicacionPago", "Nota de débito de seguros: contabilizada, "
                                 + "sin aplicar a la factura hasta que crédito la libere.");
                     } else {
-                        aplicacionPagoCxpService.aplicarNotaDebito(nd, asiento, idEmpresa, "SISTEMA");
+                        aplicacionPagoCxpService.aplicarNotaDebito(nd, asiento, idEmpresa, usuario);
                         resultado.put("aplicacionPago", "Nota de débito aplicada a la factura afectada.");
                     }
                 }
@@ -5186,14 +5218,14 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                 com.saa.model.cxp.RetencionCompra rc =
                         em.find(com.saa.model.cxp.RetencionCompra.class, idDocBD);
                 if (rc != null) {
-                    aplicacionPagoCxcService.aplicarRetencionRecibida(rc, asiento, idEmpresa, "SISTEMA");
+                    aplicacionPagoCxcService.aplicarRetencionRecibida(rc, asiento, idEmpresa, usuario);
                     resultado.put("aplicacionPago", "Retención aplicada a la factura de venta afectada.");
                 }
             } else if ("RETENCION_COMPRA_V2".equals(tipo)) {
                 com.saa.model.cxp.RetencionCompraV2 rc2 =
                         em.find(com.saa.model.cxp.RetencionCompraV2.class, idDocBD);
                 if (rc2 != null) {
-                    aplicacionPagoCxcService.aplicarRetencionRecibidaV2(rc2, asiento, idEmpresa, "SISTEMA");
+                    aplicacionPagoCxcService.aplicarRetencionRecibidaV2(rc2, asiento, idEmpresa, usuario);
                     resultado.put("aplicacionPago", "Retención V2 aplicada a la factura de venta afectada.");
                 }
             }

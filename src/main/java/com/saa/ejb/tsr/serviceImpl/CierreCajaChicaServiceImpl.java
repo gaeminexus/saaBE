@@ -237,6 +237,11 @@ public class CierreCajaChicaServiceImpl implements CierreCajaChicaService {
 					+ " | Cierre al " + cierre.getFechaFin()
 					+ " | " + (sobrante ? "Sobrante" : "Faltante") + ": $"
 					+ String.format(java.util.Locale.US, "%.2f", valorAjuste);
+			// La observación del arqueo es el concepto del ajuste: va en las Observaciones del asiento
+			// (docs/logica-negocio/PEDIDOS-CONTABILIDAD-2026-10-27.md §2.2). El largo lo recorta el generador.
+			if (observacion != null && !observacion.trim().isEmpty()) {
+				observacionAjuste += " | " + observacion.trim();
+			}
 
 			Asiento asientoAjuste = asientoContableService.generarAsientoAjusteCajaChica(
 					caja.getPlanCuenta().getCodigo(), idPlanCuentaDiferencia, valorAjuste, sobrante,

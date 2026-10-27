@@ -121,7 +121,7 @@ public class ProcesoCargaDocumentosRest {
         try {
             String contenidoXml = (String) params.get("contenidoXml");
             Long idEmpresa      = Long.valueOf(params.get("idEmpresa").toString());
-            Long idUsuario      = Long.valueOf(params.get("idUsuario").toString());
+            Long idUsuario      = params.get("idUsuario") != null ? Long.valueOf(params.get("idUsuario").toString()) : null;
 
             if (contenidoXml == null || contenidoXml.isEmpty())
                 return Response.status(Response.Status.BAD_REQUEST)
@@ -348,7 +348,7 @@ public class ProcesoCargaDocumentosRest {
         System.out.println("=== REST registrarBD idDocumentoCxp=" + idDocumentoCxp);
         try {
             Long idEmpresa = Long.valueOf(params.get("idEmpresa").toString());
-            Long idUsuario = Long.valueOf(params.get("idUsuario").toString());
+            Long idUsuario = params.get("idUsuario") != null ? Long.valueOf(params.get("idUsuario").toString()) : null;
 
             boolean esIntermediario = false;
             if (params.containsKey("esIntermediario")) {
@@ -753,7 +753,7 @@ public class ProcesoCargaDocumentosRest {
         System.out.println("=== REST contabilizarReembolso idFacturaCompra=" + idFacturaCompra);
         try {
             Long idEmpresa = Long.valueOf(params.get("idEmpresa").toString());
-            Long idUsuario = Long.valueOf(params.get("idUsuario").toString());
+            Long idUsuario = params.get("idUsuario") != null ? Long.valueOf(params.get("idUsuario").toString()) : null;
             Map<String, Object> resultado = procesoCargaDocumentosService
                     .contabilizarReembolso(idFacturaCompra, idEmpresa, idUsuario);
             // §Novedad 3 — bloqueantes con la misma estructura del PASO 2
