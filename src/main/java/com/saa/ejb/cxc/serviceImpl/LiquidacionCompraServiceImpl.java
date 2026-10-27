@@ -272,6 +272,7 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 			if (Boolean.TRUE.equals(resCxp.get("aplica"))) {
 				resultado.put("documentoCxp", resCxp.get("idDocumentoCxp"));
 				resultado.put("asiento", resCxp.get("numeroAlterno"));
+				resultado.put("idAsiento", resCxp.get("idAsiento"));
 			}
 		} catch (Throwable e) {
 			resultado.put("contabilidadPendiente", true);
@@ -2000,6 +2001,7 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 					if (Boolean.TRUE.equals(resCxp.get("aplica"))) {
 						resultado.put("documentoCxp", resCxp.get("idDocumentoCxp"));
 						resultado.put("asiento", resCxp.get("numeroAlterno"));
+						resultado.put("idAsiento", resCxp.get("idAsiento"));
 					}
 				} catch (Exception ae) {
 					resultado.put("advertenciaAsiento",
@@ -2413,6 +2415,7 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 			} else if (documentoCxpCreado) {
 				resultado.put("documentoCxp", resCxp.get("idDocumentoCxp"));
 				resultado.put("asiento", resCxp.get("numeroAlterno"));
+				resultado.put("idAsiento", resCxp.get("idAsiento"));
 			}
 		} catch (Throwable e) {
 			resultado.put("contabilidadPendiente", true);

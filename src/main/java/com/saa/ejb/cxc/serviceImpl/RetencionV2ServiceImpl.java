@@ -1372,6 +1372,7 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 			if (Boolean.TRUE.equals(resAsiento.get("aplica"))) {
 				asientoOk = true;
 				resultado.put("asiento", resAsiento.get("numeroAlterno"));
+				resultado.put("idAsiento", resAsiento.get("idAsiento"));
 			}
 		} catch (Throwable e) {
 			resultado.put("contabilidadPendiente", true);
@@ -2333,6 +2334,7 @@ public java.util.Map<String, Object> consultarYActualizarEstadoRetencionV2(Long 
 					+ resAsiento.get("numeroAlterno"));
 		} else if (asientoGenerado) {
 			resultado.put("asiento", resAsiento.get("numeroAlterno"));
+			resultado.put("idAsiento", resAsiento.get("idAsiento"));
 		}
 	} catch (Throwable e) {
 		resultado.put("contabilidadPendiente", true);

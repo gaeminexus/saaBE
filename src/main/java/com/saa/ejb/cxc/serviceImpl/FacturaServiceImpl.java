@@ -267,6 +267,7 @@ public class FacturaServiceImpl implements FacturaService {
 			java.util.Map<String, Object> resAsiento = self().generarContabilidadFactura(idFactura);
 			if (Boolean.TRUE.equals(resAsiento.get("aplica"))) {
 				resultado.put("asiento", resAsiento.get("numeroAlterno"));
+				resultado.put("idAsiento", resAsiento.get("idAsiento"));
 			}
 		} catch (Throwable e) {
 			resultado.put("contabilidadPendiente", true);
@@ -942,6 +943,7 @@ public class FacturaServiceImpl implements FacturaService {
 			java.util.Map<String, Object> resAsiento = self().generarContabilidadFactura(idFactura);
 			if (Boolean.TRUE.equals(resAsiento.get("aplica"))) {
 				resultado.put("asiento", resAsiento.get("numeroAlterno"));
+				resultado.put("idAsiento", resAsiento.get("idAsiento"));
 			}
 			mensaje = teniaAsientoAntes ? "La factura ya tenía asiento contable." : "Asiento registrado.";
 		} catch (Throwable e) {
@@ -2858,6 +2860,7 @@ public class FacturaServiceImpl implements FacturaService {
 				System.out.println("ℹ La factura ya tiene asiento contable: " + resAsiento.get("numeroAlterno"));
 			} else if (asientoGenerado) {
 				resultado.put("asiento", resAsiento.get("numeroAlterno"));
+				resultado.put("idAsiento", resAsiento.get("idAsiento"));
 			}
 		} catch (Throwable e) {
 			resultado.put("contabilidadPendiente", true);

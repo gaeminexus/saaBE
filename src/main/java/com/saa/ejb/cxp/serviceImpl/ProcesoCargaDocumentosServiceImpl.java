@@ -5122,6 +5122,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
 
             if (asiento != null) {
                 resultado.put("asiento", asiento.getNumeroAlterno());
+                resultado.put("idAsiento", asiento.getCodigo());
                 System.out.println("✓ Asiento CXP generado: " + asiento.getNumeroAlterno()
                         + " | tipo=" + tipo);
 

@@ -868,6 +868,7 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 			detalle.put("montoAplicado", monto);
 			detalle.put("saldoAnticipo", anticipo.getSaldo());
 			detalle.put("asiento", asiento.getNumeroAlterno());
+			detalle.put("idAsiento", asiento.getCodigo());
 			lineas.add(detalle);
 		}
 
@@ -909,6 +910,7 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 		// Compatibilidad con los clientes que leen un solo cruce
 		resultado.put("aplicacion", lineas.get(0).get("aplicacion"));
 		resultado.put("asiento", lineas.get(0).get("asiento"));
+		resultado.put("idAsiento", lineas.get(0).get("idAsiento"));
 		resultado.putAll(factura != null ? saldoFactura(factura.getId()) : saldoLiquidacion(liquidacion.getId()));
 		return resultado;
 	}

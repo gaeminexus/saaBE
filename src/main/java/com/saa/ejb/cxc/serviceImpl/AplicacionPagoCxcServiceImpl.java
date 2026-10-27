@@ -542,6 +542,7 @@ public class AplicacionPagoCxcServiceImpl implements AplicacionPagoCxcService {
 			detalle.put("montoAplicado", monto);
 			detalle.put("saldoAnticipo", anticipo.getSaldo());
 			detalle.put("asiento", asiento.getNumeroAlterno());
+			detalle.put("idAsiento", asiento.getCodigo());
 			lineas.add(detalle);
 		}
 
@@ -564,6 +565,7 @@ public class AplicacionPagoCxcServiceImpl implements AplicacionPagoCxcService {
 		// Compatibilidad con los clientes que leen un solo cruce
 		resultado.put("aplicacion", lineas.get(0).get("aplicacion"));
 		resultado.put("asiento", lineas.get(0).get("asiento"));
+		resultado.put("idAsiento", lineas.get(0).get("idAsiento"));
 		resultado.putAll(saldoFactura(factura.getId()));
 		return resultado;
 	}
@@ -683,6 +685,7 @@ public class AplicacionPagoCxcServiceImpl implements AplicacionPagoCxcService {
 		resultado.put("mensaje", "Cobro registrado correctamente.");
 		resultado.put("aplicacion", aplicacion.getId());
 		resultado.put("asiento", asiento.getNumeroAlterno());
+		resultado.put("idAsiento", asiento.getCodigo());
 		resultado.putAll(saldoFactura(idFactura));
 		return resultado;
 	}

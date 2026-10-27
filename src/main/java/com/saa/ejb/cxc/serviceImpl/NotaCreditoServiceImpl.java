@@ -871,6 +871,7 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 			if (Boolean.TRUE.equals(resAsiento.get("aplica"))) {
 				asientoOk = true;
 				resultado.put("asiento", resAsiento.get("numeroAlterno"));
+				resultado.put("idAsiento", resAsiento.get("idAsiento"));
 			}
 		} catch (Throwable e) {
 			resultado.put("contabilidadPendiente", true);
@@ -1512,6 +1513,7 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 			if (Boolean.TRUE.equals(resAsiento.get("aplica"))) {
 				asientoOk = true;
 				resultado.put("asiento", resAsiento.get("numeroAlterno"));
+				resultado.put("idAsiento", resAsiento.get("idAsiento"));
 			}
 		} catch (Throwable e) {
 			advertenciaAsiento = "No se pudo generar el asiento contable: " + e.getMessage();
@@ -2246,6 +2248,7 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 				System.out.println("ℹ La nota de crédito ya tiene asiento contable.");
 			} else if (asientoGenerado) {
 				resultado.put("asiento", resAsiento.get("numeroAlterno"));
+				resultado.put("idAsiento", resAsiento.get("idAsiento"));
 			}
 		} catch (Throwable e) {
 			resultado.put("contabilidadPendiente", true);
