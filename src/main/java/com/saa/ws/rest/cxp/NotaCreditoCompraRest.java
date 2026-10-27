@@ -116,6 +116,24 @@ public class NotaCreditoCompraRest {
 		}
 	}
 
+	/**
+	 * Notas de crédito de compra registradas y vigentes del proveedor con saldo a favor, la más
+	 * antigua primero. Proyección: {idNotaCredito, numero, fecha, numDocModificado, total,
+	 * aplicado, devuelto, saldo}. docs/logica-negocio/cxp/NC-EXCEDE-SALDO-FACTURA.md §6.
+	 */
+	@GET @Path("/disponibles/{idTitular}/{idEmpresa}") @Produces(MediaType.APPLICATION_JSON)
+	public Response disponibles(@PathParam("idTitular") Long idTitular, @PathParam("idEmpresa") Long idEmpresa) {
+		System.out.println("LLEGA AL SERVICIO GET NotaCreditoCompra/disponibles titular: " + idTitular + " empresa: " + idEmpresa);
+		try {
+			List<java.util.Map<String, Object>> lista = notaCreditoCompraService.disponiblesNotaCredito(idTitular, idEmpresa);
+			return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+		} catch (com.saa.basico.util.IncomeException e) {
+			return Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+		} catch (Throwable e) {
+			return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al consultar las notas de crédito con saldo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+		}
+	}
+
 	// ── ATS: sustento tributario SRI (Tabla 5) de la nota de crédito de compra ───
 
 	@GET @Path("/sustento/{id}") @Produces(MediaType.APPLICATION_JSON)

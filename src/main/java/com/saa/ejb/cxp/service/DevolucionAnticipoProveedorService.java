@@ -54,6 +54,24 @@ public interface DevolucionAnticipoProveedorService extends EntityService<Devolu
 			throws Throwable;
 
 	/**
+	 * Igual que {@link #registrar(Long, Long, Long, String, String, String, Long, List)}, y además
+	 * puede devolver el saldo a favor de notas de crédito de compra y registrar si el proveedor
+	 * devolvió por transferencia o con cheque (docs/logica-negocio/cxp/NC-EXCEDE-SALDO-FACTURA.md §5.2).
+	 * Es aditivo: con {@code notasCredito} vacío/null y {@code formaPago} null se comporta
+	 * exactamente como el método anterior. Al menos una de las dos listas debe traer líneas.
+	 * <p>
+	 * Asiento: DEBE banco (total) / HABER anticipos del proveedor (suma de anticipos, si hay) /
+	 * HABER cuenta por pagar del proveedor (suma de notas de crédito, si hay). El PRCC tipo 2 baja
+	 * solo por la suma de anticipos; las notas no lo tocan (su saldo es calculado). El movimiento
+	 * bancario va por el total, con el tipo según la forma.
+	 * @param notasCredito : Líneas de notas de crédito: [{idNotaCredito, valor}, ...]; puede ser null o vacía
+	 * @param formaPago    : 1 TRANSFERENCIA, 2 CHEQUE ({@link com.saa.rubros.FormaDevolucionProveedor}); null = 1
+	 */
+	Map<String, Object> registrar(Long idEmpresa, Long idTitular, Long idCuentaBancaria, String fecha,
+			String referencia, String observacion, Long idUsuario, List<Map<String, Object>> anticipos,
+			List<Map<String, Object>> notasCredito, Long formaPago) throws Throwable;
+
+	/**
 	 * Anula una devolución ACTIVA: repone el saldo de cada anticipo y el PRCC del proveedor,
 	 * anula el movimiento bancario y el asiento (sin tragarse errores: un fallo aborta toda la
 	 * anulación), y deja la devolución ANULADA con motivo y fecha.

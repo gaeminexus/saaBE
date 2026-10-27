@@ -425,6 +425,24 @@ public interface AsientoContableService {
             throws Throwable;
 
     /**
+     * Igual que {@link #generarAsientoDevolucionAnticipoProveedor(Long, Long, Double, Long, java.time.LocalDate, String, String)},
+     * para una devolución que además (o solo) devuelve el saldo de notas de crédito de compra
+     * (docs/logica-negocio/cxp/NC-EXCEDE-SALDO-FACTURA.md §5.2):
+     * <p>
+     * DEBE:  banco, por el total del depósito ({@code valor})<br>
+     * HABER: anticipos del proveedor (tipoCuenta=2), por {@code valorAnticipos}, si es &gt; 0<br>
+     * HABER: cuenta por pagar del proveedor (tipoCuenta=1, la misma que debitó la nota de crédito),
+     * por {@code valorNotasCredito}, si es &gt; 0
+     *
+     * @param valor             : Total del depósito; debe ser la suma de los dos siguientes
+     * @param valorAnticipos    : Parte del depósito que devuelve anticipos (puede ser 0)
+     * @param valorNotasCredito : Parte del depósito que devuelve saldo de notas de crédito (puede ser 0)
+     */
+    Asiento generarAsientoDevolucionAnticipoProveedor(Long idTitular, Long idCuentaBancaria, Double valor,
+            Double valorAnticipos, Double valorNotasCredito, Long idEmpresa,
+            java.time.LocalDate fechaAsiento, String observaciones, String usuario) throws Throwable;
+
+    /**
      * Genera el asiento del cruce de un anticipo de cliente contra una factura
      * de venta (CXC).
      * <p>

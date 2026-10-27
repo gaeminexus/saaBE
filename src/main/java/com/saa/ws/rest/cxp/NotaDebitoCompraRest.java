@@ -146,6 +146,24 @@ public class NotaDebitoCompraRest {
 		}
 	}
 
+	/**
+	 * Notas de débito vigentes y no bloqueadas del proveedor cuya factura tiene saldo: destinos
+	 * posibles del cruce de una nota de crédito. Proyección: {idNotaDebito, numero, fecha, total,
+	 * idFacturaCompra, numeroFactura, saldoFactura}. docs/logica-negocio/cxp/NC-EXCEDE-SALDO-FACTURA.md §4.1.
+	 */
+	@GET @Path("/pendientes/{idTitular}/{idEmpresa}") @Produces(MediaType.APPLICATION_JSON)
+	public Response pendientes(@PathParam("idTitular") Long idTitular, @PathParam("idEmpresa") Long idEmpresa) {
+		System.out.println("LLEGA AL SERVICIO GET NotaDebitoCompra/pendientes titular: " + idTitular + " empresa: " + idEmpresa);
+		try {
+			List<java.util.Map<String, Object>> lista = notaDebitoCompraService.pendientesNotaDebito(idTitular, idEmpresa);
+			return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
+		} catch (com.saa.basico.util.IncomeException e) {
+			return Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+		} catch (Throwable e) {
+			return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al consultar las notas de débito pendientes: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+		}
+	}
+
 	@GET @Path("/sustentoPendiente") @Produces(MediaType.APPLICATION_JSON)
 	public Response getSustentoPendiente(@QueryParam("idEmpresa") Long idEmpresa) {
 		try {

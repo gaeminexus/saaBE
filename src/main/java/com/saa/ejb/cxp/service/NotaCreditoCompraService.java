@@ -33,4 +33,26 @@ public interface NotaCreditoCompraService extends EntityService<NotaCreditoCompr
 	 */
 	java.util.List<java.util.Map<String, Object>> movimientosRelacionadosNotaCredito(Long idNotaCredito)
 			throws Throwable;
+
+	/**
+	 * Notas de crédito de compra registradas y vigentes de un proveedor que todavía tienen saldo
+	 * a favor ({@code saldo > 0.01}), la más antigua primero — docs/logica-negocio/cxp/
+	 * NC-EXCEDE-SALDO-FACTURA.md §6. El saldo se calcula: {@code total - aplicado - devuelto}.
+	 * @param idTitular	: Id del proveedor
+	 * @param idEmpresa	: Id de la empresa
+	 * @return			: Mapas con idNotaCredito, numero, fecha, numDocModificado, total, aplicado,
+	 *					  devuelto y saldo
+	 * @throws Throwable	: Excepcion
+	 */
+	java.util.List<java.util.Map<String, Object>> disponiblesNotaCredito(Long idTitular, Long idEmpresa)
+			throws Throwable;
+
+	/**
+	 * Saldo a favor de UNA nota de crédito de compra: {@code total - aplicado - devuelto}, calculado
+	 * (nunca guardado). Lo usan el cruce contra otra factura y la devolución del saldo.
+	 * @param nota		: Nota de crédito de compra
+	 * @return			: Saldo, redondeado a 2 decimales (puede ser 0)
+	 * @throws Throwable	: Excepcion
+	 */
+	double saldoNotaCredito(com.saa.model.cxp.NotaCreditoCompra nota) throws Throwable;
 }

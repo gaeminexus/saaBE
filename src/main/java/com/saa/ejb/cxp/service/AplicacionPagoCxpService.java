@@ -58,6 +58,19 @@ public interface AplicacionPagoCxpService extends EntityService<AplicacionPagoCx
 			Long idEmpresa, String usuario) throws Throwable;
 
 	/**
+	 * Igual que {@link #aplicarNotaCredito(NotaCreditoCompra, Asiento, Long, String)}, y además
+	 * informa si la nota excede el saldo de su factura (docs/logica-negocio/cxp/NC-EXCEDE-SALDO-FACTURA.md §3):
+	 * se aplica solo hasta el saldo de la factura (que nunca queda en negativo), el resto queda como
+	 * saldo de la nota de crédito y NO es un error. Si la factura ya está pagada (saldo 0) no se crea
+	 * ninguna aplicación y el método devuelve {@code null}.
+	 * @param resultado : Mapa donde se pone {@code advertenciaAplicacion} cuando la nota excede el saldo
+	 *                    (la clave solo existe en ese caso); puede ser null
+	 * @return          : Aplicación creada, o null si no se aplicó nada
+	 */
+	AplicacionPagoCxp aplicarNotaCredito(NotaCreditoCompra notaCredito, Asiento asiento,
+			Long idEmpresa, String usuario, java.util.Map<String, Object> resultado) throws Throwable;
+
+	/**
 	 * Registra el INCREMENTO del saldo de la factura de compra que produce una
 	 * nota de débito recibida del proveedor. El monto se guarda NEGATIVO.
 	 * @param notaDebito : Nota de débito recibida
@@ -295,6 +308,33 @@ public interface AplicacionPagoCxpService extends EntityService<AplicacionPagoCx
 	 */
 	Map<String, Object> revertirAplicacionOrigenCajaChica(Long idAplicacion, String motivo, Long idUsuario)
 			throws Throwable;
+
+	/**
+	 * Cruza el saldo a favor de una nota de crédito de compra contra OTRA factura del mismo
+	 * proveedor (docs/logica-negocio/cxp/NC-EXCEDE-SALDO-FACTURA.md §4). Crea UNA aplicación
+	 * {@code NOTA_CREDITO} sin asiento (la nota ya debitó la cuenta por pagar del proveedor al
+	 * registrarse: un asiento DEBE X / HABER X solo ensuciaría el mayor) y recalcula el estado de
+	 * pago de la factura. Se reversa con {@link #revertirAplicacion(Long, String, Long)}.
+	 * <p>
+	 * Validaciones, en orden, todas {@code IncomeException}: datos presentes y valor &gt; 0; la nota
+	 * existe, es de la empresa, está registrada y vigente y {@code valor <= saldoNC + 0.01}; la
+	 * factura existe, es del mismo proveedor y empresa, no está anulada y
+	 * {@code valor <= saldoFactura + 0.01}.
+	 * @param idNotaCredito   : Id de la nota de crédito de compra
+	 * @param idFacturaCompra : Id de la factura contra la que se cruza (exactamente uno de este y idNotaDebito)
+	 * @param idNotaDebito    : Id de la nota de débito del proveedor contra la que se cruza: se cruza contra
+	 *                          SU factura (la ND no tiene saldo propio) y NO se llena {@code notaDebito} en la
+	 *                          fila de APLP, que identifica la aplicación negativa propia de la ND (§4.1)
+	 * @param valor           : Valor a cruzar
+	 * @param fecha           : Fecha del cruce (yyyy-MM-dd); null = hoy
+	 * @param idEmpresa       : Id de la empresa
+	 * @param idUsuario       : Id del usuario que cruza
+	 * @param observacion     : Observación libre, opcional
+	 * @return                : Mapa con exito, mensaje, aplicacion, saldoNotaCredito y saldoFactura
+	 * @throws Throwable      : IncomeException si no se cumple alguna validación
+	 */
+	Map<String, Object> cruzarNotaCredito(Long idNotaCredito, Long idFacturaCompra, Long idNotaDebito, Double valor,
+			String fecha, Long idEmpresa, Long idUsuario, String observacion) throws Throwable;
 
 	/**
 	 * Reversa todas las aplicaciones activas originadas por un documento, al

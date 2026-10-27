@@ -17,6 +17,7 @@ import com.saa.ejb.cnt.dao.DetalleAsientoDaoService;
 import com.saa.ejb.cnt.service.AsientoContableService;
 import com.saa.ejb.cnt.service.AsientoService;
 import com.saa.ejb.cxp.dao.DevolucionAnticipoProveedorDaoService;
+import com.saa.ejb.cxp.dao.NotaCreditoCompraDaoService;
 import com.saa.ejb.cxp.service.DevolucionAnticipoProveedorService;
 import com.saa.ejb.tsr.dao.GrupoConciliacionAsientoDaoService;
 import com.saa.ejb.tsr.dao.MovimientoBancoDaoService;
@@ -27,6 +28,7 @@ import com.saa.model.cnt.DetalleAsiento;
 import com.saa.model.cxp.AnticipoProveedor;
 import com.saa.model.cxp.DetalleDevolucionAnticipo;
 import com.saa.model.cxp.DevolucionAnticipoProveedor;
+import com.saa.model.cxp.NotaCreditoCompra;
 import com.saa.model.cxp.NombreEntidadesPago;
 import com.saa.model.scp.Empresa;
 import com.saa.model.scp.Usuario;
@@ -34,8 +36,10 @@ import com.saa.model.tsr.CuentaBancaria;
 import com.saa.model.tsr.MovimientoBanco;
 import com.saa.model.tsr.PersonaCuentaContable;
 import com.saa.model.tsr.Titular;
+import com.saa.rubros.Estado;
 import com.saa.rubros.EstadoAnticipoProveedor;
 import com.saa.rubros.EstadoDevolucionAnticipoProveedor;
+import com.saa.rubros.FormaDevolucionProveedor;
 import com.saa.rubros.OrigenMovimientoConciliacion;
 import com.saa.rubros.RolPersona;
 import com.saa.rubros.TipoMovimientoConciliacion;
@@ -60,6 +64,9 @@ public class DevolucionAnticipoProveedorServiceImpl implements DevolucionAnticip
 
     @EJB
     private DevolucionAnticipoProveedorDaoService devolucionDaoService;
+
+    @EJB
+    private NotaCreditoCompraDaoService notaCreditoCompraDaoService;
 
     @EJB
     private AsientoContableService asientoContableService;
@@ -157,20 +164,36 @@ public class DevolucionAnticipoProveedorServiceImpl implements DevolucionAnticip
     public Map<String, Object> registrar(Long idEmpresa, Long idTitular, Long idCuentaBancaria, String fecha,
             String referencia, String observacion, Long idUsuario, List<Map<String, Object>> anticipos)
             throws Throwable {
+        // Payload anterior: solo anticipos, transferencia.
+        return registrar(idEmpresa, idTitular, idCuentaBancaria, fecha, referencia, observacion, idUsuario,
+                anticipos, null, null);
+    }
+
+    @Override
+    public Map<String, Object> registrar(Long idEmpresa, Long idTitular, Long idCuentaBancaria, String fecha,
+            String referencia, String observacion, Long idUsuario, List<Map<String, Object>> anticipos,
+            List<Map<String, Object>> notasCredito, Long formaPago) throws Throwable {
 
         System.out.println("=== registrar (devolucion anticipo) | empresa=" + idEmpresa + " | titular=" + idTitular
                 + " | cuenta=" + idCuentaBancaria + " | anticipos="
-                + ((anticipos != null) ? anticipos.size() : 0) + " ===");
+                + ((anticipos != null) ? anticipos.size() : 0) + " | notasCredito="
+                + ((notasCredito != null) ? notasCredito.size() : 0) + " | formaPago=" + formaPago + " ===");
 
-        // 1. anticipos no vacío, sin idAnticipo repetido, cada valor > 0
-        if (anticipos == null || anticipos.isEmpty()) {
-            throw new IncomeException("Debe indicar al menos un anticipo a devolver.");
+        // 1. al menos una línea (de anticipo o de nota de crédito), sin repetidos, cada valor > 0
+        boolean hayAnticipos = anticipos != null && !anticipos.isEmpty();
+        boolean hayNotasCredito = notasCredito != null && !notasCredito.isEmpty();
+        if (!hayAnticipos && !hayNotasCredito) {
+            throw new IncomeException("Debe indicar al menos un anticipo o una nota de crédito a devolver.");
+        }
+        int forma = (formaPago != null) ? formaPago.intValue() : FormaDevolucionProveedor.TRANSFERENCIA;
+        if (forma != FormaDevolucionProveedor.TRANSFERENCIA && forma != FormaDevolucionProveedor.CHEQUE) {
+            throw new IncomeException("La forma de pago de la devolución no es válida (1 transferencia, 2 cheque).");
         }
         List<Long> idsAnticipo = new ArrayList<>();
         List<Double> valoresAnticipo = new ArrayList<>();
         Set<Long> vistos = new HashSet<>();
         double total = 0.0;
-        for (Map<String, Object> detalle : anticipos) {
+        for (Map<String, Object> detalle : (hayAnticipos ? anticipos : new ArrayList<Map<String, Object>>())) {
             Long idAnticipo = toLong(detalle.get("idAnticipo"));
             Double valor = toDouble(detalle.get("valor"));
             if (idAnticipo == null) {
@@ -188,6 +211,32 @@ public class DevolucionAnticipoProveedorServiceImpl implements DevolucionAnticip
             valoresAnticipo.add(valor);
             total += valor;
         }
+
+        double totalAnticipos = total;
+
+        // 1b. notas de crédito: sin idNotaCredito repetido, cada valor > 0
+        List<Long> idsNotaCredito = new ArrayList<>();
+        List<Double> valoresNotaCredito = new ArrayList<>();
+        Set<Long> vistosNc = new HashSet<>();
+        for (Map<String, Object> detalle : (hayNotasCredito ? notasCredito : new ArrayList<Map<String, Object>>())) {
+            Long idNotaCredito = toLong(detalle.get("idNotaCredito"));
+            Double valor = toDouble(detalle.get("valor"));
+            if (idNotaCredito == null) {
+                throw new IncomeException("Cada línea de nota de crédito debe indicar la nota (idNotaCredito).");
+            }
+            if (valor == null || valor <= 0) {
+                throw new IncomeException("El valor a devolver de la nota de crédito " + idNotaCredito
+                        + " debe ser mayor a cero.");
+            }
+            if (!vistosNc.add(idNotaCredito)) {
+                throw new IncomeException("La nota de crédito " + idNotaCredito + " viene repetida en la devolución. "
+                        + "Indique una sola línea por nota, con el valor total.");
+            }
+            idsNotaCredito.add(idNotaCredito);
+            valoresNotaCredito.add(valor);
+            total += valor;
+        }
+        double totalNotasCredito = total - totalAnticipos;
 
         // 2. idEmpresa, idTitular, idCuentaBancaria y fecha presentes
         if (idEmpresa == null) {
@@ -256,14 +305,54 @@ public class DevolucionAnticipoProveedorServiceImpl implements DevolucionAnticip
 
         // 5. El proveedor tiene PRCC tipo 2, con saldoInicial >= total (mismo mensaje que
         //    AplicacionPagoCxpServiceImpl.aplicaCruces, adaptado a "devolver")
-        PersonaCuentaContable cuentaAnticipos = obtenerCuentaAnticipos(idTitular, idEmpresa);
-        double saldoAnticipos = (cuentaAnticipos.getSaldoInicial() != null)
-                ? cuentaAnticipos.getSaldoInicial() : 0.0;
-        if (saldoAnticipos + TOLERANCIA < total) {
-            throw new IncomeException("El saldo de anticipos del proveedor '" + titular.getNombre()
-                    + "' es de $" + String.format(Locale.US, "%.2f", saldoAnticipos)
-                    + " y no alcanza para devolver $" + String.format(Locale.US, "%.2f", total)
-                    + ". Revise el cuadre entre los anticipos y la cuenta contable.");
+        //    Solo si hay anticipos: las notas de crédito no tocan el PRCC (su saldo es calculado).
+        PersonaCuentaContable cuentaAnticipos = null;
+        double saldoAnticipos = 0.0;
+        if (hayAnticipos) {
+            cuentaAnticipos = obtenerCuentaAnticipos(idTitular, idEmpresa);
+            saldoAnticipos = (cuentaAnticipos.getSaldoInicial() != null)
+                    ? cuentaAnticipos.getSaldoInicial() : 0.0;
+            if (saldoAnticipos + TOLERANCIA < totalAnticipos) {
+                throw new IncomeException("El saldo de anticipos del proveedor '" + titular.getNombre()
+                        + "' es de $" + String.format(Locale.US, "%.2f", saldoAnticipos)
+                        + " y no alcanza para devolver $" + String.format(Locale.US, "%.2f", totalAnticipos)
+                        + ". Revise el cuadre entre los anticipos y la cuenta contable.");
+            }
+        }
+
+        // 5b. Cada nota de crédito existe, es del mismo titular y empresa, está registrada y vigente
+        //     (con asiento, ACTIVA, no anulada) y valor <= saldo (total - aplicado - devuelto) + 0.01
+        List<NotaCreditoCompra> notasEntidad = new ArrayList<>();
+        for (int i = 0; i < idsNotaCredito.size(); i++) {
+            Long idNotaCredito = idsNotaCredito.get(i);
+            Double valor = valoresNotaCredito.get(i);
+            NotaCreditoCompra nota = em.find(NotaCreditoCompra.class, idNotaCredito);
+            if (nota == null) {
+                throw new IncomeException("No se encontró la nota de crédito con ID: " + idNotaCredito);
+            }
+            if (nota.getTitular() == null || !idTitular.equals(nota.getTitular().getCodigo())) {
+                throw new IncomeException("La nota de crédito " + idNotaCredito + " no pertenece al proveedor "
+                        + "indicado: no se puede devolver en esta operación.");
+            }
+            if (nota.getEmpresa() == null || !idEmpresa.equals(nota.getEmpresa().getCodigo())) {
+                throw new IncomeException("La nota de crédito " + idNotaCredito + " es de otra empresa contable: "
+                        + "no se puede devolver en esta operación.");
+            }
+            if (nota.getAsiento() == null || nota.getEstado() == null
+                    || nota.getEstado().intValue() != Estado.ACTIVO
+                    || Long.valueOf(3L).equals(nota.getEstadoEmision())) {
+                throw new IncomeException("La nota de crédito N° " + nvl(nota.getNumero(), String.valueOf(idNotaCredito))
+                        + " no está registrada y vigente (sin asiento o anulada): no se puede devolver.");
+            }
+            double totalNota = (nota.getTotal() != null) ? nota.getTotal() : 0.0;
+            double[] usado = notaCreditoCompraDaoService.selectAplicadoYDevuelto(idNotaCredito);
+            double saldoNota = redondea(totalNota - usado[0] - usado[1]);
+            if (valor > saldoNota + TOLERANCIA) {
+                throw new IncomeException("La nota de crédito N° " + nvl(nota.getNumero(), String.valueOf(idNotaCredito))
+                        + " tiene un saldo disponible de $" + String.format(Locale.US, "%.2f", Math.max(saldoNota, 0.0))
+                        + " y no alcanza para devolver $" + String.format(Locale.US, "%.2f", valor) + ".");
+            }
+            notasEntidad.add(nota);
         }
 
         // ── Todo validado: una sola transacción ──────────────────────────────
@@ -278,9 +367,11 @@ public class DevolucionAnticipoProveedorServiceImpl implements DevolucionAnticip
             observacionAsiento += " | " + observacion.trim();
         }
 
-        // 1. Asiento: DEBE banco / HABER anticipos del proveedor
+        // 1. Asiento: DEBE banco (total) / HABER anticipos del proveedor (suma de anticipos, si hay) /
+        //    HABER cuenta por pagar del proveedor (suma de notas de crédito, si hay)
         Asiento asiento = asientoContableService.generarAsientoDevolucionAnticipoProveedor(
-                idTitular, idCuentaBancaria, total, idEmpresa, fechaDeposito, observacionAsiento, nombreUsuario);
+                idTitular, idCuentaBancaria, redondea(total), redondea(totalAnticipos),
+                redondea(totalNotasCredito), idEmpresa, fechaDeposito, observacionAsiento, nombreUsuario);
 
         // 2. Cabecera y detalle, estado ACTIVA
         DevolucionAnticipoProveedor devolucion = new DevolucionAnticipoProveedor();
@@ -291,6 +382,7 @@ public class DevolucionAnticipoProveedorServiceImpl implements DevolucionAnticip
         devolucion.setValor(redondea(total));
         devolucion.setReferencia((referencia != null && !referencia.trim().isEmpty()) ? referencia.trim() : null);
         devolucion.setObservacion(observacion);
+        devolucion.setFormaPago(Long.valueOf(forma));
         devolucion.setAsiento(asiento);
         devolucion.setEstado(Long.valueOf(EstadoDevolucionAnticipoProveedor.ACTIVA));
         devolucion.setUsuario(usuario);
@@ -313,15 +405,34 @@ public class DevolucionAnticipoProveedorServiceImpl implements DevolucionAnticip
             em.merge(anticipo);
         }
 
-        // 4. PRCC tipo 2 del proveedor
-        cuentaAnticipos.setSaldoInicial(redondea(saldoAnticipos - total));
-        em.merge(cuentaAnticipos);
+        // 3b. Cada nota de crédito: solo la línea de detalle. Su saldo se calcula (total - aplicado -
+        //     devuelto) y deja de contar esta devolución si queda ANULADA; no se guarda nada en la nota.
+        for (int i = 0; i < notasEntidad.size(); i++) {
+            DetalleDevolucionAnticipo detalle = new DetalleDevolucionAnticipo();
+            detalle.setDevolucion(devolucion);
+            detalle.setNotaCredito(notasEntidad.get(i));
+            detalle.setValor(redondea(valoresNotaCredito.get(i)));
+            em.persist(detalle);
+        }
 
-        // 5. Movimiento bancario, mismo llamado que IngresoServiceImpl:181-185
+        // 4. PRCC tipo 2 del proveedor: baja solo por la suma de anticipos (las notas no lo tocan)
+        if (hayAnticipos) {
+            cuentaAnticipos.setSaldoInicial(redondea(saldoAnticipos - totalAnticipos));
+            em.merge(cuentaAnticipos);
+        }
+
+        // 5. Movimiento bancario por el total, mismo llamado que IngresoServiceImpl:181-185. El tipo
+        //    según la forma: transferencia -> TRANSFERENCIAS_CREDITOS_EN_TRANSITO (como siempre);
+        //    cheque que se deposita -> DEPOSITO_EN_TRANSITO.
+        int tipoMovimiento = (forma == FormaDevolucionProveedor.CHEQUE)
+                ? TipoMovimientoConciliacion.DEPOSITO_EN_TRANSITO
+                : TipoMovimientoConciliacion.TRANSFERENCIAS_CREDITOS_EN_TRANSITO;
         movimientoBancoService.creaMovimientoPorTransferencia(idEmpresa,
-                "Devolución de anticipo: " + titular.getNombre() + " | Ref: " + nvl(referencia, ""),
+                "Devolución de " + (hayAnticipos && !hayNotasCredito ? "anticipo"
+                        : hayNotasCredito && !hayAnticipos ? "saldo de nota de crédito" : "anticipo y nota de crédito")
+                        + ": " + titular.getNombre() + " | Ref: " + nvl(referencia, ""),
                 asiento, cuentaBancaria, total,
-                TipoMovimientoConciliacion.TRANSFERENCIAS_CREDITOS_EN_TRANSITO,
+                tipoMovimiento,
                 OrigenMovimientoConciliacion.COBROS);
 
         em.flush();
@@ -407,25 +518,33 @@ public class DevolucionAnticipoProveedorServiceImpl implements DevolucionAnticip
 
         Titular titular = devolucion.getTitular();
         Long idEmpresa = (devolucion.getEmpresa() != null) ? devolucion.getEmpresa().getCodigo() : null;
-        PersonaCuentaContable cuentaAnticipos = obtenerCuentaAnticipos(titular.getCodigo(), idEmpresa);
-        double saldoAnticiposAnterior = (cuentaAnticipos.getSaldoInicial() != null)
-                ? cuentaAnticipos.getSaldoInicial() : 0.0;
-
+        // Las líneas de nota de crédito (anticipo null) no restauran nada a mano: el saldo de la nota
+        // se calcula y deja de descontar esta devolución al quedar ANULADA. El PRCC tipo 2 solo se
+        // repone por la suma de los anticipos.
+        double totalAnticipos = 0.0;
         for (DetalleDevolucionAnticipo detalle : detalles) {
+            if (detalle.getAnticipo() == null) {
+                continue;
+            }
             AnticipoProveedor anticipo = em.find(AnticipoProveedor.class, detalle.getAnticipo().getId());
             double saldoAnterior = (anticipo.getSaldo() != null) ? anticipo.getSaldo() : 0.0;
             double valor = (detalle.getValor() != null) ? detalle.getValor() : 0.0;
             anticipo.setSaldo(redondea(saldoAnterior + valor));
             em.merge(anticipo);
+            totalAnticipos += valor;
             System.out.println("✓ Anticipo " + anticipo.getId() + " saldo repuesto: " + saldoAnterior
                     + " → " + anticipo.getSaldo());
         }
 
-        double total = (devolucion.getValor() != null) ? devolucion.getValor() : 0.0;
-        cuentaAnticipos.setSaldoInicial(redondea(saldoAnticiposAnterior + total));
-        em.merge(cuentaAnticipos);
-        System.out.println("✓ Saldo global de anticipos del proveedor " + titular.getCodigo() + ": "
-                + saldoAnticiposAnterior + " → " + cuentaAnticipos.getSaldoInicial());
+        if (totalAnticipos > 0.005) {
+            PersonaCuentaContable cuentaAnticipos = obtenerCuentaAnticipos(titular.getCodigo(), idEmpresa);
+            double saldoAnticiposAnterior = (cuentaAnticipos.getSaldoInicial() != null)
+                    ? cuentaAnticipos.getSaldoInicial() : 0.0;
+            cuentaAnticipos.setSaldoInicial(redondea(saldoAnticiposAnterior + totalAnticipos));
+            em.merge(cuentaAnticipos);
+            System.out.println("✓ Saldo global de anticipos del proveedor " + titular.getCodigo() + ": "
+                    + saldoAnticiposAnterior + " → " + cuentaAnticipos.getSaldoInicial());
+        }
 
         // 5. Estado ANULADA
         devolucion.setEstado(Long.valueOf(EstadoDevolucionAnticipoProveedor.ANULADA));
@@ -463,8 +582,12 @@ public class DevolucionAnticipoProveedorServiceImpl implements DevolucionAnticip
         for (Object[] fila : detalleFilas) {
             Long idDevolucion = (Long) fila[0];
             Map<String, Object> linea = new HashMap<>();
+            // La línea es de un anticipo o de una nota de crédito (exactamente una de las dos)
+            linea.put("tipo", (fila[4] != null) ? "NOTA_CREDITO" : "ANTICIPO");
             linea.put("idAnticipo", fila[1]);
             linea.put("numeroDocAnticipo", fila[2]);
+            linea.put("idNotaCredito", fila[4]);
+            linea.put("numeroNotaCredito", fila[5]);
             linea.put("valor", fila[3]);
             List<Map<String, Object>> lista = detallePorDevolucion.get(idDevolucion);
             if (lista == null) {
@@ -487,6 +610,7 @@ public class DevolucionAnticipoProveedorServiceImpl implements DevolucionAnticip
             item.put("numeroAsiento", fila[7]);
             item.put("idAsiento", fila[8]);
             item.put("motivoAnulacion", fila[9]);
+            item.put("formaPago", (fila[10] != null) ? fila[10] : Long.valueOf(FormaDevolucionProveedor.TRANSFERENCIA));
             List<Map<String, Object>> detalle = detallePorDevolucion.get(id);
             item.put("detalle", (detalle != null) ? detalle : Collections.<Map<String, Object>>emptyList());
             resultado.add(item);

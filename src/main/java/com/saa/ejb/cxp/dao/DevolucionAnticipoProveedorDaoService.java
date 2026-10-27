@@ -16,7 +16,7 @@ public interface DevolucionAnticipoProveedorDaoService extends EntityDao<Devoluc
 	 * <p>
 	 * Columnas del Object[]: 0 codigo, 1 fecha, 2 valor, 3 referencia, 4 estado,
 	 * 5 cuentaBancaria.banco.nombre, 6 cuentaBancaria.numeroCuenta, 7 asiento.numeroAlterno,
-	 * 8 asiento.codigo (LEFT JOIN: null si la devolución no tiene asiento), 9 motivoAnulacion.
+	 * 8 asiento.codigo (LEFT JOIN: null si la devolución no tiene asiento), 9 motivoAnulacion, 10 formaPago.
 	 * @param idEmpresa  : Id de la empresa
 	 * @param idTitular  : Id del proveedor; null = todos
 	 * @return           : Filas de devoluciones, más reciente primero
@@ -28,7 +28,7 @@ public interface DevolucionAnticipoProveedorDaoService extends EntityDao<Devoluc
 	 * Detalle (por anticipo) de todas las devoluciones de un proveedor en una empresa, para
 	 * agrupar en el servicio junto al listado de {@link #selectListadoByEmpresaTitular}.
 	 * <p>
-	 * Columnas del Object[]: 0 devolucion.codigo, 1 anticipo.id, 2 anticipo.numeroDoc, 3 valor.
+	 * Columnas del Object[]: 0 devolucion.codigo, 1 anticipo.id, 2 anticipo.numeroDoc, 3 valor, 4 notaCredito.id, 5 notaCredito.numero (LEFT JOIN: la línea es de un anticipo o de una nota de crédito).
 	 * @param idEmpresa  : Id de la empresa
 	 * @param idTitular  : Id del proveedor; null = todos
 	 * @return           : Filas de detalle de todas las devoluciones del filtro
@@ -45,4 +45,15 @@ public interface DevolucionAnticipoProveedorDaoService extends EntityDao<Devoluc
 	 * @throws Throwable : Excepcion
 	 */
 	List<DevolucionAnticipoProveedor> selectActivasByAnticipo(Long idAnticipo) throws Throwable;
+
+	/**
+	 * Devoluciones ACTIVAS que tienen al menos una línea sobre la nota de crédito indicada — para la
+	 * guarda de {@code NotaCreditoCompraServiceImpl.anularNotaCreditoCompra}: una nota con una
+	 * devolución activa no se puede anular sin anular antes la devolución
+	 * (docs/logica-negocio/cxp/NC-EXCEDE-SALDO-FACTURA.md §5.4).
+	 * @param idNotaCredito : Id de la nota de crédito de compra (PGS.NTCC)
+	 * @return              : Devoluciones activas que la devuelven, normalmente 0 ó 1
+	 * @throws Throwable    : Excepcion
+	 */
+	List<DevolucionAnticipoProveedor> selectActivasByNotaCredito(Long idNotaCredito) throws Throwable;
 }

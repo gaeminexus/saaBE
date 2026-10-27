@@ -27,4 +27,33 @@ public interface NotaCreditoCompraDaoService extends EntityDao<NotaCreditoCompra
 	 * @throws Throwable : Excepcion
 	 */
 	List<NotaCreditoCompra> selectByClaveEmpresa(String clave, Long idEmpresa) throws Throwable;
+
+	/**
+	 * Notas de crédito de compra registradas y vigentes de un proveedor, con lo aplicado y lo
+	 * devuelto de cada una calculado en la base en UNA consulta (subconsultas escalares; sin N+1
+	 * ni {@code in :ids}). El saldo se calcula, no se guarda:
+	 * {@code saldo = total - aplicado - devuelto} (docs/logica-negocio/cxp/NC-EXCEDE-SALDO-FACTURA.md §2 y §6).
+	 * <p>
+	 * "Registrada y vigente": tiene asiento, {@code estado = ACTIVO} y {@code estadoEmision <> 3} (anulada).
+	 * <p>
+	 * Columnas del Object[]: 0 id, 1 numero, 2 fecha, 3 numDocModificado, 4 total,
+	 * 5 aplicado (APLP activas con esta NC), 6 devuelto (DDPR de devoluciones ACTIVAS).
+	 * Devuelve TODAS las vigentes (con y sin saldo); el filtro por saldo lo hace el servicio.
+	 * @param idTitular  : Id del proveedor
+	 * @param idEmpresa  : Id de la empresa
+	 * @return           : Filas, la más antigua primero
+	 * @throws Throwable : Excepcion
+	 */
+	List<Object[]> selectVigentesConAplicadoByTitularEmpresa(Long idTitular, Long idEmpresa) throws Throwable;
+
+	/**
+	 * Lo aplicado a facturas y lo devuelto por el proveedor de UNA nota de crédito, para calcular su
+	 * saldo ({@code total - aplicado - devuelto}). Aplicado = suma de las APLP activas que tienen a
+	 * la nota como instrumento (incluye los cruces contra otras facturas); devuelto = suma de las
+	 * líneas DDPR de devoluciones ACTIVAS.
+	 * @param idNotaCredito : Id de la nota de crédito de compra
+	 * @return              : {aplicado, devuelto}; ambos 0.0 si no hay nada
+	 * @throws Throwable    : Excepcion
+	 */
+	double[] selectAplicadoYDevuelto(Long idNotaCredito) throws Throwable;
 }

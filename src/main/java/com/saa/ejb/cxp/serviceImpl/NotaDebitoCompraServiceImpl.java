@@ -174,4 +174,32 @@ public class NotaDebitoCompraServiceImpl implements NotaDebitoCompraService {
 		resultado.put("usuarioAnulacion", usuarioAnulacion);
 		return resultado;
 	}
+
+	@Override
+	public java.util.List<java.util.Map<String, Object>> pendientesNotaDebito(Long idTitular, Long idEmpresa)
+			throws Throwable {
+		System.out.println("=== pendientesNotaDebito | titular=" + idTitular + " | empresa=" + idEmpresa + " ===");
+		if (idTitular == null || idEmpresa == null) {
+			throw new IncomeException("Debe indicar el proveedor y la empresa.");
+		}
+		java.util.List<java.util.Map<String, Object>> lista = new java.util.ArrayList<>();
+		for (Object[] fila : notaDebitoCompraDaoService.selectVigentesConFacturaByTitularEmpresa(idTitular, idEmpresa)) {
+			double totalFactura = (fila[6] != null) ? ((Number) fila[6]).doubleValue() : 0.0;
+			double aplicado = ((Number) fila[7]).doubleValue();
+			double saldoFactura = Math.round((totalFactura - aplicado) * 100.0) / 100.0;
+			if (saldoFactura <= 0.01) {
+				continue;
+			}
+			java.util.Map<String, Object> item = new java.util.LinkedHashMap<>();
+			item.put("idNotaDebito", fila[0]);
+			item.put("numero", fila[1]);
+			item.put("fecha", fila[2]);
+			item.put("total", fila[3]);
+			item.put("idFacturaCompra", fila[4]);
+			item.put("numeroFactura", fila[5]);
+			item.put("saldoFactura", saldoFactura);
+			lista.add(item);
+		}
+		return lista;
+	}
 }

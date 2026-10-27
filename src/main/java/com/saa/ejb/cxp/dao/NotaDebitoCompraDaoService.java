@@ -27,4 +27,21 @@ public interface NotaDebitoCompraDaoService extends EntityDao<NotaDebitoCompra> 
 	 * @throws Throwable : Excepcion
 	 */
 	List<NotaDebitoCompra> selectByClaveEmpresa(String clave, Long idEmpresa) throws Throwable;
+
+	/**
+	 * Notas de débito de compra registradas y vigentes (con asiento, ACTIVAS, no anuladas) y no
+	 * bloqueadas por seguros de un proveedor, junto con la factura que modifican y lo aplicado a esa
+	 * factura, en UNA consulta (subconsulta escalar; sin N+1) — para cruzar el saldo de una nota de
+	 * crédito contra la nota de débito (docs/logica-negocio/cxp/NC-EXCEDE-SALDO-FACTURA.md §4.1).
+	 * La factura se empareja por número sin guiones, titular y empresa, igual que
+	 * {@code AplicacionPagoCxpDaoService.selectFacturaByNumero}. El filtro por saldo lo hace el servicio.
+	 * <p>
+	 * Columnas del Object[]: 0 nd.id, 1 nd.numero, 2 nd.fecha, 3 nd.total, 4 factura.id,
+	 * 5 factura.numero, 6 factura.total, 7 aplicado a la factura (APLP activas).
+	 * @param idTitular  : Id del proveedor
+	 * @param idEmpresa  : Id de la empresa
+	 * @return           : Filas, la más antigua primero
+	 * @throws Throwable : Excepcion
+	 */
+	List<Object[]> selectVigentesConFacturaByTitularEmpresa(Long idTitular, Long idEmpresa) throws Throwable;
 }

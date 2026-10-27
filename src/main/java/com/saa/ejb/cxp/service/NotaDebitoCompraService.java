@@ -31,4 +31,17 @@ public interface NotaDebitoCompraService extends EntityService<NotaDebitoCompra>
 	 */
 	java.util.List<java.util.Map<String, Object>> movimientosRelacionadosNotaDebito(Long idNotaDebito)
 			throws Throwable;
+
+	/**
+	 * Notas de débito de compra registradas y vigentes, no bloqueadas por seguros, de un proveedor
+	 * cuya factura afectada todavía tiene saldo ({@code saldoFactura > 0.01}) — son contra las que se
+	 * puede cruzar el saldo de una nota de crédito (docs/logica-negocio/cxp/NC-EXCEDE-SALDO-FACTURA.md §4.1).
+	 * @param idTitular	: Id del proveedor
+	 * @param idEmpresa	: Id de la empresa
+	 * @return			: Mapas con idNotaDebito, numero, fecha, total, idFacturaCompra, numeroFactura
+	 *					  y saldoFactura, la más antigua primero
+	 * @throws Throwable	: Excepcion
+	 */
+	java.util.List<java.util.Map<String, Object>> pendientesNotaDebito(Long idTitular, Long idEmpresa)
+			throws Throwable;
 }

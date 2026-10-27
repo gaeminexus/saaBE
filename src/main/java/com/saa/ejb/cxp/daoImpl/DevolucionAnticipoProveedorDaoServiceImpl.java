@@ -36,7 +36,8 @@ public class DevolucionAnticipoProveedorDaoServiceImpl extends EntityDaoImpl<Dev
             "motivoAnulacion",
             "fechaAnulacion",
             "usuario",
-            "fechaRegistro"
+            "fechaRegistro",
+            "formaPago"
         };
     }
 
@@ -51,7 +52,7 @@ public class DevolucionAnticipoProveedorDaoServiceImpl extends EntityDaoImpl<Dev
         StringBuilder jpql = new StringBuilder(
                 " select d.codigo, d.fecha, d.valor, d.referencia, d.estado, " +
                 "        d.cuentaBancaria.banco.nombre, d.cuentaBancaria.numeroCuenta, " +
-                "        a.numeroAlterno, a.codigo, d.motivoAnulacion " +
+                "        a.numeroAlterno, a.codigo, d.motivoAnulacion, d.formaPago " +
                 " from   DevolucionAnticipoProveedor d " +
                 " left join d.asiento a " +
                 " where  d.empresa.codigo = :idEmpresa ");
@@ -73,8 +74,10 @@ public class DevolucionAnticipoProveedorDaoServiceImpl extends EntityDaoImpl<Dev
         System.out.println("Ingresa al metodo selectDetalleByEmpresaTitular con empresa: " + idEmpresa
                 + " | titular: " + idTitular);
         StringBuilder jpql = new StringBuilder(
-                " select dt.devolucion.codigo, dt.anticipo.id, dt.anticipo.numeroDoc, dt.valor " +
+                " select dt.devolucion.codigo, an.id, an.numeroDoc, dt.valor, nc.id, nc.numero " +
                 " from   DetalleDevolucionAnticipo dt " +
+                " left join dt.anticipo an " +
+                " left join dt.notaCredito nc " +
                 " where  dt.devolucion.empresa.codigo = :idEmpresa ");
         if (idTitular != null) {
             jpql.append(" and dt.devolucion.titular.codigo = :idTitular ");
@@ -85,6 +88,18 @@ public class DevolucionAnticipoProveedorDaoServiceImpl extends EntityDaoImpl<Dev
         if (idTitular != null) {
             query.setParameter("idTitular", idTitular);
         }
+        return query.getResultList();
+    }
+
+    @Override
+    public List<DevolucionAnticipoProveedor> selectActivasByNotaCredito(Long idNotaCredito) throws Throwable {
+        System.out.println("Ingresa al metodo selectActivasByNotaCredito con notaCredito: " + idNotaCredito);
+        Query query = em.createQuery(
+                " select distinct dt.devolucion from DetalleDevolucionAnticipo dt " +
+                " where  dt.notaCredito.id = :idNotaCredito " +
+                " and    dt.devolucion.estado = :activa");
+        query.setParameter("idNotaCredito", idNotaCredito);
+        query.setParameter("activa", Long.valueOf(EstadoDevolucionAnticipoProveedor.ACTIVA));
         return query.getResultList();
     }
 

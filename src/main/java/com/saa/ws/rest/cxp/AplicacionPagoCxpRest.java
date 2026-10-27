@@ -360,6 +360,47 @@ public class AplicacionPagoCxpRest {
     }
 
     /**
+     * Cruza el saldo a favor de una nota de crédito de compra contra OTRA factura del mismo
+     * proveedor, sin asiento. docs/logica-negocio/cxp/NC-EXCEDE-SALDO-FACTURA.md §4.
+     * Las notas con saldo se consultan con {@code GET /ntcc/disponibles/{idTitular}/{idEmpresa}}.
+     * En lugar de "idFacturaCompra" se puede mandar "idNotaDebito" (cruza contra la factura de esa
+     * nota de débito; las pendientes: GET /ntdc/pendientes/{idTitular}/{idEmpresa}). Exactamente uno.
+     * Body: { "idNotaCredito": 512, "idFacturaCompra": 9031, "valor": 85.32,
+     *         "fecha": "2026-10-27", "idEmpresa": 1236, "idUsuario": 5, "observacion": "…" }
+     * Respuesta 200: { exito, mensaje, aplicacion, saldoNotaCredito, saldoFactura }.
+     * Se reversa con POST /aplp/revertir/{id}.
+     */
+    @POST
+    @Path("/cruzarNotaCredito")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response cruzarNotaCredito(Map<String, Object> datos) {
+        System.out.println("LLEGA AL SERVICIO POST /aplp/cruzarNotaCredito");
+        try {
+            Long idNotaCredito   = (datos != null) ? toLong(datos.get("idNotaCredito")) : null;
+            Long idFacturaCompra = (datos != null) ? toLong(datos.get("idFacturaCompra")) : null;
+            Double valor         = (datos != null) ? toDouble(datos.get("valor")) : null;
+            String fecha         = (datos != null && datos.get("fecha") != null) ? datos.get("fecha").toString() : null;
+            Long idEmpresa       = (datos != null) ? toLong(datos.get("idEmpresa")) : null;
+            Long idUsuario       = (datos != null) ? toLong(datos.get("idUsuario")) : null;
+            String observacion   = (datos != null && datos.get("observacion") != null)
+                    ? datos.get("observacion").toString() : null;
+
+            // Exactamente uno de los dos destinos; el servicio rechaza ambos o ninguno (400)
+            Long idNotaDebito = (datos != null) ? toLong(datos.get("idNotaDebito")) : null;
+
+            Map<String, Object> resultado = aplicacionPagoCxpService.cruzarNotaCredito(
+                    idNotaCredito, idFacturaCompra, idNotaDebito, valor, fecha, idEmpresa, idUsuario, observacion);
+            return Response.status(Response.Status.OK).entity(resultado)
+                    .type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("Error al cruzar la nota de crédito: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
      * Reversa una aplicación de pago.
      * Body esperado: { "motivo": "...", "idUsuario": 5 }
      */

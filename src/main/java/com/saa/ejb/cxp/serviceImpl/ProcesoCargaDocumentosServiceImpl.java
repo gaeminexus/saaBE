@@ -5041,8 +5041,15 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                 com.saa.model.cxp.NotaCreditoCompra nc =
                         em.find(com.saa.model.cxp.NotaCreditoCompra.class, idDocBD);
                 if (nc != null) {
-                    aplicacionPagoCxpService.aplicarNotaCredito(nc, asiento, idEmpresa, "SISTEMA");
-                    resultado.put("aplicacionPago", "Nota de crédito aplicada a la factura afectada.");
+                    // Una NC que excede el saldo de su factura se registra igual (no bloquea): se aplica
+                    // solo hasta el saldo y el resto queda como saldo de la NC. Si excede, el servicio
+                    // pone advertenciaAplicacion en el resultado (la clave solo existe en ese caso).
+                    // Ver docs/logica-negocio/cxp/NC-EXCEDE-SALDO-FACTURA.md §3.
+                    com.saa.model.cxp.AplicacionPagoCxp aplicada =
+                            aplicacionPagoCxpService.aplicarNotaCredito(nc, asiento, idEmpresa, "SISTEMA", resultado);
+                    resultado.put("aplicacionPago", aplicada != null
+                            ? "Nota de crédito aplicada a la factura afectada."
+                            : "Nota de crédito registrada sin aplicar: la factura afectada no tiene saldo.");
                 }
             } else if ("NOTA_DEBITO_COMPRA".equals(tipo)) {
                 com.saa.model.cxp.NotaDebitoCompra nd =

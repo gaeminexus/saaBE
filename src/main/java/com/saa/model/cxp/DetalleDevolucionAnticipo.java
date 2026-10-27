@@ -20,7 +20,8 @@ import jakarta.persistence.Table;
  * de {@code valor} de las filas de una devolución es su {@code DevolucionAnticipoProveedor.valor}
  * (DDPRVLOR / DVPRVLOR). Tabla: PGS.DDPR (docs/logica-negocio/cxp/sql/e2-78).
  *
- * Un mismo anticipo no se repite dentro de una devolución (UK_DDPR_DVPR_ANTP).
+ * Un mismo anticipo (o una misma nota de crédito) no se repite dentro de una devolución
+ * (UK_DDPR_DVPR_ORIG, e2-109).
  */
 @SuppressWarnings("serial")
 @Entity
@@ -41,10 +42,21 @@ public class DetalleDevolucionAnticipo implements Serializable {
     @JoinColumn(name = "DVPRCDGO", referencedColumnName = "DVPRCDGO")
     private DevolucionAnticipoProveedor devolucion;
 
-    /** Anticipo que se devuelve, total o parcialmente. FK a PGS.ANTP. */
+    /**
+     * Anticipo que se devuelve, total o parcialmente. FK a PGS.ANTP. Es null cuando la línea es
+     * de una nota de crédito ({@link #notaCredito}): exactamente uno de los dos (CK_DDPR_ORIGEN).
+     */
     @ManyToOne
     @JoinColumn(name = "ANTPCDGO", referencedColumnName = "ANTPCDGO")
     private AnticipoProveedor anticipo;
+
+    /**
+     * Nota de crédito de compra cuyo saldo a favor se devuelve (DDPRNTCC, FK a PGS.NTCC.ID).
+     * Es null cuando la línea es de un anticipo. docs/logica-negocio/cxp/sql/e2-109.
+     */
+    @ManyToOne
+    @JoinColumn(name = "DDPRNTCC", referencedColumnName = "ID")
+    private NotaCreditoCompra notaCredito;
 
     /** Monto de este anticipo que cubre la devolución. */
     @Basic
@@ -61,6 +73,9 @@ public class DetalleDevolucionAnticipo implements Serializable {
 
     public AnticipoProveedor getAnticipo() { return anticipo; }
     public void setAnticipo(AnticipoProveedor anticipo) { this.anticipo = anticipo; }
+
+    public NotaCreditoCompra getNotaCredito() { return notaCredito; }
+    public void setNotaCredito(NotaCreditoCompra notaCredito) { this.notaCredito = notaCredito; }
 
     public Double getValor() { return valor; }
     public void setValor(Double valor) { this.valor = valor; }

@@ -65,6 +65,9 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 	private AnticipoProveedorDaoService anticipoProveedorDaoService;
 
 	@EJB
+	private com.saa.ejb.cxp.dao.NotaCreditoCompraDaoService notaCreditoCompraDaoService;
+
+	@EJB
 	private AsientoContableService asientoContableService;
 
 	@EJB
@@ -234,6 +237,12 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 	@Override
 	public AplicacionPagoCxp aplicarNotaCredito(NotaCreditoCompra notaCredito, Asiento asiento,
 			Long idEmpresa, String usuario) throws Throwable {
+		return aplicarNotaCredito(notaCredito, asiento, idEmpresa, usuario, null);
+	}
+
+	@Override
+	public AplicacionPagoCxp aplicarNotaCredito(NotaCreditoCompra notaCredito, Asiento asiento,
+			Long idEmpresa, String usuario, Map<String, Object> resultado) throws Throwable {
 
 		System.out.println("=== aplicarNotaCredito | notaCredito=" + notaCredito.getId()
 				+ " | empresa=" + idEmpresa + " ===");
@@ -244,19 +253,192 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 		FacturaCompra factura = resolverFacturaCompraPorNumero(
 				notaCredito.getNumDocModificado(), idProveedor, idEmpresa);
 
+		Double totalNc = notaCredito.getTotal();
+		if (totalNc == null || totalNc == 0) {
+			throw new IncomeException("El monto a aplicar no puede ser cero.");
+		}
+
+		// A diferencia de retenciones, anticipos y pagos (validaMontoContraSaldo, que siguen
+		// bloqueando), la nota de crédito que excede el saldo de su factura NO se rechaza: se
+		// aplica solo hasta el saldo (la factura nunca queda en negativo) y el resto queda como
+		// saldo de la propia nota de crédito, que se calcula (total - aplicado - devuelto) y
+		// se cruza o se devuelve después. Ver docs/logica-negocio/cxp/NC-EXCEDE-SALDO-FACTURA.md §3.
+		double totalFactura = (factura.getTotal() != null) ? factura.getTotal() : 0.0;
+		double aplicadoFactura = aplicacionPagoCxpDaoService.sumaAplicadoByFactura(factura.getId());
+		double saldoFactura = totalFactura - aplicadoFactura;
+		double montoAplicar = redondea(Math.min(totalNc, Math.max(saldoFactura, 0.0)));
+		double sobrante = redondea(totalNc - montoAplicar);
+
+		if (sobrante > TOLERANCIA && resultado != null) {
+			resultado.put("advertenciaAplicacion",
+					"La nota de crédito N° " + notaCredito.getNumero() + " ($"
+					+ String.format(java.util.Locale.US, "%.2f", totalNc)
+					+ ") supera el saldo pendiente de la factura N° " + factura.getNumero() + " ($"
+					+ String.format(java.util.Locale.US, "%.2f", Math.max(saldoFactura, 0.0))
+					+ "). Se aplicaron $" + String.format(java.util.Locale.US, "%.2f", montoAplicar)
+					+ " a la factura y quedan $" + String.format(java.util.Locale.US, "%.2f", sobrante)
+					+ " como saldo a favor en la nota de crédito.");
+		}
+
+		if (montoAplicar <= TOLERANCIA) {
+			// Factura ya pagada: no es un error, la nota queda íntegra con su saldo.
+			System.out.println("ℹ Factura " + factura.getNumero() + " sin saldo: la nota de crédito "
+					+ notaCredito.getId() + " no se aplica, queda con saldo " + sobrante);
+			return null;
+		}
+
 		AplicacionPagoCxp aplicacion = nuevaAplicacion(factura, idEmpresa,
-				TipoDocPagoAplicacion.NOTA_CREDITO, notaCredito.getTotal(),
+				TipoDocPagoAplicacion.NOTA_CREDITO, montoAplicar,
 				fechaDe(notaCredito.getFecha()),
 				"Nota de Crédito N° " + notaCredito.getNumero(), usuario);
 		aplicacion.setNotaCredito(notaCredito);
 		aplicacion.setAsiento(asiento);
 
-		validaMontoContraSaldo(factura, aplicacion.getMontoAplicado(), null);
-
 		aplicacion = saveSingle(aplicacion);
 		System.out.println("✓ Aplicación por nota de crédito creada: id=" + aplicacion.getId()
 				+ " | factura=" + factura.getId() + " | monto=" + aplicacion.getMontoAplicado());
 		return aplicacion;
+	}
+
+	@Override
+	public Map<String, Object> cruzarNotaCredito(Long idNotaCredito, Long idFacturaCompra, Long idNotaDebito, Double valor,
+			String fecha, Long idEmpresa, Long idUsuario, String observacion) throws Throwable {
+
+		System.out.println("=== cruzarNotaCredito | notaCredito=" + idNotaCredito + " | factura=" + idFacturaCompra
+				+ " | valor=" + valor + " | empresa=" + idEmpresa + " ===");
+
+		// 1. Datos presentes y valor > 0
+		if (idNotaCredito == null) {
+			throw new IncomeException("Debe indicar la nota de crédito.");
+		}
+		// Exactamente uno de los dos destinos: la factura, o una nota de débito (que se cruza contra
+		// SU factura: la ND no tiene saldo propio, ver NC-EXCEDE-SALDO-FACTURA.md §4.1).
+		if (idFacturaCompra == null && idNotaDebito == null) {
+			throw new IncomeException("Debe indicar la factura o la nota de débito contra la que se cruza.");
+		}
+		if (idFacturaCompra != null && idNotaDebito != null) {
+			throw new IncomeException("Indique solo uno de los dos destinos: la factura (idFacturaCompra) "
+					+ "o la nota de débito (idNotaDebito), no ambos.");
+		}
+		if (idEmpresa == null) {
+			throw new IncomeException("Debe indicar la empresa.");
+		}
+		if (valor == null || valor <= 0) {
+			throw new IncomeException("El valor a cruzar debe ser mayor a cero.");
+		}
+
+		// 2. La nota existe, es de la empresa, está registrada y vigente, y tiene saldo
+		NotaCreditoCompra nota = em.find(NotaCreditoCompra.class, idNotaCredito);
+		if (nota == null) {
+			throw new IncomeException("No se encontró la nota de crédito con ID: " + idNotaCredito);
+		}
+		if (nota.getEmpresa() == null || !idEmpresa.equals(nota.getEmpresa().getCodigo())) {
+			throw new IncomeException("La nota de crédito N° " + nota.getNumero()
+					+ " es de otra empresa contable: no se puede cruzar en esta operación.");
+		}
+		// Registrada y vigente: con asiento, ACTIVA y no anulada (estadoEmision 3)
+		if (nota.getAsiento() == null || nota.getEstado() == null
+				|| nota.getEstado().intValue() != com.saa.rubros.Estado.ACTIVO
+				|| Long.valueOf(3L).equals(nota.getEstadoEmision())) {
+			throw new IncomeException("La nota de crédito N° " + nota.getNumero()
+					+ " no está registrada y vigente (sin asiento o anulada): no se puede cruzar.");
+		}
+		double total = (nota.getTotal() != null) ? nota.getTotal() : 0.0;
+		double[] usado = notaCreditoCompraDaoService.selectAplicadoYDevuelto(idNotaCredito);
+		double saldoNota = redondea(total - usado[0] - usado[1]);
+		if (valor > saldoNota + TOLERANCIA) {
+			throw new IncomeException("La nota de crédito N° " + nota.getNumero() + " tiene un saldo de $"
+					+ String.format(java.util.Locale.US, "%.2f", Math.max(saldoNota, 0.0))
+					+ " y no alcanza para cruzar $" + String.format(java.util.Locale.US, "%.2f", valor) + ".");
+		}
+
+		// 3. La factura existe, es del mismo proveedor y empresa, no está anulada y tiene saldo
+		FacturaCompra factura;
+		NotaDebitoCompra notaDebito = null;
+		if (idNotaDebito != null) {
+			// La ND existe, es de la empresa y del mismo titular que la NC, registrada y vigente
+			// (mismo criterio que la NC: asiento, ACTIVA, no anulada) y no bloqueada por seguros.
+			notaDebito = em.find(NotaDebitoCompra.class, idNotaDebito);
+			if (notaDebito == null) {
+				throw new IncomeException("No se encontró la nota de débito con ID: " + idNotaDebito);
+			}
+			if (notaDebito.getEmpresa() == null || !idEmpresa.equals(notaDebito.getEmpresa().getCodigo())) {
+				throw new IncomeException("La nota de débito N° " + notaDebito.getNumero()
+						+ " es de otra empresa contable: no se puede cruzar en esta operación.");
+			}
+			if (notaDebito.getTitular() == null || nota.getTitular() == null
+					|| !nota.getTitular().getCodigo().equals(notaDebito.getTitular().getCodigo())) {
+				throw new IncomeException("La nota de débito N° " + notaDebito.getNumero()
+						+ " no es del mismo proveedor de la nota de crédito N° " + nota.getNumero() + ".");
+			}
+			if (notaDebito.getAsiento() == null || notaDebito.getEstado() == null
+					|| notaDebito.getEstado().intValue() != com.saa.rubros.Estado.ACTIVO
+					|| Long.valueOf(3L).equals(notaDebito.getEstadoEmision())) {
+				throw new IncomeException("La nota de débito N° " + notaDebito.getNumero()
+						+ " no está registrada y vigente (sin asiento o anulada): no se puede cruzar.");
+			}
+			if (notaDebito.getEstadoSeguro() != null && notaDebito.getEstadoSeguro().longValue()
+					== com.saa.rubros.EstadoSeguroDocumentoCxp.BLOQUEADO) {
+				throw new IncomeException("La nota de débito N° " + notaDebito.getNumero()
+						+ " está bloqueada hasta que crédito la libere.");
+			}
+			// La factura se resuelve igual que en aplicarNotaDebito
+			factura = resolverFacturaCompraPorNumero(notaDebito.getNumDocModificado(),
+					notaDebito.getTitular().getCodigo(), idEmpresa);
+		} else {
+			factura = em.find(FacturaCompra.class, idFacturaCompra);
+			if (factura == null) {
+				throw new IncomeException("No se encontró la factura de compra con ID: " + idFacturaCompra);
+			}
+		}
+		if (factura.getTitular() == null || nota.getTitular() == null
+				|| !nota.getTitular().getCodigo().equals(factura.getTitular().getCodigo())) {
+			throw new IncomeException("La factura N° " + factura.getNumero()
+					+ " no es del mismo proveedor de la nota de crédito N° " + nota.getNumero() + ".");
+		}
+		if (factura.getEmpresa() == null || !idEmpresa.equals(factura.getEmpresa().getCodigo())) {
+			throw new IncomeException("La factura N° " + factura.getNumero()
+					+ " es de otra empresa contable: no se puede cruzar en esta operación.");
+		}
+		if (Long.valueOf(3L).equals(factura.getEstadoEmision())
+				|| (factura.getEstado() != null && factura.getEstado().intValue() == com.saa.rubros.Estado.INACTIVO)) {
+			throw new IncomeException("La factura N° " + factura.getNumero() + " está anulada.");
+		}
+		double totalFactura = (factura.getTotal() != null) ? factura.getTotal() : 0.0;
+		double saldoFacturaActual = totalFactura - aplicacionPagoCxpDaoService.sumaAplicadoByFactura(factura.getId());
+		if (valor > saldoFacturaActual + TOLERANCIA) {
+			throw new IncomeException("El valor a cruzar ($" + String.format(java.util.Locale.US, "%.2f", valor)
+					+ ") supera el saldo pendiente de la factura N° " + factura.getNumero() + " ($"
+					+ String.format(java.util.Locale.US, "%.2f", saldoFacturaActual) + ").");
+		}
+
+		// Una sola aplicación NOTA_CREDITO por el valor cruzado, SIN asiento (ver el javadoc de la interfaz).
+		String obs = "Cruce de saldo de la NC N° " + nota.getNumero()
+				+ (notaDebito != null ? " contra la ND N° " + notaDebito.getNumero() : "");
+		if (observacion != null && !observacion.trim().isEmpty()) {
+			obs += " | " + observacion.trim();
+		}
+		Usuario usuario = (idUsuario != null) ? em.find(Usuario.class, idUsuario) : null;
+		AplicacionPagoCxp aplicacion = nuevaAplicacion(factura, idEmpresa, TipoDocPagoAplicacion.NOTA_CREDITO,
+				redondea(valor),
+				(fecha != null && !fecha.trim().isEmpty()) ? LocalDate.parse(fecha.trim()) : LocalDate.now(),
+				obs, (usuario != null && usuario.getNombre() != null) ? usuario.getNombre() : "SISTEMA");
+		aplicacion.setNotaCredito(nota);
+		aplicacion.setAsiento(null);
+
+		// saveSingle ya recalcula el estado de pago de la factura (recalcularEstadoPago).
+		aplicacion = saveSingle(aplicacion);
+
+		System.out.println("✓ Cruce de nota de crédito creado: aplicacion=" + aplicacion.getId()
+				+ " | nota=" + idNotaCredito + " | factura=" + factura.getId() + " | valor=" + valor);
+
+		Map<String, Object> resultado = new HashMap<>();
+		resultado.put("exito", true);
+		resultado.put("mensaje", "Saldo de la nota de crédito cruzado con la factura N° " + factura.getNumero() + ".");
+		resultado.put("aplicacion", aplicacion.getId());
+		resultado.put("saldoNotaCredito", redondea(saldoNota - valor));
+		resultado.put("saldoFactura", redondea(saldoFacturaActual - valor));
+		return resultado;
 	}
 
 	@Override
@@ -1177,7 +1359,7 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 		}
 
 		double total = (factura.getTotal() != null) ? factura.getTotal() : 0.0;
-		double aplicado = aplicacionPagoCxpDaoService.sumaAplicadoByFactura(idFacturaCompra);
+		double aplicado = aplicacionPagoCxpDaoService.sumaAplicadoByFactura(factura.getId());
 
 		Map<String, Object> saldos = new HashMap<>();
 		saldos.put("facturaId", idFacturaCompra);
@@ -1199,7 +1381,7 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 		}
 
 		double total = (factura.getTotal() != null) ? factura.getTotal() : 0.0;
-		double aplicado = aplicacionPagoCxpDaoService.sumaAplicadoByFactura(idFacturaCompra);
+		double aplicado = aplicacionPagoCxpDaoService.sumaAplicadoByFactura(factura.getId());
 		double saldo = total - aplicado;
 
 		Long estadoPago;

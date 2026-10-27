@@ -794,11 +794,29 @@ public class AsientoContableServiceImpl implements AsientoContableService {
     public Asiento generarAsientoDevolucionAnticipoProveedor(Long idTitular, Long idCuentaBancaria,
             Double valor, Long idEmpresa, LocalDate fechaAsiento, String observaciones, String usuario)
             throws Throwable {
+        // Devolución solo de anticipos: todo el valor va al HABER de anticipos, como siempre.
+        return generarAsientoDevolucionAnticipoProveedor(idTitular, idCuentaBancaria, valor, valor, 0.0,
+                idEmpresa, fechaAsiento, observaciones, usuario);
+    }
+
+    @Override
+    public Asiento generarAsientoDevolucionAnticipoProveedor(Long idTitular, Long idCuentaBancaria,
+            Double valor, Double valorAnticipos, Double valorNotasCredito, Long idEmpresa,
+            LocalDate fechaAsiento, String observaciones, String usuario) throws Throwable {
 
         System.out.println("=== generarAsientoDevolucionAnticipoProveedor | titular=" + idTitular
-                + " | cuenta=" + idCuentaBancaria + " | valor=" + valor + " | empresa=" + idEmpresa + " ===");
+                + " | cuenta=" + idCuentaBancaria + " | valor=" + valor + " | anticipos=" + valorAnticipos
+                + " | notasCredito=" + valorNotasCredito + " | empresa=" + idEmpresa + " ===");
 
         validaDatosAplicacion(idTitular, valor, idEmpresa);
+
+        double sumaAnticipos = (valorAnticipos != null) ? valorAnticipos : 0.0;
+        double sumaNotasCredito = (valorNotasCredito != null) ? valorNotasCredito : 0.0;
+        if (Math.abs((sumaAnticipos + sumaNotasCredito) - valor) > 0.01) {
+            throw new IncomeException("El total de la devolución ($" + String.format(java.util.Locale.US, "%.2f", valor)
+                    + ") no es la suma de los anticipos ($" + String.format(java.util.Locale.US, "%.2f", sumaAnticipos)
+                    + ") y las notas de crédito ($" + String.format(java.util.Locale.US, "%.2f", sumaNotasCredito) + ").");
+        }
 
         Titular titular = em.find(Titular.class, idTitular);
         String nomProv = (titular != null) ? titular.getNombre() : String.valueOf(idTitular);
@@ -807,9 +825,10 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         com.saa.model.tsr.CuentaBancaria cuentaBancaria = obtenerCuentaBancaria(idCuentaBancaria);
         PlanCuenta cuentaBanco = cuentaBancaria.getPlanCuenta();
 
-        // HABER: cuenta de anticipos del proveedor (tipoCuenta=2, rol Proveedor)
-        PlanCuenta cuentaAnticipo = obtenerCuentaProveedorPorTipo(idTitular, idEmpresa, 2L);
-        if (cuentaAnticipo == null) {
+        // HABER: cuenta de anticipos del proveedor (tipoCuenta=2, rol Proveedor); solo si hay anticipos
+        PlanCuenta cuentaAnticipo = (sumaAnticipos > 0.005)
+                ? obtenerCuentaProveedorPorTipo(idTitular, idEmpresa, 2L) : null;
+        if (sumaAnticipos > 0.005 && cuentaAnticipo == null) {
             throw new IncomeException(
                     "El proveedor '" + nomProv + "' no tiene cuenta contable de anticipos (Tipo 2) "
                     + "configurada en Tesorería → Persona → Cuentas Contables (Rol: Proveedor).");
@@ -827,14 +846,35 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         debe.setValorHaber(0.0);
         lineas.add(debe);
 
-        DetalleAsiento haber = new DetalleAsiento();
-        haber.setPlanCuenta(cuentaAnticipo);
-        haber.setNumeroCuenta(cuentaAnticipo.getCuentaContable());
-        haber.setNombreCuenta(cuentaAnticipo.getNombre());
-        haber.setDescripcion("Devolución de anticipo: " + nomProv);
-        haber.setValorDebe(0.0);
-        haber.setValorHaber(valor);
-        lineas.add(haber);
+        if (sumaAnticipos > 0.005) {
+            DetalleAsiento haber = new DetalleAsiento();
+            haber.setPlanCuenta(cuentaAnticipo);
+            haber.setNumeroCuenta(cuentaAnticipo.getCuentaContable());
+            haber.setNombreCuenta(cuentaAnticipo.getNombre());
+            haber.setDescripcion("Devolución de anticipo: " + nomProv);
+            haber.setValorDebe(0.0);
+            haber.setValorHaber(Math.round(sumaAnticipos * 100.0) / 100.0);
+            lineas.add(haber);
+        }
+
+        // HABER: cuenta por pagar del proveedor (tipoCuenta=1), la misma que debitó la nota de
+        // crédito al registrarse (generarAsientoNotaCreditoCompra); solo si hay notas de crédito.
+        if (sumaNotasCredito > 0.005) {
+            PlanCuenta cuentaProveedor = obtenerCuentaProveedor(idTitular, idEmpresa);
+            if (cuentaProveedor == null) {
+                throw new IncomeException(
+                        "El proveedor '" + nomProv + "' no tiene cuenta contable de facturas (Tipo 1) "
+                        + "configurada en Tesorería → Persona → Cuentas Contables (Rol: Proveedor).");
+            }
+            DetalleAsiento haberNc = new DetalleAsiento();
+            haberNc.setPlanCuenta(cuentaProveedor);
+            haberNc.setNumeroCuenta(cuentaProveedor.getCuentaContable());
+            haberNc.setNombreCuenta(cuentaProveedor.getNombre());
+            haberNc.setDescripcion("Devolución de saldo de nota de crédito: " + nomProv);
+            haberNc.setValorDebe(0.0);
+            haberNc.setValorHaber(Math.round((valor - (sumaAnticipos > 0.005 ? Math.round(sumaAnticipos * 100.0) / 100.0 : 0.0)) * 100.0) / 100.0);
+            lineas.add(haberNc);
+        }
 
         String obs = "Devolución de anticipo: " + nomProv
                 + " | Valor: $" + String.format(java.util.Locale.US, "%.2f", valor);

@@ -115,7 +115,18 @@ public class DevolucionAnticipoProveedor implements Serializable {
     @Column(name = "DVPRFCRG")
     private LocalDateTime fechaRegistro;
 
+    /**
+     * Forma en que el proveedor devolvió (DVPRFPAG): 1 TRANSFERENCIA, 2 CHEQUE; ver
+     * {@link com.saa.rubros.FormaDevolucionProveedor}. Por defecto 1. docs/logica-negocio/cxp/sql/e2-109.
+     */
+    @Basic
+    @Column(name = "DVPRFPAG")
+    private Long formaPago;
+
     // ── Getters y Setters ────────────────────────────────────────────────────
+
+    public Long getFormaPago() { return formaPago; }
+    public void setFormaPago(Long formaPago) { this.formaPago = formaPago; }
 
     public Long getCodigo() { return codigo; }
     public void setCodigo(Long codigo) { this.codigo = codigo; }

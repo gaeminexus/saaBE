@@ -21,6 +21,7 @@ public class NotaCreditoCompraServiceImpl implements NotaCreditoCompraService {
 	@EJB private SustentoTributarioService sustentoTributarioService;
 	@EJB private AplicacionPagoCxpDaoService aplicacionPagoCxpDaoService;
 	@EJB private AplicacionPagoCxpService aplicacionPagoCxpService;
+	@EJB private com.saa.ejb.cxp.dao.DevolucionAnticipoProveedorDaoService devolucionAnticipoProveedorDaoService;
 	@PersistenceContext private EntityManager em;
 	@Override
 	public NotaCreditoCompra selectById(Long id) throws Throwable {
@@ -83,6 +84,43 @@ public class NotaCreditoCompraServiceImpl implements NotaCreditoCompraService {
 	}
 
 	@Override
+	public java.util.List<java.util.Map<String, Object>> disponiblesNotaCredito(Long idTitular, Long idEmpresa)
+			throws Throwable {
+		System.out.println("=== disponiblesNotaCredito | titular=" + idTitular + " | empresa=" + idEmpresa + " ===");
+		if (idTitular == null || idEmpresa == null) {
+			throw new IncomeException("Debe indicar el proveedor y la empresa.");
+		}
+		java.util.List<java.util.Map<String, Object>> lista = new java.util.ArrayList<>();
+		for (Object[] fila : notaCreditoCompraDaoService.selectVigentesConAplicadoByTitularEmpresa(idTitular, idEmpresa)) {
+			double total = (fila[4] != null) ? ((Number) fila[4]).doubleValue() : 0.0;
+			double aplicado = ((Number) fila[5]).doubleValue();
+			double devuelto = ((Number) fila[6]).doubleValue();
+			double saldo = Math.round((total - aplicado - devuelto) * 100.0) / 100.0;
+			if (saldo <= 0.01) {
+				continue;
+			}
+			java.util.Map<String, Object> item = new java.util.LinkedHashMap<>();
+			item.put("idNotaCredito", fila[0]);
+			item.put("numero", fila[1]);
+			item.put("fecha", fila[2]);
+			item.put("numDocModificado", fila[3]);
+			item.put("total", total);
+			item.put("aplicado", Math.round(aplicado * 100.0) / 100.0);
+			item.put("devuelto", Math.round(devuelto * 100.0) / 100.0);
+			item.put("saldo", saldo);
+			lista.add(item);
+		}
+		return lista;
+	}
+
+	@Override
+	public double saldoNotaCredito(NotaCreditoCompra nota) throws Throwable {
+		double total = (nota.getTotal() != null) ? nota.getTotal() : 0.0;
+		double[] usado = notaCreditoCompraDaoService.selectAplicadoYDevuelto(nota.getId());
+		return Math.round((total - usado[0] - usado[1]) * 100.0) / 100.0;
+	}
+
+	@Override
 	public java.util.Map<String, Object> anularNotaCreditoCompra(Long idNotaCredito, String motivo, String usuario,
 			Long idUsuario, boolean anularEnCascada) throws Throwable {
 		System.out.println("=== anularNotaCreditoCompra | id=" + idNotaCredito + " | usuario=" + usuario
@@ -105,6 +143,17 @@ public class NotaCreditoCompraServiceImpl implements NotaCreditoCompraService {
 		String usuarioAnulacion = (usuario != null && !usuario.trim().isEmpty()) ? usuario.trim() : "SISTEMA";
 		String motivoFinal = (motivo != null && !motivo.trim().isEmpty()) ? motivo.trim() : "Anulación manual";
 		java.time.LocalDateTime ahora = java.time.LocalDateTime.now();
+
+		// Guarda (NC-EXCEDE-SALDO-FACTURA.md §5.4): si el proveedor ya devolvió el saldo de esta nota
+		// (devolución ACTIVA), hay que anular primero la devolución. Va ANTES de reversar nada, para que
+		// el rechazo no deje cruces reversados a medias. Aplica también con anularEnCascada=true.
+		java.util.List<com.saa.model.cxp.DevolucionAnticipoProveedor> devoluciones =
+				devolucionAnticipoProveedorDaoService.selectActivasByNotaCredito(idNotaCredito);
+		if (!devoluciones.isEmpty()) {
+			throw new IncomeException("La nota de crédito N° " + (nota.getNumero() != null ? nota.getNumero()
+					: String.valueOf(idNotaCredito)) + " tiene la devolución " + devoluciones.get(0).getCodigo()
+					+ " registrada: anúlela antes de anular la nota de crédito.");
+		}
 
 		// Movimientos relacionados (ítem 13): esta nota puede estar pagando una o más facturas.
 		java.util.List<AplicacionPagoCxp> movimientos =

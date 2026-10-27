@@ -156,8 +156,10 @@ public class DevolucionAnticipoProveedorRest {
      * una cuenta bancaria propia.
      * Body: {"idEmpresa":1236,"idTitular":187,"idCuentaBancaria":417,"fecha":"2026-09-30",
      *        "referencia":"DEP 12345","observacion":"…","idUsuario":5,
-     *        "anticipos":[{"idAnticipo":7,"valor":8.64},{"idAnticipo":10,"valor":15.30}]}
-     * Respuesta 200: {exito, mensaje, devolucion, asiento}.
+     *        "anticipos":[{"idAnticipo":7,"valor":8.64},{"idAnticipo":10,"valor":15.30}],
+     *        "notasCredito":[{"idNotaCredito":512,"valor":85.32}],   // opcional
+     *        "formaPago":2}                                          // opcional: 1 transferencia (defecto), 2 cheque
+     * Al menos una de las dos listas con líneas. Respuesta 200: {exito, mensaje, devolucion, asiento}.
      */
     @POST
     @Path("/registrar")
@@ -178,9 +180,15 @@ public class DevolucionAnticipoProveedorRest {
             List<Map<String, Object>> anticipos =
                     (datos != null) ? (List<Map<String, Object>>) datos.get("anticipos") : null;
 
+            // Opcionales (aditivos, NC-EXCEDE-SALDO-FACTURA.md §5.2): el payload anterior sigue igual
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> notasCredito =
+                    (datos != null) ? (List<Map<String, Object>>) datos.get("notasCredito") : null;
+            Long formaPago = toLong(datos != null ? datos.get("formaPago") : null);
+
             Map<String, Object> resultado = devolucionAnticipoProveedorService.registrar(
                     idEmpresa, idTitular, idCuentaBancaria, fecha, referencia, observacion,
-                    idUsuario, anticipos);
+                    idUsuario, anticipos, notasCredito, formaPago);
             return Response.status(Response.Status.OK).entity(resultado)
                     .type(MediaType.APPLICATION_JSON).build();
         } catch (IncomeException e) {
