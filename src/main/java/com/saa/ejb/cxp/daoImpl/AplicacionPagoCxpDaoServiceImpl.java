@@ -494,4 +494,21 @@ public class AplicacionPagoCxpDaoServiceImpl extends EntityDaoImpl<AplicacionPag
         }
         return query.getResultList();
     }
+
+    @SuppressWarnings("unchecked")
+    @Override
+    public List<Object[]> selectProyeccionActivasByNotaCredito(Long idNotaCredito) throws Throwable {
+        System.out.println("Ingresa al metodo selectProyeccionActivasByNotaCredito con notaCredito: " + idNotaCredito);
+        Query query = em.createQuery(
+                " select a.id, a.fechaAplicacion, a.montoAplicado, f.id, f.numero, a.observacion, s.codigo " +
+                " from   AplicacionPagoCxp a " +
+                " left join a.facturaCompra f " +
+                " left join a.asiento s " +
+                " where  a.notaCredito.id = :idNotaCredito " +
+                " and    a.estado = :activa " +
+                " order by a.fechaAplicacion asc, a.id asc");
+        query.setParameter("idNotaCredito", idNotaCredito);
+        query.setParameter("activa", Long.valueOf(com.saa.rubros.EstadoAplicacionPago.ACTIVO));
+        return query.getResultList();
+    }
 }

@@ -337,6 +337,17 @@ public interface AplicacionPagoCxpService extends EntityService<AplicacionPagoCx
 			String fecha, Long idEmpresa, Long idUsuario, String observacion) throws Throwable;
 
 	/**
+	 * Aplicaciones ACTIVAS de una nota de crédito de compra (APLPNTCC), la más antigua primero, como
+	 * proyección (docs/logica-negocio/cxp/NC-EXCEDE-SALDO-FACTURA.md §4.2): son las aplicaciones a
+	 * facturas hechas al registrar la nota y los cruces posteriores de su saldo.
+	 * @param idNotaCredito : Id de la nota de crédito de compra
+	 * @return              : Mapas con idAplicacion, fechaAplicacion, montoAplicado, idFacturaCompra,
+	 *                        numeroFactura, observacion y conAsiento; lista vacía si no tiene
+	 * @throws Throwable    : Excepcion
+	 */
+	List<Map<String, Object>> aplicacionesDeNotaCredito(Long idNotaCredito) throws Throwable;
+
+	/**
 	 * Reversa todas las aplicaciones activas originadas por un documento, al
 	 * anularlo.
 	 * @param tipoDocumento : RETENCION, RETENCION_V2, NOTA_CREDITO o NOTA_DEBITO

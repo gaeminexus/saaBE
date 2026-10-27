@@ -256,4 +256,17 @@ public interface AplicacionPagoCxpDaoService extends EntityDao<AplicacionPagoCxp
 	 * @throws Throwable      : Excepcion
 	 */
 	List<Object[]> sumaSaldoDisponibleAnticiposPorTitular(Long idEmpresa, Long idTitular) throws Throwable;
+
+	/**
+	 * Aplicaciones ACTIVAS de una nota de crédito de compra (APLPNTCC), como proyección escalar en UNA
+	 * consulta (sin cargar entidades ni N+1), la más antigua primero — para listar los cruces del saldo
+	 * de la nota (docs/logica-negocio/cxp/NC-EXCEDE-SALDO-FACTURA.md §4.2).
+	 * <p>
+	 * Columnas del Object[]: 0 id, 1 fechaAplicacion, 2 montoAplicado, 3 facturaCompra.id,
+	 * 4 facturaCompra.numero, 5 observacion, 6 asiento.codigo (null si la aplicación no tiene asiento).
+	 * @param idNotaCredito : Id de la nota de crédito de compra
+	 * @return              : Filas, la más antigua primero
+	 * @throws Throwable    : Excepcion
+	 */
+	List<Object[]> selectProyeccionActivasByNotaCredito(Long idNotaCredito) throws Throwable;
 }

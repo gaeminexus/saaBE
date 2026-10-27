@@ -122,6 +122,32 @@ public class AplicacionPagoCxpRest {
     }
 
     /**
+     * Aplicaciones ACTIVAS de una nota de crédito de compra (APLPNTCC), la más antigua primero:
+     * las hechas al registrar la nota y los cruces posteriores de su saldo. Proyección:
+     * {idAplicacion, fechaAplicacion, montoAplicado, idFacturaCompra, numeroFactura, observacion,
+     * conAsiento}. Sin aplicaciones: [] con 200. docs/logica-negocio/cxp/NC-EXCEDE-SALDO-FACTURA.md §4.2.
+     * @param idNotaCredito : Id de la nota de crédito de compra
+     */
+    @GET
+    @Path("/porNotaCredito/{idNotaCredito}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response porNotaCredito(@PathParam("idNotaCredito") Long idNotaCredito) {
+        System.out.println("LLEGA AL SERVICIO GET /aplp/porNotaCredito/" + idNotaCredito);
+        try {
+            List<Map<String, Object>> lista = aplicacionPagoCxpService.aplicacionesDeNotaCredito(idNotaCredito);
+            return Response.status(Response.Status.OK).entity(lista)
+                    .type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.IncomeException e) {
+            return Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al obtener las aplicaciones de la nota de crédito: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
      * Historial de aplicaciones de una liquidación de compra.
      * ⛔ NO es intercambiable con /factura/{id} — ver el aviso en la cabecera de esta clase.
      * @param idLiquidacion : Id de la liquidación de compra

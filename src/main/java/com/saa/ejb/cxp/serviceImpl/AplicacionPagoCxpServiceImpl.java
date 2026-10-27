@@ -301,6 +301,27 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 	}
 
 	@Override
+	public List<Map<String, Object>> aplicacionesDeNotaCredito(Long idNotaCredito) throws Throwable {
+		System.out.println("=== aplicacionesDeNotaCredito | notaCredito=" + idNotaCredito + " ===");
+		if (idNotaCredito == null) {
+			throw new IncomeException("Debe indicar la nota de crédito.");
+		}
+		List<Map<String, Object>> lista = new ArrayList<>();
+		for (Object[] fila : aplicacionPagoCxpDaoService.selectProyeccionActivasByNotaCredito(idNotaCredito)) {
+			Map<String, Object> item = new java.util.LinkedHashMap<>();
+			item.put("idAplicacion", fila[0]);
+			item.put("fechaAplicacion", fila[1]);
+			item.put("montoAplicado", fila[2]);
+			item.put("idFacturaCompra", fila[3]);
+			item.put("numeroFactura", fila[4]);
+			item.put("observacion", fila[5]);
+			item.put("conAsiento", fila[6] != null);
+			lista.add(item);
+		}
+		return lista;
+	}
+
+	@Override
 	public Map<String, Object> cruzarNotaCredito(Long idNotaCredito, Long idFacturaCompra, Long idNotaDebito, Double valor,
 			String fecha, Long idEmpresa, Long idUsuario, String observacion) throws Throwable {
 
