@@ -34,4 +34,16 @@ public interface TipoAsientoDaoService  extends EntityDao<TipoAsiento>  {
 	 * @throws Throwable: Excepcion
 	 */
 	List<TipoAsiento> selectByEmpresaSinAlterno(Long empresa) throws Throwable;
+
+	/**
+	 * Tipos de asiento de una empresa con el codigo alterno indicado Y {@code PLNTSSTM = 1} (tipo del
+	 * sistema). Es la busqueda que usan los tipos automaticos IN-A / EG-A / DI-A (alternos 7, 8 y 9): el
+	 * alterno 7 ya lo usa TipoAsientos.TRANSFERENCIAS, por eso aqui se exige que sea del sistema.
+	 * {@link #selectByAlterno(int, Long)} no se toca.
+	 * @param alterno	: Codigo alterno
+	 * @param empresa	: Id de la empresa
+	 * @return			: Tipos encontrados (normalmente 0 o 1)
+	 * @throws Throwable: Excepcion
+	 */
+	List<TipoAsiento> selectByAlternoSistema(int alterno, Long empresa) throws Throwable;
 }

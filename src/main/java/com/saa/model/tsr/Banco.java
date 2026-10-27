@@ -106,6 +106,15 @@ public class Banco implements Serializable {
 	@Basic
 	@Column(name = "BNCOFCDS")
 	private LocalDateTime fechaInactivo;
+
+	/**
+	 * Banco real (BNCOREAL): 1 = banco real, 0 = no. Desde el 2026-11-01 un asiento automatico con la
+	 * cuenta contable de una cuenta bancaria de un banco real es IN-A o EG-A; sin ella, DI-A.
+	 * Columna NOT NULL con default 1 (script e2-111), por eso el valor inicial aqui tambien es 1.
+	 */
+	@Basic
+	@Column(name = "BNCOREAL")
+	private Long bancoReal = 1L;
 	
 
 	/**
@@ -248,6 +257,14 @@ public class Banco implements Serializable {
 	 */
 	public void setFechaInactivo(LocalDateTime fechaInactivo) {
 		this.fechaInactivo = fechaInactivo;
+	}
+
+	public Long getBancoReal() {
+		return bancoReal;
+	}
+
+	public void setBancoReal(Long bancoReal) {
+		this.bancoReal = bancoReal;
 	}
 	
 }

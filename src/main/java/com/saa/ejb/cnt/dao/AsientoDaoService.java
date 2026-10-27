@@ -139,6 +139,19 @@ public interface AsientoDaoService extends EntityDao<Asiento> {
 	Long selectMaxNumeroMesTipo(Long tipo, Long empresa, Long mes, Long anio) throws Throwable;
 
 	/**
+	 * Maximo consecutivo mensual por modulo origen (ASNTNMMD) de una empresa, para un mes y anio: mismo
+	 * patron MAX+1 que {@link #selectMaxNumeroMesTipo}. Null si todavia no hay asientos de ese modulo en
+	 * el mes (docs/logica-negocio/cnt/DISENO-TIPOS-ASIENTO-AUTOMATICOS.md §2.4).
+	 * @param modulo	: Modulo origen (CRE, CXC, CXP, TSR, RRH, CNT)
+	 * @param empresa	: Id de la empresa
+	 * @param mes		: Mes del asiento
+	 * @param anio		: Anio del asiento
+	 * @return			: Maximo numeroMesModulo, o null
+	 * @throws Throwable: Excepcion
+	 */
+	Long selectMaxNumeroMesModulo(String modulo, Long empresa, Long mes, Long anio) throws Throwable;
+
+	/**
 	 * Listado de asientos de una empresa y período, en proyección (código, número, fecha,
 	 * glosa, estado, total debe, total haber) — sin arrastrar empresa/tipoAsiento/mayorización.
 	 * Reemplaza el fallback de {@code GET /asnt/getAll} de

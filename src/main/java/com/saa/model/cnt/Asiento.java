@@ -179,6 +179,29 @@ public class Asiento implements Serializable {
 	private Long numeroMesTipo;
 
 	/**
+	 * Modulo origen del asiento automatico (ASNTMDOR): CRE, CXC, CXP, TSR, RRH o CNT, ver
+	 * {@link com.saa.rubros.ModuloOrigenAsiento}. Nulo en los manuales y en los anteriores al 2026-11-01.
+	 * docs/logica-negocio/cnt/DISENO-TIPOS-ASIENTO-AUTOMATICOS.md, script e2-111.
+	 */
+	@Basic
+	@Column(name = "ASNTMDOR", length = 3)
+	private String moduloOrigen;
+
+	/**
+	 * Consecutivo mensual por empresa + modulo origen + anio + mes (ASNTNMMD).
+	 */
+	@Basic
+	@Column(name = "ASNTNMMD")
+	private Long numeroMesModulo;
+
+	/**
+	 * Numero alterno por modulo (ASNTNAMD), p. ej. CXP-2026-11-0001: doble control con numeroAlterno.
+	 */
+	@Basic
+	@Column(name = "ASNTNAMD", length = 30)
+	private String numeroAlternoModulo;
+
+	/**
 	 * Motivo de anulación del asiento.
 	 */
 	@Basic
@@ -555,6 +578,30 @@ public class Asiento implements Serializable {
 
 	public void setUsuarioAnulacion(String usuarioAnulacion) {
 		this.usuarioAnulacion = usuarioAnulacion;
+	}
+
+	public String getModuloOrigen() {
+		return moduloOrigen;
+	}
+
+	public void setModuloOrigen(String moduloOrigen) {
+		this.moduloOrigen = moduloOrigen;
+	}
+
+	public Long getNumeroMesModulo() {
+		return numeroMesModulo;
+	}
+
+	public void setNumeroMesModulo(Long numeroMesModulo) {
+		this.numeroMesModulo = numeroMesModulo;
+	}
+
+	public String getNumeroAlternoModulo() {
+		return numeroAlternoModulo;
+	}
+
+	public void setNumeroAlternoModulo(String numeroAlternoModulo) {
+		this.numeroAlternoModulo = numeroAlternoModulo;
 	}
 
 }

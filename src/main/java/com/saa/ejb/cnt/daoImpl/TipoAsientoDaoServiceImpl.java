@@ -62,4 +62,18 @@ public class TipoAsientoDaoServiceImpl extends EntityDaoImpl<TipoAsiento>  imple
 
 		return query.getResultList();
 	}	
+
+	@SuppressWarnings("unchecked")
+	@Override
+	public List<TipoAsiento> selectByAlternoSistema(int alterno, Long empresa) throws Throwable {
+		System.out.println("Ingresa al metodo selectByAlternoSistema de tipoAsiento con alterno: " + alterno + ", en empresa: " + empresa);
+		Query query = em.createQuery(" select b " +
+									 " from   TipoAsiento b" +
+									 " where  b.empresa.codigo = :empresa " +
+									 "        and   b.codigoAlterno = :alterno " +
+									 "        and   b.sistema = 1");
+		query.setParameter("empresa", empresa);
+		query.setParameter("alterno", Long.valueOf(alterno));
+		return query.getResultList();
+	}
 }

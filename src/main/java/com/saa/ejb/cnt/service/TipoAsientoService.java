@@ -49,4 +49,15 @@ public interface TipoAsientoService extends EntityService<TipoAsiento> {
 	 */
 	 Long codigoByAlterno(int alterno, Long empresa) throws Throwable;
 	
+
+	/**
+	 * Tipo de asiento AUTOMATICO (IN-A 7, EG-A 8, DI-A 9, ver {@code TipoAsientoAutomatico}) de una empresa:
+	 * busca por codigo alterno Y {@code PLNTSSTM = 1}, no por el metodo viejo {@link #codigoByAlterno}.
+	 * @param alterno	: Codigo alterno (7, 8 o 9)
+	 * @param empresa	: Id de la empresa
+	 * @return			: Tipo de asiento
+	 * @throws Throwable: IncomeException si la empresa no tiene ese tipo del sistema
+	 */
+	com.saa.model.cnt.TipoAsiento tipoAutomatico(int alterno, Long empresa) throws Throwable;
+
 }

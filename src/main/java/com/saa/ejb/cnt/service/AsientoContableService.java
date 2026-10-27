@@ -358,6 +358,24 @@ public interface AsientoContableService {
             Long moduloSistema) throws Throwable;
 
     /**
+     * Igual que {@link #generarAsiento(Long, int, java.time.LocalDate, String, String, java.util.List, Long)} con el
+     * modulo origen explicito (CRE, CXC, CXP, TSR, RRH, CNT; ver {@code ModuloOrigenAsiento}). Para asientos con
+     * fecha desde 2026-11-01 ({@code TipoAsientoAutomatico.FECHA_VIGENCIA}):
+     * <ul>
+     * <li>el tipo se calcula segun las lineas (IN-A 7 / EG-A 8 / DI-A 9) y reemplaza a
+     * {@code codigoAltTipoAsiento};</li>
+     * <li>se graba el modulo origen con su consecutivo mensual por empresa + modulo + anio + mes.</li>
+     * </ul>
+     * Antes de esa fecha el asiento se genera como siempre (tipo por alterno, sin modulo origen).
+     * La version sin este parametro lo deduce: alterno 1 es CRE, 6 es RRH y, si no, sale del moduloSistema.
+     * docs/logica-negocio/cnt/DISENO-TIPOS-ASIENTO-AUTOMATICOS.md.
+     */
+    Asiento generarAsiento(Long idEmpresa, int codigoAltTipoAsiento,
+            java.time.LocalDate fechaAsiento, String observaciones, String usuario,
+            java.util.List<com.saa.model.cnt.DetalleAsiento> lineas,
+            Long moduloSistema, String moduloOrigen) throws Throwable;
+
+    /**
      * Genera el asiento del cruce de un anticipo de proveedor contra una factura
      * de compra (CXP).
      * <p>

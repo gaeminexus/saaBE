@@ -158,6 +158,17 @@ public interface AsientoService extends EntityService<Asiento> {
 	 * @throws Throwable: Excepcion
 	 */
 	 Asiento copiaAsiento(Long idAsientoOriginal) throws Throwable;
+
+	/**
+	 * Asigna al asiento su consecutivo mensual por modulo origen (numeroMesModulo) y su numero alterno por
+	 * modulo (numeroAlternoModulo, p. ej. CXP-2026-11-0001), con el mismo patron MAX+1 por empresa + modulo +
+	 * anio + mes que usa numeroMesTipo. Si el asiento no tiene moduloOrigen no hace nada. El asiento debe
+	 * tener empresa, numeroMes y numeroAnio (los asigna saveSingle). Doble control del P5, desde 2026-11-01.
+	 * @param asiento	: Asiento ya grabado, con moduloOrigen
+	 * @return			: Asiento actualizado
+	 * @throws Throwable: Excepcion
+	 */
+	 Asiento asignaNumeroModulo(Asiento asiento) throws Throwable;
 	
 	/**
 	 * Verifica si se puede Anular o Reversar Asiento

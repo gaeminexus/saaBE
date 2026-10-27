@@ -239,6 +239,12 @@ public class AsientoServiceImpl implements AsientoService {
 			String prefijo = (nombreTipo != null && nombreTipo.length() >= 3)
 					? nombreTipo.substring(0, 3).toUpperCase()
 					: nombreTipo != null ? nombreTipo.toUpperCase() : "ASN";
+			// Tipos automaticos (IN-A (INGRESO AUTOMATICO), EG-A, DI-A): si el nombre trae " (", el prefijo es
+			// lo que esta antes, no las 3 primeras letras ("IN--2026-11-0001" no). Los nombres viejos no
+			// cambian de prefijo. docs/logica-negocio/cnt/DISENO-TIPOS-ASIENTO-AUTOMATICOS.md §2.3.
+			if (nombreTipo != null && nombreTipo.indexOf(" (") > 0) {
+				prefijo = nombreTipo.substring(0, nombreTipo.indexOf(" (")).trim().toUpperCase();
+			}
 
 			// Construye el numero alterno: EGR-2026-03-0001
 			String numeroAlterno = String.format("%s-%d-%02d-%04d", prefijo, anio, mes, siguienteNumeroMesTipo);
@@ -254,6 +260,29 @@ public class AsientoServiceImpl implements AsientoService {
 		}
 	}
 	
+	/* (non-Javadoc)
+	 * @see com.saa.ejb.cnt.service.AsientoService#asignaNumeroModulo(com.saa.model.cnt.Asiento)
+	 */
+	@Override
+	public Asiento asignaNumeroModulo(Asiento asiento) throws Throwable {
+		if (asiento == null || asiento.getModuloOrigen() == null || asiento.getModuloOrigen().trim().isEmpty()) {
+			return asiento;
+		}
+		System.out.println("Ingresa al metodo asignaNumeroModulo con asiento: " + asiento.getCodigo()
+				+ ", modulo: " + asiento.getModuloOrigen());
+		Long mes = asiento.getNumeroMes();
+		Long anio = asiento.getNumeroAnio();
+		Long empresa = asiento.getEmpresa().getCodigo();
+		// Mismo patron MAX+1 que numeroMesTipo: consecutivo mensual por empresa + modulo + anio + mes
+		Long maxNumeroMesModulo = asientoDaoService.selectMaxNumeroMesModulo(asiento.getModuloOrigen(), empresa, mes, anio);
+		Long siguiente = (maxNumeroMesModulo == null ? 0L : maxNumeroMesModulo) + 1L;
+		asiento.setNumeroMesModulo(siguiente);
+		asiento.setNumeroAlternoModulo(String.format("%s-%d-%02d-%04d", asiento.getModuloOrigen(), anio, mes, siguiente));
+		asiento = asientoDaoService.save(asiento, asiento.getCodigo());
+		System.out.println("numeroAlternoModulo generado: " + asiento.getNumeroAlternoModulo());
+		return asiento;
+	}
+
 	/* (non-Javadoc)
 	 * @see com.compuseg.income.contabilidad.ejb.service.AsientoService#generaCabeceraCierre(com.compuseg.income.contabilidad.ejb.model.Periodo, java.lang.Long, java.lang.String)
 	 */
@@ -474,7 +503,11 @@ public class AsientoServiceImpl implements AsientoService {
 		asientoReversion.setRubroModuloClienteH(asientoOriginal.getRubroModuloClienteH());
 		asientoReversion.setRubroModuloSistemaP(asientoOriginal.getRubroModuloSistemaP());
 		asientoReversion.setRubroModuloSistemaH(asientoOriginal.getRubroModuloSistemaH());
+		// El reverso de un asiento automatico desde 2026-11-01 conserva el modulo origen y toma SU PROPIO
+		// consecutivo de modulo (mas abajo). Los anteriores no tienen modulo: quedan sin modulo.
+		asientoReversion.setModuloOrigen(asientoOriginal.getModuloOrigen());
 		asientoReversion = asignaNumeroAlterno(asientoReversion);
+		asientoReversion = asignaNumeroModulo(asientoReversion);
 		try{
 			asientoReversion = asientoDaoService.save(asientoReversion, asientoReversion.getCodigo());
 		}

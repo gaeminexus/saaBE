@@ -22,9 +22,11 @@ import com.saa.model.scp.Empresa;
 import com.saa.model.tsr.Titular;
 import com.saa.rubros.Estado;
 import com.saa.rubros.EstadoAsiento;
+import com.saa.rubros.ModuloOrigenAsiento;
 import com.saa.rubros.ModuloSistema;
 import com.saa.rubros.RolPersona;
 import com.saa.rubros.Rubros;
+import com.saa.rubros.TipoAsientoAutomatico;
 import com.saa.rubros.TipoAsientos;
 import com.saa.rubros.TipoMoneda;
 
@@ -458,7 +460,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
 
         // 4. Generar el asiento con las lÃ­neas construidas
         return generarAsiento(idEmpresa, codigoAltTipoAsiento, fechaAsiento,
-                observaciones, usuario, lineas);
+                observaciones, usuario, lineas, Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR), ModuloOrigenAsiento.CXC);
     }
 
     // ---------------------------------------------------------------
@@ -479,18 +481,127 @@ public class AsientoContableServiceImpl implements AsientoContableService {
             LocalDate fechaAsiento, String observaciones, String usuario,
             List<DetalleAsiento> lineas, Long moduloSistema) throws Throwable {
 
+        // Llamadores directos (crd, rhh, cxp PagoProgramado): el modulo origen se deduce, sin tocar su codigo.
+        // docs/logica-negocio/cnt/DISENO-TIPOS-ASIENTO-AUTOMATICOS.md §6.
+        return generarAsiento(idEmpresa, codigoAltTipoAsiento, fechaAsiento, observaciones, usuario, lineas,
+                moduloSistema, moduloOrigenDeLlamadorDirecto(codigoAltTipoAsiento, moduloSistema));
+    }
+
+    /**
+     * Modulo origen de un asiento cuyo llamador usa generarAsiento directo: alterno 1 (CREDITOS) es CRE y 6
+     * (RECURSOS_HUMANOS) es RRH; si no, sale del moduloSistema que pasa (TESORERIA, CXP, RRHH, CXC, CNT).
+     */
+    private String moduloOrigenDeLlamadorDirecto(int codigoAltTipoAsiento, Long moduloSistema) {
+        if (codigoAltTipoAsiento == TipoAsientos.CREDITOS) {
+            return ModuloOrigenAsiento.CRE;
+        }
+        if (codigoAltTipoAsiento == TipoAsientos.RECURSOS_HUMANOS) {
+            return ModuloOrigenAsiento.RRH;
+        }
+        int ms = (moduloSistema != null) ? moduloSistema.intValue() : ModuloSistema.CUENTAS_POR_COBRAR;
+        switch (ms) {
+            case ModuloSistema.TESORERIA:        return ModuloOrigenAsiento.TSR;
+            case ModuloSistema.CUENTAS_POR_PAGAR: return ModuloOrigenAsiento.CXP;
+            case ModuloSistema.RECURSOS_HUMANOS: return ModuloOrigenAsiento.RRH;
+            case ModuloSistema.CONTABILIDAD:     return ModuloOrigenAsiento.CNT;
+            default:                             return ModuloOrigenAsiento.CXC;
+        }
+    }
+
+    /**
+     * Modulo origen del asiento de una liquidacion de compra (LQCC): CXP si el documento nacio en la bandeja de
+     * documentos (tiene un DocumentoCxp que lo apunta) y CXC si lo emitio cxc (LiquidacionCompraServiceImpl crea
+     * la LQCC y su asiento antes de enlazarla). Los dos llaman al mismo generador, y la tabla del diseno (§6)
+     * da CXP a la primera y CXC a la segunda.
+     */
+    private String moduloOrigenLiquidacionCompra(Long idLiquidacionCompraCompra) {
+        Long enBandeja = (Long) em.createQuery(
+                "select count(d) from DocumentoCxp d where d.tipoTablaDestino = 'LIQUIDACION_COMPRA_COMPRA' "
+                + "and d.idDocumentoBD = :id")
+                .setParameter("id", idLiquidacionCompraCompra)
+                .getSingleResult();
+        return (enBandeja != null && enBandeja > 0) ? ModuloOrigenAsiento.CXP : ModuloOrigenAsiento.CXC;
+    }
+
+    /**
+     * Tipo de asiento automatico segun las lineas (desde 2026-11-01): lineas cuya cuenta contable es la de una
+     * cuenta bancaria propia de un banco real; neto (debe - haber) de esas lineas &gt; 0 es IN-A, &lt; 0 es EG-A,
+     * 0 con lineas de banco a los dos lados es EG-A, y sin lineas de banco real es DI-A. Una sola consulta con
+     * los planes de cuenta de los bancos reales de la empresa (sin N+1).
+     */
+    private int clasificarTipoAutomatico(Long idEmpresa, List<DetalleAsiento> lineas) {
+        @SuppressWarnings("unchecked")
+        List<Long> planesBancoReal = em.createQuery(
+                "select distinct c.planCuenta.codigo from CuentaBancaria c "
+                + "where c.banco.empresa.codigo = :empresa and c.banco.bancoReal = 1 and c.planCuenta is not null")
+                .setParameter("empresa", idEmpresa)
+                .getResultList();
+        java.util.Set<Long> reales = new java.util.HashSet<>(planesBancoReal);
+
+        boolean hayBanco = false;
+        boolean ladoDebe = false;
+        boolean ladoHaber = false;
+        double neto = 0.0;
+        for (DetalleAsiento linea : lineas) {
+            if (linea.getPlanCuenta() == null || linea.getPlanCuenta().getCodigo() == null
+                    || !reales.contains(linea.getPlanCuenta().getCodigo())) {
+                continue;
+            }
+            double debe = (linea.getValorDebe() != null) ? linea.getValorDebe() : 0.0;
+            double haber = (linea.getValorHaber() != null) ? linea.getValorHaber() : 0.0;
+            hayBanco = true;
+            neto += debe - haber;
+            if (debe > 0.005) {
+                ladoDebe = true;
+            }
+            if (haber > 0.005) {
+                ladoHaber = true;
+            }
+        }
+        if (!hayBanco) {
+            return TipoAsientoAutomatico.DI_A;
+        }
+        if (neto > 0.005) {
+            return TipoAsientoAutomatico.IN_A;
+        }
+        if (neto < -0.005) {
+            return TipoAsientoAutomatico.EG_A;
+        }
+        // Neto 0: transferencia entre cuentas propias (banco a los dos lados) es EG-A; lineas de banco en cero
+        // sin los dos lados no mueven dinero: DI-A.
+        return (ladoDebe && ladoHaber) ? TipoAsientoAutomatico.EG_A : TipoAsientoAutomatico.DI_A;
+    }
+
+    @Override
+    public Asiento generarAsiento(Long idEmpresa, int codigoAltTipoAsiento,
+            LocalDate fechaAsiento, String observaciones, String usuario,
+            List<DetalleAsiento> lineas, Long moduloSistema, String moduloOrigen) throws Throwable {
+
         System.out.println("=== generarAsiento | empresa=" + idEmpresa
-                + " | tipoAlt=" + codigoAltTipoAsiento + " | modulo=" + moduloSistema + " ===");
+                + " | tipoAlt=" + codigoAltTipoAsiento + " | modulo=" + moduloSistema
+                + " | moduloOrigen=" + moduloOrigen + " ===");
+
+        // Desde 2026-11-01 el tipo lo decide la regla IN-A / EG-A / DI-A (reemplaza al alterno recibido) y el
+        // asiento lleva modulo origen con su propio consecutivo. Antes de esa fecha, todo igual que siempre.
+        boolean automatico = fechaAsiento != null && !fechaAsiento.isBefore(TipoAsientoAutomatico.FECHA_VIGENCIA);
 
         // 1. Obtener TipoAsiento por codigoAlterno y sistema=1
-        Long idTipoAsiento = tipoAsientoService.codigoByAlterno(codigoAltTipoAsiento, idEmpresa);
-        if (idTipoAsiento == null || idTipoAsiento == 0L) {
-            throw new IncomeException(
-                    "No existe TipoAsiento con codigoAlterno=" + codigoAltTipoAsiento
-                    + " y sistema=1 en la empresa " + idEmpresa
-                    + ". Cree el tipo de asiento en Contabilidad.");
+        TipoAsiento tipoAsiento;
+        if (automatico) {
+            int alternoAutomatico = clasificarTipoAutomatico(idEmpresa, lineas);
+            System.out.println("generarAsiento: tipo automatico segun las lineas = " + alternoAutomatico
+                    + " (recibido " + codigoAltTipoAsiento + ")");
+            tipoAsiento = tipoAsientoService.tipoAutomatico(alternoAutomatico, idEmpresa);
+        } else {
+            Long idTipoAsiento = tipoAsientoService.codigoByAlterno(codigoAltTipoAsiento, idEmpresa);
+            if (idTipoAsiento == null || idTipoAsiento == 0L) {
+                throw new IncomeException(
+                        "No existe TipoAsiento con codigoAlterno=" + codigoAltTipoAsiento
+                        + " y sistema=1 en la empresa " + idEmpresa
+                        + ". Cree el tipo de asiento en Contabilidad.");
+            }
+            tipoAsiento = tipoAsientoService.selectById(idTipoAsiento);
         }
-        TipoAsiento tipoAsiento = tipoAsientoService.selectById(idTipoAsiento);
 
         // 2. Obtener Empresa
         Empresa empresa = em.find(Empresa.class, idEmpresa);
@@ -515,9 +626,17 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         asiento.setRubroModuloClienteH(modulo);
         asiento.setRubroModuloSistemaP(Long.valueOf(Rubros.MODULO_SISTEMA));
         asiento.setRubroModuloSistemaH(modulo);
+        if (automatico) {
+            asiento.setModuloOrigen(moduloOrigen);
+        }
 
         // 4. saveSingle: asigna perÃ­odo, nÃºmero, numeroAlterno y graba
         asiento = asientoService.saveSingle(asiento);
+        // Consecutivo mensual por modulo origen (doble control), solo asientos automaticos desde 2026-11-01;
+        // va despues del saveSingle porque necesita el mes y el anio que el asigna.
+        if (automatico) {
+            asiento = asientoService.asignaNumeroModulo(asiento);
+        }
 
         // 5. Grabar cada lÃ­nea de detalle
         for (DetalleAsiento linea : lineas) {
@@ -619,7 +738,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
                 + " | Valor: $" + String.format(java.util.Locale.US, "%.2f", valor);
 
         return generarAsiento(idEmpresa, codigoAltTipoAsiento,
-                anticipo.getFechaAnticipo(), obs, usuario, lineas);
+                anticipo.getFechaAnticipo(), obs, usuario, lineas, Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR), ModuloOrigenAsiento.CXC);
     }
 
     // ---------------------------------------------------------------
@@ -695,7 +814,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
                 + " | Valor: $" + String.format(java.util.Locale.US, "%.2f", valor);
 
         return generarAsiento(idEmpresa, codigoAltTipoAsiento,
-                anticipo.getFechaAnticipo(), obs, usuario, lineas);
+                anticipo.getFechaAnticipo(), obs, usuario, lineas, Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR), ModuloOrigenAsiento.CXC);
     }
 
     // ---------------------------------------------------------------
@@ -783,7 +902,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
 
         return generarAsiento(idEmpresa, codigoAltTipoAsiento,
                 (fechaAsiento != null) ? fechaAsiento : anticipo.getFechaAnticipo(),
-                obs, usuario, lineas);
+                obs, usuario, lineas, Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR), ModuloOrigenAsiento.CXP);
     }
 
     // ---------------------------------------------------------------
@@ -885,7 +1004,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         // Mismo tipo de asiento y mismo módulo que generarAsientoAnticipoProveedor: ese método
         // llama al generarAsiento de 6 argumentos (sin módulo explícito), que internamente usa
         // ModuloSistema.CUENTAS_POR_COBRAR -- verificado leyendo ese overload, no asumido.
-        return generarAsiento(idEmpresa, TipoAsientos.ANTICIPOS_PROVEEDOR, fechaAsiento, obs, usuario, lineas);
+        return generarAsiento(idEmpresa, TipoAsientos.ANTICIPOS_PROVEEDOR, fechaAsiento, obs, usuario, lineas, Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR), ModuloOrigenAsiento.CXP);
     }
 
     // ---------------------------------------------------------------
@@ -942,7 +1061,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         lineas.add(creaLinea(cuentaAnticipo,  "Anticipo aplicado: " + nomProvAnticipo,        valor, false));
 
         return generarAsiento(idEmpresa, codigoAltTipoAsiento, fechaAsiento, observaciones,
-                usuario, lineas, Long.valueOf(ModuloSistema.CUENTAS_POR_PAGAR));
+                usuario, lineas, Long.valueOf(ModuloSistema.CUENTAS_POR_PAGAR), ModuloOrigenAsiento.CXP);
     }
 
     @Override
@@ -979,7 +1098,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         lineas.add(creaLinea(cuentaCliente,  "Cruce anticipo cliente: " + nomCliente,   valor, false));
 
         return generarAsiento(idEmpresa, codigoAltTipoAsiento, fechaAsiento, observaciones,
-                usuario, lineas, Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR));
+                usuario, lineas, Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR), ModuloOrigenAsiento.CXC);
     }
 
     @Override
@@ -1014,7 +1133,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
                 + " | Cta Banco: " + cuentaBancaria.getNumeroCuenta(), valor, false));
 
         return generarAsiento(idEmpresa, codigoAltTipoAsiento, fechaAsiento, observaciones,
-                usuario, lineas, Long.valueOf(ModuloSistema.TESORERIA));
+                usuario, lineas, Long.valueOf(ModuloSistema.TESORERIA), ModuloOrigenAsiento.CXP);
     }
 
     @Override
@@ -1049,7 +1168,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         lineas.add(creaLinea(cuentaCliente, "Cobro a cliente: " + nomCliente, valor, false));
 
         return generarAsiento(idEmpresa, codigoAltTipoAsiento, fechaAsiento, observaciones,
-                usuario, lineas, Long.valueOf(ModuloSistema.TESORERIA));
+                usuario, lineas, Long.valueOf(ModuloSistema.TESORERIA), ModuloOrigenAsiento.CXC);
     }
 
     @Override
@@ -1081,7 +1200,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
                 + " | Cta Banco: " + cuentaBancaria.getNumeroCuenta(), valor, false));
 
         return generarAsiento(idEmpresa, codigoAltTipoAsiento, fechaAsiento, observaciones,
-                usuario, lineas, Long.valueOf(ModuloSistema.TESORERIA));
+                usuario, lineas, Long.valueOf(ModuloSistema.TESORERIA), ModuloOrigenAsiento.TSR);
     }
 
     @Override
@@ -1117,7 +1236,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         lineas.add(creaLinea(cuentaAnticipo, "Egreso pagado con anticipo: " + nomProv, valor, false));
 
         return generarAsiento(idEmpresa, TipoAsientos.EGRESO_TESORERIA, fechaAsiento, observaciones,
-                usuario, lineas, Long.valueOf(ModuloSistema.TESORERIA));
+                usuario, lineas, Long.valueOf(ModuloSistema.TESORERIA), ModuloOrigenAsiento.TSR);
     }
 
     @Override
@@ -1149,7 +1268,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         lineas.add(creaLinea(cuentaIngreso, "Ingreso tesorerÃ­a: " + concepto, valor, false));
 
         return generarAsiento(idEmpresa, codigoAltTipoAsiento, fechaAsiento, observaciones,
-                usuario, lineas, Long.valueOf(ModuloSistema.TESORERIA));
+                usuario, lineas, Long.valueOf(ModuloSistema.TESORERIA), ModuloOrigenAsiento.TSR);
     }
 
     // ---------------------------------------------------------------
@@ -1194,7 +1313,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         lineas.add(creaLinea(cuentaCaja, "Caja chica " + nombreCaja + ": " + descripcion, valor, false));
 
         return generarAsiento(idEmpresa, TipoAsientos.EGRESO_TESORERIA, fechaAsiento, observaciones,
-                usuario, lineas, Long.valueOf(ModuloSistema.TESORERIA));
+                usuario, lineas, Long.valueOf(ModuloSistema.TESORERIA), ModuloOrigenAsiento.TSR);
     }
 
     @Override
@@ -1230,7 +1349,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         lineas.add(creaLinea(cuentaCaja, "Caja chica: " + nomProv, valor, false));
 
         return generarAsiento(idEmpresa, TipoAsientos.EGRESO_TESORERIA, fechaAsiento, observaciones,
-                usuario, lineas, Long.valueOf(ModuloSistema.TESORERIA));
+                usuario, lineas, Long.valueOf(ModuloSistema.TESORERIA), ModuloOrigenAsiento.TSR);
     }
 
     @Override
@@ -1262,7 +1381,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
                 "Reposición caja chica | Cta Banco: " + cuentaBancaria.getNumeroCuenta(), valor, false));
 
         return generarAsiento(idEmpresa, TipoAsientos.EGRESO_TESORERIA, fechaAsiento, observaciones,
-                usuario, lineas, Long.valueOf(ModuloSistema.TESORERIA));
+                usuario, lineas, Long.valueOf(ModuloSistema.TESORERIA), ModuloOrigenAsiento.TSR);
     }
 
     @Override
@@ -1298,7 +1417,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         }
 
         return generarAsiento(idEmpresa, TipoAsientos.EGRESO_TESORERIA, fechaAsiento, observaciones,
-                usuario, lineas, Long.valueOf(ModuloSistema.TESORERIA));
+                usuario, lineas, Long.valueOf(ModuloSistema.TESORERIA), ModuloOrigenAsiento.TSR);
     }
 
     @Override
@@ -1330,7 +1449,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
                 "Anticipo a empleado | Cta Banco: " + cuentaBancaria.getNumeroCuenta(), valor, false));
 
         return generarAsiento(idEmpresa, TipoAsientos.EGRESO_TESORERIA, fechaAsiento, observaciones,
-                usuario, lineas, Long.valueOf(ModuloSistema.TESORERIA));
+                usuario, lineas, Long.valueOf(ModuloSistema.TESORERIA), ModuloOrigenAsiento.RRH);
     }
 
     /**
@@ -1829,7 +1948,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
 
         // 4. Generar el asiento con las lÃ­neas construidas
         return generarAsiento(idEmpresa, codigoAltTipoAsiento, fechaAsiento,
-                observaciones, usuario, lineas);
+                observaciones, usuario, lineas, Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR), ModuloOrigenAsiento.CXC);
     }
 
     /** Mapea porcentaje de IVA (Long: 0,5,8,15) al cÃ³digo SRI de TSRI (tabla='17'). */
@@ -1951,7 +2070,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         }
 
         return generarAsiento(idEmpresa, codigoAltTipoAsiento, fechaAsiento,
-                observaciones, usuario, lineas);
+                observaciones, usuario, lineas, Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR), ModuloOrigenAsiento.CXC);
     }
 
     /** Mapea el porcentaje de IVA (Double: 0,5,8,15) al cÃ³digo SRI de TSRI. */
@@ -2223,7 +2342,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
 
         // 4. Generar asiento
         return generarAsiento(idEmpresa, codigoAltTipoAsiento, fechaAsiento,
-                observaciones, usuario, lineas);
+                observaciones, usuario, lineas, Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR), ModuloOrigenAsiento.CXC);
     }
 
     /**
@@ -2500,7 +2619,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
 
         // 4. Generar asiento
         return generarAsiento(idEmpresa, codigoAltTipoAsiento, fechaAsiento,
-                observaciones, usuario, lineas);
+                observaciones, usuario, lineas, Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR), ModuloOrigenAsiento.CXC);
     }
 
     // =========================================================================
@@ -2658,7 +2777,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         lineas.add(haber);
 
         return generarAsiento(idEmpresa, codigoAltTipoAsiento,
-                fechaAsiento, observaciones, usuario, lineas);
+                fechaAsiento, observaciones, usuario, lineas, Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR), ModuloOrigenAsiento.CXP);
     }
 
     /**
@@ -2735,7 +2854,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         lineas.add(haber);
 
         return generarAsiento(idEmpresa, codigoAltTipoAsiento,
-                fechaAsiento, observaciones, usuario, lineas);
+                fechaAsiento, observaciones, usuario, lineas, Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR), ModuloOrigenAsiento.CXP);
     }
 
     /**
@@ -2851,7 +2970,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
 
         return generarAsiento(idEmpresa, codigoAltTipoAsiento,
                 fechaAsiento, observaciones, usuario, lineas,
-                Long.valueOf(com.saa.rubros.ModuloSistema.CUENTAS_POR_PAGAR));
+                Long.valueOf(com.saa.rubros.ModuloSistema.CUENTAS_POR_PAGAR), ModuloOrigenAsiento.CXP);
     }
 
     /** Convierte un String a Long con fallback 0L (evita NPE en la línea de IVA del reembolso). */
@@ -3157,7 +3276,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         debe.setValorDebe(importeTotalNc);
 
         return generarAsiento(idEmpresa, codigoAltTipoAsiento,
-                fechaAsiento, observaciones, usuario, lineas);
+                fechaAsiento, observaciones, usuario, lineas, Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR), ModuloOrigenAsiento.CXP);
     }
 
     // ---------------------------------------------------------------
@@ -3244,7 +3363,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         lineas.add(haber);
 
         return generarAsiento(idEmpresa, codigoAltTipoAsiento,
-                fechaAsiento, observaciones, usuario, lineas);
+                fechaAsiento, observaciones, usuario, lineas, Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR), ModuloOrigenAsiento.CXP);
     }
 
     // ---------------------------------------------------------------
@@ -3377,7 +3496,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         lineas.add(haber);
 
         return generarAsiento(idEmpresa, codigoAltTipoAsiento,
-                fechaAsiento, observaciones, usuario, lineas);
+                fechaAsiento, observaciones, usuario, lineas, Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR), moduloOrigenLiquidacionCompra(idLiquidacion));
     }
 
     // ---------------------------------------------------------------
@@ -3446,7 +3565,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         lineas.add(0, haberCliente);
 
         return generarAsiento(idEmpresa, codigoAltTipoAsiento,
-                fechaAsiento, observaciones, usuario, lineas);
+                fechaAsiento, observaciones, usuario, lineas, Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR), ModuloOrigenAsiento.CXC);
     }
 
     // ---------------------------------------------------------------
@@ -3511,7 +3630,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         lineas.add(0, haberCliente);
 
         return generarAsiento(idEmpresa, codigoAltTipoAsiento,
-                fechaAsiento, observaciones, usuario, lineas);
+                fechaAsiento, observaciones, usuario, lineas, Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR), ModuloOrigenAsiento.CXC);
     }
 
     // ---------------------------------------------------------------

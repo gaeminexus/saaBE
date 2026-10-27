@@ -41,7 +41,8 @@ public class BancoDaoServiceImpl extends EntityDaoImpl<Banco> implements BancoDa
 							"rubroTipoBancoP",
 							"rubroTipoBancoH",
 							"fechaIngreso",
-							"fechaInactivo"};
+							"fechaInactivo",
+							"bancoReal"};
 	}
 	
 }

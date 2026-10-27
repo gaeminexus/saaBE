@@ -150,4 +150,20 @@ public class TipoAsientoServiceImpl implements TipoAsientoService{
 
 
 	
+	@Override
+	public TipoAsiento tipoAutomatico(int alterno, Long empresa) throws Throwable {
+		System.out.println("Ingresa al metodo tipoAutomatico con alterno: " + alterno + ", en empresa:" + empresa);
+		List<TipoAsiento> tipos = tipoAsientoDaoService.selectByAlternoSistema(alterno, empresa);
+		if (tipos.isEmpty()) {
+			throw new IncomeException("La empresa " + empresa + " no tiene el tipo de asiento automatico con codigo alterno "
+					+ alterno + " (debe ser un tipo del sistema, PLNTSSTM=1). Cree IN-A (7), EG-A (8) y DI-A (9) en "
+					+ "Contabilidad > Tipos de Asientos del Sistema.");
+		}
+		if (tipos.size() > 1) {
+			throw new IncomeException("La empresa " + empresa + " tiene " + tipos.size()
+					+ " tipos de asiento del sistema con el codigo alterno " + alterno + ": debe haber uno solo.");
+		}
+		return tipos.get(0);
+	}
+
 }
