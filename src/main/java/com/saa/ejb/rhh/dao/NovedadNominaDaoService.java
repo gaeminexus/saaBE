@@ -39,4 +39,17 @@ public interface NovedadNominaDaoService extends EntityDao<NovedadNomina> {
 	 * @throws Throwable	: Excepcion
 	 */
 	NovedadNomina selectPorDescripcion(Long idEmpleado, Long idConcepto, String descripcion) throws Throwable;
+
+	/**
+	 * Suma la cantidad de las novedades aprobadas y activas de un empleado, de un concepto, en
+	 * un periodo. Con el concepto «Vacaciones pagadas» son los dias de vacacion que el motor
+	 * debe sacar de los dias de sueldo.
+	 *
+	 * @param idPeriodo		: Id del periodo de nomina
+	 * @param idEmpleado	: Id del empleado
+	 * @param idConcepto	: Id del concepto de nomina
+	 * @return				: La suma de cantidades; 0 si no hay novedades
+	 * @throws Throwable	: Excepcion
+	 */
+	Double sumaCantidadAprobada(Long idPeriodo, Long idEmpleado, Long idConcepto) throws Throwable;
 }

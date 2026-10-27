@@ -225,6 +225,29 @@ public class NovedadIessServiceImpl implements NovedadIessService {
 	}
 
 	/* (non-Javadoc)
+	 * @see com.saa.ejb.rhh.service.NovedadIessService#anularVariacionPorExtrasPendiente(java.lang.Long, java.time.LocalDate, java.time.LocalDate, java.lang.String)
+	 */
+	@Override
+	@TransactionAttribute(TransactionAttributeType.REQUIRED)
+	public int anularVariacionPorExtrasPendiente(Long idContrato, LocalDate desde, LocalDate hasta,
+			String usuario) throws Throwable {
+		System.out.println("Ingresa al metodo anularVariacionPorExtrasPendiente de novedadIess service, contrato: "
+				+ idContrato);
+		int anuladas = 0;
+		List<NovedadIess> existentes = novedadIessDaoService.selectByContratoTipoEnVentana(
+				idContrato, Long.valueOf(RhhTipoNovedadIess.VARIACION_POR_EXTRAS), desde, hasta);
+		for (NovedadIess candidata : existentes) {
+			if (candidata.getEstado() != null
+					&& candidata.getEstado().longValue() == RhhEstadoNovedadIess.PENDIENTE) {
+				anular(candidata.getCodigo(), "el recalculo del periodo ya no da variacion sobre el"
+						+ " sueldo declarado", usuario);
+				anuladas++;
+			}
+		}
+		return anuladas;
+	}
+
+	/* (non-Javadoc)
 	 * @see com.saa.ejb.rhh.service.NovedadIessService#generarCambioRelacionTrabajo(java.lang.Long, java.time.LocalDate, java.lang.String, java.lang.String)
 	 */
 	@Override

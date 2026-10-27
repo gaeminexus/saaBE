@@ -19,6 +19,13 @@ tan medido como arrancó junio.
 
 ## ⚠ Julio es distinto de los seis anteriores, y hay que decirlo antes de tocar nada
 
+> **NOTA 2026-10-27 — lo de abajo sobre vacaciones (§1 y §3 bis) YA NO APLICA al motor actual.**
+> Aprobar una solicitud crea la novedad «Vacaciones pagadas» (concepto 12) y el motor ahora calcula
+> el sueldo sobre `días − días de vacación` (29 días de sueldo + vacaciones aparte, como el rol del
+> cliente). Ya no se «cancelan dos omisiones»: si se vuelve a contrastar julio con vacaciones
+> aprobadas, el sueldo bajará y el renglón de vacaciones aparecerá. Ver
+> `CICLO-APROBACION-VACACIONES.md`, paso 7. El texto histórico se deja como estaba.
+
 **1 · Vacaciones pagadas a tres personas en el rol del cliente** (concepto 12), las tres con menos
 de 30 días trabajados: **Caiza** (29 días), **Nieto** (29 días) y **Pardo** (26 días). **Nuestro
 motor no genera vacaciones pagadas y tampoco reduce los días trabajados** — verificado en código,

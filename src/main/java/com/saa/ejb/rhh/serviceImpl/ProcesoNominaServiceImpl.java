@@ -47,6 +47,7 @@ import com.saa.model.rhh.ResultadoCalculoNomina;
 import com.saa.model.rhh.ResultadoCalculoPeriodo;
 import com.saa.model.rhh.ValorNoPagado;
 import com.saa.rubros.RhhBaseCalculo;
+import com.saa.rubros.RhhCodigoAlternoConcepto;
 import com.saa.rubros.RhhEstadoNomina;
 import com.saa.rubros.RhhEstadoNovedadIess;
 import com.saa.rubros.RhhEstadoValorNoPagado;
@@ -449,6 +450,11 @@ public class ProcesoNominaServiceImpl implements ProcesoNominaService {
 			Double variacion = RedondeoNomina.redondea(Double.valueOf(
 					nomina.getBaseIess().doubleValue() - sueldoDeclarado.doubleValue()));
 			if (variacion.doubleValue() <= 0D) {
+				// Una pasada anterior pudo dejar una PENDIENTE que este recalculo ya no justifica
+				// (caso Diana: vacaciones sumadas al sueldo completo). Se anula; las ENVIADA o
+				// ACEPTADA no se tocan.
+				novedadIessService.anularVariacionPorExtrasPendiente(contrato.getCodigo(),
+						periodo.getFechaInicio(), periodo.getFechaFin(), usuario);
 				return;
 			}
 			novedadIessService.generarVariacionPorExtras(contrato.getCodigo(), periodo.getFechaFin(),
@@ -825,7 +831,20 @@ public class ProcesoNominaServiceImpl implements ProcesoNominaService {
 		Double diasTrabajados = calculaDiasTrabajados(contrato, periodo, prnm);
 
 		// --- Paso 4: sueldo del periodo ----------------------------------------------
-		Double sueldoPeriodo = calculaSueldoPeriodo(contrato, prnm, diasTrabajados, diasBase);
+		// LAS VACACIONES SE PAGAN CON SU CONCEPTO, NO CON EL SUELDO.
+		//
+		// Aprobar una solicitud crea la novedad «Vacaciones pagadas» (dias x valor del dia). Si el
+		// sueldo se calculara sobre todos los dias, el empleado cobraria 30 dias de sueldo MAS
+		// las vacaciones. Igual que el rol del cliente (GUION-MES-2026-07 §1: 29 dias de sueldo +
+		// vacaciones pagadas aparte), el sueldo sale de (dias - dias de vacacion).
+		//
+		// Solo el sueldo usa estos "dias de sueldo". diasTrabajados queda como DIAS DE SERVICIO
+		// para todo lo demas -- NMNADITR (que lee la planilla del IESS), base prorrateada de
+		// fondos de reserva y decimo cuarto --: las vacaciones son tiempo de servicio, no lo
+		// reducen.
+		Double diasVacacion = calculaDiasVacacionesPagadas(periodo, idEmpleado);
+		Double diasSueldo = Double.valueOf(Math.max(0D, diasTrabajados.doubleValue() - diasVacacion.doubleValue()));
+		Double sueldoPeriodo = calculaSueldoPeriodo(contrato, prnm, diasSueldo, diasBase);
 
 		// --- Nomina cabecera ---------------------------------------------------------
 		Nomina nomina = persistir
@@ -1224,6 +1243,26 @@ public class ProcesoNominaServiceImpl implements ProcesoNominaService {
 			dias = 0D;
 		}
 		return RedondeoNomina.redondeaCantidad(Double.valueOf(dias));
+	}
+
+	/**
+	 * Dias de vacaciones pagadas aprobadas del empleado en el periodo: la suma de la cantidad de
+	 * las novedades del concepto «Vacaciones pagadas» (codigo alterno 12, resuelto por empresa).
+	 *
+	 * @param periodo		: Periodo de nomina
+	 * @param idEmpleado	: Id del empleado
+	 * @return				: Dias de vacacion; 0 si no hay o la empresa no tiene el concepto
+	 * @throws Throwable	: Excepcion
+	 */
+	private Double calculaDiasVacacionesPagadas(PeriodoNomina periodo, Long idEmpleado) throws Throwable {
+		ConceptoNomina concepto = conceptoNominaDaoService.selectByCodigoAlterno(
+				Long.valueOf(RhhCodigoAlternoConcepto.VACACIONES_PAGADAS), periodo.getEmpresa().getCodigo());
+		if (concepto == null) {
+			return Double.valueOf(0D);
+		}
+		Double dias = novedadNominaDaoService.sumaCantidadAprobada(periodo.getCodigo(), idEmpleado,
+				concepto.getCodigo());
+		return dias != null ? dias : Double.valueOf(0D);
 	}
 
 	/**

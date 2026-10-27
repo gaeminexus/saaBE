@@ -98,6 +98,22 @@ public interface NovedadIessService extends EntityService<NovedadIess> {
 			LocalDate desde, LocalDate hasta, String usuario) throws Throwable;
 
 	/**
+	 * Anula las variaciones por extras PENDIENTES del contrato en la ventana del periodo, cuando el
+	 * recalculo ya no da variacion. Las que ya se enviaron o aceptaron no se tocan, igual que en
+	 * {@link #generarVariacionPorExtras}.
+	 *
+	 * @param idContrato	: Id del contrato
+	 * @param desde			: Fecha de inicio del periodo
+	 * @param hasta			: Fecha de fin del periodo
+	 * @param usuario		: Usuario que ejecuta
+	 * @return				: Cantidad de novedades anuladas
+	 * @throws Throwable	: Excepcion
+	 */
+	@TransactionAttribute(TransactionAttributeType.REQUIRED)
+	int anularVariacionPorExtrasPendiente(Long idContrato, LocalDate desde, LocalDate hasta,
+			String usuario) throws Throwable;
+
+	/**
 	 * Genera la novedad de cambio de relacion de trabajo o de actividad sectorial.
 	 *
 	 * @param idContrato		: Id del contrato

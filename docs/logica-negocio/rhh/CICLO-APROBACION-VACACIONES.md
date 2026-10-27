@@ -77,6 +77,22 @@ Pasos, en orden:
    el mismo tipo de bug silencioso que se estaba arreglando. La `descripcion` se
    graba como `"Solicitud de vacaciones #{codigo}"` — es el enlace que usa
    `anularAprobacion` para encontrar esta novedad después (no hay FK de SLCT a NVNM).
+   **Efecto en el motor de nómina (2026-10-27).** El sueldo del período ya no se calcula sobre
+   todos los días: `ProcesoNominaServiceImpl.calculaContrato` suma la `cantidad` de las novedades
+   del concepto «Vacaciones pagadas» (alterno 12, resuelto por empresa, `NVNMAPRB='S'`,
+   `NVNMESTD=1`) y calcula el sueldo sobre `días − días de vacación` (mínimo 0). Antes se pagaban
+   30 días de sueldo **más** la novedad (caso Diana Moscoso, octubre 2026: 8 días, 412,27), y el
+   imponible por encima del sueldo declarado generaba una `VARIACION_POR_EXTRAS` espuria.
+   - **Solo el sueldo** usa esos «días de sueldo». `diasTrabajados` sigue siendo el tiempo de
+     **servicio** para `NMNADITR` (que lee la planilla de control del IESS y el archivo del rol),
+     la base prorrateada de fondos de reserva y el décimo cuarto: las vacaciones no los reducen.
+   - La vacación se paga en el renglón de su concepto, a `valorDiaVacaciones`.
+   - Al recalcular, si la variación por extras da ≤ 0, se **anula** la `VARIACION_POR_EXTRAS`
+     PENDIENTE del contrato en la ventana del período (`NovedadIessService.anularVariacionPorExtrasPendiente`);
+     las ENVIADA/ACEPTADA no se tocan. Si el valor del día supera el sueldo diario queda el
+     importe residual real.
+   - Límite: la novedad cae entera en el período que contiene `fechaDesde`; una solicitud que
+     cruza de mes descuenta todos sus días en el primero.
 8. **Marca la solicitud**: `SLCTESTD='APROBADA'`, `SLCTAPRB`=nombre del usuario
    (resuelto de `idUsuario` vía `Usuario.getNombre()`, mismo criterio que
    `ConciliacionCierreServiceImpl.usuarioNombre`), `SLCTFHAP`=hoy, `SLCTDIAS`

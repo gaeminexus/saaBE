@@ -64,6 +64,25 @@ public class NovedadNominaDaoServiceImpl extends EntityDaoImpl<NovedadNomina> im
 	}
 
 	/* (non-Javadoc)
+	 * @see com.saa.ejb.rhh.dao.NovedadNominaDaoService#sumaCantidadAprobada(java.lang.Long, java.lang.Long, java.lang.Long)
+	 */
+	@Override
+	public Double sumaCantidadAprobada(Long idPeriodo, Long idEmpleado, Long idConcepto) throws Throwable {
+		Query query = em.createQuery(" select   coalesce(sum(t.cantidad), 0) "
+				+ " from     NovedadNomina t "
+				+ " where    t.periodoNomina.codigo = :idPeriodo "
+				+ "          and t.empleado.codigo = :idEmpleado "
+				+ "          and t.conceptoNomina.codigo = :idConcepto "
+				+ "          and t.aprobada = 'S' "
+				+ "          and t.estado = 1 ");
+		query.setParameter("idPeriodo", idPeriodo);
+		query.setParameter("idEmpleado", idEmpleado);
+		query.setParameter("idConcepto", idConcepto);
+		Object suma = query.getSingleResult();
+		return suma != null ? Double.valueOf(((Number) suma).doubleValue()) : Double.valueOf(0D);
+	}
+
+	/* (non-Javadoc)
 	 * @see com.saa.ejb.rhh.dao.NovedadNominaDaoService#selectPorDescripcion(java.lang.Long, java.lang.Long, java.lang.String)
 	 */
 	@SuppressWarnings("unchecked")
