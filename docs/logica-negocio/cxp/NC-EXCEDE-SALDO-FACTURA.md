@@ -172,8 +172,9 @@ Consulta agregada en la base, sin `in :ids` ni N+1 (los antecedentes de caída d
 3. **Devolución de Anticipo** (`cxp/forms/pagos/devolucion-anticipo/`): una segunda tabla «Notas de crédito con
    saldo» (`GET /ntcc/disponibles`) con su input de valor, igual que la de anticipos; un combo **Forma**
    (Transferencia / Cheque, default Transferencia); el total suma las dos tablas; el payload manda `formaPago` y
-   `notasCredito`. En el historial, la forma y el tipo de cada línea. El menú puede pasar a
-   `'Devolución Saldo a Favor'` (24) — **decisión del usuario**, por defecto queda el nombre actual.
+   `notasCredito`. En el historial, la forma y el tipo de cada línea. **Decidido por el usuario (2026-10-27):** la pantalla y su entrada de menú pasan a llamarse
+   `'Devolución Saldo a Favor'` (24 caracteres), porque desde ahí se devuelven anticipos y notas de crédito. La
+   ruta no cambia.
 
 ## 8. Trampas
 
