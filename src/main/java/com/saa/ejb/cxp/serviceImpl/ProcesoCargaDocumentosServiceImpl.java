@@ -1276,6 +1276,30 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
 
         validarSinPagosVigentes(doc, "anular el documento");
 
+        String tipoDoc = doc.getTipoTablaDestino();
+        Long idDocBD = doc.getIdDocumentoBD();
+
+        // docs/logica-negocio/cxp/ANULAR-DOCUMENTO-DESDE-BANDEJA.md §3.1.1: un documento registrado con
+        // el asiento todavía vivo no se anula: quedaría un asiento sin documento. Primero la contabilidad.
+        if (tipoDoc != null && idDocBD != null) {
+            com.saa.model.cnt.Asiento asientoVivo = obtenerAsientoDeDocumento(tipoDoc, idDocBD);
+            if (asientoVivo != null && asientoVivo.getEstado() != null
+                    && asientoVivo.getEstado().intValue() != com.saa.rubros.EstadoAsiento.ANULADO
+                    && asientoVivo.getEstado().intValue() != com.saa.rubros.EstadoAsiento.REVERSADO) {
+                throw new com.saa.basico.util.IncomeException("El documento tiene la contabilidad activa (asiento "
+                        + nvlStr(asientoVivo.getNumeroAlterno(), String.valueOf(asientoVivo.getCodigo()))
+                        + "). Anule primero la contabilidad.");
+            }
+        }
+
+        // §3.1.2: la retención recibida ya registrada se inactiva (cabecera y detalles) para que el ATS
+        // no la declare, y se reversa su aplicación sobre la factura de venta si quedó activa. Todo en
+        // esta misma transacción: si algo falla, no se anula nada.
+        String queSeInactivo = null;
+        if (idDocBD != null && ("RETENCION_COMPRA_V2".equals(tipoDoc) || "RETENCION_COMPRA".equals(tipoDoc))) {
+            queSeInactivo = inactivarRetencionRecibida(tipoDoc, idDocBD, doc, motivo, idUsuario);
+        }
+
         doc.setEstadoDocumento(EstadoDocumentoCxp.ANULADO);
         doc.setObservacion("ANULADO" + (motivo != null && !motivo.trim().isEmpty()
                 ? ": " + motivo.trim() : "") + ".");
@@ -1285,8 +1309,98 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         resultado.put("exito", true);
         resultado.put("idDocumentoCxp", idDocumentoCxp);
         resultado.put("estadoDocumento", doc.getEstadoDocumento());
-        resultado.put("mensaje", "Documento anulado. Este estado es definitivo: no se puede reprocesar.");
+        resultado.put("mensaje", "Documento anulado. Este estado es definitivo: no se puede reprocesar."
+                + (queSeInactivo != null ? " " + queSeInactivo : ""));
         return resultado;
+    }
+
+    /**
+     * Inactiva (estado 0) la retención recibida registrada y todos sus detalles, y reversa la
+     * aplicación ACTIVA que esa retención tenga sobre la factura de venta (APLC), con el reverso que ya
+     * existe en cxc (recalcula el estado de la factura). anularAsientoDeDocumento NO reversa la APLC ni
+     * toca estas tablas, por eso la APLC puede estar viva aquí. Misma transacción que quien llama.
+     *
+     * @return texto para el mensaje de respuesta: qué se inactivó
+     */
+    private String inactivarRetencionRecibida(String tipo, Long idRetencion, DocumentoCxp doc, String motivo,
+            Long idUsuario) throws Throwable {
+        boolean esV2 = "RETENCION_COMPRA_V2".equals(tipo);
+        String motivoReverso = "Anulación del documento " + doc.getId() + " desde la bandeja"
+                + (motivo != null && !motivo.trim().isEmpty() ? ": " + motivo.trim() : "");
+
+        // Primero la aplicación sobre la factura de venta (si no hay ninguna activa, devuelve 0)
+        int aplicacionesReversadas = aplicacionPagoCxcService.revertirAplicacionesDeDocumentoSinAsiento(
+                esV2 ? "RETENCION_V2" : "RETENCION", idRetencion, motivoReverso, idUsuario);
+
+        int detalles;
+        int cabeceras;
+        if (esV2) {
+            detalles = em.createQuery("update DetalleRetencionCompraV2 d set d.estado = :inactivo "
+                    + "where d.retencionCompraV2.id = :id and d.estado = :activo")
+                    .setParameter("inactivo", Long.valueOf(Estado.INACTIVO))
+                    .setParameter("activo", Long.valueOf(Estado.ACTIVO))
+                    .setParameter("id", idRetencion).executeUpdate();
+            cabeceras = em.createQuery("update RetencionCompraV2 r set r.estado = :inactivo "
+                    + "where r.id = :id and r.estado = :activo")
+                    .setParameter("inactivo", Long.valueOf(Estado.INACTIVO))
+                    .setParameter("activo", Long.valueOf(Estado.ACTIVO))
+                    .setParameter("id", idRetencion).executeUpdate();
+        } else {
+            detalles = em.createQuery("update DetalleRetencionCompra d set d.estado = :inactivo "
+                    + "where d.retencion.id = :id and d.estado = :activo")
+                    .setParameter("inactivo", Long.valueOf(Estado.INACTIVO))
+                    .setParameter("activo", Long.valueOf(Estado.ACTIVO))
+                    .setParameter("id", idRetencion).executeUpdate();
+            cabeceras = em.createQuery("update RetencionCompra r set r.estado = :inactivo "
+                    + "where r.id = :id and r.estado = :activo")
+                    .setParameter("inactivo", Long.valueOf(Estado.INACTIVO))
+                    .setParameter("activo", Long.valueOf(Estado.ACTIVO))
+                    .setParameter("id", idRetencion).executeUpdate();
+        }
+        em.flush();
+
+        System.out.println("✓ Retención recibida " + tipo + " id=" + idRetencion + " inactivada: cabecera="
+                + cabeceras + " | detalles=" + detalles + " | aplicaciones reversadas=" + aplicacionesReversadas);
+
+        return "Retención inactivada (" + detalles + " detalle(s)): no se declarará en el ATS."
+                + (aplicacionesReversadas > 0
+                        ? " Se reversó " + aplicacionesReversadas + " aplicación(es) sobre la factura de venta."
+                        : "");
+    }
+
+    /**
+     * Asiento contable del documento ya registrado en su tabla, o null si no tiene. Mismo criterio por
+     * tipo que {@link #anularAsientoDeDocumento}.
+     */
+    private com.saa.model.cnt.Asiento obtenerAsientoDeDocumento(String tipo, Long idDocBD) {
+        switch (tipo) {
+            case "FACTURA_COMPRA": {
+                FacturaCompra fc = em.find(FacturaCompra.class, idDocBD);
+                return fc != null ? fc.getAsiento() : null;
+            }
+            case "NOTA_CREDITO_COMPRA": {
+                com.saa.model.cxp.NotaCreditoCompra nc = em.find(com.saa.model.cxp.NotaCreditoCompra.class, idDocBD);
+                return nc != null ? nc.getAsiento() : null;
+            }
+            case "NOTA_DEBITO_COMPRA": {
+                com.saa.model.cxp.NotaDebitoCompra nd = em.find(com.saa.model.cxp.NotaDebitoCompra.class, idDocBD);
+                return nd != null ? nd.getAsiento() : null;
+            }
+            case "LIQUIDACION_COMPRA_COMPRA": {
+                com.saa.model.cxp.LiquidacionCompraCompra lq = em.find(com.saa.model.cxp.LiquidacionCompraCompra.class, idDocBD);
+                return lq != null ? lq.getAsiento() : null;
+            }
+            case "RETENCION_COMPRA": {
+                com.saa.model.cxp.RetencionCompra rc = em.find(com.saa.model.cxp.RetencionCompra.class, idDocBD);
+                return rc != null ? rc.getAsiento() : null;
+            }
+            case "RETENCION_COMPRA_V2": {
+                com.saa.model.cxp.RetencionCompraV2 rc = em.find(com.saa.model.cxp.RetencionCompraV2.class, idDocBD);
+                return rc != null ? rc.getAsiento() : null;
+            }
+            default:
+                return null;
+        }
     }
 
     /**

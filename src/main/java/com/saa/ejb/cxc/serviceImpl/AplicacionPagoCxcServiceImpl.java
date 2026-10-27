@@ -1039,6 +1039,32 @@ public class AplicacionPagoCxcServiceImpl implements AplicacionPagoCxcService {
 	 * @param motivo     : Motivo de la reversión
 	 * @throws Throwable : Excepcion
 	 */
+	@Override
+	public int revertirAplicacionesDeDocumentoSinAsiento(String tipoDocumento, Long idDocumento, String motivo,
+			Long idUsuario) throws Throwable {
+
+		System.out.println("=== revertirAplicacionesDeDocumentoSinAsiento (CXC) | tipo=" + tipoDocumento
+				+ " | documento=" + idDocumento + " ===");
+
+		List<AplicacionPagoCxc> aplicaciones =
+				aplicacionPagoCxcDaoService.selectActivasByDocumento(tipoDocumento, idDocumento);
+
+		int reversadas = 0;
+		for (AplicacionPagoCxc aplicacion : aplicaciones) {
+			// Solo marca REVERSADO y recalcula la factura: ni asiento ni movimiento bancario.
+			aplicacion.setEstado(Long.valueOf(EstadoAplicacionPago.REVERSADO));
+			aplicacion.setObservacion(nvl(aplicacion.getObservacion(), "")
+					+ " | REVERSADA: " + ((motivo != null && !motivo.trim().isEmpty())
+							? motivo : "Anulación del documento de origen"));
+			em.merge(aplicacion);
+			em.flush();
+			recalcularEstadoPagoDeAplicacion(aplicacion);
+			reversadas++;
+		}
+		System.out.println("✓ Aplicaciones reversadas (sin tocar asiento): " + reversadas);
+		return reversadas;
+	}
+
 	private void revierteUnaAplicacion(AplicacionPagoCxc aplicacion, String motivo, Long idUsuario) throws Throwable {
 
 		Long idAsiento = (aplicacion.getAsiento() != null)

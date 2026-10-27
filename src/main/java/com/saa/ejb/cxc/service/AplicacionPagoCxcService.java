@@ -171,6 +171,22 @@ public interface AplicacionPagoCxcService extends EntityService<AplicacionPagoCx
 			Long idUsuario) throws Throwable;
 
 	/**
+	 * Igual que {@link #revertirAplicacionesDeDocumento(String, Long, String, Long)} pero SIN tocar el
+	 * asiento ni el movimiento bancario: solo marca cada aplicación REVERSADO y recalcula el estado de
+	 * pago de la factura de venta. Para cuando el asiento del documento ya fue anulado aparte y volver a
+	 * pasar por {@code AsientoService.anulaAsiento} reescribiría la auditoría de esa anulación (período
+	 * mayorizado). Lo usa la anulación de una retención recibida desde la bandeja de cxp.
+	 * @param tipoDocumento : RETENCION, RETENCION_V2, NOTA_CREDITO o NOTA_DEBITO
+	 * @param idDocumento   : Id del documento anulado
+	 * @param motivo        : Motivo de la anulación
+	 * @param idUsuario     : Id del usuario que anula
+	 * @return              : Cantidad de aplicaciones reversadas
+	 * @throws Throwable    : Excepcion
+	 */
+	int revertirAplicacionesDeDocumentoSinAsiento(String tipoDocumento, Long idDocumento, String motivo,
+			Long idUsuario) throws Throwable;
+
+	/**
 	 * Reversa todas las aplicaciones activas de una factura de venta, al anularla.
 	 * @param idFactura  : Id de la factura anulada
 	 * @param motivo     : Motivo de la anulación
