@@ -68,3 +68,37 @@ Para **todo asiento automático** (el que arma el sistema, no el manual de conta
 El cambio es **central** (`generarAsiento`): cambia el tipo de **todos** los asientos automáticos, también los de `crd`
 (`omen-saa-1`, que hoy usa `CREDITOS`) y los que toca `lap-saa-1`. Hay que avisarles con autorización del usuario antes de
 subirlo. `omen-saa-1` además está cambiando validaciones de usuario en `cnt`.
+
+## 6. Lo que midió el inventario (omen-saa-2-be, 2026-10-27) y lo que define
+
+- **H1 — el tipo se busca solo por empresa + alterno** (`TipoAsientoDaoService.selectByAlterno`; `PLNTSSTM` no lo lee
+  nadie). El alterno **7 ya lo usaba `TipoAsientos.TRANSFERENCIAS`** (`generaCabeceraTransferencia`, legacy de tsr). Si
+  en una empresa hay otra fila con alterno 7, IN-A choca con ella. → El `e2-111` BLOQUE 0a lo mide. **La búsqueda de
+  7/8/9 se hace con un método nuevo que exige `PLNTSSTM = 1`**; el método viejo no se toca.
+- **H2 — los `codigoAlterno` que pasan los llamadores no sirven para saber el módulo** (3 = todas las compras y la
+  retención V2 emitida; 4 y 5 mezclan tesorería, cxc y cxp). **H3 — el módulo que se graba hoy es CXC por defecto**
+  (todo crd, todas las compras). Por eso el módulo origen **no** se deduce de lo que se graba hoy.
+- **Módulo origen, regla definitiva:**
+  - los métodos de negocio de `AsientoContableServiceImpl` llaman a una sobrecarga nueva de `generarAsiento` **con el
+    módulo explícito** (tabla de abajo);
+  - los llamadores externos que usan `generarAsiento` directo (6/7 args) se resuelven así, sin tocar su código:
+    alterno **1 → CRE** (todo crd), alterno **6 → RRH** (rhh), y si no, por el `moduloSistema` que pasan
+    (TESORERIA → TSR, CXP → CXP, RRHH → RRH, CXC → CXC). Así **no se toca código de `crd`**.
+
+  | Método | Módulo |
+  |---|---|
+  | factura, NC, ND, retención v1/v2 emitidas, anticipo de cliente, aplicación de anticipo de cliente, cobro por transferencia, retención recibida (v1/v2) | CXC |
+  | factura/NC/ND/liquidación de compra (incl. intermediario y reembolso), anticipo de proveedor, devolución de saldo a favor, aplicación de anticipo de proveedor, pago por transferencia a proveedor | CXP |
+  | egreso e ingreso de tesorería, egreso contra anticipo, gasto/aplicación/reposición/ajuste de caja chica | TSR |
+  | anticipo de empleado | RRH |
+  | liquidación de compra emitida por cxc | CXC |
+
+- **Asientos que no pasan por `generarAsiento`:** el reverso conserva tipo **y módulo** del original y toma **su propio**
+  consecutivo de módulo; la copia (`generaCopia`) y los manuales (`POST/PUT /asnt`) quedan **sin módulo**; el cierre de
+  período no cambia. El legacy de tsr (`insertarCabeceraAsiento`: cheques, cobros, depósitos, débitos/créditos, pagos,
+  transferencias) crea la cabecera **antes** que las líneas: en esta pasada **no** se le aplica la regla; se mide si se usa
+  todavía (asientos de octubre de esos tipos) y se decide aparte.
+- **No hay nada que distinga un asiento manual de uno automático** en la entidad: la regla se aplica solo en el camino de
+  `generarAsiento`, que es por definición automático.
+- **Consecutivos sin protección:** `numeroMesTipo` es MAX+1 sin bloqueo ni UK; el de módulo copia el mismo patrón (mismo
+  riesgo de carrera, ya existente). No se agrega UK en esta pasada.
