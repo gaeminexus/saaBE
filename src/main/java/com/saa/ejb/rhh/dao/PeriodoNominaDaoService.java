@@ -33,4 +33,15 @@ public interface PeriodoNominaDaoService  extends EntityDao<PeriodoNomina>  {
 	 */
 	PeriodoNomina selectByFechaEmpresa(Long idEmpresa, LocalDate fecha) throws Throwable;
 
+	/**
+	 * Recupera el ultimo periodo MENSUAL CERRADO de una empresa, el de mayor anio y mes. Es el
+	 * corte natural de la acreditacion de vacaciones: los periodos de decimos, utilidades y
+	 * liquidacion no marcan hasta donde llego la nomina del mes.
+	 *
+	 * @param idEmpresa		: Id de la empresa
+	 * @return				: El periodo, o null si la empresa no ha cerrado ninguno
+	 * @throws Throwable	: Excepcion
+	 */
+	PeriodoNomina selectUltimoMensualCerrado(Long idEmpresa) throws Throwable;
+
 }

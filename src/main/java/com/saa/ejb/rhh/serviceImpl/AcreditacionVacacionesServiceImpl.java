@@ -1,22 +1,34 @@
 package com.saa.ejb.rhh.serviceImpl;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.rhh.dao.AcumuladoNominaDaoService;
 import com.saa.ejb.rhh.dao.ContratoEmpleadoDaoService;
+import com.saa.ejb.rhh.dao.CorridaAcreditacionVacacionesDaoService;
 import com.saa.ejb.rhh.dao.ParametroNominaDaoService;
+import com.saa.ejb.rhh.dao.PeriodoNominaDaoService;
 import com.saa.ejb.rhh.dao.SaldoVacacionesDaoService;
 import com.saa.ejb.rhh.service.AcreditacionVacacionesService;
+import com.saa.ejb.rhh.service.CorridaAcreditacionVacacionesService;
+import com.saa.ejb.rhh.service.dto.EstadoAcreditacionVacaciones;
 import com.saa.ejb.rhh.util.RedondeoNomina;
 import com.saa.model.rhh.ContratoEmpleado;
+import com.saa.model.rhh.CorridaAcreditacionVacaciones;
 import com.saa.model.rhh.Empleado;
 import com.saa.model.rhh.ParametroNomina;
+import com.saa.model.rhh.PeriodoNomina;
 import com.saa.model.rhh.SaldoVacaciones;
+import com.saa.model.scp.Empresa;
+import com.saa.rubros.RhhEstadoCorridaAcreditacion;
 import com.saa.rubros.RhhEstadoPeriodoNomina;
 import com.saa.rubros.RhhModalidadVacaciones;
+import com.saa.rubros.RhhOrigenCorridaAcreditacion;
 import com.saa.rubros.RhhTipoAcumulado;
 import com.saa.rubros.RhhTipoProvision;
 
@@ -78,12 +90,94 @@ public class AcreditacionVacacionesServiceImpl implements AcreditacionVacaciones
 	@EJB
 	private AcumuladoNominaDaoService acumuladoNominaDaoService;
 
+	@EJB
+	private CorridaAcreditacionVacacionesDaoService corridaAcreditacionVacacionesDaoService;
+
+	@EJB
+	private CorridaAcreditacionVacacionesService corridaAcreditacionVacacionesService;
+
+	@EJB
+	private PeriodoNominaDaoService periodoNominaDaoService;
+
 	/* (non-Javadoc)
 	 * @see com.saa.ejb.rhh.service.AcreditacionVacacionesService#acreditar(java.lang.Long, java.time.LocalDate, java.lang.String)
 	 */
 	@Override
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
 	public int acreditar(Long idEmpresa, LocalDate fechaCorte, String usuario) throws Throwable {
+		return acreditar(idEmpresa, fechaCorte, usuario, RhhOrigenCorridaAcreditacion.MANUAL);
+	}
+
+	/* (non-Javadoc)
+	 * @see com.saa.ejb.rhh.service.AcreditacionVacacionesService#acreditar(java.lang.Long, java.time.LocalDate, java.lang.String, java.lang.String)
+	 */
+	@Override
+	@TransactionAttribute(TransactionAttributeType.REQUIRED)
+	public int acreditar(Long idEmpresa, LocalDate fechaCorte, String usuario, String origen) throws Throwable {
+		System.out.println("Ingresa al metodo acreditar (con bitacora) de acreditacionVacaciones service, empresa: "
+				+ idEmpresa + ", corte: " + fechaCorte + ", origen: " + origen);
+
+		Long modalidad = null;
+		try {
+			if (fechaCorte != null) {
+				ParametroNomina prnm = parametroNominaDaoService.selectByAnio(idEmpresa,
+						Integer.valueOf(fechaCorte.getYear()));
+				if (prnm != null) {
+					// null en PRNMMDVC se trata como aniversario, igual que el motor.
+					modalidad = prnm.getModalidadVacaciones() != null
+							? prnm.getModalidadVacaciones() : Long.valueOf(RhhModalidadVacaciones.POR_ANIVERSARIO);
+				}
+			}
+			int acreditados = acreditarSaldos(idEmpresa, fechaCorte, usuario);
+			// La fila OK va en la MISMA transaccion que los saldos: o quedan los dos o ninguno.
+			corridaAcreditacionVacacionesDaoService.save(construyeCorrida(idEmpresa, fechaCorte, modalidad,
+					Integer.valueOf(acreditados), origen, RhhEstadoCorridaAcreditacion.OK, null, usuario), null);
+			return acreditados;
+		} catch (Throwable e) {
+			// La fila ERROR va en OTRA transaccion: la de esta corrida se va a revertir y se
+			// llevaria la constancia con ella. Si ni eso se puede grabar, se loguea y se
+			// propaga el error ORIGINAL, que es el que importa.
+			try {
+				if (fechaCorte != null) {
+					corridaAcreditacionVacacionesService.registrarEnTransaccionAparte(construyeCorrida(idEmpresa,
+							fechaCorte, modalidad, Integer.valueOf(0), origen, RhhEstadoCorridaAcreditacion.ERROR,
+							e.getMessage() != null ? e.getMessage() : e.getClass().getName(), usuario));
+				}
+			} catch (Throwable ignorada) {
+				System.out.println("No se pudo grabar la fila ERROR de la bitacora de acreditacion: "
+						+ ignorada.getMessage());
+			}
+			throw e;
+		}
+	}
+
+	/**
+	 * Arma una fila de la bitacora RHH.CRVC. La empresa va como referencia por codigo: la fila
+	 * puede grabarse en otra transaccion y no hay por que releerla.
+	 */
+	private CorridaAcreditacionVacaciones construyeCorrida(Long idEmpresa, LocalDate fechaCorte, Long modalidad,
+			Integer acreditados, String origen, String estado, String mensaje, String usuario) {
+		CorridaAcreditacionVacaciones corrida = new CorridaAcreditacionVacaciones();
+		Empresa empresa = new Empresa();
+		empresa.setCodigo(idEmpresa);
+		corrida.setEmpresa(empresa);
+		corrida.setAnio(Integer.valueOf(fechaCorte.getYear()));
+		corrida.setFechaCorte(fechaCorte);
+		corrida.setModalidad(modalidad);
+		corrida.setEmpleadosAcreditados(acreditados);
+		corrida.setOrigen(origen);
+		corrida.setEstado(estado);
+		// CRVCMNSJ es VARCHAR2(1000): un mensaje mas largo reventaria el INSERT del propio error.
+		corrida.setMensaje(mensaje != null && mensaje.length() > 1000 ? mensaje.substring(0, 1000) : mensaje);
+		corrida.setUsuarioRegistro(usuario);
+		corrida.setFechaRegistro(LocalDateTime.now());
+		return corrida;
+	}
+
+	/**
+	 * Cuerpo de la acreditacion, sin bitacora: caduca, recorre los activos y escribe los saldos.
+	 */
+	private int acreditarSaldos(Long idEmpresa, LocalDate fechaCorte, String usuario) throws Throwable {
 		System.out.println("Ingresa al metodo acreditar de acreditacionVacaciones service, empresa: "
 				+ idEmpresa + ", corte: " + fechaCorte);
 
@@ -726,5 +820,80 @@ public class AcreditacionVacacionesServiceImpl implements AcreditacionVacaciones
 					+ " y la empresa " + idEmpresa + ".");
 		}
 		return prnm;
+	}
+
+	/* (non-Javadoc)
+	 * @see com.saa.ejb.rhh.service.AcreditacionVacacionesService#estadoAcreditacion(java.lang.Long)
+	 */
+	@Override
+	@TransactionAttribute(TransactionAttributeType.SUPPORTS)
+	public EstadoAcreditacionVacaciones estadoAcreditacion(Long idEmpresa) throws Throwable {
+		System.out.println("Ingresa al metodo estadoAcreditacion de acreditacionVacaciones service, empresa: "
+				+ idEmpresa);
+		if (idEmpresa == null) {
+			throw new IncomeException("Debe indicar la empresa para consultar el estado de la acreditacion.");
+		}
+		LocalDate hoy = LocalDate.now();
+		EstadoAcreditacionVacaciones estado = new EstadoAcreditacionVacaciones();
+
+		CorridaAcreditacionVacaciones ultima = corridaAcreditacionVacacionesDaoService.selectUltimaByEmpresa(idEmpresa);
+		if (ultima != null) {
+			EstadoAcreditacionVacaciones.UltimaCorrida resumen = new EstadoAcreditacionVacaciones.UltimaCorrida();
+			resumen.setFechaCorte(ultima.getFechaCorte());
+			resumen.setFechaEjecucion(ultima.getFechaRegistro());
+			resumen.setUsuario(ultima.getUsuarioRegistro());
+			resumen.setOrigen(ultima.getOrigen());
+			resumen.setEstado(ultima.getEstado());
+			resumen.setMensaje(ultima.getMensaje());
+			resumen.setEmpleadosAcreditados(ultima.getEmpleadosAcreditados());
+			estado.setUltimaCorrida(resumen);
+		}
+
+		PeriodoNomina periodo = periodoNominaDaoService.selectUltimoMensualCerrado(idEmpresa);
+		if (periodo != null) {
+			EstadoAcreditacionVacaciones.UltimoPeriodoCerrado cerrado = new EstadoAcreditacionVacaciones.UltimoPeriodoCerrado();
+			cerrado.setAnio(periodo.getAnio());
+			cerrado.setMes(periodo.getMes());
+			cerrado.setFechaFin(periodo.getFechaFin());
+			estado.setUltimoPeriodoCerrado(cerrado);
+		}
+		estado.setCortePropuesto(periodo != null && periodo.getFechaFin() != null ? periodo.getFechaFin() : hoy);
+
+		// «Activos» es EXACTAMENTE el selector de acreditar: si aqui se usara otro, el aviso
+		// y la corrida discreparian sobre quien deberia tener saldo.
+		Integer anio = Integer.valueOf(hoy.getYear());
+		Map<Long, EstadoAcreditacionVacaciones.EmpleadoSinSaldo> sinSaldo =
+				new LinkedHashMap<Long, EstadoAcreditacionVacaciones.EmpleadoSinSaldo>();
+		List<Long> revisados = new ArrayList<Long>();
+		for (ContratoEmpleado contrato : contratoEmpleadoDaoService.selectActivosEnPeriodo(
+				idEmpresa, LocalDate.of(anio.intValue(), 1, 1), hoy)) {
+			Empleado empleado = contrato.getEmpleado();
+			if (empleado == null || revisados.contains(empleado.getCodigo())) {
+				continue;
+			}
+			revisados.add(empleado.getCodigo());
+			if (saldoVacacionesDaoService.selectByEmpleadoYAnio(empleado.getCodigo(), anio) == null) {
+				EstadoAcreditacionVacaciones.EmpleadoSinSaldo faltante = new EstadoAcreditacionVacaciones.EmpleadoSinSaldo();
+				faltante.setCodigo(empleado.getCodigo());
+				faltante.setIdentificacion(empleado.getIdentificacion());
+				faltante.setNombre(((empleado.getApellidos() != null ? empleado.getApellidos() : "") + " "
+						+ (empleado.getNombres() != null ? empleado.getNombres() : "")).trim());
+				sinSaldo.put(empleado.getCodigo(), faltante);
+			}
+		}
+		estado.setEmpleadosSinSaldo(new ArrayList<EstadoAcreditacionVacaciones.EmpleadoSinSaldo>(sinSaldo.values()));
+		estado.setActivosSinSaldo(sinSaldo.size());
+
+		// Desactualizada: hay activos sin saldo, o la ultima corrida que SI acredito llego
+		// hasta un corte anterior al ultimo periodo cerrado. Las ERROR y las OMITIDA no
+		// acreditaron nada, por eso se mira la ultima OK y no la ultima a secas.
+		boolean cortePendiente = false;
+		if (periodo != null && periodo.getFechaFin() != null) {
+			CorridaAcreditacionVacaciones ultimaOk = corridaAcreditacionVacacionesDaoService.selectUltimaOkByEmpresa(idEmpresa);
+			cortePendiente = ultimaOk == null || ultimaOk.getFechaCorte() == null
+					|| ultimaOk.getFechaCorte().isBefore(periodo.getFechaFin());
+		}
+		estado.setDesactualizada(cortePendiente || !sinSaldo.isEmpty());
+		return estado;
 	}
 }

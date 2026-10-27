@@ -26,6 +26,7 @@ public interface NombreEntidadesRhh {
     String RESUMEN_NOMINA        = "ResumenNomina";
     String ROL_PAGO              = "RolPago";
     String SALDO_VACACIONES      = "SaldoVacaciones";
+    String CORRIDA_ACREDITACION_VACACIONES = "CorridaAcreditacionVacaciones";
     String SOLICITUD_VACACIONES  = "SolicitudVacaciones";
     String DETALLE_CONSUMO_VACACIONES = "DetalleConsumoVacaciones";
     String TIPO_CONTRATO_EMPLEADO= "TipoContratoEmpleado";

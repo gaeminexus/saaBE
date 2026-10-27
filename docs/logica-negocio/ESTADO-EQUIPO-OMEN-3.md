@@ -1,7 +1,7 @@
 # ESTADO — equipo `omen-saa-3` (sesión iniciada el 2026-09-28)
 
 **Árbitro:** `omen-saa-3-arb` (OMEN) · **Agentes:** `omen-saa-3-be`, `omen-saa-3-fe` · **Marcador de commit:** `omen3` · **Scripts:** prefijo `e3-`
-**Alcance dado por el usuario:** rhh, cxp, pagos, cnt, tsr, cxc, crd. **NO TOCAR:** sin definir todavía.
+**Alcance dado por el usuario:** rhh, cxp, pagos, cnt, tsr, cxc, crd. **NO TOCAR:** ninguno — el usuario autorizó tocar cualquier módulo (2026-10-27). Igual: `git status` + `git log -3` antes de tocar un archivo de otro equipo.
 **Lo mantiene SOLO este equipo.** No confundir con `ESTADO-CXP-CXC-TSR-RHH-SRI.md`, que es del `omen-saa-3` anterior (relevado el 2026-09-01) y está congelado al 2026-08-31.
 
 > ⚠️ **Convivencia:** `omen-saa-2` estaba activo el 2026-09-28 sobre rhh/cxp/cxc/tsr/pagos/cnt/sri, y
@@ -26,7 +26,19 @@
 | 13 | rhh — rol de pagos consolidado: el pie no totalizaba sueldo base, aporte personal ni retención de IR | ✅ entregado, fill OK; espera despliegue | `28bd5601` |
 | 14 | **producción — ORA-04036 (PGA) al confirmar el pago 769**: SELECT de 431 LEFT JOIN (254 de empresa/usuario y jerarquía) al cargar ANTE→PGTR | 🔵 `hibernate.max_fetch_depth=2` (global, relaciones siguen EAGER). El usuario lo sube **directo al .4 sin pasar por pruebas** (2026-10-19). **Falta:** su reporte; vigilar lentitud en procesos por lotes y `Unable to find … with id` | `04cecc37` |
 
+| 16 | rhh — vacaciones (2026-10-27): 14 de 21 activos sin SLDV 2026 (única corrida: 27-08, CONTABILIDAD, corte 26-08, modo aniversario). **Usuario corre «Acreditar vacaciones» al 30-09-2026.** Aprobado: bitácora de corridas (e3-12), `GET /sldv/estadoAcreditacion`, alerta real + botón «Acreditar ahora», y acreditación automática al cerrar nómina (una llamada REQUIRES_NEW en `cerrarPeriodo`, archivo de omen2) | ✅ BE+FE entregados. **Orden:** correr `e3-12` (BLOQUE 1 o 1-B en DBeaver) ANTES del WAR. La automática va en `PeriodoNominaRest.cerrar` después del commit del cierre (no en `cerrarPeriodo`: `valorDia` solo ve periodos cerrados confirmados); en modalidad aniversario la automática queda OMITIDA (duplicaría la apertura) | ver commits del 2026-10-27 |
+| 17 | rhh — LQEX, pedido de Ana (22-10, vía omen2): combo «tipo» con búsqueda y cuenta automática cuando el tipo tiene una sola sugerida (tipos 1-4 tienen dos: espera al contador) | ✅ FE entregado | saaFE `1d75411` |
+| 18 | rhh — novedades IESS: registrar a mano fallaba con «Not able to deserialize data provided» (el FE mandaba `usuario`, la entidad tiene `usuarioRegistro`); combo Colaborador mostraba cesantes y se veía partido | ✅ FE: arreglo `a4e73ae`; combo: activos + licencia/suspendidos, cesante solo con salida en los últimos 60 días sin AVISO_DE_SALIDA, opción en una línea (opt-in en `app-campo-formulario`) | saaFE `a4e73ae` |
+| 15 | Documentación técnica para la auditoría (inventario, arquitectura, módulos, usuarios) | 🔵 Claude Docs + `docs/regulatorio/DOCUMENTACION-TECNICA-SAA-AUDITORIA.docx`; servidores levantados el 2026-10-25 con `docs/infra/auditoria/levantamiento-servidor.ps1`. **Falta:** [Completar] de la entidad y decisión del usuario sobre la sección 5.6 (brechas) | `f531db16` |
+
 ## Hallazgos (lo que costaba ver)
+
+- **Levantamiento de servidores (2026-10-25), corrige lo que decían los docs:** los dos son **Dell PowerEdge R360, Xeon 6353P (8n/16h), 32 GB, PERC H355**, no R350/E-2314 como decía el memorando de septiembre. El .4 se llama **SRVDEV2** (aunque es producción) y el .3 SRVDEV1, ambos en el dominio `asoprep.com.ec`. La base es **Oracle AI Database 26ai Free 23.26.0** en producción (23.26.3 en el .3), no «23ai».
+- **La clave del usuario SCP (el del datasource) vence el 2027-03-07** (perfil DEFAULT, 180 días): si vence, el SAA deja de conectarse. Todos los esquemas y SCP tienen rol **DBA**.
+- **Las claves de los usuarios del SAA se guardan con codificación reversible** en `SCP.PDCN` característica 30 (ADMIN y JAGILA tienen el mismo valor; «CRUZ…» casi en claro). El script v1 las imprimió: corregido para excluir la 30; los `.txt` del 2026-10-25 son sensibles.
+- **No hay respaldo programado** en ningún servidor (sin Windows Server Backup ni tareas). Docker Desktop corre en la sesión del usuario (servicio en Manual).
+- **Permisos del SAA en producción: 0 de 305 cargados y el interruptor en 0**: todo usuario activo ve todo. 21 cuentas (19 activas), con genéricas ADMIN, TEST y USUARIO 1; el aprobador de CxP es el nodo raíz y el usuario de caja es USUARIO 1.
+- **En el servidor de producción hay software ajeno al SAA**: WampServer (Apache 80/8085, MySQL 3306/3307, tarea «Gestor_Documental») y Oracle XE 21c (detenido). El firewall de Windows abre 1521/8080/3389 desde cualquier origen; RDP sin NLA; SRVDEV2 sin parches desde julio de 2026.
 
 - **DBeaver se saltó en silencio un bloque PL/SQL** (`e3-07`, con un comentario `q'[...]'`) y el control posterior salió «vacío» sin dar error. Antes de dar por corrido un script, mirar que el control traiga las filas esperadas. Ante la duda, entregar la variante con sentencias sueltas.
 - **Los periodos contables se ordenaban por `PRDOCDGO`**, no por fecha. Insertar meses anteriores (2025 del cuadre) los habría puesto «después» de 2026 y roto mayorización, saldos bancarios y balances. Además, **un periodo MAYORIZADO no bloquea asientos nuevos**: el control es código muerto (diagnosticado, sin activar, decide el usuario).

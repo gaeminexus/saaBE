@@ -14,6 +14,8 @@ import java.util.List;
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.rhh.dao.PeriodoNominaDaoService;
 import com.saa.model.rhh.PeriodoNomina;
+import com.saa.rubros.RhhEstadoPeriodoNomina;
+import com.saa.rubros.RhhTipoPeriodoNomina;
 
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;
@@ -74,6 +76,27 @@ public class PeriodoNominaDaoServiceImpl extends EntityDaoImpl<PeriodoNomina>  i
 				+ "          and t.fechaFin >= :fecha ");
 		query.setParameter("idEmpresa", idEmpresa);
 		query.setParameter("fecha", fecha);
+		List<PeriodoNomina> encontrados = query.getResultList();
+		return (encontrados == null || encontrados.isEmpty()) ? null : encontrados.get(0);
+	}
+
+	/* (non-Javadoc)
+	 * @see com.saa.ejb.rhh.dao.PeriodoNominaDaoService#selectUltimoMensualCerrado(java.lang.Long)
+	 */
+	@SuppressWarnings("unchecked")
+	@Override
+	public PeriodoNomina selectUltimoMensualCerrado(Long idEmpresa) throws Throwable {
+		System.out.println("Ingresa al metodo selectUltimoMensualCerrado de PeriodoNomina, empresa: " + idEmpresa);
+		Query query = em.createQuery(" select   t "
+				+ " from     PeriodoNomina t "
+				+ " where    t.empresa.codigo = :idEmpresa "
+				+ "          and t.estado = :cerrado "
+				+ "          and t.tipoPeriodo = :mensual "
+				+ " order by t.anio desc, t.mes desc, t.codigo desc ");
+		query.setParameter("idEmpresa", idEmpresa);
+		query.setParameter("cerrado", Long.valueOf(RhhEstadoPeriodoNomina.CERRADO));
+		query.setParameter("mensual", Long.valueOf(RhhTipoPeriodoNomina.MENSUAL));
+		query.setMaxResults(1);
 		List<PeriodoNomina> encontrados = query.getResultList();
 		return (encontrados == null || encontrados.isEmpty()) ? null : encontrados.get(0);
 	}

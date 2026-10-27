@@ -42,6 +42,34 @@ public interface AcreditacionVacacionesService {
 	int acreditar(Long idEmpresa, LocalDate fechaCorte, String usuario) throws Throwable;
 
 	/**
+	 * Igual que {@link #acreditar(Long, LocalDate, String)} indicando el origen de la corrida, y
+	 * deja asentada la corrida en la bitacora RHH.CRVC: la fila OK en la misma transaccion que
+	 * los saldos, y la fila ERROR en una transaccion aparte para que no se pierda con el
+	 * rollback.
+	 *
+	 * @param idEmpresa		: Id de la empresa
+	 * @param fechaCorte	: Fecha a la que se evalua la antiguedad
+	 * @param usuario		: Usuario que ejecuta
+	 * @param origen		: {@link com.saa.rubros.RhhOrigenCorridaAcreditacion}
+	 * @return				: Numero de periodos acreditados
+	 * @throws Throwable	: Excepcion
+	 */
+	@TransactionAttribute(TransactionAttributeType.REQUIRED)
+	int acreditar(Long idEmpresa, LocalDate fechaCorte, String usuario, String origen) throws Throwable;
+
+	/**
+	 * Estado de la acreditacion del anio en curso: ultima corrida de la bitacora, ultimo periodo
+	 * mensual cerrado, corte propuesto y los activos que no tienen saldo. «Activos» es el mismo
+	 * selector que usa acreditar (<code>selectActivosEnPeriodo</code> del 1 de enero a hoy).
+	 *
+	 * @param idEmpresa		: Id de la empresa
+	 * @return				: El estado
+	 * @throws Throwable	: Excepcion
+	 */
+	@TransactionAttribute(TransactionAttributeType.SUPPORTS)
+	com.saa.ejb.rhh.service.dto.EstadoAcreditacionVacaciones estadoAcreditacion(Long idEmpresa) throws Throwable;
+
+	/**
 	 * Deshace una acreditacion anual completa: borra los saldos de ese anio y desmarca
 	 * la caducidad que esa misma corrida provoco (acreditar caduca antes de acreditar).
 	 * Existe porque hasta el 2026-08-27 no habia forma de deshacer una acreditacion

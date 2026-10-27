@@ -5,6 +5,7 @@ import java.util.Map;
 
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.ejb.rhh.dao.PeriodoNominaDaoService;
+import com.saa.ejb.rhh.service.CierreNominaVacacionesService;
 import com.saa.ejb.rhh.service.ContabilizacionNominaService;
 import com.saa.ejb.rhh.service.PeriodoNominaService;
 import com.saa.ejb.rhh.service.ProcesoNominaService;
@@ -44,6 +45,9 @@ public class PeriodoNominaRest {
 
     @EJB
     private ContabilizacionNominaService contabilizacionNominaService;
+
+    @EJB
+    private CierreNominaVacacionesService cierreNominaVacacionesService;
 
     @Context
     private UriInfo context;
@@ -277,6 +281,17 @@ public class PeriodoNominaRest {
         System.out.println("LLEGA AL SERVICIO CERRAR - PERIODONOMINA, periodo: " + idPeriodo);
         try {
             procesoNominaService.cerrarPeriodo(idPeriodo, usuario);
+            // El cierre ya esta confirmado (su transaccion termino al volver de arriba). La
+            // acreditacion se dispara DESPUES y no puede deshacerlo: no lanza, y si falla
+            // devuelve el aviso. Va aqui y no dentro de cerrarPeriodo porque el valor del dia
+            // de vacaciones lee solo periodos CERRADOS ya confirmados: dentro de la transaccion
+            // del cierre no veria el mes que se acaba de cerrar.
+            String avisoAcreditacion = cierreNominaVacacionesService.acreditarAlCerrarPeriodo(idPeriodo, usuario);
+            if (avisoAcreditacion != null) {
+                return Response.status(Response.Status.OK)
+                        .entity(Map.of("avisoAcreditacion", avisoAcreditacion))
+                        .type(MediaType.APPLICATION_JSON).build();
+            }
             return Response.status(Response.Status.OK).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al cerrar el periodo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();

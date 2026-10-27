@@ -8,6 +8,7 @@ import com.saa.basico.util.DatosBusqueda;
 import com.saa.ejb.rhh.dao.SaldoVacacionesDaoService;
 import com.saa.ejb.rhh.service.AcreditacionVacacionesService;
 import com.saa.ejb.rhh.service.SaldoVacacionesService;
+import com.saa.ejb.rhh.service.dto.EstadoAcreditacionVacaciones;
 import com.saa.model.rhh.NombreEntidadesRhh;
 import com.saa.model.rhh.SaldoVacaciones;
 
@@ -146,6 +147,24 @@ public class SaldoVacacionesRest {
             return Response.status(Response.Status.OK).entity(acreditados).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al acreditar las vacaciones: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
+     * Estado de la acreditacion del anio en curso: ultima corrida de la bitacora RHH.CRVC,
+     * ultimo periodo mensual cerrado, corte propuesto, activos sin saldo y si esta
+     * desactualizada. De SOLO LECTURA.
+     */
+    @GET
+    @Path("/estadoAcreditacion/{idEmpresa}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response estadoAcreditacion(@PathParam("idEmpresa") Long idEmpresa) {
+        System.out.println("LLEGA AL SERVICIO ESTADO ACREDITACION - SALDOVACACIONES, empresa: " + idEmpresa);
+        try {
+            EstadoAcreditacionVacaciones estado = acreditacionVacacionesService.estadoAcreditacion(idEmpresa);
+            return Response.status(Response.Status.OK).entity(estado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al consultar el estado de la acreditacion: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
     }
 
