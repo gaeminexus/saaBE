@@ -183,4 +183,18 @@ public interface TipoAsientos {
 	 */
 	public static final int CREDITOS = 1;
 
+	/**
+	 * Asientos de APERTURA (saldos iniciales): arranque del SAA al 31-may-2025 con el B17 de mayo 2025
+	 * (proyecto cuadre Superintendencia, cambios C1/C2/C5). codigoAlterno = 8 en CNT.PLNT de la empresa
+	 * 1236, PLNTSSTM = 1, creado el 2026-10-28 en la base del proyecto (script 05 de cuadreSuper).
+	 *
+	 * <p><b>Choca con {@link TipoAsientoAutomatico#EG_A} (EG-A, alterno 8, PLNTSSTM = 1, vigente desde
+	 * 2026-11-01):</b> en una empresa que tenga los dos, {@code selectByAlternoSistema(8)} devuelve dos
+	 * filas y {@code tipoAutomatico} falla. El cargador de asientos manuales no usa esa busqueda (resuelve
+	 * por alterno + nombre, o por nombre), pero antes de crear EG-A en 1236 hay que mover APERTURA a un
+	 * alterno libre: docs/logica-negocio/cnt/CARGADOR-ASIENTOS-MANUALES.md §7 propone el 10 y su script.
+	 * Si se mueve, cambiar aqui el valor.</p>
+	 */
+	public static final int APERTURA = 8;
+
 }

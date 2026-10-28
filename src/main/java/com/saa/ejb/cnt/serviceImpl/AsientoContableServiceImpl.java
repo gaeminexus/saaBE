@@ -603,6 +603,37 @@ public class AsientoContableServiceImpl implements AsientoContableService {
             tipoAsiento = tipoAsientoService.selectById(idTipoAsiento);
         }
 
+        return grabarAsiento(idEmpresa, tipoAsiento, fechaAsiento, observaciones, usuario, lineas, moduloSistema,
+                automatico, moduloOrigen);
+    }
+
+    @Override
+    public Asiento generarAsientoManual(Long idEmpresa, TipoAsiento tipoAsiento,
+            LocalDate fechaAsiento, String observaciones, String usuario,
+            List<DetalleAsiento> lineas) throws Throwable {
+
+        System.out.println("=== generarAsientoManual | empresa=" + idEmpresa
+                + " | tipo=" + (tipoAsiento != null ? tipoAsiento.getCodigo() : null) + " ===");
+        if (tipoAsiento == null || tipoAsiento.getCodigo() == null) {
+            throw new IncomeException("generarAsientoManual: el tipo de asiento es obligatorio.");
+        }
+        // Asiento manual: tipo explicito (sin la regla IN-A / EG-A / DI-A), modulo CONTABILIDAD, sin modulo origen
+        // (DISENO-TIPOS-ASIENTO-AUTOMATICOS.md §2.6: los manuales no cambian).
+        return grabarAsiento(idEmpresa, tipoAsiento, fechaAsiento, observaciones, usuario, lineas,
+                Long.valueOf(ModuloSistema.CONTABILIDAD), false, null);
+    }
+
+    /**
+     * Pasos comunes de {@link #generarAsiento(Long, int, LocalDate, String, String, List, Long, String)} y
+     * {@link #generarAsientoManual}: empresa, cabecera, saveSingle (periodo, numero, numero alterno), lineas y
+     * validacion debe = haber. Con {@code automatico} (asiento del sistema con fecha desde 2026-11-01) se graba el
+     * modulo origen y su consecutivo mensual; los manuales van con false.
+     */
+    private Asiento grabarAsiento(Long idEmpresa, TipoAsiento tipoAsiento,
+            LocalDate fechaAsiento, String observaciones, String usuario,
+            List<DetalleAsiento> lineas, Long moduloSistema, boolean automatico, String moduloOrigen)
+            throws Throwable {
+
         // 2. Obtener Empresa
         Empresa empresa = em.find(Empresa.class, idEmpresa);
         if (empresa == null) {
