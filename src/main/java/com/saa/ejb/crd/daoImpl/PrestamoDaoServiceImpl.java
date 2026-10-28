@@ -113,6 +113,37 @@ public class PrestamoDaoServiceImpl extends EntityDaoImpl<Prestamo> implements P
 
     @Override
     @SuppressWarnings("unchecked")
+    public List<Prestamo> selectByEntidadYProductoVigentesAlCorte(Long codigoEntidad, Long codigoProducto,
+            java.time.LocalDateTime fechaCorte) throws Throwable {
+        System.out.println("PrestamoDaoServiceImpl.selectByEntidadYProductoVigentesAlCorte - entidad " + codigoEntidad
+            + ", producto " + codigoProducto + ", corte " + fechaCorte);
+        try {
+            String jpql = "SELECT p FROM Prestamo p " +
+                         "WHERE p.entidad.codigo = :codigoEntidad " +
+                         "AND p.producto.codigo = :codigoProducto " +
+                         "AND (p.idEstado IN (1, 2, 8, 10, 11) " +
+                         "  OR (p.idEstado IN (3, 4, 5, 9, 13) " +
+                         "      AND (p.fechaInicio IS NULL OR p.fechaInicio <= :fechaCorte) " +
+                         "      AND EXISTS (SELECT 1 FROM DetallePrestamo d0 WHERE d0.prestamo.codigo = p.codigo " +
+                         "          AND d0.fechaVencimiento <= :fechaCorte) " +
+                         "      AND EXISTS (SELECT 1 FROM DetallePrestamo d WHERE d.prestamo.codigo = p.codigo " +
+                         "          AND (d.estado IS NULL OR d.estado NOT IN (4, 7) " +
+                         "               OR d.fechaPagado IS NULL OR d.fechaPagado > :fechaCorte)))) " +
+                         "ORDER BY p.codigo";
+            Query query = em.createQuery(jpql);
+            query.setParameter("codigoEntidad", codigoEntidad);
+            query.setParameter("codigoProducto", codigoProducto);
+            query.setParameter("fechaCorte", fechaCorte);
+            return query.getResultList();
+        } catch (Exception e) {
+            System.err.println("Error en selectByEntidadYProductoVigentesAlCorte: " + e.getMessage());
+            e.printStackTrace();
+            return new java.util.ArrayList<>();
+        }
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
     public List<Prestamo> selectByRangoFechas(java.time.LocalDateTime fechaInicio, java.time.LocalDateTime fechaFin) throws Throwable {
         Query query = em.createQuery(
             "select p from Prestamo p " +

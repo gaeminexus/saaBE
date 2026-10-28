@@ -432,6 +432,46 @@ public class ProcesoMoraPrestamoServiceImpl implements ProcesoMoraPrestamoServic
         return capital > 0.0 ? redondear(capital * tasaDiaria * diasMora) : 0.0;
     }
 
+    @Override
+    public double recalcularMoraCuotaALaFecha(DetallePrestamo cuota, LocalDate fecha) throws Throwable {
+        if (cuota == null || fecha == null || cuota.getFechaVencimiento() == null) {
+            return 0.0;
+        }
+        Long estadoActual = cuota.getEstado();
+        if (estadoActual != null && (estadoActual == EstadoCuotaPrestamo.PAGADA
+                || estadoActual == EstadoCuotaPrestamo.CANCELADA_ANTICIPADA)) {
+            return nvl(cuota.getMora());
+        }
+        if (nvl(cuota.getMoraPagado()) > 0.0) {
+            return nvl(cuota.getMora());
+        }
+        double tasaDiaria = tasaDiariaDelPrestamo(cuota.getPrestamo(), false);
+        long diasMora = Math.max(0L, ChronoUnit.DAYS.between(cuota.getFechaVencimiento().toLocalDate(), fecha));
+        double moraNueva = diasMora > 0 ? calcularMoraCuota(cuota, tasaDiaria, fecha) : 0.0;
+
+        double moraAnterior = nvl(cuota.getMora());
+        double totalBase = redondear(nvl(cuota.getTotal()) - moraAnterior);
+        double totalNuevo = redondear(totalBase + moraNueva);
+        cuota.setMora(moraNueva);
+        cuota.setMoraCalculada(moraNueva);
+        cuota.setDiasMora(diasMora);
+        cuota.setTotal(totalNuevo);
+        cuota.setTotalConSeguro(totalNuevo);
+        cuota.setSaldoMora(moraNueva);
+        if (diasMora > 0) {
+            if (estadoActual == null || (estadoActual != EstadoCuotaPrestamo.EN_MORA
+                    && estadoActual != EstadoCuotaPrestamo.PARCIAL)) {
+                cuota.setEstado((long) EstadoCuotaPrestamo.EN_MORA);
+                cuota.setIdEstado((long) EstadoCuotaPrestamo.EN_MORA);
+            }
+        } else if (estadoActual != null && estadoActual == EstadoCuotaPrestamo.EN_MORA) {
+            cuota.setEstado((long) EstadoCuotaPrestamo.PENDIENTE);
+            cuota.setIdEstado((long) EstadoCuotaPrestamo.PENDIENTE);
+        }
+        detallePrestamoService.saveSingle(cuota);
+        return moraNueva;
+    }
+
     // ========================================================================
     // H42 — cobro tardío, FASE 1 (DISENO-COBRO-CON-FECHA-EFECTIVA.md §4quater)
     // ========================================================================

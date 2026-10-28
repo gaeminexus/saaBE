@@ -46,6 +46,18 @@ public class ResultadoReprocesoCargaPetro {
     /** Resumen de texto de {@code aplicarPagosArchivoPetro} (contadores, novedades, advertencias). */
     private String resumenAplicacion;
 
+    // --- D-019: operaciones vigentes al corte, hoy canceladas, reabiertas para la cuota del mes ---
+    /** Una línea por operación: código, estado anterior, cuotas reabiertas, eventos posteriores marcados. */
+    private List<String> cancelacionesPosterioresPendientes = new ArrayList<>();
+
+    public List<String> getCancelacionesPosterioresPendientes() {
+        return cancelacionesPosterioresPendientes;
+    }
+
+    public void setCancelacionesPosterioresPendientes(List<String> cancelacionesPosterioresPendientes) {
+        this.cancelacionesPosterioresPendientes = cancelacionesPosterioresPendientes;
+    }
+
     // --- D-010: excedentes devueltos registrados como aporte EXCEDENTE_PETRO ---
     private int excedentesDevueltos;
     private double montoExcedentesDevueltos;

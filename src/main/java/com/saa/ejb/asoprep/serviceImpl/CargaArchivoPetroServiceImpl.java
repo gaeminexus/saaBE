@@ -168,6 +168,10 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
     @EJB
     private com.saa.ejb.crd.service.ProcesoMoraPrestamoService procesoMoraPrestamoService;
 
+    /** D-019 (reproceso): para marcar los eventos de cancelación posteriores al mes de la carga. */
+    @EJB
+    private com.saa.ejb.crd.dao.EventoPrestamoDaoService eventoPrestamoDaoService;
+
     /** Fase 3: fuente del esperado mensual, ver {@link #esperadoMensual}. */
     @EJB
     private com.saa.ejb.crd.service.VigenciaContratoService vigenciaContratoService;
@@ -244,6 +248,13 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
     private Set<String> excedentesDevueltosAplicados = new HashSet<>();
     private List<String> detalleExcedentesDevueltos = new ArrayList<>();
     private double montoExcedentesDevueltos = 0.0;
+
+    /**
+     * D-019 (2026-10-28): operaciones vigentes a la fecha de corte que hoy están canceladas y que
+     * el reproceso reabrió para aplicarles la cuota del mes; su cancelación queda marcada
+     * "pendiente de re-aplicar" en su propio mes. Una línea por operación.
+     */
+    private List<String> cancelacionesPosterioresMarcadas = new ArrayList<>();
 
     /**
      * §16 (2026-09-03, revalidación de carga): qué (fila PXCA, tipoNovedad) confirmó
@@ -1282,6 +1293,7 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 		montoSinParticipeCargaActual = 0.0;
 		excedentesDevueltosAplicados.clear();
 		detalleExcedentesDevueltos.clear();
+		cancelacionesPosterioresMarcadas.clear();
 		montoExcedentesDevueltos = 0.0;
 		if (modoReproceso) {
 			System.out.println("=== MODO REPROCESO: " + etiquetaReproceso + " ===");
@@ -1540,6 +1552,9 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 					"Excedentes devueltos registrados como aporte EXCEDENTE_PETRO (D-010, $"
 						+ String.format("%,.2f", montoExcedentesDevueltos) + ")",
 					detalleExcedentesDevueltos));
+				resumenBuilder.append(formateaListaResumen(
+					"Operaciones vigentes al corte reabiertas (D-019, " + MARCA_CANCELACION_POSTERIOR + ")",
+					cancelacionesPosterioresMarcadas));
 			}
 			String resumen = resumenBuilder.toString();
 			
@@ -1623,6 +1638,7 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 			resultado.put("montoSinParticipe", Double.valueOf(Math.round(montoSinParticipeCargaActual * 100.0) / 100.0));
 			resultado.put("excedentesDevueltos", new ArrayList<>(detalleExcedentesDevueltos));
 			resultado.put("montoExcedentesDevueltos", Double.valueOf(Math.round(montoExcedentesDevueltos * 100.0) / 100.0));
+			resultado.put("cancelacionesPosteriores", new ArrayList<>(cancelacionesPosterioresMarcadas));
 			return resultado;
 		} finally {
 			modoReproceso = false;
@@ -1809,6 +1825,144 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 
 	private static String truncarTexto(String texto, int max) {
 		return texto == null || texto.length() <= max ? texto : texto.substring(0, max);
+	}
+
+	// ============================================================================
+	// MODO REPROCESO — D-019: la operación se busca por su estado a la fecha de corte
+	// ============================================================================
+
+	/** Texto de la marca que deja D-019 en la operación reabierta y en sus eventos posteriores. */
+	static final String MARCA_CANCELACION_POSTERIOR = "cancelación posterior pendiente de re-aplicar";
+
+	/** Último instante del mes de la carga: la fecha de corte del reproceso. */
+	private java.time.LocalDateTime finMesCarga(CargaArchivo cargaArchivo) throws Throwable {
+		return fechaService.ultimoDiaMesAnioLocal(cargaArchivo.getMesAfectacion(), cargaArchivo.getAnioAfectacion())
+			.atTime(23, 59, 59);
+	}
+
+	private static boolean esPrestamoTerminal(Long idEstado) {
+		if (idEstado == null) {
+			return false;
+		}
+		int e = idEstado.intValue();
+		return e == com.saa.rubros.EstadoPrestamo.CANCELADO || e == com.saa.rubros.EstadoPrestamo.CANCELADO_ANTICIPADO
+			|| e == com.saa.rubros.EstadoPrestamo.CANCELADO_POR_NOVACION || e == com.saa.rubros.EstadoPrestamo.CANCELADO_POR_REVISAR
+			|| e == com.saa.rubros.EstadoPrestamo.CANCELADO_POR_REESTRUCTURACION;
+	}
+
+	/**
+	 * D-019: ¿la fila tiene una operación de su producto vigente al corte? Para que
+	 * {@link #buscarValoresSinDestino} no bloquee por un PRESTAMO_NO_ENCONTRADO heredado. Solo
+	 * consulta; no reabre nada.
+	 */
+	private boolean existePrestamoVigenteAlCorte(ParticipeXCargaArchivo participe, String codigoProducto,
+			CargaArchivo cargaArchivo) throws Throwable {
+		List<Entidad> entidades = entidadDaoService.selectByCodigoPetro(participe.getCodigoPetro());
+		if (entidades == null || entidades.isEmpty()) {
+			return false;
+		}
+		List<Producto> productos = resolverProductosPorCodigo(codigoProducto, new HashMap<>());
+		if (productos == null) {
+			return false;
+		}
+		java.time.LocalDateTime corte = finMesCarga(cargaArchivo);
+		for (Producto producto : productos) {
+			List<Prestamo> lista = prestamoDaoService.selectByEntidadYProductoVigentesAlCorte(
+				entidades.get(0).getCodigo(), producto.getCodigo(), corte);
+			if (lista != null && !lista.isEmpty()) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * D-019 (decisión del líder, 2026-10-28): en reproceso el estado de HOY del préstamo no
+	 * decide. Se buscan las operaciones vigentes al corte ({@code selectByEntidadYProductoVigentesAlCorte})
+	 * y cada una que hoy está cancelada se reabre ({@link #reabrirPrestamoVigenteAlCorte}) para que
+	 * la cuota del mes reciba el pago como ocurrió cronológicamente.
+	 */
+	private List<Prestamo> prestamosVigentesAlCorteReproceso(Entidad entidad, Producto producto,
+			CargaArchivo cargaArchivo) throws Throwable {
+		List<Prestamo> lista = prestamoDaoService.selectByEntidadYProductoVigentesAlCorte(
+			entidad.getCodigo(), producto.getCodigo(), finMesCarga(cargaArchivo));
+		if (lista == null) {
+			return new ArrayList<>();
+		}
+		for (Prestamo prestamo : lista) {
+			if (esPrestamoTerminal(prestamo.getIdEstado())) {
+				reabrirPrestamoVigenteAlCorte(prestamo, cargaArchivo);
+			}
+		}
+		return lista;
+	}
+
+	/**
+	 * D-019: reabre una operación que estaba vigente al corte y hoy está cancelada.
+	 * <ul>
+	 * <li>Cada cuota saldada SIN fecha o con fecha posterior al corte (la cancelación/liquidación
+	 * posterior la marcó PAGADA/CANCELADA_ANTICIPADA, en las migradas sin ningún PGPR) se
+	 * reconstruye desde sus pagos vigentes ({@code recalcularCuotaDesdePagos}): si nada la paga,
+	 * vuelve a pendiente; su mora se calcula al corte. Las saldadas hasta el corte no se tocan.</li>
+	 * <li>El préstamo pasa a VIGENTE (2) para que el motor admita el pago; su observación lleva
+	 * {@code "<etiqueta>: cancelación posterior pendiente de re-aplicar (estado anterior N)"}.</li>
+	 * <li>Los eventos (EVPR) no anulados con fecha posterior al corte reciben la misma marca, sin
+	 * anularse: al reprocesar su mes hay que recalcularlos con el saldo correcto.</li>
+	 * </ul>
+	 * Nada se borra. La consulta que lista lo marcado está en REPROCESO-CARGA-PETRO.md §4.8.
+	 */
+	private void reabrirPrestamoVigenteAlCorte(Prestamo prestamo, CargaArchivo cargaArchivo) throws Throwable {
+		java.time.LocalDateTime corte = finMesCarga(cargaArchivo);
+		java.time.LocalDate fechaCorte = corte.toLocalDate();
+		Long estadoAnterior = prestamo.getIdEstado();
+		String marca = etiquetaReproceso + ": " + MARCA_CANCELACION_POSTERIOR + " (estado anterior "
+			+ estadoAnterior + ")";
+
+		int cuotasReabiertas = 0;
+		List<DetallePrestamo> cuotas = detallePrestamoDaoService.selectByPrestamo(prestamo.getCodigo());
+		if (cuotas != null) {
+			for (DetallePrestamo cuota : cuotas) {
+				Long estado = cuota.getEstado();
+				boolean saldada = estado != null && (estado.intValue() == com.saa.rubros.EstadoCuotaPrestamo.PAGADA
+					|| estado.intValue() == com.saa.rubros.EstadoCuotaPrestamo.CANCELADA_ANTICIPADA);
+				if (!saldada || (cuota.getFechaPagado() != null && !cuota.getFechaPagado().isAfter(corte))) {
+					continue;
+				}
+				motorPagoPrestamoService.recalcularCuotaDesdePagos(cuota);
+				procesoMoraPrestamoService.recalcularMoraCuotaALaFecha(cuota, fechaCorte);
+				if (cuota.getEstado() == null || cuota.getEstado().longValue() != estado.longValue()) {
+					cuotasReabiertas++;
+				}
+			}
+		}
+
+		prestamo.setIdEstado(Long.valueOf(com.saa.rubros.EstadoPrestamo.VIGENTE));
+		prestamo.setFechaModificacion(java.time.LocalDateTime.now());
+		prestamo.setObservacion(truncarTexto(prestamo.getObservacion() == null || prestamo.getObservacion().trim().isEmpty()
+			? marca : prestamo.getObservacion() + " | " + marca, 2000));
+		prestamoDaoService.save(prestamo, prestamo.getCodigo());
+
+		int eventosMarcados = 0;
+		List<com.saa.model.crd.EventoPrestamo> eventos = eventoPrestamoDaoService.selectByPrestamo(prestamo.getCodigo());
+		if (eventos != null) {
+			for (com.saa.model.crd.EventoPrestamo evento : eventos) {
+				if (evento.getFechaAnulacion() != null || evento.getFecha() == null || !evento.getFecha().isAfter(corte)) {
+					continue;
+				}
+				if (evento.getObservacion() != null && evento.getObservacion().contains(marca)) {
+					continue;
+				}
+				evento.setObservacion(truncarTexto(evento.getObservacion() == null ? marca
+					: evento.getObservacion() + " | " + marca, 2000));
+				eventoPrestamoDaoService.save(evento, evento.getCodigo());
+				eventosMarcados++;
+			}
+		}
+
+		cancelacionesPosterioresMarcadas.add("Préstamo " + prestamo.getCodigo() + " (estado anterior " + estadoAnterior
+			+ "): " + cuotasReabiertas + " cuota(s) reabiertas, " + eventosMarcados + " evento(s) posteriores marcados");
+		System.out.println("   D-019: préstamo " + prestamo.getCodigo() + " vigente al " + fechaCorte + " (hoy estado "
+			+ estadoAnterior + ") reabierto - " + cuotasReabiertas + " cuotas, " + eventosMarcados + " eventos marcados");
 	}
 
 	/**
@@ -2001,6 +2155,14 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 					// invariante recibido == aplicado frena la corrida: no se pierde dinero.
 					novedadesSinResolver.removeIf(tipo -> tipo != null
 						&& tipo.intValue() == ASPNovedadesCargaArchivo.MONTO_INCONSISTENTE);
+					// D-019: PRESTAMO_NO_ENCONTRADO se calculó con el estado del préstamo de cuando
+					// se subió la carga. En reproceso vale el estado a la fecha de corte: si existe
+					// una operación del producto vigente al corte, la fase 3 la encuentra y no bloquea.
+					if (novedadesSinResolver.contains((long) ASPNovedadesCargaArchivo.PRESTAMO_NO_ENCONTRADO)
+							&& existePrestamoVigenteAlCorte(participe, codigoProducto, cargaArchivo)) {
+						novedadesSinResolver.removeIf(tipo -> tipo != null
+							&& tipo.intValue() == ASPNovedadesCargaArchivo.PRESTAMO_NO_ENCONTRADO);
+					}
 				}
 				if (novedadesSinResolver.isEmpty()) {
 					// El proceso automático sabe qué hacer con este valor.
@@ -3636,15 +3798,20 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 		// ✅ OPTIMIZACIÓN: Buscar préstamos UNA SOLA VEZ
 		List<Prestamo> prestamos = new ArrayList<>();
 		for (Producto producto : productos) {
-			List<Prestamo> prestamosDelProducto = 
-				prestamoDaoService.selectByEntidadYProductoActivosById(entidad.getCodigo(), producto.getCodigo());
+			// MODO REPROCESO (D-019): la operación se busca por su estado A LA FECHA DE CORTE
+			// (vigente si su cancelación es posterior al mes de la carga), no por PRSTIDST de hoy;
+			// la que hoy está cancelada se reabre y su cancelación queda marcada para re-aplicarla
+			// en su propio mes. Fuera del modo reproceso, la búsqueda de siempre.
+			List<Prestamo> prestamosDelProducto = modoReproceso
+				? prestamosVigentesAlCorteReproceso(entidad, producto, cargaArchivo)
+				: prestamoDaoService.selectByEntidadYProductoActivosById(entidad.getCodigo(), producto.getCodigo());
 			if (prestamosDelProducto != null && !prestamosDelProducto.isEmpty()) {
 				prestamos.addAll(prestamosDelProducto);
 			}
 		}
-		
+
 		if (prestamos.isEmpty()) {
-			System.out.println("⚠️ PROCESAMIENTO OMITIDO - No se encontraron préstamos activos para entidad: " + 
+			System.out.println("⚠️ PROCESAMIENTO OMITIDO - No se encontraron préstamos activos para entidad: " +
 			                   entidad.getRazonSocial() + " (ID: " + entidad.getCodigo() + ") y producto: " + codigoProducto);
 			return;
 		}

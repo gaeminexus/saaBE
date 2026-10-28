@@ -116,6 +116,9 @@ public class ReprocesoCargaPetroServiceImpl implements ReprocesoCargaPetroServic
     @EJB
     private EntidadDaoService entidadDaoService;
 
+    @EJB
+    private com.saa.ejb.crd.service.ProcesoMoraPrestamoService procesoMoraPrestamoService;
+
     @Override
     @TransactionAttribute(TransactionAttributeType.REQUIRED)
     public ResultadoReprocesoCargaPetro reprocesar(Long idCarga, SolicitudReprocesoCargaPetro solicitud)
@@ -219,6 +222,9 @@ public class ReprocesoCargaPetroServiceImpl implements ReprocesoCargaPetroServic
         List<String> excedentes = (List<String>) aplicacion.get("excedentesDevueltos");
         resultado.setDetalleExcedentesDevueltos(excedentes != null ? excedentes : new ArrayList<>());
         resultado.setExcedentesDevueltos(excedentes != null ? excedentes.size() : 0);
+        @SuppressWarnings("unchecked")
+        List<String> cancelaciones = (List<String>) aplicacion.get("cancelacionesPosteriores");
+        resultado.setCancelacionesPosterioresPendientes(cancelaciones != null ? cancelaciones : new ArrayList<>());
         Object montoExcedentes = aplicacion.get("montoExcedentesDevueltos");
         resultado.setMontoExcedentesDevueltos(montoExcedentes instanceof Number ? ((Number) montoExcedentes).doubleValue() : 0.0);
         @SuppressWarnings("unchecked")
@@ -348,8 +354,12 @@ public class ReprocesoCargaPetroServiceImpl implements ReprocesoCargaPetroServic
 
         // Cada cuota tocada se reconstruye desde sus pagos VIGENTES (mismo camino que el
         // reverso de un evento de pago): *Pagado, saldos, estado y fechaPagado.
+        // D-019 / decisión 3 (2026-10-28): la mora de la cuota reabierta se calcula a la fecha del
+        // cobro (último día del mes de la carga), en esta misma transacción: el proceso de mora
+        // corrido antes del reproceso no la vio porque entonces figuraba pagada.
         for (DetallePrestamo cuota : cuotas.values()) {
             motorPagoPrestamoService.recalcularCuotaDesdePagos(cuota);
+            procesoMoraPrestamoService.recalcularMoraCuotaALaFecha(cuota, fechaContable);
         }
         resultado.setCuotasRecalculadas(cuotas.size());
 
