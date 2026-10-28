@@ -44,6 +44,21 @@ public class ResultadoCalculoMora {
     /** Detalle de los errores (hasta 50) */
     private List<String> errores = new ArrayList<>();
 
+    /**
+     * Solo con fecha de negocio PASADA (cuadre Superintendencia C4, paso 0): cuotas que todavía no
+     * estaban vencidas a esa fecha y traían mora calculada en una corrida posterior; la mora se
+     * retiró (0) y, si estaban EN_MORA, volvieron a PENDIENTE.
+     */
+    private Integer cuotasMoraRetirada = 0;
+
+    public Integer getCuotasMoraRetirada() {
+        return cuotasMoraRetirada;
+    }
+
+    public void setCuotasMoraRetirada(Integer cuotasMoraRetirada) {
+        this.cuotasMoraRetirada = cuotasMoraRetirada;
+    }
+
     public ResultadoCalculoMora() {
     }
 

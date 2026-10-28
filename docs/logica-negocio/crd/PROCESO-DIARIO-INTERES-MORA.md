@@ -261,6 +261,19 @@ POST /SaaBE/rest/prst/calcularMora/8523?fecha=2026-08-14&usuario=jperez
 
 Mismo cuerpo de respuesta, con los conteos de ese préstamo.
 
+### Con fecha de negocio pasada (cuadre Superintendencia C4, 2026-10-28)
+
+`fecha` anterior a hoy calcula la mora **a esa fecha**: para las cuotas vencidas al corte, igual
+que siempre (la fórmula reemplaza la mora guardada, idempotente). Además, y **solo** cuando la
+fecha es pasada, las cuotas impagas que a esa fecha **todavía no vencían** pero traen mora de una
+corrida posterior (la del timer de hoy) quedan con mora 0, `DTPRDSMR` 0, total recompuesto y
+EN_MORA → PENDIENTE (PARCIAL no se toca; una cuota con mora ya pagada tampoco). El lote suma un
+tercer universo (`selectPrestamosConMoraNoVencidaAlCorte`) para los préstamos que no entran por
+cuotas vencidas ni por regularización. La respuesta trae `cuotasMoraRetirada`. Con la fecha de hoy
+nada de esto corre: el proceso diario no cambia. Uso: paso 0 del reproceso Petro
+(`petro/REPROCESO-CARGA-PETRO.md` §9) — y **el timer de las 02:00 lo deshace** (vuelve a calcular a
+hoy), así que se corre inmediatamente antes del reproceso, en la misma sesión.
+
 ### Errores
 
 | HTTP | `error` | Cuándo |

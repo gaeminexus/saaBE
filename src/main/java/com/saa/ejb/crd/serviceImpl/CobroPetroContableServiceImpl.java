@@ -329,10 +329,20 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
         }
 
         // Validación 5: la carga está en un estado que admite la confirmación.
-        if (carga.getEstado() == null || carga.getEstado() != CrdEstadoCargaArchivo.CARGADO) {
+        // Cuadre Superintendencia C4: con paraReproceso = true se admite además una carga ya
+        // PROCESADA (3) por el proceso viejo, que nunca tuvo paso 1 (CRARFCAC nulo, validado
+        // arriba). Es la antesala de POST /rest/crar/reprocesar/{idCarga}; el estado NO se toca.
+        boolean paraReproceso = solicitud != null && Boolean.TRUE.equals(solicitud.getParaReproceso());
+        boolean procesadaSinPaso1 = paraReproceso && carga.getEstado() != null
+                && carga.getEstado() == CrdEstadoCargaArchivo.PROCESADO;
+        if (!procesadaSinPaso1
+                && (carga.getEstado() == null || carga.getEstado() != CrdEstadoCargaArchivo.CARGADO)) {
             throw new IncomeException("La carga " + idCarga + " está en estado "
                     + carga.getEstado() + "; solo se puede confirmar la recepción de una carga"
-                    + " en estado CARGADO (" + CrdEstadoCargaArchivo.CARGADO + ").");
+                    + " en estado CARGADO (" + CrdEstadoCargaArchivo.CARGADO + ")"
+                    + (carga.getEstado() != null && carga.getEstado() == CrdEstadoCargaArchivo.PROCESADO
+                            ? " — para una carga procesada por el proceso viejo que se va a reprocesar,"
+                                    + " envíe paraReproceso = true." : "."));
         }
 
         // Efecto: sella el "visto de contabilidad" — CRARUSCC/CRARFCAC son el rastro
@@ -341,7 +351,9 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
         carga.setUsuarioContabilidadConfirma(usuarioDaoService.selectByNombre(
                 solicitud != null ? solicitud.getUsuario() : null));
         carga.setFechaAutorizacionContabilidad(ahora);
-        carga.setEstado(Long.valueOf(CrdEstadoCargaArchivo.CONFIRMADO_CONTABILIDAD));
+        if (!procesadaSinPaso1) {
+            carga.setEstado(Long.valueOf(CrdEstadoCargaArchivo.CONFIRMADO_CONTABILIDAD));
+        }
         carga = cargaArchivoService.saveSingle(carga);
 
         ResultadoConfirmarRecepcion resultado = new ResultadoConfirmarRecepcion();

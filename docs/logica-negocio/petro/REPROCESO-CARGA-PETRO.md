@@ -45,7 +45,9 @@ Lo que falta para que la 352 pueda reprocesarse hoy: **el paso 1 del cobro en do
 la o las transferencias con que Petro pagó junio 2025 — suma = 535.477,39 ± 0,01 — y confirmar la
 recepción). Sin eso no hay empresa contable que resolver ni asiento transitorio que repartir, y el
 reproceso se niega con el mensaje exacto de qué falta (§4.1). Es la misma precondición 0b de la fase
-3 normal; no se saltea.
+3 normal; no se saltea. Como la 352 está en estado 3, la confirmación se pide con
+`"paraReproceso": true` (§9, agregado el 2026-10-28): sin eso `confirmarRecepcion` exige estado
+CARGADO y la rechaza.
 
 ## 3. Diseño en una frase
 
@@ -195,8 +197,56 @@ cosas, cada una con su `if (modoReproceso)`:
 4. **`validarRecibidoIgualAplicado` compara contra el recibido neto**: transferencias − monto sin
    partícipe. El mensaje de éxito y el de error dicen cuánto se descontó y por cuántas filas.
 
-Más el punto de §4.5 sobre el estado del partícipe. Todo lo demás — recepción confirmada, tope de
+Más el punto de §4.5 sobre el estado del partícipe, y lo agregado el 2026-10-28 (§4.7): la lista de
+excedentes devueltos (D-010), que el `MONTO_INCONSISTENTE` heredado de la validación original no
+bloquee, y que una fila sin partícipe no bloquee `validarValoresConDestino` aunque traiga otra
+novedad (en la 352 hay una con tipo 10). Todo lo demás — recepción confirmada, tope de
 afectación manual, novedades bloqueantes con AVPC, todo-o-nada — sigue exactamente igual.
+
+### 4.7 Excedentes: cascada por defecto, aporte si se devolvió (D-010, 2026-10-28)
+
+**Regla (decisión D-010 del líder del proyecto):** al reprocesar se compara con la documentación de
+crédito; cuando Petro descontó **de más** y ASOPREP **devolvió** el excedente al partícipe, ese
+excedente **no** se aplica a cuotas siguientes: va a **aportes** y después se registra la
+devolución. Cuando no hubo devolución, el excedente sigue el camino del motor (es lo que de verdad
+pasó: el dinero quedó en el fondo y pagó cuotas).
+
+| Caso | Qué hace el modo reproceso |
+|---|---|
+| Excedente **declarado como devuelto** en la solicitud (`excedentesDevueltos`) | Se registra un aporte `EXCEDENTE_PETRO` (rubro 235 alterno 8) por ese monto: tipo cesantía (11) si el partícipe tiene vigencia de cesantía en el mes de la carga, si no jubilación (9), o el `idTipoAporte` de la línea; fecha de caja = último día del mes de la carga (`crearNuevoAporte`), **sin devengo** (no cubre ningún mes), `APRTIDAS` = carga, glosa `Excedente Petro devuelto al participe (D-010) - <producto> - <referencia> - <etiqueta> - Mes M/AAAA - CargaArchivo: N`, con su `PGAP`. Lo que queda de la fila (descontado − excedente) entra al motor / a la prelación como siempre. Si todo lo descontado era excedente (p. ej. préstamo ya cancelado), la fila termina ahí. |
+| Excedente **no** declarado, préstamo (PE/PH/PQ/PP) | Cascada del motor: mora y cuotas vencidas primero, luego la cuota del mes y las siguientes. La novedad `MONTO_INCONSISTENTE` que dejó la validación de la carga original (calculada contra la tabla del SAA de cuando se subió, no contra el ancla) **no bloquea** en modo reproceso. Si el motor no encuentra cuota para todo, registra su propio `MONTO_INCONSISTENTE` y el invariante recibido == aplicado frena la corrida (nada queda grabado). |
+| Excedente **no** declarado, aporte (AH) | Prelación por devengo: se anticipa a los meses siguientes (D4 del plan de devengo). |
+
+**Contabilidad:** ningún asiento propio. El aporte entra en `sumValorPorTipoAporteByCarga`
+(`APRTIDAS`), o sea al HABER de cesantía/jubilación del asiento de APLICACION (plantilla 21, aux1
+50/51), y al invariante recibido == aplicado. Es el mismo camino que la afectación manual a aporte
+(`aplicarAfectacionAAporte`).
+
+**Después, la devolución:** se registra aparte, con la fecha **real** del pago al partícipe, por el
+motor de devolución de aportes (`POST /rest/dvap/registrar` con `fecha`, ver
+`cnt/FECHA-CONTABLE-REPROCESO.md` §3.4), por el mismo tipo de aporte y monto. El saldo del partícipe
+queda: +excedente (mes de la carga) − devolución (mes en que se pagó).
+
+**Contrato (cuerpo de `POST /rest/crar/reprocesar/{idCarga}`):**
+
+```json
+{ "usuario": "USUARIO 1", "ip": "…", "motivo": "…",
+  "excedentesDevueltos": [
+    { "idEntidad": 5324, "codigoProducto": "PE", "monto": 87.99,
+      "idTipoAporte": 11, "referencia": "D-0xx: comprobante de devolución …" } ] }
+```
+
+`idEntidad` (código interno del partícipe) o `codigoPetro` (rol); `codigoProducto` como viene en el
+archivo (`PE`, `PH`, `PQ`, `PP`, `AH`; el HS va dentro de su PH/PP); `idTipoAporte` opcional;
+`referencia` obligatoria. **Se valida todo antes de aplicar nada** (`validarExcedentesDevueltosReproceso`):
+la fila (rol + producto) existe en la carga; monto > 0 y ≤ lo descontado en la fila (PH/PP con su
+HS); el rol tiene partícipe (sin partícipe la fila ya va como novedad, §4.4); la fila no tiene además
+AVPC (serían dos destinos); el tipo de aporte se puede resolver; sin líneas repetidas. Y al final,
+ningún excedente de la lista puede quedar sin aplicar. Cualquier falla → 409, nada grabado. La
+respuesta trae `excedentesDevueltos`, `montoExcedentesDevueltos` y `detalleExcedentesDevueltos`.
+
+**Reversibilidad:** el aporte `EXCEDENTE_PETRO` tiene `APRTIDAS` = carga, así que la corrida N+1 lo
+reversa como cualquier otro aporte de la carga (§4.4).
 
 ## 5. Respuesta (`ResultadoReprocesoCargaPetro`)
 
@@ -279,3 +329,112 @@ bloques B y C. Después de reprocesar:
 | `ejb/crd/service/dto/SolicitudReprocesoCargaPetro`, `ResultadoReprocesoCargaPetro` | contrato REST |
 | `ws/rest/crd/CargaArchivoRest.java` | `POST /rest/crar/reprocesar/{idCarga}` |
 | `docs/logica-negocio/petro/sql/reproceso-carga-352-controles.sql` | controles antes/después |
+| `ejb/crd/service/dto/ExcedenteDevueltoReproceso` | línea de la lista D-010 (§4.7) |
+| `ejb/crd/service/dto/SolicitudConfirmarRecepcion` + `CobroPetroContableServiceImpl.confirmarRecepcion` | `paraReproceso`: paso 1 sobre una carga ya en estado 3 (§9) |
+| `ejb/crd/serviceImpl/ProcesoMoraPrestamoServiceImpl` + `DetallePrestamoDaoService(+Impl)` | mora con fecha de negocio pasada retira la mora de cuotas aún no vencidas (paso 0, §9) |
+
+## 9. Secuencia de junio 2025 (carga 352) — lista para correr
+
+Base de trabajo (`saa-oracle-23ai`, WildFly del líder en 8080). Usuario `USUARIO 1` (`SCP.PJRQ`
+código 38: los servicios reciben el **nombre**, que `confirmarRecepcion` resuelve con
+`selectByNombre`; un nombre inexistente revienta con `NoResultException`). Antes: C1, C2 y C3
+aplicados, este código desplegado, período 6/2025 (4524) abierto y la contabilidad de CRD activa.
+
+**Paso 0 — mora al 31-may-2025.** El proceso de mora ya aceptaba fecha de negocio
+(`POST /rest/prst/calcularMora?fecha=…&usuario=…`, `ProcesoMoraPrestamoServiceImpl.calcularMoraDiaria`);
+lo que no hacía era retirar la mora que una corrida posterior dejó en cuotas que a esa fecha no
+vencían — en la base del 28-oct hay **146 cuotas con vencimiento 31-may/jun-2025 (4.830,04)** y
+**2.695 con vencimiento desde jul-2025 (34.987,23)** con mora calculada al 28-oct-2026 por el
+timer de producción; sin el cambio, la cascada de junio cobraría esa mora. Cambio mínimo hecho:
+con fecha pasada, esas cuotas quedan con mora 0 y EN_MORA → PENDIENTE (`PROCESO-DIARIO-INTERES-MORA.md` §8).
+Las cuotas vencen el 30/31 de cada mes y el corte es el inicio del día: al 31-may la cuota de
+mayo todavía no está vencida. Si el líder prefiere la mora a la fecha del cobro (30-jun), es el
+mismo endpoint con `fecha=2025-06-30` (decisión pendiente; ver el informe de C4).
+
+```http
+POST /SaaBE/rest/prst/calcularMora?fecha=2025-05-31&usuario=USUARIO%201
+```
+
+⚠ El timer de las 02:00 (`ProcesoMoraPrestamoTimer`) recalcula a la fecha del día y deshace el paso
+0: correr 0 → 1 → 2 en la misma sesión; si pasa una noche, repetir el paso 0.
+
+**Paso 1 — el dinero de Petro entró al banco** (Pacífico ahorros 1048142735, SAA cuenta bancaria
+418, plan `1.1.02.05.65`; dos abonos SPI, `cuadreSuper/03-trabajo/bancos/PETRO-VS-BANCO.md`):
+
+```http
+POST /SaaBE/rest/asgn/transferencias
+{ "idCarga": 352, "idCuentaBancaria": 418, "valor": 77975.32, "fecha": "2025-06-26",
+  "numero": "1899332", "cuentaOrigen": "Petroecuador SPI 53*Ocp*083390621000045",
+  "observacion": "Retorno Petro junio 2025 - abono 1 de 2 (extracto Pacifico ahorros)",
+  "usuario": "USUARIO 1" }
+
+POST /SaaBE/rest/asgn/transferencias
+{ "idCarga": 352, "idCuentaBancaria": 418, "valor": 457502.07, "fecha": "2025-06-30",
+  "numero": "3815029", "cuentaOrigen": "Petroecuador SPI 53*Ocp*083508076000007",
+  "observacion": "Retorno Petro junio 2025 - abono 2 de 2 (extracto Pacifico ahorros)",
+  "usuario": "USUARIO 1" }
+
+GET  /SaaBE/rest/asgn/transferencias/352          → totalTransferencias 535477.39, cuadra true
+
+POST /SaaBE/rest/asgn/confirmarRecepcion/352
+{ "usuario": "USUARIO 1", "ip": "127.0.0.1", "paraReproceso": true,
+  "observacion": "Cuadre Superintendencia C4 - paso 1 de la carga de junio 2025 antes del reproceso" }
+```
+
+Fechas, verificadas en el código el 2026-10-28: la transferencia guarda la fecha real del abono
+(`TRCRFCHA`); el asiento TRANSITORIO (D 1.1.02.05.65 por cada abono / H 2.3.01.15.01 535.477,39)
+se fecha `ultimoDiaMesAnioLocal(6, 2025)` = **30-jun-2025** (período 4524, tipo IN-A por tocar un
+banco real, C12) y cada línea del DEBE lleva "recibida 2025-06-26/30" en su descripción. Solo
+`CRARFCAC` y las fechas de registro de la transferencia y de la fila `ANCP` llevan la fecha de
+hoy: son sellos de auditoría (cuándo se registró), no fechas contables. No hizo falta fecha contable opcional (patrón C6).
+
+**Paso 2 — reproceso:**
+
+```http
+POST /SaaBE/rest/crar/reprocesar/352
+{ "usuario": "USUARIO 1", "ip": "127.0.0.1",
+  "motivo": "Cuadre Superintendencia C4: re-aplicar junio 2025 sobre el ancla de mayo (D-003, D-010)",
+  "excedentesDevueltos": [] }
+```
+
+`excedentesDevueltos` va vacío en junio: ver §10. Pagos, aportes, REPARTO y APLICACION salen al
+30-jun-2025 (§4.6).
+
+**Paso 3 — controles:** bloques B y C de `sql/reproceso-carga-352-controles.sql` (§7).
+
+**Después del mes (no es parte del reproceso):** cada devolución D-010 por `POST /rest/dvap/registrar`
+con la fecha real del pago; cierre de cartera de junio (`POST /rest/cierrecartera/ejecutar`, provisión e
+intereses al 30-jun); mora a `2025-06-30` antes de la carga de julio (353), que repite 0 → 1 → 2
+con sus dos abonos (25-jul 75.855,40 y 28-jul 438.107,13).
+
+## 10. Junio 2025 frente a la documentación de crédito (D-010) — medido el 2026-10-28
+
+Cruce de las filas de préstamo de la 352 con la deuda de cada operación en el ancla (`RPR.HM48`:
+`VPVN + VLVN + INRD + ISMR`) y con la documentación del cliente (`08-Cartera/`: retornos y enviados
+Petro, `ABONOS Y LIQ/`, `LIQUIDACIONES - PLAZO VENCIDO/`, `DEVOLUCIONES CESANTIAS Y CRUCE DE
+CUENTAS/PAGOS REALIZADOS … .xlsx`). Consultas en `cuadreSuper/03-trabajo/meses/2025-06/`.
+
+- **En ninguna fila Petro descontó más de lo que ASOPREP pidió** (`PXCADSDO <= PXCADSCT` en las
+  3.636 filas). El "de más" solo existe contra el SAA.
+- **Contra la deuda del ancla**, solo hay excedente real en 5 filas: 4 de roles **sin partícipe** en
+  el SAA (van como novedad, §4.4) y **1** con partícipe (entidad 5324, PE, descontado 204,79 contra
+  una deuda de 116,80 en la única operación que tenía en la G48 → **87,99**).
+- **Devoluciones documentadas de junio 2025: ninguna.** El libro de devoluciones empieza en
+  oct-2025 y no incluye a la entidad 5324 ni a los 11 partícipes cuyo aporte de junio se anticipó a
+  julio (14 filas, 763,13: siguen activos y aportando, el anticipo es legítimo). No hay en el SAA
+  aportes de devolución ni pagos que citen un sobrante de junio de un rol Petro (el `PAGO_MANUAL`
+  de 174,58 de jul-2026, "sobrante de junio 2025 a abril 2026", es de un partícipe **sin rol
+  Petro** que paga por transferencia: no pertenece a la carga 352 y se revisa en jul-2026).
+- **Lista D-010 de junio: 0 excedentes, 0,00.** El caso de la entidad 5324 (87,99) queda como
+  pendiente de confirmar con ASOPREP: si se devolvió, entra a la lista con su comprobante; si no,
+  el motor no tiene cuota donde ponerlo y la corrida se frena (decisión: AVPC a otro préstamo o
+  aporte, por constancia escrita).
+
+**Lo que frena la 352 aunque D-010 esté resuelto** (novedades de la validación de marzo-2026 que
+siguen siendo BLOQUEANTE en modo reproceso):
+
+| Novedad heredada | Filas | Descontado | Qué es | Propuesta |
+|---|---|---|---|---|
+| tipo 10 PRESTAMO_NO_ENCONTRADO, con partícipe | 74 | 20.668,15 | La operación **estaba en la G48 de mayo con deuda** (73 hoy en CANCELADO_ANTICIPADO 4, 1 en DE_PLAZO_VENCIDO 8); `selectByEntidadYProductoActivosById` no la ve porque hoy está terminal, y la 352 vieja nunca les aplicó nada. En junio 2025 el descuento era un pago real de esa operación | Decidir con el líder: (a) AVPC por fila a la cuota de junio (manual, 74 filas) o (b) que el modo reproceso busque también las operaciones del ancla canceladas **después** del mes de la carga — exige re-fechar esas precancelaciones/liquidaciones (su pago se calculó sin el descuento de junio) |
+| tipo 13 MONTO_INCONSISTENTE positiva | 105 | 39.017,30 (14.675,35 sobre la cuota del SAA) | Petro descontó la cuota de Delta, mayor que la del SAA o con vencidos; contra el ancla ninguna supera la deuda | Ya resuelto en modo reproceso (§4.7): va a la cascada |
+| sin partícipe con tipo 10/13 | 2 | 1.980,07 | — | Ya resuelto: van como sin partícipe (§4.4) |

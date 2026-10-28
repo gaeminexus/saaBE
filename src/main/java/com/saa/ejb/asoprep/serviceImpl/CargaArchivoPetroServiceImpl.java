@@ -234,6 +234,18 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
     private double montoSinParticipeCargaActual = 0.0;
 
     /**
+     * D-010 (cuadre Superintendencia, 2026-10-28): excedentes que Petro descontó de más y ASOPREP
+     * DEVOLVIÓ al partícipe, por clave {@code rol|PRODUCTO}. Solo se llena en modo reproceso
+     * ({@link #aplicarPagosArchivoPetroReproceso}); fuera de él está vacío y ningún camino lo lee.
+     * Cada uno se registra como aporte {@code EXCEDENTE_PETRO} y su monto se descuenta de la fila
+     * antes de entrar al motor de pagos o a la prelación de aportes. REPROCESO-CARGA-PETRO.md §4.7.
+     */
+    private Map<String, com.saa.ejb.crd.service.dto.ExcedenteDevueltoReproceso> excedentesDevueltosReproceso = new HashMap<>();
+    private Set<String> excedentesDevueltosAplicados = new HashSet<>();
+    private List<String> detalleExcedentesDevueltos = new ArrayList<>();
+    private double montoExcedentesDevueltos = 0.0;
+
+    /**
      * §16 (2026-09-03, revalidación de carga): qué (fila PXCA, tipoNovedad) confirmó
      * {@code registrarNovedad} durante UNA corrida de {@link #revalidarCarga}, para poder
      * distinguir "el código actual todavía produce esta novedad" (se reconfirmó — sigue en este
@@ -1268,6 +1280,9 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 		novedadesGeneradasCargaActual.clear();
 		sinParticipeCargaActual.clear();
 		montoSinParticipeCargaActual = 0.0;
+		excedentesDevueltosAplicados.clear();
+		detalleExcedentesDevueltos.clear();
+		montoExcedentesDevueltos = 0.0;
 		if (modoReproceso) {
 			System.out.println("=== MODO REPROCESO: " + etiquetaReproceso + " ===");
 		}
@@ -1306,6 +1321,15 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 			// ==========================================
 			exigeConfirmacionContabilidad(cargaArchivo);
 			// ==========================================
+
+			// ==========================================
+			// MODO REPROCESO (D-010): la lista de excedentes devueltos se valida completa ANTES
+			// de tocar nada — cada uno tiene que caer en una fila de esta carga y no superar lo
+			// que esa fila descontó. Todo o nada, como el resto de las validaciones.
+			// ==========================================
+			if (modoReproceso) {
+				validarExcedentesDevueltosReproceso(cargaArchivo);
+			}
 
 			// ==========================================
 			// VALIDACIÓN: todo valor descontado debe tener a qué aplicarse.
@@ -1512,10 +1536,24 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 					"Roles Petro sin partícipe en el SAA (" + etiquetaReproceso + " — NO aplicados, $"
 						+ String.format("%,.2f", montoSinParticipeCargaActual) + " descontados del recibido)",
 					sinParticipeCargaActual));
+				resumenBuilder.append(formateaListaResumen(
+					"Excedentes devueltos registrados como aporte EXCEDENTE_PETRO (D-010, $"
+						+ String.format("%,.2f", montoExcedentesDevueltos) + ")",
+					detalleExcedentesDevueltos));
 			}
 			String resumen = resumenBuilder.toString();
 			
 			System.out.println(resumen);
+
+			// MODO REPROCESO (D-010): ningún excedente de la lista puede quedar sin aplicar (p. ej.
+			// porque su fila tomó un camino que no lo consume). Se dice cuál, no se ignora.
+			if (modoReproceso && excedentesDevueltosAplicados.size() < excedentesDevueltosReproceso.size()) {
+				List<String> sinAplicar = new ArrayList<>(excedentesDevueltosReproceso.keySet());
+				sinAplicar.removeAll(excedentesDevueltosAplicados);
+				throw new IncomeException(etiquetaReproceso + ": " + sinAplicar.size() + " excedente(s) devuelto(s)"
+					+ " de la solicitud no se aplicaron (rol|producto): " + sinAplicar
+					+ ". La fila no llegó al punto donde se registra el aporte; revise la lista.");
+			}
 
 			// ==========================================
 			// VALIDACIÓN FINAL, ANTES DE LOS ASIENTOS (§11 VALIDACION-TOPE-AFECTACION-MANUAL.md):
@@ -1560,23 +1598,36 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 	 */
 	@Override
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
-	public Map<String, Object> aplicarPagosArchivoPetroReproceso(Long codigoCargaArchivo, String etiquetaCorrida)
-			throws Throwable {
+	public Map<String, Object> aplicarPagosArchivoPetroReproceso(Long codigoCargaArchivo, String etiquetaCorrida,
+			List<com.saa.ejb.crd.service.dto.ExcedenteDevueltoReproceso> excedentesDevueltos) throws Throwable {
 		System.out.println("=== APLICACIÓN DE PAGOS EN MODO REPROCESO - Carga: " + codigoCargaArchivo
 			+ " - " + etiquetaCorrida + " ===");
 		modoReproceso = true;
 		etiquetaReproceso = etiquetaCorrida != null ? etiquetaCorrida : ("REPROCESO carga " + codigoCargaArchivo);
+		excedentesDevueltosReproceso.clear();
 		try {
+			if (excedentesDevueltos != null) {
+				for (com.saa.ejb.crd.service.dto.ExcedenteDevueltoReproceso excedente : excedentesDevueltos) {
+					String clave = claveExcedente(excedente.getCodigoPetro(), excedente.getCodigoProducto());
+					if (excedentesDevueltosReproceso.put(clave, excedente) != null) {
+						throw new IncomeException(etiquetaReproceso + ": el excedente devuelto " + clave
+							+ " está repetido en la solicitud; sume los montos en una sola línea.");
+					}
+				}
+			}
 			String resumen = aplicarPagosArchivoPetro(codigoCargaArchivo);
 			Map<String, Object> resultado = new LinkedHashMap<>();
 			resultado.put("resumen", resumen);
 			resultado.put("sinParticipe", new ArrayList<>(sinParticipeCargaActual));
 			resultado.put("filasSinParticipe", Integer.valueOf(sinParticipeCargaActual.size()));
 			resultado.put("montoSinParticipe", Double.valueOf(Math.round(montoSinParticipeCargaActual * 100.0) / 100.0));
+			resultado.put("excedentesDevueltos", new ArrayList<>(detalleExcedentesDevueltos));
+			resultado.put("montoExcedentesDevueltos", Double.valueOf(Math.round(montoExcedentesDevueltos * 100.0) / 100.0));
 			return resultado;
 		} finally {
 			modoReproceso = false;
 			etiquetaReproceso = null;
+			excedentesDevueltosReproceso.clear();
 		}
 	}
 
@@ -1601,6 +1652,163 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 		montoSinParticipeCargaActual += monto;
 		System.out.println("⚠️ " + etiquetaReproceso + " - Rol " + participe.getCodigoPetro() + " sin partícipe ("
 			+ codigoProducto + ", $" + monto + "): no se aplica, queda como novedad.");
+	}
+
+	// ============================================================================
+	// MODO REPROCESO — D-010: excedentes cobrados de más y DEVUELTOS al partícipe
+	// ============================================================================
+
+	/** Clave {@code rol|PRODUCTO} de un excedente devuelto (mayúsculas, sin espacios). */
+	private static String claveExcedente(Long codigoPetro, String codigoProducto) {
+		return codigoPetro + "|" + (codigoProducto != null ? codigoProducto.trim().toUpperCase() : "");
+	}
+
+	/** El excedente devuelto declarado para esta fila, o null (siempre null fuera del modo reproceso). */
+	private com.saa.ejb.crd.service.dto.ExcedenteDevueltoReproceso excedenteDevueltoDeFila(
+			ParticipeXCargaArchivo participe, String codigoProducto) {
+		if (!modoReproceso || excedentesDevueltosReproceso.isEmpty() || participe == null) {
+			return null;
+		}
+		return excedentesDevueltosReproceso.get(claveExcedente(participe.getCodigoPetro(), codigoProducto));
+	}
+
+	/**
+	 * D-010: valida la lista completa de excedentes devueltos antes de aplicar nada. Cada línea
+	 * tiene que: identificar una fila de ESTA carga (rol + producto, nunca HS suelto), traer
+	 * monto positivo y referencia del documento que respalda la devolución, no superar lo que esa
+	 * fila descontó (PH/PP con su HS), tener partícipe en el SAA (sin partícipe no hay cuenta donde
+	 * registrar el aporte: esa fila ya va como novedad PARTICIPE_NO_ENCONTRADO), no tener además
+	 * afectación manual (AVPC: serían dos destinos para el mismo dinero) y un tipo de aporte
+	 * resoluble. Reporta TODOS los errores juntos.
+	 */
+	private void validarExcedentesDevueltosReproceso(CargaArchivo cargaArchivo) throws Throwable {
+		if (excedentesDevueltosReproceso.isEmpty()) {
+			return;
+		}
+		System.out.println("=== D-010: VALIDANDO " + excedentesDevueltosReproceso.size() + " EXCEDENTE(S) DEVUELTO(S) ===");
+		List<String> errores = new ArrayList<>();
+		for (Map.Entry<String, com.saa.ejb.crd.service.dto.ExcedenteDevueltoReproceso> entry : excedentesDevueltosReproceso.entrySet()) {
+			String clave = entry.getKey();
+			com.saa.ejb.crd.service.dto.ExcedenteDevueltoReproceso excedente = entry.getValue();
+			String producto = excedente.getCodigoProducto() != null ? excedente.getCodigoProducto().trim().toUpperCase() : null;
+			if (excedente.getCodigoPetro() == null || producto == null || producto.isEmpty()) {
+				errores.add(clave + ": falta el rol Petro o el producto.");
+				continue;
+			}
+			if (CODIGO_PRODUCTO_HS.equalsIgnoreCase(producto)) {
+				errores.add(clave + ": el HS se declara dentro de su fila PH/PP, no suelto.");
+				continue;
+			}
+			if (excedente.getMonto() == null || excedente.getMonto() <= 0.01) {
+				errores.add(clave + ": el monto debe ser mayor a cero.");
+				continue;
+			}
+			if (excedente.getReferencia() == null || excedente.getReferencia().trim().isEmpty()) {
+				errores.add(clave + ": falta la referencia del documento que respalda la devolución (D-010).");
+				continue;
+			}
+			ParticipeXCargaArchivo fila = participeXCargaArchivoDaoService.selectByCodigoPetroYProductoEnCarga(
+				excedente.getCodigoPetro(), producto, cargaArchivo.getCodigo());
+			if (fila == null) {
+				errores.add(clave + ": no existe esa fila (rol + producto) en la carga " + cargaArchivo.getCodigo() + ".");
+				continue;
+			}
+			double disponible = montoConHsMergeado(fila, producto, cargaArchivo);
+			if (excedente.getMonto() > disponible + 0.01) {
+				errores.add(clave + ": el excedente $" + String.format("%.2f", excedente.getMonto())
+					+ " supera lo descontado en la fila ($" + String.format("%.2f", disponible) + ").");
+				continue;
+			}
+			List<Entidad> entidades = entidadDaoService.selectByCodigoPetro(excedente.getCodigoPetro());
+			if (entidades == null || entidades.isEmpty()) {
+				errores.add(clave + ": el rol no tiene partícipe en el SAA; esa fila queda como novedad"
+					+ " PARTICIPE_NO_ENCONTRADO y no puede registrar el excedente como aporte.");
+				continue;
+			}
+			if (totalAfectadoManualmente(novedadParticipeCargaDaoService.selectByParticipe(fila.getCodigo())) > 0.01) {
+				errores.add(clave + ": la fila tiene además afectación manual (AVPC); decida un solo destino.");
+				continue;
+			}
+			try {
+				resolverTipoAporteExcedente(entidades.get(0), excedente, cargaArchivo);
+			} catch (IncomeException e) {
+				errores.add(clave + ": " + e.getMessage());
+			}
+		}
+		if (!errores.isEmpty()) {
+			throw new IncomeException(etiquetaReproceso + ": la lista de excedentes devueltos (D-010) tiene "
+				+ errores.size() + " error(es); no se aplicó nada.\n  - " + String.join("\n  - ", errores));
+		}
+		System.out.println("✅ D-010: lista de excedentes devueltos válida");
+	}
+
+	/**
+	 * Tipo de aporte que recibe el excedente devuelto: el de la solicitud (9 o 11) o, si no
+	 * viene, cesantía si el partícipe tiene vigencia de cesantía en el mes de la carga, y si no
+	 * jubilación — misma regla de "los que tenga el partícipe" de PLAN-EXCEDENTE-PETRO-A-APORTES.md
+	 * §3 ({@code esperadoPorEntidad} > 0). Cesantía primero porque es la cuenta de la que se
+	 * paga la devolución al partícipe; si no tiene ninguna, la solicitud debe decirlo.
+	 */
+	private Long resolverTipoAporteExcedente(Entidad entidad,
+			com.saa.ejb.crd.service.dto.ExcedenteDevueltoReproceso excedente, CargaArchivo cargaArchivo) throws Throwable {
+		if (excedente.getIdTipoAporte() != null) {
+			if (!TIPO_APORTE_CESANTIA.equals(excedente.getIdTipoAporte())
+					&& !TIPO_APORTE_JUBILACION.equals(excedente.getIdTipoAporte())) {
+				throw new IncomeException("idTipoAporte " + excedente.getIdTipoAporte()
+					+ " no válido para un excedente: use 11 (cesantía) o 9 (jubilación).");
+			}
+			return excedente.getIdTipoAporte();
+		}
+		java.time.LocalDate mes = java.time.LocalDate.of(cargaArchivo.getAnioAfectacion().intValue(),
+			cargaArchivo.getMesAfectacion().intValue(), 1);
+		if (vigenciaContratoService.esperadoPorEntidad(entidad.getCodigo(), TIPO_APORTE_CESANTIA, mes) > 0.0) {
+			return TIPO_APORTE_CESANTIA;
+		}
+		if (vigenciaContratoService.esperadoPorEntidad(entidad.getCodigo(), TIPO_APORTE_JUBILACION, mes) > 0.0) {
+			return TIPO_APORTE_JUBILACION;
+		}
+		throw new IncomeException("la entidad " + entidad.getCodigo() + " no tiene vigencia de cesantía ni de"
+			+ " jubilación en " + mes.getMonthValue() + "/" + mes.getYear() + "; indique idTipoAporte en la solicitud.");
+	}
+
+	/**
+	 * D-010: si la fila tiene un excedente devuelto declarado, lo registra como aporte
+	 * {@code EXCEDENTE_PETRO} (mismo camino que {@link #aplicarAfectacionAAporte}: {@link
+	 * #crearNuevoAporte} + {@link #crearRegistroPagoAporte}, fecha de caja = último día del mes de
+	 * la carga, sin devengo, {@code APRTIDAS} = carga — así entra solo al HABER del asiento de
+	 * APLICACION y al invariante recibido == aplicado) y devuelve su monto para que el llamador
+	 * lo descuente de lo que entrega al motor o a la prelación. 0 si la fila no tiene excedente.
+	 */
+	private double aplicarExcedenteDevueltoReproceso(ParticipeXCargaArchivo participe, String codigoProducto,
+			Entidad entidad, CargaArchivo cargaArchivo) throws Throwable {
+		com.saa.ejb.crd.service.dto.ExcedenteDevueltoReproceso excedente = excedenteDevueltoDeFila(participe, codigoProducto);
+		if (excedente == null) {
+			return 0.0;
+		}
+		String clave = claveExcedente(participe.getCodigoPetro(), codigoProducto);
+		if (!excedentesDevueltosAplicados.add(clave)) {
+			return 0.0; // ya aplicado en esta corrida (no debería pasar: una fila se procesa una vez)
+		}
+		double monto = Math.round(excedente.getMonto() * 100.0) / 100.0;
+		Long idTipo = resolverTipoAporteExcedente(entidad, excedente, cargaArchivo);
+		com.saa.model.crd.TipoAporte tipoAporte = tipoAporteDaoService.selectById(idTipo, "TipoAporte");
+		Aporte aporte = crearNuevoAporte(entidad, idTipo, tipoAporte.getNombre(), monto, null, cargaArchivo,
+			com.saa.rubros.CrdTipoMovimientoAporte.EXCEDENTE_PETRO);
+		aporte.setGlosa(truncarTexto("Excedente Petro devuelto al participe (D-010) - " + codigoProducto + " - "
+			+ excedente.getReferencia().trim() + " - " + etiquetaReproceso + " - Mes " + cargaArchivo.getMesAfectacion()
+			+ "/" + cargaArchivo.getAnioAfectacion() + " - CargaArchivo: " + cargaArchivo.getCodigo(), 2000));
+		aporteDaoService.save(aporte, aporte.getCodigo());
+		crearRegistroPagoAporte(aporte, monto, cargaArchivo, participe);
+		montoExcedentesDevueltos += monto;
+		detalleExcedentesDevueltos.add("Entidad " + entidad.getCodigo() + " (" + codigoProducto + "): $"
+			+ String.format("%,.2f", monto) + " a " + tipoAporte.getNombre() + " (APRT " + aporte.getCodigo() + ")");
+		System.out.println("   ✅ D-010: excedente devuelto $" + monto + " registrado como aporte "
+			+ tipoAporte.getNombre() + " (APRT " + aporte.getCodigo() + ")");
+		return monto;
+	}
+
+	private static String truncarTexto(String texto, int max) {
+		return texto == null || texto.length() <= max ? texto : texto.substring(0, max);
 	}
 
 	/**
@@ -1784,13 +1992,37 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 					// bloqueando exactamente igual.
 					novedadesSinResolver.removeIf(tipo -> tipo != null
 						&& tipo.intValue() == ASPNovedadesCargaArchivo.PARTICIPE_NO_ENCONTRADO);
+					// D-010: el MONTO_INCONSISTENTE heredado de la validación original (calculado
+					// contra la tabla del SAA de cuando se subió la carga, no contra el ancla) no
+					// bloquea: el excedente que NO fue devuelto va a la cascada del motor — cuotas
+					// vencidas primero, luego las siguientes —, que es lo que de verdad pasó. El
+					// devuelto viaja en la lista de la solicitud y va a aporte. Si el motor no
+					// encuentra cuota para todo, registra su propio MONTO_INCONSISTENTE y el
+					// invariante recibido == aplicado frena la corrida: no se pierde dinero.
+					novedadesSinResolver.removeIf(tipo -> tipo != null
+						&& tipo.intValue() == ASPNovedadesCargaArchivo.MONTO_INCONSISTENTE);
 				}
 				if (novedadesSinResolver.isEmpty()) {
 					// El proceso automático sabe qué hacer con este valor.
 					continue;
 				}
+				if (modoReproceso) {
+					// MODO REPROCESO (C4): un rol sin partícipe en el SAA va SIEMPRE a
+					// registrarSinParticipeReproceso, traiga la novedad que traiga de la carga
+					// original (en la 352 hay filas sin entidad con tipo 10): no bloquea acá.
+					List<Entidad> entidadesFila = entidadDaoService.selectByCodigoPetro(participe.getCodigoPetro());
+					if (entidadesFila == null || entidadesFila.isEmpty()) {
+						continue;
+					}
+				}
 
 				double valorConDestino = totalAfectadoManualmente(novedades);
+				// D-010: lo declarado como excedente devuelto tiene destino (aporte EXCEDENTE_PETRO).
+				com.saa.ejb.crd.service.dto.ExcedenteDevueltoReproceso excedenteFila =
+					excedenteDevueltoDeFila(participe, codigoProducto);
+				if (excedenteFila != null && excedenteFila.getMonto() != null) {
+					valorConDestino += excedenteFila.getMonto();
+				}
 				double valorSinDestino = totalDescontado - valorConDestino;
 
 				// La misma tolerancia de $1 que usa el resto del módulo para redondeos.
@@ -3378,7 +3610,20 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 		}
 		Entidad entidad = entidades.get(0);
 		System.out.println("✅ Entidad encontrada: " + entidad.getRazonSocial() + " (ID: " + entidad.getCodigo() + ")");
-		
+
+		// MODO REPROCESO (D-010): el excedente que ASOPREP devolvió va a aporte EXCEDENTE_PETRO y
+		// NO entra a la cascada de cuotas siguientes. Se registra ANTES de buscar préstamos: si
+		// todo lo descontado fue excedente (p. ej. préstamo ya cancelado), la fila termina acá.
+		// Fuera del modo reproceso devuelve 0 y no hace nada.
+		double excedenteDevuelto = aplicarExcedenteDevueltoReproceso(participe, codigoProducto, entidad, cargaArchivo);
+		montoArchivo -= excedenteDevuelto;
+		if (excedenteDevuelto > 0.0 && montoArchivo <= 0.01
+				&& !CODIGO_PRODUCTO_PH.equalsIgnoreCase(codigoProducto)
+				&& !CODIGO_PRODUCTO_PP.equalsIgnoreCase(codigoProducto)) {
+			System.out.println("   D-010: todo lo descontado en la fila era excedente devuelto - nada para el motor");
+			return;
+		}
+
 		// ✅ OPTIMIZACIÓN: Buscar productos UNA SOLA VEZ (memoizado por carga, ver
 		// resolverProductosPorCodigo)
 		List<Producto> productos = resolverProductosPorCodigo(codigoProducto, productosCache);
@@ -3475,9 +3720,16 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 			System.out.println("========================================");
 		}
 		
+	   // MODO REPROCESO (D-010): PH/PP cuyo excedente devuelto cubría la fila + su HS — nada para el motor.
+	   if (excedenteDevuelto > 0.0 && montoArchivo <= 0.01) {
+	       System.out.println("   D-010: todo lo descontado (fila + HS) era excedente devuelto - nada para el motor");
+	       verificarYActualizarEstadoPrestamos(prestamos);
+	       return;
+	   }
+
 	   // BUSCAR CUOTA A PAGAR Y PROCESAR
 	   DetallePrestamo cuotaAPagar = buscarCuotaAPagar(prestamos, cargaArchivo);
-	   
+
 	   if (cuotaAPagar != null) {
 	       System.out.println("✅ Cuota a pagar encontrada: #" + cuotaAPagar.getNumeroCuota());
 	       aplicarPagoNormalConMotor(cuotaAPagar.getPrestamo(), montoArchivo, cargaArchivo, participe);
@@ -5004,6 +5256,18 @@ private int aplicarAporteAH(ParticipeXCargaArchivo participe, CargaArchivo carga
 	Entidad entidad = entidades.get(0);
 	double montoRecibido = montoDescontadoSinEntidad;
 
+	// MODO REPROCESO (D-010): el excedente de aporte que ASOPREP devolvió NO se anticipa a los
+	// meses siguientes: va a un aporte EXCEDENTE_PETRO sin devengo y solo el resto entra a la
+	// prelación. Fuera del modo reproceso devuelve 0.
+	double excedenteDevuelto = aplicarExcedenteDevueltoReproceso(participe, CODIGO_PRODUCTO_APORTES, entidad, cargaArchivo);
+	if (excedenteDevuelto > 0.0) {
+		aportesCreados++;
+		montoRecibido = Math.round((montoRecibido - excedenteDevuelto) * 100.0) / 100.0;
+		if (montoRecibido <= 0.01) {
+			return aportesCreados;
+		}
+	}
+
 	if (montoRecibido <= 0.01) {
 		System.out.println("⚠️ Monto recibido es $0 para partícipe: " + participe.getCodigoPetro());
 		// Sin descuento este mes: revisar si tampoco lo hubo en el periodo
@@ -5081,7 +5345,7 @@ private int aplicarAporteAH(ParticipeXCargaArchivo participe, CargaArchivo carga
 		// más antiguo (§2.3), reemplaza la distinción único-tipo / alternado. Si un tipo no
 		// tiene esperado (p. ej. cesantía = $0), su faltante mensual siempre es 0 y el reparto
 		// nunca crea filas de ese tipo: no hace falta una rama aparte para "solo un tipo".
-		aportesCreados = distribuirAportePorDevengo(entidad, montoRecibido, cargaArchivo, participe, esperadoEnLote,
+		aportesCreados += distribuirAportePorDevengo(entidad, montoRecibido, cargaArchivo, participe, esperadoEnLote,
 			entidadesCubiertas);
 	} catch (Throwable e) {
 		throw new RuntimeException("Falló al distribuir el aporte del partícipe "

@@ -46,6 +46,36 @@ public class ResultadoReprocesoCargaPetro {
     /** Resumen de texto de {@code aplicarPagosArchivoPetro} (contadores, novedades, advertencias). */
     private String resumenAplicacion;
 
+    // --- D-010: excedentes devueltos registrados como aporte EXCEDENTE_PETRO ---
+    private int excedentesDevueltos;
+    private double montoExcedentesDevueltos;
+    /** Una línea por excedente aplicado: entidad, producto, monto, tipo de aporte, APRT creado. */
+    private List<String> detalleExcedentesDevueltos = new ArrayList<>();
+
+    public int getExcedentesDevueltos() {
+        return excedentesDevueltos;
+    }
+
+    public void setExcedentesDevueltos(int excedentesDevueltos) {
+        this.excedentesDevueltos = excedentesDevueltos;
+    }
+
+    public double getMontoExcedentesDevueltos() {
+        return montoExcedentesDevueltos;
+    }
+
+    public void setMontoExcedentesDevueltos(double montoExcedentesDevueltos) {
+        this.montoExcedentesDevueltos = montoExcedentesDevueltos;
+    }
+
+    public List<String> getDetalleExcedentesDevueltos() {
+        return detalleExcedentesDevueltos;
+    }
+
+    public void setDetalleExcedentesDevueltos(List<String> detalleExcedentesDevueltos) {
+        this.detalleExcedentesDevueltos = detalleExcedentesDevueltos;
+    }
+
     // --- Novedades: roles Petro sin partícipe en el SAA (no se aplican, se reportan) ---
     private int filasSinParticipe;
     private double montoSinParticipe;

@@ -387,6 +387,30 @@ public interface DetallePrestamoDaoService extends EntityDao<DetallePrestamo> {
 	List<Long> selectPrestamosEnMoraSinCuotasVencidas(LocalDateTime fechaCorte) throws Throwable;
 
 	/**
+	 * Proceso de mora con fecha de negocio PASADA (cuadre Superintendencia C4, paso 0): préstamos
+	 * VIGENTE(2), DE_PLAZO_VENCIDO(8) o EN_MORA(11) con alguna cuota impaga que todavía NO estaba
+	 * vencida al corte ({@code fechaVencimiento >= fechaCorte}) y que trae mora calculada
+	 * ({@code mora > 0}) o está EN_MORA — restos de una corrida posterior a esa fecha.
+	 *
+	 * @param fechaCorte Instante de corte (inicio del día de la fecha de negocio)
+	 * @return Códigos de préstamo; vacía si no hay o si falla la consulta
+	 * @throws Throwable Si ocurre algún error
+	 */
+	List<Long> selectPrestamosConMoraNoVencidaAlCorte(LocalDateTime fechaCorte) throws Throwable;
+
+	/**
+	 * Detalle de {@link #selectPrestamosConMoraNoVencidaAlCorte}: cuotas impagas del préstamo con
+	 * {@code fechaVencimiento >= fechaCorte} y mora calculada o estado EN_MORA.
+	 *
+	 * @param codigoPrestamo Código del préstamo
+	 * @param fechaCorte     Instante de corte
+	 * @return Lista de cuotas; vacía si no hay o si falla la consulta
+	 * @throws Throwable Si ocurre algún error
+	 */
+	List<DetallePrestamo> selectCuotasNoVencidasConMoraByPrestamo(Long codigoPrestamo, LocalDateTime fechaCorte)
+			throws Throwable;
+
+	/**
 	 * TODAS las cuotas (entidades completas, con su grafo EAGER) de VARIOS préstamos a la vez,
 	 * en UNA consulta — para {@code GET /rest/plvn/candidatos} y {@code POST /rest/plvn/declarar}
 	 * (API-PASE-A-PLAZO-VENCIDO.md §2/§3): pueden ser cientos de préstamos, y una consulta por
