@@ -38,7 +38,13 @@ public class GeneracionReportesServiceImpl implements GeneracionReportesService 
 
     @Override
     public EjecucionReporte ejecutarGeneracion(Long mes, Long anio, String usuario) throws Throwable {
-        System.out.println("Ingresa al metodo ejecutarGeneracion con mes: " + mes + ", anio: " + anio + ", usuario: " + usuario);
+        return ejecutarGeneracion(mes, anio, usuario, false);
+    }
+
+    @Override
+    public EjecucionReporte ejecutarGeneracion(Long mes, Long anio, String usuario, boolean regenerar) throws Throwable {
+        System.out.println("Ingresa al metodo ejecutarGeneracion con mes: " + mes + ", anio: " + anio + ", usuario: " + usuario
+                + ", regenerar: " + regenerar);
 
         EjecucionReporte ejrc     = null;
         List<DetalleEjecucionReporte> ejrdsAProcesar = new ArrayList<>();
@@ -55,7 +61,7 @@ public class GeneracionReportesServiceImpl implements GeneracionReportesService 
             ejecucionesExistentes = new ArrayList<>();
         }
 
-        if (!ejecucionesExistentes.isEmpty()) {
+        if (!ejecucionesExistentes.isEmpty() && !regenerar) {
             ejrc = ejecucionesExistentes.get(0);
             System.out.println("Ejecucion existente encontrada con id: " + ejrc.getCodigo() + ", estado: " + ejrc.getEstado());
 

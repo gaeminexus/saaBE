@@ -109,7 +109,7 @@ public class EjecucionReporteRest {
 
     /**
      * Endpoint único para lanzar la generación de reportes G40-G51.
-     * Body esperado: { "mes": 4, "anio": 2026, "usuario": "jperez" }
+     * Body esperado: { "mes": 4, "anio": 2026, "usuario": "jperez" [, "regenerar": true] }
      * URL: POST /ejrc/ejecutar
      */
     @POST @Path("/ejecutar") @Consumes(MediaType.APPLICATION_JSON) @Produces(MediaType.APPLICATION_JSON)
@@ -121,7 +121,8 @@ public class EjecucionReporteRest {
             EjecucionReporte resultado = generacionReportesService.ejecutarGeneracion(
                     solicitud.getMes(),
                     solicitud.getAnio(),
-                    solicitud.getUsuario()
+                    solicitud.getUsuario(),
+                    Boolean.TRUE.equals(solicitud.getRegenerar())
             );
             return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
@@ -141,7 +142,11 @@ public class EjecucionReporteRest {
         private Long mes;
         private Long anio;
         private String usuario;
+        /** C15: true = crear una ejecución nueva aunque el mes ya tenga una (regenerar las G). */
+        private Boolean regenerar;
 
+        public Boolean getRegenerar() { return regenerar; }
+        public void setRegenerar(Boolean regenerar) { this.regenerar = regenerar; }
         public Long getMes() { return mes; }
         public void setMes(Long mes) { this.mes = mes; }
         public Long getAnio() { return anio; }

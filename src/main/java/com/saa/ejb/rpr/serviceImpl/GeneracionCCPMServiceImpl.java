@@ -68,6 +68,8 @@ public class GeneracionCCPMServiceImpl implements GeneracionCCPMService {
     @EJB private CreditoCuotasPrestamosMensualDaoService   ccpmDaoService;
     @EJB private EjecucionReporteCarteraService            ejccService;
     @EJB private CierreCarteraDaoService                   cierreCarteraDaoService;
+    /** C15: CCPM a fecha de corte con el mismo cálculo que la G48 y la provisión ⑧. */
+    @EJB private com.saa.ejb.crd.service.CarteraAlCorteService carteraAlCorteService;
     @EJB private ClasificadorBandaService                  clasificadorBandaService;
     @EJB private ContabilizacionIndividualCreditoService    contabilizacionIndividualCreditoService;
     @EJB private ConfiguracionBandaProductoDaoService       configuracionBandaProductoDaoService;
@@ -130,7 +132,15 @@ public class GeneracionCCPMServiceImpl implements GeneracionCCPMService {
         //    por préstamo. Reemplaza los grupos 1/2 de siempre (selectCuotasDelMesGlobal,
         //    selectMenorCuotaAnteriorAlMesGlobal) como fuente del universo.
         // -------------------------------------------------------
-        List<Object[]> cuotasPendientes = cierreCarteraDaoService.selectCuotasPendientesPorPrestamo(idEmpresa);
+        // C15 (H1, D-011/D-015): un mes pasado se lee con la cartera COMO ESTABA al corte, y la
+        // calificación, provisión, interés y mora salen del MISMO cálculo que la G48 y el ⑧ del
+        // cierre (CarteraAlCorteService). Mes en curso / mes anterior: como siempre.
+        boolean alCorte = com.saa.ejb.crd.service.ModoCorteCartera.esAlCorte(corte, null);
+        boolean inclusivo = alCorte && com.saa.ejb.crd.service.ModoCorteCartera.corteInclusivo(null);
+        Map<Long, com.saa.ejb.crd.service.dto.OperacionCarteraCorte> operacionesAlCorte = alCorte
+                ? carteraAlCorteService.calcularPorPrestamo(corte, inclusivo) : new HashMap<>();
+        List<Object[]> cuotasPendientes = cierreCarteraDaoService.selectCuotasPendientesPorPrestamo(idEmpresa,
+                alCorte ? corte : null);
         Map<Long, List<Object[]>> cuotasPorPrestamo = new LinkedHashMap<>();
         for (Object[] fila : cuotasPendientes) {
             Long idPrestamo = (Long) fila[0];
@@ -182,7 +192,9 @@ public class GeneracionCCPMServiceImpl implements GeneracionCCPMService {
                 LocalDate vencimiento = (LocalDate) c[4];
                 Double capitalPendiente = (Double) c[5];
 
-                long[] td = contabilizacionIndividualCreditoService.tipoCarteraYDias(vencimiento, corte);
+                long[] td = inclusivo
+                        ? com.saa.ejb.crd.service.ModoCorteCartera.tipoYDiasInclusivo(vencimiento, corte)
+                        : contabilizacionIndividualCreditoService.tipoCarteraYDias(vencimiento, corte);
                 long tipoCartera = td[0];
                 long dias = td[1];
 
@@ -396,6 +408,19 @@ public class GeneracionCCPMServiceImpl implements GeneracionCCPMService {
 
                 // Provisión constituida = 0 (no depender del histórico)
                 Double provisionConstituida = 0.0;
+
+                // C15: al corte, los campos de calificación/provisión/interés salen del cálculo común.
+                com.saa.ejb.crd.service.dto.OperacionCarteraCorte opCorte = operacionesAlCorte.get(idPrestamo);
+                if (opCorte != null) {
+                    diasMorosidad = Long.valueOf(opCorte.getDiasMora());
+                    calificacionPropia = opCorte.getCalificacion();
+                    interesOrdinario = opCorte.getInteresOrdinarioReporte();
+                    interesMora = opCorte.getMora();
+                    valorCuentaIndividual = opCorte.getCuentaIndividual();
+                    valorSujetoProvision = opCorte.getValorSujetoProvision();
+                    provisionRequeridaOriginal = opCorte.getProvisionRequerida();
+                    provisionConstituida = opCorte.getProvisionConstituida();
+                }
 
                 // Número de operación
                 String numeroOperacion = prestamo.getIdAsoprep() != null
