@@ -715,13 +715,145 @@ public class CargaHistoricaDocumentoServiceImpl implements CargaHistoricaDocumen
     @Override
     @TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
     public ItemResultado cargarVenta(Contexto ctx, VentaLote v) throws Throwable {
-        ItemResultado item = new ItemResultado("venta", v.ref, v.numero + " " + nvl(v.razonSocial, ""));
+        ItemResultado item = new ItemResultado("venta", v.ref, v.numero);
         try {
-            return item.rechazado("ventas: fase 2 pendiente");
+            if (v.claveAcceso == null || !v.claveAcceso.matches("\\d{49}")) return item.rechazado("clave de acceso invalida");
+            Factura existente = unico(em.createQuery("select f from Factura f where f.clave = :c and f.estadoEmision <> 3", Factura.class).setParameter("c", v.claveAcceso).getResultList());
+            if (existente == null) existente = unico(em.createQuery("select f from Factura f where f.numero = :n and f.facturador.empresa.codigo = :e and f.estado = 5 and f.estadoEmision <> 3", Factura.class)
+                    .setParameter("n", v.numero).setParameter("e", ctx.idEmpresa).getResultList());
+            if (existente != null) return item.omitido(existente.getId(), "ya existe la factura de venta " + existente.getNumero() + " (estado " + existente.getEstado() + ", asiento " + numeroAsiento(existente.getAsiento()) + ")");
+            Titular cliente = titularPorIdentificacion(v.cliente);
+            if (cliente == null) return item.rechazado("el cliente " + v.cliente + " no existe en TSR.TTLR (cargar titulares primero)");
+            if (!asientoContableService.existeCuentaConRolEstricto(cliente.getCodigo(), ctx.idEmpresa, 1L, RolPersona.CLIENTE))
+                return item.rechazado("el cliente no tiene cuenta contable con rol cliente (TSR.PRCC tipo 1)");
+            Facturador facturador = facturadorDeEmpresa(ctx.idEmpresa);
+            if (facturador == null) return item.rechazado("la empresa no tiene facturador");
+            LocalDate fe = fecha(v.fechaEmision, "fechaEmision");
+            if (v.lineas == null || v.lineas.isEmpty()) return item.rechazado("sin lineas");
+            double sumaBases = 0, sumaIva = 0, base15 = 0, base0 = 0, iva15 = 0;
+            for (LineaLote l : v.lineas) {
+                cuentaMovimiento(ctx.idEmpresa, l.cuenta);
+                sumaBases += nz(l.base); sumaIva += nz(l.iva);
+                if (l.tarifa != null && l.tarifa == 15) { base15 += nz(l.base); iva15 += nz(l.iva); } else base0 += nz(l.base);
+            }
+            double dif = redondea(nz(v.total) - sumaBases - sumaIva);
+            if (Math.abs(dif) > TOLERANCIA) return item.rechazado("bases + IVA difieren del total en " + dif);
+            String[] partes = partesNumero(v.numero);
+            if (ctx.soloValidar) return item.validado("se crearia la factura de venta por " + v.total + " (ingreso " + v.cuentaIngreso + ")");
+
+            PuntoEmision punto = puntoEmision(facturador, partes[0], partes[1], true);
+            Usuario usuario = em.find(Usuario.class, ctx.idUsuario);
+            Factura f = new Factura();
+            f.setTipoComprobante(TIPO_COMPROBANTE_FACTURA);
+            f.setTipoDoc(TIPO_COMPROBANTE_FACTURA);
+            f.setFacturador(facturador);
+            f.setEmpresa(em.find(Empresa.class, ctx.idEmpresa));
+            f.setTitular(cliente);
+            f.setNumero(v.numero);
+            f.setNumEstablecimiento(partes[0]);
+            f.setNumPtoEmision(partes[1]);
+            f.setSecuencial(partes[2]);
+            f.setAmbiente(facturador.getAmbiente() != null ? facturador.getAmbiente() : ambienteDeClave(v.claveAcceso));
+            f.setClave(v.claveAcceso);
+            f.setFecha(fe);
+            f.setObservacion(recortar(observacionDocumento(ctx, v.ref, "Factura de venta " + v.numero, v.estadoCobroExcel != null ? "estado Excel: " + v.estadoCobroExcel : null), 2000));
+            f.setSubtotal(redondea(sumaBases));
+            f.setSubcero(redondea(base0));
+            f.setSubtotal5(0d);
+            f.setSubtotal8(0d);
+            f.setpIVA(base15 > 0 ? 15d : 0d);
+            f.setvIVA(redondea(nz(v.iva) > 0 ? nz(v.iva) : iva15));
+            f.setvIVA5(0d);
+            f.setvIVA8(0d);
+            f.setvICE(0d);
+            f.setvIRBPNR(0d);
+            f.setDescuento(0d);
+            f.setPorDescuento(0d);
+            f.setPropina(0d);
+            f.setSubsidio(0d);
+            f.setTotalSinSub(redondea(nz(v.total)));
+            f.setAhorroSub(0d);
+            f.setTotal(redondea(nz(v.total)));
+            f.setPtoEmision(punto);
+            f.setUsuario(usuario);
+            f.setAutorizacion(v.claveAcceso);
+            f.setFechaAutorizacion(fecha(nvl(v.fechaAutorizacion, v.fechaEmision), "fechaAutorizacion").atStartOfDay());
+            f.setEstado(ESTADO_AUTORIZADA_CXC);
+            f.setEstadoEmision(ESTADO_EMISION_OK_CXC);
+            f.setEstadoPago((long) EstadoPagoFactura.PENDIENTE);
+            em.persist(f);
+            int n = 0;
+            for (LineaLote l : v.lineas) {
+                ProductoCobro producto = productoVentaParaCuenta(ctx, l.cuenta, l.tarifa);
+                DetalleFactura d = new DetalleFactura();
+                d.setFactura(f);
+                d.setDescripcion(recortar(nvl(l.descripcion, "Linea " + (++n)), 500));
+                d.setCantidad(1d);
+                d.setValor(redondea(nz(l.base)));
+                d.setSubTotal(redondea(nz(l.base)));
+                d.setDescuento(0d);
+                d.setBaseImponible(redondea(nz(l.base)));
+                d.setPorcentajeIVA(l.tarifa == null ? 0L : l.tarifa.longValue());
+                d.setValorIVA(redondea(nz(l.iva)));
+                d.setPorcentajeICE(0L);
+                d.setValorICE(0d);
+                d.setSubsidio(0d);
+                d.setPrecioSinSub(redondea(nz(l.base)));
+                d.setTotal(redondea(nz(l.base) + nz(l.iva)));
+                d.setProducto(producto);
+                d.setCodigoIVASRI(l.codigoIvaSri == null ? (l.tarifa != null && l.tarifa == 15 ? 4L : 0L) : l.codigoIvaSri.longValue());
+                d.setEstado((long) Estado.ACTIVO);
+                em.persist(d);
+            }
+            em.flush();
+            String obs = recortar("Factura N° " + v.numero + " | Cliente: " + nvl(cliente.getNombre(), v.cliente) + " | " + ctx.observacion, 2000);
+            Asiento asiento = asientoContableService.generarAsientoFactura(f.getId(), ctx.idEmpresa, TipoAsientos.FACTURAS_VENTA, fe, obs, ctx.usuario);
+            Asiento attached = em.find(Asiento.class, asiento.getCodigo());
+            f.setAsiento(attached != null ? attached : asiento);
+            em.merge(f);
+            em.flush();
+            return item.creado(f.getId(), asiento.getCodigo(), asiento.getNumeroAlterno(), "factura de venta creada (autorizada, punto " + partes[0] + "-" + partes[1] + ")");
         } catch (Throwable e) {
             sessionContext.setRollbackOnly();
             throw e;
         }
+    }
+
+    /** Producto de venta cuyo grupo tiene la cuenta de ingreso pedida (hoy 5.3.01 ARRIENDOS, grupo con 23 productos). */
+    private ProductoCobro productoVentaParaCuenta(Contexto ctx, String cuenta, Integer tarifa) throws Throwable {
+        PlanCuenta plan = cuentaMovimiento(ctx.idEmpresa, cuenta);
+        String nombre = PREFIJO_PRODUCTO + cuenta;
+        List<ProductoCobro> existentes = em.createQuery("select p from ProductoCobro p where p.empresa.codigo = :e and upper(p.nombre) = :n and p.grupoProducto.planCuenta.codigo = :pc", ProductoCobro.class)
+                .setParameter("e", ctx.idEmpresa).setParameter("n", nombre.toUpperCase()).setParameter("pc", plan.getCodigo()).getResultList();
+        if (!existentes.isEmpty()) return existentes.get(0);
+        List<GrupoProductoCobro> grupos = em.createQuery("select g from GrupoProductoCobro g where g.empresa.codigo = :e and g.planCuenta.codigo = :pc and g.estado = 1 "
+                + "order by (select count(x) from ProductoCobro x where x.grupoProducto = g) desc, g.codigo", GrupoProductoCobro.class)
+                .setParameter("e", ctx.idEmpresa).setParameter("pc", plan.getCodigo()).getResultList();
+        GrupoProductoCobro grupo;
+        if (grupos.isEmpty()) {
+            grupo = new GrupoProductoCobro();
+            grupo.setNombre(recortar(PREFIJO_PRODUCTO + cuenta + " " + nvl(plan.getNombre(), ""), 100));
+            grupo.setEmpresa(em.find(Empresa.class, ctx.idEmpresa));
+            grupo.setPlanCuenta(plan);
+            grupo.setRubroTipoGrupoP(0L);
+            grupo.setRubroTipoGrupoH((long) TipoGrupoProductos.SERVICIO);
+            grupo.setEstado((long) Estado.ACTIVO);
+            em.persist(grupo);
+            System.out.println("ℹ Grupo de producto de ventas creado para la cuenta " + cuenta + ": " + grupo.getNombre());
+        } else {
+            grupo = grupos.get(0);
+        }
+        ProductoCobro p = new ProductoCobro();
+        p.setEmpresa(em.find(Empresa.class, ctx.idEmpresa));
+        p.setGrupoProducto(grupo);
+        p.setNombre(nombre);
+        p.setDescripcion("Producto generico de la carga historica de CxC (C11) para la cuenta " + cuenta);
+        p.setPrecioUnitario(0d);
+        p.setTipoIVA(tarifa != null && tarifa == 15 ? 4L : 0L);
+        p.setEstado((long) Estado.ACTIVO);
+        em.persist(p);
+        em.flush();
+        return p;
     }
 
     @Override
@@ -729,7 +861,28 @@ public class CargaHistoricaDocumentoServiceImpl implements CargaHistoricaDocumen
     public ItemResultado cargarCobro(Contexto ctx, CobroLote c) throws Throwable {
         ItemResultado item = new ItemResultado("cobro", c.ref, "cobro " + c.facturaNumero + " " + c.fechaCobro);
         try {
-            return item.rechazado("cobros: fase 2 pendiente");
+            Factura factura = facturaVentaDe(ctx, c.facturaClave, c.facturaNumero);
+            if (factura == null) return item.rechazado("la factura de venta " + c.facturaNumero + " no esta cargada en CBR.FCTR (cargar primero el lote de " + c.facturaMes + ")");
+            LocalDate fc = fecha(c.fechaCobro, "fechaCobro");
+            if (fc.isAfter(LocalDate.now())) return item.rechazado("fecha de cobro futura");
+            if (nz(c.valor) <= 0) return item.rechazado("valor en cero");
+            if (c.idCuentaBancaria == null) return item.rechazado("sin cuenta bancaria");
+            List<com.saa.model.cxc.AplicacionPagoCxc> previas = em.createQuery("select a from AplicacionPagoCxc a where a.factura.id = :f and a.tipoDocPago = :t and a.estado = :e and a.fechaAplicacion = :d and abs(a.montoAplicado - :v) < 0.011", com.saa.model.cxc.AplicacionPagoCxc.class)
+                    .setParameter("f", factura.getId()).setParameter("t", (long) TipoDocPagoAplicacion.COBRO_DIRECTO).setParameter("e", (long) EstadoAplicacionPago.ACTIVO)
+                    .setParameter("d", fc).setParameter("v", nz(c.valor)).getResultList();
+            if (!previas.isEmpty()) return item.omitido(previas.get(0).getId(), "ya existe un cobro de " + c.valor + " el " + c.fechaCobro + " sobre esa factura (aplicacion " + previas.get(0).getId() + ")");
+            Map<String, Object> saldo = aplicacionPagoCxcService.saldoFactura(factura.getId());
+            double saldoPendiente = numero(saldo.get("saldoPendiente"));
+            if (nz(c.valor) > saldoPendiente + TOLERANCIA) return item.rechazado("el cobro " + c.valor + " supera el saldo de la factura " + saldoPendiente + " (la retencion recibida debe cargarse antes)");
+            if (ctx.soloValidar) return item.validado("se registraria el cobro por transferencia de " + c.valor + " el " + c.fechaCobro + " en la cuenta " + c.cuentaBancaria + " (saldo " + saldoPendiente + ")");
+            String referencia = recortar(nvl(c.referencia, ctx.observacion), 200);
+            String obs = recortar(ctx.observacion + " | " + c.ref + " | " + nvl(c.estadoCobroExcel, ""), 2000);
+            Map<String, Object> res = aplicacionPagoCxcService.aplicarCobroTransferencia(factura.getId(), redondea(nz(c.valor)), c.fechaCobro, referencia, c.idCuentaBancaria, ctx.idEmpresa, ctx.idUsuario, obs);
+            Long idAplicacion = res.get("aplicacion") != null ? Long.valueOf(res.get("aplicacion").toString()) : null;
+            Long idAsiento = res.get("idAsiento") != null ? Long.valueOf(res.get("idAsiento").toString()) : null;
+            em.flush();
+            return item.creado(idAplicacion, idAsiento, res.get("asiento") != null ? res.get("asiento").toString() : null,
+                    "cobro aplicado; saldo factura " + numero(res.get("saldoPendiente")));
         } catch (Throwable e) {
             sessionContext.setRollbackOnly();
             throw e;
@@ -741,11 +894,98 @@ public class CargaHistoricaDocumentoServiceImpl implements CargaHistoricaDocumen
     public ItemResultado cargarRetencionRecibida(Contexto ctx, RetencionRecibidaLote r) throws Throwable {
         ItemResultado item = new ItemResultado("retencion-recibida", r.ref, r.numero + " s/ " + r.facturaNumero);
         try {
-            return item.rechazado("retenciones recibidas: fase 2 pendiente");
+            if (r.claveAcceso == null || !r.claveAcceso.matches("\\d{49}")) return item.rechazado("clave de acceso invalida");
+            RetencionCompraV2 existente = unico(em.createQuery("select x from RetencionCompraV2 x where x.clave = :c and x.estado = 1", RetencionCompraV2.class).setParameter("c", r.claveAcceso).getResultList());
+            if (existente != null) return item.omitido(existente.getId(), "ya existe la retencion recibida " + existente.getNumero() + " (asiento " + numeroAsiento(existente.getAsiento()) + ")");
+            Titular cliente = titularPorIdentificacion(r.cliente);
+            if (cliente == null) return item.rechazado("el cliente " + r.cliente + " no existe en TSR.TTLR");
+            Factura factura = facturaVentaDe(ctx, r.facturaClave, r.facturaNumero);
+            if (factura == null) return item.rechazado("la factura de venta " + r.facturaNumero + " no esta cargada en CBR.FCTR");
+            if (r.lineas == null || r.lineas.isEmpty()) return item.rechazado("sin lineas");
+            LocalDate fe = fecha(r.fechaEmision, "fechaEmision");
+            double total = 0;
+            for (LineaRetencionLote l : r.lineas) {
+                if (!"RENTA".equalsIgnoreCase(l.impuesto) && !"IVA".equalsIgnoreCase(l.impuesto)) return item.rechazado("impuesto desconocido " + l.impuesto);
+                if (cuentaRetencionRecibida(l.impuesto, l.codigoSri) == null) return item.rechazado("el codigo " + l.codigoSri + " (" + l.impuesto + ") no tiene cuenta en PGS.TSRI");
+                total += nz(l.valor);
+            }
+            total = redondea(total);
+            if (total <= 0) return item.rechazado("retencion sin valor");
+            if (Math.abs(total - nz(r.total)) > TOLERANCIA) return item.rechazado("la suma de lineas " + total + " no coincide con el total " + r.total);
+            double saldoPendiente = numero(aplicacionPagoCxcService.saldoFactura(factura.getId()).get("saldoPendiente"));
+            if (total > saldoPendiente + TOLERANCIA) return item.rechazado("la retencion " + total + " supera el saldo de la factura " + saldoPendiente);
+            String[] partes = partesNumero(r.numero);
+            if (ctx.soloValidar) return item.validado("se crearia la retencion recibida " + r.numero + " por " + total + " contra la factura " + factura.getNumero());
+
+            Usuario usuario = em.find(Usuario.class, ctx.idUsuario);
+            RetencionCompraV2 ret = new RetencionCompraV2();
+            ret.setTipoComprobante(TIPO_COMPROBANTE_RETENCION);
+            ret.setEmpresa(em.find(Empresa.class, ctx.idEmpresa));
+            ret.setProveedor(cliente);
+            ret.setTipoDoc(TIPO_DOC_SUSTENTO_FACTURA);
+            ret.setPeriodoFiscal(nvl(r.periodoFiscal, String.format("%02d/%d", fe.getMonthValue(), fe.getYear())));
+            ret.setNumero(r.numero);
+            ret.setNumEstablecimiento(partes[0]);
+            ret.setNumPtoEmision(partes[1]);
+            ret.setSecuencial(partes[2]);
+            ret.setAmbiente(ambienteDeClave(r.claveAcceso));
+            ret.setClave(r.claveAcceso);
+            ret.setFecha(fe.atStartOfDay());
+            ret.setObservacion(recortar(observacionDocumento(ctx, r.ref, "Retencion recibida " + r.numero + " sobre " + r.facturaNumero), 2000));
+            ret.setTotal(total);
+            ret.setUsuario(usuario);
+            ret.setAutorizacion(r.claveAcceso);
+            ret.setFechaAutorizacion(fecha(nvl(r.fechaAutorizacion, r.fechaEmision), "fechaAutorizacion").atStartOfDay());
+            ret.setEstado((long) Estado.ACTIVO);
+            ret.setEstadoEmision(ESTADO_EMISION_REGISTRADA_CXP);
+            em.persist(ret);
+            for (LineaRetencionLote l : r.lineas) {
+                DetalleRetencionCompraV2 d = new DetalleRetencionCompraV2();
+                d.setRetencionCompraV2(ret);
+                d.setTipoDocReten(TIPO_DOC_SUSTENTO_FACTURA);
+                d.setNumDocReten(factura.getNumero().replace("-", ""));
+                d.setFechaEmiDoc(factura.getFecha());
+                d.setFechaReg(fe);
+                d.setDocResAutorizacion(factura.getAutorizacion());
+                d.setDocResTotalSinImpuestos(factura.getSubtotal());
+                d.setDocResIvaCero(factura.getSubcero());
+                d.setDocResPorIva(factura.getpIVA());
+                d.setDocResTotalIva(factura.getvIVA());
+                d.setDocResTotal(factura.getTotal());
+                d.setDocResForPago(FORMA_PAGO_SRI_DEFECTO);
+                d.setCodImpuesto("RENTA".equalsIgnoreCase(l.impuesto) ? COD_IMPUESTO_RENTA : COD_IMPUESTO_IVA);
+                d.setCodRetencion(l.codigoSri);
+                d.setBaseImponible(redondea(nz(l.base)));
+                d.setPorcentajeReten(l.porcentaje);
+                d.setValorReten(redondea(nz(l.valor)));
+                d.setEstado((long) Estado.ACTIVO);
+                em.persist(d);
+            }
+            em.flush();
+            String obs = recortar("Retención recibida N° " + r.numero + " | Cliente: " + nvl(cliente.getNombre(), r.cliente) + " | Factura: " + factura.getNumero() + " | " + ctx.observacion, 2000);
+            Asiento asiento = asientoContableService.generarAsientoRetencionCompraV2(ret.getId(), ctx.idEmpresa, TipoAsientos.RETENCIONES_RECIBIDAS_V2, fe, obs, ctx.usuario);
+            Asiento attached = em.find(Asiento.class, asiento.getCodigo());
+            ret.setAsiento(attached != null ? attached : asiento);
+            em.merge(ret);
+            em.flush();
+            com.saa.model.cxc.AplicacionPagoCxc apl = aplicacionPagoCxcService.aplicarRetencionRecibidaV2(ret, ret.getAsiento(), ctx.idEmpresa, ctx.usuario);
+            em.flush();
+            return item.creado(ret.getId(), asiento.getCodigo(), asiento.getNumeroAlterno(), "retencion recibida creada y cruzada (aplicacion " + (apl != null ? apl.getId() : null) + ")");
         } catch (Throwable e) {
             sessionContext.setRollbackOnly();
             throw e;
         }
+    }
+
+    private Factura facturaVentaDe(Contexto ctx, String clave, String numero) {
+        if (clave != null && clave.matches("\\d{49}")) {
+            Factura f = unico(em.createQuery("select f from Factura f where f.clave = :c and f.estado = 5 and f.estadoEmision <> 3", Factura.class).setParameter("c", clave).getResultList());
+            if (f != null) return f;
+        }
+        if (numero == null || numero.trim().isEmpty()) return null;
+        List<Factura> l = em.createQuery("select f from Factura f where FUNCTION('replace', f.numero, '-', '') = :n and f.estado = 5 and f.estadoEmision <> 3 and f.facturador.empresa.codigo = :e", Factura.class)
+                .setParameter("n", numero.replace("-", "")).setParameter("e", ctx.idEmpresa).getResultList();
+        return l.size() == 1 ? l.get(0) : null;
     }
 
     // =====================================================================================================
@@ -887,7 +1127,4 @@ public class CargaHistoricaDocumentoServiceImpl implements CargaHistoricaDocumen
         try { return Double.parseDouble(o.toString()); } catch (NumberFormatException e) { return 0d; }
     }
 
-    // Referencias que usan las fases 2 y 3 (se mantienen importadas para que el compilador valide los tipos ya en la fase 1)
-    @SuppressWarnings("unused")
-    private static final Class<?>[] TIPOS_FASES_SIGUIENTES = { Factura.class, DetalleFactura.class, ProductoCobro.class, GrupoProductoCobro.class, RetencionCompraV2.class, DetalleRetencionCompraV2.class };
 }
