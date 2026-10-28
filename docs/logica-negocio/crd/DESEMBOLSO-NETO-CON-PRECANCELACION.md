@@ -95,15 +95,24 @@ ve el neto.
 - Préstamo anterior → CANCELADO_ANTICIPADO (4) (diferencia 3: admite la cartera migrada que ya está en 4 sin ningún
   registro de su cancelación) y huella en la observación de los dos préstamos.
 
-En los 22 préstamos de junio 2025 hay dos formas de tabla migrada, las dos `TABLA_MIGRADA`:
+En los 22 préstamos de junio 2025 hay tres formas de tabla migrada, todas `TABLA_MIGRADA`; el capital futuro se toma
+**una sola vez** (si `DTPRSLOT` de la cuota del mes y la suma de las cuotas futuras en 7 son ambos > 0 y difieren, se
+rechaza):
 
-- 15 con la tabla cortada en junio (`DTPRCPTL` = capital de la cuota, `DTPRSLDO = DTPRSLOT` = resto): la cuota se paga
-  completa y el resto va como capital futuro en `PGPRSLOT`. Como no hay cuotas en 7, el reparto por banda y el cierre de
-  apertura (`ContabilizacionIndividualCreditoServiceImpl`) lo tratan como "capital futuro fuera de la tabla" con
-  vencimiento el mes siguiente a la ancla — antes ese caso lanzaba excepción; el caso normal (hay cuotas en 7) no cambia.
-- 7 con la cuota de junio "por el total" (`DTPRCPTL` = todo el capital pendiente; 4116, 4745, 5429, 5774, 6165, 7110,
-  7352) y las futuras ya en 7 sin fecha: la cuota se paga completa (todo el capital en `PGPRCPPG`), no hay capital futuro
-  y las futuras solo reciben la fecha de pago.
+- **A** — 15 con la tabla cortada en junio (`DTPRCPTL` = capital de la cuota, `DTPRSLDO = DTPRSLOT` = resto): la cuota
+  se paga completa y el resto va como capital futuro en `PGPRSLOT`. Como no hay cuotas en 7, el reparto por banda y el
+  cierre de apertura (`ContabilizacionIndividualCreditoServiceImpl`) lo tratan como "capital futuro fuera de la tabla"
+  con vencimiento el mes siguiente a la ancla — antes ese caso lanzaba excepción; el caso normal (hay cuotas en 7) no
+  cambia.
+- **B** — 6 con la cuota de junio "por el total" (`DTPRCPTL` = todo el capital pendiente, `DTPRTTLL` = capital + interés
+  + seguro; 4745, 5429, 5774, 6165, 7110, 7352) y las futuras ya en 7 sin fecha: la cuota se paga completa (todo el
+  capital en `PGPRCPPG`), no hay capital futuro y las futuras solo reciben la fecha de pago. `DTPRSLOT` de la cuota
+  queda como lo dejó la migración (ningún reporte ni la regla al corte lo leen; la G48 usa `PGPRSLOT`).
+- **C** — 4116: `DTPRCPTL` = capital propio (130,93), `DTPRSLOT` = Σ futuras en 7 (3.612,24) y `DTPRTTLL` = capital
+  propio + futuro + interés + seguro (3.774,94). Capital = 130,93 + 3.612,24 = 3.743,17. Antes de pagar se descuenta el
+  futuro de `DTPRTTLL` (si no, el motor aplicaba solo los componentes, 162,70, y dejaba la cuota PARCIAL: fue el rechazo
+  `MONTO_NO_COINCIDE ... no quedó PAGADA` del primer lote); la cuota se paga con sus componentes y el futuro va como
+  PGPR en `PGPRSLOT` sobre ella, bandado por las cuotas en 7 — el registro normal de `precancelar`.
 
 **Por qué B17 = G:** el asiento acredita el capital al 31-may del préstamo anterior de las cuentas de cartera de su familia
 (Q) y el préstamo queda liquidado al corte (todas sus cuotas desde junio en 4/7 con fecha ≤ 30-jun), así que la G48, el

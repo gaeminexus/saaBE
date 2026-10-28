@@ -22,6 +22,16 @@ public class ComponentesPrecancelacionConPrestamo {
     private Double total;
     private String tabla;
 
+    /**
+     * Parte de DTPRTTLL de la cuota del mes que repite el capital de las cuotas futuras en 7 (patrón
+     * migrado C: DTPRCPTL = capital propio, total con el futuro incluido). Se descuenta del total antes
+     * de pagar la cuota para no cobrar el futuro dos veces.
+     */
+    private Double excesoTotalCuotaDelMes = 0.0;
+
+    public Double getExcesoTotalCuotaDelMes() { return excesoTotalCuotaDelMes; }
+    public void setExcesoTotalCuotaDelMes(Double v) { this.excesoTotalCuotaDelMes = v; }
+
     public Long getIdPrestamo() { return idPrestamo; }
     public void setIdPrestamo(Long idPrestamo) { this.idPrestamo = idPrestamo; }
     public Long getIdCuotaDelMes() { return idCuotaDelMes; }

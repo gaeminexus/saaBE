@@ -1444,17 +1444,52 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
         }
         double capital;
         String tabla;
+        double excesoTotal = 0.0;
         if (hayFuturasPendientes) {
             capital = redondear(nvl(cuotaMes.getCapital()) + capitalFuturasPendientes);
             tabla = com.saa.ejb.crd.service.dto.ComponentesPrecancelacionConPrestamo.TABLA_VIGENTE;
         } else {
-            // Cartera migrada de Delta: la tabla termina en la cuota del mes (saldo en DTPRSLDO/DTPRSLOT)
-            // o la cuota del mes trae todo el capital pendiente. Misma regla con la que se reconstruyó
-            // el capital de la G48 de mayo 2025 (cuadreSuper, 03-desembolsos-2025-06.sql).
-            double capitalMasSaldo = nvl(cuotaMes.getCapital()) + nvl(cuotaMes.getSaldo());
-            double totalMenosConceptos = nvl(cuotaMes.getTotal()) - nvl(cuotaMes.getInteres())
-                - nvl(cuotaMes.getDesgravamen()) - nvl(cuotaMes.getValorSeguroIncendio()) - nvl(cuotaMes.getMora());
-            capital = redondear(Math.max(capitalMasSaldo, totalMenosConceptos));
+            // Cartera migrada de Delta. Tres patrones (los 22 de junio 2025), con el capital futuro
+            // contado UNA sola vez:
+            //  A) sin cuotas futuras: el futuro vive en DTPRSLDO/DTPRSLOT de la cuota del mes
+            //     → capital = DTPRCPTL + DTPRSLDO (regla de la G48 de mayo 2025);
+            //  B) futuras en 7 y la cuota del mes con TODO el capital en DTPRCPTL (DTPRTTLL = CPTL +
+            //     interés + seguro) → capital = DTPRCPTL;
+            //  C) futuras en 7, DTPRCPTL = capital propio y DTPRTTLL incluye además el futuro (= DTPRSLOT
+            //     = Σ capital de las futuras; préstamo 4116) → capital = DTPRCPTL + futuro; el exceso de
+            //     DTPRTTLL se descuenta antes de pagar la cuota (si no, el motor la deja PARCIAL).
+            double capitalCuota = nvl(cuotaMes.getCapital());
+            double totalMenosConceptos = redondear(nvl(cuotaMes.getTotal()) - nvl(cuotaMes.getInteres())
+                - nvl(cuotaMes.getDesgravamen()) - nvl(cuotaMes.getValorSeguroIncendio()) - nvl(cuotaMes.getMora()));
+            if (partes.futuras.isEmpty()) {
+                double capitalMasSaldo = capitalCuota + nvl(cuotaMes.getSaldo());
+                capital = redondear(Math.max(capitalMasSaldo, totalMenosConceptos));
+            } else {
+                double capitalFuturas = 0.0;
+                for (DetallePrestamo futura : partes.futuras) {
+                    capitalFuturas += nvl(futura.getCapital());
+                }
+                capitalFuturas = redondear(capitalFuturas);
+                double slot = redondear(nvl(cuotaMes.getSaldoOtros()));
+                if (slot > TOLERANCIA && Math.abs(slot - capitalFuturas) > TOLERANCIA) {
+                    throw new IncomeException(ERR_MONTO_NO_COINCIDE + ": en el préstamo " + idPrestamoCancelado
+                        + " el capital futuro no es único: DTPRSLOT de la cuota #" + cuotaMes.getNumeroCuota() + " = $"
+                        + formatoMonto(slot) + " pero las " + partes.futuras.size() + " cuotas futuras (estado 7) suman $"
+                        + formatoMonto(capitalFuturas) + ". Revisar la tabla a mano.");
+                }
+                if (Math.abs(totalMenosConceptos - capitalCuota) <= TOLERANCIA) {
+                    capital = redondear(capitalCuota); // patrón B
+                } else if (Math.abs(totalMenosConceptos - (capitalCuota + capitalFuturas)) <= TOLERANCIA) {
+                    capital = redondear(capitalCuota + capitalFuturas); // patrón C
+                    excesoTotal = capitalFuturas;
+                } else {
+                    throw new IncomeException(ERR_MONTO_NO_COINCIDE + ": la cuota #" + cuotaMes.getNumeroCuota()
+                        + " del préstamo " + idPrestamoCancelado + " no encaja en ningún patrón de tabla migrada:"
+                        + " capital $" + formatoMonto(capitalCuota) + ", total menos interés/seguro/mora $"
+                        + formatoMonto(totalMenosConceptos) + ", cuotas futuras en 7 $" + formatoMonto(capitalFuturas)
+                        + ". Revisar la tabla a mano.");
+                }
+            }
             tabla = com.saa.ejb.crd.service.dto.ComponentesPrecancelacionConPrestamo.TABLA_MIGRADA;
         }
 
@@ -1469,6 +1504,7 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
         componentes.setMora(mora);
         componentes.setTotal(redondear(capital + interes + seguro + mora));
         componentes.setTabla(tabla);
+        componentes.setExcesoTotalCuotaDelMes(excesoTotal);
         System.out.println("  Precancelación con préstamo nuevo al " + fecha + " (" + tabla + ") - capital $" + capital
             + " - interés $" + interes + " - seguro $" + seguro + " - mora $" + mora);
         return componentes;
@@ -1595,6 +1631,18 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
             motorPagoPrestamoService.recalcularCuotaDesdePagos(cuotaMes);
         }
         procesoMoraPrestamoService.recalcularMoraCuotaALaFecha(cuotaMes, fecha);
+        double exceso = componentes.getExcesoTotalCuotaDelMes() != null ? componentes.getExcesoTotalCuotaDelMes() : 0.0;
+        if (exceso > TOLERANCIA) {
+            // Patrón C de la migración: DTPRTTLL repite el capital de las futuras, que se cancela una
+            // sola vez como capital futuro. Se corrige el total de la cuota a sus componentes.
+            System.out.println("  Cuota #" + cuotaMes.getNumeroCuota() + ": DTPRTTLL " + cuotaMes.getTotal()
+                + " incluye el capital futuro $" + exceso + " (migración); se descuenta del total");
+            cuotaMes.setTotal(redondear(nvl(cuotaMes.getTotal()) - exceso));
+            if (cuotaMes.getTotalConSeguro() != null) {
+                cuotaMes.setTotalConSeguro(redondear(cuotaMes.getTotalConSeguro() - exceso));
+            }
+            cuotaMes = detallePrestamoService.saveSingle(cuotaMes);
+        }
         SaldosCuota saldosMes = motorPagoPrestamoService.calcularSaldosRealesCuota(cuotaMes);
         DetalleAplicacionCuota aplicacion = motorPagoPrestamoService.aplicarPagoACuota(cuotaMes,
             saldosMes.getTotalPendiente(), ctx);
