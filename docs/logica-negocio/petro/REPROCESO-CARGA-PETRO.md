@@ -460,7 +460,9 @@ la transacción revierte completa: no existe el estado "anulado pero no re-aplic
    proyecto tiene que estar encendido.
 5. **Tiempo:** una carga de ~3.600 partícipes más la anulación de ~4.000 filas corre en una sola
    transacción; el timeout de transacciones de WildFly del proyecto está en 15 min (REGLAS-CARGA-PETRO
-   §5). Medir la primera corrida de la 352 y subirlo si hace falta antes de pasar a producción.
+   §5). Medir la primera corrida de la 352 y subirlo si hace falta antes de pasar a producción. La
+   primera corrida (28-oct) no terminó en 35 min por un costo cuadrático del contexto de
+   persistencia, corregido en §11; ahí están los tiempos de referencia y cómo leer la medición.
 6. **Reversibilidad:** todo lo anulado por una corrida se encuentra con la etiqueta
    (`PGPRMTAN LIKE 'REPROCESO carga 352 corrida 1%'`, `APRTGLSA LIKE 'REPROCESO carga 352 corrida 1%'`,
    `ASNTMTAN` ídem). No hay "des-reproceso" automático: si una corrida dejó algo mal, se corrige el
@@ -504,6 +506,7 @@ bloques B y C. Después de reprocesar:
 | `ejb/crd/serviceImpl/ProcesoMoraPrestamoServiceImpl` + `DetallePrestamoDaoService(+Impl)` | mora con fecha de negocio pasada retira la mora de cuotas aún no vencidas (paso 0, §9); `recalcularMoraCuotaALaFecha` para las cuotas que reabre el reproceso |
 | `ejb/crd/dao/PrestamoDaoService(+Impl)` | `selectByEntidadYProductoVigentesAlCorte` (D-019, §4.8) |
 | `serviceImpl/CargaArchivoPetroServiceImpl.java` | D-019 ampliada (§4.9): `prepararOperacionesVigentesAlCorteReproceso`, `reabrirCuotasSaldadasSinPagoAlCorte`, `existeCuotaPendienteAlCorte`; respuesta `cuotasSaldadasSinPagoReabiertas` / `detalleCuotasSaldadasSinPagoReabiertas` en `ResultadoReprocesoCargaPetro` |
+| `basico/ejb/ContextoPersistenciaService` + `basico/ejbImpl/ContextoPersistenciaServiceImpl` | rendimiento (§11): tamaño e histograma del contexto de persistencia, flush + detach por clase, auto-flush suspendido en fases de solo lectura |
 
 ## 9. Secuencia de junio 2025 (carga 352) — lista para correr
 
@@ -623,3 +626,138 @@ CUENTAS/PAGOS REALIZADOS … .xlsx`). Consultas en `cuadreSuper/03-trabajo/meses
 | tipo 10 PRESTAMO_NO_ENCONTRADO, con partícipe | 74 | 20.668,15 | La operación **estaba en la G48 de mayo con deuda** (73 hoy en CANCELADO_ANTICIPADO 4, migradas así desde Delta en jul-2025, con la cuota de junio marcada PAGADA/CANCELADA_ANTICIPADA sin ningún pago; 1 en DE_PLAZO_VENCIDO 8); la 352 vieja nunca les aplicó nada | D-019 (§4.8): se buscan por su estado al 30-jun-2025, se reabren, reciben la cuota de junio y su cancelación queda marcada para re-aplicarla en su mes |
 | tipo 13 MONTO_INCONSISTENTE positiva | 105 | 39.017,30 (14.675,35 sobre la cuota del SAA) | Petro descontó la cuota de Delta, mayor que la del SAA o con vencidos; contra el ancla solo la 5324 supera la deuda | §4.7: va a la cascada (la 5324: 87,99 a aporte) |
 | sin partícipe con tipo 10/13 | 2 | 1.980,07 | — | Van como sin partícipe (§4.4) |
+
+## 11. Rendimiento (2026-10-28)
+
+### 11.1 Qué pasó en la primera corrida de la 352
+
+`POST /crar/reprocesar/352` corrió más de 35 minutos sin llegar a la fase 3. Tiempos medidos por
+fase, todo en la misma transacción JTA:
+
+| Fase | Volumen | Tiempo medido |
+|---|---|---|
+| anulación (pagos + aportes) | 1.313 pagos, 2.640 aportes | 1 min |
+| `prepararOperacionesVigentesAlCorteReproceso` | 1.277 filas, 1.304 operaciones, 200 terminales reabiertas (~7.000 cuotas recalculadas), 102 cuotas del mes | **16 min** |
+| `validarValoresConDestino` | 3.184 consultas de novedades por partícipe | **7 min** |
+| `validarTopeAfectacionManualPorParticipe` | ídem | más de 10 min, sin terminar |
+| fase 3 (aplicar 1.314 filas de préstamo + AH) | — | no empezó |
+
+Síntomas: la latencia de la misma llamada crecía con el tiempo (39 ms a las 17:56 → 115 → 184 →
+422 ms a las 18:27), la JVM ocupaba exactamente un núcleo y Oracle estaba ocioso. El `jstack` del
+hilo `default task-2` lo mostraba en
+`DefaultFlushEntityEventListener.onFlushEntity ← AbstractFlushingEventListener.flushEntities ←
+DefaultAutoFlushEventListener.onAutoFlush ← SessionImpl.autoFlushIfRequired ←
+ConcreteSqmSelectQueryPlan.performList ← DetallePrestamoDaoServiceImpl.contarCuotasByPrestamo`.
+
+### 11.2 Causa
+
+Con `FlushMode.AUTO` (el de siempre), **antes de cada consulta JPQL Hibernate recorre todas las
+entidades administradas** para ver si hay cambios que volcar (dirty-check), aunque no haya ninguno.
+Los DAO comparten el contexto de persistencia de la transacción (`SaaPU`, `@PersistenceContext`
+transaccional en cada `*DaoServiceImpl`, `save` = `persist`/`merge` de `EntityDaoImpl`), y en el
+reproceso todo es una transacción: cada cuota leída con `selectByPrestamo`, cada pago, aporte,
+novedad, préstamo y entidad (todas las `@ManyToOne` son EAGER) se queda en el contexto hasta el
+commit. Costo por consulta proporcional al tamaño del contexto × miles de consultas = cuadrático.
+No es Oracle ni el SQL: es CPU de la JVM.
+
+### 11.3 Qué se cambió (sin cambiar ningún resultado)
+
+**1. Contexto acotado por unidad de trabajo — flush + detach** (`ContextoPersistenciaService.volcarYDesprender`).
+Primero `em.flush()` (todo lo pendiente va a la base, como iba a ir de todos modos en la próxima
+consulta o en el commit) y después `detach` de las instancias administradas de las clases de vida
+corta (`CargaArchivoPetroServiceImpl.CLASES_DESPRENDIBLES_REPROCESO`): `DetallePrestamo`,
+`PagoPrestamo`, `Prestamo`, `EventoPrestamo`, `Aporte`, `PagoAporte`, `NovedadParticipeCarga`,
+`AfectacionValoresParticipeCarga`, `HistorialSueldo`, `Contrato`, `VigenciaContrato`, `Entidad`,
+`ParticipeXCargaArchivo`. **No** se desprenden `CargaArchivo`, `DetalleCargaArchivo`, `Producto`
+ni los catálogos. No se usa `em.clear()`: desprendería también lo de larga vida.
+
+Puntos de flush/detach (todos solo en modo reproceso):
+
+| Dónde | Cuándo | Qué cruza el borde (y por qué es seguro) |
+|---|---|---|
+| `ReprocesoCargaPetroServiceImpl.reprocesar`, tras `anularPagosPrestamo` | siempre (borde de fase) | solo `carga` (no se desprende) y `transferenciasVigentes` (no se desprende ni se vuelve a usar). Los pagos, cuotas y préstamos del método eran variables locales |
+| ídem, tras `reversarAportes` | siempre | ídem |
+| `prepararOperacionesVigentesAlCorteReproceso`, al terminar cada fila | si el contexto pasa de `UMBRAL_CONTEXTO_REPROCESO` (2.000) | `detalles` y `productosCache` (no se desprenden), `participes` (se desprenden pero solo se leen). Los préstamos ya preparados se recuerdan por **id** (`prestamosPreparadosReproceso`), nunca por instancia. Nunca se desprende a mitad de una fila: dentro de `reabrirPrestamoVigenteAlCorte` todas las cuotas son las mismas instancias |
+| `aplicarPagosArchivoPetro`, tras preparar | siempre | `cargaArchivo` (no se desprende) |
+| ídem, tras `validarTopeAfectacionManualPorParticipe` | siempre | ídem |
+| fase 3, al terminar cada partícipe (después de su `try`) | si el contexto pasa de 2.000 | `cargaArchivo`, `detallesCarga`, `productosCache` (no se desprenden), `participesDetalle` (se desprenden; en modo reproceso nada en la fase 3 los modifica: verificado, los únicos `participe.set…` del archivo son de la fase 1 y de `actualizaCodigoPetroEntidad`), `esperadoEnLoteAportes`/`entidadesCubiertasAportes` (no son entidades). Nunca a mitad de un partícipe: ahí el motor, `buscarCuotaAPagar` y `verificarYActualizarEstadoPrestamos` comparten las mismas instancias de préstamo y cuota |
+| ídem, al terminar la fase 3 | siempre | `cargaArchivo` |
+
+Por qué no puede cambiar un resultado:
+- **Ninguna consulta ve algo distinto.** Antes de desprender se vuelca, así que la base tiene el
+  mismo estado que tenía la memoria; una consulta posterior devuelve instancias nuevas con ese
+  estado. Volcar antes de tiempo solo adelanta SQL que el auto-flush o el commit iban a ejecutar
+  (las consultas JPQL ya volcaban lo de sus tablas; las nativas, todo).
+- **Ninguna escritura se pierde.** Lo único que podría perderse es una modificación hecha *después*
+  del borde sobre una instancia desprendida sin volver a guardarla. En los bordes elegidos ninguna
+  variable que cruce modifica una entidad desprendible (tabla de arriba); además todo el módulo
+  escribe por `save` (= `merge`), que sobre una instancia desprendida copia su estado a la
+  administrada. Los campos de instancia del bean `@Stateful` son listas de texto, ids y DTO, no
+  entidades.
+- **Sin cascadas ni colecciones**: el modelo de `crd` no declara `cascade` ni `@OneToMany`, así que
+  `detach` afecta solo a esa instancia, y una entidad nueva que apunta a una desprendida se inserta
+  igual (usa su id; todas las PK son IDENTITY/SEQUENCE, Hibernate la reconoce como desprendida sin
+  ir a la base). Ninguna clase conservada apunta a una desprendible.
+- La transacción sigue siendo una sola: el todo-o-nada (§5) no cambia.
+
+**2. Auto-flush suspendido en las dos validaciones de solo lectura** (`suspenderAutoFlush` /
+`restaurarAutoFlush`, `FlushMode.MANUAL` acotado). `validarValoresConDestino` (con
+`existePrestamoVigenteAlCorte`, `existeCuotaPendienteAlCorte`, `novedadesQueRequierenAfectacion`,
+`totalAfectadoManualmente`) y `validarTopeAfectacionManualPorParticipe` (con
+`calcularTopeAfectacionManual`, `disponibleParaTope`, `cedulaPorRolPetro`,
+`codigosAfectacionManual`) **solo consultan**: ninguna escribe (verificado método por método). Al
+entrar se vuelca todo y se pone MANUAL; al salir (en `finally`) se restaura el modo y se comprueba
+`Session.isDirty()`. Como no hay nada pendiente y la fase no escribe, una consulta con AUTO no
+tendría nada que volcar: el resultado es idéntico, solo se ahorra el recorrido. Si algún día una
+de esas validaciones empezara a escribir, `restaurarAutoFlush` lo vuelca y deja
+`ADVERTENCIA [contexto de persistencia]: la fase de solo lectura '…' dejó cambios pendientes` en el
+log (revisar el supuesto). **No** se usa en `prepararOperaciones…` ni en la fase 3: ahí hay
+consultas que dependen de lo escrito en la misma fase (`buscarSiguienteCuotaConSaldo` después de
+pagar una cuota, `contarCuotasPendientesByPrestamo` después de saldarla, `selectVigentesByIdDetallePrestamo`
+después de anular).
+
+**3. Consultas repetidas (N+1) memoizadas, sin cambio de resultado:**
+- `reabrirPrestamoVigenteAlCorte` leía dos veces `selectByPrestamo` del mismo préstamo (una en
+  `reabrirCuotasSaldadasSinPagoAlCorte` y otra para su segunda pasada). Ahora la lee una vez y pasa
+  la lista: son las mismas instancias administradas y el mismo orden que devolvía la segunda
+  consulta (la consulta no filtra por estado; el contexto devuelve la instancia que ya tiene).
+- `verificarYActualizarEstadoPrestamo` (fase 3) memoiza `contarCuotasByPrestamo` por préstamo
+  dentro de la corrida (`totalCuotasPorPrestamoReproceso`, reset al entrar). Es `COUNT(*)` de
+  `CRD.DTPR` por préstamo y el reproceso nunca inserta ni borra cuotas. El
+  `contarCuotasPendientesByPrestamo` (que sí cambia) se sigue consultando siempre.
+
+Nada de esto toca el flujo normal de una carga nueva: todo está detrás de `modoReproceso`.
+
+### 11.4 Cómo leer la próxima corrida
+
+Cada fase deja dos líneas en `server.log`:
+
+```
+[REPROCESO-RENDIMIENTO] REPROCESO carga 352 corrida N | <fase> | INICIO | contexto <n> entidades
+[REPROCESO-RENDIMIENTO] REPROCESO carga 352 corrida N | <fase> | FIN | <s> s | contexto <n> entidades (<top 6 clases>) | ...
+```
+
+Fases: `anular asientos REPARTO/APLICACION`, `anular pagos de préstamo`, `reversar aportes`,
+`re-aplicación (aplicarPagosArchivoPetroReproceso)` y, dentro de ella, `preparar operaciones
+vigentes al corte`, `validarValoresConDestino`, `validarTopeAfectacionManualPorParticipe`,
+`fase 3: aplicar filas`, `validarRecibidoIgualAplicado`, `asientos REPARTO y APLICACION`; al final
+`medir lo aplicado` y `TOTAL`. Para seguirla en vivo:
+`Select-String -Path <wildfly>\standalone\log\server.log -Pattern 'REPROCESO-RENDIMIENTO'`.
+
+Lo esperado: el contexto no pasa de unos pocos miles de entidades al INICIO de cada fase y la
+latencia por llamada ya no crece con el tiempo. Referencia (estimación, a confirmar con la
+medición): preparar 1–3 min, cada validación menos de 1 min, fase 3 entre 3 y 8 min, invariante
+y asientos 1–2 min; la corrida completa del orden de 10–15 min. **Sigue estando cerca del timeout
+de 15 min de WildFly** (§6, regla 5): subir el timeout de transacciones antes de la corrida.
+
+### 11.5 Cómo se confirma que el resultado no cambió
+
+Los mismos controles de §7 (bloques B y C de
+[sql/reproceso-carga-352-controles.sql](sql/reproceso-carga-352-controles.sql)) y los de §4.9: el
+cambio es solo de cuándo se vuelca y qué queda en memoria, así que los esperados no cambian —
+530.605,35 aplicado (control 1), pagos al 30-jun con `CRARCDGO = 352` (2), 1.313 pagos viejos
+anulados (3), 161.257,56 de aportes en 2.061 partícipes (4), reversos netos en cero (5), asientos
+con D = H (6), 14 novedades sin partícipe por 4.872,04 (7). En la respuesta,
+`cuotasSaldadasSinPagoReabiertas`, `cancelacionesPosterioresPendientes` y `detalleSinParticipe`
+tienen que ser los de una corrida sin este cambio. Y en el log no debe aparecer ninguna
+`ADVERTENCIA [contexto de persistencia]`.
