@@ -379,6 +379,26 @@ public class ContabilizacionIndividualCreditoServiceImpl implements Contabilizac
      * es porque nada más lo pagó todavía — era una futura — y entra al reparto por su propio
      * vencimiento. Si ya estaba en 0 (el caso normal: una cuota pagada hace tiempo), no se sostiene.</p>
      */
+    /**
+     * C16 (D-021) — ¿el capital futuro de una precancelación está FUERA de la tabla? Caso de la
+     * cartera migrada de Delta 21: la tabla de algunos préstamos termina en la cuota del mes de la
+     * cancelación y el saldo de capital posterior vive solo en {@code DTPRSLOT} de esa cuota (no hay
+     * ninguna cuota CANCELADA_ANTICIPADA que lo represente). Se reconoce, y solo entonces, cuando
+     * la ancla ya no tiene capital pendiente propio (la pagó el mismo evento) y su
+     * {@code DTPRSLOT} cubre el capital futuro. Antes este caso lanzaba en el reparto por banda; en
+     * el caso normal (hay cuotas en 7) no se llama.
+     */
+    private boolean esCapitalFuturoFueraDeTabla(double capitalFuturo, DetallePrestamo ancla) throws Throwable {
+        if (ancla == null || ancla.getFechaVencimiento() == null || capitalFuturo <= TOLERANCIA) {
+            return false;
+        }
+        if (nvl(ancla.getSaldoOtros()) + TOLERANCIA < redondear(capitalFuturo)) {
+            return false;
+        }
+        double capitalPendienteAncla = redondear(motorPagoPrestamoService.calcularSaldosCuota(ancla).getSaldoCapital());
+        return capitalPendienteAncla <= TOLERANCIA;
+    }
+
     private List<DetalleAsiento> lineasBandaCapitalFuturoPrecancelacion(Long idProducto, Long idEmpresa,
             double capitalFuturo, Prestamo prestamo, DetallePrestamo ancla, LocalDate fechaCorte,
             String prefijoDescripcion) throws Throwable {
@@ -391,6 +411,19 @@ public class ContabilizacionIndividualCreditoServiceImpl implements Contabilizac
                     canceladasAnticipadamente.add(cuota);
                 }
             }
+        }
+        if (canceladasAnticipadamente.isEmpty() && esCapitalFuturoFueraDeTabla(capitalFuturo, ancla)) {
+            // C16 (D-021): tabla migrada de Delta truncada en la cuota del mes — el capital futuro
+            // no tiene cuotas en CRD.DTPR, vive solo en DTPRSLOT de la ancla. Se banda como si
+            // venciera el mes siguiente a la ancla (la primera cuota que faltaría en la tabla).
+            LocalDate vencimientoSiguiente = ancla.getFechaVencimiento().toLocalDate().plusMonths(1);
+            vencimientoSiguiente = vencimientoSiguiente.withDayOfMonth(vencimientoSiguiente.lengthOfMonth());
+            List<EntradaBanda> entradasFueraDeTabla = new ArrayList<>();
+            entradasFueraDeTabla.add(new EntradaBanda(vencimientoSiguiente, redondear(capitalFuturo),
+                    "el capital futuro fuera de la tabla (DTPRSLOT de la cuota #" + ancla.getNumeroCuota() + ")"));
+            Map<String, LineaBandaAcumulada> bandasFueraDeTabla = acumulaPorBanda(idProducto, idEmpresa, fechaCorte,
+                    entradasFueraDeTabla, prefijoDescripcion);
+            return lineasHaberDesdeBandas(bandasFueraDeTabla, idProducto, prefijoDescripcion);
         }
         if (canceladasAnticipadamente.isEmpty()) {
             throw new IncomeException(prefijoDescripcion + ": el préstamo " + prestamo.getCodigo()
@@ -878,8 +911,13 @@ public class ContabilizacionIndividualCreditoServiceImpl implements Contabilizac
                 // graba ahí el PagoPrestamo del capital futuro) — queda en PAGADA, no en 7, pero
                 // su capital pendiente es parte del mismo capital futuro.
                 List<DetallePrestamo> todas = detallePrestamoDaoService.selectByPrestamo(prestamo.getCodigo());
+                boolean hayCanceladasAnticipadas = false;
                 if (todas != null) {
                     for (DetallePrestamo cuota : todas) {
+                        if (cuota.getEstado() != null
+                                && cuota.getEstado() == EstadoCuotaPrestamo.CANCELADA_ANTICIPADA) {
+                            hayCanceladasAnticipadas = true;
+                        }
                         if (cuota.getEstado() != null
                                 && cuota.getEstado() == EstadoCuotaPrestamo.CANCELADA_ANTICIPADA
                                 && cuota.getFechaVencimiento() != null
@@ -887,6 +925,18 @@ public class ContabilizacionIndividualCreditoServiceImpl implements Contabilizac
                             total += redondear(motorPagoPrestamoService.calcularSaldosCuota(cuota).getSaldoCapital());
                         }
                     }
+                }
+                DetallePrestamo anclaFueraDeTabla = pago.getDetallePrestamo();
+                if (!hayCanceladasAnticipadas && esCapitalFuturoFueraDeTabla(saldoOtros, anclaFueraDeTabla)) {
+                    // C16 (D-021): mismo caso que lineasBandaCapitalFuturoPrecancelacion — capital
+                    // futuro fuera de la tabla migrada; vence (a efectos de banda y de apertura) el
+                    // mes siguiente a la ancla, así que la apertura del mes de la ancla no lo abrió.
+                    LocalDate vencimientoSiguiente = anclaFueraDeTabla.getFechaVencimiento().toLocalDate().plusMonths(1);
+                    vencimientoSiguiente = vencimientoSiguiente.withDayOfMonth(vencimientoSiguiente.lengthOfMonth());
+                    if (vencimientoSiguiente.isAfter(fechaCorteApertura)) {
+                        total += redondear(saldoOtros);
+                    }
+                    continue;
                 }
                 DetallePrestamo ancla = pago.getDetallePrestamo();
                 if (ancla != null && ancla.getEstado() != null

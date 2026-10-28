@@ -110,14 +110,21 @@ Sin ①/②/①.1/⑥/⑦/⑧/⑩ y sin control de archivo Petro. Se reversa com
 - `POST /prst/contabilizarDesembolso` / `POST /prst/contabilizarDesembolsos` (lote, cada préstamo en su transacción):
   asiento de entrega del motor (`contabilizarEntrega`, ahora con fecha explícita) + orden de pago en CxP desde la cuenta del
   extracto como débito ya realizado (nace CONFIRMADA y genera el egreso con su movimiento bancario), todo con la fecha del
-  desembolso real. Idempotente: no repite asiento ni orden; rechaza sustituciones y préstamos no aprobados; exige
-  `valor = monto`.
-- Lote del mes: `cuadreSuper/03-trabajo/cartera/scripts/02-lote-desembolsos.js --mes 2025-06` (cruce con el extracto).
+  desembolso real. Idempotente: no repite asiento ni orden; rechaza sustituciones y préstamos no aprobados.
+- **C16 / D-021 — desembolso neto:** `valor` es el **neto** que transfirió el banco; el ítem admite
+  `idPrestamoCancelado` (+ `capitalCancelado`, `interesCancelado`, `seguroCancelado`, opcionales y verificados contra
+  `CRD.DTPR`) y `otrosDescuentos`. Regla: bruto = neto + capital + interés + seguro + otros, al centavo. Orden: entrega
+  por el bruto → precancelación del préstamo anterior con el motor, pagada contra socios por pagar del nuevo → otros
+  descuentos → orden de pago y egreso por el neto. La respuesta del lote trae `items`, `controlPorReferencia` (suma de
+  netos por referencia bancaria) y `totales`. Detalle, cuentas y SELECT de control:
+  **`DESEMBOLSO-NETO-CON-PRECANCELACION.md`**. Sin precancelación ni descuentos sigue siendo `valor = monto`.
+- Lote de junio 2025 (29 préstamos reales): `cuadreSuper/03-trabajo/cartera/resultados/02-lote-desembolsos-2025-06-body.json`.
 
 ```json
-{ "idEmpresa": 1236, "idUsuario": 1, "usuario": "CUADRE",
-  "items": [ { "idPrestamo": 7974, "fechaContable": "2025-06-09", "idCuentaBancaria": 418, "valor": 10000.00,
-               "referencia": "PACIFICO AHO 2035544" } ] }
+{ "idEmpresa": 1236, "idUsuario": 38, "usuario": "USUARIO 1",
+  "items": [ { "idPrestamo": 7975, "fechaContable": "2025-06-09", "idCuentaBancaria": 418, "valor": 3731.13,
+               "referencia": "PACIFICO AHO 2035544", "idPrestamoCancelado": 5429, "capitalCancelado": 21585.65,
+               "interesCancelado": 161.89, "seguroCancelado": 21.33 } ] }
 ```
 
 ## 2. Antes del primer mes (una vez)
@@ -143,7 +150,7 @@ Control: el B17 de mayo no cambia (por cuenta madre); bloque 04 de la cuadratura
 
 | Paso | Qué | Endpoint |
 |---|---|---|
-| 1 | Desembolsos de M sin asiento (D-018) | `GET /prst/sinAsientoEntrega?desde=2025-06-01&hasta=2025-06-30` → script `02-lote-desembolsos.js` → `POST /prst/contabilizarDesembolsos` |
+| 1 | Desembolsos de M sin asiento (D-018, neto D-021), **antes** del reproceso Petro | `GET /prst/sinAsientoEntrega?desde=2025-06-01&hasta=2025-06-30` → lote neto (`02-lote-desembolsos-2025-06-body.json`) → `POST /prst/contabilizarDesembolsos` |
 | 2 | Transferencia Petro, confirmación y re-proceso de la carga (C4, D-010) | `POST /asgn/transferencias`, `POST /asgn/confirmarRecepcion/{id}`, `POST /crar/reprocesar/{idCarga}` |
 | 3 | Otros cobros de M (CBCR) con fecha de afectación en M | `POST /cbcr/registrar` → `/aprobar` → `/procesar` |
 | 4 | Previsualizar el cierre (sale "Cierre A FECHA DE CORTE" en advertencias; ⑧ y ⑨ dicen requerida/constituida y diferencias por grupo) | `POST /cierrecartera/previsualizar` `{ "idEmpresa": 1236, "anio": 2025, "mes": 6, "usuario": "CUADRE" }` |
@@ -193,13 +200,10 @@ de la cuadratura (o decidir la fórmula).
 
 1. **Convención de vencimiento al corte** (`corteInclusivo`): por defecto la de Delta/C14 (vence el día del corte = vencida),
    contraria a la regla del SAA del 4-sep-2026. Confirmar con el líder; cambiarla es una propiedad.
-2. **H6 junio — desembolsos netos**: 40 préstamos (319.000,00) contra 4 débitos de desembolso de Pacífico en la ventana
-   (29-may 65.107,19 «Pq Cre»; 9-jun 72.799,95 y 16-jun 8.258,34 «Pq Pre»; 16-jun 27.098,71 «Pc Cre»): ningún cruce por valor
-   exacto. El banco pagó montos NETOS agregados (la diferencia son saldos de préstamos anteriores cancelados con el nuevo y
-   descuentos) y 11 préstamos en estado 4 sin número de operación (87.500,00, inicio 30-jun) no parecen desembolsos reales.
-   El endpoint exige `valor = monto`: hace falta decidir cómo se contabiliza el neto (orden por el neto + cruce de la
-   cancelación del anterior, que es el circuito de sustitución) antes de cargar el lote. Detalle:
-   `cuadreSuper/03-trabajo/cartera/resultados/02-lote-desembolsos-2025-06.md`.
+2. **H6 junio — desembolsos netos**: resuelto en C16 (D-021, `DESEMBOLSO-NETO-CON-PRECANCELACION.md`): 29 préstamos
+   reales netos de la precancelación del anterior cuadran con los 3 débitos de junio (72.799,95; 8.258,34; 27.098,71).
+   Los 11 del 30-jun (7958–7965, 7968, 7987, 7988) no son desembolsos y quedan fuera del lote (anularlos es decisión
+   aparte).
 3. **Mora anterior al ancla**: con `inicioDevengoMora=2025-05-31` no se devenga; el ⑦ sin embargo provisiona la mora
    pendiente bruta (calcularMoraCuota desde el vencimiento). Revisar con el contador si la provisión de mora también debe
    contarse desde el ancla.

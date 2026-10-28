@@ -119,6 +119,17 @@ public interface PrestamoService extends EntityService<Prestamo>{
 			throws Throwable;
 
 	/**
+	 * C16 (D-021): desembolso NETO. {@code valor} es el neto transferido por el banco; si el préstamo
+	 * canceló otro del mismo partícipe ({@code idPrestamoCancelado}), registra esa precancelación con el
+	 * motor pagada con el dinero del préstamo nuevo; {@code otrosDescuentos} opcionales. Regla: bruto =
+	 * neto + capital + interés + seguro + otros, al centavo. Ver DESEMBOLSO-NETO-CON-PRECANCELACION.md.
+	 */
+	java.util.Map<String, Object> contabilizarDesembolsoHistorico(Long idPrestamo, Long idEmpresa, Long idUsuario,
+			String usuario, java.time.LocalDate fechaContable, Long idCuentaBancaria, Double valor, String referencia,
+			Long idPrestamoCancelado, Double capitalCancelado, Double interesCancelado, Double seguroCancelado,
+			java.util.List<com.saa.ejb.crd.service.dto.DescuentoDesembolso> otrosDescuentos) throws Throwable;
+
+	/**
 	 * Rechaza un préstamo (PLAN-CICLO-OTORGAMIENTO.md §3, regla 5): PENDIENTE_DE_APROBACION (6)
 	 * o GENERADO (1) → RECHAZADO (7). NO borra la tabla de amortización: queda como evidencia de
 	 * qué se le ofreció al socio, y es inerte para el proceso de mora.

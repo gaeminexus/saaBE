@@ -103,6 +103,32 @@ public interface ContabilidadPrestamoService {
             ContextoPago ctx) throws Throwable;
 
     /**
+     * C16 (D-021) — asiento de una precancelación PAGADA CON EL DINERO DE UN PRÉSTAMO NUEVO del
+     * mismo partícipe (desembolso neto). Es el asiento de {@link #contabilizarPrecancelacion} (CASO
+     * A, sin depósito) con otro DEBE: en vez de aportes consumidos, SOCIOS POR PAGAR — la cuenta
+     * puente que acreditó la entrega del préstamo nuevo (línea aux de socios por pagar de su
+     * plantilla de entrega, la misma que usa la orden de desembolso). HABER: las mismas líneas de
+     * {@code haberDesdePagos} (bandas de capital, interés, mora, seguros) de los pagos del evento;
+     * mismo cierre de apertura del camino directo y mismo reverso de la provisión de intereses
+     * (MVIC). Fecha del asiento: {@code ctx.fechaAfectacion} (o la de pago).
+     *
+     * @param valorEsperado total de la precancelación; el HABER clasificado debe coincidir al centavo
+     * @return Código del asiento, o null si la contabilidad de CRD está inactiva
+     */
+    Long contabilizarPrecancelacionConPrestamo(EventoPrestamo evento, ContextoPago ctx, Prestamo prestamoNuevo,
+            double valorEsperado) throws Throwable;
+
+    /**
+     * C16 (D-021) — asiento de los otros descuentos del desembolso de un préstamo (no la
+     * precancelación): DEBE socios por pagar de la plantilla de entrega del préstamo / HABER la
+     * cuenta de cada descuento. Fechado {@code fecha}.
+     *
+     * @return Código del asiento, o null si no hay descuentos o la contabilidad está inactiva
+     */
+    Long contabilizarDescuentosDesembolso(Prestamo prestamoNuevo, Long idEmpresa, java.time.LocalDate fecha,
+            List<com.saa.ejb.crd.service.dto.DescuentoDesembolso> descuentos, String usuario) throws Throwable;
+
+    /**
      * @return Código del asiento creado, o null si la contabilidad no está activa.
      */
     Long contabilizarReverso(EventoPrestamo eventoAnulado) throws Throwable;

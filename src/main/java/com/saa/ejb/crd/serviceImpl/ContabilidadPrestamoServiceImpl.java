@@ -836,6 +836,139 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
         return asiento.getCodigo();
     }
 
+    // =====================================================================
+    // C16 (D-021) — precancelación pagada con el dinero de un préstamo nuevo (desembolso neto).
+    // Mismo asiento que contabilizarPrecancelacion CASO A; el DEBE es socios por pagar (la cuenta
+    // puente de la entrega del préstamo nuevo) en vez de los aportes consumidos.
+    // =====================================================================
+
+    @Override
+    public Long contabilizarPrecancelacionConPrestamo(EventoPrestamo evento, ContextoPago ctx, Prestamo prestamoNuevo,
+            double valorEsperado) throws Throwable {
+        System.out.println("ContabilidadPrestamoService.contabilizarPrecancelacionConPrestamo - Evento: "
+                + (ctx != null ? ctx.getIdEvento() : null) + " - préstamo nuevo: "
+                + (prestamoNuevo != null ? prestamoNuevo.getCodigo() : null));
+
+        if (!configuracionContabilidadService.contabilidadActiva()) {
+            System.out.println("  Contabilidad de CRD INACTIVA: precancelación con préstamo nuevo sin asiento.");
+            return null;
+        }
+        if (ctx == null || ctx.getIdEvento() == null || ctx.getIdEmpresa() == null) {
+            throw new IncomeException("No se puede contabilizar la precancelación con préstamo nuevo: falta el"
+                    + " contexto de la operación (evento o empresa).");
+        }
+        if (prestamoNuevo == null || prestamoNuevo.getCodigo() == null) {
+            throw new IncomeException("No se puede contabilizar la precancelación del evento " + ctx.getIdEvento()
+                    + ": falta el préstamo nuevo que la paga.");
+        }
+        Long idEmpresa = ctx.getIdEmpresa();
+        Long idPlantillaAplicacion = contabilizacionIndividualCreditoService.resolverPlantillaAplicacion(idEmpresa);
+        String prefijo = "Precancelación - evento " + ctx.getIdEvento() + " - pagada con el préstamo "
+                + prestamoNuevo.getCodigo();
+
+        // HABER: lo que liquidaron los PagoPrestamo VIGENTES del evento (regla compartida).
+        List<PagoPrestamo> pagos = pagoPrestamoDaoService.selectByEvento(ctx.getIdEvento());
+        LocalDate fechaCorte = ctx.getFechaPago() != null ? ctx.getFechaPago().toLocalDate() : LocalDate.now();
+        List<DetalleAsiento> haber = contabilizacionIndividualCreditoService.haberDesdePagos(pagos, idEmpresa,
+                idPlantillaAplicacion, fechaCorte, prefijo);
+        double totalHaber = 0.0;
+        for (DetalleAsiento linea : haber) {
+            totalHaber += nvl(linea.getValorHaber()) - nvl(linea.getValorDebe());
+        }
+        totalHaber = redondear(totalHaber);
+        if (Math.abs(redondear(totalHaber - valorEsperado)) > TOLERANCIA_CUADRE) {
+            throw new IncomeException("Las líneas de haber clasificadas ($" + totalHaber + ") de la precancelación"
+                    + " del evento " + ctx.getIdEvento() + " no coinciden con su valor ($" + redondear(valorEsperado)
+                    + "). No se genera un asiento desbalanceado.");
+        }
+
+        // DEBE: socios por pagar del préstamo nuevo (la línea de su plantilla de entrega).
+        PlantillaEntrega plantillaEntrega = resolverPlantillaEntrega(prestamoNuevo);
+        Long idPlantillaEntrega = plantillaService.codigoByAlterno(plantillaEntrega.alterno(), idEmpresa);
+        if (idPlantillaEntrega == null) {
+            throw new IncomeException("No existe la plantilla contable alterno " + plantillaEntrega.alterno()
+                    + " para la empresa " + idEmpresa + ".");
+        }
+        List<DetalleAsiento> lineas = new ArrayList<>();
+        lineas.add(lineaEntrega(idPlantillaEntrega, plantillaEntrega.mapeo().auxSociosPorPagar(), totalHaber, true,
+                plantillaEntrega.alterno(), prefijo + " - socios por pagar (descuento del desembolso)"));
+        lineas.addAll(haber);
+
+        // Cierre de apertura del camino directo: misma regla que contabilizarPrecancelacion.
+        agregaCierreAperturaCaminoDirecto(lineas, idEmpresa, totalHaber, pagos, fechaCorte,
+                "precancelación evento " + ctx.getIdEvento());
+
+        double sumaDebe = 0.0;
+        double sumaHaber = 0.0;
+        for (DetalleAsiento linea : lineas) {
+            sumaDebe += nvl(linea.getValorDebe());
+            sumaHaber += nvl(linea.getValorHaber());
+        }
+        if (Math.abs(redondear(sumaDebe - sumaHaber)) > TOLERANCIA_CUADRE) {
+            throw new IncomeException("El asiento de la precancelación del evento " + ctx.getIdEvento()
+                    + " no cuadra: DEBE $" + redondear(sumaDebe) + " vs HABER $" + redondear(sumaHaber) + ".");
+        }
+
+        String observacionBase = prefijo + (ctx.getObservacion() != null ? ": " + ctx.getObservacion() : "");
+        String observacion = observacionConParticipeYPrestamos(evento != null ? evento.getPrestamo() : null, pagos,
+                observacionBase);
+        LocalDate fechaAsiento = ctx.getFechaAfectacion() != null ? ctx.getFechaAfectacion() : fechaCorte;
+        Asiento asiento = asientoContableService.generarAsiento(idEmpresa, TipoAsientos.CREDITOS, fechaAsiento,
+                observacion, ctx.getUsuario(), lineas, Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR));
+        System.out.println("  ✅ contabilizarPrecancelacionConPrestamo OK - Asiento: " + asiento.getCodigo()
+                + " - Evento: " + ctx.getIdEvento() + " - Monto: $" + totalHaber);
+
+        // Reverso de la provisión de intereses (MVIC) por lo liquidado: mismo que CASO A.
+        provisionInteresService.reversarPorPagos(pagos, idEmpresa, fechaAsiento, "PRECANCELACION",
+                ctx.getIdEvento(), ctx.getUsuario());
+        return asiento.getCodigo();
+    }
+
+    @Override
+    public Long contabilizarDescuentosDesembolso(Prestamo prestamoNuevo, Long idEmpresa, LocalDate fecha,
+            List<com.saa.ejb.crd.service.dto.DescuentoDesembolso> descuentos, String usuario) throws Throwable {
+        if (descuentos == null || descuentos.isEmpty()) {
+            return null;
+        }
+        if (!configuracionContabilidadService.contabilidadActiva()) {
+            System.out.println("  Contabilidad de CRD INACTIVA: descuentos del desembolso sin asiento.");
+            return null;
+        }
+        if (prestamoNuevo == null || idEmpresa == null || fecha == null) {
+            throw new IncomeException("Descuentos del desembolso: faltan el préstamo, la empresa o la fecha.");
+        }
+        String prefijo = "Desembolso préstamo " + prestamoNuevo.getCodigo() + " - otros descuentos";
+        List<DetalleAsiento> lineas = new ArrayList<>();
+        double total = 0.0;
+        for (com.saa.ejb.crd.service.dto.DescuentoDesembolso descuento : descuentos) {
+            double valor = redondear(nvl(descuento.getValor()));
+            if (valor <= 0.0 || descuento.getCuenta() == null || descuento.getCuenta().trim().isEmpty()) {
+                throw new IncomeException(prefijo + ": cada descuento necesita valor > 0 y cuenta.");
+            }
+            PlanCuenta cuenta = planCuentaDaoService.selectByCuentaEmpresa(descuento.getCuenta().trim(), idEmpresa);
+            DetalleAsiento detalle = new DetalleAsiento();
+            detalle.setPlanCuenta(cuenta);
+            detalle.setNumeroCuenta(cuenta.getCuentaContable());
+            detalle.setNombreCuenta(cuenta.getNombre());
+            detalle.setDescripcion(prefijo + " - " + (descuento.getConcepto() != null ? descuento.getConcepto() : ""));
+            detalle.setValorDebe(0.0);
+            detalle.setValorHaber(valor);
+            lineas.add(detalle);
+            total = redondear(total + valor);
+        }
+        PlantillaEntrega plantillaEntrega = resolverPlantillaEntrega(prestamoNuevo);
+        Long idPlantillaEntrega = plantillaService.codigoByAlterno(plantillaEntrega.alterno(), idEmpresa);
+        if (idPlantillaEntrega == null) {
+            throw new IncomeException("No existe la plantilla contable alterno " + plantillaEntrega.alterno()
+                    + " para la empresa " + idEmpresa + ".");
+        }
+        lineas.add(0, lineaEntrega(idPlantillaEntrega, plantillaEntrega.mapeo().auxSociosPorPagar(), total, true,
+                plantillaEntrega.alterno(), prefijo + " - socios por pagar"));
+        Asiento asiento = asientoContableService.generarAsiento(idEmpresa, TipoAsientos.CREDITOS, fecha, prefijo,
+                usuario, lineas, Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR));
+        return asiento.getCodigo();
+    }
+
     /**
      * Agrega cédula, nombre del partícipe y los préstamos del evento a la observación de un
      * asiento — MISMO formato que {@code CobroCreditoServiceImpl#observacionEnriquecida}
