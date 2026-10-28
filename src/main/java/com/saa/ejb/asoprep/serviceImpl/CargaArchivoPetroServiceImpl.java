@@ -272,6 +272,99 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
     private Set<Long> prestamosPreparadosReproceso = new HashSet<>();
 
     /**
+     * Rendimiento del reproceso (REPROCESO-CARGA-PETRO.md §11): total de cuotas por préstamo,
+     * memoizado dentro de UNA corrida en modo reproceso para {@link #verificarYActualizarEstadoPrestamo}.
+     * Es un {@code COUNT(*)} de {@code CRD.DTPR} por préstamo: el reproceso actualiza cuotas pero
+     * nunca inserta ni borra ninguna, así que el valor no cambia durante la corrida. Reset al
+     * entrar a {@code aplicarPagosArchivoPetro}; fuera del modo reproceso no se usa.
+     */
+    private Map<Long, Long> totalCuotasPorPrestamoReproceso = new HashMap<>();
+
+    /**
+     * Rendimiento del reproceso (REPROCESO-CARGA-PETRO.md §11): control del contexto de
+     * persistencia de la transacción (flush + detach acotado, auto-flush suspendido en las
+     * validaciones de solo lectura). Solo se usa en modo reproceso.
+     */
+    @EJB
+    private com.saa.basico.ejb.ContextoPersistenciaService contextoPersistenciaService;
+
+    /**
+     * Tamaño del contexto de persistencia (entidades administradas) a partir del cual, en un borde
+     * de unidad de trabajo del reproceso (fin de una fila preparada, fin de un partícipe aplicado),
+     * se vuelca y se desprenden las clases de {@link #CLASES_DESPRENDIBLES_REPROCESO}. Con el
+     * contexto acotado a este orden, el auto-flush de cada consulta cuesta milisegundos en vez de
+     * crecer con la corrida. REPROCESO-CARGA-PETRO.md §11.
+     */
+    static final int UMBRAL_CONTEXTO_REPROCESO = 2000;
+
+    /**
+     * Clases que el reproceso desprende del contexto en sus bordes de unidad de trabajo
+     * (REPROCESO-CARGA-PETRO.md §11). Son las de alto volumen y vida corta: cada una se obtiene de
+     * nuevo por consulta en la unidad siguiente y ninguna queda referenciada en un campo de este
+     * bean ni en una variable que cruce el borde y se modifique después (verificado por fase en el
+     * §11). Se conservan a propósito {@code CargaArchivo}, {@code DetalleCargaArchivo},
+     * {@code Producto} y los catálogos: los usan las variables de larga vida de las fases
+     * ({@code cargaArchivo}, {@code detallesCarga}, {@code productosCache}). Ninguna de las
+     * conservadas tiene relación hacia una desprendida, y el modelo de {@code crd} no declara
+     * cascadas ni colecciones.
+     */
+    static final List<Class<?>> CLASES_DESPRENDIBLES_REPROCESO = Arrays.asList(
+        DetallePrestamo.class,
+        PagoPrestamo.class,
+        Prestamo.class,
+        com.saa.model.crd.EventoPrestamo.class,
+        Aporte.class,
+        com.saa.model.crd.PagoAporte.class,
+        NovedadParticipeCarga.class,
+        AfectacionValoresParticipeCarga.class,
+        com.saa.model.crd.HistorialSueldo.class,
+        Contrato.class,
+        com.saa.model.crd.VigenciaContrato.class,
+        Entidad.class,
+        ParticipeXCargaArchivo.class
+    );
+
+    /** Inicio de una fase del reproceso: una línea de log con el tamaño del contexto. */
+    private long inicioFaseReproceso(String fase) {
+        System.out.println("[REPROCESO-RENDIMIENTO] " + etiquetaReproceso + " | " + fase + " | INICIO | contexto "
+            + contextoPersistenciaService.tamanio() + " entidades");
+        return System.nanoTime();
+    }
+
+    /** Fin de una fase del reproceso: tiempo, tamaño del contexto y las clases más numerosas. */
+    private void finFaseReproceso(String fase, long inicioNanos, String extra) {
+        double segundos = (System.nanoTime() - inicioNanos) / 1_000_000_000.0;
+        System.out.println("[REPROCESO-RENDIMIENTO] " + etiquetaReproceso + " | " + fase + " | FIN | "
+            + String.format("%.1f", segundos) + " s | contexto " + contextoPersistenciaService.tamanio()
+            + " entidades (" + contextoPersistenciaService.histograma(6) + ")"
+            + (extra != null && !extra.isEmpty() ? " | " + extra : ""));
+    }
+
+    /**
+     * Borde de UNIDAD de trabajo del reproceso (fin de una fila preparada, fin de un partícipe
+     * aplicado): si el contexto pasó {@link #UMBRAL_CONTEXTO_REPROCESO}, vuelca y desprende
+     * {@link #CLASES_DESPRENDIBLES_REPROCESO}. Fuera del modo reproceso no hace nada.
+     *
+     * @return cuántas entidades desprendió (0 si no hizo falta)
+     */
+    private int aliviarContextoReproceso() {
+        if (!modoReproceso) {
+            return 0;
+        }
+        int desprendidas = contextoPersistenciaService.volcarYDesprenderSiExcede(
+            UMBRAL_CONTEXTO_REPROCESO, CLASES_DESPRENDIBLES_REPROCESO);
+        return Math.max(desprendidas, 0);
+    }
+
+    /** Borde de FASE del reproceso: vuelca y desprende siempre, sin umbral. Fuera del modo reproceso no hace nada. */
+    private int desprenderContextoReproceso() {
+        if (!modoReproceso) {
+            return 0;
+        }
+        return contextoPersistenciaService.volcarYDesprender(CLASES_DESPRENDIBLES_REPROCESO);
+    }
+
+    /**
      * §16 (2026-09-03, revalidación de carga): qué (fila PXCA, tipoNovedad) confirmó
      * {@code registrarNovedad} durante UNA corrida de {@link #revalidarCarga}, para poder
      * distinguir "el código actual todavía produce esta novedad" (se reconfirmó — sigue en este
@@ -1311,6 +1404,7 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 		cancelacionesPosterioresMarcadas.clear();
 		cuotasSaldadasSinPagoReabiertas.clear();
 		prestamosPreparadosReproceso.clear();
+		totalCuotasPorPrestamoReproceso.clear();
 		montoExcedentesDevueltos = 0.0;
 		if (modoReproceso) {
 			System.out.println("=== MODO REPROCESO: " + etiquetaReproceso + " ===");
@@ -1368,15 +1462,34 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 			// estaba al corte. Misma transacción: si algo de abajo lanza, esto revierte con todo.
 			// ==========================================
 			if (modoReproceso) {
+				long inicioFase = inicioFaseReproceso("preparar operaciones vigentes al corte");
 				prepararOperacionesVigentesAlCorteReproceso(cargaArchivo);
+				// Borde de fase (§11 Rendimiento): lo preparado ya está en la base; las
+				// validaciones de abajo arrancan con el contexto vacío de cuotas/préstamos.
+				int desprendidas = desprenderContextoReproceso();
+				finFaseReproceso("preparar operaciones vigentes al corte", inicioFase, "desprendidas al cierre " + desprendidas);
 			}
 
 			// ==========================================
 			// VALIDACIÓN: todo valor descontado debe tener a qué aplicarse.
 			// Si algún registro tiene una novedad que impide determinar el
 			// destino y nadie registró la afectación manual, no se procesa nada.
+			// MODO REPROCESO (§11 Rendimiento): es de SOLO LECTURA (consulta novedades, AVPC,
+			// entidades, préstamos y cuotas; no escribe nada), así que corre con el auto-flush
+			// suspendido después de volcar todo: ninguna consulta puede ver algo distinto.
 			// ==========================================
-			validarValoresConDestino(cargaArchivo);
+			if (modoReproceso) {
+				long inicioFase = inicioFaseReproceso("validarValoresConDestino");
+				org.hibernate.FlushMode modoAnterior = contextoPersistenciaService.suspenderAutoFlush();
+				try {
+					validarValoresConDestino(cargaArchivo);
+				} finally {
+					contextoPersistenciaService.restaurarAutoFlush(modoAnterior, "validarValoresConDestino");
+				}
+				finFaseReproceso("validarValoresConDestino", inicioFase, null);
+			} else {
+				validarValoresConDestino(cargaArchivo);
+			}
 			// ==========================================
 
 			// ==========================================
@@ -1384,8 +1497,22 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 			// descontó — VALIDACION-TOPE-AFECTACION-MANUAL.md (2026-09-02, carga 449:
 			// $112,30 aplicados que nadie descontó). Todo o nada, evaluando a TODOS los
 			// partícipes antes de aplicar el primer pago.
+			// MODO REPROCESO (§11 Rendimiento): solo lectura, igual que la anterior.
 			// ==========================================
-			validarTopeAfectacionManualPorParticipe(cargaArchivo);
+			if (modoReproceso) {
+				long inicioFase = inicioFaseReproceso("validarTopeAfectacionManualPorParticipe");
+				org.hibernate.FlushMode modoAnterior = contextoPersistenciaService.suspenderAutoFlush();
+				try {
+					validarTopeAfectacionManualPorParticipe(cargaArchivo);
+				} finally {
+					contextoPersistenciaService.restaurarAutoFlush(modoAnterior, "validarTopeAfectacionManualPorParticipe");
+				}
+				// Borde de fase: lo que cargaron las validaciones no se arrastra a la fase 3.
+				int desprendidas = desprenderContextoReproceso();
+				finFaseReproceso("validarTopeAfectacionManualPorParticipe", inicioFase, "desprendidas al cierre " + desprendidas);
+			} else {
+				validarTopeAfectacionManualPorParticipe(cargaArchivo);
+			}
 			// ==========================================
 
 			// ⛔ validarRepartoDeExcedentes(cargaArchivo) — ESCRITA, NO CONECTADA (2026-09-02,
@@ -1468,7 +1595,12 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 			int totalOmitidos = 0;
 			int totalAportesGenerados = 0;
 			int totalAdvertencias = 0;
-			
+
+			// MODO REPROCESO (§11 Rendimiento): medición de la fase 3 y alivio del contexto de
+			// persistencia al terminar cada partícipe (aliviarContextoReproceso, abajo).
+			long inicioFase3 = modoReproceso ? inicioFaseReproceso("fase 3: aplicar filas") : 0L;
+			int desprendidasFase3 = 0;
+
 			// 3. Por cada detalle, procesar los partícipes
 			for (DetalleCargaArchivo detalle : detallesCarga) {
 				String codigoProducto = detalle.getCodigoPetroProducto();
@@ -1550,9 +1682,21 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 								+ codigoProducto + " — se aborta la carga completa " + codigoCargaArchivo
 								+ ", no se confirma ningún cambio. Causa: " + e.getMessage(), e);
 						}
+
+						// MODO REPROCESO (§11 Rendimiento): borde de unidad de trabajo — el partícipe
+						// terminó y todo lo suyo se vuelve a consultar por id en el siguiente. Solo
+						// quedan vivas, cruzando este borde, cargaArchivo, detallesCarga,
+						// participesDetalle (solo se leen) y productosCache, que no se desprenden o
+						// no se modifican. Fuera del modo reproceso no hace nada.
+						desprendidasFase3 += aliviarContextoReproceso();
 				}
 			}
-			
+			if (modoReproceso) {
+				desprendidasFase3 += desprenderContextoReproceso();
+				finFaseReproceso("fase 3: aplicar filas", inicioFase3, totalProcesados + " filas, "
+					+ desprendidasFase3 + " entidades desprendidas en la fase");
+			}
+
 			StringBuilder resumenBuilder = new StringBuilder(String.format(
 				"=== RESUMEN APLICACIÓN DE PAGOS ===\n" +
 				"Total procesados: %d\n" +
@@ -1608,16 +1752,24 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 			// lanza ANTES de generar ningún asiento: la transacción revierte sola y no queda un
 			// asiento equivocado que después haya que deshacer restaurando la base.
 			// ==========================================
+			long inicioInvariante = modoReproceso ? inicioFaseReproceso("validarRecibidoIgualAplicado") : 0L;
 			validarRecibidoIgualAplicado(cargaArchivo);
+			if (modoReproceso) {
+				finFaseReproceso("validarRecibidoIgualAplicado", inicioInvariante, null);
+			}
 			// ==========================================
 
 			// Paso 2 del cobro en dos pasos (regla 11 de §5 del levantamiento), antes de marcar
 			// PROCESADO: si cualquiera de los dos asientos falla, la carga NO queda a medio
 			// contabilizar (misma transacción REQUIRED que aplica todos los pagos).
+			long inicioAsientos = modoReproceso ? inicioFaseReproceso("asientos REPARTO y APLICACION") : 0L;
 			// 2a. REPARTO: D 2.3.01.15.01 -> H 1.4.05.05/1.4.05.10, plantilla alterno 20.
 			cobroPetroContableService.contabilizarReparto(codigoCargaArchivo);
 			// 2b. APLICACION: D 2.3.02.05/2.3.02.10 -> H cuentas reales, plantilla 21 + bandas.
 			cobroPetroContableService.contabilizarAplicacion(codigoCargaArchivo);
+			if (modoReproceso) {
+				finFaseReproceso("asientos REPARTO y APLICACION", inicioAsientos, null);
+			}
 
 			// Actualizar estado de CargaArchivo a 3 (PROCESADO)
 			cargaArchivo.setEstado(3L);
@@ -1957,10 +2109,21 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 	 * @return cuántas cuotas cambiaron de estado
 	 */
 	private int reabrirCuotasSaldadasSinPagoAlCorte(Prestamo prestamo, CargaArchivo cargaArchivo) throws Throwable {
+		return reabrirCuotasSaldadasSinPagoAlCorte(prestamo, cargaArchivo,
+			detallePrestamoDaoService.selectByPrestamo(prestamo.getCodigo()));
+	}
+
+	/**
+	 * Igual que {@link #reabrirCuotasSaldadasSinPagoAlCorte(Prestamo, CargaArchivo)} sobre una lista
+	 * de cuotas ya leída con {@code selectByPrestamo} (§11 Rendimiento: {@link #reabrirPrestamoVigenteAlCorte}
+	 * la reutiliza para su segunda pasada en vez de repetir la consulta; las instancias son las mismas
+	 * administradas que devolvería la consulta repetida, con el estado que esta pasada les dejó).
+	 */
+	private int reabrirCuotasSaldadasSinPagoAlCorte(Prestamo prestamo, CargaArchivo cargaArchivo,
+			List<DetallePrestamo> cuotas) throws Throwable {
 		java.time.LocalDateTime corte = finMesCarga(cargaArchivo);
 		java.time.LocalDate fechaCorte = corte.toLocalDate();
 		java.time.LocalDateTime inicioMes = fechaCorte.withDayOfMonth(1).atStartOfDay();
-		List<DetallePrestamo> cuotas = detallePrestamoDaoService.selectByPrestamo(prestamo.getCodigo());
 		if (cuotas == null) {
 			return 0;
 		}
@@ -2054,6 +2217,11 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 					prestamosVigentesAlCorteReproceso(entidades.get(0), producto, cargaArchivo);
 				}
 				filas++;
+				// §11 Rendimiento: borde de unidad de trabajo — la fila quedó preparada (todo lo
+				// que tocó pasó por save). Cruzan el borde solo detalles, participes (solo
+				// lectura), productosCache y cargaArchivo; los préstamos preparados se recuerdan
+				// por id (prestamosPreparadosReproceso), nunca por instancia.
+				aliviarContextoReproceso();
 			}
 		}
 		System.out.println("=== " + etiquetaReproceso + ": " + filas + " fila(s) preparadas, "
@@ -2136,8 +2304,10 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 
 		// D-019 ampliada: primero la regla común (cuota del mes saldada sin pago vigente); después,
 		// como antes, el resto de las cuotas saldadas sin fecha o después del corte.
-		int cuotasReabiertas = reabrirCuotasSaldadasSinPagoAlCorte(prestamo, cargaArchivo);
+		// §11 Rendimiento: una sola lectura de las cuotas para las dos pasadas (antes se repetía
+		// selectByPrestamo; misma lista, mismas instancias administradas, mismo orden).
 		List<DetallePrestamo> cuotas = detallePrestamoDaoService.selectByPrestamo(prestamo.getCodigo());
+		int cuotasReabiertas = reabrirCuotasSaldadasSinPagoAlCorte(prestamo, cargaArchivo, cuotas);
 		if (cuotas != null) {
 			for (DetallePrestamo cuota : cuotas) {
 				Long estado = cuota.getEstado();
@@ -4476,7 +4646,20 @@ private void verificarYActualizarEstadoPrestamo(Prestamo prestamo) throws Throwa
 
 		// ✅ Validar que el préstamo realmente tenga tabla de amortización.
 		// Sin esta validación, un préstamo sin cuotas daría "0 pendientes" y se cancelaría por error.
-		Long totalCuotas = detallePrestamoDaoService.contarCuotasByPrestamo(prestamo.getCodigo());
+		// MODO REPROCESO (§11 Rendimiento): el total de cuotas del préstamo no cambia durante la
+		// corrida (se actualizan cuotas, nunca se insertan ni borran) — una consulta por préstamo.
+		Long totalCuotas;
+		if (modoReproceso) {
+			totalCuotas = totalCuotasPorPrestamoReproceso.get(prestamo.getCodigo());
+			if (totalCuotas == null) {
+				totalCuotas = detallePrestamoDaoService.contarCuotasByPrestamo(prestamo.getCodigo());
+				if (totalCuotas != null) {
+					totalCuotasPorPrestamoReproceso.put(prestamo.getCodigo(), totalCuotas);
+				}
+			}
+		} else {
+			totalCuotas = detallePrestamoDaoService.contarCuotasByPrestamo(prestamo.getCodigo());
+		}
 		if (totalCuotas == null || totalCuotas == 0L) {
 			System.out.println("  ℹ️ Préstamo #" + prestamo.getCodigo() +
 			                   " sin cuotas registradas - No se evalúa cancelación");

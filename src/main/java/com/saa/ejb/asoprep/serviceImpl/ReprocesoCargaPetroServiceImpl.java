@@ -119,6 +119,10 @@ public class ReprocesoCargaPetroServiceImpl implements ReprocesoCargaPetroServic
     @EJB
     private com.saa.ejb.crd.service.ProcesoMoraPrestamoService procesoMoraPrestamoService;
 
+    /** Rendimiento (REPROCESO-CARGA-PETRO.md §11): tamaño del contexto y desprendido en bordes de fase. */
+    @EJB
+    private com.saa.basico.ejb.ContextoPersistenciaService contextoPersistenciaService;
+
     @Override
     @TransactionAttribute(TransactionAttributeType.REQUIRED)
     public ResultadoReprocesoCargaPetro reprocesar(Long idCarga, SolicitudReprocesoCargaPetro solicitud)
@@ -189,20 +193,34 @@ public class ReprocesoCargaPetroServiceImpl implements ReprocesoCargaPetroServic
         resultado.setCorrida(corrida);
         resultado.setEtiqueta(etiqueta);
 
+        // Rendimiento (REPROCESO-CARGA-PETRO.md §11): cada fase deja una línea
+        // [REPROCESO-RENDIMIENTO] al inicio y al fin con el tamaño del contexto de persistencia y
+        // el tiempo; en cada borde de fase se vuelca y se desprende lo de vida corta.
+        long inicioTotal = System.nanoTime();
+
         // ------------------------------------------------------------------
         // 2. Anular asientos de REPARTO y APLICACION (el TRANSITORIO del paso 1 se conserva)
         // ------------------------------------------------------------------
+        long inicioFase = inicioFase(etiqueta, "anular asientos REPARTO/APLICACION");
         anularAsientosDeAplicacion(idCarga, usuario, motivoCompleto, resultado);
+        finFase(etiqueta, "anular asientos REPARTO/APLICACION", inicioFase, 0);
 
         // ------------------------------------------------------------------
         // 3. Anular pagos de préstamo (enlazados + esquema viejo por observación)
         // ------------------------------------------------------------------
+        inicioFase = inicioFase(etiqueta, "anular pagos de préstamo");
         anularPagosPrestamo(idCarga, idEmpresa, fechaContable, usuario, motivoCompleto, ahora, resultado);
+        // Borde de fase: los pagos anulados y las cuotas recalculadas ya están en la base y nada
+        // de lo que sigue conserva referencias a ellos (anularPagosPrestamo los tiene en locales).
+        finFase(etiqueta, "anular pagos de préstamo", inicioFase, desprenderContexto());
 
         // ------------------------------------------------------------------
         // 4. Reversar aportes (enlazados + esquema viejo por glosa) con contra-movimiento
         // ------------------------------------------------------------------
+        inicioFase = inicioFase(etiqueta, "reversar aportes");
         reversarAportes(idCarga, usuario, motivoCompleto, ahora, resultado);
+        // Borde de fase: ídem; lo único que cruza es `carga` (CargaArchivo, no se desprende).
+        finFase(etiqueta, "reversar aportes", inicioFase, desprenderContexto());
 
         // ------------------------------------------------------------------
         // 5. La carga vuelve a CONFIRMADO_CONTABILIDAD (el paso 1 sigue hecho: CRARFCAC intacta)
@@ -215,8 +233,12 @@ public class ReprocesoCargaPetroServiceImpl implements ReprocesoCargaPetroServic
         // ------------------------------------------------------------------
         // 6. Re-aplicar con la lógica vigente (fase 3 completa + asientos de reparto/aplicación)
         // ------------------------------------------------------------------
+        // Las fases internas (preparar, validaciones, fase 3, invariante, asientos) dejan sus
+        // propias líneas [REPROCESO-RENDIMIENTO] desde CargaArchivoPetroServiceImpl.
+        inicioFase = inicioFase(etiqueta, "re-aplicación (aplicarPagosArchivoPetroReproceso)");
         Map<String, Object> aplicacion = cargaArchivoPetroService.aplicarPagosArchivoPetroReproceso(idCarga, etiqueta,
                 resolverExcedentesDevueltos(solicitud.getExcedentesDevueltos()));
+        finFase(etiqueta, "re-aplicación (aplicarPagosArchivoPetroReproceso)", inicioFase, 0);
         resultado.setResumenAplicacion((String) aplicacion.get("resumen"));
         @SuppressWarnings("unchecked")
         List<String> excedentes = (List<String>) aplicacion.get("excedentesDevueltos");
@@ -241,7 +263,11 @@ public class ReprocesoCargaPetroServiceImpl implements ReprocesoCargaPetroServic
         // ------------------------------------------------------------------
         // 7. Medir lo aplicado (mismas consultas que usa el asiento de aplicación)
         // ------------------------------------------------------------------
+        inicioFase = inicioFase(etiqueta, "medir lo aplicado");
         medirAplicado(idCarga, resultado);
+        finFase(etiqueta, "medir lo aplicado", inicioFase, 0);
+        System.out.println("[REPROCESO-RENDIMIENTO] " + etiqueta + " | TOTAL | "
+                + String.format("%.1f", (System.nanoTime() - inicioTotal) / 1_000_000_000.0) + " s");
 
         resultado.setMensaje("Carga " + idCarga + " reprocesada (" + etiqueta + "): anulados "
                 + resultado.getPagosAnulados() + " pagos ($" + formato(resultado.getMontoPagosAnulados()) + ") y "
@@ -583,6 +609,30 @@ public class ReprocesoCargaPetroServiceImpl implements ReprocesoCargaPetroServic
             }
         }
         resultado.setAsientosGenerados(new ArrayList<>(asientos));
+    }
+
+    // =====================================================================
+    // Rendimiento (REPROCESO-CARGA-PETRO.md §11)
+    // =====================================================================
+
+    private long inicioFase(String etiqueta, String fase) {
+        System.out.println("[REPROCESO-RENDIMIENTO] " + etiqueta + " | " + fase + " | INICIO | contexto "
+                + contextoPersistenciaService.tamanio() + " entidades");
+        return System.nanoTime();
+    }
+
+    private void finFase(String etiqueta, String fase, long inicioNanos, int desprendidas) {
+        System.out.println("[REPROCESO-RENDIMIENTO] " + etiqueta + " | " + fase + " | FIN | "
+                + String.format("%.1f", (System.nanoTime() - inicioNanos) / 1_000_000_000.0) + " s | contexto "
+                + contextoPersistenciaService.tamanio() + " entidades ("
+                + contextoPersistenciaService.histograma(6) + ")"
+                + (desprendidas > 0 ? " | desprendidas al cierre " + desprendidas : ""));
+    }
+
+    /** Borde de fase: flush + detach de las clases de vida corta (mismas que usa la fase 3). */
+    private int desprenderContexto() {
+        return contextoPersistenciaService.volcarYDesprender(
+                CargaArchivoPetroServiceImpl.CLASES_DESPRENDIBLES_REPROCESO);
     }
 
     // =====================================================================
