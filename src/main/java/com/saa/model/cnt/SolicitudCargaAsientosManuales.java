@@ -22,7 +22,7 @@ public class SolicitudCargaAsientosManuales implements Serializable {
 
     /**
      * Codigo alterno del tipo de asiento (CNT.PLNT.PLNTCDAL). Nulo o 0 = tipo por nombre
-     * ({@link #nombreTipoAsiento}, por defecto DIARIO). 8 = APERTURA ({@code TipoAsientos.APERTURA}).
+     * ({@link #nombreTipoAsiento}, por defecto DIARIO). 10 = APERTURA ({@code TipoAsientos.APERTURA}).
      */
     private Integer codigoAltTipoAsiento;
 

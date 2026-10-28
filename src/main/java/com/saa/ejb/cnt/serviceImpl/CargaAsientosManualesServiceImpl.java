@@ -262,7 +262,7 @@ public class CargaAsientosManualesServiceImpl implements CargaAsientosManualesSe
     /**
      * Alterno nulo o 0: por nombre (DIARIO por defecto), porque DIARIO / INGRESO / EGRESO comparten el alterno 0.
      * Alterno distinto de 0: por alterno; si ademas viene nombre, tiene que coincidir (y desempata cuando varios
-     * tipos comparten el alterno, p. ej. APERTURA y EG-A con el 8). Solo tipos activos de la empresa.
+     * tipos comparten el alterno). Solo tipos activos de la empresa.
      */
     private TipoAsiento resolverTipoAsiento(Long idEmpresa, Integer alterno, String nombre, List<ErrorLinea> errores) {
         String nombreBuscado = (nombre != null && !nombre.trim().isEmpty())

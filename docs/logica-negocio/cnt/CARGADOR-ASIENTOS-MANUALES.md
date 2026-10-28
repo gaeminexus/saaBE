@@ -16,7 +16,7 @@ lista completa de errores y su número de línea; si todo pasa, los asientos se 
 | Service | `ejb/cnt/service/CargaAsientosManualesService.java` + `serviceImpl/CargaAsientosManualesServiceImpl.java` | Parseo, validaciones, idempotencia, grabación |
 | Service | `ejb/cnt/service/AsientoContableService.generarAsientoManual(...)` | Nuevo: misma grabación que `generarAsiento` pero con el `TipoAsiento` ya resuelto y **sin** la regla IN-A / EG-A / DI-A (los manuales no cambian, `DISENO-TIPOS-ASIENTO-AUTOMATICOS.md` §2.6). La grabación común quedó en el privado `grabarAsiento`, que `generarAsiento` también usa |
 | DTO | `model/cnt/SolicitudCargaAsientosManuales.java`, `model/cnt/ResultadoCargaAsientosManuales.java` | Petición y respuesta (POJOs sin `@Entity`) |
-| Rubro | `rubros/TipoAsientos.APERTURA = 8` | Tipo APERTURA de la empresa 1236 (ver §7, choca con EG-A) |
+| Rubro | `rubros/TipoAsientos.APERTURA = 10` | Tipo APERTURA de la empresa 1236 (ver §7) |
 
 No hay tabla nueva ni DDL. La trazabilidad va en la observación del asiento.
 
@@ -90,7 +90,8 @@ el período llega nulo, y en el camino normal el período ya viene asignado (sol
   automática, con cualquier fecha.
 
 Tipos de 1236 en la base del proyecto (28-oct-2026): DIARIO / INGRESO / EGRESO (0), CREDITOS 1, CXC 2, CXP 3,
-T-INGRESOS 4, T-EGRESOS 5, RECURSOS HUMANOS 6, **APERTURA 8**.
+T-INGRESOS 4, T-EGRESOS 5, RECURSOS HUMANOS 6, **APERTURA 10** (creado con 8 el 28-oct; lo mueve
+`sql/c5-01-apertura-alterno-10.sql`, ver §7).
 
 ## 6. Trazabilidad y numeración
 
@@ -101,16 +102,23 @@ T-INGRESOS 4, T-EGRESOS 5, RECURSOS HUMANOS 6, **APERTURA 8**.
   (tres primeras letras del tipo, año, mes, consecutivo mensual por tipo).
 - Usuario (`ASNTUSRO`): el de la petición.
 
-## 7. ⚠ APERTURA (8) choca con EG-A (8)
+## 7. APERTURA es el alterno 10 (7, 8 y 9 son IN-A / EG-A / DI-A)
 
-`TipoAsientos.APERTURA = 8` existe en 1236 con `PLNTSSTM = 1`. Desde 2026-11-01 `EG-A (EGRESO AUTOMATICO)` también
-usa el **alterno 8 con `PLNTSSTM = 1`** (`TipoAsientoAutomatico.EG_A`). En una empresa que tenga los dos,
-`TipoAsientoDaoService.selectByAlternoSistema(8)` devuelve dos filas y **`tipoAutomatico()` lanza error en todos
-los asientos automáticos de egreso**. El cargador no se ve afectado (resuelve por alterno + nombre), pero antes
-de crear EG-A en 1236 hay que mover APERTURA a un alterno libre. Propuesta: **10**, script puro
-`sql/c5-01-apertura-alterno-10.sql` (controles antes y después, sin `COMMIT`, **no ejecutado**). Al aplicarlo,
-cambiar `TipoAsientos.APERTURA` a 10 en el mismo despliegue. Mientras tanto, para cargar aperturas usar
-`codigoAltTipoAsiento = 8` **y** `nombreTipoAsiento = "APERTURA"`.
+El tipo APERTURA se creó el 28-oct-2026 en la base del proyecto con el alterno 8, el mismo que `EG-A (EGRESO
+AUTOMATICO)` usa desde 2026-11-01 con `PLNTSSTM = 1` (`TipoAsientoAutomatico.EG_A`): con los dos en una empresa,
+`selectByAlternoSistema(8)` devuelve dos filas y `tipoAutomatico()` falla en todos los egresos automáticos.
+**Decisión del coordinador (28-oct-2026): APERTURA pasa al alterno 10**; `TipoAsientos.APERTURA = 10`.
+
+- Base del proyecto (tiene APERTURA con 8): correr `sql/c5-01-apertura-alterno-10.sql` (SQL puro, controles antes
+  y después, sin `COMMIT`). Es idempotente: si APERTURA no existe no hace nada; si está en 8 lo mueve a 10 (solo si
+  el 10 está libre); si ya está en 10 no hace nada. Los asientos ya grabados no cambian (`ASNT` referencia
+  `PLNTCDGO`).
+- Base nueva / producción: el coordinador crea APERTURA directamente con 10 (`PLNTSSTM = 1`, activo); el script
+  queda sin efecto.
+
+Para cargar aperturas: `codigoAltTipoAsiento = 10` (opcionalmente `nombreTipoAsiento = "APERTURA"`). Si la base
+todavía tiene APERTURA en 8, el cargador responde `no tiene un tipo de asiento activo con codigo alterno 10`:
+correr el script primero.
 
 ## 8. Peticiones y respuestas
 
@@ -210,12 +218,12 @@ curl -F "archivo=@asientos-manuales-ejemplo-2025-06.csv" -F "archivoNombre=asien
 
 El archivo es `cuadreSuper/04-entregables/balance-arranque/ASIENTO-ARRANQUE-31MAY2025.csv` (175 líneas, dos
 `numero_asiento`: `APERTURA-2025-05` grupos 1–5 y `APERTURA-2025-05-ORDEN` cuentas de orden; columnas con
-`cuenta_saa` y `cuenta_b17`). Requisitos: período mayo 2025 abierto y tipo APERTURA (script 05 de cuadreSuper, ya
-aplicado en la base del proyecto).
+`cuenta_saa` y `cuenta_b17`). Requisitos: período mayo 2025 abierto y tipo APERTURA con **alterno 10** (el script 05
+de cuadreSuper lo creó con 8 en la base del proyecto; `sql/c5-01-apertura-alterno-10.sql` lo mueve, §7).
 
 ```json
 { "idEmpresa": 1236, "usuario": "CUADRE-SB", "nombreArchivo": "ASIENTO-ARRANQUE-31MAY2025.csv",
-  "codigoAltTipoAsiento": 8, "nombreTipoAsiento": "APERTURA", "contenido": "<el CSV completo>" }
+  "codigoAltTipoAsiento": 10, "nombreTipoAsiento": "APERTURA", "contenido": "<el CSV completo>" }
 ```
 
 Resultado esperado: dos asientos `APE-2025-05-0001` (169 líneas, 73.689.146,31) y `APE-2025-05-0002` (6 líneas,
