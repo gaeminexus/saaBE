@@ -172,4 +172,11 @@ public interface ContabilidadPrestamoService {
 
     Long contabilizarEntrega(Prestamo prestamo, List<DetallePrestamo> cuotas, Long idEmpresa,
             double montoOperacion, String usuario) throws Throwable;
+
+    /**
+     * C15 / D-018 (H6): {@link #contabilizarEntrega} con la fecha contable explícita del asiento (la del
+     * desembolso real en el extracto); null = fecha de inicio del préstamo, como siempre.
+     */
+    Long contabilizarEntrega(Prestamo prestamo, List<DetallePrestamo> cuotas, Long idEmpresa,
+            double montoOperacion, String usuario, java.time.LocalDate fechaAsiento) throws Throwable;
 }

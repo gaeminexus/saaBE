@@ -1053,8 +1053,14 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
     @Override
     public Long contabilizarEntrega(Prestamo prestamo, List<DetallePrestamo> cuotas, Long idEmpresa,
             double montoOperacion, String usuario) throws Throwable {
+        return contabilizarEntrega(prestamo, cuotas, idEmpresa, montoOperacion, usuario, null);
+    }
+
+    @Override
+    public Long contabilizarEntrega(Prestamo prestamo, List<DetallePrestamo> cuotas, Long idEmpresa,
+            double montoOperacion, String usuario, LocalDate fechaAsiento) throws Throwable {
         System.out.println("ContabilidadPrestamoService.contabilizarEntrega - Préstamo: "
-                + (prestamo != null ? prestamo.getCodigo() : null));
+                + (prestamo != null ? prestamo.getCodigo() : null) + " - fecha asiento: " + fechaAsiento);
 
         if (!configuracionContabilidadService.contabilidadActiva()) {
             System.out.println("  Contabilidad de CRD INACTIVA: préstamo "
@@ -1163,8 +1169,11 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
                     + ". No se genera un asiento desbalanceado.");
         }
 
+        // C15 / D-018 (H6): la entrega de un préstamo ya aprobado se fecha con el desembolso real
+        // (extracto bancario); sin fecha explícita, como siempre, la fecha de inicio del préstamo.
         Asiento asiento = asientoContableService.generarAsiento(idEmpresa, TipoAsientos.CREDITOS,
-                fechaInicio, prefijo, usuario, lineas, Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR));
+                fechaAsiento != null ? fechaAsiento : fechaInicio, prefijo, usuario, lineas,
+                Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR));
 
         System.out.println("  ✅ contabilizarEntrega OK - Préstamo: " + prestamo.getCodigo()
                 + " - Asiento: " + asiento.getCodigo() + " - Monto: $" + totalCapital);
