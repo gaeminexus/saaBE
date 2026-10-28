@@ -497,7 +497,9 @@ public class CargaHistoricaDocumentoServiceImpl implements CargaHistoricaDocumen
             grupo.setPlanCuenta(plan);
             grupo.setRubroTipoGrupoP(RUBRO_TIPO_GRUPO_P);
             grupo.setRubroTipoGrupoH((long) TipoGrupoProductos.SERVICIO);
-            grupo.setSustentoTributarioDefecto(cuenta.startsWith("4.") ? "01" : null);
+            // CK_GRPP_CSUS admite NULL o '03','04','06','07','08'; los 72 grupos existentes lo tienen en NULL y el sustento
+            // de cada factura lo resuelve resolverSiFalta: se deja NULL, igual que los grupos creados a mano.
+            grupo.setSustentoTributarioDefecto(null);
             grupo.setEstado((long) Estado.ACTIVO);
             em.persist(grupo);
             System.out.println("ℹ Grupo de producto de compras creado para la cuenta " + cuenta + ": " + grupo.getNombre());
@@ -679,7 +681,7 @@ public class CargaHistoricaDocumentoServiceImpl implements CargaHistoricaDocumen
             if (ctx.soloValidar) return item.validado("se registraria el pago " + p.formaPago + " de " + p.valor + " el " + p.fechaPago + " desde la cuenta " + p.cuentaBancaria + " (saldo " + saldoPendiente + ")");
 
             String obs = recortar(ctx.observacion + " | " + p.ref + " | " + nvl(p.formaPagoExcel, "") + " | " + nvl(p.referencia, ""), 2000);
-            String referencia = recortar(nvl(p.referencia, ctx.observacion), 200);
+            String referencia = referenciaCorta(p.ref, p.facturaNumero, p.referencia);
             Map<String, Object> res = pagoProgramadoService.registrarPago(factura.getId(), p.idCuentaBancaria, null, redondea(nz(p.valor)), p.fechaPago,
                     ctx.idEmpresa, ctx.idUsuario, obs, debito, referencia, debito ? FormaPagoProgramado.DEBITO_AUTOMATICO : FormaPagoProgramado.TRANSFERENCIA);
             Long idPago = res.get("pago") != null ? Long.valueOf(res.get("pago").toString()) : null;
@@ -875,8 +877,8 @@ public class CargaHistoricaDocumentoServiceImpl implements CargaHistoricaDocumen
             double saldoPendiente = numero(saldo.get("saldoPendiente"));
             if (nz(c.valor) > saldoPendiente + TOLERANCIA) return item.rechazado("el cobro " + c.valor + " supera el saldo de la factura " + saldoPendiente + " (la retencion recibida debe cargarse antes)");
             if (ctx.soloValidar) return item.validado("se registraria el cobro por transferencia de " + c.valor + " el " + c.fechaCobro + " en la cuenta " + c.cuentaBancaria + " (saldo " + saldoPendiente + ")");
-            String referencia = recortar(nvl(c.referencia, ctx.observacion), 200);
-            String obs = recortar(ctx.observacion + " | " + c.ref + " | " + nvl(c.estadoCobroExcel, ""), 2000);
+            String referencia = referenciaCorta(c.ref, c.facturaNumero, c.referencia);
+            String obs = recortar(ctx.observacion + " | " + c.ref + " | " + nvl(c.estadoCobroExcel, "") + " | " + nvl(c.referencia, ""), 2000);
             Map<String, Object> res = aplicacionPagoCxcService.aplicarCobroTransferencia(factura.getId(), redondea(nz(c.valor)), c.fechaCobro, referencia, c.idCuentaBancaria, ctx.idEmpresa, ctx.idUsuario, obs);
             Long idAplicacion = res.get("aplicacion") != null ? Long.valueOf(res.get("aplicacion").toString()) : null;
             Long idAsiento = res.get("idAsiento") != null ? Long.valueOf(res.get("idAsiento").toString()) : null;
@@ -1313,6 +1315,27 @@ public class CargaHistoricaDocumentoServiceImpl implements CargaHistoricaDocumen
         StringBuilder sb = new StringBuilder(ctx.observacion).append(" | ").append(ref).append(" | ").append(titulo);
         for (String x : extras) if (x != null && !x.trim().isEmpty()) sb.append(" | ").append(x.trim());
         return sb.toString();
+    }
+
+    /**
+     * Largo de la referencia bancaria que se pasa a los motores de pago y cobro. Las columnas son de 200
+     * (PGS.PGTR.PGTRRFBN, PGS.APLP.APLPREFR, CBR.APLC.APLCREFR), pero los motores arman con ella la descripción del
+     * movimiento bancario ("Pago proveedor: <nombre> | Factura: <n> | Ref: <referencia>", TSR.MVCB.MVCBDSCR de 200):
+     * con 50 queda sitio para el nombre del titular. El texto completo del Excel va en la observación (2000).
+     */
+    static final int LARGO_REFERENCIA_BANCARIA = 50;
+
+    /** Referencia corta y única: ref del lote + número de factura + el dato identificable de la referencia del Excel (orden, OCP, "Ref:"). */
+    static String referenciaCorta(String ref, String numeroFactura, String textoExcel) {
+        String base = (nvl(ref, "") + " " + nvl(numeroFactura, "")).trim();
+        String fragmento = null;
+        if (textoExcel != null && !textoExcel.trim().isEmpty()) {
+            java.util.regex.Matcher m = java.util.regex.Pattern
+                    .compile("(orden|OCP|Ref)\\s*:?\\s*([A-Za-z0-9-]+)", java.util.regex.Pattern.CASE_INSENSITIVE).matcher(textoExcel);
+            fragmento = m.find() ? m.group(1) + " " + m.group(2) : textoExcel.trim();
+        }
+        String r = fragmento == null ? base : base + " | " + fragmento;
+        return recortar(r.trim(), LARGO_REFERENCIA_BANCARIA);
     }
 
     static String recortar(String s, int largo) {
