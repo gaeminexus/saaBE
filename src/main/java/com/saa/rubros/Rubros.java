@@ -306,6 +306,15 @@ public interface Rubros {
 	/** Tipo de certificado de participe (CRTFTPCR) -> ver {@link CrdTipoCertificado} */
 	int CRD_TIPO_CERTIFICADO = 244;
 
+	// ================= RUBROS CNT (Contabilidad) =================
+	/**
+	 * Parametros de los asientos automaticos IN-A / EG-A / DI-A -> ver {@link CntParametroAsientoAutomatico}.
+	 * Un detalle por empresa (PDTRALTR = PJRQCDGO; 0 = todas) con la fecha de vigencia de la regla en PDTRVLRV
+	 * (yyyy-MM-dd). Verificado contra SCP.PRBR el 2026-10-28: 245-248 los usa crd (cobros, condonacion), 310/311
+	 * rhh y 330-349 estan reservados por lap-saa-1; 249 es el primer codigo libre en la base y en el codigo.
+	 */
+	int CNT_PARAMETROS_ASIENTOS_AUTOMATICOS = 249;
+
 	// ================= RUBROS SRI / ATS =================
 	/** Sustento tributario del comprobante, Tabla 5 del ATS (GRPPCSUS/FCTCCSUS/...) -> ver {@link SustentoTributarioSri}. El catalogo real vive en PGS.LSRI/PGS.TSRI (LSRI.TABLA='703'), no en Java; los codigos son strings de dos digitos, no este rubro int -> ver el javadoc de la interfaz. */
 	int SUSTENTO_TRIBUTARIO_SRI = 238;

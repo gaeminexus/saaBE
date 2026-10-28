@@ -360,11 +360,13 @@ public interface AsientoContableService {
     /**
      * Igual que {@link #generarAsiento(Long, int, java.time.LocalDate, String, String, java.util.List, Long)} con el
      * modulo origen explicito (CRE, CXC, CXP, TSR, RRH, CNT; ver {@code ModuloOrigenAsiento}). Para asientos con
-     * fecha desde 2026-11-01 ({@code TipoAsientoAutomatico.FECHA_VIGENCIA}):
+     * fecha desde la vigencia de la empresa ({@link #fechaVigenciaTiposAutomaticos}; por defecto 2026-11-01):
      * <ul>
      * <li>el tipo se calcula segun las lineas (IN-A 7 / EG-A 8 / DI-A 9) y reemplaza a
-     * {@code codigoAltTipoAsiento};</li>
-     * <li>se graba el modulo origen con su consecutivo mensual por empresa + modulo + anio + mes.</li>
+     * {@code codigoAltTipoAsiento}, salvo que el modulo origen este en
+     * {@code TipoAsientoAutomatico.MODULOS_CON_TIPO_PROPIO} (hoy vacio);</li>
+     * <li>se graba el modulo origen con su consecutivo mensual por empresa + modulo + anio + mes de la FECHA DEL
+     * ASIENTO (no del dia de hoy: sirve para re-procesar meses pasados).</li>
      * </ul>
      * Antes de esa fecha el asiento se genera como siempre (tipo por alterno, sin modulo origen).
      * La version sin este parametro lo deduce: alterno 1 es CRE, 6 es RRH y, si no, sale del moduloSistema.
@@ -374,6 +376,16 @@ public interface AsientoContableService {
             java.time.LocalDate fechaAsiento, String observaciones, String usuario,
             java.util.List<com.saa.model.cnt.DetalleAsiento> lineas,
             Long moduloSistema, String moduloOrigen) throws Throwable;
+
+    /**
+     * Fecha desde la que rige, para la empresa, la regla de tipos automaticos IN-A / EG-A / DI-A con modulo origen
+     * y numeracion por modulo. Sale del rubro {@code Rubros.CNT_PARAMETROS_ASIENTOS_AUTOMATICOS} (detalle con
+     * alterno = codigo de la empresa; si no, el detalle 0; valor {@code yyyy-MM-dd} en PDTRVLRV). Sin configuracion
+     * o con un valor ilegible devuelve {@code TipoAsientoAutomatico.FECHA_VIGENCIA_DEFECTO} (2026-11-01): el
+     * comportamiento es identico al anterior a la parametrizacion. Nunca lanza.
+     * DISENO-TIPOS-ASIENTO-AUTOMATICOS.md §7.
+     */
+    java.time.LocalDate fechaVigenciaTiposAutomaticos(Long idEmpresa);
 
     /**
      * Asiento <b>manual</b> con el tipo de asiento ya resuelto por el llamador (cargador de asientos manuales,

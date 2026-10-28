@@ -1,6 +1,7 @@
 package com.saa.ejb.cnt.serviceImpl;
 
 import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -18,8 +19,10 @@ import com.saa.model.cnt.TipoAsiento;
 import com.saa.model.cxc.AnticipoCliente;
 import com.saa.model.cxc.DetalleFactura;
 import com.saa.model.cxc.Factura;
+import com.saa.model.scp.DetalleRubro;
 import com.saa.model.scp.Empresa;
 import com.saa.model.tsr.Titular;
+import com.saa.rubros.CntParametroAsientoAutomatico;
 import com.saa.rubros.Estado;
 import com.saa.rubros.EstadoAsiento;
 import com.saa.rubros.ModuloOrigenAsiento;
@@ -81,6 +84,10 @@ public class AsientoContableServiceImpl implements AsientoContableService {
 
     @EJB
     private com.saa.ejb.rhh.dao.ConfiguracionNominaDaoService configuracionNominaDaoService;
+
+    /** Rubro CNT_PARAMETROS_ASIENTOS_AUTOMATICOS: vigencia por empresa de la regla IN-A / EG-A / DI-A. */
+    @EJB
+    private com.saa.basico.ejb.DetalleRubroDaoService detalleRubroDaoService;
 
     // ---------------------------------------------------------------
     // Cuadre contra importeTotal — docs/logica-negocio/cxp/DISENO-CUADRE-CONTRA-IMPORTE-TOTAL.md
@@ -524,7 +531,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
     }
 
     /**
-     * Tipo de asiento automatico segun las lineas (desde 2026-11-01): lineas cuya cuenta contable es la de una
+     * Tipo de asiento automatico segun las lineas (desde la vigencia de la empresa): lineas cuya cuenta contable es la de una
      * cuenta bancaria propia de un banco real; neto (debe - haber) de esas lineas &gt; 0 es IN-A, &lt; 0 es EG-A,
      * 0 con lineas de banco a los dos lados es EG-A, y sin lineas de banco real es DI-A. Una sola consulta con
      * los planes de cuenta de los bancos reales de la empresa (sin N+1).
@@ -581,13 +588,26 @@ public class AsientoContableServiceImpl implements AsientoContableService {
                 + " | tipoAlt=" + codigoAltTipoAsiento + " | modulo=" + moduloSistema
                 + " | moduloOrigen=" + moduloOrigen + " ===");
 
-        // Desde 2026-11-01 el tipo lo decide la regla IN-A / EG-A / DI-A (reemplaza al alterno recibido) y el
-        // asiento lleva modulo origen con su propio consecutivo. Antes de esa fecha, todo igual que siempre.
-        boolean automatico = fechaAsiento != null && !fechaAsiento.isBefore(TipoAsientoAutomatico.FECHA_VIGENCIA);
+        // Desde la vigencia de la empresa (rubro CNT_PARAMETROS_ASIENTOS_AUTOMATICOS; sin configurar, 2026-11-01)
+        // el tipo lo decide la regla IN-A / EG-A / DI-A (reemplaza al alterno recibido) y el asiento lleva modulo
+        // origen con su propio consecutivo mensual. Antes de esa fecha, todo igual que siempre. La vigencia se
+        // compara con la FECHA DEL ASIENTO, nunca con la de hoy: el re-proceso jun-2025 -> nov-2026 del cuadre con
+        // la Superintendencia (D-006) la fija en 2025-06-01 y regenera esos meses con esta numeracion.
+        LocalDate vigencia = fechaVigenciaTiposAutomaticos(idEmpresa);
+        boolean automatico = fechaAsiento != null && !fechaAsiento.isBefore(vigencia);
+        // PUNTO UNICO de exclusion por modulo (TipoAsientoAutomatico.MODULOS_CON_TIPO_PROPIO, hoy vacio): un modulo
+        // excluido conserva el tipo que pide el llamador (CREDITOS, RECURSOS HUMANOS) pero igual graba modulo
+        // origen y consecutivo por modulo. Decision pendiente del lider del cuadre para CRE y RRH.
+        boolean tipoPorRegla = automatico && (moduloOrigen == null
+                || !TipoAsientoAutomatico.MODULOS_CON_TIPO_PROPIO.contains(moduloOrigen));
+        if (automatico) {
+            System.out.println("generarAsiento: fecha " + fechaAsiento + " >= vigencia " + vigencia
+                    + " -> regla de tipos automaticos" + (tipoPorRegla ? "" : " (modulo con tipo propio)"));
+        }
 
         // 1. Obtener TipoAsiento por codigoAlterno y sistema=1
         TipoAsiento tipoAsiento;
-        if (automatico) {
+        if (tipoPorRegla) {
             int alternoAutomatico = clasificarTipoAutomatico(idEmpresa, lineas);
             System.out.println("generarAsiento: tipo automatico segun las lineas = " + alternoAutomatico
                     + " (recibido " + codigoAltTipoAsiento + ")");
@@ -605,6 +625,49 @@ public class AsientoContableServiceImpl implements AsientoContableService {
 
         return grabarAsiento(idEmpresa, tipoAsiento, fechaAsiento, observaciones, usuario, lineas, moduloSistema,
                 automatico, moduloOrigen);
+    }
+
+    @Override
+    public LocalDate fechaVigenciaTiposAutomaticos(Long idEmpresa) {
+        // Una sola consulta por lista (getResultList): sin fila no hay NoResultException, que al cruzar el limite
+        // del EJB del DAO marcaria la transaccion del asiento para rollback. Solo detalles activos.
+        List<DetalleRubro> detalles;
+        try {
+            detalles = detalleRubroDaoService.selectByCodigoAlternoRubro(
+                    Rubros.CNT_PARAMETROS_ASIENTOS_AUTOMATICOS, Long.valueOf(Estado.ACTIVO));
+        } catch (Throwable e) {
+            System.out.println("fechaVigenciaTiposAutomaticos: no se pudo leer el rubro "
+                    + Rubros.CNT_PARAMETROS_ASIENTOS_AUTOMATICOS + " (" + e.getMessage() + "); se usa la vigencia"
+                    + " por defecto " + TipoAsientoAutomatico.FECHA_VIGENCIA_DEFECTO);
+            return TipoAsientoAutomatico.FECHA_VIGENCIA_DEFECTO;
+        }
+        String valorEmpresa = null;
+        String valorTodas = null;
+        if (detalles != null) {
+            for (DetalleRubro d : detalles) {
+                if (d.getCodigoAlterno() == null) {
+                    continue;
+                }
+                if (idEmpresa != null && d.getCodigoAlterno().longValue() == idEmpresa.longValue()) {
+                    valorEmpresa = d.getValorAlfanumerico();
+                } else if (d.getCodigoAlterno().intValue() == CntParametroAsientoAutomatico.VIGENCIA_TODAS_LAS_EMPRESAS) {
+                    valorTodas = d.getValorAlfanumerico();
+                }
+            }
+        }
+        String valor = (valorEmpresa != null && !valorEmpresa.trim().isEmpty()) ? valorEmpresa : valorTodas;
+        if (valor == null || valor.trim().isEmpty()) {
+            return TipoAsientoAutomatico.FECHA_VIGENCIA_DEFECTO;
+        }
+        try {
+            return LocalDate.parse(valor.trim());
+        } catch (DateTimeParseException e) {
+            System.out.println("fechaVigenciaTiposAutomaticos: el valor '" + valor + "' del rubro "
+                    + Rubros.CNT_PARAMETROS_ASIENTOS_AUTOMATICOS + " para la empresa " + idEmpresa
+                    + " no es una fecha yyyy-MM-dd; se usa la vigencia por defecto "
+                    + TipoAsientoAutomatico.FECHA_VIGENCIA_DEFECTO);
+            return TipoAsientoAutomatico.FECHA_VIGENCIA_DEFECTO;
+        }
     }
 
     @Override
@@ -626,8 +689,8 @@ public class AsientoContableServiceImpl implements AsientoContableService {
     /**
      * Pasos comunes de {@link #generarAsiento(Long, int, LocalDate, String, String, List, Long, String)} y
      * {@link #generarAsientoManual}: empresa, cabecera, saveSingle (periodo, numero, numero alterno), lineas y
-     * validacion debe = haber. Con {@code automatico} (asiento del sistema con fecha desde 2026-11-01) se graba el
-     * modulo origen y su consecutivo mensual; los manuales van con false.
+     * validacion debe = haber. Con {@code automatico} (asiento del sistema con fecha desde la vigencia de la
+     * empresa) se graba el modulo origen y su consecutivo mensual; los manuales van con false.
      */
     private Asiento grabarAsiento(Long idEmpresa, TipoAsiento tipoAsiento,
             LocalDate fechaAsiento, String observaciones, String usuario,
@@ -663,8 +726,8 @@ public class AsientoContableServiceImpl implements AsientoContableService {
 
         // 4. saveSingle: asigna perÃ­odo, nÃºmero, numeroAlterno y graba
         asiento = asientoService.saveSingle(asiento);
-        // Consecutivo mensual por modulo origen (doble control), solo asientos automaticos desde 2026-11-01;
-        // va despues del saveSingle porque necesita el mes y el anio que el asigna.
+        // Consecutivo mensual por modulo origen (doble control), solo asientos automaticos desde la vigencia;
+        // va despues del saveSingle porque necesita el mes y el anio que el asigna (de la fecha del asiento).
         if (automatico) {
             asiento = asientoService.asignaNumeroModulo(asiento);
         }
