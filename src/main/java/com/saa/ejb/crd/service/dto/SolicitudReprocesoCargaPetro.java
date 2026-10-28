@@ -8,12 +8,24 @@ package com.saa.ejb.crd.service.dto;
  * <p>{@code usuario} y {@code motivo} son OBLIGATORIOS: el motivo queda estampado en cada
  * pago anulado ({@code PGPRMTAN}), en cada contra-movimiento de aporte ({@code APRTGLSA}) y
  * en cada asiento anulado ({@code ASNTMTAN}), junto con la etiqueta de corrida.</p>
+ *
+ * <p>{@code excedentesDevueltos} es OPCIONAL (decisión D-010): los excedentes que Petro descontó
+ * de más y ASOPREP devolvió al partícipe. Ver {@link ExcedenteDevueltoReproceso}.</p>
  */
 public class SolicitudReprocesoCargaPetro {
 
     private String usuario;
     private String ip;
     private String motivo;
+    private java.util.List<ExcedenteDevueltoReproceso> excedentesDevueltos;
+
+    public java.util.List<ExcedenteDevueltoReproceso> getExcedentesDevueltos() {
+        return excedentesDevueltos;
+    }
+
+    public void setExcedentesDevueltos(java.util.List<ExcedenteDevueltoReproceso> excedentesDevueltos) {
+        this.excedentesDevueltos = excedentesDevueltos;
+    }
 
     public String getUsuario() {
         return usuario;

@@ -17,6 +17,9 @@ import com.saa.ejb.cnt.service.AsientoService;
 import com.saa.ejb.crd.dao.AporteDaoService;
 import com.saa.ejb.crd.dao.AsientoCargaPetroDaoService;
 import com.saa.ejb.crd.dao.DetallePrestamoDaoService;
+import com.saa.ejb.crd.dao.EntidadDaoService;
+import com.saa.ejb.crd.service.dto.ExcedenteDevueltoReproceso;
+import com.saa.model.crd.Entidad;
 import com.saa.ejb.crd.dao.PagoAporteDaoService;
 import com.saa.ejb.crd.dao.PagoPrestamoDaoService;
 import com.saa.ejb.crd.dao.PrestamoDaoService;
@@ -110,6 +113,9 @@ public class ReprocesoCargaPetroServiceImpl implements ReprocesoCargaPetroServic
     @EJB
     private FechaService fechaService;
 
+    @EJB
+    private EntidadDaoService entidadDaoService;
+
     @Override
     @TransactionAttribute(TransactionAttributeType.REQUIRED)
     public ResultadoReprocesoCargaPetro reprocesar(Long idCarga, SolicitudReprocesoCargaPetro solicitud)
@@ -148,8 +154,8 @@ public class ReprocesoCargaPetroServiceImpl implements ReprocesoCargaPetroServic
             throw new IncomeException("La carga " + idCarga + " no tiene la recepción confirmada por"
                     + " contabilidad (paso 1 del cobro en dos pasos). Registre las transferencias"
                     + " con que Petro pagó esta carga (POST /rest/asgn/transferencias) y confirme la"
-                    + " recepción (POST /rest/asgn/confirmarRecepcion/" + idCarga + ") antes de"
-                    + " reprocesarla.");
+                    + " recepción (POST /rest/asgn/confirmarRecepcion/" + idCarga + " con"
+                    + " \"paraReproceso\": true si la carga ya está en estado 3) antes de reprocesarla.");
         }
         List<TransferenciaCargaPetro> transferenciasVigentes =
                 transferenciaCargaPetroDaoService.selectVigentesByCarga(idCarga);
@@ -206,8 +212,15 @@ public class ReprocesoCargaPetroServiceImpl implements ReprocesoCargaPetroServic
         // ------------------------------------------------------------------
         // 6. Re-aplicar con la lógica vigente (fase 3 completa + asientos de reparto/aplicación)
         // ------------------------------------------------------------------
-        Map<String, Object> aplicacion = cargaArchivoPetroService.aplicarPagosArchivoPetroReproceso(idCarga, etiqueta);
+        Map<String, Object> aplicacion = cargaArchivoPetroService.aplicarPagosArchivoPetroReproceso(idCarga, etiqueta,
+                resolverExcedentesDevueltos(solicitud.getExcedentesDevueltos()));
         resultado.setResumenAplicacion((String) aplicacion.get("resumen"));
+        @SuppressWarnings("unchecked")
+        List<String> excedentes = (List<String>) aplicacion.get("excedentesDevueltos");
+        resultado.setDetalleExcedentesDevueltos(excedentes != null ? excedentes : new ArrayList<>());
+        resultado.setExcedentesDevueltos(excedentes != null ? excedentes.size() : 0);
+        Object montoExcedentes = aplicacion.get("montoExcedentesDevueltos");
+        resultado.setMontoExcedentesDevueltos(montoExcedentes instanceof Number ? ((Number) montoExcedentes).doubleValue() : 0.0);
         @SuppressWarnings("unchecked")
         List<String> sinParticipe = (List<String>) aplicacion.get("sinParticipe");
         resultado.setDetalleSinParticipe(sinParticipe != null ? sinParticipe : new ArrayList<>());
@@ -226,7 +239,9 @@ public class ReprocesoCargaPetroServiceImpl implements ReprocesoCargaPetroServic
                 + "); aplicados " + resultado.getPagosAplicados() + " pagos ($" + formato(resultado.getMontoPagosAplicados())
                 + ") y " + resultado.getAportesAplicados() + " aportes ($" + formato(resultado.getMontoAportesAplicados())
                 + "); " + resultado.getFilasSinParticipe() + " filas sin partícipe ($"
-                + formato(resultado.getMontoSinParticipe()) + ") reportadas como novedad.");
+                + formato(resultado.getMontoSinParticipe()) + ") reportadas como novedad; "
+                + resultado.getExcedentesDevueltos() + " excedentes devueltos ($"
+                + formato(resultado.getMontoExcedentesDevueltos()) + ") registrados como aporte (D-010).");
         System.out.println("=== REPROCESO CARGA PETRO - FIN: " + resultado.getMensaje());
         return resultado;
     }
@@ -476,6 +491,40 @@ public class ReprocesoCargaPetroServiceImpl implements ReprocesoCargaPetroServic
             return aporte.getFechaTransaccion().toLocalDate().withDayOfMonth(1);
         }
         return null;
+    }
+
+    // =====================================================================
+    // D-010: excedentes devueltos — idEntidad se traduce a rol Petro
+    // =====================================================================
+
+    /**
+     * La solicitud puede identificar cada excedente por rol Petro o por código interno del
+     * partícipe ({@code idEntidad}, que es como se arma la lista desde la documentación de
+     * crédito sin exponer datos personales). La fase 3 trabaja por rol: acá se traduce. El resto
+     * de la validación (fila existente, monto, referencia, tipo de aporte) la hace la fase 3 en
+     * {@code validarExcedentesDevueltosReproceso}, todo junto y antes de aplicar nada.
+     */
+    private List<ExcedenteDevueltoReproceso> resolverExcedentesDevueltos(List<ExcedenteDevueltoReproceso> lista)
+            throws Throwable {
+        List<ExcedenteDevueltoReproceso> resueltos = new ArrayList<>();
+        if (lista == null) {
+            return resueltos;
+        }
+        for (ExcedenteDevueltoReproceso excedente : lista) {
+            if (excedente == null) {
+                continue;
+            }
+            if (excedente.getCodigoPetro() == null && excedente.getIdEntidad() != null) {
+                Entidad entidad = entidadDaoService.find(new Entidad(), excedente.getIdEntidad());
+                if (entidad == null || entidad.getRolPetroComercial() == null) {
+                    throw new IncomeException("Excedente devuelto (D-010): la entidad " + excedente.getIdEntidad()
+                            + " no existe o no tiene rol Petro; no se puede ubicar su fila en la carga.");
+                }
+                excedente.setCodigoPetro(entidad.getRolPetroComercial());
+            }
+            resueltos.add(excedente);
+        }
+        return resueltos;
     }
 
     // =====================================================================
