@@ -213,6 +213,13 @@ public interface PlantillasCredito {
 	 */
 	public static final int PROVISION_INTERESES = 36;
 
+	/**
+	 * «CRD PROVISION CARTERA» — paso ⑧ del cierre (C15, D-015): ajuste a saldo de 1.3.99 a la
+	 * provisión requerida al corte. Papeles 82 gasto / 83 provisión / 84 reverso, por tipo de
+	 * préstamo (DTPLAXL2). sql/332.
+	 */
+	public static final int PROVISION_CARTERA = 37;
+
 	// NOTA (2026-08-31): "RECLASIFICACION APORTE O COBRO EN EXCESO" (alterno 27) se evaluó
 	// para el asiento de reclasificación de la devolución de aportes y se descartó — el
 	// usuario confirmó que se devuelve CUALQUIER tipo de aporte, no solo los tres con cuenta

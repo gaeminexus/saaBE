@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import com.saa.ejb.crd.dao.CierreCarteraDaoService;
+import com.saa.ejb.crd.service.ModoCorteCartera;
 import com.saa.model.crd.DeclaracionPlazoVencido;
 import com.saa.rubros.CrdTipoMovimientoAporte;
 import com.saa.rubros.Estado;
@@ -101,66 +102,166 @@ public class CierreCarteraDaoServiceImpl implements CierreCarteraDaoService {
             + "  FROM CRD.PGPR WHERE PGPRANUL IS NULL OR PGPRANUL = 0 "
             + "  GROUP BY DTPRCDGO) g ";
 
+    // ------------------------------------------------------------------------
+    // C15 — fragmentos "a fecha de corte" (ver ModoCorteCartera). Con corte == null cada
+    // fragmento devuelve EXACTAMENTE el de siempre: el comportamiento normal no cambia.
+    // ------------------------------------------------------------------------
+
+    /** Universo de préstamos: vivos HOY, o existentes y aprobados al corte. */
+    private static String universo(LocalDate corte) {
+        if (corte == null) {
+            return PRESTAMOS_VIVOS;
+        }
+        return " (p.PRSTFCHA < :corteSig AND NVL(p.PRSTIDST,0) NOT IN ("
+                + ModoCorteCartera.ESTADOS_FUERA_DE_CARTERA + ")) ";
+    }
+
+    /** Cuota no liquidada HOY, o no liquidada al corte (pagada con fecha posterior = impaga). */
+    private static String pendiente(LocalDate corte) {
+        if (corte == null) {
+            return CUOTAS_PENDIENTES;
+        }
+        return " NOT (NVL(d.DTPRESTD,0) IN (" + EstadoCuotaPrestamo.PAGADA + ", "
+                + EstadoCuotaPrestamo.CANCELADA_ANTICIPADA + ") AND NVL(d.DTPRFCPG, :corteSig) < :corteSig) ";
+    }
+
+    /**
+     * Pagos vigentes agregados por cuota; al corte, solo los de fecha {@code <= corte} y con el
+     * capital de la regla de la cuadratura C14 ({@code PGPRSLOT} si > 0, si no {@code PGPRCPPG}).
+     */
+    private static String pagos(LocalDate corte) {
+        if (corte == null) {
+            return PAGOS_VIGENTES;
+        }
+        return " (SELECT DTPRCDGO, "
+                + "         SUM(CASE WHEN NVL(PGPRSLOT,0) > 0 THEN PGPRSLOT ELSE NVL(PGPRCPPG,0) END) cap, "
+                + "         SUM(NVL(PGPRINPG,0)) intr, SUM(NVL(PGPRINVP,0)) intv, "
+                + "         SUM(NVL(PGPRMRPG,0)) mora, SUM(NVL(PGPRDSGR,0)) dsgr, "
+                + "         SUM(NVL(PGPRVLSI,0)) segi "
+                + "  FROM CRD.PGPR WHERE (PGPRANUL IS NULL OR PGPRANUL = 0) AND PGPRFCHA < :corteSig "
+                + "  GROUP BY DTPRCDGO) g ";
+    }
+
+    /** Mora bruta de la cuota: la persistida HOY, o la fórmula del proceso diario al corte. */
+    private static String moraBruta(LocalDate corte) {
+        if (corte == null) {
+            return " NVL(d.DTPRMRAA,0) ";
+        }
+        return " (CASE WHEN TRUNC(d.DTPRFCVN) < :corte THEN ROUND(NVL(d.DTPRCPTL,0)"
+                + " * (CASE WHEN NVL(p.PRSTINNM,0) > 0 THEN p.PRSTINNM ELSE 9 END) / 36000"
+                + " * (:corte - TRUNC(d.DTPRFCVN)), 2) ELSE 0 END) ";
+    }
+
+    /** Interés condonado de plazo vencido (D25/D27): al corte, solo si la declaración ya existía. */
+    private static String condonado(LocalDate corte) {
+        if (corte == null) {
+            return CONDONADO_INTERES_PLAZO_VENCIDO;
+        }
+        return " (d.DTPRFCVN > ("
+                + "   SELECT MIN(v.PLVNFCCR) FROM CRD.PLVN v"
+                + "    WHERE v.PRSTCDGO = p.PRSTCDGO AND v.PLVNESTD IN ("
+                + DeclaracionPlazoVencido.ESTADO_DECLARADA + ", " + DeclaracionPlazoVencido.ESTADO_LIQUIDADA + ")"
+                + "      AND v.PLVNFCCR < :corteSig"
+                + " )) ";
+    }
+
+    /** Fija los parámetros de corte si la consulta es al corte. */
+    private static void parametrosCorte(Query query, LocalDate corte) {
+        if (corte == null) {
+            return;
+        }
+        query.setParameter("corteSig", Date.valueOf(corte.plusDays(1)));
+        query.setParameter("corte", Date.valueOf(corte));
+    }
+
+    /** Igual que {@link #parametrosCorte} para consultas que no usan {@code :corte} (solo {@code :corteSig}). */
+    private static void parametroCorteSig(Query query, LocalDate corte) {
+        if (corte == null) {
+            return;
+        }
+        query.setParameter("corteSig", Date.valueOf(corte.plusDays(1)));
+    }
+
     @Override
     public List<Object[]> selectCapitalPorProductoYVencimiento(Long idEmpresa) throws Throwable {
+        return selectCapitalPorProductoYVencimiento(idEmpresa, null);
+    }
+
+    @Override
+    public List<Object[]> selectCapitalPorProductoYVencimiento(Long idEmpresa, LocalDate corte) throws Throwable {
         System.out.println("Ingresa al metodo selectCapitalPorProductoYVencimiento"
-                + " - empresa: " + idEmpresa);
+                + " - empresa: " + idEmpresa + " - corte: " + corte);
         Query query = em.createNativeQuery(
                 " SELECT p.PRDCCDGO, TRUNC(d.DTPRFCVN), "
                 + "        SUM(GREATEST(NVL(d.DTPRCPTL,0) - NVL(g.cap,0), 0)), "
                 + "        COUNT(*) "
                 + " FROM   CRD.DTPR d "
                 + " JOIN   CRD.PRST p ON p.PRSTCDGO = d.PRSTCDGO "
-                + " LEFT JOIN " + PAGOS_VIGENTES + " ON g.DTPRCDGO = d.DTPRCDGO "
-                + " WHERE  " + PRESTAMOS_VIVOS
-                + " AND    " + CUOTAS_PENDIENTES
+                + " LEFT JOIN " + pagos(corte) + " ON g.DTPRCDGO = d.DTPRCDGO "
+                + " WHERE  " + universo(corte)
+                + " AND    " + pendiente(corte)
                 + " AND    d.DTPRFCVN IS NOT NULL "
                 + " AND    p.PRDCCDGO IS NOT NULL "
                 + " GROUP BY p.PRDCCDGO, TRUNC(d.DTPRFCVN) "
                 + " HAVING SUM(GREATEST(NVL(d.DTPRCPTL,0) - NVL(g.cap,0), 0)) > 0 "
                 + " ORDER BY p.PRDCCDGO, TRUNC(d.DTPRFCVN)");
+        parametroCorteSig(query, corte);
         return normalizaVencimientos(query.getResultList());
     }
 
     @Override
     public List<Object[]> selectCuotasPendientesPorPrestamo(Long idEmpresa) throws Throwable {
+        return selectCuotasPendientesPorPrestamo(idEmpresa, null);
+    }
+
+    @Override
+    public List<Object[]> selectCuotasPendientesPorPrestamo(Long idEmpresa, LocalDate corte) throws Throwable {
         System.out.println("Ingresa al metodo selectCuotasPendientesPorPrestamo"
-                + " - empresa: " + idEmpresa);
+                + " - empresa: " + idEmpresa + " - corte: " + corte);
         Query query = em.createNativeQuery(
                 " SELECT p.PRSTCDGO, p.PRDCCDGO, d.DTPRCDGO, d.DTPRNMCT, TRUNC(d.DTPRFCVN), "
                 + "        GREATEST(NVL(d.DTPRCPTL,0) - NVL(g.cap,0), 0) "
                 + " FROM   CRD.DTPR d "
                 + " JOIN   CRD.PRST p ON p.PRSTCDGO = d.PRSTCDGO "
-                + " LEFT JOIN " + PAGOS_VIGENTES + " ON g.DTPRCDGO = d.DTPRCDGO "
-                + " WHERE  " + PRESTAMOS_VIVOS
-                + " AND    " + CUOTAS_PENDIENTES
+                + " LEFT JOIN " + pagos(corte) + " ON g.DTPRCDGO = d.DTPRCDGO "
+                + " WHERE  " + universo(corte)
+                + " AND    " + pendiente(corte)
                 + " AND    d.DTPRFCVN IS NOT NULL "
                 + " AND    p.PRDCCDGO IS NOT NULL "
+                + (corte != null ? " AND GREATEST(NVL(d.DTPRCPTL,0) - NVL(g.cap,0), 0) > 0.004 " : "")
                 + " ORDER BY p.PRSTCDGO, TRUNC(d.DTPRFCVN)");
+        parametroCorteSig(query, corte);
         return normalizaCuotasPorPrestamo(query.getResultList());
     }
 
     @Override
     public List<Object[]> selectInteresPorTipoPrestamoEnRango(LocalDate desde, LocalDate hasta) throws Throwable {
+        return selectInteresPorTipoPrestamoEnRango(desde, hasta, null);
+    }
+
+    @Override
+    public List<Object[]> selectInteresPorTipoPrestamoEnRango(LocalDate desde, LocalDate hasta, LocalDate corte)
+            throws Throwable {
         System.out.println("Ingresa al metodo selectInteresPorTipoPrestamoEnRango - desde: " + desde
-                + " - hasta: " + hasta);
+                + " - hasta: " + hasta + " - corte: " + corte);
         Query query = em.createNativeQuery(
                 " SELECT pr.TPPRCDGO, "
-                + "        SUM(CASE WHEN " + CONDONADO_INTERES_PLAZO_VENCIDO
+                + "        SUM(CASE WHEN " + condonado(corte)
                 + "                 THEN 0 ELSE GREATEST(NVL(d.DTPRINTR,0) - NVL(g.intr,0), 0) END), "
-                + "        SUM(GREATEST(NVL(d.DTPRMRAA,0) - NVL(g.mora,0), 0)) "
+                + "        SUM(GREATEST(" + moraBruta(corte) + " - NVL(g.mora,0), 0)) "
                 + " FROM   CRD.DTPR d "
                 + " JOIN   CRD.PRST p  ON p.PRSTCDGO = d.PRSTCDGO "
                 + " JOIN   CRD.PRDC pr ON pr.PRDCCDGO = p.PRDCCDGO "
-                + " LEFT JOIN " + PAGOS_VIGENTES + " ON g.DTPRCDGO = d.DTPRCDGO "
-                + " WHERE  " + PRESTAMOS_VIVOS
-                + " AND    " + CUOTAS_PENDIENTES
+                + " LEFT JOIN " + pagos(corte) + " ON g.DTPRCDGO = d.DTPRCDGO "
+                + " WHERE  " + universo(corte)
+                + " AND    " + pendiente(corte)
                 + " AND    TRUNC(d.DTPRFCVN) BETWEEN :desde AND :hasta "
                 + " AND    pr.TPPRCDGO IS NOT NULL "
                 + " GROUP BY pr.TPPRCDGO "
                 + " ORDER BY pr.TPPRCDGO");
         query.setParameter("desde", Date.valueOf(desde));
         query.setParameter("hasta", Date.valueOf(hasta));
+        parametrosCorte(query, corte);
         List<Object[]> filas = query.getResultList();
         List<Object[]> resultado = new ArrayList<Object[]>();
         for (Object[] fila : filas) {
@@ -171,23 +272,30 @@ public class CierreCarteraDaoServiceImpl implements CierreCarteraDaoService {
 
     @Override
     public List<Object[]> selectCuotasDevengoMoraEnRango(LocalDate desde, LocalDate hasta) throws Throwable {
+        return selectCuotasDevengoMoraEnRango(desde, hasta, null);
+    }
+
+    @Override
+    public List<Object[]> selectCuotasDevengoMoraEnRango(LocalDate desde, LocalDate hasta, LocalDate corte)
+            throws Throwable {
         System.out.println("Ingresa al metodo selectCuotasDevengoMoraEnRango - desde: " + desde
-                + " - hasta: " + hasta);
+                + " - hasta: " + hasta + " - corte: " + corte);
         Query query = em.createNativeQuery(
                 " SELECT d.DTPRCDGO, p.PRSTCDGO, pr.TPPRCDGO, "
-                + "        GREATEST(NVL(d.DTPRMRAA,0) - NVL(g.mora,0), 0) "
+                + "        GREATEST(" + moraBruta(corte) + " - NVL(g.mora,0), 0) "
                 + " FROM   CRD.DTPR d "
                 + " JOIN   CRD.PRST p  ON p.PRSTCDGO = d.PRSTCDGO "
                 + " JOIN   CRD.PRDC pr ON pr.PRDCCDGO = p.PRDCCDGO "
-                + " LEFT JOIN " + PAGOS_VIGENTES + " ON g.DTPRCDGO = d.DTPRCDGO "
-                + " WHERE  " + PRESTAMOS_VIVOS
-                + " AND    " + CUOTAS_PENDIENTES
+                + " LEFT JOIN " + pagos(corte) + " ON g.DTPRCDGO = d.DTPRCDGO "
+                + " WHERE  " + universo(corte)
+                + " AND    " + pendiente(corte)
                 + " AND    TRUNC(d.DTPRFCVN) BETWEEN :desde AND :hasta "
                 + " AND    pr.TPPRCDGO IS NOT NULL "
-                + " AND    GREATEST(NVL(d.DTPRMRAA,0) - NVL(g.mora,0), 0) > 0 "
+                + " AND    GREATEST(" + moraBruta(corte) + " - NVL(g.mora,0), 0) > 0 "
                 + " ORDER BY pr.TPPRCDGO, d.DTPRCDGO");
         query.setParameter("desde", Date.valueOf(desde));
         query.setParameter("hasta", Date.valueOf(hasta));
+        parametrosCorte(query, corte);
         List<Object[]> filas = query.getResultList();
         List<Object[]> resultado = new ArrayList<Object[]>();
         for (Object[] fila : filas) {
@@ -198,31 +306,191 @@ public class CierreCarteraDaoServiceImpl implements CierreCarteraDaoService {
 
     @Override
     public List<Object[]> selectCobrablePrestamosHasta(LocalDate hasta) throws Throwable {
-        System.out.println("Ingresa al metodo selectCobrablePrestamosHasta - hasta: " + hasta);
+        return selectCobrablePrestamosHasta(hasta, null);
+    }
+
+    @Override
+    public List<Object[]> selectCobrablePrestamosHasta(LocalDate hasta, LocalDate corte) throws Throwable {
+        System.out.println("Ingresa al metodo selectCobrablePrestamosHasta - hasta: " + hasta + " - corte: " + corte);
         Query query = em.createNativeQuery(
                 " SELECT p.PRDCCDGO, "
                 + "        SUM(GREATEST(NVL(d.DTPRCPTL,0) - NVL(g.cap,0), 0)), "
-                + "        SUM(CASE WHEN " + CONDONADO_INTERES_PLAZO_VENCIDO
+                + "        SUM(CASE WHEN " + condonado(corte)
                 + "                 THEN 0 ELSE GREATEST(NVL(d.DTPRINTR,0) - NVL(g.intr,0), 0) END), "
-                + "        SUM(GREATEST(NVL(d.DTPRMRAA,0) - NVL(g.mora,0), 0)), "
+                + "        SUM(GREATEST(" + moraBruta(corte) + " - NVL(g.mora,0), 0)), "
                 + "        SUM(GREATEST(NVL(d.DTPRDSGR,0) - NVL(g.dsgr,0), 0)), "
                 + "        SUM(GREATEST(NVL(d.DTPRVLSI,0) - NVL(g.segi,0), 0)), "
                 + "        COUNT(*) "
                 + " FROM   CRD.DTPR d "
                 + " JOIN   CRD.PRST p ON p.PRSTCDGO = d.PRSTCDGO "
-                + " LEFT JOIN " + PAGOS_VIGENTES + " ON g.DTPRCDGO = d.DTPRCDGO "
-                + " WHERE  " + PRESTAMOS_VIVOS
-                + " AND    " + CUOTAS_PENDIENTES
+                + " LEFT JOIN " + pagos(corte) + " ON g.DTPRCDGO = d.DTPRCDGO "
+                + " WHERE  " + universo(corte)
+                + " AND    " + pendiente(corte)
                 + " AND    TRUNC(d.DTPRFCVN) <= :hasta "
                 + " AND    p.PRDCCDGO IS NOT NULL "
                 + " GROUP BY p.PRDCCDGO "
                 + " ORDER BY p.PRDCCDGO");
         query.setParameter("hasta", Date.valueOf(hasta));
+        parametrosCorte(query, corte);
         List<Object[]> filas = query.getResultList();
         List<Object[]> resultado = new ArrayList<Object[]>();
         for (Object[] fila : filas) {
             resultado.add(new Object[]{ aLong(fila[0]), aDouble(fila[1]), aDouble(fila[2]),
                     aDouble(fila[3]), aDouble(fila[4]), aDouble(fila[5]), aLong(fila[6]) });
+        }
+        return resultado;
+    }
+
+    @Override
+    public List<Object[]> selectOperacionesAlCorte(LocalDate corte, boolean corteInclusivo) throws Throwable {
+        System.out.println("Ingresa al metodo selectOperacionesAlCorte - corte: " + corte
+                + " - corteInclusivo: " + corteInclusivo);
+        if (corte == null) {
+            throw new IllegalArgumentException("selectOperacionesAlCorte: la fecha de corte es obligatoria");
+        }
+        // Vencida al corte: vto <= corte (inclusiva) o vto < corte (regla del SAA).
+        String vencida = corteInclusivo ? " cu.FCVN <= :corte " : " cu.FCVN < :corte ";
+        Query query = em.createNativeQuery(
+                " WITH cu AS ( "
+                + "   SELECT p.PRSTCDGO, p.PRDCCDGO, pr.TPPRCDGO, p.ENTDCDGO, d.DTPRCDGO, TRUNC(d.DTPRFCVN) FCVN, "
+                + "          GREATEST(NVL(d.DTPRCPTL,0) - NVL(g.cap,0), 0) CAPP, "
+                + "          CASE WHEN " + condonado(corte) + " THEN 0 ELSE "
+                + "            GREATEST(NVL(d.DTPRINTR,0) + NVL(d.DTPRINVN,0) - NVL(g.intr,0) - NVL(g.intv,0), 0) END INTP, "
+                + "          GREATEST(" + moraBruta(corte) + " - NVL(g.mora,0), 0) MORAP "
+                + "   FROM   CRD.DTPR d "
+                + "   JOIN   CRD.PRST p  ON p.PRSTCDGO = d.PRSTCDGO "
+                + "   JOIN   CRD.PRDC pr ON pr.PRDCCDGO = p.PRDCCDGO "
+                + "   LEFT JOIN " + pagos(corte) + " ON g.DTPRCDGO = d.DTPRCDGO "
+                + "   WHERE  " + universo(corte)
+                + "   AND    " + pendiente(corte)
+                + "   AND    d.DTPRFCVN IS NOT NULL "
+                + "   AND    GREATEST(NVL(d.DTPRCPTL,0) - NVL(g.cap,0), 0) > 0.004 ), "
+                + " ci AS ( "
+                + "   SELECT a.ENTDCDGO, SUM(a.APRTVLRR) SALDO "
+                + "   FROM   CRD.APRT a JOIN CRD.TPAP t ON t.TPAPCDGO = a.TPAPCDGO "
+                + "   JOIN   CRD.ENTD e ON e.ENTDCDGO = a.ENTDCDGO "
+                + "   WHERE  t.TPAPIDST = 1 AND a.APRTFCTR < :corteSig AND NVL(e.ENTDNMID,'0') <> '0' "
+                + "   GROUP BY a.ENTDCDGO ), "
+                + " op AS ( "
+                + "   SELECT cu.PRSTCDGO, MAX(cu.PRDCCDGO) PRDCCDGO, MAX(cu.TPPRCDGO) TPPRCDGO, MAX(cu.ENTDCDGO) ENTDCDGO, "
+                + "          SUM(CASE WHEN " + vencida + " THEN 0 ELSE cu.CAPP END) PV, "
+                + "          SUM(CASE WHEN " + vencida + " THEN cu.CAPP ELSE 0 END) VV, "
+                + "          MAX(CASE WHEN " + vencida + " THEN :corte - cu.FCVN ELSE 0 END) DIAS, "
+                + "          SUM(CASE WHEN " + vencida + " THEN cu.INTP ELSE 0 END) INTV, "
+                + "          SUM(CASE WHEN " + vencida + " THEN cu.MORAP ELSE 0 END) MORA, "
+                + "          MIN(cu.DTPRCDGO) KEEP (DENSE_RANK FIRST ORDER BY cu.FCVN, cu.DTPRCDGO) ANCLA "
+                + "   FROM cu GROUP BY cu.PRSTCDGO ) "
+                + " SELECT op.PRSTCDGO, op.PRDCCDGO, op.TPPRCDGO, op.ENTDCDGO, op.PV, op.VV, op.DIAS, op.INTV, op.MORA, "
+                + "        op.ANCLA, "
+                + "        (SELECT NVL(SUM(NVL(x.DTPRINTR,0)),0) FROM CRD.DTPR x WHERE x.PRSTCDGO = op.PRSTCDGO "
+                + "          AND TRUNC(x.DTPRFCVN) BETWEEN TRUNC(:corte, 'MM') AND :corte AND NVL(x.DTPRESTD,0) <> "
+                + EstadoCuotaPrestamo.CANCELADA_ANTICIPADA + ") INTMES, "
+                + "        CASE WHEN NVL(e.ENTDIDST,0) = " + EstadoParticipeEntidad.JUBILADO_COMPLEMENTARIO
+                + "             OR ROW_NUMBER() OVER (PARTITION BY op.ENTDCDGO ORDER BY op.PRSTCDGO) > 1 THEN 0 "
+                + "             ELSE NVL(ci.SALDO,0) END CI "
+                + " FROM op LEFT JOIN CRD.ENTD e ON e.ENTDCDGO = op.ENTDCDGO "
+                + " LEFT JOIN ci ON ci.ENTDCDGO = op.ENTDCDGO "
+                + " ORDER BY op.PRSTCDGO");
+        parametrosCorte(query, corte);
+        List<Object[]> filas = query.getResultList();
+        List<Object[]> resultado = new ArrayList<Object[]>();
+        for (Object[] f : filas) {
+            resultado.add(new Object[]{ aLong(f[0]), aLong(f[1]), aLong(f[2]), aLong(f[3]),
+                    aDouble(f[4]), aDouble(f[5]), aLong(f[6]), aDouble(f[7]), aDouble(f[8]),
+                    aLong(f[9]), aDouble(f[10]), aDouble(f[11]) });
+        }
+        return resultado;
+    }
+
+    @Override
+    public List<Object[]> selectMoraPorDevengarAlCorte(LocalDate corte, LocalDate inicioDevengo) throws Throwable {
+        System.out.println("Ingresa al metodo selectMoraPorDevengarAlCorte - corte: " + corte
+                + " - inicioDevengo: " + inicioDevengo);
+        // inicioDevengo (opcional): la mora se cuenta desde max(vencimiento, inicioDevengo). Con la
+        // fecha del ancla, la mora anterior al ancla (que Delta no tenía en el balance) no se
+        // devenga: cuando se cobre irá directo a ingreso como excedente no devengado.
+        String bruta = inicioDevengo == null ? moraBruta(corte)
+                : " (CASE WHEN GREATEST(TRUNC(d.DTPRFCVN), :inicioMora) < :corte THEN ROUND(NVL(d.DTPRCPTL,0)"
+                + " * (CASE WHEN NVL(p.PRSTINNM,0) > 0 THEN p.PRSTINNM ELSE 9 END) / 36000"
+                + " * (:corte - GREATEST(TRUNC(d.DTPRFCVN), :inicioMora)), 2) ELSE 0 END) ";
+        // D-017 (H4): mora BRUTA al corte de cada cuota vencida impaga (fórmula del proceso
+        // diario, la misma de calcularMoraCuota) menos lo ya reconocido en el libro MVIC
+        // (tipo 5 devengo, del cierre o del excedente de un cobro, menos tipo 6), con fecha
+        // contable <= corte. Lo que queda es la mora del mes a devengar.
+        Query query = em.createNativeQuery(
+                " SELECT x.DTPRCDGO, x.PRSTCDGO, x.TPPRCDGO, GREATEST(x.BRUTA - x.RECONOCIDA, 0) "
+                + " FROM ( "
+                + "   SELECT d.DTPRCDGO, p.PRSTCDGO, pr.TPPRCDGO, " + bruta + " BRUTA, "
+                + "          NVL((SELECT SUM(CASE WHEN m.MVICTPMV = 5 THEN m.MVICVLOR "
+                + "                               WHEN m.MVICTPMV = 6 THEN -m.MVICVLOR ELSE 0 END) "
+                + "               FROM CRD.MVIC m WHERE m.DTPRCDGO = d.DTPRCDGO AND m.MVICANUL = 0 "
+                + "                AND m.MVICFCCT < :corteSig), 0) RECONOCIDA "
+                + "   FROM   CRD.DTPR d "
+                + "   JOIN   CRD.PRST p  ON p.PRSTCDGO = d.PRSTCDGO "
+                + "   JOIN   CRD.PRDC pr ON pr.PRDCCDGO = p.PRDCCDGO "
+                + "   WHERE  " + universo(corte)
+                + "   AND    " + pendiente(corte)
+                + "   AND    TRUNC(d.DTPRFCVN) < :corte "
+                + "   AND    pr.TPPRCDGO IS NOT NULL ) x "
+                + " WHERE x.BRUTA - x.RECONOCIDA > 0.004 "
+                + " ORDER BY x.TPPRCDGO, x.DTPRCDGO");
+        parametrosCorte(query, corte);
+        if (inicioDevengo != null) {
+            query.setParameter("inicioMora", Date.valueOf(inicioDevengo));
+        }
+        List<Object[]> filas = query.getResultList();
+        List<Object[]> resultado = new ArrayList<Object[]>();
+        for (Object[] f : filas) {
+            resultado.add(new Object[]{ aLong(f[0]), aLong(f[1]), aLong(f[2]), aDouble(f[3]) });
+        }
+        return resultado;
+    }
+
+    @Override
+    public List<Object[]> selectSaldoContablePorCuenta(Long idEmpresa, String prefijo, String prefijoExcluido,
+            LocalDate corte) throws Throwable {
+        System.out.println("Ingresa al metodo selectSaldoContablePorCuenta - empresa: " + idEmpresa
+                + " - prefijo: " + prefijo + " - excluido: " + prefijoExcluido + " - corte: " + corte);
+        // Misma regla que la cuadratura C14 (fuente a): asientos activos (1) o mayorizados (3)
+        // con fecha <= corte. Saldo DEUDOR (debe - haber).
+        Query query = em.createNativeQuery(
+                " SELECT d.DTASCNTA, MAX(d.PLNNCDGO), SUM(NVL(d.DTASDBEE,0)) - SUM(NVL(d.DTASHBRR,0)) "
+                + " FROM   CNT.DTAS d JOIN CNT.ASNT a ON a.ASNTCDGO = d.ASNTCDGO "
+                + " WHERE  a.PJRQCDGO = :empresa AND a.ASNTESTD IN (1, 3) AND a.ASNTFCHA < :corteSig "
+                + " AND    d.DTASCNTA LIKE :prefijo "
+                + (prefijoExcluido != null ? " AND d.DTASCNTA NOT LIKE :excluido " : "")
+                + " GROUP BY d.DTASCNTA ORDER BY d.DTASCNTA");
+        query.setParameter("empresa", idEmpresa);
+        query.setParameter("corteSig", Date.valueOf(corte.plusDays(1)));
+        query.setParameter("prefijo", prefijo + "%");
+        if (prefijoExcluido != null) {
+            query.setParameter("excluido", prefijoExcluido + "%");
+        }
+        List<Object[]> filas = query.getResultList();
+        List<Object[]> resultado = new ArrayList<Object[]>();
+        for (Object[] f : filas) {
+            resultado.add(new Object[]{ f[0] != null ? f[0].toString() : null, aLong(f[1]), aDouble(f[2]) });
+        }
+        return resultado;
+    }
+
+    @Override
+    public List<Object[]> selectPrestamosSinAsientoEntrega(LocalDate desde, LocalDate hasta) throws Throwable {
+        System.out.println("Ingresa al metodo selectPrestamosSinAsientoEntrega - desde: " + desde + " - hasta: " + hasta);
+        Query query = em.createNativeQuery(
+                " SELECT p.PRSTCDGO, p.PRSTIDAS, TRUNC(p.PRSTFCIN), p.PRSTMNSL, p.PRSTIDST, "
+                + "        CASE WHEN p.PRSTPROR IS NOT NULL THEN 1 ELSE 0 END "
+                + " FROM   CRD.PRST p "
+                + " WHERE  p.PRSTASEN IS NULL "
+                + " AND    NVL(p.PRSTIDST,0) NOT IN (" + ModoCorteCartera.ESTADOS_FUERA_DE_CARTERA + ") "
+                + " AND    p.PRSTFCIN >= :desde AND p.PRSTFCIN < :hastaSig "
+                + " ORDER BY p.PRSTFCIN, p.PRSTCDGO");
+        query.setParameter("desde", Date.valueOf(desde));
+        query.setParameter("hastaSig", Date.valueOf(hasta.plusDays(1)));
+        List<Object[]> filas = query.getResultList();
+        List<Object[]> resultado = new ArrayList<Object[]>();
+        for (Object[] f : filas) {
+            resultado.add(new Object[]{ aLong(f[0]), aLong(f[1]), aFecha(f[2]), aDouble(f[3]), aLong(f[4]), aLong(f[5]) });
         }
         return resultado;
     }

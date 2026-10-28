@@ -58,6 +58,14 @@ public interface ContabilizacionIndividualCreditoService {
             String prefijoDescripcion) throws Throwable;
 
     /**
+     * C15 / D-017 (H4): línea HABER de ingreso por mora NO devengada (5.1.02.xx del tipo de
+     * préstamo, papel 40 de la plantilla 17 de devengo) — el excedente que
+     * {@code ProvisionInteresService#separarMoraNoDevengada} separa de la mora cobrada.
+     */
+    DetalleAsiento lineaIngresoMora(Long idEmpresa, Long idTipoPrestamo, double valor, String prefijoDescripcion)
+            throws Throwable;
+
+    /**
      * Línea de seguro de incendio (aux1 42 hipotecario / 43 prendario). Solo esos dos tipos de
      * préstamo tienen esta cuenta — para cualquier otro tipo con valor &gt; 0, falla fuerte.
      */

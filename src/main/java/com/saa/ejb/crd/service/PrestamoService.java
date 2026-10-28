@@ -110,6 +110,15 @@ public interface PrestamoService extends EntityService<Prestamo>{
 			java.time.LocalDate fechaContable) throws Throwable;
 
 	/**
+	 * C15 / D-018 (H6): contabiliza el desembolso de un préstamo ya aprobado sin asiento de entrega:
+	 * asiento de entrega + orden de pago confirmada con su egreso, todo con la fecha del desembolso real
+	 * del extracto. Idempotente por préstamo. Ver CIERRE-CARTERA-A-FECHA-DE-CORTE.md §H6.
+	 */
+	java.util.Map<String, Object> contabilizarDesembolsoHistorico(Long idPrestamo, Long idEmpresa, Long idUsuario,
+			String usuario, java.time.LocalDate fechaContable, Long idCuentaBancaria, Double valor, String referencia)
+			throws Throwable;
+
+	/**
 	 * Rechaza un préstamo (PLAN-CICLO-OTORGAMIENTO.md §3, regla 5): PENDIENTE_DE_APROBACION (6)
 	 * o GENERADO (1) → RECHAZADO (7). NO borra la tabla de amortización: queda como evidencia de
 	 * qué se le ofreció al socio, y es inerte para el proceso de mora.

@@ -903,6 +903,21 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
         }
         totalSeguroDesgravamen = redondear(totalSeguroDesgravamen);
 
+        // C15 / D-017 (H4): la mora cobrada que no estaba devengada para su cuota (la del mes en
+        // curso) va directo a ingreso 5.1.02.xx; solo la ya devengada cancela 1.4.02.xx.
+        Map<Long, Double> moraIngresoPorTipo = new LinkedHashMap<>();
+        if (pagos != null) {
+            for (Map.Entry<PagoPrestamo, Double> entrada
+                    : provisionInteresService.separarMoraNoDevengada(pagos, "SISTEMA").entrySet()) {
+                Producto productoPago = entrada.getKey().getPrestamo() != null
+                        ? entrada.getKey().getPrestamo().getProducto() : null;
+                Long tipo = productoPago != null && productoPago.getTipoPrestamo() != null
+                        ? productoPago.getTipoPrestamo().getCodigo() : null;
+                moraIngresoPorTipo.merge(tipo, entrada.getValue(), Double::sum);
+                moraPorTipo.merge(tipo, -entrada.getValue().doubleValue(), Double::sum);
+            }
+        }
+
         Long idPlantilla = plantillaService.codigoByAlterno(PlantillasCredito.APLICACION_PETRO, idEmpresa);
         if (idPlantilla == null) {
             throw new IncomeException("No existe la plantilla contable alterno "
@@ -976,6 +991,15 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
             }
             lineas.add(lineaDesdePlantilla(linea, valor,
                     "Aplicación Petro/ARCH carga " + idCarga + " - interés de mora"));
+            totalHaber += valor;
+        }
+        for (Map.Entry<Long, Double> entrada : moraIngresoPorTipo.entrySet()) {
+            double valor = redondear(entrada.getValue());
+            if (valor <= 0.0) {
+                continue;
+            }
+            lineas.add(contabilizacionIndividualCreditoService.lineaIngresoMora(idEmpresa, entrada.getKey(), valor,
+                    "Aplicación Petro/ARCH carga " + idCarga));
             totalHaber += valor;
         }
 

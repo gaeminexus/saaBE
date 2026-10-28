@@ -1162,4 +1162,28 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 		return resultado;
 	}
 
+	@Override
+	@SuppressWarnings("unchecked")
+	public List<DetallePrestamo> selectCuotasProvisionablesAlCorte(java.time.LocalDate corte) throws Throwable {
+		System.out.println("DetallePrestamoDaoServiceImpl.selectCuotasProvisionablesAlCorte - corte: " + corte);
+		java.time.LocalDateTime corteSig = corte.plusDays(1).atStartOfDay();
+		Query query = em.createQuery(
+			" select d from DetallePrestamo d " +
+			" join fetch d.prestamo " +
+			" left join fetch d.prestamo.producto " +
+			" left join fetch d.prestamo.producto.tipoPrestamo " +
+			" where d.prestamo.fecha < :corteSig " +
+			"   and coalesce(d.prestamo.idEstado, 0) not in (" + com.saa.ejb.crd.service.ModoCorteCartera.ESTADOS_FUERA_DE_CARTERA + ") " +
+			"   and not (coalesce(d.estado, 0) in ("
+				+ com.saa.rubros.EstadoCuotaPrestamo.PAGADA + ", "
+				+ com.saa.rubros.EstadoCuotaPrestamo.CANCELADA_ANTICIPADA + ") " +
+			"            and d.fechaPagado is not null and d.fechaPagado < :corteSig) " +
+			"   and d.fechaVencimiento < :corteSig "
+		);
+		query.setParameter("corteSig", corteSig);
+		List<DetallePrestamo> resultado = query.getResultList();
+		System.out.println("  Cuotas provisionables al corte encontradas: " + resultado.size());
+		return resultado;
+	}
+
 }

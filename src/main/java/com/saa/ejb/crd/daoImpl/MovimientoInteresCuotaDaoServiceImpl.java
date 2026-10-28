@@ -62,6 +62,57 @@ public class MovimientoInteresCuotaDaoServiceImpl extends EntityDaoImpl<Movimien
     }
 
     @Override
+    public List<Object[]> selectSaldoProvisionadoPorCuotas(List<Long> idsCuota, java.time.LocalDate corte)
+            throws Throwable {
+        System.out.println("MovimientoInteresCuotaDaoServiceImpl.selectSaldoProvisionadoPorCuotas - cuotas: "
+            + (idsCuota != null ? idsCuota.size() : 0) + " - corte: " + corte);
+        if (corte == null) {
+            return selectSaldoProvisionadoPorCuotas(idsCuota);
+        }
+        if (idsCuota == null || idsCuota.isEmpty()) {
+            return new ArrayList<>();
+        }
+        String jpql = "select m.idCuota, m.componente, "
+            + " sum(case when m.tipoMovimiento in (1, 4) then m.valor"
+            + "          when m.tipoMovimiento in (2, 3, 9) then -m.valor"
+            + "          else 0.0 end)"
+            + " from MovimientoInteresCuota m"
+            + " where m.idCuota in :idsCuota and m.anulado = 0 and m.fechaContable <= :corte"
+            + " and m.componente in (" + ComponenteMovimientoInteresCuota.INTERES + ", "
+            + ComponenteMovimientoInteresCuota.MORA + ")"
+            + " group by m.idCuota, m.componente";
+        List<Object[]> resultado = new ArrayList<>();
+        for (int inicio = 0; inicio < idsCuota.size(); inicio += TAMANIO_BLOQUE) {
+            List<Long> bloque = idsCuota.subList(inicio, Math.min(inicio + TAMANIO_BLOQUE, idsCuota.size()));
+            Query query = em.createQuery(jpql);
+            query.setParameter("idsCuota", bloque);
+            query.setParameter("corte", corte);
+            resultado.addAll(query.getResultList());
+        }
+        return resultado;
+    }
+
+    @Override
+    public int anularDevengoCobroByPagos(List<Long> idsPago) throws Throwable {
+        System.out.println("MovimientoInteresCuotaDaoServiceImpl.anularDevengoCobroByPagos - pagos: "
+            + (idsPago != null ? idsPago.size() : 0));
+        if (idsPago == null || idsPago.isEmpty()) {
+            return 0;
+        }
+        int total = 0;
+        for (int inicio = 0; inicio < idsPago.size(); inicio += TAMANIO_BLOQUE) {
+            List<Long> bloque = idsPago.subList(inicio, Math.min(inicio + TAMANIO_BLOQUE, idsPago.size()));
+            Query query = em.createQuery(
+                "update MovimientoInteresCuota m set m.anulado = 1"
+                + " where m.pago.codigo in :idsPago and m.anulado = 0 and m.tipoMovimiento = 5"
+                + " and m.origen = 'COBRO'");
+            query.setParameter("idsPago", bloque);
+            total += query.executeUpdate();
+        }
+        return total;
+    }
+
+    @Override
     public int anularByCorrida(Long idCorrida, String usuario) throws Throwable {
         System.out.println("MovimientoInteresCuotaDaoServiceImpl.anularByCorrida - corrida: " + idCorrida
             + " - usuario: " + usuario);

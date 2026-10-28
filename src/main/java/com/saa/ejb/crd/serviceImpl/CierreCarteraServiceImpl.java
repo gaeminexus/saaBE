@@ -90,6 +90,17 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
     @EJB
     private CierreCarteraDaoService cierreCarteraDaoService;
 
+    /** C15: cartera por operación al corte (provisión de cartera ⑧, D-015). */
+    @EJB
+    private com.saa.ejb.crd.service.CarteraAlCorteService carteraAlCorteService;
+
+    /**
+     * C15: convención de vencimiento de la llamada en curso (true = inclusiva, solo en modo al
+     * corte). Campo de instancia de un @Stateless: vale solo durante UNA invocación, que es como
+     * se usa (lo fija calcula() antes de distribuir).
+     */
+    private boolean convencionInclusiva;
+
     /** Paso ⑦ (provisión de intereses) y la anulación de MVIC al reversar una corrida. */
     @EJB
     private com.saa.ejb.crd.service.ProvisionInteresService provisionInteresService;
@@ -246,6 +257,11 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
             generaAsiento(corrida, sub, solicitud, ahora);
         }
 
+        // C15 / H5: semilla del libro MVIC con la provision de intereses de la apertura.
+        if (Boolean.TRUE.equals(solicitud.getArranque())) {
+            siembraProvisionApertura(corrida, solicitud, calculo);
+        }
+
         // 4. La corrida queda EJECUTADA
         corrida.setIdEstado(Long.valueOf(EstadoCorridaCierreCartera.EJECUTADA));
         corrida.setUsuarioModificacion(solicitud.getUsuario());
@@ -384,12 +400,31 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
         // de proceso y no con la de corte porque el asiento se emite ese dia: una
         // configuracion que entra en vigencia el 1 rige para el cierre que se contabiliza
         // el 1.
+        // C15 (H1): modo "a fecha de corte". Se resuelve UNA vez y se deja escrito en la
+        // solicitud: generaAsiento (MVIC del ④ y del ⑦) lo vuelve a leer de ahí.
+        boolean arranque = Boolean.TRUE.equals(solicitud.getArranque());
+        boolean alCorte = arranque || com.saa.ejb.crd.service.ModoCorteCartera.esAlCorte(fechaCorte,
+                solicitud.getEstadoAlCorte());
+        boolean inclusivo = alCorte
+                && com.saa.ejb.crd.service.ModoCorteCartera.corteInclusivo(solicitud.getCorteInclusivo());
+        solicitud.setEstadoAlCorte(Boolean.valueOf(alCorte));
+        solicitud.setCorteInclusivo(Boolean.valueOf(inclusivo));
+        this.convencionInclusiva = inclusivo;
+        LocalDate corteDatos = alCorte ? fechaCorte : null;
+        if (alCorte) {
+            resultado.getAdvertencias().add("Cierre A FECHA DE CORTE (" + fechaCorte + "): cartera, pagos y"
+                    + " libro MVIC leidos como estaban al corte; vencidos y cambios de banda fechados al"
+                    + " corte (H3); convencion de vencimiento "
+                    + (inclusivo ? "inclusiva (vto <= corte = vencida)" : "del SAA (vto = corte aun por vencer)")
+                    + (arranque ? "; corrida de ARRANQUE (H5)" : "") + ".");
+        }
+
         Map<Long, Producto> productos = indexaProductos();
         Map<String, List<BandaProductoDetalle>> bandas = cargaBandas(
                 solicitud.getIdEmpresa(), fechaProceso, productos, resultado.getAdvertencias());
 
         List<Object[]> capitalPorVencimiento = cierreCarteraDaoService
-                .selectCapitalPorProductoYVencimiento(solicitud.getIdEmpresa());
+                .selectCapitalPorProductoYVencimiento(solicitud.getIdEmpresa(), corteDatos);
 
         // A CARTERA CONSTANTE: el mismo juego de cuotas, medido en dos fechas. Es lo que
         // hace que los asientos de reclasificacion cuadren por construccion.
@@ -399,6 +434,11 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
         Map<String, BandaSnapshotCierre> distNueva = distribuye(capitalPorVencimiento,
                 fechaCorte, bandas, productos, avisosDistribucion);
         resultado.getAdvertencias().addAll(avisosDistribucion);
+
+        if (arranque) {
+            return calculaArranque(solicitud, resultado, distNueva, productos, fechaCorte, fechaProceso,
+                    fechaCorteApertura);
+        }
 
         // SOLO para el asiento ② (cambio de bandas POR VENCER): "los valores del mes que se
         // abre" (pedido del usuario 2026-08-31) = el CIERRE del mes que se abre
@@ -441,21 +481,33 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
         // "emparejar" los cinco fechaProceso con el fechaCorte del neteo — es a propósito.
         // fechaProceso tambien se usa arriba para la parametrizacion de bandas vigente
         // (linea ~355) y para fechaCorteApertura: esos dos usos NO son fecha de asiento.
-        resultado.getSubProcesos().add(armaVencidos(vencidosDelMes, bandas, productos,
-                fechaProceso, solicitud));
+        // C15 (H3, D-015/D-016): al corte, ①, ② y ①.1 se fechan el ULTIMO DIA DEL MES QUE
+        // CIERRA, y ② mide el mismo par de fechas que ①.1 (corte anterior -> corte): asi las
+        // cuentas de banda del B17 al corte son la distribucion del modulo al corte. Fuera del
+        // modo al corte, todo sigue como lo decidio el usuario el 2026-08-31.
+        LocalDate fechaBandas = alCorte ? fechaCorte : fechaProceso;
+        SubProcesoCierre subVencidos = armaVencidos(vencidosDelMes, bandas, productos,
+                fechaBandas, solicitud);
+        resultado.getSubProcesos().add(subVencidos);
         // ② POR VENCER: valores del mes que se abre (31-jul -> 31-ago), par corrido un mes.
-        resultado.getSubProcesos().add(armaCambioBandas(SubProcesoCierreCartera.CAMBIO_BANDAS_POR_VENCER,
-                Long.valueOf(TipoCarteraBanda.POR_VENCER), distNueva, distApertura,
-                vencidosDelMesApertura, productos, fechaProceso, solicitud));
+        SubProcesoCierre subPorVencer = alCorte
+                ? armaCambioBandas(SubProcesoCierreCartera.CAMBIO_BANDAS_POR_VENCER,
+                        Long.valueOf(TipoCarteraBanda.POR_VENCER), distAnterior, distNueva,
+                        vencidosDelMes, productos, fechaBandas, solicitud)
+                : armaCambioBandas(SubProcesoCierreCartera.CAMBIO_BANDAS_POR_VENCER,
+                        Long.valueOf(TipoCarteraBanda.POR_VENCER), distNueva, distApertura,
+                        vencidosDelMesApertura, productos, fechaBandas, solicitud);
+        resultado.getSubProcesos().add(subPorVencer);
         // ①.1 VENCIDO: sin cambios (30-jun -> 31-jul).
-        resultado.getSubProcesos().add(armaCambioBandas(SubProcesoCierreCartera.CAMBIO_BANDAS_VENCIDO,
+        SubProcesoCierre subVencido = armaCambioBandas(SubProcesoCierreCartera.CAMBIO_BANDAS_VENCIDO,
                 Long.valueOf(TipoCarteraBanda.VENCIDO), distAnterior, distNueva,
-                vencidosDelMes, productos, fechaProceso, solicitud));
-        resultado.getSubProcesos().add(armaApertura(solicitud, fechaProceso, fechaCorteApertura));
+                vencidosDelMes, productos, fechaBandas, solicitud);
+        resultado.getSubProcesos().add(subVencido);
+        resultado.getSubProcesos().add(armaApertura(solicitud, fechaProceso, fechaCorteApertura, corteDatos));
         // ④ Devengo: fecha del asiento = fechaProceso (sin cambios); rango de cuotas = SOLO el
         // mes que se abre (fechaProceso -> fechaCorteApertura), no acumulado desde siempre.
         resultado.getSubProcesos().add(armaDevengoIntereses(solicitud, fechaProceso,
-                fechaProceso, fechaCorteApertura));
+                fechaProceso, fechaCorteApertura, corteDatos));
 
         // El desglose de aportes se calcula ANTES del neteo, porque el neteo consume su
         // noCobrado. Y el control del archivo Petro se evalua con el desglose ya hecho, para
@@ -466,10 +518,28 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
                 controlaArchivoPetro(solicitud, desglose, resultado.getAdvertencias()));
         avisaExcesoCobro(desglose, resultado.getAdvertencias(), solicitud);
 
-        resultado.getSubProcesos().add(armaNeteo(solicitud, fechaCorte, fechaCorteAnterior, desglose));
+        resultado.getSubProcesos().add(armaNeteo(solicitud, fechaCorte, fechaCorteAnterior, desglose, corteDatos));
         // ⑦ Provisión de intereses: fechado al CORTE (no a fechaProceso, a diferencia de los
         // seis anteriores) — "a fin de cada mes" (§1.1 del diseño de provisión de intereses).
-        resultado.getSubProcesos().add(armaProvisionIntereses(solicitud, fechaCorte));
+        // C15 / D-017 (H4): ⑩ devengo de mora al corte, ANTES de provisionarla en el ⑦.
+        if (alCorte || Boolean.getBoolean(PROPIEDAD_DEVENGO_MORA_CIERRE)) {
+            resultado.getSubProcesos().add(armaDevengoMoraCorte(solicitud, fechaCorte));
+        }
+        resultado.getSubProcesos().add(armaProvisionIntereses(solicitud, fechaCorte, alCorte));
+
+        // C15: ⑧ provisión de cartera (D-015) y ⑨ ajuste de bandas a saldo (D-011), solo al corte.
+        if (alCorte && !Boolean.TRUE.equals(solicitud.getOmitirProvisionCartera())) {
+            resultado.getSubProcesos().add(armaProvisionCartera(solicitud, fechaCorte, inclusivo,
+                    resultado.getAdvertencias()));
+        }
+        if (alCorte && !Boolean.TRUE.equals(solicitud.getOmitirAjusteBandas())) {
+            List<SubProcesoCierre> previos = new ArrayList<SubProcesoCierre>();
+            previos.add(subVencidos);
+            previos.add(subPorVencer);
+            previos.add(subVencido);
+            resultado.getSubProcesos().add(armaAjusteBandas(solicitud, fechaCorte, distNueva, previos,
+                    false, resultado.getAdvertencias()));
+        }
 
         // Un descuadre se avisa en la previsualizacion en vez de reventar: contabilidad
         // tiene que poder VER el asiento defectuoso para entender que falta. La ejecucion
@@ -541,7 +611,9 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
             // ContabilizacionIndividualCreditoService#tipoCarteraYDias, la definición de
             // referencia. NO reimplementar acá: es exactamente cómo se llegó a tener dos
             // copias divergentes de esta clasificación.
-            long[] tipoYDias = contabilizacionIndividualCreditoService.tipoCarteraYDias(vencimiento, fecha);
+            long[] tipoYDias = convencionInclusiva
+                    ? com.saa.ejb.crd.service.ModoCorteCartera.tipoYDiasInclusivo(vencimiento, fecha)
+                    : contabilizacionIndividualCreditoService.tipoCarteraYDias(vencimiento, fecha);
             Long tipoCartera = Long.valueOf(tipoYDias[0]);
             long dias = tipoYDias[1];
 
@@ -608,7 +680,10 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
             // !isBefore(desde), una cuota que vence justo el día `desde` (ya clasificada
             // POR VENCER en ese corte por la misma regla) volvía a contarse acá como si
             // hubiera cruzado la frontera de nuevo el mes siguiente.
-            if (!vencimiento.isBefore(desde) && vencimiento.isBefore(hasta)) {
+            boolean cruzo = convencionInclusiva
+                    ? (vencimiento.isAfter(desde) && !vencimiento.isAfter(hasta))
+                    : (!vencimiento.isBefore(desde) && vencimiento.isBefore(hasta));
+            if (cruzo) {
                 Double actual = porProducto.get(idProducto);
                 porProducto.put(idProducto, suma(actual, capital));
             }
@@ -816,7 +891,7 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
      * @return                   : El sub-proceso con sus líneas
      */
     private SubProcesoCierre armaApertura(SolicitudCierreCartera solicitud, LocalDate fecha,
-            LocalDate fechaCorteApertura) throws Throwable {
+            LocalDate fechaCorteApertura, LocalDate corteDatos) throws Throwable {
 
         SubProcesoCierre sub = nuevoSubProceso(SubProcesoCierreCartera.APERTURA,
                 "Apertura del periodo de credito", "③", fecha,
@@ -841,7 +916,7 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
 
         double totalPrestamos = 0D;
         for (Object[] fila : cierreCarteraDaoService
-                .selectCobrablePrestamosHasta(fechaCorteApertura)) {
+                .selectCobrablePrestamosHasta(fechaCorteApertura, corteDatos)) {
             for (int i = 1; i <= 5; i++) {
                 totalPrestamos = totalPrestamos + ((Double) fila[i]).doubleValue();
             }
@@ -893,7 +968,7 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
      * @return           : El sub-proceso con sus líneas
      */
     private SubProcesoCierre armaDevengoIntereses(SolicitudCierreCartera solicitud,
-            LocalDate fecha, LocalDate desdeRango, LocalDate hastaRango) throws Throwable {
+            LocalDate fecha, LocalDate desdeRango, LocalDate hastaRango, LocalDate corteDatos) throws Throwable {
 
         SubProcesoCierre sub = nuevoSubProceso(SubProcesoCierreCartera.DEVENGO_INTERESES,
                 "Devengo de intereses a ingresos", "④", fecha,
@@ -903,7 +978,7 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
                 "devengo de intereses", solicitud.getIdEmpresa());
 
         for (Object[] fila : cierreCarteraDaoService
-                .selectInteresPorTipoPrestamoEnRango(desdeRango, hastaRango)) {
+                .selectInteresPorTipoPrestamoEnRango(desdeRango, hastaRango, corteDatos)) {
             Long idTipoPrestamo = (Long) fila[0];
             double interes = redondeaDouble((Double) fila[1]);
             double mora = redondeaDouble((Double) fila[2]);
@@ -941,8 +1016,8 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
      * <p>Solo arma las LÍNEAS del asiento — el detalle por cuota (MVIC tipo 1) se registra
      * DESPUÉS, en {@link #generaAsiento}, porque recién ahí existe el código de la corrida.</p>
      */
-    private SubProcesoCierre armaProvisionIntereses(SolicitudCierreCartera solicitud, LocalDate corte)
-            throws Throwable {
+    private SubProcesoCierre armaProvisionIntereses(SolicitudCierreCartera solicitud, LocalDate corte,
+            boolean alCorte) throws Throwable {
 
         SubProcesoCierre sub = nuevoSubProceso(SubProcesoCierreCartera.PROVISION_INTERESES,
                 "Provisión de intereses", "⑦", corte,
@@ -952,7 +1027,7 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
                 "provisión de intereses", solicitud.getIdEmpresa());
 
         for (java.util.Map.Entry<Long, double[]> entrada
-                : provisionInteresService.calcularProvisionPorTipoPrestamo(corte).entrySet()) {
+                : provisionInteresService.calcularProvisionPorTipoPrestamo(corte, alCorte).entrySet()) {
             Long idTipoPrestamo = entrada.getKey();
             double total = redondeaDouble(Double.valueOf(entrada.getValue()[0] + entrada.getValue()[1]));
             agregaPorTipo(sub, idPlantilla, CrdLineaAsiento.PROVISION_INTERESES_GASTO, idTipoPrestamo, total,
@@ -964,6 +1039,402 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
         cierra(sub, "No hay interes ni mora pendiente de provisionar al corte.");
         cuadra(sub, CrdLineaAsiento.PROVISION_INTERESES);
         return sub;
+    }
+
+    // =====================================================================
+    // C15 — corrida de arranque (H5), ⑧ provisión de cartera (D-015/D-017),
+    // ⑨ ajuste de bandas a saldo (D-011/D-016), ⑩ devengo de mora al corte (D-017)
+    // =====================================================================
+
+    /** Propiedad de sistema: fecha (AAAA-MM-DD) desde la que se cuenta la mora a devengar en ⑩. */
+    public static final String PROPIEDAD_INICIO_DEVENGO_MORA = "saa.cartera.inicioDevengoMora";
+
+    /** Propiedad de sistema: true = el ⑩ corre también fuera del modo al corte (producción). */
+    public static final String PROPIEDAD_DEVENGO_MORA_CIERRE = "saa.cartera.devengoMoraCierre";
+
+    /**
+     * Corrida de ARRANQUE (H5, D-016) sobre el mes del ancla: ⑨ a nivel de cuenta MADRE (reparte
+     * la banda .25 de D-001 entre las bandas reales al corte sin cambiar ninguna cuenta madre, o
+     * sea sin cambiar el B17 aceptado), ③ y ④ del mes siguiente (abre las planillas que el ⑥ del
+     * primer mes re-procesado va a netear). La semilla MVIC de la provisión de intereses de la
+     * apertura se graba en {@link #ejecutar}, cuando ya existe la corrida. Sin ①/②/①.1/⑥/⑦/⑧.
+     */
+    private CierreCartera calculaArranque(SolicitudCierreCartera solicitud, CierreCartera resultado,
+            Map<String, BandaSnapshotCierre> distNueva, Map<Long, Producto> productos, LocalDate fechaCorte,
+            LocalDate fechaProceso, LocalDate fechaCorteApertura) throws Throwable {
+        resultado.setSnapshot(ordenaSnapshot(distNueva));
+        resultado.setCapitalTotal(sumaCapital(distNueva));
+        resultado.getSubProcesos().add(armaAjusteBandas(solicitud, fechaCorte, distNueva,
+                new ArrayList<SubProcesoCierre>(), true, resultado.getAdvertencias()));
+        resultado.getSubProcesos().add(armaApertura(solicitud, fechaProceso, fechaCorteApertura, fechaCorte));
+        resultado.getSubProcesos().add(armaDevengoIntereses(solicitud, fechaProceso, fechaProceso,
+                fechaCorteApertura, fechaCorte));
+        for (SubProcesoCierre sub : resultado.getSubProcesos()) {
+            if (Boolean.TRUE.equals(sub.getOmitido())) {
+                continue;
+            }
+            double diferencia = sub.getTotalDebe().doubleValue() - sub.getTotalHaber().doubleValue();
+            if (Math.abs(diferencia) >= 0.005D) {
+                resultado.getAdvertencias().add("El asiento de " + sub.getNombre() + " no cuadra: diferencia "
+                        + redondea(Double.valueOf(diferencia)) + ". La ejecucion lo va a rechazar.");
+            }
+        }
+        resultado.getAdvertencias().add("Arranque: al ejecutar se siembra el libro MVIC con la provision de"
+                + " intereses de la apertura ("
+                + (solicitud.getMontoProvisionInteresesApertura() != null
+                        ? solicitud.getMontoProvisionInteresesApertura().toString()
+                        : "saldo de la cuenta de la plantilla 36 al " + fechaCorte)
+                + "), para que el primer ⑦ no la duplique. La 1.3.99 de la apertura no necesita semilla: el ⑧"
+                + " es ajuste a saldo.");
+        return resultado;
+    }
+
+    /**
+     * ⑧ Provisión de cartera (D-015, cuentas D-017): por cuenta de provisión de la plantilla 37,
+     * diferencia = provisión requerida al corte ({@link com.saa.ejb.crd.service.CarteraAlCorteService},
+     * el mismo cálculo de la G48) − saldo acreedor contable de esa cuenta al corte. Positiva: D
+     * gasto (82) / H provisión (83). Negativa: D provisión (83) / H reversión (84, 5.3.90.05).
+     */
+    private SubProcesoCierre armaProvisionCartera(SolicitudCierreCartera solicitud, LocalDate corte,
+            boolean inclusivo, List<String> advertencias) throws Throwable {
+        SubProcesoCierre sub = nuevoSubProceso(SubProcesoCierreCartera.PROVISION_CARTERA,
+                "Provisión de cartera", "⑧", corte, "CRD provisión de cartera " + periodo(solicitud));
+
+        Long idPlantilla = plantillaService.codigoByAlterno(PlantillasCredito.PROVISION_CARTERA,
+                solicitud.getIdEmpresa());
+        if (idPlantilla == null || idPlantilla.longValue() == 0L) {
+            String motivo = "No existe la plantilla alterno " + PlantillasCredito.PROVISION_CARTERA
+                    + " (CRD PROVISION CARTERA): el ⑧ no se emite. Correr docs/logica-negocio/crd/sql/332.";
+            advertencias.add(motivo);
+            cierra(sub, motivo);
+            return sub;
+        }
+
+        Map<Long, Double> requeridaPorTipo = new TreeMap<Long, Double>();
+        double requeridaTotal = 0D;
+        for (com.saa.ejb.crd.service.dto.OperacionCarteraCorte op : carteraAlCorteService.calcular(corte, inclusivo)) {
+            if (op.getIdTipoPrestamo() == null) {
+                continue;
+            }
+            requeridaPorTipo.merge(op.getIdTipoPrestamo(), Double.valueOf(op.getProvisionRequerida()), Double::sum);
+            requeridaTotal += op.getProvisionRequerida();
+        }
+        // Tipos de la plantilla aunque hoy no tengan cartera: su provisión vieja se reversa.
+        for (long tipo = 1L; tipo <= 3L; tipo++) {
+            requeridaPorTipo.putIfAbsent(Long.valueOf(tipo), Double.valueOf(0D));
+        }
+
+        // Agrupa por cuenta de provisión (dos tipos pueden compartir cuenta).
+        Map<Long, DetallePlantilla> lineaProvisionPorCuenta = new LinkedHashMap<Long, DetallePlantilla>();
+        Map<Long, Long> tipoReferenciaPorCuenta = new LinkedHashMap<Long, Long>();
+        Map<Long, Double> requeridaPorCuenta = new LinkedHashMap<Long, Double>();
+        for (Map.Entry<Long, Double> entrada : requeridaPorTipo.entrySet()) {
+            DetallePlantilla lineaProvision = detallePlantillaDaoService.selectByPlantillaYAuxiliares(idPlantilla,
+                    CrdLineaAsiento.PROVISION_CARTERA, entrada.getKey().intValue());
+            if (lineaProvision == null || lineaProvision.getPlanCuenta() == null) {
+                if (entrada.getValue().doubleValue() >= MINIMO_LINEA) {
+                    throw new IncomeException("La plantilla " + PlantillasCredito.PROVISION_CARTERA
+                            + " no define la linea " + CrdLineaAsiento.PROVISION_CARTERA + " para el tipo de prestamo "
+                            + entrada.getKey() + " y ese tipo tiene provision requerida " + redondea(entrada.getValue()));
+                }
+                continue;
+            }
+            Long idCuenta = lineaProvision.getPlanCuenta().getCodigo();
+            lineaProvisionPorCuenta.putIfAbsent(idCuenta, lineaProvision);
+            tipoReferenciaPorCuenta.putIfAbsent(idCuenta, entrada.getKey());
+            requeridaPorCuenta.merge(idCuenta, entrada.getValue(), Double::sum);
+        }
+
+        double constituidaTotal = 0D;
+        for (Map.Entry<Long, DetallePlantilla> entrada : lineaProvisionPorCuenta.entrySet()) {
+            Long idCuenta = entrada.getKey();
+            String cuenta = entrada.getValue().getPlanCuenta().getCuentaContable();
+            double constituida = 0D;
+            for (Object[] fila : cierreCarteraDaoService.selectSaldoContablePorCuenta(solicitud.getIdEmpresa(),
+                    cuenta, null, corte)) {
+                if (cuenta.equals(fila[0])) {
+                    constituida = -((Double) fila[2]).doubleValue();
+                }
+            }
+            constituidaTotal += constituida;
+            double requerida = redondeaDouble(requeridaPorCuenta.get(idCuenta));
+            double diferencia = redondeaDouble(Double.valueOf(requerida - constituida));
+            if (Math.abs(diferencia) < MINIMO_LINEA) {
+                continue;
+            }
+            Long tipo = tipoReferenciaPorCuenta.get(idCuenta);
+            String detalle = cuenta + " requerida " + redondea(Double.valueOf(requerida)) + " constituida "
+                    + redondea(Double.valueOf(constituida));
+            if (diferencia > 0) {
+                DetallePlantilla gasto = lineaObligatoria(idPlantilla, CrdLineaAsiento.PROVISION_CARTERA_GASTO, tipo);
+                sub.getLineas().add(lineaForzada(gasto, diferencia, true, "Provision de cartera " + periodo(solicitud)
+                        + " - " + detalle, CrdLineaAsiento.PROVISION_CARTERA_GASTO));
+                sub.getLineas().add(lineaForzada(entrada.getValue(), diferencia, false, "Provision de cartera "
+                        + periodo(solicitud) + " - " + detalle, CrdLineaAsiento.PROVISION_CARTERA));
+            } else {
+                DetallePlantilla reverso = lineaObligatoria(idPlantilla, CrdLineaAsiento.PROVISION_CARTERA_REVERSO, tipo);
+                sub.getLineas().add(lineaForzada(entrada.getValue(), -diferencia, true, "Reversion de provision de cartera "
+                        + periodo(solicitud) + " - " + detalle, CrdLineaAsiento.PROVISION_CARTERA));
+                sub.getLineas().add(lineaForzada(reverso, -diferencia, false, "Reversion de provision de cartera "
+                        + periodo(solicitud) + " - " + detalle, CrdLineaAsiento.PROVISION_CARTERA_REVERSO));
+            }
+        }
+        advertencias.add("⑧ Provision de cartera al " + corte + ": requerida (regla del SAA, = G48 al corte) "
+                + redondea(Double.valueOf(requeridaTotal)) + ", constituida en contabilidad antes del ⑧ "
+                + redondea(Double.valueOf(constituidaTotal)) + ".");
+        cierra(sub, "La provision constituida ya es igual a la requerida.");
+        return sub;
+    }
+
+    /** Línea de plantilla que tiene que existir; si falta, el mensaje dice cuál. */
+    private DetallePlantilla lineaObligatoria(Long idPlantilla, int aux1, Long tipo) throws Throwable {
+        DetallePlantilla linea = detallePlantillaDaoService.selectByPlantillaYAuxiliares(idPlantilla, aux1, tipo.intValue());
+        if (linea == null || linea.getPlanCuenta() == null) {
+            throw new IncomeException("La plantilla " + PlantillasCredito.PROVISION_CARTERA + " no define la linea "
+                    + aux1 + " para el tipo de prestamo " + tipo + " (sql/332).");
+        }
+        return linea;
+    }
+
+    /** Línea con la cuenta de la plantilla y el lado forzado (no el movimiento de la plantilla). */
+    private LineaAsientoCierre lineaForzada(DetallePlantilla plantilla, double valor, boolean debe,
+            String descripcion, int codigoLinea) {
+        PlanCuenta cuenta = plantilla.getPlanCuenta();
+        LineaAsientoCierre linea = new LineaAsientoCierre();
+        linea.setCuenta(cuenta.getCuentaContable());
+        linea.setNombreCuenta(cuenta.getNombre());
+        linea.setIdPlanCuenta(cuenta.getCodigo());
+        linea.setDescripcion(descripcion);
+        linea.setDebe(Double.valueOf(debe ? redondeaDouble(Double.valueOf(valor)) : 0D));
+        linea.setHaber(Double.valueOf(debe ? 0D : redondeaDouble(Double.valueOf(valor))));
+        linea.setCodigoLinea(Long.valueOf(codigoLinea));
+        return linea;
+    }
+
+    /**
+     * ⑨ Ajuste de bandas a saldo: cada cuenta de capital {@code 1.3.xx.yy} (sin 1.3.99) se lleva
+     * al capital que el módulo tiene en esa banda al corte ({@code distNueva}), contando lo que ya
+     * movieron ①/②/①.1 de esta misma corrida. Por grupo (cuenta madre en el arranque, familia
+     * Q/P/H en el cierre mensual) el asiento suma cero: la diferencia neta del grupo — lo que la
+     * contabilidad y el módulo no explican igual (las 90 tablas distintas, entregas sin asiento,
+     * etc.) — se deja en la banda {@code .25} del grupo y se avisa con su importe. Así el
+     * bloque 04 de la cuadratura C14 queda en cero en toda cuenta salvo la .25, donde se ve la
+     * diferencia real.
+     */
+    private SubProcesoCierre armaAjusteBandas(SolicitudCierreCartera solicitud, LocalDate corte,
+            Map<String, BandaSnapshotCierre> distNueva, List<SubProcesoCierre> previos, boolean porMadre,
+            List<String> advertencias) throws Throwable {
+        SubProcesoCierre sub = nuevoSubProceso(SubProcesoCierreCartera.AJUSTE_BANDAS,
+                porMadre ? "Reparto de bandas de arranque" : "Ajuste de bandas a saldo", "⑨", corte,
+                "CRD " + (porMadre ? "reparto de bandas de arranque " : "ajuste de bandas a saldo ")
+                        + periodo(solicitud));
+
+        Map<String, Long> idCuenta = new TreeMap<String, Long>();
+        Map<String, String> nombreCuenta = new TreeMap<String, String>();
+        Map<String, Double> objetivo = new TreeMap<String, Double>();
+        Map<String, Double> proyectado = new TreeMap<String, Double>();
+        for (BandaSnapshotCierre fila : distNueva.values()) {
+            if (fila.getCuenta() == null) {
+                continue;
+            }
+            objetivo.merge(fila.getCuenta(), fila.getCapital() != null ? fila.getCapital() : Double.valueOf(0D), Double::sum);
+            idCuenta.put(fila.getCuenta(), fila.getIdPlanCuenta());
+            nombreCuenta.put(fila.getCuenta(), fila.getNombreCuenta());
+        }
+        for (Object[] fila : cierreCarteraDaoService.selectSaldoContablePorCuenta(solicitud.getIdEmpresa(), "1.3.",
+                "1.3.99", corte)) {
+            String cuenta = (String) fila[0];
+            proyectado.merge(cuenta, (Double) fila[2], Double::sum);
+            idCuenta.putIfAbsent(cuenta, (Long) fila[1]);
+        }
+        for (SubProcesoCierre previo : previos) {
+            if (previo == null || Boolean.TRUE.equals(previo.getOmitido())) {
+                continue;
+            }
+            for (LineaAsientoCierre linea : previo.getLineas()) {
+                double neto = (linea.getDebe() != null ? linea.getDebe().doubleValue() : 0D)
+                        - (linea.getHaber() != null ? linea.getHaber().doubleValue() : 0D);
+                proyectado.merge(linea.getCuenta(), Double.valueOf(neto), Double::sum);
+                idCuenta.putIfAbsent(linea.getCuenta(), linea.getIdPlanCuenta());
+            }
+        }
+
+        // Diferencias por cuenta, agrupadas.
+        Map<String, Map<String, Double>> grupos = new TreeMap<String, Map<String, Double>>();
+        java.util.Set<String> cuentas = new java.util.TreeSet<String>();
+        cuentas.addAll(objetivo.keySet());
+        cuentas.addAll(proyectado.keySet());
+        for (String cuenta : cuentas) {
+            String grupo = grupoBanda(cuenta, porMadre);
+            if (grupo == null) {
+                continue;
+            }
+            double diferencia = redondeaDouble(Double.valueOf(
+                    (objetivo.containsKey(cuenta) ? objetivo.get(cuenta).doubleValue() : 0D)
+                    - (proyectado.containsKey(cuenta) ? proyectado.get(cuenta).doubleValue() : 0D)));
+            grupos.computeIfAbsent(grupo, k -> new TreeMap<String, Double>()).put(cuenta, Double.valueOf(diferencia));
+        }
+
+        for (Map.Entry<String, Map<String, Double>> grupo : grupos.entrySet()) {
+            String absorbe = cuentaQueAbsorbe(grupo.getKey(), porMadre);
+            Map<String, Double> diferencias = grupo.getValue();
+            double neto = 0D;
+            for (Double d : diferencias.values()) {
+                neto += d.doubleValue();
+            }
+            neto = redondeaDouble(Double.valueOf(neto));
+            if (!idCuenta.containsKey(absorbe)) {
+                PlanCuenta plan = planCuentaDaoService.selectByCuentaEmpresa(absorbe, solicitud.getIdEmpresa());
+                if (plan == null) {
+                    advertencias.add("⑨ grupo " + grupo.getKey() + ": no existe la cuenta " + absorbe
+                            + " para dejar la diferencia neta (" + redondea(Double.valueOf(neto))
+                            + "); el grupo no se ajusta.");
+                    continue;
+                }
+                idCuenta.put(absorbe, plan.getCodigo());
+                nombreCuenta.put(absorbe, plan.getNombre());
+            }
+            // La .25 absorbe: su línea es la suya menos el neto del grupo (el grupo suma cero).
+            diferencias.merge(absorbe, Double.valueOf(-neto), Double::sum);
+            if (Math.abs(neto) >= MINIMO_LINEA) {
+                advertencias.add("⑨ grupo " + grupo.getKey() + ": contabilidad y modulo difieren en "
+                        + redondea(Double.valueOf(-neto)) + " (modulo − contabilidad); la diferencia queda en "
+                        + absorbe + " hasta explicarla o decidirla (D-011).");
+            }
+            for (Map.Entry<String, Double> entrada : diferencias.entrySet()) {
+                double valor = redondeaDouble(entrada.getValue());
+                if (Math.abs(valor) < MINIMO_LINEA) {
+                    continue;
+                }
+                LineaAsientoCierre linea = new LineaAsientoCierre();
+                linea.setCuenta(entrada.getKey());
+                linea.setNombreCuenta(nombreCuenta.get(entrada.getKey()));
+                linea.setIdPlanCuenta(idCuenta.get(entrada.getKey()));
+                linea.setDescripcion((porMadre ? "Reparto de bandas de arranque " : "Ajuste de bandas a saldo ")
+                        + periodo(solicitud) + " - " + entrada.getKey()
+                        + (entrada.getKey().equals(absorbe) ? " (absorbe la diferencia del grupo)" : ""));
+                linea.setDebe(Double.valueOf(valor > 0 ? valor : 0D));
+                linea.setHaber(Double.valueOf(valor < 0 ? -valor : 0D));
+                sub.getLineas().add(linea);
+            }
+        }
+        cierra(sub, "Las cuentas de banda ya coinciden con el modulo al corte.");
+        return sub;
+    }
+
+    /**
+     * Grupo de una cuenta de capital {@code 1.3.NN.xx}: la madre {@code 1.3.NN} (arranque) o la
+     * familia (01–04 quirografario, 05–08 prendario, 09–12 hipotecario). null = no es de banda.
+     */
+    private String grupoBanda(String cuenta, boolean porMadre) {
+        if (cuenta == null || !cuenta.startsWith("1.3.") || cuenta.startsWith("1.3.99") || cuenta.length() < 9) {
+            return null;
+        }
+        String madre = cuenta.substring(0, 6);
+        if (porMadre) {
+            return madre;
+        }
+        int nn;
+        try {
+            nn = Integer.parseInt(cuenta.substring(4, 6));
+        } catch (NumberFormatException e) {
+            return madre;
+        }
+        if (nn >= 1 && nn <= 4) {
+            return "Q";
+        }
+        if (nn >= 5 && nn <= 8) {
+            return "P";
+        }
+        if (nn >= 9 && nn <= 12) {
+            return "H";
+        }
+        return madre;
+    }
+
+    /** Cuenta que absorbe la diferencia neta del grupo: la banda .25 (más de 360 días) de su madre. */
+    private String cuentaQueAbsorbe(String grupo, boolean porMadre) {
+        if (!porMadre) {
+            if ("Q".equals(grupo)) {
+                return "1.3.01.25";
+            }
+            if ("P".equals(grupo)) {
+                return "1.3.05.25";
+            }
+            if ("H".equals(grupo)) {
+                return "1.3.09.25";
+            }
+        }
+        return grupo + ".25";
+    }
+
+    /**
+     * ⑩ Devengo de mora al corte (D-017, H4): la mora de las cuotas vencidas impagas que todavía
+     * no se reconoció (libro MVIC tipo 5 − 6) pasa a cobrar contra ingreso, por tipo de préstamo:
+     * D {@code 1.4.02.xx} (papel 20) / H {@code 5.1.02.xx} (papel 40), plantilla 17. Fechado al
+     * corte. El detalle por cuota (MVIC tipo 5, origen CIERRE) se graba en {@link #generaAsiento}.
+     */
+    private SubProcesoCierre armaDevengoMoraCorte(SolicitudCierreCartera solicitud, LocalDate corte)
+            throws Throwable {
+        SubProcesoCierre sub = nuevoSubProceso(SubProcesoCierreCartera.DEVENGO_MORA_CORTE,
+                "Devengo de mora al corte", "⑩", corte, "CRD devengo de mora al corte " + periodo(solicitud));
+        Long idPlantilla = resuelvePlantilla(PlantillasCredito.DEVENGO_INTERESES, "devengo de intereses",
+                solicitud.getIdEmpresa());
+        Map<Long, Double> porTipo = new TreeMap<Long, Double>();
+        for (Object[] fila : cierreCarteraDaoService.selectMoraPorDevengarAlCorte(corte, inicioDevengoMora())) {
+            porTipo.merge((Long) fila[2], (Double) fila[3], Double::sum);
+        }
+        for (Map.Entry<Long, Double> entrada : porTipo.entrySet()) {
+            double mora = redondeaDouble(entrada.getValue());
+            agregaPorTipo(sub, idPlantilla, CrdLineaAsiento.INTERES_MORA_POR_COBRAR, entrada.getKey(), mora,
+                    "INTERES POR MORA devengado al corte " + periodo(solicitud));
+            agregaPorTipo(sub, idPlantilla, CrdLineaAsiento.INGRESO_INTERES_MORA, entrada.getKey(), mora,
+                    "Ingreso por INTERES POR MORA al corte " + periodo(solicitud));
+        }
+        cierra(sub, "No hay mora pendiente de devengar al corte.");
+        cuadra(sub, CrdLineaAsiento.INGRESO_INTERES_MORA);
+        return sub;
+    }
+
+    /** Fecha de la propiedad {@link #PROPIEDAD_INICIO_DEVENGO_MORA}, o null. */
+    private LocalDate inicioDevengoMora() {
+        String valor = System.getProperty(PROPIEDAD_INICIO_DEVENGO_MORA);
+        if (valor == null || valor.trim().isEmpty()) {
+            return null;
+        }
+        return LocalDate.parse(valor.trim());
+    }
+
+    /**
+     * Arranque: graba la semilla MVIC de la provisión de intereses de la apertura (H5). El monto
+     * es el de la solicitud o, si no viene, el saldo acreedor al corte de la cuenta de provisión
+     * de la plantilla 36 (papel 81, tipo 1).
+     */
+    private void siembraProvisionApertura(CorridaCierreCartera corrida, SolicitudCierreCartera solicitud,
+            CierreCartera calculo) throws Throwable {
+        Double monto = solicitud.getMontoProvisionInteresesApertura();
+        if (monto == null) {
+            Long idPlantilla = resuelvePlantilla(PlantillasCredito.PROVISION_INTERESES, "provision de intereses",
+                    solicitud.getIdEmpresa());
+            DetallePlantilla linea = detallePlantillaDaoService.selectByPlantillaYAuxiliares(idPlantilla,
+                    CrdLineaAsiento.PROVISION_INTERESES, 1);
+            double saldo = 0D;
+            if (linea != null && linea.getPlanCuenta() != null) {
+                String cuenta = linea.getPlanCuenta().getCuentaContable();
+                for (Object[] fila : cierreCarteraDaoService.selectSaldoContablePorCuenta(solicitud.getIdEmpresa(),
+                        cuenta, null, calculo.getFechaCorte())) {
+                    if (cuenta.equals(fila[0])) {
+                        saldo = -((Double) fila[2]).doubleValue();
+                    }
+                }
+            }
+            monto = Double.valueOf(redondeaDouble(Double.valueOf(saldo)));
+        }
+        double[] totales = provisionInteresService.sembrarProvisionApertura(corrida.getCodigo(),
+                calculo.getFechaCorte(), monto.doubleValue(), solicitud.getUsuario());
+        calculo.getAdvertencias().add("Semilla MVIC de la apertura: provisionable al " + calculo.getFechaCorte()
+                + " segun el SAA " + redondea(Double.valueOf(totales[0])) + "; sembrado (= apertura) "
+                + redondea(Double.valueOf(totales[1])) + ".");
     }
 
     // =====================================================================
@@ -995,7 +1466,7 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
      * @return          : El sub-proceso con sus líneas
      */
     private SubProcesoCierre armaNeteo(SolicitudCierreCartera solicitud, LocalDate corte,
-            LocalDate fechaCorteAnterior, DesgloseAportesCierre desglose) throws Throwable {
+            LocalDate fechaCorteAnterior, DesgloseAportesCierre desglose, LocalDate corteDatos) throws Throwable {
 
         SubProcesoCierre sub = nuevoSubProceso(SubProcesoCierreCartera.NETEO,
                 "Neteo de planillas", "⑥", corte,
@@ -1009,13 +1480,13 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
         // nueva y el ⑥ usa el mismo universo que su propio ③ (el normal, de hoy).
         CorridaCierreCartera corridaAnterior = corridaCierreCarteraDaoService.selectUltimaEjecutadaAntesDe(
                 solicitud.getIdEmpresa(), solicitud.getAnio(), solicitud.getMes());
-        boolean transicionD27 = corridaAnterior != null
+        boolean transicionD27 = corteDatos == null && corridaAnterior != null
                 && !movimientoInteresCuotaDaoService.existeAlgunoByCorrida(corridaAnterior.getCodigo());
 
         List<Object[]> cobrable = transicionD27
                 ? cierreCarteraDaoService.selectCobrablePrestamosHastaTransicionPlazoVencido(corte,
                         fechaCorteAnterior)
-                : cierreCarteraDaoService.selectCobrablePrestamosHasta(corte);
+                : cierreCarteraDaoService.selectCobrablePrestamosHasta(corte, corteDatos);
         if (transicionD27) {
             System.out.println("  CierreCarteraServiceImpl.armaNeteo - D27 transición: la corrida anterior ("
                 + (corridaAnterior != null ? corridaAnterior.getCodigo() : null)
@@ -1555,7 +2026,33 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
         if (sub.getSubProceso() != null
                 && sub.getSubProceso().intValue() == SubProcesoCierreCartera.PROVISION_INTERESES) {
             provisionInteresService.registrarProvisionCierre(corrida.getCodigo(), asiento.getCodigo(),
-                    sub.getFecha(), solicitud.getUsuario());
+                    sub.getFecha(), solicitud.getUsuario(), Boolean.TRUE.equals(solicitud.getEstadoAlCorte()));
+        }
+
+        // C15 / D-017: ⑩ — detalle por cuota (MVIC tipo 5, origen CIERRE) con la misma consulta.
+        if (sub.getSubProceso() != null
+                && sub.getSubProceso().intValue() == SubProcesoCierreCartera.DEVENGO_MORA_CORTE) {
+            LocalDateTime selloMvic = LocalDateTime.now();
+            for (Object[] fila : cierreCarteraDaoService.selectMoraPorDevengarAlCorte(sub.getFecha(),
+                    inicioDevengoMora())) {
+                com.saa.model.crd.MovimientoInteresCuota mov = new com.saa.model.crd.MovimientoInteresCuota();
+                com.saa.model.crd.Prestamo prestamo = new com.saa.model.crd.Prestamo();
+                prestamo.setCodigo((Long) fila[1]);
+                mov.setPrestamo(prestamo);
+                mov.setIdCuota((Long) fila[0]);
+                mov.setTipoMovimiento(com.saa.rubros.TipoMovimientoInteresCuota.DEVENGO_MORA);
+                mov.setComponente(com.saa.rubros.ComponenteMovimientoInteresCuota.MORA);
+                mov.setValor(redondea((Double) fila[3]));
+                mov.setFechaContable(sub.getFecha());
+                mov.setCorrida(corrida);
+                mov.setOrigen("CIERRE");
+                mov.setIdOrigen(corrida.getCodigo());
+                mov.setAsiento(asiento.getCodigo());
+                mov.setAnulado(0L);
+                mov.setUsuarioRegistro(solicitud.getUsuario());
+                mov.setFechaRegistro(selloMvic);
+                movimientoInteresCuotaDaoService.save(mov, null);
+            }
         }
 
         // Paso ④: el detalle por cuota (MVIC tipo 5) — mismo rango que calculó la línea del
@@ -1567,12 +2064,15 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
             LocalDate fechaCorteAperturaCorrida = fechaProcesoCorrida.withDayOfMonth(
                     fechaProcesoCorrida.lengthOfMonth());
             Map<Long, Double> totalMoraPorTipo = new java.util.HashMap<>();
+            LocalDate corteDatosCorrida = Boolean.TRUE.equals(solicitud.getEstadoAlCorte())
+                    ? corrida.getFechaCorte() : null;
             for (Object[] fila : cierreCarteraDaoService.selectInteresPorTipoPrestamoEnRango(
-                    fechaProcesoCorrida, fechaCorteAperturaCorrida)) {
+                    fechaProcesoCorrida, fechaCorteAperturaCorrida, corteDatosCorrida)) {
                 totalMoraPorTipo.put((Long) fila[0], (Double) fila[2]);
             }
             provisionInteresService.registrarDevengoMoraCierre(corrida.getCodigo(), asiento.getCodigo(),
-                    fechaProcesoCorrida, fechaCorteAperturaCorrida, totalMoraPorTipo, solicitud.getUsuario());
+                    fechaProcesoCorrida, fechaCorteAperturaCorrida, totalMoraPorTipo, solicitud.getUsuario(),
+                    corteDatosCorrida);
         }
     }
 
@@ -1977,6 +2477,9 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
             case SubProcesoCierreCartera.DEVENGO_INTERESES:        return "Devengo de intereses a ingresos";
             case SubProcesoCierreCartera.NETEO:                    return "Neteo de planillas";
             case SubProcesoCierreCartera.PROVISION_INTERESES:      return "Provisión de intereses";
+            case SubProcesoCierreCartera.PROVISION_CARTERA:        return "Provisión de cartera";
+            case SubProcesoCierreCartera.AJUSTE_BANDAS:            return "Ajuste de bandas a saldo";
+            case SubProcesoCierreCartera.DEVENGO_MORA_CORTE:       return "Devengo de mora al corte";
             default:                                               return String.valueOf(subProceso);
         }
     }
@@ -1994,6 +2497,9 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
             case SubProcesoCierreCartera.DEVENGO_INTERESES:        return "④";
             case SubProcesoCierreCartera.NETEO:                    return "⑥";
             case SubProcesoCierreCartera.PROVISION_INTERESES:      return "⑦";
+            case SubProcesoCierreCartera.PROVISION_CARTERA:        return "⑧";
+            case SubProcesoCierreCartera.AJUSTE_BANDAS:            return "⑨";
+            case SubProcesoCierreCartera.DEVENGO_MORA_CORTE:       return "⑩";
             default:                                               return null;
         }
     }

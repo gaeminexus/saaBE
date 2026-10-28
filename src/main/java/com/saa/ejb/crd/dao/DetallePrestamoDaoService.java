@@ -462,5 +462,17 @@ public interface DetallePrestamoDaoService extends EntityDao<DetallePrestamo> {
 	 */
 	List<DetallePrestamo> selectCuotasProvisionables(java.time.LocalDateTime corte) throws Throwable;
 
+	/**
+	 * C15 — {@link #selectCuotasProvisionables} con el estado de la cartera AL CORTE
+	 * ({@code com.saa.ejb.crd.service.ModoCorteCartera}): préstamos con fecha {@code <= corte}
+	 * que no estén en 0/1/6/7/12, cuotas con vencimiento {@code <= corte} no liquidadas al corte
+	 * (estado 4/7 con fecha de pago posterior al corte, o sin fecha, cuenta como impaga).
+	 *
+	 * @param corte fecha de corte (fin del mes que se cierra)
+	 * @return cuotas del universo, con el préstamo y su producto/tipo ya cargados
+	 * @throws Throwable Si ocurre algún error
+	 */
+	List<DetallePrestamo> selectCuotasProvisionablesAlCorte(java.time.LocalDate corte) throws Throwable;
+
 }
 

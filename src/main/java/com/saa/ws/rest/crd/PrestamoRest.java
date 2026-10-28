@@ -74,6 +74,10 @@ public class PrestamoRest {
     @EJB
     private PrestamoService prestamoService;
 
+    /** C15 / D-018: listado de préstamos aprobados sin asiento de entrega. */
+    @EJB
+    private com.saa.ejb.crd.dao.CierreCarteraDaoService cierreCarteraDaoService;
+
     @EJB
     private com.saa.ejb.crd.service.SustitucionPrestamoService sustitucionPrestamoService;
 
@@ -410,6 +414,142 @@ public class PrestamoRest {
                     .type(MediaType.APPLICATION_JSON)
                     .build();
         }
+    }
+
+    /**
+     * C15 / D-018 (H6): préstamos aprobados SIN asiento de entrega con fecha de inicio en el rango.
+     * GET /prst/sinAsientoEntrega?desde=2025-06-01&hasta=2025-06-30
+     * Filas: [idPrestamo, idAsoprep, fechaInicio, monto, idEstado, esSustitucion(0/1)].
+     */
+    @GET
+    @Path("/sinAsientoEntrega")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response sinAsientoEntrega(@QueryParam("desde") String desde, @QueryParam("hasta") String hasta) {
+        System.out.println("LLEGA AL SERVICIO GET prst/sinAsientoEntrega - desde: " + desde + " - hasta: " + hasta);
+        try {
+            return Response.status(Response.Status.OK)
+                    .entity(cierreCarteraDaoService.selectPrestamosSinAsientoEntrega(
+                            java.time.LocalDate.parse(desde), java.time.LocalDate.parse(hasta)))
+                    .type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al listar prestamos sin asiento de entrega: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
+     * C15 / D-018 (H6): contabiliza el desembolso de UN préstamo aprobado sin asiento de entrega
+     * (asiento de entrega + orden de pago confirmada con egreso y movimiento bancario), con la
+     * fecha del desembolso real del extracto. Idempotente por préstamo.
+     * Body: { idPrestamo, idEmpresa, idUsuario, usuario, fechaContable: "2025-06-12",
+     *         idCuentaBancaria, valor, referencia }
+     */
+    @POST
+    @Path("/contabilizarDesembolso")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response contabilizarDesembolso(SolicitudDesembolsoHistorico solicitud) {
+        System.out.println("LLEGA AL SERVICIO POST prst/contabilizarDesembolso - prestamo: "
+                + (solicitud != null ? solicitud.getIdPrestamo() : null));
+        try {
+            return Response.status(Response.Status.OK)
+                    .entity(prestamoService.contabilizarDesembolsoHistorico(solicitud.getIdPrestamo(),
+                            solicitud.getIdEmpresa(), solicitud.getIdUsuario(), solicitud.getUsuario(),
+                            solicitud.getFechaContable(), solicitud.getIdCuentaBancaria(), solicitud.getValor(),
+                            solicitud.getReferencia()))
+                    .type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            if (e instanceof com.saa.basico.util.IncomeException) {
+                return respuestaErrorNegocio(e);
+            }
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al contabilizar el desembolso: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
+     * C15 / D-018 (H6): lote. Cada préstamo en SU PROPIA transacción (una falla no tumba el
+     * resto); la respuesta trae el resultado o el error de cada uno. Idempotente: se puede volver
+     * a mandar el mismo lote.
+     * Body: { idEmpresa, idUsuario, usuario, items: [ { idPrestamo, fechaContable, idCuentaBancaria,
+     *         valor, referencia }, ... ] }
+     */
+    @POST
+    @Path("/contabilizarDesembolsos")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response contabilizarDesembolsos(LoteDesembolsoHistorico lote) {
+        System.out.println("LLEGA AL SERVICIO POST prst/contabilizarDesembolsos - items: "
+                + (lote != null && lote.getItems() != null ? lote.getItems().size() : 0));
+        java.util.List<java.util.Map<String, Object>> resultados = new java.util.ArrayList<>();
+        if (lote != null && lote.getItems() != null) {
+            for (SolicitudDesembolsoHistorico item : lote.getItems()) {
+                java.util.Map<String, Object> fila;
+                try {
+                    fila = prestamoService.contabilizarDesembolsoHistorico(item.getIdPrestamo(),
+                            item.getIdEmpresa() != null ? item.getIdEmpresa() : lote.getIdEmpresa(),
+                            item.getIdUsuario() != null ? item.getIdUsuario() : lote.getIdUsuario(),
+                            item.getUsuario() != null ? item.getUsuario() : lote.getUsuario(),
+                            item.getFechaContable(), item.getIdCuentaBancaria(), item.getValor(), item.getReferencia());
+                    fila.put("ok", Boolean.TRUE);
+                } catch (Throwable e) {
+                    fila = new java.util.LinkedHashMap<>();
+                    fila.put("idPrestamo", item.getIdPrestamo());
+                    fila.put("ok", Boolean.FALSE);
+                    fila.put("error", e.getMessage());
+                }
+                resultados.add(fila);
+            }
+        }
+        return Response.status(Response.Status.OK).entity(resultados).type(MediaType.APPLICATION_JSON).build();
+    }
+
+    /** C15 / D-018: un desembolso histórico a contabilizar. */
+    public static class SolicitudDesembolsoHistorico {
+        private Long idPrestamo;
+        private Long idEmpresa;
+        private Long idUsuario;
+        private String usuario;
+        private java.time.LocalDate fechaContable;
+        private Long idCuentaBancaria;
+        private Double valor;
+        private String referencia;
+
+        public Long getIdPrestamo() { return idPrestamo; }
+        public void setIdPrestamo(Long idPrestamo) { this.idPrestamo = idPrestamo; }
+        public Long getIdEmpresa() { return idEmpresa; }
+        public void setIdEmpresa(Long idEmpresa) { this.idEmpresa = idEmpresa; }
+        public Long getIdUsuario() { return idUsuario; }
+        public void setIdUsuario(Long idUsuario) { this.idUsuario = idUsuario; }
+        public String getUsuario() { return usuario; }
+        public void setUsuario(String usuario) { this.usuario = usuario; }
+        public java.time.LocalDate getFechaContable() { return fechaContable; }
+        public void setFechaContable(java.time.LocalDate fechaContable) { this.fechaContable = fechaContable; }
+        public Long getIdCuentaBancaria() { return idCuentaBancaria; }
+        public void setIdCuentaBancaria(Long idCuentaBancaria) { this.idCuentaBancaria = idCuentaBancaria; }
+        public Double getValor() { return valor; }
+        public void setValor(Double valor) { this.valor = valor; }
+        public String getReferencia() { return referencia; }
+        public void setReferencia(String referencia) { this.referencia = referencia; }
+    }
+
+    /** C15 / D-018: lote de desembolsos históricos. */
+    public static class LoteDesembolsoHistorico {
+        private Long idEmpresa;
+        private Long idUsuario;
+        private String usuario;
+        private java.util.List<SolicitudDesembolsoHistorico> items;
+
+        public Long getIdEmpresa() { return idEmpresa; }
+        public void setIdEmpresa(Long idEmpresa) { this.idEmpresa = idEmpresa; }
+        public Long getIdUsuario() { return idUsuario; }
+        public void setIdUsuario(Long idUsuario) { this.idUsuario = idUsuario; }
+        public String getUsuario() { return usuario; }
+        public void setUsuario(String usuario) { this.usuario = usuario; }
+        public java.util.List<SolicitudDesembolsoHistorico> getItems() { return items; }
+        public void setItems(java.util.List<SolicitudDesembolsoHistorico> items) { this.items = items; }
     }
 
     /**

@@ -93,6 +93,10 @@ public class PrestamoServiceImpl implements PrestamoService {
     @EJB
     private ContabilidadPrestamoService contabilidadPrestamoService;
 
+    /** C15 / D-018: idempotencia de la orden de desembolso en el re-proceso. */
+    @EJB
+    private com.saa.ejb.cxp.dao.PagoProgramadoDaoService pagoProgramadoDaoService;
+
     @EJB
     private MotorPagoPrestamoService motorPagoPrestamoService;
 
@@ -518,6 +522,117 @@ public class PrestamoServiceImpl implements PrestamoService {
         System.out.println("Préstamo " + idPrestamo + " aprobado por " + usuario + " - orden de pago "
             + idPago + (idAsientoEntrega != null ? " - asiento de entrega " + idAsientoEntrega : ""));
         return prestamo;
+    }
+
+    /**
+     * C15 / D-018 (H6) — contabiliza el desembolso de un préstamo YA APROBADO que quedó sin
+     * asiento de entrega (re-proceso jun-2025 en adelante), exactamente como se contabiliza hoy un
+     * préstamo nuevo pero con la fecha del desembolso real del extracto bancario:
+     * <ol>
+     * <li>asiento de entrega del motor ({@code contabilizarEntrega}, plantilla 34/9/13) fechado
+     *     {@code fechaContable};</li>
+     * <li>orden de pago en CxP desde la cuenta bancaria del extracto, como débito ya realizado por
+     *     el banco ({@code debitoAutomatico}): nace CONFIRMADA y genera el egreso (D socios por
+     *     pagar / H banco) y su movimiento bancario con esa misma fecha y la referencia del
+     *     extracto.</li>
+     * </ol>
+     * <b>Idempotente por préstamo:</b> si ya tiene asiento de entrega no genera otro; si ya tiene
+     * una orden de pago vigente no crea otra (lo informa: esa orden se gestiona en tesorería).
+     * Las sustituciones (reestructura/novación) se rechazan: su asiento es el del traslado.
+     *
+     * @return mapa con {@code idPrestamo, idAsientoEntrega, idPagoProgramado, entregaGenerada,
+     *         pagoGenerado, mensaje}
+     */
+    @Override
+    public Map<String, Object> contabilizarDesembolsoHistorico(Long idPrestamo, Long idEmpresa, Long idUsuario,
+            String usuario, LocalDate fechaContable, Long idCuentaBancaria, Double valor, String referencia)
+            throws Throwable {
+        System.out.println("PrestamoServiceImpl.contabilizarDesembolsoHistorico - préstamo: " + idPrestamo
+            + " - fecha: " + fechaContable + " - cuenta: " + idCuentaBancaria + " - valor: " + valor);
+        if (idPrestamo == null || idEmpresa == null || idUsuario == null || fechaContable == null) {
+            throw new IncomeException("idPrestamo, idEmpresa, idUsuario y fechaContable son obligatorios.");
+        }
+        if (fechaContable.isAfter(LocalDate.now())) {
+            throw new IncomeException("FECHA_CONTABLE_FUTURA: " + fechaContable);
+        }
+        Prestamo prestamo = prestamoDaoService.selectById(idPrestamo, NombreEntidadesCredito.PRESTAMO);
+        if (prestamo == null) {
+            throw new IncomeException("Préstamo con ID " + idPrestamo + " no encontrado");
+        }
+        long estado = prestamo.getIdEstado() != null ? prestamo.getIdEstado().longValue() : 0L;
+        if (estado == EstadoPrestamo.RAIZ || estado == EstadoPrestamo.GENERADO
+                || estado == EstadoPrestamo.PENDIENTE_DE_APROBACION || estado == EstadoPrestamo.RECHAZADO
+                || estado == EstadoPrestamo.ANULADO) {
+            throw new IncomeException("El préstamo " + idPrestamo + " está en estado " + estado
+                + ": no fue aprobado (use POST /prst/aprobar/{id} con fechaContable).");
+        }
+        if (prestamo.getIdPrestamoOriginal() != null) {
+            throw new IncomeException("El préstamo " + idPrestamo + " sustituye al " + prestamo.getIdPrestamoOriginal()
+                + " (reestructura/novación): su asiento es el del traslado, no una entrega. Fuera de alcance de este lote.");
+        }
+        double monto = prestamo.getMontoSolicitado() != null ? prestamo.getMontoSolicitado() : 0.0;
+        if (valor != null && Math.abs(valor - monto) > 0.01) {
+            throw new IncomeException("El valor del desembolso (" + valor + ") no coincide con el monto del préstamo "
+                + idPrestamo + " (" + monto + ").");
+        }
+
+        Map<String, Object> resultado = new LinkedHashMap<>();
+        resultado.put("idPrestamo", idPrestamo);
+        resultado.put("idAsoprep", prestamo.getIdAsoprep());
+        StringBuilder mensaje = new StringBuilder();
+
+        // 1. Asiento de entrega (idempotente).
+        boolean entregaGenerada = false;
+        if (prestamo.getIdAsientoEntrega() == null) {
+            List<DetallePrestamo> cuotas = detallePrestamoDaoService.selectByPrestamo(idPrestamo);
+            Long idAsiento = contabilidadPrestamoService.contabilizarEntrega(prestamo, cuotas, idEmpresa, monto,
+                usuario, fechaContable);
+            prestamo.setIdAsientoEntrega(idAsiento);
+            entregaGenerada = idAsiento != null;
+            mensaje.append(idAsiento != null ? "Asiento de entrega " + idAsiento + " al " + fechaContable + ". "
+                : "Contabilidad de CRD inactiva: sin asiento de entrega. ");
+        } else {
+            mensaje.append("Ya tenía asiento de entrega ").append(prestamo.getIdAsientoEntrega()).append(". ");
+        }
+
+        // 2. Orden de pago + egreso (idempotente).
+        boolean pagoGenerado = false;
+        List<com.saa.model.cxp.PagoProgramado> vigentes = pagoProgramadoDaoService.selectVigentesByOrigen(
+            OrigenPagoExterno.CRD_DESEMBOLSO_PRESTAMO, idPrestamo);
+        if (prestamo.getIdPagoProgramado() != null || (vigentes != null && !vigentes.isEmpty())) {
+            Long existente = prestamo.getIdPagoProgramado() != null ? prestamo.getIdPagoProgramado()
+                : vigentes.get(0).getId();
+            prestamo.setIdPagoProgramado(existente);
+            mensaje.append("Ya tenía la orden de pago ").append(existente)
+                .append(": no se crea otra (su egreso se gestiona en tesorería).");
+        } else if (idCuentaBancaria == null) {
+            mensaje.append("Sin cuenta bancaria: no se genera la orden de pago ni el egreso.");
+        } else {
+            List<LineaContablePago> desglose = armarDesgloseEntrega(prestamo, monto, idEmpresa);
+            BeneficiarioOcasional beneficiario = armaBeneficiarioPrestamo(prestamo.getEntidad());
+            Map<String, Object> respuesta = pagoProgramadoService.registrarPagoDeOrigenExterno(
+                OrigenPagoExterno.CRD_DESEMBOLSO_PRESTAMO, idPrestamo, idEmpresa, idCuentaBancaria, monto,
+                fechaContable.toString(), beneficiario, desglose,
+                "Desembolso préstamo N° " + prestamo.getCodigo() + " (re-proceso, extracto " + fechaContable + ")",
+                idUsuario, true, referencia);
+            Object idPago = respuesta != null ? respuesta.get("pago") : null;
+            if (idPago == null) {
+                throw new IncomeException("Cuentas por Pagar no devolvió el número de la orden del préstamo " + idPrestamo);
+            }
+            prestamo.setIdPagoProgramado(((Number) idPago).longValue());
+            pagoGenerado = true;
+            mensaje.append("Orden de pago ").append(idPago).append(" confirmada con egreso al ").append(fechaContable)
+                .append(respuesta.get("asiento") != null ? " (asiento " + respuesta.get("asiento") + ")" : "")
+                .append(".");
+        }
+        prestamoDaoService.save(prestamo, prestamo.getCodigo());
+
+        resultado.put("idAsientoEntrega", prestamo.getIdAsientoEntrega());
+        resultado.put("idPagoProgramado", prestamo.getIdPagoProgramado());
+        resultado.put("entregaGenerada", entregaGenerada);
+        resultado.put("pagoGenerado", pagoGenerado);
+        resultado.put("mensaje", mensaje.toString().trim());
+        return resultado;
     }
 
     /** ORA-00001 (índice único violado) en algún punto de la cadena de causas. */

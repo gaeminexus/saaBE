@@ -174,6 +174,37 @@ public class PagoPrestamoDaoServiceImpl extends EntityDaoImpl<PagoPrestamo> impl
 
 	@Override
 	@SuppressWarnings("unchecked")
+	public List<Object[]> selectDatosPagosVigentesAlCorte(List<Long> codigosDetallePrestamo, java.time.LocalDate corte)
+			throws Throwable {
+		System.out.println("PagoPrestamoDaoService.selectDatosPagosVigentesAlCorte - cuotas: "
+				+ (codigosDetallePrestamo != null ? codigosDetallePrestamo.size() : 0) + " - corte: " + corte);
+		if (codigosDetallePrestamo == null || codigosDetallePrestamo.isEmpty()) {
+			return new ArrayList<>();
+		}
+		String jpql = "SELECT p.detallePrestamo.codigo, p.desgravamen, p.moraPagada, " +
+			"       p.interesVencidoPagado, p.interesPagado, p.capitalPagado, p.valorSeguroIncendio, " +
+			"       CASE WHEN p.tipo IN :tiposConAbonoCapital THEN p.saldoOtros ELSE 0.0 END " +
+			"FROM PagoPrestamo p " +
+			"WHERE p.detallePrestamo.codigo IN :codigos " +
+			"AND (p.anulado IS NULL OR p.anulado = 0) " +
+			"AND p.fecha < :corteSig " +
+			"ORDER BY p.detallePrestamo.codigo";
+		final int TAMANIO_BLOQUE = 900;
+		List<Object[]> resultados = new ArrayList<>();
+		for (int inicio = 0; inicio < codigosDetallePrestamo.size(); inicio += TAMANIO_BLOQUE) {
+			List<Long> bloque = codigosDetallePrestamo.subList(inicio,
+					Math.min(inicio + TAMANIO_BLOQUE, codigosDetallePrestamo.size()));
+			Query query = em.createQuery(jpql);
+			query.setParameter("codigos", bloque);
+			query.setParameter("tiposConAbonoCapital", TIPOS_PAGO_CON_ABONO_CAPITAL);
+			query.setParameter("corteSig", corte.plusDays(1).atStartOfDay());
+			resultados.addAll(query.getResultList());
+		}
+		return resultados;
+	}
+
+	@Override
+	@SuppressWarnings("unchecked")
 	public List<Object[]> selectCapitalAbonadoEnMoraOParcialByPrestamos(List<Long> codigosPrestamo) throws Throwable {
 		System.out.println("PagoPrestamoDaoService.selectCapitalAbonadoEnMoraOParcialByPrestamos - préstamos solicitados: "
 				+ (codigosPrestamo != null ? codigosPrestamo.size() : 0));

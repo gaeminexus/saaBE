@@ -206,4 +206,69 @@ public interface CierreCarteraDaoService {
      * @throws Throwable : Excepcion
      */
     Object[] selectAportesRegistrados(LocalDate desde, LocalDate hasta) throws Throwable;
+
+    // =====================================================================
+    // C15 — variantes "a fecha de corte" (ver com.saa.ejb.crd.service.ModoCorteCartera).
+    // Con corte == null son idénticas a las de arriba (el comportamiento normal no cambia).
+    // Con corte: préstamos aprobados con PRSTFCHA <= corte (no 0/1/6/7/12), cuotas no
+    // liquidadas AL CORTE, pagos vigentes con PGPRFCHA <= corte (capital = PGPRSLOT si > 0, si
+    // no PGPRCPPG) y mora con la fórmula del proceso diario a la fecha de corte.
+    // =====================================================================
+
+    /** {@link #selectCapitalPorProductoYVencimiento(Long)} al corte. */
+    List<Object[]> selectCapitalPorProductoYVencimiento(Long idEmpresa, LocalDate corte) throws Throwable;
+
+    /** {@link #selectCuotasPendientesPorPrestamo(Long)} al corte (solo cuotas con capital pendiente). */
+    List<Object[]> selectCuotasPendientesPorPrestamo(Long idEmpresa, LocalDate corte) throws Throwable;
+
+    /** {@link #selectInteresPorTipoPrestamoEnRango(LocalDate, LocalDate)} al corte. */
+    List<Object[]> selectInteresPorTipoPrestamoEnRango(LocalDate desde, LocalDate hasta, LocalDate corte)
+            throws Throwable;
+
+    /** {@link #selectCuotasDevengoMoraEnRango(LocalDate, LocalDate)} al corte. */
+    List<Object[]> selectCuotasDevengoMoraEnRango(LocalDate desde, LocalDate hasta, LocalDate corte)
+            throws Throwable;
+
+    /** {@link #selectCobrablePrestamosHasta(LocalDate)} medido al corte. */
+    List<Object[]> selectCobrablePrestamosHasta(LocalDate hasta, LocalDate corte) throws Throwable;
+
+    /**
+     * Cartera al corte POR OPERACIÓN: la base común de la G48, el CCPM y la provisión de
+     * cartera ⑧ del cierre (D-015: el mismo cálculo).
+     *
+     * @param corte          : Fecha de corte (obligatoria)
+     * @param corteInclusivo : true = la cuota que vence el día del corte e impaga ya es vencida
+     * @return Filas {@code [idPrestamo, idProducto, idTipoPrestamo, idEntidad, porVencer,
+     *         vencido, diasMora, interesVencidoPendiente, moraPendiente, idCuotaAncla,
+     *         interesCuotasDelMes, cuentaIndividual]}; la cuenta individual (aportes TPAPIDST = 1
+     *         con caja <= corte) va solo en la primera operación del partícipe y en 0 si es
+     *         jubilado complementario — regla del generador G48.
+     */
+    List<Object[]> selectOperacionesAlCorte(LocalDate corte, boolean corteInclusivo) throws Throwable;
+
+    /**
+     * D-017 (H4) — mora a devengar al corte por cuota: mora bruta de la cuota vencida impaga
+     * (fórmula del proceso diario a la fecha de corte) menos lo ya reconocido en {@code CRD.MVIC}
+     * (tipo 5 − tipo 6, fecha contable {@code <= corte}). Requiere corte (modo al corte).
+     *
+     * @return Filas {@code [idCuota, idPrestamo, idTipoPrestamo, moraADevengar]}, solo > 0
+     */
+    List<Object[]> selectMoraPorDevengarAlCorte(LocalDate corte, LocalDate inicioDevengo) throws Throwable;
+
+    /**
+     * Saldo contable deudor por cuenta al corte (asientos 1/3 con fecha <= corte), misma regla
+     * de la cuadratura C14.
+     *
+     * @return Filas {@code [cuenta (String), idPlanCuenta (Long), saldoDeudor (Double)]}
+     */
+    List<Object[]> selectSaldoContablePorCuenta(Long idEmpresa, String prefijo, String prefijoExcluido,
+            LocalDate corte) throws Throwable;
+
+    /**
+     * H6: préstamos aprobados (no 0/1/6/7/12) sin asiento de entrega ({@code PRSTASEN} nulo) con
+     * fecha de inicio en el rango.
+     *
+     * @return Filas {@code [idPrestamo, idAsoprep, fechaInicio, monto, idEstado, esSustitucion(0/1)]}
+     */
+    List<Object[]> selectPrestamosSinAsientoEntrega(LocalDate desde, LocalDate hasta) throws Throwable;
 }
