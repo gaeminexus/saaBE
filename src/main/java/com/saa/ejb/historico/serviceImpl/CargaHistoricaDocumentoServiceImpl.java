@@ -992,16 +992,140 @@ public class CargaHistoricaDocumentoServiceImpl implements CargaHistoricaDocumen
     // Notas de crédito: fase 3
     // =====================================================================================================
 
+    static final String DESCRIPCION_HABER_GASTO_NC_COMPRA = "NC Compra reverso gasto"; // literal que escribe generarAsientoNotaCreditoCompra
+
     @Override
     @TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
     public ItemResultado cargarNotaCreditoCompra(Contexto ctx, NotaCreditoCompraLote n) throws Throwable {
-        ItemResultado item = new ItemResultado("nc-compra", n.ref, "NC " + n.numero + " s/ " + n.facturaAfectadaNumero);
+        ItemResultado item = new ItemResultado("nc-compra", n.ref, "NC " + n.numero + " s/ " + n.facturaAfectadaNumero + " " + nvl(n.razonSocial, ""));
         try {
-            return item.rechazado("NC de compra: fase 3 pendiente");
+            if (n.claveAcceso == null || !n.claveAcceso.matches("\\d{49}")) return item.rechazado("clave de acceso invalida");
+            com.saa.model.cxp.NotaCreditoCompra existente = unico(em.createQuery("select x from NotaCreditoCompra x where x.clave = :c and x.estado = 1", com.saa.model.cxp.NotaCreditoCompra.class).setParameter("c", n.claveAcceso).getResultList());
+            if (existente != null) return item.omitido(existente.getId(), "ya existe la NC de compra " + existente.getNumero() + " (asiento " + numeroAsiento(existente.getAsiento()) + ")");
+            Titular proveedor = titularPorIdentificacion(n.proveedor);
+            if (proveedor == null) return item.rechazado("el proveedor " + n.proveedor + " no existe en TSR.TTLR");
+            FacturaCompra factura = facturaCompraDe(ctx, n.facturaAfectadaClave, n.facturaAfectadaNumero, proveedor.getCodigo());
+            if (factura == null) return item.rechazado("la factura afectada " + n.facturaAfectadaNumero + " no esta cargada en PGS.FCTC (lote " + n.facturaAfectadaMes + ")");
+            LocalDate fe = fecha(n.fechaEmision, "fechaEmision");
+            PlanCuenta cuentaGasto = cuentaMovimiento(ctx.idEmpresa, n.cuenta);
+            CentroCosto centro = n.centroCosto != null ? centroCosto(ctx.idEmpresa, n.centroCosto) : null;
+            if (n.centroCosto != null && centro == null) return item.rechazado("no existe el centro de costo " + n.centroCosto);
+            if (n.lineas == null || n.lineas.isEmpty()) return item.rechazado("sin lineas");
+            double sumaBases = 0, sumaIva = 0, base0 = 0, base5 = 0, base15 = 0;
+            for (LineaLote l : n.lineas) {
+                sumaBases += nz(l.base); sumaIva += nz(l.iva);
+                int t = l.tarifa == null ? 0 : l.tarifa;
+                if (t == 15) base15 += nz(l.base); else if (t == 5) base5 += nz(l.base); else base0 += nz(l.base);
+            }
+            double dif = redondea(nz(n.total) - sumaBases - sumaIva);
+            if (Math.abs(dif) > 0.50) return item.rechazado("bases + IVA difieren del total en " + dif);
+            double saldoFactura = numero(aplicacionPagoCxpService.saldoFactura(factura.getId()).get("saldoPendiente"));
+            String[] partes = partesNumero(n.numero);
+            if (ctx.soloValidar) return item.validado("se crearia la NC de compra por " + n.total + " contra " + factura.getNumero() + " (saldo " + saldoFactura + "; si es menor, el resto queda como saldo de la NC)");
+
+            Usuario usuario = em.find(Usuario.class, ctx.idUsuario);
+            com.saa.model.cxp.NotaCreditoCompra nc = new com.saa.model.cxp.NotaCreditoCompra();
+            nc.setTipoComprobante("04");
+            nc.setTipoDoc("04");
+            nc.setEmpresa(em.find(Empresa.class, ctx.idEmpresa));
+            nc.setTitular(proveedor);
+            nc.setNumero(n.numero);
+            nc.setNumEstablecimiento(partes[0]);
+            nc.setNumPtoEmision(partes[1]);
+            nc.setSecuencial(partes[2]);
+            nc.setAmbiente(ambienteDeClave(n.claveAcceso));
+            nc.setClave(n.claveAcceso);
+            nc.setFecha(fe.atStartOfDay());
+            nc.setTipoDocModificado(TIPO_COMPROBANTE_FACTURA);
+            nc.setNumDocModificado(factura.getNumero());
+            nc.setFechaEmisionDM(factura.getFecha());
+            nc.setObservacion(recortar(observacionDocumento(ctx, n.ref, "Nota de credito de compra " + n.numero + " sobre " + factura.getNumero(), "cuenta " + n.cuenta + " (" + nvl(n.origenCuenta, "") + ")"), 2000));
+            nc.setSubtotal(redondea(sumaBases));
+            nc.setSubcero(redondea(base0));
+            nc.setSubnoobj(0d);
+            nc.setSubexent(0d);
+            nc.setSubtotal5(redondea(base5));
+            nc.setSubtotal8(0d);
+            nc.setpIVA(base15 > 0 ? 15d : base5 > 0 ? 5d : 0d);
+            nc.setvIVA(redondea(nz(n.iva) > 0 ? nz(n.iva) : sumaIva));
+            nc.setvICE(0d);
+            nc.setvIRBPNR(0d);
+            nc.setDescuento(0d);
+            nc.setPorDescuento(0d);
+            nc.setPropina(0d);
+            nc.setSubsidio(0d);
+            nc.setTotal(redondea(nz(n.total)));
+            nc.setUsuario(usuario);
+            nc.setAutorizacion(n.claveAcceso);
+            nc.setFechaAutorizacion(fecha(nvl(n.fechaAutorizacion, n.fechaEmision), "fechaAutorizacion").atStartOfDay());
+            nc.setEstado((long) Estado.ACTIVO);
+            nc.setEstadoEmision(ESTADO_EMISION_REGISTRADA_CXP);
+            nc.setEstadoSeguro(0L);
+            nc.setFechaRegistroContable(fe);
+            em.persist(nc);
+            int i = 0;
+            for (LineaLote l : n.lineas) {
+                com.saa.model.cxp.DetalleNotaCreditoCompra d = new com.saa.model.cxp.DetalleNotaCreditoCompra();
+                d.setNotaCredito(nc);
+                d.setDescripcion(recortar(nvl(l.descripcion, "Linea " + (++i)), 500));
+                d.setCantidad(1d);
+                d.setValor(redondea(nz(l.base)));
+                d.setSubTotal(redondea(nz(l.base)));
+                d.setDescuento(0d);
+                d.setBaseImponible(redondea(nz(l.base)));
+                d.setPorcentajeIVA(l.tarifa == null ? 0L : l.tarifa.longValue());
+                d.setValorIVA(redondea(nz(l.iva)));
+                d.setPorcentajeICE(0L);
+                d.setValorICE(0d);
+                d.setTotal(redondea(nz(l.base) + nz(l.iva)));
+                d.setProducto(productoCompraParaCuenta(ctx, l.cuenta != null ? l.cuenta : n.cuenta).getId());
+                d.setEstado((long) Estado.ACTIVO);
+                em.persist(d);
+            }
+            em.flush();
+            String obs = recortar("Nota de credito compra: " + n.numero + " | Proveedor: " + nvl(proveedor.getNombre(), n.proveedor) + " | Factura: " + factura.getNumero() + " | " + ctx.observacion, 2000);
+            Asiento asiento = asientoContableService.generarAsientoNotaCreditoCompra(nc.getId(), ctx.idEmpresa, TipoAsientos.NOTAS_CREDITO_COMPRA, fe, obs, ctx.usuario);
+            Asiento attached = em.find(Asiento.class, asiento.getCodigo());
+            nc.setAsiento(attached != null ? attached : asiento);
+            em.merge(nc);
+            // El motor acredita el "gasto genérico" de la empresa (primer grupo con cuenta): se impone la cuenta de la NC
+            // (la de la factura afectada o la sugerida por el contador) y su centro de costo en esa línea.
+            int corregidas = imponerCuentaHaberGastoNc(asiento.getCodigo(), cuentaGasto, centro);
+            em.flush();
+            java.util.Map<String, Object> resultadoAplicacion = new java.util.HashMap<>();
+            AplicacionPagoCxp apl = aplicacionPagoCxpService.aplicarNotaCredito(nc, nc.getAsiento(), ctx.idEmpresa, ctx.usuario, resultadoAplicacion);
+            em.flush();
+            String aviso = resultadoAplicacion.get("advertenciaAplicacion") != null ? " | " + resultadoAplicacion.get("advertenciaAplicacion") : "";
+            return item.creado(nc.getId(), asiento.getCodigo(), asiento.getNumeroAlterno(), "NC de compra creada; " + corregidas + " linea(s) de gasto a " + n.cuenta
+                    + (apl != null ? "; aplicada a la factura (aplicacion " + apl.getId() + ")" : "; factura sin saldo: la NC queda con saldo a favor") + aviso);
         } catch (Throwable e) {
             sessionContext.setRollbackOnly();
             throw e;
         }
+    }
+
+    /**
+     * En el asiento de la NC de compra reemplaza la cuenta de la línea HABER de gasto (que el motor toma de un grupo
+     * genérico) por la cuenta de la NC y le pone el centro de costo. Identifica la línea por la descripción que escribe
+     * el motor y, si no la encuentra, por exclusión (haber que no es IVA ni redondeo).
+     */
+    private int imponerCuentaHaberGastoNc(Long idAsiento, PlanCuenta cuenta, CentroCosto centro) {
+        List<DetalleAsiento> lineas = em.createQuery("select d from DetalleAsiento d where d.asiento.codigo = :a", DetalleAsiento.class).setParameter("a", idAsiento).getResultList();
+        int n = 0;
+        for (DetalleAsiento d : lineas) {
+            boolean haber = d.getValorHaber() != null && d.getValorHaber() > 0;
+            if (!haber) continue;
+            String c = d.getNumeroCuenta() != null ? d.getNumeroCuenta() : "";
+            boolean esGasto = DESCRIPCION_HABER_GASTO_NC_COMPRA.equals(d.getDescripcion()) || !(c.startsWith("1.9.01.90") || "4.8.90.90.35".equals(c));
+            if (!esGasto) continue;
+            d.setPlanCuenta(cuenta);
+            d.setNumeroCuenta(cuenta.getCuentaContable());
+            d.setNombreCuenta(cuenta.getNombre());
+            if (centro != null) d.setCentroCosto(centro);
+            em.merge(d);
+            n++;
+        }
+        return n;
     }
 
     @Override
@@ -1009,7 +1133,94 @@ public class CargaHistoricaDocumentoServiceImpl implements CargaHistoricaDocumen
     public ItemResultado cargarNotaCreditoVenta(Contexto ctx, NotaCreditoVentaLote n) throws Throwable {
         ItemResultado item = new ItemResultado("nc-venta", n.ref, "NC " + n.numero + " s/ " + n.facturaAfectadaNumero);
         try {
-            return item.rechazado("NC de venta: fase 3 pendiente");
+            if (n.claveAcceso == null || !n.claveAcceso.matches("\\d{49}")) return item.rechazado("clave de acceso invalida");
+            com.saa.model.cxc.NotaCredito existente = unico(em.createQuery("select x from NotaCredito x where x.clave = :c and x.estadoEmision <> 3", com.saa.model.cxc.NotaCredito.class).setParameter("c", n.claveAcceso).getResultList());
+            if (existente == null) existente = unico(em.createQuery("select x from NotaCredito x where x.numero = :n and x.facturador.empresa.codigo = :e and x.estado = 5 and x.estadoEmision <> 3", com.saa.model.cxc.NotaCredito.class)
+                    .setParameter("n", n.numero).setParameter("e", ctx.idEmpresa).getResultList());
+            if (existente != null) return item.omitido(existente.getId(), "ya existe la NC de venta " + existente.getNumero() + " (estado " + existente.getEstado() + ", asiento " + numeroAsiento(existente.getAsiento()) + ")");
+            Titular cliente = titularPorIdentificacion(n.cliente);
+            if (cliente == null) return item.rechazado("el cliente " + n.cliente + " no existe en TSR.TTLR");
+            Factura factura = facturaVentaDe(ctx, n.facturaAfectadaClave, n.facturaAfectadaNumero);
+            if (factura == null) return item.rechazado("la factura afectada " + n.facturaAfectadaNumero + " no esta cargada en CBR.FCTR (lote " + n.facturaAfectadaMes + ")");
+            Facturador facturador = facturadorDeEmpresa(ctx.idEmpresa);
+            if (facturador == null) return item.rechazado("la empresa no tiene facturador");
+            LocalDate fe = fecha(n.fechaEmision, "fechaEmision");
+            if (n.lineas == null || n.lineas.isEmpty()) return item.rechazado("sin lineas");
+            double sumaBases = 0, sumaIva = 0, base0 = 0;
+            for (LineaLote l : n.lineas) { cuentaMovimiento(ctx.idEmpresa, l.cuenta); sumaBases += nz(l.base); sumaIva += nz(l.iva); if (l.tarifa == null || l.tarifa == 0) base0 += nz(l.base); }
+            if (Math.abs(redondea(nz(n.total) - sumaBases - sumaIva)) > TOLERANCIA) return item.rechazado("bases + IVA difieren del total");
+            double saldoFactura = numero(aplicacionPagoCxcService.saldoFactura(factura.getId()).get("saldoPendiente"));
+            if (nz(n.total) > saldoFactura + TOLERANCIA) return item.rechazado("la NC " + n.total + " supera el saldo de la factura " + saldoFactura + " (el cobro ya la cerro: revisar el orden o el cobro)");
+            String[] partes = partesNumero(n.numero);
+            if (ctx.soloValidar) return item.validado("se crearia la NC de venta por " + n.total + " contra " + factura.getNumero() + " (saldo " + saldoFactura + ")");
+
+            PuntoEmision punto = puntoEmision(facturador, partes[0], partes[1], true);
+            Usuario usuario = em.find(Usuario.class, ctx.idUsuario);
+            com.saa.model.cxc.NotaCredito nc = new com.saa.model.cxc.NotaCredito();
+            nc.setTipoComprobante("04");
+            nc.setTipoDoc("04");
+            nc.setFacturador(facturador);
+            nc.setTitular(cliente);
+            nc.setNumero(n.numero);
+            nc.setNumEstablecimiento(partes[0]);
+            nc.setNumPtoEmision(partes[1]);
+            nc.setSecuencial(partes[2]);
+            nc.setAmbiente(facturador.getAmbiente() != null ? facturador.getAmbiente() : ambienteDeClave(n.claveAcceso));
+            nc.setClave(n.claveAcceso);
+            nc.setFecha(fe.atStartOfDay());
+            nc.setTipoDocModificado(TIPO_COMPROBANTE_FACTURA);
+            nc.setNumDocModificado(factura.getNumero());
+            nc.setFechaEmisionDM(factura.getFecha() != null ? factura.getFecha().atStartOfDay() : null);
+            nc.setObservacion(recortar(observacionDocumento(ctx, n.ref, "Nota de credito de venta " + n.numero + " sobre " + factura.getNumero()), 2000));
+            nc.setSubtotal(redondea(sumaBases));
+            nc.setSubcero(redondea(base0));
+            nc.setpIVA(sumaIva > 0 ? 15d : 0d);
+            nc.setvIVA(redondea(nz(n.iva) > 0 ? nz(n.iva) : sumaIva));
+            nc.setvICE(0d);
+            nc.setvIRBPNR(0d);
+            nc.setDescuento(0d);
+            nc.setPorDescuento(0d);
+            nc.setPropina(0d);
+            nc.setSubsidio(0d);
+            nc.setTotal(redondea(nz(n.total)));
+            nc.setPtoEmision(punto);
+            nc.setUsuario(usuario);
+            nc.setAutorizacion(n.claveAcceso);
+            nc.setFechaAutorizacion(fecha(nvl(n.fechaAutorizacion, n.fechaEmision), "fechaAutorizacion").atStartOfDay());
+            nc.setEstado(ESTADO_AUTORIZADA_CXC);
+            nc.setEstadoEmision(ESTADO_EMISION_OK_CXC);
+            nc.setFactura(factura);
+            em.persist(nc);
+            int i = 0;
+            for (LineaLote l : n.lineas) {
+                com.saa.model.cxc.DetalleNotaCredito d = new com.saa.model.cxc.DetalleNotaCredito();
+                d.setNotaCredito(nc);
+                d.setDescripcion(recortar(nvl(l.descripcion, "Linea " + (++i)), 500));
+                d.setCantidad(1d);
+                d.setValor(redondea(nz(l.base)));
+                d.setSubTotal(redondea(nz(l.base)));
+                d.setDescuento(0d);
+                d.setBaseImponible(redondea(nz(l.base)));
+                d.setPorcentajeIVA(l.tarifa == null ? 0L : l.tarifa.longValue());
+                d.setValorIVA(redondea(nz(l.iva)));
+                d.setPorcentajeICE(0L);
+                d.setValorICE(0d);
+                d.setTotal(redondea(nz(l.base) + nz(l.iva)));
+                d.setProducto(productoVentaParaCuenta(ctx, l.cuenta, l.tarifa).getId());
+                d.setEstado((long) Estado.ACTIVO);
+                em.persist(d);
+            }
+            em.flush();
+            String obs = recortar("Nota de crédito N° " + n.numero + " | Cliente: " + nvl(cliente.getNombre(), n.cliente) + " | Factura: " + factura.getNumero() + " | " + ctx.observacion, 2000);
+            // Mismo tipo que usa NotaCreditoServiceImpl.generarContabilidadNotaCredito (FACTURAS_VENTA): la regla automática lo reclasifica igual.
+            Asiento asiento = asientoContableService.generarAsientoNotaCredito(nc.getId(), ctx.idEmpresa, TipoAsientos.FACTURAS_VENTA, fe, obs, ctx.usuario);
+            Asiento attached = em.find(Asiento.class, asiento.getCodigo());
+            nc.setAsiento(attached != null ? attached : asiento);
+            em.merge(nc);
+            em.flush();
+            com.saa.model.cxc.AplicacionPagoCxc apl = aplicacionPagoCxcService.aplicarNotaCredito(nc, nc.getAsiento(), ctx.idEmpresa, ctx.usuario);
+            em.flush();
+            return item.creado(nc.getId(), asiento.getCodigo(), asiento.getNumeroAlterno(), "NC de venta creada y aplicada (aplicacion " + (apl != null ? apl.getId() : null) + ")");
         } catch (Throwable e) {
             sessionContext.setRollbackOnly();
             throw e;
