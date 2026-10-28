@@ -439,11 +439,16 @@ public class PrestamoRest {
     }
 
     /**
-     * C15 / D-018 (H6): contabiliza el desembolso de UN préstamo aprobado sin asiento de entrega
-     * (asiento de entrega + orden de pago confirmada con egreso y movimiento bancario), con la
-     * fecha del desembolso real del extracto. Idempotente por préstamo.
-     * Body: { idPrestamo, idEmpresa, idUsuario, usuario, fechaContable: "2025-06-12",
-     *         idCuentaBancaria, valor, referencia }
+     * C15 / D-018 (H6) + C16 / D-021: contabiliza el desembolso de UN préstamo aprobado sin asiento
+     * de entrega (asiento de entrega por el bruto + precancelación del préstamo anterior pagada con el
+     * nuevo + otros descuentos + orden de pago confirmada con egreso por el NETO), con la fecha del
+     * desembolso real del extracto. Idempotente por préstamo.
+     * Body: { idPrestamo, idEmpresa, idUsuario, usuario, fechaContable: "2025-06-09",
+     *         idCuentaBancaria, valor (NETO), referencia,
+     *         idPrestamoCancelado?, capitalCancelado?, interesCancelado?, seguroCancelado?,
+     *         otrosDescuentos?: [ { concepto, valor, cuenta } ] }
+     * Regla: monto del préstamo = valor + capital + interés + seguro + otros, al centavo.
+     * Ver docs/logica-negocio/crd/DESEMBOLSO-NETO-CON-PRECANCELACION.md.
      */
     @POST
     @Path("/contabilizarDesembolso")
@@ -454,10 +459,7 @@ public class PrestamoRest {
                 + (solicitud != null ? solicitud.getIdPrestamo() : null));
         try {
             return Response.status(Response.Status.OK)
-                    .entity(prestamoService.contabilizarDesembolsoHistorico(solicitud.getIdPrestamo(),
-                            solicitud.getIdEmpresa(), solicitud.getIdUsuario(), solicitud.getUsuario(),
-                            solicitud.getFechaContable(), solicitud.getIdCuentaBancaria(), solicitud.getValor(),
-                            solicitud.getReferencia()))
+                    .entity(contabilizarItemDesembolso(solicitud, null))
                     .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             if (e instanceof com.saa.basico.util.IncomeException) {
@@ -469,12 +471,30 @@ public class PrestamoRest {
         }
     }
 
+    /** Un ítem (unitario o del lote): los datos de cabecera del lote completan los que falten. */
+    private java.util.Map<String, Object> contabilizarItemDesembolso(SolicitudDesembolsoHistorico item,
+            LoteDesembolsoHistorico lote) throws Throwable {
+        return prestamoService.contabilizarDesembolsoHistorico(item.getIdPrestamo(),
+                item.getIdEmpresa() != null ? item.getIdEmpresa() : (lote != null ? lote.getIdEmpresa() : null),
+                item.getIdUsuario() != null ? item.getIdUsuario() : (lote != null ? lote.getIdUsuario() : null),
+                item.getUsuario() != null ? item.getUsuario() : (lote != null ? lote.getUsuario() : null),
+                item.getFechaContable(), item.getIdCuentaBancaria(), item.getValor(), item.getReferencia(),
+                item.getIdPrestamoCancelado(), item.getCapitalCancelado(), item.getInteresCancelado(),
+                item.getSeguroCancelado(), item.getOtrosDescuentos());
+    }
+
+    private static double centavos(Object valor) {
+        double v = valor instanceof Number ? ((Number) valor).doubleValue() : 0.0;
+        return java.math.BigDecimal.valueOf(v).setScale(2, java.math.RoundingMode.HALF_UP).doubleValue();
+    }
+
     /**
-     * C15 / D-018 (H6): lote. Cada préstamo en SU PROPIA transacción (una falla no tumba el
-     * resto); la respuesta trae el resultado o el error de cada uno. Idempotente: se puede volver
-     * a mandar el mismo lote.
-     * Body: { idEmpresa, idUsuario, usuario, items: [ { idPrestamo, fechaContable, idCuentaBancaria,
-     *         valor, referencia }, ... ] }
+     * C15 / D-018 (H6) + C16 / D-021: lote. Cada préstamo en SU PROPIA transacción (una falla no
+     * tumba el resto). Idempotente: se puede volver a mandar el mismo lote.
+     * Body: { idEmpresa, idUsuario, usuario, items: [ ítem de /contabilizarDesembolso, ... ] }
+     * Respuesta: { items: [ resultado o error por ítem ], controlPorReferencia: [ { referencia,
+     *   items, itemsOk, sumaNetos, sumaNetosOk } ], totales: { items, ok, error, bruto, neto,
+     *   capitalCancelado, interesCancelado, seguroCancelado, otrosDescuentos } } (totales de los ok).
      */
     @POST
     @Path("/contabilizarDesembolsos")
@@ -484,29 +504,66 @@ public class PrestamoRest {
         System.out.println("LLEGA AL SERVICIO POST prst/contabilizarDesembolsos - items: "
                 + (lote != null && lote.getItems() != null ? lote.getItems().size() : 0));
         java.util.List<java.util.Map<String, Object>> resultados = new java.util.ArrayList<>();
+        java.util.Map<String, java.util.Map<String, Object>> porReferencia = new java.util.LinkedHashMap<>();
+        java.util.Map<String, Object> totales = new java.util.LinkedHashMap<>();
+        String[] conceptos = { "bruto", "neto", "capitalCancelado", "interesCancelado", "seguroCancelado",
+                "otrosDescuentos" };
+        int ok = 0;
+        int error = 0;
+        for (String concepto : conceptos) {
+            totales.put(concepto, 0.0);
+        }
         if (lote != null && lote.getItems() != null) {
             for (SolicitudDesembolsoHistorico item : lote.getItems()) {
                 java.util.Map<String, Object> fila;
+                boolean filaOk;
                 try {
-                    fila = prestamoService.contabilizarDesembolsoHistorico(item.getIdPrestamo(),
-                            item.getIdEmpresa() != null ? item.getIdEmpresa() : lote.getIdEmpresa(),
-                            item.getIdUsuario() != null ? item.getIdUsuario() : lote.getIdUsuario(),
-                            item.getUsuario() != null ? item.getUsuario() : lote.getUsuario(),
-                            item.getFechaContable(), item.getIdCuentaBancaria(), item.getValor(), item.getReferencia());
+                    fila = contabilizarItemDesembolso(item, lote);
                     fila.put("ok", Boolean.TRUE);
+                    filaOk = true;
+                    ok++;
+                    for (String concepto : conceptos) {
+                        totales.put(concepto, centavos(centavos(totales.get(concepto)) + centavos(fila.get(concepto))));
+                    }
                 } catch (Throwable e) {
                     fila = new java.util.LinkedHashMap<>();
                     fila.put("idPrestamo", item.getIdPrestamo());
                     fila.put("ok", Boolean.FALSE);
                     fila.put("error", e.getMessage());
+                    filaOk = false;
+                    error++;
                 }
                 resultados.add(fila);
+                String referencia = item.getReferencia() != null ? item.getReferencia() : "(sin referencia)";
+                java.util.Map<String, Object> control = porReferencia.get(referencia);
+                if (control == null) {
+                    control = new java.util.LinkedHashMap<>();
+                    control.put("referencia", referencia);
+                    control.put("items", 0);
+                    control.put("itemsOk", 0);
+                    control.put("sumaNetos", 0.0);
+                    control.put("sumaNetosOk", 0.0);
+                    porReferencia.put(referencia, control);
+                }
+                control.put("items", ((Number) control.get("items")).intValue() + 1);
+                control.put("sumaNetos", centavos(centavos(control.get("sumaNetos")) + centavos(item.getValor())));
+                if (filaOk) {
+                    control.put("itemsOk", ((Number) control.get("itemsOk")).intValue() + 1);
+                    control.put("sumaNetosOk", centavos(centavos(control.get("sumaNetosOk")) + centavos(fila.get("neto"))));
+                }
             }
         }
-        return Response.status(Response.Status.OK).entity(resultados).type(MediaType.APPLICATION_JSON).build();
+        totales.put("items", ok + error);
+        totales.put("ok", ok);
+        totales.put("error", error);
+        java.util.Map<String, Object> respuesta = new java.util.LinkedHashMap<>();
+        respuesta.put("items", resultados);
+        respuesta.put("controlPorReferencia", new java.util.ArrayList<>(porReferencia.values()));
+        respuesta.put("totales", totales);
+        return Response.status(Response.Status.OK).entity(respuesta).type(MediaType.APPLICATION_JSON).build();
     }
 
-    /** C15 / D-018: un desembolso histórico a contabilizar. */
+    /** C15 / D-018 + C16 / D-021: un desembolso histórico a contabilizar. */
     public static class SolicitudDesembolsoHistorico {
         private Long idPrestamo;
         private Long idEmpresa;
@@ -514,8 +571,28 @@ public class PrestamoRest {
         private String usuario;
         private java.time.LocalDate fechaContable;
         private Long idCuentaBancaria;
+        /** C16: NETO transferido por el banco. */
         private Double valor;
         private String referencia;
+        /** C16 (D-021): préstamo anterior del mismo partícipe cancelado con este desembolso. */
+        private Long idPrestamoCancelado;
+        private Double capitalCancelado;
+        private Double interesCancelado;
+        private Double seguroCancelado;
+        private java.util.List<com.saa.ejb.crd.service.dto.DescuentoDesembolso> otrosDescuentos;
+
+        public Long getIdPrestamoCancelado() { return idPrestamoCancelado; }
+        public void setIdPrestamoCancelado(Long idPrestamoCancelado) { this.idPrestamoCancelado = idPrestamoCancelado; }
+        public Double getCapitalCancelado() { return capitalCancelado; }
+        public void setCapitalCancelado(Double capitalCancelado) { this.capitalCancelado = capitalCancelado; }
+        public Double getInteresCancelado() { return interesCancelado; }
+        public void setInteresCancelado(Double interesCancelado) { this.interesCancelado = interesCancelado; }
+        public Double getSeguroCancelado() { return seguroCancelado; }
+        public void setSeguroCancelado(Double seguroCancelado) { this.seguroCancelado = seguroCancelado; }
+        public java.util.List<com.saa.ejb.crd.service.dto.DescuentoDesembolso> getOtrosDescuentos() { return otrosDescuentos; }
+        public void setOtrosDescuentos(java.util.List<com.saa.ejb.crd.service.dto.DescuentoDesembolso> otrosDescuentos) {
+            this.otrosDescuentos = otrosDescuentos;
+        }
 
         public Long getIdPrestamo() { return idPrestamo; }
         public void setIdPrestamo(Long idPrestamo) { this.idPrestamo = idPrestamo; }

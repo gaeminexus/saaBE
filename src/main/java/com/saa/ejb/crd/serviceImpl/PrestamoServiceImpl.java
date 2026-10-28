@@ -100,6 +100,10 @@ public class PrestamoServiceImpl implements PrestamoService {
     @EJB
     private MotorPagoPrestamoService motorPagoPrestamoService;
 
+    /** C16 (D-021): precancelación del préstamo anterior pagada con el desembolso del nuevo. */
+    @EJB
+    private com.saa.ejb.crd.service.ProcesoPagoPrestamoService procesoPagoPrestamoService;
+
     @Override
     public Prestamo selectById(Long id) throws Throwable {
         System.out.println("Ingresa al selectById con id: " + id);
@@ -547,8 +551,49 @@ public class PrestamoServiceImpl implements PrestamoService {
     public Map<String, Object> contabilizarDesembolsoHistorico(Long idPrestamo, Long idEmpresa, Long idUsuario,
             String usuario, LocalDate fechaContable, Long idCuentaBancaria, Double valor, String referencia)
             throws Throwable {
+        return contabilizarDesembolsoHistorico(idPrestamo, idEmpresa, idUsuario, usuario, fechaContable,
+            idCuentaBancaria, valor, referencia, null, null, null, null, null);
+    }
+
+    private static double redondearCentavo(double valor) {
+        return java.math.BigDecimal.valueOf(valor).setScale(2, java.math.RoundingMode.HALF_UP).doubleValue();
+    }
+
+    /**
+     * C16 (D-021) — regla de cuadre del desembolso neto: bruto (monto del préstamo) = neto transferido
+     * + capital + interés + seguro de la precancelación del préstamo anterior + otros descuentos.
+     * Devuelve la diferencia {@code bruto − (neto + descuentos)} redondeada al centavo; el ítem se
+     * acepta solo si es 0,00. Pura (sin base), para poder probarla aislada.
+     */
+    static double diferenciaCuadreDesembolsoNeto(double bruto, double neto, double capitalCancelado,
+            double interesCancelado, double seguroCancelado, double otrosDescuentos) {
+        java.math.BigDecimal suma = java.math.BigDecimal.valueOf(neto)
+            .add(java.math.BigDecimal.valueOf(capitalCancelado))
+            .add(java.math.BigDecimal.valueOf(interesCancelado))
+            .add(java.math.BigDecimal.valueOf(seguroCancelado))
+            .add(java.math.BigDecimal.valueOf(otrosDescuentos));
+        return java.math.BigDecimal.valueOf(bruto).subtract(suma)
+            .setScale(2, java.math.RoundingMode.HALF_UP).doubleValue();
+    }
+
+    /**
+     * C16 (D-021) — desembolso NETO: además de lo de C15 (entrega + orden de pago con egreso), si el
+     * préstamo nuevo canceló un préstamo anterior del mismo partícipe, registra esa precancelación con
+     * el motor ({@code ProcesoPagoPrestamoService.precancelarConPrestamoNuevo}), pagada con el dinero
+     * del nuevo (DEBE socios por pagar), y los otros descuentos; la orden de pago va por el
+     * {@code valor} = NETO que transfirió el banco. Regla: bruto = neto + capital + interés + seguro +
+     * otros, al centavo. Orden: entrega (bruto) → precancelación → otros descuentos → orden (neto).
+     * Todo con {@code fechaContable}, en la transacción del ítem. Idempotente paso a paso.
+     * Ver docs/logica-negocio/crd/DESEMBOLSO-NETO-CON-PRECANCELACION.md.
+     */
+    @Override
+    public Map<String, Object> contabilizarDesembolsoHistorico(Long idPrestamo, Long idEmpresa, Long idUsuario,
+            String usuario, LocalDate fechaContable, Long idCuentaBancaria, Double valor, String referencia,
+            Long idPrestamoCancelado, Double capitalCancelado, Double interesCancelado, Double seguroCancelado,
+            List<com.saa.ejb.crd.service.dto.DescuentoDesembolso> otrosDescuentos) throws Throwable {
         System.out.println("PrestamoServiceImpl.contabilizarDesembolsoHistorico - préstamo: " + idPrestamo
-            + " - fecha: " + fechaContable + " - cuenta: " + idCuentaBancaria + " - valor: " + valor);
+            + " - fecha: " + fechaContable + " - cuenta: " + idCuentaBancaria + " - valor (neto): " + valor
+            + " - préstamo cancelado: " + idPrestamoCancelado);
         if (idPrestamo == null || idEmpresa == null || idUsuario == null || fechaContable == null) {
             throw new IncomeException("idPrestamo, idEmpresa, idUsuario y fechaContable son obligatorios.");
         }
@@ -571,14 +616,93 @@ public class PrestamoServiceImpl implements PrestamoService {
                 + " (reestructura/novación): su asiento es el del traslado, no una entrega. Fuera de alcance de este lote.");
         }
         double monto = prestamo.getMontoSolicitado() != null ? prestamo.getMontoSolicitado() : 0.0;
-        if (valor != null && Math.abs(valor - monto) > 0.01) {
-            throw new IncomeException("El valor del desembolso (" + valor + ") no coincide con el monto del préstamo "
-                + idPrestamo + " (" + monto + ").");
+
+        // C16 (D-021): componentes de la precancelación del préstamo anterior (los que falten se
+        // calculan desde CRD.DTPR; los enviados tienen que coincidir) y otros descuentos.
+        double capital = 0.0;
+        double interes = 0.0;
+        double seguro = 0.0;
+        com.saa.ejb.crd.service.dto.ResultadoPrecancelacionConPrestamo precancelacionExistente = null;
+        if (idPrestamoCancelado != null) {
+            Prestamo anterior = prestamoDaoService.find(new Prestamo(), idPrestamoCancelado);
+            if (anterior == null) {
+                throw new IncomeException("Préstamo cancelado con ID " + idPrestamoCancelado + " no encontrado");
+            }
+            Long entidadAnterior = anterior.getEntidad() != null ? anterior.getEntidad().getCodigo() : null;
+            Long entidadNuevo = prestamo.getEntidad() != null ? prestamo.getEntidad().getCodigo() : null;
+            if (entidadAnterior == null || !entidadAnterior.equals(entidadNuevo) || idPrestamoCancelado.equals(idPrestamo)) {
+                throw new IncomeException("El préstamo cancelado " + idPrestamoCancelado + " no es otro préstamo del mismo"
+                    + " partícipe que el " + idPrestamo + " (entidades " + entidadAnterior + " / " + entidadNuevo + ").");
+            }
+            precancelacionExistente = procesoPagoPrestamoService.buscarPrecancelacionConPrestamo(idPrestamoCancelado,
+                idPrestamo);
+            double capitalCalculado;
+            double interesCalculado;
+            double seguroCalculado;
+            if (precancelacionExistente != null) {
+                capitalCalculado = precancelacionExistente.getCapital();
+                interesCalculado = precancelacionExistente.getInteres();
+                seguroCalculado = precancelacionExistente.getSeguro();
+            } else {
+                com.saa.ejb.crd.service.dto.ComponentesPrecancelacionConPrestamo componentes =
+                    procesoPagoPrestamoService.calcularPrecancelacionConPrestamo(idPrestamoCancelado, fechaContable);
+                capitalCalculado = componentes.getCapital();
+                interesCalculado = componentes.getInteres();
+                seguroCalculado = componentes.getSeguro();
+            }
+            capital = capitalCancelado != null ? capitalCancelado : capitalCalculado;
+            interes = interesCancelado != null ? interesCancelado : interesCalculado;
+            seguro = seguroCancelado != null ? seguroCancelado : seguroCalculado;
+            if (Math.abs(capital - capitalCalculado) > 0.005 || Math.abs(interes - interesCalculado) > 0.005
+                    || Math.abs(seguro - seguroCalculado) > 0.005) {
+                throw new IncomeException("La precancelación enviada del préstamo " + idPrestamoCancelado + " (capital "
+                    + capital + ", interés " + interes + ", seguro " + seguro + ") no coincide con la "
+                    + (precancelacionExistente != null ? "ya registrada (evento " + precancelacionExistente.getIdEvento() + ")"
+                        : "calculada desde CRD.DTPR") + " (capital " + capitalCalculado + ", interés " + interesCalculado
+                    + ", seguro " + seguroCalculado + ").");
+            }
+        } else if ((capitalCancelado != null && Math.abs(capitalCancelado) > 0.005)
+                || (interesCancelado != null && Math.abs(interesCancelado) > 0.005)
+                || (seguroCancelado != null && Math.abs(seguroCancelado) > 0.005)) {
+            throw new IncomeException("El ítem del préstamo " + idPrestamo + " trae valores de precancelación sin"
+                + " idPrestamoCancelado.");
         }
+        double otros = 0.0;
+        if (otrosDescuentos != null) {
+            for (com.saa.ejb.crd.service.dto.DescuentoDesembolso descuento : otrosDescuentos) {
+                if (descuento == null || descuento.getValor() == null || descuento.getValor() <= 0.005
+                        || descuento.getCuenta() == null || descuento.getCuenta().trim().isEmpty()) {
+                    throw new IncomeException("Cada otro descuento del préstamo " + idPrestamo
+                        + " necesita concepto, valor > 0 y cuenta.");
+                }
+                otros += descuento.getValor();
+            }
+        }
+        // Sin valor y sin descuentos: como C15, el neto es el monto.
+        double neto = valor != null ? valor : monto - capital - interes - seguro - otros;
+        double diferencia = diferenciaCuadreDesembolsoNeto(monto, neto, capital, interes, seguro, otros);
+        if (Math.abs(diferencia) > 0.005) {
+            throw new IncomeException("El desembolso del préstamo " + idPrestamo + " no cuadra: bruto " + monto
+                + " ≠ neto " + neto + " + capital " + capital + " + interés " + interes + " + seguro " + seguro
+                + " + otros " + redondearCentavo(otros) + " (diferencia " + diferencia + ").");
+        }
+        if (neto < -0.005) {
+            throw new IncomeException("El neto del desembolso del préstamo " + idPrestamo + " es negativo (" + neto + ").");
+        }
+        neto = redondearCentavo(neto);
 
         Map<String, Object> resultado = new LinkedHashMap<>();
         resultado.put("idPrestamo", idPrestamo);
         resultado.put("idAsoprep", prestamo.getIdAsoprep());
+        resultado.put("fechaContable", fechaContable.toString());
+        resultado.put("referencia", referencia);
+        resultado.put("bruto", redondearCentavo(monto));
+        resultado.put("neto", neto);
+        resultado.put("idPrestamoCancelado", idPrestamoCancelado);
+        resultado.put("capitalCancelado", redondearCentavo(capital));
+        resultado.put("interesCancelado", redondearCentavo(interes));
+        resultado.put("seguroCancelado", redondearCentavo(seguro));
+        resultado.put("otrosDescuentos", redondearCentavo(otros));
         StringBuilder mensaje = new StringBuilder();
 
         // 1. Asiento de entrega (idempotente).
@@ -595,7 +719,48 @@ public class PrestamoServiceImpl implements PrestamoService {
             mensaje.append("Ya tenía asiento de entrega ").append(prestamo.getIdAsientoEntrega()).append(". ");
         }
 
-        // 2. Orden de pago + egreso (idempotente).
+        // 2. C16 (D-021): precancelación del préstamo anterior pagada con este desembolso (idempotente).
+        boolean precancelacionGenerada = false;
+        if (idPrestamoCancelado != null) {
+            com.saa.ejb.crd.service.dto.ResultadoPrecancelacionConPrestamo precancelacion = precancelacionExistente != null
+                ? precancelacionExistente
+                : procesoPagoPrestamoService.precancelarConPrestamoNuevo(idPrestamoCancelado, idPrestamo, idEmpresa,
+                    usuario != null ? usuario : "CUADRE", fechaContable, capital, interes, seguro,
+                    "Desembolso neto (re-proceso, extracto " + fechaContable
+                        + (referencia != null ? ", " + referencia : "") + ").");
+            precancelacionGenerada = !precancelacion.isYaExistia();
+            resultado.put("idEventoPrecancelacion", precancelacion.getIdEvento());
+            resultado.put("idAsientoPrecancelacion", precancelacion.getIdAsiento());
+            resultado.put("idsPagoPrestamoPrecancelacion", precancelacion.getIdsPagoPrestamo());
+            resultado.put("capitalFuturoPrecancelacion", precancelacion.getCapitalFuturo());
+            resultado.put("tablaPrecancelacion", precancelacion.getTabla());
+            mensaje.append(precancelacionGenerada ? "Precancelación del préstamo " : "Ya tenía la precancelación del préstamo ")
+                .append(idPrestamoCancelado).append(" (evento ").append(precancelacion.getIdEvento())
+                .append(precancelacion.getIdAsiento() != null ? ", asiento " + precancelacion.getIdAsiento() : "")
+                .append(") por ").append(precancelacion.getTotal()).append(". ");
+        }
+
+        // 3. C16 (D-021): otros descuentos del desembolso (idempotente por la marca en la observación).
+        if (otrosDescuentos != null && !otrosDescuentos.isEmpty()) {
+            String marcaDescuentos = "[D-021 otros descuentos del desembolso: asiento ";
+            String observacionActual = prestamo.getObservacion() != null ? prestamo.getObservacion() : "";
+            int posicion = observacionActual.indexOf(marcaDescuentos);
+            if (posicion >= 0) {
+                mensaje.append("Ya tenía el asiento de otros descuentos. ");
+            } else {
+                Long idAsientoDescuentos = contabilidadPrestamoService.contabilizarDescuentosDesembolso(prestamo, idEmpresa,
+                    fechaContable, otrosDescuentos, usuario);
+                resultado.put("idAsientoOtrosDescuentos", idAsientoDescuentos);
+                if (idAsientoDescuentos != null) {
+                    prestamo.setObservacion(concatenarObservacion(prestamo.getObservacion(),
+                        marcaDescuentos + idAsientoDescuentos + "]"));
+                }
+                mensaje.append("Otros descuentos ").append(redondearCentavo(otros))
+                    .append(idAsientoDescuentos != null ? " (asiento " + idAsientoDescuentos + ")" : "").append(". ");
+            }
+        }
+
+        // 4. Orden de pago + egreso por el NETO (idempotente).
         boolean pagoGenerado = false;
         List<com.saa.model.cxp.PagoProgramado> vigentes = pagoProgramadoDaoService.selectVigentesByOrigen(
             OrigenPagoExterno.CRD_DESEMBOLSO_PRESTAMO, idPrestamo);
@@ -607,11 +772,13 @@ public class PrestamoServiceImpl implements PrestamoService {
                 .append(": no se crea otra (su egreso se gestiona en tesorería).");
         } else if (idCuentaBancaria == null) {
             mensaje.append("Sin cuenta bancaria: no se genera la orden de pago ni el egreso.");
+        } else if (neto <= 0.005) {
+            mensaje.append("Neto 0: todo el desembolso se fue en descuentos, no hay orden de pago.");
         } else {
-            List<LineaContablePago> desglose = armarDesgloseEntrega(prestamo, monto, idEmpresa);
+            List<LineaContablePago> desglose = armarDesgloseEntrega(prestamo, neto, idEmpresa);
             BeneficiarioOcasional beneficiario = armaBeneficiarioPrestamo(prestamo.getEntidad());
             Map<String, Object> respuesta = pagoProgramadoService.registrarPagoDeOrigenExterno(
-                OrigenPagoExterno.CRD_DESEMBOLSO_PRESTAMO, idPrestamo, idEmpresa, idCuentaBancaria, monto,
+                OrigenPagoExterno.CRD_DESEMBOLSO_PRESTAMO, idPrestamo, idEmpresa, idCuentaBancaria, neto,
                 fechaContable.toString(), beneficiario, desglose,
                 "Desembolso préstamo N° " + prestamo.getCodigo() + " (re-proceso, extracto " + fechaContable + ")",
                 idUsuario, true, referencia);
@@ -630,6 +797,7 @@ public class PrestamoServiceImpl implements PrestamoService {
         resultado.put("idAsientoEntrega", prestamo.getIdAsientoEntrega());
         resultado.put("idPagoProgramado", prestamo.getIdPagoProgramado());
         resultado.put("entregaGenerada", entregaGenerada);
+        resultado.put("precancelacionGenerada", precancelacionGenerada);
         resultado.put("pagoGenerado", pagoGenerado);
         resultado.put("mensaje", mensaje.toString().trim());
         return resultado;
