@@ -1136,4 +1136,41 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 		return (LocalDateTime) query.getSingleResult();
 	}
 
+	@Override
+	@SuppressWarnings("unchecked")
+	public List<Aporte> selectVigentesLegadoPorGlosaCarga(Long idCarga) throws Throwable {
+		System.out.println("AporteDaoServiceImpl.selectVigentesLegadoPorGlosaCarga - Carga: " + idCarga);
+
+		// Sin try/catch a propósito: es la base de una anulación (reproceso de carga). Un error
+		// que devolviera lista vacía dejaría los aportes viejos vivos debajo de los nuevos.
+		Query query = em.createQuery(
+			" select a from Aporte a " +
+			" where  a.idAsoprep is null " +
+			"   and  a.cargaArchivo is null " +
+			"   and  a.glosa like :patron " +
+			"   and  (a.tipoMovimiento is null or a.tipoMovimiento <> :reverso) " +
+			"   and  (a.estado is null or a.estado <> 0) " +
+			" order by a.codigo "
+		);
+		query.setParameter("patron", "%CargaArchivo: " + idCarga);
+		query.setParameter("reverso", (long) CrdTipoMovimientoAporte.REVERSO);
+		List<Aporte> resultados = query.getResultList();
+		System.out.println("  Aportes del esquema viejo de la carga: " + resultados.size());
+		return resultados;
+	}
+
+	@Override
+	public Integer selectMaxCorridaReproceso(Long idCarga) throws Throwable {
+		System.out.println("AporteDaoServiceImpl.selectMaxCorridaReproceso - Carga: " + idCarga);
+
+		Query query = em.createNativeQuery(
+			" select max(to_number(regexp_substr(a.APRTGLSA, 'corrida (\\d+)', 1, 1, null, 1))) " +
+			" from   CRD.APRT a " +
+			" where  a.APRTGLSA like :patron "
+		);
+		query.setParameter("patron", "REPROCESO carga " + idCarga + " corrida %");
+		Object resultado = query.getSingleResult();
+		return resultado != null ? Integer.valueOf(((Number) resultado).intValue()) : null;
+	}
+
 }

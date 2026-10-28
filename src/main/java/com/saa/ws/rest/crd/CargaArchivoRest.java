@@ -3,11 +3,16 @@ package com.saa.ws.rest.crd;
 import java.util.List;
 
 import com.saa.basico.util.DatosBusqueda;
+import com.saa.basico.util.IncomeException;
 import com.saa.ejb.asoprep.service.CargaArchivoPetroService;
+import com.saa.ejb.asoprep.service.ReprocesoCargaPetroService;
 import com.saa.ejb.crd.dao.CargaArchivoDaoService;
 import com.saa.ejb.crd.service.CargaArchivoService;
+import com.saa.ejb.crd.service.dto.ResultadoReprocesoCargaPetro;
+import com.saa.ejb.crd.service.dto.SolicitudReprocesoCargaPetro;
 import com.saa.model.crd.CargaArchivo;
 import com.saa.model.crd.NombreEntidadesCredito;
+import com.saa.ws.rest.files.FileResponse;
 
 import jakarta.ejb.EJB;
 import jakarta.ws.rs.Consumes;
@@ -34,7 +39,11 @@ public class CargaArchivoRest {
     
     @EJB
     private CargaArchivoPetroService cargaArchivoPetroService;
-    
+
+    /** Cuadre Superintendencia, cambio C4: reproceso de una carga ya aplicada. */
+    @EJB
+    private ReprocesoCargaPetroService reprocesoCargaPetroService;
+
     @Context
     private UriInfo context;
 
@@ -117,6 +126,39 @@ public class CargaArchivoRest {
             respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
         return respuesta;
+    }
+
+    /**
+     * Reprocesa una carga Petro YA APLICADA (cuadre Superintendencia, cambio C4): anula la
+     * aplicación anterior (pagos, aportes y asientos de reparto/aplicación, con trazabilidad,
+     * sin borrar) y vuelve a correr la fase 3 vigente fechada al último día del mes de la carga.
+     * Diseño y criterio de aceptación: {@code docs/logica-negocio/petro/REPROCESO-CARGA-PETRO.md}.
+     *
+     * Body: {@code {"usuario": "...", "ip": "...", "motivo": "..."}} — usuario y motivo obligatorios.
+     * 409 con el motivo exacto si una precondición de negocio falla (carga sin recepción
+     * confirmada, valores sin destino, descuadre recibido/aplicado); nada queda grabado.
+     */
+    @POST
+    @Path("/reprocesar/{idCarga}")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response reprocesar(@PathParam("idCarga") Long idCarga, SolicitudReprocesoCargaPetro solicitud) {
+        System.out.println("REST: REPROCESAR CARGA PETRO - Carga: " + idCarga);
+        try {
+            ResultadoReprocesoCargaPetro resultado = reprocesoCargaPetroService.reprocesar(idCarga, solicitud);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (IncomeException e) {
+            System.err.println("Carga no reprocesada: " + e.getMessage());
+            return Response.status(Response.Status.CONFLICT)
+                    .entity(new FileResponse(false, e.getMessage(), null))
+                    .type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            System.err.println("ERROR al reprocesar la carga Petro " + idCarga + ":");
+            e.printStackTrace();
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity(new FileResponse(false, "Error al reprocesar la carga: " + e.getMessage(), null))
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
     }
 
     @DELETE

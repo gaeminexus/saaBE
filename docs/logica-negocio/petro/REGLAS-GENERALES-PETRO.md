@@ -2,8 +2,10 @@
 
 **Documento consolidado y verificado contra el código fuente al 2026-08-13.**
 
-Este archivo, junto con [REGLAS-CARGA-PETRO.md](REGLAS-CARGA-PETRO.md) y
-[REGLAS-GENERACION-PETRO.md](REGLAS-GENERACION-PETRO.md), es la **referencia vigente** del módulo.
+Este archivo, junto con [REGLAS-CARGA-PETRO.md](REGLAS-CARGA-PETRO.md),
+[REGLAS-GENERACION-PETRO.md](REGLAS-GENERACION-PETRO.md) y, desde el 2026-10-28,
+[REPROCESO-CARGA-PETRO.md](REPROCESO-CARGA-PETRO.md) (reproceso de una carga ya aplicada), es la
+**referencia vigente** del módulo.
 Consolida y reemplaza a los ~29 `.md` históricos (`PROCESO-*`, `CORRECCION-*`, `REVISION_*`,
 `CERTIFICACION_*`, etc.) que vivían en esta carpeta y fueron eliminados el 2026-08-13: documentaban
 correcciones puntuales, se contradecían entre sí y usaban códigos de estado obsoletos. Si hace
@@ -48,6 +50,7 @@ cascada local nunca tuvo componente de mora). Ver el detalle en
 | Carga + aplicación de pagos (vigente) | `com.saa.ejb.asoprep.serviceImpl.CargaArchivoPetroServiceImpl` (`@Stateful`) | ~3.750 líneas. Fases 1, 2 y 3 |
 | Procesamiento alterno "FASE 2" | `com.saa.ejb.crd.serviceImpl.ProcesoCargaPetroServiceImpl` (`@Stateless`) | Vía paralela **incompleta** (aportes con `TODO`, `esAporte=false` fijo). Registra en `CRD.PRCA`. Endpoint `/asgn/procesarCargaPetro/{id}`. El flujo productivo es `aplicarPagosArchivoPetro` |
 | Generación del archivo | `com.saa.ejb.crd.serviceImpl.GeneracionArchivoPetroServiceImpl` (`@Stateless`) | Incluye formatos por filial y ciclo de vida GNAP |
+| **Reproceso de una carga ya aplicada** (2026-10-28) | `com.saa.ejb.asoprep.serviceImpl.ReprocesoCargaPetroServiceImpl` (`@Stateless`) | Anula con trazabilidad pagos/aportes/asientos de la aplicación anterior y vuelve a correr la fase 3 en modo reproceso. Doc: [REPROCESO-CARGA-PETRO.md](REPROCESO-CARGA-PETRO.md) |
 | REST carga | `com.saa.ws.rest.asoprep.AsoprepGenerales` (`@Path("asgn")`), `com.saa.ws.rest.crd.CargaArchivoRest` (`@Path("crar")`) | |
 | REST generación | `com.saa.ws.rest.crd.GeneracionArchivoPetroRest` (`@Path("gnap")`) | |
 
@@ -174,6 +177,12 @@ POST /rest/asgn/upload/custom
 ```
 
 ### Cabecera de carga — `@Path("crar")` (CRUD estándar + `GET /rest/crar/getByAnio/{anio}`)
+```
+POST /rest/crar/reprocesar/{idCarga}        body {usuario, ip, motivo}. Reproceso de una carga YA aplicada
+                                            (anula + re-aplica, una transacción). 409 si falta el paso 1
+                                            (recepción confirmada) o una precondición de la fase 3.
+                                            Ver REPROCESO-CARGA-PETRO.md
+```
 
 ### Generación — `@Path("gnap")` (`GeneracionArchivoPetroRest`)
 ```

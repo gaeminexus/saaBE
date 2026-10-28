@@ -214,6 +214,26 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
     private List<String> novedadesGeneradasCargaActual = new ArrayList<>();
 
     /**
+     * MODO REPROCESO (cuadre Superintendencia, cambio C4 — {@code REPROCESO-CARGA-PETRO.md}).
+     * Lo enciende únicamente {@link #aplicarPagosArchivoPetroReproceso} mientras corre la fase 3
+     * de una carga que {@code ReprocesoCargaPetroService} acaba de anular, y lo apaga al salir
+     * (también si falla). Cambia exactamente cuatro cosas, todas marcadas con
+     * {@code if (modoReproceso)} en el código: no se valida el orden cronológico; un rol Petro
+     * sin partícipe NO aborta ni se omite en silencio (queda en {@code sinParticipeCargaActual}
+     * y su monto se descuenta del recibido en {@link #validarRecibidoIgualAplicado}); esa misma
+     * novedad no bloquea en {@link #buscarValoresSinDestino}; y no se toca el estado del
+     * partícipe ({@code evaluarMoraPorFaltaDeAporte}/{@code restaurarActivoPorPago}).
+     * Fuera de ese modo el comportamiento es byte a byte el de antes.
+     *
+     * Seguro como campo de instancia por la misma razón que las dos listas de arriba: la clase
+     * es {@code @Stateful}, una instancia por sesión.
+     */
+    private boolean modoReproceso = false;
+    private String etiquetaReproceso = null;
+    private List<String> sinParticipeCargaActual = new ArrayList<>();
+    private double montoSinParticipeCargaActual = 0.0;
+
+    /**
      * §16 (2026-09-03, revalidación de carga): qué (fila PXCA, tipoNovedad) confirmó
      * {@code registrarNovedad} durante UNA corrida de {@link #revalidarCarga}, para poder
      * distinguir "el código actual todavía produce esta novedad" (se reconfirmó — sigue en este
@@ -1246,6 +1266,11 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 		// Reset AL ENTRAR, no al salir — ver el javadoc de los campos.
 		advertenciasVigenciaCargaActual.clear();
 		novedadesGeneradasCargaActual.clear();
+		sinParticipeCargaActual.clear();
+		montoSinParticipeCargaActual = 0.0;
+		if (modoReproceso) {
+			System.out.println("=== MODO REPROCESO: " + etiquetaReproceso + " ===");
+		}
 
 		try {
 			// 1. Obtener el CargaArchivo
@@ -1269,8 +1294,13 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 			// ==========================================
 			// VALIDACIÓN: Solo se puede procesar la carga del siguiente mes
 			// al último mes procesado (estado 3)
+			// MODO REPROCESO (C4): se reprocesa una carga pasada con cargas posteriores ya en
+			// estado 3 — el orden cronológico lo garantiza el operador (se reprocesa de la más
+			// antigua a la más nueva), no esta validación.
 			// ==========================================
-			validarOrdenProcesamiento(cargaArchivo);
+			if (!modoReproceso) {
+				validarOrdenProcesamiento(cargaArchivo);
+			}
 			// ==========================================
 
 			// ==========================================
@@ -1422,14 +1452,15 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 								// que NO abortó la carga a propósito — contarlo aparte de
 								// totalExitosos para que no quede invisible en el resumen.
 								int advertenciasAntes = advertenciasVigenciaCargaActual.size()
-									+ novedadesGeneradasCargaActual.size();
+									+ novedadesGeneradasCargaActual.size() + sinParticipeCargaActual.size();
 								int aportesCreados = aplicarAporteAH(participe, cargaArchivo, esperadoEnLoteAportes,
 								entidadesCubiertasAportes);
 								totalAportesGenerados += aportesCreados;
 								if (aportesCreados > 0) {
 									totalExitosos++;
 								} else if (advertenciasVigenciaCargaActual.size()
-										+ novedadesGeneradasCargaActual.size() > advertenciasAntes) {
+										+ novedadesGeneradasCargaActual.size()
+										+ sinParticipeCargaActual.size() > advertenciasAntes) {
 									totalAdvertencias++;
 								}
 							} else if (CODIGO_PRODUCTO_HS.equalsIgnoreCase(codigoProducto)) {
@@ -1476,6 +1507,12 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 			resumenBuilder.append(formateaListaResumen(
 				"Advertencias (contrato activo, vigencia no cubre el mes — no requieren acción inmediata)",
 				advertenciasVigenciaCargaActual));
+			if (modoReproceso) {
+				resumenBuilder.append(formateaListaResumen(
+					"Roles Petro sin partícipe en el SAA (" + etiquetaReproceso + " — NO aplicados, $"
+						+ String.format("%,.2f", montoSinParticipeCargaActual) + " descontados del recibido)",
+					sinParticipeCargaActual));
+			}
 			String resumen = resumenBuilder.toString();
 			
 			System.out.println(resumen);
@@ -1510,6 +1547,60 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 			e.printStackTrace();
 			throw e;
 		}
+	}
+
+	/**
+	 * @see CargaArchivoPetroService#aplicarPagosArchivoPetroReproceso
+	 *
+	 * Enciende {@link #modoReproceso} alrededor de {@link #aplicarPagosArchivoPetro} y lo apaga
+	 * SIEMPRE al salir (éxito o fallo): es un campo de instancia de un bean {@code @Stateful} y
+	 * la próxima llamada normal no puede heredar el modo. Misma transacción que el llamador
+	 * (REQUIRED): la anulación que hizo {@code ReprocesoCargaPetroService} y esta re-aplicación
+	 * se confirman o revierten juntas.
+	 */
+	@Override
+	@TransactionAttribute(TransactionAttributeType.REQUIRED)
+	public Map<String, Object> aplicarPagosArchivoPetroReproceso(Long codigoCargaArchivo, String etiquetaCorrida)
+			throws Throwable {
+		System.out.println("=== APLICACIÓN DE PAGOS EN MODO REPROCESO - Carga: " + codigoCargaArchivo
+			+ " - " + etiquetaCorrida + " ===");
+		modoReproceso = true;
+		etiquetaReproceso = etiquetaCorrida != null ? etiquetaCorrida : ("REPROCESO carga " + codigoCargaArchivo);
+		try {
+			String resumen = aplicarPagosArchivoPetro(codigoCargaArchivo);
+			Map<String, Object> resultado = new LinkedHashMap<>();
+			resultado.put("resumen", resumen);
+			resultado.put("sinParticipe", new ArrayList<>(sinParticipeCargaActual));
+			resultado.put("filasSinParticipe", Integer.valueOf(sinParticipeCargaActual.size()));
+			resultado.put("montoSinParticipe", Double.valueOf(Math.round(montoSinParticipeCargaActual * 100.0) / 100.0));
+			return resultado;
+		} finally {
+			modoReproceso = false;
+			etiquetaReproceso = null;
+		}
+	}
+
+	/**
+	 * MODO REPROCESO: deja constancia de una fila PXCA cuyo rol Petro no existe en CRD.ENTD —
+	 * novedad {@code PARTICIPE_NO_ENCONTRADO} en transacción propia (idempotente por
+	 * (fila, tipo), con {@code montoEsperado = 0} y {@code montoRecibido = monto}, misma
+	 * convención que §1.4.3 de REGLAS-CARGA-PETRO.md), una línea en el resumen y el monto
+	 * acumulado para descontarlo del recibido en {@link #validarRecibidoIgualAplicado}.
+	 * Fuera del modo reproceso no se llama nunca.
+	 */
+	private void registrarSinParticipeReproceso(ParticipeXCargaArchivo participe, String codigoProducto,
+			double monto, CargaArchivo cargaArchivo) {
+		registradorNovedadTransaccionPropia.registrarEnTransaccionPropia(participe,
+			ASPNovedadesCargaArchivo.PARTICIPE_NO_ENCONTRADO,
+			etiquetaReproceso + ": el rol Petro " + participe.getCodigoPetro() + " no existe en el SAA (producto "
+				+ codigoProducto + ", $" + String.format("%.2f", monto) + " descontados en la carga "
+				+ cargaArchivo.getCodigo() + "). No se aplicó; requiere decisión (crear el partícipe o devolver).",
+			null, null, 0.0, monto);
+		sinParticipeCargaActual.add("Rol " + participe.getCodigoPetro() + " (" + codigoProducto + "): $"
+			+ String.format("%,.2f", monto) + " sin partícipe en el SAA");
+		montoSinParticipeCargaActual += monto;
+		System.out.println("⚠️ " + etiquetaReproceso + " - Rol " + participe.getCodigoPetro() + " sin partícipe ("
+			+ codigoProducto + ", $" + monto + "): no se aplica, queda como novedad.");
 	}
 
 	/**
@@ -1686,6 +1777,14 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 					novedadParticipeCargaDaoService.selectByParticipe(participe.getCodigo());
 
 				List<Long> novedadesSinResolver = novedadesQueRequierenAfectacion(participe, novedades, codigoFilial);
+				if (modoReproceso) {
+					// MODO REPROCESO (C4): el rol sin partícipe no bloquea la carga — la fase 3
+					// lo reporta como novedad y lo descuenta del recibido (ver
+					// registrarSinParticipeReproceso). Cualquier OTRA novedad bloqueante sigue
+					// bloqueando exactamente igual.
+					novedadesSinResolver.removeIf(tipo -> tipo != null
+						&& tipo.intValue() == ASPNovedadesCargaArchivo.PARTICIPE_NO_ENCONTRADO);
+				}
 				if (novedadesSinResolver.isEmpty()) {
 					// El proceso automático sabe qué hacer con este valor.
 					continue;
@@ -1870,6 +1969,15 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 			+ idCarga + ") ===");
 
 		double recibido = transferenciaCargaPetroDaoService.sumaValorVigentesByCarga(idCarga);
+		String notaReproceso = "";
+		if (modoReproceso && montoSinParticipeCargaActual > 0.0) {
+			// MODO REPROCESO (C4): lo descontado a roles Petro sin partícipe en el SAA no se
+			// aplicó a propósito (quedó como novedad) — se resta del recibido para que el
+			// invariante compare contra lo que SÍ tenía dónde aplicarse.
+			recibido = recibido - montoSinParticipeCargaActual;
+			notaReproceso = " (recibido neto de $" + String.format("%,.2f", montoSinParticipeCargaActual)
+				+ " de " + sinParticipeCargaActual.size() + " fila(s) sin partícipe, " + etiquetaReproceso + ")";
+		}
 
 		double aplicadoPrestamos = 0.0;
 		List<PagoPrestamo> pagosVigentes = pagoPrestamoDaoService.selectVigentesByCargaArchivo(idCarga);
@@ -1890,14 +1998,14 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 
 		if (Math.abs(diferencia) <= TOLERANCIA_INVARIANTE) {
 			System.out.println("✅ Recibido $" + String.format("%,.2f", recibido) + " == Aplicado $"
-				+ String.format("%,.2f", aplicado) + " (carga " + idCarga + ")");
+				+ String.format("%,.2f", aplicado) + " (carga " + idCarga + ")" + notaReproceso);
 			return;
 		}
 
 		StringBuilder mensaje = new StringBuilder();
 		mensaje.append("No se generan los asientos de la carga ").append(idCarga)
 		       .append(": el asiento no cuadraría con el dinero recibido. Recibido (transferencias) $")
-		       .append(String.format("%,.2f", recibido))
+		       .append(String.format("%,.2f", recibido)).append(notaReproceso)
 		       .append(", aplicado $").append(String.format("%,.2f", aplicado))
 		       .append(" (préstamos $").append(String.format("%,.2f", aplicadoPrestamos))
 		       .append(" + aportes $").append(String.format("%,.2f", aplicadoAportes)).append(")")
@@ -3258,6 +3366,14 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 		List<Entidad> entidades = entidadDaoService.selectByCodigoPetro(participe.getCodigoPetro());
 		if (entidades == null || entidades.isEmpty()) {
 			System.out.println("⚠️ PROCESAMIENTO OMITIDO - No se encontró entidad con código Petro: " + participe.getCodigoPetro());
+			if (modoReproceso) {
+				// MODO REPROCESO (C4): no se omite en silencio — queda como novedad y se
+				// descuenta del recibido. El monto incluye el HS del mismo partícipe cuando
+				// corresponde a esta fila (montoConHsMergeado), porque ese HS tampoco se va a
+				// aplicar por ningún otro camino.
+				registrarSinParticipeReproceso(participe, codigoProducto,
+					montoConHsMergeado(participe, codigoProducto, cargaArchivo), cargaArchivo);
+			}
 			return;
 		}
 		Entidad entidad = entidades.get(0);
@@ -3444,6 +3560,12 @@ private boolean procesarSeguroIncendioHuerfano(ParticipeXCargaArchivo participeH
 
 	List<Entidad> entidades = entidadDaoService.selectByCodigoPetro(participeHS.getCodigoPetro());
 	if (entidades == null || entidades.isEmpty()) {
+		if (modoReproceso) {
+			// MODO REPROCESO (C4): HS huérfano de un rol sin partícipe — misma constancia y
+			// mismo descuento del recibido que las demás filas sin partícipe.
+			registrarSinParticipeReproceso(participeHS, CODIGO_PRODUCTO_HS, montoHS, cargaArchivo);
+			return true;
+		}
 		// §15: transacción PROPIA — esta novedad debe sobrevivir aunque la red del §11 revierta
 		// aplicarPagosArchivoPetro más adelante.
 		registradorNovedadTransaccionPropia.registrarEnTransaccionPropia(participeHS, ASPNovedadesCargaArchivo.PRESTAMO_NO_ENCONTRADO,
@@ -4864,6 +4986,14 @@ private int aplicarAporteAH(ParticipeXCargaArchivo participe, CargaArchivo carga
 	// decidir en pantalla, aborta toda la carga (decisión del usuario, 2026-08-31).
 	List<Entidad> entidades = entidadDaoService.selectByCodigoPetro(participe.getCodigoPetro());
 	double montoDescontadoSinEntidad = nullSafe(participe.getTotalDescontado());
+	if ((entidades == null || entidades.isEmpty()) && modoReproceso) {
+		// MODO REPROCESO (C4): el rol Petro no está en el SAA (medido en la carga 352: 14
+		// filas, $4.872,04, 7 de ellas AH). Abortar una carga histórica por un partícipe que
+		// no existe no tiene a quién pedirle nada: queda como novedad, no se aplica, y el
+		// invariante recibido == aplicado lo descuenta del recibido.
+		registrarSinParticipeReproceso(participe, CODIGO_PRODUCTO_APORTES, montoDescontadoSinEntidad, cargaArchivo);
+		return 0;
+	}
 	if (entidades == null || entidades.isEmpty()) {
 		throw new IncomeException("No se encontró la entidad del partícipe con código Petro "
 			+ participe.getCodigoPetro() + " (nombre en el archivo: \"" + participe.getNombre()
@@ -4878,12 +5008,18 @@ private int aplicarAporteAH(ParticipeXCargaArchivo participe, CargaArchivo carga
 		System.out.println("⚠️ Monto recibido es $0 para partícipe: " + participe.getCodigoPetro());
 		// Sin descuento este mes: revisar si tampoco lo hubo en el periodo
 		// anterior. Dos periodos seguidos sin aportar => ACTIVO EN MORA.
-		evaluarMoraPorFaltaDeAporte(entidad, cargaArchivo);
+		// MODO REPROCESO (C4): no se toca el estado del partícipe — el estado de hoy no se
+		// decide con el aporte de un mes pasado; el historial de estados se reconstruye aparte.
+		if (!modoReproceso) {
+			evaluarMoraPorFaltaDeAporte(entidad, cargaArchivo);
+		}
 		return 0;
 	}
 
-	// Llegó pago: si venía en mora, se pone al día.
-	restaurarActivoPorPago(entidad, montoRecibido);
+	// Llegó pago: si venía en mora, se pone al día (no en modo reproceso, mismo motivo).
+	if (!modoReproceso) {
+		restaurarActivoPorPago(entidad, montoRecibido);
+	}
 
 	System.out.println("📥 Monto total recibido: $" + montoRecibido);
 

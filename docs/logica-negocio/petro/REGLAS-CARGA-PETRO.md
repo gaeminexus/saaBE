@@ -228,6 +228,10 @@ Se excluye únicamente el producto `HS`. Las novedades de esta fase se registran
    explícitamente a la propia carga de la comparación de orden ("no validar contra sí
    misma"), así que el orden cronológico por sí solo no detectaba el reproceso. Correrla de
    nuevo duplicaba aportes y pagos de préstamos con el mismo `PGAP`/transferencia real.
+   **Desde el 2026-10-28 existe el camino controlado para volver a correr una carga ya
+   aplicada:** `ReprocesoCargaPetroService` (§7 y [REPROCESO-CARGA-PETRO.md](REPROCESO-CARGA-PETRO.md)),
+   que primero anula con trazabilidad lo que la carga generó y la devuelve a estado 2 — esta
+   precondición sigue intacta para la llamada directa.
 0b. **Cobro confirmado por contabilidad** (agregado 2026-08-28, regla 11 de §5 de
    `LEVANTAMIENTO-ALIMENTACION-CONTABLE-CREDITOS.md`): si
    `cargaArchivo.getFechaAutorizacionContabilidad() == null` (`CRARFCAC`) →
@@ -238,6 +242,7 @@ Se excluye únicamente el producto `HS`. Las novedades de esta fase se registran
    saldría antes del que lo alimenta y la transitoria quedaría en negativo. Ver §6.
 1. **Orden cronológico**: solo se puede procesar la carga del **mes consecutivo siguiente** a la
    última carga con estado 3 (`validarOrdenProcesamiento`). La primera carga no tiene restricción.
+   **No se evalúa en modo reproceso** (§7): ahí el orden lo garantiza el operador.
 2. **Todo valor descontado debe tener destino** (`validarValoresConDestino`): un registro bloquea si
    - tiene `totalDescontado > $0.01`, y
    - tiene alguna novedad de la lista `NOVEDADES_REQUIEREN_AFECTACION_MANUAL`
@@ -480,7 +485,7 @@ tratamientos, según **si se sabe a quién pertenece el dinero y si esa persona 
 
 | Situación | Tratamiento | Dónde |
 |---|---|---|
-| **Sin entidad** (código Petro no está en el padrón) | **ABORTA** — no se sabe a quién pertenece el dinero, nada que decidir en pantalla | `aplicarAporteAH` |
+| **Sin entidad** (código Petro no está en el padrón) | **ABORTA** — no se sabe a quién pertenece el dinero, nada que decidir en pantalla. **En modo reproceso (§7) NO aborta:** novedad `PARTICIPE_NO_ENCONTRADO`, no se aplica, y el monto se descuenta del recibido | `aplicarAporteAH` |
 | **Sin contrato ACTIVO** | **ABORTA** — dato faltante | `distribuirAportePorDevengo` |
 | Sin `HistorialSueldo` activo (estado 99) | **NOVEDAD** — se sabe quién es, falta decidir la cuenta | `aplicarAporteAH` |
 | `HistorialSueldo` activo con jubilación y cesantía esperadas en $0 | **NOVEDAD** — ídem | `aplicarAporteAH` |
@@ -646,6 +651,26 @@ jubilación y/o cesantía según `VigenciaContratoService.esperadoPorEntidad` co
 CARGA de la novedad (no el mes actual), con el saldo actual de cada tipo. Lista vacía = el
 partícipe no tiene ningún tipo vigente ese mes (no es error). El guardado reusa
 `POST /rest/avpc/batch` existente, con `tipoAporte` en vez de `prestamo`/`detallePrestamo`.
+
+## 7. Reproceso de una carga ya aplicada (2026-10-28, cuadre Superintendencia C4)
+
+Documento propio: [REPROCESO-CARGA-PETRO.md](REPROCESO-CARGA-PETRO.md). Resumen de lo que cambia
+en ESTA clase:
+
+- `CargaArchivoPetroService.aplicarPagosArchivoPetroReproceso(idCarga, etiqueta)` enciende el campo
+  `modoReproceso` del bean `@Stateful`, llama al mismo `aplicarPagosArchivoPetro` y lo apaga en
+  `finally`. **Solo lo invoca `ReprocesoCargaPetroService`**, después de anular pagos, aportes y
+  asientos de la aplicación anterior y de devolver la carga a `CONFIRMADO_CONTABILIDAD` (2).
+- En modo reproceso, y solo ahí: (1) no corre `validarOrdenProcesamiento`; (2) un rol Petro sin
+  entidad no aborta (`aplicarAporteAH`) ni se omite en silencio (`aplicarPagoParticipe`,
+  `procesarSeguroIncendioHuerfano`) — `registrarSinParticipeReproceso` deja la novedad tipo 1,
+  una línea en el resumen y acumula el monto (con el HS mergeado para PH/PP); (3)
+  `buscarValoresSinDestino` ignora la novedad tipo 1 (las demás bloqueantes siguen bloqueando);
+  (4) `validarRecibidoIgualAplicado` compara contra transferencias − monto sin partícipe; (5)
+  no se llama a `evaluarMoraPorFaltaDeAporte` ni `restaurarActivoPorPago`.
+- Fecha de efecto: la misma de siempre (último día del mes de la carga) en pagos, aportes,
+  `PagoAporte` y los tres asientos — verificado el 2026-10-28, no hizo falta agregar nada.
+- Fuera del modo reproceso el comportamiento es idéntico al descrito en §1–§6.
 
 ## 4. Vía alterna: `ProcesoCargaPetroServiceImpl` (crd) — parcialmente implementada
 

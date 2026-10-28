@@ -379,4 +379,42 @@ public class PagoPrestamoDaoServiceImpl extends EntityDaoImpl<PagoPrestamo> impl
 		return resultados;
 	}
 
+	@Override
+	@SuppressWarnings("unchecked")
+	public List<PagoPrestamo> selectVigentesLegadoPorObservacionCarga(Long idCarga) throws Throwable {
+		System.out.println("PagoPrestamoDaoService.selectVigentesLegadoPorObservacionCarga - Carga: " + idCarga);
+
+		// Sin try/catch a propósito: es la base de una anulación (reproceso de carga). Un error
+		// que devolviera lista vacía dejaría la aplicación vieja viva debajo de la nueva.
+		Query query = em.createQuery(
+			"SELECT p " +
+			"FROM PagoPrestamo p " +
+			"WHERE p.cargaArchivo IS NULL " +
+			"AND (p.anulado IS NULL OR p.anulado = 0) " +
+			"AND p.observacion LIKE :patron " +
+			"ORDER BY p.codigo ASC"
+		);
+		query.setParameter("patron", "%[CargaArchivo: " + idCarga + "]%");
+
+		List<PagoPrestamo> resultados = query.getResultList();
+		System.out.println("  Pagos vigentes del esquema viejo de la carga: " + resultados.size());
+		return resultados;
+	}
+
+	@Override
+	public Integer selectMaxCorridaReproceso(Long idCarga) throws Throwable {
+		System.out.println("PagoPrestamoDaoService.selectMaxCorridaReproceso - Carga: " + idCarga);
+
+		// Nativo: REGEXP_SUBSTR no existe en JPQL. La etiqueta es fija
+		// ("REPROCESO carga N corrida M - motivo"), se extrae el M.
+		Query query = em.createNativeQuery(
+			" SELECT MAX(TO_NUMBER(REGEXP_SUBSTR(p.PGPRMTAN, 'corrida (\\d+)', 1, 1, NULL, 1))) " +
+			" FROM   CRD.PGPR p " +
+			" WHERE  p.PGPRMTAN LIKE :patron "
+		);
+		query.setParameter("patron", "REPROCESO carga " + idCarga + " corrida %");
+		Object resultado = query.getSingleResult();
+		return resultado != null ? Integer.valueOf(((Number) resultado).intValue()) : null;
+	}
+
 }
