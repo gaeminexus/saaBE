@@ -1,7 +1,9 @@
 package com.saa.ws.rest.historico;
 
 import com.saa.ejb.historico.service.CargaHistoricaCxcCxpService;
+import com.saa.ejb.historico.service.CargaHistoricaNominaService;
 import com.saa.model.historico.LoteHistoricoCxcCxp;
+import com.saa.model.historico.LoteHistoricoNomina;
 import com.saa.model.historico.ResultadoCargaHistorica;
 
 import jakarta.ejb.EJB;
@@ -21,6 +23,9 @@ public class CargaHistoricaCxcCxpRest {
 
     @EJB
     private CargaHistoricaCxcCxpService cargaHistoricaCxcCxpService;
+
+    @EJB
+    private CargaHistoricaNominaService cargaHistoricaNominaService;
 
     /**
      * Carga un lote mensual. Cuerpo: el {@code lote.json} que produce el generador, con {@code idUsuario}
@@ -53,5 +58,37 @@ public class CargaHistoricaCxcCxpRest {
     public Response validarHistoricoCxcCxp(LoteHistoricoCxcCxp lote) {
         if (lote != null) lote.soloValidar = true;
         return cargarHistoricoCxcCxp(lote);
+    }
+
+    /**
+     * Carga histórica de nómina (C13): un lote mensual del rol del contador (empleados, período, nóminas, renglones,
+     * provisiones, pagos, planillas IESS) con sus asientos por los motores del SAA. Mismo contrato de respuesta que
+     * {@link #cargarHistoricoCxcCxp}. Ver docs/logica-negocio/rhh/CARGA-HISTORICA-NOMINA.md.
+     */
+    @POST
+    @Path("/cargarHistoricoNomina")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response cargarHistoricoNomina(LoteHistoricoNomina lote) {
+        System.out.println("LLEGA AL SERVICIO cargarHistoricoNomina - mes: " + (lote != null ? lote.mes : null));
+        try {
+            ResultadoCargaHistorica resultado = cargaHistoricaNominaService.cargar(lote);
+            Response.Status estado = resultado.erroresLote.isEmpty() ? Response.Status.OK : Response.Status.BAD_REQUEST;
+            return Response.status(estado).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error en la carga historica de nomina: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /** Igual que cargarHistoricoNomina pero fuerza {@code soloValidar = true}: no graba nada. */
+    @POST
+    @Path("/validarHistoricoNomina")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response validarHistoricoNomina(LoteHistoricoNomina lote) {
+        if (lote != null) lote.soloValidar = true;
+        return cargarHistoricoNomina(lote);
     }
 }
