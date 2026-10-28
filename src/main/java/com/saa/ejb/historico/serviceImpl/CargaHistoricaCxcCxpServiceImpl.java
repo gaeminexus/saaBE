@@ -69,6 +69,20 @@ public class CargaHistoricaCxcCxpServiceImpl implements CargaHistoricaCxcCxpServ
 
         for (LoteHistoricoCxcCxp.TitularLote t : lote.titulares)
             procesar(resultado, new ItemResultado("titular", t.identificacion, t.razonSocial), () -> documentos.cargarTitular(ctx, t));
+        // D-013: saldos iniciales al corte (documentos sin líneas ni asiento) antes que cualquier documento del mes
+        if (lote.saldosIniciales != null) {
+            final LoteHistoricoCxcCxp.SaldosInicialesLote si = lote.saldosIniciales;
+            if (si.titularGenerico != null) {
+                final LoteHistoricoCxcCxp.TitularLote g = si.titularGenerico;
+                g.esCliente = true;
+                g.esProveedor = true;
+                procesar(resultado, new ItemResultado("titular", g.identificacion, g.razonSocial), () -> documentos.cargarTitular(ctx, g));
+            }
+            for (LoteHistoricoCxcCxp.DocumentoSaldoInicialLote d : si.proveedores)
+                procesar(resultado, new ItemResultado("saldo-inicial-proveedor", d.ref, d.numero), () -> documentos.cargarSaldoInicial(ctx, "PROVEEDOR", si, d));
+            for (LoteHistoricoCxcCxp.DocumentoSaldoInicialLote d : si.clientes)
+                procesar(resultado, new ItemResultado("saldo-inicial-cliente", d.ref, d.numero), () -> documentos.cargarSaldoInicial(ctx, "CLIENTE", si, d));
+        }
         for (LoteHistoricoCxcCxp.CompraLote c : lote.compras)
             procesar(resultado, new ItemResultado("compra", c.ref, c.numero), () -> documentos.cargarCompra(ctx, c));
         for (LoteHistoricoCxcCxp.RetencionEmitidaLote r : lote.retencionesEmitidas)
@@ -89,6 +103,33 @@ public class CargaHistoricaCxcCxpServiceImpl implements CargaHistoricaCxcCxpServ
         resultado.exito = resultado.rechazados == 0;
         System.out.println("Carga historica " + lote.mes + (lote.soloValidar ? " (solo validar)" : "") + ": creados " + resultado.creados
                 + ", omitidos " + resultado.omitidos + ", rechazados " + resultado.rechazados + ", validados " + resultado.validados);
+        return resultado;
+    }
+
+    @Override
+    public ResultadoCargaHistorica reasignarSaldoInicial(com.saa.model.historico.ReasignacionSaldoInicial r) throws Throwable {
+        System.out.println("Ingresa al metodo reasignarSaldoInicial de CargaHistoricaCxcCxpService: " + (r != null ? r.lado + " " + r.identificacionDestino + " " + r.monto : null));
+        if (r == null) throw new IncomeException("No se recibio la reasignacion.");
+        ResultadoCargaHistorica resultado = new ResultadoCargaHistorica();
+        resultado.mes = r.fecha != null && r.fecha.length() >= 7 ? r.fecha.substring(0, 7) : null;
+        if (r.idEmpresa == null) resultado.erroresLote.add("idEmpresa es obligatorio");
+        if (r.lado == null || !(r.lado.equalsIgnoreCase("PROVEEDOR") || r.lado.equalsIgnoreCase("CLIENTE"))) resultado.erroresLote.add("lado debe ser PROVEEDOR o CLIENTE");
+        if (r.identificacionDestino == null || r.identificacionDestino.trim().isEmpty()) resultado.erroresLote.add("identificacionDestino es obligatoria");
+        if (r.monto == null || r.monto <= 0) resultado.erroresLote.add("monto debe ser mayor a cero");
+        if (r.fecha == null || !r.fecha.matches("\\d{4}-\\d{2}-\\d{2}")) resultado.erroresLote.add("fecha (de la reasignacion) debe ser AAAA-MM-DD");
+        if (r.decision == null || r.decision.trim().isEmpty()) resultado.erroresLote.add("decision es obligatoria (numero en DECISIONES-Y-PARTIDAS.md: sin registro no se aplica)");
+        if (r.motivo == null || r.motivo.trim().isEmpty()) resultado.erroresLote.add("motivo es obligatorio (evidencia del origen del saldo)");
+        if (!resultado.erroresLote.isEmpty()) { resultado.exito = false; return resultado; }
+        resultado.soloValidar = r.soloValidar;
+        Contexto ctx = new Contexto();
+        ctx.idEmpresa = r.idEmpresa;
+        ctx.idUsuario = r.idUsuario != null ? r.idUsuario : ID_USUARIO_CARGA_HISTORICA;
+        ctx.usuario = r.usuario;
+        ctx.mes = resultado.mes;
+        ctx.soloValidar = r.soloValidar;
+        ctx.observacion = CargaHistoricaDocumentoServiceImpl.PREFIJO_OBSERVACION + "D-013 reasignacion " + r.decision.trim() + "] " + r.fecha;
+        procesar(resultado, new ItemResultado("reasignacion-saldo-inicial", r.lado, r.identificacionDestino), () -> documentos.reasignarSaldoInicial(ctx, r));
+        resultado.exito = resultado.rechazados == 0;
         return resultado;
     }
 

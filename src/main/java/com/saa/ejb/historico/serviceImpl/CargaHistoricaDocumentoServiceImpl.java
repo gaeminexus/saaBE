@@ -157,7 +157,11 @@ public class CargaHistoricaDocumentoServiceImpl implements CargaHistoricaDocumen
 
         // Períodos: el del mes y los de las fechas de todos los documentos (un pago de junio puede ser de una factura de mayo, pero su fecha es junio)
         Set<String> meses = new LinkedHashSet<>();
-        meses.add(ctx.mes);
+        boolean soloSaldosIniciales = lote.compras.isEmpty() && lote.retencionesEmitidas.isEmpty() && lote.pagos.isEmpty() && lote.ventas.isEmpty()
+                && lote.cobros.isEmpty() && lote.retencionesRecibidas.isEmpty() && lote.ncCompras.isEmpty() && lote.ncVentas.isEmpty();
+        // Un lote que solo trae saldos iniciales (D-013) no genera asientos: no exige el período del mes abierto
+        if (!soloSaldosIniciales) meses.add(ctx.mes);
+        if (lote.saldosIniciales != null) errores.addAll(validarSaldosIniciales(ctx, lote.saldosIniciales));
         for (CompraLote c : lote.compras) if (c.fechaEmision != null) meses.add(c.fechaEmision.substring(0, 7));
         for (RetencionEmitidaLote r : lote.retencionesEmitidas) if (r.fechaEmision != null) meses.add(r.fechaEmision.substring(0, 7));
         for (PagoLote p : lote.pagos) if (p.fechaPago != null) meses.add(p.fechaPago.substring(0, 7));
@@ -170,7 +174,7 @@ public class CargaHistoricaDocumentoServiceImpl implements CargaHistoricaDocumen
             String e = revisarPeriodo(ctx.idEmpresa, m);
             if (e != null) errores.add(e);
         }
-        if (!ctx.mes.equals(meses.iterator().next()) || meses.size() > 1) {
+        if (!meses.isEmpty() && (!ctx.mes.equals(meses.iterator().next()) || meses.size() > 1)) {
             List<String> otros = new ArrayList<>(meses);
             otros.remove(ctx.mes);
             if (!otros.isEmpty()) System.out.println("ℹ El lote " + ctx.mes + " trae documentos fechados en otros meses: " + otros);
@@ -244,6 +248,23 @@ public class CargaHistoricaDocumentoServiceImpl implements CargaHistoricaDocumen
             if (ctx.soloValidar) {
                 return item.validado(nuevo ? "se crearia el titular" + (t.esProveedor ? " proveedor" : "") + (t.esCliente ? " cliente" : "") : "ya existe (id " + titular.getCodigo() + ")");
             }
+            titular = asegurarTitular(ctx, t, titular, hechos);
+            em.flush();
+            if (hechos.isEmpty()) return item.omitido(titular.getCodigo(), "ya existe con sus roles y cuentas");
+            return item.creado(titular.getCodigo(), null, null, String.join("; ", hechos));
+        } catch (Throwable e) {
+            sessionContext.setRollbackOnly();
+            throw e;
+        }
+    }
+
+    /**
+     * Crea el titular si {@code titular} es null o completa banderas, y garantiza rol y cuenta PRCC de cada rol
+     * pedido. Anota en {@code hechos} lo que hizo. Lo usan la carga de titulares y la reasignación de saldo inicial.
+     */
+    private Titular asegurarTitular(Contexto ctx, TitularLote t, Titular titular, List<String> hechos) throws Throwable {
+        {
+            boolean nuevo = titular == null;
             if (nuevo) {
                 titular = new Titular();
                 titular.setIdentificacion(t.identificacion.trim());
@@ -276,12 +297,7 @@ public class CargaHistoricaDocumentoServiceImpl implements CargaHistoricaDocumen
             }
             if (t.esProveedor) hechos.addAll(asegurarRolYCuenta(ctx, titular, RolPersona.PROVEEDOR, "2.3.90.10"));
             if (t.esCliente) hechos.addAll(asegurarRolYCuenta(ctx, titular, RolPersona.CLIENTE, "1.4.90.10"));
-            em.flush();
-            if (hechos.isEmpty()) return item.omitido(titular.getCodigo(), "ya existe con sus roles y cuentas");
-            return item.creado(titular.getCodigo(), null, null, String.join("; ", hechos));
-        } catch (Throwable e) {
-            sessionContext.setRollbackOnly();
-            throw e;
+            return titular;
         }
     }
 
@@ -1227,6 +1243,338 @@ public class CargaHistoricaDocumentoServiceImpl implements CargaHistoricaDocumen
             sessionContext.setRollbackOnly();
             throw e;
         }
+    }
+
+    // =====================================================================================================
+    // D-013: saldos iniciales de clientes y proveedores al corte (31-may-2025) y su reasignación
+    // =====================================================================================================
+    //
+    // La contabilidad de esos saldos ya está en el asiento de apertura (2.3.90.10 y 1.4.90.10). En los módulos se
+    // representan como documentos SIN líneas de detalle y SIN asiento: el saldo (total − aplicaciones) es lo único
+    // que los pagos, cobros, retenciones, NC y la cartera necesitan, y las cuentas del asiento de cada pago/cobro
+    // salen de la PRCC del titular, no del documento. Sin líneas, "contabilizar"/"recontabilizar" no puede generarles
+    // un asiento por error (los motores exigen detalles activos), así que no hay riesgo de doble contabilización.
+
+    static final String CUENTA_CARTERA_PROVEEDORES = "2.3.90.10";
+    static final String CUENTA_CARTERA_CLIENTES = "1.4.90.10";
+    static final String IDENTIFICACION_SALDO_INICIAL = "9999999999001";
+    static final String NUMERO_GENERICO_SALDO_INICIAL = "999-999-000000001";
+    static final String PREFIJO_NUMERO_REASIGNADO = "999-998-";
+    static final String MARCA_SALDO_INICIAL = "SALDO INICIAL D-013";
+
+    /** Valida el bloque de saldos iniciales contra las líneas del asiento de apertura (lo que manda es CNT.DTAS). */
+    private List<String> validarSaldosIniciales(Contexto ctx, LoteHistoricoCxcCxp.SaldosInicialesLote si) {
+        List<String> errores = new ArrayList<>();
+        LocalDate corte;
+        try { corte = fecha(si.fecha, "saldosIniciales.fecha"); } catch (IncomeException e) { errores.add(e.getMessage()); return errores; }
+        if (si.idAsientoApertura == null) { errores.add("saldosIniciales.idAsientoApertura es obligatorio (CNT.ASNT.ASNTCDGO de la apertura)"); return errores; }
+        Asiento apertura = em.find(Asiento.class, si.idAsientoApertura);
+        if (apertura == null) { errores.add("No existe el asiento de apertura " + si.idAsientoApertura); return errores; }
+        if (apertura.getEmpresa() == null || !ctx.idEmpresa.equals(apertura.getEmpresa().getCodigo())) errores.add("El asiento " + si.idAsientoApertura + " no es de la empresa " + ctx.idEmpresa);
+        if (!Long.valueOf(Estado.ACTIVO).equals(apertura.getEstado())) errores.add("El asiento de apertura " + si.idAsientoApertura + " no esta activo");
+        double aperturaProveedores = redondea(-saldoCuentaEnAsiento(si.idAsientoApertura, CUENTA_CARTERA_PROVEEDORES));
+        double aperturaClientes = redondea(saldoCuentaEnAsiento(si.idAsientoApertura, CUENTA_CARTERA_CLIENTES));
+        errores.addAll(validarDocumentosSaldoInicial(si, si.proveedores, "proveedores", CUENTA_CARTERA_PROVEEDORES, aperturaProveedores, corte));
+        errores.addAll(validarDocumentosSaldoInicial(si, si.clientes, "clientes", CUENTA_CARTERA_CLIENTES, aperturaClientes, corte));
+        return errores;
+    }
+
+    private List<String> validarDocumentosSaldoInicial(LoteHistoricoCxcCxp.SaldosInicialesLote si, List<LoteHistoricoCxcCxp.DocumentoSaldoInicialLote> docs,
+            String lado, String cuenta, double saldoApertura, LocalDate corte) {
+        List<String> errores = new ArrayList<>();
+        double suma = 0;
+        Set<String> claves = new LinkedHashSet<>();
+        for (LoteHistoricoCxcCxp.DocumentoSaldoInicialLote d : docs) {
+            String id = d.esGenerico ? (si.titularGenerico != null ? si.titularGenerico.identificacion : null) : d.identificacion;
+            if (id == null || id.trim().isEmpty()) errores.add("Saldo inicial " + d.ref + ": sin titular (identificacion o titularGenerico)");
+            if (nz(d.monto) <= 0) errores.add("Saldo inicial " + d.ref + ": monto debe ser mayor a cero");
+            try { partesNumero(d.numero); } catch (IncomeException e) { errores.add("Saldo inicial " + d.ref + ": " + e.getMessage()); }
+            if (d.fechaEmision != null && !d.fechaEmision.trim().isEmpty()) {
+                try { if (fecha(d.fechaEmision, "fechaEmision").isAfter(corte)) errores.add("Saldo inicial " + d.ref + ": fecha de emision posterior al corte " + corte); }
+                catch (IncomeException e) { errores.add("Saldo inicial " + d.ref + ": " + e.getMessage()); }
+            }
+            if (!claves.add(id + "|" + d.numero)) errores.add("Saldo inicial " + d.ref + ": documento repetido en el lote (" + d.numero + ")");
+            suma += nz(d.monto);
+        }
+        suma = redondea(suma);
+        if (!docs.isEmpty() && Math.abs(suma - saldoApertura) > 0.005)
+            errores.add("Los documentos de saldo inicial de " + lado + " suman " + suma + " y el asiento de apertura " + si.idAsientoApertura
+                    + " tiene " + saldoApertura + " en " + cuenta + ": tienen que ser iguales (el generico es la diferencia)");
+        return errores;
+    }
+
+    /** Debe − haber de una cuenta en un asiento. */
+    private double saldoCuentaEnAsiento(Long idAsiento, String cuenta) {
+        Object[] r = em.createQuery("select coalesce(sum(d.valorDebe), 0), coalesce(sum(d.valorHaber), 0) from DetalleAsiento d "
+                + "where d.asiento.codigo = :a and d.planCuenta.cuentaContable = :c", Object[].class)
+                .setParameter("a", idAsiento).setParameter("c", cuenta).getSingleResult();
+        return numero(r[0]) - numero(r[1]);
+    }
+
+    @Override
+    @TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
+    public ItemResultado cargarSaldoInicial(Contexto ctx, String lado, LoteHistoricoCxcCxp.SaldosInicialesLote si,
+            LoteHistoricoCxcCxp.DocumentoSaldoInicialLote d) throws Throwable {
+        boolean proveedor = "PROVEEDOR".equalsIgnoreCase(lado);
+        ItemResultado item = new ItemResultado(proveedor ? "saldo-inicial-proveedor" : "saldo-inicial-cliente", d.ref, d.numero);
+        try {
+            String identificacion = d.esGenerico ? si.titularGenerico.identificacion : d.identificacion;
+            Titular titular = titularPorIdentificacion(identificacion);
+            if (titular == null) return ctx.soloValidar ? item.validado("el titular " + identificacion + " se crearia con el lote; se crearia el documento por " + d.monto)
+                    : item.rechazado("el titular " + identificacion + " no existe en TSR.TTLR (va en titulares del lote)");
+            String numero = normalizarNumero(d.numero);
+            LocalDate corte = fecha(si.fecha, "saldosIniciales.fecha");
+            LocalDate fe = d.fechaEmision != null && !d.fechaEmision.trim().isEmpty() ? fecha(d.fechaEmision, "fechaEmision") : corte;
+            String obs = recortar(observacionDocumento(ctx, d.ref, MARCA_SALDO_INICIAL + " al " + corte + ", sin asiento: la contabilidad esta en el asiento de apertura "
+                    + nvl(si.asientoApertura, "") + " (id " + si.idAsientoApertura + ", " + (proveedor ? CUENTA_CARTERA_PROVEEDORES : CUENTA_CARTERA_CLIENTES) + ")",
+                    "monto original " + redondea(nz(d.monto)), d.origen != null ? "origen: " + d.origen : null), 2000);
+            Long existente = documentoSaldoInicialExistente(ctx, proveedor, titular, numero);
+            if (existente != null) return item.omitido(existente, "ya existe el documento " + numero + " del titular (id " + existente + ")");
+            if (!asientoContableService.existeCuentaConRolEstricto(titular.getCodigo(), ctx.idEmpresa, 1L, proveedor ? RolPersona.PROVEEDOR : RolPersona.CLIENTE))
+                return item.rechazado("el titular no tiene cuenta contable con rol " + (proveedor ? "proveedor" : "cliente") + " (TSR.PRCC tipo 1): los pagos/cobros no podrian contabilizarse");
+            if (ctx.soloValidar) return item.validado("se crearia el documento de saldo inicial " + numero + " por " + d.monto + " con fecha " + fe + ", sin asiento");
+            Long id = proveedor ? crearFacturaCompraSaldoInicial(ctx, titular, numero, d.claveAcceso, fe, redondea(nz(d.monto)), obs)
+                    : crearFacturaVentaSaldoInicial(ctx, titular, numero, d.claveAcceso, fe, redondea(nz(d.monto)), obs);
+            em.flush();
+            return item.creado(id, null, null, "documento de saldo inicial creado sin asiento (" + (proveedor ? "PGS.FCTC" : "CBR.FCTR") + ") por " + redondea(nz(d.monto)));
+        } catch (Throwable e) {
+            sessionContext.setRollbackOnly();
+            throw e;
+        }
+    }
+
+    /** Id del documento activo del titular con ese número (FCTC estado 1 / FCTR estado 5 no anulada), o null. */
+    private Long documentoSaldoInicialExistente(Contexto ctx, boolean proveedor, Titular titular, String numero) {
+        if (proveedor) {
+            List<Long> l = em.createQuery("select f.id from FacturaCompra f where f.empresa.codigo = :e and f.titular.codigo = :t and f.numero = :n and f.estado = 1", Long.class)
+                    .setParameter("e", ctx.idEmpresa).setParameter("t", titular.getCodigo()).setParameter("n", numero).getResultList();
+            return l.isEmpty() ? null : l.get(0);
+        }
+        List<Long> l = em.createQuery("select f.id from Factura f where f.facturador.empresa.codigo = :e and f.titular.codigo = :t and f.numero = :n and f.estado = 5 and f.estadoEmision <> 3", Long.class)
+                .setParameter("e", ctx.idEmpresa).setParameter("t", titular.getCodigo()).setParameter("n", numero).getResultList();
+        return l.isEmpty() ? null : l.get(0);
+    }
+
+    /** PGS.FCTC de saldo inicial: sin DFCC, sin asiento, sin clave salvo que se conozca. */
+    private Long crearFacturaCompraSaldoInicial(Contexto ctx, Titular titular, String numero, String clave, LocalDate fe, double monto, String obs) {
+        String[] partes = partesNumero(numero);
+        FacturaCompra fc = new FacturaCompra();
+        fc.setTipoComprobante(TIPO_COMPROBANTE_FACTURA);
+        fc.setTipoDoc(TIPO_COMPROBANTE_FACTURA);
+        fc.setEmpresa(em.find(Empresa.class, ctx.idEmpresa));
+        fc.setTitular(titular);
+        fc.setNumero(numero);
+        fc.setNumEstablecimiento(partes[0]);
+        fc.setNumPtoEmision(partes[1]);
+        fc.setSecuencial(partes[2]);
+        boolean conClave = clave != null && clave.matches("\\d{49}");
+        fc.setAmbiente(conClave ? ambienteDeClave(clave) : 2L);
+        fc.setClave(conClave ? clave : null);
+        fc.setAutorizacion(conClave ? clave : null);
+        fc.setFecha(fe.atStartOfDay());
+        fc.setFechaAutorizacion(fe.atStartOfDay());
+        fc.setObservacion(obs);
+        fc.setSubtotal(monto);
+        fc.setSubcero(monto);
+        fc.setSubnoobj(0d);
+        fc.setSubexent(0d);
+        fc.setSubtotal5(0d);
+        fc.setSubtotal8(0d);
+        fc.setpIVA(0d);
+        fc.setvIVA(0d);
+        fc.setvIVA5(0d);
+        fc.setvIVA8(0d);
+        fc.setvICE(0d);
+        fc.setvIRBPNR(0d);
+        fc.setDescuento(0d);
+        fc.setPorDescuento(0d);
+        fc.setPropina(0d);
+        fc.setTotal(monto);
+        fc.setUsuario(em.find(Usuario.class, ctx.idUsuario));
+        fc.setEstado((long) Estado.ACTIVO);
+        fc.setEstadoEmision(ESTADO_EMISION_REGISTRADA_CXP);
+        fc.setEstadoPago((long) EstadoPagoFactura.PENDIENTE);
+        fc.setEsIntermediario(0L);
+        fc.setEsReembolso(0L);
+        fc.setEstadoSeguro(0L);
+        fc.setFechaRegistroContable(fe);
+        em.persist(fc);
+        return fc.getId();
+    }
+
+    /** CBR.FCTR de saldo inicial: sin DTFC, sin asiento; punto de emisión solo si el número es de un punto real. */
+    private Long crearFacturaVentaSaldoInicial(Contexto ctx, Titular titular, String numero, String clave, LocalDate fe, double monto, String obs) throws Throwable {
+        Facturador facturador = facturadorDeEmpresa(ctx.idEmpresa);
+        if (facturador == null) throw new IncomeException("la empresa no tiene facturador (CBR.FCDR)");
+        String[] partes = partesNumero(numero);
+        Factura f = new Factura();
+        f.setTipoComprobante(TIPO_COMPROBANTE_FACTURA);
+        f.setTipoDoc(TIPO_COMPROBANTE_FACTURA);
+        f.setFacturador(facturador);
+        f.setEmpresa(em.find(Empresa.class, ctx.idEmpresa));
+        f.setTitular(titular);
+        f.setNumero(numero);
+        f.setNumEstablecimiento(partes[0]);
+        f.setNumPtoEmision(partes[1]);
+        f.setSecuencial(partes[2]);
+        boolean conClave = clave != null && clave.matches("\\d{49}");
+        f.setAmbiente(facturador.getAmbiente() != null ? facturador.getAmbiente() : 2L);
+        f.setClave(conClave ? clave : null);
+        f.setAutorizacion(conClave ? clave : null);
+        f.setFecha(fe);
+        f.setFechaAutorizacion(fe.atStartOfDay());
+        f.setObservacion(obs);
+        f.setSubtotal(monto);
+        f.setSubcero(monto);
+        f.setSubtotal5(0d);
+        f.setSubtotal8(0d);
+        f.setpIVA(0d);
+        f.setvIVA(0d);
+        f.setvIVA5(0d);
+        f.setvIVA8(0d);
+        f.setvICE(0d);
+        f.setvIRBPNR(0d);
+        f.setDescuento(0d);
+        f.setPorDescuento(0d);
+        f.setPropina(0d);
+        f.setSubsidio(0d);
+        f.setTotalSinSub(monto);
+        f.setAhorroSub(0d);
+        f.setTotal(monto);
+        f.setPtoEmision(puntoEmision(facturador, partes[0], partes[1], false)); // 999-999 / 999-998 no existen: queda null
+        f.setUsuario(em.find(Usuario.class, ctx.idUsuario));
+        f.setEstado(ESTADO_AUTORIZADA_CXC);
+        f.setEstadoEmision(ESTADO_EMISION_OK_CXC);
+        f.setEstadoPago((long) EstadoPagoFactura.PENDIENTE);
+        em.persist(f);
+        return f.getId();
+    }
+
+    @Override
+    @TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
+    public ItemResultado reasignarSaldoInicial(Contexto ctx, com.saa.model.historico.ReasignacionSaldoInicial r) throws Throwable {
+        boolean proveedor = "PROVEEDOR".equalsIgnoreCase(r.lado);
+        ItemResultado item = new ItemResultado("reasignacion-saldo-inicial", r.decision, (proveedor ? "proveedor " : "cliente ") + r.identificacionDestino + " " + r.monto);
+        try {
+            Titular generico = titularPorIdentificacion(nvl(r.identificacionGenerico, IDENTIFICACION_SALDO_INICIAL));
+            if (generico == null) return item.rechazado("no existe el titular de saldo inicial " + nvl(r.identificacionGenerico, IDENTIFICACION_SALDO_INICIAL));
+            String numeroGenerico = normalizarNumero(nvl(r.numeroGenerico, NUMERO_GENERICO_SALDO_INICIAL));
+            Long idGenerico = documentoSaldoInicialExistente(ctx, proveedor, generico, numeroGenerico);
+            if (idGenerico == null) return item.rechazado("no existe el documento de saldo inicial " + numeroGenerico + " del titular SALDO INICIAL (" + r.lado + ")");
+            Titular destino = titularPorIdentificacion(r.identificacionDestino);
+            if (destino != null && destino.getCodigo().equals(generico.getCodigo())) return item.rechazado("el destino es el propio titular SALDO INICIAL");
+            double monto = redondea(nz(r.monto));
+
+            // Idempotencia: el documento destino ya existe (por número) o ya hay una reasignación con la misma decisión al mismo titular
+            String numeroDestino = r.numeroDocumento != null && !r.numeroDocumento.trim().isEmpty() ? normalizarNumero(r.numeroDocumento) : null;
+            if (destino != null) {
+                Long previo = numeroDestino != null ? documentoSaldoInicialExistente(ctx, proveedor, destino, numeroDestino)
+                        : reasignacionPrevia(ctx, proveedor, destino, r.decision.trim());
+                if (previo != null) return item.omitido(previo, "ya existe el documento reasignado (id " + previo + "); no se mueve nada");
+            }
+
+            // Saldo disponible en el genérico (total − aplicaciones activas), con bloqueo para que dos reasignaciones no lo pasen
+            double saldoGenerico;
+            LocalDate fechaGenerico;
+            if (proveedor) {
+                FacturaCompra g = em.find(FacturaCompra.class, idGenerico, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+                saldoGenerico = numero(aplicacionPagoCxpService.saldoFactura(g.getId()).get("saldoPendiente"));
+                fechaGenerico = g.getFecha().toLocalDate();
+            } else {
+                Factura g = em.find(Factura.class, idGenerico, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+                saldoGenerico = numero(aplicacionPagoCxcService.saldoFactura(g.getId()).get("saldoPendiente"));
+                fechaGenerico = g.getFecha();
+            }
+            if (monto > saldoGenerico + TOLERANCIA) return item.rechazado("el monto " + monto + " supera el saldo del documento SALDO INICIAL " + numeroGenerico + " (" + saldoGenerico + ")");
+            LocalDate fe = r.fechaEmisionDocumento != null && !r.fechaEmisionDocumento.trim().isEmpty() ? fecha(r.fechaEmisionDocumento, "fechaEmisionDocumento") : fechaGenerico;
+            if (fe.isAfter(fechaGenerico)) return item.rechazado("la fecha de emision " + fe + " es posterior al corte " + fechaGenerico + ": un documento posterior no es saldo inicial, va por la carga del mes");
+            if (destino == null && (r.razonSocialDestino == null || r.tipoIdentificacionDestino == null || r.tipoPersonaDestino == null))
+                return item.rechazado("el titular " + r.identificacionDestino + " no existe: enviar razonSocialDestino, tipoIdentificacionDestino y tipoPersonaDestino para crearlo");
+            if (ctx.soloValidar) return item.validado("se moverian " + monto + " del documento " + numeroGenerico + " (saldo " + saldoGenerico + ") a "
+                    + (numeroDestino != null ? numeroDestino : PREFIJO_NUMERO_REASIGNADO + "…") + " con fecha " + fe + (destino == null ? "; se crearia el titular" : ""));
+
+            List<String> hechos = new ArrayList<>();
+            TitularLote tl = new TitularLote();
+            tl.identificacion = r.identificacionDestino.trim();
+            tl.razonSocial = r.razonSocialDestino;
+            tl.tipoIdentificacion = r.tipoIdentificacionDestino;
+            tl.tipoPersona = r.tipoPersonaDestino;
+            tl.esProveedor = proveedor;
+            tl.esCliente = !proveedor;
+            destino = asegurarTitular(ctx, tl, destino, hechos);
+            em.flush();
+            if (numeroDestino == null) numeroDestino = siguienteNumeroReasignado(ctx, proveedor, destino);
+            else if (documentoSaldoInicialExistente(ctx, proveedor, destino, numeroDestino) != null)
+                return item.omitido(documentoSaldoInicialExistente(ctx, proveedor, destino, numeroDestino), "ya existe el documento " + numeroDestino + " del titular");
+
+            String traza = "REASIG " + r.decision.trim() + " " + r.fecha + ": " + monto + " de " + numeroGenerico + " (id " + idGenerico + ")";
+            String obsDestino = recortar(ctx.observacion + " | " + MARCA_SALDO_INICIAL + " reasignado desde SALDO INICIAL, sin asiento: la contabilidad esta en la apertura | "
+                    + traza + " | motivo: " + r.motivo.trim(), 2000);
+            Long idDestino = proveedor ? crearFacturaCompraSaldoInicial(ctx, destino, numeroDestino, r.claveAcceso, fe, monto, obsDestino)
+                    : crearFacturaVentaSaldoInicial(ctx, destino, numeroDestino, r.claveAcceso, fe, monto, obsDestino);
+            em.flush();
+
+            // Rebaja del genérico: solo el total (no tiene líneas ni asiento); la historia queda en su observación
+            String nota = " | " + traza + " -> " + numeroDestino + " (id " + idDestino + ")";
+            if (proveedor) {
+                FacturaCompra g = em.find(FacturaCompra.class, idGenerico);
+                double nuevo = redondea(nz(g.getTotal()) - monto);
+                g.setTotal(nuevo);
+                g.setSubtotal(nuevo);
+                g.setSubcero(nuevo);
+                g.setObservacion(anexarTraza(g.getObservacion(), nota));
+                em.merge(g);
+            } else {
+                Factura g = em.find(Factura.class, idGenerico);
+                double nuevo = redondea(nz(g.getTotal()) - monto);
+                g.setTotal(nuevo);
+                g.setTotalSinSub(nuevo);
+                g.setSubtotal(nuevo);
+                g.setSubcero(nuevo);
+                g.setObservacion(anexarTraza(g.getObservacion(), nota));
+                em.merge(g);
+            }
+            em.flush();
+            return item.creado(idDestino, null, null, "reasignados " + monto + " a " + numeroDestino + (hechos.isEmpty() ? "" : " (" + String.join("; ", hechos) + ")")
+                    + "; saldo que queda en SALDO INICIAL " + redondea(saldoGenerico - monto));
+        } catch (Throwable e) {
+            sessionContext.setRollbackOnly();
+            throw e;
+        }
+    }
+
+    /** Documento de saldo inicial ya reasignado al titular con la misma decisión (para reasignaciones sin número real). */
+    private Long reasignacionPrevia(Contexto ctx, boolean proveedor, Titular destino, String decision) {
+        String patron = "%REASIG " + decision + " %";
+        List<Long> l = proveedor
+                ? em.createQuery("select f.id from FacturaCompra f where f.empresa.codigo = :e and f.titular.codigo = :t and f.estado = 1 and f.observacion like :p", Long.class)
+                        .setParameter("e", ctx.idEmpresa).setParameter("t", destino.getCodigo()).setParameter("p", patron).getResultList()
+                : em.createQuery("select f.id from Factura f where f.facturador.empresa.codigo = :e and f.titular.codigo = :t and f.estado = 5 and f.estadoEmision <> 3 and f.observacion like :p", Long.class)
+                        .setParameter("e", ctx.idEmpresa).setParameter("t", destino.getCodigo()).setParameter("p", patron).getResultList();
+        return l.isEmpty() ? null : l.get(0);
+    }
+
+    /** 999-998-NNNNNNNNN siguiente para el titular (número interno cuando el comprobante real no se conoce). */
+    private String siguienteNumeroReasignado(Contexto ctx, boolean proveedor, Titular destino) {
+        Long n = proveedor
+                ? em.createQuery("select count(f) from FacturaCompra f where f.empresa.codigo = :e and f.titular.codigo = :t and f.numero like :p", Long.class)
+                        .setParameter("e", ctx.idEmpresa).setParameter("t", destino.getCodigo()).setParameter("p", PREFIJO_NUMERO_REASIGNADO + "%").getSingleResult()
+                : em.createQuery("select count(f) from Factura f where f.facturador.empresa.codigo = :e and f.titular.codigo = :t and f.numero like :p", Long.class)
+                        .setParameter("e", ctx.idEmpresa).setParameter("t", destino.getCodigo()).setParameter("p", PREFIJO_NUMERO_REASIGNADO + "%").getSingleResult();
+        return PREFIJO_NUMERO_REASIGNADO + String.format("%09d", (n == null ? 0 : n) + 1);
+    }
+
+    /** Agrega la traza al final de la observación; si no cabe, recorta el texto del medio y conserva el inicio y la última traza. */
+    private static String anexarTraza(String observacion, String nota) {
+        String base = nvl(observacion, "");
+        if (base.length() + nota.length() <= 2000) return base + nota;
+        return recortar(base, 2000 - nota.length() - 4) + " ..." + nota;
+    }
+
+    /** Número con guiones 001-002-000000531 a partir de cualquier forma con 15 dígitos. */
+    private static String normalizarNumero(String numero) {
+        String[] p = partesNumero(numero);
+        return p[0] + "-" + p[1] + "-" + p[2];
     }
 
     // =====================================================================================================

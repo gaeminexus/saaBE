@@ -45,6 +45,27 @@ public class CargaHistoricaCxcCxpRest {
         }
     }
 
+    /**
+     * D-013: mueve parte del saldo inicial del titular SALDO INICIAL a un titular real (sin tocar la contabilidad
+     * de mayo 2025). Cuerpo: {@link com.saa.model.historico.ReasignacionSaldoInicial}. 200 = reasignado u OMITIDO
+     * (ya existía el documento destino); 400 = petición inválida o RECHAZADO (sin saldo, titular inválido...).
+     */
+    @POST
+    @Path("/reasignarSaldoInicial")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response reasignarSaldoInicial(com.saa.model.historico.ReasignacionSaldoInicial reasignacion) {
+        System.out.println("LLEGA AL SERVICIO reasignarSaldoInicial - " + (reasignacion != null ? reasignacion.lado + " " + reasignacion.identificacionDestino : null));
+        try {
+            ResultadoCargaHistorica resultado = cargaHistoricaCxcCxpService.reasignarSaldoInicial(reasignacion);
+            return Response.status(resultado.exito ? Response.Status.OK : Response.Status.BAD_REQUEST).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error en la reasignacion de saldo inicial: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
     /** Igual que cargar pero fuerza {@code soloValidar = true}: no graba nada, solo informa lo que haría. */
     @POST
     @Path("/validarHistoricoCxcCxp")

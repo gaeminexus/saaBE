@@ -1,7 +1,7 @@
 # Carga histórica de CxC y CxP desde el control del contador (C11 — cuadre Superintendencia)
 
 **Escrito:** 2026-10-28 · **Rama:** `cuadre/c11-cargador-cxc-cxp` · **Expediente:** `cuadreSuper/03-trabajo/cxc-cxp/`
-(`ANALISIS-CXC-CXP.md`, `INVENTARIO-SAA-CXC-CXP.md`, `lotes/VALIDACION.md`) · **Decisiones:** D-003 a D-007 de
+(`ANALISIS-CXC-CXP.md`, `INVENTARIO-SAA-CXC-CXP.md`, `lotes/VALIDACION.md`) · **Decisiones:** D-003 a D-007 y D-013 (saldos iniciales, §10) de
 `cuadreSuper/01-seguimiento/DECISIONES-Y-PARTIDAS.md`.
 
 Reconstruye en el SAA, **por los módulos y con sus motores contables**, la operación de compras, retenciones emitidas,
@@ -14,7 +14,7 @@ base difieran, manda el Excel**). La contabilidad que resulta es la definitiva (
 | Capa | Archivo | Qué hace |
 |---|---|---|
 | Generador (expediente) | `cuadreSuper/03-trabajo/cxc-cxp/scripts/07-genera-lotes.js` + `reglas-carga-historica.json` | De los CSV de `hojas/` produce `lotes/AAAA-MM/lote.json` y `lotes/VALIDACION.md`. Valida contra los catálogos exportados con `sql/c11-00-catalogos.sql` |
-| REST | `ws/rest/historico/CargaHistoricaCxcCxpRest.java` | `POST /SaaBE/rest/historico/cargarHistoricoCxcCxp` (carga) y `POST /SaaBE/rest/historico/validarHistoricoCxcCxp` (solo valida) |
+| REST | `ws/rest/historico/CargaHistoricaCxcCxpRest.java` | `POST /SaaBE/rest/historico/cargarHistoricoCxcCxp` (carga), `POST /SaaBE/rest/historico/validarHistoricoCxcCxp` (solo valida) y `POST /SaaBE/rest/historico/reasignarSaldoInicial` (D-013, §10) |
 | Orquestador | `ejb/historico/service/CargaHistoricaCxcCxpService` + `serviceImpl/CargaHistoricaCxcCxpServiceImpl` | Sin transacción (`NOT_SUPPORTED`); recorre el lote en orden y convierte cada excepción en un renglón RECHAZADO |
 | Por documento | `ejb/historico/service/CargaHistoricaDocumentoService` + `serviceImpl/CargaHistoricaDocumentoServiceImpl` | Un método `REQUIRES_NEW` por tipo de documento; ante error marca rollback y relanza |
 | DTO | `model/historico/LoteHistoricoCxcCxp.java`, `model/historico/ResultadoCargaHistorica.java` | Lote y resultado (POJOs sin `@Entity`, campos públicos) |
@@ -164,6 +164,12 @@ node 03-trabajo/cxc-cxp/scripts/07-genera-lotes.js
 $lote = Get-Content -Raw -Encoding UTF8 03-trabajo/cxc-cxp/lotes/2025-06/lote.json
 Invoke-RestMethod -Method Post -Uri http://localhost:8080/SaaBE/rest/historico/validarHistoricoCxcCxp -ContentType 'application/json; charset=utf-8' -Body $lote
 Invoke-RestMethod -Method Post -Uri http://localhost:8080/SaaBE/rest/historico/cargarHistoricoCxcCxp  -ContentType 'application/json; charset=utf-8' -Body $lote | ConvertTo-Json -Depth 4 > lotes/2025-06/resultado.json
+# 4. saldos iniciales (D-013, §10): una sola vez, en cualquier momento (no depende de junio)
+node 03-trabajo/cxc-cxp/scripts/03-correr-inventario.js sql/c11-02-saldos-iniciales.sql
+node 03-trabajo/cxc-cxp/scripts/09-genera-saldos-iniciales.js
+$si = Get-Content -Raw -Encoding UTF8 03-trabajo/cxc-cxp/lotes/2025-05/lote.json
+Invoke-RestMethod -Method Post -Uri http://localhost:8080/SaaBE/rest/historico/validarHistoricoCxcCxp -ContentType 'application/json; charset=utf-8' -Body $si
+Invoke-RestMethod -Method Post -Uri http://localhost:8080/SaaBE/rest/historico/cargarHistoricoCxcCxp  -ContentType 'application/json; charset=utf-8' -Body $si | ConvertTo-Json -Depth 4 > lotes/2025-05/resultado.json
 ```
 
 Respuesta: `{ mes, exito, soloValidar, erroresLote[], creados, omitidos, rechazados, validados, items[ { tipo, ref, documento, estado, mensaje, id, idAsiento, asiento } ] }`. 200 con `items` aunque haya rechazados; 400 si `erroresLote` no está vacío.
@@ -238,9 +244,63 @@ UNION ALL SELECT 'PTEM', ID, CODIGO || ' ' || NOMBRE FROM CBR.PTEM WHERE NOMBRE 
 9. **Enero 2026 mayorizado** (`CNT.PRDO` estado 2 sin asientos): desmayorizar antes del lote 2026-01.
 10. **Retenciones emitidas y recibidas de 2026 que ya existen en el SAA**: el lote las marca `verificarEnSaa`; el cruce número a número contra `CBR.RTV2` / `PGS.RCV2` es el paso siguiente (A7).
 
-## 10. Pendiente de probar en WildFly (criterio de aceptación de C11)
+## 10. Saldos iniciales por tercero al 31-may-2025 (D-013)
+
+**Decisión D-013 (líder, 28-oct):** los saldos de clientes y proveedores del balance de arranque se cargan en los módulos a un titular **SALDO INICIAL**; cuando aparezca el origen de un saldo se reasigna sacándolo de ese titular. La contabilidad de esos saldos **ya está** en el asiento de apertura (id 12043, `DI-A-2025-05-0001` / `CNT-2025-05-0001`): `2.3.90.10` haber 44.019,59 y `1.4.90.10` debe 45.373,99. Lo que se carga en los módulos no genera asiento.
+
+### 10.1 Cómo se representa
+
+| Pieza | Valor |
+|---|---|
+| Titular genérico | `TSR.TTLR` identificación **`9999999999001`**, RUC, jurídica, nombre/razón social `SALDO INICIAL`, cliente y proveedor, rol `PRRL` 1 y 2 con `PRCC` tipo 1 a `1.4.90.10` y `2.3.90.10` (mismo camino que cualquier titular del lote, §3.1). Los genéricos de producción (`9999999999` "PROVEEDORES JULIO 2026", cédula; `99999999` "CLIENTES A JULIO 2026") son de la salida en vivo de jul-2026 y no se reutilizan; el `001` final distingue al nuevo y le da forma de RUC para ATS y frontend. Va en `saldosIniciales.titularGenerico` del lote: se puede cambiar sin tocar código |
+| Documento de proveedor | `PGS.FCTC` estado 1, `ESTADOEMISION` 2, `TOTAL = SUBTOTAL = SUBCERO` = saldo, IVA 0, **sin `DFCC`**, `ASIENTO` nulo, sin clave (salvo que se conozca), `FECHA = FECHAREGISTROCONTABLE` = emisión ≤ corte |
+| Documento de cliente | `CBR.FCTR` estado 5, `ESTADOEMISION` 1, mismos importes, **sin `DTFC`**, `ASIENTO` nulo, `EMPRESA` 1236, punto de emisión solo si el número es de un punto real (`001-002`); el `999-999` queda sin punto |
+| Número | real si se identificó (`001-002-000000531`); el genérico `999-999-000000001`; los reasignados sin comprobante conocido `999-998-NNNNNNNNN` por titular |
+| Trazabilidad | observación `CARGA HISTORICA [D-013 saldos iniciales] mes 2025-05 \| <ref> \| SALDO INICIAL D-013 al 2025-05-31, sin asiento: la contabilidad esta en el asiento de apertura … \| monto original … \| origen: …` |
+
+**Por qué sin líneas y sin asiento.** Revisado en el código (28-oct): `saldoFactura` de CxP y CxC es total − aplicaciones activas (`AplicacionPagoCxpServiceImpl` ~1387, `AplicacionPagoCxcServiceImpl` ~826); `registrarPago`, `aplicarPagoTransferencia`, `aplicarRetencionEmitida`, `aplicarNotaCredito`, `aplicarCobroTransferencia`, `aplicarRetencionRecibidaV2` y `resolverFactura(Compra)PorNumero` no leen el asiento de la factura; la cuenta del asiento del pago/cobro sale de la **PRCC del titular** (`obtenerCuentaProveedorPorTipo` / `obtenerCuentaCliente`), por eso el cargador exige que el titular la tenga; la cartera de CxP (`/cartera`) y de CxC no hacen JOIN al asiento; anular una factura sin asiento salta el paso del asiento. Y como `generarAsientoFactura` y `generarAsientoFacturaCompra` lanzan "no tiene detalles activos" sin líneas, **"contabilizar" / "consultar estado SRI" / recontabilizar no pueden generarle por error un asiento que duplicaría la apertura**. Riesgos que quedan: (1) el **ATS** de mayo 2025 (ya presentado) incluiría estos documentos si se regenerara: no regenerarlo desde el SAA; (2) la FCTC aparece en `/sustentoPendiente` (sustento nulo, igual que las compras de la carga); (3) el frontend puede mostrar una factura de venta sin punto de emisión y sin XML.
+
+### 10.2 Lote `2025-05` (bloque `saldosIniciales`)
+
+```json
+{ "mes": "2025-05", "observacion": "CARGA HISTORICA [D-013 saldos iniciales] mes 2025-05", "idEmpresa": 1236, "idUsuario": 38, "titulares": [ …titulares reales de las partidas identificadas… ],
+  "saldosIniciales": { "fecha": "2025-05-31", "idAsientoApertura": 12043, "asientoApertura": "DI-A-2025-05-0001 (CNT-2025-05-0001)",
+    "titularGenerico": { "identificacion": "9999999999001", "tipoIdentificacion": "RUC", "tipoPersona": "JURIDICA", "razonSocial": "SALDO INICIAL" },
+    "proveedores": [ { "ref": "SI-P-GEN", "esGenerico": true, "numero": "999-999-000000001", "fechaEmision": "2025-05-31", "monto": 44019.59, "origen": "…" } ],
+    "clientes":    [ { "ref": "SI-C-0001", "esGenerico": false, "identificacion": "1793114504001", "numero": "001-002-000000531", "fechaEmision": "2025-05-29", "monto": 1504.46, "origen": "mayor 149010 …" }, …,
+                     { "ref": "SI-C-GEN", "esGenerico": true, "numero": "999-999-000000001", "monto": 39449.61, … } ] } }
+```
+
+Lo genera `cuadreSuper/03-trabajo/cxc-cxp/scripts/09-genera-saldos-iniciales.js` desde `sql/c11-02-saldos-iniciales.sql` (líneas del asiento 12043) y `scripts/saldos-iniciales-identificados.json` (partidas con titular real; el genérico es la diferencia). Orden en el cargador: titulares del lote → titular genérico → documentos de proveedores → de clientes → (si los hubiera) el resto del lote.
+
+`validarLote` añade: el asiento `idAsientoApertura` existe, es de la empresa y está activo; **la suma de los documentos de cada lado es exactamente el saldo de `2.3.90.10` (haber − debe) y de `1.4.90.10` (debe − haber) en `CNT.DTAS` de ese asiento** (si no, 400); montos > 0, número de 15 dígitos, fecha ≤ corte, sin repetidos. Un lote que solo trae saldos iniciales **no exige el período de mayo abierto** (no genera asientos). Idempotencia: empresa + titular + número (OMITIDO si ya existe). Cada documento en su `REQUIRES_NEW`.
+
+**Identificado al 28-oct** (mayor de mayo 2025 del cliente, hoja 149010): facturas de arriendo de mayo 531, 534 y 537 (1.504,46 + 1.406,56 + 3.013,36 = **5.924,38**), sin cobro al 31-may, a sus titulares reales (una sociedad y dos personas naturales, identificación comprobada contra la hoja de ventas del control). Queda en SALDO INICIAL: **clientes 39.449,61** (bloque anterior a 2025) y **proveedores 44.019,59** completo (todo lo registrado en 239010 en 2025 se pagó en 2025 salvo 2,90 de residuos; el control empieza en junio 2025 y ningún pago de junio es de una factura de mayo, así que el lote de junio no cambia).
+
+### 10.3 Reasignación (`POST /SaaBE/rest/historico/reasignarSaldoInicial`)
+
+Cuando aparece el origen de una parte del saldo (un pago de jun-2025 a una factura de mayo, un extracto, una conciliación), se mueve del genérico al titular real **sin tocar la contabilidad de mayo**:
+
+```json
+{ "idEmpresa": 1236, "idUsuario": 38, "soloValidar": true, "lado": "PROVEEDOR", "identificacionDestino": "1790000000001",
+  "razonSocialDestino": "…", "tipoIdentificacionDestino": "RUC", "tipoPersonaDestino": "JURIDICA",
+  "monto": 1234.56, "fecha": "2026-11-05", "decision": "D-014", "motivo": "pago de 12-jun-2025 orden 123 a la factura 001-001-000000999 de mayo",
+  "numeroDocumento": "001-001-000000999", "fechaEmisionDocumento": "2025-05-20", "claveAcceso": null }
+```
+
+Qué hace, en una transacción: (1) busca el documento genérico (`identificacionGenerico`/`numeroGenerico`, por defecto `9999999999001` / `999-999-000000001`) del lado y lo bloquea (`PESSIMISTIC_WRITE`); (2) exige `monto ≤ saldo` del genérico, fecha de emisión ≤ fecha del genérico (un documento posterior al corte no es saldo inicial: va por la carga del mes), `decision` y `motivo` (regla 4 del expediente: sin decisión registrada no se aplica); (3) crea o completa el titular destino (rol + PRCC como §3.1); (4) crea el documento del titular real como en 10.1 (sin líneas ni asiento) con `numeroDocumento` o `999-998-NNNNNNNNN`; (5) **rebaja el total del genérico** en el monto y le anexa a la observación `REASIG <decision> <fecha>: <monto> de 999-999-000000001 (id …) -> <número> (id …)`; el destino lleva la misma traza y el motivo. La suma de documentos D-013 de cada lado sigue igual a la apertura (control `c11-02` bloque 04). Idempotente: si el documento destino ya existe (por número) o ya hay una reasignación con la misma `decision` al mismo titular, OMITIDO y no mueve nada. `soloValidar` informa sin grabar. Respuesta: el mismo `ResultadoCargaHistorica` con un ítem (CREADO/OMITIDO/RECHAZADO/VALIDADO); 400 si faltan campos o se rechaza.
+
+Después de reasignar, el pago o cobro real se carga contra el documento destino con el lote del mes del pago (mismo formato, `facturaNumero` = número destino): el motor contabiliza Debe `2.3.90.10` / Haber banco (o Debe banco / Haber `1.4.90.10`) con la PRCC del titular, y el saldo de la cuenta sigue cuadrando con la cartera.
+
+### 10.4 Control (solo SELECT)
+
+`cuadreSuper/03-trabajo/cxc-cxp/sql/c11-02-saldos-iniciales.sql`: 01 saldos de la apertura, 02 titulares y su cuenta de cartera, 03 documentos D-013 con líneas (debe ser 0), asiento (debe ser nulo) y saldo, 04 suma de documentos vs apertura (diferencia 0 antes y después de cada reasignación).
+
+## 11. Pendiente de probar en WildFly (criterio de aceptación de C11)
 
 1. `c11-01` aplicado (4 filas en `CNT.CNCS`), `validarHistoricoCxcCxp` con `lotes/2025-06/lote.json` → 200, `erroresLote = []`, todos VALIDADO salvo la compra con `requiereConfirmacion`.
 2. `cargarHistoricoCxcCxp` del mismo lote → 55 compras, 14 retenciones, 20 pagos, 11 ventas, 2 retenciones recibidas, 5 cobros creados (36 titulares, 13 nuevos); 8.1 coincide con el resumen del lote; 8.2 muestra DI-A/EG-A/IN-A con `ASNTMDOR` CXP/CXC y numeración mensual; 8.3 todas las líneas de gasto con centro 1.01/1.02.
 3. Repetir la carga → todo OMITIDO, cero filas nuevas.
-4. 8.4/8.5 contra el Excel de junio: proveedores con saldo = PENDIENTE (18) + VALIDAR DÉBITO (2) + pagadas sin fecha (9) + abono posible (1) + anulada con NC (1); clientes con saldo = 544 (sin fecha), 547 y 550 (cobro anterior a la emisión), 548 (sin registro) y las cobradas en meses siguientes (543 en 2026-01, 552 en 2025-12).
+4. 8.4/8.5 contra el Excel de junio: proveedores con saldo = PENDIENTE (18) + VALIDAR DÉBITO (2) + pagadas sin fecha (9) + abono posible (1) + anulada con NC (1); clientes con saldo = 544 (sin fecha), 547 y 550 (cobro anterior a la emisión), 548 (sin registro) y las cobradas en meses siguientes (543 en 2026-01, 552 en 2025-12). Con D-013 cargado, 8.4/8.5 muestran además los documentos de saldo inicial y 8.6 cuadra sin sumar aparte la apertura.
+5. Saldos iniciales: `validarHistoricoCxcCxp` con `lotes/2025-05/lote.json` → 200; cargarlo → 1 titular creado (SALDO INICIAL), 5 documentos creados; `c11-02` bloque 03 con 0 líneas y asiento nulo, bloque 04 con diferencia 0; repetir → todo OMITIDO; `reasignarSaldoInicial` con `soloValidar` y luego real (monto pequeño, decisión de prueba) → bloque 04 sigue en 0; `/cartera` de CxP y CxC muestra los documentos.
+6. Lotes de junio en adelante: sin cambios por D-013 (ningún pago/cobro de junio va contra facturas de mayo según el control).
