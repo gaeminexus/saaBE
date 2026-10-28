@@ -38,6 +38,9 @@ public interface MovimientoInteresCuotaDaoService extends EntityDao<MovimientoIn
      */
     List<Object[]> selectSaldoProvisionadoPorCuotas(List<Long> idsCuota, java.time.LocalDate corte) throws Throwable;
 
+    /** C15 / D-017 — anula los MVIC tipo 5 origen COBRO (excedente de mora a ingreso) de esos pagos. */
+    int anularDevengoCobroByPagos(List<Long> idsPago) throws Throwable;
+
     /**
      * Anula (marca {@code MVICANUL = 1}, nunca borra) los movimientos VIGENTES de tipo 1
      * (PROVISION), 5 (DEVENGO_MORA) y 7 (CLASIFICACION_CAPITAL) de una corrida del cierre de

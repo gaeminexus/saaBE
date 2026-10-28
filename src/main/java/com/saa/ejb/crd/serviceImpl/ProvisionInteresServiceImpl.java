@@ -133,6 +133,72 @@ public class ProvisionInteresServiceImpl implements ProvisionInteresService {
         registrarProvisionCierre(idCorrida, idAsiento, fechaCorte, usuario, false);
     }
 
+    /** Propiedad de sistema: false = toda la mora cobrada va a 1.4.02 (comportamiento anterior a D-017). */
+    public static final String PROPIEDAD_MORA_NO_DEVENGADA_A_INGRESO = "saa.cartera.moraNoDevengadaAIngreso";
+
+    @Override
+    public Map<PagoPrestamo, Double> separarMoraNoDevengada(List<PagoPrestamo> pagos, String usuario) throws Throwable {
+        Map<PagoPrestamo, Double> excedentePorPago = new java.util.IdentityHashMap<>();
+        if (pagos == null || pagos.isEmpty()
+                || "false".equalsIgnoreCase(System.getProperty(PROPIEDAD_MORA_NO_DEVENGADA_A_INGRESO, "true"))) {
+            return excedentePorPago;
+        }
+        System.out.println("ProvisionInteresServiceImpl.separarMoraNoDevengada - pagos: " + pagos.size());
+        List<PagoPrestamo> conMora = new ArrayList<>();
+        List<Long> idsCuota = new ArrayList<>();
+        Map<Long, Double> moraLotePorCuota = new HashMap<>();
+        for (PagoPrestamo pago : pagos) {
+            if (pago == null || pago.getDetallePrestamo() == null || nvl(pago.getMoraPagada()) <= TOLERANCIA
+                    || (pago.getAnulado() != null && pago.getAnulado() == 1L)) {
+                continue;
+            }
+            conMora.add(pago);
+            Long idCuota = pago.getDetallePrestamo().getCodigo();
+            if (!idsCuota.contains(idCuota)) {
+                idsCuota.add(idCuota);
+            }
+            if (pago.getCodigo() != null) {
+                moraLotePorCuota.merge(idCuota, nvl(pago.getMoraPagada()), Double::sum);
+            }
+        }
+        if (conMora.isEmpty()) {
+            return excedentePorPago;
+        }
+        conMora.sort((a, b) -> Long.compare(a.getCodigo() != null ? a.getCodigo() : Long.MAX_VALUE,
+            b.getCodigo() != null ? b.getCodigo() : Long.MAX_VALUE));
+
+        // Reconocido (MVIC 5 − 6) y mora ya pagada por OTROS pagos vigentes de la cuota.
+        Map<Long, Double> reconocido = movimientoInteresCuotaDaoService.selectSaldoDevengadoPorCuotas(idsCuota);
+        Map<Long, double[]> pagosVigentes = cargarPagosPorCuota(idsCuota);
+        Map<Long, Double> pagadoPrevio = new HashMap<>();
+        for (Long idCuota : idsCuota) {
+            double[] p = pagosVigentes.get(idCuota);
+            double total = p != null ? p[1] : 0.0;
+            pagadoPrevio.put(idCuota, Math.max(0.0, total - nvl(moraLotePorCuota.get(idCuota))));
+        }
+
+        LocalDateTime ahora = LocalDateTime.now();
+        for (PagoPrestamo pago : conMora) {
+            Long idCuota = pago.getDetallePrestamo().getCodigo();
+            double mora = redondear(nvl(pago.getMoraPagada()));
+            double r = nvl(reconocido.get(idCuota));
+            double pPrevio = nvl(pagadoPrevio.get(idCuota));
+            double devengadoPendiente = Math.max(0.0, redondear(r - pPrevio));
+            double contraCuentaPorCobrar = Math.min(mora, devengadoPendiente);
+            double excedente = redondear(mora - contraCuentaPorCobrar);
+            pagadoPrevio.put(idCuota, pPrevio + mora);
+            if (excedente > TOLERANCIA) {
+                reconocido.put(idCuota, r + excedente);
+                excedentePorPago.put(pago, excedente);
+                LocalDate fecha = pago.getFecha() != null ? pago.getFecha().toLocalDate() : LocalDate.now();
+                guardarMovimiento(idCuota, pago.getPrestamo(), TipoMovimientoInteresCuota.DEVENGO_MORA,
+                    ComponenteMovimientoInteresCuota.MORA, excedente, fecha, null, pago.getCodigo(), "COBRO",
+                    pago.getCodigo(), null, usuario, ahora);
+            }
+        }
+        return excedentePorPago;
+    }
+
     @Override
     public double[] sembrarProvisionApertura(Long idCorrida, LocalDate fechaCorte, double montoObjetivo,
             String usuario) throws Throwable {
@@ -381,6 +447,19 @@ public class ProvisionInteresServiceImpl implements ProvisionInteresService {
         ResultadoReversoProvision resultado = new ResultadoReversoProvision();
         if (pagosAnulados == null || pagosAnulados.isEmpty()) {
             return resultado;
+        }
+        // C15 / D-017: el excedente de mora que esos pagos reconocieron directo a ingreso (MVIC
+        // tipo 5 origen COBRO) deja de existir con el pago: se anula para que el próximo ⑩ lo
+        // vuelva a devengar.
+        List<Long> idsPagoAnulados = new ArrayList<>();
+        for (PagoPrestamo pago : pagosAnulados) {
+            if (pago != null && pago.getCodigo() != null) {
+                idsPagoAnulados.add(pago.getCodigo());
+            }
+        }
+        int anuladosCobro = movimientoInteresCuotaDaoService.anularDevengoCobroByPagos(idsPagoAnulados);
+        if (anuladosCobro > 0) {
+            System.out.println("  MVIC tipo 5 (COBRO) anulados por la anulación de pagos: " + anuladosCobro);
         }
         List<Long> idsPago = new ArrayList<>();
         Map<Long, Long> tipoPrestamoPorCuota = new HashMap<>();

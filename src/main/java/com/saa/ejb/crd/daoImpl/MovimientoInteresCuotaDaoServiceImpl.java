@@ -93,6 +93,26 @@ public class MovimientoInteresCuotaDaoServiceImpl extends EntityDaoImpl<Movimien
     }
 
     @Override
+    public int anularDevengoCobroByPagos(List<Long> idsPago) throws Throwable {
+        System.out.println("MovimientoInteresCuotaDaoServiceImpl.anularDevengoCobroByPagos - pagos: "
+            + (idsPago != null ? idsPago.size() : 0));
+        if (idsPago == null || idsPago.isEmpty()) {
+            return 0;
+        }
+        int total = 0;
+        for (int inicio = 0; inicio < idsPago.size(); inicio += TAMANIO_BLOQUE) {
+            List<Long> bloque = idsPago.subList(inicio, Math.min(inicio + TAMANIO_BLOQUE, idsPago.size()));
+            Query query = em.createQuery(
+                "update MovimientoInteresCuota m set m.anulado = 1"
+                + " where m.pago.codigo in :idsPago and m.anulado = 0 and m.tipoMovimiento = 5"
+                + " and m.origen = 'COBRO'");
+            query.setParameter("idsPago", bloque);
+            total += query.executeUpdate();
+        }
+        return total;
+    }
+
+    @Override
     public int anularByCorrida(Long idCorrida, String usuario) throws Throwable {
         System.out.println("MovimientoInteresCuotaDaoServiceImpl.anularByCorrida - corrida: " + idCorrida
             + " - usuario: " + usuario);

@@ -87,6 +87,19 @@ public interface ProvisionInteresService {
             throws Throwable;
 
     /**
+     * C15 / D-017 (H4) — al cobrar mora: la parte ya devengada para esa cuota (libro MVIC tipo
+     * 5 − 6, menos la mora que ya pagaron otros pagos vigentes de la cuota) se acredita a la
+     * cuenta por cobrar 1.4.02.xx; el EXCEDENTE no devengado (la mora del mes en curso) va directo
+     * a ingreso 5.1.02.xx. Por cada pago con excedente graba un MVIC tipo 5 origen COBRO (así el
+     * próximo ⑩ no lo vuelve a devengar) y lo devuelve en el mapa, por identidad del pago.
+     * Propiedad {@code saa.cartera.moraNoDevengadaAIngreso=false} = comportamiento anterior (todo
+     * a 1.4.02; mapa vacío).
+     *
+     * @return excedente no devengado por pago (solo los que tienen)
+     */
+    Map<PagoPrestamo, Double> separarMoraNoDevengada(List<PagoPrestamo> pagos, String usuario) throws Throwable;
+
+    /**
      * Recalcula el paso ⑦ (misma fórmula que {@link #calcularProvisionPorTipoPrestamo}, nunca
      * confía en un cálculo previo) y REGISTRA un {@code MVIC} tipo 1 (PROVISION) por cada cuota
      * y componente con "a provisionar" {@code > 0}, enlazado a la corrida y al asiento. Se llama

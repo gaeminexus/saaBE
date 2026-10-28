@@ -97,6 +97,10 @@ public class ContabilizacionIndividualCreditoServiceImpl implements Contabilizac
     @EJB
     private com.saa.ejb.crd.service.MotorPagoPrestamoService motorPagoPrestamoService;
 
+    /** C15 / D-017: separa la mora cobrada devengada (1.4.02) de la no devengada (ingreso). */
+    @EJB
+    private com.saa.ejb.crd.service.ProvisionInteresService provisionInteresService;
+
     @Override
     public Long resolverPlantillaAplicacion(Long idEmpresa) throws Throwable {
         Long idPlantilla = plantillaService.codigoByAlterno(PlantillasCredito.APLICACION_PETRO, idEmpresa);
@@ -132,6 +136,24 @@ public class ContabilizacionIndividualCreditoServiceImpl implements Contabilizac
         detalle.setValorDebe(0.0);
         detalle.setValorHaber(redondear(valor));
         return detalle;
+    }
+
+    @Override
+    public DetalleAsiento lineaIngresoMora(Long idEmpresa, Long idTipoPrestamo, double valor,
+            String prefijoDescripcion) throws Throwable {
+        if (idTipoPrestamo == null) {
+            throw new IncomeException(prefijoDescripcion + ": el préstamo no tiene tipo de préstamo asignado;"
+                    + " no se puede resolver la cuenta de ingreso por mora.");
+        }
+        Long idPlantilla = plantillaService.codigoByAlterno(PlantillasCredito.DEVENGO_INTERESES, idEmpresa);
+        DetallePlantilla linea = idPlantilla != null ? detallePlantillaDaoService.selectByPlantillaYAuxiliares(
+                idPlantilla, CrdLineaAsiento.INGRESO_INTERES_MORA, idTipoPrestamo.intValue()) : null;
+        if (linea == null || linea.getPlanCuenta() == null) {
+            throw new IncomeException("La plantilla alterno " + PlantillasCredito.DEVENGO_INTERESES
+                    + " no tiene la línea de ingreso por mora (aux1=" + CrdLineaAsiento.INGRESO_INTERES_MORA
+                    + ") para el tipo de préstamo " + idTipoPrestamo + " (D-017: la mora no devengada va a ingreso).");
+        }
+        return lineaHaberDesdePlantilla(linea, valor, prefijoDescripcion + " - interés de mora no devengado (ingreso)");
     }
 
     @Override
@@ -768,8 +790,20 @@ public class ContabilizacionIndividualCreditoServiceImpl implements Contabilizac
             totalSeguroIncendio += nvl(pago.getValorSeguroIncendio());
         }
 
+        // C15 / D-017 (H4): la mora cobrada que no estaba devengada para su cuota (la del mes en
+        // curso) va directo a ingreso; solo la ya devengada cancela 1.4.02.xx.
+        double totalMoraIngreso = 0.0;
+        for (Double excedente : provisionInteresService.separarMoraNoDevengada(pagos, "SISTEMA").values()) {
+            totalMoraIngreso += nvl(excedente);
+        }
+        totalMoraIngreso = redondear(totalMoraIngreso);
+        totalMora = totalMora - totalMoraIngreso;
+
         totalInteres = redondear(totalInteres);
         totalMora = redondear(totalMora);
+        if (totalMoraIngreso > 0.0) {
+            lineas.add(lineaIngresoMora(idEmpresa, idTipoPrestamo, totalMoraIngreso, prefijoDescripcion));
+        }
         totalSeguroDesgravamen = redondear(totalSeguroDesgravamen);
         totalSeguroIncendio = redondear(totalSeguroIncendio);
 
