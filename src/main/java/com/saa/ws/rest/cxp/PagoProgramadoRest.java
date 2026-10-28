@@ -611,22 +611,30 @@ public class PagoProgramadoRest {
      * Se envía el contenido binario del archivo en el cuerpo de la petición.
      * @param idLote : Id del lote
      * @param archivo : Contenido del archivo de respuesta
+     * @param fechaContable : (opcional, {@code yyyy-MM-dd}) fecha real en que el banco ejecutó los
+     *                        pagos: queda en {@code PGTRFRSP} y fecha el asiento y el movimiento
+     *                        bancario de cada pago confirmado. Omitida = hoy. C6,
+     *                        docs/logica-negocio/cnt/FECHA-CONTABLE-REPROCESO.md.
      */
     @POST
     @Path("/lote/{idLote}/respuesta")
     @Consumes(MediaType.APPLICATION_OCTET_STREAM)
     @Produces(MediaType.APPLICATION_JSON)
     public Response procesarRespuesta(@PathParam("idLote") Long idLote,
-            @QueryParam("idUsuario") Long idUsuario, byte[] archivo) {
-        System.out.println("LLEGA AL SERVICIO POST /pgtr/lote/" + idLote + "/respuesta");
+            @QueryParam("idUsuario") Long idUsuario,
+            @QueryParam("fechaContable") String fechaContable, byte[] archivo) {
+        System.out.println("LLEGA AL SERVICIO POST /pgtr/lote/" + idLote + "/respuesta"
+                + (fechaContable != null ? " | fechaContable=" + fechaContable : ""));
         try {
             if (archivo == null || archivo.length == 0) {
                 return Response.status(Response.Status.BAD_REQUEST)
                         .entity("No se recibió el archivo de respuesta del banco.")
                         .type(MediaType.APPLICATION_JSON).build();
             }
+            LocalDate fechaRespuesta = (fechaContable != null && !fechaContable.trim().isEmpty())
+                    ? LocalDate.parse(fechaContable.trim()) : null;
             Map<String, Object> resultado =
-                    pagoProgramadoService.procesarRespuestaBanco(idLote, archivo, idUsuario);
+                    pagoProgramadoService.procesarRespuestaBanco(idLote, archivo, idUsuario, fechaRespuesta);
             return Response.status(Response.Status.OK).entity(resultado)
                     .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {

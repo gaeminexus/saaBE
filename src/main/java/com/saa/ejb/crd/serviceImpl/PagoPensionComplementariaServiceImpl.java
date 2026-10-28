@@ -953,8 +953,7 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         // mes M que se esté generando. min(último día del mes de la corrida, hoy): nunca
         // futura, así que el circuito no choca con validarFechaNoFutura de pagarConAportes.
         LocalDate finDeMes = YearMonth.of(anio, mes).atEndOfMonth();
-        LocalDate hoy = LocalDate.now();
-        LocalDate fecha = finDeMes.isAfter(hoy) ? hoy : finDeMes;
+        LocalDate fecha = fechaDelPeriodo(anio, mes);
         // Auditoría — cuándo se registró de verdad. Separada a propósito de fechaHecho: reusar
         // una sola fecha para las dos cosas fue el defecto original (79204e4).
         LocalDateTime fechaRegistro = LocalDateTime.now();
@@ -1068,9 +1067,7 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
                 + valorSeguroNominal + " - fijado $" + seguroFijado + " - motivo " + motivoTope);
         }
 
-        LocalDate finDeMes = YearMonth.of(anio, mes).atEndOfMonth();
-        LocalDate hoy = LocalDate.now();
-        LocalDate fecha = finDeMes.isAfter(hoy) ? hoy : finDeMes;
+        LocalDate fecha = fechaDelPeriodo(anio, mes);
 
         // filaExistente != null solo si algún camino ya la creó sin fijar valorSeguro (hoy no
         // pasa, pero cubre el reintento sin arriesgar UK_PGPC_ENTD_ANIO_MES).
@@ -1251,7 +1248,8 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         // §12 del contrato (2026-09-23): el proceso de seguro genera su propio asiento — D
         // cuentas individuales / H seguros médicos por pagar, UN SOLO asiento por el total del
         // período, mismo criterio de "sin total, sin asiento" que la orden de arriba.
-        Long idAsientoSeguro = generarAsientoSeguroMedico(idEmpresa, anio, mes, totalSeguroPeriodo, usuario);
+        Long idAsientoSeguro = generarAsientoSeguroMedico(idEmpresa, anio, mes, totalSeguroPeriodo, usuario,
+            fechaDelPeriodo(anio, mes));
         resumen.setMensaje("Seguro médico " + mes + "/" + anio + " - " + generados + " jubilados nuevos y "
             + yaGenerados + " que ya tenían el seguro fijado, $"
             + totalSeguroPeriodo + " en total hacia el proveedor"
@@ -2251,10 +2249,14 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         // idCuentaBancariaOrigen SIEMPRE null: tesorería asigna cuenta/forma de pago al aprobar
         // — mismo criterio que DevolucionAporteServiceImpl (punto 14, 2026-08-27).
         // §6bis (refinamiento 2026-09-04): el PAGO va con la fecha ACTUAL, separado de la de
-        // cartera.
+        // cartera. C6 (FECHA-CONTABLE-REPROCESO.md): la fecha programada es la del hecho
+        // (PGPCFCHA = min(fin del mes de la corrida, hoy)) — para el mes en curso sigue siendo
+        // hoy, así que §6bis no cambia; en un re-proceso de un mes pasado la orden nace en ese
+        // mes y no en la fecha en que se corrió.
+        LocalDate fechaOrden = pago.getFecha() != null ? pago.getFecha() : LocalDate.now();
         Map<String, Object> respuesta = pagoProgramadoService.registrarPagoDeOrigenExterno(
             OrigenPagoExterno.CRD_PAGO_PENSION_COMPLEMENTARIA, pago.getCodigo(),
-            idEmpresa, null, remanente, LocalDate.now().toString(), beneficiario,
+            idEmpresa, null, remanente, fechaOrden.toString(), beneficiario,
             desglose, observacion, idUsuario, false, null);
 
         Object valorPago = (respuesta != null) ? respuesta.get("pago") : null;
@@ -2577,9 +2579,10 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         desglose.add(lineaSeguro);
 
         try {
+            // C6: fecha programada = fecha del período (hoy si el período es el mes en curso).
             Map<String, Object> respuesta = pagoProgramadoService.registrarPagoDeOrigenExterno(
                 OrigenPagoExterno.CRD_SEGURO_JUBILADOS, idOrigenPeriodo, idEmpresa, null,
-                totalSeguroPeriodo, LocalDate.now().toString(), beneficiario,
+                totalSeguroPeriodo, fechaDelPeriodo(anio, mes).toString(), beneficiario,
                 desglose, observacion, idUsuario, false, null);
 
             Object valorPago = (respuesta != null) ? respuesta.get("pago") : null;
@@ -2791,13 +2794,15 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
      * @param mes                Mes del período
      * @param totalSeguroPeriodo Total del seguro médico del período (Σ de los jubilados)
      * @param usuario            Usuario que dispara la generación
+     * @param fechaAsiento       Fecha contable del asiento (C6): la del período,
+     *                           {@link #fechaDelPeriodo(Integer, Integer)} — antes era la de hoy
      * @return El código del asiento, o {@code null} si la contabilidad de CRD está inactiva o
      *         si el total del período es $0 (mismo criterio que la orden: un asiento sin líneas
      *         no se graba)
      * @throws Throwable Si ocurre un error
      */
     private Long generarAsientoSeguroMedico(Long idEmpresa, Integer anio, Integer mes,
-            double totalSeguroPeriodo, String usuario) throws Throwable {
+            double totalSeguroPeriodo, String usuario, LocalDate fechaAsiento) throws Throwable {
         if (!configuracionContabilidadService.contabilidadActiva()) {
             System.out.println("  Contabilidad de CRD INACTIVA: seguro médico " + mes + "/" + anio
                 + " registrado sin generar su asiento propio.");
@@ -2835,7 +2840,7 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         }
 
         Asiento asiento = asientoContableService.generarAsiento(idEmpresa, TipoAsientos.CREDITOS,
-            LocalDate.now(), glosa, usuario, lineas, Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR));
+            fechaAsiento, glosa, usuario, lineas, Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR));
 
         System.out.println("  ✅ Asiento del seguro médico generado - " + mes + "/" + anio
             + " - Asiento " + asiento.getCodigo() + " - $" + total);
@@ -2923,6 +2928,21 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
             + " - Asiento " + asiento.getCodigo() + " - $" + valorEsperado);
 
         return asiento.getCodigo();
+    }
+
+    /**
+     * Fecha del hecho de un período de jubilados (C6, FECHA-CONTABLE-REPROCESO.md):
+     * {@code min(último día del mes del período, hoy)}. Para el mes en curso es hoy (nada
+     * cambia en la operación normal); para un período pasado es su fin de mes, así que un
+     * re-proceso de junio 2025 fecha pagos, órdenes y asientos el 30-jun-2025. Nunca futura, por
+     * lo mismo que D1 de PLAN-PAGO-RETROACTIVO-JUBILADOS.md §4bis. Es la ÚNICA regla de fecha
+     * del motor: la usan las dos corridas (seguro y pensiones), el PGPC, el devengo, el asiento
+     * del seguro y las órdenes de pago en CXP.
+     */
+    private static LocalDate fechaDelPeriodo(Integer anio, Integer mes) {
+        LocalDate finDeMes = YearMonth.of(anio, mes).atEndOfMonth();
+        LocalDate hoy = LocalDate.now();
+        return finDeMes.isAfter(hoy) ? hoy : finDeMes;
     }
 
     /** Arma una línea del devengo desde la plantilla 35 por su aux1 posicional (1..4). */

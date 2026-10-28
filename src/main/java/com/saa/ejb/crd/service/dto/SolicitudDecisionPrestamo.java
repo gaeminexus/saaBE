@@ -1,5 +1,7 @@
 package com.saa.ejb.crd.service.dto;
 
+import java.time.LocalDate;
+
 /**
  * Body de POST /rest/prst/aprobar/{id} y POST /rest/prst/rechazar/{id}.
  *
@@ -9,6 +11,15 @@ public class SolicitudDecisionPrestamo {
 
     private String usuario;
     private String observacion;
+
+    /**
+     * Fecha contable del desembolso (C6, cnt/FECHA-CONTABLE-REPROCESO.md), {@code yyyy-MM-dd},
+     * OPCIONAL: fecha programada de la orden de pago del desembolso en CXP. Si no viene, hoy
+     * (comportamiento de siempre). No puede ser futura. El asiento de entrega NO la usa: va
+     * con {@code PRSTFCIN} (fecha de inicio del préstamo), que ya es una fecha de negocio.
+     * Sin uso en {@code rechazar}.
+     */
+    private LocalDate fechaContable;
 
     /**
      * Empresa contable del asiento de entrega. Obligatorio en {@code aprobar} desde
@@ -55,5 +66,13 @@ public class SolicitudDecisionPrestamo {
 
     public void setIdUsuario(Long idUsuario) {
         this.idUsuario = idUsuario;
+    }
+
+    public LocalDate getFechaContable() {
+        return fechaContable;
+    }
+
+    public void setFechaContable(LocalDate fechaContable) {
+        this.fechaContable = fechaContable;
     }
 }

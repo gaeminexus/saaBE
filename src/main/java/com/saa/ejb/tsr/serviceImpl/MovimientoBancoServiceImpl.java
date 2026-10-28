@@ -125,6 +125,19 @@ public class MovimientoBancoServiceImpl implements MovimientoBancoService {
 			return valor;
 	}
 
+	/**
+	 * Fecha del movimiento bancario (MVCBFRGS) = fecha del asiento que lo origina (C6,
+	 * docs/logica-negocio/cnt/FECHA-CONTABLE-REPROCESO.md). La conciliacion consulta MVCB por
+	 * esta columna (BETWEEN / <= fecha en MovimientoBancoDaoServiceImpl) y el periodo/mes/anio
+	 * del movimiento ya salen del asiento: con la fecha del sistema, un movimiento re-procesado
+	 * de junio 2025 quedaba en el periodo de junio pero fechado hoy, fuera del extracto de su
+	 * mes. En la operacion normal el asiento se fecha con la fecha de negocio que eligio el
+	 * usuario (hoy casi siempre), asi que no cambia nada. Sin asiento o sin fecha, hoy.
+	 */
+	private LocalDate fechaDelAsiento(Asiento asiento) {
+		return (asiento != null && asiento.getFechaAsiento() != null) ? asiento.getFechaAsiento() : LocalDate.now();
+	}
+
 	/* (non-Javadoc)
 	 * @see com.compuseg.income.tesoreria.ejb.service.MovimientoBancoService#crearMovimientoPorCobro(com.compuseg.income.tesoreria.ejb.model.Cobro)
 	 */
@@ -144,7 +157,7 @@ public class MovimientoBancoServiceImpl implements MovimientoBancoService {
 			movimientoBanco.setConciliado(0L);
 			movimientoBanco.setRubroTipoMovimientoP(Long.valueOf(Rubros.TIPO_MOVIMIENTO_CONCILIACION));
 			movimientoBanco.setRubroTipoMovimientoH(Long.valueOf(TipoMovimientoConciliacion.TRANSFERENCIAS_CREDITOS_EN_TRANSITO));
-			movimientoBanco.setFechaRegistro(LocalDate.now());
+			movimientoBanco.setFechaRegistro(fechaDelAsiento(cobro.getAsiento()));
 			movimientoBanco.setNumeroAsiento(cobro.getAsiento().getNumero());
 			movimientoBanco.setEstado(Long.valueOf(Estado.ACTIVO));
 			movimientoBanco.setCuentaBancaria(cobroTransferencia.getCuentaBancaria());
@@ -208,7 +221,7 @@ public class MovimientoBancoServiceImpl implements MovimientoBancoService {
 		movimientoBanco.setConciliado(0L);
 		movimientoBanco.setRubroTipoMovimientoP(Long.valueOf(Rubros.TIPO_MOVIMIENTO_CONCILIACION));
 		movimientoBanco.setRubroTipoMovimientoH(Long.valueOf(TipoMovimientoConciliacion.DEPOSITO_EN_TRANSITO));
-		movimientoBanco.setFechaRegistro(LocalDate.now());
+		movimientoBanco.setFechaRegistro(fechaDelAsiento(asiento));
 		movimientoBanco.setNumeroAsiento(asiento.getNumero());
 		movimientoBanco.setEstado(Long.valueOf(Estado.ACTIVO));
 		movimientoBanco.setCuentaBancaria(detalleDeposito.getCuentaBancaria());
@@ -259,7 +272,7 @@ public class MovimientoBancoServiceImpl implements MovimientoBancoService {
 		movimientoBanco.setConciliado(0L);
 		movimientoBanco.setRubroTipoMovimientoP(Long.valueOf(Rubros.TIPO_MOVIMIENTO_CONCILIACION));
 		movimientoBanco.setRubroTipoMovimientoH(Long.valueOf(tipoMovimiento));
-		movimientoBanco.setFechaRegistro(LocalDate.now());
+		movimientoBanco.setFechaRegistro(fechaDelAsiento(asiento));
 		movimientoBanco.setNumeroAsiento(asiento.getNumero());
 		movimientoBanco.setEstado(Long.valueOf(Estado.ACTIVO));
 		movimientoBanco.setCuentaBancaria(cuentaBancaria);
@@ -288,7 +301,7 @@ public class MovimientoBancoServiceImpl implements MovimientoBancoService {
 		movimientoBanco.setConciliado(0L);
 		movimientoBanco.setRubroTipoMovimientoP(Long.valueOf(Rubros.TIPO_MOVIMIENTO_CONCILIACION));
 		movimientoBanco.setRubroTipoMovimientoH(Long.valueOf(tipoMovimiento));
-		movimientoBanco.setFechaRegistro(LocalDate.now());
+		movimientoBanco.setFechaRegistro(fechaDelAsiento(asiento));
 		movimientoBanco.setNumeroAsiento(asiento.getNumero());
 		movimientoBanco.setEstado(Long.valueOf(Estado.ACTIVO));
 		movimientoBanco.setCuentaBancaria(cheque.getChequera().getCuentaBancaria());

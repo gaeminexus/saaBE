@@ -364,13 +364,27 @@ public class PrestamoServiceImpl implements PrestamoService {
     @Override
     public Prestamo aprobar(Long idPrestamo, String usuario, String observacion, Long idEmpresa, Long idUsuario)
             throws Throwable {
-        System.out.println("Aprobando préstamo ID: " + idPrestamo + " - Usuario: " + usuario);
+        return aprobar(idPrestamo, usuario, observacion, idEmpresa, idUsuario, null);
+    }
+
+    @Override
+    public Prestamo aprobar(Long idPrestamo, String usuario, String observacion, Long idEmpresa, Long idUsuario,
+            LocalDate fechaContable) throws Throwable {
+        System.out.println("Aprobando préstamo ID: " + idPrestamo + " - Usuario: " + usuario
+            + " - Fecha contable: " + fechaContable);
 
         if (idEmpresa == null) {
             throw new IncomeException("No se puede aprobar el préstamo " + idPrestamo + ": falta idEmpresa.");
         }
         if (idUsuario == null) {
             throw new IncomeException("No se puede aprobar el préstamo " + idPrestamo + ": falta idUsuario.");
+        }
+        // C6 (FECHA-CONTABLE-REPROCESO.md): fecha de la orden de pago del desembolso. Por
+        // defecto hoy; explícita para re-procesar un mes pasado. Nunca futura.
+        LocalDate fechaOrdenPago = fechaContable != null ? fechaContable : LocalDate.now();
+        if (fechaOrdenPago.isAfter(LocalDate.now())) {
+            throw new IncomeException("FECHA_CONTABLE_FUTURA: la fecha contable " + fechaOrdenPago
+                + " del desembolso del préstamo " + idPrestamo + " es futura.");
         }
 
         Prestamo prestamo = prestamoDaoService.selectById(idPrestamo, NombreEntidadesCredito.PRESTAMO);
@@ -457,7 +471,7 @@ public class PrestamoServiceImpl implements PrestamoService {
             // al aprobar.
             Map<String, Object> respuesta = pagoProgramadoService.registrarPagoDeOrigenExterno(
                 OrigenPagoExterno.CRD_DESEMBOLSO_PRESTAMO, prestamo.getCodigo(),
-                idEmpresa, null, valorOrden, LocalDate.now().toString(),
+                idEmpresa, null, valorOrden, fechaOrdenPago.toString(),
                 beneficiario, desglose, observacionPago, idUsuario,
                 false, null);
 
