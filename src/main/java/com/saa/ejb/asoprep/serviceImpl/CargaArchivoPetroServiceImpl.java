@@ -257,6 +257,21 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
     private List<String> cancelacionesPosterioresMarcadas = new ArrayList<>();
 
     /**
+     * D-019 ampliada (2026-10-28): cuotas del mes de la carga que la migración dejó saldadas
+     * (PAGADA/CANCELADA_ANTICIPADA) sin ningún pago vigente en {@code CRD.PGPR} y sin fecha de pago
+     * o con fecha posterior al corte, reabiertas por {@link #reabrirCuotasSaldadasSinPagoAlCorte}.
+     * Una línea por cuota. Reset al entrar a {@code aplicarPagosArchivoPetro}.
+     */
+    private List<String> cuotasSaldadasSinPagoReabiertas = new ArrayList<>();
+
+    /**
+     * D-019 ampliada: préstamos ya preparados (regla de la cuota saldada sin pago + reapertura de
+     * la operación terminal) en ESTA corrida, para que el paso previo a la validación y la fase 3
+     * no los preparen dos veces. Reset al entrar a {@code aplicarPagosArchivoPetro}.
+     */
+    private Set<Long> prestamosPreparadosReproceso = new HashSet<>();
+
+    /**
      * §16 (2026-09-03, revalidación de carga): qué (fila PXCA, tipoNovedad) confirmó
      * {@code registrarNovedad} durante UNA corrida de {@link #revalidarCarga}, para poder
      * distinguir "el código actual todavía produce esta novedad" (se reconfirmó — sigue en este
@@ -1294,6 +1309,8 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 		excedentesDevueltosAplicados.clear();
 		detalleExcedentesDevueltos.clear();
 		cancelacionesPosterioresMarcadas.clear();
+		cuotasSaldadasSinPagoReabiertas.clear();
+		prestamosPreparadosReproceso.clear();
 		montoExcedentesDevueltos = 0.0;
 		if (modoReproceso) {
 			System.out.println("=== MODO REPROCESO: " + etiquetaReproceso + " ===");
@@ -1341,6 +1358,17 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 			// ==========================================
 			if (modoReproceso) {
 				validarExcedentesDevueltosReproceso(cargaArchivo);
+			}
+
+			// ==========================================
+			// MODO REPROCESO (D-019 ampliada): ANTES de validar que todo valor tenga destino, se
+			// resuelven las operaciones vigentes al corte de cada fila con descuento y se reabren
+			// las cuotas del mes que la migración dejó saldadas sin ningún pago (y las operaciones
+			// terminales, D-019). Así la validación de abajo y la fase 3 ven la cuota del mes como
+			// estaba al corte. Misma transacción: si algo de abajo lanza, esto revierte con todo.
+			// ==========================================
+			if (modoReproceso) {
+				prepararOperacionesVigentesAlCorteReproceso(cargaArchivo);
 			}
 
 			// ==========================================
@@ -1555,6 +1583,9 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 				resumenBuilder.append(formateaListaResumen(
 					"Operaciones vigentes al corte reabiertas (D-019, " + MARCA_CANCELACION_POSTERIOR + ")",
 					cancelacionesPosterioresMarcadas));
+				resumenBuilder.append(formateaListaResumen(
+					"Cuotas del mes saldadas sin pago reabiertas al corte (D-019 ampliada)",
+					cuotasSaldadasSinPagoReabiertas));
 			}
 			String resumen = resumenBuilder.toString();
 			
@@ -1639,6 +1670,7 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 			resultado.put("excedentesDevueltos", new ArrayList<>(detalleExcedentesDevueltos));
 			resultado.put("montoExcedentesDevueltos", Double.valueOf(Math.round(montoExcedentesDevueltos * 100.0) / 100.0));
 			resultado.put("cancelacionesPosteriores", new ArrayList<>(cancelacionesPosterioresMarcadas));
+			resultado.put("cuotasSaldadasSinPagoReabiertas", new ArrayList<>(cuotasSaldadasSinPagoReabiertas));
 			return resultado;
 		} finally {
 			modoReproceso = false;
@@ -1880,7 +1912,10 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 	 * D-019 (decisión del líder, 2026-10-28): en reproceso el estado de HOY del préstamo no
 	 * decide. Se buscan las operaciones vigentes al corte ({@code selectByEntidadYProductoVigentesAlCorte})
 	 * y cada una que hoy está cancelada se reabre ({@link #reabrirPrestamoVigenteAlCorte}) para que
-	 * la cuota del mes reciba el pago como ocurrió cronológicamente.
+	 * la cuota del mes reciba el pago como ocurrió cronológicamente. D-019 ampliada: la que no es
+	 * terminal igual pasa por {@link #reabrirCuotasSaldadasSinPagoAlCorte}. Cada préstamo se prepara
+	 * una sola vez por corrida; la primera llamada es la de
+	 * {@link #prepararOperacionesVigentesAlCorteReproceso}, antes de la validación.
 	 */
 	private List<Prestamo> prestamosVigentesAlCorteReproceso(Entidad entidad, Producto producto,
 			CargaArchivo cargaArchivo) throws Throwable {
@@ -1890,11 +1925,192 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 			return new ArrayList<>();
 		}
 		for (Prestamo prestamo : lista) {
+			// D-019 ampliada: cada préstamo se prepara UNA vez por corrida (el paso previo a la
+			// validación y la fase 3 llegan acá con la misma fila).
+			if (!prestamosPreparadosReproceso.add(prestamo.getCodigo())) {
+				continue;
+			}
 			if (esPrestamoTerminal(prestamo.getIdEstado())) {
 				reabrirPrestamoVigenteAlCorte(prestamo, cargaArchivo);
+			} else {
+				reabrirCuotasSaldadasSinPagoAlCorte(prestamo, cargaArchivo);
 			}
 		}
 		return lista;
+	}
+
+	/**
+	 * D-019 ampliada (líder del proyecto, 2026-10-28) — regla "cuota saldada sin pago vigente =
+	 * pendiente al corte". La migración desde Delta 21 dejó cuotas en PAGADA (4) /
+	 * CANCELADA_ANTICIPADA (7) sin ninguna fila en {@code CRD.PGPR} y con {@code DTPRFCPG} nula o
+	 * posterior al corte. En reproceso, la cuota con vencimiento en el MES DE LA CARGA que esté así
+	 * se reconstruye desde sus pagos ({@code recalcularCuotaDesdePagos}: sin pagos vuelve a
+	 * pendiente/en mora) y su mora se calcula al corte; así la fila Petro del mes la encuentra y le
+	 * aplica el pago como ocurrió. Vale para cualquier operación vigente al corte, terminal o no hoy.
+	 *
+	 * <p>Criterio conservador: solo cuotas con vencimiento dentro del mes de la carga y sin NINGÚN
+	 * pago vigente ({@code selectVigentesByIdDetallePrestamo}, el mismo que usa el motor). Las de
+	 * meses anteriores quedan como estaban (las fija el ancla de mayo 2025 o el reproceso de su
+	 * mes) y las de meses siguientes las reabre el reproceso de su propio mes. Una cuota con algún
+	 * pago vigente no se toca. Nada se borra.</p>
+	 *
+	 * @return cuántas cuotas cambiaron de estado
+	 */
+	private int reabrirCuotasSaldadasSinPagoAlCorte(Prestamo prestamo, CargaArchivo cargaArchivo) throws Throwable {
+		java.time.LocalDateTime corte = finMesCarga(cargaArchivo);
+		java.time.LocalDate fechaCorte = corte.toLocalDate();
+		java.time.LocalDateTime inicioMes = fechaCorte.withDayOfMonth(1).atStartOfDay();
+		List<DetallePrestamo> cuotas = detallePrestamoDaoService.selectByPrestamo(prestamo.getCodigo());
+		if (cuotas == null) {
+			return 0;
+		}
+		int reabiertas = 0;
+		for (DetallePrestamo cuota : cuotas) {
+			Long estado = cuota.getEstado();
+			boolean saldada = estado != null && (estado.intValue() == com.saa.rubros.EstadoCuotaPrestamo.PAGADA
+				|| estado.intValue() == com.saa.rubros.EstadoCuotaPrestamo.CANCELADA_ANTICIPADA);
+			if (!saldada || cuota.getFechaVencimiento() == null
+					|| cuota.getFechaVencimiento().isBefore(inicioMes) || cuota.getFechaVencimiento().isAfter(corte)) {
+				continue;
+			}
+			java.time.LocalDateTime fechaPagadoAnterior = cuota.getFechaPagado();
+			if (fechaPagadoAnterior != null && !fechaPagadoAnterior.isAfter(corte)) {
+				continue;
+			}
+			List<com.saa.model.crd.PagoPrestamo> pagosVigentes =
+				pagoPrestamoDaoService.selectVigentesByIdDetallePrestamo(cuota.getCodigo());
+			if (pagosVigentes != null && !pagosVigentes.isEmpty()) {
+				continue;
+			}
+			motorPagoPrestamoService.recalcularCuotaDesdePagos(cuota);
+			procesoMoraPrestamoService.recalcularMoraCuotaALaFecha(cuota, fechaCorte);
+			if (cuota.getEstado() == null || cuota.getEstado().longValue() != estado.longValue()) {
+				reabiertas++;
+				String linea = "Préstamo " + prestamo.getCodigo() + " cuota " + numeroCuotaTexto(cuota)
+					+ " (préstamo hoy estado " + prestamo.getIdEstado() + "): estado " + estado + " -> "
+					+ cuota.getEstado() + ", fecha de pago anterior "
+					+ (fechaPagadoAnterior != null ? fechaPagadoAnterior.toLocalDate() : "nula")
+					+ ", sin pagos vigentes";
+				cuotasSaldadasSinPagoReabiertas.add(linea);
+				System.out.println("   D-019 ampliada: " + linea);
+			}
+		}
+		return reabiertas;
+	}
+
+	private static String numeroCuotaTexto(DetallePrestamo cuota) {
+		return cuota.getNumeroCuota() == null ? "?" : String.valueOf(cuota.getNumeroCuota().longValue());
+	}
+
+	/**
+	 * D-019 ampliada — paso previo a {@link #validarValoresConDestino} en modo reproceso: para cada
+	 * fila de préstamo de la carga con descuento &gt; 0 (no AH ni HS; sin afectación manual, que
+	 * define su propio destino; sin que todo lo descontado sea excedente devuelto, D-010) resuelve
+	 * las operaciones vigentes al corte del partícipe y producto
+	 * ({@link #prestamosVigentesAlCorteReproceso}): reabre las cuotas del mes saldadas sin pago
+	 * (regla de {@link #reabrirCuotasSaldadasSinPagoAlCorte}) y, si la operación es terminal hoy,
+	 * la reabre completa (D-019). Solo esas operaciones: el resto de la cartera no se toca.
+	 */
+	private void prepararOperacionesVigentesAlCorteReproceso(CargaArchivo cargaArchivo) throws Throwable {
+		System.out.println("=== " + etiquetaReproceso + ": preparando operaciones vigentes al corte (D-019 ampliada) ===");
+		List<DetalleCargaArchivo> detalles = detalleCargaArchivoDaoService.selectByCargaArchivo(cargaArchivo.getCodigo());
+		if (detalles == null) {
+			return;
+		}
+		Map<String, List<Producto>> productosCache = new HashMap<>();
+		int filas = 0;
+		for (DetalleCargaArchivo detalle : detalles) {
+			String codigoProducto = detalle.getCodigoPetroProducto();
+			if (CODIGO_PRODUCTO_APORTES.equalsIgnoreCase(codigoProducto) || CODIGO_PRODUCTO_HS.equalsIgnoreCase(codigoProducto)) {
+				continue;
+			}
+			List<ParticipeXCargaArchivo> participes = participeXCargaArchivoDaoService.selectByDetalleCargaArchivo(detalle.getCodigo());
+			if (participes == null) {
+				continue;
+			}
+			for (ParticipeXCargaArchivo participe : participes) {
+				double monto = nullSafe(participe.getTotalDescontado());
+				if (monto <= 0.01 || participe.getCodigoPetro() == null) {
+					continue;
+				}
+				com.saa.ejb.crd.service.dto.ExcedenteDevueltoReproceso excedente = excedenteDevueltoDeFila(participe, codigoProducto);
+				if (excedente != null && excedente.getMonto() != null && monto - excedente.getMonto() <= 0.01
+						&& !CODIGO_PRODUCTO_PH.equalsIgnoreCase(codigoProducto)
+						&& !CODIGO_PRODUCTO_PP.equalsIgnoreCase(codigoProducto)) {
+					continue; // mismo corte que aplicarPagoParticipe: la fila no llega al motor
+				}
+				if (tieneAfectacionManual(participe)) {
+					continue; // la afectación manual define el destino (aplicarPagoParticipe no busca préstamos)
+				}
+				List<Entidad> entidades = entidadDaoService.selectByCodigoPetro(participe.getCodigoPetro());
+				if (entidades == null || entidades.isEmpty()) {
+					continue; // sin partícipe: va a registrarSinParticipeReproceso
+				}
+				List<Producto> productos = resolverProductosPorCodigo(codigoProducto, productosCache);
+				if (productos == null || productos.isEmpty()) {
+					continue;
+				}
+				for (Producto producto : productos) {
+					prestamosVigentesAlCorteReproceso(entidades.get(0), producto, cargaArchivo);
+				}
+				filas++;
+			}
+		}
+		System.out.println("=== " + etiquetaReproceso + ": " + filas + " fila(s) preparadas, "
+			+ prestamosPreparadosReproceso.size() + " operación(es) vigentes al corte, "
+			+ cancelacionesPosterioresMarcadas.size() + " terminal(es) reabiertas (D-019), "
+			+ cuotasSaldadasSinPagoReabiertas.size() + " cuota(s) del mes saldadas sin pago reabiertas ===");
+	}
+
+	/** ¿Alguna novedad de la fila tiene afectación manual (AVPC)? Mismo criterio que
+	 * {@code verificarYAplicarAfectacionesManualesTotales}, solo consulta. */
+	private boolean tieneAfectacionManual(ParticipeXCargaArchivo participe) throws Throwable {
+		List<NovedadParticipeCarga> novedades = novedadParticipeCargaDaoService.selectByParticipe(participe.getCodigo());
+		if (novedades == null) {
+			return false;
+		}
+		for (NovedadParticipeCarga novedad : novedades) {
+			List<AfectacionValoresParticipeCarga> avpc = afectacionValoresParticipeCargaDaoService.selectByNovedad(novedad.getCodigo());
+			if (avpc != null && !avpc.isEmpty()) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * D-019 ampliada: ¿alguna operación vigente al corte de la fila tiene hoy una cuota no saldada?
+	 * Para que {@link #buscarValoresSinDestino} no bloquee por un {@code CUOTA_NO_ENCONTRADA}
+	 * heredado de la validación original cuando, con las cuotas del mes ya reabiertas
+	 * ({@link #prepararOperacionesVigentesAlCorteReproceso}), la fase 3 sí encuentra a qué
+	 * aplicar. Mismo criterio que la validación 12 de {@code validarNovedadesFase2}: basta una
+	 * cuota pendiente; el monto lo cuida el invariante recibido == aplicado. Solo consulta.
+	 */
+	private boolean existeCuotaPendienteAlCorte(ParticipeXCargaArchivo participe, String codigoProducto,
+			CargaArchivo cargaArchivo) throws Throwable {
+		List<Entidad> entidades = entidadDaoService.selectByCodigoPetro(participe.getCodigoPetro());
+		if (entidades == null || entidades.isEmpty()) {
+			return false;
+		}
+		List<Producto> productos = resolverProductosPorCodigo(codigoProducto, new HashMap<>());
+		if (productos == null) {
+			return false;
+		}
+		java.time.LocalDateTime corte = finMesCarga(cargaArchivo);
+		for (Producto producto : productos) {
+			List<Prestamo> lista = prestamoDaoService.selectByEntidadYProductoVigentesAlCorte(
+				entidades.get(0).getCodigo(), producto.getCodigo(), corte);
+			if (lista == null) {
+				continue;
+			}
+			for (Prestamo prestamo : lista) {
+				List<DetallePrestamo> pendiente = detallePrestamoDaoService.selectMinCuotaNoPagadaByPrestamo(prestamo.getCodigo());
+				if (pendiente != null && !pendiente.isEmpty()) {
+					return true;
+				}
+			}
+		}
+		return false;
 	}
 
 	/**
@@ -1918,7 +2134,9 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 		String marca = etiquetaReproceso + ": " + MARCA_CANCELACION_POSTERIOR + " (estado anterior "
 			+ estadoAnterior + ")";
 
-		int cuotasReabiertas = 0;
+		// D-019 ampliada: primero la regla común (cuota del mes saldada sin pago vigente); después,
+		// como antes, el resto de las cuotas saldadas sin fecha o después del corte.
+		int cuotasReabiertas = reabrirCuotasSaldadasSinPagoAlCorte(prestamo, cargaArchivo);
 		List<DetallePrestamo> cuotas = detallePrestamoDaoService.selectByPrestamo(prestamo.getCodigo());
 		if (cuotas != null) {
 			for (DetallePrestamo cuota : cuotas) {
@@ -2162,6 +2380,16 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 							&& existePrestamoVigenteAlCorte(participe, codigoProducto, cargaArchivo)) {
 						novedadesSinResolver.removeIf(tipo -> tipo != null
 							&& tipo.intValue() == ASPNovedadesCargaArchivo.PRESTAMO_NO_ENCONTRADO);
+					}
+					// D-019 ampliada: CUOTA_NO_ENCONTRADA se calculó con las cuotas como las dejó la
+					// migración (la del mes saldada sin ningún pago). El paso previo
+					// (prepararOperacionesVigentesAlCorteReproceso) ya reabrió esas cuotas: si alguna
+					// operación vigente al corte tiene ahora una cuota pendiente, la fase 3 la
+					// encuentra y no bloquea. Si no la tiene, sigue bloqueando como antes.
+					if (novedadesSinResolver.contains((long) ASPNovedadesCargaArchivo.CUOTA_NO_ENCONTRADA)
+							&& existeCuotaPendienteAlCorte(participe, codigoProducto, cargaArchivo)) {
+						novedadesSinResolver.removeIf(tipo -> tipo != null
+							&& tipo.intValue() == ASPNovedadesCargaArchivo.CUOTA_NO_ENCONTRADA);
 					}
 				}
 				if (novedadesSinResolver.isEmpty()) {

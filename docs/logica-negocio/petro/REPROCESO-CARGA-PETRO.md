@@ -307,6 +307,115 @@ marcadas PAGADA/CANCELADA_ANTICIPADA, sin pagos ni eventos en el SAA (`PRSTFCMD`
 la liquidación documentada. ⚠ Una fila Petro se aplica a UNA operación (la primera con cuota
 pendiente, por código): si el partícipe tenía dos del mismo producto, revisar el reparto.
 
+### 4.9 Cuota del mes saldada sin pago = pendiente al corte (D-019 ampliada, 2026-10-28)
+
+**Por qué:** el primer intento de reprocesar la 352 se frenó en `validarValoresConDestino` con
+*"hay 13 registro(s) con valores descontados sin destino definido … Novedad: CUOTA NO ENCONTRADA"*.
+No eran excedentes: en los 13 la cuota de junio 2025 existe y su total es exactamente lo que Petro
+descontó, pero la migración desde Delta 21 la dejó en PAGADA (4) / CANCELADA_ANTICIPADA (7) **sin
+ninguna fila en `CRD.PGPR`** y con `DTPRFCPG` nula o posterior al corte. La validación 12
+(`validarNovedadesFase2`) y `buscarCuotaAPagar` solo miran cuotas con estado distinto de 4 y 7, así
+que no la encontraban. Tres situaciones:
+
+| Caso | Préstamo hoy | Cuota de junio | Ejemplos (préstamo / cuota) | Antes de este cambio |
+|---|---|---|---|---|
+| 1 | VIGENTE (2) o DE PLAZO VENCIDO (8) | estado 4, `DTPRFCPG` nula, sin PGPR | 7578 / 2, 7584 / 2, 7690 / 1 | D-019 no los tocaba (no son terminales) |
+| 2 | CANCELADO ANTICIPADO (4) | estado 4, `DTPRFCPG` nula, sin PGPR | 7591 / 2 | D-019 lo reabría recién al aplicar; la validación bloqueaba antes |
+| 3 | CANCELADO (3) | estado 4, `DTPRFCPG` 2026-04-06 (> corte), sin PGPR | 3959 / 65, 3170 / 60, 4672 / 48, 5285 / 70, 6804 / 72, 6739 / 41, 6801 / 24, 3120 / 84, 3416 / 84 | igual que el caso 2 |
+
+En la base del 28-oct hay 1.442 cuotas con vencimiento en jun-2025 saldadas sin PGPR vigente y con
+fecha de pago nula o posterior al 30-jun: es la regla de la migración, no una excepción.
+
+**Regla (solo modo reproceso):** en toda operación vigente al corte (§4.8) de una fila de la carga
+con descuento, la cuota **con vencimiento dentro del mes de la carga** que esté en estado 4/7, con
+`DTPRFCPG` nula o posterior al corte y **sin ningún pago vigente** (`PGPRANUL` nulo o 0, mismo
+criterio que `recalcularCuotaDesdePagos`) se reconstruye con `recalcularCuotaDesdePagos` (sin pagos
+vuelve a pendiente / en mora) y su mora se calcula al corte (`recalcularMoraCuotaALaFecha`). Si
+tiene algún pago vigente no se toca. Método: `reabrirCuotasSaldadasSinPagoAlCorte`; lo usan las
+operaciones no terminales y, como primer paso, `reabrirPrestamoVigenteAlCorte` (el cambio del
+préstamo a VIGENTE y la marca de eventos siguen siendo solo para las terminales, §4.8).
+
+**Criterio conservador del alcance:**
+- Solo la cuota **del mes de la carga**. Las de meses anteriores quedan como están (las fija el
+  ancla de mayo 2025 o el reproceso de su propio mes: reabrir una de mayo haría que el pago de junio
+  se fuera a mayo, porque el motor paga la menor cuota pendiente). Las de meses siguientes las
+  reabre el reproceso de su mes. (Para las operaciones **terminales**, D-019 sigue reconstruyendo
+  además todas las saldadas sin fecha o después del corte, como antes.)
+- Solo las operaciones de los partícipes con fila en la carga con descuento &gt; 0 para ese producto
+  (no AH ni HS; se excluyen las filas con afectación manual — su destino lo define el AVPC — y las
+  que son íntegramente excedente devuelto, D-010). El resto de la cartera lo trata el cierre de
+  cartera (C15) y los meses siguientes.
+
+**Orden nuevo en `aplicarPagosArchivoPetro` (modo reproceso):**
+1. Validación de la lista de excedentes devueltos (D-010).
+2. **`prepararOperacionesVigentesAlCorteReproceso`**: por cada fila con descuento, operaciones
+   vigentes al corte (`prestamosVigentesAlCorteReproceso`) → regla de esta sección y, si es
+   terminal, reapertura D-019. Cada préstamo se prepara una sola vez por corrida.
+3. `validarValoresConDestino`: además de lo de §4.7/§4.8, un `CUOTA_NO_ENCONTRADA` heredado de la
+   validación original **no bloquea** si alguna operación vigente al corte de la fila tiene ahora
+   una cuota no saldada (`existeCuotaPendienteAlCorte`, mismo criterio que la validación 12). Si
+   no la tiene, sigue bloqueando. El monto lo cuida el invariante recibido == aplicado.
+4. Tope de afectación manual, fase 3 (el préstamo ya preparado no se vuelve a reabrir), invariante,
+   asientos.
+
+Todo en la misma transacción del reproceso: si cualquier paso posterior lanza, la reapertura
+revierte junto con la anulación y la re-aplicación (§5, errores). Nada se borra.
+
+**Trazabilidad:** el log tiene una línea por cuota (`D-019 ampliada: Préstamo N cuota M (préstamo
+hoy estado E): estado 4 -> 5, fecha de pago anterior nula, sin pagos vigentes`); el resumen trae el
+bloque "Cuotas del mes saldadas sin pago reabiertas al corte" y la respuesta
+`cuotasSaldadasSinPagoReabiertas` (cantidad) y `detalleCuotasSaldadasSinPagoReabiertas` (las líneas).
+
+**Consultas de control** (SQL puro; para otra carga cambiar 352 y el rango del mes).
+
+Antes de reprocesar — las cuotas que la regla va a reabrir (las de pagos vigentes de la propia carga
+no entran: esas las reconstruye la anulación, §4.3):
+
+```sql
+SELECT d.PRSTCDGO, p.PRSTIDST, d.DTPRNMCT, d.DTPRESTD,
+       TO_CHAR(d.DTPRFCVN,'YYYY-MM-DD') vence, TO_CHAR(d.DTPRFCPG,'YYYY-MM-DD') fecha_pago,
+       d.DTPRCPTL, d.DTPRINTR, d.DTPRDSGR, d.DTPRVLSI
+FROM CRD.DTPR d
+JOIN CRD.PRST p  ON p.PRSTCDGO = d.PRSTCDGO
+JOIN CRD.PRDC pr ON pr.PRDCCDGO = p.PRDCCDGO
+JOIN CRD.ENTD e  ON e.ENTDCDGO = p.ENTDCDGO
+WHERE d.DTPRESTD IN (4, 7)
+  AND d.DTPRFCVN >= DATE '2025-06-01' AND d.DTPRFCVN < DATE '2025-07-01'
+  AND (d.DTPRFCPG IS NULL OR d.DTPRFCPG > TIMESTAMP '2025-06-30 23:59:59')
+  AND NOT EXISTS (SELECT 1 FROM CRD.PGPR g WHERE g.DTPRCDGO = d.DTPRCDGO
+                  AND (g.PGPRANUL IS NULL OR g.PGPRANUL = 0))
+  AND EXISTS (SELECT 1 FROM CRD.PXCA x JOIN CRD.DTCA t ON t.DTCACDGO = x.DTCACDGO
+              WHERE t.CRARCDGO = 352 AND x.PXCACDPT = e.ENTDRLPC AND x.PXCADSDO > 0.01
+                AND TRIM(t.DTCACDPP) = TRIM(pr.PRDCCDPT)
+                AND TRIM(t.DTCACDPP) NOT IN ('AH', 'HS'))
+ORDER BY d.PRSTCDGO, d.DTPRNMCT;
+```
+
+Después de reprocesar — las cuotas del mes de esas operaciones que no tienen ningún pago fuera de
+esta carga ni anulado (o sea, que antes no tenían ninguno): las que pagó el reproceso y las que
+quedaron pendientes. Aproximado; la lista exacta es `detalleCuotasSaldadasSinPagoReabiertas`.
+
+```sql
+SELECT d.PRSTCDGO, p.PRSTIDST, d.DTPRNMCT, d.DTPRESTD, TO_CHAR(d.DTPRFCPG,'YYYY-MM-DD') fecha_pago,
+       (SELECT COUNT(*) FROM CRD.PGPR g WHERE g.DTPRCDGO = d.DTPRCDGO AND g.CRARCDGO = 352
+          AND (g.PGPRANUL IS NULL OR g.PGPRANUL = 0)) pagos_352
+FROM CRD.DTPR d
+JOIN CRD.PRST p  ON p.PRSTCDGO = d.PRSTCDGO
+JOIN CRD.PRDC pr ON pr.PRDCCDGO = p.PRDCCDGO
+JOIN CRD.ENTD e  ON e.ENTDCDGO = p.ENTDCDGO
+WHERE d.DTPRFCVN >= DATE '2025-06-01' AND d.DTPRFCVN < DATE '2025-07-01'
+  AND NOT EXISTS (SELECT 1 FROM CRD.PGPR g WHERE g.DTPRCDGO = d.DTPRCDGO
+                  AND (g.CRARCDGO IS NULL OR g.CRARCDGO <> 352 OR g.PGPRANUL = 1))
+  AND (d.DTPRESTD NOT IN (4, 7)
+       OR EXISTS (SELECT 1 FROM CRD.PGPR g WHERE g.DTPRCDGO = d.DTPRCDGO AND g.CRARCDGO = 352
+                  AND (g.PGPRANUL IS NULL OR g.PGPRANUL = 0)))
+  AND EXISTS (SELECT 1 FROM CRD.PXCA x JOIN CRD.DTCA t ON t.DTCACDGO = x.DTCACDGO
+              WHERE t.CRARCDGO = 352 AND x.PXCACDPT = e.ENTDRLPC AND x.PXCADSDO > 0.01
+                AND TRIM(t.DTCACDPP) = TRIM(pr.PRDCCDPT)
+                AND TRIM(t.DTCACDPP) NOT IN ('AH', 'HS'))
+ORDER BY d.PRSTCDGO, d.DTPRNMCT;
+```
+
 ## 5. Respuesta (`ResultadoReprocesoCargaPetro`)
 
 ```json
@@ -320,6 +429,8 @@ pendiente, por código): si el partícipe tenía dos del mismo producto, revisar
   "pagosAplicados": 0, "montoPagosAplicados": 0.0, "aportesAplicados": 0, "montoAportesAplicados": 0.0,
   "asientosGenerados": [], "resumenAplicacion": "=== RESUMEN APLICACIÓN DE PAGOS === ...",
   "filasSinParticipe": 14, "montoSinParticipe": 4872.04, "detalleSinParticipe": ["Rol … (AH): $… sin partícipe en el SAA", "…"],
+  "cancelacionesPosterioresPendientes": ["Préstamo … (estado anterior 4): … cuota(s) reabiertas, … evento(s) posteriores marcados"],
+  "cuotasSaldadasSinPagoReabiertas": 0, "detalleCuotasSaldadasSinPagoReabiertas": ["Préstamo … cuota … (préstamo hoy estado 2): estado 4 -> 5, fecha de pago anterior nula, sin pagos vigentes"],
   "mensaje": "Carga 352 reprocesada (REPROCESO carga 352 corrida 1): …"
 }
 ```
@@ -392,6 +503,7 @@ bloques B y C. Después de reprocesar:
 | `ejb/crd/service/dto/SolicitudConfirmarRecepcion` + `CobroPetroContableServiceImpl.confirmarRecepcion` | `paraReproceso`: paso 1 sobre una carga ya en estado 3 (§9) |
 | `ejb/crd/serviceImpl/ProcesoMoraPrestamoServiceImpl` + `DetallePrestamoDaoService(+Impl)` | mora con fecha de negocio pasada retira la mora de cuotas aún no vencidas (paso 0, §9); `recalcularMoraCuotaALaFecha` para las cuotas que reabre el reproceso |
 | `ejb/crd/dao/PrestamoDaoService(+Impl)` | `selectByEntidadYProductoVigentesAlCorte` (D-019, §4.8) |
+| `serviceImpl/CargaArchivoPetroServiceImpl.java` | D-019 ampliada (§4.9): `prepararOperacionesVigentesAlCorteReproceso`, `reabrirCuotasSaldadasSinPagoAlCorte`, `existeCuotaPendienteAlCorte`; respuesta `cuotasSaldadasSinPagoReabiertas` / `detalleCuotasSaldadasSinPagoReabiertas` en `ResultadoReprocesoCargaPetro` |
 
 ## 9. Secuencia de junio 2025 (carga 352) — lista para correr
 

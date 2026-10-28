@@ -225,6 +225,10 @@ public class ReprocesoCargaPetroServiceImpl implements ReprocesoCargaPetroServic
         @SuppressWarnings("unchecked")
         List<String> cancelaciones = (List<String>) aplicacion.get("cancelacionesPosteriores");
         resultado.setCancelacionesPosterioresPendientes(cancelaciones != null ? cancelaciones : new ArrayList<>());
+        @SuppressWarnings("unchecked")
+        List<String> cuotasSinPago = (List<String>) aplicacion.get("cuotasSaldadasSinPagoReabiertas");
+        resultado.setDetalleCuotasSaldadasSinPagoReabiertas(cuotasSinPago != null ? cuotasSinPago : new ArrayList<>());
+        resultado.setCuotasSaldadasSinPagoReabiertas(cuotasSinPago != null ? cuotasSinPago.size() : 0);
         Object montoExcedentes = aplicacion.get("montoExcedentesDevueltos");
         resultado.setMontoExcedentesDevueltos(montoExcedentes instanceof Number ? ((Number) montoExcedentes).doubleValue() : 0.0);
         @SuppressWarnings("unchecked")
@@ -247,7 +251,9 @@ public class ReprocesoCargaPetroServiceImpl implements ReprocesoCargaPetroServic
                 + "); " + resultado.getFilasSinParticipe() + " filas sin partícipe ($"
                 + formato(resultado.getMontoSinParticipe()) + ") reportadas como novedad; "
                 + resultado.getExcedentesDevueltos() + " excedentes devueltos ($"
-                + formato(resultado.getMontoExcedentesDevueltos()) + ") registrados como aporte (D-010).");
+                + formato(resultado.getMontoExcedentesDevueltos()) + ") registrados como aporte (D-010); "
+                + resultado.getCancelacionesPosterioresPendientes().size() + " operaciones terminales reabiertas (D-019) y "
+                + resultado.getCuotasSaldadasSinPagoReabiertas() + " cuotas del mes saldadas sin pago reabiertas al corte.");
         System.out.println("=== REPROCESO CARGA PETRO - FIN: " + resultado.getMensaje());
         return resultado;
     }

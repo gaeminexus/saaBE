@@ -58,6 +58,27 @@ public class ResultadoReprocesoCargaPetro {
         this.cancelacionesPosterioresPendientes = cancelacionesPosterioresPendientes;
     }
 
+    // --- D-019 ampliada: cuotas del mes saldadas sin pago (migración) reabiertas al corte ---
+    private int cuotasSaldadasSinPagoReabiertas;
+    /** Una línea por cuota: préstamo, número, estado anterior → nuevo, fecha de pago anterior. */
+    private List<String> detalleCuotasSaldadasSinPagoReabiertas = new ArrayList<>();
+
+    public int getCuotasSaldadasSinPagoReabiertas() {
+        return cuotasSaldadasSinPagoReabiertas;
+    }
+
+    public void setCuotasSaldadasSinPagoReabiertas(int cuotasSaldadasSinPagoReabiertas) {
+        this.cuotasSaldadasSinPagoReabiertas = cuotasSaldadasSinPagoReabiertas;
+    }
+
+    public List<String> getDetalleCuotasSaldadasSinPagoReabiertas() {
+        return detalleCuotasSaldadasSinPagoReabiertas;
+    }
+
+    public void setDetalleCuotasSaldadasSinPagoReabiertas(List<String> detalleCuotasSaldadasSinPagoReabiertas) {
+        this.detalleCuotasSaldadasSinPagoReabiertas = detalleCuotasSaldadasSinPagoReabiertas;
+    }
+
     // --- D-010: excedentes devueltos registrados como aporte EXCEDENTE_PETRO ---
     private int excedentesDevueltos;
     private double montoExcedentesDevueltos;
