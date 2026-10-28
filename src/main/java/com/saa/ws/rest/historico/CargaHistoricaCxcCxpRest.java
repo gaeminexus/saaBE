@@ -1,0 +1,57 @@
+package com.saa.ws.rest.historico;
+
+import com.saa.ejb.historico.service.CargaHistoricaCxcCxpService;
+import com.saa.model.historico.LoteHistoricoCxcCxp;
+import com.saa.model.historico.ResultadoCargaHistorica;
+
+import jakarta.ejb.EJB;
+import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.POST;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
+
+/**
+ * Carga histórica de CxC/CxP (C11, cuadre Superintendencia). Base: {@code /SaaBE/rest/historico}.
+ * Ver docs/logica-negocio/cxp/CARGA-HISTORICA-CXC-CXP.md.
+ */
+@Path("historico")
+public class CargaHistoricaCxcCxpRest {
+
+    @EJB
+    private CargaHistoricaCxcCxpService cargaHistoricaCxcCxpService;
+
+    /**
+     * Carga un lote mensual. Cuerpo: el {@code lote.json} que produce el generador, con {@code idUsuario}
+     * (obligatorio) y, opcionalmente, {@code soloValidar} y {@code aceptarInferidos}.
+     * 200 = lote procesado (el detalle por documento va en {@code items}, puede haber rechazados);
+     * 400 = el lote no se pudo procesar (errores de período, catálogos o petición); 500 = error inesperado.
+     */
+    @POST
+    @Path("/cargarHistoricoCxcCxp")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response cargarHistoricoCxcCxp(LoteHistoricoCxcCxp lote) {
+        System.out.println("LLEGA AL SERVICIO cargarHistoricoCxcCxp - mes: " + (lote != null ? lote.mes : null));
+        try {
+            ResultadoCargaHistorica resultado = cargaHistoricaCxcCxpService.cargar(lote);
+            Response.Status estado = resultado.erroresLote.isEmpty() ? Response.Status.OK : Response.Status.BAD_REQUEST;
+            return Response.status(estado).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error en la carga historica de CxC/CxP: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /** Igual que cargar pero fuerza {@code soloValidar = true}: no graba nada, solo informa lo que haría. */
+    @POST
+    @Path("/validarHistoricoCxcCxp")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response validarHistoricoCxcCxp(LoteHistoricoCxcCxp lote) {
+        if (lote != null) lote.soloValidar = true;
+        return cargarHistoricoCxcCxp(lote);
+    }
+}
