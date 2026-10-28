@@ -248,6 +248,65 @@ respuesta trae `excedentesDevueltos`, `montoExcedentesDevueltos` y `detalleExced
 **Reversibilidad:** el aporte `EXCEDENTE_PETRO` tiene `APRTIDAS` = carga, así que la corrida N+1 lo
 reversa como cualquier otro aporte de la carga (§4.4).
 
+**Sin confirmación de devolución** (decisión del líder, 2026-10-28): el excedente real contra el
+ancla igual va a aportes por defecto, con referencia `"D-010 pendiente de confirmar"` (caso de
+junio: entidad 5324, §10).
+
+### 4.8 La operación se busca por su estado a la fecha de corte (D-019, 2026-10-28)
+
+**Regla (decisión D-019 del líder):** el reproceso **no** toma en cuenta el estado actual del
+préstamo. Una operación que estaba vigente en el mes de la carga recibe la cuota de ese mes como
+ocurrió cronológicamente, aunque hoy esté cancelada anticipadamente o liquidada; esa cancelación se
+vuelve a aplicar después, en su propio mes, con el saldo correcto.
+
+Qué hace el modo reproceso (`CargaArchivoPetroServiceImpl`):
+
+1. **Búsqueda** (`PrestamoDaoService.selectByEntidadYProductoVigentesAlCorte`, corte = último
+   instante del mes de la carga) en vez de `selectByEntidadYProductoActivosById`: entra la operación
+   activa hoy (1, 2, 8, 10, 11) y la terminal hoy (3, 4, 5, 9, 13) que empezó a más tardar en el
+   corte, tiene alguna cuota vencida a más tardar en el corte y alguna cuota **no saldada al corte**
+   (estado distinto de PAGADA/CANCELADA_ANTICIPADA, o saldada sin fecha de pago o con fecha
+   posterior). Orden por código. `buscarValoresSinDestino` usa la misma búsqueda: un
+   `PRESTAMO_NO_ENCONTRADO` heredado deja de bloquear si existe una operación vigente al corte.
+2. **Reapertura** (`reabrirPrestamoVigenteAlCorte`) de cada operación terminal encontrada: sus
+   cuotas saldadas sin fecha o después del corte se reconstruyen desde sus pagos vigentes
+   (`recalcularCuotaDesdePagos`; en las migradas no hay ningún PGPR, así que vuelven a pendiente) y
+   su mora se calcula al corte (`ProcesoMoraPrestamoService.recalcularMoraCuotaALaFecha`); el
+   préstamo pasa a VIGENTE (el motor no admite pagos en un estado terminal). Las cuotas saldadas
+   hasta el corte no se tocan.
+3. **Marca** `"<etiqueta>: cancelación posterior pendiente de re-aplicar (estado anterior N)"` en
+   `PRSTOBSR` y en la observación de cada evento `EVPR` no anulado con fecha posterior al corte (no
+   se anula ninguno). La respuesta trae `cancelacionesPosterioresPendientes`, una línea por operación.
+4. El pago del mes entra por el motor como siempre; la cancelación/liquidación **no** se re-aplica
+   acá: se re-aplica al reprocesar su mes, con el saldo que dejó la cronología.
+
+Lo mismo para las cuotas que deja libres la anulación de los pagos viejos (§4.3): su mora se calcula
+al último día del mes de la carga en la misma transacción, porque el proceso de mora corrido antes
+las veía pagadas.
+
+**Consulta que lista lo pendiente de re-aplicar** (bloque 07 de
+`cuadreSuper/03-trabajo/meses/2025-06/sql/08-excedentes-d010-junio.sql`):
+
+```sql
+SELECT p.PRSTCDGO, p.ENTDCDGO, p.PRSTIDST,
+       REGEXP_SUBSTR(p.PRSTOBSR, 'REPROCESO carga [0-9]+ corrida [0-9]+: cancelaci.n posterior pendiente de re-aplicar \(estado anterior [0-9]+\)') marca,
+       TO_CHAR(p.PRSTFCMD,'YYYY-MM-DD') modificado,
+       (SELECT LISTAGG(e.EVPRCDGO||' '||e.EVPRTPOO||' '||TO_CHAR(e.EVPRFCHA,'YYYY-MM-DD'), '; ') WITHIN GROUP (ORDER BY e.EVPRFCHA)
+          FROM CRD.EVPR e WHERE e.PRSTCDGO = p.PRSTCDGO AND e.EVPROBSR LIKE '%pendiente de re-aplicar%') eventos_marcados
+FROM CRD.PRST p
+WHERE p.PRSTOBSR LIKE '%cancelaci_n posterior pendiente de re-aplicar%'
+ORDER BY p.PRSTCDGO;
+```
+
+En la 352 (simulado sobre la base del 28-oct): **318 operaciones** cumplen el criterio con una fila
+de la carga — 121 hoy CANCELADO (3) y 194 CANCELADO_ANTICIPADO (4) que estaban en la G48 de mayo,
+más 3 desembolsadas en junio 2025 y canceladas después. Entre ellas, las 73 de las filas tipo 10. La
+mayoría de las canceladas de la G48 fueron migradas desde Delta con todas sus cuotas desde junio
+marcadas PAGADA/CANCELADA_ANTICIPADA, sin pagos ni eventos en el SAA (`PRSTFCMD` jul-2025): su
+"cancelación posterior" no tiene evento que re-aplicar; se re-registra al reprocesar ese mes con
+la liquidación documentada. ⚠ Una fila Petro se aplica a UNA operación (la primera con cuota
+pendiente, por código): si el partícipe tenía dos del mismo producto, revisar el reparto.
+
 ## 5. Respuesta (`ResultadoReprocesoCargaPetro`)
 
 ```json
@@ -331,7 +390,8 @@ bloques B y C. Después de reprocesar:
 | `docs/logica-negocio/petro/sql/reproceso-carga-352-controles.sql` | controles antes/después |
 | `ejb/crd/service/dto/ExcedenteDevueltoReproceso` | línea de la lista D-010 (§4.7) |
 | `ejb/crd/service/dto/SolicitudConfirmarRecepcion` + `CobroPetroContableServiceImpl.confirmarRecepcion` | `paraReproceso`: paso 1 sobre una carga ya en estado 3 (§9) |
-| `ejb/crd/serviceImpl/ProcesoMoraPrestamoServiceImpl` + `DetallePrestamoDaoService(+Impl)` | mora con fecha de negocio pasada retira la mora de cuotas aún no vencidas (paso 0, §9) |
+| `ejb/crd/serviceImpl/ProcesoMoraPrestamoServiceImpl` + `DetallePrestamoDaoService(+Impl)` | mora con fecha de negocio pasada retira la mora de cuotas aún no vencidas (paso 0, §9); `recalcularMoraCuotaALaFecha` para las cuotas que reabre el reproceso |
+| `ejb/crd/dao/PrestamoDaoService(+Impl)` | `selectByEntidadYProductoVigentesAlCorte` (D-019, §4.8) |
 
 ## 9. Secuencia de junio 2025 (carga 352) — lista para correr
 
@@ -348,15 +408,18 @@ vencían — en la base del 28-oct hay **146 cuotas con vencimiento 31-may/jun-2
 timer de producción; sin el cambio, la cascada de junio cobraría esa mora. Cambio mínimo hecho:
 con fecha pasada, esas cuotas quedan con mora 0 y EN_MORA → PENDIENTE (`PROCESO-DIARIO-INTERES-MORA.md` §8).
 Las cuotas vencen el 30/31 de cada mes y el corte es el inicio del día: al 31-may la cuota de
-mayo todavía no está vencida. Si el líder prefiere la mora a la fecha del cobro (30-jun), es el
-mismo endpoint con `fecha=2025-06-30` (decisión pendiente; ver el informe de C4).
+mayo todavía no está vencida.
+
+Decisión del líder (2026-10-28): el paso 0 al **31-may** fija el ancla, y **justo antes del
+reproceso** la mora se calcula a la fecha del cobro, **30-jun-2025** (paso 1b). Las cuotas que el
+reproceso reabre (pagos anulados, D-019) calculan su mora al 30-jun dentro del propio reproceso.
 
 ```http
 POST /SaaBE/rest/prst/calcularMora?fecha=2025-05-31&usuario=USUARIO%201
 ```
 
-⚠ El timer de las 02:00 (`ProcesoMoraPrestamoTimer`) recalcula a la fecha del día y deshace el paso
-0: correr 0 → 1 → 2 en la misma sesión; si pasa una noche, repetir el paso 0.
+⚠ El timer de las 02:00 (`ProcesoMoraPrestamoTimer`) recalcula a la fecha del día y deshace los
+pasos 0 y 1b: correr todo en la misma sesión; si pasa una noche, repetir 0 y 1b.
 
 **Paso 1 — el dinero de Petro entró al banco** (Pacífico ahorros 1048142735, SAA cuenta bancaria
 418, plan `1.1.02.05.65`; dos abonos SPI, `cuadreSuper/03-trabajo/bancos/PETRO-VS-BANCO.md`):
@@ -388,24 +451,35 @@ banco real, C12) y cada línea del DEBE lleva "recibida 2025-06-26/30" en su des
 `CRARFCAC` y las fechas de registro de la transferencia y de la fila `ANCP` llevan la fecha de
 hoy: son sellos de auditoría (cuándo se registró), no fechas contables. No hizo falta fecha contable opcional (patrón C6).
 
+**Paso 1b — mora a la fecha del cobro:**
+
+```http
+POST /SaaBE/rest/prst/calcularMora?fecha=2025-06-30&usuario=USUARIO%201
+```
+
 **Paso 2 — reproceso:**
 
 ```http
 POST /SaaBE/rest/crar/reprocesar/352
 { "usuario": "USUARIO 1", "ip": "127.0.0.1",
-  "motivo": "Cuadre Superintendencia C4: re-aplicar junio 2025 sobre el ancla de mayo (D-003, D-010)",
-  "excedentesDevueltos": [] }
+  "motivo": "Cuadre Superintendencia C4: re-aplicar junio 2025 sobre el ancla de mayo (D-003, D-010, D-019)",
+  "excedentesDevueltos": [
+    { "idEntidad": 5324, "codigoProducto": "PE", "monto": 87.99,
+      "referencia": "D-010 pendiente de confirmar" } ] }
 ```
 
-`excedentesDevueltos` va vacío en junio: ver §10. Pagos, aportes, REPARTO y APLICACION salen al
-30-jun-2025 (§4.6).
+La línea de la entidad 5324 es la decisión del líder del 28-oct (§10). Sin `idTipoAporte`: cesantía
+si tiene vigencia de cesantía en junio 2025, si no jubilación. Pagos, aportes, REPARTO y APLICACION
+salen al 30-jun-2025 (§4.6); las operaciones reabiertas por D-019 vienen en
+`cancelacionesPosterioresPendientes` (§4.8).
 
 **Paso 3 — controles:** bloques B y C de `sql/reproceso-carga-352-controles.sql` (§7).
 
 **Después del mes (no es parte del reproceso):** cada devolución D-010 por `POST /rest/dvap/registrar`
 con la fecha real del pago; cierre de cartera de junio (`POST /rest/cierrecartera/ejecutar`, provisión e
-intereses al 30-jun); mora a `2025-06-30` antes de la carga de julio (353), que repite 0 → 1 → 2
-con sus dos abonos (25-jul 75.855,40 y 28-jul 438.107,13).
+intereses al 30-jun); listar las cancelaciones posteriores pendientes (§4.8) para re-aplicarlas en
+su mes. La carga de julio (353) repite la secuencia con mora al 30-jun (ancla del mes) y al 31-jul
+(cobro) y sus dos abonos (25-jul 75.855,40 y 28-jul 438.107,13).
 
 ## 10. Junio 2025 frente a la documentación de crédito (D-010) — medido el 2026-10-28
 
@@ -425,16 +499,15 @@ CUENTAS/PAGOS REALIZADOS … .xlsx`). Consultas en `cuadreSuper/03-trabajo/meses
   aportes de devolución ni pagos que citen un sobrante de junio de un rol Petro (el `PAGO_MANUAL`
   de 174,58 de jul-2026, "sobrante de junio 2025 a abril 2026", es de un partícipe **sin rol
   Petro** que paga por transferencia: no pertenece a la carga 352 y se revisa en jul-2026).
-- **Lista D-010 de junio: 0 excedentes, 0,00.** El caso de la entidad 5324 (87,99) queda como
-  pendiente de confirmar con ASOPREP: si se devolvió, entra a la lista con su comprobante; si no,
-  el motor no tiene cuota donde ponerlo y la corrida se frena (decisión: AVPC a otro préstamo o
-  aporte, por constancia escrita).
+- **Devoluciones documentadas: 0.** Por decisión del líder (28-oct), el excedente real de la
+  entidad 5324 (PE, **87,99**) va igual a aportes por defecto (D-010), con referencia
+  `"D-010 pendiente de confirmar"`: **lista de junio = 1 línea, 87,99** (§9, paso 2;
+  `cuadreSuper/03-trabajo/meses/2025-06/EXCEDENTES-D010-2025-06.json`).
 
-**Lo que frena la 352 aunque D-010 esté resuelto** (novedades de la validación de marzo-2026 que
-siguen siendo BLOQUEANTE en modo reproceso):
+**Novedades heredadas de la validación de marzo-2026** y cómo las trata el modo reproceso:
 
-| Novedad heredada | Filas | Descontado | Qué es | Propuesta |
+| Novedad heredada | Filas | Descontado | Qué es | Tratamiento |
 |---|---|---|---|---|
-| tipo 10 PRESTAMO_NO_ENCONTRADO, con partícipe | 74 | 20.668,15 | La operación **estaba en la G48 de mayo con deuda** (73 hoy en CANCELADO_ANTICIPADO 4, 1 en DE_PLAZO_VENCIDO 8); `selectByEntidadYProductoActivosById` no la ve porque hoy está terminal, y la 352 vieja nunca les aplicó nada. En junio 2025 el descuento era un pago real de esa operación | Decidir con el líder: (a) AVPC por fila a la cuota de junio (manual, 74 filas) o (b) que el modo reproceso busque también las operaciones del ancla canceladas **después** del mes de la carga — exige re-fechar esas precancelaciones/liquidaciones (su pago se calculó sin el descuento de junio) |
-| tipo 13 MONTO_INCONSISTENTE positiva | 105 | 39.017,30 (14.675,35 sobre la cuota del SAA) | Petro descontó la cuota de Delta, mayor que la del SAA o con vencidos; contra el ancla ninguna supera la deuda | Ya resuelto en modo reproceso (§4.7): va a la cascada |
-| sin partícipe con tipo 10/13 | 2 | 1.980,07 | — | Ya resuelto: van como sin partícipe (§4.4) |
+| tipo 10 PRESTAMO_NO_ENCONTRADO, con partícipe | 74 | 20.668,15 | La operación **estaba en la G48 de mayo con deuda** (73 hoy en CANCELADO_ANTICIPADO 4, migradas así desde Delta en jul-2025, con la cuota de junio marcada PAGADA/CANCELADA_ANTICIPADA sin ningún pago; 1 en DE_PLAZO_VENCIDO 8); la 352 vieja nunca les aplicó nada | D-019 (§4.8): se buscan por su estado al 30-jun-2025, se reabren, reciben la cuota de junio y su cancelación queda marcada para re-aplicarla en su mes |
+| tipo 13 MONTO_INCONSISTENTE positiva | 105 | 39.017,30 (14.675,35 sobre la cuota del SAA) | Petro descontó la cuota de Delta, mayor que la del SAA o con vencidos; contra el ancla solo la 5324 supera la deuda | §4.7: va a la cascada (la 5324: 87,99 a aporte) |
+| sin partícipe con tipo 10/13 | 2 | 1.980,07 | — | Van como sin partícipe (§4.4) |
