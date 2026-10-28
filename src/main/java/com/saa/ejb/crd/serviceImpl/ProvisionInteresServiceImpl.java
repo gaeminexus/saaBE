@@ -111,9 +111,15 @@ public class ProvisionInteresServiceImpl implements ProvisionInteresService {
 
     @Override
     public Map<Long, double[]> calcularProvisionPorTipoPrestamo(LocalDate fechaCorte) throws Throwable {
-        System.out.println("ProvisionInteresServiceImpl.calcularProvisionPorTipoPrestamo - corte: " + fechaCorte);
+        return calcularProvisionPorTipoPrestamo(fechaCorte, false);
+    }
+
+    @Override
+    public Map<Long, double[]> calcularProvisionPorTipoPrestamo(LocalDate fechaCorte, boolean alCorte) throws Throwable {
+        System.out.println("ProvisionInteresServiceImpl.calcularProvisionPorTipoPrestamo - corte: " + fechaCorte
+            + " - alCorte: " + alCorte);
         Map<Long, double[]> porTipo = new HashMap<>();
-        for (ItemProvisionCuota item : calcularItems(fechaCorte)) {
+        for (ItemProvisionCuota item : calcularItems(fechaCorte, alCorte, false)) {
             double[] acumulado = porTipo.computeIfAbsent(item.idTipoPrestamo, k -> new double[2]);
             acumulado[0] = redondear(acumulado[0] + item.aProvisionarInteres);
             acumulado[1] = redondear(acumulado[1] + item.aProvisionarMora);
@@ -124,13 +130,77 @@ public class ProvisionInteresServiceImpl implements ProvisionInteresService {
     @Override
     public void registrarProvisionCierre(Long idCorrida, Long idAsiento, LocalDate fechaCorte, String usuario)
             throws Throwable {
+        registrarProvisionCierre(idCorrida, idAsiento, fechaCorte, usuario, false);
+    }
+
+    @Override
+    public double[] sembrarProvisionApertura(Long idCorrida, LocalDate fechaCorte, double montoObjetivo,
+            String usuario) throws Throwable {
+        System.out.println("ProvisionInteresServiceImpl.sembrarProvisionApertura - corrida: " + idCorrida
+            + " - corte: " + fechaCorte + " - objetivo: " + montoObjetivo);
+        if (idCorrida == null) {
+            throw new IncomeException("idCorrida es obligatorio para sembrar la provisión de apertura");
+        }
+        // Lo provisionable al corte por cuota, SIN restar el libro (la semilla es el libro inicial).
+        List<ItemProvisionCuota> items = calcularItems(fechaCorte, true, true);
+        double total = 0.0;
+        for (ItemProvisionCuota item : items) {
+            total += item.aProvisionarInteres + item.aProvisionarMora;
+        }
+        total = redondear(total);
+        if (total <= TOLERANCIA || montoObjetivo <= TOLERANCIA) {
+            return new double[]{total, 0.0};
+        }
+        // Reparto proporcional del saldo contable de la apertura entre las cuotas: el libro
+        // queda sumando EXACTAMENTE lo que tiene 1.4.99.05 al corte. El residuo de redondeo va
+        // a la cuota de mayor importe.
+        double factor = montoObjetivo / total;
+        LocalDateTime ahora = LocalDateTime.now();
+        double sembrado = 0.0;
+        MovimientoInteresCuota mayor = null;
+        for (ItemProvisionCuota item : items) {
+            double interes = redondear(item.aProvisionarInteres * factor);
+            double mora = redondear(item.aProvisionarMora * factor);
+            if (interes > 0.0) {
+                MovimientoInteresCuota mov = guardarMovimientoDevolviendo(item.cuota.getCodigo(), item.prestamo,
+                    TipoMovimientoInteresCuota.PROVISION, ComponenteMovimientoInteresCuota.INTERES, interes,
+                    fechaCorte, idCorrida, "APERTURA", idCorrida, usuario, ahora);
+                sembrado += interes;
+                if (mayor == null || mov.getValor() > mayor.getValor()) {
+                    mayor = mov;
+                }
+            }
+            if (mora > 0.0) {
+                MovimientoInteresCuota mov = guardarMovimientoDevolviendo(item.cuota.getCodigo(), item.prestamo,
+                    TipoMovimientoInteresCuota.PROVISION, ComponenteMovimientoInteresCuota.MORA, mora,
+                    fechaCorte, idCorrida, "APERTURA", idCorrida, usuario, ahora);
+                sembrado += mora;
+                if (mayor == null || mov.getValor() > mayor.getValor()) {
+                    mayor = mov;
+                }
+            }
+        }
+        double residuo = redondear(montoObjetivo - sembrado);
+        if (mayor != null && Math.abs(residuo) >= 0.005) {
+            mayor.setValor(redondear(mayor.getValor() + residuo));
+            movimientoInteresCuotaDaoService.save(mayor, mayor.getCodigo());
+            sembrado += residuo;
+        }
+        System.out.println("  Semilla MVIC de apertura: calculado al corte " + total + ", sembrado "
+            + redondear(sembrado) + " (factor " + factor + ")");
+        return new double[]{total, redondear(sembrado)};
+    }
+
+    @Override
+    public void registrarProvisionCierre(Long idCorrida, Long idAsiento, LocalDate fechaCorte, String usuario,
+            boolean alCorte) throws Throwable {
         System.out.println("ProvisionInteresServiceImpl.registrarProvisionCierre - corrida: " + idCorrida
-            + " - asiento: " + idAsiento + " - corte: " + fechaCorte);
+            + " - asiento: " + idAsiento + " - corte: " + fechaCorte + " - alCorte: " + alCorte);
         if (idCorrida == null) {
             throw new IncomeException("idCorrida es obligatorio para registrar la provisión del cierre");
         }
         LocalDateTime ahora = LocalDateTime.now();
-        for (ItemProvisionCuota item : calcularItems(fechaCorte)) {
+        for (ItemProvisionCuota item : calcularItems(fechaCorte, alCorte, false)) {
             if (item.aProvisionarInteres > TOLERANCIA) {
                 guardarMovimiento(item.cuota.getCodigo(), item.prestamo, TipoMovimientoInteresCuota.PROVISION,
                     ComponenteMovimientoInteresCuota.INTERES, item.aProvisionarInteres, fechaCorte,
@@ -147,15 +217,21 @@ public class ProvisionInteresServiceImpl implements ProvisionInteresService {
     @Override
     public void registrarDevengoMoraCierre(Long idCorrida, Long idAsiento, LocalDate desde, LocalDate hasta,
             Map<Long, Double> totalMoraPorTipoAsiento, String usuario) throws Throwable {
+        registrarDevengoMoraCierre(idCorrida, idAsiento, desde, hasta, totalMoraPorTipoAsiento, usuario, null);
+    }
+
+    @Override
+    public void registrarDevengoMoraCierre(Long idCorrida, Long idAsiento, LocalDate desde, LocalDate hasta,
+            Map<Long, Double> totalMoraPorTipoAsiento, String usuario, LocalDate corte) throws Throwable {
         System.out.println("ProvisionInteresServiceImpl.registrarDevengoMoraCierre - corrida: " + idCorrida
-            + " - rango: " + desde + " a " + hasta);
+            + " - rango: " + desde + " a " + hasta + " - corte: " + corte);
         if (idCorrida == null) {
             throw new IncomeException("idCorrida es obligatorio para registrar el devengo de mora del cierre");
         }
         LocalDateTime ahora = LocalDateTime.now();
         Map<Long, Double> totalMoraPorTipoMvic = new HashMap<>();
 
-        for (Object[] fila : cierreCarteraDaoService.selectCuotasDevengoMoraEnRango(desde, hasta)) {
+        for (Object[] fila : cierreCarteraDaoService.selectCuotasDevengoMoraEnRango(desde, hasta, corte)) {
             Long idCuota = (Long) fila[0];
             Long idPrestamoFila = (Long) fila[1];
             Long idTipoPrestamo = (Long) fila[2];
@@ -864,19 +940,41 @@ public class ProvisionInteresServiceImpl implements ProvisionInteresService {
      * SIEMPRE se recalcula entero, nunca se confía en un cálculo previo (mismo criterio que el
      * resto del cierre de cartera con "no confía en la vista previa").
      */
-    private List<ItemProvisionCuota> calcularItems(LocalDate fechaCorte) throws Throwable {
+    private List<ItemProvisionCuota> calcularItems(LocalDate fechaCorte, boolean alCorte, boolean sinLibro)
+            throws Throwable {
         if (fechaCorte == null) {
             throw new IncomeException("fechaCorte es obligatoria para el paso 7 (provisión de intereses)");
         }
-        List<DetallePrestamo> cuotas = detallePrestamoDaoService.selectCuotasProvisionables(
-            fechaCorte.atTime(23, 59, 59));
+        // C15 (H1): al corte, la cartera, los pagos y el libro MVIC se leen como estaban ese día.
+        List<DetallePrestamo> cuotas = alCorte
+            ? detallePrestamoDaoService.selectCuotasProvisionablesAlCorte(fechaCorte)
+            : detallePrestamoDaoService.selectCuotasProvisionables(fechaCorte.atTime(23, 59, 59));
 
         List<Long> idsCuota = new ArrayList<>();
         for (DetallePrestamo cuota : cuotas) {
             idsCuota.add(cuota.getCodigo());
         }
-        Map<Long, double[]> pagosPorCuota = cargarPagosPorCuota(idsCuota);
-        Map<Long, double[]> saldoProvisionado = saldoProvisionadoPorCuotas(idsCuota);
+        Map<Long, double[]> pagosPorCuota = alCorte
+            ? agruparPagos(pagoPrestamoDaoService.selectDatosPagosVigentesAlCorte(idsCuota, fechaCorte))
+            : cargarPagosPorCuota(idsCuota);
+        Map<Long, double[]> saldoProvisionado = new HashMap<>();
+        if (!sinLibro) {
+            if (alCorte) {
+                for (Object[] fila : movimientoInteresCuotaDaoService.selectSaldoProvisionadoPorCuotas(idsCuota, fechaCorte)) {
+                    Long idCuota = (Long) fila[0];
+                    long componente = ((Number) fila[1]).longValue();
+                    double saldo = fila[2] != null ? ((Number) fila[2]).doubleValue() : 0.0;
+                    double[] acumulado = saldoProvisionado.computeIfAbsent(idCuota, k -> new double[2]);
+                    if (componente == ComponenteMovimientoInteresCuota.INTERES) {
+                        acumulado[0] = saldo;
+                    } else if (componente == ComponenteMovimientoInteresCuota.MORA) {
+                        acumulado[1] = saldo;
+                    }
+                }
+            } else {
+                saldoProvisionado = saldoProvisionadoPorCuotas(idsCuota);
+            }
+        }
 
         // D25/D27 (2026-10-05): un préstamo DE_PLAZO_VENCIDO (8) ya tiene condonado el interés
         // de sus cuotas con vencimiento posterior al corte de su declaración PLVN — la MISMA
@@ -905,7 +1003,9 @@ public class ProvisionInteresServiceImpl implements ProvisionInteresService {
                     && prestamo.getIdEstado() == EstadoPrestamo.DE_PLAZO_VENCIDO
                     && cuota.getFechaVencimiento() != null) {
                 LocalDate fechaCorteDeclaracion = fechaCorteDeclaracionPorPrestamo.get(prestamo.getCodigo());
+                // C15: al corte, la condonación solo vale si la declaración ya existía en esa fecha.
                 interesCondonado = fechaCorteDeclaracion != null
+                    && (!alCorte || !fechaCorteDeclaracion.isAfter(fechaCorte))
                     && cuota.getFechaVencimiento().toLocalDate().isAfter(fechaCorteDeclaracion);
             }
 
@@ -944,6 +1044,28 @@ public class ProvisionInteresServiceImpl implements ProvisionInteresService {
             items.add(item);
         }
         return items;
+    }
+
+    /** Como {@link #guardarMovimiento} sin pago ni asiento, devolviendo el movimiento grabado (semilla H5). */
+    private MovimientoInteresCuota guardarMovimientoDevolviendo(Long idCuota, Prestamo prestamo, long tipoMovimiento,
+            long componente, double valor, LocalDate fechaContable, Long idCorrida, String origen, Long idOrigen,
+            String usuario, LocalDateTime ahora) throws Throwable {
+        MovimientoInteresCuota mov = new MovimientoInteresCuota();
+        mov.setPrestamo(prestamo);
+        mov.setIdCuota(idCuota);
+        mov.setTipoMovimiento(tipoMovimiento);
+        mov.setComponente(componente);
+        mov.setValor(redondear(valor));
+        mov.setFechaContable(fechaContable);
+        CorridaCierreCartera corrida = new CorridaCierreCartera();
+        corrida.setCodigo(idCorrida);
+        mov.setCorrida(corrida);
+        mov.setOrigen(origen);
+        mov.setIdOrigen(idOrigen);
+        mov.setAnulado(0L);
+        mov.setUsuarioRegistro(usuario);
+        mov.setFechaRegistro(ahora);
+        return movimientoInteresCuotaDaoService.save(mov, null);
     }
 
     private void guardarMovimiento(Long idCuota, Prestamo prestamo, long tipoMovimiento, long componente,
@@ -986,7 +1108,12 @@ public class ProvisionInteresServiceImpl implements ProvisionInteresService {
         if (idsCuota == null || idsCuota.isEmpty()) {
             return mapa;
         }
-        List<Object[]> filas = pagoPrestamoDaoService.selectDatosPagosVigentes(idsCuota);
+        return agruparPagos(pagoPrestamoDaoService.selectDatosPagosVigentes(idsCuota));
+    }
+
+    /** Agrupa por cuota las filas de {@code selectDatosPagosVigentes[AlCorte]} (mismo orden de índices). */
+    private Map<Long, double[]> agruparPagos(List<Object[]> filas) {
+        Map<Long, double[]> mapa = new HashMap<>();
         if (filas == null) {
             return mapa;
         }

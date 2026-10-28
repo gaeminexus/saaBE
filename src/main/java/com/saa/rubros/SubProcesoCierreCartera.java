@@ -69,4 +69,27 @@ public interface SubProcesoCierreCartera {
 	 */
 	public static final int PROVISION_INTERESES = 7;
 
+	/**
+	 * ⑧ Provisión de cartera (C15, D-015): ajusta {@code 1.3.99} a la provisión requerida al
+	 * corte con la regla del SAA ({@code CarteraAlCorteService}, el mismo cálculo de la G48).
+	 * Plantilla alterno 37 (sql/332). Fechado al corte. Solo en modo "al corte".
+	 */
+	public static final int PROVISION_CARTERA = 8;
+
+	/**
+	 * ⑨ Ajuste de bandas a saldo (C15, H5/D-011): lleva cada cuenta de banda {@code 1.3.xx} al
+	 * capital del módulo al corte; la diferencia neta del grupo (lo que la contabilidad y el módulo
+	 * no explican igual) queda en la banda {@code .25} del grupo, a la vista. En la corrida de
+	 * ARRANQUE es el reparto de la banda de más de 360 días (D-001). Fechado al corte.
+	 */
+	public static final int AJUSTE_BANDAS = 9;
+
+	/**
+	 * ⑩ Devengo de mora al corte (C15, D-017/H4): la mora de las cuotas vencidas impagas aún no
+	 * reconocida en el libro MVIC pasa a D 1.4.02.xx / H 5.1.02.xx (plantilla 17), fechada al
+	 * corte, antes de provisionarla en el ⑦. En modo al corte, o con la propiedad
+	 * {@code saa.cartera.devengoMoraCierre=true}.
+	 */
+	public static final int DEVENGO_MORA_CORTE = 10;
+
 }

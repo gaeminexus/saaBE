@@ -208,6 +208,15 @@ public interface CrdLineaAsiento {
 	 */
 	public static final int PROVISION_INTERESES = 81;
 
+	/** C15 — DEBE del gasto por provisión de cartera (4.7.04.xx). Plantilla alterno 37, por tipo de préstamo. */
+	public static final int PROVISION_CARTERA_GASTO = 82;
+
+	/** C15 — provisión de cartera 1.3.99.xx (HABER al constituir, DEBE al reversar). Plantilla 37. */
+	public static final int PROVISION_CARTERA = 83;
+
+	/** C15 — contrapartida HABER cuando la provisión requerida baja (reverso/recuperación; cuenta del contador). Plantilla 37. */
+	public static final int PROVISION_CARTERA_REVERSO = 84;
+
 	// ── Cuadre ──────────────────────────────────────────────────────────────
 
 	/**

@@ -46,8 +46,58 @@ public class SolicitudCierreCartera {
      */
     private String motivoOmisionControl;
 
+    // ---------------------------------------------------------------------------------
+    // C15 — cierre a fecha de corte (docs/logica-negocio/crd/CIERRE-CARTERA-A-FECHA-DE-CORTE.md)
+    // ---------------------------------------------------------------------------------
+
+    /**
+     * Lee la cartera como estaba al corte (H1). {@code null} = automático
+     * ({@code ModoCorteCartera#esAlCorte}: sí para meses anteriores al mes pasado). En modo al
+     * corte, además: ①/②/①.1 se fechan el último día del mes que cierra (H3) y ② compara el
+     * corte anterior contra el corte; se agregan ⑧ provisión de cartera y ⑨ ajuste de bandas.
+     */
+    private Boolean estadoAlCorte;
+
+    /** Convención de vencimiento al corte; {@code null} = propiedad {@code saa.cartera.corteInclusivo} (true). */
+    private Boolean corteInclusivo;
+
+    /**
+     * H5 (D-016) — corrida de ARRANQUE sobre el mes del ancla (mayo 2025): solo ⑨ (reparto de
+     * bandas de la apertura, a nivel de cuenta madre para no cambiar el B17 del ancla), ③ y ④
+     * del mes siguiente, y la semilla del libro MVIC con la provisión de intereses de la apertura.
+     * Sin ①, ②, ①.1, ⑥, ⑦ ni ⑧, sin control de archivo Petro.
+     */
+    private Boolean arranque;
+
+    /**
+     * Arranque: monto de la provisión de intereses de la apertura a sembrar en MVIC.
+     * {@code null} = saldo acreedor de la cuenta de la plantilla 36 (papel 81) al corte.
+     */
+    private Double montoProvisionInteresesApertura;
+
+    /** Omite el ⑧ aunque el modo sea al corte. */
+    private Boolean omitirProvisionCartera;
+
+    /** Omite el ⑨ aunque el modo sea al corte. */
+    private Boolean omitirAjusteBandas;
+
     public SolicitudCierreCartera() {
     }
+
+    public Boolean getEstadoAlCorte() { return estadoAlCorte; }
+    public void setEstadoAlCorte(Boolean estadoAlCorte) { this.estadoAlCorte = estadoAlCorte; }
+    public Boolean getCorteInclusivo() { return corteInclusivo; }
+    public void setCorteInclusivo(Boolean corteInclusivo) { this.corteInclusivo = corteInclusivo; }
+    public Boolean getArranque() { return arranque; }
+    public void setArranque(Boolean arranque) { this.arranque = arranque; }
+    public Double getMontoProvisionInteresesApertura() { return montoProvisionInteresesApertura; }
+    public void setMontoProvisionInteresesApertura(Double montoProvisionInteresesApertura) {
+        this.montoProvisionInteresesApertura = montoProvisionInteresesApertura;
+    }
+    public Boolean getOmitirProvisionCartera() { return omitirProvisionCartera; }
+    public void setOmitirProvisionCartera(Boolean omitirProvisionCartera) { this.omitirProvisionCartera = omitirProvisionCartera; }
+    public Boolean getOmitirAjusteBandas() { return omitirAjusteBandas; }
+    public void setOmitirAjusteBandas(Boolean omitirAjusteBandas) { this.omitirAjusteBandas = omitirAjusteBandas; }
 
     public Long getIdEmpresa() {
         return idEmpresa;

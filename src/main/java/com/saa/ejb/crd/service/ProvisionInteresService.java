@@ -58,6 +58,35 @@ public interface ProvisionInteresService {
     Map<Long, double[]> calcularProvisionPorTipoPrestamo(LocalDate fechaCorte) throws Throwable;
 
     /**
+     * C15 (H1) — {@link #calcularProvisionPorTipoPrestamo(LocalDate)} con {@code alCorte = true}:
+     * cartera, pagos y libro MVIC tal como estaban a la fecha de corte
+     * ({@code ModoCorteCartera}). Con {@code false} es idéntico al de siempre.
+     */
+    Map<Long, double[]> calcularProvisionPorTipoPrestamo(LocalDate fechaCorte, boolean alCorte) throws Throwable;
+
+    /** C15 — {@link #registrarProvisionCierre(Long, Long, LocalDate, String)} con el modo al corte. */
+    void registrarProvisionCierre(Long idCorrida, Long idAsiento, LocalDate fechaCorte, String usuario,
+            boolean alCorte) throws Throwable;
+
+    /** C15 — {@link #registrarDevengoMoraCierre(Long, Long, LocalDate, LocalDate, Map, String)} medido al corte (null = hoy). */
+    void registrarDevengoMoraCierre(Long idCorrida, Long idAsiento, LocalDate desde, LocalDate hasta,
+            Map<Long, Double> totalMoraPorTipoAsiento, String usuario, LocalDate corte) throws Throwable;
+
+    /**
+     * C15 / H5 (D-016) — semilla del libro {@code CRD.MVIC} con la provisión de intereses que ya
+     * trae la apertura contable ({@code 1.4.99.05} al corte del ancla), para que el primer ⑦ no
+     * la vuelva a provisionar. Calcula lo provisionable por cuota al corte (mismo cálculo del
+     * ⑦, sin restar el libro) y reparte {@code montoObjetivo} en proporción, como MVIC tipo 1
+     * (PROVISION) origen {@code APERTURA}, sin asiento (el asiento es la apertura), enlazados a la
+     * corrida de arranque (el reverso de esa corrida los anula). El residuo de redondeo va a la
+     * cuota de mayor importe: el libro suma exactamente {@code montoObjetivo}.
+     *
+     * @return {@code {totalProvisionableCalculado, totalSembrado}}
+     */
+    double[] sembrarProvisionApertura(Long idCorrida, LocalDate fechaCorte, double montoObjetivo, String usuario)
+            throws Throwable;
+
+    /**
      * Recalcula el paso ⑦ (misma fórmula que {@link #calcularProvisionPorTipoPrestamo}, nunca
      * confía en un cálculo previo) y REGISTRA un {@code MVIC} tipo 1 (PROVISION) por cada cuota
      * y componente con "a provisionar" {@code > 0}, enlazado a la corrida y al asiento. Se llama

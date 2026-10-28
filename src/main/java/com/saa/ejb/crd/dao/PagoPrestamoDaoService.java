@@ -80,6 +80,13 @@ public interface PagoPrestamoDaoService extends EntityDao<PagoPrestamo> {
 	List<Object[]> selectDatosPagosVigentes(List<Long> codigosDetallePrestamo) throws Throwable;
 
 	/**
+	 * C15 — {@link #selectDatosPagosVigentes(List)} restringido a los pagos con fecha
+	 * {@code <= corte} (estado de la cartera al corte). Mismo orden de columnas.
+	 */
+	List<Object[]> selectDatosPagosVigentesAlCorte(List<Long> codigosDetallePrestamo, java.time.LocalDate corte)
+			throws Throwable;
+
+	/**
 	 * Capital ABONADO (Σ {@code PGPRCPPG} de pagos vigentes) de las cuotas EN_MORA (5) o
 	 * PARCIAL (6) de VARIOS préstamos, con UN {@code SUM} AGRUPADO en la base — una fila por
 	 * préstamo, no una por pago. Tercio «en mora/parcial» de {@code capitalPagado}
