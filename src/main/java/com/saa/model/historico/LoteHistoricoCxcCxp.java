@@ -40,8 +40,49 @@ public class LoteHistoricoCxcCxp {
     public List<NotaCreditoCompraLote> ncCompras = new ArrayList<>();
     public List<NotaCreditoVentaLote> ncVentas = new ArrayList<>();
 
+    /**
+     * D-013: saldos iniciales de clientes y proveedores al 31-may-2025 cargados en los módulos como documentos
+     * SIN asiento (la contabilidad ya está en el asiento de apertura). Solo viene en el lote 2025-05.
+     */
+    public SaldosInicialesLote saldosIniciales;
+
     /** Resumen que escribe el generador; el cargador no lo usa, solo lo devuelve. */
     public Object resumen;
+
+    public static class SaldosInicialesLote {
+        /** Fecha de corte de la apertura: 2025-05-31. Ningún documento de saldo inicial puede ser posterior. */
+        public String fecha;
+        /** CNT.ASNT.ASNTCDGO del asiento de apertura (12043): el cargador lee de sus líneas los saldos de 2.3.90.10 y 1.4.90.10 y exige que los documentos sumen exactamente eso. */
+        public Long idAsientoApertura;
+        /** Número visible del asiento de apertura (DI-A-2025-05-0001), solo para la observación. */
+        public String asientoApertura;
+        /** Titular genérico "SALDO INICIAL" (cliente y proveedor). Se crea/completa como cualquier titular del lote. */
+        public TitularLote titularGenerico;
+        /** Documentos por pagar al corte: los identificados a titulares reales y el genérico con el resto. */
+        public List<DocumentoSaldoInicialLote> proveedores = new ArrayList<>();
+        /** Documentos por cobrar al corte. */
+        public List<DocumentoSaldoInicialLote> clientes = new ArrayList<>();
+    }
+
+    /**
+     * Un documento de saldo inicial (PGS.FCTC si es proveedor, CBR.FCTR si es cliente) SIN líneas de detalle y SIN
+     * asiento. Si {@code esGenerico} el titular es {@link SaldosInicialesLote#titularGenerico}; si no, el titular
+     * real {@code identificacion} (que debe venir en {@code titulares} del lote o existir en el SAA).
+     */
+    public static class DocumentoSaldoInicialLote {
+        public String ref;
+        public boolean esGenerico;
+        public String identificacion;
+        /** Número del comprobante real (001-002-000000531) o, para el genérico, 999-999-000000001. */
+        public String numero;
+        /** Clave de acceso si se conoce; el genérico no lleva. */
+        public String claveAcceso;
+        /** Fecha de emisión (≤ fecha de corte); vacía = la fecha de corte. */
+        public String fechaEmision;
+        public Double monto;
+        /** De dónde sale el monto: "mayor 149010 mayo-2025 fila 76", "apertura 2.3.90.10 menos identificados"... */
+        public String origen;
+    }
 
     // ─────────────────────────── tipos anidados ───────────────────────────
 

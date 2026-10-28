@@ -51,4 +51,18 @@ public interface CargaHistoricaDocumentoService {
     ItemResultado cargarNotaCreditoCompra(Contexto ctx, LoteHistoricoCxcCxp.NotaCreditoCompraLote n) throws Throwable;
 
     ItemResultado cargarNotaCreditoVenta(Contexto ctx, LoteHistoricoCxcCxp.NotaCreditoVentaLote n) throws Throwable;
+
+    /**
+     * D-013: crea el documento de saldo inicial (factura de compra si {@code lado} = PROVEEDOR, de venta si
+     * CLIENTE) con fecha ≤ corte, SIN líneas de detalle y SIN asiento, para el titular genérico SALDO INICIAL o
+     * para el titular real identificado. Idempotente por empresa, titular y número.
+     */
+    ItemResultado cargarSaldoInicial(Contexto ctx, String lado, LoteHistoricoCxcCxp.SaldosInicialesLote si,
+            LoteHistoricoCxcCxp.DocumentoSaldoInicialLote d) throws Throwable;
+
+    /**
+     * D-013: mueve {@code monto} del documento genérico de SALDO INICIAL a un documento del titular real (lo crea
+     * igual que {@link #cargarSaldoInicial}), sin tocar la contabilidad. Idempotente por titular y número destino.
+     */
+    ItemResultado reasignarSaldoInicial(Contexto ctx, com.saa.model.historico.ReasignacionSaldoInicial r) throws Throwable;
 }

@@ -23,4 +23,10 @@ public interface CargaHistoricaCxcCxpService {
      * @throws Throwable: Solo por errores de la petición; los errores de documento van en el resultado
      */
     ResultadoCargaHistorica cargar(LoteHistoricoCxcCxp lote) throws Throwable;
+
+    /**
+     * D-013: reasigna parte del saldo inicial (titular SALDO INICIAL) a un titular real. Devuelve un resultado con un
+     * solo ítem (CREADO / OMITIDO / RECHAZADO).
+     */
+    ResultadoCargaHistorica reasignarSaldoInicial(com.saa.model.historico.ReasignacionSaldoInicial reasignacion) throws Throwable;
 }
