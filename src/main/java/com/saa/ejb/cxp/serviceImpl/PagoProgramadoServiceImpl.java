@@ -1993,8 +1993,24 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	@Override
 	public Map<String, Object> procesarRespuestaBanco(Long idLote, byte[] archivoRespuesta,
 			Long idUsuario) throws Throwable {
+		return procesarRespuestaBanco(idLote, archivoRespuesta, idUsuario, null);
+	}
 
-		System.out.println("=== procesarRespuestaBanco | lote=" + idLote + " ===");
+	@Override
+	public Map<String, Object> procesarRespuestaBanco(Long idLote, byte[] archivoRespuesta,
+			Long idUsuario, LocalDate fechaRespuesta) throws Throwable {
+
+		System.out.println("=== procesarRespuestaBanco | lote=" + idLote
+				+ " | fechaRespuesta=" + fechaRespuesta + " ===");
+
+		// C6 (FECHA-CONTABLE-REPROCESO.md): la fecha de respuesta del banco es la fecha contable
+		// del pago (asiento y movimiento bancario salen de PGTRFRSP en contabilizarSegunOrigen).
+		// Por defecto hoy; explícita para re-procesar un lote de un mes pasado. Nunca futura.
+		LocalDate fechaRespuestaEfectiva = (fechaRespuesta != null) ? fechaRespuesta : LocalDate.now();
+		if (fechaRespuestaEfectiva.isAfter(LocalDate.now())) {
+			throw new IncomeException("FECHA_CONTABLE_FUTURA: la fecha de respuesta del banco "
+					+ fechaRespuestaEfectiva + " es futura.");
+		}
 
 		Map<String, Object> resultado = new HashMap<>();
 
@@ -2033,7 +2049,7 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 				continue;
 			}
 
-			pago.setFechaRespuesta(LocalDate.now());
+			pago.setFechaRespuesta(fechaRespuestaEfectiva);
 
 			if (respuesta.isConfirmado()) {
 				try {
