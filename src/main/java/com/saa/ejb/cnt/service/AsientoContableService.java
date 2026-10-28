@@ -376,6 +376,22 @@ public interface AsientoContableService {
             Long moduloSistema, String moduloOrigen) throws Throwable;
 
     /**
+     * Asiento <b>manual</b> con el tipo de asiento ya resuelto por el llamador (cargador de asientos manuales,
+     * docs/logica-negocio/cnt/CARGADOR-ASIENTOS-MANUALES.md). Misma grabacion que {@link #generarAsiento} (cabecera,
+     * saveSingle con periodo y numero alterno, lineas, validacion debe = haber) pero:
+     * <ul>
+     * <li>el tipo se recibe como entidad, no por codigo alterno: DIARIO / INGRESO / EGRESO comparten el alterno 0 y
+     * {@code codigoByAlterno(0)} es ambiguo;</li>
+     * <li>no aplica la regla IN-A / EG-A / DI-A ni graba modulo origen, con cualquier fecha (los manuales no
+     * cambian, DISENO-TIPOS-ASIENTO-AUTOMATICOS.md §2.6);</li>
+     * <li>el modulo del sistema es siempre {@code ModuloSistema.CONTABILIDAD}.</li>
+     * </ul>
+     */
+    Asiento generarAsientoManual(Long idEmpresa, com.saa.model.cnt.TipoAsiento tipoAsiento,
+            java.time.LocalDate fechaAsiento, String observaciones, String usuario,
+            java.util.List<com.saa.model.cnt.DetalleAsiento> lineas) throws Throwable;
+
+    /**
      * Genera el asiento del cruce de un anticipo de proveedor contra una factura
      * de compra (CXP).
      * <p>
