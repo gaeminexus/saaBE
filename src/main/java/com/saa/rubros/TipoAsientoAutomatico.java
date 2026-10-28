@@ -21,7 +21,21 @@ public interface TipoAsientoAutomatico {
 	/** DIARIO AUTOMATICO: sin lineas de banco real. */
 	public static final int DI_A = 9;
 
-	/** Los asientos automaticos con fecha desde este dia (inclusive) usan IN-A / EG-A / DI-A y el modulo origen. */
-	public static final LocalDate FECHA_VIGENCIA = LocalDate.of(2026, 11, 1);
+	/**
+	 * Vigencia POR DEFECTO de la regla: los asientos automaticos con fecha desde este dia (inclusive) usan
+	 * IN-A / EG-A / DI-A y el modulo origen. Es el valor que rige cuando la empresa no tiene configurada otra fecha
+	 * en el rubro {@link Rubros#CNT_PARAMETROS_ASIENTOS_AUTOMATICOS} ({@link CntParametroAsientoAutomatico}); la
+	 * fecha efectiva la da {@code AsientoContableService.fechaVigenciaTiposAutomaticos(idEmpresa)}.
+	 * Para el re-proceso jun-2025 -> nov-2026 del cuadre con la Superintendencia (D-006) la base del proyecto la
+	 * fija en 2025-06-01 con el script c12-01; produccion sigue con esta constante hasta que se decida.
+	 */
+	public static final LocalDate FECHA_VIGENCIA_DEFECTO = LocalDate.of(2026, 11, 1);
+
+	/*
+	 * No hay modulos excluidos. Decision del lider del proyecto del cuadre (2026-10-28, D-006 cerrada): Creditos
+	 * (CRE) y Nomina (RRH) TAMBIEN salen IN-A / EG-A / DI-A con su numeracion paralela por modulo
+	 * (CRE-AAAA-MM-NNNN, RRH-AAAA-MM-NNNN). El unico criterio de ingreso/egreso es si el asiento toca la cuenta
+	 * contable de una cuenta bancaria de un banco real ({@code AsientoContableServiceImpl.clasificarTipoAutomatico}).
+	 */
 
 }

@@ -503,8 +503,9 @@ public class AsientoServiceImpl implements AsientoService {
 		asientoReversion.setRubroModuloClienteH(asientoOriginal.getRubroModuloClienteH());
 		asientoReversion.setRubroModuloSistemaP(asientoOriginal.getRubroModuloSistemaP());
 		asientoReversion.setRubroModuloSistemaH(asientoOriginal.getRubroModuloSistemaH());
-		// El reverso de un asiento automatico desde 2026-11-01 conserva el modulo origen y toma SU PROPIO
-		// consecutivo de modulo (mas abajo). Los anteriores no tienen modulo: quedan sin modulo.
+		// El reverso de un asiento automatico (fecha >= vigencia de la regla IN-A/EG-A/DI-A) conserva el TIPO
+		// (setTipoAsiento de arriba) y el modulo origen del original, y toma SU PROPIO consecutivo de modulo
+		// (mas abajo), en el mes/anio de fechaReverso. Los anteriores no tienen modulo: quedan sin modulo.
 		asientoReversion.setModuloOrigen(asientoOriginal.getModuloOrigen());
 		asientoReversion = asignaNumeroAlterno(asientoReversion);
 		asientoReversion = asignaNumeroModulo(asientoReversion);
