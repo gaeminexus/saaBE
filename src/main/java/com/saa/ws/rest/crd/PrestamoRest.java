@@ -389,9 +389,13 @@ public class PrestamoRest {
         String observacion = solicitud != null ? solicitud.getObservacion() : null;
         Long idEmpresa = solicitud != null ? solicitud.getIdEmpresa() : null;
         Long idUsuario = solicitud != null ? solicitud.getIdUsuario() : null;
-        System.out.println("APROBAR PRÉSTAMO - ID: " + id + ", Usuario: " + usuario);
+        // C6: fechaContable opcional (yyyy-MM-dd) para re-procesar meses pasados; null = hoy.
+        java.time.LocalDate fechaContable = solicitud != null ? solicitud.getFechaContable() : null;
+        System.out.println("APROBAR PRÉSTAMO - ID: " + id + ", Usuario: " + usuario
+            + (fechaContable != null ? ", Fecha contable: " + fechaContable : ""));
         try {
-            Prestamo prestamo = prestamoService.aprobar(id, usuario, observacion, idEmpresa, idUsuario);
+            Prestamo prestamo = prestamoService.aprobar(id, usuario, observacion, idEmpresa, idUsuario,
+                fechaContable);
             return Response.status(Response.Status.OK)
                     .entity(prestamo)
                     .type(MediaType.APPLICATION_JSON)
