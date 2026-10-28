@@ -224,9 +224,11 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
 
             aplicarEstadoCuota(cuota, (long) EstadoCuotaPrestamo.PAGADA);
 
-            // ✅ Respetar la fecha de pago existente; solo se establece si falta
+            // ✅ Respetar la fecha de pago existente; solo se establece si falta — y en ese
+            // caso con la fecha del ÚLTIMO pago vigente (C6, FECHA-CONTABLE-REPROCESO.md), no
+            // con la de hoy: en un re-proceso de meses pasados la cuota quedaba pagada "hoy".
             if (cuota.getFechaPagado() == null) {
-                cuota.setFechaPagado(LocalDateTime.now());
+                cuota.setFechaPagado(fechaUltimoPago(pagos));
             } else {
                 System.out.println("    ℹ️ Respetando fecha de pago existente: " + cuota.getFechaPagado());
             }
@@ -762,7 +764,8 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
         if (totalPendiente <= TOLERANCIA_CUOTA) {
             aplicarEstadoCuota(cuota, (long) EstadoCuotaPrestamo.PAGADA);
             if (cuota.getFechaPagado() == null) {
-                cuota.setFechaPagado(LocalDateTime.now());
+                // C6: la fecha del último pago vigente, no la de hoy (ver calcularSaldosRealesCuota).
+                cuota.setFechaPagado(fechaUltimoPago(pagos));
             }
             System.out.println("  → Cuota #" + cuota.getNumeroCuota() + " queda PAGADA");
         } else if (totalPagado > MEDIO_CENTAVO) {
@@ -785,6 +788,25 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
     // ========================================================================
     // Helpers
     // ========================================================================
+
+    /**
+     * Fecha de pago que le corresponde a una cuota que queda PAGADA a partir de sus pagos
+     * vigentes: la mayor {@code PGPRFCHA} de la lista. Si ningún pago trae fecha (datos
+     * migrados), se cae a la hora del sistema — el comportamiento que había antes de C6.
+     * Así, en un re-proceso de meses pasados la cuota queda pagada en la fecha real del
+     * último pago y no en la fecha en que se corrió el proceso.
+     */
+    private LocalDateTime fechaUltimoPago(List<PagoPrestamo> pagos) {
+        LocalDateTime ultima = null;
+        if (pagos != null) {
+            for (PagoPrestamo pago : pagos) {
+                if (pago.getFecha() != null && (ultima == null || pago.getFecha().isAfter(ultima))) {
+                    ultima = pago.getFecha();
+                }
+            }
+        }
+        return ultima != null ? ultima : LocalDateTime.now();
+    }
 
     /** Escribe SIEMPRE los dos campos de estado de la cuota (regla de estados espejo). */
     private void aplicarEstadoCuota(DetallePrestamo cuota, long estado) {
