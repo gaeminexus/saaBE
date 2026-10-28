@@ -1,7 +1,6 @@
 package com.saa.rubros;
 
 import java.time.LocalDate;
-import java.util.Set;
 
 /**
  * Codigos alternos de los tipos de asiento AUTOMATICOS (IN-A, EG-A, DI-A) y la fecha desde la que rigen
@@ -32,17 +31,11 @@ public interface TipoAsientoAutomatico {
 	 */
 	public static final LocalDate FECHA_VIGENCIA_DEFECTO = LocalDate.of(2026, 11, 1);
 
-	/**
-	 * PUNTO UNICO de exclusion por modulo. Un asiento automatico cuyo modulo origen ({@link ModuloOrigenAsiento})
-	 * este en este conjunto CONSERVA el tipo que pide su llamador (CREDITOS 1, RECURSOS HUMANOS 6, ...) en vez de
-	 * IN-A / EG-A / DI-A, pero igual graba modulo origen y toma su consecutivo mensual por modulo.
-	 * <p>
-	 * Hoy esta VACIO: la regla aplica a todos los modulos, tambien a Creditos (CRE) y Nomina (RRH), tal como quedo
-	 * implementada en el commit e7103b60 (DISENO §5: «cambia el tipo de todos los asientos automaticos, tambien los
-	 * de crd»). El lider del proyecto del cuadre esta decidiendo si CRE y RRH conservan su tipo propio (D-006,
-	 * pendiente): si lo decide, el cambio es {@code Set.of(ModuloOrigenAsiento.CRE, ModuloOrigenAsiento.RRH)} aqui y
-	 * nada mas. No hay otro lugar que tocar.
+	/*
+	 * No hay modulos excluidos. Decision del lider del proyecto del cuadre (2026-10-28, D-006 cerrada): Creditos
+	 * (CRE) y Nomina (RRH) TAMBIEN salen IN-A / EG-A / DI-A con su numeracion paralela por modulo
+	 * (CRE-AAAA-MM-NNNN, RRH-AAAA-MM-NNNN). El unico criterio de ingreso/egreso es si el asiento toca la cuenta
+	 * contable de una cuenta bancaria de un banco real ({@code AsientoContableServiceImpl.clasificarTipoAutomatico}).
 	 */
-	public static final Set<String> MODULOS_CON_TIPO_PROPIO = Set.of();
 
 }

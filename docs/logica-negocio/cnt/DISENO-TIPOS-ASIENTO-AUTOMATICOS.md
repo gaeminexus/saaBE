@@ -131,48 +131,39 @@ base que se respalda) y una columna nueva en la empresa (DDL por un solo dato).
 → `fechaVigenciaTiposAutomaticos(idEmpresa)`; el resto de la regla (§2) no se toca. Los manuales
 (`generarAsientoManual`, cargador C5, APERTURA) siguen fuera con cualquier fecha.
 
-### 7.1 Módulos fuera de la regla — punto único
+### 7.1 Módulos dentro de la regla — todos (decisión del 2026-10-28)
 
-**Hoy ningún módulo queda fuera.** Tal como se implementó en `e7103b60` (y como dice §5), la regla reclasifica el tipo
-de **todos** los asientos automáticos que pasan por `generarAsiento`, también los de **Créditos** (`CRE`, llegan con
-alterno 1 = CREDITOS) y **Nómina** (`RRH`, alterno 6 = RECURSOS HUMANOS). Lo que sí conservan es que el módulo origen
-sale del alterno (1 → CRE, 6 → RRH) sin tocar su código.
-
-El líder del cuadre está decidiendo si CRE y RRH **conservan su tipo propio** (D-006, pendiente). Queda preparado, sin
-activar, el **único** lugar donde se cambia:
-
-```java
-// com.saa.rubros.TipoAsientoAutomatico
-public static final Set<String> MODULOS_CON_TIPO_PROPIO = Set.of();                 // hoy: nadie
-// si se decide: Set.of(ModuloOrigenAsiento.CRE, ModuloOrigenAsiento.RRH)
-```
-
-Un módulo en ese conjunto, con fecha ≥ vigencia, **conserva el tipo que pide su llamador** (CREDITOS, RECURSOS HUMANOS)
-pero **igual graba módulo origen y toma su consecutivo mensual por módulo** (`CRE-2025-06-0001`). Es decir, la exclusión
-es solo del tipo, no de la numeración paralela.
+**Ningún módulo queda fuera.** El líder del proyecto del cuadre decidió el 28-oct (cierra el pendiente de D-006) que
+**Créditos (`CRE`) y Nómina (`RRH`) también** salen IN-A / EG-A / DI-A, con su numeración paralela por módulo
+(`CRE-AAAA-MM-NNNN`, `RRH-AAAA-MM-NNNN`). El **único criterio** de ingreso/egreso es si el asiento tiene la cuenta
+contable de una cuenta bancaria de un banco real (§2.1–2.2); si no la tiene, DI-A. Es exactamente lo que implementó
+`e7103b60` (§5): la regla reclasifica el tipo de **todos** los asientos automáticos que pasan por `generarAsiento`; CRE y
+RRH solo se distinguen en que su módulo origen sale del alterno del llamador (1 → CRE, 6 → RRH) sin tocar su código.
+No existe en el código ningún conjunto de módulos excluidos (se retiró el que C12 había dejado preparado).
 
 Siguen fuera de la regla por diseño (§6), con cualquier fecha: asientos manuales, copia (`generaCopia`), cierre de
-período y el legacy de tsr (`insertarCabeceraAsiento`).
+período y el legacy de tsr (`insertarCabeceraAsiento`). Los dos asientos de **apertura** del 31-may-2025 (ASNT 12043 y
+12044) los pasó el líder a DI-A por SQL (`DI-A-2025-05-0001/0002`, módulo `CNT`); no los toca ningún proceso.
 
 ## 8. Re-proceso jun-2025 → nov-2026 (cuadre Superintendencia)
 
 1. **Orden de aplicación en la base de trabajo:** `e2-111` (ya aplicado: columnas `BNCOREAL`, `ASNTMDOR`, `ASNTNMMD`,
-   `ASNTNAMD` presentes) → WAR con este cambio → `c12-01` (vigencia 2025-06-01 para la 1236) → `c12-02` (bancos reales).
+   `ASNTNAMD` presentes) → WAR con este cambio → `c12-01` (vigencia 2025-06-01 para la 1236, confirmada por el líder;
+   pendiente de correr) → `c12-02` (solo verificación de bancos reales; la marca ya la puso el líder).
 2. **Lo que la regla necesita para fechas de 2025, verificado el 2026-10-28 en la base de trabajo (dump del 28-oct):**
    - Tipos del sistema de la 1236: `IN-A (INGRESO AUTOMATICO)` 7 = PLNT 1257, `EG-A (EGRESO AUTOMATICO)` 8 = 1258,
      `DI-A (DIARIO AUTOMATICO)` 9 = 1259, todos `PLNTSSTM = 1`, `PLNTESTD = 1`; ninguna otra fila con alterno 7/8/9 en
      ninguna empresa (no hay choque con TRANSFERENCIAS). APERTURA quedó en el 10 (C5).
    - Períodos: 4523 (may-2025) a 4530 (dic-2025) y 4511–4522 (2026), todos abiertos salvo ene-2026 (estado 2).
-   - Bancos: los 18 de la 1236 están en `BNCOREAL = 1` (default del e2-111; nadie corrió su bloque 2). Las 21 cuentas
-     bancarias tienen plan de cuenta enlazado. Las tres de ASOPREP: Pacífico ahorros 1048142735 (cnbc 418,
-     `1.1.02.05.65`), Internacional corriente 520612384 (417, `1.1.02.05.80`), Amazonas ahorros 4502425973 (413,
-     `1.1.02.05.40`): marcadas y enlazadas. **Pero seis «bancos» no son bancos** y hoy cuentan como reales: 425 y 427
-     caja chica (`1.1.01.10.0x`), 432 cuenta transitoria (`2.3.01.15.01`, 894 asientos), 433 arriendos anticipados
-     (`2.9.01.10`), 435 anticipo a proveedores (`1.9.01.10`), 438 depósitos por confirmar (`2.3.90.90.09`). Con ellos en
-     1, un cobro a la transitoria o un gasto de caja chica saldría IN-A/EG-A y no DI-A como pide §1. `c12-02` propone
-     ponerlos en 0 (decisión del líder / responsable de ASOPREP; no ejecutado).
+   - Bancos (marca puesta por el líder el 28-oct, verificada con `c12-02`): **12 reales** (`BNCOREAL = 1`): 393 Pacífico
+     (ahorros 1048142735 → `1.1.02.05.65`, corriente 7713878 → `.70`), 396 Internacional (corriente 520612384 → `.80`),
+     398 Austro, 400 Amazonas (ahorros 4502425973 → `.40`), 401 Guayaquil, 402 Atlántida, 403 Comercial de Manabí,
+     404 Alianza del Valle, 405 JEP, 406 Policía Nacional, 407 Oscus, 408 Mutualista Pichincha (2 cuentas); los 14
+     planes que la regla toma como banco real son todos `1.1.02.05.xx`. **6 no reales** (`= 0`): 425 y 427 caja chica,
+     432 cuenta transitoria (`2.3.01.15.01`), 433 arriendos anticipados, 435 anticipo a proveedores, 438 depósitos por
+     confirmar. Las 21 cuentas bancarias de la 1236 tienen plan de cuenta enlazado; ninguna de ASOPREP sin él.
    - Detalle: `clasificarTipoAutomatico` no filtra por `CNBCESTD`; la cnbc 431 (inactiva, banco 425) apunta a la
-     misma `2.3.01.15.01`. Marcar 425 en 0 lo resuelve; si se prefiere filtrar por cuenta activa, es un cambio aparte.
+     transitoria, pero con 425 en 0 ya no cuenta. Sin efecto hoy.
 3. **Numeración por módulo en meses pasados, confirmada en el código:** `asignaNumeroModulo` usa
    `asiento.getNumeroMes()/getNumeroAnio()`, que `saveSingle` sincroniza **siempre** con `fechaAsiento`
    (`AsientoServiceImpl` 743-757) y `selectMaxNumeroMesModulo` filtra por empresa + módulo + mes + año. El número

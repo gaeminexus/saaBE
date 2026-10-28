@@ -363,8 +363,7 @@ public interface AsientoContableService {
      * fecha desde la vigencia de la empresa ({@link #fechaVigenciaTiposAutomaticos}; por defecto 2026-11-01):
      * <ul>
      * <li>el tipo se calcula segun las lineas (IN-A 7 / EG-A 8 / DI-A 9) y reemplaza a
-     * {@code codigoAltTipoAsiento}, salvo que el modulo origen este en
-     * {@code TipoAsientoAutomatico.MODULOS_CON_TIPO_PROPIO} (hoy vacio);</li>
+     * {@code codigoAltTipoAsiento}, en todos los modulos, tambien Creditos y Nomina (decision del 2026-10-28);</li>
      * <li>se graba el modulo origen con su consecutivo mensual por empresa + modulo + anio + mes de la FECHA DEL
      * ASIENTO (no del dia de hoy: sirve para re-procesar meses pasados).</li>
      * </ul>

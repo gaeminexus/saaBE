@@ -593,21 +593,18 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         // origen con su propio consecutivo mensual. Antes de esa fecha, todo igual que siempre. La vigencia se
         // compara con la FECHA DEL ASIENTO, nunca con la de hoy: el re-proceso jun-2025 -> nov-2026 del cuadre con
         // la Superintendencia (D-006) la fija en 2025-06-01 y regenera esos meses con esta numeracion.
+        // La regla aplica a TODOS los modulos, tambien Creditos (CRE) y Nomina (RRH): decision del lider del cuadre
+        // del 2026-10-28 (D-006). No hay modulos con tipo propio.
         LocalDate vigencia = fechaVigenciaTiposAutomaticos(idEmpresa);
         boolean automatico = fechaAsiento != null && !fechaAsiento.isBefore(vigencia);
-        // PUNTO UNICO de exclusion por modulo (TipoAsientoAutomatico.MODULOS_CON_TIPO_PROPIO, hoy vacio): un modulo
-        // excluido conserva el tipo que pide el llamador (CREDITOS, RECURSOS HUMANOS) pero igual graba modulo
-        // origen y consecutivo por modulo. Decision pendiente del lider del cuadre para CRE y RRH.
-        boolean tipoPorRegla = automatico && (moduloOrigen == null
-                || !TipoAsientoAutomatico.MODULOS_CON_TIPO_PROPIO.contains(moduloOrigen));
         if (automatico) {
             System.out.println("generarAsiento: fecha " + fechaAsiento + " >= vigencia " + vigencia
-                    + " -> regla de tipos automaticos" + (tipoPorRegla ? "" : " (modulo con tipo propio)"));
+                    + " -> regla de tipos automaticos (modulo " + moduloOrigen + ")");
         }
 
         // 1. Obtener TipoAsiento por codigoAlterno y sistema=1
         TipoAsiento tipoAsiento;
-        if (tipoPorRegla) {
+        if (automatico) {
             int alternoAutomatico = clasificarTipoAutomatico(idEmpresa, lineas);
             System.out.println("generarAsiento: tipo automatico segun las lineas = " + alternoAutomatico
                     + " (recibido " + codigoAltTipoAsiento + ")");
