@@ -218,4 +218,33 @@ public interface PagoPrestamoDaoService extends EntityDao<PagoPrestamo> {
 	 */
 	List<Object[]> selectMaxFechaPagoByPrestamos(List<Long> codigosPrestamo) throws Throwable;
 
+	/**
+	 * Pagos VIGENTES del ESQUEMA VIEJO de una carga Petro: sin {@code CRARCDGO} (anteriores a la
+	 * trazabilidad del 2026-08-28), donde la carga solo figura en la observación con la forma
+	 * {@code "Pago cuota #N - Mes M/AAAA - Carga N [CargaArchivo: N]"}. Se filtra por el sufijo
+	 * {@code "[CargaArchivo: N]"} (con corchetes, para que la 35 no arrastre a la 352). Base de
+	 * la anulación del reproceso de una carga — {@code ReprocesoCargaPetroService}, ver
+	 * {@code docs/logica-negocio/petro/REPROCESO-CARGA-PETRO.md}.
+	 *
+	 * <p>Medido en la base del proyecto (2026-10-28): la carga 352 tiene 1.313 pagos así,
+	 * todos con {@code PRSTCDGO} NULO — el préstamo se resuelve por la cuota.</p>
+	 *
+	 * @param idCarga Código de la carga (CRD.CRAR)
+	 * @return Pagos vigentes sin enlace cuya observación nombra la carga; vacía si no hay
+	 * @throws Throwable Si ocurre algún error (NO se absorbe: es la base de una anulación)
+	 */
+	List<PagoPrestamo> selectVigentesLegadoPorObservacionCarga(Long idCarga) throws Throwable;
+
+	/**
+	 * Mayor número de corrida de reproceso estampado en {@code PGPRMTAN} con la etiqueta
+	 * {@code "REPROCESO carga N corrida M"} para la carga dada; {@code null} si nunca se
+	 * reprocesó. La siguiente corrida es este valor + 1 (junto con el gemelo de
+	 * {@code AporteDaoService}, se toma el máximo de los dos).
+	 *
+	 * @param idCarga Código de la carga (CRD.CRAR)
+	 * @return Máximo M encontrado, o {@code null}
+	 * @throws Throwable Si ocurre algún error
+	 */
+	Integer selectMaxCorridaReproceso(Long idCarga) throws Throwable;
+
 }

@@ -539,4 +539,33 @@ public interface AporteDaoService extends EntityDao<Aporte>{
 	 */
 	LocalDateTime selectFechaMovimientoJubilacion(Long idEntidad, Long idTipoAporte, Long tipoMovimiento) throws Throwable;
 
+	/**
+	 * Aportes del ESQUEMA VIEJO de una carga Petro: sin {@code APRTIDAS} ni {@code CRARCDGO}
+	 * (las cargas de jun-2025 a jul-2026 se aplicaron sin enlace), donde la carga solo figura al
+	 * final de la glosa: {@code "Aporte cesantia - CargaArchivo: N"} (o
+	 * {@code "... (reubicado desde M/AAAA) - CargaArchivo: N"}). Se filtra por el sufijo
+	 * anclado al final para que la 35 no arrastre a la 352. Excluye los contra-movimientos
+	 * (tipo REVERSO) y los ya reversados ({@code APRTIDST = 0}). Base de la anulación del
+	 * reproceso de una carga — {@code ReprocesoCargaPetroService}.
+	 *
+	 * <p>Medido en la base del proyecto (2026-10-28): la carga 352 tiene 2.635 aportes así
+	 * (160.350,81), con devengo poblado por el backfill.</p>
+	 *
+	 * @param idCarga Código de la carga (CRD.CRAR)
+	 * @return Aportes sin enlace cuya glosa termina en la carga; vacía si no hay
+	 * @throws Throwable Si ocurre algún error (NO se absorbe: es la base de una anulación)
+	 */
+	List<Aporte> selectVigentesLegadoPorGlosaCarga(Long idCarga) throws Throwable;
+
+	/**
+	 * Mayor número de corrida de reproceso estampado en la glosa de los contra-movimientos
+	 * ({@code "REPROCESO carga N corrida M - ..."}) para la carga dada; {@code null} si nunca
+	 * se reprocesó. Gemelo de {@code PagoPrestamoDaoService#selectMaxCorridaReproceso}.
+	 *
+	 * @param idCarga Código de la carga (CRD.CRAR)
+	 * @return Máximo M encontrado, o {@code null}
+	 * @throws Throwable Si ocurre algún error
+	 */
+	Integer selectMaxCorridaReproceso(Long idCarga) throws Throwable;
+
 }

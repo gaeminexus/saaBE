@@ -171,4 +171,34 @@ public interface CargaArchivoPetroService {
      */
     Map<String, Object> revalidarCarga(Long codigoCargaArchivo) throws Throwable;
 
+    /**
+     * Fase 3 en MODO REPROCESO — la llama únicamente {@code ReprocesoCargaPetroService} DESPUÉS
+     * de anular la aplicación anterior de la carga y de devolverla a CONFIRMADO_CONTABILIDAD
+     * (cuadre Superintendencia, cambio C4; {@code docs/logica-negocio/petro/REPROCESO-CARGA-PETRO.md}).
+     * Es el MISMO {@link #aplicarPagosArchivoPetro} (misma prelación, mismo motor, misma fecha de
+     * efecto = último día del mes de la carga, mismos asientos), con exactamente cuatro
+     * diferencias, todas acotadas a este modo:
+     * <ol>
+     *   <li>no valida el orden cronológico ({@code validarOrdenProcesamiento}): se reprocesa
+     *       una carga pasada con cargas posteriores ya en estado 3;</li>
+     *   <li>un rol Petro sin partícipe en el SAA NO aborta (aportes) ni se omite en silencio
+     *       (préstamos): se registra como novedad {@code PARTICIPE_NO_ENCONTRADO}, se acumula
+     *       en el resumen y su monto se descuenta del "recibido" en el invariante
+     *       recibido == aplicado;</li>
+     *   <li>{@code validarValoresConDestino} no bloquea por esa misma novedad (sí por las demás);</li>
+     *   <li>no toca el estado del partícipe ({@code ACTIVO}/{@code ACTIVO_EN_MORA}): el
+     *       historial de estados se reconstruye aparte, no desde un mes reprocesado.</li>
+     * </ol>
+     * Las demás precondiciones (recepción confirmada, valores con destino, tope de afectación
+     * manual, recibido == aplicado) siguen vigentes.
+     *
+     * @param codigoCargaArchivo : ID de la carga (CRD.CRAR), ya devuelta a estado 2 por el reproceso
+     * @param etiquetaCorrida    : {@code "REPROCESO carga N corrida M"}, solo para el log y el resumen
+     * @return : Map con {@code resumen} (String, el mismo de {@link #aplicarPagosArchivoPetro}),
+     *           {@code sinParticipe} (List&lt;String&gt;, una línea por fila PXCA sin entidad),
+     *           {@code filasSinParticipe} (Integer) y {@code montoSinParticipe} (Double)
+     * @throws Throwable : Excepción (todo o nada, igual que la fase 3 normal)
+     */
+    Map<String, Object> aplicarPagosArchivoPetroReproceso(Long codigoCargaArchivo, String etiquetaCorrida) throws Throwable;
+
 }
