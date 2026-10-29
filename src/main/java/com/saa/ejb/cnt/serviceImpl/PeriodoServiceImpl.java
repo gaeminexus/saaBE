@@ -415,7 +415,12 @@ public class PeriodoServiceImpl implements PeriodoService{
 			if (com.saa.model.cnt.CierrePeriodoListener.contableCerrado(periodo)) {
 				throw new IncomeException(com.saa.model.cnt.CierrePeriodoListener.mensaje(periodo, null));
 			}
-			if (!periodo.getEstado().equals(Long.valueOf(EstadoPeriodos.ACTIVO))) {
+			// D-043: DESMAYORIZADO (3) es tan abierto como ACTIVO (1) — admite asientos (AsientoServiceImpl solo
+			// rechaza MAYORIZADO y CERRADO) y se vuelve a mayorizar igual que uno ACTIVO. Antes se rechazaba y el
+			// re-proceso de un mes pasado (desmayorizado) obligaba a cambiar PRDOESTD a mano.
+			if (periodo.getEstado() == null
+					|| !(periodo.getEstado().equals(Long.valueOf(EstadoPeriodos.ACTIVO))
+							|| periodo.getEstado().equals(Long.valueOf(EstadoPeriodos.DESMAYORIZADO)))) {
 				throw new IncomeException("El periodo seleccionado se encuentra cerrado.");
 			}
 		}

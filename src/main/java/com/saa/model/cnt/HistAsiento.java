@@ -74,10 +74,11 @@ public class HistAsiento implements Serializable {
 	private Long estado;
 	
 	/**
-	 * Observaciones de asiento contable.
+	 * Observaciones de asiento contable. D-043: 2000, igual que {@code CNT.ASNT.ASNTOBSR} (la copia de un
+	 * asiento con observación larga fallaba con ORA-12899 al desmayorizar).
 	 */
 	@Basic
-	@Column(name = "ASNHOBSR", length = 200)
+	@Column(name = "ASNHOBSR", length = 2000)
 	private String observaciones;
 	
 	/**
