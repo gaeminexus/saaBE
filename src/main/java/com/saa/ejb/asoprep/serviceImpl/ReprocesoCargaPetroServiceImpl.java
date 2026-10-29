@@ -264,6 +264,13 @@ public class ReprocesoCargaPetroServiceImpl implements ReprocesoCargaPetroServic
         resultado.setAportesSinVigenciaDelMes(sinVigencia != null ? sinVigencia.size() : 0);
         Object montoSinVigencia = aplicacion.get("montoAportesSinVigenciaDelMes");
         resultado.setMontoAportesSinVigenciaDelMes(montoSinVigencia instanceof Number ? ((Number) montoSinVigencia).doubleValue() : 0.0);
+        // D-023 (§4.12)
+        @SuppressWarnings("unchecked")
+        List<String> hsSinSeguro = (List<String>) aplicacion.get("hsSinSeguroEnCuota");
+        resultado.setDetalleHsSinSeguroEnCuota(hsSinSeguro != null ? hsSinSeguro : new ArrayList<>());
+        resultado.setHsSinSeguroEnCuota(hsSinSeguro != null ? hsSinSeguro.size() : 0);
+        Object montoHsSinSeguro = aplicacion.get("montoHsSinSeguroEnCuota");
+        resultado.setMontoHsSinSeguroEnCuota(montoHsSinSeguro instanceof Number ? ((Number) montoHsSinSeguro).doubleValue() : 0.0);
         @SuppressWarnings("unchecked")
         List<String> creados = (List<String>) aplicacion.get("contratosCreados");
         resultado.setDetalleContratosCreados(creados != null ? creados : new ArrayList<>());
@@ -303,7 +310,9 @@ public class ReprocesoCargaPetroServiceImpl implements ReprocesoCargaPetroServic
                 + formato(resultado.getMontoAportesContratoAlCorte()) + "), " + resultado.getAportesSinVigenciaDelMes()
                 + " aportes AH sin vigencia del mes ($" + formato(resultado.getMontoAportesSinVigenciaDelMes())
                 + ") y " + resultado.getContratosCreados()
-                + " contratos creados ($" + formato(resultado.getMontoContratosCreados()) + ") (D-022).");
+                + " contratos creados ($" + formato(resultado.getMontoContratosCreados()) + ") (D-022); "
+                + resultado.getHsSinSeguroEnCuota() + " HS aplicados como seguro de una cuota que no lo traía ($"
+                + formato(resultado.getMontoHsSinSeguroEnCuota()) + ") (D-023).");
         System.out.println("=== REPROCESO CARGA PETRO - FIN: " + resultado.getMensaje());
         return resultado;
     }

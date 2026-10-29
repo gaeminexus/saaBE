@@ -84,6 +84,35 @@ public class ResultadoReprocesoCargaPetro {
     private int aportesContratoAlCorte;
     private double montoAportesContratoAlCorte;
     private List<String> detalleAportesContratoAlCorte = new ArrayList<>();
+    /** D-023 (§4.12): HS aplicados como seguro de incendio de una cuota que no lo traía. */
+    private int hsSinSeguroEnCuota;
+    private double montoHsSinSeguroEnCuota;
+    private List<String> detalleHsSinSeguroEnCuota = new ArrayList<>();
+
+    public int getHsSinSeguroEnCuota() {
+        return hsSinSeguroEnCuota;
+    }
+
+    public void setHsSinSeguroEnCuota(int hsSinSeguroEnCuota) {
+        this.hsSinSeguroEnCuota = hsSinSeguroEnCuota;
+    }
+
+    public double getMontoHsSinSeguroEnCuota() {
+        return montoHsSinSeguroEnCuota;
+    }
+
+    public void setMontoHsSinSeguroEnCuota(double montoHsSinSeguroEnCuota) {
+        this.montoHsSinSeguroEnCuota = montoHsSinSeguroEnCuota;
+    }
+
+    public List<String> getDetalleHsSinSeguroEnCuota() {
+        return detalleHsSinSeguroEnCuota;
+    }
+
+    public void setDetalleHsSinSeguroEnCuota(List<String> detalleHsSinSeguroEnCuota) {
+        this.detalleHsSinSeguroEnCuota = detalleHsSinSeguroEnCuota;
+    }
+
     /** Aportes de entidades con contrato activo hoy sin vigencia que cubra el mes (D-022 vigencias). */
     private int aportesSinVigenciaDelMes;
     private double montoAportesSinVigenciaDelMes;

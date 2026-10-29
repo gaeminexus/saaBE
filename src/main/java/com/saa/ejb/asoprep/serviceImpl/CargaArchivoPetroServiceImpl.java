@@ -314,6 +314,13 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
     private List<String> filasSinPagoReproceso = new ArrayList<>();
     private double montoFilasSinPagoReproceso = 0.0;
 
+    /**
+     * §4.12 (D-023): HS aplicados como seguro de incendio de una cuota que no lo traía. Una línea
+     * por fila. Reset al entrar a {@code aplicarPagosArchivoPetro}.
+     */
+    private List<String> hsSinSeguroEnCuota = new ArrayList<>();
+    private double montoHsSinSeguroEnCuota = 0.0;
+
     /** D-022 ampliada: tipo de contrato del contrato que el reproceso crea. */
     @EJB
     private com.saa.ejb.crd.dao.TipoContratoDaoService tipoContratoDaoService;
@@ -1457,6 +1464,8 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 		montoContratosCreadosReproceso = 0.0;
 		filasSinPagoReproceso.clear();
 		montoFilasSinPagoReproceso = 0.0;
+		hsSinSeguroEnCuota.clear();
+		montoHsSinSeguroEnCuota = 0.0;
 		montoExcedentesDevueltos = 0.0;
 		if (modoReproceso) {
 			System.out.println("=== MODO REPROCESO: " + etiquetaReproceso + " ===");
@@ -1791,6 +1800,10 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 						+ String.format("%,.2f", montoAportesSinVigenciaDelMes) + ")",
 					aportesSinVigenciaDelMes));
 				resumenBuilder.append(formateaListaResumen(
+					"HS aplicados como seguro de incendio de una cuota que no lo traía (D-023, $"
+						+ String.format("%,.2f", montoHsSinSeguroEnCuota) + ")",
+					hsSinSeguroEnCuota));
+				resumenBuilder.append(formateaListaResumen(
 					"Partícipes sin ningún contrato: contrato y vigencia creados (D-022 ampliada, $"
 						+ String.format("%,.2f", montoContratosCreadosReproceso) + ")",
 					contratosCreadosReproceso));
@@ -1898,6 +1911,8 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 			resultado.put("cuotasSaldadasSinPagoReabiertas", new ArrayList<>(cuotasSaldadasSinPagoReabiertas));
 			resultado.put("aportesContratoAlCorte", new ArrayList<>(aportesContratoAlCorte));
 			resultado.put("montoAportesContratoAlCorte", Double.valueOf(Math.round(montoAportesContratoAlCorte * 100.0) / 100.0));
+			resultado.put("hsSinSeguroEnCuota", new ArrayList<>(hsSinSeguroEnCuota));
+			resultado.put("montoHsSinSeguroEnCuota", Double.valueOf(Math.round(montoHsSinSeguroEnCuota * 100.0) / 100.0));
 			resultado.put("aportesSinVigenciaDelMes", new ArrayList<>(aportesSinVigenciaDelMes));
 			resultado.put("montoAportesSinVigenciaDelMes", Double.valueOf(Math.round(montoAportesSinVigenciaDelMes * 100.0) / 100.0));
 			resultado.put("contratosCreados", new ArrayList<>(contratosCreadosReproceso));
@@ -4285,6 +4300,12 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 		if (montoArchivo == 0.0 || Math.abs(montoArchivo) < 0.01) {
 			System.out.println("⚠️ Monto descontado es $0 - No se realizó pago - Marcando cuotas en MORA");
 			marcarCuotasEnMoraPorFaltaDePago(participe, codigoProducto, cargaArchivo, productosCache);
+			// MODO REPROCESO (§4.12): si esta fila PH/PP es la que lleva el HS del partícipe, ese HS
+			// no lo aplica nadie (el HS huérfano se salta porque existe la fila PH/PP): se nombra.
+			if (modoReproceso) {
+				registrarFilaSinPagoReproceso(participe, CODIGO_PRODUCTO_HS, hsDeLaFila(participe, codigoProducto, cargaArchivo),
+					"HS con fila " + codigoProducto + " sin descuento");
+			}
 			return;
 		}
 		
@@ -4336,7 +4357,8 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 		List<Producto> productos = resolverProductosPorCodigo(codigoProducto, productosCache);
 		if (productos == null || productos.isEmpty()) {
 			System.out.println("⚠️ PROCESAMIENTO OMITIDO - No se encontró producto con código Petro: " + codigoProducto);
-			registrarFilaSinPagoReproceso(participe, codigoProducto, montoArchivo, "producto no mapeado");
+			registrarFilaSinPagoReproceso(participe, codigoProducto,
+				montoArchivo + (modoReproceso ? hsDeLaFila(participe, codigoProducto, cargaArchivo) : 0.0), "producto no mapeado");
 			return;
 		}
 		System.out.println("✅ Producto(s) encontrado(s): " + productos.size());
@@ -4359,14 +4381,17 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 		if (prestamos.isEmpty()) {
 			System.out.println("⚠️ PROCESAMIENTO OMITIDO - No se encontraron préstamos activos para entidad: " +
 			                   entidad.getRazonSocial() + " (ID: " + entidad.getCodigo() + ") y producto: " + codigoProducto);
-			registrarFilaSinPagoReproceso(participe, codigoProducto, montoArchivo,
+			registrarFilaSinPagoReproceso(participe, codigoProducto,
+				montoArchivo + (modoReproceso ? hsDeLaFila(participe, codigoProducto, cargaArchivo) : 0.0),
 				"sin operación vigente al corte (entidad " + entidad.getCodigo() + ")");
 			return;
 		}
 		System.out.println("✅ Préstamo(s) activo(s) encontrado(s): " + prestamos.size());
-		
+
 		// Inicializar variables para HS
 		double montoHS = 0.0;
+		// §4.12 (D-023): el HS se sumó al monto de esta fila por la rama de seguro sin seguro en la cuota.
+		boolean hsSinSeguroEnCuotaFila = false;
 		
 		// REGLA ESPECIAL: Para PH o PP, el seguro DEBE venir en HS
 		if (CODIGO_PRODUCTO_PH.equalsIgnoreCase(codigoProducto) || 
@@ -4425,6 +4450,27 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 			            System.out.println("✅ No es necesario registro HS, la cuota tiene valorSeguroIncendio = $0");
 			            System.out.println("✅ Procesando normalmente sin HS");
 			            montoHS = 0.0;
+			            // §4.12 (D-023): pero si Petro SÍ descontó HS para esta fila, ese dinero no
+			            // puede quedar sin destino (antes se perdía en silencio y lo detectaba el
+			            // invariante). En reproceso se aplica como seguro de incendio de esta cuota;
+			            // en la carga normal, novedad bloqueante para que el operador lo reparta.
+			            double hsFila = hsDeLaFila(participe, codigoProducto, cargaArchivo);
+			            if (hsFila > 0.01) {
+			                if (modoReproceso) {
+			                    prepararSeguroIncendioEnCuotaReproceso(cuotaValidar, hsFila, participe);
+			                    montoHS = hsFila;
+			                    montoArchivo += hsFila;
+			                    hsSinSeguroEnCuotaFila = true;
+			                } else {
+			                    registrarNovedadDeAplicacion(participe, ASPNovedadesCargaArchivo.MONTO_INCONSISTENTE,
+			                        "HS de $" + String.format("%.2f", hsFila) + " descontado por Petro, pero la cuota #"
+			                            + cuotaValidar.getNumeroCuota() + " del préstamo "
+			                            + (cuotaValidar.getPrestamo() != null ? cuotaValidar.getPrestamo().getCodigo() : null)
+			                            + " no tiene seguro de incendio: no se aplicó. Requiere distribución manual (AVPC).",
+			                        null, cuotaValidar.getPrestamo() != null ? cuotaValidar.getPrestamo().getCodigo() : null,
+			                        0.0, hsFila);
+			                }
+			            }
 			        }
 				} 
 			} catch (Throwable e) {
@@ -4447,11 +4493,22 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 
 	   if (cuotaAPagar != null) {
 	       System.out.println("✅ Cuota a pagar encontrada: #" + cuotaAPagar.getNumeroCuota());
-	       aplicarPagoNormalConMotor(cuotaAPagar.getPrestamo(), montoArchivo, cargaArchivo, participe);
+	       aplicarPagoNormalConMotor(cuotaAPagar.getPrestamo(), montoArchivo, cargaArchivo, participe,
+	           hsSinSeguroEnCuotaFila ? " " + MARCA_D023 : "");
+	       if (hsSinSeguroEnCuotaFila) {
+	           montoHsSinSeguroEnCuota += montoHS;
+	           hsSinSeguroEnCuota.add("Rol " + participe.getCodigoPetro() + " (" + codigoProducto + "): HS $"
+	               + String.format("%,.2f", montoHS) + " aplicado como seguro de incendio de la cuota #"
+	               + cuotaAPagar.getNumeroCuota() + " del préstamo "
+	               + (cuotaAPagar.getPrestamo() != null ? cuotaAPagar.getPrestamo().getCodigo() : null));
+	       }
 	   } else {
 	       System.out.println("⚠️ No se encontró cuota pendiente");
-	       registrarFilaSinPagoReproceso(participe, codigoProducto, montoArchivo,
-	           "sin cuota pendiente en " + prestamos.size() + " operación(es) vigentes al corte");
+	       // §4.12: si el HS de la fila no se sumó (no había cuota para validarlo), también se nombra.
+	       double hsNoSumado = montoHS > 0.0 || !modoReproceso ? 0.0 : hsDeLaFila(participe, codigoProducto, cargaArchivo);
+	       registrarFilaSinPagoReproceso(participe, codigoProducto, montoArchivo + hsNoSumado,
+	           "sin cuota pendiente en " + prestamos.size() + " operación(es) vigentes al corte"
+	           + (hsNoSumado > 0.0 ? " (incluye HS $" + String.format("%,.2f", hsNoSumado) + ")" : ""));
 	   }
 
 	   // ✅ RED DE SEGURIDAD: revisar el estado de TODOS los préstamos tocados.
@@ -4688,11 +4745,62 @@ private DetallePrestamo buscarCuotaAPagar(List<Prestamo> prestamos,
  */
 private void aplicarPagoNormalConMotor(Prestamo prestamo, double monto, CargaArchivo cargaArchivo,
                                         ParticipeXCargaArchivo participe) throws Throwable {
+	aplicarPagoNormalConMotor(prestamo, monto, cargaArchivo, participe, "");
+}
+
+/** Marca de los pagos cuyo HS se aplicó como seguro de una cuota que no lo traía (§4.12). */
+static final String MARCA_D023 = "[D-023 HS sin seguro en la cuota]";
+
+/**
+ * §4.12: monto HS que viaja con ESTA fila PH/PP — la misma regla de {@link #montoConHsMergeado}
+ * (PH se lo lleva siempre; PP solo si no hay PH). 0 para cualquier otro producto o si no hay HS.
+ */
+private double hsDeLaFila(ParticipeXCargaArchivo participe, String codigoProducto, CargaArchivo cargaArchivo) throws Throwable {
+	if (!CODIGO_PRODUCTO_PH.equalsIgnoreCase(codigoProducto) && !CODIGO_PRODUCTO_PP.equalsIgnoreCase(codigoProducto)) {
+		return 0.0;
+	}
+	double hs = montoConHsMergeado(participe, codigoProducto, cargaArchivo) - nullSafe(participe.getTotalDescontado());
+	return hs > 0.01 ? Math.round(hs * 100.0) / 100.0 : 0.0;
+}
+
+/**
+ * §4.12 (D-023, solo modo reproceso): la cuota a pagar no trae seguro de incendio
+ * ({@code DTPRVLSI = 0}, dato de la migración) pero Petro descontó HS para esta fila. Antes de
+ * entregar el dinero al motor, la cuota pasa a tener ese seguro: {@code DTPRVLSI = HS} y
+ * {@code DTPRTTLL}/{@code DTPRTTCS} suben en lo mismo ({@code DTPRTTLL} es la suma de los
+ * componentes, seguro incluido — medido en sql/182 y sql/60 — y así lo leen {@code totalConMoraIV}
+ * del motor y {@code totalBaseCuota} de esta clase). Con eso la prelación del motor (seguro de incendio primero) imputa el HS a
+ * {@code PGPRVLSI} y el asiento de aplicación lo lleva a la cuenta de seguro de incendio, como a
+ * cualquier cuota que lo trae. Subir solo el seguro sin el total dejaría {@code DTPRTTLL} menor que
+ * la suma de componentes ("desfase" del motor) y el HS volvería a la cascada.
+ */
+private void prepararSeguroIncendioEnCuotaReproceso(DetallePrestamo cuota, double hs, ParticipeXCargaArchivo participe) throws Throwable {
+	double seguroAnterior = nullSafe(cuota.getValorSeguroIncendio());
+	cuota.setValorSeguroIncendio(Math.round((seguroAnterior + hs) * 100.0) / 100.0);
+	if (cuota.getTotal() != null) {
+		cuota.setTotal(Math.round((cuota.getTotal() + hs) * 100.0) / 100.0);
+	}
+	if (cuota.getTotalConSeguro() != null) {
+		cuota.setTotalConSeguro(Math.round((cuota.getTotalConSeguro() + hs) * 100.0) / 100.0);
+	}
+	detallePrestamoService.saveSingle(cuota);
+	System.out.println("   D-023: rol " + participe.getCodigoPetro() + " - cuota #" + cuota.getNumeroCuota() + " del préstamo "
+		+ (cuota.getPrestamo() != null ? cuota.getPrestamo().getCodigo() : null) + " sin seguro de incendio: DTPRVLSI "
+		+ seguroAnterior + " -> " + cuota.getValorSeguroIncendio() + " (HS $" + hs + " descontado por Petro) " + MARCA_D023);
+}
+
+/** Igual, con un sufijo para la observación de los PGPR (§4.12: marca D-023). */
+private void aplicarPagoNormalConMotor(Prestamo prestamo, double monto, CargaArchivo cargaArchivo,
+                                        ParticipeXCargaArchivo participe, String sufijoObservacion) throws Throwable {
 	if (prestamo == null || prestamo.getCodigo() == null) {
 		System.out.println("⚠️ No se puede aplicar el pago: la cuota encontrada no tiene préstamo asociado");
+		registrarFilaSinPagoReproceso(participe, null, monto, "la cuota encontrada no tiene préstamo asociado");
 		return;
 	}
 	ContextoPago ctx = crearContextoPagoCarga(cargaArchivo, "PAGO_NORMAL");
+	if (sufijoObservacion != null && !sufijoObservacion.isEmpty()) {
+		ctx.setObservacion(ctx.getObservacion() + sufijoObservacion);
+	}
 	ResultadoAplicacionPago resultado = motorPagoPrestamoService.aplicarPago(prestamo.getCodigo(), monto, ctx);
 	System.out.println("    ✅ Pago aplicado vía motor - Recibido: $" + resultado.getValorRecibido() +
 	                   " - Aplicado: $" + resultado.getValorAplicado() +

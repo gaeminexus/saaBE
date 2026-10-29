@@ -240,6 +240,29 @@ FROM   CRD.CNTR c LEFT JOIN CRD.VGCN v ON v.CNTRCDGO = c.CNTRCDGO
 WHERE  c.CNTROBSR LIKE 'D-022 reproceso carga 352%'
 ORDER  BY c.ENTDCDGO;
 
+-- B.11 D-023 (doc §4.12) — seguro de incendio pagado (PGPRVLSI) por los pagos vigentes de la 352 vs. la fila HS
+--      del mismo rol. Esperado: DIFERENCIA 0 en las filas HS con participe y fila PH/PP; las 8 con
+--      MARCADOS_D023 > 0 son los HS aplicados a una cuota que no traia seguro (145,63 en total).
+WITH hs AS (
+  SELECT TRIM(x.PXCACDPT) AS ROL, x.PXCADSDO AS HS
+  FROM   CRD.PXCA x JOIN CRD.DTCA t ON t.DTCACDGO = x.DTCACDGO
+  WHERE  t.CRARCDGO = 352 AND TRIM(t.DTCACDPP) = 'HS' AND x.PXCADSDO > 0),
+seg AS (
+  SELECT TO_CHAR(e.ENTDRLPC) AS ROL, SUM(g.PGPRVLSI) AS SEGURO_PAGADO,
+         SUM(CASE WHEN g.PGPROBSR LIKE '%[D-023 HS sin seguro en la cuota]%' THEN g.PGPRVLSI ELSE 0 END) AS MARCADOS_D023
+  FROM   CRD.PGPR g JOIN CRD.PRST p ON p.PRSTCDGO = g.PRSTCDGO JOIN CRD.ENTD e ON e.ENTDCDGO = p.ENTDCDGO
+  WHERE  g.CRARCDGO = 352 AND NVL(g.PGPRANUL, 0) = 0 AND NVL(g.PGPRVLSI, 0) > 0
+  GROUP  BY TO_CHAR(e.ENTDRLPC))
+SELECT hs.ROL, hs.HS, NVL(seg.SEGURO_PAGADO, 0) AS SEGURO_PAGADO, NVL(seg.MARCADOS_D023, 0) AS MARCADOS_D023,
+       hs.HS - NVL(seg.SEGURO_PAGADO, 0) AS DIFERENCIA
+FROM   hs LEFT JOIN seg ON seg.ROL = hs.ROL
+ORDER  BY ABS(hs.HS - NVL(seg.SEGURO_PAGADO, 0)) DESC, hs.ROL;
+
+-- B.11b Total marcado D-023 en la corrida vigente (esperado: 8 roles / 145,63 de seguro de incendio)
+SELECT COUNT(DISTINCT g.PRSTCDGO) AS PRESTAMOS, SUM(g.PGPRVLSI) AS SEGURO_D023
+FROM   CRD.PGPR g
+WHERE  g.CRARCDGO = 352 AND NVL(g.PGPRANUL, 0) = 0 AND g.PGPROBSR LIKE '%[D-023 HS sin seguro en la cuota]%';
+
 
 -- =====================================================================================
 -- C. LECTURAS DE APOYO (no son criterio de aceptacion)

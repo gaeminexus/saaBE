@@ -601,6 +601,66 @@ cuota 46), rol 9958 PP (7046/40), rol 3194 PQ (5764/52).
 - La lista de filas sin pago queda vacía.
 - Si la corrida revierte, no queda ninguna novedad nueva.
 
+### 4.12 HS descontado sobre una cuota sin seguro de incendio (D-023, 2026-10-28)
+
+**Por qué:** la corrida de las 20:43 cerró con 145,63 de diferencia. Eran 8 partícipes con fila
+**HS** (seguro de incendio separado), y la diferencia de cada uno era exactamente su HS:
+
+| Rol | HS |
+|---|---|
+| 1279 | 12,88 |
+| 1703 | 34,09 |
+| 1826 | 36,50 |
+| 8170 | 4,99 |
+| 7433 | 7,17 |
+| 2904 | 11,11 |
+| 5721 | 15,19 |
+| 4159 | 23,70 |
+| **Total** | **145,63** |
+
+En la rama PH/PP de `aplicarPagoParticipe`, si la cuota a pagar tiene `DTPRVLSI = 0` (la migración
+dejó así la cuota de junio, aunque Petro sí descontó el seguro), el código ponía `montoHS = 0`. El
+HS no se sumaba al monto de la fila, no quedaba como excedente ni como novedad: se perdía en
+silencio y solo lo veía el invariante.
+
+**Regla D-023 (modo reproceso):** si la fila PH/PP lleva HS > 0 y la cuota a pagar no tiene seguro
+de incendio, antes de entregar el dinero al motor (`prepararSeguroIncendioEnCuotaReproceso`):
+- la cuota pasa a tener ese seguro: `DTPRVLSI = HS`;
+- `DTPRTTLL` y `DTPRTTCS` suben en lo mismo. `DTPRTTLL` es la suma de los componentes, seguro
+  incluido (medido en sql/182 y sql/60), y así lo leen `totalConMoraIV` del motor y
+  `totalBaseCuota`. Subir solo el seguro dejaría el total por debajo de la suma de componentes: el
+  motor lo trataría como "desfase" y el HS se iría a la cascada;
+- el HS se suma al monto de la fila.
+
+La prelación del motor imputa el seguro de incendio primero, así que el HS queda en `PGPRVLSI` de
+esa cuota y el asiento de APLICACION lo lleva a la cuenta de seguro de incendio, como cualquier
+cuota que lo trae. `DTPR` no tiene columna de observación, así que la marca
+`[D-023 HS sin seguro en la cuota]` va en la observación de los PGPR de esa aplicación (una
+línea de log por cuota). La respuesta trae `hsSinSeguroEnCuota`, `montoHsSinSeguroEnCuota` y
+`detalleHsSinSeguroEnCuota`, más un bloque en el resumen. "HS" se toma con la regla de
+`montoConHsMergeado`: PH se lo lleva siempre; PP solo si no hay PH.
+
+**Carga normal:** el mismo caso ya no se pierde en silencio. Se registra una novedad
+`MONTO_INCONSISTENTE` (bloqueante, transacción propia) con el HS como monto recibido, para que el
+operador lo reparta por AVPC. No se toca la cuota.
+
+**Otras ramas que descartaban el HS, cerradas en modo reproceso** (entran a la lista de filas sin
+pago del invariante, §4.11, con el HS incluido y el motivo):
+- fila PH/PP con descuento 0 pero con HS (el HS huérfano no la toma porque existe la fila PH/PP);
+- producto no mapeado;
+- sin operación vigente al corte;
+- sin cuota pendiente (ahí el HS nunca llegó a sumarse).
+
+Revisadas y sin pérdida:
+- HS que no coincide con el seguro de la cuota: se suma igual y va a la cascada;
+- HS huérfano sin PH/PP: novedad bloqueante, o sin partícipe;
+- cuota con seguro pero sin fila HS: solo queda PARCIAL.
+
+**Controles:** B.11 (seguro pagado por rol vs. fila HS; marcados D-023) y B.11b (esperado: 8 roles,
+145,63) de [sql/reproceso-carga-352-controles.sql](sql/reproceso-carga-352-controles.sql). En B.11,
+un HS que no coincide con el seguro de su cuota puede mostrar diferencia: esa parte se aplicó por
+la cascada, no como seguro.
+
 ## 5. Respuesta (`ResultadoReprocesoCargaPetro`)
 
 ```json
