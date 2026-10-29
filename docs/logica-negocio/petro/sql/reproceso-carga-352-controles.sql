@@ -188,6 +188,39 @@ WHERE  pr.PRSTIDST = 3
 AND    pr.PRSTCDGO IN (SELECT DISTINCT PRSTCDGO FROM CRD.PGPR WHERE CRARCDGO = 352 AND NVL(PGPRANUL, 0) = 0)
 AND    EXISTS (SELECT 1 FROM CRD.DTPR d WHERE d.PRSTCDGO = pr.PRSTCDGO AND (d.DTPRESTD IS NULL OR d.DTPRESTD NOT IN (4, 7)));
 
+-- B.10 D-022 (doc §4.10) — aportes AH marcados por corrida, por caso:
+--   '[D-022 contrato inactivo hoy, vigente al corte]'  esperado en la 352: 8 aportes / 1.154,32
+--   '[D-022 contrato creado en reproceso]'             esperado: los participes AH sin ningun contrato
+SELECT REGEXP_SUBSTR(a.APRTGLSA, 'REPROCESO carga 352 corrida [0-9]+') AS CORRIDA,
+       REGEXP_SUBSTR(a.APRTGLSA, '\[D-022[^]]*\]') AS CASO,
+       COUNT(*) AS N, SUM(a.APRTVLRR) AS TOTAL
+FROM   CRD.APRT a
+WHERE  a.APRTIDAS = 352 AND a.APRTGLSA LIKE '%[D-022 %' AND NVL(a.APRTIDST, 4) <> 0
+GROUP  BY REGEXP_SUBSTR(a.APRTGLSA, 'REPROCESO carga 352 corrida [0-9]+'), REGEXP_SUBSTR(a.APRTGLSA, '\[D-022[^]]*\]')
+ORDER  BY 1, 2;
+
+-- B.10b Filas AH de la carga sin contrato activo hoy vs. su aporte de la corrida vigente (esperado: DIFERENCIA 0 en todas)
+WITH ah AS (
+  SELECT e.ENTDCDGO, TRIM(x.PXCACDPT) AS ROL, x.PXCADSDO AS DESCONTADO
+  FROM   CRD.PXCA x JOIN CRD.DTCA t ON t.DTCACDGO = x.DTCACDGO
+         JOIN CRD.ENTD e ON TO_CHAR(e.ENTDRLPC) = TRIM(x.PXCACDPT)
+  WHERE  t.CRARCDGO = 352 AND TRIM(t.DTCACDPP) = 'AH' AND x.PXCADSDO > 0
+  AND    NOT EXISTS (SELECT 1 FROM CRD.CNTR c WHERE c.ENTDCDGO = e.ENTDCDGO AND c.CNTRIDST = 1 AND c.CNTRESTD = 1
+                     AND NVL(c.CNTROBSR, ' ') NOT LIKE 'D-022 reproceso carga 352%'))
+SELECT ah.ENTDCDGO, ah.ROL, ah.DESCONTADO,
+       (SELECT SUM(a.APRTVLRR) FROM CRD.APRT a WHERE a.ENTDCDGO = ah.ENTDCDGO AND a.APRTIDAS = 352
+          AND a.APRTGLSA LIKE '%[D-022 %' AND NVL(a.APRTIDST, 4) <> 0) AS APORTE_D022,
+       ah.DESCONTADO - NVL((SELECT SUM(a.APRTVLRR) FROM CRD.APRT a WHERE a.ENTDCDGO = ah.ENTDCDGO AND a.APRTIDAS = 352
+          AND a.APRTGLSA LIKE '%[D-022 %' AND NVL(a.APRTIDST, 4) <> 0), 0) AS DIFERENCIA
+FROM   ah ORDER BY 1;
+
+-- B.10c Contratos y vigencias creados por D-022 ampliada (uno por participe sin ningun contrato)
+SELECT c.CNTRCDGO, c.ENTDCDGO, c.TPCNCDGO, c.CNTRFCIN, c.CNTRESTD, c.CNTRIDST, c.CNTRUSRG,
+       v.VGCNCDGO, v.TPAPCDGO, v.VGCNFCIN, v.VGCNFCFN, v.VGCNMNTO
+FROM   CRD.CNTR c LEFT JOIN CRD.VGCN v ON v.CNTRCDGO = c.CNTRCDGO
+WHERE  c.CNTROBSR LIKE 'D-022 reproceso carga 352%'
+ORDER  BY c.ENTDCDGO;
+
 
 -- =====================================================================================
 -- C. LECTURAS DE APOYO (no son criterio de aceptacion)

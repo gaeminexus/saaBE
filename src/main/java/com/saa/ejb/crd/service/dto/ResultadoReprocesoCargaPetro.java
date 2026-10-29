@@ -79,6 +79,64 @@ public class ResultadoReprocesoCargaPetro {
         this.detalleCuotasSaldadasSinPagoReabiertas = detalleCuotasSaldadasSinPagoReabiertas;
     }
 
+    // --- D-022 (REPROCESO-CARGA-PETRO.md §4.10): aportes AH con contrato resuelto al corte ---
+    /** Aportes de entidades con contrato inactivo hoy y vigente al corte, sin vigencias. */
+    private int aportesContratoAlCorte;
+    private double montoAportesContratoAlCorte;
+    private List<String> detalleAportesContratoAlCorte = new ArrayList<>();
+    /** Partícipes sin ningún contrato a los que el reproceso les creó contrato + vigencia. */
+    private int contratosCreados;
+    private double montoContratosCreados;
+    private List<String> detalleContratosCreados = new ArrayList<>();
+
+    public int getAportesContratoAlCorte() {
+        return aportesContratoAlCorte;
+    }
+
+    public void setAportesContratoAlCorte(int aportesContratoAlCorte) {
+        this.aportesContratoAlCorte = aportesContratoAlCorte;
+    }
+
+    public double getMontoAportesContratoAlCorte() {
+        return montoAportesContratoAlCorte;
+    }
+
+    public void setMontoAportesContratoAlCorte(double montoAportesContratoAlCorte) {
+        this.montoAportesContratoAlCorte = montoAportesContratoAlCorte;
+    }
+
+    public List<String> getDetalleAportesContratoAlCorte() {
+        return detalleAportesContratoAlCorte;
+    }
+
+    public void setDetalleAportesContratoAlCorte(List<String> detalleAportesContratoAlCorte) {
+        this.detalleAportesContratoAlCorte = detalleAportesContratoAlCorte;
+    }
+
+    public int getContratosCreados() {
+        return contratosCreados;
+    }
+
+    public void setContratosCreados(int contratosCreados) {
+        this.contratosCreados = contratosCreados;
+    }
+
+    public double getMontoContratosCreados() {
+        return montoContratosCreados;
+    }
+
+    public void setMontoContratosCreados(double montoContratosCreados) {
+        this.montoContratosCreados = montoContratosCreados;
+    }
+
+    public List<String> getDetalleContratosCreados() {
+        return detalleContratosCreados;
+    }
+
+    public void setDetalleContratosCreados(List<String> detalleContratosCreados) {
+        this.detalleContratosCreados = detalleContratosCreados;
+    }
+
     // --- D-010: excedentes devueltos registrados como aporte EXCEDENTE_PETRO ---
     private int excedentesDevueltos;
     private double montoExcedentesDevueltos;

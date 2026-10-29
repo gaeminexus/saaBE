@@ -237,7 +237,7 @@ public class ReprocesoCargaPetroServiceImpl implements ReprocesoCargaPetroServic
         // propias líneas [REPROCESO-RENDIMIENTO] desde CargaArchivoPetroServiceImpl.
         inicioFase = inicioFase(etiqueta, "re-aplicación (aplicarPagosArchivoPetroReproceso)");
         Map<String, Object> aplicacion = cargaArchivoPetroService.aplicarPagosArchivoPetroReproceso(idCarga, etiqueta,
-                resolverExcedentesDevueltos(solicitud.getExcedentesDevueltos()));
+                resolverExcedentesDevueltos(solicitud.getExcedentesDevueltos()), usuario);
         finFase(etiqueta, "re-aplicación (aplicarPagosArchivoPetroReproceso)", inicioFase, 0);
         resultado.setResumenAplicacion((String) aplicacion.get("resumen"));
         @SuppressWarnings("unchecked")
@@ -251,6 +251,19 @@ public class ReprocesoCargaPetroServiceImpl implements ReprocesoCargaPetroServic
         List<String> cuotasSinPago = (List<String>) aplicacion.get("cuotasSaldadasSinPagoReabiertas");
         resultado.setDetalleCuotasSaldadasSinPagoReabiertas(cuotasSinPago != null ? cuotasSinPago : new ArrayList<>());
         resultado.setCuotasSaldadasSinPagoReabiertas(cuotasSinPago != null ? cuotasSinPago.size() : 0);
+        // D-022 (§4.10): los dos casos, por separado.
+        @SuppressWarnings("unchecked")
+        List<String> alCorte = (List<String>) aplicacion.get("aportesContratoAlCorte");
+        resultado.setDetalleAportesContratoAlCorte(alCorte != null ? alCorte : new ArrayList<>());
+        resultado.setAportesContratoAlCorte(alCorte != null ? alCorte.size() : 0);
+        Object montoAlCorte = aplicacion.get("montoAportesContratoAlCorte");
+        resultado.setMontoAportesContratoAlCorte(montoAlCorte instanceof Number ? ((Number) montoAlCorte).doubleValue() : 0.0);
+        @SuppressWarnings("unchecked")
+        List<String> creados = (List<String>) aplicacion.get("contratosCreados");
+        resultado.setDetalleContratosCreados(creados != null ? creados : new ArrayList<>());
+        resultado.setContratosCreados(creados != null ? creados.size() : 0);
+        Object montoCreados = aplicacion.get("montoContratosCreados");
+        resultado.setMontoContratosCreados(montoCreados instanceof Number ? ((Number) montoCreados).doubleValue() : 0.0);
         Object montoExcedentes = aplicacion.get("montoExcedentesDevueltos");
         resultado.setMontoExcedentesDevueltos(montoExcedentes instanceof Number ? ((Number) montoExcedentes).doubleValue() : 0.0);
         @SuppressWarnings("unchecked")
@@ -279,7 +292,10 @@ public class ReprocesoCargaPetroServiceImpl implements ReprocesoCargaPetroServic
                 + resultado.getExcedentesDevueltos() + " excedentes devueltos ($"
                 + formato(resultado.getMontoExcedentesDevueltos()) + ") registrados como aporte (D-010); "
                 + resultado.getCancelacionesPosterioresPendientes().size() + " operaciones terminales reabiertas (D-019) y "
-                + resultado.getCuotasSaldadasSinPagoReabiertas() + " cuotas del mes saldadas sin pago reabiertas al corte.");
+                + resultado.getCuotasSaldadasSinPagoReabiertas() + " cuotas del mes saldadas sin pago reabiertas al corte; "
+                + resultado.getAportesContratoAlCorte() + " aportes AH con contrato vigente al corte ($"
+                + formato(resultado.getMontoAportesContratoAlCorte()) + ") y " + resultado.getContratosCreados()
+                + " contratos creados ($" + formato(resultado.getMontoContratosCreados()) + ") (D-022).");
         System.out.println("=== REPROCESO CARGA PETRO - FIN: " + resultado.getMensaje());
         return resultado;
     }

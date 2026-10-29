@@ -568,4 +568,23 @@ public interface AporteDaoService extends EntityDao<Aporte>{
 	 */
 	Integer selectMaxCorridaReproceso(Long idCarga) throws Throwable;
 
+	/**
+	 * D-022 (reproceso, cuadre Superintendencia C4): tipo de aporte ({@code TPAPCDGO}) del último
+	 * aporte vigente de la entidad con fecha de caja anterior a {@code antesDe}:
+	 * {@code NVL(APRTIDST, 4) <> 0}, mayor {@code APRTFCTR < antesDe} (a igual fecha, mayor código).
+	 * Ver REPROCESO-CARGA-PETRO.md §4.10.
+	 *
+	 * @param idEntidad Código de la entidad
+	 * @param antesDe   Inicio del mes de la carga (exclusivo)
+	 * @return código del tipo de aporte, o {@code null} si la entidad no tiene aportes anteriores
+	 * @throws Throwable Si ocurre algún error
+	 */
+	Long selectTipoAporteUltimoAnteriorA(Long idEntidad, LocalDateTime antesDe) throws Throwable;
+
+	/**
+	 * D-022 ampliada (reproceso): menor {@code APRTFCTR} de los aportes vigentes
+	 * ({@code NVL(APRTIDST, 4) <> 0}) de la entidad; null si no tiene ninguno.
+	 */
+	LocalDateTime selectFechaPrimerAporteVigente(Long idEntidad) throws Throwable;
+
 }

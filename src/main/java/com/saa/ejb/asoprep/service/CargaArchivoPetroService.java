@@ -213,4 +213,15 @@ public interface CargaArchivoPetroService {
     Map<String, Object> aplicarPagosArchivoPetroReproceso(Long codigoCargaArchivo, String etiquetaCorrida,
             java.util.List<com.saa.ejb.crd.service.dto.ExcedenteDevueltoReproceso> excedentesDevueltos) throws Throwable;
 
+    /**
+     * Igual que {@link #aplicarPagosArchivoPetroReproceso(Long, String, java.util.List)}, con el
+     * usuario que ordena la corrida: lo estampa en los contratos y vigencias que D-022 crea para un
+     * partícipe sin ningún contrato (REPROCESO-CARGA-PETRO.md §4.10). El Map trae además
+     * {@code aportesContratoAlCorte}/{@code montoAportesContratoAlCorte} y
+     * {@code contratosCreados}/{@code montoContratosCreados}.
+     */
+    Map<String, Object> aplicarPagosArchivoPetroReproceso(Long codigoCargaArchivo, String etiquetaCorrida,
+            java.util.List<com.saa.ejb.crd.service.dto.ExcedenteDevueltoReproceso> excedentesDevueltos,
+            String usuarioCorrida) throws Throwable;
+
 }

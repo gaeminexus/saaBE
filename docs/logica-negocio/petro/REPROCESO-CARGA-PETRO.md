@@ -416,6 +416,87 @@ WHERE d.DTPRFCVN >= DATE '2025-06-01' AND d.DTPRFCVN < DATE '2025-07-01'
 ORDER BY d.PRSTCDGO, d.DTPRNMCT;
 ```
 
+### 4.10 El contrato del aportante se resuelve al corte; sin contrato, se crea (D-022, 2026-10-28)
+
+**Por qué:** con el rendimiento corregido (§11), la segunda corrida de la 352 (28-oct, 19:04) se
+cayó en la fase 3 al aplicar el AH del rol 2403 (entidad 4322, $103,41): *"no tiene contrato
+ACTIVO. Créelo antes de procesar la carga"*. El reparto por devengo (`distribuirAportePorDevengo`)
+busca el esperado en las vigencias (`CRD.VGCN`) del contrato **activo hoy**; sin contrato activo
+el esperado es 0 en todos los meses y el guard de `TOPE_MESES_DEVENGO` aborta.
+
+**Hechos en la base del 28-oct** (filas AH de la 352 con descuento; censo reproducible con B.10b de
+[sql/reproceso-carga-352-controles.sql](sql/reproceso-carga-352-controles.sql)):
+- 2.006 filas (160.103,24) tienen contrato activo hoy (`CNTRIDST = 1`, `CNTRESTD = 1`): no cambian.
+- **8 filas (1.154,32)** no tienen contrato activo hoy pero sí uno vigente en junio 2025 —
+  entidades 4005, 4010, 4263, 4322, 4372, 4734 y dos más. Patrón idéntico: un solo contrato tipo 2,
+  `CNTRESTD = 0`, `CNTRFCIN` entre 1994 y 2014, `CNTRFCTR` nulo, **ninguna fila en `CRD.VGCN`** que
+  cubra jun-2025; su último aporte antes del corte es de mayo 2025 con `TPAPCDGO` 11 (cesantía
+  personal) o 9 (jubilación personal, entidad 4322); la corrida original (esquema viejo) no les creó
+  ningún aporte. En junio 2025 aportaban; el SAA de hoy los tiene inactivos sin historia de
+  vigencias (migración).
+- Catálogo de contratos observado: 5.662 con `CNTRESTD = 0` y 2.051 con 1, todos `CNTRIDST = 1`,
+  todos sin fecha de término.
+
+**Regla D-022 (decisión del líder, registrada en `cuadreSuper/01-seguimiento/DECISIONES-Y-PARTIDAS.md`),
+solo en modo reproceso** — misma filosofía que D-019: el estado de hoy no decide. Vive en
+`distribuirAportePorDevengo` → `resolverContratoAlCorteReproceso` y actúa **solo cuando la entidad
+no tiene contrato activo hoy** (con contrato activo, el flujo es el de siempre):
+
+1. **Contrato vigente al corte** (`ContratoDaoService.selectVigenteAlCortePorEntidad`):
+   `CNTRFCIN <= corte` y (`CNTRFCTR` nulo o `> corte`), sin mirar `CNTRESTD`; si hay varios, el de
+   inicio más reciente (a igual inicio, mayor código).
+   - Si tiene alguna vigencia ACTIVA de jubilación o cesantía que cubra el mes de la carga, la
+     prelación por devengo normal reparte con ese contrato y sus vigencias.
+   - Si no tiene: el AH recibido va **completo al mes de la carga** (devengo = mes de la carga, caja
+     = último día del mes, como todo aporte de la carga; `APRTTPMV = 1`, `APRTIDAS` = carga, con su
+     `PGAP`) con `TPAPCDGO` = el del **último aporte vigente de la entidad anterior al mes de la
+     carga** (`NVL(APRTIDST,4) <> 0`, mayor `APRTFCTR`; `AporteDaoService.selectTipoAporteUltimoAnteriorA`).
+     Glosa: `Aporte <tipo> - Mes M/AAAA - CargaArchivo: N - REPROCESO carga N corrida K [D-022 contrato inactivo hoy, vigente al corte]`.
+     Sin aporte anterior: **no se inventa**; la corrida se detiene con un mensaje que dice entidad,
+     rol, contrato y monto. Para este caso no se crea ningún contrato ni vigencia.
+2. **Sin ningún contrato** (ni activo ni inactivo; ampliación del líder del 28-oct): se **crea** uno
+   para poder aplicar el aporte (`crearContratoYAplicarReproceso`):
+   - `CRD.CNTR`: `TPCNCDGO` = el más frecuente entre los contratos activos de los aportantes AH de
+     la misma carga (`selectTipoContratoMasFrecuenteAportantesCarga`; en CRD no hay rubro de tipo de
+     contrato, así que se toma del dato y no se fija en el código — en la 352 se espera el 2); filial
+     de la entidad; `CNTRFCIN` = primer día del mes de la carga, o la fecha del primer aporte vigente
+     de la entidad si es anterior; `CNTRESTD = 1`, `CNTRIDST = 1`, sin término; `CNTROBSR` =
+     `D-022 reproceso carga <id>: contrato creado para aplicar el aporte Petro (<etiqueta>)`;
+     `CNTRUSRG` = usuario de la corrida.
+   - `CRD.VGCN` (la prelación de los meses siguientes la necesita para el esperado): tipo de aporte =
+     el del último aporte vigente anterior al mes de la carga o, **si no hay ninguno, cesantía
+     personal (11) por defecto**; `VGCNMNTO` = lo descontado de AH este mes; desde el primer día del
+     mes de la carga, sin fin; modo FIJO; activa; misma observación y usuario.
+   - El aporte del mes: igual que en el punto 1 (completo al mes de la carga, ese tipo), glosa con
+     `[D-022 contrato creado en reproceso]`.
+   - Si la entidad tiene contratos pero ninguno vigente al corte (empiezan después o terminaron
+     antes), no se crea otro: la corrida se detiene con mensaje claro (hay que corregir las fechas).
+
+**Respuesta y resumen, por separado:** `aportesContratoAlCorte` / `montoAportesContratoAlCorte` /
+`detalleAportesContratoAlCorte` (caso 1) y `contratosCreados` / `montoContratosCreados` /
+`detalleContratosCreados` (caso 2), más dos bloques en `resumenAplicacion` y en el mensaje. El
+endpoint no cambia. Para la 352 se espera **8 aportes con contrato al corte por 1.154,32**, más los
+contratos creados que correspondan a partícipes AH sin ningún contrato.
+
+**Contabilidad e invariante:** son aportes con `APRTIDAS` = carga y tipo 9/11: entran solos en
+`sumValorPorTipoAporteByCarga` (HABER del asiento de APLICACION), en el invariante recibido ==
+aplicado y en el control 4 (B.4: los 161.257,56 en 2.061 los incluyen; B.4b sin diferencias). La
+glosa empieza por `Aporte` y lleva `APRTIDAS`, así que no la toma ningún `LIKE` de esquema viejo
+(exigen `APRTIDAS IS NULL`) ni de reverso (empiezan por `REPROCESO`).
+
+**Reversibilidad:** la corrida N+1 reversa estos aportes como cualquier otro de la carga (§4.4). El
+contrato y la vigencia creados **no** se anulan: son el dato que faltaba. En la corrida N+1 esa
+entidad ya tiene contrato activo con vigencia, así que su AH entra por la prelación normal (mismo
+monto y mes, sin la marca `[D-022 contrato creado…]`); B.10c los sigue listando por la observación.
+
+**Fuera de alcance:** `aplicarAporteAH` exige antes un `HistorialSueldo` activo; si un partícipe sin
+contrato tampoco lo tiene, su AH sigue yendo a novedad `HISTORIAL_SUELDO_NO_ENCONTRADO` (y el
+invariante detiene la corrida). Los 8 casos de la 352 sí lo tienen (llegaron al reparto).
+
+**Controles:** B.10 (aportes marcados por corrida y caso), B.10b (filas AH sin contrato activo hoy
+vs. su aporte D-022: diferencia 0) y B.10c (contratos y vigencias creados) de
+[sql/reproceso-carga-352-controles.sql](sql/reproceso-carga-352-controles.sql).
+
 ## 5. Respuesta (`ResultadoReprocesoCargaPetro`)
 
 ```json

@@ -1173,4 +1173,34 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 		return resultado != null ? Integer.valueOf(((Number) resultado).intValue()) : null;
 	}
 
+	@Override
+	public Long selectTipoAporteUltimoAnteriorA(Long idEntidad, LocalDateTime antesDe) throws Throwable {
+		System.out.println("AporteDaoServiceImpl.selectTipoAporteUltimoAnteriorA - Entidad: " + idEntidad
+			+ " antes de " + antesDe);
+		Query query = em.createQuery(
+			" select a.tipoAporte.codigo from Aporte a " +
+			" where  a.entidad.codigo = :idEntidad " +
+			"   and  (a.estado is null or a.estado <> 0) " +
+			"   and  a.fechaTransaccion < :antesDe " +
+			"   and  a.tipoAporte is not null " +
+			" order by a.fechaTransaccion desc, a.codigo desc");
+		query.setParameter("idEntidad", idEntidad);
+		query.setParameter("antesDe", antesDe);
+		query.setMaxResults(1);
+		List<?> resultado = query.getResultList();
+		return resultado.isEmpty() || resultado.get(0) == null ? null : ((Number) resultado.get(0)).longValue();
+	}
+
+	@Override
+	public LocalDateTime selectFechaPrimerAporteVigente(Long idEntidad) throws Throwable {
+		System.out.println("AporteDaoServiceImpl.selectFechaPrimerAporteVigente - Entidad: " + idEntidad);
+		Query query = em.createQuery(
+			" select min(a.fechaTransaccion) from Aporte a " +
+			" where  a.entidad.codigo = :idEntidad " +
+			"   and  (a.estado is null or a.estado <> 0) ");
+		query.setParameter("idEntidad", idEntidad);
+		List<?> resultado = query.getResultList();
+		return resultado.isEmpty() ? null : (LocalDateTime) resultado.get(0);
+	}
+
 }

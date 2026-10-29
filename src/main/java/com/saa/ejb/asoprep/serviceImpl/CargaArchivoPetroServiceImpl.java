@@ -281,6 +281,34 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
     private Map<Long, Long> totalCuotasPorPrestamoReproceso = new HashMap<>();
 
     /**
+     * D-022 (2026-10-28, REPROCESO-CARGA-PETRO.md §4.10): aportes AH registrados en modo reproceso
+     * para entidades sin contrato activo hoy cuyo contrato vigente al corte no tiene vigencias
+     * (glosa con {@link #MARCA_D022}). Una línea por aporte. Reset al entrar a
+     * {@code aplicarPagosArchivoPetro}.
+     */
+    private List<String> aportesContratoAlCorte = new ArrayList<>();
+    private double montoAportesContratoAlCorte = 0.0;
+
+    /**
+     * D-022 ampliada (líder, 2026-10-28): partícipes con AH descontado y SIN NINGÚN contrato, para
+     * los que el reproceso creó contrato + vigencia y registró el aporte (glosa con
+     * {@link #MARCA_D022_CREADO}). Una línea por partícipe. Reset al entrar a
+     * {@code aplicarPagosArchivoPetro}.
+     */
+    private List<String> contratosCreadosReproceso = new ArrayList<>();
+    private double montoContratosCreadosReproceso = 0.0;
+
+    /** D-022 ampliada: tipo de contrato del contrato que el reproceso crea. */
+    @EJB
+    private com.saa.ejb.crd.dao.TipoContratoDaoService tipoContratoDaoService;
+
+    /** Usuario que ordenó el reproceso (lo estampa D-022 en lo que crea). Solo en modo reproceso. */
+    private String usuarioReproceso = null;
+
+    /** D-022: tipo de contrato de los aportantes de la carga, resuelto una vez por corrida. */
+    private Long tipoContratoAportantesReproceso = null;
+
+    /**
      * Rendimiento del reproceso (REPROCESO-CARGA-PETRO.md §11): control del contexto de
      * persistencia de la transacción (flush + detach acotado, auto-flush suspendido en las
      * validaciones de solo lectura). Solo se usa en modo reproceso.
@@ -1405,6 +1433,10 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 		cuotasSaldadasSinPagoReabiertas.clear();
 		prestamosPreparadosReproceso.clear();
 		totalCuotasPorPrestamoReproceso.clear();
+		aportesContratoAlCorte.clear();
+		montoAportesContratoAlCorte = 0.0;
+		contratosCreadosReproceso.clear();
+		montoContratosCreadosReproceso = 0.0;
 		montoExcedentesDevueltos = 0.0;
 		if (modoReproceso) {
 			System.out.println("=== MODO REPROCESO: " + etiquetaReproceso + " ===");
@@ -1730,6 +1762,14 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 				resumenBuilder.append(formateaListaResumen(
 					"Cuotas del mes saldadas sin pago reabiertas al corte (D-019 ampliada)",
 					cuotasSaldadasSinPagoReabiertas));
+				resumenBuilder.append(formateaListaResumen(
+					"Aportes AH con contrato inactivo hoy, vigente al corte (D-022, $"
+						+ String.format("%,.2f", montoAportesContratoAlCorte) + ")",
+					aportesContratoAlCorte));
+				resumenBuilder.append(formateaListaResumen(
+					"Partícipes sin ningún contrato: contrato y vigencia creados (D-022 ampliada, $"
+						+ String.format("%,.2f", montoContratosCreadosReproceso) + ")",
+					contratosCreadosReproceso));
 			}
 			String resumen = resumenBuilder.toString();
 			
@@ -1798,9 +1838,18 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
 	public Map<String, Object> aplicarPagosArchivoPetroReproceso(Long codigoCargaArchivo, String etiquetaCorrida,
 			List<com.saa.ejb.crd.service.dto.ExcedenteDevueltoReproceso> excedentesDevueltos) throws Throwable {
+		return aplicarPagosArchivoPetroReproceso(codigoCargaArchivo, etiquetaCorrida, excedentesDevueltos, null);
+	}
+
+	@Override
+	@TransactionAttribute(TransactionAttributeType.REQUIRED)
+	public Map<String, Object> aplicarPagosArchivoPetroReproceso(Long codigoCargaArchivo, String etiquetaCorrida,
+			List<com.saa.ejb.crd.service.dto.ExcedenteDevueltoReproceso> excedentesDevueltos,
+			String usuarioCorrida) throws Throwable {
 		System.out.println("=== APLICACIÓN DE PAGOS EN MODO REPROCESO - Carga: " + codigoCargaArchivo
 			+ " - " + etiquetaCorrida + " ===");
 		modoReproceso = true;
+		usuarioReproceso = usuarioCorrida != null && !usuarioCorrida.trim().isEmpty() ? usuarioCorrida.trim() : "SAA_REPROCESO";
 		etiquetaReproceso = etiquetaCorrida != null ? etiquetaCorrida : ("REPROCESO carga " + codigoCargaArchivo);
 		excedentesDevueltosReproceso.clear();
 		try {
@@ -1823,10 +1872,16 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 			resultado.put("montoExcedentesDevueltos", Double.valueOf(Math.round(montoExcedentesDevueltos * 100.0) / 100.0));
 			resultado.put("cancelacionesPosteriores", new ArrayList<>(cancelacionesPosterioresMarcadas));
 			resultado.put("cuotasSaldadasSinPagoReabiertas", new ArrayList<>(cuotasSaldadasSinPagoReabiertas));
+			resultado.put("aportesContratoAlCorte", new ArrayList<>(aportesContratoAlCorte));
+			resultado.put("montoAportesContratoAlCorte", Double.valueOf(Math.round(montoAportesContratoAlCorte * 100.0) / 100.0));
+			resultado.put("contratosCreados", new ArrayList<>(contratosCreadosReproceso));
+			resultado.put("montoContratosCreados", Double.valueOf(Math.round(montoContratosCreadosReproceso * 100.0) / 100.0));
 			return resultado;
 		} finally {
 			modoReproceso = false;
 			etiquetaReproceso = null;
+			usuarioReproceso = null;
+			tipoContratoAportantesReproceso = null;
 			excedentesDevueltosReproceso.clear();
 		}
 	}
@@ -5997,6 +6052,19 @@ private int distribuirAportePorDevengo(Entidad entidad, double montoRecibido,
 	java.time.LocalDate mesCarga = java.time.LocalDate.of(
 		cargaArchivo.getAnioAfectacion().intValue(), cargaArchivo.getMesAfectacion().intValue(), 1);
 
+	// MODO REPROCESO (D-022, REPROCESO-CARGA-PETRO.md §4.10): si la entidad no tiene contrato
+	// ACTIVO hoy, el contrato se resuelve a la fecha de corte. Con vigencias que cubren el mes, la
+	// prelación de abajo usa ese contrato (cacheVigencia); sin vigencias, el AH va completo al mes
+	// de la carga con el tipo del último aporte anterior y termina acá. Fuera del modo reproceso,
+	// o con contrato activo hoy, no hace nada.
+	if (modoReproceso) {
+		Integer aplicadosD022 = resolverContratoAlCorteReproceso(entidad, montoRecibido, cargaArchivo,
+			participe, cacheVigencia, mesCarga);
+		if (aplicadosD022 != null) {
+			return aplicadosD022;
+		}
+	}
+
 	// aportado(m,tipo) de todo el rango relevante, en UNA sola consulta.
 	java.util.Map<String, Double> aportadoPorMesTipo = new java.util.HashMap<>();
 	List<Object[]> filas = aporteDaoService.sumValorPorEntidadTipoYRangoDevengo(
@@ -6080,6 +6148,10 @@ private int distribuirAportePorDevengo(Entidad entidad, double montoRecibido,
 		// cargando un dato faltante). La única forma de distinguirlas es preguntar por el
 		// contrato EXPLÍCITAMENTE — nunca deducirlo de que esperadoMensual dio 0.
 		Contrato contratoActivo = contratoDaoService.selectActivoPorEntidad(entidad.getCodigo());
+		if (contratoActivo == null && modoReproceso) {
+			// D-022: en reproceso vale el contrato vigente al corte (el mismo que usó la prelación).
+			contratoActivo = contratoDaoService.selectVigenteAlCortePorEntidad(entidad.getCodigo(), finMesCarga(cargaArchivo));
+		}
 		if (contratoActivo == null) {
 			throw new IncomeException("No se pudo aplicar $" + disponible + " de los $" + montoRecibido
 				+ " recibidos del partícipe " + participe.getCodigoPetro() + " (" + participe.getNombre()
@@ -6268,6 +6340,198 @@ private double esperadoDesdeCache(Entidad entidad, Long idTipoAporte, java.time.
 		}
 	}
 	return encontrada != null && encontrada.getMonto() != null ? encontrada.getMonto() : 0.0;
+}
+
+/** Marca de los aportes D-022 en la glosa (REPROCESO-CARGA-PETRO.md §4.10). */
+static final String MARCA_D022 = "[D-022 contrato inactivo hoy, vigente al corte]";
+
+/**
+ * D-022 (propuesta del 28-oct-2026, pendiente de confirmar por el líder; REPROCESO-CARGA-PETRO.md
+ * §4.10). SOLO MODO REPROCESO, misma filosofía que D-019: el estado de hoy no decide. Para una
+ * entidad SIN contrato ACTIVO hoy:
+ * <ol>
+ * <li>Contrato vigente al corte ({@code selectVigenteAlCortePorEntidad}). Si no hay ninguno: la
+ * carga se detiene con un mensaje que dice entidad, rol y monto (no se inventa destino).</li>
+ * <li>Si ese contrato tiene alguna vigencia ACTIVA de jubilación o cesantía que cubra el mes de la
+ * carga, se deja en {@code cache} y la prelación normal reparte con él (devuelve null).</li>
+ * <li>Si no tiene: el AH recibido va COMPLETO al mes de la carga (devengo = mes de la carga, caja =
+ * último día del mes, como todo aporte de la carga) con el tipo del último aporte vigente de la
+ * entidad anterior al mes de la carga, glosa con {@link #MARCA_D022}. Sin aporte anterior: se
+ * detiene con mensaje claro.</li>
+ * </ol>
+ *
+ * @return aportes creados si resolvió el AH completo acá; null si la prelación normal sigue
+ */
+private Integer resolverContratoAlCorteReproceso(Entidad entidad, double montoRecibido, CargaArchivo cargaArchivo,
+		ParticipeXCargaArchivo participe, CacheVigenciaParticipe cache, java.time.LocalDate mesCarga) throws Throwable {
+	if (contratoDaoService.selectActivoPorEntidad(entidad.getCodigo()) != null) {
+		return null; // contrato activo hoy: flujo de siempre
+	}
+	java.time.LocalDateTime corte = finMesCarga(cargaArchivo);
+	Contrato contratoCorte = contratoDaoService.selectVigenteAlCortePorEntidad(entidad.getCodigo(), corte);
+	if (contratoCorte == null) {
+		List<Contrato> contratosEntidad = contratoDaoService.selectByEntidad(entidad.getCodigo());
+		if (contratosEntidad == null || contratosEntidad.isEmpty()) {
+			// D-022 ampliada: sin NINGÚN contrato -> se crea uno (con su vigencia) y se aplica.
+			return crearContratoYAplicarReproceso(entidad, montoRecibido, cargaArchivo, participe, mesCarga);
+		}
+		throw new IncomeException(etiquetaReproceso + " (D-022): la entidad " + entidad.getCodigo() + " (rol Petro "
+			+ participe.getCodigoPetro() + ") tiene " + contratosEntidad.size() + " contrato(s) pero ninguno activo hoy ni"
+			+ " vigente al " + corte.toLocalDate() + "; no se puede aplicar el AH de $" + montoRecibido + " de la carga "
+			+ cargaArchivo.getCodigo() + ". Corrija las fechas del contrato (o decida el destino) y vuelva a reprocesar.");
+	}
+	List<com.saa.model.crd.VigenciaContrato> vigencias = vigenciaContratoDaoService.selectByContrato(contratoCorte.getCodigo());
+	if (vigencias == null) {
+		vigencias = new ArrayList<>();
+	}
+	java.time.LocalDate ultimoDiaMes = java.time.YearMonth.from(mesCarga).atEndOfMonth();
+	boolean cubreMes = false;
+	for (com.saa.model.crd.VigenciaContrato vigencia : vigencias) {
+		if (vigencia.getTipoAporte() == null || !ORDEN_TIPOS_APORTE.contains(vigencia.getTipoAporte().getCodigo())
+				|| vigencia.getIdEstado() == null || vigencia.getIdEstado() != com.saa.rubros.Estado.ACTIVO) {
+			continue;
+		}
+		if (vigencia.getFechaInicio() != null && !ultimoDiaMes.isBefore(vigencia.getFechaInicio())
+				&& (vigencia.getFechaFin() == null || !ultimoDiaMes.isAfter(vigencia.getFechaFin()))) {
+			cubreMes = true;
+			break;
+		}
+	}
+	if (cubreMes) {
+		// La prelación normal reparte con el contrato vigente al corte (esperadoDesdeCache).
+		cache.resuelto = true;
+		cache.idContrato = contratoCorte.getCodigo();
+		cache.vigencias = vigencias;
+		System.out.println("   D-022: entidad " + entidad.getCodigo() + " sin contrato activo hoy; se usa el contrato "
+			+ contratoCorte.getCodigo() + " vigente al corte y sus vigencias");
+		return null;
+	}
+
+	Long idTipo = aporteDaoService.selectTipoAporteUltimoAnteriorA(entidad.getCodigo(), mesCarga.atStartOfDay());
+	if (idTipo == null) {
+		throw new IncomeException(etiquetaReproceso + " (D-022): la entidad " + entidad.getCodigo() + " (rol Petro "
+			+ participe.getCodigoPetro() + ") tiene el contrato " + contratoCorte.getCodigo() + " vigente al "
+			+ corte.toLocalDate() + " pero sin vigencias que cubran " + mesCarga.getMonthValue() + "/" + mesCarga.getYear()
+			+ " y sin ningún aporte anterior que indique el tipo; no se puede aplicar el AH de $" + montoRecibido
+			+ " de la carga " + cargaArchivo.getCodigo() + ". Requiere decisión (tipo de aporte) antes de reprocesar.");
+	}
+	double monto = Math.round(montoRecibido * 100.0) / 100.0;
+	com.saa.model.crd.TipoAporte tipoAporte = tipoAporteDaoService.selectById(idTipo, "TipoAporte");
+	Aporte aporte = registrarAporteMesCargaD022(entidad, tipoAporte, monto, cargaArchivo, participe, mesCarga, MARCA_D022);
+	montoAportesContratoAlCorte += monto;
+	aportesContratoAlCorte.add("Entidad " + entidad.getCodigo() + " (rol " + participe.getCodigoPetro() + "): $"
+		+ String.format("%,.2f", monto) + " a " + tipoAporte.getNombre() + " (APRT " + aporte.getCodigo()
+		+ ", contrato " + contratoCorte.getCodigo() + " vigente al corte, sin vigencias)");
+	System.out.println("   D-022: entidad " + entidad.getCodigo() + " - $" + monto + " a " + tipoAporte.getNombre()
+		+ " con devengo " + mesCarga + " (APRT " + aporte.getCodigo() + ")");
+	return 1;
+}
+
+/** Marca de los aportes de partícipes a los que D-022 ampliada les creó el contrato. */
+static final String MARCA_D022_CREADO = "[D-022 contrato creado en reproceso]";
+
+/**
+ * D-022: aporte AH completo al mes de la carga (devengo = mes de la carga; caja = último día del
+ * mes, {@link #crearNuevoAporte}), con su {@code PagoAporte}, y la glosa
+ * {@code "<glosa estándar> - <etiqueta> <marca>"}. Empieza por "Aporte ..." y lleva
+ * {@code APRTIDAS} = carga: no entra en ninguno de los LIKE de las consultas de control (los de
+ * esquema viejo exigen {@code APRTIDAS IS NULL}; los de reverso empiezan por "REPROCESO").
+ */
+private Aporte registrarAporteMesCargaD022(Entidad entidad, com.saa.model.crd.TipoAporte tipoAporte, double monto,
+		CargaArchivo cargaArchivo, ParticipeXCargaArchivo participe, java.time.LocalDate mesCarga, String marca) throws Throwable {
+	Aporte aporte = crearNuevoAporte(entidad, tipoAporte.getCodigo(), tipoAporte.getNombre(), monto, mesCarga, cargaArchivo,
+		com.saa.rubros.CrdTipoMovimientoAporte.APORTE_MENSUAL);
+	aporte.setGlosa(truncarTexto(aporte.getGlosa() + " - " + etiquetaReproceso + " " + marca, 2000));
+	aporteDaoService.save(aporte, aporte.getCodigo());
+	crearRegistroPagoAporte(aporte, monto, cargaArchivo, participe);
+	return aporte;
+}
+
+/**
+ * D-022 ampliada (líder del proyecto, 2026-10-28; REPROCESO-CARGA-PETRO.md §4.10): el partícipe
+ * tiene AH descontado y NINGÚN contrato (ni activo ni inactivo). En modo reproceso se le crea:
+ * <ul>
+ * <li>{@code CRD.CNTR}: tipo de contrato = el más frecuente entre los contratos activos de los
+ * aportantes AH de esta misma carga (no hay rubro de tipo de contrato en CRD: se toma del dato,
+ * no se fija en el código); filial de la entidad; {@code CNTRFCIN} = primer día del mes de la carga
+ * o, si es anterior, la fecha del primer aporte vigente de la entidad; {@code CNTRESTD = 1},
+ * {@code CNTRIDST = 1}, sin término; observación
+ * {@code "D-022 reproceso carga <id>: contrato creado para aplicar el aporte Petro"}; usuario de la
+ * corrida.</li>
+ * <li>{@code CRD.VGCN} (la prelación por devengo de los meses siguientes la necesita para saber el
+ * esperado): tipo de aporte = el del último aporte vigente anterior al mes de la carga, o cesantía
+ * (11) si no hay ninguno; monto = lo descontado de AH este mes; desde el primer día del mes de la
+ * carga, sin fin; modo FIJO; activa.</li>
+ * <li>El aporte del mes: completo al mes de la carga con ese tipo, glosa con
+ * {@link #MARCA_D022_CREADO}.</li>
+ * </ul>
+ * Todo en la transacción del reproceso: si la corrida revierte, el contrato tampoco queda.
+ */
+private int crearContratoYAplicarReproceso(Entidad entidad, double montoRecibido, CargaArchivo cargaArchivo,
+		ParticipeXCargaArchivo participe, java.time.LocalDate mesCarga) throws Throwable {
+	if (tipoContratoAportantesReproceso == null) {
+		tipoContratoAportantesReproceso = contratoDaoService.selectTipoContratoMasFrecuenteAportantesCarga(cargaArchivo.getCodigo());
+	}
+	if (tipoContratoAportantesReproceso == null) {
+		throw new IncomeException(etiquetaReproceso + " (D-022): la entidad " + entidad.getCodigo() + " (rol Petro "
+			+ participe.getCodigoPetro() + ") no tiene contrato y no se pudo determinar el tipo de contrato de los"
+			+ " aportantes de la carga " + cargaArchivo.getCodigo() + " para crearle uno.");
+	}
+	com.saa.model.crd.TipoContrato tipoContrato = tipoContratoDaoService.find(new com.saa.model.crd.TipoContrato(),
+		tipoContratoAportantesReproceso);
+
+	java.time.LocalDateTime inicioMes = mesCarga.atStartOfDay();
+	java.time.LocalDateTime primerAporte = aporteDaoService.selectFechaPrimerAporteVigente(entidad.getCodigo());
+	java.time.LocalDateTime fechaInicio = primerAporte != null && primerAporte.isBefore(inicioMes)
+		? primerAporte.toLocalDate().atStartOfDay() : inicioMes;
+	Long idTipo = aporteDaoService.selectTipoAporteUltimoAnteriorA(entidad.getCodigo(), inicioMes);
+	boolean tipoPorDefecto = idTipo == null;
+	if (tipoPorDefecto) {
+		idTipo = TIPO_APORTE_CESANTIA;
+	}
+	com.saa.model.crd.TipoAporte tipoAporte = tipoAporteDaoService.selectById(idTipo, "TipoAporte");
+	double monto = Math.round(montoRecibido * 100.0) / 100.0;
+	String observacion = "D-022 reproceso carga " + cargaArchivo.getCodigo()
+		+ ": contrato creado para aplicar el aporte Petro (" + etiquetaReproceso + ")";
+	String usuario = truncarTexto(usuarioReproceso != null ? usuarioReproceso : "SAA_REPROCESO", 50);
+	java.time.LocalDateTime ahora = java.time.LocalDateTime.now();
+
+	Contrato contrato = new Contrato();
+	contrato.setEntidad(entidad);
+	contrato.setFilial(entidad.getFilial());
+	contrato.setTipoContrato(tipoContrato);
+	contrato.setFechaInicio(fechaInicio);
+	contrato.setFechaTerminacion(null);
+	contrato.setEstado(Long.valueOf(com.saa.rubros.EstadoContrato.ACTIVO));
+	contrato.setIdEstado(Long.valueOf(com.saa.rubros.Estado.ACTIVO));
+	contrato.setObservacion(observacion);
+	contrato.setUsuarioRegistro(usuario);
+	contrato.setFechaRegistro(ahora);
+	contratoDaoService.save(contrato, null);
+
+	com.saa.model.crd.VigenciaContrato vigencia = new com.saa.model.crd.VigenciaContrato();
+	vigencia.setContrato(contrato);
+	vigencia.setTipoAporte(tipoAporte);
+	vigencia.setFechaInicio(mesCarga);
+	vigencia.setFechaFin(null);
+	vigencia.setMonto(monto);
+	vigencia.setModo(Long.valueOf(com.saa.rubros.CrdModoVigenciaContrato.FIJO));
+	vigencia.setIdEstado(Long.valueOf(com.saa.rubros.Estado.ACTIVO));
+	vigencia.setObservacion(observacion);
+	vigencia.setUsuarioRegistro(usuario);
+	vigencia.setFechaRegistro(ahora);
+	vigenciaContratoDaoService.save(vigencia, null);
+
+	Aporte aporte = registrarAporteMesCargaD022(entidad, tipoAporte, monto, cargaArchivo, participe, mesCarga, MARCA_D022_CREADO);
+	montoContratosCreadosReproceso += monto;
+	contratosCreadosReproceso.add("Entidad " + entidad.getCodigo() + " (rol " + participe.getCodigoPetro() + "): contrato "
+		+ contrato.getCodigo() + " (tipo " + tipoContratoAportantesReproceso + ", desde " + fechaInicio.toLocalDate()
+		+ ") y vigencia " + vigencia.getCodigo() + " creados; $" + String.format("%,.2f", monto) + " a "
+		+ tipoAporte.getNombre() + (tipoPorDefecto ? " (tipo por defecto: sin aporte anterior)" : "")
+		+ " (APRT " + aporte.getCodigo() + ")");
+	System.out.println("   D-022 ampliada: entidad " + entidad.getCodigo() + " sin contrato - creado contrato "
+		+ contrato.getCodigo() + " y vigencia " + vigencia.getCodigo() + "; $" + monto + " a " + tipoAporte.getNombre());
+	return 1;
 }
 
 /**
