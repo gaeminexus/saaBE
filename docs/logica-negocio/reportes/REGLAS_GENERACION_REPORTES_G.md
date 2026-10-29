@@ -222,27 +222,46 @@
 ## ✅ G45 — NuevoParticipeG45 — COMPLETADO
 
 **Tabla destino:** `RPR.CG45`  
-**Fuente principal (vigente, `GeneracionG45ServiceImpl`):** `RPR.CG46` del mismo EJRC — un registro G45 por cada
-registro de la G46 (todos sus sujetos). Patrimonio desde la `CG42` del mismo EJRC; género, fecha de nacimiento y
-provincia desde `EXTR`; fijos: estado civil `S`, actividad `009`, cantón `01`, parroquia `50`, profesión `O`, cargas `0`,
-origen `B`; tipo de partícipe `J` si la entidad es jubilado complementario, si no `C` (`LogicaArchivosSuper.txt` 315-337).
+**Regla vigente (D-035, 29-oct-2026) — sujetos de riesgo NUEVOS.** El manual de la Superintendencia (Estructuras de
+Operaciones de Crédito FCPC v2.4, 18-08-2023, §3.1 y §5.2) define la G45 con los titulares, garantes y codeudores de las
+operaciones de crédito, y en los controles de la G46 exige que el sujeto "conste en la base de datos de la estructura G45":
+la Superintendencia mantiene una base ACUMULADA de sujetos. Por eso:
+
+- **G45 del mes = sujetos de la G46 del mes (titulares) y de la G50 (garantes/codeudores, hoy stub en 0) que todavía no
+  constan en el registro `RPR.SG45`** con un período anterior al que se genera.
+- `RPR.SG45` (DDL y carga inicial: `docs/logica-negocio/reportes/sql/336_D035_REGISTRO_SUJETOS_G45.sql`) es la copia local
+  de esa base: una fila por sujeto con su primer período reportado y su origen — `SEMILLA` (reportados antes de mayo
+  2025, período 202504), `HM45` (G45 presentada en mayo 2025, 202505) o `EJECUCION` (G45 generada por el SAA, con su EJRD).
+- Al generar, cada sujeto nuevo se agrega con el período del mes. Al **regenerar** un mes se borran primero las filas
+  `EJECUCION` de ese período (no se duplica). Si un sujeto ya estaba registrado con un período POSTERIOR (se generó antes
+  un mes siguiente), su registro pasa al mes que se genera y el log pide regenerar ese mes siguiente.
+- **Semilla (supuesto a confirmar con ASOPREP):** no se encontró la fecha en que ASOPREP empezó a reportar la G45. Se
+  toma como ya reportado a todo sujeto con un préstamo concedido antes de mayo 2025 (estado fuera de 0, 1, 6, 7, 12) cuya
+  última cuota vence en 2021-07 o después. Cualquier corte en (2019-08-31, 2021-07-31] reproduce la G45 de mayo; se elige
+  el más tardío (semilla más chica: ante la duda se vuelve a reportar un sujeto en vez de omitir uno nuevo, que haría
+  rechazar la G46). Con la base del 29-oct-2026: semilla 1.726 sujetos + 10 de la HM45.
+- **Aceptación:** mayo 2025 = exactamente los 10 sujetos presentados (de 73 en la G46); junio 2025 = 1 (de 29), igual para
+  cualquier corte del rango. Evidencia sin cédulas: `cuadreSuper/03-trabajo/meses/2025-06/sql/33-g45-registro.sql` y
+  `resultados/33-g45-registro-01..04.csv`, `33-g45-reglas.txt`.
+- Se descartó la regla de `LogicaArchivosSuper.txt` 311-313 (sin otro préstamo vigente/mora/plazo vencido ni cancelado con
+  última cuota en el período): daba 13 en mayo (`33-g45-reglas.sql`); los 3 de más ya constaban en la base de sujetos.
+
+**Datos de cada registro** (`LogicaArchivosSuper.txt` 315-337, sin cambios salvo el tipo de partícipe): patrimonio =
+saldo aporte patronal + personal + rendimiento de la `CG42` del mismo EJRC; género, fecha de nacimiento y provincia desde
+`EXTR`; fijos: estado civil `S`, actividad `009`, cantón `01`, parroquia `50`, profesión `O`, cargas `0`, origen `B`.
+**Tipo de partícipe = `P` siempre** (D-035): el manual admite C cesante, J jubilado y P partícipe, pero la G45 de mayo
+2025 (aceptada) trae P en los 10 y el área financiera (correo del 5-jun-2026) indica, por directriz de la
+Superintendencia, que el jubilado se reporta como P. J y C no se usan (antes: J si la entidad era jubilado complementario).
 La tabla de enriquecimiento de abajo (CG41, PerfilEconomico, Participe) es la versión original y ya no rige.
 
-**Orden de generación (D-034, 29-oct-2026):** la G45 depende de la G46 (y la G49 de la G48). El orquestador
+**Orden de generación (D-034/D-035):** la G45 depende de la G46 y de la G50 (y la G49 de la G48). El orquestador
 (`GeneracionReportesServiceImpl`) procesa los EJRD en el orden de `GeneracionUnReporteServiceImpl.TIPOS_REPORTE`
-(G40, G41, G42, G43, G44, **G46, G45**, G47, G48, G49, G50, G51), no en el `order by d.tipoReporte` del DAO. Desde
+(G40, G41, G42, G43, G44, **G46, G50, G45**, G47, G48, G49, G51), no en el `order by d.tipoReporte` del DAO. Desde
 4184bb1c (5-oct-2026) la G45 corría antes que la G46, la encontraba vacía y salía con 0 registros sin error.
 
-**Regla de selección de sujetos (D-035) — aprobada, NO integrada todavía.** Texto (`LogicaArchivosSuper.txt` 311-313):
-entra el sujeto de la G46 que, aparte del préstamo nuevo, no tiene otro préstamo vigente, en mora o de plazo vencido
-(evaluado AL CORTE, lectura C15 de `ModoCorteCartera`/`CarteraAlCorteService`), ni uno cancelado (3) o cancelado
-anticipado (4) cuya última cuota tenga fecha ≥ primer día del período. Criterio de aceptación: reproducir los 10 sujetos
-de la G45 presentada en mayo 2025. Resultado (`cuadreSuper/03-trabajo/meses/2025-06/sql/33-g45-reglas.sql`,
-`resultados/33-g45-reglas.txt`): **mayo da 13, no 10** (los 10 presentados cumplen la regla; sobran 3 sujetos cuyo
-único otro préstamo se canceló entre 2020 y 2023), junio da 6 (de 29). En los datos, los 10 presentados no tienen
-otro préstamo terminado después de 2019-08 y los 63 restantes sí (desde 2021-07): encaja con "sujeto ya reportado en
-una G45 anterior", pero sin G45 anteriores a mayo 2025 no hay evidencia para fijar ese criterio. Hasta que el líder
-lo defina, el generador sigue copiando todos los sujetos de la G46.
+**Relación con la G48:** el manual pide cuenta individual 0 en la G48 para jubilados reportados en la G45 con `J`. Como
+la G45 ya no usa `J`, esa condición no se da; la G48 mantiene su regla acordada (cuenta individual 0 si la entidad es
+jubilado complementario, `ENTDIDST` 3, antes PK 30) — pendiente de confirmar con ASOPREP si se conserva.
 
 **Nota histórica:** G41 corre antes que G45 y cambia `idEstado 1→10`, por eso G45 **no puede filtrar por `idEstado=1`**.
 

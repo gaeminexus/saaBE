@@ -45,11 +45,12 @@ public class GeneracionUnReporteServiceImpl implements GeneracionUnReporteServic
      * copia los sujetos de la G46 de la misma ejecución, y la G49 lee (y depura) la G48. D-034
      * (29-oct-2026): el orquestador ordena por esta lista ({@link #ordenGeneracion}) — desde
      * 4184bb1c (5-oct-2026) procesaba en el {@code order by d.tipoReporte} del DAO, la G45 corría
-     * antes que la G46, la encontraba vacía y salía con 0 registros sin error.
+     * antes que la G46, la encontraba vacía y salía con 0 registros sin error. D-035: la G50 (garantes y
+     * codeudores, también sujetos de la G45) va antes que la G45; no depende de ninguna otra.
      */
     static final String[] TIPOS_REPORTE = {
-        "G40", "G41", "G42", "G43", "G44", "G46", "G45",
-        "G47", "G48", "G49", "G50", "G51"
+        "G40", "G41", "G42", "G43", "G44", "G46", "G50", "G45",
+        "G47", "G48", "G49", "G51"
     };
 
     /** Posición de un tipo de reporte en {@link #TIPOS_REPORTE}; uno desconocido va al final. */
