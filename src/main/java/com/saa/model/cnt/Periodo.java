@@ -2,6 +2,7 @@ package com.saa.model.cnt;
 
 import java.io.Serializable;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 import com.saa.model.scp.Empresa;
 
@@ -123,6 +124,27 @@ public class Periodo implements Serializable {
 	@Basic
 	@Column(name = "PRDOFNN")
 	private LocalDate ultimoDia;
+
+	/**
+	 * C17 — Cierre contable bloqueante (PRDOCNCR): 1 = período CERRADO para contabilidad, 0 o nulo = abierto.
+	 * Es independiente de {@link #estado} (mayorizado/desmayorizado): el cierre exige el período mayorizado y
+	 * lo deja mayorizado, para no romper la cadena "último mayorizado anterior" de saldos. Solo lo cambian
+	 * {@code CierrePeriodoContableService.cerrar/reabrir}; {@code PeriodoService.saveSingle} conserva el valor
+	 * de la base aunque el cliente mande otro. docs/logica-negocio/cnt/CIERRES-BLOQUEANTES.md.
+	 */
+	@Basic
+	@Column(name = "PRDOCNCR")
+	private Long cerradoContable;
+
+	/** C17 — Fecha y hora del cierre contable vigente (PRDOFCCN); nula si está abierto. */
+	@Basic
+	@Column(name = "PRDOFCCN")
+	private LocalDateTime fechaCierreContable;
+
+	/** C17 — Usuario que cerró el período (PRDOUSCN); nulo si está abierto. */
+	@Basic
+	@Column(name = "PRDOUSCN", length = 100)
+	private String usuarioCierreContable;
 
 	/**
 	 * Devuelve codigo
@@ -317,6 +339,30 @@ public class Periodo implements Serializable {
 
 	public void setUltimoDia(LocalDate ultimoDia) {
 		this.ultimoDia = ultimoDia;
+	}
+
+	public Long getCerradoContable() {
+		return cerradoContable;
+	}
+
+	public void setCerradoContable(Long cerradoContable) {
+		this.cerradoContable = cerradoContable;
+	}
+
+	public LocalDateTime getFechaCierreContable() {
+		return fechaCierreContable;
+	}
+
+	public void setFechaCierreContable(LocalDateTime fechaCierreContable) {
+		this.fechaCierreContable = fechaCierreContable;
+	}
+
+	public String getUsuarioCierreContable() {
+		return usuarioCierreContable;
+	}
+
+	public void setUsuarioCierreContable(String usuarioCierreContable) {
+		this.usuarioCierreContable = usuarioCierreContable;
 	}
 	}
 

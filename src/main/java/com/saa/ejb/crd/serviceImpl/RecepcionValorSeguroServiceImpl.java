@@ -44,6 +44,10 @@ public class RecepcionValorSeguroServiceImpl implements RecepcionValorSeguroServ
     @EJB
     private RecepcionValorSeguroDaoService recepcionValorSeguroDaoService;
 
+    /** C17: mes cerrado para cartera / contabilidad (CIERRES-BLOQUEANTES.md). */
+    @jakarta.ejb.EJB
+    private com.saa.ejb.cnt.service.EstadoCierreService estadoCierreService;
+
     @EJB
     private EntidadDaoService entidadDaoService;
 
@@ -186,7 +190,9 @@ public class RecepcionValorSeguroServiceImpl implements RecepcionValorSeguroServ
             throw new IncomeException("No existe la cuenta bancaria " + solicitud.getIdCuentaBancaria() + ".");
         }
         // Falla ahora, no al aprobar: una cuenta sin cuenta contable/empresa nunca podría aprobarse.
-        derivarEmpresa(cuentaBancaria);
+        // C17: el mes de la fecha de la recepción tiene que estar abierto para cartera y contabilidad.
+        estadoCierreService.validarMovimientoCartera(derivarEmpresa(cuentaBancaria), solicitud.getFecha(),
+                "recepciones de valor de seguro");
 
         RecepcionValorSeguro recepcion = new RecepcionValorSeguro();
         recepcion.setEntidad(entidad);
@@ -226,6 +232,9 @@ public class RecepcionValorSeguroServiceImpl implements RecepcionValorSeguroServ
 
         CuentaBancaria cuentaBancaria = recepcion.getCuentaBancaria();
         Long idEmpresa = derivarEmpresa(cuentaBancaria);
+        // C17: aporte y asiento con la fecha de la recepción: mes abierto.
+        estadoCierreService.validarMovimientoCartera(idEmpresa, recepcion.getFecha(),
+                "la aprobación de la recepción " + idRecepcion);
         TipoAporte tipo = recepcion.getTipoAporte();
 
         CuentaTipoAporte config = cuentaTipoAporteService.selectByTipoAporteYEmpresa(tipo.getCodigo(), idEmpresa);
@@ -315,6 +324,9 @@ public class RecepcionValorSeguroServiceImpl implements RecepcionValorSeguroServ
                     + " registrado su aporte o su asiento; no se puede reversar automáticamente.");
         }
 
+        // C17: anulación de un mes cerrado para cartera solo si su contabilidad también está cerrada.
+        estadoCierreService.validarAnulacionCartera(derivarEmpresa(recepcion.getCuentaBancaria()), recepcion.getFecha(),
+                "la anulación de la recepción " + idRecepcion);
         // Primero el aporte: reversarAporte rechaza (ERR_SALDO_INSUFICIENTE) si el partícipe ya
         // usó ese dinero, y en ese caso no se ha tocado nada todavía.
         aporteService.reversarAporte(recepcion.getAporte().getCodigo(), usuario.trim(),

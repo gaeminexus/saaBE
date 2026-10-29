@@ -131,6 +131,12 @@ public class EjecucionReporteRest {
                         .entity("{\"mensaje\": \"" + e.getMessage() + "\"}")
                         .type(MediaType.APPLICATION_JSON).build();
             }
+            if (e.getMessage() != null && e.getMessage().startsWith("REPORTE_MES_NO_CERRADO")) {
+                // C17: el mes no pasó por el cierre–apertura de cartera.
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity("Error en generacion de reportes: " + e.getMessage())
+                        .type(MediaType.APPLICATION_JSON).build();
+            }
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("Error en generacion de reportes: " + e.getMessage())
                     .type(MediaType.APPLICATION_JSON).build();

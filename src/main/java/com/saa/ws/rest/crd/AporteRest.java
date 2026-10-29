@@ -40,6 +40,10 @@ public class AporteRest {
     @EJB
     private AporteService aporteService;
 
+    /** C17: mes cerrado para cartera / contabilidad (CIERRES-BLOQUEANTES.md). */
+    @jakarta.ejb.EJB
+    private com.saa.ejb.cnt.service.EstadoCierreService estadoCierreService;
+
     @EJB
     private SaldoAporteService saldoAporteService;
 
@@ -205,6 +209,11 @@ public class AporteRest {
         }
 
         try {
+            // C17: el aporte manual directo se fecha con fechaTransaccion (hoy si no viene): mes abierto.
+            // (Los registros que llegan desde CBCR/RVSG validan su propia fecha antes.)
+            estadoCierreService.validarMovimientoCartera(solicitud.getIdEmpresa(),
+                    solicitud.getFechaTransaccion() != null ? solicitud.getFechaTransaccion() : java.time.LocalDate.now(),
+                    "aportes manuales");
             ResultadoRegistroAporte resultado = aporteService.registrarAporte(solicitud);
 
             Map<String, Object> cuerpo = new LinkedHashMap<>();

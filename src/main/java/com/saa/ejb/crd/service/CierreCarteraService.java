@@ -116,6 +116,15 @@ public interface CierreCarteraService {
             throws Throwable;
 
     /**
+     * C17 — Reapertura de la cartera de un mes (docs/logica-negocio/cnt/CIERRES-BLOQUEANTES.md §5): busca la
+     * corrida EJECUTADA vigente del mes y la reversa con {@link #reversar} (anula/reversa sus asientos y su
+     * MVIC, la marca REVERSADA y deja la bitácora en CNT.HCPR). Solo el último mes cerrado para cartera
+     * (cascada) y con la contabilidad del mes y del siguiente abierta. Motivo obligatorio.
+     */
+    CierreCartera reabrir(Long idEmpresa, Long anio, Long mes, String usuario, String ip, String motivo)
+            throws Throwable;
+
+    /**
      * Corridas de una empresa, de la más reciente a la más antigua. Para el histórico de la
      * pantalla.
      *

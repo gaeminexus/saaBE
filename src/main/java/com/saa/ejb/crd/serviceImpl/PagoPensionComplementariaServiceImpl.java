@@ -154,6 +154,10 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
     @EJB
     private PagoPensionComplementariaDaoService pagoPensionDaoService;
 
+    /** C17: mes cerrado para cartera / contabilidad (CIERRES-BLOQUEANTES.md). */
+    @jakarta.ejb.EJB
+    private com.saa.ejb.cnt.service.EstadoCierreService estadoCierreService;
+
     @EJB
     private EntidadDaoService entidadDaoService;
 
@@ -733,6 +737,9 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         if (usuario == null || usuario.trim().isEmpty()) {
             throw new IncomeException("usuario es obligatorio");
         }
+        // C17: el mes (anio, mes) del proceso tiene que estar abierto para cartera y contabilidad.
+        estadoCierreService.validarMovimientoCartera(idEmpresa, Long.valueOf(anio), Long.valueOf(mes),
+                "la generación de seguro / pensiones de jubilados");
 
         // Se resuelve UNA sola vez por corrida (no una vez por jubilado: son ~190 y el nombre
         // es el mismo para todos). registrarPagoDeOrigenExterno pide un Long, no el nombre —
@@ -923,6 +930,9 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
      */
     private DetallePagoPension generarPagoParaJubilado(Long idEntidad, Long idEmpresa, Integer anio, Integer mes,
             String usuario, Long idUsuario, boolean usarSeguroFijado) throws Throwable {
+        // C17: también cuando se llama individual desde el REST.
+        estadoCierreService.validarMovimientoCartera(idEmpresa, anio != null ? Long.valueOf(anio) : null,
+                mes != null ? Long.valueOf(mes) : null, "la pensión complementaria del partícipe " + idEntidad);
         Entidad entidad = entidadDaoService.find(new Entidad(), idEntidad);
         if (entidad == null) {
             throw new IncomeException(ERR_ENTIDAD_NO_ENCONTRADA + ": no existe el partícipe " + idEntidad);
@@ -1122,6 +1132,9 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         if (usuario == null || usuario.trim().isEmpty()) {
             throw new IncomeException("usuario es obligatorio");
         }
+        // C17: el mes (anio, mes) del proceso tiene que estar abierto para cartera y contabilidad.
+        estadoCierreService.validarMovimientoCartera(idEmpresa, Long.valueOf(anio), Long.valueOf(mes),
+                "la generación de seguro / pensiones de jubilados");
 
         com.saa.model.scp.Usuario usuarioRegistro = usuarioDaoService.selectByNombre(usuario);
         if (usuarioRegistro == null) {
@@ -1300,6 +1313,9 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         if (usuario == null || usuario.trim().isEmpty()) {
             throw new IncomeException("usuario es obligatorio");
         }
+        // C17: el mes (anio, mes) del proceso tiene que estar abierto para cartera y contabilidad.
+        estadoCierreService.validarMovimientoCartera(idEmpresa, Long.valueOf(anio), Long.valueOf(mes),
+                "la generación de seguro / pensiones de jubilados");
 
         com.saa.model.scp.Usuario usuarioRegistro = usuarioDaoService.selectByNombre(usuario);
         if (usuarioRegistro == null) {

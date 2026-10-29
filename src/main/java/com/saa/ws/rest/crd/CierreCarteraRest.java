@@ -154,6 +154,35 @@ public class CierreCarteraRest {
     }
 
     /**
+     * POST - C17: reapertura de la cartera de un mes (reversa su corrida EJECUTADA). Solo el último
+     * mes cerrado, con la contabilidad del mes y del siguiente abierta. Motivo obligatorio.
+     * docs/logica-negocio/cnt/CIERRES-BLOQUEANTES.md §5.
+     *
+     * POST /cierrecartera/reabrir?idEmpresa=1236&anio=2025&mes=6&usuario=...&ip=...&motivo=...
+     */
+    @POST
+    @Path("/reabrir")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response reabrir(@QueryParam("idEmpresa") Long idEmpresa, @QueryParam("anio") Long anio,
+            @QueryParam("mes") Long mes, @QueryParam("usuario") String usuario,
+            @QueryParam("ip") String ip, @QueryParam("motivo") String motivo) {
+        System.out.println("LLEGA AL SERVICIO REABRIR - CIERRE_CARTERA - empresa: " + idEmpresa
+                + " periodo: " + anio + "-" + mes + " usuario: " + usuario);
+        try {
+            return Response.status(Response.Status.OK)
+                    .entity(cierreCarteraService.reabrir(idEmpresa, anio, mes, usuario, ip, motivo))
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        } catch (Throwable e) {
+            return Response.status(e instanceof com.saa.basico.util.IncomeException
+                            ? Response.Status.BAD_REQUEST : Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al reabrir la cartera: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        }
+    }
+
+    /**
      * GET - Histórico de corridas de una empresa, de la más reciente a la más antigua.
      *
      * @param idEmpresa Código de la empresa (SCP.PJRQ)

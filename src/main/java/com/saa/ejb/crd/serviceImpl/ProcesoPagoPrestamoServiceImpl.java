@@ -119,6 +119,10 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
     @EJB
     private com.saa.ejb.cnt.service.PeriodoService periodoService;
 
+    /** C17: mes cerrado para cartera / contabilidad (CIERRES-BLOQUEANTES.md). */
+    @EJB
+    private com.saa.ejb.cnt.service.EstadoCierreService estadoCierreService;
+
     @EJB
     private PrestamoService prestamoService;
 
@@ -612,6 +616,10 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
                 + " del préstamo; use la precancelación");
         }
 
+        // C17: el pago con aportes se fecha con fechaPago (evento, APRT, PGAP, asiento): mes abierto.
+        estadoCierreService.validarMovimientoCartera(solicitud.getIdEmpresa(), fechaPagoHora.toLocalDate(),
+                "pagos con aportes");
+
         // 1. Evento
         EventoPrestamo evento = crearEvento(prestamo, TIPO_PAGO_APORTES, valorTotal, fechaPagoHora,
             solicitud.getUsuario(), solicitud.getObservacion());
@@ -1084,6 +1092,9 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
             throw new IncomeException("PERIODO_CERRADO: el período contable de la fecha de afectación "
                     + fechaAfectacion + " está cerrado — " + e.getMessage());
         }
+        // C17: además, el mes no puede haber pasado por el cierre–apertura de cartera. Cubre a todos los
+        // que llaman a este validador (precancelación, abono con aportes, acuerdo de condonación).
+        estadoCierreService.validarCarteraAbierta(idEmpresa, fechaAfectacion, "movimientos de cartera");
     }
 
     @Override
@@ -1822,6 +1833,12 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
             throw new IncomeException(ERR_ESTADO_NO_PERMITE
                 + ": una reestructuración o novación no se anula desde el historial");
         }
+
+        // C17: anular una operación de un mes cerrado para cartera solo si su contabilidad también está
+        // cerrada (el asiento se reversa en el primer período abierto); si no, reabrir la cartera del mes.
+        estadoCierreService.validarAnulacionCartera(solicitud.getIdEmpresa(),
+                evento.getFecha() != null ? evento.getFecha().toLocalDate() : null,
+                "la anulación del evento " + evento.getCodigo());
 
         ResultadoAnulacion resultado = new ResultadoAnulacion();
         resultado.setIdEvento(evento.getCodigo());

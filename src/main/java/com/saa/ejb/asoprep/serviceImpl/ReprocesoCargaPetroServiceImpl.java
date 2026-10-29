@@ -107,6 +107,10 @@ public class ReprocesoCargaPetroServiceImpl implements ReprocesoCargaPetroServic
     @EJB
     private TransferenciaCargaPetroDaoService transferenciaCargaPetroDaoService;
 
+    /** C17: mes cerrado para cartera / contabilidad (CIERRES-BLOQUEANTES.md). */
+    @jakarta.ejb.EJB
+    private com.saa.ejb.cnt.service.EstadoCierreService estadoCierreService;
+
     @EJB
     private ProvisionInteresService provisionInteresService;
 
@@ -173,6 +177,11 @@ public class ReprocesoCargaPetroServiceImpl implements ReprocesoCargaPetroServic
         Long idEmpresa = transferenciaCargaPetroDaoService.resolverEmpresa(transferenciasVigentes);
 
         LocalDate fechaContable = fechaService.ultimoDiaMesAnioLocal(carga.getMesAfectacion(), carga.getAnioAfectacion());
+        // C17 (CIERRES-BLOQUEANTES.md): re-procesar una carga anula y regenera aportes, pagos y asientos del
+        // mes de afectación: ese mes tiene que estar abierto para cartera y para contabilidad. Para re-procesar
+        // un mes cerrado, reabrirlo antes (en cascada desde el último cerrado).
+        estadoCierreService.validarMovimientoCartera(idEmpresa, fechaContable,
+                "el re-proceso de la carga Petro " + idCarga);
         LocalDateTime ahora = LocalDateTime.now();
 
         // ------------------------------------------------------------------

@@ -62,6 +62,10 @@ public class AbonoCapitalPrestamoServiceImpl implements AbonoCapitalPrestamoServ
     @EJB
     private MotorPagoPrestamoService motorPagoPrestamoService;
 
+    /** C17: mes cerrado para cartera / contabilidad (CIERRES-BLOQUEANTES.md). */
+    @jakarta.ejb.EJB
+    private com.saa.ejb.cnt.service.EstadoCierreService estadoCierreService;
+
     @EJB
     private ProcesoPagoPrestamoService procesoPagoPrestamoService;
 
@@ -269,6 +273,12 @@ public class AbonoCapitalPrestamoServiceImpl implements AbonoCapitalPrestamoServ
                 + ": la fecha " + fecha + " es futura");
         }
         LocalDateTime fechaHora = fecha.isEqual(LocalDate.now()) ? LocalDateTime.now() : fecha.atStartOfDay();
+
+        // C17: el mes de la fecha de afectación (o de la fecha, si no viene) tiene que estar abierto para
+        // cartera y para contabilidad. Antes de calcular y de grabar el evento.
+        estadoCierreService.validarMovimientoCartera(solicitud.getIdEmpresa(),
+                solicitud.getFechaAfectacion() != null ? solicitud.getFechaAfectacion() : fecha,
+                "abonos a capital");
 
         double valor = redondear(solicitud.getValor() != null ? solicitud.getValor() : 0.0);
 

@@ -102,6 +102,10 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 	@PersistenceContext
 	private EntityManager em;
 
+	/** C17: anulación del asiento con la regla de período cerrado (reverso en período abierto). */
+	@jakarta.ejb.EJB
+	private com.saa.ejb.cnt.service.AsientoService asientoService;
+
 	@Override
 	public LiquidacionCompra selectById(Long id) throws Throwable {
 		System.out.println("Ingresa al selectById LiquidacionCompra con id: " + id);
@@ -2310,7 +2314,7 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 							asiento.setMotivoAnulacion(motivoFinal);
 							asiento.setFechaAnulacion(ahora);
 							asiento.setUsuarioAnulacion(usuarioAnulacion);
-							em.merge(asiento);
+							asientoService.anulaAsientoDeDocumento(asiento); // C17: período cerrado -> reverso en período abierto
 							resultado.put("asientoAnulado", asiento.getCodigo());
 							System.out.println("✓ Asiento del documento CXP anulado: " + asiento.getCodigo());
 						}

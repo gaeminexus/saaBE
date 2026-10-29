@@ -175,7 +175,8 @@ public class CobroCreditoRest {
     private Response respuestaErrorFechaAfectacion(Throwable e, String prefijo) {
         String mensaje = e.getMessage() != null ? e.getMessage() : "Error inesperado";
         String codigo = mensaje.contains(":") ? mensaje.substring(0, mensaje.indexOf(':')).trim() : "";
-        boolean esFechaAfectacion = codigo.startsWith("FECHA_AFECTACION_") || "PERIODO_CERRADO".equals(codigo);
+        boolean esFechaAfectacion = codigo.startsWith("FECHA_AFECTACION_") || "PERIODO_CERRADO".equals(codigo)
+                || "CARTERA_CERRADA".equals(codigo);
         int status = esFechaAfectacion ? Response.Status.BAD_REQUEST.getStatusCode()
                 : Response.Status.INTERNAL_SERVER_ERROR.getStatusCode();
         return Response.status(status).entity(prefijo + mensaje).type(MediaType.APPLICATION_JSON).build();

@@ -21,6 +21,7 @@ import jakarta.persistence.Table;
 
 @SuppressWarnings("serial")
 @Entity
+@jakarta.persistence.EntityListeners(CierrePeriodoListener.class)
 @Table(name = "ASNT", schema = "CNT")
 @SequenceGenerator(name = "SQ_ASNTCDGO", sequenceName = "CNT.SQ_ASNTCDGO", allocationSize = 1)
 @NamedQueries({

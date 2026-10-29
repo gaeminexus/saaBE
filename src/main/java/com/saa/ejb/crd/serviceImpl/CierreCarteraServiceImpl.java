@@ -90,6 +90,13 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
     @EJB
     private CierreCarteraDaoService cierreCarteraDaoService;
 
+    /** C17: estado de cierre y reglas de orden / bitácora de cierres (CIERRES-BLOQUEANTES.md). */
+    @EJB
+    private com.saa.ejb.cnt.service.EstadoCierreService estadoCierreService;
+
+    @EJB
+    private com.saa.ejb.cnt.service.CierrePeriodoContableService cierrePeriodoContableService;
+
     /** C15: cartera por operación al corte (provisión de cartera ⑧, D-015). */
     @EJB
     private com.saa.ejb.crd.service.CarteraAlCorteService carteraAlCorteService;
@@ -212,6 +219,18 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
                     + ". Reverse esa corrida antes de volver a ejecutar el cierre.");
         }
 
+        // C17 (CIERRES-BLOQUEANTES.md): orden de cierre de cartera y períodos contables abiertos para los
+        // asientos del cierre (corte = último día del mes) y de la apertura (primer día del mes siguiente).
+        // Antes de calcular y de grabar nada.
+        boolean fueraDeOrden = cierrePeriodoContableService.validarOrdenCierre(
+                com.saa.model.cnt.HistorialCierrePeriodo.TIPO_CARTERA, solicitud.getIdEmpresa(),
+                solicitud.getAnio(), solicitud.getMes(), Boolean.TRUE.equals(solicitud.getArranque()));
+        LocalDate corteC17 = ultimoDiaDelMes(solicitud.getAnio(), solicitud.getMes());
+        estadoCierreService.validarContableAbierto(solicitud.getIdEmpresa(), corteC17,
+                "los asientos del cierre de cartera de " + periodo(solicitud));
+        estadoCierreService.validarContableAbierto(solicitud.getIdEmpresa(), corteC17.plusDays(1),
+                "los asientos de apertura del cierre de cartera de " + periodo(solicitud));
+
         CierreCartera calculo = calcula(solicitud);
 
         // Control de archivo Petro (D13). Aqui SI corta: previsualizar deja ver el estado,
@@ -269,6 +288,12 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
         corrida.setFechaModificacion(LocalDateTime.now());
         corridaCierreCarteraDaoService.save(corrida, corrida.getCodigo());
 
+        // C17: desde aquí el mes queda CERRADO PARA CARTERA (corrida EJECUTADA vigente). Bitácora.
+        cierrePeriodoContableService.registrarBitacora(com.saa.model.cnt.HistorialCierrePeriodo.TIPO_CARTERA,
+                com.saa.model.cnt.HistorialCierrePeriodo.ACCION_CIERRE, solicitud.getIdEmpresa(),
+                solicitud.getAnio(), solicitud.getMes(), solicitud.getUsuario(), solicitud.getIp(),
+                solicitud.getObservacion(), null, corrida.getCodigo(), fueraDeOrden);
+
         calculo.setIdCorrida(corrida.getCodigo());
         calculo.setIdEstado(corrida.getIdEstado());
         calculo.setNombreEstado(nombreEstado(corrida.getIdEstado()));
@@ -320,6 +345,25 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
                     + ": solo se puede reversar una corrida EJECUTADA.");
         }
 
+        // C17 (CIERRES-BLOQUEANTES.md §5): reversar la corrida EJECUTADA es REABRIR la cartera del mes.
+        // Motivo obligatorio; contabilidad del mes y del siguiente (donde viven los asientos de apertura)
+        // abierta; solo el último mes cerrado para cartera (cascada), salvo el parámetro de re-proceso.
+        if (motivo == null || motivo.trim().isEmpty()) {
+            throw new IncomeException("El motivo es obligatorio: reversar la corrida " + idCorrida
+                    + " reabre la cartera del mes y queda en la bitácora (CNT.HCPR).");
+        }
+        Long idEmpresaC17 = corrida.getEmpresa() != null ? corrida.getEmpresa().getCodigo() : null;
+        LocalDate corteC17 = ultimoDiaDelMes(corrida.getAnio(), corrida.getMes());
+        if (estadoCierreService.contableCerrado(idEmpresaC17, corteC17)
+                || estadoCierreService.contableCerrado(idEmpresaC17, corteC17.plusDays(1))) {
+            throw new IncomeException("PERIODO_CERRADO: no se puede reabrir la cartera de " + corrida.getAnio() + "-"
+                    + dosDigitos(corrida.getMes()) + " con el período contable de ese mes o del siguiente cerrado"
+                    + " (ahí están los asientos del cierre y de la apertura). Reabra primero la contabilidad"
+                    + " (POST /prdo/reabrir), en cascada desde el último mes cerrado.");
+        }
+        boolean fueraDeOrdenC17 = cierrePeriodoContableService.validarOrdenReapertura(
+                com.saa.model.cnt.HistorialCierrePeriodo.TIPO_CARTERA, idEmpresaC17, corrida.getAnio(), corrida.getMes());
+
         LocalDateTime ahora = LocalDateTime.now();
         List<AsientoCierreCartera> asientos =
                 asientoCierreCarteraDaoService.selectGeneradosByCorrida(idCorrida);
@@ -358,7 +402,30 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
         corrida.setFechaModificacion(ahora);
         corridaCierreCarteraDaoService.save(corrida, corrida.getCodigo());
 
+        cierrePeriodoContableService.registrarBitacora(com.saa.model.cnt.HistorialCierrePeriodo.TIPO_CARTERA,
+                com.saa.model.cnt.HistorialCierrePeriodo.ACCION_REAPERTURA, idEmpresaC17, corrida.getAnio(),
+                corrida.getMes(), usuario, ip, motivo, null, idCorrida, fueraDeOrdenC17);
+
         return armaDesdeGrabado(corrida);
+    }
+
+    @Override
+    @TransactionAttribute(TransactionAttributeType.REQUIRED)
+    public CierreCartera reabrir(Long idEmpresa, Long anio, Long mes, String usuario, String ip, String motivo)
+            throws Throwable {
+        System.out.println("Ingresa al metodo (reabrir) CierreCarteraService - empresa: " + idEmpresa
+                + " periodo: " + anio + "-" + mes);
+        if (idEmpresa == null) {
+            throw new IncomeException("La empresa es obligatoria");
+        }
+        validaPeriodo(anio, mes);
+        CorridaCierreCartera corrida = corridaCierreCarteraDaoService.selectVivaByPeriodo(idEmpresa, anio, mes);
+        if (corrida == null || corrida.getIdEstado() == null
+                || corrida.getIdEstado().longValue() != EstadoCorridaCierreCartera.EJECUTADA) {
+            throw new IncomeException("El mes " + anio + "-" + dosDigitos(mes) + " no está cerrado para cartera"
+                    + " (no tiene una corrida EJECUTADA vigente): no hay nada que reabrir.");
+        }
+        return reversar(corrida.getCodigo(), usuario, ip, motivo);
     }
 
     @Override

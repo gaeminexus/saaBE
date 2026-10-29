@@ -92,6 +92,10 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
     @PersistenceContext
     private EntityManager em;
 
+    /** C17: anulación del asiento con la regla de período cerrado (reverso en período abierto). */
+    @jakarta.ejb.EJB
+    private com.saa.ejb.cnt.service.AsientoService asientoService;
+
     @EJB private CargaArchivoTxtDaoService   cargaArchivoTxtDaoService;
     @EJB private DetalleCargaTxtDaoService   detalleCargaTxtDaoService;
     @EJB private DocumentoCxpDaoService      documentoCxpDaoService;
@@ -4001,12 +4005,16 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
             }
             if (asiento != null) {
                 asiento.setEstado((long) com.saa.rubros.EstadoAsiento.ANULADO);
-                em.merge(asiento);
+                asientoService.anulaAsientoDeDocumento(asiento); // C17: período cerrado -> reverso en período abierto
                 System.out.println("✓ Asiento " + asiento.getNumeroAlterno() + " anulado por reversión del documento " + tipo + " id=" + idDocBD);
             } else {
                 System.out.println("ℹ Documento " + tipo + " id=" + idDocBD + " no tiene asiento vinculado, nada que anular.");
             }
-        } catch (Exception e) {
+        } catch (com.saa.basico.util.IncomeException e) {
+            // C17: una regla de negocio (p.ej. no hay período abierto para el reverso) marca la transacción
+            // para rollback; tragarla dejaría un error confuso al confirmar. Se propaga tal cual.
+            throw e;
+        } catch (Throwable e) {
             System.err.println("⚠ No se pudo anular el asiento del documento " + tipo + " id=" + idDocBD + ": " + e.getMessage());
         }
     }

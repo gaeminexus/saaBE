@@ -100,6 +100,10 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
     @EJB
     private PeriodoNominaDaoService periodoNominaDaoService;
 
+    /** C17: mes cerrado para cartera / contabilidad (CIERRES-BLOQUEANTES.md). */
+    @jakarta.ejb.EJB
+    private com.saa.ejb.cnt.service.EstadoCierreService estadoCierreService;
+
     @EJB
     private NominaDaoService nominaDaoService;
 
@@ -222,6 +226,9 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
             return null;
         }
 
+        // C17: validación temprana del cierre contable (la barrera central de AsientoService lo repite).
+        estadoCierreService.validarContableAbierto(periodo.getEmpresa().getCodigo(), fechaContable(periodo),
+                "el asiento del rol de pagos");
         ConfiguracionNomina configuracion = recuperaConfiguracion(periodo);
         Map<Integer, Double> importes = importesDelRol(periodo);
 
@@ -285,6 +292,9 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
             return null;
         }
 
+        // C17: validación temprana del cierre contable.
+        estadoCierreService.validarContableAbierto(periodo.getEmpresa().getCodigo(), fechaContable(periodo),
+                "el asiento de provisiones de nómina");
         Map<Integer, Double> importes = importesDeProvisiones(periodo);
         if (importes.isEmpty()) {
             // Un asiento sin lineas no aporta nada y ademas no cuadraria. Es un caso real:
@@ -395,6 +405,12 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
         if (asiento == null || asiento.getPeriodo() == null) {
             return;
         }
+        // C17: período con cierre contable. Descontabilizar un rol es para volver a contabilizarlo en el MISMO
+        // período, cosa que un período cerrado no admite: se exige reabrirlo (CIERRES-BLOQUEANTES.md §4).
+        if (com.saa.model.cnt.CierrePeriodoListener.contableCerrado(asiento.getPeriodo())) {
+            throw new IncomeException(com.saa.model.cnt.CierrePeriodoListener.mensaje(asiento.getPeriodo(),
+                    "descontabilizar el asiento de " + etiqueta + " (" + idAsiento + ")"));
+        }
         Long estadoPeriodoContable = asiento.getPeriodo().getEstado();
         if (Long.valueOf(EstadoPeriodos.MAYORIZADO).equals(estadoPeriodoContable)
                 || Long.valueOf(EstadoPeriodos.CERRADO).equals(estadoPeriodoContable)) {
@@ -446,6 +462,9 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
                     + " se registra la acreditacion sin asiento.");
             return null;
         }
+        // C17: validación temprana del cierre contable de la fecha de acreditación.
+        estadoCierreService.validarContableAbierto(periodo.getEmpresa().getCodigo(), fecha,
+                "el asiento del pago de nómina");
 
         ConfiguracionNomina configuracion = recuperaConfiguracion(periodo);
         Long idPlantilla = resuelvePlantilla(configuracion.getPlantillaPago(), "pago",

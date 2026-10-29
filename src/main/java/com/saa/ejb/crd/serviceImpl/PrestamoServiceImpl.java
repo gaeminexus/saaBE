@@ -60,6 +60,10 @@ public class PrestamoServiceImpl implements PrestamoService {
     @EJB
     private PrestamoDaoService prestamoDaoService;
 
+    /** C17: mes cerrado para cartera / contabilidad (CIERRES-BLOQUEANTES.md). */
+    @jakarta.ejb.EJB
+    private com.saa.ejb.cnt.service.EstadoCierreService estadoCierreService;
+
     @EJB
     private DetallePrestamoDaoService detallePrestamoDaoService;
 
@@ -394,6 +398,10 @@ public class PrestamoServiceImpl implements PrestamoService {
             throw new IncomeException("FECHA_CONTABLE_FUTURA: la fecha contable " + fechaOrdenPago
                 + " del desembolso del préstamo " + idPrestamo + " es futura.");
         }
+        // C17: desembolso / entrega / sustitución (novación, reestructuración): la orden de pago se fecha con
+        // fechaOrdenPago; su mes tiene que estar abierto para cartera y contabilidad.
+        estadoCierreService.validarMovimientoCartera(idEmpresa, fechaOrdenPago,
+                "desembolsos, novaciones ni reestructuraciones (préstamo " + idPrestamo + ")");
 
         Prestamo prestamo = prestamoDaoService.selectById(idPrestamo, NombreEntidadesCredito.PRESTAMO);
         if (prestamo == null) {
@@ -600,6 +608,9 @@ public class PrestamoServiceImpl implements PrestamoService {
         if (fechaContable.isAfter(LocalDate.now())) {
             throw new IncomeException("FECHA_CONTABLE_FUTURA: " + fechaContable);
         }
+        // C17: mes de la fecha contable abierto para cartera y contabilidad.
+        estadoCierreService.validarMovimientoCartera(idEmpresa, fechaContable,
+                "la contabilización del desembolso histórico del préstamo " + idPrestamo);
         Prestamo prestamo = prestamoDaoService.selectById(idPrestamo, NombreEntidadesCredito.PRESTAMO);
         if (prestamo == null) {
             throw new IncomeException("Préstamo con ID " + idPrestamo + " no encontrado");
@@ -1065,6 +1076,13 @@ public class PrestamoServiceImpl implements PrestamoService {
         if (motivoNoAnulable != null) {
             throw new IncomeException(motivoNoAnulable);
         }
+        // C17: la anulación se registra hoy (reverso del asiento de entrega): el mes de hoy tiene que estar
+        // abierto para cartera; y si el desembolso es de un mes ya cerrado para cartera, su contabilidad
+        // también tiene que estar cerrada (si no, reabrir la cartera de ese mes).
+        estadoCierreService.validarMovimientoCartera(idEmpresa, LocalDate.now(), "la anulación del préstamo " + idPrestamo);
+        estadoCierreService.validarAnulacionCartera(idEmpresa,
+                prestamo.getFechaInicio() != null ? prestamo.getFechaInicio().toLocalDate() : null,
+                "la anulación del préstamo " + idPrestamo);
 
         // AN3: la orden de desembolso. Si CXP no deja, su texto sale tal cual y no se toca nada.
         if (prestamo.getIdPagoProgramado() != null

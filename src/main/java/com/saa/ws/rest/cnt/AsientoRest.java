@@ -118,6 +118,38 @@ public class AsientoRest {
         }
     }
     
+    /**
+     * C17 — Anula un asiento con la regla de cierre (docs/logica-negocio/cnt/CIERRES-BLOQUEANTES.md §4).
+     * Período abierto y sin fecha: anula. Período CERRADO: genera el reverso en {@code fechaReverso}
+     * (yyyy-MM-dd, tiene que caer en un período abierto) o, si no viene, en el primer período abierto
+     * posterior; el original queda REVERSADO y enlazado. Devuelve el asiento original.
+     *
+     * POST /asnt/anular/{idAsiento}?usuario=...&motivo=...&fechaReverso=2025-07-01
+     */
+    @POST
+    @Produces(MediaType.APPLICATION_JSON)
+    @Path("/anular/{idAsiento}")
+    public Response anular(@PathParam("idAsiento") Long idAsiento,
+            @jakarta.ws.rs.QueryParam("usuario") String usuario,
+            @jakarta.ws.rs.QueryParam("motivo") String motivo,
+            @jakarta.ws.rs.QueryParam("fechaReverso") String fechaReverso) {
+        try {
+            if (motivo == null || motivo.trim().isEmpty()) {
+                return Response.status(Response.Status.BAD_REQUEST).entity("El motivo de la anulación es obligatorio.")
+                        .type(MediaType.APPLICATION_JSON).build();
+            }
+            java.time.LocalDate fecha = fechaReverso != null && !fechaReverso.trim().isEmpty()
+                    ? java.time.LocalDate.parse(fechaReverso.trim()) : null;
+            return Response.status(Response.Status.OK)
+                    .entity(asientoService.anulaAsiento(idAsiento, usuario, motivo, fecha))
+                    .type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            String m = e.getMessage() != null ? e.getMessage() : "Error inesperado";
+            Response.Status st = m.startsWith("PERIODO_CERRADO") ? Response.Status.BAD_REQUEST : Response.Status.INTERNAL_SERVER_ERROR;
+            return Response.status(st).entity("Error al anular el asiento: " + m).type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
     @GET
     @Produces(MediaType.APPLICATION_JSON)
     @Path("/generaCopia/{idAsiento}")
