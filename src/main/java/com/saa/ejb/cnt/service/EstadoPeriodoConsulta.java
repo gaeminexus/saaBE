@@ -7,10 +7,8 @@ import jakarta.ejb.Local;
  * (rama cuadre/c17-cierres-bloqueantes). Los estados financieros oficiales (C19) solo necesitan saber si el
  * periodo contable del corte esta CERRADO (leyenda DEFINITIVO) o no (PRELIMINAR).
  *
- * <p>Contrato esperado de C17: dado empresa, anio y mes, el estado del periodo contable. Mientras C17 no este
- * en main, la implementacion {@code EstadoPeriodoConsultaImpl} lee CNT.PRDO (PRDOESTD = 4 CERRADO). Al integrar
- * C17 se cambia SOLO el cuerpo de esa implementacion para delegar en el servicio de C17; nada mas depende de
- * como se calcule.
+ * <p>La implementacion {@code EstadoPeriodoConsultaImpl} delega en {@code EstadoCierreService.estadoPeriodo} de
+ * C17: cerrado = cierre contable marcado (CNT.PRDO.PRDOCNCR = 1).
  */
 @Local
 public interface EstadoPeriodoConsulta {

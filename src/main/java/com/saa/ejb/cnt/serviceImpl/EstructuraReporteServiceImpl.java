@@ -42,6 +42,9 @@ public class EstructuraReporteServiceImpl implements EstructuraReporteService {
 	@PersistenceContext
 	private EntityManager em;
 
+	@jakarta.ejb.EJB
+	private com.saa.ejb.cnt.service.EstadoCierreService estadoCierreService;
+
 	@Override
 	public ResultadoEstructura generar(SolicitudEstructura s) throws Throwable {
 		if (s == null || s.getEmpresa() == null || s.getFechaCorte() == null) {
@@ -52,6 +55,15 @@ public class EstructuraReporteServiceImpl implements EstructuraReporteService {
 		LocalDate inicio = s.getFechaInicio() != null ? s.getFechaInicio() : corte.withDayOfMonth(1);
 		if (inicio.isAfter(corte)) {
 			throw new IncomeException("La fecha de inicio no puede ser mayor a la fecha de corte");
+		}
+		boolean presentable = def.getFormatoArchivo() != null
+				&& def.getFormatoArchivo() == DefinicionEstructura.FORMATO_SUPERINTENDENCIA;
+		boolean preliminar = Boolean.TRUE.equals(s.getPreliminar());
+		if (presentable && !preliminar) {
+			// C17: el B17 (y toda estructura que se presenta) exige el mes cerrado para cartera y contabilidad,
+			// con el mismo servicio y mensaje REPORTE_MES_NO_CERRADO que las G
+			estadoCierreService.validarReporteFinanciero(s.getEmpresa(), (long) corte.getYear(),
+					(long) corte.getMonthValue(), def.getCodigoEstructura());
 		}
 		List<RenglonEstructura> renglones = renglones(def.getCodigoReporte(), corte);
 		if (renglones.isEmpty()) {
@@ -67,8 +79,11 @@ public class EstructuraReporteServiceImpl implements EstructuraReporteService {
 		}
 		ResultadoEstructura r = CalculadorEstructura.calcular(def, renglones, reglas, saldos, comparar, inicio, corte,
 				fechaComparacion);
-		if (def.getFormatoArchivo() != null && def.getFormatoArchivo() == DefinicionEstructura.FORMATO_SUPERINTENDENCIA) {
-			r.setNombreArchivo(ArchivoEstructura.nombre(def, corte));
+		r.setPreliminar(preliminar);
+		if (presentable) {
+			String nombre = ArchivoEstructura.nombre(def, corte);
+			// preliminar: el contenido es el mismo, el nombre lo delata (B17M396830062025_PRELIMINAR.txt)
+			r.setNombreArchivo(preliminar ? nombre.replace(".txt", "_PRELIMINAR.txt") : nombre);
 			r.setContenidoArchivo(ArchivoEstructura.contenido(def, corte, r));
 		}
 		return r;

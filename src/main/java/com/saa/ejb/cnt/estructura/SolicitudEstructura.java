@@ -22,6 +22,15 @@ public class SolicitudEstructura implements Serializable {
 	private LocalDate fechaComparacion;
 	/** Inicio del periodo de comparacion (opcional; por defecto el mismo tipo de periodo que el principal). */
 	private LocalDate fechaInicioComparacion;
+	/**
+	 * true = generar aunque el mes no este cerrado (re-proceso): el resultado sale marcado PRELIMINAR y el archivo
+	 * con sufijo _PRELIMINAR (no es presentable: no tendra .ACU). false/null = exige el mes cerrado para cartera y
+	 * contabilidad (C17, REPORTE_MES_NO_CERRADO) en las estructuras que generan archivo para la Superintendencia.
+	 */
+	private Boolean preliminar;
+
+	public Boolean getPreliminar() { return preliminar; }
+	public void setPreliminar(Boolean preliminar) { this.preliminar = preliminar; }
 
 	public LocalDate getFechaInicioComparacion() { return fechaInicioComparacion; }
 	public void setFechaInicioComparacion(LocalDate fechaInicioComparacion) { this.fechaInicioComparacion = fechaInicioComparacion; }

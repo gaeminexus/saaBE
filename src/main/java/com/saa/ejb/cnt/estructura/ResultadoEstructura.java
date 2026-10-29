@@ -25,6 +25,11 @@ public class ResultadoEstructura implements Serializable {
 	private String nombreArchivo;
 	/** Contenido del archivo tal como se presenta (TAB, CRLF, sin salto final). */
 	private String contenidoArchivo;
+	/** true si se genero sin el mes cerrado (solicitud con preliminar = true): no presentable. */
+	private boolean preliminar;
+
+	public boolean isPreliminar() { return preliminar; }
+	public void setPreliminar(boolean preliminar) { this.preliminar = preliminar; }
 
 	public String getCodigoEstructura() { return codigoEstructura; }
 	public void setCodigoEstructura(String codigoEstructura) { this.codigoEstructura = codigoEstructura; }
