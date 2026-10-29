@@ -13,6 +13,8 @@ import com.saa.ejb.cnt.dao.AsientoDaoService;
 import com.saa.ejb.cnt.dao.DetalleAsientoDaoService;
 import com.saa.ejb.cnt.service.AsientoService;
 import com.saa.ejb.cnt.service.DetalleAsientoService;
+import com.saa.ejb.cnt.service.EstadoCierreService;
+import com.saa.model.cnt.CierrePeriodoListener;
 import com.saa.ejb.cnt.service.PeriodoService;
 import com.saa.ejb.cnt.service.TipoAsientoService;
 import com.saa.model.cnt.Asiento;
@@ -62,7 +64,21 @@ public class AsientoServiceImpl implements AsientoService {
 	
 	@EJB
 	private DetalleRubroService detalleRubroService;
-	
+
+	/** C17: estado de cierre (contable / cartera) y fecha del reverso en período abierto. */
+	@EJB
+	private EstadoCierreService estadoCierreService;
+
+	/**
+	 * C17 — Barrera central: ningún asiento se crea ni se modifica en un período contable CERRADO.
+	 * docs/logica-negocio/cnt/CIERRES-BLOQUEANTES.md §3.
+	 */
+	private void exigePeriodoAbierto(Periodo periodo, String operacion) {
+		if (CierrePeriodoListener.contableCerrado(periodo)) {
+			throw new IncomeException(CierrePeriodoListener.mensaje(periodo, operacion));
+		}
+	}
+
 	/* (non-Javadoc)
 	 * @see com.compuseg.income.contabilidad.ejb.service.AsientoService#selectById(java.lang.Long)
 	 */
@@ -421,6 +437,9 @@ public class AsientoServiceImpl implements AsientoService {
 		Long estadoPeriodo = asiento.getPeriodo().getEstado();
 		Long estadoAsiento = asiento.getEstado(); 
 		if(proceso == ProcesosAsiento.ANULAR){
+			// C17: un asiento de un período CERRADO nunca se anula: se reversa en un período abierto
+			// (anulaAsiento ya desvía a ese camino; esto cubre a quien llame directo).
+			exigePeriodoAbierto(asiento.getPeriodo(), "anular asientos (se reversan en un período abierto)");
 			if(estadoPeriodo.intValue() == EstadoPeriodos.MAYORIZADO){
 				throw new IncomeException("NO SE PUEDE REALIZAR EL PROCESO PORQUE EL PERIODO ESTA MAYORIZADO");	
 			}
@@ -496,6 +515,9 @@ public class AsientoServiceImpl implements AsientoService {
 					+ "; no se puede reversar contra un período mayorizado o cerrado. Desmayorice"
 					+ " o reabra el período antes de reversar el asiento " + asientoOriginal.getNumero() + ".");
 		}
+		// C17: período con cierre contable (bandera PRDOCNCR, el estado sigue MAYORIZADO).
+		exigePeriodoAbierto(periodo, "el reverso del asiento " + asientoOriginal.getNumero()
+				+ " con fecha " + fechaReverso + " (elija una fecha de un período abierto)");
 		asientoReversion.setPeriodo(periodo);
 		asientoReversion.setNombreUsuario(asientoOriginal.getNombreUsuario());
 		asientoReversion.setMoneda(asientoOriginal.getMoneda());
@@ -599,17 +621,43 @@ public class AsientoServiceImpl implements AsientoService {
 	 * @see com.compuseg.income.contabilidad.ejb.service.AsientoService#anulaAsiento(java.lang.Long, java.lang.String, java.lang.String)
 	 */
 	public void anulaAsiento(Long idAsiento, String usuario, String motivo) throws Throwable {
+		anulaAsiento(idAsiento, usuario, motivo, null);
+	}
+
+	/* (non-Javadoc)
+	 * @see com.saa.ejb.cnt.service.AsientoService#anulaAsiento(java.lang.Long, java.lang.String, java.lang.String, java.time.LocalDate)
+	 */
+	public Asiento anulaAsiento(Long idAsiento, String usuario, String motivo, LocalDate fechaReverso) throws Throwable {
 		System.out.println("Ingresa al Metodo anulaAsiento con idAsiento : " + idAsiento
-				+ ", usuario : " + usuario + ", motivo : " + motivo);
+				+ ", usuario : " + usuario + ", motivo : " + motivo + ", fechaReverso : " + fechaReverso);
 		//Verificar si se va a anular o reversar el asiento
 		boolean permiteProceso = true;
 		Asiento asiento = asientoDaoService.selectById(idAsiento, NombreEntidadesContabilidad.ASIENTO);
+		if (CierrePeriodoListener.contableCerrado(asiento.getPeriodo())) {
+			// C17 (CIERRES-BLOQUEANTES.md §4): período CERRADO. No se anula ni se borra el original: se genera
+			// un asiento de reverso en el primer período abierto (o en la fecha que indique el usuario, que
+			// tiene que caer en un período abierto), enlazado en los dos sentidos por ASNTASRV. El original
+			// queda REVERSADO con el rastro de quién y por qué. Todas las anulaciones de módulo que pasan por
+			// aquí (cobros, pagos, CxP, CxC, tesorería, nómina, cierre de cartera, re-proceso Petro) heredan
+			// la regla sin cambio en su código.
+			LocalDate fecha = fechaReverso != null ? fechaReverso
+					: estadoCierreService.fechaReversoEnPeriodoAbierto(asiento.getEmpresa().getCodigo(), asiento.getFechaAsiento());
+			marcaAuditoriaAnulacion(asiento, usuario, motivo);
+			asientoDaoService.save(asiento, asiento.getCodigo());
+			return reversionAsiento(idAsiento, fecha);
+		}
+		if (fechaReverso != null) {
+			// Fecha explícita con período abierto: el usuario pide reverso, no anulación.
+			marcaAuditoriaAnulacion(asiento, usuario, motivo);
+			asientoDaoService.save(asiento, asiento.getCodigo());
+			return reversionAsiento(idAsiento, fechaReverso);
+		}
 		if(Long.valueOf(EstadoPeriodos.MAYORIZADO).equals(asiento.getPeriodo().getEstado())){
 			// El periodo esta mayorizado: no se anula, se reversa. El rastro se deja igual
 			// en el asiento original, que es el que queda marcado como REVERSADO.
 			marcaAuditoriaAnulacion(asiento, usuario, motivo);
 			asientoDaoService.save(asiento, asiento.getCodigo());
-			reversionAsiento(idAsiento);
+			return reversionAsiento(idAsiento);
 		}else{
 			permiteProceso = verificaAnulacionReversion(asiento, ProcesosAsiento.ANULAR);
 			if(permiteProceso == true){
@@ -618,6 +666,7 @@ public class AsientoServiceImpl implements AsientoService {
 				asientoDaoService.save(asiento, asiento.getCodigo());
 			}
 		}
+		return asiento;
 	}
 
 	/**
@@ -718,6 +767,13 @@ public class AsientoServiceImpl implements AsientoService {
 		boolean permiteProceso = false;
 		
 		// Si el asiento ya existe, verificar si cambió la fechaAsiento
+		// C17: un asiento que YA está en un período cerrado no se edita (ni se mueve a otro período).
+		if (asiento.getCodigo() != null) {
+			Asiento enBase = asientoDaoService.find(new Asiento(), asiento.getCodigo());
+			if (enBase != null) {
+				exigePeriodoAbierto(enBase.getPeriodo(), "cambios en el asiento " + enBase.getNumeroAlterno());
+			}
+		}
 		if (asiento.getCodigo() != null && asiento.getFechaAsiento() != null) {
 			Asiento asientoExistente = asientoDaoService.selectById(asiento.getCodigo(), NombreEntidadesContabilidad.ASIENTO);
 			if (asientoExistente != null && asientoExistente.getFechaAsiento() != null) {
@@ -827,11 +883,8 @@ public class AsientoServiceImpl implements AsientoService {
 		// Valida que exista periodo contable primero
 		Periodo periodo = periodoService.recuperaByMesAnioEmpresa(asiento.getEmpresa().getCodigo(), asiento.getNumeroMes(), asiento.getNumeroAnio());
 		if (periodo != null) {
-			// valida el estado del periodo
-			if (Long.valueOf(EstadoPeriodos.CERRADO).equals(periodo.getEstado())) {
-				permite = false;
-				throw new IncomeException("NO SE PUEDE GUARDAR EL ASIENTO PORQUE EL PERIODO ESTA CERRADO");
-			}
+			// valida el estado del periodo: estado legado CERRADO (4) o cierre contable C17 (PRDOCNCR = 1)
+			exigePeriodoAbierto(periodo, "asientos nuevos ni cambios en asientos");
 		}
 		return permite;
 	}

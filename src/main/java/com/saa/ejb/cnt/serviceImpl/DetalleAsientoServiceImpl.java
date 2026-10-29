@@ -33,8 +33,34 @@ public class DetalleAsientoServiceImpl implements DetalleAsientoService{
 
 	
 	@EJB
-	private DetalleAsientoDaoService detalleAsientoDaoService;	
-	
+	private DetalleAsientoDaoService detalleAsientoDaoService;
+
+	@jakarta.persistence.PersistenceContext
+	private jakarta.persistence.EntityManager em;
+
+	/**
+	 * C17 — Una línea (nueva, editada o eliminada) de un asiento de un período CERRADO no pasa. Lee el asiento
+	 * y la línea de la base: el REST manda stubs sin período cargado, que el listener JPA no puede juzgar.
+	 */
+	private void exigePeriodoAbierto(DetalleAsiento detalle, Long idDetalle) {
+		Asiento asiento = null;
+		if (detalle != null && detalle.getAsiento() != null && detalle.getAsiento().getCodigo() != null) {
+			asiento = em.find(Asiento.class, detalle.getAsiento().getCodigo());
+		}
+		Long id = idDetalle != null ? idDetalle : (detalle != null ? detalle.getCodigo() : null);
+		if (id != null) {
+			DetalleAsiento enBase = em.find(DetalleAsiento.class, id);
+			if (enBase != null && enBase.getAsiento() != null
+					&& com.saa.model.cnt.CierrePeriodoListener.contableCerrado(enBase.getAsiento().getPeriodo())) {
+				asiento = enBase.getAsiento();
+			}
+		}
+		if (asiento != null && com.saa.model.cnt.CierrePeriodoListener.contableCerrado(asiento.getPeriodo())) {
+			throw new IncomeException(com.saa.model.cnt.CierrePeriodoListener.mensaje(asiento.getPeriodo(),
+					"cambios en las líneas del asiento " + asiento.getNumeroAlterno()));
+		}
+	}
+
 	@EJB
 	private DetalleMayorizacionService detalleMayorizacionService;	
 	
@@ -56,7 +82,8 @@ public class DetalleAsientoServiceImpl implements DetalleAsientoService{
 		DetalleAsiento detalleAsiento = new DetalleAsiento();
 		//ELIMINA UNO A UNO LOS REGISTROS DEL ARREGLO
 		for (Long registro : id) {
-			detalleAsientoDaoService.remove(detalleAsiento, registro);	
+			exigePeriodoAbierto(null, registro);
+			detalleAsientoDaoService.remove(detalleAsiento, registro);
 		}		
 	}	
 	
@@ -66,8 +93,10 @@ public class DetalleAsientoServiceImpl implements DetalleAsientoService{
 	public void save(List<DetalleAsiento> lista) throws Throwable {
 		System.out.println("Ingresa al metodo save de detalleAsiento service");
 		// BARRIDA COMPLETA DE LOS REGISTROS
-		for (DetalleAsiento detalleAsiento : lista) 		
+		for (DetalleAsiento detalleAsiento : lista) {
+			exigePeriodoAbierto(detalleAsiento, null);
 			detalleAsientoDaoService.save(detalleAsiento, detalleAsiento.getCodigo());
+		}
 		
 	}	
 	
@@ -567,7 +596,8 @@ public class DetalleAsientoServiceImpl implements DetalleAsientoService{
 	@Override
 	public DetalleAsiento saveSingle(DetalleAsiento detalleAsiento) throws Throwable {
 		System.out.println("saveSingle - DetalleAsiento");
-		detalleAsiento = detalleAsientoDaoService.save(detalleAsiento, detalleAsiento.getCodigo());
+		exigePeriodoAbierto(detalleAsiento, null);
+		detalleAsiento =detalleAsientoDaoService.save(detalleAsiento, detalleAsiento.getCodigo());
 		return detalleAsiento;
 	}
 

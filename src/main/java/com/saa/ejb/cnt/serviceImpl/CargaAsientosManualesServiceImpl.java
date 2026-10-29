@@ -659,6 +659,11 @@ public class CargaAsientosManualesServiceImpl implements CargaAsientosManualesSe
                     + idEmpresa + " (CNT.PRDO). Cree el periodo antes de cargar.";
         }
         Periodo periodo = periodos.get(0);
+        // C17: cierre contable (PRDOCNCR) antes que mayorizado, porque un período cerrado también está mayorizado
+        // y el remedio es otro (reabrir, no desmayorizar).
+        if (com.saa.model.cnt.CierrePeriodoListener.contableCerrado(periodo)) {
+            return com.saa.model.cnt.CierrePeriodoListener.mensaje(periodo, "asientos manuales del cargador");
+        }
         if (Long.valueOf(EstadoPeriodos.MAYORIZADO).equals(periodo.getEstado())) {
             return "el periodo " + mes.getMonthValue() + "/" + mes.getYear() + " esta MAYORIZADO: desmayorice antes de "
                     + "cargar asientos en ese mes.";

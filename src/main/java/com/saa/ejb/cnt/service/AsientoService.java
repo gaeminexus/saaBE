@@ -279,6 +279,18 @@ public interface AsientoService extends EntityService<Asiento> {
 	 * @throws Throwable: Excepcion
 	 */
 	 void anulaAsiento(Long idAsiento, String usuario, String motivo) throws Throwable;
+
+	/**
+	 * C17 — Anulación con fecha de reverso opcional (docs/logica-negocio/cnt/CIERRES-BLOQUEANTES.md §4).
+	 * <ul>
+	 * <li>Período del asiento CERRADO: no se anula; se reversa en {@code fechaReverso} (que tiene que caer en un
+	 * período abierto) o, si es nula, en el primer período abierto posterior.</li>
+	 * <li>Período abierto y {@code fechaReverso} informada: reversa en esa fecha.</li>
+	 * <li>Período abierto sin fecha: comportamiento de siempre (anula, o reversa hoy si está mayorizado).</li>
+	 * </ul>
+	 * Devuelve el asiento ORIGINAL; si se reversó queda REVERSADO con {@code idReversion} = asiento de reverso.
+	 */
+	 com.saa.model.cnt.Asiento anulaAsiento(Long idAsiento, String usuario, String motivo, java.time.LocalDate fechaReverso) throws Throwable;
 	
 	
 	/**
