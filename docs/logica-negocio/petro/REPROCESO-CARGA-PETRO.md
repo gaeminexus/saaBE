@@ -720,6 +720,26 @@ La respuesta trae `asientoComplementoApertura`, `montoComplementoApertura` y
 `detalleComplementoApertura`. Control: B.12 de
 [sql/reproceso-carga-352-controles.sql](sql/reproceso-carga-352-controles.sql).
 
+**Cuotas por préstamo (D-032, 29-oct-2026).** Medir las cuotas contra el saldo total de `1.4.05.10`
+no abría nada en junio (373.473,09 cobrados contra 3,4 millones abiertos), pero había préstamos que
+cobraron lo que la apertura no les abrió: cuotas que vencen después del mes, préstamos nuevos del mes,
+mora de junio pagada. Esa diferencia dejaba al ⑥ sin cuadrar (`crd/CIERRE-CARTERA-A-FECHA-DE-CORTE.md`
+§1.9). Cuando `ModoCorteCartera.neteoPorPrestamo` está activo para el mes de la carga (por defecto,
+los meses al corte), el lado cuotas del complemento se calcula **préstamo por préstamo**:
+
+- lo cobrado por préstamo = componentes de los pagos vigentes de la carga (capital, interés, mora,
+  desgravamen, seguro, interés vencido); lo que sobra del descontado a préstamos (excedentes D-010, §4.7)
+  es **no atribuible** y se abre entero, porque la apertura nunca lo abrió;
+- complemento = [Σ max(cobrado − abierto, 0) del mes, con los cobros CBCR/directos ya registrados
+  y esta carga, + lo no atribuible] − complemento de cuotas ya registrado en el mes. Lo abierto por
+  préstamo es la apertura ③ reconstruida con la lectura al corte del mes anterior.
+
+Como el cálculo cubre el mes completo, el reparto de la carga, que es el último cobro del mes,
+abre también lo que no abrieron los cobros registrados antes de D-032. **Junio 2025:** con la corrida 5 de la 352
+el complemento de cuotas es **9.101,37** (8.400,36 en 70 préstamos + 701,01 de excedentes). Va en el mismo asiento
+del sub-proceso 4, junto con el de aportes; la glosa de las líneas de cuotas empieza por
+`Complemento de apertura carga N cuotas por prestamo (D-032)`.
+
 ### 4.14 Pagos migrados que duplican la carga (D-025, 2026-10-28, solo modo reproceso)
 
 **Por qué:** en junio 2025 hay 90 pagos de préstamo migrados de Delta (`PGPRTPOO = 'MIGRACION'`,

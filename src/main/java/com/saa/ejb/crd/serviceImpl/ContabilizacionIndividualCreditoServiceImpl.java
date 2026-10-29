@@ -1143,9 +1143,80 @@ public class ContabilizacionIndividualCreditoServiceImpl implements Contabilizac
     // D-024 (28-oct-2026) — complemento de apertura
     // =====================================================================
 
+    /** D-032: ¿abrió algún ③ el mes {@code primeroDelMes}? (la última corrida EJECUTADA antes del mes lo abrió). */
+    @EJB
+    private com.saa.ejb.crd.dao.CorridaCierreCarteraDaoService corridaCierreCarteraDaoService;
+
     @Override
     public com.saa.ejb.crd.service.dto.ComplementoAperturaCobro complementoApertura(Long idEmpresa, LocalDate fecha,
             List<DetalleAsiento> lineasDelCobro, String referencia) throws Throwable {
+        return complementoApertura(idEmpresa, fecha, lineasDelCobro, referencia, null, 0.0, null);
+    }
+
+    @Override
+    public com.saa.ejb.crd.service.dto.PuentePrestamosMes puentePrestamosMes(Long idEmpresa, String cuenta,
+            LocalDate finMes, Long excluirCarga) throws Throwable {
+        com.saa.ejb.crd.service.dto.PuentePrestamosMes puente = new com.saa.ejb.crd.service.dto.PuentePrestamosMes();
+        LocalDate desde = finMes.withDayOfMonth(1);
+        LocalDate corteAnterior = desde.minusDays(1);
+        // Lo abierto existe solo si una corrida EJECUTADA abrió el mes (la que cerró M−1, fechaProceso = 1.º de M).
+        com.saa.model.crd.CorridaCierreCartera corrida = corridaCierreCarteraDaoService.selectUltimaEjecutadaAntesDe(
+                idEmpresa, Long.valueOf(desde.getYear()), Long.valueOf(desde.getMonthValue()));
+        boolean abrioElMes = corrida != null && corrida.getFechaProceso() != null
+                && !corrida.getFechaProceso().isBefore(desde) && !corrida.getFechaProceso().isAfter(finMes);
+        if (abrioElMes) {
+            for (Object[] fila : cierreCarteraDaoService.selectAperturaPorPrestamo(finMes, corteAnterior)) {
+                if (fila[0] != null && fila[1] != null) {
+                    puente.getAbierto().merge((Long) fila[0], (Double) fila[1], Double::sum);
+                }
+            }
+        } else {
+            System.out.println("ContabilizacionIndividualCreditoService.puentePrestamosMes - ninguna corrida ejecutada"
+                    + " abrió " + desde + " (última: " + (corrida != null ? corrida.getCodigo() : null)
+                    + "): abierto por préstamo = 0.");
+        }
+        for (Object[] fila : cierreCarteraDaoService.selectCobradoPuentePorPrestamo(idEmpresa, cuenta, desde, finMes,
+                excluirCarga)) {
+            if (fila[0] != null && fila[1] != null) {
+                puente.getCobrado().merge((Long) fila[0], (Double) fila[1], Double::sum);
+            }
+        }
+        puente.setNoAtribuible(cierreCarteraDaoService.selectNoAtribuiblePetro(idEmpresa, cuenta, desde, finMes,
+                excluirCarga));
+        puente.setComplementoRegistrado(cierreCarteraDaoService.selectComplementoRegistrado(idEmpresa, cuenta, desde,
+                finMes));
+        return puente;
+    }
+
+    @Override
+    public Map<Long, Double> repartePorLineasDePrestamo(List<com.saa.model.crd.DetalleCobroCredito> detalles,
+            double monto) {
+        Map<Long, Double> pesos = new LinkedHashMap<>();
+        if (detalles != null) {
+            for (com.saa.model.crd.DetalleCobroCredito detalle : detalles) {
+                if (detalle.getPrestamo() != null && detalle.getPrestamo().getCodigo() != null) {
+                    pesos.merge(detalle.getPrestamo().getCodigo(), nvl(detalle.getValor()), Double::sum);
+                }
+            }
+        }
+        Map<Long, Double> reparto = new LinkedHashMap<>();
+        if (pesos.isEmpty() || monto == 0.0) {
+            return reparto;
+        }
+        double total = 0.0;
+        for (Double peso : pesos.values()) {
+            total += peso;
+        }
+        for (Map.Entry<Long, Double> e : pesos.entrySet()) {
+            reparto.put(e.getKey(), total != 0.0 ? monto * e.getValue() / total : monto / pesos.size());
+        }
+        return reparto;
+    }
+
+    @Override
+    public com.saa.ejb.crd.service.dto.ComplementoAperturaCobro complementoApertura(Long idEmpresa, LocalDate fecha,
+            List<DetalleAsiento> lineasDelCobro, String referencia, Map<Long, Double> cobradoPorPrestamo,
+            double noAtribuible, Long excluirCarga) throws Throwable {
         com.saa.ejb.crd.service.dto.ComplementoAperturaCobro complemento =
                 new com.saa.ejb.crd.service.dto.ComplementoAperturaCobro();
         if (lineasDelCobro == null || lineasDelCobro.isEmpty() || fecha == null) {
@@ -1202,7 +1273,37 @@ public class ContabilizacionIndividualCreditoServiceImpl implements Contabilizac
                 complemento.getLineas().add(lineaMovimientoDesdePlantilla(aportesPorAplicar, falta, glosa));
             }
         }
-        if (cobradoPrestamos > 0.0) {
+        if (cobradoPrestamos > 0.0 && cobradoPorPrestamo != null
+                && com.saa.ejb.crd.service.ModoCorteCartera.neteoPorPrestamo(finDeMes, null)) {
+            // D-032 (29-oct-2026): por préstamo contra lo que la apertura abrió de cada uno. Objetivo
+            // acumulado del mes (contando este cobro) menos lo ya complementado en el mes: lo que un
+            // cobro anterior del mes no abrió lo recoge este.
+            com.saa.ejb.crd.service.dto.PuentePrestamosMes puente = puentePrestamosMes(idEmpresa, cuentaPrestamos,
+                    finDeMes, excluirCarga);
+            puente.sumaCobrado(cobradoPorPrestamo);
+            puente.setNoAtribuible(puente.getNoAtribuible() + Math.max(noAtribuible, 0.0));
+            double objetivo = puente.complementoObjetivo();
+            double registrado = redondear(puente.getComplementoRegistrado());
+            double falta = redondear(objetivo - registrado);
+            complemento.setCobradoPrestamos(cobradoPrestamos);
+            complemento.setAbiertoPrestamos(redondear(puente.totalAbierto()));
+            complemento.setNotaPrestamos("por prestamo (D-032): cobrado sin abrir en el mes " + formato(puente.cobradoSinAbrir())
+                    + " en " + puente.prestamosConComplemento() + " prestamos + no atribuible " + formato(puente.getNoAtribuible())
+                    + " - ya complementado " + formato(registrado) + " = " + formato(Math.max(falta, 0.0)));
+            if (falta >= TOLERANCIA) {
+                complemento.setComplementoPrestamos(falta);
+                String glosa = com.saa.ejb.crd.service.dto.ComplementoAperturaCobro.GLOSA_PREFIJO + " " + referencia
+                        + " cuotas por prestamo (D-032): sin abrir " + formato(objetivo) + ", ya abierto "
+                        + formato(registrado) + " en " + fechaTexto;
+                complemento.getLineas().add(lineaMovimientoDesdePlantilla(prestamosPorCobrar, falta, glosa));
+                complemento.getLineas().add(lineaMovimientoDesdePlantilla(prestamosPorAplicar, falta, glosa));
+            } else if (falta <= -TOLERANCIA) {
+                System.out.println("ContabilizacionIndividualCreditoService.complementoApertura - " + referencia
+                        + ": el mes ya tiene " + registrado + " de complemento de cuotas y el objetivo es " + objetivo
+                        + " (un cobro del mes se reversó con su complemento en otro asiento): no se resta; lo muestra"
+                        + " el control del ⑥.");
+            }
+        } else if (cobradoPrestamos > 0.0) {
             double abierto = saldoDeudor(idEmpresa, cuentaPrestamos, finDeMes);
             double falta = redondear(cobradoPrestamos - Math.max(abierto, 0.0));
             complemento.setCobradoPrestamos(cobradoPrestamos);

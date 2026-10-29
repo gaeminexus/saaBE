@@ -89,11 +89,11 @@ liquidadas o tienen fecha posterior al corte en que su cuota está pendiente (SE
 | ①.1 | Reclasificación vencida | **corte** (H3) | universo al corte |
 | ③ | Apertura del mes siguiente | 1.º del mes siguiente (sin cambio) | cobrable medido al corte |
 | ④ | Devengo de intereses del mes siguiente | 1.º del mes siguiente (sin cambio) | medido al corte |
-| ⑥ | Neteo | corte (sin cambio) | cobrable al corte; sin la transición D27 |
+| ⑥ | Neteo | corte (sin cambio) | cuotas **por préstamo contra lo abierto** (D-032, §1.9), sin tope; aportes como antes; sin la transición D27 |
 | ⑩ | **Devengo de mora al corte** (D-017, H4) — nuevo | corte | mora bruta al corte de cada cuota vencida impaga − lo ya reconocido en MVIC (tipo 5 − 6): D `1.4.02.xx` / H `5.1.02.xx` por tipo (plantilla 17, papeles 20/40); MVIC tipo 5 origen CIERRE por cuota |
 | ⑦ | Provisión de intereses | corte (sin cambio) | cuotas, pagos y libro MVIC al corte |
 | ⑧ | **Provisión de cartera** (D-015/D-017, H2) — nuevo | corte | ajuste a saldo: provisión requerida al corte (`CarteraAlCorteService`, regla del SAA, el mismo cálculo de la G48) − saldo acreedor de la cuenta de provisión al corte. Sube: D `4.7.04.05/10/15` / H `1.3.99.05/10/15`. Baja: D `1.3.99.xx` / H `5.3.90.05` REVERSION DE PROVISIONES. Plantilla 37 (`sql/332`); sin plantilla se omite con advertencia |
-| ⑨ | **Ajuste de bandas a saldo** (D-011) — nuevo | corte | cada cuenta `1.3.xx.yy` (sin 1.3.99) se lleva al capital del módulo al corte, contando lo que ya movieron ①/②/①.1; por familia (Q 01–04, P 05–08, H 09–12) el asiento suma cero y la **diferencia neta del grupo queda en la banda .25** (`1.3.01.25`, `1.3.05.25`, `1.3.09.25`) con una advertencia que dice el importe |
+| ⑨ | **Ajuste de bandas a saldo** (D-011) — nuevo | corte | cada cuenta `1.3.xx.yy` (sin 1.3.99) se lleva al capital del módulo al corte, contando lo que ya movieron ①/②/①.1; por familia (Q 01–04, P 05–08, H 09–12) el asiento suma cero y la **diferencia neta del grupo queda en la banda .25** (`1.3.01.25`, `1.3.05.25`, `1.3.09.25`) con una advertencia que dice el importe, **contabilidad − módulo** (hasta el 29-oct-2026 el rótulo decía "modulo − contabilidad" con la misma cifra) |
 
 Fuera del modo al corte el cierre es **idéntico** al de antes (fechas, pares de fechas, universo), salvo que el ⑩ se puede
 activar en producción con `-Dsaa.cartera.devengoMoraCierre=true` cuando el contador lo decida.
@@ -268,6 +268,59 @@ tras la corrida 2: `1.4.05.10` = 3.066.339,47 y `2.3.02.10` = −3.066.884,80 = 
 este cambio y queda a la vista en B.12. El ⑥ de junio netea lo no cobrado de cuotas, topado en 3.066.339,47; que deje las dos cuentas en cero
 depende de que lo no cobrado de la cartera al 30-jun sea ese número (es el cuadre de cartera del mes). SELECT B.12 de
 `petro/sql/reproceso-carga-352-controles.sql`.
+
+> **Superado para las cuotas por D-032 (§1.9).** Con la corrida 4 de la 352, lo no cobrado (3.038.058,74) superó lo
+> abierto (3.017.385,75) en 20.672,99 y el tope dejó esa diferencia en `2.3.02.10`. Aportes sigue como en este párrafo.
+
+### 1.9 Neteo ⑥ y complemento de cuotas por préstamo (D-032, 2026-10-29)
+
+**Por qué.** El ⑥ de cuotas netea "lo no cobrado al corte" (cuotas con vencimiento hasta el corte, mora bruta **al
+corte**, universo del corte) y el ③ abrió "lo cobrable al corte anterior" (mora bruta al corte anterior, préstamos que
+existían entonces). Lo que hay entre los dos no está en `1.4.05.10`: la mora devengada en el mes (el ⑩ la lleva a
+`1.4.02`), los préstamos nuevos del mes, las cuotas que vencen después del mes y se cobraron adelantadas, y los
+excedentes D-010 que el reparto Petro acredita sin ser pago de un préstamo. El D-024 por cuenta no abre nada de eso
+mientras el total cobrado sea menor que el total abierto. Junio 2025: ⑥ 3.038.058,74 contra 3.017.385,75 abiertos
+(desglose al centavo en `cuadreSuper/03-trabajo/meses/2025-06/resultados/25-controles.txt`).
+
+**Regla (decisión D-032 del líder).** Por préstamo i y mes M:
+
+| Concepto | Qué es | Lectura (`CierreCarteraDaoService`) |
+|---|---|---|
+| abierto(i) | lo que el ③ que abrió M abrió del préstamo: cuotas con vto ≤ fin de M pendientes al fin de M−1 (capital + interés no condonado + mora bruta al fin de M−1 + desgravamen + seguro) | `selectAperturaPorPrestamo(finM, finM−1)`: las expresiones del ③ agrupadas por préstamo; 0 si ninguna corrida ejecutada abrió M |
+| cobrado(i) | lo que los cobros de M acreditaron en `1.4.05.10` por el préstamo, sin las líneas de complemento | `selectCobradoPuentePorPrestamo`: Petro = componentes de los pagos de las cargas con reparto vigente en M; CBCR = haber del asiento (ASN1/ASN2/ASRP) prorrateado por `DCBCVLRR` de sus líneas de préstamo; directo (precancelación, pago con aportes, cruce) = haber del asiento `PGPRASNT` prorrateado por los componentes de sus pagos |
+| no atribuible | haber de los repartos Petro de M − componentes de sus pagos (excedentes D-010) | `selectNoAtribuiblePetro` |
+| complemento registrado | débito de `1.4.05.10` en las líneas `Complemento de apertura…` de M | `selectComplementoRegistrado` |
+
+- **Al cobrar** (`ContabilizacionIndividualCreditoService.complementoApertura`, sobrecarga con lo cobrado por
+  préstamo): complemento de cuotas de este cobro = [Σ max(cobrado − abierto, 0) del mes contando este cobro + no
+  atribuible] − complemento registrado. Como se mide sobre el mes completo, lo que no abrió un cobro anterior del mes (por ejemplo,
+  uno registrado antes de D-032) lo abre el siguiente. Si el resultado es negativo (se reversó un cobro cuyo complemento quedó
+  en otro asiento), no se resta: lo muestra el control del ⑥. Caminos: reparto Petro (asiento del sub-proceso 4 de
+  `CRD.ANCP`, `REPROCESO-CARGA-PETRO.md` §4.13), reparto CBCR y tramo con aportes del definitivo (lo cobrado se reparte
+  entre los préstamos del cobro por el valor de cada línea, `repartePorLineasDePrestamo`, la misma regla de la lectura) y camino
+  directo (un préstamo). Aportes sigue por cuenta (D-024).
+- **Al cerrar** (`CierreCarteraServiceImpl.neteoPorPrestamo`): ⑥ de cuotas = Σ max(abierto − cobrado, 0). Sin mora del
+  mes y **sin tope**. Siempre deja una advertencia con abierto, cobrado, no atribuible, neteo, complemento objetivo y
+  registrado, y el saldo de la cuenta. Si el saldo no es el neteo, dice cuánto queda en las dos cuentas, cuánto es
+  complemento faltante (hay que re-procesar el último cobro del mes, normalmente la carga Petro) y cuánto queda sin explicar
+  (apertura recalculada distinta de la registrada, o movimientos de `1.4.05.10` que no son cobros de préstamo).
+- Con el complemento completo: saldo antes del ⑥ = Σ abierto + objetivo − Σ cobrado − no atribuible = Σ max(abierto −
+  cobrado, 0) = neteo. Tras el ⑥ las dos cuentas quedan en cero.
+
+**Cuándo rige.** `-Dsaa.cartera.neteoPorPrestamo=auto|siempre|nunca` (`ModoCorteCartera.neteoPorPrestamo`); `auto`
+(defecto) = cuando el mes es al corte (cierre: el modo de la corrida; cobro: `esAlCorte(fin del mes del asiento)`).
+Fuera de esa regla, todo queda como antes (D-024 por cuenta y tope). Motivo: la apertura por préstamo se reconstruye
+con la lectura al corte del mes anterior, que es la del ③ de una corrida al corte; el ③ de una corrida normal lee la
+cartera **del día en que corre** (`DTPRMRAA`, préstamos vivos hoy, pagos hasta hoy) y no se puede reconstruir después.
+Para producción (decisión pendiente, §5.10): que el ③ lea las cuotas al corte también en modo normal, o grabar el abierto
+por préstamo en una tabla al ejecutar el ③; con cualquiera de las dos se puede poner `siempre`.
+
+**Junio 2025** (`cuadreSuper/03-trabajo/meses/2025-06/resultados/29-d032-simulacion.txt`, SQL `29-d032-simulacion.sql`):
+Σ abierto 3.497.270,98 (= asiento 13112); cobrado 479.184,22 (Petro 372.772,08, CBCR 39.456,09, directo 66.956,05) + no
+atribuible 701,01 = haber real de junio 479.885,23 al centavo. Complemento objetivo 9.101,37 (70 préstamos 8.400,36 + 701,01),
+registrado 0. Neteo 3.026.487,12 (329 préstamos). Con la corrida 4 de la 352 (sin complemento de cuotas), el ⑥ dejaría
+`1.4.05.10` en −9.101,37: hay que **re-procesar la 352** (corrida 5) con este WAR. Su reparto abre los 9.101,37 y,
+tras el ⑥, `1.4.05.10` = `2.3.02.10` = 0,00.
 
 ## 2. Antes del primer mes (una vez)
 
@@ -471,3 +524,9 @@ también es decisión del 2026-08-31.
    2.3.02.05 en +39.315,03.
 9. Movimientos de aportes tipo 6 de junio sin asiento (−42.029,89 cruce aportes→préstamos, +2.509,22 manuales;
    §4, fila 6): sin ellos la cuenta individual del B17 y la G42 difieren en 39.520,67.
+10. **D-032 en producción** (§1.9): la regla por préstamo rige por defecto solo al corte. Para encenderla en producción
+    (`saa.cartera.neteoPorPrestamo=siempre`), el abierto por préstamo tiene que poder reconstruirse: o el ③ lee las cuotas
+    al corte también en modo normal (cambia el importe del ③ de producción: mora por fórmula en vez de `DTPRMRAA`,
+    universo al corte en vez de vivos hoy), o se graba el abierto por préstamo al ejecutar el ③ (tabla nueva, DDL). Decide el líder.
+11. Reversos de un cobro con el período **mayorizado** (anulaAsiento genera un asiento de reverso no vinculado al cobro): la
+    lectura por préstamo no lo atribuye y el control del ⑥ lo muestra como "sin explicar".

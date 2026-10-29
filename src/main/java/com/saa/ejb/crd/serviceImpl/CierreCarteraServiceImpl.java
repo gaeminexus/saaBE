@@ -1366,7 +1366,9 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
             diferencias.merge(absorbe, Double.valueOf(-neto), Double::sum);
             if (Math.abs(neto) >= MINIMO_LINEA) {
                 advertencias.add("⑨ grupo " + grupo.getKey() + ": contabilidad y modulo difieren en "
-                        + redondea(Double.valueOf(-neto)) + " (modulo − contabilidad); la diferencia queda en "
+                        // D-032 (29-oct-2026): el rótulo decía "(modulo − contabilidad)", pero neto = Σ
+                        // (módulo − contabilidad) y se imprime −neto: la cifra es contabilidad − módulo.
+                        + redondea(Double.valueOf(-neto)) + " (contabilidad − modulo); la diferencia queda en "
                         + absorbe + " hasta explicarla o decidirla (D-011).");
             }
             for (Map.Entry<String, Double> entrada : diferencias.entrySet()) {
@@ -1531,6 +1533,12 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
      * §4.1, sin implementar: contradice la decisión del 2026-08-31).
      * </p>
      *
+     * <p><b>El lado de las cuotas con D-032 (29-oct-2026)</b>, cuando
+     * {@code ModoCorteCartera.neteoPorPrestamo} está activo (por defecto, en los meses al corte): préstamo
+     * por préstamo, lo abierto por la apertura menos lo cobrado contra eso
+     * ({@link #neteoPorPrestamo}), sin la mora devengada en el mes y sin tope. Fuera de esa regla, lo no
+     * cobrado de las cuotas al corte topado en el saldo de la cuenta (D-024).</p>
+     *
      * @param solicitud : Solicitud
      * @param corte     : Último día del mes cerrado
      * @return          : El sub-proceso con sus líneas
@@ -1587,8 +1595,15 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
         // Tope: saldo deudor contable al corte (antes de este ⑥), nunca menos de cero.
         noCobradoAportes = topeNeteoSaldoAbierto(sub, idPlantilla, CrdLineaAsiento.APORTES_POR_COBRAR,
                 noCobradoAportes, solicitud, corte, "aportes", advertencias);
-        noCobradoPrestamos = topeNeteoSaldoAbierto(sub, idPlantilla, CrdLineaAsiento.PRESTAMOS_POR_COBRAR,
-                noCobradoPrestamos, solicitud, corte, "cuotas", advertencias);
+        if (com.saa.ejb.crd.service.ModoCorteCartera.neteoPorPrestamo(corte, Boolean.valueOf(corteDatos != null))) {
+            // D-032 (29-oct-2026, decisión del líder): préstamo por préstamo contra lo efectivamente
+            // abierto (apertura del mes + complementos), sin la mora devengada en el mes (el ⑩ la lleva
+            // a 1.4.02) y sin tope: lo cobrado que no se abrió lo abrió el complemento al cobrar.
+            noCobradoPrestamos = neteoPorPrestamo(sub, idPlantilla, solicitud, corte, advertencias);
+        } else {
+            noCobradoPrestamos = topeNeteoSaldoAbierto(sub, idPlantilla, CrdLineaAsiento.PRESTAMOS_POR_COBRAR,
+                    noCobradoPrestamos, solicitud, corte, "cuotas", advertencias);
+        }
         agrega(sub, idPlantilla, CrdLineaAsiento.APORTES_POR_APLICAR, noCobradoAportes,
                 "Aportes no cobrados " + periodo(solicitud));
         agrega(sub, idPlantilla, CrdLineaAsiento.PRESTAMOS_POR_APLICAR, noCobradoPrestamos,
@@ -1601,6 +1616,66 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
         cierra(sub, "No quedo nada por cobrar del mes cerrado.");
         cuadra(sub, CrdLineaAsiento.PRESTAMOS_POR_COBRAR);
         return sub;
+    }
+
+    /**
+     * D-032 — ⑥ de cuotas préstamo por préstamo: Σ max(abierto − cobrado, 0) del mes
+     * ({@link com.saa.ejb.crd.service.dto.PuentePrestamosMes}). Deja en las advertencias el resumen y,
+     * si el saldo de la cuenta por cobrar al corte no es exactamente ese neteo, cuánto queda y por qué
+     * (complemento del mes incompleto o diferencia no atribuida). Nunca limita el neteo.
+     */
+    private double neteoPorPrestamo(SubProcesoCierre sub, Long idPlantilla, SolicitudCierreCartera solicitud,
+            LocalDate corte, List<String> advertencias) throws Throwable {
+        DetallePlantilla linea = detallePlantillaDaoService.selectByPlantillaYAuxiliar(idPlantilla,
+                CrdLineaAsiento.PRESTAMOS_POR_COBRAR);
+        if (linea == null || linea.getPlanCuenta() == null) {
+            return 0D; // agrega(...) reporta la línea faltante con su propio mensaje
+        }
+        String cuenta = linea.getPlanCuenta().getCuentaContable();
+        com.saa.ejb.crd.service.dto.PuentePrestamosMes puente = contabilizacionIndividualCreditoService
+                .puentePrestamosMes(solicitud.getIdEmpresa(), cuenta, corte, null);
+        double neteo = puente.neteo();
+        double objetivo = puente.complementoObjetivo();
+        double registrado = redondeaDouble(Double.valueOf(puente.getComplementoRegistrado()));
+        double saldo = saldoDeudorCuenta(solicitud.getIdEmpresa(), cuenta, corte);
+        if (advertencias != null) {
+            advertencias.add(sub.getNombre() + " (cuotas) " + periodo(solicitud) + " por prestamo (D-032): abierto por"
+                    + " la apertura " + puente.totalAbierto() + "; cobrado por prestamo " + puente.totalCobrado()
+                    + " + no atribuible a prestamos " + redondeaDouble(Double.valueOf(puente.getNoAtribuible()))
+                    + "; neteo = abierto no cobrado " + neteo + " (" + puente.prestamosConNeteo() + " prestamos);"
+                    + " complemento del mes: lo cobrado sin abrir " + objetivo + " (" + puente.prestamosConComplemento()
+                    + " prestamos), registrado " + registrado + "; saldo de " + cuenta + " al " + corte + ": " + saldo + ".");
+            double queda = redondeaDouble(Double.valueOf(saldo - neteo));
+            if (Math.abs(queda) >= MINIMO_LINEA) {
+                double faltaComplemento = redondeaDouble(Double.valueOf(objetivo - registrado));
+                double sinExplicar = redondeaDouble(Double.valueOf(queda + faltaComplemento));
+                advertencias.add(sub.getNombre() + " (cuotas) " + periodo(solicitud) + ": tras el neteo " + cuenta
+                        + " y la cuenta por aplicar quedan en " + queda + " (saldo " + saldo + " - neteo " + neteo + ")."
+                        + (Math.abs(faltaComplemento) >= MINIMO_LINEA
+                                ? " Complemento de apertura del mes incompleto en " + faltaComplemento + " (cobros"
+                                + " registrados antes de D-032 o un reverso): re-procese el ultimo cobro del mes (la carga"
+                                + " Petro) para que lo abra."
+                                : "")
+                        + (Math.abs(sinExplicar) >= MINIMO_LINEA
+                                ? " Sin explicar " + sinExplicar + ": la apertura recalculada por prestamo no es la"
+                                + " registrada o hay movimientos en " + cuenta + " que no son cobros de prestamo."
+                                : "")
+                        + " No se limita el neteo (D-032).");
+            }
+        }
+        return neteo;
+    }
+
+    /** Saldo deudor contable de la cuenta y sus hijas al corte (asientos activos/mayorizados, lectura C14). */
+    private double saldoDeudorCuenta(Long idEmpresa, String cuenta, LocalDate corte) throws Throwable {
+        double saldo = 0D;
+        for (Object[] fila : cierreCarteraDaoService.selectSaldoContablePorCuenta(idEmpresa, cuenta, null, corte)) {
+            String cuentaFila = fila[0] != null ? fila[0].toString() : "";
+            if (cuentaFila.equals(cuenta) || cuentaFila.startsWith(cuenta + ".")) {
+                saldo += fila[2] != null ? ((Number) fila[2]).doubleValue() : 0D;
+            }
+        }
+        return redondeaDouble(Double.valueOf(saldo));
     }
 
     /**

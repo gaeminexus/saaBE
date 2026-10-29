@@ -27,7 +27,7 @@ empresa con `ASNTFCHA <= fin de mes`; saldo **deudor** (debe − haber).
 | Grupo | Código | Qué compara | Estado |
 |---|---|---|---|
 | (a) PUENTES | `PUENTE_1.4.05.05`, `PUENTE_2.3.02.05` | Saldo de la cuenta y sus subcuentas = 0 (D-024) | ERROR si ≠ 0 |
-| (a) PUENTES | `PUENTE_1.4.05.10_2.3.02.10` | Saldo deudor 1.4.05.10 = saldo acreedor 2.3.02.10 | ERROR si ≠ |
+| (a) PUENTES | `PUENTE_1.4.05.10_2.3.02.10` | Saldo deudor 1.4.05.10 = saldo acreedor 2.3.02.10 (con D-032, tras el ⑥ del cierre de cartera las dos en 0: `crd/CIERRE-CARTERA-A-FECHA-DE-CORTE.md` §1.9) | ERROR si ≠ |
 | (b) ECUACION | `ECUACION_CONTABLE` | Activo (1) = pasivo (2) + patrimonio (3) + resultado (5 − 4) | ERROR si ≠ |
 | (c) CARTERA | `CARTERA_GRUPO_Q/P/H` | Contabilidad 1.3 sin 1.3.99 por grupo (Q = 1.3.01–04, P = 05–08, H = 09–12, la agrupación del ⑨) vs la distribución del módulo que dejó la corrida de cierre de cartera **vigente** del mes (`CRD.BDCC`, snapshot de `distNueva`). La diferencia es la que el ⑨ deja en la banda .25 | ERROR si ≠ |
 | (c) CARTERA | `CARTERA_NO_CERRADA` | El mes no tiene corrida CRCT EJECUTADA vigente: se informa el capital contable por grupo | ADVERTENCIA |
