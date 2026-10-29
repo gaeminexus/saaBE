@@ -42,7 +42,8 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 			" from   CRD.APRT a " +
 			" where  a.ENTDCDGO = :codigoEntidad " +
 			"   and  a.TPAPCDGO in (9, 11) " +
-			"   and  a.APRTVLRR > 0 ");
+			"   and  a.APRTVLRR > 0 " +
+			"   and  " + VIGENTE_SQL);
 		query.setParameter("codigoEntidad", codigoEntidad);
 		Object result = query.getSingleResult();
 		return result != null ? ((Number) result).longValue() : 0L;
@@ -60,7 +61,8 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 			" from   CRD.APRT a " +
 			" where  a.ENTDCDGO = :codigoEntidad " +
 			"   and  a.TPAPCDGO in (13, 14) " +
-			"   and  a.APRTVLRR > 0 ");
+			"   and  a.APRTVLRR > 0 " +
+			"   and  " + VIGENTE_SQL);
 		query.setParameter("codigoEntidad", codigoEntidad);
 		Object result = query.getSingleResult();
 		return result != null ? ((Number) result).longValue() : 0L;
@@ -80,6 +82,7 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 			" where  a.entidad.codigo = :codigoEntidad " +
 			"   and  a.tipoAporte.estado = 1 " +
 			"   and  a.valor < 0 " +
+			"   and  " + VIGENTE_JPQL +
 			"   and  a.fechaTransaccion >= :fechaInicio " +
 			"   and  a.fechaTransaccion <= :fechaFin ");
 		query.setParameter("codigoEntidad", codigoEntidad);
@@ -111,6 +114,7 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 				" where  a.ENTDCDGO = :codigoEntidad " +
 				"   and  a.TPAPCDGO in (:tiposAporte) " +
 				"   and  a.APRTVLRR > 0 " +
+				"   and  " + VIGENTE_SQL +
 				"   and  " + PERIODO_EFECTIVO_SQL + " = :periodo "
 			);
 			query.setParameter("codigoEntidad", codigoEntidad);
@@ -146,6 +150,7 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 			" where  a.entidad.codigo in :codigosEntidad " +
 			"   and  a.tipoAporte.codigo in :tiposAporte " +
 			"   and  a.valor > 0 " +
+			"   and  " + VIGENTE_JPQL +
 			"   and  a.fechaTransaccion < :corte " +
 			" group by a.entidad.codigo "
 		);
@@ -319,6 +324,18 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 	 * {@link PeriodoEfectivoAporteSql} — fuente ÚNICA, no redefinir aquí ni en otra clase.
 	 */
 	private static final String PERIODO_EFECTIVO_SQL = PeriodoEfectivoAporteSql.PERIODO_EFECTIVO_SQL;
+
+	/**
+	 * Aporte vigente (C15, 2026-10-28): excluye el aporte anulado por un reproceso
+	 * ({@code APRTIDST = 0}) y su contra-movimiento. Ver {@link AporteVigenteSql} — fuente ÚNICA.
+	 * Obligatoria en toda lectura que filtre por signo/tipo de movimiento o cuente meses; en las
+	 * sumas netas de reportes (G42, G44, CJBM, CPRM) no cambia el número y se aplica igual para
+	 * que la regla sea una sola.
+	 */
+	private static final String VIGENTE_SQL = AporteVigenteSql.VIGENTE_SQL;
+
+	/** {@link #VIGENTE_SQL} en JPQL. */
+	private static final String VIGENTE_JPQL = AporteVigenteSql.VIGENTE_JPQL;
 
 	@Override
 	public Double sumValorPorEntidadTipoYDevengo(Long idEntidad, Long idTipoAporte,
@@ -762,6 +779,7 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 			" from     Aporte a " +
 			" where    a.tipoAporte.estado = 1 " +
 			"   and    a.tipoAporte.codigoSBS = 'RE' " +
+			"   and    " + VIGENTE_JPQL +
 			"   and    a.fechaTransaccion <= :fechaCorte " +
 			"   and    exists (select 1 from Entidad e where e.codigo = a.entidad.codigo and e.numeroIdentificacion <> '0') " +
 			" group by a.entidad.codigo "
@@ -780,6 +798,7 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 			" from     Aporte a " +
 			" where    a.tipoAporte.estado = 1 " +
 			"   and    a.tipoAporte.codigo in :codigos " +
+			"   and    " + VIGENTE_JPQL +
 			"   and    a.fechaTransaccion <= :fechaCorte " +
 			"   and    exists (select 1 from Entidad e where e.codigo = a.entidad.codigo and e.numeroIdentificacion <> '0') " +
 			" group by a.entidad.codigo "
@@ -800,6 +819,7 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 			" where    a.tipoAporte.estado = 1 " +
 			"   and    (a.tipoAporte.codigoSBS <> 'RE' or a.tipoAporte.codigoSBS is null) " +
 			"   and    a.tipoAporte.codigo not in :codigos " +
+			"   and    " + VIGENTE_JPQL +
 			"   and    a.fechaTransaccion <= :fechaCorte " +
 			"   and    exists (select 1 from Entidad e where e.codigo = a.entidad.codigo and e.numeroIdentificacion <> '0') " +
 			" group by a.entidad.codigo "
@@ -821,6 +841,7 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 			" join     CRD.TPAP ta on ta.TPAPCDGO = a.TPAPCDGO " +
 			" where    ta.TPAPIDST = 1 " +
 			"   and    a.APRTVLRR > 0 " +
+			"   and    " + VIGENTE_SQL +
 			"   and    a.APRTFCTR <= :fechaCorte " +
 			" group by a.ENTDCDGO "
 		);
@@ -836,6 +857,7 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 			" select   a.entidad.codigo, sum(a.valor) " +
 			" from     Aporte a " +
 			" where    a.tipoAporte.codigo = :codigo " +
+			"   and    " + VIGENTE_JPQL +
 			"   and    a.fechaTransaccion <= :fechaCorte " +
 			" group by a.entidad.codigo "
 		);
@@ -852,6 +874,7 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 			" select   a.entidad.codigo, sum(a.valor) " +
 			" from     Aporte a " +
 			" where    a.tipoAporte.codigo = :codigo " +
+			"   and    " + VIGENTE_JPQL +
 			"   and    a.fechaTransaccion >= :fechaInicio " +
 			"   and    a.fechaTransaccion <= :fechaFin " +
 			" group by a.entidad.codigo "
@@ -869,6 +892,7 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 			" select   sum(a.valor) " +
 			" from     Aporte a " +
 			" where    a.tipoAporte.codigo = :tipoAporte " +
+			"   and    " + VIGENTE_JPQL +
 			"   and    a.fechaTransaccion <= :fechaCorte "
 		);
 		query.setParameter("tipoAporte", tipoAporte);
@@ -886,6 +910,7 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 			" from     Aporte a " +
 			" where    a.tipoAporte.estado = 1 " +
 			"   and    a.tipoAporte.codigo in (:codigos) " +
+			"   and    " + VIGENTE_JPQL +
 			"   and    a.fechaTransaccion <= :fechaCorte " +
 			"   and    exists (select 1 from Entidad e where e.codigo = a.entidad.codigo and e.numeroIdentificacion <> '0') " +
 			" group by a.entidad.codigo, a.tipoAporte.codigo "
@@ -908,6 +933,7 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 			" select   a.entidad.codigo, a.tipoAporte.codigo, a.tipoAporte.nombre, sum(a.valor) " +
 			" from     Aporte a " +
 			" where    a.tipoAporte.estado = 1 " +
+			"   and    " + VIGENTE_JPQL +
 			"   and    a.fechaTransaccion <= :fechaCorte " +
 			"   and    exists (select 1 from Entidad e where e.codigo = a.entidad.codigo and e.numeroIdentificacion <> '0') " +
 			" group by a.entidad.codigo, a.tipoAporte.codigo, a.tipoAporte.nombre " +
@@ -1113,7 +1139,8 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 			" from   Aporte a " +
 			" where  a.entidad.codigo    = :idEntidad " +
 			" and    a.tipoAporte.codigo = :idTipoAporte " +
-			" and    a.valor             < 0 ");
+			" and    a.valor             < 0 " +
+			" and    " + VIGENTE_JPQL);
 		query.setParameter("idEntidad", idEntidad);
 		query.setParameter("idTipoAporte", idTipoAporte);
 		return (LocalDateTime) query.getSingleResult();
@@ -1129,7 +1156,8 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 			" where  a.entidad.codigo    = :idEntidad " +
 			" and    a.tipoAporte.codigo = :idTipoAporte " +
 			" and    a.tipoMovimiento    = :tipoMovimiento " +
-			" and    a.valor             > 0 ");
+			" and    a.valor             > 0 " +
+			" and    " + VIGENTE_JPQL);
 		query.setParameter("idEntidad", idEntidad);
 		query.setParameter("idTipoAporte", idTipoAporte);
 		query.setParameter("tipoMovimiento", tipoMovimiento);

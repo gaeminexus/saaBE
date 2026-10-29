@@ -1457,8 +1457,10 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
      * la deja en $0 en el asiento — un neteo negativo invertiría el asiento, y no es lo que
      * se pidió. <b>El exceso no desaparece: antes se calculaba y no se mostraba en ningún
      * lado; ahora {@link #avisaExcesoCobro} lo deja como advertencia visible en la
-     * previsualización</b>, con el monto — se resuelve por el proceso de cobro en exceso, no
-     * por este asiento.
+     * previsualización</b>, con el monto. C15 (2026-10-28): no hay "proceso de cobro en exceso"
+     * que lo recoja — lo registrado ya está en la cuenta individual y la diferencia queda en
+     * las transitorias 2.3.02.05 / 1.4.05.05 (propuesta en CIERRE-CARTERA-A-FECHA-DE-CORTE.md
+     * §4.1, sin implementar: contradice la decisión del 2026-08-31).
      * </p>
      *
      * @param solicitud : Solicitud
@@ -1675,11 +1677,17 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
                 || desglose.getExcesoCobro().doubleValue() < MINIMO_LINEA) {
             return;
         }
+        // C15 (2026-10-28): el texto anterior decía "lo resuelve el proceso de cobro en exceso",
+        // y no es así: lo registrado ya se aplicó a la cuenta individual (asiento de aplicación
+        // de la carga, D aportes por aplicar / H aportes personales), así que no hay nada que
+        // devolver; la diferencia queda en las dos cuentas transitorias. Ver
+        // CIERRE-CARTERA-A-FECHA-DE-CORTE.md §4.1.
         advertencias.add("En " + periodo(solicitud) + " se registraron "
-                + desglose.getRegistrado() + " de aportes contra " + desglose.getEsperado()
-                + " esperados: hay un exceso de cobro de " + desglose.getExcesoCobro()
-                + ". El neteo no lo lleva (un neteo negativo invertiria el asiento); lo"
-                + " resuelve el proceso de cobro en exceso.");
+                + desglose.getRegistrado() + " de aportes vigentes contra " + desglose.getEsperado()
+                + " esperados: " + desglose.getExcesoCobro() + " mas de lo esperado. El neteo no"
+                + " lo lleva (un neteo negativo invertiria el asiento): queda como saldo deudor en"
+                + " aportes por aplicar y acreedor en aportes por cobrar. No es dinero a devolver:"
+                + " ya esta en la cuenta individual.");
     }
 
     /**

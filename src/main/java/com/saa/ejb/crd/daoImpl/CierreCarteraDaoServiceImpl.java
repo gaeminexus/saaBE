@@ -370,6 +370,9 @@ public class CierreCarteraDaoServiceImpl implements CierreCarteraDaoService {
                 + "   FROM   CRD.APRT a JOIN CRD.TPAP t ON t.TPAPCDGO = a.TPAPCDGO "
                 + "   JOIN   CRD.ENTD e ON e.ENTDCDGO = a.ENTDCDGO "
                 + "   WHERE  t.TPAPIDST = 1 AND a.APRTFCTR < :corteSig AND NVL(e.ENTDNMID,'0') <> '0' "
+                // C15 (2026-10-28): misma lectura de aportes vigentes que el resto (AporteVigenteSql).
+                // En esta suma neta no cambia el número (marcado + contra = 0), deja la regla única.
+                + "   AND    " + AporteVigenteSql.VIGENTE_SQL
                 + "   GROUP BY a.ENTDCDGO ), "
                 + " op AS ( "
                 + "   SELECT cu.PRSTCDGO, MAX(cu.PRDCCDGO) PRDCCDGO, MAX(cu.TPPRCDGO) TPPRCDGO, MAX(cu.ENTDCDGO) ENTDCDGO, "
@@ -609,6 +612,12 @@ public class CierreCarteraDaoServiceImpl implements CierreCarteraDaoService {
         // Contra un esperado de 122.299,93 (sin el filtro): la planilla tenía un FALTANTE real
         // de 5.495,13, pero migrado+ajuste+reverso lo tapaban y el sistema veía un exceso de
         // 686,53 — el neteo daba CERO en vez de reversar un no-cobrado que existe.
+        //
+        // C15 (2026-10-28): solo aportes VIGENTES (AporteVigenteSql). Al filtrar por tipo de
+        // movimiento (1, 8) y signo, el aporte anulado por un reproceso (APRTIDST = 0) entraba
+        // y su contra-movimiento (tipo 5) quedaba fuera: junio 2025 daba 322.509,73
+        // "registrados" (el esquema viejo de la carga 352, 160.706,82, contado dos veces)
+        // contra 161.802,91 reales = el DEBE de 2.3.02.05 del asiento de aplicación de la carga.
         Query query = em.createNativeQuery(
                 " SELECT NVL(SUM(CASE WHEN a.TPAPCDGO = 9  THEN a.APRTVLRR ELSE 0 END),0), "
                 + "        NVL(SUM(CASE WHEN a.TPAPCDGO = 11 THEN a.APRTVLRR ELSE 0 END),0) "
@@ -617,6 +626,7 @@ public class CierreCarteraDaoServiceImpl implements CierreCarteraDaoService {
                 + " AND    a.APRTVLRR > 0 "
                 + " AND    a.APRTTPMV IN (" + CrdTipoMovimientoAporte.APORTE_MENSUAL + ", "
                 + CrdTipoMovimientoAporte.EXCEDENTE_PETRO + ") "
+                + " AND    " + AporteVigenteSql.VIGENTE_SQL
                 + " AND    TRUNC(a.APRTFCTR) BETWEEN :desde AND :hasta");
         query.setParameter("desde", Date.valueOf(desde));
         query.setParameter("hasta", Date.valueOf(hasta));

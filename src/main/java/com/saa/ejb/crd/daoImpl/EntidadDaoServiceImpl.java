@@ -435,6 +435,8 @@ public class EntidadDaoServiceImpl extends EntityDaoImpl<Entidad> implements Ent
 			"  FROM   CRD.APRT a " +
 			"  WHERE  a.TPAPCDGO IN (:tiposAporte) " +
 			"    AND  a.APRTVLRR > 0 " +
+			// C15 (2026-10-28): sin el aporte anulado por un reproceso (AporteVigenteSql).
+			"    AND  " + AporteVigenteSql.VIGENTE_SQL +
 			"    AND  a.APRTFCTR <  :corteAportes " +
 			"  GROUP BY a.ENTDCDGO " +
 			"), " +
