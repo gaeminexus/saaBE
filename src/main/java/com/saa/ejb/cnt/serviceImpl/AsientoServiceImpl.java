@@ -669,6 +669,31 @@ public class AsientoServiceImpl implements AsientoService {
 		return asiento;
 	}
 
+	/* (non-Javadoc)
+	 * @see com.saa.ejb.cnt.service.AsientoService#anulaAsientoDeDocumento(com.saa.model.cnt.Asiento)
+	 */
+	public Asiento anulaAsientoDeDocumento(Asiento asiento) throws Throwable {
+		if (asiento == null) {
+			return null;
+		}
+		if (!CierrePeriodoListener.contableCerrado(asiento.getPeriodo())) {
+			return asientoDaoService.save(asiento, asiento.getCodigo());
+		}
+		System.out.println("anulaAsientoDeDocumento: asiento " + asiento.getCodigo()
+				+ " en periodo CERRADO -> reverso en el primer periodo abierto (C17)");
+		if (asiento.getFechaAnulacion() == null) {
+			asiento.setFechaAnulacion(LocalDateTime.now());
+		}
+		if (asiento.getUsuarioAnulacion() == null) {
+			asiento.setUsuarioAnulacion("SISTEMA");
+		}
+		asiento.setEstado(Long.valueOf(EstadoAsiento.ACTIVO));
+		asientoDaoService.save(asiento, asiento.getCodigo());
+		LocalDate fecha = estadoCierreService.fechaReversoEnPeriodoAbierto(asiento.getEmpresa().getCodigo(),
+				asiento.getFechaAsiento());
+		return reversionAsiento(asiento.getCodigo(), fecha);
+	}
+
 	/**
 	 * Deja en el asiento el rastro de quien lo anulo, cuando y por que.
 	 *

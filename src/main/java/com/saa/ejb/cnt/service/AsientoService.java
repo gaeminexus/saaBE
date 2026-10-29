@@ -291,6 +291,15 @@ public interface AsientoService extends EntityService<Asiento> {
 	 * Devuelve el asiento ORIGINAL; si se reversó queda REVERSADO con {@code idReversion} = asiento de reverso.
 	 */
 	 com.saa.model.cnt.Asiento anulaAsiento(Long idAsiento, String usuario, String motivo, java.time.LocalDate fechaReverso) throws Throwable;
+
+	/**
+	 * C17 — Cierre de la anulación de un asiento que un módulo (CxC/CxP: facturas, NC, ND, retenciones,
+	 * liquidaciones, bandeja de documentos) ya marcó ANULADO en memoria con sus datos de auditoría.
+	 * Período abierto: graba la anulación tal cual (lo que antes hacía el {@code em.merge}). Período CERRADO:
+	 * no anula; devuelve el original a ACTIVO, conserva el rastro (quién, cuándo, por qué) y genera el reverso
+	 * en el primer período abierto, enlazado por ASNTASRV. CIERRES-BLOQUEANTES.md §4.
+	 */
+	 com.saa.model.cnt.Asiento anulaAsientoDeDocumento(com.saa.model.cnt.Asiento asientoMarcadoAnulado) throws Throwable;
 	
 	
 	/**
