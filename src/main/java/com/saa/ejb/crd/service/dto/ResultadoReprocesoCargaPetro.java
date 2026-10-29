@@ -84,6 +84,35 @@ public class ResultadoReprocesoCargaPetro {
     private int aportesContratoAlCorte;
     private double montoAportesContratoAlCorte;
     private List<String> detalleAportesContratoAlCorte = new ArrayList<>();
+    /** Aportes de entidades con contrato activo hoy sin vigencia que cubra el mes (D-022 vigencias). */
+    private int aportesSinVigenciaDelMes;
+    private double montoAportesSinVigenciaDelMes;
+    private List<String> detalleAportesSinVigenciaDelMes = new ArrayList<>();
+
+    public int getAportesSinVigenciaDelMes() {
+        return aportesSinVigenciaDelMes;
+    }
+
+    public void setAportesSinVigenciaDelMes(int aportesSinVigenciaDelMes) {
+        this.aportesSinVigenciaDelMes = aportesSinVigenciaDelMes;
+    }
+
+    public double getMontoAportesSinVigenciaDelMes() {
+        return montoAportesSinVigenciaDelMes;
+    }
+
+    public void setMontoAportesSinVigenciaDelMes(double montoAportesSinVigenciaDelMes) {
+        this.montoAportesSinVigenciaDelMes = montoAportesSinVigenciaDelMes;
+    }
+
+    public List<String> getDetalleAportesSinVigenciaDelMes() {
+        return detalleAportesSinVigenciaDelMes;
+    }
+
+    public void setDetalleAportesSinVigenciaDelMes(List<String> detalleAportesSinVigenciaDelMes) {
+        this.detalleAportesSinVigenciaDelMes = detalleAportesSinVigenciaDelMes;
+    }
+
     /** Partícipes sin ningún contrato a los que el reproceso les creó contrato + vigencia. */
     private int contratosCreados;
     private double montoContratosCreados;

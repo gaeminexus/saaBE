@@ -290,6 +290,14 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
     private double montoAportesContratoAlCorte = 0.0;
 
     /**
+     * D-022 vigencias (2026-10-28, §4.10): aportes AH de entidades con contrato ACTIVO hoy cuyo
+     * contrato no tiene vigencia que cubra el mes de la carga (glosa con
+     * {@link #MARCA_D022_SIN_VIGENCIA}). Reset al entrar a {@code aplicarPagosArchivoPetro}.
+     */
+    private List<String> aportesSinVigenciaDelMes = new ArrayList<>();
+    private double montoAportesSinVigenciaDelMes = 0.0;
+
+    /**
      * D-022 ampliada (líder, 2026-10-28): partícipes con AH descontado y SIN NINGÚN contrato, para
      * los que el reproceso creó contrato + vigencia y registró el aporte (glosa con
      * {@link #MARCA_D022_CREADO}). Una línea por partícipe. Reset al entrar a
@@ -1443,6 +1451,8 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 		totalCuotasPorPrestamoReproceso.clear();
 		aportesContratoAlCorte.clear();
 		montoAportesContratoAlCorte = 0.0;
+		aportesSinVigenciaDelMes.clear();
+		montoAportesSinVigenciaDelMes = 0.0;
 		contratosCreadosReproceso.clear();
 		montoContratosCreadosReproceso = 0.0;
 		filasSinPagoReproceso.clear();
@@ -1777,6 +1787,10 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 						+ String.format("%,.2f", montoAportesContratoAlCorte) + ")",
 					aportesContratoAlCorte));
 				resumenBuilder.append(formateaListaResumen(
+					"Aportes AH con contrato activo sin vigencia del mes (D-022 vigencias, $"
+						+ String.format("%,.2f", montoAportesSinVigenciaDelMes) + ")",
+					aportesSinVigenciaDelMes));
+				resumenBuilder.append(formateaListaResumen(
 					"Partícipes sin ningún contrato: contrato y vigencia creados (D-022 ampliada, $"
 						+ String.format("%,.2f", montoContratosCreadosReproceso) + ")",
 					contratosCreadosReproceso));
@@ -1884,6 +1898,8 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 			resultado.put("cuotasSaldadasSinPagoReabiertas", new ArrayList<>(cuotasSaldadasSinPagoReabiertas));
 			resultado.put("aportesContratoAlCorte", new ArrayList<>(aportesContratoAlCorte));
 			resultado.put("montoAportesContratoAlCorte", Double.valueOf(Math.round(montoAportesContratoAlCorte * 100.0) / 100.0));
+			resultado.put("aportesSinVigenciaDelMes", new ArrayList<>(aportesSinVigenciaDelMes));
+			resultado.put("montoAportesSinVigenciaDelMes", Double.valueOf(Math.round(montoAportesSinVigenciaDelMes * 100.0) / 100.0));
 			resultado.put("contratosCreados", new ArrayList<>(contratosCreadosReproceso));
 			resultado.put("montoContratosCreados", Double.valueOf(Math.round(montoContratosCreadosReproceso * 100.0) / 100.0));
 			return resultado;
@@ -6152,7 +6168,7 @@ private int distribuirAportePorDevengo(Entidad entidad, double montoRecibido,
 	// o con contrato activo hoy, no hace nada.
 	if (modoReproceso) {
 		Integer aplicadosD022 = resolverContratoAlCorteReproceso(entidad, montoRecibido, cargaArchivo,
-			participe, cacheVigencia, mesCarga);
+			participe, cacheVigencia, mesCarga, esperadoEnLote);
 		if (aplicadosD022 != null) {
 			return aplicadosD022;
 		}
@@ -6438,6 +6454,73 @@ private double esperadoDesdeCache(Entidad entidad, Long idTipoAporte, java.time.
 /** Marca de los aportes D-022 en la glosa (REPROCESO-CARGA-PETRO.md §4.10). */
 static final String MARCA_D022 = "[D-022 contrato inactivo hoy, vigente al corte]";
 
+/** D-022 vigencias: contrato activo hoy sin vigencia que cubra el mes de la carga (§4.10). */
+static final String MARCA_D022_SIN_VIGENCIA = "[D-022 vigencia no cubre el mes]";
+
+/** ¿Alguna vigencia ACTIVA de jubilación/cesantía cubre el último día del mes? Mismo criterio que {@link #esperadoDesdeCache}. */
+private static boolean vigenciaCubreMes(List<com.saa.model.crd.VigenciaContrato> vigencias, java.time.LocalDate mesCarga) {
+	java.time.LocalDate ultimoDiaMes = java.time.YearMonth.from(mesCarga).atEndOfMonth();
+	for (com.saa.model.crd.VigenciaContrato vigencia : vigencias) {
+		if (!esVigenciaAporteActiva(vigencia)) {
+			continue;
+		}
+		if (vigencia.getFechaInicio() != null && !ultimoDiaMes.isBefore(vigencia.getFechaInicio())
+				&& (vigencia.getFechaFin() == null || !ultimoDiaMes.isAfter(vigencia.getFechaFin()))) {
+			return true;
+		}
+	}
+	return false;
+}
+
+private static boolean esVigenciaAporteActiva(com.saa.model.crd.VigenciaContrato vigencia) {
+	return vigencia != null && vigencia.getTipoAporte() != null
+		&& ORDEN_TIPOS_APORTE.contains(vigencia.getTipoAporte().getCodigo())
+		&& vigencia.getIdEstado() != null && vigencia.getIdEstado() == com.saa.rubros.Estado.ACTIVO;
+}
+
+/**
+ * D-022 (§4.10): tipo de aporte para el AH de un mes que ninguna vigencia del contrato cubre, en este
+ * orden: (1) la última vigencia ACTIVA anterior al mes (mayor inicio antes del primer día del mes);
+ * (2) la primera vigencia ACTIVA posterior (menor inicio después del último día del mes); (3) el
+ * tipo del último aporte vigente de la entidad anterior al mes; (4) cesantía (11) por defecto.
+ * {@code origen[0]} dice cuál decidió, para el detalle de la respuesta.
+ */
+private Long tipoAporteSinVigenciaDelMes(List<com.saa.model.crd.VigenciaContrato> vigencias, java.time.LocalDate mesCarga,
+		Entidad entidad, String[] origen) throws Throwable {
+	java.time.LocalDate ultimoDiaMes = java.time.YearMonth.from(mesCarga).atEndOfMonth();
+	com.saa.model.crd.VigenciaContrato anterior = null;
+	com.saa.model.crd.VigenciaContrato posterior = null;
+	for (com.saa.model.crd.VigenciaContrato vigencia : vigencias) {
+		if (!esVigenciaAporteActiva(vigencia) || vigencia.getFechaInicio() == null) {
+			continue;
+		}
+		if (vigencia.getFechaInicio().isBefore(mesCarga)) {
+			if (anterior == null || vigencia.getFechaInicio().isAfter(anterior.getFechaInicio())) {
+				anterior = vigencia;
+			}
+		} else if (vigencia.getFechaInicio().isAfter(ultimoDiaMes)) {
+			if (posterior == null || vigencia.getFechaInicio().isBefore(posterior.getFechaInicio())) {
+				posterior = vigencia;
+			}
+		}
+	}
+	if (anterior != null) {
+		origen[0] = "tipo de la vigencia anterior " + anterior.getCodigo();
+		return anterior.getTipoAporte().getCodigo();
+	}
+	if (posterior != null) {
+		origen[0] = "tipo de la primera vigencia posterior " + posterior.getCodigo() + " (desde " + posterior.getFechaInicio() + ")";
+		return posterior.getTipoAporte().getCodigo();
+	}
+	Long idTipo = aporteDaoService.selectTipoAporteUltimoAnteriorA(entidad.getCodigo(), mesCarga.atStartOfDay());
+	if (idTipo != null) {
+		origen[0] = "tipo del último aporte anterior";
+		return idTipo;
+	}
+	origen[0] = "cesantía (11) por defecto: sin vigencias ni aportes anteriores";
+	return TIPO_APORTE_CESANTIA;
+}
+
 /**
  * D-022 (propuesta del 28-oct-2026, pendiente de confirmar por el líder; REPROCESO-CARGA-PETRO.md
  * §4.10). SOLO MODO REPROCESO, misma filosofía que D-019: el estado de hoy no decide. Para una
@@ -6456,9 +6539,41 @@ static final String MARCA_D022 = "[D-022 contrato inactivo hoy, vigente al corte
  * @return aportes creados si resolvió el AH completo acá; null si la prelación normal sigue
  */
 private Integer resolverContratoAlCorteReproceso(Entidad entidad, double montoRecibido, CargaArchivo cargaArchivo,
-		ParticipeXCargaArchivo participe, CacheVigenciaParticipe cache, java.time.LocalDate mesCarga) throws Throwable {
-	if (contratoDaoService.selectActivoPorEntidad(entidad.getCodigo()) != null) {
-		return null; // contrato activo hoy: flujo de siempre
+		ParticipeXCargaArchivo participe, CacheVigenciaParticipe cache, java.time.LocalDate mesCarga,
+		Map<String, Double> esperadoEnLote) throws Throwable {
+	Contrato contratoActivo = contratoDaoService.selectActivoPorEntidad(entidad.getCodigo());
+	if (contratoActivo != null) {
+		// D-022 vigencias (2026-10-28): contrato activo hoy. Si el lote ya trae el esperado del mes
+		// para algún tipo, hay vigencia que lo cubre: flujo de siempre, sin consultar nada más.
+		if (esperadoEnLote != null) {
+			for (Long idTipoLote : ORDEN_TIPOS_APORTE) {
+				if (esperadoEnLote.get(entidad.getCodigo() + "|" + idTipoLote + "|" + mesCarga) != null) {
+					return null;
+				}
+			}
+		}
+		List<com.saa.model.crd.VigenciaContrato> vigenciasActivo = vigenciaContratoDaoService.selectByContrato(contratoActivo.getCodigo());
+		if (vigenciasActivo == null) {
+			vigenciasActivo = new ArrayList<>();
+		}
+		if (vigenciaCubreMes(vigenciasActivo, mesCarga)) {
+			return null; // flujo de siempre
+		}
+		// Ninguna vigencia del contrato activo cubre el mes (p. ej. contrato y primera vigencia
+		// desde jul-2025 por la migración): el AH va completo al mes de la carga.
+		String[] origenTipo = new String[1];
+		Long idTipo = tipoAporteSinVigenciaDelMes(vigenciasActivo, mesCarga, entidad, origenTipo);
+		double monto = Math.round(montoRecibido * 100.0) / 100.0;
+		com.saa.model.crd.TipoAporte tipoAporte = tipoAporteDaoService.selectById(idTipo, "TipoAporte");
+		Aporte aporte = registrarAporteMesCargaD022(entidad, tipoAporte, monto, cargaArchivo, participe, mesCarga,
+			MARCA_D022_SIN_VIGENCIA);
+		montoAportesSinVigenciaDelMes += monto;
+		aportesSinVigenciaDelMes.add("Entidad " + entidad.getCodigo() + " (rol " + participe.getCodigoPetro() + "): $"
+			+ String.format("%,.2f", monto) + " a " + tipoAporte.getNombre() + " (" + origenTipo[0] + "; APRT "
+			+ aporte.getCodigo() + ", contrato activo " + contratoActivo.getCodigo() + " sin vigencia del mes)");
+		System.out.println("   D-022 vigencias: entidad " + entidad.getCodigo() + " - $" + monto + " a "
+			+ tipoAporte.getNombre() + " con devengo " + mesCarga + " (" + origenTipo[0] + ")");
+		return 1;
 	}
 	java.time.LocalDateTime corte = finMesCarga(cargaArchivo);
 	Contrato contratoCorte = contratoDaoService.selectVigenteAlCortePorEntidad(entidad.getCodigo(), corte);
@@ -6477,20 +6592,7 @@ private Integer resolverContratoAlCorteReproceso(Entidad entidad, double montoRe
 	if (vigencias == null) {
 		vigencias = new ArrayList<>();
 	}
-	java.time.LocalDate ultimoDiaMes = java.time.YearMonth.from(mesCarga).atEndOfMonth();
-	boolean cubreMes = false;
-	for (com.saa.model.crd.VigenciaContrato vigencia : vigencias) {
-		if (vigencia.getTipoAporte() == null || !ORDEN_TIPOS_APORTE.contains(vigencia.getTipoAporte().getCodigo())
-				|| vigencia.getIdEstado() == null || vigencia.getIdEstado() != com.saa.rubros.Estado.ACTIVO) {
-			continue;
-		}
-		if (vigencia.getFechaInicio() != null && !ultimoDiaMes.isBefore(vigencia.getFechaInicio())
-				&& (vigencia.getFechaFin() == null || !ultimoDiaMes.isAfter(vigencia.getFechaFin()))) {
-			cubreMes = true;
-			break;
-		}
-	}
-	if (cubreMes) {
+	if (vigenciaCubreMes(vigencias, mesCarga)) {
 		// La prelación normal reparte con el contrato vigente al corte (esperadoDesdeCache).
 		cache.resuelto = true;
 		cache.idContrato = contratoCorte.getCodigo();
@@ -6500,21 +6602,18 @@ private Integer resolverContratoAlCorteReproceso(Entidad entidad, double montoRe
 		return null;
 	}
 
-	Long idTipo = aporteDaoService.selectTipoAporteUltimoAnteriorA(entidad.getCodigo(), mesCarga.atStartOfDay());
-	if (idTipo == null) {
-		throw new IncomeException(etiquetaReproceso + " (D-022): la entidad " + entidad.getCodigo() + " (rol Petro "
-			+ participe.getCodigoPetro() + ") tiene el contrato " + contratoCorte.getCodigo() + " vigente al "
-			+ corte.toLocalDate() + " pero sin vigencias que cubran " + mesCarga.getMonthValue() + "/" + mesCarga.getYear()
-			+ " y sin ningún aporte anterior que indique el tipo; no se puede aplicar el AH de $" + montoRecibido
-			+ " de la carga " + cargaArchivo.getCodigo() + ". Requiere decisión (tipo de aporte) antes de reprocesar.");
-	}
+	// Misma regla de tipo que el caso "vigencia no cubre el mes" (D-022 vigencias): última vigencia
+	// anterior, primera posterior, último aporte anterior, 11 por defecto. En los 8 casos de la 352
+	// el contrato no tiene ninguna vigencia, así que decide el último aporte (igual que antes).
+	String[] origenTipoCorte = new String[1];
+	Long idTipo = tipoAporteSinVigenciaDelMes(vigencias, mesCarga, entidad, origenTipoCorte);
 	double monto = Math.round(montoRecibido * 100.0) / 100.0;
 	com.saa.model.crd.TipoAporte tipoAporte = tipoAporteDaoService.selectById(idTipo, "TipoAporte");
 	Aporte aporte = registrarAporteMesCargaD022(entidad, tipoAporte, monto, cargaArchivo, participe, mesCarga, MARCA_D022);
 	montoAportesContratoAlCorte += monto;
 	aportesContratoAlCorte.add("Entidad " + entidad.getCodigo() + " (rol " + participe.getCodigoPetro() + "): $"
-		+ String.format("%,.2f", monto) + " a " + tipoAporte.getNombre() + " (APRT " + aporte.getCodigo()
-		+ ", contrato " + contratoCorte.getCodigo() + " vigente al corte, sin vigencias)");
+		+ String.format("%,.2f", monto) + " a " + tipoAporte.getNombre() + " (" + origenTipoCorte[0] + "; APRT "
+		+ aporte.getCodigo() + ", contrato " + contratoCorte.getCodigo() + " vigente al corte, sin vigencia del mes)");
 	System.out.println("   D-022: entidad " + entidad.getCodigo() + " - $" + monto + " a " + tipoAporte.getNombre()
 		+ " con devengo " + mesCarga + " (APRT " + aporte.getCodigo() + ")");
 	return 1;

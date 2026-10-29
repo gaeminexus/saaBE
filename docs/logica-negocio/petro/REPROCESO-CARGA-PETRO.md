@@ -459,11 +459,29 @@ no tiene contrato activo hoy** (con contrato activo, el flujo es el de siempre):
      prelación por devengo normal reparte con ese contrato y sus vigencias.
    - Si no tiene: el AH recibido va **completo al mes de la carga** (devengo = mes de la carga, caja
      = último día del mes, como todo aporte de la carga; `APRTTPMV = 1`, `APRTIDAS` = carga, con su
-     `PGAP`) con `TPAPCDGO` = el del **último aporte vigente de la entidad anterior al mes de la
-     carga** (`NVL(APRTIDST,4) <> 0`, mayor `APRTFCTR`; `AporteDaoService.selectTipoAporteUltimoAnteriorA`).
-     Glosa: `Aporte <tipo> - Mes M/AAAA - CargaArchivo: N - REPROCESO carga N corrida K [D-022 contrato inactivo hoy, vigente al corte]`.
-     Sin aporte anterior: **no se inventa**; la corrida se detiene con un mensaje que dice entidad,
-     rol, contrato y monto. Para este caso no se crea ningún contrato ni vigencia.
+     `PGAP`) con el tipo de aporte de la **regla de tipo** (abajo). Glosa:
+     `Aporte <tipo> - Mes M/AAAA - CargaArchivo: N - REPROCESO carga N corrida K [D-022 contrato inactivo hoy, vigente al corte]`.
+     Para este caso no se crea ningún contrato ni vigencia.
+1b. **Contrato ACTIVO hoy sin vigencia que cubra el mes** (D-022 vigencias, corrida de las 20:15):
+   cuando el contrato activo existe pero ninguna vigencia ACTIVA de jubilación/cesantía cubre el
+   último día del mes de la carga, el AH va **completo al mes de la carga** con el tipo de la regla de
+   abajo y la marca `[D-022 vigencia no cubre el mes]`. No se crea ninguna vigencia: el contrato ya
+   las tiene desde después. Caso medido en la 352: **18 filas, 1.440,32**. El contrato y su primera
+   vigencia empiezan en jul-2025 (`CNTRFCIN` = `VGCNFCIN` entre el 08 y el 15-jul-2025, puestos así
+   por la migración). Ejemplos: entidad 3796 (rol 32044, contrato 2807), 3802 (4480, 2813), 3826
+   (2811, 2837), 4802 (43414, 3811), 5054 (8880, 4063), 5324 (8802, 4333). En todas, el último
+   aporte anterior es de may-2025 y su tipo coincide con el de la primera vigencia (11, o 9 en
+   4802 y 5324). Se detecta sin consultas extra cuando el lote de esperados ya trae el mes; si no,
+   se leen las vigencias del contrato una vez.
+   **Regla de tipo** (puntos 1 y 1b; `tipoAporteSinVigenciaDelMes`):
+   1. el de la última vigencia ACTIVA anterior al mes;
+   2. si no hay, el de la primera vigencia ACTIVA posterior;
+   3. si no hay, el del último aporte vigente anterior al mes (`selectTipoAporteUltimoAnteriorA`);
+   4. si no hay ninguno de los tres, **cesantía personal (11) por defecto**.
+
+   El detalle de la respuesta dice cuál de los cuatro decidió. Esto reemplaza el "se detiene si no
+   hay aporte anterior" del punto 1. En los 8 casos del punto 1 no hay vigencias, así que decide el
+   último aporte, igual que antes.
 2. **Sin ningún contrato** (ni activo ni inactivo; ampliación del líder del 28-oct): se **crea** uno
    para poder aplicar el aporte (`crearContratoYAplicarReproceso`):
    - `CRD.CNTR`: `TPCNCDGO` = el más frecuente entre los contratos activos de los aportantes AH de
@@ -483,10 +501,12 @@ no tiene contrato activo hoy** (con contrato activo, el flujo es el de siempre):
      antes), no se crea otro: la corrida se detiene con mensaje claro (hay que corregir las fechas).
 
 **Respuesta y resumen, por separado:** `aportesContratoAlCorte` / `montoAportesContratoAlCorte` /
-`detalleAportesContratoAlCorte` (caso 1) y `contratosCreados` / `montoContratosCreados` /
-`detalleContratosCreados` (caso 2), más dos bloques en `resumenAplicacion` y en el mensaje. El
-endpoint no cambia. Para la 352 se espera **8 aportes con contrato al corte por 1.154,32**, más los
-contratos creados que correspondan a partícipes AH sin ningún contrato.
+`detalleAportesContratoAlCorte` (caso 1), `aportesSinVigenciaDelMes` / `montoAportesSinVigenciaDelMes` /
+`detalleAportesSinVigenciaDelMes` (caso 1b) y `contratosCreados` / `montoContratosCreados` /
+`detalleContratosCreados` (caso 2), con un bloque por caso en `resumenAplicacion` y en el mensaje. El
+endpoint no cambia. Para la 352 se espera **8 aportes con contrato al corte por 1.154,32**, **18
+aportes sin vigencia del mes por 1.440,32**, y los contratos creados que correspondan a partícipes AH
+sin ningún contrato. Controles: B.10 (los tres casos) y B.10d (caso 1b, diferencia 0).
 
 **Contabilidad e invariante:** son aportes con `APRTIDAS` = carga y tipo 9/11: entran solos en
 `sumValorPorTipoAporteByCarga` (HABER del asiento de APLICACION), en el invariante recibido ==

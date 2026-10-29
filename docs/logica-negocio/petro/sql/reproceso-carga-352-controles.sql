@@ -191,6 +191,7 @@ AND    EXISTS (SELECT 1 FROM CRD.DTPR d WHERE d.PRSTCDGO = pr.PRSTCDGO AND (d.DT
 -- B.10 D-022 (doc §4.10) — aportes AH marcados por corrida, por caso:
 --   '[D-022 contrato inactivo hoy, vigente al corte]'  esperado en la 352: 8 aportes / 1.154,32
 --   '[D-022 contrato creado en reproceso]'             esperado: los participes AH sin ningun contrato
+--   '[D-022 vigencia no cubre el mes]'                 esperado en la 352: 18 aportes / 1.440,32 (B.10d)
 SELECT REGEXP_SUBSTR(a.APRTGLSA, 'REPROCESO carga 352 corrida [0-9]+') AS CORRIDA,
        REGEXP_SUBSTR(a.APRTGLSA, '\[D-022[^]]*\]') AS CASO,
        COUNT(*) AS N, SUM(a.APRTVLRR) AS TOTAL
@@ -212,6 +213,24 @@ SELECT ah.ENTDCDGO, ah.ROL, ah.DESCONTADO,
           AND a.APRTGLSA LIKE '%[D-022 %' AND NVL(a.APRTIDST, 4) <> 0) AS APORTE_D022,
        ah.DESCONTADO - NVL((SELECT SUM(a.APRTVLRR) FROM CRD.APRT a WHERE a.ENTDCDGO = ah.ENTDCDGO AND a.APRTIDAS = 352
           AND a.APRTGLSA LIKE '%[D-022 %' AND NVL(a.APRTIDST, 4) <> 0), 0) AS DIFERENCIA
+FROM   ah ORDER BY 1;
+
+-- B.10d Filas AH con contrato ACTIVO hoy sin vigencia activa (9/11) que cubra el 30-jun-2025, vs. su aporte
+--       '[D-022 vigencia no cubre el mes]' de la corrida vigente (esperado: 18 filas, 1.440,32, DIFERENCIA 0)
+WITH ah AS (
+  SELECT e.ENTDCDGO, TRIM(x.PXCACDPT) AS ROL, x.PXCADSDO AS DESCONTADO
+  FROM   CRD.PXCA x JOIN CRD.DTCA t ON t.DTCACDGO = x.DTCACDGO
+         JOIN CRD.ENTD e ON TO_CHAR(e.ENTDRLPC) = TRIM(x.PXCACDPT)
+  WHERE  t.CRARCDGO = 352 AND TRIM(t.DTCACDPP) = 'AH' AND x.PXCADSDO > 0
+  AND    EXISTS (SELECT 1 FROM CRD.CNTR c WHERE c.ENTDCDGO = e.ENTDCDGO AND c.CNTRESTD = 1
+                 AND NOT EXISTS (SELECT 1 FROM CRD.VGCN v WHERE v.CNTRCDGO = c.CNTRCDGO AND v.VGCNIDST = 1
+                                 AND v.TPAPCDGO IN (9, 11) AND v.VGCNFCIN <= DATE '2025-06-30'
+                                 AND (v.VGCNFCFN IS NULL OR v.VGCNFCFN >= DATE '2025-06-30'))))
+SELECT ah.ENTDCDGO, ah.ROL, ah.DESCONTADO,
+       (SELECT SUM(a.APRTVLRR) FROM CRD.APRT a WHERE a.ENTDCDGO = ah.ENTDCDGO AND a.APRTIDAS = 352
+          AND a.APRTGLSA LIKE '%[D-022 vigencia no cubre el mes]' AND NVL(a.APRTIDST, 4) <> 0) AS APORTE_D022,
+       ah.DESCONTADO - NVL((SELECT SUM(a.APRTVLRR) FROM CRD.APRT a WHERE a.ENTDCDGO = ah.ENTDCDGO AND a.APRTIDAS = 352
+          AND a.APRTGLSA LIKE '%[D-022 vigencia no cubre el mes]' AND NVL(a.APRTIDST, 4) <> 0), 0) AS DIFERENCIA
 FROM   ah ORDER BY 1;
 
 -- B.10c Contratos y vigencias creados por D-022 ampliada (uno por participe sin ningun contrato)

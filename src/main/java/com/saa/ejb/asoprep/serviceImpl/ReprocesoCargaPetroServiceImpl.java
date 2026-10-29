@@ -259,6 +259,12 @@ public class ReprocesoCargaPetroServiceImpl implements ReprocesoCargaPetroServic
         Object montoAlCorte = aplicacion.get("montoAportesContratoAlCorte");
         resultado.setMontoAportesContratoAlCorte(montoAlCorte instanceof Number ? ((Number) montoAlCorte).doubleValue() : 0.0);
         @SuppressWarnings("unchecked")
+        List<String> sinVigencia = (List<String>) aplicacion.get("aportesSinVigenciaDelMes");
+        resultado.setDetalleAportesSinVigenciaDelMes(sinVigencia != null ? sinVigencia : new ArrayList<>());
+        resultado.setAportesSinVigenciaDelMes(sinVigencia != null ? sinVigencia.size() : 0);
+        Object montoSinVigencia = aplicacion.get("montoAportesSinVigenciaDelMes");
+        resultado.setMontoAportesSinVigenciaDelMes(montoSinVigencia instanceof Number ? ((Number) montoSinVigencia).doubleValue() : 0.0);
+        @SuppressWarnings("unchecked")
         List<String> creados = (List<String>) aplicacion.get("contratosCreados");
         resultado.setDetalleContratosCreados(creados != null ? creados : new ArrayList<>());
         resultado.setContratosCreados(creados != null ? creados.size() : 0);
@@ -294,7 +300,9 @@ public class ReprocesoCargaPetroServiceImpl implements ReprocesoCargaPetroServic
                 + resultado.getCancelacionesPosterioresPendientes().size() + " operaciones terminales reabiertas (D-019) y "
                 + resultado.getCuotasSaldadasSinPagoReabiertas() + " cuotas del mes saldadas sin pago reabiertas al corte; "
                 + resultado.getAportesContratoAlCorte() + " aportes AH con contrato vigente al corte ($"
-                + formato(resultado.getMontoAportesContratoAlCorte()) + ") y " + resultado.getContratosCreados()
+                + formato(resultado.getMontoAportesContratoAlCorte()) + "), " + resultado.getAportesSinVigenciaDelMes()
+                + " aportes AH sin vigencia del mes ($" + formato(resultado.getMontoAportesSinVigenciaDelMes())
+                + ") y " + resultado.getContratosCreados()
                 + " contratos creados ($" + formato(resultado.getMontoContratosCreados()) + ") (D-022).");
         System.out.println("=== REPROCESO CARGA PETRO - FIN: " + resultado.getMensaje());
         return resultado;
