@@ -80,9 +80,27 @@ BEGIN
 END;
 /
 
--- BLOQUE 2 — OPCIONAL (comentado). Marcar como NO reales los bancos que diga el usuario tras ver el BLOQUE 0b.
--- UPDATE TSR.BNCO SET BNCOREAL = 0 WHERE BNCOCDGO IN (/* códigos del BLOQUE 0b */);
--- COMMIT;
+-- BLOQUE 2 — Marcar como NO reales los 6 que decidió el usuario el 2026-10-28:
+--   425 CAJA CHICA OFICINAS, 427 CAJA CHICA PENDIENTE LEGAL, 432 CUENTA TRANSITORIA,
+--   433 ARRIENDO RECIBIDOS POR ANTICIPADO, 435 ANTICIPO A PROVEEDORES, 438 DEPOSITOS POR CONFIRMAR.
+-- Solo pesa en asientos con fecha >= 2026-11-01 (antes, el tipo no se clasifica por banco). Todo o nada.
+DECLARE
+    v_n NUMBER;
+BEGIN
+    UPDATE TSR.BNCO SET BNCOREAL = 0
+     WHERE BNCOCDGO IN (425, 427, 432, 433, 435, 438) AND BNCOREAL = 1;
+    v_n := SQL%ROWCOUNT;
+    IF v_n <> 6 THEN
+        ROLLBACK;
+        RAISE_APPLICATION_ERROR(-20001, 'Se esperaban 6 bancos y se actualizaron ' || v_n || '. No cambia nada.');
+    END IF;
+    COMMIT;
+END;
+/
+-- Control del BLOQUE 2. ESPERADO: BNCOREAL 0 -> 6, BNCOREAL 1 -> 12.
+SELECT 'BLOQUE 2 - control' AS bloque, BNCOREAL, COUNT(*) AS bancos FROM TSR.BNCO GROUP BY BNCOREAL ORDER BY BNCOREAL;
+-- Reverso del BLOQUE 2 (comentado):
+-- UPDATE TSR.BNCO SET BNCOREAL = 1 WHERE BNCOCDGO IN (425, 427, 432, 433, 435, 438); COMMIT;
 
 -- BLOQUE 3 — CONTROL DESPUÉS
 -- ESPERADO: BNCOREAL NUMBER 'N' default 1; ASNTMDOR VARCHAR2(3), ASNTNMMD NUMBER, ASNTNAMD VARCHAR2(30), todas 'Y';
