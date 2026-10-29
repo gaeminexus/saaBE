@@ -298,6 +298,14 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
     private List<String> contratosCreadosReproceso = new ArrayList<>();
     private double montoContratosCreadosReproceso = 0.0;
 
+    /**
+     * §4.11 (2026-10-28): filas con descuento que terminaron sin aplicar su dinero en esta corrida
+     * de reproceso (rol, producto, monto, motivo). Las lista el mensaje del invariante. Reset al
+     * entrar a {@code aplicarPagosArchivoPetro}.
+     */
+    private List<String> filasSinPagoReproceso = new ArrayList<>();
+    private double montoFilasSinPagoReproceso = 0.0;
+
     /** D-022 ampliada: tipo de contrato del contrato que el reproceso crea. */
     @EJB
     private com.saa.ejb.crd.dao.TipoContratoDaoService tipoContratoDaoService;
@@ -1437,6 +1445,8 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 		montoAportesContratoAlCorte = 0.0;
 		contratosCreadosReproceso.clear();
 		montoContratosCreadosReproceso = 0.0;
+		filasSinPagoReproceso.clear();
+		montoFilasSinPagoReproceso = 0.0;
 		montoExcedentesDevueltos = 0.0;
 		if (modoReproceso) {
 			System.out.println("=== MODO REPROCESO: " + etiquetaReproceso + " ===");
@@ -1894,9 +1904,48 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 	 * acumulado para descontarlo del recibido en {@link #validarRecibidoIgualAplicado}.
 	 * Fuera del modo reproceso no se llama nunca.
 	 */
+	/**
+	 * Novedad generada DURANTE la aplicación (fase 3). Fuera del modo reproceso: en transacción
+	 * propia, como siempre (VALIDACION-TOPE-AFECTACION-MANUAL.md §15: tiene que sobrevivir al
+	 * rollback de la red del §11 para guiar al operador). En MODO REPROCESO (REPROCESO-CARGA-PETRO.md
+	 * §4.11): en la MISMA transacción del reproceso, con el mismo registro idempotente por
+	 * (fila, tipo) ({@link #registrarNovedad}) — si la corrida revierte, sus novedades también, y la
+	 * base no queda con novedades de corridas que no existieron. Lo que el operador necesita saber
+	 * de una corrida fallida viaja en el mensaje de error (filas sin pago, invariante).
+	 */
+	private void registrarNovedadDeAplicacion(ParticipeXCargaArchivo participe, int tipoNovedad, String descripcion,
+			Long codigoProducto, Long codigoPrestamo, Double montoEsperado, Double montoRecibido) {
+		if (modoReproceso) {
+			registrarNovedad(participe, tipoNovedad, descripcion, codigoProducto, codigoPrestamo, montoEsperado, montoRecibido);
+			return;
+		}
+		registradorNovedadTransaccionPropia.registrarEnTransaccionPropia(participe, tipoNovedad, descripcion,
+			codigoProducto, codigoPrestamo, montoEsperado, montoRecibido);
+	}
+
+	/**
+	 * MODO REPROCESO (§4.11): una fila con descuento que termina sin aplicar su dinero (sin
+	 * producto, sin operación vigente al corte, sin cuota pendiente, excedente del motor). Se
+	 * acumula para que el invariante recibido == aplicado la nombre (rol, producto, monto, motivo)
+	 * en vez de dar solo el total. Fuera del modo reproceso no hace nada.
+	 */
+	private void registrarFilaSinPagoReproceso(ParticipeXCargaArchivo participe, String codigoProducto,
+			double monto, String motivo) {
+		if (!modoReproceso || monto <= 0.01 || participe == null) {
+			return;
+		}
+		String producto = codigoProducto;
+		if (producto == null && participe.getDetalleCargaArchivo() != null) {
+			producto = participe.getDetalleCargaArchivo().getCodigoPetroProducto();
+		}
+		filasSinPagoReproceso.add("Rol " + participe.getCodigoPetro() + " (" + producto + "): $"
+			+ String.format("%,.2f", monto) + " — " + motivo);
+		montoFilasSinPagoReproceso += monto;
+	}
+
 	private void registrarSinParticipeReproceso(ParticipeXCargaArchivo participe, String codigoProducto,
 			double monto, CargaArchivo cargaArchivo) {
-		registradorNovedadTransaccionPropia.registrarEnTransaccionPropia(participe,
+		registrarNovedadDeAplicacion(participe,
 			ASPNovedadesCargaArchivo.PARTICIPE_NO_ENCONTRADO,
 			etiquetaReproceso + ": el rol Petro " + participe.getCodigoPetro() + " no existe en el SAA (producto "
 				+ codigoProducto + ", $" + String.format("%.2f", monto) + " descontados en la carga "
@@ -2191,10 +2240,11 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 					|| cuota.getFechaVencimiento().isBefore(inicioMes) || cuota.getFechaVencimiento().isAfter(corte)) {
 				continue;
 			}
+			// §4.9 ampliada (2026-10-28): la fecha de pago NO decide. La migración dejó cuotas del mes
+			// en 4/7 sin ningún PGPR con DTPRFCPG = 2025-05-31 (marca de la migración, no un pago:
+			// los pagos reales migrados sí tienen PGPR). Lo único que prueba que la cuota se pagó es
+			// un pago vigente; sin él vuelve a pendiente al corte, cualquiera sea su fecha de pago.
 			java.time.LocalDateTime fechaPagadoAnterior = cuota.getFechaPagado();
-			if (fechaPagadoAnterior != null && !fechaPagadoAnterior.isAfter(corte)) {
-				continue;
-			}
 			List<com.saa.model.crd.PagoPrestamo> pagosVigentes =
 				pagoPrestamoDaoService.selectVigentesByIdDetallePrestamo(cuota.getCodigo());
 			if (pagosVigentes != null && !pagosVigentes.isEmpty()) {
@@ -2859,6 +2909,32 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 		       .append(", diferencia $").append(String.format("%,.2f", Math.abs(diferencia)))
 		       .append(diferencia > 0 ? " aplicados de más" : " aplicados de menos")
 		       .append(" de lo recibido. La carga NO quedó procesada: corrija y vuelva a intentar.");
+
+		// MODO REPROCESO (§4.11): las filas con descuento que terminaron sin aplicar su dinero, con
+		// rol, producto, monto y motivo (máximo 50), y las novedades de aporte generadas en la
+		// corrida — para no tener que reconstruirlas del log.
+		if (modoReproceso && (!filasSinPagoReproceso.isEmpty() || !novedadesGeneradasCargaActual.isEmpty())) {
+			final int MAXIMO_FILAS_SIN_PAGO = 50;
+			mensaje.append(" Filas sin pago en esta corrida: ").append(filasSinPagoReproceso.size())
+			       .append(" ($").append(String.format("%,.2f", montoFilasSinPagoReproceso)).append(")");
+			int listadas = 0;
+			for (String linea : filasSinPagoReproceso) {
+				if (listadas >= MAXIMO_FILAS_SIN_PAGO) {
+					mensaje.append("\n  ... y ").append(filasSinPagoReproceso.size() - listadas).append(" fila(s) más.");
+					break;
+				}
+				mensaje.append("\n  - ").append(linea);
+				listadas++;
+			}
+			for (String linea : novedadesGeneradasCargaActual) {
+				if (listadas >= MAXIMO_FILAS_SIN_PAGO) {
+					break;
+				}
+				mensaje.append("\n  - AH: ").append(linea);
+				listadas++;
+			}
+			mensaje.append("\n");
+		}
 
 		// El desglose por partícipe es un PLUS para el mensaje (dice a quién mirar primero), no
 		// la validación en sí — si falla, no puede tapar el hallazgo real de arriba.
@@ -4244,6 +4320,7 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 		List<Producto> productos = resolverProductosPorCodigo(codigoProducto, productosCache);
 		if (productos == null || productos.isEmpty()) {
 			System.out.println("⚠️ PROCESAMIENTO OMITIDO - No se encontró producto con código Petro: " + codigoProducto);
+			registrarFilaSinPagoReproceso(participe, codigoProducto, montoArchivo, "producto no mapeado");
 			return;
 		}
 		System.out.println("✅ Producto(s) encontrado(s): " + productos.size());
@@ -4266,6 +4343,8 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 		if (prestamos.isEmpty()) {
 			System.out.println("⚠️ PROCESAMIENTO OMITIDO - No se encontraron préstamos activos para entidad: " +
 			                   entidad.getRazonSocial() + " (ID: " + entidad.getCodigo() + ") y producto: " + codigoProducto);
+			registrarFilaSinPagoReproceso(participe, codigoProducto, montoArchivo,
+				"sin operación vigente al corte (entidad " + entidad.getCodigo() + ")");
 			return;
 		}
 		System.out.println("✅ Préstamo(s) activo(s) encontrado(s): " + prestamos.size());
@@ -4355,6 +4434,8 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 	       aplicarPagoNormalConMotor(cuotaAPagar.getPrestamo(), montoArchivo, cargaArchivo, participe);
 	   } else {
 	       System.out.println("⚠️ No se encontró cuota pendiente");
+	       registrarFilaSinPagoReproceso(participe, codigoProducto, montoArchivo,
+	           "sin cuota pendiente en " + prestamos.size() + " operación(es) vigentes al corte");
 	   }
 
 	   // ✅ RED DE SEGURIDAD: revisar el estado de TODOS los préstamos tocados.
@@ -4440,7 +4521,7 @@ private boolean procesarSeguroIncendioHuerfano(ParticipeXCargaArchivo participeH
 		}
 		// §15: transacción PROPIA — esta novedad debe sobrevivir aunque la red del §11 revierta
 		// aplicarPagosArchivoPetro más adelante.
-		registradorNovedadTransaccionPropia.registrarEnTransaccionPropia(participeHS, ASPNovedadesCargaArchivo.PRESTAMO_NO_ENCONTRADO,
+		registrarNovedadDeAplicacion(participeHS, ASPNovedadesCargaArchivo.PRESTAMO_NO_ENCONTRADO,
 			"HS huérfano (sin PH/PP en esta carga): no se encontró entidad con código Petro "
 				+ participeHS.getCodigoPetro() + " para determinar a qué préstamo aplicar el seguro de $"
 				+ montoHS + ".",
@@ -4486,7 +4567,7 @@ private boolean procesarSeguroIncendioHuerfano(ParticipeXCargaArchivo participeH
 		System.err.println("⛔ NOVEDAD BLOQUEANTE (HS huérfano): partícipe " + participeHS.getCodigoPetro()
 			+ " (" + participeHS.getNombre() + ") - " + descripcion);
 		// §15: transacción PROPIA — ver comentario del otro registrarNovedad de este método.
-		registradorNovedadTransaccionPropia.registrarEnTransaccionPropia(participeHS, ASPNovedadesCargaArchivo.MONTO_INCONSISTENTE, descripcion,
+		registrarNovedadDeAplicacion(participeHS, ASPNovedadesCargaArchivo.MONTO_INCONSISTENTE, descripcion,
 			null, null, null, Double.valueOf(montoHS));
 		return true;
 	}
@@ -4646,6 +4727,8 @@ private void manejarExcedenteNoAplicado(ResultadoAplicacionPago resultado, Prest
 	}
 	System.out.println("⚠️ Excedente no aplicado por el motor de pagos: $" + excedente +
 	                   " (préstamo " + prestamo.getCodigo() + ") - Registrando novedad BLOQUEANTE");
+	registrarFilaSinPagoReproceso(participe, null, excedente,
+		"excedente del motor sin cuota pendiente (préstamo " + prestamo.getCodigo() + ")");
 	String descripcion = String.format(
 		"Excedente sin aplicar tras el pago en cascada del préstamo %d: recibido $%.2f, aplicado $%.2f, "
 		+ "sobran $%.2f sin cuota pendiente donde aplicarlos - requiere distribución manual (AVPC)",
@@ -4653,7 +4736,7 @@ private void manejarExcedenteNoAplicado(ResultadoAplicacionPago resultado, Prest
 	// §15: transacción PROPIA — este excedente se detecta y registra DENTRO de
 	// aplicarPagosArchivoPetro; si la red del §11 revierte después, no puede llevarse esta
 	// novedad con ella.
-	registradorNovedadTransaccionPropia.registrarEnTransaccionPropia(participe, ASPNovedadesCargaArchivo.MONTO_INCONSISTENTE, descripcion,
+	registrarNovedadDeAplicacion(participe, ASPNovedadesCargaArchivo.MONTO_INCONSISTENTE, descripcion,
 		null, prestamo.getCodigo(), resultado.getValorAplicado(), resultado.getValorRecibido());
 }
 
@@ -5544,8 +5627,18 @@ private SaldosRealesCuota calcularSaldosRealesCuota(DetallePrestamo cuota, Carga
 	// vacía (convención de DAO, sin cambios) — nunca lanza. Lo único que puede fallar de
 	// verdad acá es el saveSingle de la autocorrección, y eso debe abortar, no disimularse.
 	try {
-		// Obtener pagos específicos de esta cuota usando método específico del DAO
-		List<PagoPrestamo> pagos = pagoPrestamoDaoService.selectByIdDetallePrestamo(cuota.getCodigo());
+		// Obtener pagos específicos de esta cuota usando método específico del DAO.
+		// C4 (2026-10-28, REPROCESO-CARGA-PETRO.md §4.11): SOLO pagos VIGENTES (PGPRANUL nulo o 0),
+		// mismo criterio que el motor (MotorPagoPrestamoServiceImpl.calcularSaldosCuota) y que
+		// recalcularCuotaDesdePagos. Antes sumaba también los anulados: una cuota cuyo único pago se
+		// anuló salía con saldo 0 y la "autocorrección" de abajo la volvía a marcar PAGADA (en el
+		// reproceso de la 352, 114 filas perdieron su pago así). Un pago anulado nunca salda nada.
+		// selectByIdDetallePrestamo (todos, con anulados) queda para quien sí los necesita: los
+		// chequeos de FK antes de borrar cuotas (abono a capital y su reverso).
+		List<PagoPrestamo> pagos = pagoPrestamoDaoService.selectVigentesByIdDetallePrestamo(cuota.getCodigo());
+		if (pagos == null) {
+			pagos = new ArrayList<>();
+		}
 		
 		if (pagos.isEmpty()) {
 			// No hay pagos previos, los saldos son los valores originales de la cuota
@@ -5933,7 +6026,7 @@ private int aplicarAporteAH(ParticipeXCargaArchivo participe, CargaArchivo carga
 		// ruta (Fase 2, con dinero real) la generara además de la validación de carga
 		// (validarAporteAH, Fase 1) que ya la registra sin datos de monto.
 		// §15: transacción PROPIA — generada DURANTE aplicarPagosArchivoPetro (vía aplicarAporteAH).
-		registradorNovedadTransaccionPropia.registrarEnTransaccionPropia(participe, ASPNovedadesCargaArchivo.HISTORIAL_SUELDO_NO_ENCONTRADO,
+		registrarNovedadDeAplicacion(participe, ASPNovedadesCargaArchivo.HISTORIAL_SUELDO_NO_ENCONTRADO,
 			"No se encontró HistorialSueldo activo (estado 99) para la entidad " + entidad.getCodigo()
 				+ "; no se pudo determinar a qué tipo de aporte aplicar los $" + montoRecibido
 				+ " recibidos. Requiere decisión en pantalla (jubilación o cesantía).",
@@ -5963,7 +6056,7 @@ private int aplicarAporteAH(ParticipeXCargaArchivo participe, CargaArchivo carga
 	if (!tieneJubilacion && !tieneCesantia) {
 		// Mismo criterio que arriba: se sabe quién es, falta decidir la cuenta -> NOVEDAD.
 		// §15: transacción PROPIA — mismo motivo que la de arriba.
-		registradorNovedadTransaccionPropia.registrarEnTransaccionPropia(participe, ASPNovedadesCargaArchivo.VALORES_HISTORIAL_NULOS,
+		registrarNovedadDeAplicacion(participe, ASPNovedadesCargaArchivo.VALORES_HISTORIAL_NULOS,
 			"El HistorialSueldo activo (código " + historialActivo.getCodigo()
 				+ ") tiene jubilación y cesantía esperadas en $0, pero se recibieron $" + montoRecibido
 				+ ". Requiere decisión en pantalla (jubilación o cesantía).",
@@ -6195,7 +6288,7 @@ private int distribuirAportePorDevengo(Entidad entidad, double montoRecibido,
 		// §15: transacción PROPIA — el defecto que lo motivó: esta novedad se generaba y la
 		// transacción de aplicarPagosArchivoPetro se la llevaba puesta si la red del §11 revertía
 		// después, dejando al operador sin dónde actuar.
-		registradorNovedadTransaccionPropia.registrarEnTransaccionPropia(participe, ASPNovedadesCargaArchivo.MONTO_INCONSISTENTE, descripcion,
+		registrarNovedadDeAplicacion(participe, ASPNovedadesCargaArchivo.MONTO_INCONSISTENTE, descripcion,
 			null, null, null, Double.valueOf(disponible));
 		novedadesGeneradasCargaActual.add("Partícipe " + participe.getCodigoPetro() + " ("
 			+ participe.getNombre() + "): $" + disponible + " sin aplicar — contrato activo (código "

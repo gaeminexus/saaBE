@@ -327,13 +327,23 @@ En la base del 28-oct hay 1.442 cuotas con vencimiento en jun-2025 saldadas sin 
 fecha de pago nula o posterior al 30-jun: es la regla de la migración, no una excepción.
 
 **Regla (solo modo reproceso):** en toda operación vigente al corte (§4.8) de una fila de la carga
-con descuento, la cuota **con vencimiento dentro del mes de la carga** que esté en estado 4/7, con
-`DTPRFCPG` nula o posterior al corte y **sin ningún pago vigente** (`PGPRANUL` nulo o 0, mismo
-criterio que `recalcularCuotaDesdePagos`) se reconstruye con `recalcularCuotaDesdePagos` (sin pagos
-vuelve a pendiente / en mora) y su mora se calcula al corte (`recalcularMoraCuotaALaFecha`). Si
-tiene algún pago vigente no se toca. Método: `reabrirCuotasSaldadasSinPagoAlCorte`; lo usan las
-operaciones no terminales y, como primer paso, `reabrirPrestamoVigenteAlCorte` (el cambio del
-préstamo a VIGENTE y la marca de eventos siguen siendo solo para las terminales, §4.8).
+con descuento, la cuota **con vencimiento dentro del mes de la carga** que esté en estado 4/7 y
+**sin ningún pago vigente** (`PGPRANUL` nulo o 0, mismo criterio que `recalcularCuotaDesdePagos`),
+**cualquiera sea su `DTPRFCPG`**, se reconstruye con `recalcularCuotaDesdePagos` (sin pagos vuelve a
+pendiente / en mora y su fecha de pago queda nula) y su mora se calcula al corte
+(`recalcularMoraCuotaALaFecha`). Si tiene algún pago vigente no se toca. Método:
+`reabrirCuotasSaldadasSinPagoAlCorte`; lo usan las operaciones no terminales y, como primer paso,
+`reabrirPrestamoVigenteAlCorte` (el cambio del préstamo a VIGENTE y la marca de eventos siguen
+siendo solo para las terminales, §4.8).
+
+> **Ampliado el 2026-10-28 (corrida de las 19:49):** antes la regla exigía además `DTPRFCPG` nula o
+> posterior al corte. Quedaban fuera 17 filas (2.104,35) cuya cuota de junio está en 4 **sin PGPR**
+> con `DTPRFCPG = 2025-05-31`: es la marca que dejó la migración, no un pago (los pagos reales
+> migrados sí tienen PGPR). Ahora la fecha no decide; solo un pago vigente prueba que la cuota se
+> pagó. Ojo: la búsqueda de operaciones vigentes al corte (§4.8) no cambió — una operación **hoy
+> terminal** cuyas cuotas están todas saldadas con fecha hasta el corte no se considera vigente al
+> corte y no se reabre; si alguna de esas 17 filas cae ahí, aparece en la lista de filas sin pago del
+> invariante (§4.11) con el motivo "sin operación vigente al corte".
 
 **Criterio conservador del alcance:**
 - Solo la cuota **del mes de la carga**. Las de meses anteriores quedan como están (las fija el
@@ -496,6 +506,57 @@ invariante detiene la corrida). Los 8 casos de la 352 sí lo tienen (llegaron al
 **Controles:** B.10 (aportes marcados por corrida y caso), B.10b (filas AH sin contrato activo hoy
 vs. su aporte D-022: diferencia 0) y B.10c (contratos y vigencias creados) de
 [sql/reproceso-carga-352-controles.sql](sql/reproceso-carga-352-controles.sql).
+
+### 4.11 Pagos anulados no saldan cuotas; filas sin pago nombradas; novedades en la transacción (2026-10-28)
+
+**Por qué:** la corrida de las 19:49 (con D-022) llegó al invariante y falló: recibido 530.605,35,
+aplicado 501.792,42 (préstamos 341.741,56 + aportes 160.050,86). 151 filas de préstamo (29.887,42)
+no produjeron ningún pago; 114 terminaban en *"No se encontró cuota pendiente"* después de *"Cuota
+#N actualizada a PAGADA según PagoPrestamo"*.
+
+**Causa:** `buscarCuotaAPagar` → `calcularSaldosRealesCuota` (este servicio) sumaba **todos** los
+pagos de la cuota (`selectByIdDetallePrestamo`, sin filtrar `PGPRANUL`). La anulación del reproceso
+acababa de marcar anulados los 1.313 pagos del esquema viejo (p. ej. PGPR 265675 de la cuota 46 del
+préstamo 3153; PGPR 265694 de 3959/65): la suma los contaba, la cuota reabierta salía con saldo 0,
+la "autocorrección" la volvía a PAGADA y la búsqueda seguía a la siguiente; como las de julio en
+adelante están pagadas por las cargas 353, 354… (esquema viejo), no quedaba ninguna y el dinero de la
+fila no iba a ningún lado ni dejaba novedad. El motor (`MotorPagoPrestamoServiceImpl`) ya usaba solo
+los vigentes; por eso fallaba solo este camino. Casos para reproducir: rol 5738 PP (préstamo 3153,
+cuota 46), rol 9958 PP (7046/40), rol 3194 PQ (5764/52).
+
+**Cambios:**
+1. `calcularSaldosRealesCuota` usa `selectVigentesByIdDetallePrestamo` (`PGPRANUL` nulo o 0). Es una
+   corrección también del flujo normal: un pago anulado nunca salda una cuota. `selectByIdDetallePrestamo`
+   (con anulados) se deja como está porque sus otros dos llamadores sí necesitan los anulados: los
+   chequeos de FK antes de borrar cuotas en el abono a capital y en su reverso. `ProvisionInteres` y
+   `CobroPetroContable` ya consultaban solo pagos vigentes (`selectDatosPagosVigentes*`,
+   `selectVigentesByCargaArchivo`).
+2. §4.9 ampliada: la fecha de pago de la cuota del mes ya no decide (ver la nota en §4.9).
+3. **Filas sin pago nombradas.** En modo reproceso, toda fila con descuento que termina sin aplicar
+   su dinero se registra con rol, producto, monto y motivo: producto no mapeado, sin operación
+   vigente al corte, sin cuota pendiente, excedente del motor sin cuota. Si el invariante falla, el
+   mensaje trae esa lista y las novedades de aporte (AH) de la corrida, hasta 50 líneas.
+   Verificado: `marcarCuotasEnMoraPorFaltaDePago` solo se llama con descuento $0 (rama "monto 0" de
+   `aplicarPagoParticipe`), así que las líneas "Cuota #N marcada EN MORA (sin pago)" y "No se
+   encontraron cuotas pendientes para marcar en mora" son de filas sin dinero y no pierden nada.
+4. **Novedades de la aplicación en la misma transacción.** En el flujo normal las novedades que se
+   generan al aplicar se registran en transacción propia, para que sobrevivan al rollback y guíen al
+   operador (VALIDACION-TOPE-AFECTACION-MANUAL.md §15). En modo reproceso eso ensuciaba la base con
+   novedades de corridas que revirtieron (de la corrida de las 19:49 quedaron 11 tipo 1 y 18 tipo 13,
+   más 5 de la abortada de las 17:54). Ahora en reproceso se registran en la **misma transacción**,
+   con el mismo registro idempotente por (fila, tipo): si la corrida revierte, desaparecen con ella.
+   La información de una corrida fallida va en el mensaje de error (punto 3). Las ya grabadas por las
+   corridas fallidas del 28-oct **no** las borra este cambio: se identifican porque no se
+   corresponden con una corrida que haya terminado. Las tipo 1 llevan la etiqueta
+   `REPROCESO carga 352 corrida N` en la descripción, y todas tienen `NVPCFCRG` del 28-oct después
+   de las 17:50. Se limpian por SQL revisado (regla 8 del proyecto), no desde el código.
+
+**Qué esperar en la próxima corrida de la 352:**
+- El invariante cuadra: aplicado = recibido neto = **530.605,35**.
+- De ese total, 87,99 son el aporte D-010 de la entidad 5324; préstamos + aportes de la prelación
+  suman 530.605,35 − 87,99 = 530.517,36.
+- La lista de filas sin pago queda vacía.
+- Si la corrida revierte, no queda ninguna novedad nueva.
 
 ## 5. Respuesta (`ResultadoReprocesoCargaPetro`)
 
