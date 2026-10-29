@@ -9,7 +9,7 @@ Convención de nombres: estructura + periodicidad + código de entidad **3968** 
 
 | Reporte | Periodicidad | ¿Lo genera el SAA? | ¿Coincide con el formato? | Qué falta |
 |---|---|---|---|---|
-| B17 | Mensual, `.txt` + `.ACU` | Sí desde C19: `/esrp/generar` y `/esrp/archivo` (estructura B17, alterno 6) | Idéntico byte a byte a mayo 2025 | Correr C19-01/02; decidir las 31 asignaciones y las cuentas 3.3.90.01 y 4.8.02.1; vigencia del catálogo de ene-2026; pantalla en el FE |
+| B17 | Mensual, `.txt` + `.ACU` | Sí desde C19: el motor de balances: `/dtmt/generarBalance` y `/dtmt/generarArchivo` con el reporte B17 (alterno 6, renglones propios; C19b, D-031) | Idéntico byte a byte a mayo 2025 | Correr C19-01/02; decidir las 31 asignaciones y las cuentas 3.3.90.01 y 4.8.02.1; vigencia del catálogo de ene-2026; pantalla en el FE |
 | G40 | Semestral (G40S) | Sí: `/ejrc/ejecutar` → `RPR.CG40`; el `.txt` lo arma el FE (`rpr/reportes-super-bancos`) | Según lo presentado | Verificar contra el manual de tablas |
 | G41 | Mensual | Sí (`CG41`) | Sí | No reproduce meses pasados (bandera de `CRD.ENTD`) |
 | G42 | Mensual | Sí | Sí | Usa la fecha de caja (`APRTFCTR`), no el devengo; cuadre cuenta 21 del B17 = Σ G42 |
@@ -25,7 +25,7 @@ Convención de nombres: estructura + periodicidad + código de entidad **3968** 
 | Q01 Quejas | Mensual | No | Presentado vacío | Definir si se incorpora |
 | Flujo de caja (formato BIESS) | Mensual | Estructura FLC desde C19 (provisional) | Filas y fórmulas del formato; solo las 9 reglas de su columna O | Falta el mapeo de cuentas (flujo de efectivo ene-2026); la columna O lleva las provisiones (47) a egresos; salida Excel |
 | Flujo de efectivo NIIF | Mensual | No | — | Mismo motor, cuando llegue el formato |
-| Comparativo dic vs mes | Mensual | Sí desde C19: `/esfo` con `comparativo=CIERRE_ANIO_ANTERIOR` | Por confirmar con el formato | Ajustar al formato |
+| Comparativo dic vs mes | Mensual | Sí desde C19: `/dtmt/estadoOficial/imprimir` con `comparativo=CIERRE_ANIO_ANTERIOR` | Por confirmar con el formato | Ajustar al formato |
 | Estado de situación financiera / Estado de resultados | Mensual | Sí, y oficiales desde C19 | Encabezado, logo, nombre propio, resultado del ejercicio, PRELIMINAR/DEFINITIVO | — |
 | Cambios en el patrimonio y notas | Juego completo | No (las notas son texto libre) | — | Pendiente |
 | Ecuación contable y cuadres B17↔G | Control | El estado oficial imprime la línea de descuadre; los cuadres B17↔G están en `10-cuadratura-b17-g.js` del expediente | — | Llevar C9 al SAA |

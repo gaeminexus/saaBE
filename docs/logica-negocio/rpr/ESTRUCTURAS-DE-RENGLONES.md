@@ -1,87 +1,95 @@
-# Estructuras de renglones (C19) — B17 y flujo de caja como configuración
+# Reportes de renglones propios en el motor de balances (C19 / C19b) — B17 y flujo de caja como configuración
 
-**2026-10-28 · tarea C19 del cuadre con la Superintendencia.** Inventario de reportes en
-[REPORTES-SUPERINTENDENCIA.md](REPORTES-SUPERINTENDENCIA.md).
+**2026-10-28 (C19) · 2026-10-29 (C19b, decisión D-031 del líder: sin motor paralelo).** Inventario de reportes
+en [REPORTES-SUPERINTENDENCIA.md](REPORTES-SUPERINTENDENCIA.md).
 
-## 1. Problema
+## 1. Problema y decisión
 
-El motor de balances (CNT.RPRT + CNT.DTRP → CNT.DTMT, `TempReportesServiceImpl.reporteRangoFecha`) copia rangos
-del plan de cuentas: cada renglón ES una cuenta del plan. El B17 no: sus renglones son el catálogo de la
-Superintendencia (534 códigos sin puntos, `110105`), cada uno alimentado por varias cuentas del SAA con reglas
-propias (el "7" es neto deudor, las 7.x van en valor absoluto, 32 cuentas "REQUIERE ASIGNACIÓN" van a un renglón
-decidido a mano) y sale en un `.txt` de formato exacto. El flujo de caja tiene el mismo problema (renglones del
-formato BIESS, totales por fórmula, saldo inicial a otra fecha).
+El motor de balances (`POST /dtmt/generarBalance` → `TempReportesServiceImpl.reporteRangoFecha`, definición en
+CNT.RPRT + CNT.DTRP, resultado en CNT.DTMT) copia **rangos del plan de cuentas**: cada renglón ES una cuenta del
+plan y el padre se arrastra por `PLNNCDPD`. El B17 no: sus renglones son el catálogo de la Superintendencia (534
+códigos sin puntos, `110105`), cada uno alimentado por varias cuentas con reglas propias (el "7" es neto deudor,
+las 7.x van en valor absoluto, 32 cuentas "REQUIERE ASIGNACIÓN" van a un renglón decidido a mano), y sale en un
+`.txt` de formato exacto. El flujo de caja igual (renglones del formato BIESS, totales por fórmula, saldo inicial a
+otra fecha).
 
-## 2. Extensión genérica (C19-01)
+La primera versión de C19 (28-oct) lo resolvió con un motor aparte (`/esrp`, tabla `CNT.CRRP`). **D-031 (29-oct):
+no se acepta un motor paralelo.** C19b lo integra al motor existente: mismas tablas de definición, mismo endpoint,
+mismo resultado en DTMT.
 
-| Tabla | Qué es |
+## 2. Modelo (todo cuelga del reporte del motor)
+
+| Tabla | Qué se agregó |
 |---|---|
-| `CNT.RPRT` (+10 columnas opcionales) | `RPRTTPRP` 2 = estructura de renglones (NULL/1 = motor de siempre) · `RPRTCDES` código de estructura (B17) · `RPRTPRDC` periodicidad (M) · `RPRTCDEN` entidad (3968) · `RPRTBSVL` base del valor · `RPRTMPAU` mapeo automático · `RPRTACPF` acumulación por prefijo · `RPRTFRAR` formato de archivo (1 = Superintendencia) · `RPRTSMCT` suma de control en la cabecera · `RPRTTTLO` título oficial |
-| `CNT.RNRP` renglón | código, nombre, nivel, orden, tipo de cálculo (1 suma · 2 neto deudor · 3 fórmula `+A -B`), base propia, ¿va al archivo?, vigencia desde/hasta (fecha de corte), estado |
-| `CNT.CRRP` regla cuenta → renglón | cuenta del plan (con puntos), alcance (1 con subcuentas · 2 exacta), renglón destino (NULL = mapeo automático), signo (1 naturaleza · 2 deudor D−H · 3 acreedor H−D · 4 valor absoluto por cuenta), ¿se reporta?, vigencia, sustento |
+| `CNT.RPRT` (cabecera, `ReporteContable`) | 11 columnas opcionales: `RPRTTPRP` tipo (NULL/1 balance sobre el plan · **2 renglones propios**) · `RPRTCDES` código de estructura (B17) · `RPRTPRDC` periodicidad (M) · `RPRTCDEN` entidad (3968) · `RPRTBSVL` base del valor (1 saldo al corte · 2 movimiento del período · 3 saldo al inicio) · `RPRTMPAU` mapeo automático por prefijo · `RPRTACPF` acumulación por prefijo de código · `RPRTFRAR` **tipo de salida en archivo** (1 = TXT de la Superintendencia) · `RPRTSMCT` suma de control · `RPRTTTLO` título oficial · `RPRTNVMX` **nivel de profundidad** (dígitos máximos; también para los balances de siempre) |
+| `CNT.DTRP` (detalle, `DetalleReporteContable`) | 7 columnas opcionales. En un reporte de renglones cada fila es una **regla cuenta → renglón**: `NUMCTADS`/`PLNNCDDS` = la cuenta del plan, `DTRPCDRN` renglón destino (NULL = mapeo automático), `DTRPALCN` alcance (1 con subcuentas · 2 exacta), `DTRPMDSG` signo (1 naturaleza · 2 deudor · 3 acreedor · 4 valor absoluto por cuenta), `DTRPRPRT` se reporta (0 = excluida a propósito), `DTRPFCDS`/`DTRPFCHS` vigencia, `DTRPOBSR` sustento. En los balances de siempre quedan NULL. |
+| `CNT.RNRP` (detalle nuevo, `RenglonReporteContable`, CRUD `/rnrp`) | Los renglones del reporte: código, nombre, nivel, orden, tipo de cálculo (1 suma · 2 neto deudor · 3 fórmula `+A -B`), base propia, ¿va al archivo?, vigencia, estado. **Es la única tabla nueva y es estrictamente necesaria**: los 534 códigos del B17 no son cuentas del plan, no caben en PLNN ni en DTRP (que son reglas sobre cuentas). |
 
-Con todas las columnas nuevas en NULL los reportes existentes no cambian. `/dtmt/generarBalance` rechaza un tipo de
-reporte que sea estructura (mensaje claro).
+`CNT.CRRP` (motor paralelo) se retira: sus reglas pasan a DTRP (C19-05) y la tabla se borra.
 
-## 3. Cálculo (`com.saa.ejb.cnt.estructura.CalculadorEstructura`, clase pura)
+## 3. Cálculo (dentro de `TempReportesServiceImpl`)
 
-1. Debe/haber por cuenta del plan (asientos ACTIVO y REVERSADO, como el balance), por cada base necesaria:
-   1 saldo al corte (desde el inicio) · 2 movimiento del período (inicio..corte, por defecto el mes) ·
-   3 saldo al día anterior al inicio.
-2. Cada cuenta con movimiento se resuelve: gana la regla de cuenta **más larga** que la alcance; si varias reglas
-   tienen exactamente esa cuenta, alimenta a todos sus destinos. Sin regla (o regla sin destino) y con
-   `RPRTMPAU = 1`: renglón = prefijo más largo de la cuenta sin separadores (`1.1.01.05.01` → `110105`).
-   `CRRPRPRT = 0` excluye a propósito (sale en advertencias si tiene saldo).
-3. Aporte según el signo de la regla; además se acumula el neto deudor (D−H).
-4. Renglón tipo 1: suma de aportes de los destinos que empiezan por su código (si `RPRTACPF = 1`) o del suyo;
-   tipo 2: lo mismo con el neto deudor; tipo 3: fórmula sobre otros renglones (detección de ciclos).
-5. Importes BigDecimal exactos, redondeo a 2 decimales por renglón; suma de control = Σ renglones del archivo.
-6. Comparativo opcional (`fechaComparacion`): valor comparativo y variación por renglón.
+`reporteRangoFecha` mira el tipo del reporte: **NULL/1 → exactamente el código de siempre** (el diff solo agrega
+líneas: la consulta del reporte y el corte por `RPRTNVMX`, que con NULL no hace nada); **2 → `calculaRenglones` +
+`reporteRenglones`**. Por centro de costo y distribuido rechazan un reporte de renglones.
 
-Advertencias: cuentas con saldo sin renglón (solo en estructuras con mapeo automático, que cubren todo el plan) y
-cuentas excluidas por regla.
+`calculaRenglones` usa `com.saa.ejb.cnt.estructura.CalculadorEstructura` (clase pura, la misma validada contra el
+B17 presentado):
+1. Debe/haber por cuenta (`TempReportesDaoService.selectSaldosPorCuenta`, asientos ACTIVO y REVERSADO como el
+   resto del motor) por cada base necesaria.
+2. Cada cuenta se resuelve con la regla de DTRP de cuenta **más larga** que la alcance (varias reglas con la misma
+   cuenta = varios destinos); sin regla o sin destino, el mapeo automático (`1.1.01.05.01` → `110105`).
+3. Aporte según el signo de la regla; además el neto deudor para los renglones tipo 2.
+4. Renglón tipo 1 = suma de los destinos que empiezan por su código (`RPRTACPF = 1`) o del suyo; tipo 2 = neto
+   deudor; tipo 3 = fórmula. BigDecimal exacto, redondeo a 2 decimales por renglón.
+5. Comparativo opcional (`fechaComparacion`).
+6. Si el reporte tiene salida en archivo (`RPRTFRAR = 1`): nombre `B17M3968ddMMaaaa.txt` y contenido (cabecera
+   `B17 TAB 3968 TAB dd/MM/aaaa TAB líneas TAB suma`, `código TAB valor`, `0` si es cero, CRLF sin salto final,
+   ISO-8859-1), igual que `09-genera-b17-desde-saa.js`.
 
-## 4. Archivo (`ArchivoEstructura`)
+`reporteRenglones` deja el resultado en **CNT.DTMT** como cualquier ejecución: `DTMTCTCN` = código del renglón,
+`PLNNNMBR`/`PLNNNVLL` = nombre/nivel, `DTMTSLAC` = valor, `DTMTSLAN` = valor comparativo (si se pidió), debe/haber
+0. Por eso se ve en la pantalla de Balance General y se borra con `DELETE /dtmt/resultado/{id}` como siempre.
 
-Cabecera `ESTRUCTURA TAB ENTIDAD TAB dd/MM/aaaa TAB líneas(incl. cabecera) [TAB suma de control]`; una línea
-`código TAB valor` por renglón con `RNRPRPAR = 1`; valor con 2 decimales y punto, `0` si es cero; CRLF sin salto
-final; ISO-8859-1. Nombre `B17M3968ddMMaaaa.txt`. Es exactamente la regla de `09-genera-b17-desde-saa.js`.
+## 4. Mes cerrado (C17) y modo preliminar
 
-## 5. Mes cerrado (C17) y modo preliminar
+Los reportes con archivo para la Superintendencia exigen el mes **cerrado para cartera y contabilidad**
+(`EstadoCierreService.validarReporteFinanciero`, mensaje `REPORTE_MES_NO_CERRADO`, HTTP 400). Para el re-proceso:
+`"preliminar": true` → genera sin cierre, la respuesta lo marca y el archivo se llama `…_PRELIMINAR.txt`.
 
-Las estructuras con archivo para la Superintendencia (B17) exigen el mes **cerrado para cartera y contabilidad**:
-`EstadoCierreService.validarReporteFinanciero` (mismo servicio y mensaje `REPORTE_MES_NO_CERRADO` que las G).
-Para el re-proceso, la solicitud admite `"preliminar": true`: genera sin cierre, la respuesta trae
-`preliminar: true` y el archivo se llama `B17M3968ddMMaaaa_PRELIMINAR.txt` (no presentable, no tendrá `.ACU`).
-El flujo de caja (sin archivo) no exige cierre.
+## 5. Endpoints (todos del motor, `/dtmt`)
 
-## 6. Endpoints
+- `POST /dtmt/generarBalance` — igual que siempre. Con un reporte de renglones además responde `sumaControl`,
+  `advertencias` (cuentas con saldo sin renglón o excluidas), `nombreArchivo`, `preliminar`.
+- `POST /dtmt/generarArchivo` — mismo cuerpo; devuelve el `.txt` (Content-Disposition con el nombre).
+- `GET /dtmt/resultado/{id}`, `DELETE /dtmt/resultado/{id}` — sin cambios.
+- `POST /dtmt/estadoOficial/{encabezado|datos|imprimir}` — estados financieros oficiales (antes `/esfo`).
+- `/rprt`, `/dtrp` (CRUD de siempre, ahora con los campos nuevos) y `/rnrp` (CRUD de renglones).
+- Cuerpo nuevo opcional de `ParametrosBalance`: `fechaComparacion`, `fechaInicioComparacion`, `preliminar`.
+- **Retirados:** `/esrp/generar`, `/esrp/archivo`, `/esfo/*`.
 
-- `POST /esrp/generar` → JSON: líneas (código, nombre, nivel, valor, comparativo, variación), suma de control,
-  advertencias, nombre y contenido del archivo, `preliminar`.
-- `POST /esrp/archivo` → el `.txt` (latin1, `Content-Disposition` con el nombre).
-- Cuerpo: `{empresa, codigoEstructura | codigoAlterno, fechaCorte, fechaInicio?, fechaComparacion?,
-  fechaInicioComparacion?, preliminar?}`.
+## 6. Definiciones y scripts (`sql/`)
 
-## 7. Definiciones sembradas
+| Script | Para qué | Dónde |
+|---|---|---|
+| `C19-01` | DDL final: columnas de RPRT y DTRP + tabla RNRP | ambiente limpio (producción) |
+| `C19-02` | B17 (alterno 6): cabecera, 534 renglones, 33 reglas en DTRP. Generado por `C19-generar-semilla-b17.js` | ambiente limpio |
+| `C19-03` | Flujo de caja (alterno 7, provisional): 26 renglones, 12 reglas en DTRP | ambiente limpio |
+| `C19-04` | Títulos oficiales y rubro 250 | los dos |
+| `C19-05` | **Migración** CRRP → DTRP (+ columnas nuevas) y retiro de CRRP | base de trabajo (ya corrió la versión anterior) |
+| `C19-06` | Comparación antes/después de los balances de siempre | después de desplegar |
 
-- **B17** (C19-02, alterno 6): 534 renglones (catálogo de mayo 2025 en su orden; el "7" tipo 2), regla "7"
-  valor absoluto, 31 asignaciones explícitas "REQUIERE ASIGNACIÓN" (propuestas de la fase 1, a decidir por
-  ASOPREP) y 3.3.90.01 excluida. Generada por `C19-generar-semilla-b17.js` desde `MAPEO-PLAN-CUENTAS.csv` y
-  `b17-mayo2025.csv`; el mapeo automático reproduce las otras 963 cuentas del mapeo (verificado). Cambio de
-  catálogo de ene-2026 (+160225 +230501 +440525, −160290 −440520) en bloque comentado hasta confirmar la vigencia.
-- **Flujo de caja** (C19-03, alterno 7, provisional): 26 renglones FCnn = filas del formato BIESS; saldo inicial
-  con base 3, totales y saldo final por fórmula, control FC90/FC91 contra 1.1 al corte; solo las 9 reglas de la
-  columna O del formato. Falta el mapeo de las filas de caja (archivo "FLUJO DE EFECTIVO_ENE_2026 FORMATO.xlsx").
+## 7. Validación (base de trabajo `saa-oracle-23ai`, 2026-10-29)
 
-## 8. Validación (contra la base de trabajo `saa-oracle-23ai`, 2026-10-28)
+Harness fuera del servidor: lee la definición **de los INSERT de C19-02/C19-03** (renglones RNRP y reglas DTRP,
+con el mismo mapeo DTRP → regla que hace el motor), saldos por cuenta con la misma consulta del DAO, corre
+`CalculadorEstructura` + `ArchivoEstructura` y compara bytes.
 
-Harness fuera del servidor: lee la definición **de los INSERT de la semilla**, los saldos por cuenta con la
-misma consulta del servicio, corre `CalculadorEstructura` + `ArchivoEstructura` y compara bytes.
-
-| Corte | Resultado |
+| Prueba | Resultado |
 |---|---|
-| 31/05/2025 | **Idéntico byte a byte** a `B17M396831052025.txt` presentado (6.534 bytes, suma 900.189.987,57, sin advertencias) |
-| 30/06/2025 | Idéntico al producido por la lógica del script 09 (suma 928.925.293,90) |
-| 30/09/2026 | Difiere del script 09 solo en `4`, `48` y la suma: la cuenta nueva 4.8.02.1 (12.751,99) entra por prefijo a `48`; el script la descartaba. Decidir su renglón |
-| Flujo sep-2026 | Calcula; control FC91 = −900.998,65 porque faltan las reglas de caja (esperado) |
+| B17 31/05/2025 | **Idéntico byte a byte** a `B17M396831052025.txt` presentado (6.534 bytes, suma 900.189.987,57) |
+| B17 30/06/2025 | Idéntico al producido por la lógica del script 09 (6.612 bytes) |
+| B17 30/09/2026 | Difiere del script 09 solo en `4`, `48` y la suma: la cuenta nueva 4.8.02.1 (12.751,99) entra por prefijo a `48`; el script la descartaba. Decidir su renglón |
+| Flujo sep-2026 | Igual que antes de la migración (FC91 = −900.998,65 por las reglas de caja que faltan) |
+| Migración C19-05 | Las 45 reglas de CNT.CRRP de la base = las 45 reglas DTRP de C19-02 + C19-03 (comparación campo a campo), todas con cuenta del plan |
+| Balances de siempre | El diff de `TempReportesServiceImpl` solo agrega líneas; la comparación de ejecuciones antes/después (C19-06) requiere desplegar y **está pendiente** |

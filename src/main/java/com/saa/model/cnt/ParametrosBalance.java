@@ -123,4 +123,27 @@ public class ParametrosBalance implements Serializable {
 	public void setEliminarSaldosCero(Boolean eliminarSaldosCero) {
 		this.eliminarSaldosCero = eliminarSaldosCero;
 	}
+
+	// ── C19b: reportes de renglones propios (B17, flujo de caja) ─────────────────────────────────────
+	// fechaFin = fecha de corte; fechaInicio = inicio del periodo para los renglones con base "movimiento del
+	// periodo" o "saldo al inicio" (si no viene, el 1 del mes de corte).
+
+	/** Fecha de comparacion (opcional): el resultado trae el valor comparativo en "saldo anterior" (DTMTSLAN). */
+	private LocalDate fechaComparacion;
+
+	/** Inicio del periodo de comparacion (opcional; por defecto el mismo tipo de periodo que el principal). */
+	private LocalDate fechaInicioComparacion;
+
+	/**
+	 * true = generar un reporte con archivo para la Superintendencia (B17) aunque el mes no este cerrado
+	 * (re-proceso): sale PRELIMINAR y el archivo con sufijo _PRELIMINAR. Sin esto exige el mes cerrado (C17).
+	 */
+	private Boolean preliminar;
+
+	public LocalDate getFechaComparacion() { return fechaComparacion; }
+	public void setFechaComparacion(LocalDate fechaComparacion) { this.fechaComparacion = fechaComparacion; }
+	public LocalDate getFechaInicioComparacion() { return fechaInicioComparacion; }
+	public void setFechaInicioComparacion(LocalDate fechaInicioComparacion) { this.fechaInicioComparacion = fechaInicioComparacion; }
+	public Boolean getPreliminar() { return preliminar; }
+	public void setPreliminar(Boolean preliminar) { this.preliminar = preliminar; }
 }

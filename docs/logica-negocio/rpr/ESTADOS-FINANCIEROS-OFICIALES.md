@@ -41,10 +41,10 @@ Antecedente: [../cnt/DISENO-FORMATO-FORMAL-BALANCES.md](../cnt/DISENO-FORMATO-FO
 
 ## 4. Endpoints
 
-- `POST /esfo/encabezado` → razón social, RUC, título, período, moneda, leyenda, estado del período, firmas,
+- `POST /dtmt/estadoOficial/encabezado` → razón social, RUC, título, período, moneda, leyenda, estado del período, firmas,
   nombre de archivo.
-- `POST /esfo/datos` → encabezado + títulos de columnas A/B/C + filas + resultado + diferencia de la ecuación.
-- `POST /esfo/imprimir` → PDF (por defecto) o `formato: "EXCEL"`.
+- `POST /dtmt/estadoOficial/datos` → encabezado + títulos de columnas A/B/C + filas + resultado + diferencia de la ecuación.
+- `POST /dtmt/estadoOficial/imprimir` → PDF (por defecto) o `formato: "EXCEL"`.
 - Cuerpo: `{empresa, codigoAlterno, fechaInicio?, fechaFin, acumulacion? (0|1, def. 1), nivelMaximo?,
   eliminarSaldosCero?, mostrarSaldoAnterior?, mostrarNivel?, comparativo?, notas?, formato?, usuario?}`.
 - FE (saaFE rama `cuadre/c19-balances-oficiales`): botones "Estado oficial PDF/Excel" y selector de comparativo
@@ -59,5 +59,5 @@ cuentas de nivel 1 de ingresos/gastos/activo/pasivo/patrimonio · 13 ruta del lo
 ## 6. Pendiente
 
 Estado de cambios en el patrimonio, flujo de efectivo NIIF (mismo motor de estructuras, falta el formato con el
-mapeo) y notas estructuradas. Probar `/esfo` desplegado (el Jasper se verificó con verificar-fill y llenado con
+mapeo) y notas estructuradas. Probar `/dtmt/estadoOficial` desplegado (el Jasper se verificó con verificar-fill y llenado con
 datos de sep-2026 fuera del servidor).

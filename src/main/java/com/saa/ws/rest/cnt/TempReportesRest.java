@@ -6,6 +6,11 @@ import java.util.List;
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.ejb.cnt.dao.TempReportesDaoService;
 import com.saa.ejb.cnt.service.TempReportesService;
+import com.saa.ejb.cnt.estadofinanciero.EncabezadoEstadoFinanciero;
+import com.saa.ejb.cnt.estadofinanciero.SolicitudEstadoFinanciero;
+import com.saa.ejb.cnt.estructura.ArchivoEstructura;
+import com.saa.ejb.cnt.estructura.ResultadoEstructura;
+import com.saa.ejb.cnt.service.EstadoFinancieroOficialService;
 import com.saa.model.cnt.NombreEntidadesContabilidad;
 import com.saa.model.cnt.ParametrosBalance;
 import com.saa.model.cnt.RespuestaBalance;
@@ -35,7 +40,7 @@ public class TempReportesRest {
     private TempReportesService tempReportesService;
 
     @EJB
-    private com.saa.ejb.cnt.service.EstructuraReporteService estructuraReporteService;
+    private EstadoFinancieroOficialService estadoFinancieroOficialService;
 
     @Context
     private UriInfo context;
@@ -196,13 +201,21 @@ public class TempReportesRest {
                     .type(MediaType.APPLICATION_JSON).build();
             }
             
-            // C19: una estructura de renglones (B17, flujo...) no tiene rangos de cuentas en DTRP; se genera
-            // con /esrp/generar. Sin el DDL C19-01 esEstructura devuelve false y esto no cambia nada.
-            if (estructuraReporteService.esEstructura(parametros.getEmpresa(), parametros.getCodigoAlterno())) {
-                RespuestaBalance respuesta = new RespuestaBalance();
-                respuesta.setExitoso(false);
-                respuesta.setMensaje("El tipo de reporte elegido es una estructura de la Superintendencia: se genera desde /esrp/generar, no como balance");
-                return Response.status(Response.Status.BAD_REQUEST).entity(respuesta).type(MediaType.APPLICATION_JSON).build();
+            // C19b (D-031): reporte de renglones propios (B17, flujo de caja) — mismo endpoint y mismo resultado en
+            // DTMT; ademas devuelve suma de control, advertencias y el nombre del archivo si tiene salida en archivo.
+            if (tempReportesService.esReporteDeRenglones(parametros.getEmpresa(), parametros.getCodigoAlterno())) {
+                ResultadoEstructura r = tempReportesService.calculaRenglones(parametros);
+                Long id = tempReportesService.reporteRenglones(r);
+                if (parametros.getEliminarSaldosCero() != null && parametros.getEliminarSaldosCero()) {
+                    tempReportesDaoService.deleteBySaldosCeroIdEjecucion(id);
+                }
+                RespuestaBalance respuesta = new RespuestaBalance(id, tempReportesDaoService.selectBySecuencia(id).size(),
+                        "Reporte " + (r.isPreliminar() ? "PRELIMINAR " : "") + "generado exitosamente");
+                respuesta.setSumaControl(r.getSumaControl());
+                respuesta.setAdvertencias(r.getAdvertencias());
+                respuesta.setNombreArchivo(r.getNombreArchivo());
+                respuesta.setPreliminar(r.isPreliminar());
+                return Response.status(Response.Status.CREATED).entity(respuesta).type(MediaType.APPLICATION_JSON).build();
             }
 
             Long idEjecucion = null;
@@ -259,10 +272,100 @@ public class TempReportesRest {
             RespuestaBalance respuesta = new RespuestaBalance();
             respuesta.setExitoso(false);
             respuesta.setMensaje("Error al generar balance: " + e.getMessage());
-            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+            // C17: mes no cerrado para un reporte que se presenta (B17) = error del pedido, no del servidor
+            boolean mesNoCerrado = e.getMessage() != null && e.getMessage().startsWith("REPORTE_MES_NO_CERRADO");
+            return Response.status(mesNoCerrado ? Response.Status.BAD_REQUEST : Response.Status.INTERNAL_SERVER_ERROR)
                 .entity(respuesta)
                 .type(MediaType.APPLICATION_JSON).build();
         }
+    }
+
+    /**
+     * C19b (D-031) — Salida en ARCHIVO de un reporte del motor con formato de archivo (RPRTFRAR = 1: TXT de la
+     * Superintendencia, p. ej. el B17). Mismo cuerpo que /generarBalance (fechaFin = corte; preliminar = true para
+     * generarlo sin el mes cerrado: B17M3968ddMMaaaa_PRELIMINAR.txt). Devuelve el .txt en ISO-8859-1, CRLF.
+     */
+    @POST
+    @Path("generarArchivo")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces({ MediaType.APPLICATION_OCTET_STREAM, MediaType.APPLICATION_JSON })
+    public Response generarArchivo(ParametrosBalance parametros) {
+        try {
+            if (!tempReportesService.esReporteDeRenglones(parametros.getEmpresa(), parametros.getCodigoAlterno())) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity("{\"mensaje\": \"El tipo de reporte no tiene salida en archivo (solo los de renglones propios con formato de archivo)\"}")
+                        .type(MediaType.APPLICATION_JSON).build();
+            }
+            ResultadoEstructura r = tempReportesService.calculaRenglones(parametros);
+            if (r.getContenidoArchivo() == null) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity("{\"mensaje\": \"El reporte " + r.getNombre() + " no tiene formato de archivo (RPRTFRAR)\"}")
+                        .type(MediaType.APPLICATION_JSON).build();
+            }
+            return Response.ok(ArchivoEstructura.bytes(r.getContenidoArchivo()))
+                    .header("Content-Disposition", "attachment; filename=\"" + r.getNombreArchivo() + "\"")
+                    .header("Access-Control-Expose-Headers", "Content-Disposition")
+                    .type("text/plain; charset=ISO-8859-1").build();
+        } catch (Throwable e) {
+            java.util.Map<String, Object> m = new java.util.HashMap<>();
+            m.put("mensaje", e.getMessage());
+            return Response.status(Response.Status.BAD_REQUEST).entity(m).type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    // ── C19b: estados financieros oficiales sobre el motor (antes /esfo) ─────────────────────────────
+
+    /** Encabezado institucional: razon social, RUC, nombre del estado, periodo, PRELIMINAR/DEFINITIVO, firmas. */
+    @POST
+    @Path("estadoOficial/encabezado")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response estadoOficialEncabezado(SolicitudEstadoFinanciero s) {
+        try {
+            return Response.ok(estadoFinancieroOficialService.encabezado(s)).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return errorOficial(e);
+        }
+    }
+
+    /** Encabezado + filas (con Resultado del Ejercicio y comparativo) en JSON. */
+    @POST
+    @Path("estadoOficial/datos")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response estadoOficialDatos(SolicitudEstadoFinanciero s) {
+        try {
+            return Response.ok(estadoFinancieroOficialService.datos(s)).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return errorOficial(e);
+        }
+    }
+
+    /** PDF (por defecto) o EXCEL del estado oficial, con el nombre del estado y su periodo. */
+    @POST
+    @Path("estadoOficial/imprimir")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces({ "application/pdf", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", MediaType.APPLICATION_JSON })
+    public Response estadoOficialImprimir(SolicitudEstadoFinanciero s) {
+        try {
+            EncabezadoEstadoFinanciero e = estadoFinancieroOficialService.encabezado(s);
+            byte[] archivo = estadoFinancieroOficialService.imprimir(s);
+            boolean pdf = s.getFormato() == null || "PDF".equalsIgnoreCase(s.getFormato().trim());
+            String nombre = e.getNombreArchivo() + (pdf ? ".pdf" : ".xlsx");
+            return Response.ok(archivo)
+                    .header("Content-Disposition", "attachment; filename=\"" + nombre + "\"")
+                    .header("Access-Control-Expose-Headers", "Content-Disposition")
+                    .type(pdf ? "application/pdf" : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                    .build();
+        } catch (Throwable e) {
+            return errorOficial(e);
+        }
+    }
+
+    private Response errorOficial(Throwable e) {
+        java.util.Map<String, Object> m = new java.util.HashMap<>();
+        m.put("mensaje", e.getMessage());
+        return Response.status(Response.Status.BAD_REQUEST).entity(m).type(MediaType.APPLICATION_JSON).build();
     }
 
     /**

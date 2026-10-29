@@ -131,4 +131,13 @@ public interface TempReportesDaoService  extends EntityDao<TempReportes>  {
 	 */
 	void deleteBySaldosCeroIdEjecucion(Long idEjecucion) throws Throwable;
 	
+
+	/**
+	 * C19b — Debe y haber por cuenta del plan (con su naturaleza), asientos ACTIVO y REVERSADO como el resto del
+	 * motor, con fecha en [desde, hasta]; desde null = desde el inicio de la contabilidad. Base de los reportes de
+	 * renglones propios y del resultado del ejercicio de los estados oficiales.
+	 */
+	java.util.List<com.saa.ejb.cnt.estructura.SaldoCuenta> selectSaldosPorCuenta(Long empresa, java.time.LocalDate desde,
+			java.time.LocalDate hasta) throws Throwable;
+
 }

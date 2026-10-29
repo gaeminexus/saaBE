@@ -52,6 +52,8 @@ public interface NombreEntidadesContabilidad {
     // Entidades de detalle
     String DETALLE_PLANTILLA = "DetallePlantilla";
     String DETALLE_REPORTE_CONTABLE = "DetalleReporteContable";
+    /** C19b: renglones de un reporte contable de renglones propios (CNT.RNRP). */
+    String RENGLON_REPORTE_CONTABLE = "RenglonReporteContable";
     String DETALLE_MAYOR_ANALITICO = "DetalleMayorAnalitico";
     
     // Entidades de relación

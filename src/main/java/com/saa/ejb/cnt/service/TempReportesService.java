@@ -176,4 +176,21 @@ public interface TempReportesService extends EntityService<TempReportes>  {
 	 */
 	void eliminaMovimientosEnCero(Long idEjecucion) throws Throwable;
 	
+
+	// ============================ C19b (D-031): reportes de renglones propios ============================
+
+	/** true si el tipo de reporte (empresa, alterno) es de renglones propios (RPRTTPRP = 2). */
+	boolean esReporteDeRenglones(Long empresa, Long codigoAlterno) throws Throwable;
+
+	/**
+	 * Calcula un reporte de renglones propios (B17, flujo de caja): renglones vigentes de CNT.RNRP, reglas vigentes de
+	 * CNT.DTRP, saldos por cuenta segun la base de cada renglon, comparativo opcional y, si el reporte tiene salida en
+	 * archivo, su nombre y contenido. Si el reporte se presenta a la Superintendencia exige el mes cerrado (C17,
+	 * REPORTE_MES_NO_CERRADO) salvo {@code preliminar = true}.
+	 */
+	com.saa.ejb.cnt.estructura.ResultadoEstructura calculaRenglones(com.saa.model.cnt.ParametrosBalance parametros) throws Throwable;
+
+	/** Escribe el resultado de {@link #calculaRenglones} en CNT.DTMT como una ejecucion del motor; devuelve su id. */
+	Long reporteRenglones(com.saa.ejb.cnt.estructura.ResultadoEstructura resultado) throws Throwable;
+
 }

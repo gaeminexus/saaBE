@@ -32,7 +32,14 @@ public class DetalleReporteContableDaoServiceImpl extends EntityDaoImpl<DetalleR
 							"cuentaHasta",
 							"numeroHasta",
 							"nombreHasta",
-							"signo"};
+							"signo",
+							"renglonDestino",
+							"alcance",
+							"modoSigno",
+							"seReporta",
+							"vigenciaDesde",
+							"vigenciaHasta",
+							"observacion"};
 	}
 
 	/* (non-Javadoc)
