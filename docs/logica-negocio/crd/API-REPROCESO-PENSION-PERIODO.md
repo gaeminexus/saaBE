@@ -46,6 +46,10 @@ el modo padrón es un respaldo, el rol es lo que hay que usar.
    (`PAGO PENSION COMPLEMENTARIA M/AAAA - Entidad N (REPROCESO C20)`). El cruce ya generó el suyo en `pagarConAportes`.
 4. **PGPC** del período (completa el stub del seguro si existiera) y **asiento de devengo** (plantilla 35) por el neto
    y el seguro. `PGPCESTD` = 1 REGISTRADA si hay neto (el pago es el paso 2), 3 PAGADA si el neto es 0.
+   D-034 (29-oct-2026): si el cruce absorbió toda la pensión y no hay seguro que devengar aquí, **no se crea asiento**
+   (`idAsientoDevengo` nulo); antes quedaba una cabecera sin líneas (asientos 12767 y 12974 de junio 2025). Lo mismo en
+   el camino normal (`registrarPgpcDelMes`). Además `AsientoContableService` rechaza todo asiento sin líneas
+   (`ASIENTO_SIN_LINEAS`).
 5. Auditoría de bandas (`CRD.DSBN`, origen `PAGO_PENSION`) de los pagos del cruce.
 
 **Por jubilado, paso 2 — pago (OTRA transacción: si falla, el devengo queda):** orden de CxP

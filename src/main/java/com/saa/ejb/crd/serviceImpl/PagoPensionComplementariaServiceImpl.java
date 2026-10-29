@@ -2934,6 +2934,15 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
             totalHaber += valorSeguro;
         }
 
+        // D-034 (29-oct-2026): si el cruce contra préstamos absorbió toda la pensión y el seguro va
+        // en su asiento propio (o es 0), no hay nada que devengar: no se crea una cabecera sin
+        // líneas (asientos 12767 y 12974 de junio 2025). El PGPC queda sin asiento de devengo.
+        if (lineas.isEmpty()) {
+            System.out.println("  PGPC " + pago.getCodigo() + ": nada que devengar (pensión neta $"
+                + valorPension + ", seguro $" + valorSeguro + ") - no se genera asiento.");
+            return null;
+        }
+
         totalDebe = redondear(totalDebe);
         totalHaber = redondear(totalHaber);
         // ⛔ H43: la comparación de cuadre YA NO es contra pago.getValor() (el nominal

@@ -694,6 +694,15 @@ public class AsientoContableServiceImpl implements AsientoContableService {
             List<DetalleAsiento> lineas, Long moduloSistema, boolean automatico, String moduloOrigen)
             throws Throwable {
 
+        // D-034 (29-oct-2026): la cabecera se graba ANTES que las líneas; sin líneas quedaba un asiento
+        // ACTIVO vacío (pensión complementaria, asientos 12767 y 12974 de junio 2025, y 8892-11615 de
+        // ago-oct 2026). El llamador decide si "no hay nada que contabilizar" ANTES de llamar; aquí, un
+        // asiento sin líneas es un error y no se graba.
+        if (lineas == null || lineas.isEmpty()) {
+            throw new IncomeException("ASIENTO_SIN_LINEAS: no se genera un asiento sin líneas ("
+                    + observaciones + ", fecha " + fechaAsiento + ").");
+        }
+
         // 2. Obtener Empresa
         Empresa empresa = em.find(Empresa.class, idEmpresa);
         if (empresa == null) {

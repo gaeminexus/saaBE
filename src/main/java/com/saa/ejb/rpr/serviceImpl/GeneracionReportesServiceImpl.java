@@ -111,6 +111,11 @@ public class GeneracionReportesServiceImpl implements GeneracionReportesService 
         // -------------------------------------------------------
         // 6. Ejecutar la lógica de generación por cada EJRD
         // -------------------------------------------------------
+        // D-034 (29-oct-2026): en orden de dependencias (G46 antes que G45, G48 antes que G49), no
+        // en el orden alfabético del DAO — ver GeneracionUnReporteServiceImpl#TIPOS_REPORTE.
+        ejrdsAProcesar = new ArrayList<>(ejrdsAProcesar);
+        ejrdsAProcesar.sort(java.util.Comparator.comparingInt(
+                (DetalleEjecucionReporte d) -> GeneracionUnReporteServiceImpl.ordenGeneracion(d.getTipoReporte())));
         List<String> reportesConNovedades = new ArrayList<>();
         for (DetalleEjecucionReporte ejrd : ejrdsAProcesar) {
             System.out.println("Procesando reporte: " + ejrd.getTipoReporte());

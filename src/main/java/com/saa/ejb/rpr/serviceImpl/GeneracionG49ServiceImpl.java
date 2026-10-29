@@ -8,7 +8,9 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+import com.saa.ejb.crd.service.CarteraAlCorteService;
 import com.saa.ejb.crd.service.DetallePrestamoService;
+import com.saa.ejb.crd.service.ModoCorteCartera;
 import com.saa.ejb.rpr.dao.CancelacionG49DaoService;
 import com.saa.ejb.rpr.dao.SaldoOperacionG48DaoService;
 import com.saa.ejb.rpr.service.DetalleEjecucionReporteService;
@@ -37,6 +39,7 @@ public class GeneracionG49ServiceImpl implements GeneracionG49Service {
     @EJB private DetalleEjecucionReporteService ejrdService;
     @EJB private EjecucionReporteService        ejrcService;
     @EJB private HistoricoG48Service            historicoG48Service;
+    @EJB private CarteraAlCorteService          carteraAlCorteService;
 
     @Override
     public long generar(DetalleEjecucionReporte detalle) throws Throwable {
@@ -61,6 +64,14 @@ public class GeneracionG49ServiceImpl implements GeneracionG49Service {
         // Set de numeroOperacion ya insertados para evitar duplicados entre grupos
         Set<String> operacionesInsertadas = new HashSet<>();
 
+        // D-034 (29-oct-2026): un mes pasado se genera AL CORTE (C15, ModoCorteCartera). Los
+        // grupos 1 y 2 leen el estado de HOY (DTPRESTD / PRSTIDST) y tomaban como "cancelada en el
+        // mes" una operación que al corte todavía tenía saldo — y la borraban de la G48 (préstamo
+        // 8179, operación 69105, en junio 2025: 1.286,48). Con la misma lectura al corte que usa la
+        // G48 (CarteraAlCorteService), una operación con saldo al corte no se canceló en el mes: no
+        // entra a la G49 por los grupos 1/2 y, por tanto, no se borra de la G48.
+        Set<Long> prestamosConSaldoAlCorte = prestamosConSaldoAlCorte(fechaCancelacion);
+
         // -------------------------------------------------------
         // GRUPO 1: Cuota con mayor numeroCuota del préstamo
         //          dentro del mes y en estado pagada (4).
@@ -75,6 +86,7 @@ public class GeneracionG49ServiceImpl implements GeneracionG49Service {
                 if (prestamo == null) continue;
                 String numOp = prestamo.getIdAsoprep() != null ? String.valueOf(prestamo.getIdAsoprep()) : null;
                 if (numOp == null || operacionesInsertadas.contains(numOp)) continue;
+                if (conSaldoAlCorte(prestamo, prestamosConSaldoAlCorte, "grupo 1")) continue;
 
                 insertarG49(prestamo, numOp, fechaCancelacion, detalle);
                 operacionesInsertadas.add(numOp);
@@ -99,6 +111,7 @@ public class GeneracionG49ServiceImpl implements GeneracionG49Service {
                 if (prestamo == null) continue;
                 String numOp = prestamo.getIdAsoprep() != null ? String.valueOf(prestamo.getIdAsoprep()) : null;
                 if (numOp == null || operacionesInsertadas.contains(numOp)) continue;
+                if (conSaldoAlCorte(prestamo, prestamosConSaldoAlCorte, "grupo 2")) continue;
 
                 insertarG49(prestamo, numOp, fechaCancelacion, detalle);
                 operacionesInsertadas.add(numOp);
@@ -256,6 +269,31 @@ public class GeneracionG49ServiceImpl implements GeneracionG49Service {
         }
         System.out.println("G49 Grupo 3 insertados: " + contador);
         return contador;
+    }
+
+    /**
+     * D-034 — préstamos con saldo al corte, con la misma lectura de la G48 al corte
+     * ({@link CarteraAlCorteService#calcularPorPrestamo}). Fuera del modo al corte (el mes que se
+     * cierra normalmente) devuelve un conjunto vacío: los grupos 1 y 2 quedan como siempre.
+     */
+    private Set<Long> prestamosConSaldoAlCorte(LocalDate corte) throws Throwable {
+        if (!ModoCorteCartera.esAlCorte(corte, null)) {
+            return new HashSet<>();
+        }
+        boolean inclusivo = ModoCorteCartera.corteInclusivo(null);
+        Set<Long> ids = new HashSet<>(carteraAlCorteService.calcularPorPrestamo(corte, inclusivo).keySet());
+        System.out.println("G49 - modo AL CORTE " + corte + ": " + ids.size()
+            + " prestamos con saldo al corte (no se marcan cancelados ni se borran de la G48)");
+        return ids;
+    }
+
+    private boolean conSaldoAlCorte(Prestamo prestamo, Set<Long> prestamosConSaldoAlCorte, String grupo) {
+        if (prestamo.getCodigo() != null && prestamosConSaldoAlCorte.contains(prestamo.getCodigo())) {
+            System.out.println("G49 - " + grupo + ": prestamo " + prestamo.getCodigo()
+                + " (op " + prestamo.getIdAsoprep() + ") tiene saldo al corte; no se cancela en el mes");
+            return true;
+        }
+        return false;
     }
 
     /** Crea y persiste un registro en CG49. */
