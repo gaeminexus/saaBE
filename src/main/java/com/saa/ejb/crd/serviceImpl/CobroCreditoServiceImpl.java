@@ -1246,9 +1246,12 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
                     String motivoSimulacion = abonoSinRegenerar
                             ? abonoCapitalPrestamoService.motivoAbonoSinRegenerarInviable(
                                     linea.getPrestamo().getCodigo(), valorTotalAbono, numeroCuotaAbono)
+                            // D-048: el pre-chequeo se hace a la fecha del abono (la misma con la que se
+                            // aplica más abajo), no hoy, y con la regla de re-proceso si corresponde.
                             : abonoCapitalPrestamoService.motivoAbonoInviable(
                                     linea.getPrestamo().getCodigo(), valorTotalAbono,
-                                    linea.getModalidad() != null ? linea.getModalidad().intValue() : 0);
+                                    linea.getModalidad() != null ? linea.getModalidad().intValue() : 0,
+                                    cobro.getFecha(), reproceso);
                     if (motivoSimulacion != null) {
                         motivoRechazo = "Rechazado automáticamente por el sistema: el abono total ($"
                                 + valorTotalAbono + " = depósito $" + linea.getValor() + " + aportes $"
@@ -1297,6 +1300,10 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
             // idEmpresa lo pone CBCR con la empresa derivada de la cuenta bancaria del cobro,
             // NUNCA la que vino del cliente (contrato API-EMPRESA-CONTABLE-CRD.md §2).
             solicitud.setIdEmpresa(derivarEmpresaCobro(cobro));
+            // D-048: fecha de afectación del cobro (C17 valida ese mes, igual que la precancelación
+            // desde 2026-10-05) y modo re-proceso: "al día" a la fecha del abono, no hoy.
+            solicitud.setFechaAfectacion(cobro.getFechaAfectacion());
+            solicitud.setReproceso(reproceso);
             ResultadoAbonoCapital resultado = abonoCapitalPrestamoService.aplicar(solicitud);
             enlazarEvento(linea, resultado.getIdEvento());
             clasificacionBandaPorPago.putAll(registrarDistribucionBandaEvento(idCobro, derivarEmpresaCobro(cobro),

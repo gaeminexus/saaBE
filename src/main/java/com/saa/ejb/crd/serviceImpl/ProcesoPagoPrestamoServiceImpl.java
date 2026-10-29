@@ -1901,6 +1901,45 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
                         aEliminar.add(cuota);
                     }
                 }
+                // D-048: una cuota con pagos anticipados que el abono re-amortizó EN EL LUGAR (en
+                // re-proceso) conserva su código: es una de las historizadas por este evento
+                // (HDTP.codigoOriginal). No se borra ni bloquea: se restaura en el lugar desde HDTP,
+                // con sus pagos (que ya tenía antes del abono).
+                java.util.Set<Long> restaurarEnElLugar = new java.util.HashSet<>();
+                if (historicas != null) {
+                    java.util.Set<Long> codigosHistorizados = new java.util.HashSet<>();
+                    for (HistDetallePrestamo historica : historicas) {
+                        if (historica.getCodigoOriginal() != null) {
+                            codigosHistorizados.add(historica.getCodigoOriginal());
+                        }
+                    }
+                    for (DetallePrestamo cuota : aEliminar) {
+                        if (codigosHistorizados.contains(cuota.getCodigo())) {
+                            restaurarEnElLugar.add(cuota.getCodigo());
+                        }
+                    }
+                }
+                Map<Long, DetallePrestamo> vivasEnElLugar = new LinkedHashMap<>();
+                for (DetallePrestamo cuota : new ArrayList<>(aEliminar)) {
+                    if (restaurarEnElLugar.contains(cuota.getCodigo())) {
+                        // Solo puede conservar los pagos anticipados que ya tenía al abonar (fecha <=
+                        // la del abono); uno posterior se anula primero, como en cualquier cuota nueva.
+                        List<PagoPrestamo> vigentesCuota = pagoPrestamoDaoService.selectVigentesByIdDetallePrestamo(cuota.getCodigo());
+                        if (vigentesCuota != null && evento.getFecha() != null) {
+                            for (PagoPrestamo pago : vigentesCuota) {
+                                if (pago.getFecha() == null
+                                        || pago.getFecha().toLocalDate().isAfter(evento.getFecha().toLocalDate())) {
+                                    throw new IncomeException(ERR_PAGOS_SOBRE_TABLA_RECALCULADA
+                                        + ": hay pagos sobre la tabla recalculada (cuota #" + cuota.getNumeroCuota()
+                                        + ", pago " + pago.getCodigo() + " posterior al abono); anúlelos primero");
+                                }
+                            }
+                        }
+                        vivasEnElLugar.put(cuota.getCodigo(), cuota);
+                        aEliminar.remove(cuota);
+                    }
+                }
+
                 // Ninguna cuota generada puede tener pagos vigentes
                 for (DetallePrestamo cuota : aEliminar) {
                     Long vigentes = pagoPrestamoDaoService.contarVigentesByIdDetallePrestamo(cuota.getCodigo());
@@ -1920,12 +1959,19 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
                 for (DetallePrestamo cuota : aEliminar) {
                     idsAEliminar.add(cuota.getCodigo());
                 }
+                // D-048: los PSCT que el abono abrió sobre una cuota re-amortizada en el lugar también
+                // se cierran (se re-enlazan abajo como los de las demás).
+                idsAEliminar.addAll(vivasEnElLugar.keySet());
                 java.util.Set<String> polizasVivasAlMomentoDelAbono = new java.util.HashSet<>();
+                // D-048: PSCT cerrados por ESTE reverso (los que abrió el abono); en una cuota restaurada
+                // en el lugar comparten DTPRCDGO con los originales y no se tienen que re-enlazar.
+                java.util.Set<Long> psctCerradosAhora = new java.util.HashSet<>();
                 for (com.saa.model.crd.CuotaSeguro psct : cuotaSeguroDaoService.selectByCuotas(idsAEliminar)) {
                     if (psct.getFechaReverso() == null) {
                         polizasVivasAlMomentoDelAbono.add(psct.getDocumento().getCodigo() + "-" + psct.getCampo());
                         psct.setFechaReverso(ahora);
                         cuotaSeguroDaoService.save(psct, psct.getCodigo());
+                        psctCerradosAhora.add(psct.getCodigo());
                     }
                 }
 
@@ -1955,16 +2001,27 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
                 }
                 Map<Long, List<com.saa.model.crd.CuotaSeguro>> psctPorCuotaOriginal = new LinkedHashMap<>();
                 for (com.saa.model.crd.CuotaSeguro psct : cuotaSeguroDaoService.selectByCuotas(idsOriginales)) {
+                    if (psctCerradosAhora.contains(psct.getCodigo())) {
+                        continue;
+                    }
                     psctPorCuotaOriginal.computeIfAbsent(psct.getIdCuota(), k -> new ArrayList<>()).add(psct);
                 }
 
                 // Restaurar desde HDTP. El DTPRCDGO cambia: el original queda en HDTP.DTPRCDGO.
+                // D-048: salvo la cuota re-amortizada en el lugar, que vuelve a sus valores en su fila.
                 if (historicas != null) {
                     for (HistDetallePrestamo historica : historicas) {
                         DetallePrestamo cuota = restaurarDesdeHistorico(historica, prestamo);
-                        // DAO directo: DetallePrestamoService.saveSingle fuerza estado = 1 en las
-                        // filas nuevas y perdería el estado original que se está restaurando.
-                        cuota = detallePrestamoDaoService.save(cuota, null);
+                        DetallePrestamo viva = historica.getCodigoOriginal() != null
+                            ? vivasEnElLugar.get(historica.getCodigoOriginal()) : null;
+                        if (viva != null) {
+                            cuota.setCodigo(viva.getCodigo());
+                            cuota = detallePrestamoDaoService.save(cuota, viva.getCodigo());
+                        } else {
+                            // DAO directo: DetallePrestamoService.saveSingle fuerza estado = 1 en las
+                            // filas nuevas y perdería el estado original que se está restaurando.
+                            cuota = detallePrestamoDaoService.save(cuota, null);
+                        }
                         cuotasRestauradas++;
 
                         // S13 — re-enlazar: solo si la póliza de esa fila histórica seguía viva

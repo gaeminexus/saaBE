@@ -109,6 +109,7 @@ Al corregir un abono o una precancelación mixta rechazada, se borran los aporte
 - `fechaAfectacion` sigue las reglas de la precancelación directa (`API-FECHA-AFECTACION-COBRO.md` §2bis): obligatoria, no menor a `fecha`, no futura, y en un período abierto.
 - `rutaDocumentoRespaldo` es **opcional**. No entra dinero de afuera, así que no hay comprobante bancario.
 - Las validaciones del abono son las mismas de la simulación: préstamo al día, abono menor al capital pendiente, y la cuota nueva tiene que cubrir el interés.
+- `reproceso` (opcional, D-048): con `true`, "al día" se evalúa a la fecha del abono (`fecha`; si falta, `fechaAfectacion`) y no con el estado de hoy. Ver `ABONO-CAPITAL-AL-DIA-A-FECHA.md`.
 - Se aplica en el acto. Genera **un solo asiento**: Debe las cuentas de aporte; Haber el capital por banda; más el re-bandeo del saldo que queda.
 - El abono se anula con `POST /prst/anularOperacion` `{ idEvento, usuario, motivo }`, igual que un pago con aportes. La anulación restaura la tabla, restituye el aporte y anula el asiento.
 

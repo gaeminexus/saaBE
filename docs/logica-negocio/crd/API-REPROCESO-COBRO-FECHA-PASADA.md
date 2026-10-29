@@ -34,7 +34,8 @@ préstamo del cobro se evalúa **vigente al corte**:
   ningún pago vigente vuelven a pendiente.
 
 Después, el cobro se aplica **exactamente como en el proceso normal** (mismos motores, mismos tres asientos, mismo
-invariante cobrado = aplicado). Si el pago salda el préstamo, el motor lo deja cancelado como siempre; si no, queda
+invariante cobrado = aplicado). Única diferencia en el motor (D-048, 2026-10-29): en un `ABONO_CAPITAL` la regla
+"préstamo al día" se evalúa a la fecha del abono y no con el estado de hoy (`ABONO-CAPITAL-AL-DIA-A-FECHA.md`). Si el pago salda el préstamo, el motor lo deja cancelado como siempre; si no, queda
 VIGENTE con la marca hasta re-procesar el mes de su cancelación real.
 
 La regla vive en un solo lugar, `ReaperturaVigenteAlCorteService` (`prepararPrestamoAlCorte`), que también usan el
