@@ -39,7 +39,29 @@ public class ResultadoAbonoCapital {
      */
     private Double seguroIncendioLiberado;
 
+    /** C16b: {@code false} si el abono se registró sobre la tabla vigente sin re-amortizarla. */
+    private Boolean tablaRegenerada = Boolean.TRUE;
+
+    /** C16b: Σ capital de la tabla + Σ DTPRSLOT después del abono (solo sin regenerar tabla). */
+    private Double capitalTablaMasAbonos;
+
     public ResultadoAbonoCapital() {
+    }
+
+    public Boolean getTablaRegenerada() {
+        return tablaRegenerada;
+    }
+
+    public void setTablaRegenerada(Boolean tablaRegenerada) {
+        this.tablaRegenerada = tablaRegenerada;
+    }
+
+    public Double getCapitalTablaMasAbonos() {
+        return capitalTablaMasAbonos;
+    }
+
+    public void setCapitalTablaMasAbonos(Double capitalTablaMasAbonos) {
+        this.capitalTablaMasAbonos = capitalTablaMasAbonos;
     }
 
     public Long getIdPrestamo() {

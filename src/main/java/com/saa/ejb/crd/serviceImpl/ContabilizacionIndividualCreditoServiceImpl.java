@@ -787,6 +787,11 @@ public class ContabilizacionIndividualCreditoServiceImpl implements Contabilizac
                     }
                     List<HistDetallePrestamo> historizadas =
                             histDetallePrestamoDaoService.selectByEvento(pago.getEventoPrestamo().getCodigo());
+                    if ((historizadas == null || historizadas.isEmpty()) && esAbonoSinRegenerarTabla(pago)) {
+                        // C16b (D-030): abono sobre una tabla que ya lo refleja — no hay historizadas;
+                        // el capital se reparte entre las cuotas que vencen después del abono.
+                        historizadas = cuotasFuturasAbonoSinTabla(pago, prefijoDescripcion);
+                    }
                     if (historizadas == null || historizadas.isEmpty()) {
                         throw new IncomeException(prefijoDescripcion + ": el abono " + pago.getCodigo()
                                 + " (evento " + pago.getEventoPrestamo().getCodigo() + ") no tiene"
@@ -886,6 +891,10 @@ public class ContabilizacionIndividualCreditoServiceImpl implements Contabilizac
                 }
                 List<HistDetallePrestamo> historizadas =
                         histDetallePrestamoDaoService.selectByEvento(pago.getEventoPrestamo().getCodigo());
+                if ((historizadas == null || historizadas.isEmpty()) && esAbonoSinRegenerarTabla(pago)) {
+                    // C16b: mismo universo que haberDesdePagos para el abono sin regenerar tabla.
+                    historizadas = cuotasFuturasAbonoSinTabla(pago, prefijoDescripcion);
+                }
                 if (historizadas == null || historizadas.isEmpty()) {
                     continue;
                 }
@@ -970,6 +979,56 @@ public class ContabilizacionIndividualCreditoServiceImpl implements Contabilizac
             // esto en "si hay aportes de por medio, no cierra".)
         }
         return redondear(total);
+    }
+
+    /** C16b: el pago es de un abono registrado SIN regenerar la tabla (evento con modalidad 0). */
+    private boolean esAbonoSinRegenerarTabla(PagoPrestamo pago) {
+        return pago.getEventoPrestamo() != null && pago.getEventoPrestamo().getModalidad() != null
+                && pago.getEventoPrestamo().getModalidad().longValue()
+                        == com.saa.ejb.crd.service.AbonoCapitalPrestamoService.MODALIDAD_SIN_REGENERAR_TABLA;
+    }
+
+    /**
+     * C16b (D-030, 2026-10-29): para un abono sin regenerar tabla no hay cuotas historizadas. El
+     * capital que el abono cancela es capital FUTURO a su fecha — el que la tabla ya re-amortizada
+     * dejó de cobrar —, así que se reparte (con la misma {@link #repartirProporcionalPorCapital})
+     * entre las cuotas vivas que vencen DESPUÉS de la fecha del abono, proporcional a su capital.
+     * Copias transitorias en {@link HistDetallePrestamo} (nunca se persisten) para reusar el reparto
+     * y el bandeo del abono de siempre sin duplicarlos.
+     */
+    private List<HistDetallePrestamo> cuotasFuturasAbonoSinTabla(PagoPrestamo pago, String prefijoDescripcion)
+            throws Throwable {
+        Prestamo prestamo = pago.getPrestamo();
+        if (prestamo == null || prestamo.getCodigo() == null) {
+            throw new IncomeException(prefijoDescripcion + ": el abono " + pago.getCodigo()
+                    + " no tiene préstamo asociado; no se puede repartir el capital por banda.");
+        }
+        java.time.LocalDateTime fechaAbono = pago.getFecha() != null ? pago.getFecha()
+                : pago.getEventoPrestamo().getFecha();
+        if (fechaAbono == null) {
+            throw new IncomeException(prefijoDescripcion + ": el abono " + pago.getCodigo()
+                    + " no tiene fecha; no se puede saber qué cuotas son futuras.");
+        }
+        LocalDate dia = fechaAbono.toLocalDate();
+        List<HistDetallePrestamo> futuras = new ArrayList<>();
+        for (DetallePrestamo cuota : detallePrestamoDaoService.selectByPrestamo(prestamo.getCodigo())) {
+            if (cuota.getFechaVencimiento() == null || !cuota.getFechaVencimiento().toLocalDate().isAfter(dia)
+                    || nvl(cuota.getCapital()) <= 0.0) {
+                continue;
+            }
+            HistDetallePrestamo copia = new HistDetallePrestamo();
+            copia.setCodigo(cuota.getCodigo());
+            copia.setNumeroCuota(cuota.getNumeroCuota());
+            copia.setCapital(cuota.getCapital());
+            copia.setFechaVencimiento(cuota.getFechaVencimiento());
+            futuras.add(copia);
+        }
+        if (futuras.isEmpty()) {
+            throw new IncomeException(prefijoDescripcion + ": el abono sin regenerar tabla " + pago.getCodigo()
+                    + " no tiene cuotas con vencimiento posterior al " + dia + " en el préstamo "
+                    + prestamo.getCodigo() + "; no se puede repartir su capital por banda.");
+        }
+        return futuras;
     }
 
     private double nvl(Double valor) {

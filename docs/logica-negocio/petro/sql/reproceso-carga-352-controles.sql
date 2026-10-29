@@ -342,6 +342,36 @@ AND    g.PGPRFCHA >= DATE '2025-06-01' AND g.PGPRFCHA < DATE '2025-07-01'
 AND    NVL(g.PGPRMTAN, ' ') NOT LIKE '%[D-025 %'
 ORDER  BY p.PRSTCDGO, d.DTPRNMCT;
 
+-- B.14 C4 (doc §4.15) — por TIPO de aporte: lo que la carga creo en CRD.APRT (APRTIDAS = '352', neto de originales
+--      reversados y contra-movimientos, el mismo universo que sumValorPorTipoAporteByCarga) vs. el HABER neto de
+--      las lineas del asiento de APLICACION vigente en la cuenta de pasivo del tipo (CRD.CTAP). Esperado: una fila
+--      por tipo con DIFERENCIA 0 y ningun tipo 12/24. En la corrida 2 salio tipo 12 con 0,09 creado y 0 asentado.
+WITH creado AS (
+  SELECT a.TPAPCDGO, ROUND(SUM(a.APRTVLRR), 2) AS CREADO
+  FROM   CRD.APRT a
+  WHERE  a.APRTIDAS = '352'
+  GROUP  BY a.TPAPCDGO
+  HAVING ABS(SUM(a.APRTVLRR)) > 0.001),
+cuenta AS (
+  SELECT c.TPAPCDGO, n.PLNNCNTA AS CUENTA
+  FROM   CRD.CTAP c JOIN CNT.PLNN n ON n.PLNNCDGO = c.CTAPPLNP
+  WHERE  c.PJRQCDGO = 1236),
+asentado AS (
+  SELECT d.DTASCNTA AS CUENTA, ROUND(SUM(NVL(d.DTASHBRR, 0)) - SUM(NVL(d.DTASDBEE, 0)), 2) AS ASENTADO
+  FROM   CNT.DTAS d
+  WHERE  d.ASNTCDGO = (SELECT ANCPASNT FROM CRD.ANCP WHERE CRARCDGO = 352 AND ANCPTPOO = 3 AND ANCPIDST = 1)
+  AND    d.DTASCNTA IN (SELECT CUENTA FROM cuenta)
+  GROUP  BY d.DTASCNTA)
+SELECT COALESCE(cr.TPAPCDGO, cu.TPAPCDGO) AS TIPO_APORTE, COALESCE(cu.CUENTA, s.CUENTA) AS CUENTA,
+       NVL(cr.CREADO, 0) AS CREADO, NVL(s.ASENTADO, 0) AS ASENTADO,
+       NVL(cr.CREADO, 0) - NVL(s.ASENTADO, 0) AS DIFERENCIA
+FROM   creado cr
+       LEFT JOIN cuenta cu ON cu.TPAPCDGO = cr.TPAPCDGO
+       FULL OUTER JOIN asentado s ON s.CUENTA = cu.CUENTA
+ORDER  BY 1;
+--      (2.3.02.05 en 0 al 30-jun lo confirma B.12; con DIFERENCIA 0 aqui, el DEBE de 2.3.02.05 del asiento =
+--       suma de CREADO - excedentes D-010 que entraron por prestamos, sin centavos sueltos)
+
 
 -- =====================================================================================
 -- C. LECTURAS DE APOYO (no son criterio de aceptacion)

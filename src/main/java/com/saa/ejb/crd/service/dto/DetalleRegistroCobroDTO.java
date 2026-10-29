@@ -39,6 +39,33 @@ public class DetalleRegistroCobroDTO {
      */
     private List<DesgloseAporte> aportes;
 
+    /**
+     * C16b (D-030, 2026-10-29). Solo ABONO_CAPITAL. {@code false} = la tabla ya refleja el abono:
+     * se registra sin re-amortizar (sin {@code modalidad}). Se persiste en {@code DCBCMDLD} sin DDL:
+     * {@code 0} = sin regenerar en la cuota vigente, {@code -N} = sin regenerar en la cuota N (ver
+     * {@code AbonoCapitalPrestamoService#modalidadCobroSinRegenerar}).
+     */
+    private Boolean regenerarTabla;
+
+    /** C16b: cuota ({@code DTPRNMCT}) donde se registra el abono sin regenerar; {@code null} = la vigente. */
+    private Long numeroCuotaAbono;
+
+    public Boolean getRegenerarTabla() {
+        return regenerarTabla;
+    }
+
+    public void setRegenerarTabla(Boolean regenerarTabla) {
+        this.regenerarTabla = regenerarTabla;
+    }
+
+    public Long getNumeroCuotaAbono() {
+        return numeroCuotaAbono;
+    }
+
+    public void setNumeroCuotaAbono(Long numeroCuotaAbono) {
+        this.numeroCuotaAbono = numeroCuotaAbono;
+    }
+
     public Long getIdPrestamo() {
         return idPrestamo;
     }

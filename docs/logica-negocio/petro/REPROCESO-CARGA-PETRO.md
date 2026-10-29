@@ -757,6 +757,42 @@ listados: 17 con descuento > 0 que no coincide (3.440,41 migrados contra 5.652,0
 cuya fila tiene descuento real 0 (246,20). Juntos son los 19 / 3.686,61 del expediente. Control:
 B.13.
 
+### 4.15 Ningún aporte sin su línea; el AH nunca va a un rendimiento (C4, 2026-10-29)
+
+**Qué pasó en la corrida 2 de la 352:** el AH de 31,00 de la entidad 5079 (rol 8289, préstamo 6949)
+quedó en 30,91 a cesantía (11) y **0,09 a RENDIMIENTO CESANTIA PERSONAL (12)**, APRT 1059722, marca
+`[D-022 vigencia no cubre el mes]`. El asiento de aplicación no tenía línea para ese 0,09:
+2.3.02.05 quedó en −0,09 al 30-jun.
+
+**Causa del reparto (dos defectos encadenados):**
+1. El cobro mixto de D-028 (APRT 1055437, 0,09 a cesantía, devengo jun-2025) ya contaba como aportado
+   en junio, así que junio pedía 30,91 y sobraban 0,09. Ese sobrante tenía que anticiparse a julio
+   (D4), pero el lote de esperados solo llega hasta el mes de la carga (el "segundo defecto" de §4.10),
+   así que tras 60 meses entró la **red de seguridad** de D-022 1b, que lo deja en el mes de la carga.
+   Esto es lo esperado en reproceso: el excedente de junio se queda en junio.
+2. La red de seguridad decide el tipo con `tipoAporteSinVigenciaDelMes`. La única vigencia de 5079
+   (1744, cesantía, desde el **01-jun-2025**) no era "anterior" (exigía inicio < 1-jun) ni
+   "posterior", y el paso 3 tomó el último aporte vigente antes de junio: un **rendimiento 12 migrado
+   del 31-mar-2025**. Un aporte mensual nunca debe ir a un rendimiento: el rendimiento lo acredita el
+   proceso de rendimientos, no el descuento de Petro.
+
+**Corrección (b), la regla de tipo:**
+- Paso 1: "anterior" es la última vigencia ACTIVA 9/11 que empiece **hasta el último día** del mes
+  (incluye la que empieza dentro del mes). En 1b no cambia nada (ninguna vigencia toca el mes).
+- Paso 3: `selectTipoAporteUltimoAnteriorA` solo mira aportes de tipo **9 u 11**.
+- Para 5079 el 0,09 queda como cesantía (11) de junio por la vigencia 1744.
+
+**Corrección (a), el asiento:** `contabilizarAplicacion` ya no omite tipos distintos de 9/11 con una
+advertencia en el log. Cada tipo que la carga creó lleva su línea de HABER con la cuenta de su tipo
+(`CrdLineaAsiento.aux1ParaTipoAporte`, el mismo mapa que `CRD.CTAP`): 12 → aux1 56
+(2.1.01.05.02 RENDIMIENTOS PERSONALES CESANTIA) y 24 → aux1 57 (2.1.02.05.02), creadas por
+`crd/sql/335_LINEAS_RENDIMIENTOS_PLANTILLA_21.sql`. El DEBE de 2.3.02.05 incluye esos tipos. Si un tipo
+no tiene línea en la plantilla, el asiento **se detiene** con mensaje claro.
+
+**Corrida 3 de la 352:** sin aportes 12/24. 5079 queda con 30,91 + 0,09 en cesantía de junio, el
+HABER de 2.1.01.05.01 sube 0,09 y **2.3.02.05 queda en 0** al 30-jun (B.12). Control por tipo: **B.14**
+(creado por tipo vs. HABER de su cuenta en el asiento de aplicación; diferencia 0 en todos).
+
 ## 5. Respuesta (`ResultadoReprocesoCargaPetro`)
 
 ```json

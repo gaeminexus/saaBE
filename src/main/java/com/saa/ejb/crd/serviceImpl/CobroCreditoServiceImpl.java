@@ -273,7 +273,7 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
                 linea.setPrestamo(buscarPrestamo(lineaSolicitud.getIdPrestamo()));
             }
             linea.setValor(redondear(lineaSolicitud.getValor()));
-            linea.setModalidad(lineaSolicitud.getModalidad());
+            linea.setModalidad(modalidadAPersistir(lineaSolicitud));
             if (lineaSolicitud.getIdTipoAporte() != null) {
                 linea.setTipoAporte(buscarTipoAporte(lineaSolicitud.getIdTipoAporte()));
             }
@@ -478,7 +478,7 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
                 linea.setPrestamo(buscarPrestamo(lineaSolicitud.getIdPrestamo()));
             }
             linea.setValor(redondear(lineaSolicitud.getValor()));
-            linea.setModalidad(lineaSolicitud.getModalidad());
+            linea.setModalidad(modalidadAPersistir(lineaSolicitud));
             if (lineaSolicitud.getIdTipoAporte() != null) {
                 linea.setTipoAporte(buscarTipoAporte(lineaSolicitud.getIdTipoAporte()));
             }
@@ -1227,6 +1227,9 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
             }
             totalAportesAbono = redondear(totalAportesAbono);
             double valorTotalAbono = redondear(nvl(linea.getValor()) + totalAportesAbono);
+            // C16b: DCBCMDLD 0 / -N = abono sin regenerar tabla (en la cuota vigente / en la N).
+            boolean abonoSinRegenerar = AbonoCapitalPrestamoService.esModalidadCobroSinRegenerar(linea.getModalidad());
+            Integer numeroCuotaAbono = AbonoCapitalPrestamoService.numeroCuotaDeModalidadCobro(linea.getModalidad());
 
             // Pre-chequeo de SOLO LECTURA (AA8), solo si hay aportes: el saldo de aportes NO se
             // reserva al registrar, y la simulación se repite con el TOTAL. Si algo falló, el
@@ -1240,9 +1243,12 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
                     motivoRechazo = "Rechazado automáticamente por el sistema: el saldo de aportes"
                             + " cambió entre el registro y el proceso — " + motivoRechazo;
                 } else {
-                    String motivoSimulacion = abonoCapitalPrestamoService.motivoAbonoInviable(
-                            linea.getPrestamo().getCodigo(), valorTotalAbono,
-                            linea.getModalidad() != null ? linea.getModalidad().intValue() : 0);
+                    String motivoSimulacion = abonoSinRegenerar
+                            ? abonoCapitalPrestamoService.motivoAbonoSinRegenerarInviable(
+                                    linea.getPrestamo().getCodigo(), valorTotalAbono, numeroCuotaAbono)
+                            : abonoCapitalPrestamoService.motivoAbonoInviable(
+                                    linea.getPrestamo().getCodigo(), valorTotalAbono,
+                                    linea.getModalidad() != null ? linea.getModalidad().intValue() : 0);
                     if (motivoSimulacion != null) {
                         motivoRechazo = "Rechazado automáticamente por el sistema: el abono total ($"
                                 + valorTotalAbono + " = depósito $" + linea.getValor() + " + aportes $"
@@ -1277,7 +1283,13 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
             // Discriminador de origen: con cobro, el cruce de aportes lo genera CBCRASN2 y el
             // hook contable del abono solo hace el re-bandeo (nunca lo manda el cliente).
             solicitud.setIdCobroCredito(idCobro);
-            solicitud.setModalidad(linea.getModalidad() != null ? linea.getModalidad().intValue() : null);
+            if (abonoSinRegenerar) {
+                solicitud.setRegenerarTabla(Boolean.FALSE);
+                solicitud.setNumeroCuota(numeroCuotaAbono);
+                solicitud.setModalidad(null);
+            } else {
+                solicitud.setModalidad(linea.getModalidad() != null ? linea.getModalidad().intValue() : null);
+            }
             solicitud.setUsuario(usuario);
             solicitud.setObservacion(observacionLinea(cobro, linea));
             solicitud.setFecha(cobro.getFecha());
@@ -1991,13 +2003,38 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
                 }
             }
 
-            if (esAbono) {
+            if (esAbono && Boolean.FALSE.equals(linea.getRegenerarTabla())) {
+                // C16b (D-030): abono sobre una tabla que ya lo refleja — sin modalidad. Se valida
+                // ya (solo lectura) que la tabla cuadre con él; al procesar se vuelve a validar.
+                if (linea.getModalidad() != null) {
+                    throw new IncomeException("Con regenerarTabla = false no se envía modalidad: la tabla"
+                            + " no se re-amortiza");
+                }
+                if (linea.getNumeroCuotaAbono() != null && linea.getNumeroCuotaAbono() <= 0L) {
+                    throw new IncomeException("numeroCuotaAbono debe ser un número de cuota mayor a cero");
+                }
+                double totalAbono = nvl(linea.getValor());
+                if (linea.getAportes() != null) {
+                    for (DesgloseAporte renglon : linea.getAportes()) {
+                        totalAbono += renglon != null ? nvl(renglon.getValor()) : 0.0;
+                    }
+                }
+                String motivo = abonoCapitalPrestamoService.motivoAbonoSinRegenerarInviable(linea.getIdPrestamo(),
+                        redondear(totalAbono), linea.getNumeroCuotaAbono() != null
+                                ? Integer.valueOf(linea.getNumeroCuotaAbono().intValue()) : null);
+                if (motivo != null) {
+                    throw new IncomeException(motivo);
+                }
+            } else if (esAbono) {
                 if (linea.getModalidad() == null || (linea.getModalidad() != 1L && linea.getModalidad() != 2L)) {
                     throw new IncomeException("modalidad es obligatoria en ABONO_CAPITAL y debe ser"
                             + " 1 (reduce plazo) o 2 (reduce cuota)");
                 }
             } else if (linea.getModalidad() != null) {
                 throw new IncomeException("modalidad solo aplica a ABONO_CAPITAL");
+            }
+            if (!esAbono && (linea.getRegenerarTabla() != null || linea.getNumeroCuotaAbono() != null)) {
+                throw new IncomeException("regenerarTabla y numeroCuotaAbono solo aplican a ABONO_CAPITAL");
             }
 
             // Consumo de aportes (precancelación mixta, 2026-08-30): SOLO en PRECANCELACION —
@@ -2130,6 +2167,18 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
      * (ÍTEM 5, tipo 8) — no reimplementado ahí porque esa lista es privada de ese DAO y acá
      * hace falta para UN pago en la mano, no una consulta en lote.
      */
+    /**
+     * C16b: {@code DCBCMDLD} a guardar. Un ABONO_CAPITAL con {@code regenerarTabla = false} se
+     * codifica sin DDL ({@link AbonoCapitalPrestamoService#modalidadCobroSinRegenerar}: 0 = cuota
+     * vigente, -N = cuota N); cualquier otra línea guarda la modalidad tal cual vino.
+     */
+    private Long modalidadAPersistir(DetalleRegistroCobroDTO lineaSolicitud) {
+        if (Boolean.FALSE.equals(lineaSolicitud.getRegenerarTabla())) {
+            return AbonoCapitalPrestamoService.modalidadCobroSinRegenerar(lineaSolicitud.getNumeroCuotaAbono());
+        }
+        return lineaSolicitud.getModalidad();
+    }
+
     private boolean esTipoPagoConAbonoCapital(String tipoPago) {
         return ProcesoPagoPrestamoService.TIPO_ABONO_CAPITAL.equals(tipoPago)
                 || ProcesoPagoPrestamoService.TIPO_PRECANCELACION.equals(tipoPago)

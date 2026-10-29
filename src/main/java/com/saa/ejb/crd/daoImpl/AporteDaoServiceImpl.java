@@ -1210,7 +1210,7 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 			" where  a.entidad.codigo = :idEntidad " +
 			"   and  (a.estado is null or a.estado <> 0) " +
 			"   and  a.fechaTransaccion < :antesDe " +
-			"   and  a.tipoAporte is not null " +
+			"   and  a.tipoAporte.codigo in (9, 11) " +
 			" order by a.fechaTransaccion desc, a.codigo desc");
 		query.setParameter("idEntidad", idEntidad);
 		query.setParameter("antesDe", antesDe);

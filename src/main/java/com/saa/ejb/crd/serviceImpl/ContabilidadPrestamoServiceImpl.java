@@ -682,8 +682,13 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
         agregaCierreAperturaCaminoDirecto(lineas, idEmpresa, totalHaber, pagos, fechaCorte,
                 "abono con aportes evento " + evento.getCodigo());
 
-        // (3) Re-bandeo del capital que sigue vivo.
-        lineas.addAll(lineasReBandeoAbono(evento, idEmpresa, fechaCorte, prefijo));
+        // (3) Re-bandeo del capital que sigue vivo. C16b: un abono registrado sin regenerar tabla
+        // (modalidad 0) no cambió la tabla — no hay re-bandeo que hacer.
+        boolean sinRegenerarTabla = evento.getModalidad() != null && evento.getModalidad().longValue()
+                == com.saa.ejb.crd.service.AbonoCapitalPrestamoService.MODALIDAD_SIN_REGENERAR_TABLA;
+        if (!sinRegenerarTabla) {
+            lineas.addAll(lineasReBandeoAbono(evento, idEmpresa, fechaCorte, prefijo));
+        }
 
         double sumaDebe = 0.0;
         double sumaHaber = 0.0;

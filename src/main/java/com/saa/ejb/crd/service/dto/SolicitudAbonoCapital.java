@@ -58,7 +58,45 @@ public class SolicitudAbonoCapital {
      */
     private LocalDate fechaAfectacion;
 
+    /**
+     * C16b (cuadre Superintendencia, D-030, 2026-10-29). {@code null} o {@code true} = abono de
+     * siempre: re-amortiza (historiza las pendientes y genera la tabla nueva). {@code false} = la
+     * tabla YA refleja el abono (p. ej. una tabla migrada de Delta re-amortizada): se registra el
+     * pago de capital extraordinario ({@code PGPRSLOT}/{@code DTPRSLOT}) en {@link #numeroCuota} (o
+     * en la cuota vigente) y su asiento, SIN tocar las cuotas, y solo si después de aplicarlo
+     * {@code Σ DTPRCPTL + Σ DTPRSLOT = PRSTMNSL}. {@link #modalidad} no aplica.
+     */
+    private Boolean regenerarTabla;
+
+    /**
+     * Solo con {@code regenerarTabla = false}: número de cuota ({@code DTPRNMCT}) donde se registra
+     * el abono. {@code null} = la cuota vigente (la última PAGADA; si no hay, la primera pendiente),
+     * el mismo ancla que usa el abono con re-amortización.
+     */
+    private Integer numeroCuota;
+
     public SolicitudAbonoCapital() {
+    }
+
+    public Boolean getRegenerarTabla() {
+        return regenerarTabla;
+    }
+
+    public void setRegenerarTabla(Boolean regenerarTabla) {
+        this.regenerarTabla = regenerarTabla;
+    }
+
+    /** {@code true} solo si viene explícitamente {@code regenerarTabla = false}. */
+    public boolean esSinRegenerarTabla() {
+        return Boolean.FALSE.equals(regenerarTabla);
+    }
+
+    public Integer getNumeroCuota() {
+        return numeroCuota;
+    }
+
+    public void setNumeroCuota(Integer numeroCuota) {
+        this.numeroCuota = numeroCuota;
     }
 
     public Long getIdPrestamo() {
