@@ -292,6 +292,8 @@ public class CobroCreditoRest {
 
     /**
      * POST /rest/cbcr/{id}/procesar — paso 3 (PROCESO), lado crédito. Solo desde APROBADO.
+     * Cuerpo {@code {"usuario": "...", "reproceso": true}}: {@code reproceso} (opcional) activa el
+     * modo re-proceso de un mes pasado (D-019, docs/logica-negocio/crd/API-REPROCESO-COBRO-FECHA-PASADA.md).
      */
     @POST
     @Path("/{id}/procesar")
@@ -301,7 +303,8 @@ public class CobroCreditoRest {
         System.out.println("LLEGA AL SERVICIO POST procesar - CBCR - id: " + id);
         try {
             ResultadoProcesoCobro resultado = cobroCreditoService.procesarCobro(id,
-                    solicitud != null ? solicitud.getUsuario() : null);
+                    solicitud != null ? solicitud.getUsuario() : null,
+                    solicitud != null && Boolean.TRUE.equals(solicitud.getReproceso()));
             return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)

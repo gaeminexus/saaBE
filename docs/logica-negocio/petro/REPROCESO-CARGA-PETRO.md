@@ -272,6 +272,11 @@ préstamo. Una operación que estaba vigente en el mes de la carga recibe la cuo
 ocurrió cronológicamente, aunque hoy esté cancelada anticipadamente o liquidada; esa cancelación se
 vuelve a aplicar después, en su propio mes, con el saldo correcto.
 
+> 2026-10-28: la reapertura (§4.8) y la regla de la cuota del mes (§4.9) se movieron, sin cambiar su
+> resultado, a `ReaperturaVigenteAlCorteService` (crd), que también usan el motor de cobros en modo
+> re-proceso (`crd/API-REPROCESO-COBRO-FECHA-PASADA.md`) y la pensión de un mes pasado
+> (`crd/API-REPROCESO-PENSION-PERIODO.md`). Petro delega en él; la marca y las listas del resumen no cambian.
+
 Qué hace el modo reproceso (`CargaArchivoPetroServiceImpl`):
 
 1. **Búsqueda** (`PrestamoDaoService.selectByEntidadYProductoVigentesAlCorte`, corte = último
