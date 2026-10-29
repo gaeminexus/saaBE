@@ -203,6 +203,10 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
     @EJB
     private MotorPagoPrestamoService motorPagoPrestamoService;
 
+    /** D-019 compartida (2026-10-28): la misma regla la usan CBCR y la pensión de un mes pasado (C20). */
+    @EJB
+    private com.saa.ejb.crd.service.ReaperturaVigenteAlCorteService reaperturaVigenteAlCorteService;
+
     /**
      * Dinero recibido sin aplicar del todo (2026-08-31), acumulado durante UNA corrida de
      * {@link #aplicarPagosArchivoPetro} para que el resumen final los muestre sin tener que
@@ -2274,49 +2278,13 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 	 */
 	private int reabrirCuotasSaldadasSinPagoAlCorte(Prestamo prestamo, CargaArchivo cargaArchivo,
 			List<DetallePrestamo> cuotas) throws Throwable {
-		java.time.LocalDateTime corte = finMesCarga(cargaArchivo);
-		java.time.LocalDate fechaCorte = corte.toLocalDate();
-		java.time.LocalDateTime inicioMes = fechaCorte.withDayOfMonth(1).atStartOfDay();
-		if (cuotas == null) {
-			return 0;
-		}
-		int reabiertas = 0;
-		for (DetallePrestamo cuota : cuotas) {
-			Long estado = cuota.getEstado();
-			boolean saldada = estado != null && (estado.intValue() == com.saa.rubros.EstadoCuotaPrestamo.PAGADA
-				|| estado.intValue() == com.saa.rubros.EstadoCuotaPrestamo.CANCELADA_ANTICIPADA);
-			if (!saldada || cuota.getFechaVencimiento() == null
-					|| cuota.getFechaVencimiento().isBefore(inicioMes) || cuota.getFechaVencimiento().isAfter(corte)) {
-				continue;
-			}
-			// §4.9 ampliada (2026-10-28): la fecha de pago NO decide. La migración dejó cuotas del mes
-			// en 4/7 sin ningún PGPR con DTPRFCPG = 2025-05-31 (marca de la migración, no un pago:
-			// los pagos reales migrados sí tienen PGPR). Lo único que prueba que la cuota se pagó es
-			// un pago vigente; sin él vuelve a pendiente al corte, cualquiera sea su fecha de pago.
-			java.time.LocalDateTime fechaPagadoAnterior = cuota.getFechaPagado();
-			List<com.saa.model.crd.PagoPrestamo> pagosVigentes =
-				pagoPrestamoDaoService.selectVigentesByIdDetallePrestamo(cuota.getCodigo());
-			if (pagosVigentes != null && !pagosVigentes.isEmpty()) {
-				continue;
-			}
-			motorPagoPrestamoService.recalcularCuotaDesdePagos(cuota);
-			procesoMoraPrestamoService.recalcularMoraCuotaALaFecha(cuota, fechaCorte);
-			if (cuota.getEstado() == null || cuota.getEstado().longValue() != estado.longValue()) {
-				reabiertas++;
-				String linea = "Préstamo " + prestamo.getCodigo() + " cuota " + numeroCuotaTexto(cuota)
-					+ " (préstamo hoy estado " + prestamo.getIdEstado() + "): estado " + estado + " -> "
-					+ cuota.getEstado() + ", fecha de pago anterior "
-					+ (fechaPagadoAnterior != null ? fechaPagadoAnterior.toLocalDate() : "nula")
-					+ ", sin pagos vigentes";
-				cuotasSaldadasSinPagoReabiertas.add(linea);
-				System.out.println("   D-019 ampliada: " + linea);
-			}
-		}
-		return reabiertas;
-	}
-
-	private static String numeroCuotaTexto(DetallePrestamo cuota) {
-		return cuota.getNumeroCuota() == null ? "?" : String.valueOf(cuota.getNumeroCuota().longValue());
+		// §4.9 ampliada (2026-10-28): la fecha de pago NO decide. La migración dejó cuotas del mes
+		// en 4/7 sin ningún PGPR con DTPRFCPG = 2025-05-31 (marca de la migración, no un pago:
+		// los pagos reales migrados sí tienen PGPR). Lo único que prueba que la cuota se pagó es
+		// un pago vigente; sin él vuelve a pendiente al corte, cualquiera sea su fecha de pago.
+		// La regla vive en ReaperturaVigenteAlCorteService (compartida con CBCR y pensión, C20).
+		return reaperturaVigenteAlCorteService.reabrirCuotasSaldadasSinPagoDelMes(prestamo,
+			finMesCarga(cargaArchivo).toLocalDate(), cuotas, cuotasSaldadasSinPagoReabiertas);
 	}
 
 	/**
@@ -2450,61 +2418,13 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 	 * Nada se borra. La consulta que lista lo marcado está en REPROCESO-CARGA-PETRO.md §4.8.
 	 */
 	private void reabrirPrestamoVigenteAlCorte(Prestamo prestamo, CargaArchivo cargaArchivo) throws Throwable {
-		java.time.LocalDateTime corte = finMesCarga(cargaArchivo);
-		java.time.LocalDate fechaCorte = corte.toLocalDate();
-		Long estadoAnterior = prestamo.getIdEstado();
-		String marca = etiquetaReproceso + ": " + MARCA_CANCELACION_POSTERIOR + " (estado anterior "
-			+ estadoAnterior + ")";
-
 		// D-019 ampliada: primero la regla común (cuota del mes saldada sin pago vigente); después,
-		// como antes, el resto de las cuotas saldadas sin fecha o después del corte.
-		// §11 Rendimiento: una sola lectura de las cuotas para las dos pasadas (antes se repetía
-		// selectByPrestamo; misma lista, mismas instancias administradas, mismo orden).
+		// como antes, el resto de las cuotas saldadas sin fecha o después del corte. La regla vive en
+		// ReaperturaVigenteAlCorteService (compartida con CBCR y pensión, C20); mismo resultado.
+		// §11 Rendimiento: una sola lectura de las cuotas para las dos pasadas.
 		List<DetallePrestamo> cuotas = detallePrestamoDaoService.selectByPrestamo(prestamo.getCodigo());
-		int cuotasReabiertas = reabrirCuotasSaldadasSinPagoAlCorte(prestamo, cargaArchivo, cuotas);
-		if (cuotas != null) {
-			for (DetallePrestamo cuota : cuotas) {
-				Long estado = cuota.getEstado();
-				boolean saldada = estado != null && (estado.intValue() == com.saa.rubros.EstadoCuotaPrestamo.PAGADA
-					|| estado.intValue() == com.saa.rubros.EstadoCuotaPrestamo.CANCELADA_ANTICIPADA);
-				if (!saldada || (cuota.getFechaPagado() != null && !cuota.getFechaPagado().isAfter(corte))) {
-					continue;
-				}
-				motorPagoPrestamoService.recalcularCuotaDesdePagos(cuota);
-				procesoMoraPrestamoService.recalcularMoraCuotaALaFecha(cuota, fechaCorte);
-				if (cuota.getEstado() == null || cuota.getEstado().longValue() != estado.longValue()) {
-					cuotasReabiertas++;
-				}
-			}
-		}
-
-		prestamo.setIdEstado(Long.valueOf(com.saa.rubros.EstadoPrestamo.VIGENTE));
-		prestamo.setFechaModificacion(java.time.LocalDateTime.now());
-		prestamo.setObservacion(truncarTexto(prestamo.getObservacion() == null || prestamo.getObservacion().trim().isEmpty()
-			? marca : prestamo.getObservacion() + " | " + marca, 2000));
-		prestamoDaoService.save(prestamo, prestamo.getCodigo());
-
-		int eventosMarcados = 0;
-		List<com.saa.model.crd.EventoPrestamo> eventos = eventoPrestamoDaoService.selectByPrestamo(prestamo.getCodigo());
-		if (eventos != null) {
-			for (com.saa.model.crd.EventoPrestamo evento : eventos) {
-				if (evento.getFechaAnulacion() != null || evento.getFecha() == null || !evento.getFecha().isAfter(corte)) {
-					continue;
-				}
-				if (evento.getObservacion() != null && evento.getObservacion().contains(marca)) {
-					continue;
-				}
-				evento.setObservacion(truncarTexto(evento.getObservacion() == null ? marca
-					: evento.getObservacion() + " | " + marca, 2000));
-				eventoPrestamoDaoService.save(evento, evento.getCodigo());
-				eventosMarcados++;
-			}
-		}
-
-		cancelacionesPosterioresMarcadas.add("Préstamo " + prestamo.getCodigo() + " (estado anterior " + estadoAnterior
-			+ "): " + cuotasReabiertas + " cuota(s) reabiertas, " + eventosMarcados + " evento(s) posteriores marcados");
-		System.out.println("   D-019: préstamo " + prestamo.getCodigo() + " vigente al " + fechaCorte + " (hoy estado "
-			+ estadoAnterior + ") reabierto - " + cuotasReabiertas + " cuotas, " + eventosMarcados + " eventos marcados");
+		cancelacionesPosterioresMarcadas.add(reaperturaVigenteAlCorteService.reabrirPrestamoVigenteAlCorte(prestamo,
+			finMesCarga(cargaArchivo).toLocalDate(), etiquetaReproceso, cuotas, cuotasSaldadasSinPagoReabiertas));
 	}
 
 	/**

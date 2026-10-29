@@ -96,4 +96,33 @@ public class ResultadoProcesoCobro {
     public void setIdAsientoCobroTardio(Long idAsientoCobroTardio) {
         this.idAsientoCobroTardio = idAsientoCobroTardio;
     }
+
+    /**
+     * Modo re-proceso de un mes pasado (D-019 en CBCR, 2026-10-28): {@code true} si el cobro se
+     * procesó con {@code reproceso: true}. Ver docs/logica-negocio/crd/API-REPROCESO-COBRO-FECHA-PASADA.md.
+     */
+    private boolean reproceso;
+
+    /**
+     * Lo que D-019 cambió antes de aplicar el cobro: préstamos reabiertos (hoy terminales, vigentes
+     * al corte) y cuotas del mes saldadas sin pago que volvieron a pendiente. Vacía fuera del modo
+     * re-proceso o si no hizo falta reabrir nada.
+     */
+    private java.util.List<String> reaperturaAlCorte = new java.util.ArrayList<>();
+
+    public boolean isReproceso() {
+        return reproceso;
+    }
+
+    public void setReproceso(boolean reproceso) {
+        this.reproceso = reproceso;
+    }
+
+    public java.util.List<String> getReaperturaAlCorte() {
+        return reaperturaAlCorte;
+    }
+
+    public void setReaperturaAlCorte(java.util.List<String> reaperturaAlCorte) {
+        this.reaperturaAlCorte = reaperturaAlCorte;
+    }
 }

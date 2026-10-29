@@ -238,4 +238,46 @@ public interface PagoPensionComplementariaService extends EntityService<PagoPens
      */
     ResultadoPrevisualizacionCorrida previsualizarCorrida(Long idEmpresa, Integer anio, Integer mes,
             String usuario) throws Throwable;
+
+    // =====================================================================
+    // C20 — pensión complementaria de un mes pasado (re-proceso de período)
+    // docs/logica-negocio/crd/API-REPROCESO-PENSION-PERIODO.md
+    // =====================================================================
+
+    /**
+     * Genera la pensión complementaria de un período PASADO como ocurrió, sin el ancla del
+     * retroactivo, sin el estado de hoy del jubilado y sin el cruce "todo lo exigible":
+     * <ol>
+     * <li>Universo: las filas del rol de la solicitud (los valores del rol mandan sobre la VPPC);
+     * sin filas, el padrón del período (VPPC activa y traslado de jubilación hasta el fin del mes).</li>
+     * <li>Por jubilado, en su propia transacción y con fecha = fin del período: los descuentos de
+     * préstamos del rol como cobros con aportes de pensión (tipo 23) contra cada préstamo, con D-019
+     * si hoy está cancelado; el seguro y el neto como movimientos negativos del aporte 23; el
+     * {@code CRD.PGPC} del período y su asiento de devengo.</li>
+     * <li>Por jubilado, en OTRA transacción: el pago del neto. Con {@code fechaPagoBanco} y cuenta,
+     * orden de CxP confirmada con su egreso (D 2.3.01.10.03 / H banco) en la fecha del banco; sin
+     * fecha, orden pendiente de aprobación.</li>
+     * </ol>
+     * Idempotente: un jubilado con el PGPC del período completo no se vuelve a devengar, y un PGPC
+     * con orden de pago vigente no genera otra. No toca meses posteriores.
+     */
+    com.saa.ejb.crd.service.dto.ResultadoReprocesoPensionPeriodo reprocesarPeriodo(
+            com.saa.ejb.crd.service.dto.SolicitudReprocesoPensionPeriodo solicitud) throws Throwable;
+
+    /**
+     * Paso 2 de {@link #reprocesarPeriodo} para UN jubilado (devengo y cruces), REQUIRES_NEW.
+     * Público solo para que el lote lo invoque por el proxy EJB; no es un endpoint.
+     */
+    com.saa.ejb.crd.service.dto.DetalleReprocesoPension reprocesarDevengoJubilado(Long idEmpresa, Integer anio,
+            Integer mes, String usuario, com.saa.ejb.crd.service.dto.FilaReprocesoPension fila) throws Throwable;
+
+    /**
+     * Paso 3 de {@link #reprocesarPeriodo} para UN jubilado (pago del neto), REQUIRES_NEW. Público
+     * solo para el proxy EJB; no es un endpoint.
+     *
+     * @param fechaPagoBanco {@code null}: orden pendiente de aprobación (sin cuenta)
+     */
+    com.saa.ejb.crd.service.dto.DetalleReprocesoPension reprocesarPagoJubilado(Long idPgpc, Long idEmpresa,
+            Long idUsuario, Long idCuentaBancaria, java.time.LocalDate fechaPagoBanco, String referencia)
+            throws Throwable;
 }

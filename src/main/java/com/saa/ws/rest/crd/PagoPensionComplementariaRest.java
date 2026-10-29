@@ -203,6 +203,38 @@ public class PagoPensionComplementariaRest {
     }
 
     /**
+     * C20 — pensión complementaria de un mes PASADO (re-proceso de período):
+     * docs/logica-negocio/crd/API-REPROCESO-PENSION-PERIODO.md. Cuerpo: el lote del expediente
+     * ({@code filas[]} con los valores del rol) más {@code idEmpresa}, {@code anio}, {@code mes},
+     * {@code usuario} y, opcionales, {@code idCuentaBancariaPago}/{@code referenciaPago} por defecto.
+     * Idempotente. Siempre 200 con el resumen (los errores por jubilado van en {@code errores}).
+     */
+    @POST
+    @Path("/reprocesarPeriodo")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response reprocesarPeriodo(com.saa.ejb.crd.service.dto.SolicitudReprocesoPensionPeriodo solicitud) {
+        System.out.println("LLEGA AL SERVICIO RE-PROCESO PENSION PERIODO (C20) - Periodo: "
+            + (solicitud != null ? solicitud.getMes() + "/" + solicitud.getAnio() : "?"));
+        try {
+            com.saa.ejb.crd.service.dto.ResultadoReprocesoPensionPeriodo resultado =
+                pagoPensionService.reprocesarPeriodo(solicitud);
+            Map<String, Object> cuerpo = new LinkedHashMap<>();
+            cuerpo.put("exito", Boolean.TRUE);
+            cuerpo.put("mensaje", "Re-proceso " + resultado.getMes() + "/" + resultado.getAnio() + " ("
+                + resultado.getOrigenUniverso() + ") - " + resultado.getGenerados() + " generados, "
+                + resultado.getYaExistian() + " ya existían, " + resultado.getConError() + " con error, de "
+                + resultado.getEvaluados() + ". Pagos confirmados: " + resultado.getPagosConfirmados()
+                + ", órdenes pendientes: " + resultado.getOrdenesPendientes() + ".");
+            cuerpo.put("resultado", resultado);
+            return Response.status(Response.Status.OK)
+                    .entity(cuerpo).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return respuestaError(e);
+        }
+    }
+
+    /**
      * Seguimiento de la corrida de un período — API-DOS-PROCESOS-MENSUALES-JUBILADOS.md §4.3.
      * SIEMPRE 200 (con los dos estados en 0 si el período nunca se corrió).
      */

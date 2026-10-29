@@ -890,7 +890,82 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
 
     @Override
     public ResultadoProcesoCobro procesarCobro(Long idCobro, String usuario) throws Throwable {
-        System.out.println("CobroCreditoService.procesarCobro - cobro: " + idCobro);
+        return procesarCobro(idCobro, usuario, false);
+    }
+
+    /** D-019 en CBCR: la misma regla del re-proceso Petro, compartida. */
+    @EJB
+    private com.saa.ejb.crd.service.ReaperturaVigenteAlCorteService reaperturaVigenteAlCorteService;
+
+    /**
+     * Modo re-proceso de un mes pasado (D-019 en el motor de cobros, aprobado por el líder el
+     * 2026-10-28 — docs/logica-negocio/crd/API-REPROCESO-COBRO-FECHA-PASADA.md). Corre ANTES de
+     * cualquier motor y de la corrección H42 de la mora, en la MISMA transacción que el proceso:
+     * si el motor rechaza después, la reapertura también se revierte.
+     *
+     * <p>Se exige pedirlo explícitamente ({@code reproceso: true}) y que la fecha de pago y la de
+     * afectación caigan en un mes anterior al mes en curso: un cobro tardío normal (sin la bandera)
+     * no reabre préstamos cancelados. El corte es el último día del mes de la fecha de PAGO (el
+     * estado del préstamo cuando entró el dinero).</p>
+     *
+     * @return las líneas de lo que se reabrió (vacía si nada cambió)
+     */
+    private List<String> prepararReprocesoFechaPasada(CobroCredito cobro, List<DetalleCobroCredito> detalles)
+            throws Throwable {
+        String tipoOperacion = cobro.getTipoOperacion();
+        if (!CrdTipoOperacionCobro.PAGO_CUOTA.equals(tipoOperacion)
+                && !CrdTipoOperacionCobro.PAGO_MULTIPLE.equals(tipoOperacion)
+                && !CrdTipoOperacionCobro.ABONO_CAPITAL.equals(tipoOperacion)
+                && !CrdTipoOperacionCobro.PRECANCELACION.equals(tipoOperacion)
+                && !CrdTipoOperacionCobro.COBRO_MIXTO.equals(tipoOperacion)) {
+            throw new IncomeException("REPROCESO_NO_APLICA: el modo re-proceso solo aplica a cobros con"
+                    + " préstamo (PAGO_CUOTA, PAGO_MULTIPLE, ABONO_CAPITAL, PRECANCELACION, COBRO_MIXTO);"
+                    + " el cobro " + cobro.getCodigo() + " es " + tipoOperacion);
+        }
+        if (cobro.getFecha() == null || cobro.getFechaAfectacion() == null) {
+            throw new IncomeException("REPROCESO_NO_APLICA: el cobro " + cobro.getCodigo()
+                    + " no tiene fecha de pago o de afectación");
+        }
+        java.time.YearMonth mesEnCurso = java.time.YearMonth.now();
+        if (!java.time.YearMonth.from(cobro.getFecha()).isBefore(mesEnCurso)
+                || !java.time.YearMonth.from(cobro.getFechaAfectacion()).isBefore(mesEnCurso)) {
+            throw new IncomeException("REPROCESO_NO_APLICA: el modo re-proceso es para cobros de un mes"
+                    + " pasado; el cobro " + cobro.getCodigo() + " tiene fecha de pago " + cobro.getFecha()
+                    + " y de afectación " + cobro.getFechaAfectacion() + " (mes en curso " + mesEnCurso
+                    + "). Procéselo sin reproceso.");
+        }
+        // El período de la fecha de afectación tiene que seguir abierto (se validó al registrar;
+        // se repite acá porque entre el registro y el proceso pudo cerrarse).
+        Long idEmpresa = derivarEmpresaCobro(cobro);
+        try {
+            periodoService.verificaPeriodoAbierto(idEmpresa, cobro.getFechaAfectacion());
+        } catch (IncomeException e) {
+            throw new IncomeException("PERIODO_CERRADO: el período contable de la fecha de afectación "
+                    + cobro.getFechaAfectacion() + " está cerrado — " + e.getMessage());
+        }
+
+        LocalDate fechaCorte = java.time.YearMonth.from(cobro.getFecha()).atEndOfMonth();
+        String etiqueta = "REPROCESO CBCR " + cobro.getCodigo() + " (corte " + fechaCorte + ")";
+        List<String> bitacora = new ArrayList<>();
+        Set<Long> preparados = new LinkedHashSet<>();
+        for (DetalleCobroCredito linea : detalles) {
+            if (linea.getPrestamo() == null || linea.getTipoAporte() != null
+                    || !preparados.add(linea.getPrestamo().getCodigo())) {
+                continue;
+            }
+            Prestamo prestamo = buscarPrestamo(linea.getPrestamo().getCodigo());
+            reaperturaVigenteAlCorteService.prepararPrestamoAlCorte(prestamo, fechaCorte, etiqueta, bitacora);
+        }
+        System.out.println("  [REPROCESO] Cobro " + cobro.getCodigo() + " - corte " + fechaCorte + " - "
+                + preparados.size() + " préstamo(s) evaluados vigentes al corte, " + bitacora.size()
+                + " cambio(s): " + bitacora);
+        return bitacora;
+    }
+
+    @Override
+    public ResultadoProcesoCobro procesarCobro(Long idCobro, String usuario, boolean reproceso) throws Throwable {
+        System.out.println("CobroCreditoService.procesarCobro - cobro: " + idCobro
+                + (reproceso ? " - MODO REPROCESO (D-019)" : ""));
         if (usuario == null || usuario.trim().isEmpty()) {
             throw new IncomeException("usuario es obligatorio");
         }
@@ -923,6 +998,11 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
         String tipoOperacion = cobro.getTipoOperacion();
         LocalDateTime fechaNegocio = cobro.getFecha() != null
                 ? cobro.getFecha().atStartOfDay() : LocalDateTime.now();
+
+        // D-019 en CBCR (modo re-proceso, solo con la bandera): préstamos evaluados vigentes al
+        // corte del mes del cobro ANTES de la mora H42 y de cualquier motor.
+        List<String> reaperturaAlCorte = reproceso
+                ? prepararReprocesoFechaPasada(cobro, detalles) : new ArrayList<>();
 
         // H42 (cobro tardío, FASE 1 — DISENO-COBRO-CON-FECHA-EFECTIVA.md §4quater): si la fecha
         // efectiva del pago es anterior a hoy, la mora que calculó la corrida nocturna hasta
@@ -1068,6 +1148,9 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
                 // informa igual para que quien lea el resultado sepa que el préstamo quedó con
                 // la mora corregida aunque el cobro no se haya podido procesar.
                 resultado.setMoraEliminada(moraEliminadaTotal);
+                // Re-proceso: la reapertura D-019 ya quedó (igual que la mora H42); se informa.
+                resultado.setReproceso(reproceso);
+                resultado.setReaperturaAlCorte(reaperturaAlCorte);
                 return resultado;
             }
 
@@ -1180,6 +1263,8 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
                     resultadoRechazo.setProcesado(false);
                     resultadoRechazo.setMensaje(motivoRechazo);
                     resultadoRechazo.setMoraEliminada(moraEliminadaTotal);
+                    resultadoRechazo.setReproceso(reproceso);
+                    resultadoRechazo.setReaperturaAlCorte(reaperturaAlCorte);
                     return resultadoRechazo;
                 }
             }
@@ -1478,6 +1563,14 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
         resultado.setProvisionReversada(provisionReversadaTotal);
         resultado.setIdAsientoReversoProvision(idAsientoReversoProvisionTotal);
         resultado.setIdAsientoCobroTardio(idAsientoCobroTardioTotal);
+        resultado.setReproceso(reproceso);
+        resultado.setReaperturaAlCorte(reaperturaAlCorte);
+        if (reproceso) {
+            resultado.setMensaje("Cobro procesado en modo re-proceso (D-019, corte "
+                    + java.time.YearMonth.from(cobro.getFecha()).atEndOfMonth() + ")."
+                    + (reaperturaAlCorte.isEmpty() ? "" : " Reapertura al corte: " + reaperturaAlCorte.size()
+                        + " cambio(s), ver reaperturaAlCorte."));
+        }
         return resultado;
     }
 
