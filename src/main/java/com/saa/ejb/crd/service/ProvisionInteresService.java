@@ -191,7 +191,9 @@ public interface ProvisionInteresService {
      *
      * @param pagosAnulados pagos que se están anulando en esta misma operación
      * @param idEmpresa     empresa contable del asiento
-     * @param fecha         fecha contable del asiento (la de la anulación, no la del cobro original)
+     * @param fecha         fecha contable del asiento (la decide el llamador: CBCR usa la fecha de
+     *                      afectación si su período sigue abierto y si no la de hoy — D-043; el
+     *                      re-proceso Petro, la del mes de la carga)
      * @param origen        literal corto para {@code MVIC.origen} (p.ej. {@code "REVERSO_CBCR"})
      * @param idOrigen      código del registro que ordena la anulación
      * @param usuario       quién ejecuta la anulación

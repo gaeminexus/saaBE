@@ -602,7 +602,7 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
                 }
             }
             provisionInteresService.reProvisionarPorAnulacion(pagosAnuladosDelCobro, derivarEmpresaCobro(cobro),
-                LocalDate.now(), "REVERSO_CBCR", idCobro, usuario);
+                fechaReProvision(cobro), "REVERSO_CBCR", idCobro, usuario);
         }
 
         cobro.setEstado(Long.valueOf(CrdEstadoCobro.ANULADO));
@@ -732,7 +732,7 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
             }
         }
         provisionInteresService.reProvisionarPorAnulacion(pagosAnuladosDelReverso, derivarEmpresaCobro(cobro),
-            LocalDate.now(), "REVERSO_CBCR", idCobro, usuario);
+            fechaReProvision(cobro), "REVERSO_CBCR", idCobro, usuario);
 
         // ACUERDO_CONDONACION (2026-09-07, CORRECCION-REVERSO-ACUERDO-CONDONACION.md): además
         // del reverso de línea de arriba, el acuerdo mismo tiene que volver a VIGENTE, y
@@ -1720,6 +1720,34 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
         }
         // C17: además, el mes no puede haber pasado por el cierre–apertura de cartera.
         estadoCierreService.validarCarteraAbierta(idEmpresa, fechaAfectacion, "cobros (CBCR)");
+    }
+
+    /**
+     * D-043 — Fecha contable de la re-provisión al anular o reversar un cobro PROCESADO.
+     *
+     * <p>El reverso de provisión del proceso se registró con la fecha de afectación del cobro
+     * ({@code reversarPorPagos}). Si el período de esa fecha sigue abierto (ACTIVO o DESMAYORIZADO,
+     * sin cierre contable: {@code PeriodoService.verificaPeriodoAbierto}), los asientos del cobro
+     * se anulan en su sitio ({@code AsientoService.anulaAsiento}) y la re-provisión va en esa misma
+     * fecha: el mes queda como si el cobro no se hubiera procesado. Si el período ya está mayorizado
+     * o cerrado, los asientos del cobro se reversan en el período abierto y la re-provisión va con la
+     * fecha de hoy, como antes. Antes iba siempre con la fecha de hoy: al reversar en re-proceso un
+     * cobro de un mes pasado dejaba un asiento de re-provisión en el mes en curso.</p>
+     */
+    private LocalDate fechaReProvision(CobroCredito cobro) throws Throwable {
+        LocalDate fechaAfectacion = cobro.getFechaAfectacion();
+        if (fechaAfectacion == null || fechaAfectacion.isAfter(LocalDate.now())) {
+            return LocalDate.now();
+        }
+        try {
+            if (periodoService.verificaPeriodoAbierto(derivarEmpresaCobro(cobro), fechaAfectacion) != null) {
+                return fechaAfectacion;
+            }
+        } catch (IncomeException e) {
+            System.out.println("  Re-provisión del cobro " + cobro.getCodigo() + " con fecha de hoy: el período de "
+                    + fechaAfectacion + " no está abierto (" + e.getMessage() + ")");
+        }
+        return LocalDate.now();
     }
 
     /**

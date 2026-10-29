@@ -178,3 +178,40 @@ listener JPA), **REV** = anulación por reverso en período abierto.
 - Anulaciones de documentos de CxC/CxP de un período cerrado ya no dejan el asiento ANULADO: generan reverso.
 - Sin prueba en WildFly todavía: falta el ciclo cerrar → intentar operar (bloqueo) → anular (reverso) →
   reabrir en cascada en la base de trabajo.
+
+## 8. Historial de la desmayorización (D-043, 29-oct-2026)
+
+`MayorizacionServiceImpl.desmayorizacion` (procesos 3 y 4):
+
+| Qué | Antes | Ahora |
+|---|---|---|
+| Copia de saldos por cuenta (`CNT.MYRH`/`DTMH`) | siempre | siempre |
+| Copia de asientos y líneas (`CNT.ASNH`/`DTAH`) | siempre | **solo si la mayorización que se deshace sostuvo un cierre contable definitivo** |
+| Desvincular los asientos de la mayorización (`ASNT.MYRZCDGO = null`) | siempre | siempre |
+| Respaldo anterior del período (`PRDODSMY`/`PRDODMCR`) | se borraba | se borra, **salvo que sea la foto de un cierre contable** (se conserva) |
+
+**Cómo se sabe que hubo cierre.** Al desmayorizar el período ya no puede estar cerrado (`exigeNingunoCerrado`:
+hay que reabrirlo, y `reabrir` limpia `PRDOCNCR`, `PRDOFCCN` y `PRDOUSCN`). Por eso no sirve mirar el período:
+se lee la bitácora `CNT.HCPR`, que nunca se actualiza ni se borra. La mayorización sostuvo un cierre si hay una
+fila `HCPRTPOO = 'CONTABLE'`, `HCPRACCN = 'CIERRE'` del período (`PRDOCDGO`, o empresa/año/mes si la fila no lo
+trae) con `HCPRFCHA >= MYRZFCHA`: cerrar exige el período MAYORIZADO, así que ese cierre se hizo sobre esa
+mayorización. Un respaldo anterior es foto de un cierre si hay un cierre entre su `MYRHFCHA` (copia de
+`MYRZFCHA`) y la fecha de la mayorización que ahora se deshace. Por defensa también copia si el período sigue
+cerrado (bandera C17 o estado legado 4), aunque `exigeNingunoCerrado` ya lo impide. Los cierres anteriores a
+C17 no dejaron bitácora y no cuentan.
+
+Ejemplo (base de trabajo, 29-oct): mayo y junio 2025 se mayorizaron a las 06:11 (MYRZ 2300/2301), se cerraron
+a las 06:11:50 (HCPR 41/42), se reabrieron a las 07:39 (HCPR 43/44) y se desmayorizaron (MYRH 1004/1003, con
+asientos). Con esta regla una desmayorización sin cierre de por medio copia solo saldos, y la de un período
+cerrado y reabierto copia también los asientos y no borra la foto anterior de otro cierre.
+
+`HistAsiento.ASNHOBSR` pasa a `length = 2000` (igual que `ASNTOBSR`); la columna ya se amplió en la base
+(D-043, DDL aplicado el 29-oct: `ALTER TABLE CNT.ASNH MODIFY ASNHOBSR VARCHAR2(2000)`; va a producción antes
+del WAR).
+
+**Período DESMAYORIZADO = abierto.** `PeriodoServiceImpl.verificaPeriodoAbierto` (CBCR al registrar y procesar,
+precancelación, abono con aportes, pensión complementaria, `/prdo/verificaPeriodoAbierto`) acepta ACTIVO (1) y
+DESMAYORIZADO (3); sigue rechazando MAYORIZADO (2), CERRADO (4) y el cierre C17. Es la misma regla de los
+asientos (`AsientoServiceImpl` solo rechaza MAYORIZADO y CERRADO) y de la mayorización (toma ACTIVO y
+DESMAYORIZADO). Antes el re-proceso de un mes desmayorizado obligaba a pasar `PRDOESTD` a 1 a mano
+(`44b`/`44c` del expediente).
