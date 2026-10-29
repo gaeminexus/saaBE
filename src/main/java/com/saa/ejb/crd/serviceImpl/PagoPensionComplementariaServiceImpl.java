@@ -285,6 +285,18 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
     @EJB
     private com.saa.basico.ejb.EmpresaDaoService empresaDaoService;
 
+    /** C20: período contable abierto de la fecha del período y de las fechas de pago del banco. */
+    @EJB
+    private com.saa.ejb.cnt.service.PeriodoService periodoService;
+
+    /** C20: mora de los préstamos del cruce a la fecha del período (mismo criterio que H42 de CBCR). */
+    @EJB
+    private com.saa.ejb.crd.service.ProcesoMoraPrestamoService procesoMoraPrestamoService;
+
+    /** C20: D-019 compartida — préstamo del cruce evaluado vigente al corte del período. */
+    @EJB
+    private com.saa.ejb.crd.service.ReaperturaVigenteAlCorteService reaperturaVigenteAlCorteService;
+
     // ========================================================================
     // EntityService
     // ========================================================================
@@ -2964,6 +2976,606 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         detalle.setValorDebe(debe ? redondear(valor) : 0.0);
         detalle.setValorHaber(debe ? 0.0 : redondear(valor));
         return detalle;
+    }
+
+    // ========================================================================
+    // C20 — pensión complementaria de un mes pasado (re-proceso de período)
+    // docs/logica-negocio/crd/API-REPROCESO-PENSION-PERIODO.md
+    // ========================================================================
+
+    /** Sufijo de la glosa del movimiento negativo del seguro (mismo que registrarPgpcDelMes). */
+    private static final String SUFIJO_GLOSA_SEGURO = " - SEGURO MEDICO";
+
+    @Override
+    @TransactionAttribute(TransactionAttributeType.NOT_SUPPORTED)
+    public com.saa.ejb.crd.service.dto.ResultadoReprocesoPensionPeriodo reprocesarPeriodo(
+            com.saa.ejb.crd.service.dto.SolicitudReprocesoPensionPeriodo solicitud) throws Throwable {
+        if (solicitud == null) {
+            throw new IncomeException("PARAMETRO_INVALIDO: no se recibió el cuerpo de la solicitud");
+        }
+        Long idEmpresa = solicitud.getIdEmpresa();
+        Integer anio = solicitud.getAnio();
+        Integer mes = solicitud.getMes();
+        String usuario = solicitud.getUsuario();
+        System.out.println("========================================");
+        System.out.println("RE-PROCESO DE PENSIÓN COMPLEMENTARIA (C20) - " + mes + "/" + anio);
+        System.out.println("========================================");
+        if (idEmpresa == null) {
+            throw new IncomeException("PARAMETRO_INVALIDO: idEmpresa es obligatorio");
+        }
+        if (anio == null || mes == null || mes < 1 || mes > 12) {
+            throw new IncomeException("PARAMETRO_INVALIDO: debe indicar un año y un mes (1-12) válidos");
+        }
+        if (usuario == null || usuario.trim().isEmpty()) {
+            throw new IncomeException("PARAMETRO_INVALIDO: usuario es obligatorio");
+        }
+        YearMonth periodo = YearMonth.of(anio, mes);
+        if (!periodo.isBefore(YearMonth.now())) {
+            throw new IncomeException("PARAMETRO_INVALIDO: el re-proceso es para un período pasado; " + periodo
+                + " es el mes en curso o futuro. Use /pgpc/seguro/generar y /pgpc/pensiones/generar.");
+        }
+        Long idUsuario = solicitud.getIdUsuario();
+        if (idUsuario == null) {
+            com.saa.model.scp.Usuario usuarioRegistro = null;
+            try {
+                usuarioRegistro = usuarioDaoService.selectByNombre(usuario);
+            } catch (jakarta.persistence.NoResultException e) {
+                usuarioRegistro = null;
+            }
+            if (usuarioRegistro == null) {
+                throw new IncomeException("USUARIO_NO_ENCONTRADO: no existe el usuario '" + usuario + "' en el sistema;"
+                    + " la orden de pago en Cuentas por Pagar necesita el usuario que la registra (mande idUsuario).");
+            }
+            idUsuario = usuarioRegistro.getCodigo();
+        }
+
+        // Prevalidación total (mismo criterio que generarPagosDelMes): todo lo global y determinista
+        // se verifica ANTES de tocar el primer jubilado.
+        verificarCuentaAporte23ParaCruce(idEmpresa);
+        verificarCuentaProductoPagoPensionJubilados(idEmpresa);
+        if (configuracionContabilidadService.contabilidadActiva()
+                && plantillaService.codigoByAlterno(PlantillasCredito.PAGO_PENSION_COMPLEMENTARIA, idEmpresa) == null) {
+            throw new IncomeException("No existe la plantilla contable alterno " + PlantillasCredito.PAGO_PENSION_COMPLEMENTARIA
+                + " (devengo de pensión complementaria) para la empresa " + idEmpresa + ".");
+        }
+        LocalDate fechaPeriodo = fechaDelPeriodo(anio, mes);
+        verificarPeriodoAbiertoReproceso(idEmpresa, fechaPeriodo, "devengo del período " + periodo);
+
+        com.saa.ejb.crd.service.dto.ResultadoReprocesoPensionPeriodo resumen =
+            new com.saa.ejb.crd.service.dto.ResultadoReprocesoPensionPeriodo();
+        resumen.setAnio(anio);
+        resumen.setMes(mes);
+
+        List<com.saa.ejb.crd.service.dto.FilaReprocesoPension> filas = solicitud.getFilas();
+        if (filas == null || filas.isEmpty()) {
+            resumen.setOrigenUniverso("PADRON");
+            filas = padronDelPeriodo(periodo.atEndOfMonth(), resumen.getErrores());
+        } else {
+            resumen.setOrigenUniverso("ROL");
+        }
+
+        java.util.Set<Long> entidadesVistas = new java.util.HashSet<>();
+        java.util.Set<LocalDate> fechasPago = new java.util.TreeSet<>();
+        for (com.saa.ejb.crd.service.dto.FilaReprocesoPension fila : filas) {
+            if (fila == null || fila.getIdEntidad() == null) {
+                throw new IncomeException("PARAMETRO_INVALIDO: hay una fila sin idEntidad");
+            }
+            if (!entidadesVistas.add(fila.getIdEntidad())) {
+                throw new IncomeException("PARAMETRO_INVALIDO: la entidad " + fila.getIdEntidad()
+                    + " está repetida en las filas; una fila por jubilado y período");
+            }
+            Long cuentaFila = fila.getIdCuentaBancariaPago() != null ? fila.getIdCuentaBancariaPago()
+                : solicitud.getIdCuentaBancariaPago();
+            if (fila.getFechaPagoBanco() != null) {
+                if (cuentaFila == null) {
+                    throw new IncomeException("PARAMETRO_INVALIDO: la entidad " + fila.getIdEntidad() + " trae fechaPagoBanco "
+                        + fila.getFechaPagoBanco() + " sin cuenta bancaria (idCuentaBancariaPago en la fila o en la solicitud)");
+                }
+                if (fila.getFechaPagoBanco().isBefore(fechaPeriodo)) {
+                    throw new IncomeException("PARAMETRO_INVALIDO: la entidad " + fila.getIdEntidad() + " trae fechaPagoBanco "
+                        + fila.getFechaPagoBanco() + " anterior al devengo (" + fechaPeriodo + ")");
+                }
+                fechasPago.add(fila.getFechaPagoBanco());
+            }
+        }
+        for (LocalDate fechaPago : fechasPago) {
+            verificarPeriodoAbiertoReproceso(idEmpresa, fechaPago, "pago del banco del " + fechaPago);
+        }
+
+        for (com.saa.ejb.crd.service.dto.FilaReprocesoPension fila : filas) {
+            resumen.setEvaluados(resumen.getEvaluados() + 1);
+            com.saa.ejb.crd.service.dto.DetalleReprocesoPension detalle;
+            try {
+                detalle = self.reprocesarDevengoJubilado(idEmpresa, anio, mes, usuario, fila);
+            } catch (Throwable e) {
+                resumen.setConError(resumen.getConError() + 1);
+                resumen.getErrores().add("Entidad " + fila.getIdEntidad() + " (devengo): " + e.getMessage());
+                detalle = new com.saa.ejb.crd.service.dto.DetalleReprocesoPension();
+                detalle.setIdEntidad(fila.getIdEntidad());
+                detalle.setEstado("ERROR");
+                detalle.setMensaje(e.getMessage());
+                resumen.getDetalle().add(detalle);
+                System.out.println("  ⛔ Entidad " + fila.getIdEntidad() + " - devengo con error: " + e.getMessage());
+                continue;
+            }
+            if ("YA_EXISTIA".equals(detalle.getEstado())) {
+                resumen.setYaExistian(resumen.getYaExistian() + 1);
+            } else {
+                resumen.setGenerados(resumen.getGenerados() + 1);
+                resumen.setTotalPension(redondear(resumen.getTotalPension() + detalle.getPension()));
+                resumen.setTotalSeguro(redondear(resumen.getTotalSeguro() + detalle.getSeguro()));
+                resumen.setTotalCruzado(redondear(resumen.getTotalCruzado() + detalle.getCruzado()));
+                resumen.setTotalNeto(redondear(resumen.getTotalNeto() + detalle.getNeto()));
+                resumen.setTotalExcedenteNoCruzado(redondear(resumen.getTotalExcedenteNoCruzado()
+                    + detalle.getExcedenteNoCruzado()));
+            }
+
+            // El PAGO es un movimiento aparte, en su propia transacción: si falla, el devengo queda.
+            if (detalle.getIdPago() != null) {
+                Long cuentaFila = fila.getIdCuentaBancariaPago() != null ? fila.getIdCuentaBancariaPago()
+                    : solicitud.getIdCuentaBancariaPago();
+                String referencia = fila.getReferenciaPago() != null ? fila.getReferenciaPago()
+                    : solicitud.getReferenciaPago();
+                try {
+                    com.saa.ejb.crd.service.dto.DetalleReprocesoPension pago = self.reprocesarPagoJubilado(
+                        detalle.getIdPago(), idEmpresa, idUsuario,
+                        fila.getFechaPagoBanco() != null ? cuentaFila : null, fila.getFechaPagoBanco(), referencia);
+                    detalle.setIdPagoProgramado(pago.getIdPagoProgramado());
+                    detalle.setEstadoPago(pago.getEstadoPago());
+                    detalle.setFechaPago(pago.getFechaPago());
+                    detalle.setIdAsientoPago(pago.getIdAsientoPago());
+                    if ("CONFIRMADO".equals(pago.getEstadoPago())) {
+                        resumen.setPagosConfirmados(resumen.getPagosConfirmados() + 1);
+                        resumen.setTotalPagadoBanco(redondear(resumen.getTotalPagadoBanco() + pago.getNeto()));
+                    } else if ("PENDIENTE".equals(pago.getEstadoPago())) {
+                        resumen.setOrdenesPendientes(resumen.getOrdenesPendientes() + 1);
+                    }
+                } catch (Throwable e) {
+                    detalle.setEstadoPago("ERROR");
+                    detalle.setMensaje((detalle.getMensaje() != null ? detalle.getMensaje() + " | " : "")
+                        + "Pago: " + e.getMessage());
+                    resumen.getErrores().add("Entidad " + fila.getIdEntidad() + " (pago, PGPC " + detalle.getIdPago()
+                        + "): " + e.getMessage());
+                    System.out.println("  ⛔ Entidad " + fila.getIdEntidad() + " - pago con error: " + e.getMessage());
+                }
+            }
+            resumen.getDetalle().add(detalle);
+        }
+        // Este proceso no genera la orden al proveedor del seguro: lo devengado queda a la vista.
+        resumen.setSeguroSinOrdenProveedor(resumen.getTotalSeguro());
+
+        System.out.println("RE-PROCESO DE PENSIÓN TERMINADO - " + periodo + " - Evaluados: " + resumen.getEvaluados()
+            + " - Generados: " + resumen.getGenerados() + " - Ya existían: " + resumen.getYaExistian()
+            + " - Con error: " + resumen.getConError() + " - Pensión $" + resumen.getTotalPension()
+            + " - Seguro $" + resumen.getTotalSeguro() + " - Cruzado $" + resumen.getTotalCruzado()
+            + " - Neto $" + resumen.getTotalNeto() + " - Pagado banco $" + resumen.getTotalPagadoBanco()
+            + " (" + resumen.getPagosConfirmados() + " confirmados, " + resumen.getOrdenesPendientes()
+            + " pendientes) - Excedente no cruzado $" + resumen.getTotalExcedenteNoCruzado());
+        return resumen;
+    }
+
+    @Override
+    @TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
+    public com.saa.ejb.crd.service.dto.DetalleReprocesoPension reprocesarDevengoJubilado(Long idEmpresa, Integer anio,
+            Integer mes, String usuario, com.saa.ejb.crd.service.dto.FilaReprocesoPension fila) throws Throwable {
+        Long idEntidad = fila.getIdEntidad();
+        System.out.println("PagoPensionComplementariaService.reprocesarDevengoJubilado - Entidad: " + idEntidad
+            + " - Período: " + mes + "/" + anio);
+        com.saa.ejb.crd.service.dto.DetalleReprocesoPension detalle = new com.saa.ejb.crd.service.dto.DetalleReprocesoPension();
+        detalle.setIdEntidad(idEntidad);
+
+        Entidad entidad = entidadDaoService.find(new Entidad(), idEntidad);
+        if (entidad == null) {
+            throw new IncomeException(ERR_ENTIDAD_NO_ENCONTRADA + ": no existe el partícipe " + idEntidad);
+        }
+
+        // Valores: los del ROL mandan (el rol es el documento); sin rol, la VPPC activa de hoy.
+        double valorTotal;
+        double valorSeguro;
+        if (fila.getPension() != null) {
+            valorTotal = redondear(fila.getPension());
+            valorSeguro = redondear(nvl(fila.getSeguroSalud()));
+        } else {
+            ValorPagoPensionComplementaria vppc = unicaActiva(
+                valorPagoPensionComplementariaService.selectByEntidad(idEntidad), idEntidad);
+            if (vppc == null) {
+                throw new IncomeException(ERR_SIN_VALOR_PENSION + ": la entidad " + idEntidad + " no trae pensión en la"
+                    + " fila y no tiene VPPC activa");
+            }
+            valorTotal = redondear(nvl(vppc.getValorPagar()));
+            valorSeguro = redondear(nvl(vppc.getValorSeguro()));
+        }
+        if (valorTotal <= TOLERANCIA || valorSeguro < 0.0 || valorSeguro > valorTotal + TOLERANCIA) {
+            throw new IncomeException(ERR_SIN_VALOR_PENSION + ": la entidad " + idEntidad + " tiene pensión $" + valorTotal
+                + " y seguro $" + valorSeguro + "; no se puede devengar.");
+        }
+
+        YearMonth periodo = YearMonth.of(anio, mes);
+        LocalDate finDeMes = periodo.atEndOfMonth();
+        LocalDate fecha = fechaDelPeriodo(anio, mes);
+        LocalDateTime fechaHecho = fecha.atStartOfDay();
+
+        // Idempotencia: el PGPC del período completo no se vuelve a devengar.
+        PagoPensionComplementaria existente = pagoPensionDaoService.selectByEntidadYPeriodo(
+            idEntidad, anio.longValue(), mes.longValue());
+        if (existente != null && existente.getValorPension() != null) {
+            detalle.setEstado("YA_EXISTIA");
+            detalle.setIdPago(existente.getCodigo());
+            detalle.setPension(redondear(nvl(existente.getValor())));
+            detalle.setSeguro(redondear(nvl(existente.getValorSeguro())));
+            detalle.setNeto(netoDelPgpc(existente));
+            detalle.setIdAsientoDevengo(existente.getNumeroAsientoDevengo());
+            detalle.setIdPagoProgramado(existente.getIdPagoProgramado());
+            detalle.setMensaje("El PGPC " + existente.getCodigo() + " de " + periodo + " ya estaba completo: no se"
+                + " vuelve a devengar.");
+            return detalle;
+        }
+
+        aporteDaoService.bloquearAportesEntidad(idEntidad);
+
+        // 1. Descuentos de préstamos del rol → cobro con aportes de pensión (23) contra cada préstamo.
+        String etiqueta = "REPROCESO PGPC " + periodo + " entidad " + idEntidad;
+        double disponibleCruce = redondear(valorTotal - valorSeguro);
+        double cruzado = 0.0;
+        double excedente = 0.0;
+        List<PagoPrestamo> pagosParaDsbn = new ArrayList<>();
+        List<com.saa.ejb.crd.service.dto.CruceReprocesoPension> cruces = fila.getCruces() != null
+            ? fila.getCruces() : Collections.<com.saa.ejb.crd.service.dto.CruceReprocesoPension>emptyList();
+        for (com.saa.ejb.crd.service.dto.CruceReprocesoPension cruce : cruces) {
+            if (cruce == null) {
+                continue;
+            }
+            boolean porRol = cruce.getValorRol() != null;
+            double pedido = porRol ? redondear(cruce.getValorRol()) : 0.0;
+            if (porRol && pedido <= TOLERANCIA) {
+                continue;
+            }
+            String prefijo = "Descuento " + (cruce.getProducto() != null ? cruce.getProducto() + " " : "")
+                + (porRol ? "$" + pedido + " " : "");
+            if (cruce.getIdPrestamo() == null) {
+                excedente = redondear(excedente + pedido);
+                detalle.getNovedades().add("DESCUENTO_SIN_PRESTAMO: " + prefijo + "sin préstamo de destino; queda en el"
+                    + " aporte 23 del jubilado");
+                continue;
+            }
+            Prestamo prestamo = prestamoDaoService.find(new Prestamo(), cruce.getIdPrestamo());
+            if (prestamo == null || prestamo.getEntidad() == null || !idEntidad.equals(prestamo.getEntidad().getCodigo())) {
+                excedente = redondear(excedente + pedido);
+                detalle.getNovedades().add("PRESTAMO_DE_OTRA_ENTIDAD: " + prefijo + "préstamo " + cruce.getIdPrestamo()
+                    + (prestamo == null ? " no existe" : " no es de la entidad " + idEntidad) + "; no se cruza");
+                continue;
+            }
+            // D-019: el préstamo se evalúa al corte del período. Consulta primero (sin lanzar) para no
+            // dejar la transacción del jubilado marcada rollback-only por un caso esperable.
+            if (!reaperturaVigenteAlCorteService.estabaVigenteAlCorte(prestamo, finDeMes)) {
+                excedente = redondear(excedente + pedido);
+                detalle.getNovedades().add("PRESTAMO_NO_VIGENTE_AL_CORTE: " + prefijo + "préstamo " + prestamo.getCodigo()
+                    + " (hoy estado " + prestamo.getIdEstado() + ") no estaba vigente al " + finDeMes + "; no se cruza");
+                continue;
+            }
+            reaperturaVigenteAlCorteService.prepararPrestamoAlCorte(prestamo, finDeMes, etiqueta,
+                detalle.getReaperturaAlCorte());
+            // Mora a la fecha del período (la que corresponde a una cuota pagada por rol ese día).
+            procesoMoraPrestamoService.recalcularMoraALaFechaDePagoDetalle(prestamo.getCodigo(), fecha);
+            double exigible = calcularDeudaExigiblePrestamo(prestamo.getCodigo(), finDeMes);
+            double restantePension = redondear(disponibleCruce - cruzado);
+            double aCruzar = porRol ? Math.min(pedido, Math.min(exigible, restantePension))
+                : Math.min(exigible, restantePension);
+            aCruzar = redondear(Math.max(0.0, aCruzar));
+            if (porRol && pedido - aCruzar > TOLERANCIA) {
+                double sobra = redondear(pedido - aCruzar);
+                excedente = redondear(excedente + sobra);
+                detalle.getNovedades().add((restantePension < pedido - TOLERANCIA && restantePension <= exigible
+                        ? "DESCUENTO_EXCEDE_PENSION: " : "DESCUENTO_EXCEDE_CUOTA: ") + prefijo + "préstamo "
+                    + prestamo.getCodigo() + ": exigible al " + finDeMes + " $" + exigible + ", pensión disponible $"
+                    + restantePension + ", cruzado $" + aCruzar + ", sin cruzar $" + sobra
+                    + " (queda en el aporte 23 del jubilado; la cuota conserva ese saldo)");
+            }
+            if (aCruzar <= TOLERANCIA) {
+                continue;
+            }
+            double saldo = saldoAporteService.saldoPorEntidadYTipo(idEntidad, TIPO_APORTE_PENSION_COMPLEMENTARIA);
+            if (saldo < aCruzar - TOLERANCIA) {
+                throw new IncomeException(ERR_SALDO_INSUFICIENTE + ": el saldo del aporte 23 de la entidad " + idEntidad
+                    + " es $" + redondear(saldo) + " y el descuento del préstamo " + prestamo.getCodigo() + " requiere $"
+                    + aCruzar + ". Revise la cuenta individual antes de re-procesar.");
+            }
+            SolicitudPagoConAportes solicitudCruce = new SolicitudPagoConAportes();
+            solicitudCruce.setIdPrestamo(prestamo.getCodigo());
+            DesgloseAporte desglose = new DesgloseAporte();
+            desglose.setIdTipoAporte(TIPO_APORTE_PENSION_COMPLEMENTARIA);
+            desglose.setValor(aCruzar);
+            solicitudCruce.setAportes(Collections.singletonList(desglose));
+            solicitudCruce.setUsuario(usuario);
+            solicitudCruce.setObservacion("Rol pensión complementaria " + mes + "/" + anio + " (re-proceso C20): "
+                + prefijo + "préstamo " + prestamo.getCodigo());
+            solicitudCruce.setFechaPago(fecha);
+            solicitudCruce.setIdEmpresa(idEmpresa);
+            ResultadoPagoConAportes resultadoCruce = procesoPagoPrestamoService.pagarConAportes(solicitudCruce);
+            ResultadoAplicacionPago aplicacion = resultadoCruce != null ? resultadoCruce.getResultado() : null;
+            double aplicado = redondear(aplicacion != null ? aplicacion.getValorAplicado() : 0.0);
+            if (aplicacion != null && aplicacion.getIdEvento() != null) {
+                List<PagoPrestamo> pagosDelEvento = pagoPrestamoDaoService.selectByEvento(aplicacion.getIdEvento());
+                if (pagosDelEvento != null) {
+                    pagosParaDsbn.addAll(pagosDelEvento);
+                }
+            }
+            if (aCruzar - aplicado > TOLERANCIA) {
+                excedente = redondear(excedente + aCruzar - aplicado);
+                detalle.getNovedades().add("CRUCE_PARCIAL: préstamo " + prestamo.getCodigo() + " aplicó $" + aplicado
+                    + " de $" + aCruzar);
+            }
+            cruzado = redondear(cruzado + aplicado);
+            System.out.println("    ↳ Rol " + mes + "/" + anio + ": $" + aplicado + " cruzados al préstamo "
+                + prestamo.getCodigo());
+        }
+
+        // 2. Neto: lo que de verdad salió al banco. Tope = neto del rol (si viene); lo que el rol
+        // descontó y no se pudo cruzar queda en el aporte 23 (no se descarta, va como novedad).
+        double netoCalculado = redondear(valorTotal - valorSeguro - cruzado);
+        double neto = fila.getNetoRol() != null
+            ? Math.min(netoCalculado, Math.max(0.0, redondear(fila.getNetoRol()))) : netoCalculado;
+        neto = redondear(Math.max(0.0, neto));
+        double retenido = redondear(netoCalculado - neto);
+        if (Math.abs(retenido - excedente) > TOLERANCIA) {
+            detalle.getNovedades().add("NETO_ROL_DIFIERE: neto calculado $" + netoCalculado + ", neto del rol $"
+                + fila.getNetoRol() + ", sin cruzar $" + excedente + " — revisar el rol de esta entidad");
+        }
+
+        // 3. Movimientos negativos del aporte 23 (fecha del período): seguro y neto. El cruce ya
+        // generó el suyo dentro de pagarConAportes.
+        String glosa = "PAGO PENSION COMPLEMENTARIA " + mes + "/" + anio + " - Entidad " + idEntidad + " (REPROCESO C20)";
+        Aporte aporteSeguro = valorSeguro > TOLERANCIA
+            ? crearMovimientoNegativo(entidad, valorSeguro, glosa + SUFIJO_GLOSA_SEGURO, fechaHecho, usuario) : null;
+        Aporte aportePension = neto > TOLERANCIA
+            ? crearMovimientoNegativo(entidad, neto, glosa, fechaHecho, usuario) : null;
+
+        // 4. PGPC del período (completa el stub del seguro si existiera) y asiento de devengo.
+        PagoPensionComplementaria pago = existente != null ? existente : new PagoPensionComplementaria();
+        pago.setEntidad(entidad);
+        pago.setFilial(entidad.getFilial());
+        pago.setAnio(anio.longValue());
+        pago.setMes(mes.longValue());
+        pago.setValorPension(redondear(valorTotal - valorSeguro));
+        pago.setValorSeguro(valorSeguro);
+        pago.setValor(valorTotal);
+        pago.setFecha(fecha);
+        Aporte aporteReferencia = aportePension != null ? aportePension : aporteSeguro;
+        pago.setIdAporte(aporteReferencia != null ? aporteReferencia.getCodigo() : null);
+        pago.setUsuarioRegistro(usuario);
+        pago.setFechaRegistro(LocalDateTime.now());
+        if (neto > TOLERANCIA) {
+            // El pago es otro paso (reprocesarPagoJubilado): queda REGISTRADA hasta tener su orden.
+            pago.setEstado(Long.valueOf(EstadoPagoPensionComplementaria.REGISTRADA));
+        } else {
+            pago.setEstado(Long.valueOf(EstadoPagoPensionComplementaria.PAGADA));
+            pago.setFechaPago(fecha);
+        }
+        pago = pagoPensionDaoService.save(pago, pago.getCodigo());
+
+        Long idAsientoDevengo = generarAsientoDevengoPension(pago, entidad, idEmpresa, neto);
+        pago.setNumeroAsientoDevengo(idAsientoDevengo);
+        pago = pagoPensionDaoService.save(pago, pago.getCodigo());
+
+        distribucionBandaService.registrarDistribucionPorPagos(
+            DsbnOrigen.PAGO_PENSION, pago.getCodigo(), idEmpresa, pagosParaDsbn, usuario);
+
+        detalle.setEstado("GENERADO");
+        detalle.setIdPago(pago.getCodigo());
+        detalle.setPension(valorTotal);
+        detalle.setSeguro(valorSeguro);
+        detalle.setCruzado(cruzado);
+        detalle.setNeto(neto);
+        detalle.setExcedenteNoCruzado(excedente);
+        detalle.setIdAsientoDevengo(idAsientoDevengo);
+        System.out.println("  ✅ Re-proceso " + periodo + " - Entidad " + idEntidad + " - PGPC " + pago.getCodigo()
+            + " - pensión $" + valorTotal + " - seguro $" + valorSeguro + " - cruzado $" + cruzado + " - neto $" + neto
+            + (excedente > TOLERANCIA ? " - sin cruzar $" + excedente : "") + " - devengo " + idAsientoDevengo);
+        return detalle;
+    }
+
+    @Override
+    @TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
+    public com.saa.ejb.crd.service.dto.DetalleReprocesoPension reprocesarPagoJubilado(Long idPgpc, Long idEmpresa,
+            Long idUsuario, Long idCuentaBancaria, LocalDate fechaPagoBanco, String referencia) throws Throwable {
+        PagoPensionComplementaria pago = pagoPensionDaoService.find(new PagoPensionComplementaria(), idPgpc);
+        if (pago == null) {
+            throw new IncomeException(ERR_PAGO_NO_ENCONTRADO + ": no existe el PGPC " + idPgpc);
+        }
+        com.saa.ejb.crd.service.dto.DetalleReprocesoPension detalle = new com.saa.ejb.crd.service.dto.DetalleReprocesoPension();
+        detalle.setIdPago(idPgpc);
+        detalle.setIdEntidad(pago.getEntidad() != null ? pago.getEntidad().getCodigo() : null);
+        double neto = netoDelPgpc(pago);
+        detalle.setNeto(neto);
+        if (neto <= TOLERANCIA) {
+            detalle.setEstadoPago("SIN_PAGO");
+            return detalle;
+        }
+
+        // Idempotencia: el PGPC ya tiene orden, o CxP ya tiene una vigente para este origen.
+        Long idOrden = pago.getIdPagoProgramado();
+        if (idOrden == null) {
+            List<PagoProgramado> vigentes = pagoProgramadoDaoService.selectVigentesByOrigen(
+                OrigenPagoExterno.CRD_PAGO_PENSION_COMPLEMENTARIA, idPgpc);
+            if (vigentes != null && !vigentes.isEmpty()) {
+                idOrden = vigentes.get(0).getId();
+            }
+        }
+        if (idOrden != null) {
+            PagoProgramado orden = pagoProgramadoDaoService.find(new PagoProgramado(), idOrden);
+            boolean confirmada = orden != null && orden.getEstado() != null
+                && orden.getEstado().intValue() == EstadoPagoProgramado.CONFIRMADO;
+            if (pago.getIdPagoProgramado() == null) {
+                pago.setIdPagoProgramado(idOrden);
+                if (pago.getEstado() != null && pago.getEstado() == EstadoPagoPensionComplementaria.REGISTRADA) {
+                    pago.setEstado(Long.valueOf(EstadoPagoPensionComplementaria.EN_PAGO));
+                }
+                pagoPensionDaoService.save(pago, pago.getCodigo());
+            }
+            detalle.setIdPagoProgramado(idOrden);
+            detalle.setEstadoPago(confirmada ? "CONFIRMADO" : "PENDIENTE");
+            detalle.setFechaPago(orden != null ? orden.getFechaRespuesta() : null);
+            detalle.setIdAsientoPago(orden != null && orden.getAsiento() != null ? orden.getAsiento().getCodigo() : null);
+            detalle.setMensaje("Ya tenía la orden de pago " + idOrden + ": no se crea otra (se gestiona en tesorería).");
+            return detalle;
+        }
+
+        Entidad entidad = pago.getEntidad();
+        BeneficiarioOcasional beneficiario = new BeneficiarioOcasional();
+        beneficiario.setNombre(entidad.getRazonSocial());
+        beneficiario.setIdentificacion(entidad.getNumeroIdentificacion());
+        CuentaBancariaParticipe cuentaJubilado = cuentaActivaSinValidar(entidad.getCodigo());
+        if (cuentaJubilado != null) {
+            beneficiario.setIdBancoExterno(cuentaJubilado.getBancoExterno() != null
+                ? cuentaJubilado.getBancoExterno().getCodigo() : null);
+            beneficiario.setTipoCuenta(cuentaJubilado.getTipoCuenta());
+            beneficiario.setNumeroCuenta(cuentaJubilado.getNumeroCuenta());
+        }
+        String observacion = "Pago pensión complementaria " + pago.getMes() + "/" + pago.getAnio() + " (PGPC "
+            + pago.getCodigo() + ", re-proceso C20)";
+        com.saa.ejb.cxp.service.dto.LineaContablePago lineaPension = new com.saa.ejb.cxp.service.dto.LineaContablePago();
+        lineaPension.setIdProductoPago(ID_PRODUCTO_PAGO_PENSION_JUBILADOS);
+        lineaPension.setValor(neto);
+        lineaPension.setConcepto(observacion);
+        List<com.saa.ejb.cxp.service.dto.LineaContablePago> desglose = new ArrayList<>();
+        desglose.add(lineaPension);
+
+        // Con fecha y cuenta del banco: la orden nace CONFIRMADA y CxP contabiliza el egreso
+        // (D 2.3.01.10.03 / H banco) y su movimiento bancario en ESA fecha — mismo camino que el
+        // desembolso histórico (C15/C16). Sin fecha: orden pendiente de aprobación en tesorería.
+        boolean confirmar = fechaPagoBanco != null && idCuentaBancaria != null;
+        LocalDate fechaOrden = confirmar ? fechaPagoBanco : (pago.getFecha() != null ? pago.getFecha() : LocalDate.now());
+        Map<String, Object> respuesta = pagoProgramadoService.registrarPagoDeOrigenExterno(
+            OrigenPagoExterno.CRD_PAGO_PENSION_COMPLEMENTARIA, pago.getCodigo(), idEmpresa,
+            confirmar ? idCuentaBancaria : null, neto, fechaOrden.toString(), beneficiario, desglose, observacion,
+            idUsuario, confirmar, confirmar ? referencia : null);
+        Object valorPago = respuesta != null ? respuesta.get("pago") : null;
+        if (valorPago == null) {
+            throw new IncomeException("Cuentas por Pagar no devolvió el número de la orden del PGPC " + pago.getCodigo());
+        }
+        idOrden = ((Number) valorPago).longValue();
+        pago.setIdPagoProgramado(idOrden);
+        detalle.setIdPagoProgramado(idOrden);
+        PagoProgramado orden = pagoProgramadoDaoService.find(new PagoProgramado(), idOrden);
+        boolean confirmada = orden != null && orden.getEstado() != null
+            && orden.getEstado().intValue() == EstadoPagoProgramado.CONFIRMADO;
+        if (confirmada) {
+            pago.setEstado(Long.valueOf(EstadoPagoPensionComplementaria.PAGADA));
+            pago.setFechaPago(orden.getFechaRespuesta() != null ? orden.getFechaRespuesta() : fechaPagoBanco);
+            pago.setNumeroAsiento(orden.getAsiento() != null ? orden.getAsiento().getCodigo() : null);
+            detalle.setEstadoPago("CONFIRMADO");
+            detalle.setFechaPago(pago.getFechaPago());
+            detalle.setIdAsientoPago(pago.getNumeroAsiento());
+        } else {
+            pago.setEstado(Long.valueOf(EstadoPagoPensionComplementaria.EN_PAGO));
+            detalle.setEstadoPago("PENDIENTE");
+        }
+        pagoPensionDaoService.save(pago, pago.getCodigo());
+        System.out.println("  💵 PGPC " + pago.getCodigo() + " - orden " + idOrden + " por $" + neto
+            + (confirmada ? " CONFIRMADA al " + pago.getFechaPago() + " (asiento " + pago.getNumeroAsiento() + ")"
+                : " pendiente de aprobación"));
+        return detalle;
+    }
+
+    /**
+     * Neto pagado al jubilado según el PGPC: el valor del movimiento negativo de PENSIÓN que
+     * referencia ({@code PGPCIDAP}); si referencia el del seguro, o ninguno, el neto es 0.
+     */
+    private double netoDelPgpc(PagoPensionComplementaria pago) throws Throwable {
+        if (pago == null || pago.getIdAporte() == null) {
+            return 0.0;
+        }
+        Aporte aporte = aporteDaoService.find(new Aporte(), pago.getIdAporte());
+        if (aporte == null || aporte.getValor() == null
+                || (aporte.getGlosa() != null && aporte.getGlosa().endsWith(SUFIJO_GLOSA_SEGURO))) {
+            return 0.0;
+        }
+        return redondear(Math.abs(aporte.getValor()));
+    }
+
+    /**
+     * La única cuenta bancaria activa del jubilado, o {@code null} (cero o varias). Sin validar el
+     * certificado: solo completa los datos del beneficiario de una orden PENDIENTE (tesorería la
+     * revisa al aprobar); la orden confirmada con la fecha del banco no la necesita.
+     */
+    private CuentaBancariaParticipe cuentaActivaSinValidar(Long idEntidad) throws Throwable {
+        List<CuentaBancariaParticipe> cuentas = cuentaBancariaParticipeDaoService.selectByParent(idEntidad);
+        CuentaBancariaParticipe unica = null;
+        int activas = 0;
+        if (cuentas != null) {
+            for (CuentaBancariaParticipe cuenta : cuentas) {
+                if (cuenta.getEstado() != null && cuenta.getEstado() == Estado.ACTIVO) {
+                    activas++;
+                    unica = cuenta;
+                }
+            }
+        }
+        return activas == 1 ? unica : null;
+    }
+
+    private void verificarPeriodoAbiertoReproceso(Long idEmpresa, LocalDate fecha, String para) throws Throwable {
+        try {
+            periodoService.verificaPeriodoAbierto(idEmpresa, fecha);
+        } catch (IncomeException e) {
+            throw new IncomeException("PERIODO_CERRADO: el período contable del " + fecha + " (" + para
+                + ") está cerrado — " + e.getMessage());
+        }
+    }
+
+    /**
+     * Modo padrón (sin filas): jubilados con VPPC activa cuyo traslado de jubilación al aporte 23
+     * es de a más tardar el fin del período. El estado de hoy del partícipe no decide. El cruce es
+     * por lo exigible al corte, SOLO contra préstamos activos hoy: sin el rol no hay documento que
+     * diga que se descontó un préstamo hoy cancelado, así que D-019 no reabre nada en este modo.
+     * Sin fecha de pago: las órdenes quedan pendientes.
+     */
+    private List<com.saa.ejb.crd.service.dto.FilaReprocesoPension> padronDelPeriodo(LocalDate finDeMes,
+            List<String> errores) throws Throwable {
+        List<com.saa.ejb.crd.service.dto.FilaReprocesoPension> filas = new ArrayList<>();
+        List<ValorPagoPensionComplementaria> todas;
+        try {
+            todas = valorPagoPensionComplementariaService.selectAll();
+        } catch (Throwable e) {
+            todas = Collections.emptyList();
+        }
+        Map<Long, List<ValorPagoPensionComplementaria>> porEntidad = new LinkedHashMap<>();
+        for (ValorPagoPensionComplementaria vppc : todas) {
+            if (vppc.getEntidad() == null || vppc.getEstado() == null || vppc.getEstado() != Estado.ACTIVO) {
+                continue;
+            }
+            porEntidad.computeIfAbsent(vppc.getEntidad().getCodigo(), k -> new ArrayList<>()).add(vppc);
+        }
+        for (Map.Entry<Long, List<ValorPagoPensionComplementaria>> entrada : porEntidad.entrySet()) {
+            Long idEntidad = entrada.getKey();
+            if (entrada.getValue().size() > 1) {
+                errores.add("Entidad " + idEntidad + ": " + entrada.getValue().size() + " VPPC activas; fuera del padrón");
+                continue;
+            }
+            LocalDateTime traslado = aporteDaoService.selectFechaMovimientoJubilacion(
+                idEntidad, TIPO_APORTE_PENSION_COMPLEMENTARIA, (long) CrdTipoMovimientoAporte.JUBILACION);
+            if (traslado == null || traslado.toLocalDate().isAfter(finDeMes)) {
+                continue;
+            }
+            ValorPagoPensionComplementaria vppc = entrada.getValue().get(0);
+            com.saa.ejb.crd.service.dto.FilaReprocesoPension fila = new com.saa.ejb.crd.service.dto.FilaReprocesoPension();
+            fila.setIdEntidad(idEntidad);
+            fila.setPension(vppc.getValorPagar());
+            fila.setSeguroSalud(vppc.getValorSeguro());
+            List<Prestamo> prestamos = prestamoDaoService.selectByEntidad(idEntidad);
+            if (prestamos != null) {
+                for (Prestamo prestamo : prestamos) {
+                    if (!esPrestamoVigente(prestamo)) {
+                        continue;
+                    }
+                    com.saa.ejb.crd.service.dto.CruceReprocesoPension cruce = new com.saa.ejb.crd.service.dto.CruceReprocesoPension();
+                    cruce.setIdPrestamo(prestamo.getCodigo());
+                    fila.getCruces().add(cruce);
+                }
+            }
+            filas.add(fila);
+        }
+        System.out.println("  Padrón del período al " + finDeMes + ": " + filas.size() + " jubilado(s)");
+        return filas;
     }
 
     // ========================================================================
