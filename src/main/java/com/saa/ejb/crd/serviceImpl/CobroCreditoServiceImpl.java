@@ -154,6 +154,10 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
     @EJB
     private com.saa.ejb.cnt.service.PeriodoService periodoService;
 
+    /** C17: mes cerrado para cartera / contabilidad (CIERRES-BLOQUEANTES.md). */
+    @EJB
+    private com.saa.ejb.cnt.service.EstadoCierreService estadoCierreService;
+
     @EJB
     private CorridaCierreCarteraDaoService corridaCierreCarteraDaoService;
 
@@ -336,6 +340,9 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
                     + textoEstado(cobro.getEstado()) + "; solo se puede aprobar un cobro en"
                     + " estado REGISTRADO");
         }
+        // C17: no se aprueba un cobro cuya fecha de afectación cae en un mes ya cerrado.
+        estadoCierreService.validarMovimientoCartera(derivarEmpresaCobro(cobro), cobro.getFechaAfectacion(),
+                "la aprobación del cobro " + idCobro);
         cobro.setEstado(Long.valueOf(CrdEstadoCobro.APROBADO));
         cobro.setUsuarioAprobacion(usuario);
         cobro.setFechaAprobacion(LocalDateTime.now());
@@ -544,6 +551,10 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
         // del detalle, en la MISMA transacción que este método: si cualquier línea falla, el
         // contenedor revierte todo y ninguna queda a medias.
         if (estado == CrdEstadoCobro.PROCESADO) {
+            // C17: anular un cobro procesado de un mes cerrado para cartera solo si su contabilidad
+            // también está cerrada (el efecto va al reverso en un mes abierto); si no, reabrir la cartera.
+            estadoCierreService.validarAnulacionCartera(derivarEmpresaCobro(cobro), cobro.getFechaAfectacion(),
+                    "la anulación del cobro " + idCobro);
             String motivoLinea = "Anulación del cobro " + idCobro + ": " + motivo.trim();
             reversarLineasProcesadas(cobro, usuario, motivoLinea);
         }
@@ -702,6 +713,9 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
         }
         String motivoTrim = motivo.trim();
         String motivoLinea = "Reverso del cobro " + idCobro + ": " + motivoTrim;
+        // C17: mismo criterio que la anulación de un cobro procesado.
+        estadoCierreService.validarAnulacionCartera(derivarEmpresaCobro(cobro), cobro.getFechaAfectacion(),
+                "el reverso del cobro " + idCobro);
 
         // Paso 2 — reversar TODAS las líneas del detalle (mismo bucle que anularCobro, ver
         // reversarLineasProcesadas).
@@ -889,6 +903,10 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
                     + textoEstado(cobro.getEstado()) + "; solo se puede procesar un cobro en"
                     + " estado APROBADO");
         }
+        // C17: validación temprana, antes de la primera escritura: el mes de la fecha de afectación
+        // tiene que estar abierto para cartera y para contabilidad.
+        estadoCierreService.validarMovimientoCartera(derivarEmpresaCobro(cobro), cobro.getFechaAfectacion(),
+                "el procesamiento del cobro " + idCobro);
 
         // Idempotente por (origen, idOrigen) — PLAN-AUDITORIA-BANDAS.md §9, mismo criterio que
         // Petro (§5.1 punto 2). UNA sola vez acá arriba: este método puede llamar a
@@ -1595,6 +1613,8 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
             throw new IncomeException("PERIODO_CERRADO: el período contable de la fecha de afectación "
                     + fechaAfectacion + " está cerrado — " + e.getMessage());
         }
+        // C17: además, el mes no puede haber pasado por el cierre–apertura de cartera.
+        estadoCierreService.validarCarteraAbierta(idEmpresa, fechaAfectacion, "cobros (CBCR)");
     }
 
     /**

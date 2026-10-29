@@ -48,6 +48,10 @@ public class ProcesoCargaPetroServiceImpl implements ProcesoCargaPetroService {
     
     @EJB
     private ProductoDaoService productoDaoService;
+
+    /** C17: mes cerrado para cartera / contabilidad (CIERRES-BLOQUEANTES.md). */
+    @jakarta.ejb.EJB
+    private com.saa.ejb.cnt.service.EstadoCierreService estadoCierreService;
     
     @EJB
     private PrestamoDaoService prestamoDaoService;
@@ -82,6 +86,9 @@ public class ProcesoCargaPetroServiceImpl implements ProcesoCargaPetroService {
         
         System.out.println("Archivo: " + cargaArchivo.getNombre());
         System.out.println("Mes/Año: " + cargaArchivo.getMesAfectacion() + "/" + cargaArchivo.getAnioAfectacion());
+        // C17: mes de afectación abierto para cartera y contabilidad.
+        estadoCierreService.validarMovimientoCartera(null, cargaArchivo.getAnioAfectacion(),
+                cargaArchivo.getMesAfectacion(), "el procesamiento de la carga Petro " + idCargaArchivo);
         
         // 2. Obtener todos los registros del archivo
         List<DatosBusqueda> criterios = new ArrayList<>();

@@ -43,6 +43,10 @@ public class EgresoServiceImpl implements EgresoService {
 	@EJB
 	private EgresoDaoService egresoDaoService;
 
+	/** C17: mes cerrado para cartera / contabilidad (CIERRES-BLOQUEANTES.md). */
+	@jakarta.ejb.EJB
+	private com.saa.ejb.cnt.service.EstadoCierreService estadoCierreService;
+
 	@EJB
 	private PagoProgramadoService pagoProgramadoService;
 
@@ -174,6 +178,8 @@ public class EgresoServiceImpl implements EgresoService {
 		// El producto define la cuenta contable del gasto: se valida aquí para
 		// que el error salga al registrar, no recién cuando el banco confirme.
 		validaProducto(idProductoPago);
+		// C17: validación temprana del cierre contable de la fecha del egreso.
+		estadoCierreService.validarContableAbierto(idEmpresa, parseFecha(fecha), "egresos de tesorería");
 
 		Titular titular = null;
 		if (idTitular != null) {

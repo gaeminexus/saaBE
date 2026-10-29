@@ -37,6 +37,10 @@ public class IngresoServiceImpl implements IngresoService {
 	@EJB
 	private IngresoDaoService ingresoDaoService;
 
+	/** C17: mes cerrado para cartera / contabilidad (CIERRES-BLOQUEANTES.md). */
+	@jakarta.ejb.EJB
+	private com.saa.ejb.cnt.service.EstadoCierreService estadoCierreService;
+
 	@EJB
 	private AsientoContableService asientoContableService;
 
@@ -147,6 +151,8 @@ public class IngresoServiceImpl implements IngresoService {
 		}
 
 		LocalDate fechaIngreso = parseFecha(fecha);
+		// C17: validación temprana del cierre contable (antes de grabar el ingreso y su movimiento).
+		estadoCierreService.validarContableAbierto(idEmpresa, fechaIngreso, "ingresos de tesorería");
 		String concepto = descripcion.trim();
 
 		// 1. Asiento contable: DEBE banco / HABER cuenta del grupo del producto.

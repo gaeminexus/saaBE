@@ -46,6 +46,10 @@ public class ProcesoMoraPrestamoServiceImpl implements ProcesoMoraPrestamoServic
     @EJB
     private DetallePrestamoDaoService detallePrestamoDaoService;
 
+    /** C17: mes cerrado para cartera / contabilidad (CIERRES-BLOQUEANTES.md). */
+    @jakarta.ejb.EJB
+    private com.saa.ejb.cnt.service.EstadoCierreService estadoCierreService;
+
     @EJB
     private DetallePrestamoService detallePrestamoService;
 
@@ -82,6 +86,8 @@ public class ProcesoMoraPrestamoServiceImpl implements ProcesoMoraPrestamoServic
         if (fecha.isAfter(LocalDate.now())) {
             throw new IncomeException(ERR_FECHA_INVALIDA + ": la fecha de corte " + fecha + " es futura");
         }
+        // C17: la mora persistida al corte de un mes ya cerrado para cartera no se recalcula.
+        estadoCierreService.validarCarteraAbierta(null, fecha, "el cálculo de mora persistida");
 
         ResultadoCalculoMora resumen = new ResultadoCalculoMora();
         resumen.setFechaCorte(fecha);
@@ -219,6 +225,8 @@ public class ProcesoMoraPrestamoServiceImpl implements ProcesoMoraPrestamoServic
         if (fecha.isAfter(LocalDate.now())) {
             throw new IncomeException(ERR_FECHA_INVALIDA + ": la fecha de corte " + fecha + " es futura");
         }
+        // C17: ídem para un préstamo.
+        estadoCierreService.validarCarteraAbierta(null, fecha, "el cálculo de mora persistida");
 
         System.out.println("  → Calculando mora del préstamo " + idPrestamo + " al " + fecha);
 

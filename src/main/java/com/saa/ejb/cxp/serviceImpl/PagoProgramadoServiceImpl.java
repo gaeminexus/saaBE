@@ -98,6 +98,10 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	@EJB
 	private PagoProgramadoDaoService pagoProgramadoDaoService;
 
+	/** C17: mes cerrado para cartera / contabilidad (CIERRES-BLOQUEANTES.md). */
+	@jakarta.ejb.EJB
+	private com.saa.ejb.cnt.service.EstadoCierreService estadoCierreService;
+
 	@EJB
 	private LotePagoDaoService lotePagoDaoService;
 
@@ -2011,6 +2015,9 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 			throw new IncomeException("FECHA_CONTABLE_FUTURA: la fecha de respuesta del banco "
 					+ fechaRespuestaEfectiva + " es futura.");
 		}
+		// C17: validación temprana del cierre contable: todo el lote se contabiliza con esta fecha.
+		estadoCierreService.validarContableAbierto(null, fechaRespuestaEfectiva,
+				"la confirmación de pagos por respuesta del banco (lote " + idLote + ")");
 
 		Map<String, Object> resultado = new HashMap<>();
 
@@ -2122,6 +2129,8 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		}
 
 		LocalDate fecha = parseFecha(fechaPago);
+		// C17: validación temprana del cierre contable, antes del bucle que junta errores por pago.
+		estadoCierreService.validarContableAbierto(null, fecha, "la confirmación manual de pagos");
 		// referencia (para todos) sigue funcionando igual que siempre - retrocompatible.
 		// referenciasPorPago, si trae una entrada para el pago, gana sobre esa.
 		String ref  = (referencia != null && !referencia.trim().isEmpty())
