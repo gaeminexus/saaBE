@@ -4780,3 +4780,21 @@ El IVA no cambia. El detalle conserva `CODIGOIVASRI = 7`, que es lo que dice el 
 > podía cuadrar. **La herramienta con la que se verifica la declaración (el DIMM) define qué es «correcto»
 > para quien declara**, tanto como el XSD. Se midió el XML y el código; no se miró la pantalla en la que
 > contabilidad iba a comparar.
+
+## §60 — Octubre 2026: pedidos de contabilidad, NC que excede, P5 y usuario de sesión (2026-10-27/28)
+
+Esta sección no repite el contenido: el estado vigente está en `docs/equipos/saa-2.md` (traspaso del 2026-10-28).
+El detalle de cada frente está en:
+
+- `PEDIDOS-CONTABILIDAD-2026-10-27.md`: Q1–Q16.
+- `cxp/NC-EXCEDE-SALDO-FACTURA.md`.
+- `cxp/ANULAR-DOCUMENTO-DESDE-BANDEJA.md`: caso 1294, con `e2-108` y `e2-110`.
+- `cnt/DISENO-TIPOS-ASIENTO-AUTOMATICOS.md`: P5, con `e2-111`.
+- `cxp/USUARIO-DE-SESION-PANTALLAS-CXP.md`.
+- `cxp/sql/e2-112`: anticipo de VARFILES.
+
+Hallazgos que valen para todo el sistema:
+
+1. Un backend que empieza a exigir el usuario real destapa los rellenos (1, 0, 'SISTEMA') que tenía el FE.
+2. Un saldo de PRCC tipo 2 cargado a mano, sin su fila en ANTP, no aparece en el estado de cuenta y no se puede
+   cruzar.
