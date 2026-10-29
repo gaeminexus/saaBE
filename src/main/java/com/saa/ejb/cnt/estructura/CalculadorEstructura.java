@@ -209,7 +209,9 @@ public final class CalculadorEstructura {
 				String destino = regla != null && regla.getDestino() != null ? regla.getDestino()
 						: (def.isMapeoAutomatico() ? automatico(codigos, s.getCuenta()) : null);
 				if (destino == null) {
-					if (conSaldo) {
+					// solo se advierte en estructuras que cubren todo el plan (mapeo automatico, como el B17); en
+					// las parciales (flujo de caja) que una cuenta no tenga renglon es lo normal
+					if (conSaldo && def.isMapeoAutomatico()) {
 						advertencias.add(s.getCuenta() + " sin renglon (" + s.deudor() + ")");
 					}
 					continue;
