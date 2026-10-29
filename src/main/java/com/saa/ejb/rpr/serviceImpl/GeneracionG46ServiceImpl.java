@@ -27,6 +27,10 @@ public class GeneracionG46ServiceImpl implements GeneracionG46Service {
     @EJB private ExterService               exterService;
     @EJB private ProvinciaService           provinciaService;
     @EJB private NuevoPrestamoG46DaoService cg46DaoService;
+    @EJB private com.saa.ejb.rpr.dao.CatalogoGeograficoDaoService geografia;
+
+    /** EstadoPrestamo: 0 raíz, 1 generado, 6 pendiente, 7 rechazado, 12 anulado (ModoCorteCartera.ESTADOS_FUERA_DE_CARTERA). */
+    static final java.util.Set<Long> ESTADOS_NO_CONCEDIDOS = java.util.Set.of(0L, 1L, 6L, 7L, 12L);
 
     @Override
     public long generar(DetalleEjecucionReporte detalle) throws Throwable {
@@ -65,6 +69,12 @@ public class GeneracionG46ServiceImpl implements GeneracionG46Service {
             // FILTRO: Solo préstamos con idAsoprep válido
             if (prestamo.getIdAsoprep() == null || prestamo.getIdAsoprep().toString().trim().isEmpty()) {
                 System.out.println("G46 - SKIP prestamo codigo " + prestamo.getCodigo() + " (idAsoprep nulo o vacío)");
+                continue;
+            }
+            // D-039: solo operaciones concedidas (manual §3.2). Un préstamo generado, pendiente, rechazado o
+            // anulado no es una concesión: mismos estados que la cartera al corte deja fuera.
+            if (ESTADOS_NO_CONCEDIDOS.contains(prestamo.getIdEstado() != null ? prestamo.getIdEstado() : 0L)) {
+                System.out.println("G46 - SKIP prestamo codigo " + prestamo.getCodigo() + " (estado " + prestamo.getIdEstado() + ", no concedido)");
                 continue;
             }
 
@@ -113,9 +123,22 @@ public class GeneracionG46ServiceImpl implements GeneracionG46Service {
                     System.out.println("G46 WARN - No se pudo obtener provincia para: " + identificacionEntidad);
                 }
             }
-            g46.setDestinoProvincia(codigoAlternoProvincia);
-            g46.setDestinoCanton("01");
-            g46.setDestinoParroquia("50");
+            // D-039: el SAA no guarda un destino geográfico propio del préstamo; se usa la residencia del sujeto.
+            // Primero provincia y cantón de EXTR (codificados con los catálogos PRVN/CDDD): con la G46 de mayo 2025
+            // presentada coinciden 47 de 73 (provincia 63); la dirección DRCC solo 39 (52). Si EXTR no da los dos
+            // códigos, la dirección vigente DRCC → parroquia → cantón → provincia. Parroquia: PRRQCDEX de la
+            // dirección cuando es del mismo cantón; mientras ese código INEC no esté cargado, 50 (cabecera cantonal).
+            String[] ubicacion = prestamo.getEntidad() != null ? geografia.ubicacionEntidad(prestamo.getEntidad().getCodigo()) : null;
+            String cantonExter = null;
+            if (identificacionEntidad != null) {
+                List<Exter> exs = exterService.selectByCedula(identificacionEntidad);
+                if (exs != null && !exs.isEmpty()) cantonExter = geografia.codigoCanton(exs.get(0).getProvincia(), exs.get(0).getCanton());
+            }
+            String provinciaExter = codigoAlternoProvincia != null ? geografia.codigoProvincia(codigoAlternoProvincia) : null;
+            String[] destino = GeneracionG45ServiceImpl.resolverUbicacion(provinciaExter, cantonExter, ubicacion);
+            g46.setDestinoProvincia(destino[0]);
+            g46.setDestinoCanton(destino[1]);
+            g46.setDestinoParroquia(destino[2]);
 
             // Fechas de concesión y vencimiento
             if (prestamo.getFecha() != null) {

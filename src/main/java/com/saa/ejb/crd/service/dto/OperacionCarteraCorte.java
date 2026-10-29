@@ -48,6 +48,10 @@ public class OperacionCarteraCorte {
     public void setInteresVencido(double interesVencido) { this.interesVencido = interesVencido; }
     public double getMora() { return mora; }
     public void setMora(double mora) { this.mora = mora; }
+    /** D-039: capital de las cuotas que vencen en el mes del corte (G48 campo 20, "cuota del crédito"). */
+    private double capitalCuotasDelMes;
+    public double getCapitalCuotasDelMes() { return capitalCuotasDelMes; }
+    public void setCapitalCuotasDelMes(double capitalCuotasDelMes) { this.capitalCuotasDelMes = capitalCuotasDelMes; }
     public double getInteresCuotasDelMes() { return interesCuotasDelMes; }
     public void setInteresCuotasDelMes(double interesCuotasDelMes) { this.interesCuotasDelMes = interesCuotasDelMes; }
     public Long getIdCuotaAncla() { return idCuotaAncla; }

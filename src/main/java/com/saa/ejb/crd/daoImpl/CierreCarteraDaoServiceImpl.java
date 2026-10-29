@@ -522,6 +522,11 @@ public class CierreCarteraDaoServiceImpl implements CierreCarteraDaoService {
                 + "        (SELECT NVL(SUM(NVL(x.DTPRINTR,0)),0) FROM CRD.DTPR x WHERE x.PRSTCDGO = op.PRSTCDGO "
                 + "          AND TRUNC(x.DTPRFCVN) BETWEEN TRUNC(:corte, 'MM') AND :corte AND NVL(x.DTPRESTD,0) <> "
                 + EstadoCuotaPrestamo.CANCELADA_ANTICIPADA + ") INTMES, "
+                // D-039 (G48 campo 20, manual de crédito §3.4): "cuota del crédito" = capital del dividendo
+                // del MES de reporte, sin vencidos de meses anteriores ni intereses.
+                + "        (SELECT NVL(SUM(NVL(x.DTPRCPTL,0)),0) FROM CRD.DTPR x WHERE x.PRSTCDGO = op.PRSTCDGO "
+                + "          AND TRUNC(x.DTPRFCVN) BETWEEN TRUNC(:corte, 'MM') AND :corte AND NVL(x.DTPRESTD,0) <> "
+                + EstadoCuotaPrestamo.CANCELADA_ANTICIPADA + ") CAPMES, "
                 + "        CASE WHEN NVL(e.ENTDIDST,0) = " + EstadoParticipeEntidad.JUBILADO_COMPLEMENTARIO
                 + "             OR ROW_NUMBER() OVER (PARTITION BY op.ENTDCDGO ORDER BY op.PRSTCDGO) > 1 THEN 0 "
                 + "             ELSE NVL(ci.SALDO,0) END CI "
@@ -534,7 +539,7 @@ public class CierreCarteraDaoServiceImpl implements CierreCarteraDaoService {
         for (Object[] f : filas) {
             resultado.add(new Object[]{ aLong(f[0]), aLong(f[1]), aLong(f[2]), aLong(f[3]),
                     aDouble(f[4]), aDouble(f[5]), aLong(f[6]), aDouble(f[7]), aDouble(f[8]),
-                    aLong(f[9]), aDouble(f[10]), aDouble(f[11]) });
+                    aLong(f[9]), aDouble(f[10]), aDouble(f[12]), aDouble(f[11]) }); // [11] CI, [12] CAPMES
         }
         return resultado;
     }

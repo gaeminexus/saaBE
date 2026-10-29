@@ -39,8 +39,42 @@ public class GeneracionG45ServiceImpl implements GeneracionG45Service {
     @EJB private NuevoParticipeG45DaoService    cg45DaoService;
     @EJB private SujetoReportadoG45DaoService   sujetoReportadoDao;
 
+    @EJB private com.saa.ejb.rpr.dao.CatalogoGeograficoDaoService geografia;
+
     /** D-035: tipo de partícipe de la G45, fijo (directriz de la Superintendencia, mayo 2025 presentado con P). */
     static final String TIPO_PARTICIPE = "P";
+
+    /** Tabla 50: 50 = cabecera cantonal. Se usa mientras el catálogo de parroquias no tenga el código INEC (PRRQCDEX). */
+    static final String PARROQUIA_CABECERA_CANTONAL = "50";
+
+    /**
+     * D-039 — provincia, cantón y parroquia (tablas 6, 7, 50) de un sujeto: primero provincia y cantón de EXTR (con la
+     * G46 de mayo 2025 presentada coinciden 47 de 73; la dirección DRCC solo 39); si EXTR no da los dos, la dirección
+     * vigente {@code ubicacionDrcc} = {provincia, cantón, parroquia}. Parroquia: la de la dirección (PRRQCDEX) cuando es
+     * del mismo cantón; si no, o mientras ese código INEC no esté cargado, 50 (cabecera cantonal).
+     */
+    static String[] resolverUbicacion(String provinciaExter, String cantonExter, String[] ubicacionDrcc) {
+        boolean drcc = ubicacionDrcc != null && ubicacionDrcc[0] != null && ubicacionDrcc[1] != null;
+        String prov, canton;
+        if (provinciaExter != null && cantonExter != null) {
+            prov = provinciaExter; canton = cantonExter;
+        } else if (drcc) {
+            prov = ubicacionDrcc[0]; canton = ubicacionDrcc[1];
+        } else {
+            prov = provinciaExter; canton = cantonExter;
+        }
+        String parroquia = drcc && ubicacionDrcc[2] != null && prov != null && prov.equals(ubicacionDrcc[0])
+                && canton != null && canton.equals(ubicacionDrcc[1]) ? ubicacionDrcc[2] : PARROQUIA_CABECERA_CANTONAL;
+        return new String[] { prov, canton, parroquia };
+    }
+
+    private static String dosDigitos(String c) {
+        if (c == null) return null;
+        String v = c.trim();
+        if (!v.matches("\\d{1,2}")) return null;
+        v = v.length() == 1 ? "0" + v : v;
+        return "00".equals(v) ? null : v;
+    }
 
     @Override
     public long generar(DetalleEjecucionReporte detalle) throws Throwable {
@@ -143,6 +177,7 @@ public class GeneracionG45ServiceImpl implements GeneracionG45Service {
             String estadoCivil = null;
             java.time.LocalDate fechaNac = null;
             String codigoAlternoProvincia = null;
+            String cantonExter = null;
             try {
                 List<Exter> exters = exterService.selectByCedula(identificacion);
                 if (exters != null && !exters.isEmpty()) {
@@ -157,8 +192,8 @@ public class GeneracionG45ServiceImpl implements GeneracionG45Service {
                             genero = String.valueOf(primeraLetraGenero);
                         }
                     }
-                    // ESTADO CIVIL: siempre se envía "S"
-                    estadoCivil = "S";
+                    // D-039: estado civil (tabla 211) desde EXTR, ya no "S" fijo.
+                    estadoCivil = GeneracionG41ServiceImpl.codigoEstadoCivil(exter.getEstadoCivil());
                     if (exter.getFechaNacimiento() != null) {
                         fechaNac = exter.getFechaNacimiento().toLocalDate();
                     }
@@ -173,10 +208,24 @@ public class GeneracionG45ServiceImpl implements GeneracionG45Service {
                             System.out.println("G45 WARN - No se encontro Provincia por nombre: " + exter.getProvincia());
                         }
                     }
+                    cantonExter = geografia.codigoCanton(exter.getProvincia(), exter.getCanton());
+                    if (patrimonio <= 0 && exter.getSalarioTotal() != null && exter.getSalarioTotal() > 0) {
+                        // Manual §3.1 campo 5: "en caso de que el deudor no posea bienes, se tomará como
+                        // referencia el valor de sus ingresos". Control §5.1: patrimonio > 0.
+                        patrimonio = exter.getSalarioTotal();
+                    }
                 }
             } catch (Throwable ex) {
                 System.out.println("G45 WARN - No se encontro Exter para: " + identificacion);
             }
+
+            // D-039: residencia del sujeto (tablas 6, 7 y 50): provincia y cantón de EXTR; si EXTR no da los dos,
+            // la dirección vigente DRCC → parroquia → cantón → provincia (ver resolverUbicacion).
+            String[] ubicacion = entidad != null ? geografia.ubicacionEntidad(entidad.getCodigo()) : null;
+            String[] residencia = resolverUbicacion(dosDigitos(codigoAlternoProvincia), cantonExter, ubicacion);
+            String provinciaSujeto = residencia[0];
+            String cantonSujeto    = residencia[1];
+            String parroquiaSujeto = residencia[2];
 
             // --- Construir y guardar CG45 ---
             NuevoParticipeG45 g45 = new NuevoParticipeG45();
@@ -188,9 +237,9 @@ public class GeneracionG45ServiceImpl implements GeneracionG45Service {
             g45.setTipoParticipe(tipoParticipe);
             g45.setActividadEconomica("009");
             g45.setPatrimonio(patrimonio);
-            g45.setProvincia(codigoAlternoProvincia);
-            g45.setCanton("01");
-            g45.setParroquia("50");
+            g45.setProvincia(provinciaSujeto);
+            g45.setCanton(cantonSujeto);
+            g45.setParroquia(parroquiaSujeto);
             g45.setProfesion("O");
             g45.setCargasFamiliares(0L);
             g45.setOrigenIngresos("B");

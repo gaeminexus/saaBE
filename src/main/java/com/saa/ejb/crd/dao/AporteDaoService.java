@@ -66,11 +66,18 @@ public interface AporteDaoService extends EntityDao<Aporte>{
 	List<Object[]> selectSumaAportesTipo23EnRango(LocalDateTime fechaInicio, LocalDateTime fechaFin) throws Throwable;
 
 	/**
-	 * Para G42 — Tipo de prestación: Obtiene los códigos de tipoAporte distintos (9, 11) por entidad
-	 * con tipoAporte.estado=1 y fechaTransaccion <= fechaCorte.
-	 * Retorna Object[]{Long codigoEntidad, List<Long> codigosTipoAporte}.
+	 * Para G42 — Tipo de prestación (D-038): saldo vigente al corte por entidad y GRUPO de prestación
+	 * del tipo de aporte ({@code CRD.TPAP.TPAPTPPR}: J jubilación, C cesantía; los tipos sin grupo no
+	 * cuentan). Retorna Object[]{Long codigoEntidad, String grupo, Double suma}.
 	 */
-	List<Object[]> selectTiposAportePorEntidad(LocalDateTime fechaCorte) throws Throwable;
+	List<Object[]> selectSumaPorGrupoPrestacionPorEntidad(LocalDateTime fechaCorte) throws Throwable;
+
+	/**
+	 * Para G42 (aporte personal del mes) y G41 (estado A/P) — D-038: suma de los aportes personales
+	 * (tipos 9 jubilación personal y 11 cesantía personal) con valor &gt; 0, vigentes, cuyo PERIODO
+	 * EFECTIVO es el mes indicado (devengo, no fecha de caja). Retorna Object[]{Long codigoEntidad, Double suma}.
+	 */
+	List<Object[]> selectAportePersonalDelPeriodoPorEntidad(java.time.LocalDate periodo) throws Throwable;
 
 	/**
 	 * Para G40 — Suma total (todas las entidades) de aportes con tipoAporte.codigo = tipoAporte,
@@ -101,7 +108,7 @@ public interface AporteDaoService extends EntityDao<Aporte>{
 	 * @param codigoEntidad Código de la entidad cesante
 	 * @return Cantidad de meses de devengo con imposición personal
 	 */
-	Long selectCountImposicionesPersonalesPorEntidad(Long codigoEntidad) throws Throwable;
+	Long selectCountImposicionesPersonalesPorEntidad(Long codigoEntidad, java.time.LocalDate corte) throws Throwable;
 
 	/**
 	 * Para G43 — Imposiciones patronales: tipoAporte.codigo IN (13, 14) y valor > 0, para una
@@ -113,7 +120,10 @@ public interface AporteDaoService extends EntityDao<Aporte>{
 	 * @param codigoEntidad Código de la entidad cesante
 	 * @return Cantidad de meses de devengo con imposición patronal
 	 */
-	Long selectCountImposicionesPatronalesPorEntidad(Long codigoEntidad) throws Throwable;
+	Long selectCountImposicionesPatronalesPorEntidad(Long codigoEntidad, java.time.LocalDate corte) throws Throwable;
+
+	/** G43 (D-038): movimientos negativos del mes de una entidad: {Date fechaUltimo, Double sumaNegativos, Double sumaPagoPrestamo (APRTTPMV 4)}. */
+	Object[] selectLiquidacionMesPorEntidad(Long codigoEntidad, java.time.LocalDate desde, java.time.LocalDate hasta) throws Throwable;
 
 	/**
 	 * Para G43 — Saldo cuenta individual: SUM de aportes con valor < 0,

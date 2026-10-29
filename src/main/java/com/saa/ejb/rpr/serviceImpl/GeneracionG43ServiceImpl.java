@@ -2,13 +2,18 @@ package com.saa.ejb.rpr.serviceImpl;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.LocalTime;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import com.saa.ejb.rpr.dao.HistoricoG42DaoService;
 import com.saa.ejb.rpr.dao.ParticipeCesanteG43DaoService;
+import com.saa.ejb.rpr.dao.SujetoReportadoG41DaoService;
 import com.saa.ejb.crd.service.AporteService;
 import com.saa.ejb.crd.service.EntidadService;
+import com.saa.ejb.crd.service.ParticipeService;
+import com.saa.model.crd.Participe;
+import com.saa.rubros.EstadoParticipeEntidad;
 import com.saa.ejb.rpr.service.DetalleEjecucionReporteService;
 import com.saa.ejb.rpr.service.EjecucionReporteService;
 import com.saa.ejb.rpr.service.GeneracionG43Service;
@@ -33,6 +38,8 @@ public class GeneracionG43ServiceImpl implements GeneracionG43Service {
     @EJB private ParticipeCesanteG43DaoService  cg43DaoService;
     @EJB private AporteService                  aporteService;
     @EJB private EntidadService                 entidadService;
+    @EJB private ParticipeService               participeService;
+    @EJB private SujetoReportadoG41DaoService   sujetoReportadoG41Dao;
 
     @Override
     public long generar(DetalleEjecucionReporte detalle) throws Throwable {
@@ -101,22 +108,18 @@ public class GeneracionG43ServiceImpl implements GeneracionG43Service {
         }
 
         // -------------------------------------------------------
-        // 4. Fechas
+        // 4. Mes de ejecución
         // -------------------------------------------------------
-        LocalDate fechaLiquidacion = LocalDate.of((int) anioActual, (int) mesActual, 1)
-                .plusMonths(1).minusDays(1);  // ultimo dia mes actual
-        LocalDate fechaTerminacion = LocalDate.of((int) anioActual, (int) mesActual, 1)
-                .minusDays(1);                // ultimo dia mes ANTERIOR
+        LocalDate inicioMes = LocalDate.of((int) anioActual, (int) mesActual, 1);
+        LocalDate corte     = inicioMes.plusMonths(1).minusDays(1);
 
-        // Rango del mes de ejecucion para calcular saldo cuenta individual
-        LocalDateTime fechaInicioMes = LocalDate.of((int) anioActual, (int) mesActual, 1).atStartOfDay();
-        // H54 (2026-09-08): fin de día REAL, no 23:59:59. fechaFinMes llega a
-        // AporteDaoServiceImpl.selectSumaAportesNegativosMesPorEntidad, que filtra con
-        // "a.fechaTransaccion <= :fechaFin" (límite inclusivo).
-        LocalDateTime fechaFinMes    = fechaLiquidacion.atTime(LocalTime.MAX);
-
-        System.out.println("G43 - Fecha liquidacion: " + fechaLiquidacion
-                + " | Fecha terminacion laboral: " + fechaTerminacion);
+        // D-038: los jubilados no son cesantes. Un jubilado cuya cuenta se agota también sale de la G42
+        // (junio 2025: los 2 "cesantes" eran jubilados pasivos de la G44 con su último pago de pensión).
+        Set<String> jubiladosDelMes = new HashSet<>();
+        DetalleEjecucionReporte ejrdG44 = ejrdService.selectByEjecucionYTipo(ejrcActual.getCodigo(), "G44");
+        if (ejrdG44 != null) {
+            for (String id : sujetoReportadoG41Dao.selectIdentificacionesG44(ejrdG44.getCodigo())) jubiladosDelMes.add(id.trim());
+        }
 
         // -------------------------------------------------------
         // 5. Insertar los cesantes en CG43
@@ -124,23 +127,19 @@ public class GeneracionG43ServiceImpl implements GeneracionG43Service {
 
         if (cesantesG42 != null) {
             for (SaldoCuentaG42 g42 : cesantesG42) {
-                ParticipeCesanteG43 cesante = construirCesante(
-                        g42.getIdentificacion(), g42.getTipoIdentificacion(),
-                        detalle, fechaTerminacion, fechaLiquidacion, fechaInicioMes, fechaFinMes);
-                cg43DaoService.save(cesante, null);
-                System.out.println("G43 INSERT cesante (desde G42 previo): " + g42.getIdentificacion());
-                contador++;
+                double saldoPrevio = nz(g42.getSaldoAportePatronal()) + nz(g42.getSaldoAportePersonal())
+                        + nz(g42.getSaldoAporteVoluntario()) + nz(g42.getRendimiento());
+                if (guardarCesante(g42.getIdentificacion(), g42.getTipoIdentificacion(), saldoPrevio,
+                        detalle, inicioMes, corte, jubiladosDelMes)) contador++;
             }
         }
 
         if (cesantesHist != null) {
             for (HistoricoG42 h : cesantesHist) {
-                ParticipeCesanteG43 cesante = construirCesante(
-                        h.getIdentificacion(), h.getTipoIdentificacion(),
-                        detalle, fechaTerminacion, fechaLiquidacion, fechaInicioMes, fechaFinMes);
-                cg43DaoService.save(cesante, null);
-                System.out.println("G43 INSERT cesante (desde HistoricoG42): " + h.getIdentificacion());
-                contador++;
+                double saldoPrevio = nz(h.getSaldoAportePatronal()) + nz(h.getSaldoAportePersonal())
+                        + nz(h.getSaldoAporteVoluntario()) + nz(h.getRendimiento());
+                if (guardarCesante(h.getIdentificacion(), h.getTipoIdentificacion(), saldoPrevio,
+                        detalle, inicioMes, corte, jubiladosDelMes)) contador++;
             }
         }
 
@@ -152,71 +151,96 @@ public class GeneracionG43ServiceImpl implements GeneracionG43Service {
         return contador;
     }
 
+    /** Estados de entidad que son jubilados (EstadoParticipeEntidad): no van en la G43 aunque salgan de la G42. */
+    static final Set<Long> ESTADOS_JUBILADO = Set.of(
+            (long) EstadoParticipeEntidad.JUBILADO_COMPLEMENTARIO,
+            (long) EstadoParticipeEntidad.JUBILADO_APORTANTE,
+            (long) EstadoParticipeEntidad.JUBILADO_PASIVO);
+
     /**
-     * Construye un ParticipeCesanteG43 con los campos calculados desde APRT:
-     * - numeroImposicionesPersonales : COUNT aportes valor > 0, tipoAporte IN (9, 11)
-     * - numeroImposicionesPatronales : COUNT aportes valor > 0, tipoAporte IN (13, 14)
-     * - fechaTerminoRelacionLaboral  : ultimo dia del mes anterior
-     * - fechaLiquidacion             : ultimo dia del mes actual
-     * - saldoCuentaIndividual        : ABS(SUM aportes valor < 0, tipoAporte.estado=1, dentro del mes)
-     * - valoresCompensados           : siempre 0
-     * - valoresPagados               : mismo valor que saldoCuentaIndividual
+     * Registra un cesante en CG43 (manual de catastros §2.4 y §4.4), D-038:
+     * <ul>
+     *   <li>fecha de liquidación: la del último movimiento negativo del mes (la devolución real); si no hay, el corte;</li>
+     *   <li>fecha de término de la relación laboral: {@code PRTCFCSL} si existe y es anterior a la liquidación;
+     *       si no, el día anterior a la liquidación (mismo criterio que la G43 de mayo 2025: 8 de 11);</li>
+     *   <li>imposiciones: meses de devengo con aporte hasta el corte (personales 9/11, patronales 13/14);</li>
+     *   <li>saldo de la cuenta individual "al momento de la liquidación": el saldo de la G42 anterior (patronal +
+     *       personal + voluntario + rendimiento); si no lo hay, lo liquidado en el mes;</li>
+     *   <li>valores compensados: cruce con préstamos del mes (APRTTPMV 4); pagados: lo liquidado menos lo compensado.
+     *       Control §4.4: los dos ≥ 0 y ≤ saldo (si lo liquidado supera el saldo previo, el saldo es lo liquidado).</li>
+     * </ul>
+     * No registra a los jubilados (G44 del mes o estado de jubilado).
      */
-    private ParticipeCesanteG43 construirCesante(
-            String identificacion,
-            String tipoIdentificacion,
-            DetalleEjecucionReporte detalle,
-            LocalDate fechaTerminacion,
-            LocalDate fechaLiquidacion,
-            LocalDateTime fechaInicioMes,
-            LocalDateTime fechaFinMes) throws Throwable {
-
-        ParticipeCesanteG43 cesante = new ParticipeCesanteG43();
-        cesante.setIdentificacion(identificacion);
-        cesante.setTipoIdentificacion(tipoIdentificacion);
-        cesante.setDetalleEjecucion(detalle);
-        cesante.setFechaTerminoRelacionLaboral(fechaTerminacion);
-        cesante.setFechaLiquidacion(fechaLiquidacion);
-        cesante.setValoresCompensados(0.0);
-
-        // Buscar la entidad por identificacion
+    private boolean guardarCesante(String identificacion, String tipoIdentificacion, double saldoPrevio,
+            DetalleEjecucionReporte detalle, LocalDate inicioMes, LocalDate corte, Set<String> jubiladosDelMes)
+            throws Throwable {
+        String id = identificacion != null ? identificacion.trim() : null;
+        if (id == null) return false;
+        if (jubiladosDelMes.contains(id)) {
+            System.out.println("G43 - se omite un jubilado de la G44 del mes (no es cesante)");
+            return false;
+        }
         Entidad entidad = null;
         try {
-            entidad = entidadService.selectByNumeroIdentificacion(identificacion);
+            entidad = entidadService.selectByNumeroIdentificacion(id);
         } catch (Throwable e) {
-            System.out.println("G43 - No se encontro entidad para identificacion: " + identificacion);
+            System.out.println("G43 - No se encontro entidad para el sujeto");
+        }
+        if (entidad != null && entidad.getIdEstado() != null && ESTADOS_JUBILADO.contains(entidad.getIdEstado())) {
+            System.out.println("G43 - se omite la entidad " + entidad.getCodigo() + " (estado de jubilado " + entidad.getIdEstado() + ")");
+            return false;
         }
 
+        ParticipeCesanteG43 cesante = new ParticipeCesanteG43();
+        cesante.setIdentificacion(id);
+        cesante.setTipoIdentificacion(tipoIdentificacion != null ? tipoIdentificacion : "C");
+        cesante.setDetalleEjecucion(detalle);
+
+        LocalDate fechaLiquidacion = corte;
+        double liquidado = 0.0, compensado = 0.0;
+        long impPersonales = 0L, impPatronales = 0L;
+        LocalDate fechaSalida = null;
         if (entidad != null) {
             Long codigoEntidad = entidad.getCodigo();
-
-            // Numero imposiciones acumuladas personales: COUNT aportes > 0, tipo 9 y 11
-            Long imposicionesPersonales = aporteService
-                    .selectCountImposicionesPersonalesPorEntidad(codigoEntidad);
-            cesante.setNumeroImposicionesPersonales(imposicionesPersonales != null ? imposicionesPersonales : 0L);
-
-            // Numero imposiciones acumuladas patronales: COUNT aportes > 0, tipo 13 y 14
-            Long imposicionesPatronales = aporteService
-                    .selectCountImposicionesPatronalesPorEntidad(codigoEntidad);
-            cesante.setNumeroImposicionesPatronales(imposicionesPatronales != null ? imposicionesPatronales : 0L);
-
-            // Saldo cuenta individual: ABS(SUM aportes valor < 0, tipoAporte.estado=1, dentro del mes)
-            Double sumaNegativa = aporteService
-                    .selectSumaAportesNegativosMesPorEntidad(codigoEntidad, fechaInicioMes, fechaFinMes);
-            double saldoCuenta = Math.abs(sumaNegativa != null ? sumaNegativa : 0.0);
-            cesante.setSaldoCuentaIndividual(saldoCuenta);
-
-            // Valores pagados = mismo valor que saldo cuenta individual
-            cesante.setValoresPagados(saldoCuenta);
-
-        } else {
-            // Entidad no encontrada: poner 0 en todos los campos calculados
-            cesante.setNumeroImposicionesPersonales(0L);
-            cesante.setNumeroImposicionesPatronales(0L);
-            cesante.setSaldoCuentaIndividual(0.0);
-            cesante.setValoresPagados(0.0);
+            impPersonales = nzl(aporteService.selectCountImposicionesPersonalesPorEntidad(codigoEntidad, corte));
+            impPatronales = nzl(aporteService.selectCountImposicionesPatronalesPorEntidad(codigoEntidad, corte));
+            Object[] liq = aporteService.selectLiquidacionMesPorEntidad(codigoEntidad, inicioMes, corte);
+            if (liq != null) {
+                if (liq[0] != null) fechaLiquidacion = aFecha(liq[0]);
+                liquidado  = liq[1] != null ? Math.abs(((Number) liq[1]).doubleValue()) : 0.0;
+                compensado = liq[2] != null ? Math.abs(((Number) liq[2]).doubleValue()) : 0.0;
+            }
+            List<Participe> participes = participeService.selectByEntidad(codigoEntidad);
+            if (participes != null && !participes.isEmpty() && participes.get(0).getFechaSalida() != null) {
+                fechaSalida = participes.get(0).getFechaSalida().toLocalDate();
+            }
         }
+        LocalDate fechaTermino = (fechaSalida != null && fechaSalida.isBefore(fechaLiquidacion))
+                ? fechaSalida : fechaLiquidacion.minusDays(1);
 
-        return cesante;
+        double saldo = saldoPrevio > 0 ? saldoPrevio : liquidado;
+        if (liquidado > saldo) saldo = liquidado;
+        cesante.setFechaLiquidacion(fechaLiquidacion);
+        cesante.setFechaTerminoRelacionLaboral(fechaTermino);
+        cesante.setNumeroImposicionesPersonales(impPersonales);
+        cesante.setNumeroImposicionesPatronales(impPatronales);
+        cesante.setSaldoCuentaIndividual(redondear(saldo));
+        cesante.setValoresCompensados(redondear(compensado));
+        cesante.setValoresPagados(redondear(Math.max(0.0, liquidado - compensado)));
+        cg43DaoService.save(cesante, null);
+        return true;
+    }
+
+    private static double nz(Double d) { return d != null ? d : 0.0; }
+    private static long nzl(Long l) { return l != null ? l : 0L; }
+    private static double redondear(double v) { return Math.round(v * 100.0) / 100.0; }
+
+    private static LocalDate aFecha(Object o) {
+        if (o instanceof java.sql.Timestamp) return ((java.sql.Timestamp) o).toLocalDateTime().toLocalDate();
+        if (o instanceof java.sql.Date) return ((java.sql.Date) o).toLocalDate();
+        if (o instanceof LocalDateTime) return ((LocalDateTime) o).toLocalDate();
+        if (o instanceof LocalDate) return (LocalDate) o;
+        if (o instanceof java.util.Date) return new java.sql.Date(((java.util.Date) o).getTime()).toLocalDate();
+        return null;
     }
 }
