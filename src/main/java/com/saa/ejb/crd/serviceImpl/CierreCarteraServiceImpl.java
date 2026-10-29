@@ -518,7 +518,8 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
                 controlaArchivoPetro(solicitud, desglose, resultado.getAdvertencias()));
         avisaExcesoCobro(desglose, resultado.getAdvertencias(), solicitud);
 
-        resultado.getSubProcesos().add(armaNeteo(solicitud, fechaCorte, fechaCorteAnterior, desglose, corteDatos));
+        resultado.getSubProcesos().add(armaNeteo(solicitud, fechaCorte, fechaCorteAnterior, desglose, corteDatos,
+                resultado.getAdvertencias()));
         // ⑦ Provisión de intereses: fechado al CORTE (no a fechaProceso, a diferencia de los
         // seis anteriores) — "a fin de cada mes" (§1.1 del diseño de provisión de intereses).
         // C15 / D-017 (H4): ⑩ devengo de mora al corte, ANTES de provisionarla en el ⑦.
@@ -1468,7 +1469,8 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
      * @return          : El sub-proceso con sus líneas
      */
     private SubProcesoCierre armaNeteo(SolicitudCierreCartera solicitud, LocalDate corte,
-            LocalDate fechaCorteAnterior, DesgloseAportesCierre desglose, LocalDate corteDatos) throws Throwable {
+            LocalDate fechaCorteAnterior, DesgloseAportesCierre desglose, LocalDate corteDatos,
+            List<String> advertencias) throws Throwable {
 
         SubProcesoCierre sub = nuevoSubProceso(SubProcesoCierreCartera.NETEO,
                 "Neteo de planillas", "⑥", corte,
@@ -1511,6 +1513,15 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
 
         Long idPlantilla = resuelvePlantilla(PlantillasCredito.NETEO_PLANILLAS,
                 "neteo de planillas", solicitud.getIdEmpresa());
+
+        // D-024 (28-oct-2026): con el complemento de apertura, lo que un cobro acreditó de más ya
+        // se abrió en el mes; el ⑥ no puede netear además lo no cobrado POR ENCIMA del saldo que
+        // de verdad queda abierto en la cuenta por cobrar, o la dejaría en negativo (neteo doble).
+        // Tope: saldo deudor contable al corte (antes de este ⑥), nunca menos de cero.
+        noCobradoAportes = topeNeteoSaldoAbierto(sub, idPlantilla, CrdLineaAsiento.APORTES_POR_COBRAR,
+                noCobradoAportes, solicitud, corte, "aportes", advertencias);
+        noCobradoPrestamos = topeNeteoSaldoAbierto(sub, idPlantilla, CrdLineaAsiento.PRESTAMOS_POR_COBRAR,
+                noCobradoPrestamos, solicitud, corte, "cuotas", advertencias);
         agrega(sub, idPlantilla, CrdLineaAsiento.APORTES_POR_APLICAR, noCobradoAportes,
                 "Aportes no cobrados " + periodo(solicitud));
         agrega(sub, idPlantilla, CrdLineaAsiento.PRESTAMOS_POR_APLICAR, noCobradoPrestamos,
@@ -1523,6 +1534,45 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
         cierra(sub, "No quedo nada por cobrar del mes cerrado.");
         cuadra(sub, CrdLineaAsiento.PRESTAMOS_POR_COBRAR);
         return sub;
+    }
+
+    /**
+     * D-024: limita el importe del ⑥ de un producto al saldo deudor contable de su cuenta por
+     * cobrar al corte (1.4.05.05 / 1.4.05.10 y sus hijas, asientos activos o mayorizados, la misma
+     * lectura de la cuadratura C14). Si el saldo es menor que lo no cobrado calculado, deja
+     * advertencia con las dos cifras; si es negativo, el ⑥ de ese producto queda en cero.
+     */
+    private double topeNeteoSaldoAbierto(SubProcesoCierre sub, Long idPlantilla, int codigoLinea, double noCobrado,
+            SolicitudCierreCartera solicitud, LocalDate corte, String producto, List<String> advertencias)
+            throws Throwable {
+        if (noCobrado < MINIMO_LINEA) {
+            return noCobrado;
+        }
+        DetallePlantilla linea = detallePlantillaDaoService.selectByPlantillaYAuxiliar(idPlantilla, codigoLinea);
+        if (linea == null || linea.getPlanCuenta() == null) {
+            return noCobrado; // agrega(...) va a reportar la línea faltante con su propio mensaje
+        }
+        String cuenta = linea.getPlanCuenta().getCuentaContable();
+        double saldo = 0D;
+        for (Object[] fila : cierreCarteraDaoService.selectSaldoContablePorCuenta(solicitud.getIdEmpresa(), cuenta,
+                null, corte)) {
+            String cuentaFila = fila[0] != null ? fila[0].toString() : "";
+            if (cuentaFila.equals(cuenta) || cuentaFila.startsWith(cuenta + ".")) {
+                saldo += fila[2] != null ? ((Number) fila[2]).doubleValue() : 0D;
+            }
+        }
+        saldo = redondeaDouble(Double.valueOf(saldo));
+        if (noCobrado <= saldo + MINIMO_LINEA) {
+            return noCobrado;
+        }
+        double tope = Math.max(saldo, 0D);
+        if (advertencias != null) {
+            advertencias.add(sub.getNombre() + " (" + producto + ") " + periodo(solicitud) + ": lo no cobrado ("
+                    + redondeaDouble(Double.valueOf(noCobrado)) + ") supera el saldo abierto de " + cuenta + " al "
+                    + corte + " (" + saldo + "); el neteo se limita a " + tope + " para no dejar la cuenta en"
+                    + " negativo (D-024). La diferencia queda en la cuenta por aplicar: revise el cuadre del mes.");
+        }
+        return tope;
     }
 
     // =====================================================================

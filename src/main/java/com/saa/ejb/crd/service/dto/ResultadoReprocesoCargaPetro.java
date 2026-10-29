@@ -225,6 +225,38 @@ public class ResultadoReprocesoCargaPetro {
         this.detalleExcedentesDevueltos = detalleExcedentesDevueltos;
     }
 
+    // --- D-025: pagos migrados de Delta del mes que duplican el descuento de la carga ---
+    /** Pagos migrados anulados porque su suma por rol/producto = descuento de la fila, al centavo. */
+    private int pagosMigradosAnulados;
+    /** Monto de esos pagos, con desgravamen (PGPRVLRR + PGPRDSGR): es lo que se compara con la fila. */
+    private double montoPagosMigradosAnulados;
+    /** Una línea por pago migrado que NO se anuló (no coincide con la fila): préstamo, cuota, valor, descuento. */
+    private List<String> pagosMigradosParciales = new ArrayList<>();
+    private double montoPagosMigradosParciales;
+
+    public int getPagosMigradosAnulados() { return pagosMigradosAnulados; }
+    public void setPagosMigradosAnulados(int pagosMigradosAnulados) { this.pagosMigradosAnulados = pagosMigradosAnulados; }
+    public double getMontoPagosMigradosAnulados() { return montoPagosMigradosAnulados; }
+    public void setMontoPagosMigradosAnulados(double montoPagosMigradosAnulados) { this.montoPagosMigradosAnulados = montoPagosMigradosAnulados; }
+    public List<String> getPagosMigradosParciales() { return pagosMigradosParciales; }
+    public void setPagosMigradosParciales(List<String> pagosMigradosParciales) { this.pagosMigradosParciales = pagosMigradosParciales; }
+    public double getMontoPagosMigradosParciales() { return montoPagosMigradosParciales; }
+    public void setMontoPagosMigradosParciales(double montoPagosMigradosParciales) { this.montoPagosMigradosParciales = montoPagosMigradosParciales; }
+
+    // --- D-024: complemento de apertura generado en el reparto de esta corrida ---
+    /** Total del asiento de complemento (aportes + cuotas); 0 si el reparto no lo necesitó. */
+    private double montoComplementoApertura;
+    private Long asientoComplementoApertura;
+    /** Desglose por producto, tal como queda en la observación de CRD.ANCP (cobrado, abierto, complemento). */
+    private String detalleComplementoApertura;
+
+    public double getMontoComplementoApertura() { return montoComplementoApertura; }
+    public void setMontoComplementoApertura(double montoComplementoApertura) { this.montoComplementoApertura = montoComplementoApertura; }
+    public String getDetalleComplementoApertura() { return detalleComplementoApertura; }
+    public void setDetalleComplementoApertura(String detalleComplementoApertura) { this.detalleComplementoApertura = detalleComplementoApertura; }
+    public Long getAsientoComplementoApertura() { return asientoComplementoApertura; }
+    public void setAsientoComplementoApertura(Long asientoComplementoApertura) { this.asientoComplementoApertura = asientoComplementoApertura; }
+
     // --- Novedades: roles Petro sin partícipe en el SAA (no se aplican, se reportan) ---
     private int filasSinParticipe;
     private double montoSinParticipe;

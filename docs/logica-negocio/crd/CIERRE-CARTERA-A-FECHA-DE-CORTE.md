@@ -171,6 +171,64 @@ corte el cierre y los reportes cambian solo por eso. Quedan sin la constante, a 
 partícipe/carga que ya cuadran por construcción (`SaldoAporteService`, `sumValor*`, `*ByCarga`,
 `AportadoGeneracionDaoServiceImpl`) y los tableros con filtro de estado explícito.
 
+### 1.8 Complemento de apertura en los cobros (D-024, 2026-10-28)
+
+**Ciclo de las cuatro cuentas puente en un mes.** El cierre del mes anterior hace la **③ apertura** el día 1
+(D `1.4.05.05` aportes por cobrar / H `2.3.02.05` aportes por aplicar; D `1.4.05.10` cuotas por cobrar / H `2.3.02.10`
+préstamos por aplicar). Cada cobro hace **reparto** (D transitoria o banco / H `1.4.05.05` y `1.4.05.10`) y
+**aplicación** (D `2.3.02.05` y `2.3.02.10` / H cartera, intereses, seguros y cuentas individuales). El **⑥ neteo**
+del cierre cancela lo abierto y no cobrado. Si lo cobrado supera lo abierto, la cuenta por cobrar queda acreedora y
+la por aplicar deudora, y el ⑥ no lo corrige (piso en cero, "opción b" del 31-ago-2026; §4.1). Es lo que pasó en
+junio 2025: el ③ abrió 122.487,88 de aportes (esperado calculado con datos de hoy) y Petro cobró 162.004,30.
+
+**Regla D-024 (decisión del líder, 28-oct-2026; todos los modos, también producción).** Antes de acreditar
+`1.4.05.05` / `1.4.05.10`, el cobro mide el **saldo abierto** de cada cuenta y, si lo que va a acreditar lo supera,
+abre la diferencia: D `1.4.05.0x` / H `2.3.02.0x` con las líneas de la plantilla de apertura (alterno 1, la misma del
+③), glosa `Complemento de apertura <referencia> <producto>: cobrado X, abierto Y`. Lo cobrado de menos no se toca: lo
+cierra el ⑥. Implementación única: `ContabilizacionIndividualCreditoService.complementoApertura(idEmpresa, fecha,
+lineasDelCobro, referencia)`, que mide lo acreditado sobre las líneas del propio asiento del cobro.
+
+- **Saldo abierto** = saldo deudor contable de la cuenta y sus hijas al **último día del mes** del cobro, asientos
+  activos o mayorizados (`CierreCarteraDaoService.selectSaldoContablePorCuenta`, la lectura de C14). Se eligió sobre
+  el esperado del ③ porque ya descuenta lo que otros cobros del mes acreditaron; fin de mes para que un cobro de
+  mitad de mes vea lo registrado con fecha de fin de mes (Petro). Un saldo negativo heredado cuenta como cero: el
+  complemento nunca supera lo que acredita el propio cobro (no repara meses anteriores).
+- **Dónde se aplica** (todos los caminos que acreditan esas cuentas al cobrar):
+
+| Camino | Cómo queda el complemento | Cómo se deshace |
+|---|---|---|
+| Reparto de una carga Petro/Arch (`CobroPetroContableServiceImpl.contabilizarReparto`) | asiento propio, antes del reparto, misma fecha; fila `CRD.ANCP` sub-proceso **4 COMPLEMENTO_APERTURA** | el reproceso lo anula y regenera con el reparto (`REPROCESO-CARGA-PETRO.md` §4.13) |
+| Reparto de un cobro CBCR (`CobroCreditoServiceImpl.generarAsientoReparto`) | líneas dentro del mismo asiento de reparto | el reverso del cobro anula el reparto |
+| Cierre del tramo pagado con aportes en el definitivo CBCR | líneas dentro del asiento definitivo | ídem |
+| Camino directo: precancelación / pago con aportes (`ContabilidadPrestamoServiceImpl.agregaCierreAperturaCaminoDirecto`) | líneas dentro del asiento del evento | el reverso del evento |
+
+- **DDL:** `crd/sql/DDL-ANCP-COMPLEMENTO-APERTURA.sql` (`CK_ANCP_TPOO` pasa a 1..4), antes de desplegar.
+
+**El ⑥ con el complemento: no netea dos veces.** Aportes: el ⑥ netea `esperado − registrado` con piso en cero; si
+hubo complemento, lo registrado ya superó lo abierto y el ⑥ da 0. Cuotas: el ⑥ netea el saldo de las cuotas no
+cobradas, que no sabe del complemento. Para que nunca deje la cuenta por cobrar en negativo, el ⑥ queda **topado
+por producto en el saldo deudor contable de `1.4.05.05` / `1.4.05.10` al corte** (antes del propio ⑥; nunca menos
+de cero), con una advertencia en la previsualización cuando el tope actúa (`CierreCarteraServiceImpl
+.topeNeteoSaldoAbierto`). Con eso, tras el ⑥ la cuenta por cobrar queda en 0 y la por aplicar también, si la
+aplicación debitó por el mismo producto lo que el reparto acreditó (nota D-010 de `REPROCESO-CARGA-PETRO.md` §4.7).
+
+**Ejemplo, junio 2025 (carga 352, corrida 3):**
+
+| | 1.4.05.05 | 2.3.02.05 | 1.4.05.10 | 2.3.02.10 |
+|---|---|---|---|---|
+| ③ apertura 12193 (1-jun) | +122.487,88 | −122.487,88 | +3.495.977,27 | −3.495.977,27 |
+| Precancelaciones 9 y 16-jun (camino directo) | | | −56.164,71 | +56.164,73 ¹ |
+| **Complemento D-024** (cobrado 162.004,30 − abierto 122.487,88) | **+39.516,42** | **−39.516,42** | — (cobrado 373.473,09 < abierto 3.439.812,56) | — |
+| Reparto 352 | −162.004,30 | | −373.473,09 | |
+| Aplicación 352 (con la nota D-010: 545,35 por 2.3.02.10) | | +162.004,30 | | +373.473,09 |
+| **Saldo antes del ⑥** | **0** | **0** | 3.066.339,47 | −3.066.339,45 ¹ |
+
+¹ Los asientos de precancelación de junio debitan 0,02 más en `2.3.02.10` de lo que acreditan en `1.4.05.10` (medido
+tras la corrida 2: `1.4.05.10` = 3.066.339,47 y `2.3.02.10` = −3.066.884,80 = −3.066.339,45 − 545,35); es previo a
+este cambio y queda a la vista en B.12. El ⑥ de junio netea lo no cobrado de cuotas, topado en 3.066.339,47; que deje las dos cuentas en cero
+depende de que lo no cobrado de la cartera al 30-jun sea ese número (es el cuadre de cartera del mes). SELECT B.12 de
+`petro/sql/reproceso-carga-352-controles.sql`.
+
 ## 2. Antes del primer mes (una vez)
 
 1. Correr `docs/logica-negocio/crd/sql/332_C15_PLANTILLA_37_Y_SUBPROCESOS_8_9_10.sql` (bloques 0 → C): plantilla 37 y
@@ -301,6 +359,11 @@ cobros / pago con aportes), no del cierre. Mientras no se asienten, la cuenta in
 −161.802,91) y la de la G42 (vigente neto −122.282,24 de movimiento) difieren en esos 39.520,67.
 
 ### 4.1 Registrado mayor que el esperado: qué hace hoy el cierre y qué se propone
+
+> **Resuelto por D-024 y la nota D-010 (28-oct-2026), §1.8.** El líder no cambió el ⑥ (sigue con piso en cero): la
+> diferencia se abre en el cobro, con el complemento de apertura, y los excedentes que nacieron en préstamos salen de
+> `2.3.02.10`. Lo que sigue queda como historia del análisis. Lo único que puede quedar en `2.3.02.05` es lo cobrado
+> por AH que no se aplicó (roles sin partícipe, novedades), que sí es "por aplicar".
 
 **De dónde sale el esperado.** No de `VigenciaContratoService.esperadoEnLotePorFilial`: el rubro 242 (generación
 por faltante) está en **0** en la base, así que `calcularAportesEsperados` usa el camino viejo — `HistorialSueldo`

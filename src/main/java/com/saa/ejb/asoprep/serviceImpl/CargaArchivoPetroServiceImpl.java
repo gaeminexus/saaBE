@@ -2129,7 +2129,10 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 		com.saa.model.crd.TipoAporte tipoAporte = tipoAporteDaoService.selectById(idTipo, "TipoAporte");
 		Aporte aporte = crearNuevoAporte(entidad, idTipo, tipoAporte.getNombre(), monto, null, cargaArchivo,
 			com.saa.rubros.CrdTipoMovimientoAporte.EXCEDENTE_PETRO);
-		aporte.setGlosa(truncarTexto("Excedente Petro devuelto al participe (D-010) - " + codigoProducto + " - "
+		// La marca [Entrada Petro XX] le dice al asiento de aplicación por qué puente entró este
+		// dinero en el reparto (D-010 corrección: un excedente de PE/PP debita 2.3.02.10).
+		aporte.setGlosa(truncarTexto(com.saa.rubros.EntradaExcedentePetro.marca(codigoProducto)
+			+ " Excedente Petro devuelto al participe (D-010) - " + codigoProducto + " - "
 			+ excedente.getReferencia().trim() + " - " + etiquetaReproceso + " - Mes " + cargaArchivo.getMesAfectacion()
 			+ "/" + cargaArchivo.getAnioAfectacion() + " - CargaArchivo: " + cargaArchivo.getCodigo(), 2000));
 		aporteDaoService.save(aporte, aporte.getCodigo());
@@ -6920,6 +6923,15 @@ private void aplicarAfectacionAAporte(AfectacionValoresParticipeCarga afectacion
 
 	Aporte nuevoAporte = crearNuevoAporte(entidad, tipoAporte.getCodigo(), tipoAporte.getNombre(),
 			monto, null, cargaArchivo, com.saa.rubros.CrdTipoMovimientoAporte.EXCEDENTE_PETRO);
+	// D-010 corrección (28-oct-2026): producto de la fila por la que entró el dinero, para que el
+	// asiento de aplicación debite el puente correcto (2.3.02.10 si vino de una fila de préstamo).
+	String productoEntrada = participe.getDetalleCargaArchivo() != null
+			? participe.getDetalleCargaArchivo().getCodigoPetroProducto() : null;
+	if (productoEntrada != null) {
+		nuevoAporte.setGlosa(truncarTexto(com.saa.rubros.EntradaExcedentePetro.marca(productoEntrada) + " "
+				+ nuevoAporte.getGlosa() + " - AVPC " + afectacion.getCodigo(), 2000));
+		aporteDaoService.save(nuevoAporte, nuevoAporte.getCodigo());
+	}
 	crearRegistroPagoAporte(nuevoAporte, monto, cargaArchivo, participe);
 
 	System.out.println("   ✅ Excedente aplicado a aporte " + tipoAporte.getNombre() + ": $" + monto

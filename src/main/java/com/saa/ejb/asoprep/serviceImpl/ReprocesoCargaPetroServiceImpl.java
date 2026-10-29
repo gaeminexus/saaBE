@@ -312,7 +312,11 @@ public class ReprocesoCargaPetroServiceImpl implements ReprocesoCargaPetroServic
                 + ") y " + resultado.getContratosCreados()
                 + " contratos creados ($" + formato(resultado.getMontoContratosCreados()) + ") (D-022); "
                 + resultado.getHsSinSeguroEnCuota() + " HS aplicados como seguro de una cuota que no lo traía ($"
-                + formato(resultado.getMontoHsSinSeguroEnCuota()) + ") (D-023).");
+                + formato(resultado.getMontoHsSinSeguroEnCuota()) + ") (D-023); "
+                + resultado.getPagosMigradosAnulados() + " pagos migrados = descuento de la carga anulados ($"
+                + formato(resultado.getMontoPagosMigradosAnulados()) + ") y " + resultado.getPagosMigradosParciales().size()
+                + " parciales listados ($" + formato(resultado.getMontoPagosMigradosParciales()) + ") (D-025); complemento"
+                + " de apertura $" + formato(resultado.getMontoComplementoApertura()) + " (D-024).");
         System.out.println("=== REPROCESO CARGA PETRO - FIN: " + resultado.getMensaje());
         return resultado;
     }
@@ -329,7 +333,9 @@ public class ReprocesoCargaPetroServiceImpl implements ReprocesoCargaPetroServic
      */
     private void anularAsientosDeAplicacion(Long idCarga, String usuario, String motivoCompleto,
             ResultadoReprocesoCargaPetro resultado) throws Throwable {
-        int[] subProcesos = { SubProcesoCobroPetro.REPARTO, SubProcesoCobroPetro.APLICACION };
+        // D-024: el complemento de apertura nace con el reparto y se anula/regenera con él.
+        int[] subProcesos = { SubProcesoCobroPetro.COMPLEMENTO_APERTURA, SubProcesoCobroPetro.REPARTO,
+                SubProcesoCobroPetro.APLICACION };
         for (int subProceso : subProcesos) {
             AsientoCargaPetro registro = asientoCargaPetroDaoService.selectVigenteByCargaYSubProceso(idCarga, subProceso);
             if (registro == null) {
@@ -372,8 +378,18 @@ public class ReprocesoCargaPetroServiceImpl implements ReprocesoCargaPetroServic
                 }
             }
         }
+        int deLaCarga = porCodigo.size();
+
+        // D-025 (28-oct-2026): pagos MIGRADOS de Delta del mismo mes que son el registro del
+        // MISMO descuento de esta carga. Sobreviven al reproceso (no están enlazados a la carga),
+        // dejan la cuota del mes pagada dos veces y empujan el dinero de la carga a cuotas
+        // futuras. Se anulan junto con los de la carga, solo cuando la suma por rol y producto
+        // coincide al centavo con el descuento de la fila; los parciales se listan.
+        Set<Long> migradosD025 = pagosMigradosQueDuplicanLaCarga(idCarga, fechaContable, porCodigo, resultado);
+
         List<PagoPrestamo> pagos = new ArrayList<>(porCodigo.values());
-        System.out.println("  Pagos de préstamo a anular: " + pagos.size() + " (" + sinEnlace + " del esquema viejo)");
+        System.out.println("  Pagos de préstamo a anular: " + pagos.size() + " (" + sinEnlace + " del esquema viejo, "
+                + migradosD025.size() + " migrados D-025)");
         resultado.setPagosAnuladosSinEnlace(sinEnlace);
         if (pagos.isEmpty()) {
             return;
@@ -395,7 +411,9 @@ public class ReprocesoCargaPetroServiceImpl implements ReprocesoCargaPetroServic
             if (pago.getPrestamo() != null && pago.getPrestamo().getCodigo() != null) {
                 prestamos.put(pago.getPrestamo().getCodigo(), pago.getPrestamo());
             }
-            montoAnulado += nvl(pago.getValor());
+            if (!migradosD025.contains(pago.getCodigo())) {
+                montoAnulado += nvl(pago.getValor());
+            }
         }
 
         // Re-provisión de intereses por lo que estos pagos habían reversado (ÍTEM 4, diseño §5):
@@ -407,14 +425,17 @@ public class ReprocesoCargaPetroServiceImpl implements ReprocesoCargaPetroServic
         resultado.setAsientoReProvision(reProvision != null ? reProvision.getIdAsiento() : null);
 
         String motivoPago = truncar(motivoCompleto, MAX_MOTIVO_PAGO);
+        String motivoPagoD025 = truncar(motivoCompleto + " " + MARCA_D025, MAX_MOTIVO_PAGO);
         for (PagoPrestamo pago : pagos) {
             pago.setAnulado(1L);
             pago.setUsuarioAnulacion(usuario);
             pago.setFechaAnulacion(ahora);
-            pago.setMotivoAnulacion(motivoPago);
+            pago.setMotivoAnulacion(migradosD025.contains(pago.getCodigo()) ? motivoPagoD025 : motivoPago);
             pagoPrestamoDaoService.save(pago, pago.getCodigo());
         }
-        resultado.setPagosAnulados(pagos.size());
+        // pagosAnulados / montoPagosAnulados siguen siendo los de la carga; los migrados D-025 se
+        // cuentan aparte (pagosMigradosAnulados / montoPagosMigradosAnulados).
+        resultado.setPagosAnulados(deLaCarga);
         resultado.setMontoPagosAnulados(redondear(montoAnulado));
 
         // Cada cuota tocada se reconstruye desde sus pagos VIGENTES (mismo camino que el
@@ -450,6 +471,76 @@ public class ReprocesoCargaPetroServiceImpl implements ReprocesoCargaPetroServic
         resultado.setPrestamosReabiertos(reabiertos);
         System.out.println("  Pagos anulados: " + pagos.size() + " ($" + formato(montoAnulado) + "), cuotas recalculadas: "
                 + cuotas.size() + ", préstamos reabiertos: " + reabiertos);
+    }
+
+    /** Marca que D-025 agrega al motivo de anulación de un pago migrado ({@code PGPRMTAN}). */
+    static final String MARCA_D025 = "[D-025 pago migrado = descuento de la carga]";
+
+    /**
+     * D-025: agrega a {@code porCodigo} los pagos MIGRADOS de Delta con fecha en el mes de la
+     * carga que son el registro del mismo descuento de la carga, y devuelve sus códigos.
+     *
+     * <p>Regla (decisión del líder D-025, 28-oct-2026): por rol Petro y producto, la suma de los
+     * pagos migrados del mes ({@code PGPRVLRR + PGPRDSGR}) tiene que coincidir AL CENTAVO con el
+     * descuento real de la fila de la carga ({@code PXCADSDO} &gt; 0). Solo esos grupos se anulan.
+     * Los grupos que no coinciden (parciales, o fila con descuento cero) NO se tocan: se listan en
+     * {@code pagosMigradosParciales} para que el responsable decida. Los pagos migrados de otros
+     * meses, o de partícipes sin fila para ese producto, ni siquiera entran a la consulta.</p>
+     */
+    private Set<Long> pagosMigradosQueDuplicanLaCarga(Long idCarga, LocalDate fechaContable,
+            Map<Long, PagoPrestamo> porCodigo, ResultadoReprocesoCargaPetro resultado) throws Throwable {
+        LocalDate desde = fechaContable.withDayOfMonth(1);
+        List<Object[]> filas = pagoPrestamoDaoService.selectMigradosDelMesConFilaEnCarga(idCarga, desde, fechaContable);
+
+        // Agrupa por rol|producto conservando el orden de la consulta.
+        Map<String, List<Object[]>> grupos = new LinkedHashMap<>();
+        if (filas != null) {
+            for (Object[] fila : filas) {
+                grupos.computeIfAbsent(fila[1] + "|" + fila[2], k -> new ArrayList<>()).add(fila);
+            }
+        }
+
+        Set<Long> anulados = new LinkedHashSet<>();
+        double montoAnulados = 0.0;
+        List<String> parciales = new ArrayList<>();
+        double montoParciales = 0.0;
+        for (Map.Entry<String, List<Object[]>> grupo : grupos.entrySet()) {
+            double suma = 0.0;
+            for (Object[] fila : grupo.getValue()) {
+                suma += (Double) fila[3];
+            }
+            suma = redondear(suma);
+            double descuento = redondear((Double) grupo.getValue().get(0)[4]);
+            boolean coincide = descuento > 0.0 && Math.round(suma * 100.0) == Math.round(descuento * 100.0);
+            for (Object[] fila : grupo.getValue()) {
+                Long idPago = (Long) fila[0];
+                if (coincide) {
+                    if (porCodigo.containsKey(idPago)) {
+                        continue; // no debería pasar: un migrado no está enlazado a la carga
+                    }
+                    PagoPrestamo pago = pagoPrestamoDaoService.find(new PagoPrestamo(), idPago);
+                    if (pago == null) {
+                        throw new IncomeException("D-025: no se encontró el pago migrado " + idPago + ".");
+                    }
+                    porCodigo.put(idPago, pago);
+                    anulados.add(idPago);
+                    montoAnulados += (Double) fila[3];
+                } else {
+                    parciales.add("Préstamo " + fila[5] + ", cuota " + fila[6] + ": pago migrado " + idPago + " $"
+                            + formato((Double) fila[3]) + " (grupo rol/producto " + fila[2] + ": migrados $" + formato(suma)
+                            + ") vs descuento de la fila $" + formato(descuento));
+                    montoParciales += (Double) fila[3];
+                }
+            }
+        }
+        resultado.setPagosMigradosAnulados(anulados.size());
+        resultado.setMontoPagosMigradosAnulados(redondear(montoAnulados));
+        resultado.setPagosMigradosParciales(parciales);
+        resultado.setMontoPagosMigradosParciales(redondear(montoParciales));
+        System.out.println("  D-025: " + anulados.size() + " pagos migrados = descuento de la carga ($"
+                + formato(montoAnulados) + ") se anulan; " + parciales.size() + " parciales ($"
+                + formato(montoParciales) + ") quedan para decisión.");
+        return anulados;
     }
 
     // =====================================================================
@@ -639,6 +730,11 @@ public class ReprocesoCargaPetroServiceImpl implements ReprocesoCargaPetroServic
                     && registro.getSubProceso() != null
                     && registro.getSubProceso().intValue() != SubProcesoCobroPetro.TRANSITORIO) {
                 asientos.add(registro.getAsiento());
+                if (registro.getSubProceso().intValue() == SubProcesoCobroPetro.COMPLEMENTO_APERTURA) {
+                    resultado.setAsientoComplementoApertura(registro.getAsiento());
+                    resultado.setMontoComplementoApertura(nvl(registro.getValor()));
+                    resultado.setDetalleComplementoApertura(registro.getObservacion());
+                }
             }
         }
         resultado.setAsientosGenerados(new ArrayList<>(asientos));

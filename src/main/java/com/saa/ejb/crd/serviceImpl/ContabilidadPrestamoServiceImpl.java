@@ -390,7 +390,12 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
             return;
         }
 
-        lineas.addAll(lineasCierreApertura(idEmpresa, totalCierre, descripcionOperacion));
+        List<DetalleAsiento> lineasCierre = lineasCierreApertura(idEmpresa, totalCierre, descripcionOperacion);
+        // D-024 (28-oct-2026): si el cierre acredita 1.4.05.10 por más de lo abierto en el mes,
+        // se abre la diferencia en este mismo asiento (D por cobrar / H por aplicar).
+        lineasCierre.addAll(contabilizacionIndividualCreditoService.complementoApertura(idEmpresa, fechaCorte,
+                lineasCierre, descripcionOperacion).getLineas());
+        lineas.addAll(lineasCierre);
     }
 
     /**

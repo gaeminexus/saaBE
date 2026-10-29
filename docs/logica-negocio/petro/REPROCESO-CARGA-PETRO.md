@@ -94,7 +94,7 @@ POST /rest/crar/reprocesar/352   {usuario, ip, motivo}
 
 ### 4.2 `CNT.ASNT` / `CRD.ANCP` — asientos
 
-Solo los sub-procesos **REPARTO** y **APLICACION** vigentes de la carga. Se anulan por
+Los sub-procesos **COMPLEMENTO_APERTURA** (4, D-024, §4.13), **REPARTO** y **APLICACION** vigentes de la carga. Se anulan por
 `AsientoService.anulaAsiento(idAsiento, usuario, motivo)`, que es el estándar del módulo: anula
 (`ASNTESTD` = ANULADO, `ASNTUSAN/FCAN/MTAN`) si el período está abierto, y **reversa** (asiento de
 contrapartida + original en REVERSADO) si el período está mayorizado. La fila `ANCP` pasa a
@@ -115,7 +115,8 @@ Los asientos secundarios de la aplicación anterior se deshacen por su propio me
 - **Qué se anula:** la unión de `selectVigentesByCargaArchivo(idCarga)` (enlazados) y
   `selectVigentesLegadoPorObservacionCarga(idCarga)` (esquema viejo: `CRARCDGO IS NULL AND
   PGPROBSR LIKE '%[CargaArchivo: N]%'`, con corchetes para que la 35 no arrastre a la 352). Solo
-  vigentes (`PGPRANUL` nulo o 0).
+  vigentes (`PGPRANUL` nulo o 0). Más los pagos **migrados de Delta** del mismo mes que duplican el
+  descuento de la carga (D-025, §4.14), que se anulan en esta misma fase y por el mismo camino.
 - **Cómo:** `PGPRANUL = 1`, `PGPRUSAN = usuario`, `PGPRFCAN = ahora`, `PGPRMTAN = etiqueta + " - " +
   motivo` (truncado a 500). El valor y los componentes quedan intactos. En los pagos del esquema
   viejo `PRSTCDGO` venía nulo: se completa desde la cuota (es el valor correcto y lo necesita la
@@ -221,6 +222,18 @@ pasó: el dinero quedó en el fondo y pagó cuotas).
 (`APRTIDAS`), o sea al HABER de cesantía/jubilación del asiento de APLICACION (plantilla 21, aux1
 50/51), y al invariante recibido == aplicado. Es el mismo camino que la afectación manual a aporte
 (`aplicarAfectacionAAporte`).
+
+**Nota D-010 — cuenta del DEBE (corrección del 28-oct-2026).** El reparto acredita `1.4.05.05` por
+las filas AH y `1.4.05.10` por todas las demás; un excedente que vino de una fila de **préstamo**
+(PE/PH/PQ/PP) entró por `1.4.05.10`, así que la aplicación lo debita de **`2.3.02.10`** (préstamos
+por aplicar), no de `2.3.02.05`; el haber sigue siendo la cuenta individual (2.1.0x.05.01). Regla
+general: cada valor debita el puente del producto por el que **entró** en el reparto. Como el
+aporte no tiene columna de producto, la glosa lleva la marca `[Entrada Petro XX]`
+(`com.saa.rubros.EntradaExcedentePetro`; las glosas D-010 anteriores se reconocen por
+`(D-010) - XX - `). Vale también para la afectación manual a aporte (AVPC), con el producto de su
+fila. En el asiento sale como una línea propia de `2.3.02.10`: *"excedentes de préstamo devueltos a
+la cuenta individual (D-010)"*. En junio 2025 son los 545,35 de filas PE/PP: con la corrección,
+`2.3.02.05` deja de quedar con +545,35 y `2.3.02.10` deja de quedar con −545,35.
 
 **Después, la devolución:** se registra aparte, con la fecha **real** del pago al partícipe, por el
 motor de devolución de aportes (`POST /rest/dvap/registrar` con `fecha`, ver
@@ -661,6 +674,84 @@ Revisadas y sin pérdida:
 un HS que no coincide con el seguro de su cuota puede mostrar diferencia: esa parte se aplicó por
 la cascada, no como seguro.
 
+### 4.13 Complemento de apertura en el reparto (D-024, 2026-10-28)
+
+**Por qué:** tras la corrida 2, al 30-jun-2025 quedaron `1.4.05.05` = −39.516,42 y `2.3.02.05` =
++40.061,77. El ③ del cierre abrió aportes con el esperado calculado con datos de hoy (122.487,88) y
+Petro cobró 162.004,30 de AH: el reparto acreditó más de lo abierto y el ⑥ (con piso en cero,
+decisión "opción b" del 31-ago-2026) no lo corrige. Los otros +545,35 de `2.3.02.05` son la nota
+D-010 de §4.7.
+
+**Regla (todos los modos, también producción):** antes del asiento de reparto, por producto
+(aportes / cuotas, que es el nivel al que el reparto separa), si lo que el reparto va a acreditar en
+la cuenta por cobrar supera su **saldo abierto**, se genera un asiento de complemento por la
+diferencia: D `1.4.05.0x` / H `2.3.02.0x`, con las líneas de la **plantilla de apertura** (alterno
+1, la misma del ③), fecha = la del reparto, módulo/tipo como el reparto (`TipoAsientos.CREDITOS`,
+`ModuloSistema.CUENTAS_POR_COBRAR`), glosa `Complemento de apertura carga N (D-024): aportes
+(1.4.05.05): cobrado X, abierto Y, complemento Z`. Se registra en `CRD.ANCP` con el sub-proceso
+nuevo **4 = COMPLEMENTO_APERTURA** (observación = mismo desglose) y el reproceso lo anula y lo
+regenera con el reparto (§4.2). Si lo cobrado es menor o igual, no se hace nada: lo cierra el ⑥.
+Detalle y efecto sobre el ⑥ en `crd/CIERRE-CARTERA-A-FECHA-DE-CORTE.md` §1.8.
+
+**Saldo abierto** = saldo deudor contable de la cuenta (y sus hijas) al **último día del mes** del
+reparto, asientos activos o mayorizados (`CierreCarteraDaoService.selectSaldoContablePorCuenta`, la
+lectura de la cuadratura C14/C15). Se eligió el saldo contable y no el esperado del ③ porque ya
+descuenta lo que otros cobros del mes acreditaron (precancelaciones, cobros por banco, Arch). Un
+saldo negativo heredado cuenta como cero: el complemento nunca supera lo que acredita el propio
+cobro.
+
+**Requiere DDL:** `CK_ANCP_TPOO` admite hoy (1, 2, 3); correr
+`crd/sql/DDL-ANCP-COMPLEMENTO-APERTURA.sql` antes de desplegar, en la base de trabajo y en
+producción. Sin él, un reparto que necesite complemento falla (ORA-02290) y la carga revierte.
+
+**Junio 2025 (carga 352), corrida 3:**
+
+| Producto | Cobrado en el reparto | Abierto al 30-jun (tras anular el reparto anterior) | Complemento |
+|---|---|---|---|
+| Aportes (1.4.05.05) | 162.004,30 | 122.487,88 (asiento 12193) | **39.516,42** |
+| Cuotas (1.4.05.10) | 373.473,09 | 3.439.812,56 (= 3.495.977,27 − 56.164,71 de precancelaciones del 9 y 16-jun) | ninguno |
+
+La respuesta trae `asientoComplementoApertura`, `montoComplementoApertura` y
+`detalleComplementoApertura`. Control: B.12 de
+[sql/reproceso-carga-352-controles.sql](sql/reproceso-carga-352-controles.sql).
+
+### 4.14 Pagos migrados que duplican la carga (D-025, 2026-10-28, solo modo reproceso)
+
+**Por qué:** en junio 2025 hay 90 pagos de préstamo migrados de Delta (`PGPRTPOO = 'MIGRACION'`,
+observación "Pago cargado desde Excel - Migración de datos", sin `CRARCDGO`, sin evento, fecha
+30-jun-2025). En 42 la suma por rol y producto es, al centavo, el descuento Petro de la fila de la
+carga 352 (26.841,61): es el registro que Delta hizo del mismo cobro. El reproceso solo anulaba lo
+enlazado a la carga o con `[CargaArchivo: N]`; esos 42 sobrevivían, la cuota de junio quedaba pagada
+por ellos y el dinero de la 352 se iba a cuotas de jul-2025 en adelante (≈27.098). Detalle en el
+expediente: `03-trabajo/cartera/resultados/05-movimientos-junio-2025-fuera-de-petro.md` §3.
+
+**Regla:** en la fase de anulación (§4.3), además de los pagos de la carga, se anulan los pagos
+**migrados** que cumplan todo:
+- `PGPRTPOO = 'MIGRACION'`, observación de migración, `CRARCDGO` nulo, `EVPRCDGO` nulo, vigentes;
+- fecha dentro del mes de la carga;
+- sobre cuotas de préstamos (el préstamo se toma de la cuota) cuyo partícipe tiene fila en la carga
+  para el **mismo producto Petro** (`PRDCCDPT` = `DTCACDPP`, rol = `ENTDRLPC`);
+- la suma de esos pagos por rol y producto, **con desgravamen** (`PGPRVLRR + PGPRDSGR`), coincide
+  **al centavo** con el descuento real de la fila (`PXCADSDO`, sumado por rol y producto) y ese
+  descuento es > 0.
+
+Los anulados llevan en `PGPRMTAN` la etiqueta de la corrida, el motivo y
+`[D-025 pago migrado = descuento de la carga]`; pasan por la misma re-provisión, recálculo de cuota
+(y mora a la fecha de corte) y reapertura de préstamo que los demás. Los grupos que **no** coinciden
+no se tocan: se listan en `pagosMigradosParciales` (préstamo, cuota, pago, valor del pago, suma del
+grupo y descuento de la fila) para decisión del responsable. Los migrados de otros meses o sin fila
+para ese producto ni siquiera se consultan. Consulta: `PagoPrestamoDaoService
+.selectMigradosDelMesConFilaEnCarga`.
+
+**Respuesta:** `pagosMigradosAnulados`, `montoPagosMigradosAnulados` (con desgravamen, que es lo que
+se compara con la fila), `pagosMigradosParciales`, `montoPagosMigradosParciales`. `pagosAnulados` y
+`montoPagosAnulados` siguen siendo solo los de la carga.
+
+**Junio 2025 (medido el 28-oct-2026):** 42 grupos / 42 pagos / 26.841,61 se anulan; 19 quedan
+listados: 17 con descuento > 0 que no coincide (3.440,41 migrados contra 5.652,08 descontados) y 2
+cuya fila tiene descuento real 0 (246,20). Juntos son los 19 / 3.686,61 del expediente. Control:
+B.13.
+
 ## 5. Respuesta (`ResultadoReprocesoCargaPetro`)
 
 ```json
@@ -676,6 +767,11 @@ la cascada, no como seguro.
   "filasSinParticipe": 14, "montoSinParticipe": 4872.04, "detalleSinParticipe": ["Rol … (AH): $… sin partícipe en el SAA", "…"],
   "cancelacionesPosterioresPendientes": ["Préstamo … (estado anterior 4): … cuota(s) reabiertas, … evento(s) posteriores marcados"],
   "cuotasSaldadasSinPagoReabiertas": 0, "detalleCuotasSaldadasSinPagoReabiertas": ["Préstamo … cuota … (préstamo hoy estado 2): estado 4 -> 5, fecha de pago anterior nula, sin pagos vigentes"],
+  "pagosMigradosAnulados": 42, "montoPagosMigradosAnulados": 26841.61,
+  "pagosMigradosParciales": ["Préstamo … , cuota …: pago migrado … $… (grupo rol/producto PE: migrados $…) vs descuento de la fila $…"],
+  "montoPagosMigradosParciales": 3686.61,
+  "asientoComplementoApertura": …, "montoComplementoApertura": 39516.42,
+  "detalleComplementoApertura": "aportes (1.4.05.05): cobrado 162,004.30, abierto 122,487.88, complemento 39,516.42",
   "mensaje": "Carga 352 reprocesada (REPROCESO carga 352 corrida 1): …"
 }
 ```
@@ -683,7 +779,7 @@ la cascada, no como seguro.
 en WildFly.) `aportesAplicados`/`montoAportesAplicados` se miden con el mismo filtro del asiento de
 aplicación (`APRTIDAS = idCarga`): el neto de originales reversados y sus contra-movimientos es cero,
 así que lo que queda es lo de esta corrida. `asientosGenerados` son los `ANCP` vigentes de
-REPARTO/APLICACION después de la corrida (vacío si la contabilidad de CRD está apagada — no es error).
+COMPLEMENTO_APERTURA/REPARTO/APLICACION después de la corrida (vacío si la contabilidad de CRD está apagada — no es error).
 
 Errores: 409 (`IncomeException`, precondición de negocio: nada quedó grabado) o 500. En los dos casos
 la transacción revierte completa: no existe el estado "anulado pero no re-aplicado".

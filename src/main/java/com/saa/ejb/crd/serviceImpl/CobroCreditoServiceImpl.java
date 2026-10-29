@@ -2397,6 +2397,11 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
         lineas.add(debe);
         lineas.addAll(contabilizacionIndividualCreditoService.lineasReparto(idPlantillaReparto, totalAportes,
                 totalPrestamosCerrado, "Cobro crédito " + cobro.getCodigo() + " - reparto"));
+        // D-024 (28-oct-2026): si el reparto acredita 1.4.05.05 / 1.4.05.10 por más de lo abierto
+        // en el mes, las líneas que abren la diferencia (D por cobrar / H por aplicar) van en
+        // este MISMO asiento: el reverso del cobro anula el reparto y con él el complemento.
+        lineas.addAll(contabilizacionIndividualCreditoService.complementoApertura(idEmpresa,
+                cobro.getFechaAfectacion(), lineas, "cobro " + cobro.getCodigo()).getLineas());
 
         // Cuadre explícito, no asumido: si la plantilla de reparto tuviera el movimiento
         // configurado al revés de lo que espera Petro, esto lo revienta acá en vez de dejar
@@ -2580,6 +2585,11 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
         if (tramoAbiertoPagadoConAportes > 0.0) {
             lineasCierreTramoAportes.addAll(contabilidadPrestamoService.lineasCierreApertura(idEmpresa,
                     tramoAbiertoPagadoConAportes, "cobro " + cobro.getCodigo() + " (tramo pagado con aportes)"));
+            // D-024: el cierre del tramo acredita 1.4.05.10; si supera lo abierto en el mes, se
+            // abre la diferencia en este mismo asiento (líneas autobalanceadas: no tocan el cuadre).
+            lineasCierreTramoAportes.addAll(contabilizacionIndividualCreditoService.complementoApertura(idEmpresa,
+                    cobro.getFechaAfectacion(), lineasCierreTramoAportes,
+                    "cobro " + cobro.getCodigo() + " (tramo pagado con aportes)").getLineas());
         }
 
         List<DetalleAsiento> lineas = new ArrayList<>();

@@ -254,4 +254,27 @@ public interface PagoPrestamoDaoService extends EntityDao<PagoPrestamo> {
 	 */
 	Integer selectMaxCorridaReproceso(Long idCarga) throws Throwable;
 
+	/**
+	 * D-025 (reproceso de carga Petro): pagos de préstamo MIGRADOS de Delta con fecha dentro del
+	 * mes de la carga, sobre cuotas de préstamos cuyo partícipe tiene fila en la carga para el
+	 * mismo producto. Criterio estricto de "migrado": {@code PGPRTPOO = 'MIGRACION'},
+	 * observación de migración ("Pago cargado desde Excel - Migracion de datos"), sin carga
+	 * ({@code CRARCDGO} nulo), sin evento ({@code EVPRCDGO} nulo) y vigente. El préstamo se
+	 * resuelve por la cuota ({@code PGPR.PRSTCDGO} puede venir nulo).
+	 *
+	 * <p>No decide nada: el llamador compara, por rol y producto, la suma de estos pagos con el
+	 * descuento real de la fila ({@code PXCADSDO}) al centavo y anula solo los grupos que
+	 * coinciden con descuento mayor que cero.</p>
+	 *
+	 * @param idCarga Código de la carga (CRD.CRAR)
+	 * @param desde   Primer día del mes de la carga
+	 * @param hasta   Último día del mes de la carga
+	 * @return Filas {@code [idPago (Long), rolPetro (Long), codigoProductoPetro (String),
+	 *         valorConDesgravamen (Double), descuentoFila (Double), idPrestamo (Long),
+	 *         numeroCuota (Long)]}, ordenadas por rol, producto y pago
+	 * @throws Throwable Si ocurre algún error (NO se absorbe: es la base de una anulación)
+	 */
+	List<Object[]> selectMigradosDelMesConFilaEnCarga(Long idCarga, java.time.LocalDate desde,
+			java.time.LocalDate hasta) throws Throwable;
+
 }

@@ -652,6 +652,14 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
                     + idCarga + ": falta el mes o año de afectación de la carga.");
         }
         LocalDate fechaAsiento = fechaService.ultimoDiaMesAnioLocal(carga.getMesAfectacion(), carga.getAnioAfectacion());
+
+        // D-024 (28-oct-2026, decisión del líder): si el reparto va a acreditar en 1.4.05.05 /
+        // 1.4.05.10 más de lo que la apertura ③ (y los cobros ya registrados del mes) dejaron
+        // abierto, se abre la diferencia ANTES, en un asiento propio vinculado a la carga
+        // (sub-proceso COMPLEMENTO_APERTURA) para que el reproceso lo anule y lo regenere junto
+        // con el reparto. Lo cobrado de menos no se toca: lo cierra el ⑥ del cierre.
+        generarComplementoApertura(carga, idEmpresa, fechaAsiento, lineas);
+
         com.saa.model.cnt.Asiento asiento = asientoContableService.generarAsiento(idEmpresa,
                 TipoAsientos.CREDITOS, fechaAsiento,
                 "Reparto Petro/ARCH carga " + idCarga, null, lineas,
@@ -669,6 +677,44 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
         registro.setUsuarioRegistro("SISTEMA");
         registro.setFechaRegistro(LocalDateTime.now());
         asientoCargaPetroDaoService.save(registro, null);
+    }
+
+    /**
+     * D-024: asiento de complemento de apertura de la carga (D por cobrar / H por aplicar, con la
+     * plantilla de apertura alterno 1), fechado igual que el reparto y registrado en
+     * {@code CRD.ANCP} con sub-proceso {@link SubProcesoCobroPetro#COMPLEMENTO_APERTURA}. No hace
+     * nada si lo que el reparto acredita no supera el saldo abierto.
+     */
+    private void generarComplementoApertura(CargaArchivo carga, Long idEmpresa, LocalDate fechaAsiento,
+            List<DetalleAsiento> lineasReparto) throws Throwable {
+        Long idCarga = carga.getCodigo();
+        com.saa.ejb.crd.service.dto.ComplementoAperturaCobro complemento =
+                contabilizacionIndividualCreditoService.complementoApertura(idEmpresa, fechaAsiento, lineasReparto,
+                        "carga " + idCarga);
+        if (complemento.isVacio()) {
+            return;
+        }
+        String detalle = complemento.detalle();
+        com.saa.model.cnt.Asiento asiento = asientoContableService.generarAsiento(idEmpresa,
+                TipoAsientos.CREDITOS, fechaAsiento,
+                "Complemento de apertura carga " + idCarga + " (D-024): " + detalle, null, complemento.getLineas(),
+                Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR));
+
+        AsientoCargaPetro registro = new AsientoCargaPetro();
+        registro.setCargaArchivo(carga);
+        registro.setSubProceso(Long.valueOf(SubProcesoCobroPetro.COMPLEMENTO_APERTURA));
+        registro.setAsiento(asiento.getCodigo());
+        registro.setNumeroAsiento(asiento.getNumero() != null ? asiento.getNumero().toString() : null);
+        registro.setFecha(fechaAsiento);
+        registro.setValor(complemento.getTotal());
+        registro.setCantidad(Long.valueOf(complemento.getLineas().size()));
+        registro.setObservacion(detalle);
+        registro.setIdEstado(VIGENTE);
+        registro.setUsuarioRegistro("SISTEMA");
+        registro.setFechaRegistro(LocalDateTime.now());
+        asientoCargaPetroDaoService.save(registro, null);
+        System.out.println("CobroPetroContableService.contabilizarReparto - D-024 complemento de apertura de la carga "
+                + idCarga + ": asiento " + asiento.getCodigo() + " por $" + complemento.getTotal() + " (" + detalle + ")");
     }
 
     // =====================================================================
@@ -1082,7 +1128,12 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
         // por construcción (D = suma de las líneas de H ya redondeadas), sin necesitar un
         // ajuste de centavos.
         double totalPrestamos = redondear(totalHaber - totalCesantia - totalJubilacion);
-        double totalAportes = redondear(totalCesantia + totalJubilacion);
+        // D-010 corrección (28-oct-2026): el excedente devuelto a la cuenta individual que vino de
+        // una fila de PRÉSTAMO entró en el reparto por 1.4.05.10, así que sale de 2.3.02.10 —no de
+        // 2.3.02.05— aunque su haber sea la cuenta de aportes. Regla general: cada valor debita el
+        // puente del producto por el que ENTRÓ en el reparto.
+        double excedentePorPrestamos = excedentesQueEntraronPorPrestamos(idCarga);
+        double totalAportes = redondear(totalCesantia + totalJubilacion - excedentePorPrestamos);
 
         List<DetalleAsiento> lineasFinal = new ArrayList<>();
         if (totalAportes > 0.0) {
@@ -1105,9 +1156,20 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
             lineasFinal.add(lineaDesdePlantilla(lineaPrestamos, totalPrestamos,
                     "Aplicación Petro/ARCH carga " + idCarga + " - préstamos por aplicar"));
         }
+        if (excedentePorPrestamos > 0.0) {
+            DetallePlantilla lineaPrestamos = detallePlantillaDaoService.selectByPlantillaYAuxiliar(
+                    idPlantilla, CrdLineaAsiento.PRESTAMOS_POR_APLICAR);
+            if (lineaPrestamos == null) {
+                throw new IncomeException("La plantilla alterno " + PlantillasCredito.APLICACION_PETRO
+                        + " no tiene la línea de préstamos por aplicar.");
+            }
+            lineasFinal.add(lineaDesdePlantilla(lineaPrestamos, excedentePorPrestamos,
+                    "Aplicación Petro/ARCH carga " + idCarga
+                            + " - excedentes de préstamo devueltos a la cuenta individual (D-010)"));
+        }
         lineasFinal.addAll(lineas);
 
-        double totalAsiento = redondear(totalAportes + totalPrestamos);
+        double totalAsiento = redondear(totalAportes + totalPrestamos + excedentePorPrestamos);
         // 2026-09-02, mismo criterio corregido que contabilizarReparto (CORRIGE f94532b): fecha
         // = último día del mes de carga, no la de autorización ni la de hoy — ver el comentario
         // de allá para el porqué completo. Sin fallback a now(): si mes/año vienen null, grita.
@@ -1143,6 +1205,44 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
         // ÍTEM 4, diseño §5: reverso de la provisión de intereses por lo cobrado en esta carga
         // Petro. Petro no deshace (diseño 0c): no hay re-provisión que enganchar acá.
         provisionInteresService.reversarPorPagos(pagos, idEmpresa, fechaAsiento, "PETRO", idCarga, "SISTEMA");
+    }
+
+    /**
+     * D-010 corrección: suma de los aportes {@code EXCEDENTE_PETRO} vigentes de la carga
+     * (cesantía/jubilación, los únicos que entran a las líneas de aportes del asiento) cuyo
+     * producto de entrada no es AH — ver {@link com.saa.rubros.EntradaExcedentePetro}. Mismo
+     * universo que {@code sumValorPorTipoAporteByCarga} ({@code APRTIDAS} = carga): los
+     * originales reversados por un reproceso (estado inactivo) y sus contra-movimientos
+     * (tipo REVERSO) se netean entre sí allá y quedan fuera acá.
+     */
+    private double excedentesQueEntraronPorPrestamos(Long idCarga) throws Throwable {
+        double suma = 0.0;
+        List<com.saa.model.crd.Aporte> aportes = aporteDaoService.selectByCarga(idCarga);
+        if (aportes == null) {
+            return 0.0;
+        }
+        for (com.saa.model.crd.Aporte aporte : aportes) {
+            if (aporte.getTipoMovimiento() == null
+                    || aporte.getTipoMovimiento().intValue() != com.saa.rubros.CrdTipoMovimientoAporte.EXCEDENTE_PETRO) {
+                continue;
+            }
+            if (aporte.getEstado() != null && aporte.getEstado().intValue() == com.saa.rubros.Estado.INACTIVO) {
+                continue;
+            }
+            Long idTipo = aporte.getTipoAporte() != null ? aporte.getTipoAporte().getCodigo() : null;
+            if (idTipo == null || (idTipo != TIPO_APORTE_CESANTIA && idTipo != TIPO_APORTE_JUBILACION)) {
+                continue;
+            }
+            if (com.saa.rubros.EntradaExcedentePetro.entroPorPrestamos(aporte.getGlosa())) {
+                suma += nvl(aporte.getValor());
+            }
+        }
+        suma = redondear(suma);
+        if (suma > 0.0) {
+            System.out.println("CobroPetroContableService.contabilizarAplicacion - carga " + idCarga
+                    + ": excedentes devueltos que entraron por préstamos $" + suma + " -> D 2.3.02.10 (D-010)");
+        }
+        return suma;
     }
 
     // =====================================================================
@@ -1244,6 +1344,9 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
         }
         if (tipo == SubProcesoCobroPetro.APLICACION) {
             return "APLICACION";
+        }
+        if (tipo == SubProcesoCobroPetro.COMPLEMENTO_APERTURA) {
+            return "COMPLEMENTO_APERTURA";
         }
         return String.valueOf(tipo);
     }

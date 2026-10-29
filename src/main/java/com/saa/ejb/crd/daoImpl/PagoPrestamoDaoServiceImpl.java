@@ -448,4 +448,68 @@ public class PagoPrestamoDaoServiceImpl extends EntityDaoImpl<PagoPrestamo> impl
 		return resultado != null ? Integer.valueOf(((Number) resultado).intValue()) : null;
 	}
 
+	/**
+	 * Observación con que la migración de Delta dejó sus pagos (D-025): en la base dice
+	 * "Pago cargado desde Excel - Migración de datos" (con tilde, UTF-8). El patrón deja un
+	 * comodín en la vocal acentuada para no depender de la codificación del cliente.
+	 */
+	private static final String PATRON_OBSERVACION_PAGO_MIGRADO = "Pago cargado desde Excel - Migraci_n de datos%";
+
+	@SuppressWarnings("unchecked")
+	@Override
+	public List<Object[]> selectMigradosDelMesConFilaEnCarga(Long idCarga, java.time.LocalDate desde,
+			java.time.LocalDate hasta) throws Throwable {
+		System.out.println("PagoPrestamoDaoService.selectMigradosDelMesConFilaEnCarga - Carga: " + idCarga
+			+ " - " + desde + " a " + hasta);
+
+		// Sin try/catch a propósito: es la base de una anulación (D-025, reproceso de carga).
+		// Fila de la carga: PXCA (rol) + DTCA (producto Petro), descuento REAL = PXCADSDO
+		// (totalDescontado, lo que el motor aplica), sumado por rol y producto por si el archivo
+		// trae dos filas. El pago migrado lleva el desgravamen aparte (PGPRDSGR): el descuento
+		// de Petro lo incluye, así que se compara PGPRVLRR + PGPRDSGR (medido 2026-10-28 en la
+		// carga 352: 42 grupos coinciden al centavo así, 26.841,61).
+		Query query = em.createNativeQuery(
+			" WITH fila AS ( " +
+			"   SELECT x.PXCACDPT rol, TRIM(c.DTCACDPP) prod, SUM(NVL(x.PXCADSDO,0)) descuento " +
+			"   FROM   CRD.PXCA x JOIN CRD.DTCA c ON c.DTCACDGO = x.DTCACDGO " +
+			"   WHERE  c.CRARCDGO = :carga " +
+			"   GROUP BY x.PXCACDPT, TRIM(c.DTCACDPP) ) " +
+			" SELECT g.PGPRCDGO, e.ENTDRLPC, TRIM(pr.PRDCCDPT), " +
+			"        ROUND(NVL(g.PGPRVLRR,0) + NVL(g.PGPRDSGR,0), 2), ROUND(f.descuento, 2), " +
+			"        p.PRSTCDGO, d.DTPRNMCT " +
+			" FROM   CRD.PGPR g " +
+			" JOIN   CRD.DTPR d  ON d.DTPRCDGO = g.DTPRCDGO " +
+			" JOIN   CRD.PRST p  ON p.PRSTCDGO = d.PRSTCDGO " +
+			" JOIN   CRD.ENTD e  ON e.ENTDCDGO = p.ENTDCDGO " +
+			" JOIN   CRD.PRDC pr ON pr.PRDCCDGO = p.PRDCCDGO " +
+			" JOIN   fila f      ON f.rol = e.ENTDRLPC AND f.prod = TRIM(pr.PRDCCDPT) " +
+			" WHERE  g.PGPRTPOO = 'MIGRACION' " +
+			" AND    g.PGPROBSR LIKE :observacion " +
+			" AND    g.CRARCDGO IS NULL " +
+			" AND    g.EVPRCDGO IS NULL " +
+			" AND    NVL(g.PGPRANUL, 0) = 0 " +
+			" AND    g.PGPRFCHA >= :desde AND g.PGPRFCHA < :hastaSig " +
+			" ORDER BY e.ENTDRLPC, TRIM(pr.PRDCCDPT), g.PGPRCDGO "
+		);
+		query.setParameter("carga", idCarga);
+		query.setParameter("observacion", PATRON_OBSERVACION_PAGO_MIGRADO);
+		query.setParameter("desde", java.sql.Date.valueOf(desde));
+		query.setParameter("hastaSig", java.sql.Date.valueOf(hasta.plusDays(1)));
+
+		List<Object[]> filas = query.getResultList();
+		List<Object[]> resultado = new ArrayList<>();
+		for (Object[] f : filas) {
+			resultado.add(new Object[] {
+				f[0] != null ? ((Number) f[0]).longValue() : null,
+				f[1] != null ? ((Number) f[1]).longValue() : null,
+				f[2] != null ? f[2].toString() : null,
+				f[3] != null ? ((Number) f[3]).doubleValue() : 0.0,
+				f[4] != null ? ((Number) f[4]).doubleValue() : 0.0,
+				f[5] != null ? ((Number) f[5]).longValue() : null,
+				f[6] != null ? ((Number) f[6]).longValue() : null });
+		}
+		System.out.println("  Pagos migrados del mes con fila en la carga: " + resultado.size());
+		return resultado;
+	}
+
 }

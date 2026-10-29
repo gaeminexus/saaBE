@@ -43,4 +43,14 @@ public interface SubProcesoCobroPetro {
 	/** Paso 2b: asiento de aplicación a las cuentas reales (plantilla alterno 21 + CRD.BNDP). */
 	public static final int APLICACION = 3;
 
+	/**
+	 * Paso 2a previo (D-024, 28-oct-2026): complemento de apertura. Si lo que el reparto va a
+	 * acreditar en 1.4.05.05 / 1.4.05.10 supera el saldo abierto de esa cuenta al fin del mes de
+	 * la carga, se abre la diferencia ANTES del reparto: D 1.4.05.0x / H 2.3.02.0x, con las
+	 * líneas de la plantilla de apertura (alterno 1). Se anula y regenera con el reparto.
+	 * Requiere {@code docs/logica-negocio/crd/sql/DDL-ANCP-COMPLEMENTO-APERTURA.sql}
+	 * (CK_ANCP_TPOO admite 4).
+	 */
+	public static final int COMPLEMENTO_APERTURA = 4;
+
 }

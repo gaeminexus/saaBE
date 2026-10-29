@@ -317,6 +317,34 @@ public interface ContabilizacionIndividualCreditoService {
             String prefijoDescripcion) throws Throwable;
 
     /**
+     * D-024 (28-oct-2026, decisión del líder) — complemento de apertura. Toma las líneas de un
+     * asiento de cobro que está por grabarse ({@code lineasDelCobro}) y mide cuánto acredita en
+     * las cuentas por cobrar del período: {@code APORTES_POR_COBRAR} (1.4.05.05) y
+     * {@code PRESTAMOS_POR_COBRAR} (1.4.05.10) de la plantilla de apertura (alterno 1, la MISMA
+     * que usa el ③ del cierre). Si lo acreditado en una de ellas supera su saldo abierto —saldo
+     * deudor contable al ÚLTIMO DÍA DEL MES de {@code fecha}, asientos activos o mayorizados,
+     * la misma lectura que la cuadratura C14/C15 ({@code CierreCarteraDaoService
+     * #selectSaldoContablePorCuenta})—, devuelve las líneas que abren la diferencia con la
+     * plantilla de apertura tal como la declara: D por cobrar / H por aplicar (2.3.02.05 /
+     * 2.3.02.10). Si lo acreditado no supera lo abierto, devuelve un complemento vacío: lo no
+     * cobrado lo cierra el ⑥ del cierre.
+     *
+     * <p>Por qué el saldo contable y no el esperado del ③: el saldo ya descuenta lo que otros
+     * cobros del mes acreditaron antes (Petro, Arch, cobros por banco). El fin de mes (y no el
+     * día del cobro) para que un cobro de mitad de mes vea también lo ya registrado con fecha de
+     * fin de mes. Un saldo NEGATIVO heredado cuenta como cero: el complemento nunca supera lo que
+     * el propio cobro acredita (no repara diferencias de meses anteriores, que se cuadran aparte).</p>
+     *
+     * @param idEmpresa      empresa contable
+     * @param fecha          fecha del asiento del cobro (se lleva al fin de su mes)
+     * @param lineasDelCobro líneas del asiento del cobro, todavía sin grabar
+     * @param referencia     p. ej. {@code "carga 352"} o {@code "cobro 201"}, para las glosas
+     * @return el complemento (vacío si no hace falta); nunca null
+     */
+    com.saa.ejb.crd.service.dto.ComplementoAperturaCobro complementoApertura(Long idEmpresa, LocalDate fecha,
+            List<DetalleAsiento> lineasDelCobro, String referencia) throws Throwable;
+
+    /**
      * Líneas "por aplicar" ({@code CrdLineaAsiento#APORTES_POR_APLICAR}/{@code
      * PRESTAMOS_POR_APLICAR}) — cierran contra la MISMA cuenta que abrió el asiento ③ de
      * apertura del cierre de cartera ({@code CierreCarteraServiceImpl#armaApertura}) y que ya

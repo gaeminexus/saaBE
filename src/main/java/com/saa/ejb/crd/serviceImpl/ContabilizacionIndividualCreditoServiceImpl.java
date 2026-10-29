@@ -101,6 +101,10 @@ public class ContabilizacionIndividualCreditoServiceImpl implements Contabilizac
     @EJB
     private com.saa.ejb.crd.service.ProvisionInteresService provisionInteresService;
 
+    /** D-024: saldo contable de las cuentas por cobrar del período (misma lectura que C14/C15). */
+    @EJB
+    private com.saa.ejb.crd.dao.CierreCarteraDaoService cierreCarteraDaoService;
+
     @Override
     public Long resolverPlantillaAplicacion(Long idEmpresa) throws Throwable {
         Long idPlantilla = plantillaService.codigoByAlterno(PlantillasCredito.APLICACION_PETRO, idEmpresa);
@@ -1074,6 +1078,118 @@ public class ContabilizacionIndividualCreditoServiceImpl implements Contabilizac
                     prefijoDescripcion + " - préstamos"));
         }
         return lineas;
+    }
+
+    // =====================================================================
+    // D-024 (28-oct-2026) — complemento de apertura
+    // =====================================================================
+
+    @Override
+    public com.saa.ejb.crd.service.dto.ComplementoAperturaCobro complementoApertura(Long idEmpresa, LocalDate fecha,
+            List<DetalleAsiento> lineasDelCobro, String referencia) throws Throwable {
+        com.saa.ejb.crd.service.dto.ComplementoAperturaCobro complemento =
+                new com.saa.ejb.crd.service.dto.ComplementoAperturaCobro();
+        if (lineasDelCobro == null || lineasDelCobro.isEmpty() || fecha == null) {
+            return complemento;
+        }
+        Long idPlantillaApertura = plantillaService.codigoByAlterno(PlantillasCredito.APERTURA_PLANILLA_MENSUAL,
+                idEmpresa);
+        if (idPlantillaApertura == null) {
+            throw new IncomeException("No existe la plantilla contable alterno "
+                    + PlantillasCredito.APERTURA_PLANILLA_MENSUAL + " (apertura del período) para la empresa "
+                    + idEmpresa + "; no se puede medir el complemento de apertura de " + referencia + " (D-024).");
+        }
+        DetallePlantilla aportesPorCobrar = lineaApertura(idPlantillaApertura, CrdLineaAsiento.APORTES_POR_COBRAR, referencia);
+        DetallePlantilla aportesPorAplicar = lineaApertura(idPlantillaApertura, CrdLineaAsiento.APORTES_POR_APLICAR, referencia);
+        DetallePlantilla prestamosPorCobrar = lineaApertura(idPlantillaApertura, CrdLineaAsiento.PRESTAMOS_POR_COBRAR, referencia);
+        DetallePlantilla prestamosPorAplicar = lineaApertura(idPlantillaApertura, CrdLineaAsiento.PRESTAMOS_POR_APLICAR, referencia);
+
+        String cuentaAportes = aportesPorCobrar.getPlanCuenta().getCuentaContable();
+        String cuentaPrestamos = prestamosPorCobrar.getPlanCuenta().getCuentaContable();
+        complemento.setCuentaAportes(cuentaAportes);
+        complemento.setCuentaPrestamos(cuentaPrestamos);
+
+        // Lo que el asiento del cobro acredita (haber − debe) en cada cuenta por cobrar.
+        double cobradoAportes = 0.0;
+        double cobradoPrestamos = 0.0;
+        for (DetalleAsiento linea : lineasDelCobro) {
+            String cuenta = linea.getNumeroCuenta() != null ? linea.getNumeroCuenta()
+                    : (linea.getPlanCuenta() != null ? linea.getPlanCuenta().getCuentaContable() : null);
+            double neto = nvl(linea.getValorHaber()) - nvl(linea.getValorDebe());
+            if (cuentaAportes.equals(cuenta)) {
+                cobradoAportes += neto;
+            } else if (cuentaPrestamos.equals(cuenta)) {
+                cobradoPrestamos += neto;
+            }
+        }
+        cobradoAportes = redondear(cobradoAportes);
+        cobradoPrestamos = redondear(cobradoPrestamos);
+        if (cobradoAportes <= 0.0 && cobradoPrestamos <= 0.0) {
+            return complemento;
+        }
+
+        LocalDate finDeMes = fecha.withDayOfMonth(fecha.lengthOfMonth());
+        String fechaTexto = finDeMes.toString();
+        if (cobradoAportes > 0.0) {
+            double abierto = saldoDeudor(idEmpresa, cuentaAportes, finDeMes);
+            double falta = redondear(cobradoAportes - Math.max(abierto, 0.0));
+            complemento.setCobradoAportes(cobradoAportes);
+            complemento.setAbiertoAportes(abierto);
+            if (falta >= TOLERANCIA) {
+                complemento.setComplementoAportes(falta);
+                String glosa = "Complemento de apertura " + referencia + " aportes: cobrado " + formato(cobradoAportes)
+                        + ", abierto " + formato(abierto) + " al " + fechaTexto;
+                complemento.getLineas().add(lineaMovimientoDesdePlantilla(aportesPorCobrar, falta, glosa));
+                complemento.getLineas().add(lineaMovimientoDesdePlantilla(aportesPorAplicar, falta, glosa));
+            }
+        }
+        if (cobradoPrestamos > 0.0) {
+            double abierto = saldoDeudor(idEmpresa, cuentaPrestamos, finDeMes);
+            double falta = redondear(cobradoPrestamos - Math.max(abierto, 0.0));
+            complemento.setCobradoPrestamos(cobradoPrestamos);
+            complemento.setAbiertoPrestamos(abierto);
+            if (falta >= TOLERANCIA) {
+                complemento.setComplementoPrestamos(falta);
+                String glosa = "Complemento de apertura " + referencia + " cuotas: cobrado " + formato(cobradoPrestamos)
+                        + ", abierto " + formato(abierto) + " al " + fechaTexto;
+                complemento.getLineas().add(lineaMovimientoDesdePlantilla(prestamosPorCobrar, falta, glosa));
+                complemento.getLineas().add(lineaMovimientoDesdePlantilla(prestamosPorAplicar, falta, glosa));
+            }
+        }
+        System.out.println("ContabilizacionIndividualCreditoService.complementoApertura - " + referencia + " al "
+                + fechaTexto + ": aportes cobrado " + cobradoAportes + " / abierto " + complemento.getAbiertoAportes()
+                + " -> complemento " + complemento.getComplementoAportes() + "; cuotas cobrado " + cobradoPrestamos
+                + " / abierto " + complemento.getAbiertoPrestamos() + " -> complemento "
+                + complemento.getComplementoPrestamos());
+        return complemento;
+    }
+
+    private DetallePlantilla lineaApertura(Long idPlantillaApertura, int codigoLinea, String referencia)
+            throws Throwable {
+        DetallePlantilla linea = detallePlantillaDaoService.selectByPlantillaYAuxiliar(idPlantillaApertura, codigoLinea);
+        if (linea == null || linea.getPlanCuenta() == null) {
+            throw new IncomeException("La plantilla alterno " + PlantillasCredito.APERTURA_PLANILLA_MENSUAL
+                    + " no tiene la línea " + codigoLinea + " del catálogo CRD_LINEA_ASIENTO; no se puede armar el"
+                    + " complemento de apertura de " + referencia + " (D-024).");
+        }
+        return linea;
+    }
+
+    /** Saldo deudor (debe − haber) de la cuenta y sus hijas al corte, asientos activos/mayorizados. */
+    private double saldoDeudor(Long idEmpresa, String cuenta, LocalDate corte) throws Throwable {
+        double saldo = 0.0;
+        for (Object[] fila : cierreCarteraDaoService.selectSaldoContablePorCuenta(idEmpresa, cuenta, null, corte)) {
+            String cuentaFila = fila[0] != null ? fila[0].toString() : "";
+            // LIKE 'cuenta%' también traería, p. ej., 1.4.05.050 si existiera: solo la cuenta y sus hijas.
+            if (cuentaFila.equals(cuenta) || cuentaFila.startsWith(cuenta + ".")) {
+                saldo += fila[2] != null ? ((Number) fila[2]).doubleValue() : 0.0;
+            }
+        }
+        return redondear(saldo);
+    }
+
+    private static String formato(double valor) {
+        return String.format("%,.2f", valor);
     }
 
     /**
