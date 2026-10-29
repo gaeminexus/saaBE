@@ -161,7 +161,7 @@ public class EstructuraReporteServiceImpl implements EstructuraReporteService {
 		q.setParameter(5, java.sql.Date.valueOf(hasta.plusDays(1)));
 		List<SaldoCuenta> out = new ArrayList<>();
 		for (Object[] f : (List<Object[]>) q.getResultList()) {
-			out.add(new SaldoCuenta((String) f[0], ((Number) f[1]).intValue(), decimal(f[2]), decimal(f[3])));
+			out.add(new SaldoCuenta(texto(f[0]), ((Number) f[1]).intValue(), decimal(f[2]), decimal(f[3])));
 		}
 		return out;
 	}
@@ -194,11 +194,12 @@ public class EstructuraReporteServiceImpl implements EstructuraReporteService {
 		DefinicionEstructura d = new DefinicionEstructura();
 		d.setCodigoReporte(((Number) f[0]).longValue());
 		d.setCodigoAlterno(f[1] == null ? null : ((Number) f[1]).longValue());
-		d.setNombre((String) f[2]);
-		d.setTitulo(f[3] != null ? (String) f[3] : (String) f[2]);
-		d.setCodigoEstructura((String) f[5]);
-		d.setPeriodicidad((String) f[6]);
-		d.setCodigoEntidad((String) f[7]);
+		// Columnas CHAR(1) llegan como Character desde la consulta nativa: convertir con texto(), no con cast.
+		d.setNombre(texto(f[2]));
+		d.setTitulo(f[3] != null ? texto(f[3]) : texto(f[2]));
+		d.setCodigoEstructura(texto(f[5]));
+		d.setPeriodicidad(texto(f[6]));
+		d.setCodigoEntidad(texto(f[7]));
 		d.setBaseValor(entero(f[8], DefinicionEstructura.BASE_SALDO_CORTE));
 		d.setMapeoAutomatico(entero(f[9], 0) == 1);
 		d.setAcumulaPorPrefijo(entero(f[10], 0) == 1);
@@ -220,11 +221,11 @@ public class EstructuraReporteServiceImpl implements EstructuraReporteService {
 		q.setParameter(2, java.sql.Date.valueOf(corte));
 		List<RenglonEstructura> out = new ArrayList<>();
 		for (Object[] f : (List<Object[]>) q.getResultList()) {
-			RenglonEstructura r = new RenglonEstructura((String) f[0], (String) f[1],
+			RenglonEstructura r = new RenglonEstructura(texto(f[0]), texto(f[1]),
 					f[2] == null ? null : ((Number) f[2]).intValue(), ((Number) f[3]).intValue(),
 					entero(f[4], RenglonEstructura.CALCULO_SUMA));
 			r.setBaseValor(f[5] == null ? null : ((Number) f[5]).intValue());
-			r.setFormula((String) f[6]);
+			r.setFormula(texto(f[6]));
 			r.setVaEnArchivo(entero(f[7], 1) == 1);
 			out.add(r);
 		}
@@ -240,13 +241,18 @@ public class EstructuraReporteServiceImpl implements EstructuraReporteService {
 		q.setParameter(2, java.sql.Date.valueOf(corte));
 		List<ReglaCuentaRenglon> out = new ArrayList<>();
 		for (Object[] f : (List<Object[]>) q.getResultList()) {
-			ReglaCuentaRenglon r = new ReglaCuentaRenglon((String) f[0],
-					entero(f[1], ReglaCuentaRenglon.ALCANCE_CON_SUBCUENTAS), (String) f[2],
+			ReglaCuentaRenglon r = new ReglaCuentaRenglon(texto(f[0]),
+					entero(f[1], ReglaCuentaRenglon.ALCANCE_CON_SUBCUENTAS), texto(f[2]),
 					entero(f[3], ReglaCuentaRenglon.SIGNO_NATURALEZA), entero(f[4], 1) == 1);
-			r.setObservacion((String) f[5]);
+			r.setObservacion(texto(f[5]));
 			out.add(r);
 		}
 		return out;
+	}
+
+	/** Texto de una columna nativa: las CHAR(1) llegan como Character, las VARCHAR como String. */
+	private static String texto(Object o) {
+		return o == null ? null : o.toString();
 	}
 
 	private static int entero(Object o, int porDefecto) {
