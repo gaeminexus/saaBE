@@ -10,10 +10,10 @@ capturas. Sigue a `PEDIDOS-CONTABILIDAD-2026-10-12.md` (P1–P7). Cada pedido se
 |---|---|---|---|---|
 | Q1 | NC de compra que excede el saldo de su factura | Katherine 27-10 | cxp | ✅ código en `main` (`b170ee2b`, FE `ca3f269`); falta desplegar |
 | Q2 | Anular un documento que el emisor anuló en el SRI (1294 MRFOX) | Ana 22-10 | cxp | ✅ botón en `main` (`a4586614`, FE `90c1896`); 1294 cerrada con `e2-108` + `e2-110` |
-| Q3 | **El asiento de la factura registrada desde la bandeja sale con usuario SISTEMA** | Katherine 26-10 | cxp | 🔴 **despachar** — §2.1 |
-| Q4 | **El concepto del gasto de caja chica no sale en el asiento impreso** | Ana 22-10 | tsr/cxp | 🔴 **despachar** — §2.2 |
-| Q5 | **Imprimir el asiento desde el registro de cobro** (y «de todos los módulos») | Ana 20-10 y 22-10 | cxc (y otros) | 🔴 **despachar** — §2.3. Ya tienen botón: registro de ingreso, egreso, devolución de saldo a favor, listado de asientos (`d45b670`) |
-| Q6 | Desde el **01-11**, Ingreso/Egreso solo si interviene BANCOS (= P5) | Ana 06-10, recordado 22-10 | cnt + todos | 🔴 **bloqueado**: el `e2-99` sigue sin correr y hay 4 preguntas abiertas (§3). **Fecha límite: 01-11** |
+| Q3 | **El asiento de la factura registrada desde la bandeja sale con usuario SISTEMA** | Katherine 26-10 | cxp | ✅ `b1191051` (2026-10-27). El FE rellenaba con el ID 1: corregido en saaFE `6b88b20`/`5e20987`, falta desplegar |
+| Q4 | **El concepto del gasto de caja chica no sale en el asiento impreso** | Ana 22-10 | tsr/cxp | ✅ `b1191051` (2026-10-27) |
+| Q5 | **Imprimir el asiento desde el registro de cobro** (y «de todos los módulos») | Ana 20-10 y 22-10 | cxc (y otros) | ✅ `83e7a59f` + saaFE `6727338`, `647dd38` (2026-10-27). Ya tienen botón: registro de ingreso, egreso, devolución de saldo a favor, listado de asientos (`d45b670`) |
+| Q6 | Desde el **01-11**, Ingreso/Egreso solo si interviene BANCOS (= P5) | Ana 06-10, recordado 22-10 | cnt + todos | ✅ código `e7103b60` + saaFE `b6824e4`, diseño `cnt/DISENO-TIPOS-ASIENTO-AUTOMATICOS.md`. `e2-111` BLOQUE 1 corrido; faltan el BLOQUE 2 y las salidas del BLOQUE 0 (ver `docs/equipos/saa-2.md`). **Fecha: 01-11** |
 | Q7 | Detalle del ATS sigue mostrando «factura» en notas de venta | Ana 22-10 | sri/cxc FE | 🟡 código en `main` desde el 12-10 (FE `2a640c9`). O no está desplegado, o las compras están grabadas con `01`: lo dice el `e2-100`, sin correr |
 | Q8 | Estados financieros en Excel (Jimena, = P4) | Jimena 08-10, Ana 22-10 | cnt FE | 🟡 código en `main` (`760b167`, `660dc54`); falta desplegar, comparar contra el PDF y **contestarle a Jimena** |
 | Q9 | Mejorar el formato de impresión de las conciliaciones | Ana 06-10 (no hay correo con el detalle) | tsr | ⚪ **sin especificación**: hace falta saber qué cambiar |
