@@ -35,6 +35,8 @@ public class GeneracionReportesServiceImpl implements GeneracionReportesService 
     // javadoc de la interfaz para por qué esto ya no puede ser un método privado de esta
     // misma clase. Reemplaza a los doce @EJB de GeneracionGxxService que vivían acá.
     @EJB private GeneracionUnReporteService     unReporteService;
+    /** C17: solo se generan reportes de meses cerrados para cartera. */
+    @EJB private com.saa.ejb.cnt.service.EstadoCierreService estadoCierreService;
 
     @Override
     public EjecucionReporte ejecutarGeneracion(Long mes, Long anio, String usuario) throws Throwable {
@@ -45,6 +47,11 @@ public class GeneracionReportesServiceImpl implements GeneracionReportesService 
     public EjecucionReporte ejecutarGeneracion(Long mes, Long anio, String usuario, boolean regenerar) throws Throwable {
         System.out.println("Ingresa al metodo ejecutarGeneracion con mes: " + mes + ", anio: " + anio + ", usuario: " + usuario
                 + ", regenerar: " + regenerar);
+
+        // C17 (CIERRES-BLOQUEANTES.md §6): las estructuras G40–G51 solo se generan para meses que ya pasaron
+        // por el cierre–apertura de cartera. Sin empresa en la solicitud: basta con que cualquier empresa
+        // tenga el mes cerrado (ASOPREP opera con una sola).
+        estadoCierreService.validarReporteCartera(null, anio, mes, "Las estructuras G40–G51");
 
         EjecucionReporte ejrc     = null;
         List<DetalleEjecucionReporte> ejrdsAProcesar = new ArrayList<>();

@@ -570,6 +570,16 @@ POST /SaaBE/rest/cierrecartera/reversar/1?usuario=MSANCHEZ&ip=192.168.1.40&motiv
 | corrida no ejecutada | `… La corrida 1 esta en estado REVERSADA: solo se puede reversar una corrida EJECUTADA.` |
 | el asiento no se puede anular | el mensaje que devuelve `AsientoService` |
 
+> **C17 (2026-10-28, cierres bloqueantes — `docs/logica-negocio/cnt/CIERRES-BLOQUEANTES.md`).** Una corrida
+> EJECUTADA deja el mes **cerrado para cartera**: no admite movimientos de cartera ni de cuentas individuales
+> con afectación en ese mes. Reversarla es **reabrir** la cartera del mes, y por eso ahora:
+> `motivo` es **obligatorio**; la contabilidad del mes y del siguiente tiene que estar abierta
+> (`PERIODO_CERRADO` si no); solo se reabre el **último** mes cerrado (`CIERRE_FUERA_DE_ORDEN`, cascada desde
+> el más reciente); queda una fila en `CNT.HCPR`. Atajo por mes: `POST /cierrecartera/reabrir?idEmpresa&anio&mes&usuario&ip&motivo`.
+> `ejecutar` además exige orden (ningún mes posterior cerrado; el anterior cerrado si ya hay cierres, salvo
+> `arranque`) y los períodos contables del corte y del día siguiente abiertos. El orden se puede desactivar
+> solo en el entorno de re-proceso con `-Dsaa.cierres.permitirFueraDeOrden=true`.
+
 ---
 
 ### 2.5 GET `/rest/cierrecartera/corridas`

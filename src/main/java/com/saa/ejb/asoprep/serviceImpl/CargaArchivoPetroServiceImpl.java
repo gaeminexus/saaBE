@@ -86,6 +86,10 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
     
     @EJB
     private com.saa.ejb.crd.dao.ParticipeXCargaArchivoDaoService participeXCargaArchivoDaoService;
+
+    /** C17: mes cerrado para cartera / contabilidad (CIERRES-BLOQUEANTES.md). */
+    @jakarta.ejb.EJB
+    private com.saa.ejb.cnt.service.EstadoCierreService estadoCierreService;
     
     @EJB
     private EntidadDaoService entidadDaoService;
@@ -515,6 +519,11 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
                                      List<ParticipeXCargaArchivo> participesXCargaArchivo) throws Throwable {
         
         try {
+            // C17: no se carga un archivo para un mes ya cerrado para cartera / contabilidad.
+            if (cargaArchivo != null) {
+                estadoCierreService.validarMovimientoCartera(null, cargaArchivo.getAnioAfectacion(),
+                        cargaArchivo.getMesAfectacion(), "la carga de archivos Petro");
+            }
             // 0. PROCESAR EL CONTENIDO DEL ARCHIVO
             String contenido = leerContenidoArchivo(archivoInputStream);
             List<ParticipeXCargaArchivo> registrosProcesados = procesarContenido(contenido);
@@ -1505,6 +1514,12 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 			// ==========================================
 			exigeConfirmacionContabilidad(cargaArchivo);
 			// ==========================================
+
+			// C17 (CIERRES-BLOQUEANTES.md): el mes de afectación de la carga (aportes, pagos y asientos van
+			// al último día de ese mes) tiene que estar abierto para cartera y para contabilidad. También en
+			// MODO REPROCESO: re-procesar un mes cerrado exige reabrirlo antes.
+			estadoCierreService.validarMovimientoCartera(null, cargaArchivo.getAnioAfectacion(),
+					cargaArchivo.getMesAfectacion(), "la aplicación de la carga Petro " + codigoCargaArchivo);
 
 			// ==========================================
 			// MODO REPROCESO (D-010): la lista de excedentes devueltos se valida completa ANTES

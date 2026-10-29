@@ -84,6 +84,10 @@ public class PrestamoRest {
     @EJB
     private ProcesoPagoPrestamoService procesoPagoPrestamoService;
 
+    /** C17: mes cerrado para cartera / contabilidad (CIERRES-BLOQUEANTES.md). */
+    @EJB
+    private com.saa.ejb.cnt.service.EstadoCierreService estadoCierreService;
+
     @EJB
     private AbonoCapitalPrestamoService abonoCapitalPrestamoService;
 
@@ -890,6 +894,11 @@ public class PrestamoRest {
         }
 
         try {
+            // C17: el pago manual directo (no el que llega desde CBCR, que valida su fecha de afectación)
+            // se fecha con fechaPago (evento, PGPR y asiento): su mes tiene que estar abierto.
+            estadoCierreService.validarMovimientoCartera(solicitud.getIdEmpresa(),
+                    solicitud.getFechaPago() != null ? solicitud.getFechaPago() : java.time.LocalDate.now(),
+                    "pagos de cuota");
             ResultadoAplicacionPago resultado = procesoPagoPrestamoService.pagarCuota(solicitud);
 
             String mensaje = "Pago aplicado por $" + resultado.getValorAplicado()
@@ -950,6 +959,13 @@ public class PrestamoRest {
         }
 
         try {
+            // C17: cada renglón se fecha con su fechaPago.
+            for (SolicitudPagoCuota pago : solicitud.getPagos()) {
+                estadoCierreService.validarMovimientoCartera(
+                        pago.getIdEmpresa() != null ? pago.getIdEmpresa() : solicitud.getIdEmpresa(),
+                        pago.getFechaPago() != null ? pago.getFechaPago() : java.time.LocalDate.now(),
+                        "pagos de cuota (préstamo " + pago.getIdPrestamo() + ")");
+            }
             ResultadoPagoMultiple resultado = procesoPagoPrestamoService.pagarMultiplesCuotas(solicitud);
 
             String mensaje = "Pago aplicado por $" + resultado.getValorTotalAplicado()
@@ -1858,7 +1874,9 @@ public class PrestamoRest {
         "PARAMETRO_INVALIDO",
         // API-FECHA-AFECTACION-COBRO.md §2bis (precancelación con fecha de afectación)
         "FECHA_AFECTACION_OBLIGATORIA", "FECHA_AFECTACION_MENOR_A_PAGO", "FECHA_AFECTACION_FUTURA",
-        "PERIODO_CERRADO");
+        "PERIODO_CERRADO",
+        // C17 CIERRES-BLOQUEANTES.md: mes cerrado para cartera
+        "CARTERA_CERRADA");
 
     /**
      * Mapea la excepción de un proceso de pago al status HTTP de §8, usando el CÓDIGO con el

@@ -387,6 +387,20 @@ public class PeriodoServiceImpl implements PeriodoService{
 	@Override
 	public Periodo saveSingle(Periodo periodo) throws Throwable {
 		System.out.println("saveSingle - PeriodoService");
+		// C17: el cierre contable solo lo cambian POST /prdo/cerrar y /prdo/reabrir (auditados). Un PUT/POST
+		// genérico conserva lo que hay en la base aunque el cliente mande otra cosa.
+		if (periodo.getCodigo() != null) {
+			Periodo enBase = periodoDaoService.selectById(periodo.getCodigo(), NombreEntidadesContabilidad.PERIODO);
+			if (enBase != null) {
+				periodo.setCerradoContable(enBase.getCerradoContable());
+				periodo.setFechaCierreContable(enBase.getFechaCierreContable());
+				periodo.setUsuarioCierreContable(enBase.getUsuarioCierreContable());
+			}
+		} else {
+			periodo.setCerradoContable(0L);
+			periodo.setFechaCierreContable(null);
+			periodo.setUsuarioCierreContable(null);
+		}
 		periodo = periodoDaoService.save(periodo, periodo.getCodigo());
 		return periodo;
 	}
@@ -398,6 +412,9 @@ public class PeriodoServiceImpl implements PeriodoService{
 		Long mesFecha = Long.valueOf(fecha.getMonthValue());
 		Periodo periodo = periodoDaoService.selectByMesAnioEmpresa(empresa, mesFecha, anioFecha);
 		if (periodo != null) {
+			if (com.saa.model.cnt.CierrePeriodoListener.contableCerrado(periodo)) {
+				throw new IncomeException(com.saa.model.cnt.CierrePeriodoListener.mensaje(periodo, null));
+			}
 			if (!periodo.getEstado().equals(Long.valueOf(EstadoPeriodos.ACTIVO))) {
 				throw new IncomeException("El periodo seleccionado se encuentra cerrado.");
 			}
@@ -419,6 +436,9 @@ public class PeriodoServiceImpl implements PeriodoService{
 	@Override
 	public String remove(Long idPeriodo) throws Throwable {
 		System.out.println("remove Service: " + idPeriodo);
+	    if (com.saa.model.cnt.CierrePeriodoListener.contableCerrado(selectById(idPeriodo))) {
+	    	return "No se puede eliminar un período contable CERRADO.";
+	    }
 	    String resultado = verificaAsientoEnPeriodo(idPeriodo);
 	    if (resultado == "OK"){
 	    	periodoDaoService.remove(new Periodo(), idPeriodo);

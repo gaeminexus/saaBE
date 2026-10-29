@@ -67,6 +67,10 @@ public class DeclaracionPlazoVencidoServiceImpl implements DeclaracionPlazoVenci
     @EJB
     private DeclaracionPlazoVencidoDaoService declaracionDaoService;
 
+    /** C17: mes cerrado para cartera / contabilidad (CIERRES-BLOQUEANTES.md). */
+    @jakarta.ejb.EJB
+    private com.saa.ejb.cnt.service.EstadoCierreService estadoCierreService;
+
     @EJB
     private DetallePlazoVencidoDaoService detallePlazoVencidoDaoService;
 
@@ -192,6 +196,9 @@ public class DeclaracionPlazoVencidoServiceImpl implements DeclaracionPlazoVenci
                 + ": fechaCorte, usuario y prestamos son obligatorios, y prestamos no puede estar vacío");
         }
         validarFechaCorte(solicitud.getFechaCorte());
+        // C17: declarar plazo vencido cambia cuotas al corte: el mes del corte tiene que estar abierto.
+        estadoCierreService.validarMovimientoCartera(null, solicitud.getFechaCorte(),
+                "declaraciones de plazo vencido");
 
         // 2. numeroMemorando: obligatorio, SOLO DÍGITOS (D26 — en pantalla se escribe solo el
         // número, p.ej. «46», y el sistema lo compone), sin duplicados en el lote ni en CRD.PLVN
@@ -476,6 +483,11 @@ public class DeclaracionPlazoVencidoServiceImpl implements DeclaracionPlazoVenci
             throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": usuario y motivo son obligatorios");
         }
 
+        // C17: revertir restituye cuotas desde el corte de la declaración; si ese mes está cerrado para
+        // cartera, su contabilidad también tiene que estarlo y el mes de hoy abierto.
+        estadoCierreService.validarCarteraAbierta(null, LocalDate.now(), "la reversión de plazo vencido");
+        estadoCierreService.validarAnulacionCartera(null, declaracion.getFechaCorte(),
+                "la reversión de la declaración de plazo vencido " + idDeclaracion);
         Prestamo prestamo = declaracion.getPrestamo();
         if (prestamo == null || prestamo.getIdEstado() == null
                 || prestamo.getIdEstado().intValue() != EstadoPrestamo.DE_PLAZO_VENCIDO) {

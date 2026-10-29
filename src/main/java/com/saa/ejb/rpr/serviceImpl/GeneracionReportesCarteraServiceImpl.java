@@ -27,10 +27,15 @@ public class GeneracionReportesCarteraServiceImpl implements GeneracionReportesC
     @EJB private GeneracionCJBMService                  cjbmService;
     @EJB private GeneracionCCPMService                  ccpmService;
     @EJB private LimpiezaReportesService                limpiezaReportesService;
+    /** C17: solo se generan reportes de meses cerrados para cartera. */
+    @EJB private com.saa.ejb.cnt.service.EstadoCierreService estadoCierreService;
 
     @Override
     public EjecucionReporteCartera ejecutarGeneracion(Long mes, Long anio, String usuario, Long idEmpresa) throws Throwable {
         System.out.println("Ingresa al metodo ejecutarGeneracion de reportes de cartera - mes: " + mes + ", anio: " + anio + ", usuario: " + usuario + ", idEmpresa: " + idEmpresa);
+
+        // C17 (CIERRES-BLOQUEANTES.md §6): CPRM/CJBM/CCPM solo para meses cerrados para cartera.
+        estadoCierreService.validarReporteCartera(idEmpresa, anio, mes, "Los reportes de cartera CPRM, CJBM y CCPM");
 
         // -------------------------------------------------------
         // 1. Validar que no exista una ejecución previa para este mes/año
@@ -144,6 +149,8 @@ public class GeneracionReportesCarteraServiceImpl implements GeneracionReportesC
         Long mes  = ejccExistente.getMes();
         Long anio = ejccExistente.getAnio();
         System.out.println("Regenerando reportes de cartera para " + mes + "/" + anio);
+        // C17: antes de borrar nada (la limpieza va en REQUIRES_NEW y no se revierte).
+        estadoCierreService.validarReporteCartera(null, anio, mes, "Los reportes de cartera CPRM, CJBM y CCPM");
 
         // 2. Borrar hijos en una transacción separada (REQUIRES_NEW) para asegurar el commit antes de borrar el padre
         limpiezaReportesService.limpiarDatosReportes(codigoEjecucion);

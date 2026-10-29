@@ -117,6 +117,7 @@ public class MayorizacionServiceImpl implements MayorizacionService{
 		Mayorizacion maximaAnterior = new Mayorizacion();
 		Mayorizacion mayorizacionIngresada = new Mayorizacion();
 		List<Periodo> periodos = periodoDaoService.selectRangoPeriodos(empresa, periodoDesde, periodoHasta, proceso);
+		exigeNingunoCerrado(periodos, "volver a mayorizar");
 		for(Periodo periodo : periodos){
 			System.out.println("Datos Periodo: " + periodo.getCodigo() + ", " + periodo.getNombre());
 			// CREA MAYORIZACION
@@ -144,6 +145,18 @@ public class MayorizacionServiceImpl implements MayorizacionService{
 			asientoService.actualizaMayorizacionByPeriodo(periodo, mayorizacionIngresada);
 			// GENERA MAYORIZACION POR CENTRO DE COSTO
 			mayorizacionCCService.mayorizacionCC(mayorizacionIngresada, periodo, maximaAnterior);
+		}
+	}
+
+	/**
+	 * C17 — Un período con cierre contable no se desmayoriza ni se vuelve a mayorizar: sus saldos son los
+	 * de los estados financieros definitivos. Hay que reabrirlo antes (POST /prdo/reabrir).
+	 */
+	private void exigeNingunoCerrado(List<Periodo> periodos, String accion) {
+		for (Periodo p : periodos) {
+			if (com.saa.model.cnt.CierrePeriodoListener.contableCerrado(p)) {
+				throw new com.saa.basico.util.IncomeException(com.saa.model.cnt.CierrePeriodoListener.mensaje(p, accion));
+			}
 		}
 	}
 
@@ -188,6 +201,7 @@ public class MayorizacionServiceImpl implements MayorizacionService{
 	public void desmayorizacion(Long empresa, Long periodoDesde, Long periodoHasta, int proceso) throws Throwable {
 		System.out.println("Ingresa al metodo desmayorizacion desde: " + periodoDesde + ", hasta: " + periodoHasta);
 		List<Periodo> periodos = periodoDaoService.selectRangoPeriodos(empresa, periodoHasta, periodoDesde, proceso);
+		exigeNingunoCerrado(periodos, "desmayorizar");
 		Long idHistMayorizacion = null;
 		Long idProcesoMayorizacion = null;
 		Long idProcesoDesmayorizacion = null;

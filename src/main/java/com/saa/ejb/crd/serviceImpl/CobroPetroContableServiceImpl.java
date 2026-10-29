@@ -118,6 +118,10 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
     @EJB
     private TransferenciaCargaPetroDaoService transferenciaCargaPetroDaoService;
 
+    /** C17: mes cerrado para cartera / contabilidad (CIERRES-BLOQUEANTES.md). */
+    @jakarta.ejb.EJB
+    private com.saa.ejb.cnt.service.EstadoCierreService estadoCierreService;
+
     @EJB
     private AsientoCargaPetroDaoService asientoCargaPetroDaoService;
 
@@ -345,6 +349,11 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
                                     + " envíe paraReproceso = true." : "."));
         }
 
+        // C17: el asiento transitorio va al último día del mes de afectación: mes abierto.
+        estadoCierreService.validarMovimientoCartera(transferenciaCargaPetroDaoService.resolverEmpresa(vigentes),
+                carga.getAnioAfectacion(), carga.getMesAfectacion(),
+                "la confirmación de recepción de la carga Petro " + idCarga);
+
         // Efecto: sella el "visto de contabilidad" — CRARUSCC/CRARFCAC son el rastro
         // DURADERO; CRARESTD es solo transitorio (avanza a PROCESADO en el paso 2).
         LocalDateTime ahora = LocalDateTime.now();
@@ -504,6 +513,12 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
         if (solicitud == null || solicitud.getMotivo() == null || solicitud.getMotivo().trim().isEmpty()) {
             throw new IncomeException("El motivo del reverso es obligatorio.");
         }
+        // C17: reversar la recepción anula el asiento transitorio del mes de afectación.
+        estadoCierreService.validarAnulacionCartera(null,
+                carga.getAnioAfectacion() != null && carga.getMesAfectacion() != null
+                        ? java.time.LocalDate.of(carga.getAnioAfectacion().intValue(), carga.getMesAfectacion().intValue(), 1)
+                        : null,
+                "el reverso de la recepción de la carga Petro " + idCarga);
 
         Long idAsientoAnulado = null;
         AsientoCargaPetro registro = asientoCargaPetroDaoService.selectVigenteByCargaYSubProceso(
