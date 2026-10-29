@@ -314,6 +314,12 @@ public interface Rubros {
 	 * rhh y 330-349 estan reservados por lap-saa-1; 249 es el primer codigo libre en la base y en el codigo.
 	 */
 	int CNT_PARAMETROS_ASIENTOS_AUTOMATICOS = 249;
+	/**
+	 * Parametros de los estados financieros oficiales (C19): razon social, RUC, firmantes, grupos de cuentas,
+	 * logo -> ver {@link CntParametroEstadoFinanciero}. Detalle por codigo alterno (PDTRALTR), valor en PDTRVLRV.
+	 * Sin el rubro todo tiene un valor por defecto (nombre de la empresa, sin RUC, firmas en blanco).
+	 */
+	int CNT_PARAMETROS_ESTADOS_FINANCIEROS = 250;
 
 	// ================= RUBROS SRI / ATS =================
 	/** Sustento tributario del comprobante, Tabla 5 del ATS (GRPPCSUS/FCTCCSUS/...) -> ver {@link SustentoTributarioSri}. El catalogo real vive en PGS.LSRI/PGS.TSRI (LSRI.TABLA='703'), no en Java; los codigos son strings de dos digitos, no este rubro int -> ver el javadoc de la interfaz. */

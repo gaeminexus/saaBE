@@ -1,0 +1,202 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Estado financiero OFICIAL (C19, 2026-10-28) - docs/logica-negocio/rpr/ESTADOS-FINANCIEROS-OFICIALES.md.
+     Se llena desde una coleccion de FilaEstadoFinanciero (EstadoFinancieroOficialServiceImpl), sin consulta:
+     el servicio ya resolvio niveles, ceros, comparativo, Resultado del Ejercicio y la linea de control.
+     Encabezado institucional con logo, razon social, RUC, nombre del estado (el del tipo de reporte, nunca
+     "Balance General" fijo), periodo y moneda; leyenda PRELIMINAR (periodo no cerrado, con marca de agua) o
+     DEFINITIVO; columnas numericas posicionales A/B/C con titulo por parametro (null = no se imprime); columna
+     Nivel opcional (P_MOSTRAR_NIVEL); notas y firmas al final; trazabilidad (ejecuciones) en el pie.
+     Importes con dos decimales y negativos entre parentesis. -->
+<jasperReport name="RPRT_ESTADO_FINANCIERO_OFICIAL" language="java" pageWidth="595" pageHeight="842" columnWidth="555" leftMargin="20" rightMargin="20" topMargin="20" bottomMargin="20" uuid="c1900000-0000-0000-0000-000000000001">
+	<property name="net.sf.jasperreports.export.xls.exclude.origin.band.1" value="background"/>
+	<property name="net.sf.jasperreports.export.xls.exclude.origin.band.2" value="pageFooter"/>
+	<property name="net.sf.jasperreports.export.xls.remove.empty.space.between.rows" value="true"/>
+	<property name="net.sf.jasperreports.export.xls.white.page.background" value="false"/>
+	<parameter name="P_IMAGEN" class="java.awt.Image"/>
+	<parameter name="P_RAZON_SOCIAL" class="java.lang.String"/>
+	<parameter name="P_RUC" class="java.lang.String"/>
+	<parameter name="P_TITULO" class="java.lang.String"/>
+	<parameter name="P_PERIODO" class="java.lang.String"/>
+	<parameter name="P_MONEDA" class="java.lang.String"/>
+	<parameter name="P_LEYENDA" class="java.lang.String"/>
+	<parameter name="P_COL_A" class="java.lang.String"/>
+	<parameter name="P_COL_B" class="java.lang.String"/>
+	<parameter name="P_COL_C" class="java.lang.String"/>
+	<parameter name="P_MOSTRAR_NIVEL" class="java.lang.Boolean">
+		<defaultValueExpression><![CDATA[Boolean.FALSE]]></defaultValueExpression>
+	</parameter>
+	<parameter name="P_NOTAS" class="java.lang.String"/>
+	<parameter name="P_FIRMA1_NOMBRE" class="java.lang.String"/>
+	<parameter name="P_FIRMA1_CARGO" class="java.lang.String"/>
+	<parameter name="P_FIRMA2_NOMBRE" class="java.lang.String"/>
+	<parameter name="P_FIRMA2_CARGO" class="java.lang.String"/>
+	<parameter name="P_FIRMA2_REGISTRO" class="java.lang.String"/>
+	<parameter name="P_USUARIO" class="java.lang.String"/>
+	<parameter name="P_TRAZA" class="java.lang.String"/>
+
+	<field name="tipoFila" class="java.lang.String"/>
+	<field name="cuenta" class="java.lang.String"/>
+	<field name="descripcion" class="java.lang.String"/>
+	<field name="nivel" class="java.lang.Integer"/>
+	<field name="negrita" class="java.lang.Boolean"/>
+	<field name="valorA" class="java.math.BigDecimal"/>
+	<field name="valorB" class="java.math.BigDecimal"/>
+	<field name="valorC" class="java.math.BigDecimal"/>
+
+	<background height="802" splitType="Stretch">
+		<element kind="staticText" uuid="c1900000-0000-0000-0000-000000000002" x="0" y="300" width="555" height="140" forecolor="#EBEBEB" fontName="SansSerif" fontSize="60.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<printWhenExpression><![CDATA["PRELIMINAR".equals($P{P_LEYENDA})]]></printWhenExpression>
+			<text><![CDATA[PRELIMINAR]]></text>
+		</element>
+	</background>
+
+	<pageHeader height="94" splitType="Stretch">
+		<element kind="image" uuid="c1900000-0000-0000-0000-000000000010" x="0" y="0" width="90" height="50" scaleImage="RetainShape" hImageAlign="Left" vImageAlign="Top" onErrorType="Blank">
+			<expression><![CDATA[$P{P_IMAGEN}]]></expression>
+		</element>
+		<element kind="textField" uuid="c1900000-0000-0000-0000-000000000011" x="95" y="0" width="365" height="34" fontName="SansSerif" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle" blankWhenNull="true">
+			<expression><![CDATA[$P{P_RAZON_SOCIAL}]]></expression>
+		</element>
+		<element kind="textField" uuid="c1900000-0000-0000-0000-000000000012" x="95" y="34" width="365" height="12" fontName="SansSerif" fontSize="8.0" hTextAlign="Center">
+			<printWhenExpression><![CDATA[$P{P_RUC} != null]]></printWhenExpression>
+			<expression><![CDATA["RUC: " + $P{P_RUC}]]></expression>
+		</element>
+		<element kind="textField" uuid="c1900000-0000-0000-0000-000000000013" x="95" y="47" width="365" height="16" fontName="SansSerif" fontSize="11.0" bold="true" hTextAlign="Center" blankWhenNull="true">
+			<expression><![CDATA[$P{P_TITULO}]]></expression>
+		</element>
+		<element kind="textField" uuid="c1900000-0000-0000-0000-000000000014" x="95" y="63" width="365" height="12" fontName="SansSerif" fontSize="8.5" bold="true" hTextAlign="Center" blankWhenNull="true">
+			<expression><![CDATA[$P{P_PERIODO}]]></expression>
+		</element>
+		<element kind="textField" uuid="c1900000-0000-0000-0000-000000000015" x="95" y="75" width="365" height="11" fontName="SansSerif" fontSize="7.5" italic="true" hTextAlign="Center" blankWhenNull="true">
+			<expression><![CDATA[$P{P_MONEDA}]]></expression>
+		</element>
+		<element kind="textField" uuid="c1900000-0000-0000-0000-000000000016" x="460" y="0" width="95" height="16" forecolor="#C53030" fontName="SansSerif" fontSize="10.0" bold="true" hTextAlign="Right">
+			<printWhenExpression><![CDATA["PRELIMINAR".equals($P{P_LEYENDA})]]></printWhenExpression>
+			<expression><![CDATA[$P{P_LEYENDA}]]></expression>
+		</element>
+		<element kind="textField" uuid="c1900000-0000-0000-0000-000000000017" x="460" y="0" width="95" height="16" forecolor="#276749" fontName="SansSerif" fontSize="10.0" bold="true" hTextAlign="Right">
+			<printWhenExpression><![CDATA["DEFINITIVO".equals($P{P_LEYENDA})]]></printWhenExpression>
+			<expression><![CDATA[$P{P_LEYENDA}]]></expression>
+		</element>
+		<element kind="line" uuid="c1900000-0000-0000-0000-000000000018" x="0" y="90" width="555" height="1"/>
+	</pageHeader>
+
+	<columnHeader height="16" splitType="Stretch">
+		<element kind="staticText" uuid="c1900000-0000-0000-0000-000000000020" x="0" y="1" width="65" height="13" fontName="SansSerif" fontSize="8.0" bold="true">
+			<text><![CDATA[CUENTA]]></text>
+		</element>
+		<element kind="staticText" uuid="c1900000-0000-0000-0000-000000000021" x="65" y="1" width="20" height="13" fontName="SansSerif" fontSize="8.0" bold="true" hTextAlign="Center">
+			<printWhenExpression><![CDATA[$P{P_MOSTRAR_NIVEL}]]></printWhenExpression>
+			<text><![CDATA[NIV.]]></text>
+		</element>
+		<element kind="staticText" uuid="c1900000-0000-0000-0000-000000000022" x="85" y="1" width="230" height="13" fontName="SansSerif" fontSize="8.0" bold="true">
+			<text><![CDATA[DESCRIPCIÓN]]></text>
+		</element>
+		<element kind="textField" uuid="c1900000-0000-0000-0000-000000000023" x="315" y="1" width="80" height="13" fontName="SansSerif" fontSize="8.0" bold="true" hTextAlign="Right" blankWhenNull="true">
+			<expression><![CDATA[$P{P_COL_A}]]></expression>
+		</element>
+		<element kind="textField" uuid="c1900000-0000-0000-0000-000000000024" x="395" y="1" width="80" height="13" fontName="SansSerif" fontSize="8.0" bold="true" hTextAlign="Right" blankWhenNull="true">
+			<expression><![CDATA[$P{P_COL_B}]]></expression>
+		</element>
+		<element kind="textField" uuid="c1900000-0000-0000-0000-000000000025" x="475" y="1" width="80" height="13" fontName="SansSerif" fontSize="8.0" bold="true" hTextAlign="Right" blankWhenNull="true">
+			<expression><![CDATA[$P{P_COL_C}]]></expression>
+		</element>
+		<element kind="line" uuid="c1900000-0000-0000-0000-000000000026" x="0" y="15" width="555" height="1"/>
+	</columnHeader>
+
+	<detail>
+		<band height="12" splitType="Stretch">
+			<!-- linea separadora antes del resultado / control -->
+			<element kind="line" uuid="c1900000-0000-0000-0000-000000000030" x="315" y="0" width="240" height="1">
+				<printWhenExpression><![CDATA[!"CUENTA".equals($F{tipoFila})]]></printWhenExpression>
+			</element>
+			<element kind="textField" uuid="c1900000-0000-0000-0000-000000000031" x="0" y="0" width="65" height="12" fontName="SansSerif" fontSize="7.5" bold="true" blankWhenNull="true">
+				<printWhenExpression><![CDATA[Boolean.TRUE.equals($F{negrita})]]></printWhenExpression>
+				<expression><![CDATA[$F{cuenta}]]></expression>
+			</element>
+			<element kind="textField" uuid="c1900000-0000-0000-0000-000000000032" x="0" y="0" width="65" height="12" fontName="SansSerif" fontSize="7.5" blankWhenNull="true">
+				<printWhenExpression><![CDATA[!Boolean.TRUE.equals($F{negrita})]]></printWhenExpression>
+				<expression><![CDATA[$F{cuenta}]]></expression>
+			</element>
+			<element kind="textField" uuid="c1900000-0000-0000-0000-000000000033" x="65" y="0" width="20" height="12" fontName="SansSerif" fontSize="7.5" hTextAlign="Center" blankWhenNull="true">
+				<printWhenExpression><![CDATA[$P{P_MOSTRAR_NIVEL} && "CUENTA".equals($F{tipoFila})]]></printWhenExpression>
+				<expression><![CDATA[$F{nivel}]]></expression>
+			</element>
+			<element kind="textField" uuid="c1900000-0000-0000-0000-000000000034" x="85" y="0" width="230" height="12" fontName="SansSerif" fontSize="7.5" bold="true" blankWhenNull="true">
+				<printWhenExpression><![CDATA[Boolean.TRUE.equals($F{negrita})]]></printWhenExpression>
+				<expression><![CDATA[$F{descripcion}]]></expression>
+			</element>
+			<element kind="textField" uuid="c1900000-0000-0000-0000-000000000035" x="85" y="0" width="230" height="12" fontName="SansSerif" fontSize="7.5" blankWhenNull="true">
+				<printWhenExpression><![CDATA[!Boolean.TRUE.equals($F{negrita})]]></printWhenExpression>
+				<expression><![CDATA[$F{descripcion}]]></expression>
+			</element>
+			<element kind="textField" uuid="c1900000-0000-0000-0000-000000000036" x="315" y="0" width="80" height="12" fontName="SansSerif" fontSize="7.5" bold="true" pattern="#,##0.00;(#,##0.00)" hTextAlign="Right" blankWhenNull="true">
+				<printWhenExpression><![CDATA[Boolean.TRUE.equals($F{negrita})]]></printWhenExpression>
+				<expression><![CDATA[$F{valorA}]]></expression>
+			</element>
+			<element kind="textField" uuid="c1900000-0000-0000-0000-000000000037" x="315" y="0" width="80" height="12" fontName="SansSerif" fontSize="7.5" pattern="#,##0.00;(#,##0.00)" hTextAlign="Right" blankWhenNull="true">
+				<printWhenExpression><![CDATA[!Boolean.TRUE.equals($F{negrita})]]></printWhenExpression>
+				<expression><![CDATA[$F{valorA}]]></expression>
+			</element>
+			<element kind="textField" uuid="c1900000-0000-0000-0000-000000000038" x="395" y="0" width="80" height="12" fontName="SansSerif" fontSize="7.5" bold="true" pattern="#,##0.00;(#,##0.00)" hTextAlign="Right" blankWhenNull="true">
+				<printWhenExpression><![CDATA[Boolean.TRUE.equals($F{negrita})]]></printWhenExpression>
+				<expression><![CDATA[$F{valorB}]]></expression>
+			</element>
+			<element kind="textField" uuid="c1900000-0000-0000-0000-000000000039" x="395" y="0" width="80" height="12" fontName="SansSerif" fontSize="7.5" pattern="#,##0.00;(#,##0.00)" hTextAlign="Right" blankWhenNull="true">
+				<printWhenExpression><![CDATA[!Boolean.TRUE.equals($F{negrita})]]></printWhenExpression>
+				<expression><![CDATA[$F{valorB}]]></expression>
+			</element>
+			<element kind="textField" uuid="c1900000-0000-0000-0000-000000000040" x="475" y="0" width="80" height="12" fontName="SansSerif" fontSize="7.5" bold="true" pattern="#,##0.00;(#,##0.00)" hTextAlign="Right" blankWhenNull="true">
+				<printWhenExpression><![CDATA[Boolean.TRUE.equals($F{negrita})]]></printWhenExpression>
+				<expression><![CDATA[$F{valorC}]]></expression>
+			</element>
+			<element kind="textField" uuid="c1900000-0000-0000-0000-000000000041" x="475" y="0" width="80" height="12" fontName="SansSerif" fontSize="7.5" pattern="#,##0.00;(#,##0.00)" hTextAlign="Right" blankWhenNull="true">
+				<printWhenExpression><![CDATA[!Boolean.TRUE.equals($F{negrita})]]></printWhenExpression>
+				<expression><![CDATA[$F{valorC}]]></expression>
+			</element>
+		</band>
+	</detail>
+
+	<pageFooter height="22" splitType="Stretch">
+		<element kind="line" uuid="c1900000-0000-0000-0000-000000000050" x="0" y="1" width="555" height="1"/>
+		<element kind="textField" uuid="c1900000-0000-0000-0000-000000000051" x="0" y="3" width="380" height="9" fontName="SansSerif" fontSize="6.5" blankWhenNull="true">
+			<expression><![CDATA["Impreso por: " + ($P{P_USUARIO} == null ? "" : $P{P_USUARIO}) + " · " + new java.text.SimpleDateFormat("dd/MM/yyyy HH:mm").format(new java.util.Date())]]></expression>
+		</element>
+		<element kind="textField" uuid="c1900000-0000-0000-0000-000000000052" x="0" y="12" width="380" height="9" forecolor="#718096" fontName="SansSerif" fontSize="6.0" blankWhenNull="true">
+			<expression><![CDATA[$P{P_TRAZA}]]></expression>
+		</element>
+		<element kind="textField" uuid="c1900000-0000-0000-0000-000000000053" x="430" y="3" width="95" height="10" fontName="SansSerif" fontSize="7.0" hTextAlign="Right">
+			<expression><![CDATA["Página " + $V{PAGE_NUMBER} + " de"]]></expression>
+		</element>
+		<element kind="textField" uuid="c1900000-0000-0000-0000-000000000054" x="525" y="3" width="30" height="10" fontName="SansSerif" fontSize="7.0" evaluationTime="Report">
+			<expression><![CDATA[" " + $V{PAGE_NUMBER}]]></expression>
+		</element>
+	</pageFooter>
+
+	<summary height="110" splitType="Stretch">
+		<element kind="textField" uuid="c1900000-0000-0000-0000-000000000060" x="0" y="8" width="555" height="14" fontName="SansSerif" fontSize="7.5" textAdjust="StretchHeight" blankWhenNull="true">
+			<printWhenExpression><![CDATA[$P{P_NOTAS} != null]]></printWhenExpression>
+			<expression><![CDATA["NOTAS: " + $P{P_NOTAS}]]></expression>
+		</element>
+		<!-- Firmas: representante legal y contador general, como el estado financiero publicado de otro FCPC
+		     revisado el 2026-09-09 (ver RPRTCNTB_ACUM_SNFI.jrxml). Nombres y cargos del rubro 250; en blanco se
+		     firma a mano. -->
+		<element kind="line" uuid="c1900000-0000-0000-0000-000000000061" positionType="Float" x="40" y="70" width="200" height="1"/>
+		<element kind="textField" uuid="c1900000-0000-0000-0000-000000000062" positionType="Float" x="40" y="72" width="200" height="11" fontName="SansSerif" fontSize="7.5" bold="true" hTextAlign="Center" blankWhenNull="true">
+			<expression><![CDATA[$P{P_FIRMA1_NOMBRE}]]></expression>
+		</element>
+		<element kind="textField" uuid="c1900000-0000-0000-0000-000000000063" positionType="Float" x="40" y="83" width="200" height="11" fontName="SansSerif" fontSize="7.5" hTextAlign="Center" blankWhenNull="true">
+			<expression><![CDATA[$P{P_FIRMA1_CARGO}]]></expression>
+		</element>
+		<element kind="line" uuid="c1900000-0000-0000-0000-000000000064" positionType="Float" x="315" y="70" width="200" height="1"/>
+		<element kind="textField" uuid="c1900000-0000-0000-0000-000000000065" positionType="Float" x="315" y="72" width="200" height="11" fontName="SansSerif" fontSize="7.5" bold="true" hTextAlign="Center" blankWhenNull="true">
+			<expression><![CDATA[$P{P_FIRMA2_NOMBRE}]]></expression>
+		</element>
+		<element kind="textField" uuid="c1900000-0000-0000-0000-000000000066" positionType="Float" x="315" y="83" width="200" height="11" fontName="SansSerif" fontSize="7.5" hTextAlign="Center" blankWhenNull="true">
+			<expression><![CDATA[$P{P_FIRMA2_CARGO}]]></expression>
+		</element>
+		<element kind="textField" uuid="c1900000-0000-0000-0000-000000000067" positionType="Float" x="315" y="94" width="200" height="11" fontName="SansSerif" fontSize="7.0" hTextAlign="Center">
+			<expression><![CDATA["Reg. CPA N° " + ($P{P_FIRMA2_REGISTRO} == null ? "__________" : $P{P_FIRMA2_REGISTRO})]]></expression>
+		</element>
+	</summary>
+</jasperReport>
