@@ -54,6 +54,12 @@ public interface AbonoCapitalPrestamoService {
      * {@code Σ DTPRCPTL + Σ DTPRSLOT} del préstamo no es igual a su monto ({@code PRSTMNSL}).
      */
     String ERR_ABONO_NO_CUADRA_CON_TABLA = "ABONO_NO_CUADRA_CON_TABLA";
+    /**
+     * 422 - D-048, solo en re-proceso: el préstamo tiene pagos vigentes, o cuotas liquidadas, con
+     * fecha POSTERIOR a la del abono. La re-amortización no puede mover esos pagos; hay que
+     * re-procesar el abono antes que ellos (anularlos, abonar, y volver a aplicarlos).
+     */
+    String ERR_PAGOS_POSTERIORES_AL_ABONO = "PAGOS_POSTERIORES_AL_ABONO";
 
     /**
      * C16b: valor de {@code EVPR.EVPRMDLD} (modalidad del evento) de un abono registrado SIN
@@ -101,6 +107,14 @@ public interface AbonoCapitalPrestamoService {
     SimulacionAbonoCapital simular(Long idPrestamo, double valor, int modalidad) throws Throwable;
 
     /**
+     * D-048: {@link #simular(Long, double, int)} a una fecha. Con {@code reproceso = true} el préstamo
+     * tiene que estar al día a {@code fecha} (cuotas con vencimiento {@code <=} fecha liquidadas con
+     * fecha de pago {@code <=} fecha), no hoy. {@code fecha} null = hoy.
+     */
+    SimulacionAbonoCapital simular(Long idPrestamo, double valor, int modalidad, java.time.LocalDate fecha,
+            boolean reproceso) throws Throwable;
+
+    /**
      * Aplica el abono a capital en UNA transacción: crea el EventoPrestamo, acumula el monto en
      * {@code DTPRSLOT} de la cuota ancla, crea el PagoPrestamo del abono, historiza las cuotas
      * pendientes en CRD.HDTP, las borra de CRD.DTPR, genera la nueva tabla y actualiza el
@@ -120,6 +134,13 @@ public interface AbonoCapitalPrestamoService {
      * marcaría la transacción rollback-only y se llevaría el RECHAZADO.
      */
     String motivoAbonoInviable(Long idPrestamo, double valorTotal, int modalidad);
+
+    /**
+     * D-048: {@link #motivoAbonoInviable(Long, double, int)} a la fecha del abono (la misma con la que
+     * se aplicará) y, con {@code reproceso}, con la regla "al día a esa fecha". {@code fecha} null = hoy.
+     */
+    String motivoAbonoInviable(Long idPrestamo, double valorTotal, int modalidad, java.time.LocalDate fecha,
+            boolean reproceso);
 
     /**
      * Abono a capital 100% con aportes del partícipe, llamada DIRECTA que se aplica en el acto, sin

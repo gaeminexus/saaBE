@@ -33,7 +33,19 @@ public class SolicitudAbonoCapitalConAportes {
     /** C16b: cuota donde se registra el abono sin regenerar tabla; {@code null} = la vigente. */
     private Integer numeroCuota;
 
+    /** D-048: {@code true} = re-proceso; "al día" se evalúa a la fecha del abono (ver
+     * {@link SolicitudAbonoCapital#getReproceso()}). */
+    private Boolean reproceso;
+
     public SolicitudAbonoCapitalConAportes() {
+    }
+
+    public Boolean getReproceso() {
+        return reproceso;
+    }
+
+    public void setReproceso(Boolean reproceso) {
+        this.reproceso = reproceso;
     }
 
     public Boolean getRegenerarTabla() {

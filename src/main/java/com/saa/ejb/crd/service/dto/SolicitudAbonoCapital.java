@@ -75,7 +75,28 @@ public class SolicitudAbonoCapital {
      */
     private Integer numeroCuota;
 
+    /**
+     * D-048 (cuadre Superintendencia, 2026-10-29). {@code true} = re-proceso de un mes pasado: el
+     * préstamo tiene que estar al día A LA FECHA DEL ABONO ({@link #fecha}; si falta,
+     * {@link #fechaAfectacion}), no hoy. Ver {@code docs/logica-negocio/crd/ABONO-CAPITAL-AL-DIA-A-FECHA.md}.
+     * Con cobro CBCR lo pone {@code procesarCobro} desde su bandera {@code reproceso}.
+     */
+    private Boolean reproceso;
+
     public SolicitudAbonoCapital() {
+    }
+
+    public Boolean getReproceso() {
+        return reproceso;
+    }
+
+    public void setReproceso(Boolean reproceso) {
+        this.reproceso = reproceso;
+    }
+
+    /** {@code true} solo si viene explícitamente {@code reproceso = true}. */
+    public boolean esReproceso() {
+        return Boolean.TRUE.equals(reproceso);
     }
 
     public Boolean getRegenerarTabla() {

@@ -1152,6 +1152,8 @@ public class PrestamoRest {
      * @param idPrestamo Préstamo
      * @param valor      Monto del abono
      * @param modalidad  1 = mantiene la cuota y reduce el plazo; 2 = mantiene el plazo y reduce la cuota
+     * @param fecha      D-048 (opcional, yyyy-MM-dd): fecha del abono; si falta, hoy
+     * @param reproceso  D-048 (opcional): true = "al día" a {@code fecha} (re-proceso de un mes pasado)
      * @return 200 con la SimulacionAbonoCapital
      */
     @GET
@@ -1159,7 +1161,9 @@ public class PrestamoRest {
     @Produces(MediaType.APPLICATION_JSON)
     public Response simularAbonoCapital(@PathParam("idPrestamo") Long idPrestamo,
                                         @QueryParam("valor") Double valor,
-                                        @QueryParam("modalidad") Integer modalidad) {
+                                        @QueryParam("modalidad") Integer modalidad,
+                                        @QueryParam("fecha") String fecha,
+                                        @QueryParam("reproceso") Boolean reproceso) {
         System.out.println("LLEGA AL SERVICIO SIMULAR ABONO CAPITAL - Préstamo: " + idPrestamo
             + " - Valor: " + valor + " - Modalidad: " + modalidad);
 
@@ -1175,10 +1179,19 @@ public class PrestamoRest {
             return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
                 "Debe indicar la modalidad (1 o 2)", null);
         }
+        java.time.LocalDate fechaAbono = null;
+        if (fecha != null && !fecha.trim().isEmpty()) {
+            try {
+                fechaAbono = java.time.LocalDate.parse(fecha.trim());
+            } catch (Exception e) {
+                return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
+                    "La fecha debe tener el formato yyyy-MM-dd", null);
+            }
+        }
 
         try {
-            SimulacionAbonoCapital simulacion =
-                abonoCapitalPrestamoService.simular(idPrestamo, valor, modalidad);
+            SimulacionAbonoCapital simulacion = abonoCapitalPrestamoService.simular(idPrestamo, valor, modalidad,
+                fechaAbono, Boolean.TRUE.equals(reproceso));
 
             Map<String, Object> cuerpo = new LinkedHashMap<>();
             cuerpo.put("exito", Boolean.TRUE);

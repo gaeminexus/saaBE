@@ -602,6 +602,9 @@ Validaciones:
    cuotas PARCIAL(6) → 422 `"El préstamo tiene cuotas vencidas o parciales; regularícelas antes
    de abonar a capital"`. (Evita re-amortizar sobre base sucia y garantiza que las cuotas a
    historizar no tengan `PagoPrestamo` asociados.)
+   **Re-proceso (D-048, 2026-10-29):** con `reproceso: true` (cobro CBCR procesado en modo re-proceso, abono con
+   aportes o simulación con `reproceso=true`) la regla se evalúa **a la fecha del abono**, no con el estado de hoy, y
+   las cuotas futuras con pagos anticipados se re-amortizan en el lugar. Ver `ABONO-CAPITAL-AL-DIA-A-FECHA.md`.
 4. `saldoCapitalPendiente` = Σ `calcularSaldosRealesCuota(c).saldoCapital` de las cuotas
    pendientes. `valor < saldoCapitalPendiente − 0.01`, si no → 422 `"El abono cubre todo el
    capital; use la precancelación"`.
