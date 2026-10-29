@@ -81,8 +81,11 @@ Servicio central: `EstadoCierreService` (`cnt`). Todo "¿está cerrado?" pasa po
 | POST | `/asnt/anular/{idAsiento}?usuario&motivo&fechaReverso` | Anulación manual con la regla del punto 3 |
 | GET | `/prdo/bitacora/{idEmpresa}?tipo=CONTABLE\|CARTERA` | Bitácora `CNT.HCPR` de la empresa, la más reciente primero (solo lectura; `tipo` opcional). Rama `cuadre/c17-fe-soporte`, para la pantalla de cierre de períodos del frontend |
 
-Permisos de las pantallas (saaFE `cuadre/c17-pantallas-cierres`): nodos 1558–1561 de `SCP.PJRQ`, script
-`docs/logica-negocio/seguridad/sql/C17-FE-01-permisos-cierres.sql` (sin correr).
+| GET | `/prdo/controlCierre/{idEmpresa}/{anio}/{mes}` | Semáforo de controles de cierre (solo lectura). Ver `CONTROL-CIERRE-MES.md` |
+
+Permisos de las pantallas (saaFE `main` desde el pase a producción): nodos 1558–1561 de `SCP.PJRQ`, script
+`docs/logica-negocio/seguridad/sql/C17-FE-01-permisos-cierres.sql`, más el 1412 (CIERRE DE CARTERA) que ya
+existía. Qué asignar a cada rol: `CONTROL-CIERRE-MES.md` §6.
 
 Errores (prefijo del mensaje): `PERIODO_CERRADO`, `CARTERA_CERRADA`, `REPORTE_MES_NO_CERRADO`,
 `CIERRE_FUERA_DE_ORDEN`. `/cbcr`, `/prst` y `/ejrc` los responden 400; `/prdo/cerrar|reabrir|estado` y

@@ -170,6 +170,28 @@ public class PeriodoRest {
         }
     }
 
+    @EJB
+    private com.saa.ejb.cnt.service.ControlCierreService controlCierreService;
+
+    /**
+     * GET /prdo/controlCierre/{idEmpresa}/{anio}/{mes} — semáforo de controles de cierre del mes (pase a
+     * producción B-1..B-3): cuentas puente D-024, ecuación contable, cartera vs contabilidad por grupo, bancos
+     * vs extracto, asientos descuadrados o en borrador y cuadratura B17 ↔ G. Lista de
+     * {grupo, codigo, descripcion, valor, esperado, diferencia, estado OK|ADVERTENCIA|ERROR, detalle}. Solo
+     * lectura; no bloquea el cierre. docs/logica-negocio/cnt/CONTROL-CIERRE-MES.md.
+     */
+    @GET
+    @Path("/controlCierre/{idEmpresa}/{anio}/{mes}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response controlCierre(@PathParam("idEmpresa") Long idEmpresa, @PathParam("anio") Long anio,
+            @PathParam("mes") Long mes) {
+        try {
+            return Response.ok(controlCierreService.controlar(idEmpresa, anio, mes), MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return respuestaCierre(e, "Error al consultar los controles de cierre: ");
+        }
+    }
+
     /** Errores de negocio de cierre (IncomeException) son 400 con el mensaje; lo inesperado, 500. */
     private Response respuestaCierre(Throwable e, String prefijo) {
         boolean negocio = e instanceof com.saa.basico.util.IncomeException;
