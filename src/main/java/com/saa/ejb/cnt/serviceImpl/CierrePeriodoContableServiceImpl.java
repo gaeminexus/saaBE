@@ -220,4 +220,20 @@ public class CierrePeriodoContableServiceImpl implements CierrePeriodoContableSe
 		h.setFueraDeOrden(fueraDeOrden ? 1L : 0L);
 		em.persist(h);
 	}
+
+	@Override
+	public List<HistorialCierrePeriodo> listarBitacora(Long idEmpresa, String tipo) throws Throwable {
+		if (idEmpresa == null) {
+			throw new IncomeException("idEmpresa es obligatorio.");
+		}
+		boolean conTipo = tipo != null && !tipo.trim().isEmpty();
+		jakarta.persistence.TypedQuery<HistorialCierrePeriodo> q = em.createQuery(
+				"select h from HistorialCierrePeriodo h where h.idEmpresa = :e"
+						+ (conTipo ? " and h.tipo = :t" : "") + " order by h.fecha desc, h.codigo desc",
+				HistorialCierrePeriodo.class).setParameter("e", idEmpresa);
+		if (conTipo) {
+			q.setParameter("t", tipo.trim().toUpperCase());
+		}
+		return q.getResultList();
+	}
 }

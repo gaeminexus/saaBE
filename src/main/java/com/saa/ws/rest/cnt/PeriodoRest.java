@@ -154,6 +154,22 @@ public class PeriodoRest {
         }
     }
 
+    /**
+     * GET /prdo/bitacora/{idEmpresa}?tipo=CONTABLE|CARTERA — bitácora de cierres y reaperturas (CNT.HCPR) de la
+     * empresa, de la más reciente a la más antigua. Solo lectura (la muestra la pantalla de cierre de períodos
+     * del frontend). {@code tipo} es opcional; sin él devuelve contable y cartera.
+     */
+    @GET
+    @Path("/bitacora/{idEmpresa}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response bitacora(@PathParam("idEmpresa") Long idEmpresa, @jakarta.ws.rs.QueryParam("tipo") String tipo) {
+        try {
+            return Response.ok(cierrePeriodoContableService.listarBitacora(idEmpresa, tipo), MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return respuestaCierre(e, "Error al consultar la bitácora de cierres: ");
+        }
+    }
+
     /** Errores de negocio de cierre (IncomeException) son 400 con el mensaje; lo inesperado, 500. */
     private Response respuestaCierre(Throwable e, String prefijo) {
         boolean negocio = e instanceof com.saa.basico.util.IncomeException;

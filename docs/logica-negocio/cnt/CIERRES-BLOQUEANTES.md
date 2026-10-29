@@ -79,6 +79,10 @@ Servicio central: `EstadoCierreService` (`cnt`). Todo "¿está cerrado?" pasa po
 | POST | `/cierrecartera/reabrir?idEmpresa&anio&mes&usuario&ip&motivo` | Reapertura de cartera = reverso de la corrida EJECUTADA del mes |
 | POST | `/cierrecartera/reversar/{idCorrida}` | (existente) ahora es una reapertura: motivo obligatorio, mismas reglas, bitácora |
 | POST | `/asnt/anular/{idAsiento}?usuario&motivo&fechaReverso` | Anulación manual con la regla del punto 3 |
+| GET | `/prdo/bitacora/{idEmpresa}?tipo=CONTABLE\|CARTERA` | Bitácora `CNT.HCPR` de la empresa, la más reciente primero (solo lectura; `tipo` opcional). Rama `cuadre/c17-fe-soporte`, para la pantalla de cierre de períodos del frontend |
+
+Permisos de las pantallas (saaFE `cuadre/c17-pantallas-cierres`): nodos 1558–1561 de `SCP.PJRQ`, script
+`docs/logica-negocio/seguridad/sql/C17-FE-01-permisos-cierres.sql` (sin correr).
 
 Errores (prefijo del mensaje): `PERIODO_CERRADO`, `CARTERA_CERRADA`, `REPORTE_MES_NO_CERRADO`,
 `CIERRE_FUERA_DE_ORDEN`. `/cbcr`, `/prst` y `/ejrc` los responden 400; `/prdo/cerrar|reabrir|estado` y
