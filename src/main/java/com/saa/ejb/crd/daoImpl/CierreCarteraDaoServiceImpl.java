@@ -127,14 +127,19 @@ public class CierreCarteraDaoServiceImpl implements CierreCarteraDaoService {
 
     /**
      * Pagos vigentes agregados por cuota; al corte, solo los de fecha {@code <= corte} y con el
-     * capital de la regla de la cuadratura C14 ({@code PGPRSLOT} si > 0, si no {@code PGPRCPPG}).
+     * capital de la regla de la cuadratura C14 ({@code PGPRSLOT} si > 0, si no {@code PGPRCPPG}),
+     * <b>salvo los pagos de abono a capital</b> (C14b, {@code PGPRTPOO = ABONO_CAPITAL}): su
+     * {@code PGPRSLOT} es una reducción del saldo del préstamo que la tabla ya refleja (re-amortizada,
+     * o sin regenerar en C16b, donde {@code Σ DTPRCPTL + Σ DTPRSLOT = monto}), no capital de la
+     * cuota donde quedó registrado; de esa cuota solo se descuenta su {@code PGPRCPPG} (0 en el abono).
+     * Ver {@link ModoCorteCartera}.
      */
     private static String pagos(LocalDate corte) {
         if (corte == null) {
             return PAGOS_VIGENTES;
         }
         return " (SELECT DTPRCDGO, "
-                + "         SUM(CASE WHEN NVL(PGPRSLOT,0) > 0 THEN PGPRSLOT ELSE NVL(PGPRCPPG,0) END) cap, "
+                + "         SUM(" + ModoCorteCartera.CAPITAL_PAGADO_CUOTA_SQL + ") cap, "
                 + "         SUM(NVL(PGPRINPG,0)) intr, SUM(NVL(PGPRINVP,0)) intv, "
                 + "         SUM(NVL(PGPRMRPG,0)) mora, SUM(NVL(PGPRDSGR,0)) dsgr, "
                 + "         SUM(NVL(PGPRVLSI,0)) segi "

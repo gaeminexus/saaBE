@@ -30,8 +30,10 @@ import com.saa.rubros.TipoCarteraBanda;
  * <li>Préstamo en el universo: {@code PRSTFCHA <= corte}, no anulado (12) ni nunca aprobado
  *     (1 generado, 6 pendiente de aprobación, 7 rechazado).</li>
  * <li>Cuota pagada al corte: {@code DTPRESTD IN (4,7) AND DTPRFCPG <= corte}.</li>
- * <li>Pagado al corte: pagos vigentes con {@code PGPRFCHA <= corte}; capital pagado =
- *     {@code PGPRSLOT} si es mayor que cero, si no {@code PGPRCPPG}.</li>
+ * <li>Pagado al corte: pagos vigentes con {@code PGPRFCHA <= corte}; capital pagado de la cuota =
+ *     {@code PGPRSLOT} si es mayor que cero, si no {@code PGPRCPPG} — salvo el abono a capital
+ *     ({@code PGPRTPOO = ABONO_CAPITAL}), que solo descuenta {@code PGPRCPPG}: ver
+ *     {@link #CAPITAL_PAGADO_CUOTA_SQL} (C14b).</li>
  * <li>Mora al corte: fórmula del proceso diario ({@code calcularMoraCuota}): capital de la cuota
  *     × tasa nominal (9 si falta) / 36000 × días desde el vencimiento, menos la mora pagada al
  *     corte. No lee {@code DTPRMRAA}.</li>
@@ -56,6 +58,23 @@ public final class ModoCorteCartera {
 
     /** Préstamos que nunca formaron cartera: raíz, generado, pendiente, rechazado, anulado. */
     public static final String ESTADOS_FUERA_DE_CARTERA = "0, 1, 6, 7, 12";
+
+    /**
+     * C14b (2026-10-29) — capital que un pago vigente ({@code CRD.PGPR}, columnas sin alias) descuenta
+     * de SU cuota al corte. Regla de la cuadratura C14 ({@code PGPRSLOT} si &gt; 0, si no
+     * {@code PGPRCPPG}: los pagos migrados DEP/MIGRACION traen el capital en "otros"), con una
+     * excepción: el pago de <b>abono a capital</b> ({@code PGPRTPOO = ABONO_CAPITAL}). Su
+     * {@code PGPRSLOT} no es pago de la cuota donde quedó registrado: es una reducción del saldo
+     * por vencer del préstamo que la tabla ya refleja — re-amortizada (abono de siempre) o sin
+     * regenerar (C16b, {@code Σ DTPRCPTL + Σ DTPRSLOT = monto}). Contarlo en la cuota la daba por
+     * pagada (préstamo 8052, cuota 42: capital 891,80, abono 1.293,24 del 13-jun-2025, quedaban sin
+     * vencido los 445,72 impagos). Del abono la cuota solo descuenta {@code PGPRCPPG} (0 en el motor).
+     * La contabilidad no cambia: el asiento del abono sigue bandeando {@code PGPRSLOT} contra capital
+     * ({@code ContabilizacionIndividualCreditoService#haberDesdePagos}).
+     */
+    public static final String CAPITAL_PAGADO_CUOTA_SQL =
+            " CASE WHEN PGPRTPOO = '" + ProcesoPagoPrestamoService.TIPO_ABONO_CAPITAL + "' THEN NVL(PGPRCPPG,0)"
+            + " WHEN NVL(PGPRSLOT,0) > 0 THEN PGPRSLOT ELSE NVL(PGPRCPPG,0) END ";
 
     private ModoCorteCartera() {
     }

@@ -173,6 +173,10 @@ cuadre Superintendencia, préstamo 8052 (`cuadreSuper/03-trabajo/meses/2025-06/s
 - **Sin DDL:** en `CRD.DCBC.DCBCMDLD` se guarda `0` = sin regenerar en la cuota vigente y `-N` = sin
   regenerar en la cuota N. Las modalidades 1 y 2 siguen siendo positivas.
 - Por defecto (`regenerarTabla` ausente o `true`) el comportamiento no cambia.
+- **Cartera al corte (C14b, 2026-10-29):** el `PGPRSLOT` del pago `ABONO_CAPITAL` **no** cuenta como capital
+  pagado de la cuota donde se registra (cierre, G48 y CCPM al corte); la cuota solo descuenta su
+  `PGPRCPPG`. El abono ya está en el capital de la tabla, como reducción del saldo por vencer. En 8052 la cuota 42
+  queda con sus 445,72 vencidos. Detalle: `CIERRE-CARTERA-A-FECHA-DE-CORTE.md` §1.1.1.
 
 **Ejemplo, préstamo 8052 (D-030):** tabla 43–83 re-amortizada por Delta desde ago-2025; el abono de
 1.289,54 se registra en la cuota 42 con el dinero del 13-jun-2025 (Pacífico ahorros, cuenta 418, NUT

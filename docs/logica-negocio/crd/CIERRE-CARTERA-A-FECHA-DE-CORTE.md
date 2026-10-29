@@ -26,7 +26,8 @@ con `corte`), del ⑦ (`selectCuotasProvisionablesAlCorte`, `selectDatosPagosVig
 - cuota liquidada al corte: `DTPRESTD IN (4,7)` **y** `DTPRFCPG <= corte` (pagada después o sin fecha = impaga);
 - pagado al corte: pagos vigentes con `PGPRFCHA <= corte`; capital = `PGPRSLOT` si > 0, si no `PGPRCPPG`
   (regla de la cuadratura; ojo, en la base hay 3.394 pagos DEP y 506 MIGRACION con los dos campos > 0: **sumarlos** como
-  pedía el menor 6 duplicaría capital, por eso no se hizo);
+  pedía el menor 6 duplicaría capital, por eso no se hizo); **excepción C14b** (2026-10-29): el pago de abono a capital
+  (`PGPRTPOO = 'ABONO_CAPITAL'`) solo descuenta `PGPRCPPG` de su cuota — ver §1.1.1;
 - mora: fórmula del proceso diario (`calcularMoraCuota`: capital de la cuota × tasa nominal (9 si falta) / 36000 × días
   desde el vencimiento) menos la mora pagada al corte — no lee `DTPRMRAA`;
 - condonación de interés de plazo vencido (D25/D27): solo si la declaración ya existía al corte.
@@ -39,6 +40,45 @@ regla del SAA del 4-sep-2026 (el día del vencimiento aún es por vencer). Solo 
 
 Verificado contra la base (corte 31-may-2025): 1.594 operaciones, por vencer 20.160.441,26, vencido 1.337.020,68, interés
 vencido 955.703,64 = módulo (b) de la cuadratura C14 al centavo.
+
+### 1.1.1 El abono a capital no paga la cuota donde se registra (C14b, 2026-10-29)
+
+**Problema.** El abono a capital graba su valor en `DTPRSLOT` de una cuota y en `PGPRSLOT` de un pago tipo
+`ABONO_CAPITAL` (con `PGPRCPPG = 0`). La regla de la cuadratura (`PGPRSLOT` si > 0) lo contaba como capital pagado de esa
+cuota. Caso real: préstamo 8052, cuota 42 (vence 31-may-2025): capital 891,80, pago migrado 446,08 y abono C16b de
+1.293,24 (cobro 303, 13-jun-2025). La cuota queda PARCIAL con **445,72** impagos, pero el cierre de junio la veía pagada
+(446,08 + 1.293,24 > 891,80) y dejaba esos 445,72 sin vencido ni provisión.
+
+**Por qué el abono no es pago de la cuota.** En los dos caminos la tabla ya refleja el abono: el de siempre
+re-amortiza las cuotas pendientes sobre el saldo menos el abono (y lo ancla en la última cuota pagada); el C16b exige
+`Σ DTPRCPTL + Σ DTPRSLOT = monto`. El abono reduce el saldo por vencer del préstamo, y ese saldo ya está en el capital
+de las cuotas; contarlo además en la cuota ancla lo descuenta dos veces.
+
+**Por qué se distingue por el tipo de pago.** La regla `PGPRSLOT` si > 0 existe por los pagos migrados (DEP, MIGRACION:
+3.392 y 503 vigentes con los dos campos > 0) y no se toca para ellos. `PGPRTPOO = 'ABONO_CAPITAL'` lo graba solo el
+motor de abonos (los dos caminos), así que es más sólido que comparar `PGPRSLOT` con el saldo de la cuota. La
+precancelación (`PRECANCELACION`) no se cambió: su capital futuro corresponde a cuotas que quedan en 7 y se liquidan
+por estado, y en el caso extremo la ancla es una de esas cuotas.
+
+**Regla (`ModoCorteCartera.CAPITAL_PAGADO_CUOTA_SQL`, usada por `CierreCarteraDaoServiceImpl.pagos(corte)`):**
+
+```sql
+CASE WHEN PGPRTPOO = 'ABONO_CAPITAL' THEN NVL(PGPRCPPG,0)
+     WHEN NVL(PGPRSLOT,0) > 0 THEN PGPRSLOT ELSE NVL(PGPRCPPG,0) END
+```
+
+Alcance: todo lo que lee la cartera al corte por ese fragmento: cierre (①, ②, ①.1, ③, ⑥, ⑨, ⑩), `CarteraAlCorteService`
+(⑧, G48 al corte, CCPM al corte). No cambian: el modo normal (ya usaba solo `PGPRCPPG`), el saldo de cuota del motor
+(`calcularSaldosRealesCuota`, sin `saldoOtros`), la mora (`calcularMoraCuota`, capital de la cuota), la provisión de
+intereses (no lee capital), los totales por préstamo de plazo vencido (suman el abono al capital cobrado del préstamo,
+que es correcto) ni la contabilidad del abono (sigue bandeando `PGPRSLOT` contra capital).
+
+**Medido en la base (29-oct-2026), cortes fin de mes may-2025 → oct-2026:** la única cuota que cambia es **8052 #42**,
+pendiente 0 → **445,72 vencidos**, en todos los cortes desde jun-2025. Pagos `ABONO_CAPITAL` vigentes con fecha ≤
+30-jun-2025: 2 (7497 #23, liquidada el 30-jun, sin efecto; 8052 #42). Los otros 7 abonos (ago–oct 2026) caen en cuotas
+liquidadas o tienen fecha posterior al corte en que su cuota está pendiente (SELECT:
+`sql/C14B_ABONO_CAPITAL_NO_PAGA_CUOTA.sql`). La cuadratura del proyecto
+(`cuadreSuper/03-trabajo/cartera/sql/01-cuadratura-cartera.sql`, CTE `PG`) usa la regla vieja: alinearla igual.
 
 ### 1.2 Sub-procesos del cierre en modo al corte
 

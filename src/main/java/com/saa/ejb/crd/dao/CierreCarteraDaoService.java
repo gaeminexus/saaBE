@@ -212,7 +212,8 @@ public interface CierreCarteraDaoService {
     // Con corte == null son idénticas a las de arriba (el comportamiento normal no cambia).
     // Con corte: préstamos aprobados con PRSTFCHA <= corte (no 0/1/6/7/12), cuotas no
     // liquidadas AL CORTE, pagos vigentes con PGPRFCHA <= corte (capital = PGPRSLOT si > 0, si
-    // no PGPRCPPG) y mora con la fórmula del proceso diario a la fecha de corte.
+    // no PGPRCPPG; el abono a capital solo PGPRCPPG — C14b, ModoCorteCartera.CAPITAL_PAGADO_CUOTA_SQL)
+    // y mora con la fórmula del proceso diario a la fecha de corte.
     // =====================================================================
 
     /** {@link #selectCapitalPorProductoYVencimiento(Long)} al corte. */
