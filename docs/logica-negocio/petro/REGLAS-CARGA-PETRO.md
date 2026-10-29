@@ -484,7 +484,7 @@ tratamientos, según **si se sabe a quién pertenece el dinero y si esa persona 
 | **Sin contrato ACTIVO** | **ABORTA** — dato faltante | `distribuirAportePorDevengo` |
 | Sin `HistorialSueldo` activo (estado 99) | **NOVEDAD** — se sabe quién es, falta decidir la cuenta | `aplicarAporteAH` |
 | `HistorialSueldo` activo con jubilación y cesantía esperadas en $0 | **NOVEDAD** — ídem | `aplicarAporteAH` |
-| Contrato activo, pero ninguna `VigenciaContrato` cubre el mes (o vigencia en $0) | **ADVERTENCIA** — el sistema ya sabe que esa persona no debía aportar ese mes | `distribuirAportePorDevengo` |
+| Contrato activo, pero ninguna `VigenciaContrato` cubre el mes (o vigencia en $0) | **NOVEDAD BLOQUEANTE** desde el 2026-09-03 (`VALIDACION-TOPE-AFECTACION-MANUAL.md` §12): el sobrante queda como pozo para «Afectar cuotas» (AVPC) y la carga no procesa hasta repartirlo; hasta esa fecha era solo advertencia. Primer caso real: carga 492, rol 1625 (2026-10-29) | `distribuirAportePorDevengo` |
 | Monto recibido = $0 | Sin cambios — no hay plata que perder | `aplicarAporteAH` |
 
 **La NOVEDAD reusa el mismo mecanismo del excedente Petro a un aporte (§3.6b):**
