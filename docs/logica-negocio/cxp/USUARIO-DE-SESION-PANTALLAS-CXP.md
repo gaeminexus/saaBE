@@ -34,3 +34,28 @@ El backend no cambia.
 
 El usuario que vea el error cierra sesión y vuelve a ingresar en esa misma pestaña. No abre el módulo en
 una pestaña nueva.
+
+## 5. Hecho y hallazgos (2026-10-28)
+
+**Hecho:** saaFE `6b88b20`. Se agregó `shared/utils/usuario-sesion.util.ts` (`idUsuarioSesion()`) y se aplicó a
+las cinco pantallas. Se compiló con `ng build`. Falta desplegar.
+
+**Hallazgos del barrido (sin tocar).** Hoy no fallan, porque esos endpoints no validan al usuario, pero
+grabarían un usuario falso.
+
+- Relleno `'SISTEMA'`/`'sistema'`:
+  - `cxc` anticipo:582;
+  - `cxc` liquidaciones:1118;
+  - `cxp` consulta-documentos:596;
+  - `tsr` titulares-v2:1315.
+- Relleno con 0, con el getter `+(… || '0')`:
+  - `cxp`: cruce-anticipo-proveedor, cruce-nota-credito, devolucion-anticipo, historial-abonos-factura,
+    pagos-transferencia, solicitud-pago;
+  - `tsr`: anticipos-clientes, anticipos-proveedores, seguimiento-anticipos, archivo-banco, confirmacion,
+    consulta, seguimiento, registro-egreso, registro-ingreso;
+  - `cxc`: abonos-factura, cruce-anticipo-cliente, registrar-cobro.
+- `{ codigo: 0 }` en el `catch`: `cxc` facturas-ingreso, liquidaciones, notas-credito, notas-debito.
+- `tsr` cierre-caja:197 lee **solo** `localStorage`.
+
+**Regla para el futuro:** cuando un backend empiece a exigir el usuario real (como hizo `b1191051`), su pantalla
+pasa primero a `idUsuarioSesion()`.
