@@ -471,8 +471,31 @@ no tiene contrato activo hoy** (con contrato activo, el flujo es el de siempre):
    por la migración). Ejemplos: entidad 3796 (rol 32044, contrato 2807), 3802 (4480, 2813), 3826
    (2811, 2837), 4802 (43414, 3811), 5054 (8880, 4063), 5324 (8802, 4333). En todas, el último
    aporte anterior es de may-2025 y su tipo coincide con el de la primera vigencia (11, o 9 en
-   4802 y 5324). Se detecta sin consultas extra cuando el lote de esperados ya trae el mes; si no,
-   se leen las vigencias del contrato una vez.
+   4802 y 5324).
+   **Cómo se detecta** (corregido en el commit `C4 (D-022 1b)`, después de la corrida de las 20:27):
+   - Se leen directamente las vigencias del contrato activo. El caso 1b aplica si **ninguna**
+     vigencia activa 9/11 toca el mes (`VGCNFCIN <=` último día y `VGCNFCFN` nula o `>=` primer día).
+     Entonces el AH se aplica acá y no se entra al bucle de devengo.
+   - La versión `2af81e0e` miraba primero el lote de esperados (`esperadoEnLotePorFilial`). Ese lote
+     pone la clave de **todos** los meses del rango con 0,0 cuando ninguna vigencia los cubre, así
+     que "hay clave" no significa "hay vigencia". Con eso, el caso nunca se activaba.
+   - **Red de seguridad:** en modo reproceso, si el bucle de devengo llega al tope de 60 meses con
+     dinero sin colocar y el partícipe tiene contrato (activo o vigente al corte), lo que sobra va
+     completo al mes de la carga con la misma regla de tipo y la misma marca. Queda una línea
+     `D-022 1b:` en el log por entidad, en vez de la novedad bloqueante. Ojo: por el defecto
+     descrito abajo, esto también atrapa un sobrante que debió anticiparse a meses siguientes; queda
+     en el mes de la carga y se ve en `detalleAportesSinVigenciaDelMes` como "red de seguridad".
+
+   **Segundo defecto, descrito y no corregido (afecta también a la carga normal):**
+   `aplicarPagosArchivoPetro` arma el lote con `esperadoEnLotePorFilial(filial, 2025-06-01, mesCarga)`,
+   es decir, solo hasta el mes de la carga. Para meses **posteriores** (el anticipo D4) no hay clave.
+   Si la entidad está en `entidadesCubiertas`, `esperadoMensual` devuelve 0,0 sin consultar, así que
+   a un partícipe cubierto por el lote nunca se le anticipa nada: su excedente termina en la novedad
+   del tope (o, en reproceso, en la red de seguridad). Por eso, en el rol 32044, julio en adelante
+   también daba 0 aunque la vigencia empieza el 12-jul.
+   Corregirlo implica extender el rango del lote hasta `mesCarga + TOPE_MESES_DEVENGO`, o devolver
+   null fuera del rango para que caiga al caché. Cambia el resultado del flujo normal, así que queda
+   para una decisión aparte.
    **Regla de tipo** (puntos 1 y 1b; `tipoAporteSinVigenciaDelMes`):
    1. el de la última vigencia ACTIVA anterior al mes;
    2. si no hay, el de la primera vigencia ACTIVA posterior;

@@ -6268,6 +6268,31 @@ private int distribuirAportePorDevengo(Entidad entidad, double montoRecibido,
 				+ ": no tiene contrato ACTIVO. Créelo antes de procesar la carga.");
 		}
 
+		// MODO REPROCESO (D-022 1b, red de seguridad — REPROCESO-CARGA-PETRO.md §4.10): si el
+		// reparto por devengo no pudo colocar el dinero en 60 meses, lo que sobra va completo al mes
+		// de la carga con la regla de tipo de D-022, en vez de la novedad bloqueante. La detección
+		// directa (resolverContratoAlCorteReproceso) debería haberlo atajado antes; esto cubre lo
+		// que se le escape (p. ej. una vigencia que toca el mes pero no cubre su último día).
+		if (modoReproceso) {
+			List<com.saa.model.crd.VigenciaContrato> vigenciasRed = vigenciaContratoDaoService.selectByContrato(contratoActivo.getCodigo());
+			String[] origenTipo = new String[1];
+			Long idTipoRed = tipoAporteSinVigenciaDelMes(vigenciasRed != null ? vigenciasRed : new ArrayList<>(),
+				mesCarga, entidad, origenTipo);
+			double montoRed = Math.round(disponible * 100.0) / 100.0;
+			com.saa.model.crd.TipoAporte tipoAporteRed = tipoAporteDaoService.selectById(idTipoRed, "TipoAporte");
+			Aporte aporteRed = registrarAporteMesCargaD022(entidad, tipoAporteRed, montoRed, cargaArchivo, participe,
+				mesCarga, MARCA_D022_SIN_VIGENCIA);
+			montoAportesSinVigenciaDelMes += montoRed;
+			aportesSinVigenciaDelMes.add("Entidad " + entidad.getCodigo() + " (rol " + participe.getCodigoPetro() + "): $"
+				+ String.format("%,.2f", montoRed) + " a " + tipoAporteRed.getNombre() + " (" + origenTipo[0] + "; APRT "
+				+ aporteRed.getCodigo() + ", contrato " + contratoActivo.getCodigo() + ", red de seguridad del tope de "
+				+ TOPE_MESES_DEVENGO + " meses)");
+			System.out.println("   D-022 1b: entidad " + entidad.getCodigo() + " (rol " + participe.getCodigoPetro()
+				+ ") - red de seguridad: $" + montoRed + " a " + tipoAporteRed.getNombre() + " con devengo " + mesCarga
+				+ " (" + origenTipo[0] + ")");
+			return aportesCreados + 1;
+		}
+
 		// CORRECCIÓN 2026-09-03, VALIDACION-TOPE-AFECTACION-MANUAL.md §12, decisión del
 		// usuario: "si hay dinero no repartido, debe decir exactamente qué dinero no se ha
 		// repartido y permitirle al usuario repartir ese dinero dentro del partícipe que tenga
@@ -6472,6 +6497,26 @@ private static boolean vigenciaCubreMes(List<com.saa.model.crd.VigenciaContrato>
 	return false;
 }
 
+/**
+ * D-022 1b: ¿alguna vigencia ACTIVA de jubilación/cesantía TOCA el mes de la carga
+ * ({@code VGCNFCIN <= último día del mes} y ({@code VGCNFCFN} nula o {@code >= primer día del mes}))?
+ * Si ninguna lo toca, el AH del mes no tiene esperado posible y va completo al mes de la carga.
+ */
+private static boolean vigenciaTocaMes(List<com.saa.model.crd.VigenciaContrato> vigencias, java.time.LocalDate mesCarga) {
+	java.time.LocalDate primerDia = mesCarga.withDayOfMonth(1);
+	java.time.LocalDate ultimoDiaMes = java.time.YearMonth.from(mesCarga).atEndOfMonth();
+	for (com.saa.model.crd.VigenciaContrato vigencia : vigencias) {
+		if (!esVigenciaAporteActiva(vigencia) || vigencia.getFechaInicio() == null) {
+			continue;
+		}
+		if (!vigencia.getFechaInicio().isAfter(ultimoDiaMes)
+				&& (vigencia.getFechaFin() == null || !vigencia.getFechaFin().isBefore(primerDia))) {
+			return true;
+		}
+	}
+	return false;
+}
+
 private static boolean esVigenciaAporteActiva(com.saa.model.crd.VigenciaContrato vigencia) {
 	return vigencia != null && vigencia.getTipoAporte() != null
 		&& ORDEN_TIPOS_APORTE.contains(vigencia.getTipoAporte().getCodigo())
@@ -6543,21 +6588,16 @@ private Integer resolverContratoAlCorteReproceso(Entidad entidad, double montoRe
 		Map<String, Double> esperadoEnLote) throws Throwable {
 	Contrato contratoActivo = contratoDaoService.selectActivoPorEntidad(entidad.getCodigo());
 	if (contratoActivo != null) {
-		// D-022 vigencias (2026-10-28): contrato activo hoy. Si el lote ya trae el esperado del mes
-		// para algún tipo, hay vigencia que lo cubre: flujo de siempre, sin consultar nada más.
-		if (esperadoEnLote != null) {
-			for (Long idTipoLote : ORDEN_TIPOS_APORTE) {
-				if (esperadoEnLote.get(entidad.getCodigo() + "|" + idTipoLote + "|" + mesCarga) != null) {
-					return null;
-				}
-			}
-		}
+		// D-022 1b (2026-10-28): contrato activo hoy. Se decide DIRECTAMENTE con las vigencias del
+		// contrato, NO con el lote de esperados: esperadoEnLotePorFilial pone la clave de cada mes del
+		// rango con 0.0 cuando ninguna vigencia lo cubre (no la omite), así que "hay clave" no
+		// significa "hay vigencia" — ese fue el defecto de 2af81e0e (corrida de las 20:27).
 		List<com.saa.model.crd.VigenciaContrato> vigenciasActivo = vigenciaContratoDaoService.selectByContrato(contratoActivo.getCodigo());
 		if (vigenciasActivo == null) {
 			vigenciasActivo = new ArrayList<>();
 		}
-		if (vigenciaCubreMes(vigenciasActivo, mesCarga)) {
-			return null; // flujo de siempre
+		if (vigenciaTocaMes(vigenciasActivo, mesCarga)) {
+			return null; // flujo de siempre (si aun así no coloca todo, la red de seguridad del tope lo toma)
 		}
 		// Ninguna vigencia del contrato activo cubre el mes (p. ej. contrato y primera vigencia
 		// desde jul-2025 por la migración): el AH va completo al mes de la carga.
