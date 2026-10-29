@@ -436,7 +436,9 @@ public class GeneracionG48ServiceImpl implements GeneracionG48Service {
                 g48.setProvisionRequeridaOriginal(provisionRequeridaOriginal);
                 g48.setProvisionConstituida(provisionConstituida);
                 g48.setTipoSistemaAmortizacion("FR");
-                g48.setCuotaCredito(cuota.getCuota() != null ? cuota.getCuota() : 0.0);
+                // D-039 (manual §3.4 campo 20): solo el CAPITAL de la cuota del mes (grupo 1); una operación
+                // del grupo 2 (cuota vencida de meses anteriores) no suma vencidos anteriores: 0.
+                g48.setCuotaCredito(esGrupo1 && cuota.getCapital() != null ? cuota.getCapital() : 0.0);
                 // El dividendo es la cuota a cobrar SIN mora: desde que existe el proceso diario
                 // de mora (ProcesoMoraPrestamoService) DTPRTTLL la incluye, y este reporte ya
                 // lleva la mora en su propia columna (mapaMoraGrupo2). Restarla mantiene el G48
@@ -527,7 +529,10 @@ public class GeneracionG48ServiceImpl implements GeneracionG48Service {
             g48.setProvisionRequeridaOriginal(op.getProvisionRequerida());
             g48.setProvisionConstituida(op.getProvisionConstituida());
             g48.setTipoSistemaAmortizacion("FR");
-            g48.setCuotaCredito(cuota.getCuota() != null ? cuota.getCuota() : 0.0);
+            // D-039 (manual §3.4 campo 20): "cuota del crédito" = solo el CAPITAL del dividendo del mes de
+            // reporte, sin vencidos de meses anteriores ni intereses (antes: DTPRCTAA, capital + interés, de la
+            // cuota ancla). Sin cuota que venza en el mes (plazo vencido) es 0.
+            g48.setCuotaCredito(op.getCapitalCuotasDelMes());
             g48.setDividendo(dividendoSinMora(cuota));
             if (cuota.getFechaVencimiento() != null) {
                 g48.setFechaExigibilidad(cuota.getFechaVencimiento().toLocalDate());

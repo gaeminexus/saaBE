@@ -266,8 +266,13 @@ public class AporteServiceImpl implements AporteService {
     }
 
     @Override
-    public List<Object[]> selectTiposAportePorEntidad(java.time.LocalDateTime fechaCorte) throws Throwable {
-        return aporteDaoService.selectTiposAportePorEntidad(fechaCorte);
+    public List<Object[]> selectSumaPorGrupoPrestacionPorEntidad(java.time.LocalDateTime fechaCorte) throws Throwable {
+        return aporteDaoService.selectSumaPorGrupoPrestacionPorEntidad(fechaCorte);
+    }
+
+    @Override
+    public List<Object[]> selectAportePersonalDelPeriodoPorEntidad(java.time.LocalDate periodo) throws Throwable {
+        return aporteDaoService.selectAportePersonalDelPeriodoPorEntidad(periodo);
     }
 
     @Override
@@ -285,13 +290,18 @@ public class AporteServiceImpl implements AporteService {
     // ============================================================
 
     @Override
-    public Long selectCountImposicionesPersonalesPorEntidad(Long codigoEntidad) throws Throwable {
-        return aporteDaoService.selectCountImposicionesPersonalesPorEntidad(codigoEntidad);
+    public Long selectCountImposicionesPersonalesPorEntidad(Long codigoEntidad, java.time.LocalDate corte) throws Throwable {
+        return aporteDaoService.selectCountImposicionesPersonalesPorEntidad(codigoEntidad, corte);
     }
 
     @Override
-    public Long selectCountImposicionesPatronalesPorEntidad(Long codigoEntidad) throws Throwable {
-        return aporteDaoService.selectCountImposicionesPatronalesPorEntidad(codigoEntidad);
+    public Long selectCountImposicionesPatronalesPorEntidad(Long codigoEntidad, java.time.LocalDate corte) throws Throwable {
+        return aporteDaoService.selectCountImposicionesPatronalesPorEntidad(codigoEntidad, corte);
+    }
+
+    @Override
+    public Object[] selectLiquidacionMesPorEntidad(Long codigoEntidad, java.time.LocalDate desde, java.time.LocalDate hasta) throws Throwable {
+        return aporteDaoService.selectLiquidacionMesPorEntidad(codigoEntidad, desde, hasta);
     }
 
     @Override

@@ -100,8 +100,11 @@ public interface AporteService extends EntityService<Aporte> {
     /** G44 ex-jubilados — SUM de aportes tipo 23 en el rango del mes (BETWEEN fechaInicio AND fechaFin) */
     List<Object[]> selectSumaAportesTipo23EnRango(LocalDateTime fechaInicio, LocalDateTime fechaFin) throws Throwable;
 
-    /** G42 — Tipo de prestación: Obtiene los códigos de tipoAporte distintos (9, 11) por entidad, fechaTransaccion <= fechaCorte */
-    List<Object[]> selectTiposAportePorEntidad(LocalDateTime fechaCorte) throws Throwable;
+    /** G42 — Tipo de prestación (D-038): saldo al corte por entidad y grupo de prestación (TPAPTPPR J/C): {entidad, grupo, suma} */
+    List<Object[]> selectSumaPorGrupoPrestacionPorEntidad(LocalDateTime fechaCorte) throws Throwable;
+
+    /** G42/G41 (D-038): aportes personales 9/11 &gt; 0 del período efectivo (mes): {entidad, suma} */
+    List<Object[]> selectAportePersonalDelPeriodoPorEntidad(java.time.LocalDate periodo) throws Throwable;
 
     /** G40 — Suma total global de aportes con tipoAporte.codigo = tipoAporte, fechaTransaccion <= fechaCorte */
     Double selectSumaTotalPorTipoAporte(LocalDateTime fechaCorte, Long tipoAporte) throws Throwable;
@@ -123,7 +126,7 @@ public interface AporteService extends EntityService<Aporte> {
      * después, anticipos, ajustes) y una sola fila puede cubrir un mes distinto al de su
      * fecha de caja. Ver {@code PeriodoEfectivoAporteSql}.</p>
      */
-    Long selectCountImposicionesPersonalesPorEntidad(Long codigoEntidad) throws Throwable;
+    Long selectCountImposicionesPersonalesPorEntidad(Long codigoEntidad, java.time.LocalDate corte) throws Throwable;
 
     /**
      * G43 — Imposiciones patronales: tipoAporte.codigo IN (13, 14), valor &gt; 0, para una
@@ -132,7 +135,10 @@ public interface AporteService extends EntityService<Aporte> {
      * <p>Mismo cambio del 2026-08-27 que {@link #selectCountImposicionesPersonalesPorEntidad}:
      * cuenta meses de devengo distintos, no filas.</p>
      */
-    Long selectCountImposicionesPatronalesPorEntidad(Long codigoEntidad) throws Throwable;
+    Long selectCountImposicionesPatronalesPorEntidad(Long codigoEntidad, java.time.LocalDate corte) throws Throwable;
+
+	/** G43 (D-038): movimientos negativos del mes de una entidad: {Date fechaUltimo, Double sumaNegativos, Double sumaPagoPrestamo (APRTTPMV 4)}. */
+	Object[] selectLiquidacionMesPorEntidad(Long codigoEntidad, java.time.LocalDate desde, java.time.LocalDate hasta) throws Throwable;
 
     /**
      * G43 — SUM de aportes con valor < 0, tipoAporte.estado = 1,

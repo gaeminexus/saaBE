@@ -33,18 +33,21 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 	// G43 — Imposiciones personales (tipos 9, 11 con valor > 0)
 	// ---------------------------------------------------------------
 	@Override
-	public Long selectCountImposicionesPersonalesPorEntidad(Long codigoEntidad) throws Throwable {
+	public Long selectCountImposicionesPersonalesPorEntidad(Long codigoEntidad, java.time.LocalDate corte) throws Throwable {
 		// Decisión del usuario (2026-08-27, mismo criterio que G44): cuenta MESES DE DEVENGO
 		// (periodo efectivo), no filas. SQL nativo porque el periodo efectivo usa TRUNC, que
-		// no es JPQL estándar.
+		// no es JPQL estándar. D-038: solo meses hasta el corte (antes contaba también los
+		// aportes posteriores al mes reportado).
 		Query query = em.createNativeQuery(
 			" select count(distinct " + PERIODO_EFECTIVO_SQL + ") " +
 			" from   CRD.APRT a " +
 			" where  a.ENTDCDGO = :codigoEntidad " +
 			"   and  a.TPAPCDGO in (9, 11) " +
 			"   and  a.APRTVLRR > 0 " +
+			"   and  " + PERIODO_EFECTIVO_SQL + " <= :corte " +
 			"   and  " + VIGENTE_SQL);
 		query.setParameter("codigoEntidad", codigoEntidad);
+		query.setParameter("corte", java.sql.Date.valueOf(corte));
 		Object result = query.getSingleResult();
 		return result != null ? ((Number) result).longValue() : 0L;
 	}
@@ -53,19 +56,42 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 	// G43 — Imposiciones patronales (tipos 13, 14 con valor > 0)
 	// ---------------------------------------------------------------
 	@Override
-	public Long selectCountImposicionesPatronalesPorEntidad(Long codigoEntidad) throws Throwable {
+	public Long selectCountImposicionesPatronalesPorEntidad(Long codigoEntidad, java.time.LocalDate corte) throws Throwable {
 		// Decisión del usuario (2026-08-27, mismo criterio que G44): cuenta MESES DE DEVENGO
-		// (periodo efectivo), no filas.
+		// (periodo efectivo), no filas. D-038: solo hasta el corte.
 		Query query = em.createNativeQuery(
 			" select count(distinct " + PERIODO_EFECTIVO_SQL + ") " +
 			" from   CRD.APRT a " +
 			" where  a.ENTDCDGO = :codigoEntidad " +
 			"   and  a.TPAPCDGO in (13, 14) " +
 			"   and  a.APRTVLRR > 0 " +
+			"   and  " + PERIODO_EFECTIVO_SQL + " <= :corte " +
 			"   and  " + VIGENTE_SQL);
 		query.setParameter("codigoEntidad", codigoEntidad);
+		query.setParameter("corte", java.sql.Date.valueOf(corte));
 		Object result = query.getSingleResult();
 		return result != null ? ((Number) result).longValue() : 0L;
+	}
+
+	@Override
+	public Object[] selectLiquidacionMesPorEntidad(Long codigoEntidad, java.time.LocalDate desde,
+			java.time.LocalDate hasta) throws Throwable {
+		// D-038 (G43): la liquidación del cesante son sus movimientos negativos del mes (devolución de la
+		// cuenta y, si hubo, cruce con préstamos, APRTTPMV = 4). Fecha de liquidación = la del último.
+		Query query = em.createNativeQuery(
+			" select max(a.APRTFCTR), sum(a.APRTVLRR), " +
+			"        sum(case when a.APRTTPMV = 4 then a.APRTVLRR else 0 end) " +
+			" from   CRD.APRT a " +
+			" join   CRD.TPAP ta on ta.TPAPCDGO = a.TPAPCDGO " +
+			" where  a.ENTDCDGO = :codigoEntidad " +
+			"   and  ta.TPAPIDST = 1 " +
+			"   and  a.APRTVLRR < 0 " +
+			"   and  " + VIGENTE_SQL +
+			"   and  a.APRTFCTR >= :desde and a.APRTFCTR < :hastaSig ");
+		query.setParameter("codigoEntidad", codigoEntidad);
+		query.setParameter("desde", java.sql.Date.valueOf(desde));
+		query.setParameter("hastaSig", java.sql.Date.valueOf(hasta.plusDays(1)));
+		return (Object[]) query.getSingleResult();
 	}
 
 	// ---------------------------------------------------------------
@@ -903,20 +929,48 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 
 	@Override
 	@SuppressWarnings("unchecked")
-	public List<Object[]> selectTiposAportePorEntidad(java.time.LocalDateTime fechaCorte) throws Throwable {
-		System.out.println("AporteDaoServiceImpl.selectTiposAportePorEntidad fechaCorte: " + fechaCorte);
-		Query query = em.createQuery(
-			" select   a.entidad.codigo, a.tipoAporte.codigo " +
-			" from     Aporte a " +
-			" where    a.tipoAporte.estado = 1 " +
-			"   and    a.tipoAporte.codigo in (:codigos) " +
-			"   and    " + VIGENTE_JPQL +
-			"   and    a.fechaTransaccion <= :fechaCorte " +
-			"   and    exists (select 1 from Entidad e where e.codigo = a.entidad.codigo and e.numeroIdentificacion <> '0') " +
-			" group by a.entidad.codigo, a.tipoAporte.codigo "
+	public List<Object[]> selectSumaPorGrupoPrestacionPorEntidad(java.time.LocalDateTime fechaCorte) throws Throwable {
+		System.out.println("AporteDaoServiceImpl.selectSumaPorGrupoPrestacionPorEntidad fechaCorte: " + fechaCorte);
+		// D-038 (29-oct-2026): el tipo de prestación de la G42 es el de la CUENTA INDIVIDUAL (manual de
+		// catastros §2.3, campo 3): se decide por el saldo de cada grupo de prestación, no por la mera
+		// presencia de filas de tipo 9/11 (una liquidación o una devolución dejaba marca para siempre).
+		// El grupo de cada tipo de aporte es dato del catálogo (CRD.TPAP.TPAPTPPR, script 338), no una
+		// lista en el código: TPAPCSBC no sirve porque los rendimientos de los dos grupos comparten 'RE'.
+		// SQL nativo: la columna no está mapeada en la entidad TipoAporte.
+		Query query = em.createNativeQuery(
+			" select   a.ENTDCDGO, ta.TPAPTPPR, sum(a.APRTVLRR) " +
+			" from     CRD.APRT a " +
+			" join     CRD.TPAP ta on ta.TPAPCDGO = a.TPAPCDGO " +
+			" where    ta.TPAPIDST = 1 " +
+			"   and    ta.TPAPTPPR in ('J', 'C') " +
+			"   and    " + VIGENTE_SQL +
+			"   and    a.APRTFCTR <= :fechaCorte " +
+			"   and    exists (select 1 from CRD.ENTD e where e.ENTDCDGO = a.ENTDCDGO and e.ENTDNMID <> '0') " +
+			" group by a.ENTDCDGO, ta.TPAPTPPR "
 		);
-		query.setParameter("codigos", java.util.Arrays.asList(9L, 11L));
-		query.setParameter("fechaCorte", fechaCorte);
+		query.setParameter("fechaCorte", java.sql.Timestamp.valueOf(fechaCorte));
+		return query.getResultList();
+	}
+
+	@Override
+	@SuppressWarnings("unchecked")
+	public List<Object[]> selectAportePersonalDelPeriodoPorEntidad(java.time.LocalDate periodo) throws Throwable {
+		System.out.println("AporteDaoServiceImpl.selectAportePersonalDelPeriodoPorEntidad periodo: " + periodo);
+		// D-038: "valor mensual aportado por el partícipe" (catastros §2.3, campo 5) = aportes personales
+		// del MES por devengo (periodo efectivo), no el sueldo vigente HOY de HSTR. Sin filtro de fecha de
+		// caja: el aporte de junio que llega en el retorno de julio sigue siendo de junio. Mismo dato que
+		// decide el estado A/P de la G41.
+		Query query = em.createNativeQuery(
+			" select   a.ENTDCDGO, sum(a.APRTVLRR) " +
+			" from     CRD.APRT a " +
+			" where    a.TPAPCDGO in (9, 11) " +
+			"   and    a.APRTVLRR > 0 " +
+			"   and    " + VIGENTE_SQL +
+			"   and    " + PERIODO_EFECTIVO_SQL + " = :periodo " +
+			"   and    exists (select 1 from CRD.ENTD e where e.ENTDCDGO = a.ENTDCDGO and e.ENTDNMID <> '0') " +
+			" group by a.ENTDCDGO "
+		);
+		query.setParameter("periodo", java.sql.Date.valueOf(periodo.withDayOfMonth(1)));
 		return query.getResultList();
 	}
 

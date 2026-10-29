@@ -54,6 +54,7 @@ public class CarteraAlCorteServiceImpl implements CarteraAlCorteService {
             op.setIdCuotaAncla((Long) f[9]);
             op.setInteresCuotasDelMes(redondear((Double) f[10]));
             op.setCuentaIndividual(redondear((Double) f[11]));
+            op.setCapitalCuotasDelMes(f.length > 12 && f[12] != null ? redondear((Double) f[12]) : 0.0);
 
             List<EscalaCalificacionRiesgo> escala = escalas.get(op.getIdProducto());
             if (escala == null) {

@@ -72,6 +72,13 @@ public class GeneracionG49ServiceImpl implements GeneracionG49Service {
         // entra a la G49 por los grupos 1/2 y, por tanto, no se borra de la G48.
         Set<Long> prestamosConSaldoAlCorte = prestamosConSaldoAlCorte(fechaCancelacion);
 
+        // D-038: fecha real de cancelación (y forma O si hubo novación) de cada operación con eventos en el mes.
+        cancelacionesReales.clear();
+        for (Object[] f : cg49DaoService.selectCancelacionReal(fechaCancelacion.withDayOfMonth(1), fechaCancelacion)) {
+            if (f[0] != null && f[1] != null) cancelacionesReales.put(f[0].toString().trim(), f);
+        }
+        System.out.println("G49 - operaciones con evento de cancelacion en el mes: " + cancelacionesReales.size());
+
         // -------------------------------------------------------
         // GRUPO 1: Cuota con mayor numeroCuota del préstamo
         //          dentro del mes y en estado pagada (4).
@@ -208,8 +215,8 @@ public class GeneracionG49ServiceImpl implements GeneracionG49Service {
                             ? anterior.getTipoIdentificacion() : "C");
                     g49.setIdentificacion(anterior.getIdentificacion());
                     g49.setNumeroOperacion(numOp);
-                    g49.setFechaCancelacion(fechaCancelacion);
-                    g49.setFormaCancelacion("N");
+                    g49.setFechaCancelacion(fechaReal(numOp, fechaCancelacion));
+                    g49.setFormaCancelacion(formaReal(numOp));
                     g49.setDetalleEjecucion(detalle);
 
                     cg49DaoService.save(g49, null);
@@ -252,8 +259,8 @@ public class GeneracionG49ServiceImpl implements GeneracionG49Service {
                             ? anterior.getTipoIdentificacion() : "C");
                     g49.setIdentificacion(anterior.getIdentificacion());
                     g49.setNumeroOperacion(numOp);
-                    g49.setFechaCancelacion(fechaCancelacion);
-                    g49.setFormaCancelacion("N");
+                    g49.setFechaCancelacion(fechaReal(numOp, fechaCancelacion));
+                    g49.setFormaCancelacion(formaReal(numOp));
                     g49.setDetalleEjecucion(detalle);
 
                     cg49DaoService.save(g49, null);
@@ -296,8 +303,32 @@ public class GeneracionG49ServiceImpl implements GeneracionG49Service {
         return false;
     }
 
-    /** Crea y persiste un registro en CG49. */
-    private void insertarG49(Prestamo prestamo, String numOp,
+    /**
+     * D-038: operaciones con evento en el mes → {op, fecha, forma}. Se llena al inicio de cada generar(); el bean
+     * es @Stateless y cada llamada lo usa de forma exclusiva.
+     */
+    private final java.util.Map<String, Object[]> cancelacionesReales = new java.util.HashMap<>();
+
+    /** Fecha real de cancelación (manual §3.5 campo 4); sin evento en el mes, el fin de mes (cumple §5.5). */
+    private LocalDate fechaReal(String numOp, LocalDate finDeMes) {
+        Object[] f = numOp != null ? cancelacionesReales.get(numOp.trim()) : null;
+        if (f == null || f[1] == null) return finDeMes;
+        Object o = f[1];
+        LocalDate d = o instanceof java.sql.Timestamp ? ((java.sql.Timestamp) o).toLocalDateTime().toLocalDate()
+                    : o instanceof java.sql.Date ? ((java.sql.Date) o).toLocalDate()
+                    : o instanceof java.time.LocalDateTime ? ((java.time.LocalDateTime) o).toLocalDate()
+                    : o instanceof LocalDate ? (LocalDate) o
+                    : new java.sql.Date(((java.util.Date) o).getTime()).toLocalDate();
+        return d.isAfter(finDeMes) || d.isBefore(finDeMes.withDayOfMonth(1)) ? finDeMes : d;
+    }
+
+    /** Forma de cancelación (tabla 39): O = con otra operación (novación en el mes); N = en efectivo. */
+    private String formaReal(String numOp) {
+        Object[] f = numOp != null ? cancelacionesReales.get(numOp.trim()) : null;
+        return f != null && "O".equals(f[2]) ? "O" : "N";
+    }
+
+    /** Crea y persiste un registro en CG49. */    private void insertarG49(Prestamo prestamo, String numOp,
             LocalDate fechaCancelacion, DetalleEjecucionReporte detalle) throws Throwable {
         CancelacionG49 g49 = new CancelacionG49();
         g49.setTipoIdentificacion("C");
@@ -305,8 +336,8 @@ public class GeneracionG49ServiceImpl implements GeneracionG49Service {
             g49.setIdentificacion(prestamo.getEntidad().getNumeroIdentificacion());
         }
         g49.setNumeroOperacion(numOp);
-        g49.setFechaCancelacion(fechaCancelacion);
-        g49.setFormaCancelacion("N");
+        g49.setFechaCancelacion(fechaReal(numOp, fechaCancelacion));
+        g49.setFormaCancelacion(formaReal(numOp));
         g49.setDetalleEjecucion(detalle);
         cg49DaoService.save(g49, null);
         System.out.println("G49 INSERT op: " + numOp
