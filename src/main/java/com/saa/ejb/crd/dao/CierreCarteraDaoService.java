@@ -272,4 +272,48 @@ public interface CierreCarteraDaoService {
      * @return Filas {@code [idPrestamo, idAsoprep, fechaInicio, monto, idEstado, esSustitucion(0/1)]}
      */
     List<Object[]> selectPrestamosSinAsientoEntrega(LocalDate desde, LocalDate hasta) throws Throwable;
+
+    // =====================================================================
+    // D-032 (29-oct-2026) — cuenta por cobrar de cuotas (1.4.05.10) préstamo por préstamo.
+    // =====================================================================
+
+    /**
+     * Lo que la apertura ③ abrió POR PRÉSTAMO: la misma lectura de
+     * {@link #selectCobrablePrestamosHasta(LocalDate, LocalDate)} (cuotas con vto {@code <= hasta}
+     * pendientes al {@code corte}: capital + interés no condonado + mora bruta al corte + desgravamen
+     * + seguro), agrupada por préstamo en vez de por producto. Con {@code hasta} = fin del mes M y
+     * {@code corte} = fin de M−1 reproduce el ③ que abrió M (corrida al corte).
+     *
+     * @return Filas {@code [idPrestamo (Long), abierto (Double)]}
+     */
+    List<Object[]> selectAperturaPorPrestamo(LocalDate hasta, LocalDate corte) throws Throwable;
+
+    /**
+     * Lo que los cobros con asiento en {@code [desde, hasta]} acreditaron en {@code cuenta} (y sus
+     * hijas) POR PRÉSTAMO, sin contar las líneas de complemento de apertura:
+     * <ul>
+     * <li>Petro/Arch: componentes (capital, interés, mora, desgravamen, seguro, interés vencido) de los
+     *     pagos vigentes de las cargas con reparto vigente ({@code CRD.ANCP} sub-proceso 2) en el rango;</li>
+     * <li>cobro CBCR: haber neto de la cuenta en sus asientos ({@code CBCRASN1/ASN2/ASRP}), prorrateado
+     *     entre sus líneas de préstamo por {@code DCBCVLRR} (partes iguales si todas valen 0);</li>
+     * <li>camino directo (precancelación, pago con aportes, cruce): haber neto de la cuenta en el asiento
+     *     {@code PGPRASNT}, prorrateado por los componentes de sus pagos.</li>
+     * </ul>
+     *
+     * @param excluirCarga carga Petro que se está contabilizando (sus pagos ya existen; null = ninguna)
+     * @return Filas {@code [idPrestamo (Long), cobrado (Double)]}
+     */
+    List<Object[]> selectCobradoPuentePorPrestamo(Long idEmpresa, String cuenta, LocalDate desde, LocalDate hasta,
+            Long excluirCarga) throws Throwable;
+
+    /**
+     * Haber de {@code cuenta} en los repartos Petro vigentes del rango que no es pago de préstamo
+     * (haber del reparto − componentes de los pagos de la carga): los excedentes D-010.
+     */
+    double selectNoAtribuiblePetro(Long idEmpresa, String cuenta, LocalDate desde, LocalDate hasta, Long excluirCarga)
+            throws Throwable;
+
+    /** Débito neto de {@code cuenta} en las líneas de complemento de apertura de los asientos vigentes del rango. */
+    double selectComplementoRegistrado(Long idEmpresa, String cuenta, LocalDate desde, LocalDate hasta)
+            throws Throwable;
 }

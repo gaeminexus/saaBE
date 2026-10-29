@@ -76,7 +76,34 @@ public final class ModoCorteCartera {
             " CASE WHEN PGPRTPOO = '" + ProcesoPagoPrestamoService.TIPO_ABONO_CAPITAL + "' THEN NVL(PGPRCPPG,0)"
             + " WHEN NVL(PGPRSLOT,0) > 0 THEN PGPRSLOT ELSE NVL(PGPRCPPG,0) END ";
 
+    /**
+     * D-032 (29-oct-2026): propiedad que activa el neteo ⑥ y el complemento de apertura de cuotas
+     * POR PRÉSTAMO: {@code siempre} | {@code nunca} | {@code auto} (defecto = cuando el mes se procesa
+     * al corte, que es donde la apertura por préstamo se puede reproducir exacta).
+     */
+    public static final String PROPIEDAD_NETEO_POR_PRESTAMO = "saa.cartera.neteoPorPrestamo";
+
     private ModoCorteCartera() {
+    }
+
+    /**
+     * D-032 — ¿el mes que termina en {@code finMes} usa el neteo y el complemento por préstamo?
+     *
+     * <p>{@code auto}: sí cuando el mes es "al corte" ({@code alCorte}, o si viene null
+     * {@link #esAlCorte(LocalDate, Boolean)} con la regla de la propiedad). La apertura por préstamo
+     * se reconstruye con la lectura al corte del mes anterior, que es la que usa el ③ de una corrida al
+     * corte; el ③ de una corrida normal (estado de hoy) no se puede reconstruir después, por eso fuera
+     * del modo al corte se mantiene el D-024 por cuenta salvo que se fuerce {@code siempre}.</p>
+     */
+    public static boolean neteoPorPrestamo(LocalDate finMes, Boolean alCorte) {
+        String modo = System.getProperty(PROPIEDAD_NETEO_POR_PRESTAMO, "auto").trim().toLowerCase();
+        if ("siempre".equals(modo)) {
+            return true;
+        }
+        if ("nunca".equals(modo)) {
+            return false;
+        }
+        return alCorte != null ? alCorte.booleanValue() : esAlCorte(finMes, null);
     }
 
     /**

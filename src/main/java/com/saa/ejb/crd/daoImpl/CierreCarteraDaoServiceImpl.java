@@ -347,6 +347,135 @@ public class CierreCarteraDaoServiceImpl implements CierreCarteraDaoService {
     }
 
     @Override
+    public List<Object[]> selectAperturaPorPrestamo(LocalDate hasta, LocalDate corte) throws Throwable {
+        System.out.println("Ingresa al metodo selectAperturaPorPrestamo - hasta: " + hasta + " - corte: " + corte);
+        // D-032: MISMAS expresiones que selectCobrablePrestamosHasta (la del ③), agrupadas por préstamo.
+        Query query = em.createNativeQuery(
+                " SELECT p.PRSTCDGO, "
+                + "        SUM(GREATEST(NVL(d.DTPRCPTL,0) - NVL(g.cap,0), 0) "
+                + "          + CASE WHEN " + condonado(corte)
+                + "                 THEN 0 ELSE GREATEST(NVL(d.DTPRINTR,0) - NVL(g.intr,0), 0) END "
+                + "          + GREATEST(" + moraBruta(corte) + " - NVL(g.mora,0), 0) "
+                + "          + GREATEST(NVL(d.DTPRDSGR,0) - NVL(g.dsgr,0), 0) "
+                + "          + GREATEST(NVL(d.DTPRVLSI,0) - NVL(g.segi,0), 0)) "
+                + " FROM   CRD.DTPR d "
+                + " JOIN   CRD.PRST p ON p.PRSTCDGO = d.PRSTCDGO "
+                + " LEFT JOIN " + pagos(corte) + " ON g.DTPRCDGO = d.DTPRCDGO "
+                + " WHERE  " + universo(corte)
+                + " AND    " + pendiente(corte)
+                + " AND    TRUNC(d.DTPRFCVN) <= :hasta "
+                + " AND    p.PRDCCDGO IS NOT NULL "
+                + " GROUP BY p.PRSTCDGO");
+        query.setParameter("hasta", Date.valueOf(hasta));
+        parametrosCorte(query, corte);
+        List<Object[]> filas = query.getResultList();
+        List<Object[]> resultado = new ArrayList<Object[]>();
+        for (Object[] f : filas) {
+            resultado.add(new Object[]{ aLong(f[0]), aDouble(f[1]) });
+        }
+        return resultado;
+    }
+
+    /** Asientos vigentes de la empresa en el rango y su haber neto en la cuenta (sin líneas de complemento). */
+    private static final String HABER_PUENTE_MES =
+            " av AS (SELECT a.ASNTCDGO FROM CNT.ASNT a WHERE a.PJRQCDGO = :empresa AND a.ASNTESTD IN (1, 3) "
+            + "        AND a.ASNTFCHA >= :desde AND a.ASNTFCHA < :hastaSig), "
+            + " ha AS (SELECT t.ASNTCDGO, SUM(NVL(t.DTASHBRR,0) - NVL(t.DTASDBEE,0)) H FROM CNT.DTAS t "
+            + "        JOIN av ON av.ASNTCDGO = t.ASNTCDGO "
+            + "        WHERE (t.DTASCNTA = :cuenta OR t.DTASCNTA LIKE :cuentaHijas) "
+            + "        AND NVL(t.DTASDSCR, ' ') NOT LIKE :glosaComplemento GROUP BY t.ASNTCDGO), "
+            + " cargas AS (SELECT DISTINCT c.CRARCDGO, c.ANCPASNT FROM CRD.ANCP c JOIN av ON av.ASNTCDGO = c.ANCPASNT "
+            + "        WHERE c.ANCPTPOO = " + com.saa.rubros.SubProcesoCobroPetro.REPARTO + " AND c.ANCPIDST = 1 "
+            + "        AND c.CRARCDGO <> :excluirCarga), "
+            + " kp AS (SELECT g.PRSTCDGO, SUM(NVL(g.PGPRCPPG,0) + NVL(g.PGPRINPG,0) + NVL(g.PGPRMRPG,0) + NVL(g.PGPRDSGR,0) "
+            + "        + NVL(g.PGPRVLSI,0) + NVL(g.PGPRINVP,0)) K FROM CRD.PGPR g "
+            + "        WHERE NVL(g.PGPRANUL,0) = 0 AND g.CRARCDGO IN (SELECT CRARCDGO FROM cargas) GROUP BY g.PRSTCDGO) ";
+
+    private void parametrosPuente(Query query, Long idEmpresa, String cuenta, LocalDate desde, LocalDate hasta,
+            Long excluirCarga) {
+        query.setParameter("empresa", idEmpresa);
+        query.setParameter("desde", Date.valueOf(desde));
+        query.setParameter("hastaSig", Date.valueOf(hasta.plusDays(1)));
+        query.setParameter("cuenta", cuenta);
+        query.setParameter("cuentaHijas", cuenta + ".%");
+        query.setParameter("glosaComplemento",
+                com.saa.ejb.crd.service.dto.ComplementoAperturaCobro.GLOSA_PREFIJO + "%");
+        query.setParameter("excluirCarga", excluirCarga != null ? excluirCarga : Long.valueOf(-1L));
+    }
+
+    @Override
+    public List<Object[]> selectCobradoPuentePorPrestamo(Long idEmpresa, String cuenta, LocalDate desde,
+            LocalDate hasta, Long excluirCarga) throws Throwable {
+        System.out.println("Ingresa al metodo selectCobradoPuentePorPrestamo - empresa: " + idEmpresa + " - cuenta: "
+                + cuenta + " - " + desde + " a " + hasta + " - excluirCarga: " + excluirCarga);
+        Query query = em.createNativeQuery(
+                " WITH " + HABER_PUENTE_MES + ", "
+                + " cba AS (SELECT CBCRCDGO, ASNT FROM ( "
+                + "          SELECT b.CBCRCDGO, b.CBCRASN1 ASNT FROM CRD.CBCR b UNION "
+                + "          SELECT b.CBCRCDGO, b.CBCRASN2 FROM CRD.CBCR b UNION "
+                + "          SELECT b.CBCRCDGO, b.CBCRASRP FROM CRD.CBCR b) WHERE ASNT IS NOT NULL), "
+                + " cbw AS (SELECT CBCRCDGO, PRSTCDGO, SUM(DCBCVLRR) W FROM CRD.DCBC WHERE PRSTCDGO IS NOT NULL "
+                + "        GROUP BY CBCRCDGO, PRSTCDGO), "
+                + " cbt AS (SELECT CBCRCDGO, SUM(W) TW, COUNT(*) N FROM cbw GROUP BY CBCRCDGO), "
+                + " kc AS (SELECT w.PRSTCDGO, SUM(ha.H * CASE WHEN t.TW <> 0 THEN w.W / t.TW ELSE 1 / t.N END) K "
+                + "        FROM cba JOIN ha ON ha.ASNTCDGO = cba.ASNT JOIN cbw w ON w.CBCRCDGO = cba.CBCRCDGO "
+                + "        JOIN cbt t ON t.CBCRCDGO = cba.CBCRCDGO GROUP BY w.PRSTCDGO), "
+                + " dw AS (SELECT g.PGPRASNT ASNT, g.PRSTCDGO, SUM(NVL(g.PGPRCPPG,0) + NVL(g.PGPRINPG,0) + NVL(g.PGPRMRPG,0) "
+                + "        + NVL(g.PGPRDSGR,0) + NVL(g.PGPRVLSI,0) + NVL(g.PGPRINVP,0)) W FROM CRD.PGPR g "
+                + "        WHERE g.PGPRASNT IN (SELECT ASNTCDGO FROM ha) AND g.CRARCDGO IS NULL AND NVL(g.PGPRANUL,0) = 0 "
+                + "        AND g.PGPRASNT NOT IN (SELECT ASNT FROM cba) GROUP BY g.PGPRASNT, g.PRSTCDGO), "
+                + " dt AS (SELECT ASNT, SUM(W) TW, COUNT(*) N FROM dw GROUP BY ASNT), "
+                + " kd AS (SELECT w.PRSTCDGO, SUM(ha.H * CASE WHEN t.TW <> 0 THEN w.W / t.TW ELSE 1 / t.N END) K "
+                + "        FROM ha JOIN dw w ON w.ASNT = ha.ASNTCDGO JOIN dt t ON t.ASNT = ha.ASNTCDGO GROUP BY w.PRSTCDGO) "
+                + " SELECT PRSTCDGO, SUM(K) FROM (SELECT PRSTCDGO, K FROM kp UNION ALL SELECT PRSTCDGO, K FROM kc "
+                + "        UNION ALL SELECT PRSTCDGO, K FROM kd) GROUP BY PRSTCDGO");
+        parametrosPuente(query, idEmpresa, cuenta, desde, hasta, excluirCarga);
+        List<Object[]> filas = query.getResultList();
+        List<Object[]> resultado = new ArrayList<Object[]>();
+        for (Object[] f : filas) {
+            resultado.add(new Object[]{ aLong(f[0]), aDouble(f[1]) });
+        }
+        return resultado;
+    }
+
+    @Override
+    public double selectNoAtribuiblePetro(Long idEmpresa, String cuenta, LocalDate desde, LocalDate hasta,
+            Long excluirCarga) throws Throwable {
+        System.out.println("Ingresa al metodo selectNoAtribuiblePetro - empresa: " + idEmpresa + " - cuenta: " + cuenta
+                + " - " + desde + " a " + hasta + " - excluirCarga: " + excluirCarga);
+        Query query = em.createNativeQuery(
+                " WITH " + HABER_PUENTE_MES
+                + " SELECT (SELECT NVL(SUM(ha.H),0) FROM cargas c JOIN ha ON ha.ASNTCDGO = c.ANCPASNT) "
+                + "      - (SELECT NVL(SUM(K),0) FROM kp) FROM dual");
+        parametrosPuente(query, idEmpresa, cuenta, desde, hasta, excluirCarga);
+        Double valor = aDouble(query.getSingleResult());
+        return valor != null ? valor.doubleValue() : 0D;
+    }
+
+    @Override
+    public double selectComplementoRegistrado(Long idEmpresa, String cuenta, LocalDate desde, LocalDate hasta)
+            throws Throwable {
+        System.out.println("Ingresa al metodo selectComplementoRegistrado - empresa: " + idEmpresa + " - cuenta: "
+                + cuenta + " - " + desde + " a " + hasta);
+        Query query = em.createNativeQuery(
+                " SELECT NVL(SUM(NVL(t.DTASDBEE,0) - NVL(t.DTASHBRR,0)), 0) FROM CNT.DTAS t "
+                + " JOIN CNT.ASNT a ON a.ASNTCDGO = t.ASNTCDGO "
+                + " WHERE a.PJRQCDGO = :empresa AND a.ASNTESTD IN (1, 3) "
+                + " AND a.ASNTFCHA >= :desde AND a.ASNTFCHA < :hastaSig "
+                + " AND (t.DTASCNTA = :cuenta OR t.DTASCNTA LIKE :cuentaHijas) "
+                + " AND t.DTASDSCR LIKE :glosaComplemento");
+        query.setParameter("empresa", idEmpresa);
+        query.setParameter("desde", Date.valueOf(desde));
+        query.setParameter("hastaSig", Date.valueOf(hasta.plusDays(1)));
+        query.setParameter("cuenta", cuenta);
+        query.setParameter("cuentaHijas", cuenta + ".%");
+        query.setParameter("glosaComplemento",
+                com.saa.ejb.crd.service.dto.ComplementoAperturaCobro.GLOSA_PREFIJO + "%");
+        Double valor = aDouble(query.getSingleResult());
+        return valor != null ? valor.doubleValue() : 0D;
+    }
+
+    @Override
     public List<Object[]> selectOperacionesAlCorte(LocalDate corte, boolean corteInclusivo) throws Throwable {
         System.out.println("Ingresa al metodo selectOperacionesAlCorte - corte: " + corte
                 + " - corteInclusivo: " + corteInclusivo);

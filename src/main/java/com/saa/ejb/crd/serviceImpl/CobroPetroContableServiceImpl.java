@@ -673,7 +673,7 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
         // abierto, se abre la diferencia ANTES, en un asiento propio vinculado a la carga
         // (sub-proceso COMPLEMENTO_APERTURA) para que el reproceso lo anule y lo regenere junto
         // con el reparto. Lo cobrado de menos no se toca: lo cierra el ⑥ del cierre.
-        generarComplementoApertura(carga, idEmpresa, fechaAsiento, lineas);
+        generarComplementoApertura(carga, idEmpresa, fechaAsiento, lineas, totalPrestamos);
 
         com.saa.model.cnt.Asiento asiento = asientoContableService.generarAsiento(idEmpresa,
                 TipoAsientos.CREDITOS, fechaAsiento,
@@ -701,11 +701,37 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
      * nada si lo que el reparto acredita no supera el saldo abierto.
      */
     private void generarComplementoApertura(CargaArchivo carga, Long idEmpresa, LocalDate fechaAsiento,
-            List<DetalleAsiento> lineasReparto) throws Throwable {
+            List<DetalleAsiento> lineasReparto, double totalPrestamos) throws Throwable {
         Long idCarga = carga.getCodigo();
+        // D-032 (29-oct-2026): lo que el reparto acredita a 1.4.05.10 por préstamo = componentes de los
+        // pagos vigentes de la carga (ya aplicados: validarRecibidoIgualAplicado corrió antes); lo que
+        // sobra del descontado a préstamos (excedentes D-010, que la aplicación lleva a aportes) no es
+        // pago de ningún préstamo y la apertura nunca lo abrió.
+        Map<Long, Double> cobradoPorPrestamo = new LinkedHashMap<>();
+        double sumaPagos = 0.0;
+        List<PagoPrestamo> pagosCarga = pagoPrestamoDaoService.selectVigentesByCargaArchivo(idCarga);
+        if (pagosCarga != null) {
+            for (PagoPrestamo pago : pagosCarga) {
+                if (pago.getPrestamo() == null || pago.getPrestamo().getCodigo() == null) {
+                    continue;
+                }
+                double componentes = nvl(pago.getCapitalPagado()) + nvl(pago.getInteresPagado())
+                        + nvl(pago.getMoraPagada()) + nvl(pago.getDesgravamen()) + nvl(pago.getValorSeguroIncendio())
+                        + nvl(pago.getInteresVencidoPagado());
+                cobradoPorPrestamo.merge(pago.getPrestamo().getCodigo(), componentes, Double::sum);
+                sumaPagos += componentes;
+            }
+        }
+        double noAtribuible = redondear(totalPrestamos - sumaPagos);
+        if (noAtribuible < -0.005) {
+            System.out.println("CobroPetroContableService.generarComplementoApertura - carga " + idCarga
+                    + ": los pagos (" + redondear(sumaPagos) + ") superan lo descontado a préstamos (" + totalPrestamos
+                    + "); no atribuible = 0 (lo verá el control del ⑥).");
+            noAtribuible = 0.0;
+        }
         com.saa.ejb.crd.service.dto.ComplementoAperturaCobro complemento =
                 contabilizacionIndividualCreditoService.complementoApertura(idEmpresa, fechaAsiento, lineasReparto,
-                        "carga " + idCarga);
+                        "carga " + idCarga, cobradoPorPrestamo, noAtribuible, idCarga);
         if (complemento.isVacio()) {
             return;
         }

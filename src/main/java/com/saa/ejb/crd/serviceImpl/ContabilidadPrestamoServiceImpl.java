@@ -393,8 +393,19 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
         List<DetalleAsiento> lineasCierre = lineasCierreApertura(idEmpresa, totalCierre, descripcionOperacion);
         // D-024 (28-oct-2026): si el cierre acredita 1.4.05.10 por más de lo abierto en el mes,
         // se abre la diferencia en este mismo asiento (D por cobrar / H por aplicar).
+        // D-032 (29-oct-2026): el evento es de un solo préstamo; todo lo que cierra contra 1.4.05.10 es suyo.
+        java.util.Map<Long, Double> cobradoPorPrestamo = null;
+        if (pagos != null) {
+            for (PagoPrestamo pago : pagos) {
+                if (pago.getPrestamo() != null && pago.getPrestamo().getCodigo() != null) {
+                    cobradoPorPrestamo = new java.util.LinkedHashMap<>();
+                    cobradoPorPrestamo.put(pago.getPrestamo().getCodigo(), Double.valueOf(totalCierre));
+                    break;
+                }
+            }
+        }
         lineasCierre.addAll(contabilizacionIndividualCreditoService.complementoApertura(idEmpresa, fechaCorte,
-                lineasCierre, descripcionOperacion).getLineas());
+                lineasCierre, descripcionOperacion, cobradoPorPrestamo, 0.0, null).getLineas());
         lineas.addAll(lineasCierre);
     }
 

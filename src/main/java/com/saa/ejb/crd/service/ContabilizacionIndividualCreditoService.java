@@ -345,6 +345,46 @@ public interface ContabilizacionIndividualCreditoService {
             List<DetalleAsiento> lineasDelCobro, String referencia) throws Throwable;
 
     /**
+     * D-032 (29-oct-2026, decisión del líder) — complemento de apertura de CUOTAS por préstamo. Igual
+     * que {@link #complementoApertura(Long, LocalDate, List, String)} para aportes (por cuenta), pero
+     * el lado cuotas ({@code 1.4.05.10}), cuando
+     * {@link com.saa.ejb.crd.service.ModoCorteCartera#neteoPorPrestamo} está activo para el mes del
+     * cobro, se mide préstamo por préstamo contra lo que la apertura ③ abrió de cada uno
+     * ({@link com.saa.ejb.crd.service.dto.PuentePrestamosMes}): complemento de este cobro =
+     * [Σ max(cobrado − abierto, 0) del mes, contando este cobro, + lo no atribuible a préstamos] −
+     * complementos ya registrados en el mes. Así se abre al cobrar lo que la apertura no abrió (cuotas
+     * que vencen después del mes, préstamos nuevos, mora del mes, excedentes D-010) y, si un cobro
+     * anterior del mes no lo abrió, lo recoge el siguiente. Con la regla inactiva, idéntico al D-024.
+     *
+     * @param cobradoPorPrestamo lo que este cobro acredita en 1.4.05.10 por préstamo (null = regla D-024)
+     * @param noAtribuible       lo que este cobro acredita en 1.4.05.10 sin ser pago de un préstamo
+     *                           (excedentes Petro D-010); 0 si no hay
+     * @param excluirCarga       carga Petro que se está contabilizando (sus pagos ya existen); null si no
+     */
+    com.saa.ejb.crd.service.dto.ComplementoAperturaCobro complementoApertura(Long idEmpresa, LocalDate fecha,
+            List<DetalleAsiento> lineasDelCobro, String referencia, java.util.Map<Long, Double> cobradoPorPrestamo,
+            double noAtribuible, Long excluirCarga) throws Throwable;
+
+    /**
+     * D-032 — la cuenta por cobrar de cuotas del mes que termina en {@code finMes}, préstamo por
+     * préstamo: abierto por la apertura (lectura al corte del mes anterior), cobrado por los cobros
+     * del mes con asiento vigente, lo no atribuible (excedentes Petro) y el complemento registrado.
+     *
+     * @param cuenta       cuenta por cobrar de cuotas (línea PRESTAMOS_POR_COBRAR de la plantilla de apertura)
+     * @param excluirCarga carga Petro a dejar fuera (la que se está contabilizando), o null
+     */
+    com.saa.ejb.crd.service.dto.PuentePrestamosMes puentePrestamosMes(Long idEmpresa, String cuenta, LocalDate finMes,
+            Long excluirCarga) throws Throwable;
+
+    /**
+     * D-032 — reparte lo que un cobro CBCR acredita en 1.4.05.10 entre sus líneas de préstamo por el
+     * valor de cada línea (partes iguales si todas valen 0): la MISMA regla con que
+     * {@code CierreCarteraDaoService#selectCobradoPuentePorPrestamo} lee después ese asiento.
+     */
+    java.util.Map<Long, Double> repartePorLineasDePrestamo(List<com.saa.model.crd.DetalleCobroCredito> detalles,
+            double monto);
+
+    /**
      * Líneas "por aplicar" ({@code CrdLineaAsiento#APORTES_POR_APLICAR}/{@code
      * PRESTAMOS_POR_APLICAR}) — cierran contra la MISMA cuenta que abrió el asiento ③ de
      * apertura del cierre de cartera ({@code CierreCarteraServiceImpl#armaApertura}) y que ya

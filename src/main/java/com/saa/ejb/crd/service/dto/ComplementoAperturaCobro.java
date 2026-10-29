@@ -19,6 +19,14 @@ import com.saa.model.cnt.DetalleAsiento;
  */
 public class ComplementoAperturaCobro {
 
+    /**
+     * Comienzo de la glosa de toda línea de complemento de apertura. D-032: la lectura por préstamo
+     * ({@code CierreCarteraDaoService#selectCobradoPuentePorPrestamo}) excluye por este prefijo las
+     * líneas de complemento de los asientos de cobro, y {@code selectComplementoRegistrado} las suma.
+     * No cambiarlo sin cambiar esas dos consultas.
+     */
+    public static final String GLOSA_PREFIJO = "Complemento de apertura";
+
     private final List<DetalleAsiento> lineas = new ArrayList<>();
     private double cobradoAportes;
     private double abiertoAportes;
@@ -50,12 +58,22 @@ public class ComplementoAperturaCobro {
             if (texto.length() > 0) {
                 texto.append("; ");
             }
-            texto.append("cuotas (").append(cuentaPrestamos).append("): cobrado ").append(formato(cobradoPrestamos))
-                    .append(", abierto ").append(formato(abiertoPrestamos)).append(", complemento ")
-                    .append(formato(complementoPrestamos));
+            if (notaPrestamos != null) {
+                texto.append("cuotas (").append(cuentaPrestamos).append(") ").append(notaPrestamos);
+            } else {
+                texto.append("cuotas (").append(cuentaPrestamos).append("): cobrado ").append(formato(cobradoPrestamos))
+                        .append(", abierto ").append(formato(abiertoPrestamos)).append(", complemento ")
+                        .append(formato(complementoPrestamos));
+            }
         }
         return texto.toString();
     }
+
+    /** D-032: explicación del complemento de cuotas medido por préstamo (null con la regla D-024 por cuenta). */
+    private String notaPrestamos;
+
+    public String getNotaPrestamos() { return notaPrestamos; }
+    public void setNotaPrestamos(String notaPrestamos) { this.notaPrestamos = notaPrestamos; }
 
     private static String formato(double valor) {
         return String.format("%,.2f", valor);
