@@ -40,10 +40,27 @@ public class GeneracionUnReporteServiceImpl implements GeneracionUnReporteServic
     private static final Long EJRC_EN_PROCESO = 1L;
     private static final Long EJRD_PENDIENTE  = 3L;
     private static final Long TIPO_INICIAL    = 1L;
-    private static final String[] TIPOS_REPORTE = {
+    /**
+     * Orden de creación Y de generación de las estructuras. No es alfabético a propósito: la G45
+     * copia los sujetos de la G46 de la misma ejecución, y la G49 lee (y depura) la G48. D-034
+     * (29-oct-2026): el orquestador ordena por esta lista ({@link #ordenGeneracion}) — desde
+     * 4184bb1c (5-oct-2026) procesaba en el {@code order by d.tipoReporte} del DAO, la G45 corría
+     * antes que la G46, la encontraba vacía y salía con 0 registros sin error.
+     */
+    static final String[] TIPOS_REPORTE = {
         "G40", "G41", "G42", "G43", "G44", "G46", "G45",
         "G47", "G48", "G49", "G50", "G51"
     };
+
+    /** Posición de un tipo de reporte en {@link #TIPOS_REPORTE}; uno desconocido va al final. */
+    static int ordenGeneracion(String tipoReporte) {
+        for (int i = 0; i < TIPOS_REPORTE.length; i++) {
+            if (TIPOS_REPORTE[i].equals(tipoReporte)) {
+                return i;
+            }
+        }
+        return TIPOS_REPORTE.length;
+    }
 
     @EJB private DetalleEjecucionReporteService ejrdService;
     @EJB private EjecucionReporteService        ejrcService;

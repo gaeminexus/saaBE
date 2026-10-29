@@ -222,8 +222,29 @@
 ## ✅ G45 — NuevoParticipeG45 — COMPLETADO
 
 **Tabla destino:** `RPR.CG45`  
-**Fuente principal:** `RPR.CG41` del mismo EJRC (los partícipes que G41 insertó en este ciclo)  
-**Nota importante:** G41 corre antes que G45 y cambia `idEstado 1→10`, por eso G45 **no puede filtrar por `idEstado=1`** — lee directamente de `CG41` del mismo EJRC.
+**Fuente principal (vigente, `GeneracionG45ServiceImpl`):** `RPR.CG46` del mismo EJRC — un registro G45 por cada
+registro de la G46 (todos sus sujetos). Patrimonio desde la `CG42` del mismo EJRC; género, fecha de nacimiento y
+provincia desde `EXTR`; fijos: estado civil `S`, actividad `009`, cantón `01`, parroquia `50`, profesión `O`, cargas `0`,
+origen `B`; tipo de partícipe `J` si la entidad es jubilado complementario, si no `C` (`LogicaArchivosSuper.txt` 315-337).
+La tabla de enriquecimiento de abajo (CG41, PerfilEconomico, Participe) es la versión original y ya no rige.
+
+**Orden de generación (D-034, 29-oct-2026):** la G45 depende de la G46 (y la G49 de la G48). El orquestador
+(`GeneracionReportesServiceImpl`) procesa los EJRD en el orden de `GeneracionUnReporteServiceImpl.TIPOS_REPORTE`
+(G40, G41, G42, G43, G44, **G46, G45**, G47, G48, G49, G50, G51), no en el `order by d.tipoReporte` del DAO. Desde
+4184bb1c (5-oct-2026) la G45 corría antes que la G46, la encontraba vacía y salía con 0 registros sin error.
+
+**Regla de selección de sujetos (D-035) — aprobada, NO integrada todavía.** Texto (`LogicaArchivosSuper.txt` 311-313):
+entra el sujeto de la G46 que, aparte del préstamo nuevo, no tiene otro préstamo vigente, en mora o de plazo vencido
+(evaluado AL CORTE, lectura C15 de `ModoCorteCartera`/`CarteraAlCorteService`), ni uno cancelado (3) o cancelado
+anticipado (4) cuya última cuota tenga fecha ≥ primer día del período. Criterio de aceptación: reproducir los 10 sujetos
+de la G45 presentada en mayo 2025. Resultado (`cuadreSuper/03-trabajo/meses/2025-06/sql/33-g45-reglas.sql`,
+`resultados/33-g45-reglas.txt`): **mayo da 13, no 10** (los 10 presentados cumplen la regla; sobran 3 sujetos cuyo
+único otro préstamo se canceló entre 2020 y 2023), junio da 6 (de 29). En los datos, los 10 presentados no tienen
+otro préstamo terminado después de 2019-08 y los 63 restantes sí (desde 2021-07): encaja con "sujeto ya reportado en
+una G45 anterior", pero sin G45 anteriores a mayo 2025 no hay evidencia para fijar ese criterio. Hasta que el líder
+lo defina, el generador sigue copiando todos los sujetos de la G46.
+
+**Nota histórica:** G41 corre antes que G45 y cambia `idEstado 1→10`, por eso G45 **no puede filtrar por `idEstado=1`**.
 
 **Enriquecimiento por entidad:**
 
@@ -418,6 +439,12 @@
 **GRUPO 3:** Operaciones que estaban en el **G48 del período anterior** pero ya **no aparecen en el G48 del período actual**. Si no hay EJRC anterior → grupo 3 vacío.
 
 > Se usa un `Set<numeroOperacion>` para evitar duplicados entre los tres grupos.
+
+**Al corte (D-034, 29-oct-2026):** los grupos 1 y 2 leen el estado de HOY (`DTPRESTD`, `PRSTIDST`). Cuando el mes se
+genera al corte (`ModoCorteCartera.esAlCorte(fin de mes, null)`), la G49 carga los préstamos con saldo al corte con la
+misma lectura de la G48 (`CarteraAlCorteService.calcularPorPrestamo`) y **no** los marca cancelados por los grupos 1/2;
+por tanto tampoco los borra de la G48. Caso: préstamo 8179 (operación 69105) en junio 2025: G49 35 (no 36) y G48 1.589.
+Fuera del modo al corte (el mes que se cierra normalmente) no cambia nada.
 
 ---
 
