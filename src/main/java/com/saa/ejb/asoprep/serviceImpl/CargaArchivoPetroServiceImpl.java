@@ -5763,9 +5763,20 @@ private SaldosRealesCuota calcularSaldosRealesCuota(DetallePrestamo cuota, Carga
 						+ cuota.getNumeroCuota() + ": falta el mes o año de afectación de la carga "
 						+ cargaArchivo.getCodigo() + ".");
 				}
-				cuota.setFechaPagado(fechaService.ultimoDiaMesAnioLocal(
-					cargaArchivo.getMesAfectacion(), cargaArchivo.getAnioAfectacion()).atTime(23, 59, 59));
-				System.out.println("    ✅ Fecha de pago establecida");
+				java.time.LocalDateTime finMes = fechaService.ultimoDiaMesAnioLocal(
+					cargaArchivo.getMesAfectacion(), cargaArchivo.getAnioAfectacion()).atTime(23, 59, 59);
+				// D-044 (29-oct-2026): si la saldó un pago con fecha posterior al mes de la carga
+				// (re-proceso de un mes pasado), queda saldada en la fecha de ese pago y no en el mes
+				// de la carga: al corte del mes sigue pendiente con lo que le faltaba. Mismo criterio
+				// que MotorPagoPrestamoServiceImpl.aplicarPagoACuota.
+				java.time.LocalDateTime ultimoPago = null;
+				for (PagoPrestamo pago : pagos) {
+					if (pago.getFecha() != null && (ultimoPago == null || pago.getFecha().isAfter(ultimoPago))) {
+						ultimoPago = pago.getFecha();
+					}
+				}
+				cuota.setFechaPagado(ultimoPago != null && ultimoPago.isAfter(finMes) ? ultimoPago : finMes);
+				System.out.println("    ✅ Fecha de pago establecida: " + cuota.getFechaPagado());
 			} else {
 				System.out.println("    ℹ️ Respetando fecha de pago existente: " + cuota.getFechaPagado());
 			}

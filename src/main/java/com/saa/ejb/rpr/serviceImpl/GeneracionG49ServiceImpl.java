@@ -202,7 +202,12 @@ public class GeneracionG49ServiceImpl implements GeneracionG49Service {
             // -------------------------------------------------------
             if (mes == 6L && anio == 2025L) {
                 System.out.println("G49 Grupo 3 - Caso especial Junio 2025: leyendo desde HM48 con NOT EXISTS en CG48");
-                List<HistoricoG48> hm48NoEnCg48 = historicoG48Service.selectEnHm48NoEnCg48Junio2025();
+                // D-044: solo contra la G48 de ESTA ejecución (antes, cualquier ejecución de junio 2025).
+                if (ejrdG48Actual == null) {
+                    System.out.println("G49 Grupo 3 - La ejecución no tiene G48; no hay contra qué comparar la HM48.");
+                    return 0L;
+                }
+                List<HistoricoG48> hm48NoEnCg48 = historicoG48Service.selectEnHm48NoEnCg48(ejrdG48Actual.getCodigo());
                 System.out.println("G49 Grupo 3 - Registros en HM48 no presentes en CG48 junio 2025: " + hm48NoEnCg48.size());
 
                 for (HistoricoG48 anterior : hm48NoEnCg48) {

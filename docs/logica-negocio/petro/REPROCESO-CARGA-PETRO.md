@@ -813,6 +813,39 @@ no tiene línea en la plantilla, el asiento **se detiene** con mensaje claro.
 HABER de 2.1.01.05.01 sube 0,09 y **2.3.02.05 queda en 0** al 30-jun (B.12). Control por tipo: **B.14**
 (creado por tipo vs. HABER de su cuenta en el asiento de aplicación; diferencia 0 en todos).
 
+### 4.16 Cuota saldada sin cubrir su capital (D-044, 2026-10-29)
+
+**Qué pasó en la corrida del 29-oct de la 352:** 37 cuotas de 36 operaciones quedaron PAGADA (4) con fecha de pago en
+junio 2025 aunque los pagos de junio no cubrían su capital: el módulo al 30-jun no las contaba y ningún pago ni asiento de
+junio acreditaba ese capital (+3.015,11 en el residuo ⑨ del cierre de junio). Dos causas, ambas en
+`MotorPagoPrestamoServiceImpl.aplicarPagoACuota`, que decidía PAGADA cuando lo aplicado igualaba el "total pendiente":
+
+1. **Pago posterior al cobro (35 cuotas).** El total pendiente se mide con TODOS los pagos vigentes de la cuota, incluidos
+   los de fecha posterior al mes que se re-procesa (cargas Petro 353–356 de jul–oct 2025 registradas el 8/9-abr-2026,
+   carga 448, afectación manual de la 450, cruce de cuentas de sep-2026). Ejemplo: préstamo 7975, cuota 1 (vence
+   31-jul-2025): el PGPR 268453 (carga 353, fecha 8-abr-2026) ya cubría su capital 219,02; el cobro de junio (PGPR 317706,
+   187,69 = desgravamen + interés) completó el resto y la cuota quedó "pagada el 30-jun". 17 de las 35 son la cuota 1/2 de
+   préstamos nuevos de junio.
+2. **`DTPRTTLL` menor que la suma de componentes (2 cuotas: préstamos 6557 y 7140).** Sin pagos previos el total
+   pendiente es `DTPRTTLL`; el cobro de junio lo igualó y la cuota quedó pagada con 3,45 y 7,19 de capital sin cubrir.
+
+**Corrección (solo el estado; el reparto del dinero, los PGPR y los asientos no cambian):**
+- Si después de aplicar quedan componentes por cubrir (capital, interés, desgravamen, seguro, mora, interés vencido) la
+  cuota queda **PARCIAL (6)**, sin fecha de pago (causa 2).
+- Si queda saldada, la fecha de pago es la del **último** de sus pagos vigentes cuando es posterior al cobro (causa 1).
+  Al corte del mes la cuota es pendiente con exactamente el capital que le faltaba
+  (`CierreCarteraDaoServiceImpl.pendiente/pagos`: estado 4 con fecha posterior al corte = impaga; capital = pagos con
+  fecha ≤ corte), igual que una PARCIAL; hoy sigue saldada, así que la cascada no la vuelve a tomar y el reparto no cambia.
+  Una PARCIAL con saldo 0 la volvería a marcar PAGADA la autocorrección (`calcularSaldosRealesCuota`, que ya fecha con el
+  último pago) y, mientras tanto, el proceso diario le calcularía mora sobre todo su capital.
+- La autocorrección de `CargaArchivoPetroServiceImpl.calcularSaldosRealesCuota` (cuota liquidada según sus pagos sin
+  fecha de pago) usa la misma regla: fin del mes de la carga, o la fecha del último pago si es posterior.
+
+Efecto medido sin re-procesar (`cuadreSuper/03-trabajo/meses/2025-06/sql/43-d044-cuota-saldada-y-g49.sql`): las 36
+operaciones quedan con residuo 0 y el ⑨ de junio pasa de 2.283,16 a −731,95 (las 5 operaciones del arranque). Fuera de
+junio, la regla solo cambia algo cuando una cuota tiene pagos vigentes con fecha posterior al cobro (re-proceso de meses
+pasados) o `DTPRTTLL` < componentes (15 cuotas pendientes hoy, todas con vencimiento en 2026).
+
 ## 5. Respuesta (`ResultadoReprocesoCargaPetro`)
 
 ```json
