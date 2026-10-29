@@ -14,8 +14,8 @@ public interface HistoricoG48Service extends EntityService<HistoricoG48> {
     HistoricoG48 selectByNumeroOperacion(String numeroOperacion) throws Throwable;
 
     /**
-     * Retorna los registros de HM48 cuyo numeroOperacion NO existe en CG48
-     * del período de junio 2025. Usado para el Grupo 3 del G49 de junio 2025.
+     * Retorna los registros de HM48 cuyo numeroOperacion NO existe en la CG48 del detalle G48
+     * indicado (el de la ejecución que se genera; D-044). Usado para el Grupo 3 del G49 de junio 2025.
      */
-    List<HistoricoG48> selectEnHm48NoEnCg48Junio2025() throws Throwable;
+    List<HistoricoG48> selectEnHm48NoEnCg48(Long codigoDetalleG48) throws Throwable;
 }

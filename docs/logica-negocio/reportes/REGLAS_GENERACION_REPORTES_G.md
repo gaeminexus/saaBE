@@ -493,6 +493,13 @@ misma lectura de la G48 (`CarteraAlCorteService.calcularPorPrestamo`) y **no** l
 por tanto tampoco los borra de la G48. Caso: préstamo 8179 (operación 69105) en junio 2025: G49 35 (no 36) y G48 1.589.
 Fuera del modo al corte (el mes que se cierra normalmente) no cambia nada.
 
+**Grupo 3 de junio 2025 (D-044, 29-oct-2026):** el período anterior es `RPR.HM48` (G48 de mayo aceptada) y se compara
+**solo contra la G48 de la ejecución que se genera** (`HistoricoG48DaoService.selectEnHm48NoEnCg48(detalleG48)`). Antes
+comparaba contra la G48 de cualquier ejecución de junio 2025: la operación 68489 (préstamo 6201), que salió de la cartera
+en la corrida nueva, seguía en las G48 de las ejecuciones 564/565 y no entraba a la G49 (ejecución 584: G49 35, control
+§5.4 del manual 1.594 + 29 − 35 = 1.588 ≠ 1.587). Con la regla: G49 36 y 1.594 + 29 − 36 = 1.587. Si la ejecución no
+tiene G48, el grupo 3 queda vacío.
+
 ---
 
 ### Mapeo de campos
