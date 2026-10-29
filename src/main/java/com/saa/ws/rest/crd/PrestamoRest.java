@@ -1424,7 +1424,9 @@ public class PrestamoRest {
             return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
                 "Debe indicar el préstamo (idPrestamo)", "PARAMETRO_INVALIDO");
         }
-        if (solicitud.getModalidad() == null || (solicitud.getModalidad() != 1 && solicitud.getModalidad() != 2)) {
+        // C16b: con regenerarTabla = false no hay modalidad (la tabla no se re-amortiza).
+        if (!Boolean.FALSE.equals(solicitud.getRegenerarTabla())
+                && (solicitud.getModalidad() == null || (solicitud.getModalidad() != 1 && solicitud.getModalidad() != 2))) {
             return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
                 "La modalidad es obligatoria y debe ser 1 (reduce plazo) o 2 (reduce cuota)", "PARAMETRO_INVALIDO");
         }
