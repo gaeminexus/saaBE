@@ -59,3 +59,22 @@ grabarían un usuario falso.
 
 **Regla para el futuro:** cuando un backend empiece a exigir el usuario real (como hizo `b1191051`), su pantalla
 pasa primero a `idUsuarioSesion()`.
+
+## 6. Segunda pasada: las pantallas del §5 (el usuario lo pidió el 2026-10-28)
+
+Se aplica la misma regla del §3 a **todas** las pantallas del §5, de `cxc`, `cxp` y `tsr`.
+
+- **Si la pantalla manda un ID:** usa `idUsuarioSesion()`. Si da `null`, no envía y muestra `MENSAJE_SIN_USUARIO_SESION`.
+- **Si manda el nombre** (los rellenos `'SISTEMA'`/`'sistema'`): se agrega `nombreUsuarioSesion(): string | null`
+  en el mismo util, con este orden de búsqueda:
+  1. `sessionStorage['usuario'].nombre`;
+  2. `sessionStorage['username']`;
+  3. `sessionStorage['userName']`;
+  4. lo mismo en `localStorage`.
+
+  Sin relleno. Si da `null`, la pantalla no envía y muestra el mismo mensaje.
+- **Si manda un objeto `Usuario`** (los `{ codigo: 0 }` del `catch`): usa el `usuario` de la sesión. Si no hay, no envía.
+- **`tsr` cierre-caja:** lee del util; deja de leer solo de `localStorage`.
+- **Solo las lecturas, no las escrituras.** Si una pantalla usa el usuario solo para mostrarlo o para filtrar,
+  sin mandarlo a una escritura, se deja como está y se reporta.
+- **Sin backend.** `tsr` se comparte con `lap-saa-1`: antes del commit se revisa el `git status` de cada archivo.
