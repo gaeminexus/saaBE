@@ -37,4 +37,10 @@ public interface CierrePeriodoContableService {
 	/** Escribe una fila en la bitácora CNT.HCPR. */
 	void registrarBitacora(String tipo, String accion, Long idEmpresa, Long anio, Long mes, String usuario, String ip,
 			String motivo, Long idPeriodo, Long idCorrida, boolean fueraDeOrden) throws Throwable;
+
+	/**
+	 * Bitácora CNT.HCPR de la empresa, de la más reciente a la más antigua. Solo lectura. {@code tipo} (CONTABLE o
+	 * CARTERA) es opcional: nulo o vacío devuelve las dos.
+	 */
+	java.util.List<com.saa.model.cnt.HistorialCierrePeriodo> listarBitacora(Long idEmpresa, String tipo) throws Throwable;
 }
