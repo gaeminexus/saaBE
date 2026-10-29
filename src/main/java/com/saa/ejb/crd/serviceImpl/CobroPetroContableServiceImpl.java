@@ -809,6 +809,13 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
         // --- Aportes: cesantía / jubilación --------------------------------------------
         double totalCesantia = 0.0;
         double totalJubilacion = 0.0;
+        // C4 (29-oct-2026, carga 352 corrida 2): antes, un aporte de otro tipo (p. ej. 0,09 al 12
+        // RENDIMIENTO CESANTIA PERSONAL de la entidad 5079) solo dejaba una ADVERTENCIA en el log y
+        // quedaba FUERA del asiento: el aporte existía en CRD.APRT sin su haber y 2.3.02.05 quedaba
+        // en -0,09. Ahora todo tipo creado por la aplicación lleva su línea con la cuenta de su tipo
+        // (CrdLineaAsiento.aux1ParaTipoAporte, mismo mapa que CRD.CTAP); un tipo sin línea en la
+        // plantilla detiene el asiento con mensaje claro, nunca se omite en silencio.
+        Map<Long, Double> otrosAportesPorTipo = new LinkedHashMap<>();
         if (aportesPorTipo != null) {
             for (Object[] fila : aportesPorTipo) {
                 Long idTipo = fila[0] != null ? ((Number) fila[0]).longValue() : null;
@@ -818,9 +825,14 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
                 } else if (idTipo != null && idTipo == TIPO_APORTE_CESANTIA) {
                     totalCesantia += suma;
                 } else {
-                    System.out.println("  ADVERTENCIA: aporte de tipo " + idTipo + " en la carga "
-                            + idCarga + " no es cesantía(11) ni jubilación(9); no se contabiliza"
-                            + " en el asiento de aplicación.");
+                    if (idTipo == null) {
+                        if (Math.abs(suma) > 0.001) {
+                            throw new IncomeException("La carga " + idCarga + " tiene aportes por $" + redondear(suma)
+                                    + " sin tipo de aporte; no se puede armar el asiento de aplicación.");
+                        }
+                        continue;
+                    }
+                    otrosAportesPorTipo.merge(idTipo, suma, Double::sum);
                 }
             }
         }
@@ -1132,6 +1144,34 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
                     "Aplicación Petro/ARCH carga " + idCarga + " - aportes jubilación"));
             totalHaber += totalJubilacion;
         }
+        // H: aportes de cualquier otro tipo (rendimientos 12/24, adicional, retiro voluntario...),
+        // cada uno con la línea de su tipo — ver el comentario C4 del bucle de acumulación.
+        double totalOtrosAportes = 0.0;
+        for (Map.Entry<Long, Double> entrada : otrosAportesPorTipo.entrySet()) {
+            double valor = redondear(entrada.getValue());
+            if (Math.abs(valor) < 0.005) {
+                continue;
+            }
+            if (valor < 0.0) {
+                throw new IncomeException("Los aportes de tipo " + entrada.getKey() + " de la carga " + idCarga
+                        + " suman $" + valor + " (negativo); no se puede armar el asiento de aplicación.");
+            }
+            Integer aux1 = CrdLineaAsiento.aux1ParaTipoAporte(entrada.getKey());
+            DetallePlantilla linea = aux1 != null
+                    ? detallePlantillaDaoService.selectByPlantillaYAuxiliar(idPlantilla, aux1) : null;
+            if (linea == null) {
+                throw new IncomeException("La carga " + idCarga + " creó aportes de tipo " + entrada.getKey()
+                        + " por $" + valor + " y la plantilla alterno " + PlantillasCredito.APLICACION_PETRO
+                        + " no tiene la línea de ese tipo (aux1=" + aux1 + "). Créela (rendimientos 12/24:"
+                        + " docs/logica-negocio/crd/sql/335) o corrija el tipo del aporte; no se contabiliza"
+                        + " un aporte sin su línea.");
+            }
+            lineas.add(lineaDesdePlantilla(linea, valor,
+                    "Aplicación Petro/ARCH carga " + idCarga + " - aportes tipo " + entrada.getKey()));
+            totalHaber += valor;
+            totalOtrosAportes += valor;
+        }
+        totalOtrosAportes = redondear(totalOtrosAportes);
 
         if (lineas.isEmpty()) {
             System.out.println("CobroPetroContableService.contabilizarAplicacion - carga " + idCarga
@@ -1142,13 +1182,13 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
         // D: por aplicar — se arman DESPUÉS de sumar el Haber real, así el asiento cuadra
         // por construcción (D = suma de las líneas de H ya redondeadas), sin necesitar un
         // ajuste de centavos.
-        double totalPrestamos = redondear(totalHaber - totalCesantia - totalJubilacion);
+        double totalPrestamos = redondear(totalHaber - totalCesantia - totalJubilacion - totalOtrosAportes);
         // D-010 corrección (28-oct-2026): el excedente devuelto a la cuenta individual que vino de
         // una fila de PRÉSTAMO entró en el reparto por 1.4.05.10, así que sale de 2.3.02.10 —no de
         // 2.3.02.05— aunque su haber sea la cuenta de aportes. Regla general: cada valor debita el
         // puente del producto por el que ENTRÓ en el reparto.
         double excedentePorPrestamos = excedentesQueEntraronPorPrestamos(idCarga);
-        double totalAportes = redondear(totalCesantia + totalJubilacion - excedentePorPrestamos);
+        double totalAportes = redondear(totalCesantia + totalJubilacion + totalOtrosAportes - excedentePorPrestamos);
 
         List<DetalleAsiento> lineasFinal = new ArrayList<>();
         if (totalAportes > 0.0) {

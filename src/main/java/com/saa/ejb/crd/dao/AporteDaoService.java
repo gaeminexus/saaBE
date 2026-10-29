@@ -572,7 +572,10 @@ public interface AporteDaoService extends EntityDao<Aporte>{
 	 * D-022 (reproceso, cuadre Superintendencia C4): tipo de aporte ({@code TPAPCDGO}) del último
 	 * aporte vigente de la entidad con fecha de caja anterior a {@code antesDe}:
 	 * {@code NVL(APRTIDST, 4) <> 0}, mayor {@code APRTFCTR < antesDe} (a igual fecha, mayor código).
-	 * Ver REPROCESO-CARGA-PETRO.md §4.10.
+	 * Solo cuentan los tipos de APORTE MENSUAL (9 jubilación personal, 11 cesantía personal): un
+	 * rendimiento (12/24) u otro movimiento no es un tipo de aporte que el AH pueda recibir (C4,
+	 * 29-oct-2026: el 0,09 de la entidad 5079 terminó en el 12 porque su último movimiento antes de
+	 * jun-2025 era un rendimiento migrado del 31-mar-2025). Ver REPROCESO-CARGA-PETRO.md §4.10.
 	 *
 	 * @param idEntidad Código de la entidad
 	 * @param antesDe   Inicio del mes de la carga (exclusivo)

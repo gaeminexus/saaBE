@@ -6571,9 +6571,11 @@ private static boolean esVigenciaAporteActiva(com.saa.model.crd.VigenciaContrato
 
 /**
  * D-022 (§4.10): tipo de aporte para el AH de un mes que ninguna vigencia del contrato cubre, en este
- * orden: (1) la última vigencia ACTIVA anterior al mes (mayor inicio antes del primer día del mes);
+ * orden: (1) la última vigencia ACTIVA que empiece hasta el último día del mes (mayor inicio; C4
+ * 29-oct-2026: incluye la que empieza dentro del mes, antes exigía inicio anterior al primer día);
  * (2) la primera vigencia ACTIVA posterior (menor inicio después del último día del mes); (3) el
- * tipo del último aporte vigente de la entidad anterior al mes; (4) cesantía (11) por defecto.
+ * tipo del último aporte vigente 9/11 de la entidad anterior al mes (nunca un rendimiento 12/24);
+ * (4) cesantía (11) por defecto.
  * {@code origen[0]} dice cuál decidió, para el detalle de la respuesta.
  */
 private Long tipoAporteSinVigenciaDelMes(List<com.saa.model.crd.VigenciaContrato> vigencias, java.time.LocalDate mesCarga,
@@ -6585,7 +6587,13 @@ private Long tipoAporteSinVigenciaDelMes(List<com.saa.model.crd.VigenciaContrato
 		if (!esVigenciaAporteActiva(vigencia) || vigencia.getFechaInicio() == null) {
 			continue;
 		}
-		if (vigencia.getFechaInicio().isBefore(mesCarga)) {
+		// C4 (29-oct-2026): "anterior" incluye la vigencia que EMPIEZA dentro del mes (inicio <= último
+		// día). Antes era inicio < primer día: en la red de seguridad del tope, la entidad 5079 (vigencia
+		// 1744 de cesantía desde el 01-jun-2025) no tenía "anterior" ni "posterior", caía al último aporte
+		// (un rendimiento 12 migrado) y el sobrante de 0,09 se creó como RENDIMIENTO CESANTIA PERSONAL.
+		// En el caso 1b ninguna vigencia toca el mes (no cambia nada); en el 1, una vigencia que empiece
+		// dentro del mes sin llegar a su último día ahora decide como "anterior", que es su tipo real.
+		if (!vigencia.getFechaInicio().isAfter(ultimoDiaMes)) {
 			if (anterior == null || vigencia.getFechaInicio().isAfter(anterior.getFechaInicio())) {
 				anterior = vigencia;
 			}
