@@ -203,7 +203,7 @@ scripts de control del reproceso (`C17-02`, `348`, `349`, `reproceso-carga-352-c
 | CRD.CRCT | Meses cerrados para cartera: **2026-07 (#1), 2026-08 (#2), 2026-09 (#4)** |
 
 **Pendiente tras el pase:**
-- Verificar en `CNT.PRDO` que existen los períodos de junio a diciembre 2025, que el reproceso necesita. La pantalla solo listaba hasta enero 2026.
+- **Períodos de 2025: NO se crean en producción** (acordado con el agente del reproceso, 2026-11-01). Los crea el reproceso definitivo (C1, `05-periodos-2025-y-tipo-apertura.sql`) sobre la copia nueva de producción, antes de la apertura al 31-may-2025, y llegan con la base reprocesada (escenario A, D-049). Abiertos ahora, alguien podría registrar asientos en 2025 en una base que se reemplaza. La vigencia IN-A/EG-A/DI-A desde 2025-06-01 (5.6) recién pesa en el reproceso.
 - **No cerrar ningún período hasta terminar el reproceso.** Un período cerrado no admite asientos.
 - Para reprocesar julio, agosto y septiembre (cartera cerrada) hace falta reabrirlos con motivo, o el modo de reproceso: se planifica con el agente del cuadre.
 - Cierre de cartera de octubre: previsualizar con contabilidad antes de ejecutar (§3).
