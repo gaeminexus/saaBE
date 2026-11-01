@@ -44,11 +44,17 @@ impacto hoy (la corrección preventiva sigue pendiente).
 - Los 400 de `/extr/selectByCriteria` del 01-11 a las 00:51 (otra pantalla; no es de este equipo).
 - Al cierre del proyecto: eliminar los cargadores históricos C11/C13 (ver abajo).
 
-## Pendiente — coordinación con el reproceso (árbitro del cuadre)
-- Mensaje a pasar: los 64 pagos `PAGO_MANUAL` sin cobro del 14 al 26-08 (4.755,37) y los 33 de hora 00:00 de
-  jun-jul (11.581,43) no tienen CBCR; si el reproceso solo rehace cobros, quedarían sin asiento. Script:
-  `crd/sql/VERIFICACION-PAGOS-MANUALES-SIN-ASIENTO.sql`. Los 6 cobros sin asiento del 31-07 (contabilidad
-  apagada) se contabilizan al rehacer el cobro.
+## Coordinación con el reproceso: RESUELTA (respuesta del árbitro del cuadre, 2026-11-01)
+El reproceso deja contabilizados TODOS los pagos de préstamo, también los que no tienen cobro, y todo pago pasa por el
+cobro de crédito:
+- 6 CON_COBRO_SIN_ASIENTO (31-07): se rehace el cobro con su asiento.
+- 33 SIN_COBRO de las 00:00 (jun-jul, época migrada): criterio D-047. Se borra el pago, se restituye la cuota y se registra
+  por cobro con la fecha del banco si el dinero aparece en el extracto o en el retorno Petro/ARCH.
+- 64 SIN_COBRO con hora real (ago-2026): se anula el pago y se registra por cobro con el mismo préstamo, cuota y valor, con
+  la fecha del depósito. Si el dinero no aparece, va a una cuenta por regularizar con su motivo.
+- `crd/sql/VERIFICACION-PAGOS-MANUALES-SIN-ASIENTO.sql` entra a su receta como control antes y después de cada mes.
+  Esperado al cerrar: SIN_COBRO = 0 y CON_COBRO_SIN_ASIENTO = 0.
+- El cuadre no usa `/prst/pagarCuota`; el cierre (410) no lo afecta.
 
 ## Lecciones del 01-11
 - **Un producto de pago nuevo en una cuenta que ya tiene uno se crea INACTIVO** y se activa con el EAR que lo usa
