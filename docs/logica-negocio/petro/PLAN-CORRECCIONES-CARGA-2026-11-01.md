@@ -222,3 +222,25 @@ EAR.
   la fusión, la columna `PRSTCDGO` sobra pero no estorba.
 - **Después de desplegar, verificar el hash** de los dos WAR desplegados (procedimiento en
   `PASE-PRODUCCION-FUSION-2026-11-01.md` §5).
+- **DESPLEGADO en producción el 2026-11-01 a las 02:01:58.** El hash del EAR en el servidor
+  (`D:\ears\01112026\SaaEAR.ear`) coincide: `41BDDCC3…70544998`. Log limpio desde el despliegue. Las
+  coincidencias con «Error» son el nombre del bean `MarcadoErrorDocumentoServiceImpl`. Vuelta atrás:
+  `fusion\SaaEAR.ear`.
+  - Anotado aparte: antes del despliegue (00:51) hubo una ráfaga de `error 400` en
+    `/extr/selectByCriteria`, envuelta por `MensajeErrorJsonFilter`. No es de este plan; revisar qué
+    pantalla consulta EXTR con criterios inválidos.
+
+## EAR de cuentas a plantilla (2026-11-01 02:07)
+- `F:\ears\asoprep\plantillas-1101\SaaEAR.ear`, SHA-256 `870342C9D756672CEE451EC534A1FB56AFB0920BE3EB5FE66BA6CBD8B611BEF5`.
+  Se armó sobre el de correcciones; solo cambia `saaBE.war`.
+  - `saaBE.war` `2CFE640BDF475D1BAEE65EB939613425D858AEF44164CADA8621B83BA6DEEC84`: saaBE `main` en `8489b10c`.
+    Agrega B6-a y P1, P2, P3 (con arranque), P4 (A, B, C), P5 y P8 del plan de cuentas a plantilla.
+  - `SaaFE.war` `9AA629027C0BB53C04F03B534D3A6053868252886AEDC2BC03CB716A6B520129`, el mismo que ya está desplegado.
+  - Copia partida en `plantillas-1101\partes`.
+- **Prerrequisitos de base: TODOS CORRIDOS en producción.** `crd/sql/356` (P3/P5), `cnt/sql/c20-02`
+  (rubro 250, detalles 16 y 17) y `cnt/sql/c20-01` (verificación).
+- **Desplegar sin ninguna carga en proceso.** Vuelta atrás: `correcciones-1101\SaaEAR.ear`. Las
+  semillas no le estorban a ese EAR.
+- **Qué cambia para el usuario:** los asientos de la carga Petro/ARCH quedan a nombre de quien cargó
+  el archivo, no de SISTEMA. Los controles y el cierre de cartera dan los mismos montos; las cuentas
+  ahora se pueden editar en la pantalla de plantillas y del rubro 250.
