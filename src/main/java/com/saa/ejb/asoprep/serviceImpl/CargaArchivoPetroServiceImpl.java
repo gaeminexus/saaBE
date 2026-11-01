@@ -5869,11 +5869,24 @@ private Aporte crearNuevoAporte(Entidad entidad, Long idTipoAporte, String nombr
 	nuevoAporte.setFechaTransaccion(fechaAporte); // ✅ CORRECCIÓN: Usar último día del mes
 	nuevoAporte.setPeriodoDevengo(periodoDevengo);
 	nuevoAporte.setTipoMovimiento((long) tipoMovimiento);
-	nuevoAporte.setGlosa(String.format("Aporte %s - Mes %d/%d - CargaArchivo: %d",
-	                                   nombreTipo,
-	                                   cargaArchivo.getMesAfectacion(),
-	                                   cargaArchivo.getAnioAfectacion(),
-	                                   cargaArchivo.getCodigo()));
+	// 2026-10-31 (DISENO-AFECTACION-MANUAL-V2.md §6.1): la glosa decia siempre el mes de la CARGA,
+	// asi que un aporte que paga julio o uno anticipado a noviembre se veia como de octubre. Ahora
+	// lleva el mes al que corresponde el aporte (periodoDevengo) y el mes en que se corrio la carga.
+	if (periodoDevengo != null) {
+		nuevoAporte.setGlosa(String.format("Aporte %s - Mes %d/%d (pagado en %d/%d) - CargaArchivo: %d",
+		                                   nombreTipo,
+		                                   periodoDevengo.getMonthValue(),
+		                                   periodoDevengo.getYear(),
+		                                   cargaArchivo.getMesAfectacion(),
+		                                   cargaArchivo.getAnioAfectacion(),
+		                                   cargaArchivo.getCodigo()));
+	} else {
+		nuevoAporte.setGlosa(String.format("Aporte %s - Sin mes de devengo (pagado en %d/%d) - CargaArchivo: %d",
+		                                   nombreTipo,
+		                                   cargaArchivo.getMesAfectacion(),
+		                                   cargaArchivo.getAnioAfectacion(),
+		                                   cargaArchivo.getCodigo()));
+	}
 	nuevoAporte.setEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
 	nuevoAporte.setFechaRegistro(java.time.LocalDateTime.now());
 	nuevoAporte.setUsuarioRegistro("SAA_AH"); // ✅ Identificador de aportes creados por el sistema
