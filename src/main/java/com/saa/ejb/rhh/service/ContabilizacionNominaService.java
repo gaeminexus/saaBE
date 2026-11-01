@@ -38,6 +38,20 @@ import jakarta.ejb.TransactionAttributeType;
 public interface ContabilizacionNominaService {
 
     /**
+     * N1 (2026-11-01): producto de pago que clasifica el pago de nomina INDIVIDUALIZADO (origen
+     * {@code RHH_NOMINA_EMPLEADO}), deducido de la <b>misma cuenta</b> que usa el pago consolidado: la linea
+     * {@code SUELDOS_POR_PAGAR_DEBE} (aux1 50) de la plantilla de pago de nomina del periodo
+     * ({@code RHH.CFNM.CFNMPLPG}). Es el producto ACTIVO de la empresa cuyo grupo ({@code PGS.GRPP.PLNNCDGO}) tiene esa
+     * cuenta. Antes se tomaba el producto «NOMINA» por su codigo, cuyo grupo apunta a otra cuenta (honorarios por pagar).
+     *
+     * @param periodo : Periodo de nomina de la orden de pago
+     * @return        : Id del producto de pago
+     * @throws Throwable IncomeException si la linea 50 no existe o sigue con la cuenta marcadora, o si no hay exactamente
+     *                   un producto activo cuyo grupo tenga esa cuenta (el mensaje dice cual dato corregir)
+     */
+    Long resolverProductoPagoNominaIndividual(com.saa.model.rhh.PeriodoNomina periodo) throws Throwable;
+
+    /**
      * Comprueba que todas las lineas de plantilla que el periodo va a usar tengan una cuenta
      * contable real asignada.
      *

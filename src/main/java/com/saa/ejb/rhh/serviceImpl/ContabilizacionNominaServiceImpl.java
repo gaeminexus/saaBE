@@ -100,6 +100,10 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
     @EJB
     private PeriodoNominaDaoService periodoNominaDaoService;
 
+    /** N1: producto de pago del pago de nomina individualizado, deducido de la cuenta de la linea 50. */
+    @EJB
+    private com.saa.ejb.cxp.dao.ProductoPagoDaoService productoPagoDaoService;
+
     /** C17: mes cerrado para cartera / contabilidad (CIERRES-BLOQUEANTES.md). */
     @jakarta.ejb.EJB
     private com.saa.ejb.cnt.service.EstadoCierreService estadoCierreService;
@@ -1599,6 +1603,46 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
      * @param marcadora	: PLNNCDGO de la cuenta marcadora
      * @return			: true si la linea esta sin configurar
      */
+    @Override
+    public Long resolverProductoPagoNominaIndividual(PeriodoNomina periodo) throws Throwable {
+        System.out.println("Ingresa al metodo resolverProductoPagoNominaIndividual, periodo: "
+                + (periodo != null ? periodo.getCodigo() : null));
+        if (periodo == null || periodo.getEmpresa() == null || periodo.getEmpresa().getCodigo() == null) {
+            throw new IncomeException("No se puede resolver el producto de pago de la nomina: falta el periodo o su empresa.");
+        }
+        Long idEmpresa = periodo.getEmpresa().getCodigo();
+        ConfiguracionNomina configuracion = recuperaConfiguracion(periodo);
+        Long idPlantilla = resuelvePlantilla(configuracion.getPlantillaPago(), "pago", idEmpresa);
+        Long marcadora = exigeCuentaMarcadora(configuracion);
+        // La misma linea que contabiliza el pago consolidado (contabilizarPago): SUELDOS_POR_PAGAR_DEBE.
+        DetallePlantilla lineaSueldos = exigeLinea(idPlantilla, RhhLineaAsiento.SUELDOS_POR_PAGAR_DEBE, "pago");
+        exigeCuentaReal(lineaSueldos, marcadora, "pago");
+        PlanCuenta cuenta = lineaSueldos.getPlanCuenta();
+        String cuentaTexto = cuenta.getCuentaContable() + " (" + cuenta.getNombre() + ")";
+        List<com.saa.model.cxp.ProductoPago> productos = productoPagoDaoService.selectActivosByEmpresaYCuentaGrupo(
+                idEmpresa, cuenta.getCodigo());
+        if (productos == null || productos.isEmpty()) {
+            throw new IncomeException("No hay un producto de pago activo en la empresa " + idEmpresa + " cuyo grupo tenga la"
+                    + " cuenta " + cuentaTexto + ", que es la de la linea " + RhhLineaAsiento.SUELDOS_POR_PAGAR_DEBE
+                    + " (sueldos por pagar) de la plantilla de pago de nomina. El pago por empleado tiene que"
+                    + " contabilizarse en la MISMA cuenta que el pago consolidado: corrija el grupo del producto de nomina"
+                    + " en CXP (PGS.GRPP.PLNNCDGO) para que apunte a esa cuenta, o cree un producto cuyo grupo la tenga.");
+        }
+        if (productos.size() > 1) {
+            StringBuilder lista = new StringBuilder();
+            for (com.saa.model.cxp.ProductoPago producto : productos) {
+                if (lista.length() > 0) {
+                    lista.append(", ");
+                }
+                lista.append(producto.getId()).append(" «").append(producto.getNombre()).append("»");
+            }
+            throw new IncomeException("Hay mas de un producto de pago activo en la empresa " + idEmpresa + " cuyo grupo tiene"
+                    + " la cuenta " + cuentaTexto + " (sueldos por pagar): " + lista + ". Deje uno solo; no se elige"
+                    + " uno al azar.");
+        }
+        return productos.get(0).getId();
+    }
+
     private boolean esMarcadora(PlanCuenta cuenta, Long marcadora) {
         if (cuenta == null) {
             return true;

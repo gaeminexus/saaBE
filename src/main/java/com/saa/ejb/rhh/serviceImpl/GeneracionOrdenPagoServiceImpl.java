@@ -350,7 +350,9 @@ public class GeneracionOrdenPagoServiceImpl implements GeneracionOrdenPagoServic
             return;
         }
 
-        Long idProductoNomina = idProductoNomina(idEmpresa);
+        // N1: el producto se deduce de la cuenta de la linea 50 de la plantilla de pago de nomina (la misma del pago
+        // consolidado), no del producto «NOMINA» por su codigo.
+        Long idProductoNomina = contabilizacionNominaService.resolverProductoPagoNominaIndividual(orden.getPeriodoNomina());
         String periodoTexto = orden.getPeriodoNomina().getMes() + "/" + orden.getPeriodoNomina().getAnio();
 
         for (DetalleOrdenPagoNomina detalle : detalles) {
@@ -487,34 +489,6 @@ public class GeneracionOrdenPagoServiceImpl implements GeneracionOrdenPagoServic
                 .setMaxResults(1)
                 .getResultList();
         return pagos.isEmpty();
-    }
-
-    /**
-     * Localiza el id del producto de pago de nomina por su codigo dentro de la empresa.
-     * Mismo patron que <code>PlanillaIessServiceImpl.buscaProductoPago</code>
-     * (docs/logica-negocio/rhh/API-PLANILLA-IESS.md), citado por el contrato -- se escribe
-     * aparte en vez de reusar {@link #localizaProductoNomina} (que ya existe en esta misma
-     * clase para el egreso consolidado) porque ese otro devuelve la ENTIDAD completa con un
-     * mensaje de error propio del egreso, y aqui solo hace falta el id para
-     * {@link LineaContablePago#setIdProductoPago}, con un mensaje que nombra el pago por
-     * empleado en vez del egreso consolidado.
-     *
-     * @param idEmpresa		: Id de la empresa
-     * @return				: El id del producto
-     * @throws Throwable	: IncomeException si no existe
-     */
-    private Long idProductoNomina(Long idEmpresa) throws Throwable {
-        try {
-            return (Long) em.createQuery("select p.id from ProductoPago p where p.codigo = :codigo "
-                    + "and p.empresa.codigo = :idEmpresa")
-                    .setParameter("codigo", CODIGO_PRODUCTO_NOMINA)
-                    .setParameter("idEmpresa", idEmpresa)
-                    .getSingleResult();
-        } catch (NoResultException e) {
-            throw new IncomeException("No existe el producto de pago con codigo '" + CODIGO_PRODUCTO_NOMINA
-                    + "' para la empresa " + idEmpresa + ". Ejecute sql/15_INSERT_PRODUCTO_PAGO_NOMINA.sql:"
-                    + " el pago por empleado necesita su id para el desglose contable.");
-        }
     }
 
     /**
@@ -1696,7 +1670,8 @@ public class GeneracionOrdenPagoServiceImpl implements GeneracionOrdenPagoServic
         detalle = detalleOrdenPagoNominaDaoService.save(detalle, detalle.getCodigo());
 
         OrdenPagoNomina orden = detalle.getOrdenPagoNomina();
-        Long idProductoNomina = idProductoNomina(orden.getEmpresa().getCodigo());
+        // N1: mismo producto que el pago original, deducido de la cuenta de la linea 50 de la plantilla de pago.
+        Long idProductoNomina = contabilizacionNominaService.resolverProductoPagoNominaIndividual(orden.getPeriodoNomina());
         String periodoTexto = orden.getPeriodoNomina().getMes() + "/" + orden.getPeriodoNomina().getAnio();
         // El pago anterior de este mismo DRPG esta RECHAZADO/ANULADO: la guarda anti-duplicados
         // de tienePagoVivoPorDrpg (dentro de registraPagoDeUnDetalle) lo deja pasar.
