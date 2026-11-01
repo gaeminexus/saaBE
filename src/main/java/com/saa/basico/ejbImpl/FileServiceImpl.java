@@ -57,9 +57,25 @@ public class FileServiceImpl implements FileService {
 
     @Override
     public String uploadFileToPath(InputStream inputStream, String fileName, String uploadPath) throws Throwable {
+        return uploadFileToPath(inputStream, fileName, uploadPath, null);
+    }
+
+    @Override
+    public String uploadFileToPath(InputStream inputStream, String fileName, String uploadPath,
+            String[] extensionesAdicionales) throws Throwable {
         try {
-            // Validar extensión
-            if (!validarExtension(fileName)) {
+            // Validar extensión (las de la lista compartida, o las adicionales de esta llamada)
+            boolean extensionAdicional = false;
+            if (extensionesAdicionales != null) {
+                String extensionArchivo = getExtension(fileName).toLowerCase();
+                for (String adicional : extensionesAdicionales) {
+                    if (adicional != null && adicional.equals(extensionArchivo)) {
+                        extensionAdicional = true;
+                        break;
+                    }
+                }
+            }
+            if (!extensionAdicional && !validarExtension(fileName)) {
                 throw new Throwable("Extensión de archivo no permitida: " + getExtension(fileName));
             }
 

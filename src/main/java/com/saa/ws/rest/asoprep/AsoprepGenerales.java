@@ -159,9 +159,9 @@ public class AsoprepGenerales {
                         .build();
             }
 
-            // Validar extensión del archivo
+            // Validar extensión del archivo (B4-A1: ".csv" solo si la carga es de ARCH)
             try {
-                if (!fileService.validarExtension(fileName)) {
+                if (!extensionPermitida(fileName, cargaArchivoJson)) {
                     return Response.status(Response.Status.BAD_REQUEST)
                             .entity(new FileResponse(false, "Extensión de archivo no permitida", null))
                             .build();
@@ -174,9 +174,9 @@ public class AsoprepGenerales {
 
             // Deserializar los JSON usando Jakarta JSON Binding (no necesita URL decode porque viene por formData)
             Jsonb jsonb = crearJsonbUTF8();
-            
+
             CargaArchivo cargaArchivo = jsonb.fromJson(cargaArchivoJson, CargaArchivo.class);
-            
+
             DetalleCargaArchivo[] detallesArray = jsonb.fromJson(detallesCargaArchivosJson, DetalleCargaArchivo[].class);
             List<DetalleCargaArchivo> detallesCargaArchivos = Arrays.asList(detallesArray);
             
@@ -236,9 +236,9 @@ public class AsoprepGenerales {
             String fileName = archivoNombre;
             System.out.println("Archivo encontrado: " + fileName);
 
-            // Validar extensión del archivo
+            // Validar extensión del archivo (B4-A1: ".csv" solo si la carga es de ARCH)
             try {
-                if (!fileService.validarExtension(fileName)) {
+                if (!extensionPermitida(fileName, cargaArchivoJson)) {
                     return Response.status(Response.Status.BAD_REQUEST)
                             .entity(new FileResponse(false, "Extensión de archivo no permitida", null))
                             .build();
@@ -704,6 +704,28 @@ public class AsoprepGenerales {
     /**
      * Crea un Jsonb configurado específicamente para UTF-8
      */
+    /**
+     * B4-A1 (PLAN-CORRECCIONES-CARGA-2026-11-01.md): la lista compartida de {@code FileService} no
+     * incluye ".csv" y no se toca. La respuesta de ARCH sí lo acepta, así que un ".csv" pasa SOLO
+     * cuando el JSON {@code cargaArchivo} trae la filial ARCH; cualquier otro caso (Petro, JSON
+     * ilegible, sin filial) se rechaza como antes.
+     */
+    private boolean extensionPermitida(String fileName, String cargaArchivoJson) throws Throwable {
+        if (fileService.validarExtension(fileName)) {
+            return true;
+        }
+        if (fileName == null || !fileName.toLowerCase().endsWith(".csv") || cargaArchivoJson == null) {
+            return false;
+        }
+        try {
+            CargaArchivo carga = crearJsonbUTF8().fromJson(cargaArchivoJson, CargaArchivo.class);
+            return carga != null && carga.getFilial() != null && carga.getFilial().getCodigo() != null
+                    && carga.getFilial().getCodigo().longValue() == com.saa.rubros.Filiales.ARCH;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     private Jsonb crearJsonbUTF8() {
         JsonbConfig config = new JsonbConfig();
         

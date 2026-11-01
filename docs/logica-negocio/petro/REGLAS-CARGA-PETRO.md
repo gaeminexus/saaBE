@@ -872,8 +872,27 @@ validaciones, aplicación) no cambia. **El contrato completo es
   omiten). Parcial o sin líneas → una fila `AH` con lo descontado (queda como novedad bloqueante y el
   operador la reparte con «Afectar cuotas»). Descontado ≤ 0,01 → sin fila. Los partícipes de la generación
   que no contestan no generan fila y se cuentan en el log.
-- **Pendiente conocido:** `FileService.EXTENSIONES_PERMITIDAS` (módulo basico) no incluye `.csv`; mientras
-  no se agregue, el REST y la subida del archivo físico rechazan el `.csv` aunque el lector lo entienda.
+- **`.csv` (B4-A1, 2026-11-01):** `FileService.EXTENSIONES_PERMITIDAS` (compartida, no se toca) no incluye
+  `.csv`. El REST de asoprep (`validarArchivoPetro` y `procesarArchivoPetro`) lo acepta solo si el JSON
+  `cargaArchivo` trae la filial ARCH (`extensionPermitida`), y la subida física usa la sobrecarga
+  `FileService.uploadFileToPath(..., String[] extensionesAdicionales)` con `".csv"` solo para ARCH.
+
+### Pendientes de ARCH resueltos el 2026-11-01 (B4, `PLAN-CORRECCIONES-CARGA-2026-11-01.md`)
+
+- **A6, parcial bloqueante:** en fase 2, `validarAporteAH` llama primero a `registrarParcialArchBloqueante`:
+  si el total descontado del partícipe en la carga difiere de lo enviado en la generación ARCH del mes
+  (suma de sus líneas PDGA) en más de $0,01, o no tiene líneas, registra `MONTO_INCONSISTENTE` con
+  `montoEsperado = null` y `montoRecibido` = lo descontado (BLOQUEANTE) y no corre la comparación contra
+  `HistorialSueldo`. Con `montoEsperado` = lo enviado, un parcial daría diferencia negativa y quedaría COBRANZA.
+- **A4, PE con atraso:** en la filial ARCH `validarNovedadesFase2` no compara la fila de préstamo contra una
+  sola cuota (viene de un descuento completo: su monto es lo enviado, con atrasos). Las validaciones de
+  producto, entidad y préstamo siguen.
+- **A8, cédula:** se quitan espacios (también NBSP), puntos, comas y guiones antes de validar. Una fila con
+  montos cuya identificación sigue sin ser válida **aborta** nombrando la fila; se ignoran solo el encabezado,
+  las filas «Total…» y la fila de totales sin identificación ni nombre.
+- **Tarjeta:** la fila AH del reparto parcial lleva también `capitalDescontado` = lo descontado.
+- **A5 (préstamo de la línea PDGA): NO hecho.** `ParticipeXCargaArchivo` no tiene dónde guardar el préstamo
+  (ver el reporte B4); espera decisión.
 
 > **⛔ DEFECTO ABIERTO (2026-10-31, carga ARCH 510): los aportes de una carga se cuentan por
 > `APRTIDAS`, y los aportes MIGRADOS traen ahí un número del sistema anterior.**

@@ -37,6 +37,17 @@ public interface FileService {
     String uploadFileToPath(InputStream inputStream, String fileName, String uploadPath) throws Throwable;
 
     /**
+     * Igual que {@link #uploadFileToPath(InputStream, String, String)} pero acepta ADEMÁS las
+     * extensiones indicadas (p. ej. ".csv" para la respuesta de ARCH, B4-A1), sin tocar
+     * {@link #EXTENSIONES_PERMITIDAS}, que es compartida por todas las subidas.
+     *
+     * @param extensionesAdicionales : Extensiones extra aceptadas solo en esta llamada, con punto
+     *                                 y en minúsculas (puede ser null)
+     */
+    String uploadFileToPath(InputStream inputStream, String fileName, String uploadPath,
+            String[] extensionesAdicionales) throws Throwable;
+
+    /**
      * Sube un archivo con configuración por defecto
      *
      * @param inputStream : Stream del archivo a subir

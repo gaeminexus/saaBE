@@ -609,6 +609,10 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
             uploadPath.append("/").append(cargaArchivo.getMesAfectacion());
         }
         
+        // B4-A1: la respuesta de ARCH admite ".csv", que no está en la lista compartida de FileService.
+        if (esFilialArch(cargaArchivo)) {
+            return fileService.uploadFileToPath(archivoInputStream, fileName, uploadPath.toString(), new String[] { ".csv" });
+        }
         return fileService.uploadFileToPath(archivoInputStream, fileName, uploadPath.toString());
     }
 
@@ -1204,6 +1208,9 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
                     + descontado + ", enviado $" + enviado + " -> fila AH");
                 ParticipeXCargaArchivo registro = nuevoRegistroArch(rol, nombreEntidad, CODIGO_PRODUCTO_APORTES, "APORTES");
                 registro.setMontoDescontar(descontado);
+                // B4 (tarjeta): sin capitalDescontado la tarjeta del partícipe muestra $0 aunque se
+                // haya descontado; el parcial lleva todo lo descontado también ahí.
+                registro.setCapitalDescontado(descontado);
                 registro.setTotalDescontado(descontado);
                 registros.add(registro);
             }
@@ -1264,9 +1271,21 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
             numero++;
             String cedula = normalizarCedulaArch(columnas.length > 0 ? columnas[0] : null);
             if (cedula == null) {
-                if (columnas.length > 0 && columnas[0] != null && !columnas[0].trim().isEmpty()) {
+                String idCruda = columnas.length > 0 && columnas[0] != null ? columnas[0].replace(' ', ' ').trim() : "";
+                String nombreCrudo = columnas.length > 1 && columnas[1] != null ? columnas[1].replace(' ', ' ').trim() : "";
+                // B4-A8: una fila con montos NO se ignora en silencio —antes se perdia el dinero de
+                // una cedula mal escrita—. Se ignoran el encabezado, las filas "Total" y la fila de
+                // totales sin identificacion ni nombre; cualquier otra fila con montos aborta.
+                boolean esFilaTotal = idCruda.toLowerCase().startsWith("total")
+                    || (idCruda.isEmpty() && nombreCrudo.isEmpty());
+                if (!esFilaTotal && filaTraeMontosArch(columnas)) {
+                    throw new IllegalArgumentException("Fila " + numero + " del archivo: la identificación \"" + idCruda
+                        + "\" (nombre \"" + nombreCrudo + "\") no es una cédula válida pero la fila trae montos. "
+                        + "Corrija la identificación y vuelva a cargar.");
+                }
+                if (!idCruda.isEmpty()) {
                     ignoradas++;
-                    System.out.println("  Fila " + numero + " ignorada (identificación no numérica): \"" + columnas[0].trim() + "\"");
+                    System.out.println("  Fila " + numero + " ignorada (identificación no numérica): \"" + idCruda + "\"");
                 }
                 continue;
             }
@@ -1311,14 +1330,32 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
         if (valor == null) {
             return null;
         }
-        String limpio = valor.trim().replaceAll("[\\s-]", "");
-        if (limpio.matches("\\d+\\.0+")) {
-            limpio = limpio.substring(0, limpio.indexOf('.'));
+        // B4-A8: ademas de espacios y guiones, se quitan espacios duros (NBSP), puntos y comas
+        // ("171.234.567-8"). El ".0" que deja una celda numerica leida como texto se corta ANTES de
+        // quitar los puntos, o "1712345678.0" ganaria un digito.
+        String limpio = valor.replace(' ', ' ').trim();
+        if (limpio.matches("\\d+[.,]0+")) {
+            limpio = limpio.substring(0, limpio.length() - limpio.replaceAll("^\\d+", "").length());
         }
+        limpio = limpio.replaceAll("[\\s.,-]", "");
         if (!limpio.matches("\\d+")) {
             return null;
         }
         return limpio.length() == 9 ? "0" + limpio : limpio;
+    }
+
+    /** ¿La fila trae algun monto distinto de cero en MONTO_CALCULADO o MONTO_DESCONTADO? Un valor ilegible no cuenta. */
+    private boolean filaTraeMontosArch(String[] columnas) {
+        for (int i = 2; i < 4 && i < columnas.length; i++) {
+            try {
+                if (Math.abs(parseMontoArch(columnas[i])) > 0.005) {
+                    return true;
+                }
+            } catch (IllegalArgumentException e) {
+                // texto no numerico (encabezado): no es un monto
+            }
+        }
+        return false;
     }
 
     /**
@@ -5819,6 +5856,17 @@ private void validarNovedadesFase2(ParticipeXCargaArchivo participe,
 			return;
 		}
 		
+		// B4-A4 (DISENO-CARGA-RESPUESTA-ARCH.md §9.5): en la filial ARCH una fila de préstamo nace SOLO
+		// de un descuento completo (el lector manda todo parcial a una fila AH), y su monto es por
+		// definición lo que se le envió a ARCH, que incluye cuotas atrasadas. Compararlo contra UNA
+		// cuota daba MONTO_INCONSISTENTE a todo PE con atraso; el motor de pagos aplica en cascada.
+		// Las validaciones de producto, entidad y préstamo de arriba siguen valiendo.
+		if (esFilialArch(cargaArchivo)) {
+			System.out.println("  ARCH: fila " + codigoProducto + " del rol " + participe.getCodigoPetro()
+				+ " de descuento completo - no se compara contra una sola cuota");
+			return;
+		}
+
 		// VALIDACIÓN 12: CUOTA_NO_ENCONTRADA / CUOTA_FECHA_DIFERENTE
 		// IMPORTANTE: Si el código es PH o PP, el seguro viene en un registro separado con código HS
 		double montoArchivo = nullSafe(participe.getTotalDescontado());
@@ -6082,6 +6130,75 @@ private void validarNovedadesFase2(ParticipeXCargaArchivo participe,
 }
 
 /**
+ * B4-A6 (PLAN-CORRECCIONES-CARGA-2026-11-01.md, DISENO-CARGA-RESPUESTA-ARCH.md §9.5): la fila AH que
+ * el lector de ARCH arma con TODO lo descontado cuando el descuento fue parcial (o el partícipe no
+ * tiene líneas en la generación) tiene que quedar SIEMPRE como novedad BLOQUEANTE para que el operador
+ * reparta ese dinero, sea cual sea el aporte esperado: antes dependía de que el descontado se
+ * alejara del esperado de HistorialSueldo, y un parcial cercano al aporte pasaba sin avisar.
+ *
+ * <p>Parcial = el total descontado del partícipe en la carga (todas sus filas) difiere de lo enviado en
+ * la generación ARCH del mes (suma de sus líneas PDGA) en más de $0,01, o no tiene líneas. Un
+ * partícipe de descuento completo tiene sus filas por línea y su total coincide: no entra acá.</p>
+ *
+ * <p>Se registra {@code MONTO_INCONSISTENTE} con {@code montoEsperado = null}, a propósito y distinto
+ * de lo que pedía el plan ({@code montoEsperado = lo enviado}): con el esperado lleno, un parcial
+ * (recibido menor que lo enviado) da {@code montoDiferencia} NEGATIVA y
+ * {@link FamiliaNovedadCarga#clasificar} lo deja en COBRANZA, no BLOQUEANTE. Con {@code null} bloquea,
+ * igual que el sobrante de {@code distribuirAportePorDevengo}; lo enviado va en la descripción.</p>
+ *
+ * @return {@code true} si registró la novedad (la validación de aportes de esta fila termina ahí)
+ */
+private boolean registrarParcialArchBloqueante(ParticipeXCargaArchivo participe, CargaArchivo cargaArchivo,
+		Entidad entidad) throws Throwable {
+	if (cargaArchivo.getMesAfectacion() == null || cargaArchivo.getAnioAfectacion() == null) {
+		return false;
+	}
+	com.saa.model.crd.GeneracionArchivoPetro generacion = generacionArchivoPetroDaoService.selectUltimaByPeriodo(
+		cargaArchivo.getMesAfectacion(), cargaArchivo.getAnioAfectacion(), Filiales.ARCH);
+	if (generacion == null) {
+		return false;
+	}
+
+	double enviado = 0.0;
+	int lineas = 0;
+	List<com.saa.model.crd.ParticipeDetalleGeneracionArchivo> lineasEntidad =
+		participeDetalleGeneracionArchivoDaoService.selectByEntidad(entidad.getCodigo());
+	if (lineasEntidad != null) {
+		for (com.saa.model.crd.ParticipeDetalleGeneracionArchivo linea : lineasEntidad) {
+			if (linea.getDetalleGeneracionArchivo() != null
+					&& linea.getDetalleGeneracionArchivo().getGeneracionArchivoPetro() != null
+					&& generacion.getCodigo().equals(linea.getDetalleGeneracionArchivo().getGeneracionArchivoPetro().getCodigo())) {
+				enviado += nullSafe(linea.getMontoEnviado());
+				lineas++;
+			}
+		}
+	}
+
+	double descontadoTotal = 0.0;
+	List<ParticipeXCargaArchivo> filasParticipe = participeXCargaArchivoDaoService
+		.selectByCodigoPetroEnCarga(participe.getCodigoPetro(), cargaArchivo.getCodigo());
+	if (filasParticipe != null) {
+		for (ParticipeXCargaArchivo fila : filasParticipe) {
+			descontadoTotal += nullSafe(fila.getTotalDescontado());
+		}
+	}
+
+	boolean parcial = lineas == 0 || Math.abs(descontadoTotal - enviado) > TOLERANCIA_DESCUENTO_ARCH;
+	if (!parcial) {
+		return false;
+	}
+
+	double descontadoFila = nullSafe(participe.getTotalDescontado());
+	String descripcion = String.format("ARCH descontó $%.2f de los $%.2f que se le enviaron (generación %d, %d línea(s)): "
+		+ "descuento parcial o sin líneas en la generación. Reparta ese dinero en «Afectar cuotas».",
+		descontadoTotal, enviado, generacion.getCodigo(), lineas);
+	System.out.println("  ⚠️ ARCH parcial - rol " + participe.getCodigoPetro() + ": " + descripcion);
+	registrarNovedad(participe, ASPNovedadesCargaArchivo.MONTO_INCONSISTENTE, descripcion,
+		null, null, null, descontadoFila);
+	return true;
+}
+
+/**
  * Valida el producto AH (Aportes) en FASE 2
  * Verifica que los valores del archivo correspondan con lo esperado en HistorialSueldo
  * 
@@ -6107,7 +6224,12 @@ private void validarAporteAH(ParticipeXCargaArchivo participe, CargaArchivo carg
 		}
 		
 		Entidad entidad = entidades.get(0);
-		
+
+		// B4-A6 (DISENO-CARGA-RESPUESTA-ARCH.md §9.5): descuento parcial de ARCH => novedad bloqueante.
+		if (esFilialArch(cargaArchivo) && registrarParcialArchBloqueante(participe, cargaArchivo, entidad)) {
+			return;
+		}
+
 		// ✅ OPTIMIZADO: Buscar HistorialSueldo activo (estado 99) directamente
 		// Antes: Traía TODAS los historiales y verificaba en Java si había más de 1
 		// Ahora: Usa método optimizado que trae solo el activo
