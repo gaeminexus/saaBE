@@ -99,3 +99,7 @@ El reproceso del cuadre corre con el código de `main`.
   el FE todavía no manda el usuario.
 - Con esto **no queda ningún proceso sin persona** salvo el reproceso (usuario `REPROCESO` hasta 2026-08,
   §8). Ningún timer crea asientos.
+
+## 10. Usuario REPROCESO creado en producción (2026-11-01)
+`cnt/sql/c20-04` corrido: `SCP.PJRQ` 1562 «REPROCESO» (PGSPCDGO 9, nivel 1, padre 51), sin filas en `PDCN`, así que
+no puede entrar al sistema. Falta crearlo también en la base del reproceso (lo hace el árbitro del cuadre).
