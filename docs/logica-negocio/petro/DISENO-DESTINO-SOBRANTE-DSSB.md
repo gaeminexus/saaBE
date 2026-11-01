@@ -99,3 +99,19 @@ frontend → EAR. El DDL y la semilla van antes del EAR.
 - **DU2:** el sobrante sin destino elegido sigue siendo novedad bloqueante.
 - **DU3:** backend y frontend completos, sin el resolutor de cxp hasta que vuelva el equipo 2.
 **→ B8 despachado al backend.** El `357` se corre antes del EAR que lo traiga.
+
+## 8. Decisiones técnicas del árbitro durante la implementación (2026-11-01)
+- **Q1:** en el código no existe un «paso de sobrante» posterior: el sobrante se detecta en 5 puntos de
+  `CargaArchivoPetroServiceImpl`:
+  - excedente del motor (~5592);
+  - aporte sin mes (~7350);
+  - seguro de incendio huérfano (~5201);
+  - parcial de ARCH (~4950 y ~5041).
+
+  **Aprobado:** un helper único que cada punto llama ANTES de registrar la novedad. Si hay un DSSB
+  activo, aplica por el destino elegido y no registra la novedad; si no, la novedad queda como hoy
+  (DU2).
+- **Q2:** `DSSBVLAP` se parte en `DSSBVLAH` (dinero que entró por aportes, puente aux1 3) y `DSSBVLPR`
+  (dinero que entró por préstamos, puente aux1 4). Así las puentes quedan en cero. `crd/sql/357` ya
+  está editado; todavía no se había corrido.
+- REST `/rest/dssb` hecho; contrato del FE en `saaFE/docs/crd/API-DESTINO-SOBRANTE.md`.

@@ -4,6 +4,8 @@
 -- Verificado antes con crd/sql/355 (2026-11-01): nombre DSSB libre, aux1 61/62 libres en la plantilla 21,
 -- cuenta 2.3.90.90.10 existente (PLNNCDGO 10398, empresa 1236).
 --
+-- 2026-11-01: DSSBVLAP se partió en DSSBVLAH (origen aportes) y DSSBVLPR (origen préstamos), para que la
+--    devolución pueda descargar cada puente por su lado y queden en cero (D-024). Q2 del B8.
 -- ⛔ ESTE SCRIPT ESPERA LAS DECISIONES DU1-DU3 DEL USUARIO Y EL CÓDIGO DEL B8. No correr hasta que el
 --    árbitro avise. Es aditivo: con el EAR de hoy la tabla y la línea sobran pero no estorban.
 -- ⛔ Va ANTES del EAR que mapee CRD.DSSB (si no, toda lectura de la entidad da ORA-00942).
@@ -26,7 +28,8 @@ CREATE TABLE CRD.DSSB (
     DSSBTPDS NUMBER            NOT NULL,
     PRSTCDGO NUMBER,
     TPAPCDGO NUMBER,
-    DSSBVLAP NUMBER(18,2),
+    DSSBVLAH NUMBER(18,2),
+    DSSBVLPR NUMBER(18,2),
     DSSBPGTR NUMBER,
     DSSBASNT NUMBER,
     DSSBESTD NUMBER  DEFAULT 1 NOT NULL,
@@ -51,7 +54,7 @@ ALTER TABLE CRD.DSSB ADD CONSTRAINT CK_DSSB_DESTINO CHECK (
     OR (DSSBTPDS = 2 AND TPAPCDGO IS NOT NULL AND PRSTCDGO IS NULL)
     OR (DSSBTPDS = 3 AND TPAPCDGO IS NULL AND PRSTCDGO IS NULL));
 ALTER TABLE CRD.DSSB ADD CONSTRAINT CK_DSSB_ESTADO CHECK (DSSBESTD IN (0, 1));
-ALTER TABLE CRD.DSSB ADD CONSTRAINT CK_DSSB_VALOR  CHECK (DSSBVLAP IS NULL OR DSSBVLAP >= 0);
+ALTER TABLE CRD.DSSB ADD CONSTRAINT CK_DSSB_VALOR  CHECK ((DSSBVLAH IS NULL OR DSSBVLAH >= 0) AND (DSSBVLPR IS NULL OR DSSBVLPR >= 0));
 
 -- Un solo destino ACTIVO por (carga, partícipe); los anulados (0) no cuentan.
 CREATE UNIQUE INDEX CRD.UX_DSSB_CARGA_PARTICIPE
@@ -60,7 +63,8 @@ CREATE INDEX CRD.IDX_DSSB_CARGA ON CRD.DSSB (CRARCDGO);
 
 COMMENT ON TABLE  CRD.DSSB IS 'Destino del sobrante de una carga Petro/ARCH por participe: 1 siguiente cuota, 2 aporte, 3 devolucion (B8, sql/357)';
 COMMENT ON COLUMN CRD.DSSB.DSSBTPDS IS '1 SIGUIENTE_CUOTA, 2 APORTE, 3 DEVOLUCION (com.saa.rubros.DestinoSobrante)';
-COMMENT ON COLUMN CRD.DSSB.DSSBVLAP IS 'Valor realmente aplicado o devuelto; lo escribe el proceso';
+COMMENT ON COLUMN CRD.DSSB.DSSBVLAH IS 'Valor aplicado o devuelto cuyo dinero entro por una fila de APORTES (puente aux1 3); lo escribe el proceso';
+COMMENT ON COLUMN CRD.DSSB.DSSBVLPR IS 'Valor aplicado o devuelto cuyo dinero entro por una fila de PRESTAMOS (puente aux1 4); lo escribe el proceso';
 COMMENT ON COLUMN CRD.DSSB.DSSBPGTR IS 'Pago programado de Tesoreria (PGS.PGTR.PGTRCDGO), sin FK; solo destino 3';
 COMMENT ON COLUMN CRD.DSSB.DSSBASNT IS 'Asiento que llevo el valor a socios por pagar (CNT.ASNT.ASNTCDGO), sin FK; solo destino 3';
 
