@@ -60,6 +60,26 @@ public class CargaArchivoDaoServiceImpl extends EntityDaoImpl<CargaArchivo> impl
 		return resultados.isEmpty() ? null : resultados.get(0);
 	}
 
+	@Override
+	public CargaArchivo selectUltimaCargaProcesada(Long estado, Long codigoFilial) throws Throwable {
+		System.out.println("Ingresa al metodo selectUltimaCargaProcesada de CargaArchivo - estado: " + estado
+			+ ", filial: " + codigoFilial);
+		Query query = em.createQuery(
+			" select b " +
+			" from   CargaArchivo b " +
+			" where  b.estado = :estado " +
+			" and    b.filial.codigo = :codigoFilial " +
+			" order by b.anioAfectacion desc, b.mesAfectacion desc");
+		query.setParameter("estado", estado);
+		query.setParameter("codigoFilial", codigoFilial);
+		query.setMaxResults(1);
+
+		@SuppressWarnings("unchecked")
+		List<CargaArchivo> resultados = query.getResultList();
+
+		return resultados.isEmpty() ? null : resultados.get(0);
+	}
+
 	/* (non-Javadoc)
 	 * @see com.saa.ejb.crd.dao.CargaArchivoDaoService#selectByPeriodoAfectacionYEstado(java.lang.Long, java.lang.Long, java.lang.Long)
 	 */

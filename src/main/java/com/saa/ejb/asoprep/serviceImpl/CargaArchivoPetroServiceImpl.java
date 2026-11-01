@@ -922,7 +922,11 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
                 entidad = entidadDaoService.save(entidad, entidad.getCodigo());
                 System.out.println("  Rol técnico asignado a la entidad " + entidad.getCodigo() + ": " + rol);
             }
-            String nombreEntidad = entidad.getRazonSocial() != null ? entidad.getRazonSocial() : fila.nombre;
+            // 2026-10-31 (§9.5, A3): la fase 1 (almacenaRegistros) compara el nombre de la fila contra
+            // la razon social recortada a 35 caracteres (el largo del nombre en Petro); sin el mismo
+            // recorte, toda razon social de mas de 35 saltaba como "codigo no coincide con nombre".
+            String razonSocialArch = entidad.getRazonSocial() != null ? entidad.getRazonSocial().trim() : "";
+            String nombreEntidad = razonSocialArch.substring(0, Math.min(35, razonSocialArch.length()));
 
             // Paso 5
             double descontado = fila.descontado;
@@ -5093,8 +5097,17 @@ private void validarOrdenProcesamiento(CargaArchivo cargaArchivo) throws Throwab
 	// ✅ OPTIMIZACIÓN: Obtener directamente la última carga procesada (MAX año/mes)
 	// Antes: Traía TODAS las cargas procesadas y buscaba el MAX en Java
 	// Ahora: Una consulta que trae solo la última carga
-	CargaArchivo ultimaCargaProcesada = cargaArchivoDaoService.selectUltimaCargaProcesada(3L);
-	
+	// 2026-10-31 (DISENO-CARGA-RESPUESTA-ARCH.md §9.5, A2): el orden de meses es POR FILIAL. Sin
+	// filtro, la ultima carga procesada de Petrocomercial (octubre) hacia que ARCH de octubre
+	// reventara con "Solo se puede procesar la carga del mes 11/2026". Sin filial en la carga se
+	// conserva el comportamiento de siempre.
+	CargaArchivo ultimaCargaProcesada;
+	if (cargaArchivo.getFilial() != null && cargaArchivo.getFilial().getCodigo() != null) {
+		ultimaCargaProcesada = cargaArchivoDaoService.selectUltimaCargaProcesada(3L, cargaArchivo.getFilial().getCodigo());
+	} else {
+		ultimaCargaProcesada = cargaArchivoDaoService.selectUltimaCargaProcesada(3L);
+	}
+
 	// Excluir la carga actual si es la que se está procesando
 	if (ultimaCargaProcesada != null && ultimaCargaProcesada.getCodigo().equals(cargaArchivo.getCodigo())) {
 		ultimaCargaProcesada = null; // No validar contra sí misma
