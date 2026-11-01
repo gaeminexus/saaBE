@@ -71,3 +71,7 @@ SELECT d.ASNTCDGO FROM CNT.DTAS d WHERE d.ASNTCDGO IN (12118, 12119)
 --        (SELECT b.PLNNCDGO, b.DTASCNTA, b.DTASNMCT, b.DTASDSCR FROM CNT.BK_DTAS_NC_INTERM_OCT26 b WHERE b.DTASCDGO = d.DTASCDGO)
 --  WHERE d.DTASCDGO IN (SELECT b.DTASCDGO FROM CNT.BK_DTAS_NC_INTERM_OCT26 b);
 -- COMMIT;
+
+-- RESULTADO (2026-11-01, producción): corrido. 12118 → 2.3.90.10 debe 85,32 / 1.4.90.90.10 haber 85,32;
+-- 12119 → 2.3.90.10 debe 1.108,26 / 1.4.90.15.02 haber 1.108,26. 3.2 vacío (cuadrados).
+-- Pendiente: la salida del bloque 0.3 (NC 1, no intermediario) para decidir si se corrige.
