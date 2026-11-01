@@ -959,3 +959,24 @@ Regla general: **el HS que encuentra su cuota no genera novedad**, y es UN solo 
   revalidable: si la situación se resuelve, la novedad vieja no se desactiva sola.
 - **Modo reproceso:** sin cambio. `hsLeCorrespondeAFila` conserva «PH se lleva siempre el HS», H2 no corre y la
   fase 2 no corre; D-023 y C4f (HS sobre cuota sin seguro) no se tocaron.
+
+## 10. Usuario de los asientos de la carga (B6-a, 2026-11-01)
+
+Antes los asientos de reparto, complemento de apertura (D-024) y aplicación se generaban con `usuario = null`
+(`CobroPetroContableServiceImpl`) y cnt los grababa como «SISTEMA» (`AsientoContableServiceImpl:719`); los
+registros `CRD.ANCP` y la auditoría de bandas decían «SISTEMA»/«sistema»; y `ContextoPago.usuario`
+(obligatorio) no se seteaba, así que los `PagoPrestamo` de la carga quedaban sin usuario.
+
+- **`CobroPetroContableService.contabilizarReparto(idCarga, usuario)` y `contabilizarAplicacion(idCarga, usuario)`**
+  reciben el usuario y lo pasan a `generarAsiento`, a `ANCP.usuarioRegistro`, a
+  `registrarDistribucionCargaPetro`, a `separarMoraNoDevengada` y a `reversarPorPagos`. Sin usuario (nulo o
+  vacío) lanzan `IncomeException`: un asiento no se graba sin usuario.
+- **Origen del usuario:** `aplicarPagosArchivoPetro` solo recibe el código de la carga y `CRD.CRAR` no guarda
+  quién la procesa; se usa `usuarioDeLaCarga` = `usuarioCarga` (quien cargó el archivo, obligatorio). Atribuir al
+  usuario que pulsa «Procesar» exige que el FE lo mande en `POST /asgn/aplicarPagosArchivoPetro/{id}` (hoy sin
+  cuerpo ni parámetro).
+- **`crearContextoPagoCarga`** setea `ContextoPago.usuario` con el mismo usuario.
+- **Modo reproceso:** sin cambio de resultado. Pasa «SISTEMA» explícito a los asientos (antes lo ponía el relleno
+  de cnt) y no setea `ContextoPago.usuario` (sigue nulo).
+- **Fuera de este cambio:** el asiento de recepción confirmada (`confirmarRecepcion`, `:464`) sigue usando el
+  usuario de la solicitud del cliente, que puede llegar nulo.

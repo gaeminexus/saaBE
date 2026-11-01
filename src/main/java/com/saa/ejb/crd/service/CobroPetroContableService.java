@@ -131,10 +131,13 @@ public interface CobroPetroContableService {
      * {@link #confirmarRecepcion}) — no es un error.
      *
      * @param idCarga    : Código de la carga (CRD.CRAR)
-     * @throws Throwable : {@code IncomeException} si la carga no existe o si la plantilla 20
-     *                     no tiene las líneas necesarias
+     * @param usuario    : Usuario al que se atribuyen el asiento de reparto, el complemento de apertura y
+     *                     sus registros (B6-a, 2026-11-01). Obligatorio: nunca se rellena con «SISTEMA»;
+     *                     un proceso automático lo pasa explícito.
+     * @throws Throwable : {@code IncomeException} si la carga no existe, si falta el usuario o si la
+     *                     plantilla 20 no tiene las líneas necesarias
      */
-    void contabilizarReparto(Long idCarga) throws Throwable;
+    void contabilizarReparto(Long idCarga, String usuario) throws Throwable;
 
     /**
      * PASO 2b: asiento de APLICACION — D {@code 2.3.02.05}/{@code 2.3.02.10} → H cuentas
@@ -153,10 +156,12 @@ public interface CobroPetroContableService {
      * Con {@code contabilidadActiva() == false} no genera asiento — no es un error.
      *
      * @param idCarga    : Código de la carga (CRD.CRAR)
-     * @throws Throwable : {@code IncomeException} si un pago no tiene producto asignado
+     * @param usuario    : Usuario al que se atribuyen el asiento de aplicación, la auditoría de bandas y los
+     *                     reversos de provisión (B6-a, 2026-11-01). Obligatorio: nunca se rellena con «SISTEMA».
+     * @throws Throwable : {@code IncomeException} si falta el usuario, si un pago no tiene producto asignado
      *                     (no se puede clasificar su capital por banda), si un componente
      *                     de interés/mora/seguro no tiene tipo de préstamo, o si la
      *                     plantilla 21 no tiene una línea necesaria
      */
-    void contabilizarAplicacion(Long idCarga) throws Throwable;
+    void contabilizarAplicacion(Long idCarga, String usuario) throws Throwable;
 }

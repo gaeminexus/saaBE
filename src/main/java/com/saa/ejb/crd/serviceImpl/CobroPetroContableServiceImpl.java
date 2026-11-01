@@ -586,8 +586,9 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
     // =====================================================================
 
     @Override
-    public void contabilizarReparto(Long idCarga) throws Throwable {
-        System.out.println("CobroPetroContableService.contabilizarReparto - Carga: " + idCarga);
+    public void contabilizarReparto(Long idCarga, String usuario) throws Throwable {
+        System.out.println("CobroPetroContableService.contabilizarReparto - Carga: " + idCarga + ", usuario: " + usuario);
+        exigeUsuario(usuario, "el asiento de reparto", idCarga);
         CargaArchivo carga = buscarCarga(idCarga);
 
         if (!configuracionContabilidadService.contabilidadActiva()) {
@@ -673,11 +674,11 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
         // abierto, se abre la diferencia ANTES, en un asiento propio vinculado a la carga
         // (sub-proceso COMPLEMENTO_APERTURA) para que el reproceso lo anule y lo regenere junto
         // con el reparto. Lo cobrado de menos no se toca: lo cierra el ⑥ del cierre.
-        generarComplementoApertura(carga, idEmpresa, fechaAsiento, lineas, totalPrestamos);
+        generarComplementoApertura(carga, idEmpresa, fechaAsiento, lineas, totalPrestamos, usuario);
 
         com.saa.model.cnt.Asiento asiento = asientoContableService.generarAsiento(idEmpresa,
                 TipoAsientos.CREDITOS, fechaAsiento,
-                "Reparto Petro/ARCH carga " + idCarga, null, lineas,
+                "Reparto Petro/ARCH carga " + idCarga, usuario, lineas,
                 Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR));
 
         AsientoCargaPetro registro = new AsientoCargaPetro();
@@ -689,7 +690,7 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
         registro.setValor(total);
         registro.setCantidad(Long.valueOf(lineas.size()));
         registro.setIdEstado(VIGENTE);
-        registro.setUsuarioRegistro("SISTEMA");
+        registro.setUsuarioRegistro(usuario);
         registro.setFechaRegistro(LocalDateTime.now());
         asientoCargaPetroDaoService.save(registro, null);
     }
@@ -701,7 +702,7 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
      * nada si lo que el reparto acredita no supera el saldo abierto.
      */
     private void generarComplementoApertura(CargaArchivo carga, Long idEmpresa, LocalDate fechaAsiento,
-            List<DetalleAsiento> lineasReparto, double totalPrestamos) throws Throwable {
+            List<DetalleAsiento> lineasReparto, double totalPrestamos, String usuario) throws Throwable {
         Long idCarga = carga.getCodigo();
         // D-032 (29-oct-2026): lo que el reparto acredita a 1.4.05.10 por préstamo = componentes de los
         // pagos vigentes de la carga (ya aplicados: validarRecibidoIgualAplicado corrió antes); lo que
@@ -738,7 +739,7 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
         String detalle = complemento.detalle();
         com.saa.model.cnt.Asiento asiento = asientoContableService.generarAsiento(idEmpresa,
                 TipoAsientos.CREDITOS, fechaAsiento,
-                "Complemento de apertura carga " + idCarga + " (D-024): " + detalle, null, complemento.getLineas(),
+                "Complemento de apertura carga " + idCarga + " (D-024): " + detalle, usuario, complemento.getLineas(),
                 Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR));
 
         AsientoCargaPetro registro = new AsientoCargaPetro();
@@ -751,7 +752,7 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
         registro.setCantidad(Long.valueOf(complemento.getLineas().size()));
         registro.setObservacion(detalle);
         registro.setIdEstado(VIGENTE);
-        registro.setUsuarioRegistro("SISTEMA");
+        registro.setUsuarioRegistro(usuario);
         registro.setFechaRegistro(LocalDateTime.now());
         asientoCargaPetroDaoService.save(registro, null);
         System.out.println("CobroPetroContableService.contabilizarReparto - D-024 complemento de apertura de la carga "
@@ -776,8 +777,9 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
     }
 
     @Override
-    public void contabilizarAplicacion(Long idCarga) throws Throwable {
-        System.out.println("CobroPetroContableService.contabilizarAplicacion - Carga: " + idCarga);
+    public void contabilizarAplicacion(Long idCarga, String usuario) throws Throwable {
+        System.out.println("CobroPetroContableService.contabilizarAplicacion - Carga: " + idCarga + ", usuario: " + usuario);
+        exigeUsuario(usuario, "el asiento de aplicación", idCarga);
         CargaArchivo carga = buscarCarga(idCarga);
 
         // Pagos: filtran por CRARCDGO (única fuente, sin equivalente previo).
@@ -804,7 +806,7 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
         if (vigentesParaDistribucion != null && !vigentesParaDistribucion.isEmpty()) {
             Long idEmpresaDistribucion = resolverEmpresa(vigentesParaDistribucion);
             clasificacionPorPago = distribucionBandaService.registrarDistribucionCargaPetro(
-                idCarga, idEmpresaDistribucion, pagos, "sistema");
+                idCarga, idEmpresaDistribucion, pagos, usuario);
         }
 
         if (!configuracionContabilidadService.contabilidadActiva()) {
@@ -1007,7 +1009,7 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
         Map<Long, Double> moraIngresoPorTipo = new LinkedHashMap<>();
         if (pagos != null) {
             for (Map.Entry<PagoPrestamo, Double> entrada
-                    : provisionInteresService.separarMoraNoDevengada(pagos, "SISTEMA").entrySet()) {
+                    : provisionInteresService.separarMoraNoDevengada(pagos, usuario).entrySet()) {
                 Producto productoPago = entrada.getKey().getPrestamo() != null
                         ? entrada.getKey().getPrestamo().getProducto() : null;
                 Long tipo = productoPago != null && productoPago.getTipoPrestamo() != null
@@ -1261,7 +1263,7 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
         LocalDate fechaAsiento = fechaService.ultimoDiaMesAnioLocal(carga.getMesAfectacion(), carga.getAnioAfectacion());
         com.saa.model.cnt.Asiento asiento = asientoContableService.generarAsiento(idEmpresa,
                 TipoAsientos.CREDITOS, fechaAsiento,
-                "Aplicación Petro/ARCH carga " + idCarga, null, lineasFinal,
+                "Aplicación Petro/ARCH carga " + idCarga, usuario, lineasFinal,
                 Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR));
 
         AsientoCargaPetro registro = new AsientoCargaPetro();
@@ -1273,7 +1275,7 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
         registro.setValor(totalAsiento);
         registro.setCantidad(Long.valueOf(lineasFinal.size()));
         registro.setIdEstado(VIGENTE);
-        registro.setUsuarioRegistro("SISTEMA");
+        registro.setUsuarioRegistro(usuario);
         registro.setFechaRegistro(LocalDateTime.now());
         asientoCargaPetroDaoService.save(registro, null);
 
@@ -1285,7 +1287,7 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
 
         // ÍTEM 4, diseño §5: reverso de la provisión de intereses por lo cobrado en esta carga
         // Petro. Petro no deshace (diseño 0c): no hay re-provisión que enganchar acá.
-        provisionInteresService.reversarPorPagos(pagos, idEmpresa, fechaAsiento, "PETRO", idCarga, "SISTEMA");
+        provisionInteresService.reversarPorPagos(pagos, idEmpresa, fechaAsiento, "PETRO", idCarga, usuario);
     }
 
     /**
@@ -1329,6 +1331,18 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
     // =====================================================================
     // Helpers
     // =====================================================================
+
+    /**
+     * B6-a (PLAN-CORRECCIONES-CARGA-2026-11-01.md): los asientos de la carga nunca se graban con un usuario
+     * perdido. Antes {@code contabilizarReparto}/{@code contabilizarAplicacion} no recibían usuario y el
+     * asiento salía «SISTEMA» por el relleno de cnt. Un proceso automático debe pasar su usuario explícito.
+     */
+    private void exigeUsuario(String usuario, String que, Long idCarga) throws Throwable {
+        if (usuario == null || usuario.trim().isEmpty()) {
+            throw new IncomeException("No se puede generar " + que + " de la carga " + idCarga
+                    + ": no se recibió el usuario que lo genera. Un asiento no se graba sin usuario.");
+        }
+    }
 
     private CargaArchivo buscarCarga(Long idCarga) throws Throwable {
         if (idCarga == null) {

@@ -2349,9 +2349,12 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 			// contabilizar (misma transacción REQUIRED que aplica todos los pagos).
 			long inicioAsientos = modoReproceso ? inicioFaseReproceso("asientos REPARTO y APLICACION") : 0L;
 			// 2a. REPARTO: D 2.3.01.15.01 -> H 1.4.05.05/1.4.05.10, plantilla alterno 20.
-			cobroPetroContableService.contabilizarReparto(codigoCargaArchivo);
+			// B6-a: los asientos llevan el usuario de la carga, no «SISTEMA» por perderlo. Modo reproceso:
+			// sin cambio, sigue grabando «SISTEMA» (ahora explícito, antes era el relleno de cnt).
+			String usuarioAsientos = modoReproceso ? "SISTEMA" : usuarioDeLaCarga(cargaArchivo);
+			cobroPetroContableService.contabilizarReparto(codigoCargaArchivo, usuarioAsientos);
 			// 2b. APLICACION: D 2.3.02.05/2.3.02.10 -> H cuentas reales, plantilla 21 + bandas.
-			cobroPetroContableService.contabilizarAplicacion(codigoCargaArchivo);
+			cobroPetroContableService.contabilizarAplicacion(codigoCargaArchivo, usuarioAsientos);
 			if (modoReproceso) {
 				finFaseReproceso("asientos REPARTO y APLICACION", inicioAsientos, null);
 			}
@@ -5508,6 +5511,22 @@ private void recalcularMoraAlCorteDeLaCarga(Long idPrestamo, CargaArchivo cargaA
 }
 
 /**
+ * B6-a (PLAN-CORRECCIONES-CARGA-2026-11-01.md): usuario al que se atribuyen los asientos y los pagos de la
+ * carga. {@code aplicarPagosArchivoPetro} solo recibe el código de la carga (el REST no manda quién la
+ * procesa) y CRD.CRAR no guarda al procesador, así que se usa el usuario que CARGÓ el archivo
+ * ({@code usuarioCarga}, obligatorio desde la carga). Si no hubiera ninguno aborta: nunca se rellena con
+ * «SISTEMA». Para atribuir al usuario que pulsa «Procesar» hay que cambiar el contrato REST (ver reporte B6-a).
+ */
+private String usuarioDeLaCarga(CargaArchivo cargaArchivo) throws Throwable {
+	if (cargaArchivo.getUsuarioCarga() != null && cargaArchivo.getUsuarioCarga().getNombre() != null
+			&& !cargaArchivo.getUsuarioCarga().getNombre().trim().isEmpty()) {
+		return cargaArchivo.getUsuarioCarga().getNombre().trim();
+	}
+	throw new IncomeException("La carga " + cargaArchivo.getCodigo() + " no tiene usuario de carga: no se puede"
+		+ " atribuir a nadie los asientos y pagos de su procesamiento.");
+}
+
+/**
  * Contexto de pago común para toda aplicación de la carga Petro (pago normal y afectación
  * manual): fecha de efecto = último día del mes de carga (§4.2, sin fallback a now() — si
  * mes/año de afectación vienen null, grita) y la carga misma para trazabilidad (§4.1,
@@ -5528,6 +5547,11 @@ private ContextoPago crearContextoPagoCarga(CargaArchivo cargaArchivo, String or
 		cargaArchivo.getMesAfectacion(), cargaArchivo.getAnioAfectacion()).atTime(23, 59, 59);
 
 	ContextoPago ctx = new ContextoPago();
+	// B6-a: ContextoPago.usuario es obligatorio y la carga no lo seteaba (PGPR con usuario nulo). Modo
+	// reproceso: sin cambio (queda sin usuario, como hoy).
+	if (!modoReproceso) {
+		ctx.setUsuario(usuarioDeLaCarga(cargaArchivo));
+	}
 	ctx.setIdCargaArchivo(cargaArchivo.getCodigo());
 	ctx.setFechaPago(fechaPagoEfecto);
 	ctx.setObservacion(String.format("%s: Carga Petro %d - Mes %d/%d",
