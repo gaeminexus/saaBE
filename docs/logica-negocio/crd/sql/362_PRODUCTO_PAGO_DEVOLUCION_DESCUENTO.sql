@@ -8,7 +8,10 @@
 -- grupo del producto (o la cuenta del grupo), sin tocar código.
 -- El código lo toma de un PARÁMETRO (rubro 237, se siembra después con el ID que salga aquí), no por cuenta:
 -- con dos productos en la misma cuenta, la resolución por cuenta sería ambigua.
--- ⛔ Este producto NO se usa hasta que esté el código del parámetro (después de U-4) y su semilla.
+-- ⛔ SE CREA INACTIVO (ESTADO = 0). El código de PRODUCCIÓN de hoy resuelve el producto del DESEMBOLSO por la
+--    cuenta 2.3.90.90.10: un segundo producto ACTIVO con esa cuenta detendría los desembolsos («más de un
+--    producto») hasta desplegar el EAR con los parámetros. Se ACTIVA en el despliegue del EAR único (bloque 3,
+--    comentado), junto con la semilla de los parámetros.
 -- ID: IDENTITY (lo asigna la base). Pasar al árbitro el ID del bloque 2.
 -- =====================================================================================
 
@@ -28,7 +31,7 @@ INSERT INTO PGS.PRDP (EMPRESA, GRUPOPRODUCTO, NOMBRE, CODIGO, CODIGOAUX, PRECIOU
 SELECT p.EMPRESA, p.GRUPOPRODUCTO, 'DEVOLUCION DE DESCUENTO PETRO/ARCH A PARTICIPE', 'DEVDESC', p.CODIGOAUX,
        p.PRECIOUNITARIO, p.DESCUENTO, p.TIPODESCUENTO, p.INCLUYEIVA, p.TIPOIVA, p.TIPOICE, p.ICE,
        'Devolucion al participe del sobrante de una carga Petro/ARCH (destino 3, B8). Misma cuenta que el desembolso (socios por pagar) hasta que contabilidad confirme.',
-       p.SUBSIDIO, p.PRECIOSINSUB, p.IRBPNR, p.MULTIPRECIO, p.STOCK, p.MANEJAUNIDAD, p.UNIDAD, p.ESTADO
+       p.SUBSIDIO, p.PRECIOSINSUB, p.IRBPNR, p.MULTIPRECIO, p.STOCK, p.MANEJAUNIDAD, p.UNIDAD, 0
   FROM PGS.PRDP p
  WHERE p.ID = 976
    AND NOT EXISTS (SELECT 1 FROM PGS.PRDP x WHERE UPPER(x.NOMBRE) = 'DEVOLUCION DE DESCUENTO PETRO/ARCH A PARTICIPE');
@@ -36,11 +39,16 @@ SELECT p.EMPRESA, p.GRUPOPRODUCTO, 'DEVOLUCION DE DESCUENTO PETRO/ARCH A PARTICI
 COMMIT;
 
 
--- BLOQUE 2 — CONTROL DESPUÉS. ESPERADO: 1 fila en el MISMO grupo del 976 y con 2.3.90.90.10. PASAR EL ID AL ÁRBITRO.
+-- BLOQUE 2 — CONTROL DESPUÉS. ESPERADO: el nuevo en el MISMO grupo del 976, con 2.3.90.90.10 y ESTADO 0. PASAR EL ID AL ÁRBITRO.
 SELECT p.ID, p.CODIGO, p.NOMBRE, p.GRUPOPRODUCTO, n.PLNNCNTA, p.ESTADO
   FROM PGS.PRDP p JOIN PGS.GRPP g ON g.GRPPCDGO = p.GRUPOPRODUCTO LEFT JOIN CNT.PLNN n ON n.PLNNCDGO = g.PLNNCDGO
  WHERE p.ID = 976 OR UPPER(p.NOMBRE) = 'DEVOLUCION DE DESCUENTO PETRO/ARCH A PARTICIPE'
  ORDER BY p.ID;
+
+
+-- BLOQUE 3 — ⛔ NO CORRER AHORA. Se corre en el DESPLIEGUE del EAR único (lo indica el árbitro en el runbook):
+-- UPDATE PGS.PRDP SET ESTADO = 1 WHERE UPPER(NOMBRE) = 'DEVOLUCION DE DESCUENTO PETRO/ARCH A PARTICIPE' AND ESTADO = 0;
+-- COMMIT;
 
 
 -- REVERSO (comentado; solo si ninguna orden de pago lo usa todavía):
