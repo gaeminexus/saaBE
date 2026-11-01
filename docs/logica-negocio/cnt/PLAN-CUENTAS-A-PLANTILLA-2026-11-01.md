@@ -1,0 +1,38 @@
+# Plan: cuentas contables escritas en el código → plantilla o parámetro
+
+**omen-saa-1-arb, 2026-11-01.** Regla del usuario: «todas esas cuentas deben poder ser parametrizables
+desde una plantilla». Auditoría de solo lectura de BE (todo `src/main/java`), FE y los 58 `.jrxml`.
+Los hallazgos ALTA y los de `ControlCierreServiceImpl` los verificó el árbitro en la línea.
+
+**Resultado:** el patrón de plantilla está bien adoptado (Petro, pensión, nómina, IVA por `PGS.TSRI`,
+estado financiero por rubro 250). Los literales están concentrados en 4 archivos del BE y 1 del FE.
+**Ningún `.jrxml` filtra por cuenta fija.**
+
+## Ítems (en orden de despacho)
+
+| # | Sev. | Dónde | Literal | Qué hace | Se mueve a |
+|---|---|---|---|---|---|
+| P1 | MEDIA, fácil | `ControlCierreServiceImpl:67, 75-76` | `1.4.05.05`, `2.3.02.05`, `1.4.05.10`, `2.3.02.10` | Controles D-024 de las puentes | Las líneas que **ya existen**: `CrdLineaAsiento` aux 1-4 de la plantilla de aplicación Petro. Sin semilla |
+| P2 | MEDIA, fácil | `ControlCierreServiceImpl:90-105` | `SUBSTR(DTASCNTA,1,1)` = 1…5 | Ecuación contable del cierre | Rubro 250 `CntParametroEstadoFinanciero.GRUPO_*`, **que ya existe** y que `EstadoFinancieroOficialServiceImpl:188-204` ya lee. Sin semilla |
+| P3 | ALTA | `CierreCarteraServiceImpl:1426-1438` (`cuentaQueAbsorbe`) | `1.3.01.25`, `1.3.05.25`, `1.3.09.25`, `grupo+".25"` | ⑨ ajuste de bandas: **contabiliza** la diferencia del grupo en esa cuenta | Plantilla 37 (cierre de cartera): 3 líneas nuevas `AJUSTE_BANDA_ABSORBE_Q/P/H`, con semilla |
+| P4 | ALTA | `CierreCarteraServiceImpl:1312-1313, 1400` y `ControlCierreServiceImpl:185, 205, 413-414` | `1.3.`, `1.3.99`, rangos 01-04/05-08/09-12 | Alcance de cartera y agrupación Q/P/H | La provisión `1.3.99` = línea `PROVISION_CARTERA` (83), que **ya existe**. Las bandas por grupo, desde `CRD.BNDP` por producto. Requiere diseño: no hay catálogo Q/P/H. **Va después de P3, con su propio diseño** |
+| P5 | ALTA | `AsientoContableServiceImpl:97` (se usa en 3129 y 3781) | `4.8.90.90.35` | Línea de redondeo SRI en el asiento de compra CXP. Además busca la cuenta **sin filtrar por empresa** | Línea nueva de redondeo en la plantilla de compras CXP, como hace RHH. Con semilla |
+| P6 | ALTA | `CargaHistoricaDocumentoServiceImpl:298-299, 1137, 1258-1259` | `2.3.90.10`, `1.4.90.10`, `1.9.01.90`, `4.8.90.90.35` | Cargador histórico: crea la cuenta por cobrar o por pagar **permanente** del titular | Parámetro o línea de plantilla de la carga histórica. Con semilla. Para el redondeo, la misma línea que P5 |
+| P7 | MEDIA | `CargaHistoricaNominaPasoServiceImpl:103` | `4.3.` | Centro de costo para las líneas de gasto de nómina histórica | Las líneas `RhhLineaAsiento.GASTO_*`, que **ya existen** |
+| P8 | MEDIA | `ControlCierreServiceImpl:400` | `2.1.` | Control B17, cuenta 21 contra la G42 | Línea nueva en el rubro 250 o en la plantilla de aportes. Con semilla |
+| P9 | MEDIA, indirecto | `PagoPensionComplementariaServiceImpl:129, 152` | ids de producto 516/517 | Productos de pago de jubilados. No son cuentas: la cuenta sale del producto | Rubro o parámetro. Sin prisa |
+| P10 | MEDIA, FE | `saaFE rrh/model/liquidacion-externa.ts:76-94` | 8 cuentas sugeridas | Liquidación de excolaboradores: si hay una sola coincidencia, **la asigna sola** | Las cuentas sugeridas desde la plantilla de liquidación o un endpoint. Requiere contrato de API. **Módulo rrh** |
+| — | BAJA | ~20 mensajes y logs (BE) y 7 tooltips (FE) | | Solo texto | Que el mensaje muestre la cuenta leída de la plantilla, al tocar cada archivo |
+
+## Reglas para el ejecutor
+- **Si falta la línea de plantilla o el parámetro, para.** Sin cuenta de respaldo en el código: detiene
+  el proceso con un mensaje claro (patrón de `204a7950`).
+- **Semillas:** cada línea nueva la escribe el árbitro (patrón `crd/sql/347`) y el usuario la corre
+  **antes** del EAR. Hoy las plantillas de producción ya tienen esas cuentas. La semilla tiene que
+  dejar **la misma cuenta que hoy está en el código**, para que el resultado contable no cambie.
+- **Un ítem por commit,** con `mvn -q compile`.
+
+## Lo que falta decidir
+- **P4 y P10** necesitan diseño propio y van al final.
+- **P6:** es un cargador de migración que ya se corrió. ¿Se vuelve a usar? Si no, puede quedarse como
+  está, documentado.
