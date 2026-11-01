@@ -235,3 +235,21 @@ Ninguno de los tres está diagnosticado.
    c12-01, permisos, IGFNCMNM y firmantes de C19-04.
 5. Diseño de la carga ARCH con el PDF: las respuestas de junio a septiembre se registraron por
    cobros personales (agosto y septiembre con devengo correcto).
+
+---
+
+# AVISO PARA LOS EQUIPOS 2 Y 3 AL RETOMAR (escrito por omen-saa-1-arb el 2026-11-01; estaban abajo)
+
+1. **`main` es la versión unificada:** se fusionó la rama `cuadre` (saaBE `2428217a`, saaFE `72ea63b`) y
+   se desplegó en producción el 01-11 (`docs/logica-negocio/PASE-PRODUCCION-FUSION-2026-11-01.md`).
+   Antes de trabajar, `git pull`.
+2. **Todo WAR de `main` desde `0926d8bb` necesita `crd/sql/354_DDL_PXCA_PRESTAMO_DE_LA_LINEA.sql` corrido
+   antes** (columna `CRD.PXCA.PRSTCDGO`). En producción ya está corrido.
+3. **Usuario de sesión (saaFE `6e4e92d`):** `usuarioSesion()` ya no rellena con `'SYSTEM'`; sin usuario,
+   cierra la sesión y manda a /login. Un interceptor corta todo POST/PUT/PATCH/DELETE sin usuario. Afecta
+   a TODOS los módulos: cxc (9 usos), cxp (2), tsr (4), rrh (64). Si una pantalla suya grababa con
+   'SYSTEM' cuando faltaba el usuario, ahora pide volver a ingresar.
+   **Pendiente compartido con el equipo 2:** `app-state.service.ts` → `getIdUsuario()` cae a 0
+   (`|| 0`); lo usan anulaciones de cxc/cxp. Hay que acordar el cambio a `null`.
+4. **Bancos reales:** el BLOQUE 2 del `e2-111` se corrió en el pase (6 bancos en 0 y 12 en 1).
+5. **Regla del usuario:** ninguna cuenta contable escrita en el código; todas por plantilla.
