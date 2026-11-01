@@ -1344,7 +1344,12 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
         }
 
         for (Map.Entry<String, Map<String, Double>> grupo : grupos.entrySet()) {
-            String absorbe = cuentaQueAbsorbe(grupo.getKey(), porMadre);
+            String absorbe = cuentaQueAbsorbe(grupo.getKey(), porMadre, solicitud.getIdEmpresa());
+            if (absorbe == null) {
+                advertencias.add("⑨ grupo " + grupo.getKey() + ": no tiene cuenta que absorba la diferencia definida"
+                        + " (solo los grupos Q, P y H la tienen en la plantilla); el grupo no se ajusta.");
+                continue;
+            }
             Map<String, Double> diferencias = grupo.getValue();
             double neto = 0D;
             for (Double d : diferencias.values()) {
@@ -1422,20 +1427,43 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
         return madre;
     }
 
-    /** Cuenta que absorbe la diferencia neta del grupo: la banda .25 (más de 360 días) de su madre. */
-    private String cuentaQueAbsorbe(String grupo, boolean porMadre) {
-        if (!porMadre) {
-            if ("Q".equals(grupo)) {
-                return "1.3.01.25";
-            }
-            if ("P".equals(grupo)) {
-                return "1.3.05.25";
-            }
-            if ("H".equals(grupo)) {
-                return "1.3.09.25";
-            }
+    /**
+     * Cuenta que absorbe la diferencia neta del grupo: la banda de más de 360 días de su familia.
+     *
+     * <p>P3 (PLAN-CUENTAS-A-PLANTILLA-2026-11-01.md): en el cierre mensual (Q/P/H) la cuenta se LEE de la línea
+     * {@link CrdLineaAsiento#AJUSTE_BANDA_ABSORBE} de la plantilla {@link PlantillasCredito#PROVISION_CARTERA} (alterno
+     * 37), con {@code DTPLAXL2} = tipo de préstamo del grupo. Si falta la línea el cierre se detiene con un error
+     * claro; no hay cuenta de respaldo. Un grupo que no es Q/P/H (una madre fuera de 01-12) devuelve {@code null}:
+     * el llamador no lo ajusta y lo avisa.</p>
+     *
+     * <p>ARRANQUE ({@code porMadre}): sin cambio, sigue siendo la {@code .25} de la madre del grupo. Es la única
+     * cuenta que queda construida en el código; pendiente de la decisión del árbitro (ver reporte P3).</p>
+     */
+    private String cuentaQueAbsorbe(String grupo, boolean porMadre, Long idEmpresa) throws Throwable {
+        if (porMadre) {
+            return grupo + ".25";
         }
-        return grupo + ".25";
+        long tipoPrestamo;
+        if ("Q".equals(grupo)) {
+            tipoPrestamo = CrdLineaAsiento.TIPO_PRESTAMO_QUIROGRAFARIO;
+        } else if ("P".equals(grupo)) {
+            tipoPrestamo = CrdLineaAsiento.TIPO_PRESTAMO_PRENDARIO;
+        } else if ("H".equals(grupo)) {
+            tipoPrestamo = CrdLineaAsiento.TIPO_PRESTAMO_HIPOTECARIO;
+        } else {
+            return null;
+        }
+        Long idPlantilla = resuelvePlantilla(PlantillasCredito.PROVISION_CARTERA,
+                "cuenta que absorbe el ajuste de bandas", idEmpresa);
+        DetallePlantilla linea = detallePlantillaDaoService.selectByPlantillaYAuxiliares(idPlantilla,
+                CrdLineaAsiento.AJUSTE_BANDA_ABSORBE, (int) tipoPrestamo);
+        if (linea == null || linea.getPlanCuenta() == null || linea.getPlanCuenta().getCuentaContable() == null) {
+            throw new IncomeException("La plantilla " + PlantillasCredito.PROVISION_CARTERA + " no define la linea "
+                    + CrdLineaAsiento.AJUSTE_BANDA_ABSORBE + " (cuenta que absorbe el ajuste de bandas, ⑨) para el tipo de"
+                    + " prestamo " + tipoPrestamo + " (grupo " + grupo + "). No hay cuenta de respaldo: cargue la linea"
+                    + " en la plantilla.");
+        }
+        return linea.getPlanCuenta().getCuentaContable().trim();
     }
 
     /**

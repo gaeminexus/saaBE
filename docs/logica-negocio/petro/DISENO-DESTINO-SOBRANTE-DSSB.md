@@ -83,5 +83,5 @@ Restricciones:
   resolutor de cxp hasta que vuelva el equipo 2.
 
 ## 5. Orden
-`355` (verificación) → DDL `356` + semilla de la línea 61 (árbitro) → backend → contrato de API →
+`355` (verificación) → DDL `357` + semilla de la línea 61 (árbitro) → backend → contrato de API →
 frontend → EAR. El DDL y la semilla van antes del EAR.

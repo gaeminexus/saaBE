@@ -415,6 +415,7 @@ Alternos 1–33 ocupados. **Reservar acá antes de crear una nueva.**
 |---|---|---|---|
 | 34 | `ENTREGA DE PRESTAMO QUIROGRAFARIO` | **CRD · EQUIPO B** | reservado 2026-08-31, aprobado por el árbitro del equipo A (verificó que él solo consulta las plantillas 21, 25, 27, 28 y 29, sin crear ninguna) |
 | 36 | `CRD PROVISION INTERESES` (provision de intereses no cobrados y sus reversos; la 35 ya existe: pago de pensiones) | **CRD · EQUIPO B** (`omen-saa-1`) | reservado 2026-10-05 |
+| 38 | `CXP COMPRAS - CUENTAS DE AJUSTE` (cuentas de ajuste del asiento de compra cxp; aux1 1 = redondeo SRI) | **CRD · EQUIPO B** (`omen-saa-1`), a pedido del usuario (cuentas por plantilla) | reservado 2026-11-01, semilla `crd/sql/356` |
 
 ⚠️ **Trampa al escribir los `DTPLAXL1` de una plantilla nueva** (avisada por el equipo A, ya les costó
 un bug en la condonación): de las plantillas de CRD **solo la 21 está renumerada al catálogo

@@ -190,6 +190,9 @@ public interface CrdLineaAsiento {
 	// acá el 2026-08-30 para que ese servicio y ContabilizacionIndividualCreditoService no
 	// puedan divergir sobre qué número es cuál tipo).
 
+	/** CRD.TPPR — Quirografario. */
+	public static final long TIPO_PRESTAMO_QUIROGRAFARIO = 1L;
+
 	/** CRD.TPPR — Hipotecario. */
 	public static final long TIPO_PRESTAMO_HIPOTECARIO = 2L;
 
@@ -232,6 +235,16 @@ public interface CrdLineaAsiento {
 
 	/** C15 — contrapartida HABER cuando la provisión requerida baja (reverso/recuperación; cuenta del contador). Plantilla 37. */
 	public static final int PROVISION_CARTERA_REVERSO = 84;
+
+	/**
+	 * P3 (PLAN-CUENTAS-A-PLANTILLA-2026-11-01.md) — cuenta de banda que ABSORBE la diferencia neta de un grupo en
+	 * el ⑨ ajuste de bandas a saldo del cierre de cartera (la banda de más de 360 días de la familia). Plantilla
+	 * alterno 37 ({@link PlantillasCredito#PROVISION_CARTERA}), por tipo de préstamo: {@code DTPLAXL2 =
+	 * TPPRCDGO} (1 quirografario, 3 prendario, 2 hipotecario). El lado (DEBE o HABER) lo decide el código según
+	 * el signo de la diferencia; el movimiento de la línea es indiferente. Hoy: quirografario 1.3.01.25,
+	 * prendario 1.3.05.25, hipotecario 1.3.09.25. Sin la línea, el cierre se detiene (no hay cuenta de respaldo).
+	 */
+	public static final int AJUSTE_BANDA_ABSORBE = 85;
 
 	// ── Cuadre ──────────────────────────────────────────────────────────────
 

@@ -102,6 +102,13 @@ frena el ICE o la propina, que nunca son de esa magnitud.
 
 ## 5. La cuenta `4.8.90.90.35` — cómo se resuelve
 
+> **ACTUALIZADO 2026-11-01 (P5, `cnt/PLAN-CUENTAS-A-PLANTILLA-2026-11-01.md`):** la cuenta ya NO está en el código ni
+> se busca por código en todo `CNT.PLNN`. Sale de la línea `CxpLineaAsiento.REDONDEO_SRI` (aux1 1) de la plantilla de
+> compras `PlantillasCxp.COMPRAS` DE LA EMPRESA del asiento (`obtenerCuentaDiferenciaRedondeoSri`); sin plantilla,
+> sin línea, sin cuenta o con la cuenta inactiva lanza `IncomeException`. La plantilla es una de apoyo (el asiento sigue
+> armándose desde los grupos de producto, `PGS.TSRI` y la cuenta del titular). La semilla la escribe el árbitro. Lo de
+> abajo es el diseño original (histórico).
+
 **Este asiento no usa plantilla.** Las líneas se construyen en código; las plantillas (`CNT.PLNS`) se
 usan en otros flujos, como el rol de nómina. Así que la cuenta no «se agrega a una plantilla»: el
 código tiene que resolverla.

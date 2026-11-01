@@ -36,3 +36,12 @@ estado financiero por rubro 250). Los literales están concentrados en 4 archivo
 - **P4 y P10** necesitan diseño propio y van al final.
 - **P6:** es un cargador de migración que ya se corrió. ¿Se vuelve a usar? Si no, puede quedarse como
   está, documentado.
+
+## Avance
+- **P1+P2** `f3abf5a0`: sin semilla. Verificación `cnt/sql/c20-01`.
+- **P3+P5**: hallazgo, ninguno de los dos asientos usaba plantilla.
+  - **P3:** usa la plantilla 37, aux1 85, aux2 = tipo de préstamo. El modo arranque (`madre + ".25"`)
+    queda sin cambio por ahora. Propuesta: derivar la cuenta de la banda de más días de cada madre
+    en `CRD.BNDP`; antes hay que verificarlo en la base.
+  - **P5:** plantilla nueva alterno 38, reservada en el registro §2c, aux1 1.
+  - **⛔ Semilla `crd/sql/356` ANTES del EAR que los traiga.**

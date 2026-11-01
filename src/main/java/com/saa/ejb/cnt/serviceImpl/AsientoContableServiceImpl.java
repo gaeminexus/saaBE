@@ -93,13 +93,14 @@ public class AsientoContableServiceImpl implements AsientoContableService {
     // Cuadre contra importeTotal — docs/logica-negocio/cxp/DISENO-CUADRE-CONTRA-IMPORTE-TOTAL.md
     // ---------------------------------------------------------------
 
-    /** Código contable (CNT.PLNN.PLNNCNTA) de la cuenta de ajuste por diferencia de redondeo del SRI. */
-    private static final String CUENTA_DIFERENCIA_REDONDEO_SRI = "4.8.90.90.35";
+    // P5 (PLAN-CUENTAS-A-PLANTILLA-2026-11-01.md): la cuenta de ajuste por diferencia de redondeo del SRI ya no es
+    // un literal. Sale de la línea CxpLineaAsiento.REDONDEO_SRI de la plantilla PlantillasCxp.COMPRAS de la empresa
+    // (ver obtenerCuentaDiferenciaRedondeoSri).
 
     /**
      * Tolerancia, en dólares, para la diferencia entre {@code importeTotal} (cabecera del XML)
      * y la suma de las líneas DEBE de un asiento de compra. Por debajo de {@link #TOLERANCIA_MINIMA_REDONDEO}
-     * no se agrega línea de ajuste; entre esa y esta, se agrega a {@link #CUENTA_DIFERENCIA_REDONDEO_SRI};
+     * no se agrega línea de ajuste; entre esa y esta, se agrega a la cuenta de la plantilla de compras (CxpLineaAsiento.REDONDEO_SRI);
      * por encima, se aborta con {@code IncomeException} en vez de mandar la diferencia en silencio a la
      * cuenta de ajuste — puede ser ICE o propina mal clasificado, no redondeo.
      * <p>
@@ -2867,7 +2868,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         double totalDebe = lineas.stream().mapToDouble(l -> nvl(l.getValorDebe())).sum();
         double importeTotal = redondear2(nvl(fc.getTotal()));
         agregarDiferenciaRedondeoSri(lineas, importeTotal, totalDebe,
-                "FacturaCompra " + idFacturaCompra + " (N° " + fc.getNumero() + ")");
+                "FacturaCompra " + idFacturaCompra + " (N° " + fc.getNumero() + ")", idEmpresa);
 
         DetalleAsiento haber = new DetalleAsiento();
         haber.setPlanCuenta(cuentaProv); haber.setNumeroCuenta(cuentaProv.getCuentaContable());
@@ -3059,7 +3060,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         double totalDebe = lineas.stream().mapToDouble(l -> nvl(l.getValorDebe())).sum();
         double importeTotal = redondear2(nvl(fc.getTotal()));
         agregarDiferenciaRedondeoSri(lineas, importeTotal, totalDebe,
-                "FacturaCompra (reembolso) " + idFacturaCompra + " (N° " + fc.getNumero() + ")");
+                "FacturaCompra (reembolso) " + idFacturaCompra + " (N° " + fc.getNumero() + ")", idEmpresa);
 
         DetalleAsiento haber = new DetalleAsiento();
         haber.setPlanCuenta(cuentaProv); haber.setNumeroCuenta(cuentaProv.getCuentaContable());
@@ -3098,11 +3099,12 @@ public class AsientoContableServiceImpl implements AsientoContableService {
      * @param etiquetaDocumento : Identificación del documento, para el mensaje de error
      * @throws IncomeException  : Si {@code |diferencia|} supera {@link #TOLERANCIA_MAXIMA_REDONDEO_SRI}
      *                            (puede ser ICE o propina sin clasificar, no redondeo), o si hace falta
-     *                            la línea de ajuste y {@link #CUENTA_DIFERENCIA_REDONDEO_SRI} no existe
-     *                            o está inactiva en el plan de cuentas
+     *                            la línea de ajuste y la plantilla de compras de la empresa no la tiene
+     *                            (o su cuenta no existe o está inactiva)
+     * @param idEmpresa         : Empresa contable del asiento (P5: la cuenta se busca en SU plantilla)
      */
     private void agregarDiferenciaRedondeoSri(List<DetalleAsiento> lineas, double importeTotal,
-            double totalDebe, String etiquetaDocumento) {
+            double totalDebe, String etiquetaDocumento, Long idEmpresa) throws Throwable {
 
         double diferencia = redondear2(importeTotal - totalDebe);
         double absDiferencia = Math.abs(diferencia);
@@ -3122,12 +3124,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
             return;
         }
 
-        PlanCuenta cuentaAjuste = obtenerCuentaDiferenciaRedondeoSri();
-        if (cuentaAjuste == null) {
-            throw new IncomeException("No se pudo contabilizar " + etiquetaDocumento
-                    + ": falta la cuenta de diferencia por redondeo SRI (codigo "
-                    + CUENTA_DIFERENCIA_REDONDEO_SRI + ") en el plan de cuentas, activa.");
-        }
+        PlanCuenta cuentaAjuste = obtenerCuentaDiferenciaRedondeoSri(idEmpresa, etiquetaDocumento);
         DetalleAsiento ajuste = new DetalleAsiento();
         ajuste.setPlanCuenta(cuentaAjuste);
         ajuste.setNumeroCuenta(cuentaAjuste.getCuentaContable());
@@ -3372,7 +3369,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         double totalHaber = lineas.stream().mapToDouble(l -> nvl(l.getValorHaber())).sum();
         double importeTotalNc = redondear2(nvl(nc.getTotal()));
         agregarDiferenciaRedondeoSri(lineas, totalHaber, importeTotalNc,
-                "NotaCreditoCompra " + idNotaCreditoCompra + " (N° " + nc.getNumero() + ")");
+                "NotaCreditoCompra " + idNotaCreditoCompra + " (N° " + nc.getNumero() + ")", idEmpresa);
         debe.setValorDebe(importeTotalNc);
 
         return generarAsiento(idEmpresa, codigoAltTipoAsiento,
@@ -3586,7 +3583,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         double totalDebeLq = lineas.stream().mapToDouble(l -> nvl(l.getValorDebe())).sum();
         double importeTotalLq = redondear2(nvl(lq.getTotal()));
         agregarDiferenciaRedondeoSri(lineas, importeTotalLq, totalDebeLq,
-                "LiquidacionCompraCompra " + idLiquidacion + " (N° " + lq.getNumero() + ")");
+                "LiquidacionCompraCompra " + idLiquidacion + " (N° " + lq.getNumero() + ")", idEmpresa);
 
         DetalleAsiento haber = new DetalleAsiento();
         haber.setPlanCuenta(cuentaProv); haber.setNumeroCuenta(cuentaProv.getCuentaContable());
@@ -3762,33 +3759,35 @@ public class AsientoContableServiceImpl implements AsientoContableService {
     }
 
     /**
-     * Cuenta contable de ajuste por diferencia de redondeo del SRI, resuelta por
-     * su código contable en CNT.PLNN ({@link #CUENTA_DIFERENCIA_REDONDEO_SRI}).
-     * Mismo estilo de fallo que {@link #obtenerCuentaIVACxpPorCodigo}: devuelve
-     * null si no la encuentra o está inactiva, y es el LLAMADOR quien lo traduce
-     * a {@code IncomeException} — nunca "no ajusto nada" en silencio.
-     * <p>
-     * A diferencia de la cuenta de IVA (que sale de PGS.TSRI, configurable por
-     * código SRI), ésta se resuelve directo contra el plan de cuentas: es deuda
-     * declarada del diseño (una empresa nueva con otro plan de cuentas falla en
-     * el alta hasta que exista esta cuenta con este código exacto).
+     * Cuenta contable de ajuste por diferencia de redondeo del SRI, leída de la línea
+     * {@link com.saa.rubros.CxpLineaAsiento#REDONDEO_SRI} de la plantilla
+     * {@link com.saa.rubros.PlantillasCxp#COMPRAS} DE LA EMPRESA del asiento (P5, 2026-11-01). Antes era el
+     * literal {@code 4.8.90.90.35} buscado en todo CNT.PLNN sin filtrar por empresa: con dos empresas podía
+     * traer la cuenta de la otra. Si falta la plantilla, la línea o su cuenta, o la cuenta está inactiva,
+     * lanza {@code IncomeException} que lo dice: nunca "no ajusto nada" en silencio ni una cuenta de respaldo.
      */
-    private PlanCuenta obtenerCuentaDiferenciaRedondeoSri() {
-        try {
-            @SuppressWarnings("unchecked")
-            List<PlanCuenta> r = em.createQuery(
-                    "SELECT p FROM PlanCuenta p WHERE p.cuentaContable = :cuenta AND p.estado = :activo")
-                    .setParameter("cuenta", CUENTA_DIFERENCIA_REDONDEO_SRI)
-                    .setParameter("activo", Long.valueOf(Estado.ACTIVO))
-                    .setMaxResults(1).getResultList();
-            if (!r.isEmpty() && r.get(0) != null) return r.get(0);
-            System.err.println("[WARN] No se encontro la cuenta de diferencia por redondeo SRI en CNT.PLNN, "
-                    + "codigo " + CUENTA_DIFERENCIA_REDONDEO_SRI + " (activa).");
-            return null;
-        } catch (Exception e) {
-            System.err.println("[WARN] obtenerCuentaDiferenciaRedondeoSri: " + e.getMessage());
-            return null;
+    private PlanCuenta obtenerCuentaDiferenciaRedondeoSri(Long idEmpresa, String etiquetaDocumento) throws Throwable {
+        Long idPlantilla = plantillaService.codigoByAlterno(com.saa.rubros.PlantillasCxp.COMPRAS, idEmpresa);
+        if (idPlantilla == null || idPlantilla.longValue() == 0L) {
+            throw new IncomeException("No se pudo contabilizar " + etiquetaDocumento + ": la empresa " + idEmpresa
+                    + " no tiene la plantilla contable de compras (alterno " + com.saa.rubros.PlantillasCxp.COMPRAS
+                    + ") con la cuenta de diferencia por redondeo SRI.");
         }
+        com.saa.model.cnt.DetallePlantilla linea = detallePlantillaDaoService.selectByPlantillaYAuxiliar(idPlantilla,
+                com.saa.rubros.CxpLineaAsiento.REDONDEO_SRI);
+        if (linea == null || linea.getPlanCuenta() == null) {
+            throw new IncomeException("No se pudo contabilizar " + etiquetaDocumento + ": la plantilla de compras (alterno "
+                    + com.saa.rubros.PlantillasCxp.COMPRAS + ") de la empresa " + idEmpresa
+                    + " no tiene la línea " + com.saa.rubros.CxpLineaAsiento.REDONDEO_SRI
+                    + " (cuenta de diferencia por redondeo SRI) o no tiene cuenta asignada.");
+        }
+        PlanCuenta cuenta = linea.getPlanCuenta();
+        if (cuenta.getEstado() == null || cuenta.getEstado().longValue() != Estado.ACTIVO) {
+            throw new IncomeException("No se pudo contabilizar " + etiquetaDocumento + ": la cuenta de diferencia por"
+                    + " redondeo SRI de la plantilla de compras (" + cuenta.getCuentaContable() + " " + cuenta.getNombre()
+                    + ") está inactiva.");
+        }
+        return cuenta;
     }
 
     /**
