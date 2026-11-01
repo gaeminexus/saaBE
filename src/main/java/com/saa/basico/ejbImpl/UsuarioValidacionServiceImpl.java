@@ -50,6 +50,20 @@ public class UsuarioValidacionServiceImpl implements UsuarioValidacionService {
 
 	@Override
 	@SuppressWarnings("unchecked")
+	public Long idPorNombre(String nombre) throws UsuarioInvalidoException {
+		String limpio = validar(nombre);
+		Query q = em.createQuery("select u.codigo from Usuario u where u.nombre = :nombre");
+		q.setParameter("nombre", limpio);
+		q.setMaxResults(1);
+		List<Long> r = q.getResultList();
+		if (r.isEmpty() || r.get(0) == null) {
+			throw new UsuarioInvalidoException("el usuario '" + limpio + "' no existe en el sistema");
+		}
+		return r.get(0);
+	}
+
+	@Override
+	@SuppressWarnings("unchecked")
 	public String validarPorId(Long idUsuario) throws UsuarioInvalidoException {
 		if (idUsuario == null) {
 			throw new UsuarioInvalidoException("falta el usuario");

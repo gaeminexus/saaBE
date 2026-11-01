@@ -324,7 +324,7 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
         // CON QUÉ BeneficiarioOcasional se arma el pago.
         // ------------------------------------------------------------------
         return ejecutarDevolucion(entidad, tipos, valores, valorTotal, fecha, solicitud.getMotivo(),
-            solicitud.getIdEmpresa(), solicitud.getUsuario().trim(), solicitud.getIdUsuario(),
+            solicitud.getIdEmpresa(), solicitud.getUsuario().trim(), usuarioValidacionService.idPorNombre(solicitud.getUsuario()),
             solicitud.isDebitoAutomatico(), solicitud.getReferencia(), contabiliza,
             cuentaParticipe, armaBeneficiario(entidad, cuentaParticipe));
     }
@@ -962,7 +962,7 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
 
             ResultadoDevolucionAporte resultado = ejecutarDevolucion(entidad, tipos, valoresBeneficiario,
                 totalBeneficiario, fecha, solicitud.getMotivo(), solicitud.getIdEmpresa(),
-                solicitud.getUsuario().trim(), solicitud.getIdUsuario(), solicitud.isDebitoAutomatico(),
+                solicitud.getUsuario().trim(), usuarioValidacionService.idPorNombre(solicitud.getUsuario()), solicitud.isDebitoAutomatico(),
                 solicitud.getReferencia(), contabiliza, null, armaBeneficiarioDesdeCBBP(beneficiario));
 
             ResultadoDevolucionBeneficiario r = new ResultadoDevolucionBeneficiario();
@@ -1392,7 +1392,7 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
             try {
                 pagoProgramadoService.anularPago(idOrdenAnterior,
                     "Reemisión del pago de la devolución de aportes " + idDevolucion + ": "
-                        + solicitud.getMotivo().trim(), solicitud.getIdUsuario());
+                        + solicitud.getMotivo().trim(), usuarioValidacionService.idPorNombre(solicitud.getUsuario()));
             } catch (Throwable e) {
                 throw new IncomeException(ERR_ERROR_ORDEN_PAGO + ": no se pudo anular la orden "
                     + "de pago " + idOrdenAnterior + " en Cuentas por Pagar. " + e.getMessage());
@@ -1426,7 +1426,7 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
             Map<String, Object> respuesta = pagoProgramadoService.registrarPagoDeOrigenExterno(
                 OrigenPagoExterno.CRD_DEVOLUCION_APORTE, idDevolucion, solicitud.getIdEmpresa(),
                 null, ordenAnterior.getValor(), LocalDate.now().toString(), beneficiarioNuevo,
-                desgloseNuevo, observacionNueva, solicitud.getIdUsuario(), false, null);
+                desgloseNuevo, observacionNueva, usuarioValidacionService.idPorNombre(solicitud.getUsuario()), false, null);
 
             Object valorPago = (respuesta != null) ? respuesta.get("pago") : null;
             if (valorPago == null) {

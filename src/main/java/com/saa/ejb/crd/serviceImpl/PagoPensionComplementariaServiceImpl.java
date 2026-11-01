@@ -135,7 +135,7 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
     private static final int AUX1_PLANTILLA_SEGURO = 4;
 
     @EJB
-    private com.saa.ejb.cxp.dao.ProductoPagoDaoService productoPagoDaoService;
+    private com.saa.basico.ejb.DetalleRubroService detalleRubroService;
 
     @EJB
     private PagoPensionComplementariaDaoService pagoPensionDaoService;
@@ -2347,29 +2347,47 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         resolverProductoPagoSeguro(idEmpresa);
     }
 
-    /** P9: producto de pago del seguro médico, deducido de la cuenta de la línea aux1=4 de la plantilla. */
+    /** P9b: producto de pago del seguro médico = el del parámetro 3 del rubro 237, verificado contra la línea aux1=4. */
     private Long resolverProductoPagoSeguro(Long idEmpresa) throws Throwable {
-        return resolverProductoPagoPorLineaDePlantilla(idEmpresa, AUX1_PLANTILLA_SEGURO, "seguro médico",
-            "PRODUCTO_PAGO_SEGURO_NO_RESUELTO");
+        return resolverProductoPagoPorParametro(idEmpresa, com.saa.rubros.CrdParametroContabilidad.PRODUCTO_PAGO_SEGURO_JUBILADOS,
+            AUX1_PLANTILLA_SEGURO, "seguro médico", "PRODUCTO_PAGO_SEGURO_NO_RESUELTO");
     }
 
     private void verificarCuentaProductoPagoPensionJubilados(Long idEmpresa) throws Throwable {
         resolverProductoPagoPension(idEmpresa);
     }
 
-    /** P9: producto de pago de la pensión de cada jubilado, deducido de la cuenta de la línea aux1=2 de la plantilla. */
+    /** P9b: producto de pago de la pensión = el del parámetro 2 del rubro 237, verificado contra la línea aux1=2. */
     private Long resolverProductoPagoPension(Long idEmpresa) throws Throwable {
-        return resolverProductoPagoPorLineaDePlantilla(idEmpresa, AUX1_PLANTILLA_PENSION, "pensión de jubilados",
-            "PRODUCTO_PAGO_PENSION_NO_RESUELTO");
+        return resolverProductoPagoPorParametro(idEmpresa, com.saa.rubros.CrdParametroContabilidad.PRODUCTO_PAGO_PENSION_JUBILADOS,
+            AUX1_PLANTILLA_PENSION, "pensión de jubilados", "PRODUCTO_PAGO_PENSION_NO_RESUELTO");
     }
 
     /**
-     * P9: producto de pago = el ACTIVO de la empresa cuyo grupo tiene la cuenta de la línea {@code aux1} de la plantilla
-     * {@code PAGO_PENSION_COMPLEMENTARIA}. Cero o más de uno detiene el proceso diciendo qué corregir; no se elige al azar
-     * ni se escribe ningún id.
+     * P9b: el producto de pago sale de un PARÁMETRO (detalle {@code alternoParametro} del rubro
+     * {@link com.saa.rubros.Rubros#CRD_PARAMETROS_CONTABILIDAD}, valor numérico = id de PGS.PRDP), no de un literal ni de
+     * una búsqueda por cuenta (que se rompe cuando hay dos productos con la misma cuenta). Se VERIFICA que la cuenta del
+     * grupo del producto sea la de la línea {@code aux1} de la plantilla {@code PAGO_PENSION_COMPLEMENTARIA}: el devengo y
+     * el pago tienen que cerrar la misma cuenta. Falta el parámetro, el producto no existe, o la cuenta no coincide:
+     * error claro, sin respaldo.
      */
-    private Long resolverProductoPagoPorLineaDePlantilla(Long idEmpresa, int aux1, String que, String codigoError)
-            throws Throwable {
+    private Long resolverProductoPagoPorParametro(Long idEmpresa, int alternoParametro, int aux1, String que,
+            String codigoError) throws Throwable {
+        Double valor = null;
+        try {
+            valor = detalleRubroService.selectValorNumericoByRubAltDetAlt(
+                com.saa.rubros.Rubros.CRD_PARAMETROS_CONTABILIDAD, alternoParametro);
+        } catch (Throwable e) {
+            System.err.println(codigoError + ": no se pudo leer el parámetro " + alternoParametro + " del rubro "
+                + com.saa.rubros.Rubros.CRD_PARAMETROS_CONTABILIDAD + ": " + e.getMessage());
+        }
+        if (valor == null || valor.doubleValue() <= 0.0) {
+            throw new IncomeException(codigoError + ": falta el parámetro con el id del producto de pago de la " + que
+                + " (rubro " + com.saa.rubros.Rubros.CRD_PARAMETROS_CONTABILIDAD + ", detalle " + alternoParametro
+                + ", valor numérico = id de PGS.PRDP). No se genera ningún pago de este período.");
+        }
+        Long idProducto = Long.valueOf(valor.longValue());
+
         Long idPlantilla = plantillaService.codigoByAlterno(PlantillasCredito.PAGO_PENSION_COMPLEMENTARIA, idEmpresa);
         if (idPlantilla == null) {
             throw new IncomeException("No existe la plantilla contable alterno "
@@ -2383,28 +2401,30 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
                 + " no tiene la línea aux1=" + aux1 + " (" + que + ") — corra sql/173 completo (ver su control"
                 + " D.1, deben salir 4 líneas).");
         }
-        PlanCuenta cuenta = linea.getPlanCuenta();
-        String cuentaTexto = cuenta.getCodigo() + " - " + cuenta.getCuentaContable() + " - " + cuenta.getNombre();
-        List<ProductoPago> productos = productoPagoDaoService.selectActivosByEmpresaYCuentaGrupo(idEmpresa, cuenta.getCodigo());
-        if (productos == null || productos.isEmpty()) {
-            throw new IncomeException(codigoError + ": no hay un producto de pago activo en la empresa " + idEmpresa
-                + " cuyo grupo tenga la cuenta " + cuentaTexto + ", que es la de la línea aux1=" + aux1 + " (" + que
-                + ") de la plantilla alterno " + PlantillasCredito.PAGO_PENSION_COMPLEMENTARIA + ". Cree el producto en"
-                + " CXP (grupo con esa cuenta). No se genera ningún pago de este período.");
+        PlanCuenta cuentaDevengo = linea.getPlanCuenta();
+
+        ProductoPago producto = productoPagoService.selectById(idProducto);
+        if (producto == null) {
+            throw new IncomeException(codigoError + ": el producto de pago " + idProducto + " (parámetro "
+                + alternoParametro + " del rubro " + com.saa.rubros.Rubros.CRD_PARAMETROS_CONTABILIDAD
+                + ") no existe en PGS.PRDP.");
         }
-        if (productos.size() > 1) {
-            StringBuilder lista = new StringBuilder();
-            for (ProductoPago producto : productos) {
-                if (lista.length() > 0) {
-                    lista.append(", ");
-                }
-                lista.append(producto.getId()).append(" «").append(producto.getNombre()).append("»");
-            }
-            throw new IncomeException(codigoError + ": hay más de un producto de pago activo en la empresa " + idEmpresa
-                + " cuyo grupo tiene la cuenta " + cuentaTexto + " (" + que + "): " + lista
-                + ". Deje uno solo; no se elige uno al azar.");
+        if (producto.getGrupoProducto() == null || producto.getGrupoProducto().getPlanCuenta() == null) {
+            throw new IncomeException(codigoError + ": el producto de pago " + idProducto + " («" + producto.getNombre()
+                + "») no tiene grupo o el grupo no tiene cuenta contable: no se puede verificar que cierre contra la cuenta"
+                + " del devengo.");
         }
-        return productos.get(0).getId();
+        PlanCuenta cuentaProducto = producto.getGrupoProducto().getPlanCuenta();
+        if (cuentaDevengo.getCodigo() == null || !cuentaDevengo.getCodigo().equals(cuentaProducto.getCodigo())) {
+            throw new IncomeException(codigoError + ": la cuenta que ACREDITA el devengo de la " + que
+                + " (plantilla alterno " + PlantillasCredito.PAGO_PENSION_COMPLEMENTARIA + " aux1=" + aux1 + ": cuenta "
+                + cuentaDevengo.getCodigo() + " - " + cuentaDevengo.getCuentaContable() + " - " + cuentaDevengo.getNombre()
+                + ") no coincide con la cuenta que DEBE el pago (producto " + idProducto + " «" + producto.getNombre()
+                + "»: cuenta " + cuentaProducto.getCodigo() + " - " + cuentaProducto.getCuentaContable() + " - "
+                + cuentaProducto.getNombre() + "). Corrija el parámetro " + alternoParametro + " del rubro "
+                + com.saa.rubros.Rubros.CRD_PARAMETROS_CONTABILIDAD + ". No se genera ningún pago de este período.");
+        }
+        return idProducto;
     }
 
     /**
@@ -2977,20 +2997,8 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
             throw new IncomeException("PARAMETRO_INVALIDO: el re-proceso es para un período pasado; " + periodo
                 + " es el mes en curso o futuro. Use /pgpc/seguro/generar y /pgpc/pensiones/generar.");
         }
-        Long idUsuario = solicitud.getIdUsuario();
-        if (idUsuario == null) {
-            com.saa.model.scp.Usuario usuarioRegistro = null;
-            try {
-                usuarioRegistro = usuarioDaoService.selectByNombre(usuario);
-            } catch (jakarta.persistence.NoResultException e) {
-                usuarioRegistro = null;
-            }
-            if (usuarioRegistro == null) {
-                throw new IncomeException("USUARIO_NO_ENCONTRADO: no existe el usuario '" + usuario + "' en el sistema;"
-                    + " la orden de pago en Cuentas por Pagar necesita el usuario que la registra (mande idUsuario).");
-            }
-            idUsuario = usuarioRegistro.getCodigo();
-        }
+        // U-3: el id sale del nombre ya validado (el idUsuario del cuerpo, si venía en 0 o nulo, ya no llega a Tesorería).
+        Long idUsuario = usuarioValidacionService.idPorNombre(usuario);
 
         // Prevalidación total (mismo criterio que generarPagosDelMes): todo lo global y determinista
         // se verifica ANTES de tocar el primer jubilado.

@@ -37,4 +37,11 @@ public interface UsuarioValidacionService {
 	 * tampoco existe.
 	 */
 	String validarPorId(Long idUsuario) throws UsuarioInvalidoException;
+
+	/**
+	 * Valida un usuario por su nombre y devuelve su CÓDIGO ({@code idUsuario}). Es lo que se usa donde un proceso conoce
+	 * el nombre ya validado pero el servicio siguiente (órdenes de pago de cxp, tsr, rhh) pide el id: así el id nunca
+	 * llega nulo ni en 0 por un campo del cliente.
+	 */
+	Long idPorNombre(String nombre) throws UsuarioInvalidoException;
 }

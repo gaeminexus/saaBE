@@ -1429,7 +1429,7 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
             DetallePlantilla lineaDevolucion, Long idEmpresa, Long idCarga, LocalDate fechaAsiento, Long idAsiento,
             String usuario) throws Throwable {
         Long idProductoPago = resolverProductoPagoDevolucion(idEmpresa, lineaDevolucion);
-        Long idUsuario = usuarioDaoService.selectByNombre(usuario).getCodigo();
+        Long idUsuario = usuarioValidacionService.idPorNombre(usuario); // U-3: el id sale del nombre validado
         for (com.saa.model.crd.DestinoSobrante devolucion : devoluciones) {
             double valor = redondear(nvl(devolucion.getValorAplicadoAportes()) + nvl(devolucion.getValorAplicadoPrestamos()));
             if (devolucion.getIdPagoProgramado() != null) {

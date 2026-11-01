@@ -390,12 +390,11 @@ public class PrestamoServiceImpl implements PrestamoService {
             + " - Fecha contable: " + fechaContable);
         // U-2: lo primero, el usuario.
         usuario = usuarioValidacionService.validar(usuario);
+        // U-3: el id sale del nombre ya validado (el idUsuario del cuerpo, nulo o en 0, ya no llega a Tesorería).
+        idUsuario = usuarioValidacionService.idPorNombre(usuario);
 
         if (idEmpresa == null) {
             throw new IncomeException("No se puede aprobar el préstamo " + idPrestamo + ": falta idEmpresa.");
-        }
-        if (idUsuario == null) {
-            throw new IncomeException("No se puede aprobar el préstamo " + idPrestamo + ": falta idUsuario.");
         }
         // C6 (FECHA-CONTABLE-REPROCESO.md): fecha de la orden de pago del desembolso. Por
         // defecto hoy; explícita para re-procesar un mes pasado. Nunca futura.
@@ -610,8 +609,10 @@ public class PrestamoServiceImpl implements PrestamoService {
             + " - préstamo cancelado: " + idPrestamoCancelado);
         // U-2: lo primero, el usuario (antes se rellenaba con «CUADRE»).
         usuario = usuarioValidacionService.validar(usuario);
-        if (idPrestamo == null || idEmpresa == null || idUsuario == null || fechaContable == null) {
-            throw new IncomeException("idPrestamo, idEmpresa, idUsuario y fechaContable son obligatorios.");
+        // U-3: el id sale del nombre ya validado.
+        idUsuario = usuarioValidacionService.idPorNombre(usuario);
+        if (idPrestamo == null || idEmpresa == null || fechaContable == null) {
+            throw new IncomeException("idPrestamo, idEmpresa y fechaContable son obligatorios.");
         }
         if (fechaContable.isAfter(LocalDate.now())) {
             throw new IncomeException("FECHA_CONTABLE_FUTURA: " + fechaContable);
