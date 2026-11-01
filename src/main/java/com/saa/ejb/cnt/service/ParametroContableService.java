@@ -1,5 +1,6 @@
 package com.saa.ejb.cnt.service;
 
+import java.util.List;
 import java.util.Map;
 
 import jakarta.ejb.Local;
@@ -21,6 +22,15 @@ public interface ParametroContableService {
 
 	/** Valor del detalle {@code alternoDetalle} del rubro 250, o {@code null} si falta, está inactivo o vacío. */
 	String valor(int alternoDetalle);
+
+	/**
+	 * P4-B (2026-11-01): cuentas contables de la PROVISIÓN de cartera de la empresa = el conjunto distinto de las
+	 * cuentas de las líneas {@link com.saa.rubros.CrdLineaAsiento#PROVISION_CARTERA} (aux1 83, una por tipo de
+	 * préstamo) de la plantilla {@link com.saa.rubros.PlantillasCredito#PROVISION_CARTERA} (alterno 37). Lista VACÍA
+	 * si falta la plantilla o la línea: el llamador decide (el cierre se detiene, los controles avisan «No se pudo
+	 * medir»). No hay cuentas de respaldo.
+	 */
+	List<String> cuentasProvisionCartera(Long idEmpresa) throws Throwable;
 
 	/** La cuenta como prefijo de sus subcuentas: la misma con un punto al final si no lo trae ({@code 1.3} → {@code 1.3.}). */
 	static String comoPrefijo(String cuenta) {

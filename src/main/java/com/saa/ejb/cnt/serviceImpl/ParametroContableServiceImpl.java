@@ -4,9 +4,17 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import java.util.LinkedHashSet;
+
+import com.saa.ejb.cnt.dao.DetallePlantillaDaoService;
 import com.saa.ejb.cnt.service.ParametroContableService;
+import com.saa.ejb.cnt.service.PlantillaService;
+import com.saa.model.cnt.DetallePlantilla;
+import com.saa.rubros.CrdLineaAsiento;
+import com.saa.rubros.PlantillasCredito;
 import com.saa.rubros.Rubros;
 
+import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -21,6 +29,12 @@ public class ParametroContableServiceImpl implements ParametroContableService {
 
 	@PersistenceContext
 	private EntityManager em;
+
+	@EJB
+	private PlantillaService plantillaService;
+
+	@EJB
+	private DetallePlantillaDaoService detallePlantillaDaoService;
 
 	@Override
 	@SuppressWarnings("unchecked")
@@ -40,5 +54,25 @@ public class ParametroContableServiceImpl implements ParametroContableService {
 	@Override
 	public String valor(int alternoDetalle) {
 		return parametrosEstadosFinancieros().get(Integer.valueOf(alternoDetalle));
+	}
+
+	@Override
+	public List<String> cuentasProvisionCartera(Long idEmpresa) throws Throwable {
+		LinkedHashSet<String> cuentas = new LinkedHashSet<String>();
+		Long idPlantilla = plantillaService.codigoByAlterno(PlantillasCredito.PROVISION_CARTERA, idEmpresa);
+		if (idPlantilla == null || idPlantilla.longValue() == 0L) {
+			return new java.util.ArrayList<String>();
+		}
+		List<DetallePlantilla> lineas = detallePlantillaDaoService.selectByPlantilla(idPlantilla);
+		if (lineas != null) {
+			for (DetallePlantilla linea : lineas) {
+				if (linea.getAuxiliar1() != null && linea.getAuxiliar1().longValue() == CrdLineaAsiento.PROVISION_CARTERA
+						&& linea.getPlanCuenta() != null && linea.getPlanCuenta().getCuentaContable() != null
+						&& !linea.getPlanCuenta().getCuentaContable().trim().isEmpty()) {
+					cuentas.add(linea.getPlanCuenta().getCuentaContable().trim());
+				}
+			}
+		}
+		return new java.util.ArrayList<String>(cuentas);
 	}
 }

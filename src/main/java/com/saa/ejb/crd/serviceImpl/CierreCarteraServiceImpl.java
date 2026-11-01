@@ -1158,7 +1158,7 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
                 + (solicitud.getMontoProvisionInteresesApertura() != null
                         ? solicitud.getMontoProvisionInteresesApertura().toString()
                         : "saldo de la cuenta de la plantilla 36 al " + fechaCorte)
-                + "), para que el primer ⑦ no la duplique. La 1.3.99 de la apertura no necesita semilla: el ⑧"
+                + "), para que el primer ⑦ no la duplique. La provision de cartera de la apertura no necesita semilla: el ⑧"
                 + " es ajuste a saldo.");
         return resultado;
     }
@@ -1317,7 +1317,8 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
         }
         // P4-A (PLAN-CUENTAS-A-PLANTILLA-2026-11-01.md): la raiz de la cartera se LEE del rubro 250
         // (CUENTA_CARTERA_CREDITOS); sin ella el cierre se detiene, no hay raiz de respaldo. Quedan escritos a
-        // proposito, hasta P4-B/C (crd/sql/359), la exclusion "1.3.99" de la provision y los rangos 01-04/05-08/09-12.
+        // proposito, hasta P4-C, los rangos 01-04/05-08/09-12. P4-B (2026-11-01): la provision se excluye por las
+        // cuentas de las lineas aux1 83 de la plantilla 37 (ParametroContableService.cuentasProvisionCartera).
         String raizCartera = parametroContableService.valor(CntParametroEstadoFinanciero.CUENTA_CARTERA_CREDITOS);
         if (raizCartera == null) {
             throw new IncomeException("No se puede armar el ajuste de bandas (⑨): el rubro "
@@ -1326,8 +1327,15 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
                     + " No hay raiz de respaldo: cargue el detalle.");
         }
         final String prefijoRaiz = ParametroContableService.comoPrefijo(raizCartera);
-        for (Object[] fila : cierreCarteraDaoService.selectSaldoContablePorCuenta(solicitud.getIdEmpresa(), prefijoRaiz,
-                "1.3.99", corte)) {
+        final List<String> cuentasProvision = parametroContableService.cuentasProvisionCartera(solicitud.getIdEmpresa());
+        if (cuentasProvision.isEmpty()) {
+            throw new IncomeException("No se puede armar el ajuste de bandas (⑨): la plantilla " + PlantillasCredito.PROVISION_CARTERA
+                    + " de la empresa " + solicitud.getIdEmpresa() + " no existe o no tiene la linea "
+                    + CrdLineaAsiento.PROVISION_CARTERA + " (cuenta de la provision de cartera). No hay cuenta de respaldo:"
+                    + " cargue la linea en la plantilla.");
+        }
+        for (Object[] fila : cierreCarteraDaoService.selectSaldoContablePorCuentaExcluyendo(solicitud.getIdEmpresa(),
+                prefijoRaiz, cuentasProvision, corte)) {
             String cuenta = (String) fila[0];
             proyectado.merge(cuenta, (Double) fila[2], Double::sum);
             idCuenta.putIfAbsent(cuenta, (Long) fila[1]);
@@ -1350,7 +1358,7 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
         cuentas.addAll(objetivo.keySet());
         cuentas.addAll(proyectado.keySet());
         for (String cuenta : cuentas) {
-            String grupo = grupoBanda(cuenta, porMadre, prefijoRaiz);
+            String grupo = grupoBanda(cuenta, porMadre, prefijoRaiz, cuentasProvision);
             if (grupo == null) {
                 continue;
             }
@@ -1417,11 +1425,12 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
     /**
      * Grupo de una cuenta de capital {@code 1.3.NN.xx}: la madre {@code 1.3.NN} (arranque) o la
      * familia (01–04 quirografario, 05–08 prendario, 09–12 hipotecario). null = no es de banda.
-     * P4-A: la raiz ({@code prefijoRaiz}) se lee del rubro 250; la exclusion "1.3.99" y los rangos siguen escritos
-     * hasta P4-B/C (PLAN-CUENTAS-A-PLANTILLA-2026-11-01.md, crd/sql/359).
+     * P4-A: la raiz ({@code prefijoRaiz}) se lee del rubro 250. P4-B: las cuentas de la provision
+     * ({@code cuentasProvision}) salen de la plantilla 37, no del prefijo "1.3.99". Los rangos siguen escritos
+     * hasta P4-C (PLAN-CUENTAS-A-PLANTILLA-2026-11-01.md, crd/sql/359).
      */
-    private String grupoBanda(String cuenta, boolean porMadre, String prefijoRaiz) {
-        if (cuenta == null || !cuenta.startsWith(prefijoRaiz) || cuenta.startsWith("1.3.99") || cuenta.length() < 9) {
+    private String grupoBanda(String cuenta, boolean porMadre, String prefijoRaiz, List<String> cuentasProvision) {
+        if (cuenta == null || !cuenta.startsWith(prefijoRaiz) || cuentasProvision.contains(cuenta) || cuenta.length() < 9) {
             return null;
         }
         String madre = cuenta.substring(0, 6);

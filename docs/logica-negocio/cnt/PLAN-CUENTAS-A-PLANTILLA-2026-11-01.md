@@ -85,3 +85,8 @@ estado financiero por rubro 250). Los literales están concentrados en 4 archivo
 - **`cnt/sql/c20-01` corrido en producción (2026-11-01):** rubro 250, detalles 8-12 = 5/4/1/2/3; plantilla
   alterno 1, aux1 1-4 = 1.4.05.05 / 1.4.05.10 / 2.3.02.05 / 2.3.02.10. **P1 y P2 sin semilla, confirmado.**
 - **`cnt/sql/c20-02` corrido en producción (2026-11-01):** PDTR 1534 (16 = 2.1) y 1535 (17 = 1.3).
+- **P4-B** hecho: la provisión son las cuentas EXACTAS de las líneas 83 de la plantilla 37 (hoy
+  1.3.99.05/.10/.15), no el prefijo `1.3.99`. DAO nuevo `selectSaldoContablePorCuentaExcluyendo`. Si falta
+  la plantilla o la línea, el cierre se detiene y los controles quedan en advertencia
+  (`CARTERA_SIN_PROVISION`). Riesgo a vigilar: una subcuenta nueva de 1.3.99 que no esté en una línea 83
+  se contaría como capital. El control es la consulta 3 del `crd/sql/359`.

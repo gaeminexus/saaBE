@@ -266,6 +266,14 @@ public interface CierreCarteraDaoService {
             LocalDate corte) throws Throwable;
 
     /**
+     * Igual que {@link #selectSaldoContablePorCuenta(Long, String, String, LocalDate)} pero excluyendo una LISTA de
+     * cuentas exactas en vez de un prefijo (P4-B, 2026-11-01: las cuentas de la provisión de cartera salen de la
+     * plantilla, no de un literal). {@code cuentasExcluidas} nula o vacía no excluye nada.
+     */
+    List<Object[]> selectSaldoContablePorCuentaExcluyendo(Long idEmpresa, String prefijo, List<String> cuentasExcluidas,
+            LocalDate corte) throws Throwable;
+
+    /**
      * H6: préstamos aprobados (no 0/1/6/7/12) sin asiento de entrega ({@code PRSTASEN} nulo) con
      * fecha de inicio en el rango.
      *

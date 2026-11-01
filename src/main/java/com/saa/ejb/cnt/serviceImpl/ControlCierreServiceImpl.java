@@ -212,7 +212,14 @@ public class ControlCierreServiceImpl implements ControlCierreService {
             return;
         }
         String prefijoRaiz = ParametroContableService.comoPrefijo(raiz);
-        Map<String, Double> contable = capitalContablePorGrupo(idEmpresa, corteSig, prefijoRaiz);
+        // P4-B: las cuentas de la provisión salen de la plantilla 37 (líneas aux1 83); sin ellas no se mide.
+        List<String> cuentasProvision = cuentasProvisionODefecto(idEmpresa);
+        if (cuentasProvision.isEmpty()) {
+            controles.add(sinProvisionCartera("CARTERA", "CARTERA_SIN_PROVISION",
+                    "Cartera del módulo vs contabilidad por grupo al " + corte, idEmpresa));
+            return;
+        }
+        Map<String, Double> contable = capitalContablePorGrupo(idEmpresa, corteSig, prefijoRaiz, cuentasProvision);
         Long idCorrida = estado != null ? estado.getIdCorridaCartera() : null;
         if (idCorrida == null) {
             ControlCierre c = new ControlCierre("CARTERA", "CARTERA_NO_CERRADA",
@@ -221,7 +228,7 @@ public class ControlCierreServiceImpl implements ControlCierreService {
             StringBuilder sb = new StringBuilder("Cartera no cerrada: el mes " + anio + "-" + dos(mes)
                     + " no tiene corrida de cierre de cartera EJECUTADA vigente (CRD.CRCT), así que no hay"
                     + " distribución del módulo al corte con la cual comparar. Cierre la cartera antes del período"
-                    + " contable (C17). Capital contable " + raiz + " (sin 1.3.99) por grupo:");
+                    + " contable (C17). Capital contable " + raiz + " (sin la provisión " + cuentasProvision + ") por grupo:");
             for (Map.Entry<String, Double> e : contable.entrySet()) {
                 sb.append(' ').append(e.getKey()).append(' ').append(fmt(e.getValue())).append(';');
             }
@@ -239,7 +246,7 @@ public class ControlCierreServiceImpl implements ControlCierreService {
         double sinCuenta = 0D;
         for (Object fila : q.getResultList()) {
             Object[] f = (Object[]) fila;
-            String grupo = grupoBanda(f[0] != null ? f[0].toString() : null, prefijoRaiz);
+            String grupo = grupoBanda(f[0] != null ? f[0].toString() : null, prefijoRaiz, cuentasProvision);
             if (grupo == null) {
                 sinCuenta += aDouble(f[1]);
                 continue;
@@ -254,7 +261,7 @@ public class ControlCierreServiceImpl implements ControlCierreService {
             double mod = valor(modulo, grupo);
             ControlCierre c = new ControlCierre("CARTERA", "CARTERA_GRUPO_" + grupo,
                     "Cartera grupo " + grupo + " (" + nombreGrupo(grupo) + "): contabilidad vs módulo al " + corte);
-            compara(c, cnt, mod, "Contabilidad " + raiz + " (sin 1.3.99) " + fmt(cnt) + "; módulo (corrida de cierre " + idCorrida
+            compara(c, cnt, mod, "Contabilidad " + raiz + " (sin la provisión) " + fmt(cnt) + "; módulo (corrida de cierre " + idCorrida
                     + ", CRD.BDCC) " + fmt(mod) + ". La diferencia es la que el ⑨ deja en la banda .25 del grupo hasta"
                     + " explicarla o decidirla (D-011).");
             controles.add(c);
@@ -272,24 +279,26 @@ public class ControlCierreServiceImpl implements ControlCierreService {
     }
 
     /**
-     * Capital contable de cartera (raíz sin 1.3.99) por grupo Q/P/H, la misma agrupación del ⑨ mensual.
-     * P4-A: la raíz ({@code prefijoRaiz}, hoy «1.3.») se lee del rubro 250. Quedan escritos, a propósito y hasta
-     * P4-B/C, la exclusión «1.3.99» de la provisión y los rangos 01-04/05-08/09-12 de {@link #grupoBanda}:
-     * ver PLAN-CUENTAS-A-PLANTILLA-2026-11-01.md (P4-B/C) y crd/sql/359.
+     * Capital contable de cartera (raíz sin la provisión) por grupo Q/P/H, la misma agrupación del ⑨ mensual.
+     * P4-A: la raíz ({@code prefijoRaiz}, hoy «1.3.») se lee del rubro 250. P4-B: la provisión se excluye por las
+     * cuentas de la plantilla 37 ({@code cuentasProvision}). Quedan escritos, hasta P4-C, los rangos
+     * 01-04/05-08/09-12 de {@link #grupoBanda}: ver PLAN-CUENTAS-A-PLANTILLA-2026-11-01.md y crd/sql/359.
      */
-    private Map<String, Double> capitalContablePorGrupo(Long idEmpresa, LocalDate corteSig, String prefijoRaiz) {
+    private Map<String, Double> capitalContablePorGrupo(Long idEmpresa, LocalDate corteSig, String prefijoRaiz,
+            List<String> cuentasProvision) {
         Query q = em.createNativeQuery(
                 " SELECT d.DTASCNTA, SUM(NVL(d.DTASDBEE, 0)) - SUM(NVL(d.DTASHBRR, 0)) "
                 + " FROM CNT.DTAS d JOIN CNT.ASNT a ON a.ASNTCDGO = d.ASNTCDGO "
                 + " WHERE a.PJRQCDGO = :empresa AND a.ASNTESTD IN (1, 3) AND a.ASNTFCHA < :corteSig "
-                + " AND d.DTASCNTA LIKE :raiz AND d.DTASCNTA NOT LIKE '1.3.99%' GROUP BY d.DTASCNTA");
+                + " AND d.DTASCNTA LIKE :raiz AND d.DTASCNTA NOT IN (:provision) GROUP BY d.DTASCNTA");
         q.setParameter("empresa", idEmpresa);
         q.setParameter("corteSig", Date.valueOf(corteSig));
         q.setParameter("raiz", prefijoRaiz + "%");
+        q.setParameter("provision", cuentasProvision);
         Map<String, Double> grupos = new TreeMap<String, Double>();
         for (Object fila : q.getResultList()) {
             Object[] f = (Object[]) fila;
-            String grupo = grupoBanda(f[0] != null ? f[0].toString() : null, prefijoRaiz);
+            String grupo = grupoBanda(f[0] != null ? f[0].toString() : null, prefijoRaiz, cuentasProvision);
             if (grupo != null) {
                 grupos.merge(grupo, aDouble(f[1]), Double::sum);
             }
@@ -300,11 +309,12 @@ public class ControlCierreServiceImpl implements ControlCierreService {
     /**
      * Grupo de la cuenta de banda, igual que {@code CierreCarteraServiceImpl.grupoBanda} en el cierre mensual:
      * 1.3.01–04 = Q (quirografarios), 1.3.05–08 = P (prendarios), 1.3.09–12 = H (hipotecarios); otra madre
-     * queda como su propio grupo; 1.3.99 (provisión) no entra. P4-A: la raíz ({@code prefijoRaiz}) se lee del rubro
-     * 250; la exclusión «1.3.99» y los rangos siguen escritos hasta P4-B/C (PLAN-CUENTAS-A-PLANTILLA, crd/sql/359).
+     * queda como su propio grupo; la provisión no entra. P4-A: la raíz ({@code prefijoRaiz}) se lee del rubro 250.
+     * P4-B: las cuentas de la provisión ({@code cuentasProvision}) salen de la plantilla 37. Los rangos siguen
+     * escritos hasta P4-C (PLAN-CUENTAS-A-PLANTILLA, crd/sql/359).
      */
-    private static String grupoBanda(String cuenta, String prefijoRaiz) {
-        if (cuenta == null || !cuenta.startsWith(prefijoRaiz) || cuenta.startsWith("1.3.99") || cuenta.length() < 6) {
+    private static String grupoBanda(String cuenta, String prefijoRaiz, List<String> cuentasProvision) {
+        if (cuenta == null || !cuenta.startsWith(prefijoRaiz) || cuentasProvision.contains(cuenta) || cuenta.length() < 6) {
             return null;
         }
         String madre = cuenta.substring(0, 6);
@@ -476,7 +486,8 @@ public class ControlCierreServiceImpl implements ControlCierreService {
     private void controlesB17G(List<ControlCierre> controles, Long idEmpresa, Long anio, Long mes, LocalDate corte,
             LocalDate corteSig) {
         // El plan de cuentas del SAA sigue el catálogo de la Superintendencia: la cuenta 21 del B17 es la 2.1,
-        // la 13 es la 1.3 (neta de la 1.3.99) y la 1399 es la 1.3.99 (verificado contra el B17 de mayo 2025).
+        // la 13 es la raíz de la cartera y la 1399 son las cuentas de provisión de la plantilla 37 (verificado contra
+        // el B17 de mayo 2025; hoy 1.3 y 1.3.99.xx, leídas del rubro 250 y de la plantilla, no escritas en el código).
         // Hasta que el B17 se genere en el motor de balances (C19b), se compara con la contabilidad directa.
         ControlCierre oficial = new ControlCierre("B17_G", "B17_OFICIAL",
                 "B17 oficial: suma de control, padres = hijas, cuentas excluidas");
@@ -536,26 +547,54 @@ public class ControlCierreServiceImpl implements ControlCierreService {
             // P4-A: sin la raíz de la cartera en el rubro 250 no se mide (sin respaldo escrito).
             controles.add(sinRaizCartera("B17_G", "B17_13_VS_G48", "Cuadratura B17 ↔ G48 (cartera bruta y provisión)"));
         } else if (ejrdG48 != null) {
-            // P4-A: la raíz se lee del rubro 250; la exclusión/ la cuenta «1.3.99» de la provisión sigue escrita hasta P4-B.
-            double bruta = saldoDeudor(idEmpresa, corteSig, ParametroContableService.comoPrefijo(raizCartera), "1.3.99");
-            double provision = -saldoDeudor(idEmpresa, corteSig, "1.3.99", null);
+            // P4-A: la raíz se lee del rubro 250. P4-B: la provisión = las cuentas de las líneas aux1 83 de la
+            // plantilla 37; la cartera bruta es la raíz sin ellas. Sin esas cuentas no se mide.
+            List<String> cuentasProvision = cuentasProvisionODefecto(idEmpresa);
+            if (cuentasProvision.isEmpty()) {
+                controles.add(sinProvisionCartera("B17_G", "B17_13_VS_G48", "Cuadratura B17 ↔ G48 (cartera bruta y provisión)",
+                        idEmpresa));
+                return;
+            }
+            double bruta = saldoDeudorExcluyendo(idEmpresa, corteSig, ParametroContableService.comoPrefijo(raizCartera),
+                    cuentasProvision);
+            double provision = -saldoDeudorCuentas(idEmpresa, corteSig, cuentasProvision);
             Object[] g48 = fila(" SELECT SUM(NVL(CG48VPVN, 0) + NVL(CG48VLVN, 0)), SUM(NVL(CG48PRCN, 0)), COUNT(*) "
                     + " FROM RPR.CG48 WHERE CG48EJRD = :ejrd", ejrdG48);
             double gBruta = aDouble(g48[0]);
             double gProv = aDouble(g48[1]);
             ControlCierre c = new ControlCierre("B17_G", "B17_13_VS_G48",
-                    "Cartera bruta (13 − 1399 del B17 = " + raizCartera + " sin 1.3.99) = por vencer + vencido de la G48");
-            compara(c, bruta, gBruta, "Contabilidad " + raizCartera + " sin 1.3.99 al " + corte + ": " + fmt(bruta) + "; G48 (ejecución"
+                    "Cartera bruta (13 − 1399 del B17 = " + raizCartera + " sin la provisión) = por vencer + vencido de la G48");
+            compara(c, bruta, gBruta, "Contabilidad " + raizCartera + " sin la provisión (" + cuentasProvision + ") al " + corte + ": " + fmt(bruta) + "; G48 (ejecución"
                     + " detalle " + ejrdG48 + ", " + aLong(g48[2]) + " operaciones): " + fmt(gBruta) + ".");
             controles.add(c);
             ControlCierre p = new ControlCierre("B17_G", "B17_1399_VS_G48",
-                    "Provisión (−1399 del B17 = −1.3.99) = provisión constituida de la G48");
-            compara(p, provision, gProv, "Saldo acreedor 1.3.99 al " + corte + ": " + fmt(provision)
+                    "Provisión (−1399 del B17 = −" + cuentasProvision + ") = provisión constituida de la G48");
+            compara(p, provision, gProv, "Saldo acreedor " + cuentasProvision + " al " + corte + ": " + fmt(provision)
                     + "; provisión constituida G48: " + fmt(gProv) + ". Con el ⑧ (modo al corte) deben coincidir (D-015).");
             controles.add(p);
         } else {
             controles.add(sinEstructura("B17_13_VS_G48", "G48", anio, mes));
         }
+    }
+
+    /** Cuentas de la provisión de cartera (plantilla 37, aux1 83); lista vacía si no están. */
+    private List<String> cuentasProvisionODefecto(Long idEmpresa) {
+        try {
+            return parametroContableService.cuentasProvisionCartera(idEmpresa);
+        } catch (Throwable e) {
+            System.err.println("ControlCierre.cuentasProvisionCartera: " + e.getMessage());
+            return new ArrayList<String>();
+        }
+    }
+
+    /** P4-B: control «No se pudo medir» porque la plantilla 37 no tiene la provisión de cartera (aux1 83). */
+    private ControlCierre sinProvisionCartera(String grupo, String codigo, String descripcion, Long idEmpresa) {
+        ControlCierre c = new ControlCierre(grupo, codigo, descripcion);
+        c.setEstado(ControlCierre.ADVERTENCIA);
+        c.setDetalle("No se pudo medir: la plantilla contable alterno " + PlantillasCredito.PROVISION_CARTERA
+                + " (provisión de cartera) de la empresa " + idEmpresa + " no existe o no tiene la línea "
+                + CrdLineaAsiento.PROVISION_CARTERA + " con la cuenta de la provisión. Cárguela; no hay cuenta de respaldo.");
+        return c;
     }
 
     /** Valor del detalle del rubro 250 para un mensaje, o «(sin cargar)» si falta. */
@@ -622,6 +661,33 @@ public class ControlCierreServiceImpl implements ControlCierreService {
         if (excluido != null) {
             q.setParameter("excluido", excluido + "%");
         }
+        return aDouble(q.getSingleResult());
+    }
+
+    /** Saldo deudor de las cuentas del prefijo, excluyendo una lista de cuentas exactas (P4-B). */
+    private double saldoDeudorExcluyendo(Long idEmpresa, LocalDate corteSig, String prefijo, List<String> excluidas) {
+        Query q = em.createNativeQuery(
+                " SELECT SUM(NVL(d.DTASDBEE, 0)) - SUM(NVL(d.DTASHBRR, 0)) "
+                + " FROM CNT.DTAS d JOIN CNT.ASNT a ON a.ASNTCDGO = d.ASNTCDGO "
+                + " WHERE a.PJRQCDGO = :empresa AND a.ASNTESTD IN (1, 3) AND a.ASNTFCHA < :corteSig "
+                + " AND d.DTASCNTA LIKE :prefijo AND d.DTASCNTA NOT IN (:excluidas)");
+        q.setParameter("empresa", idEmpresa);
+        q.setParameter("corteSig", Date.valueOf(corteSig));
+        q.setParameter("prefijo", prefijo + "%");
+        q.setParameter("excluidas", excluidas);
+        return aDouble(q.getSingleResult());
+    }
+
+    /** Saldo deudor de una lista de cuentas exactas (P4-B: las de la provisión). */
+    private double saldoDeudorCuentas(Long idEmpresa, LocalDate corteSig, List<String> cuentas) {
+        Query q = em.createNativeQuery(
+                " SELECT SUM(NVL(d.DTASDBEE, 0)) - SUM(NVL(d.DTASHBRR, 0)) "
+                + " FROM CNT.DTAS d JOIN CNT.ASNT a ON a.ASNTCDGO = d.ASNTCDGO "
+                + " WHERE a.PJRQCDGO = :empresa AND a.ASNTESTD IN (1, 3) AND a.ASNTFCHA < :corteSig "
+                + " AND d.DTASCNTA IN (:cuentas)");
+        q.setParameter("empresa", idEmpresa);
+        q.setParameter("corteSig", Date.valueOf(corteSig));
+        q.setParameter("cuentas", cuentas);
         return aDouble(q.getSingleResult());
     }
 

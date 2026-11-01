@@ -617,6 +617,34 @@ public class CierreCarteraDaoServiceImpl implements CierreCarteraDaoService {
     }
 
     @Override
+    @SuppressWarnings("unchecked")
+    public List<Object[]> selectSaldoContablePorCuentaExcluyendo(Long idEmpresa, String prefijo, List<String> cuentasExcluidas,
+            LocalDate corte) throws Throwable {
+        System.out.println("Ingresa al metodo selectSaldoContablePorCuentaExcluyendo - empresa: " + idEmpresa
+                + " - prefijo: " + prefijo + " - excluidas: " + cuentasExcluidas + " - corte: " + corte);
+        boolean excluye = cuentasExcluidas != null && !cuentasExcluidas.isEmpty();
+        Query query = em.createNativeQuery(
+                " SELECT d.DTASCNTA, MAX(d.PLNNCDGO), SUM(NVL(d.DTASDBEE,0)) - SUM(NVL(d.DTASHBRR,0)) "
+                + " FROM   CNT.DTAS d JOIN CNT.ASNT a ON a.ASNTCDGO = d.ASNTCDGO "
+                + " WHERE  a.PJRQCDGO = :empresa AND a.ASNTESTD IN (1, 3) AND a.ASNTFCHA < :corteSig "
+                + " AND    d.DTASCNTA LIKE :prefijo "
+                + (excluye ? " AND d.DTASCNTA NOT IN (:excluidas) " : "")
+                + " GROUP BY d.DTASCNTA ORDER BY d.DTASCNTA");
+        query.setParameter("empresa", idEmpresa);
+        query.setParameter("corteSig", Date.valueOf(corte.plusDays(1)));
+        query.setParameter("prefijo", prefijo + "%");
+        if (excluye) {
+            query.setParameter("excluidas", cuentasExcluidas);
+        }
+        List<Object[]> filas = query.getResultList();
+        List<Object[]> resultado = new ArrayList<Object[]>();
+        for (Object[] f : filas) {
+            resultado.add(new Object[]{ f[0] != null ? f[0].toString() : null, aLong(f[1]), aDouble(f[2]) });
+        }
+        return resultado;
+    }
+
+    @Override
     public List<Object[]> selectPrestamosSinAsientoEntrega(LocalDate desde, LocalDate hasta) throws Throwable {
         System.out.println("Ingresa al metodo selectPrestamosSinAsientoEntrega - desde: " + desde + " - hasta: " + hasta);
         Query query = em.createNativeQuery(
