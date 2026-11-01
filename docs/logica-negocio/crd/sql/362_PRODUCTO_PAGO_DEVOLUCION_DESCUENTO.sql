@@ -60,3 +60,4 @@ SELECT p.ID, p.CODIGO, p.NOMBRE, p.GRUPOPRODUCTO, n.PLNNCNTA, p.ESTADO
 -- activos en la cuenta). Corrección inmediata indicada al usuario: UPDATE PGS.PRDP SET ESTADO = 0 WHERE ID = 1222.
 -- El 1222 se activa en el despliegue del EAR único, con la semilla de los parámetros (rubro 237, devolución = 1222,
 -- desembolso = 976).
+-- 2026-11-01: corregido en producción. 976 ESTADO 1, 1222 ESTADO 0 (inactivo hasta el despliegue del EAR único).
