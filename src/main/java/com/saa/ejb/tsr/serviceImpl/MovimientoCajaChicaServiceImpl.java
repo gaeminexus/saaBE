@@ -408,19 +408,15 @@ public class MovimientoCajaChicaServiceImpl implements MovimientoCajaChicaServic
 		if (!idsAplicaciones.isEmpty()) {
 			// ⚠️ Sin try/catch: si la reversa de la aplicación falla, la
 			// anulación del gasto entera debe fallar. No es lo mismo que la
-			// anulación de asiento «suelta» de más abajo (esa sí se swallow-ea
-			// por convención de la casa cuando no hay aplicación de por medio).
+			// anulación de asiento «suelta» de más abajo (U-5b: tampoco se traga; no hay convención de tragar).
 			aplicacionPagoCxpService.revertirAplicacionOrigenCajaChica(
 					idsAplicaciones.get(0), motivo.trim(), idUsuario);
 		} else {
 			Long idAsiento = (movimiento.getAsiento() != null) ? movimiento.getAsiento().getCodigo() : null;
 			if (idAsiento != null) {
-				try {
-					asientoService.anulaAsiento(idAsiento, usuarioNombre(idUsuario), motivo); // U-4: con usuario
-					System.out.println("✓ Asiento " + idAsiento + " anulado / reversado.");
-				} catch (Throwable e) {
-					System.err.println("⚠ No se pudo anular el asiento " + idAsiento + ": " + e.getMessage());
-				}
+				// U-5b: sin try/catch: si el asiento falla, falla el proceso entero (nada queda sin asiento).
+				asientoService.anulaAsiento(idAsiento, usuarioNombre(idUsuario), motivo); // U-4: con usuario
+				System.out.println("✓ Asiento " + idAsiento + " anulado / reversado.");
 			}
 		}
 

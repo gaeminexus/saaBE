@@ -284,6 +284,7 @@ public class PagoServiceImpl implements PagoService {
 			pago.setRubroEstadoH(Long.valueOf(String.valueOf(EstadoPago.ANULADO)));
 			pagoDaoService.save(pago, pago.getCodigo());
 			//Anula asiento contable			
+			// U-5b: LEGACY DEPRECADO (sin REST ni pantalla, no se repara): anulaAsiento(id) sin usuario lanza error claro.
 			asientoService.anulaAsiento(asiento.getCodigo());
 		}		
 	}

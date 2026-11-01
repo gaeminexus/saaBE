@@ -502,6 +502,8 @@ public class PrestamoServiceImpl implements PrestamoService {
             }
             idPago = ((Number) valorPago).longValue();
 
+        } catch (com.saa.basico.util.UsuarioInvalidoException e) {
+            throw e; // U-5b §5.C: el rechazo por usuario inválido llega tal cual, sin re-envolver
         } catch (IncomeException e) {
             throw new IncomeException("No se pudo generar la orden de pago del desembolso del"
                 + " préstamo " + idPrestamo + ": " + e.getMessage());

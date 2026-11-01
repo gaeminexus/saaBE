@@ -591,7 +591,8 @@ public class AsientoServiceImpl implements AsientoService {
 		asiento.setFechaAsiento(LocalDate.now());
 		asiento.setEstado(Long.valueOf(EstadoAsiento.ACTIVO));
 		asiento.setObservaciones(observacion);
-		asiento.setNombreUsuario(nombreUsuario);
+		// U-5b (defensa central): el usuario debe existir.
+		asiento.setNombreUsuario(usuarioValidacionService.validar(nombreUsuario));
 		asiento.setMoneda(Long.valueOf(TipoMoneda.DOLAR));
 		asiento.setRubroModuloClienteP(Long.valueOf(Rubros.MODULO_SISTEMA));
 		asiento.setRubroModuloClienteH(Long.valueOf(ModuloSistema.TESORERIA));
@@ -617,8 +618,15 @@ public class AsientoServiceImpl implements AsientoService {
 	/* (non-Javadoc)
 	 * @see com.compuseg.income.contabilidad.ejb.service.AsientoService#anulaAsiento(java.lang.Long)
 	 */
+	@Deprecated
 	public void anulaAsiento(Long idAsiento) throws Throwable {
-		anulaAsiento(idAsiento, null, null);
+		// U-5b (decision b): la anulacion sin usuario esta DEPRECADA. Toda anulacion queda a nombre de quien la ejecuta
+		// (validado), asi que se usa anulaAsiento(idAsiento, usuario, motivo). Los llamadores legacy de tsr
+		// (CobroServiceImpl.anulaCobroIngresado, ChequeServiceImpl.reversarChequeGenerado, CierreCajaServiceImpl.abreCierreCaja,
+		// DepositoServiceImpl.anulaAsientoRatificacion, PagoServiceImpl.anularIngresoPago) no tienen REST ni pantalla y no se
+		// reparan: responden este error claro y la transaccion se revierte completa.
+		throw new IncomeException("anulaAsiento(idAsiento) sin usuario esta deprecado: use la anulacion con usuario y motivo."
+				+ " Esta ruta legacy de Tesoreria ya no se admite; use la anulacion vigente del documento.");
 	}
 
 	/* (non-Javadoc)
@@ -680,6 +688,8 @@ public class AsientoServiceImpl implements AsientoService {
 		if (asiento == null) {
 			return null;
 		}
+		// U-5b (defensa central): la anulacion queda a nombre de un usuario que existe; sin relleno a "SISTEMA".
+		asiento.setUsuarioAnulacion(usuarioValidacionService.validar(asiento.getUsuarioAnulacion()));
 		if (!CierrePeriodoListener.contableCerrado(asiento.getPeriodo())) {
 			return asientoDaoService.save(asiento, asiento.getCodigo());
 		}
@@ -687,9 +697,6 @@ public class AsientoServiceImpl implements AsientoService {
 				+ " en periodo CERRADO -> reverso en el primer periodo abierto (C17)");
 		if (asiento.getFechaAnulacion() == null) {
 			asiento.setFechaAnulacion(LocalDateTime.now());
-		}
-		if (asiento.getUsuarioAnulacion() == null) {
-			asiento.setUsuarioAnulacion("SISTEMA");
 		}
 		asiento.setEstado(Long.valueOf(EstadoAsiento.ACTIVO));
 		asientoDaoService.save(asiento, asiento.getCodigo());
@@ -701,19 +708,18 @@ public class AsientoServiceImpl implements AsientoService {
 	/**
 	 * Deja en el asiento el rastro de quien lo anulo, cuando y por que.
 	 *
-	 * <p>La fecha la pone el servidor. El usuario nulo o vacio se graba como "SISTEMA",
-	 * mismo criterio que usa {@code AsientoContableServiceImpl.generarAsiento} para
-	 * {@code ASNTUSRO}. El motivo se trunca a 1000 caracteres, que es el largo de
+	 * <p>La fecha la pone el servidor. El usuario debe existir (U-5b): nulo, vacio o
+	 * inexistente lanza UsuarioInvalidoException y la anulacion no se hace. El motivo se trunca a 1000 caracteres, que es el largo de
 	 * {@code ASNTMTAN}: sin el truncado, un mensaje largo aborta el grabado.</p>
 	 *
 	 * @param asiento	: Asiento que se esta anulando
 	 * @param usuario	: Usuario que anula
 	 * @param motivo	: Motivo de la anulacion
 	 */
-	private void marcaAuditoriaAnulacion(Asiento asiento, String usuario, String motivo) {
+	private void marcaAuditoriaAnulacion(Asiento asiento, String usuario, String motivo) throws Throwable {
 		asiento.setFechaAnulacion(LocalDateTime.now());
-		asiento.setUsuarioAnulacion(usuario != null && !usuario.trim().isEmpty()
-				? usuario.trim() : "SISTEMA");
+		// U-5b (defensa central): el usuario de la anulacion debe existir; sin relleno a "SISTEMA".
+		asiento.setUsuarioAnulacion(usuarioValidacionService.validar(usuario));
 		if (motivo != null && !motivo.trim().isEmpty()) {
 			String limpio = motivo.trim();
 			asiento.setMotivoAnulacion(limpio.length() > 1000 ? limpio.substring(0, 1000) : limpio);
@@ -736,7 +742,8 @@ public class AsientoServiceImpl implements AsientoService {
 		cabeceraTransferencia.setNumero(numeroAsiento);
 		cabeceraTransferencia.setEstado(Long.valueOf(EstadoAsiento.ACTIVO));
 		cabeceraTransferencia.setObservaciones(concepto);
-		cabeceraTransferencia.setNombreUsuario(usuario);
+		// U-5b (defensa central): el usuario debe existir.
+		cabeceraTransferencia.setNombreUsuario(usuarioValidacionService.validar(usuario));
 		Calendar calendario = Calendar.getInstance();
 		Long mes = Long.valueOf(calendario.get(Calendar.MONTH))+1;
 		Long anio = Long.valueOf(calendario.get(Calendar.YEAR));

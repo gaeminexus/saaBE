@@ -2313,22 +2313,17 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 					em.find(com.saa.model.cxp.LiquidacionCompraCompra.class, lqcc.getId());
 			if (lqccManaged != null) {
 				if (lqccManaged.getAsiento() != null && lqccManaged.getAsiento().getCodigo() != null) {
-					try {
-						com.saa.model.cnt.Asiento asiento = em.find(
-								com.saa.model.cnt.Asiento.class, lqccManaged.getAsiento().getCodigo());
-						if (asiento != null && !Long.valueOf(com.saa.rubros.EstadoAsiento.ANULADO).equals(asiento.getEstado())) {
-							asiento.setEstado(Long.valueOf(com.saa.rubros.EstadoAsiento.ANULADO));
-							asiento.setMotivoAnulacion(motivoFinal);
-							asiento.setFechaAnulacion(ahora);
-							asiento.setUsuarioAnulacion(usuarioAnulacion);
-							asientoService.anulaAsientoDeDocumento(asiento); // C17: período cerrado -> reverso en período abierto
-							resultado.put("asientoAnulado", asiento.getCodigo());
-							System.out.println("✓ Asiento del documento CXP anulado: " + asiento.getCodigo());
-						}
-					} catch (Exception e) {
-						resultado.put("advertenciaAsiento",
-								"La liquidación fue anulada pero ocurrió un error al anular el asiento: " + e.getMessage());
-						System.err.println("⚠ Error al anular asiento: " + e.getMessage());
+					// U-5b: sin try/catch: si el asiento falla, falla el proceso entero (nada queda sin asiento).
+					com.saa.model.cnt.Asiento asiento = em.find(
+							com.saa.model.cnt.Asiento.class, lqccManaged.getAsiento().getCodigo());
+					if (asiento != null && !Long.valueOf(com.saa.rubros.EstadoAsiento.ANULADO).equals(asiento.getEstado())) {
+						asiento.setEstado(Long.valueOf(com.saa.rubros.EstadoAsiento.ANULADO));
+						asiento.setMotivoAnulacion(motivoFinal);
+						asiento.setFechaAnulacion(ahora);
+						asiento.setUsuarioAnulacion(usuarioAnulacion);
+						asientoService.anulaAsientoDeDocumento(asiento); // C17: período cerrado -> reverso en período abierto
+						resultado.put("asientoAnulado", asiento.getCodigo());
+						System.out.println("✓ Asiento del documento CXP anulado: " + asiento.getCodigo());
 					}
 				}
 				lqccManaged.setEstado(Long.valueOf(Estado.INACTIVO));

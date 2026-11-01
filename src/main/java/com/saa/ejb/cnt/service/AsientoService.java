@@ -285,7 +285,7 @@ public interface AsientoService extends EntityService<Asiento> {
 	 * sobrecarga de un argumento; en ese caso el motivo queda en el asiento original.</p>
 	 *
 	 * @param idAsiento	: Id del asiento a anular
-	 * @param usuario	: Usuario que anula. Nulo o vacio se graba como "SISTEMA"
+	 * @param usuario	: Usuario que anula. Debe existir (U-5b): nulo, vacio o inexistente lanza UsuarioInvalidoException
 	 * @param motivo	: Motivo de la anulacion. Se trunca a 1000 caracteres (ASNTMTAN)
 	 * @throws Throwable: Excepcion
 	 */

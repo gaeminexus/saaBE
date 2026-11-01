@@ -139,3 +139,21 @@ transacción del proceso de negocio entero se revierte. Para garantizarlo:
   todo el lote es atómico; no puede quedar a medias.
 - **§5.C** los 9 relanzamientos que pierden el 400: corregidos. **§5.D** `generarPensionIndividual`: verificar
   antes de llamar, sin atrapar la excepción después.
+
+## 13. U-5b — correcciones aplicadas y defensa central activa (2026-11-01)
+- **Clase 1 (#1-14)**: sin `try/catch` que trague el asiento en cxp (`PagoProgramado`, `AplicacionPagoCxp`, `AnticipoProveedor`,
+  `ProcesoCargaDocumentos.anularAsientoDeDocumento` —ahora con `usuario`—, anulaciones de las 4 compras), cxc (`AplicacionPagoCxc`
+  —`eliminarAplicacionesDeDocumento` recibe `usuario`—, `AnticipoCliente.anular/confirmar`, anulaciones de factura/NC/ND/retenciones/liquidación;
+  `reintentarAutorizacion` ahora confirma el estado en su transacción y genera el asiento en otra, con `contabilidadPendiente=true` si falla) y
+  tsr (`Ingreso`, `MovimientoCajaChica.anularGasto`, `CierreCajaChica.anularCierre`).
+- **#15** `procesarRespuestaBanco`: el lote es atómico (un asiento que falla revierte el lote entero). **#16** `generarAsientoCxp`: la `Exception`
+  checked se relanza como `IncomeException` (rollback).
+- **#18** `/prst/pagarCuota` y `/prst/pagarMultiplesCuotas` responden 410 («usá el cobro de crédito»). SELECT de solo lectura:
+  `docs/logica-negocio/crd/sql/VERIFICACION-PAGOS-MANUALES-SIN-ASIENTO.sql` (no se corrió).
+- **#19-#21 rhh**: no se emite la orden, no se confirma el pago ni se marca PAGADO sin `asientoRol`; no se emite la orden ni se cierra el periodo con
+  provisiones sin `asientoProvisiones` (`ContabilizacionNominaService.provisionesPendientes`); `descuentaCuotasDelPeriodo` pasa a `REQUIRED`
+  (cuotas, asiento y periodo PAGADO se confirman o revierten juntos).
+- **§5.C / §5.D**: relanzamientos con `UsuarioInvalidoException` pasan tal cual; `generarPensionIndividual` pregunta la deuda antes de `pagarConAportes`.
+- **Legacy tsr (decisión b)**: no tienen REST ni llamadores; `AsientoService.anulaAsiento(Long)` queda `@Deprecated` y lanza error claro.
+- **Defensa central activa**: `generarAsiento`, `anulaAsientoDeDocumento`, `marcaAuditoriaAnulacion`, `insertarCabeceraAsiento` y
+  `generaCabeceraTransferencia` validan el usuario con el helper; ya no hay relleno a «SISTEMA».

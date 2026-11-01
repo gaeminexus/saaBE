@@ -1645,21 +1645,17 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 
 		// Anular asiento contable vinculado (si existe)
 		if (nc.getAsiento() != null && nc.getAsiento().getCodigo() != null) {
-			try {
-				com.saa.model.cnt.Asiento asiento = em.find(com.saa.model.cnt.Asiento.class, nc.getAsiento().getCodigo());
-				if (asiento != null && !Long.valueOf(com.saa.rubros.EstadoAsiento.ANULADO).equals(asiento.getEstado())) {
-					asiento.setEstado(Long.valueOf(com.saa.rubros.EstadoAsiento.ANULADO));
-					asiento.setMotivoAnulacion(motivoFinal);
-					asiento.setFechaAnulacion(ahora);
-					asiento.setUsuarioAnulacion(usuarioAnulacion);
-					asientoService.anulaAsientoDeDocumento(asiento); // C17: período cerrado -> reverso en período abierto
-					em.flush();
-					System.out.println("✓ Asiento contable anulado: " + asiento.getCodigo());
-					resultado.put("asientoAnulado", asiento.getCodigo());
-				}
-			} catch (Exception e) {
-				System.err.println("⚠ Error al anular asiento: " + e.getMessage());
-				resultado.put("advertenciaAsiento", "NC anulada pero error al anular el asiento: " + e.getMessage());
+			// U-5b: sin try/catch: si el asiento falla, falla el proceso entero (nada queda sin asiento).
+			com.saa.model.cnt.Asiento asiento = em.find(com.saa.model.cnt.Asiento.class, nc.getAsiento().getCodigo());
+			if (asiento != null && !Long.valueOf(com.saa.rubros.EstadoAsiento.ANULADO).equals(asiento.getEstado())) {
+				asiento.setEstado(Long.valueOf(com.saa.rubros.EstadoAsiento.ANULADO));
+				asiento.setMotivoAnulacion(motivoFinal);
+				asiento.setFechaAnulacion(ahora);
+				asiento.setUsuarioAnulacion(usuarioAnulacion);
+				asientoService.anulaAsientoDeDocumento(asiento); // C17: período cerrado -> reverso en período abierto
+				em.flush();
+				System.out.println("✓ Asiento contable anulado: " + asiento.getCodigo());
+				resultado.put("asientoAnulado", asiento.getCodigo());
 			}
 		}
 

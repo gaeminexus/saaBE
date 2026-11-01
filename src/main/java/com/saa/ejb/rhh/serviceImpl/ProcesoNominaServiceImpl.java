@@ -113,6 +113,9 @@ public class ProcesoNominaServiceImpl implements ProcesoNominaService {
     @jakarta.ejb.EJB
     private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
 
+    @EJB
+    private com.saa.ejb.rhh.service.ContabilizacionNominaService contabilizacionNominaService;
+
 	/** Marca de "si" de las banderas S/N del esquema. */
 	private static final String SI = "S";
 
@@ -740,6 +743,12 @@ public class ProcesoNominaServiceImpl implements ProcesoNominaService {
 					: "El periodo debe estar PAGADO para cerrarse. Genere la orden de pago de nomina y confirme"
 							+ " la acreditacion antes de cerrar. Estado actual: " + estado;
 			throw new IncomeException(mensaje);
+		}
+
+		// U-5b (#20): un periodo no historico que genera provisiones no se cierra sin su asiento de provisiones.
+		if (!historico && contabilizacionNominaService.provisionesPendientes(idPeriodoNomina)) {
+			throw new IncomeException("El periodo genera provisiones y su asiento de provisiones no se ha emitido:"
+					+ " contabilicelas antes de cerrar el periodo.");
 		}
 
 		String avisoNovedades = exigeNovedadesIessReportadas(periodo);

@@ -102,6 +102,14 @@ public interface ContabilizacionNominaService {
     @TransactionAttribute(TransactionAttributeType.REQUIRED)
     Asiento contabilizarProvisiones(Long idPeriodoNomina, String usuario) throws Throwable;
 
+    /**
+     * U-5b (#20): true si el periodo (no historico) genera provisiones y su asiento de provisiones todavia no se emitio.
+     * contabilizarProvisiones solo admite APROBADO/CONTABILIZADO, asi que pagar o cerrar con esto pendiente deja las
+     * provisiones sin asiento para siempre. Solo lectura.
+     */
+    @TransactionAttribute(TransactionAttributeType.REQUIRED)
+    boolean provisionesPendientes(Long idPeriodoNomina) throws Throwable;
+
     // ===== INICIO descontabilizar periodo (equipo omen-saa-2, 2026-09-08) =====
     /**
      * Deshace la contabilizacion del rol de pagos: anula los dos asientos (rol y provisiones,

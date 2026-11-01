@@ -617,6 +617,7 @@ public class CobroServiceImpl implements CobroService {
 		//obtiene el id asiento del cobro
 		Cobro cobro = cobroDaoService.selectById(idCobro, NombreEntidadesTesoreria.COBRO);
 		//Anula el asiento contable
+		// U-5b: LEGACY DEPRECADO (sin REST ni pantalla, no se repara): anulaAsiento(id) sin usuario lanza error claro.
 		asientoService.anulaAsiento(cobro.getAsiento().getCodigo());
 		//Actualiza campos de control, CBRO crcjcdgo, cbrofcds, cbrorzzb, cbrozza
 		anulaCobro(cobro, motivoAnulacion);

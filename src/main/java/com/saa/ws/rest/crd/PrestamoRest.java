@@ -885,55 +885,9 @@ public class PrestamoRest {
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     public Response pagarCuota(SolicitudPagoCuota solicitud) {
-        System.out.println("LLEGA AL SERVICIO PAGAR CUOTA - Préstamo: "
-            + (solicitud != null ? solicitud.getIdPrestamo() : null)
-            + " - Valor: " + (solicitud != null ? solicitud.getValor() : null));
-
-        if (solicitud == null) {
-            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
-                "Debe enviar el cuerpo de la solicitud", null);
-        }
-        if (solicitud.getIdPrestamo() == null) {
-            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
-                "Debe indicar el préstamo (idPrestamo)", null);
-        }
-        if (solicitud.getValor() == null) {
-            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
-                "Debe indicar el valor del pago", null);
-        }
-        if (solicitud.getUsuario() == null || solicitud.getUsuario().trim().isEmpty()) {
-            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
-                "Debe indicar el usuario que ejecuta el pago", null);
-        }
-
-        try {
-            // C17: el pago manual directo (no el que llega desde CBCR, que valida su fecha de afectación)
-            // se fecha con fechaPago (evento, PGPR y asiento): su mes tiene que estar abierto.
-            estadoCierreService.validarMovimientoCartera(solicitud.getIdEmpresa(),
-                    solicitud.getFechaPago() != null ? solicitud.getFechaPago() : java.time.LocalDate.now(),
-                    "pagos de cuota");
-            ResultadoAplicacionPago resultado = procesoPagoPrestamoService.pagarCuota(solicitud);
-
-            String mensaje = "Pago aplicado por $" + resultado.getValorAplicado()
-                + " en " + resultado.getCuotasAfectadas().size() + " cuota(s)"
-                + (resultado.isPrestamoCancelado() ? ". El préstamo quedó CANCELADO." : "");
-
-            Map<String, Object> cuerpo = new LinkedHashMap<>();
-            cuerpo.put("exito", Boolean.TRUE);
-            cuerpo.put("etapa", ETAPA_APLICACION);
-            cuerpo.put("mensaje", mensaje);
-            cuerpo.put("resultado", resultado);
-
-            return Response.status(Response.Status.OK)
-                    .entity(cuerpo)
-                    .type(MediaType.APPLICATION_JSON)
-                    .build();
-
-        } catch (Throwable e) {
-            System.err.println("ERROR al pagar cuota: " + e.getMessage());
-            e.printStackTrace();
-            return respuestaErrorNegocio(e);
-        }
+        System.out.println("LLEGA AL SERVICIO PAGAR CUOTA (CERRADO)");
+        return respuestaFallo(Response.Status.GONE.getStatusCode(), ETAPA_VALIDACION,
+            "U-5b (#18): este endpoint quedó CERRADO. Aplicaba el pago de la cuota sin generar el asiento contable ni el cobro; el pago de cuotas se hace por el cobro de crédito (cobros de crédito / CBCR), que aplica el pago y contabiliza en una sola transacción. Usá el cobro de crédito.", null);
     }
 
     /**
@@ -949,58 +903,9 @@ public class PrestamoRest {
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     public Response pagarMultiplesCuotas(SolicitudPagoMultiple solicitud) {
-        System.out.println("LLEGA AL SERVICIO PAGAR MULTIPLES CUOTAS - Préstamos: "
-            + (solicitud != null && solicitud.getPagos() != null ? solicitud.getPagos().size() : null));
-
-        if (solicitud == null || solicitud.getPagos() == null || solicitud.getPagos().isEmpty()) {
-            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
-                "Debe indicar al menos un préstamo a pagar (pagos)", null);
-        }
-        for (SolicitudPagoCuota pago : solicitud.getPagos()) {
-            if (pago == null || pago.getIdPrestamo() == null) {
-                return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
-                    "Cada renglón debe indicar el préstamo (idPrestamo)", null);
-            }
-            if (pago.getValor() == null) {
-                return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
-                    "El préstamo " + pago.getIdPrestamo() + " no indica el valor del pago", null);
-            }
-            if (pago.getUsuario() == null || pago.getUsuario().trim().isEmpty()) {
-                return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
-                    "El préstamo " + pago.getIdPrestamo() + " no indica el usuario que ejecuta el pago", null);
-            }
-        }
-
-        try {
-            // C17: cada renglón se fecha con su fechaPago.
-            for (SolicitudPagoCuota pago : solicitud.getPagos()) {
-                estadoCierreService.validarMovimientoCartera(
-                        pago.getIdEmpresa() != null ? pago.getIdEmpresa() : solicitud.getIdEmpresa(),
-                        pago.getFechaPago() != null ? pago.getFechaPago() : java.time.LocalDate.now(),
-                        "pagos de cuota (préstamo " + pago.getIdPrestamo() + ")");
-            }
-            ResultadoPagoMultiple resultado = procesoPagoPrestamoService.pagarMultiplesCuotas(solicitud);
-
-            String mensaje = "Pago aplicado por $" + resultado.getValorTotalAplicado()
-                + " en " + resultado.getResultados().size() + " préstamo(s) de "
-                + resultado.getNombreEntidad();
-
-            Map<String, Object> cuerpo = new LinkedHashMap<>();
-            cuerpo.put("exito", Boolean.TRUE);
-            cuerpo.put("etapa", ETAPA_APLICACION);
-            cuerpo.put("mensaje", mensaje);
-            cuerpo.put("resultado", resultado);
-
-            return Response.status(Response.Status.OK)
-                    .entity(cuerpo)
-                    .type(MediaType.APPLICATION_JSON)
-                    .build();
-
-        } catch (Throwable e) {
-            System.err.println("ERROR al pagar múltiples cuotas: " + e.getMessage());
-            e.printStackTrace();
-            return respuestaErrorNegocio(e);
-        }
+        System.out.println("LLEGA AL SERVICIO PAGAR MULTIPLES CUOTAS (CERRADO)");
+        return respuestaFallo(Response.Status.GONE.getStatusCode(), ETAPA_VALIDACION,
+            "U-5b (#18): este endpoint quedó CERRADO. Aplicaba el pago de la cuota sin generar el asiento contable ni el cobro; el pago de cuotas se hace por el cobro de crédito (cobros de crédito / CBCR), que aplica el pago y contabiliza en una sola transacción. Usá el cobro de crédito.", null);
     }
 
     /**

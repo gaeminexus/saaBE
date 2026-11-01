@@ -866,7 +866,13 @@ public class FacturaServiceImpl implements FacturaService {
 	@Override
 	@TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
 	public java.util.Map<String, Object> generarContabilidadFactura(Long idFactura) throws Throwable {
-		System.out.println("Ingresa al metodo generarContabilidadFactura con id: " + idFactura);
+		return generarContabilidadFactura(idFactura, null);
+	}
+
+	@Override
+	@TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
+	public java.util.Map<String, Object> generarContabilidadFactura(Long idFactura, String usuario) throws Throwable {
+		System.out.println("Ingresa al metodo generarContabilidadFactura con id: " + idFactura + " | usuario: " + usuario);
 
 		java.util.Map<String, Object> resultado = new java.util.HashMap<>();
 		resultado.put("generado", false);
@@ -899,7 +905,10 @@ public class FacturaServiceImpl implements FacturaService {
 			String obsAsiento = "Factura N° " + nvl(factura.getNumero(), factura.getClave())
 					+ " | Cliente: " + (factura.getTitular() != null ? factura.getTitular().getNombre() : "")
 					+ " | " + nvl(factura.getObservacion(), "");
-			String usuarioAsiento = usuarioValidacionService.validar(factura.getUsuario());
+			// U-5b: quien ejecuta (recepción del SRI) si viene; si no, el usuario del documento. Siempre validado.
+			String usuarioAsiento = (usuario != null)
+					? usuarioValidacionService.validar(usuario)
+					: usuarioValidacionService.validar(factura.getUsuario());
 
 			com.saa.model.cnt.Asiento asientoGenerado =
 					asientoContableService.generarAsientoFactura(
@@ -2455,48 +2464,24 @@ public class FacturaServiceImpl implements FacturaService {
 			ResultadoAutorizacion ra = llamarAutorizacionSRI(urlWS2, clave);
 
 			if ("AUTORIZADO".equals(ra.estado)) {
-				// Guardar XML autorizado
-				Path pathAutorizado = Paths.get(resourcesPath + "/docs/a/" + clave + ".xml");
-				Files.createDirectories(pathAutorizado.getParent());
-				Files.write(pathAutorizado, ra.comprobanteXML.getBytes("UTF-8"));
-
-				// Insertar path autorizado si no existe
-				PathFactura pathA = new PathFactura();
-				pathA.setFactura(factura);
-				pathA.setPath("resources/" + idFacturador + "/docs/a/" + clave + ".xml");
-				pathA.setAlterno(5L);
-				pathFacturaDaoService.save(pathA, null);
-
-				// Actualizar factura
-				factura.setEstado(5L);
-				factura.setEstadoEmision(1L);
-				factura.setAutorizacion(ra.numeroAutorizacion);
-				factura.setFechaAutorizacion(parseFechaAutorizacion(ra.fechaAutorizacion));
-				facturaDaoService.save(factura, factura.getId());
-
-				// Generar asiento si corresponde
-				if (factura.getFacturador().getEmpresa() != null
-						&& Long.valueOf(1L).equals(factura.getFacturador().getGeneraConta())
-						&& factura.getAsiento() == null) {
-					try {
-						Long idEmpresa = factura.getFacturador().getEmpresa().getCodigo();
-						String obsAsiento = "Factura N° " + nvl(factura.getNumero(), clave)
-								+ " | Cliente: " + factura.getTitular().getNombre()
-								+ " | Aut: " + nvl(ra.numeroAutorizacion, clave);
-						com.saa.model.cnt.Asiento asientoGenerado =
-								asientoContableService.generarAsientoFactura(
-										factura.getId(), idEmpresa,
-										com.saa.rubros.TipoAsientos.FACTURAS_VENTA,
-										factura.getFecha(), obsAsiento, usuario);
-						factura.setAsiento(asientoGenerado);
-						facturaDaoService.save(factura, factura.getId());
-						resultado.put("asiento", asientoGenerado.getNumeroAlterno());
-						System.out.println("✓ Asiento contable generado: " + asientoGenerado.getNumeroAlterno());
-					} catch (Exception ae) {
-						resultado.put("advertenciaAsiento",
-								"Autorizada pero error en asiento contable: " + ae.getMessage());
-						System.err.println("⚠ Error en asiento: " + ae.getMessage());
+				// U-5b (#10): mismo patrón que consultarYActualizarEstadoFactura. El estado autorizado se confirma en su propia
+				// transacción (marcarFacturaAutorizada, REQUIRES_NEW: el SRI ya la autorizó y eso no se deshace) y el asiento se
+				// genera en OTRA transacción a nombre de quien ejecuta; si falla, la factura queda autorizada con
+				// contabilidadPendiente=true y se contabiliza luego con contabilizarFactura. Antes el asiento iba inline con un
+				// catch que lo tragaba y la transacción quedaba rollback-only (500, y el estado 5 se perdía).
+				self().marcarFacturaAutorizada(factura.getId(), ra.numeroAutorizacion, ra.fechaAutorizacion, ra.comprobanteXML);
+				try {
+					java.util.Map<String, Object> resAsiento = self().generarContabilidadFactura(factura.getId(), usuario);
+					if (Boolean.TRUE.equals(resAsiento.get("generado"))) {
+						resultado.put("asiento", resAsiento.get("numeroAlterno"));
+						resultado.put("idAsiento", resAsiento.get("idAsiento"));
 					}
+				} catch (Throwable ae) {
+					resultado.put("contabilidadPendiente", true);
+					resultado.put("advertenciaAsiento",
+							"Autorizada pero error en asiento contable: " + ae.getMessage()
+							+ ". Se contabiliza luego con 'contabilizar'.");
+					System.err.println("⚠ Error en asiento: " + ae.getMessage());
 				}
 
 				resultado.put("exito", true);
@@ -2743,23 +2728,18 @@ public class FacturaServiceImpl implements FacturaService {
 
 		// 4. Anular asiento contable vinculado (si existe)
 		if (factura.getAsiento() != null && factura.getAsiento().getCodigo() != null) {
-			try {
-				com.saa.model.cnt.Asiento asiento = em.find(
-						com.saa.model.cnt.Asiento.class, factura.getAsiento().getCodigo());
-				if (asiento != null && !Long.valueOf(com.saa.rubros.EstadoAsiento.ANULADO).equals(asiento.getEstado())) {
-					asiento.setEstado(Long.valueOf(com.saa.rubros.EstadoAsiento.ANULADO));
-					asiento.setMotivoAnulacion(motivoFinal);
-					asiento.setFechaAnulacion(ahora);
-					asiento.setUsuarioAnulacion(usuarioAnulacion);
-					asientoService.anulaAsientoDeDocumento(asiento); // C17: período cerrado -> reverso en período abierto
-					em.flush();
-					System.out.println("✓ Asiento contable anulado: " + asiento.getCodigo());
-					resultado.put("asientoAnulado", asiento.getCodigo());
-				}
-			} catch (Exception e) {
-				System.err.println("⚠ Error al anular asiento contable: " + e.getMessage());
-				resultado.put("advertenciaAsiento",
-						"La factura fue anulada pero ocurrió un error al anular el asiento: " + e.getMessage());
+			// U-5b: sin try/catch: si el asiento falla, falla el proceso entero (nada queda sin asiento).
+			com.saa.model.cnt.Asiento asiento = em.find(
+					com.saa.model.cnt.Asiento.class, factura.getAsiento().getCodigo());
+			if (asiento != null && !Long.valueOf(com.saa.rubros.EstadoAsiento.ANULADO).equals(asiento.getEstado())) {
+				asiento.setEstado(Long.valueOf(com.saa.rubros.EstadoAsiento.ANULADO));
+				asiento.setMotivoAnulacion(motivoFinal);
+				asiento.setFechaAnulacion(ahora);
+				asiento.setUsuarioAnulacion(usuarioAnulacion);
+				asientoService.anulaAsientoDeDocumento(asiento); // C17: período cerrado -> reverso en período abierto
+				em.flush();
+				System.out.println("✓ Asiento contable anulado: " + asiento.getCodigo());
+				resultado.put("asientoAnulado", asiento.getCodigo());
 			}
 		}
 

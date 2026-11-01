@@ -2218,23 +2218,18 @@ public java.util.Map<String, Object> anularRetencionV2(Long idRetencion, String 
 
 	// 4. Anular asiento contable vinculado (si existe)
 	if (retencion.getAsiento() != null && retencion.getAsiento().getCodigo() != null) {
-		try {
-			com.saa.model.cnt.Asiento asiento = em.find(
-					com.saa.model.cnt.Asiento.class, retencion.getAsiento().getCodigo());
-			if (asiento != null && !Long.valueOf(com.saa.rubros.EstadoAsiento.ANULADO).equals(asiento.getEstado())) {
-				asiento.setEstado(Long.valueOf(com.saa.rubros.EstadoAsiento.ANULADO));
-				asiento.setMotivoAnulacion(motivoFinal);
-				asiento.setFechaAnulacion(ahora);
-				asiento.setUsuarioAnulacion(usuarioAnulacion);
-				asientoService.anulaAsientoDeDocumento(asiento); // C17: período cerrado -> reverso en período abierto
-				em.flush();
-				System.out.println("✓ Asiento contable anulado: " + asiento.getCodigo());
-				resultado.put("asientoAnulado", asiento.getCodigo());
-			}
-		} catch (Exception e) {
-			System.err.println("⚠ Error al anular asiento contable: " + e.getMessage());
-			resultado.put("advertenciaAsiento",
-					"La retención V2 fue anulada pero ocurrió un error al anular el asiento: " + e.getMessage());
+		// U-5b: sin try/catch: si el asiento falla, falla el proceso entero (nada queda sin asiento).
+		com.saa.model.cnt.Asiento asiento = em.find(
+				com.saa.model.cnt.Asiento.class, retencion.getAsiento().getCodigo());
+		if (asiento != null && !Long.valueOf(com.saa.rubros.EstadoAsiento.ANULADO).equals(asiento.getEstado())) {
+			asiento.setEstado(Long.valueOf(com.saa.rubros.EstadoAsiento.ANULADO));
+			asiento.setMotivoAnulacion(motivoFinal);
+			asiento.setFechaAnulacion(ahora);
+			asiento.setUsuarioAnulacion(usuarioAnulacion);
+			asientoService.anulaAsientoDeDocumento(asiento); // C17: período cerrado -> reverso en período abierto
+			em.flush();
+			System.out.println("✓ Asiento contable anulado: " + asiento.getCodigo());
+			resultado.put("asientoAnulado", asiento.getCodigo());
 		}
 	}
 

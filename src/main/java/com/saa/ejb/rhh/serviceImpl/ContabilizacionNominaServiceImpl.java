@@ -343,6 +343,19 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
         return asiento;
     }
 
+    /* (non-Javadoc)
+     * @see com.saa.ejb.rhh.service.ContabilizacionNominaService#provisionesPendientes(java.lang.Long)
+     */
+    @Override
+    @TransactionAttribute(TransactionAttributeType.REQUIRED)
+    public boolean provisionesPendientes(Long idPeriodoNomina) throws Throwable {
+        PeriodoNomina periodo = recuperaPeriodo(idPeriodoNomina);
+        if (esHistorico(periodo) || periodo.getAsientoProvisiones() != null) {
+            return false;
+        }
+        return !importesDeProvisiones(periodo).isEmpty();
+    }
+
     // ===== INICIO descontabilizar periodo (equipo omen-saa-2, 2026-09-08) =====
     /* (non-Javadoc)
      * @see com.saa.ejb.rhh.service.ContabilizacionNominaService#descontabilizarPeriodo(java.lang.Long, java.lang.String, java.lang.String)
@@ -479,6 +492,11 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
                     + " se registra la acreditacion sin asiento.");
             return null;
         }
+        // U-5b (#19): el pago (Dr Sueldos por pagar) cancela una obligacion que solo existe si el asiento del rol se emitio.
+        if (periodo.getAsientoRol() == null) {
+            throw new IncomeException("El periodo " + periodo.getCodigo() + " no tiene asiento del rol de pagos:"
+                    + " contabilice el rol antes de confirmar el pago.");
+        }
         // C17: validación temprana del cierre contable de la fecha de acreditación.
         estadoCierreService.validarContableAbierto(periodo.getEmpresa().getCodigo(), fecha,
                 "el asiento del pago de nómina");
@@ -555,15 +573,8 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
         // -eso es exactamente lo que este diseno evita. Se envuelve igual en un try/catch como
         // ultima red: la implementacion ya no deberia lanzar nada, pero si el propio arranque de
         // la transaccion nueva fallara, tampoco debe tumbar el pago.
-        try {
-            cierreCuotasDescuentoService.descuentaCuotasDelPeriodo(periodo.getCodigo(), idOrdenPago, usuario);
-        } catch (Throwable e) {
-            System.out.println("ATENCION: fallo la llamada al cierre de cuotas de descuentos"
-                    + " recurrentes del periodo " + periodo.getCodigo() + " (orden " + idOrdenPago
-                    + "), incluso antes de entrar a su transaccion aislada. El pago de nomina ya se"
-                    + " contabilizo y sigue en pie; revise a mano el saldo de"
-                    + " CuotaDescuento/DescuentoRecurrente/AnticipoEmpleado. Motivo: " + e.getMessage());
-        }
+        // U-5b: sin try/catch: si el asiento falla, falla el proceso entero (nada queda sin asiento).
+        cierreCuotasDescuentoService.descuentaCuotasDelPeriodo(periodo.getCodigo(), idOrdenPago, usuario);
 
         System.out.println("Orden " + idOrdenPago + " contabilizada con el asiento "
                 + asiento.getCodigo());

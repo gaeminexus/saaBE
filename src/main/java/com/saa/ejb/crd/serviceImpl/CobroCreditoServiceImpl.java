@@ -661,6 +661,8 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
                 if (idAporte != null) {
                     try {
                         aporteService.reversarAporte(idAporte, usuario, motivoLinea);
+                    } catch (com.saa.basico.util.UsuarioInvalidoException e) {
+                        throw e; // U-5b §5.C: el rechazo por usuario inválido llega tal cual, sin re-envolver
                     } catch (IncomeException e) {
                         throw new IncomeException("No se pudo anular el cobro " + idCobro
                                 + ": el aporte " + idAporte + " (línea " + linea.getCodigo()
@@ -681,6 +683,8 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
                 ResultadoAnulacion resultadoAnulacion;
                 try {
                     resultadoAnulacion = procesoPagoPrestamoService.anularOperacion(solicitudAnulacion);
+                } catch (com.saa.basico.util.UsuarioInvalidoException e) {
+                    throw e; // U-5b §5.C: el rechazo por usuario inválido llega tal cual, sin re-envolver
                 } catch (IncomeException e) {
                     // Todo-o-nada es correcto (si un préstamo no se puede reversar, no se
                     // reversa nada) — pero sin este contexto, un cobro de 3+ líneas deja al

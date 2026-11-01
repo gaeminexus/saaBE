@@ -1885,6 +1885,14 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
                     continue;
                 }
 
+                // U-5b §5.D: antes se atrapaba ERR_SIN_CUOTAS_PENDIENTES de pagarConAportes, pero IncomeException es
+                // rollback=true: atraparla dejaba la transaccion marcada para revertir y se perdia la corrida entera. Ahora se
+                // pregunta ANTES con la misma consulta que usa pagarConAportes, y no se llama si el prestamo ya quedo al dia.
+                if (motorPagoPrestamoService.calcularTotalPendientePrestamo(prestamo.getCodigo()) <= TOLERANCIA) {
+                    exigibleRestantePorPrestamo.put(prestamo.getCodigo(), 0.0);
+                    continue;
+                }
+
                 SolicitudPagoConAportes solicitud = new SolicitudPagoConAportes();
                 solicitud.setIdPrestamo(prestamo.getCodigo());
                 DesgloseAporte desglose = new DesgloseAporte();
@@ -1899,28 +1907,19 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
                 solicitud.setIdEmpresa(idEmpresa);
 
                 double aplicadoPrestamo;
-                try {
-                    ResultadoPagoConAportes resultado = procesoPagoPrestamoService.pagarConAportes(solicitud);
-                    ResultadoAplicacionPago aplicacion = resultado != null ? resultado.getResultado() : null;
-                    aplicadoPrestamo = redondear(aplicacion != null ? aplicacion.getValorAplicado() : 0.0);
-                    // Mismo criterio que CobroCreditoServiceImpl.registrarDistribucionBandaEvento:
-                    // reconsultar por evento en vez de reconstruir desde cuotasAfectadas, para
-                    // que la auditoría vea EXACTAMENTE los PagoPrestamo que quedaron en firme.
-                    if (aplicacion != null && aplicacion.getIdEvento() != null) {
-                        List<PagoPrestamo> pagosDelEvento =
-                            pagoPrestamoDaoService.selectByEvento(aplicacion.getIdEvento());
-                        if (pagosDelEvento != null) {
-                            pagosDelMesParaDsbn.addAll(pagosDelEvento);
-                        }
+                // U-5b: sin try/catch: si el asiento falla, falla el proceso entero (nada queda sin asiento).
+                ResultadoPagoConAportes resultado = procesoPagoPrestamoService.pagarConAportes(solicitud);
+                ResultadoAplicacionPago aplicacion = resultado != null ? resultado.getResultado() : null;
+                aplicadoPrestamo = redondear(aplicacion != null ? aplicacion.getValorAplicado() : 0.0);
+                // Mismo criterio que CobroCreditoServiceImpl.registrarDistribucionBandaEvento:
+                // reconsultar por evento en vez de reconstruir desde cuotasAfectadas, para
+                // que la auditoría vea EXACTAMENTE los PagoPrestamo que quedaron en firme.
+                if (aplicacion != null && aplicacion.getIdEvento() != null) {
+                    List<PagoPrestamo> pagosDelEvento =
+                        pagoPrestamoDaoService.selectByEvento(aplicacion.getIdEvento());
+                    if (pagosDelEvento != null) {
+                        pagosDelMesParaDsbn.addAll(pagosDelEvento);
                     }
-                } catch (IncomeException e) {
-                    if (e.getMessage() != null
-                            && e.getMessage().startsWith(ProcesoPagoPrestamoService.ERR_SIN_CUOTAS_PENDIENTES)) {
-                        // Ítem 4: corte NORMAL de ESTE préstamo — quedó al día. No es error.
-                        exigibleRestantePorPrestamo.put(prestamo.getCodigo(), 0.0);
-                        continue;
-                    }
-                    throw e;
                 }
                 aplicadoEsteMes = redondear(aplicadoEsteMes + aplicadoPrestamo);
                 exigibleRestantePorPrestamo.put(prestamo.getCodigo(), redondear(exigibleRestante - aplicadoPrestamo));
@@ -2189,6 +2188,8 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
                 // `pago` ya tiene código real (save de arriba): idOrigen viaja correcto.
                 idPagoOrden = generarOrdenPagoPension(entidad, cuentaSalida, pago, remanente, idEmpresa,
                     mesM, anioM, idUsuario);
+            } catch (com.saa.basico.util.UsuarioInvalidoException e) {
+                throw e; // U-5b §5.C: el rechazo por usuario inválido llega tal cual, sin re-envolver
             } catch (IncomeException e) {
                 throw new IncomeException("No se pudo generar la orden de pago en Cuentas por Pagar"
                     + " para la entidad " + idEntidad + " (" + mesM + "/" + anioM + "): " + e.getMessage());
@@ -2585,6 +2586,8 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
             System.out.println("  ✅ Orden de pago al proveedor del seguro médico generada - "
                 + mes + "/" + anio + " - PagoProgramado " + idPago + " - $" + totalSeguroPeriodo);
             return idPago;
+        } catch (com.saa.basico.util.UsuarioInvalidoException e) {
+            throw e; // U-5b §5.C: el rechazo por usuario inválido llega tal cual, sin re-envolver
         } catch (IncomeException e) {
             throw new IncomeException("No se pudo generar la orden de pago al proveedor del seguro"
                 + " médico (RUC " + RUC_PROVEEDOR_SEGURO_MEDICO + ") para " + mes + "/" + anio

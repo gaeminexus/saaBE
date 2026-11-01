@@ -243,6 +243,8 @@ public class CargaAsientosManualesServiceImpl implements CargaAsientosManualesSe
                 creado.setDebe(asiento.debeCentavos / 100.0);
                 creado.setHaber(asiento.haberCentavos / 100.0);
                 resultado.getAsientos().add(creado);
+            } catch (com.saa.basico.util.UsuarioInvalidoException e) {
+                throw e; // U-5b §5.C: el rechazo por usuario inválido llega tal cual, sin re-envolver
             } catch (Throwable e) {
                 // Una excepcion checked no marca rollback por si sola en un EJB: se marca a mano y se relanza
                 // como IncomeException (rollback = true) para que el lote entero se revierta.

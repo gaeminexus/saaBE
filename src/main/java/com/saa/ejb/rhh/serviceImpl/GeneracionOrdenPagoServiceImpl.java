@@ -366,6 +366,8 @@ public class GeneracionOrdenPagoServiceImpl implements GeneracionOrdenPagoServic
         for (DetalleOrdenPagoNomina detalle : detalles) {
             try {
                 registraPagoDeUnDetalle(orden, detalle, idProductoNomina, periodoTexto, idUsuario);
+            } catch (com.saa.basico.util.UsuarioInvalidoException e) {
+                throw e; // U-5b §5.C: el rechazo por usuario inválido llega tal cual, sin re-envolver
             } catch (Throwable e) {
                 throw new IncomeException("No se pudo registrar el pago del empleado "
                         + detalle.getNombreBeneficiario() + " (" + detalle.getIdentificacion() + "), detalle "
@@ -1321,6 +1323,17 @@ public class GeneracionOrdenPagoServiceImpl implements GeneracionOrdenPagoServic
      */
     private void exigeEstadoPagable(PeriodoNomina periodo) throws Throwable {
         Long estado = periodo.getEstado();
+        if (!esHistorico(periodo)) {
+            // U-5b (#19)(#20): no se paga un rol sin asiento ni se deja un periodo sin su asiento de provisiones.
+            if (periodo.getAsientoRol() == null) {
+                throw new IncomeException("El periodo " + periodo.getCodigo() + " no tiene asiento del rol de pagos:"
+                        + " contabilice el rol antes de emitir la orden de pago.");
+            }
+            if (contabilizacionNominaService.provisionesPendientes(periodo.getCodigo())) {
+                throw new IncomeException("El periodo " + periodo.getCodigo() + " genera provisiones y su asiento de"
+                        + " provisiones no se ha emitido: contabilicelas antes de emitir la orden de pago.");
+            }
+        }
         boolean pagable = Long.valueOf(RhhEstadoPeriodoNomina.APROBADO).equals(estado)
                 || Long.valueOf(RhhEstadoPeriodoNomina.CONTABILIZADO).equals(estado)
                 || Long.valueOf(RhhEstadoPeriodoNomina.PAGADO).equals(estado);
@@ -1469,6 +1482,11 @@ public class GeneracionOrdenPagoServiceImpl implements GeneracionOrdenPagoServic
             throw new IncomeException("La orden de pago " + idOrdenPago + " tiene un pago consolidado"
                     + " (RHH_NOMINA): use Confirmar, no Actualizar pagos.");
         }
+        // U-5b (#19): sin asiento del rol el periodo no puede pasar a PAGADO.
+        if (periodo.getAsientoRol() == null) {
+            throw new IncomeException("El periodo " + periodo.getCodigo() + " no tiene asiento del rol de pagos:"
+                    + " no se puede marcar como pagado.");
+        }
 
         List<DetalleOrdenPagoNomina> detalles = detalleOrdenPagoNominaDaoService.selectByOrdenPago(idOrdenPago);
         List<String> errores = new ArrayList<String>();
@@ -1518,15 +1536,9 @@ public class GeneracionOrdenPagoServiceImpl implements GeneracionOrdenPagoServic
             // Mismo motivo que en ContabilizacionNominaServiceImpl.contabilizarPago: EJB aparte
             // con su propia REQUIRES_NEW, para que un fallo adentro no tumbe el periodo PAGADO
             // que esta transaccion ya esta a punto de comitear.
-            try {
-                cierreCuotasDescuentoService.descuentaCuotasDelPeriodo(periodo.getCodigo(), idOrdenPago,
-                        orden.getUsuarioRegistro());
-            } catch (Throwable e) {
-                System.out.println("ATENCION: fallo el cierre de cuotas de descuentos recurrentes del"
-                        + " periodo " + periodo.getCodigo() + " (orden " + idOrdenPago + "). El periodo"
-                        + " ya quedo PAGADO; revise a mano el saldo de"
-                        + " CuotaDescuento/DescuentoRecurrente/AnticipoEmpleado. Motivo: " + e.getMessage());
-            }
+            // U-5b: sin try/catch: si el asiento falla, falla el proceso entero (nada queda sin asiento).
+            cierreCuotasDescuentoService.descuentaCuotasDelPeriodo(periodo.getCodigo(), idOrdenPago,
+                    orden.getUsuarioRegistro());
         }
 
         if (!errores.isEmpty()) {

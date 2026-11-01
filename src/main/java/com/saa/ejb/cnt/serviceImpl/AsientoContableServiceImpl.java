@@ -61,6 +61,9 @@ import jakarta.persistence.Query;
 @Stateless
 public class AsientoContableServiceImpl implements AsientoContableService {
 
+    @EJB
+    private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
     @PersistenceContext
     private EntityManager em;
 
@@ -717,7 +720,9 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         asiento.setTipoAsiento(tipoAsiento);
         asiento.setFechaAsiento(fechaAsiento);
         asiento.setObservaciones(observaciones);
-        asiento.setNombreUsuario(usuario != null ? usuario : "SISTEMA");
+        // U-5b (defensa central): sin relleno a "SISTEMA". El usuario debe existir; si no, UsuarioInvalidoException (rollback)
+        // y no se graba ningun asiento.
+        asiento.setNombreUsuario(usuarioValidacionService.validar(usuario));
         asiento.setEstado(Long.valueOf(EstadoAsiento.ACTIVO));
         asiento.setMoneda(Long.valueOf(TipoMoneda.DOLAR));
         // Rubro mÃ³dulo del sistema al que se clasifica el asiento

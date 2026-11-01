@@ -785,8 +785,10 @@ public class AplicacionPagoCxcServiceImpl implements AplicacionPagoCxcService {
 	}
 
 	@Override
-	public int eliminarAplicacionesDeDocumento(String tipoDocumento, Long idDocumento)
+	public int eliminarAplicacionesDeDocumento(String tipoDocumento, Long idDocumento, String usuario)
 			throws Throwable {
+		// U-5b (#7): lo primero, el usuario existe; el asiento de la aplicación se anula a su nombre (antes: null).
+		usuario = usuarioValidacionService.validar(usuario);
 
 		System.out.println("=== eliminarAplicacionesDeDocumento (CXC) | tipo=" + tipoDocumento
 				+ " | documento=" + idDocumento + " ===");
@@ -814,7 +816,7 @@ public class AplicacionPagoCxcServiceImpl implements AplicacionPagoCxcService {
 				recalcularEstadoPagoLiquidacion(idLiquidacion);
 			}
 			if (idAsiento != null) {
-				anulaAsientoSeguro(idAsiento, null, "Eliminación de la aplicación de pago");
+				anulaAsientoSeguro(idAsiento, usuario, "Eliminación de la aplicación de pago");
 			}
 			eliminadas++;
 		}
@@ -1208,13 +1210,11 @@ public class AplicacionPagoCxcServiceImpl implements AplicacionPagoCxcService {
 	 * @param usuario   : Usuario que anula, para el rastro de auditoría del asiento
 	 * @param motivo    : Motivo de la anulación
 	 */
-	private void anulaAsientoSeguro(Long idAsiento, String usuario, String motivo) {
-		try {
-			asientoService.anulaAsiento(idAsiento, usuario, motivo);
-			System.out.println("✓ Asiento " + idAsiento + " anulado / reversado.");
-		} catch (Throwable e) {
-			System.err.println("⚠ No se pudo anular el asiento " + idAsiento + ": " + e.getMessage());
-		}
+	private void anulaAsientoSeguro(Long idAsiento, String usuario, String motivo) throws Throwable {
+		// U-5b (#6): sin try/catch. Si el asiento no se puede anular, falla el proceso entero: la aplicación no queda
+		// reversada con el asiento vivo.
+		asientoService.anulaAsiento(idAsiento, usuario, motivo);
+		System.out.println("✓ Asiento " + idAsiento + " anulado / reversado.");
 	}
 
 	/**

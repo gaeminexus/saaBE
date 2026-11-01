@@ -152,6 +152,7 @@ public class CierreCajaServiceImpl implements CierreCajaService {
 		//valida si se puede reabrir la caja cerrada
 		validaReaperturaCaja(idCierre, idUsuarioCaja);
 		//Anula el asiento contable
+		// U-5b: LEGACY DEPRECADO (sin REST ni pantalla, no se repara): anulaAsiento(id) sin usuario lanza error claro.
 		asientoService.anulaAsiento(cierreCaja.getAsiento().getCodigo());
 		//anula el cierre de la caja
 		cierreCaja.setRubroEstadoH(Long.valueOf(EstadoCierreCajas.ANULADO));

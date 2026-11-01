@@ -2091,20 +2091,15 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 			pago.setFechaRespuesta(fechaRespuestaEfectiva);
 
 			if (respuesta.isConfirmado()) {
-				try {
-					pago.setReferenciaBanco(respuesta.getReferencia());
-					// Solo aquí se genera contabilidad y movimiento bancario. El
-					// asiento depende del proceso que originó el pago; el retorno
-					// se descarta a propósito, la confirmación no depende de él.
-					contabilizarSegunOrigen(pago, idUsuario);
-					pago.setEstado(Long.valueOf(EstadoPagoProgramado.CONFIRMADO));
-					pagoProgramadoDaoService.save(pago, pago.getId());
-					confirmados++;
-				} catch (Throwable t) {
-					errores.add("Pago " + pago.getId() + ": no se pudo registrar el pago confirmado - "
-							+ t.getMessage());
-					System.err.println("⚠ Error aplicando el pago " + pago.getId() + ": " + t.getMessage());
-				}
+				// U-5b (#1): sin try/catch: si el asiento falla, falla el proceso entero (nada queda sin asiento).
+				pago.setReferenciaBanco(respuesta.getReferencia());
+				// Solo aquí se genera contabilidad y movimiento bancario. El
+				// asiento depende del proceso que originó el pago; el retorno
+				// se descarta a propósito, la confirmación no depende de él.
+				contabilizarSegunOrigen(pago, idUsuario);
+				pago.setEstado(Long.valueOf(EstadoPagoProgramado.CONFIRMADO));
+				pagoProgramadoDaoService.save(pago, pago.getId());
+				confirmados++;
 			} else {
 				pago.setEstado(Long.valueOf(EstadoPagoProgramado.RECHAZADO));
 				pago.setMotivo(respuesta.getMotivo() != null
@@ -3151,13 +3146,9 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 				}
 			}
 		} else {
-			// Comportamiento de siempre: no interrumpe el flujo si falla.
-			try {
-				asientoService.anulaAsiento(idAsiento, usuarioAnula, descripcionReverso); // U-3: con usuario, sin «SISTEMA»
-				System.out.println("✓ Asiento " + idAsiento + " anulado / reversado.");
-			} catch (Throwable e) {
-				System.err.println("⚠ No se pudo anular el asiento " + idAsiento + ": " + e.getMessage());
-			}
+			// U-5b (#15): sin try/catch por pago: si el asiento de un pago falla, falla el lote entero (todo o nada).
+			asientoService.anulaAsiento(idAsiento, usuarioAnula, descripcionReverso); // U-3: con usuario, sin «SISTEMA»
+			System.out.println("✓ Asiento " + idAsiento + " anulado / reversado.");
 		}
 	}
 	// ===== FIN anular-vs-reversar pago rebotado (equipo omen-saa-2) =====

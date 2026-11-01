@@ -307,14 +307,16 @@ public class AnticipoClienteServiceImpl implements AnticipoClienteService {
             System.out.println("✓ Anticipo " + idAnticipo + " confirmado | Asiento: "
                     + asiento.getNumeroAlterno());
 
+        } catch (com.saa.basico.util.UsuarioInvalidoException e) {
+            throw e;
         } catch (Exception e) {
-            resultado.put("mensaje", "Error al generar el asiento contable: " + e.getMessage()
+            // U-5b (#9): ya no se convierte en {exito:false}: la transacción queda rollback-only de todos modos y el
+            // cliente recibía un 500 sin el mensaje. Se relanza como IncomeException con el mismo texto.
+            System.err.println("✗ Error en confirmarAnticipo: " + e.getMessage());
+            throw new IncomeException("Error al generar el asiento contable: " + e.getMessage()
                     + ". Verifique que el cliente tenga las cuentas contables configuradas "
                     + "(Tipo 2=Anticipos, Tipo 3=Caja/Banco) y que exista un período contable "
                     + "abierto para la fecha del anticipo.");
-            resultado.put("error", e.getMessage());
-            System.err.println("✗ Error en confirmarAnticipo: " + e.getMessage());
-            e.printStackTrace();
         }
 
         // ÍTEM 1 (docs/logica-negocio/cxp/DISENO-SALDO-GLOBAL-ANTICIPOS.md §3.1): FUERA del catch
@@ -611,13 +613,9 @@ public class AnticipoClienteServiceImpl implements AnticipoClienteService {
                     System.err.println("⚠ No se pudo anular el movimiento bancario del asiento "
                             + idAsiento + ": " + e.getMessage());
                 }
-                try {
-                    asientoService.anulaAsiento(idAsiento, usuarioAnula, motivoLimpio);
-                    System.out.println("✓ Asiento " + idAsiento + " anulado / reversado.");
-                } catch (Throwable e) {
-                    System.err.println("⚠ No se pudo anular el asiento " + idAsiento
-                            + ": " + e.getMessage());
-                }
+                // U-5b: sin try/catch: si el asiento falla, falla el proceso entero (nada queda sin asiento).
+                asientoService.anulaAsiento(idAsiento, usuarioAnula, motivoLimpio);
+                System.out.println("✓ Asiento " + idAsiento + " anulado / reversado.");
             }
 
             // 4. Descontar del saldo de anticipos del cliente lo que la

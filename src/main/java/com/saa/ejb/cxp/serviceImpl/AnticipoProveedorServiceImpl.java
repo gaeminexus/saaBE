@@ -482,14 +482,9 @@ public class AnticipoProveedorServiceImpl implements AnticipoProveedorService {
                     }
                 }
             } else {
-                // Comportamiento de siempre: no interrumpe el flujo si falla.
-                try {
-                    asientoService.anulaAsiento(idAsiento, usuario, motivo); // U-3: con usuario, sin «SISTEMA»
-                    System.out.println("✓ Asiento " + idAsiento + " anulado / reversado.");
-                } catch (Throwable e) {
-                    System.err.println("⚠ No se pudo anular el asiento " + idAsiento
-                            + ": " + e.getMessage());
-                }
+                // U-5b: sin try/catch: si el asiento falla, falla el proceso entero (nada queda sin asiento).
+                asientoService.anulaAsiento(idAsiento, usuario, motivo); // U-3: con usuario, sin «SISTEMA»
+                System.out.println("✓ Asiento " + idAsiento + " anulado / reversado.");
             }
         }
 

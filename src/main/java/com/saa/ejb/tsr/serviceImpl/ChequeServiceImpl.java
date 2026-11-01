@@ -379,6 +379,7 @@ public class ChequeServiceImpl implements ChequeService {
 			cheque.setAsiento(null);
 			chequeDaoService.save(cheque, cheque.getCodigo());
 			//anula el asiento contable
+			// U-5b: LEGACY DEPRECADO (sin REST ni pantalla, no se repara): anulaAsiento(id) sin usuario lanza error claro.
 			asientoService.anulaAsiento(asiento.getCodigo());
 			//Anula registro de movimiento de generacion de cheque emitido	
 			movimientobancoService.actualizaEstadoMovimiento(asiento.getCodigo(), Long.valueOf(

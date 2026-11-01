@@ -63,8 +63,12 @@ public class CierreCuotasDescuentoServiceImpl implements CierreCuotasDescuentoSe
     /* (non-Javadoc)
      * @see com.saa.ejb.rhh.service.CierreCuotasDescuentoService#descuentaCuotasDelPeriodo(java.lang.Long, java.lang.Long, java.lang.String)
      */
+    // U-5b (#21): REQUIRED (antes REQUIRES_NEW). Antes hacia commit ANTES que la transaccion del pago: si despues fallaba el
+    // egreso consolidado, se revertian el asiento, la orden y el periodo, pero las cuotas quedaban DESCONTADA/PARCIAL con
+    // los saldos de descuentos y anticipos ya bajados. Ahora el cierre de cuotas, el asiento y el periodo PAGADO se
+    // confirman o se revierten JUNTOS.
     @Override
-    @TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
+    @TransactionAttribute(TransactionAttributeType.REQUIRED)
     public void descuentaCuotasDelPeriodo(Long idPeriodoNomina, Long idOrdenPago, String usuario) {
         // U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
         usuario = usuarioValidacionService.validar(usuario);

@@ -236,20 +236,13 @@ public class IngresoServiceImpl implements IngresoService {
 
 		// 1. Anular el movimiento bancario del asiento
 		if (idAsiento != null) {
-			try {
-				movimientoBancoService.actualizaEstadoMovimiento(idAsiento,
-						Long.valueOf(com.saa.rubros.EstadoMovimientoBanco.ANULADO));
-			} catch (Exception e) {
-				System.err.println("⚠ No se pudo anular el movimiento bancario del asiento "
-						+ idAsiento + ": " + e.getMessage());
-			}
+			// U-5b: sin try/catch: si el asiento falla, falla el proceso entero (nada queda sin asiento).
+			movimientoBancoService.actualizaEstadoMovimiento(idAsiento,
+					Long.valueOf(com.saa.rubros.EstadoMovimientoBanco.ANULADO));
 			// 2. Anular / reversar el asiento contable
-			try {
-				asientoService.anulaAsiento(idAsiento, usuarioNombre(idUsuario), motivo); // U-4: con usuario
-				System.out.println("✓ Asiento " + idAsiento + " anulado / reversado.");
-			} catch (Throwable e) {
-				System.err.println("⚠ No se pudo anular el asiento " + idAsiento + ": " + e.getMessage());
-			}
+			// U-5b: sin try/catch: si el asiento falla, falla el proceso entero (nada queda sin asiento).
+			asientoService.anulaAsiento(idAsiento, usuarioNombre(idUsuario), motivo); // U-4: con usuario
+			System.out.println("✓ Asiento " + idAsiento + " anulado / reversado.");
 		}
 
 		// 3. El ingreso queda anulado

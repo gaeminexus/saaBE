@@ -311,11 +311,8 @@ public class CierreCajaChicaServiceImpl implements CierreCajaChicaService {
 			if (tipo == TipoMovimientoCajaChica.AJUSTE_POSITIVO || tipo == TipoMovimientoCajaChica.AJUSTE_NEGATIVO) {
 				Long idAsiento = (movimiento.getAsiento() != null) ? movimiento.getAsiento().getCodigo() : null;
 				if (idAsiento != null) {
-					try {
-						asientoService.anulaAsiento(idAsiento, usuarioNombre(idUsuario), motivo); // U-4: con usuario
-					} catch (Throwable e) {
-						System.err.println("⚠ No se pudo anular el asiento " + idAsiento + ": " + e.getMessage());
-					}
+					// U-5b: sin try/catch: si el asiento falla, falla el proceso entero (nada queda sin asiento).
+					asientoService.anulaAsiento(idAsiento, usuarioNombre(idUsuario), motivo); // U-4: con usuario
 				}
 				movimiento.setEstado(Long.valueOf(EstadoMovimientoCajaChica.ANULADO));
 				movimiento.setMotivoAnulacion("ANULACIÓN DE CIERRE: " + motivo.trim());

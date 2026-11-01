@@ -388,11 +388,13 @@ public class DepositoServiceImpl implements DepositoService {
 		//Obtiene el asiento contable del detalle de deposito
 		DetalleDeposito detalleDeposito = detalleDepositoDaoService.selectById(idDetalleDeposito, NombreEntidadesTesoreria.DETALLE_DEPOSITO);
 		//Anula el asiento contable
+		// U-5b: LEGACY DEPRECADO (sin REST ni pantalla, no se repara): anulaAsiento(id) sin usuario lanza error claro.
 		asientoService.anulaAsiento(detalleDeposito.getAsiento().getCodigo());
 		//Obtiene el asiento contable del deposito
 		Deposito deposito = detalleDeposito.getDeposito();
 		//Anula el asiento contable
 		if(deposito.getAsiento() != null)
+			// U-5b: LEGACY DEPRECADO (sin REST ni pantalla, no se repara): anulaAsiento(id) sin usuario lanza error claro.
 			asientoService.anulaAsiento(deposito.getAsiento().getCodigo());
 		return detalleDeposito.getAsiento();
 	}

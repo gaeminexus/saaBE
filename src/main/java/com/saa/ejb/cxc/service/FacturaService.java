@@ -80,6 +80,12 @@ public interface FacturaService extends EntityService<Factura> {
 	java.util.Map<String, Object> generarContabilidadFactura(Long idFactura) throws Throwable;
 
 	/**
+	 * Igual que {@link #generarContabilidadFactura(Long)}, con el asiento a nombre de {@code usuario} (quien ejecuta la recepción
+	 * del SRI). El usuario se valida primero. {@code usuario = null} usa el del documento.
+	 */
+	java.util.Map<String, Object> generarContabilidadFactura(Long idFactura, String usuario) throws Throwable;
+
+	/**
 	 * Marca la factura como autorizada por el SRI en transacción propia
 	 * (REQUIRES_NEW): estado 5, autorización y XML autorizado. Idempotente.
 	 * @return true si actualizó el estado, false si ya estaba autorizada

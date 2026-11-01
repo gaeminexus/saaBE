@@ -580,6 +580,8 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
             }
             idPago = ((Number) valorPago).longValue();
 
+        } catch (com.saa.basico.util.UsuarioInvalidoException e) {
+            throw e; // U-5b §5.C: el rechazo por usuario inválido llega tal cual, sin re-envolver
         } catch (IncomeException e) {
             // Se reetiqueta con el código estable, conservando el mensaje accionable de CXP
             throw new IncomeException(ERR_ERROR_ORDEN_PAGO
@@ -1435,6 +1437,8 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
             }
             idOrdenNueva = ((Number) valorPago).longValue();
 
+        } catch (com.saa.basico.util.UsuarioInvalidoException e) {
+            throw e; // U-5b §5.C: el rechazo por usuario inválido llega tal cual, sin re-envolver
         } catch (IncomeException e) {
             throw new IncomeException(ERR_ERROR_ORDEN_PAGO + ": no se pudo generar la orden de "
                 + "pago nueva en Cuentas por Pagar. " + e.getMessage());

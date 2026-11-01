@@ -1215,7 +1215,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         // sin contrapartida contable, que es un descuadre que no avisa.
         validarSinPagosVigentes(doc, "anular la contabilidad");
 
-        anularAsientoDeDocumento(doc.getTipoTablaDestino(), doc.getIdDocumentoBD());
+        anularAsientoDeDocumento(doc.getTipoTablaDestino(), doc.getIdDocumentoBD(), nombreUsuarioObligatorio(idUsuario));
 
         doc.setEstadoDocumento(ESTADO_XML_CARGADO);
         doc.setObservacion("CONTABILIDAD ANULADA" + (motivo != null && !motivo.trim().isEmpty()
@@ -2272,7 +2272,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                                 "La factura de compra tiene " + aplic.size()
                                 + " pago(s) aplicados. Reverse primero esos pagos antes de marcarla como reembolso.");
                     // Si tiene asiento activo → anularlo
-                    anularAsientoDeDocumento("FACTURA_COMPRA", doc.getIdDocumentoBD());
+                    anularAsientoDeDocumento("FACTURA_COMPRA", doc.getIdDocumentoBD(), nombreUsuarioObligatorio(idUsuario));
                     fc.setEsReembolso(1L);
                     if (fc.getCodDocReembolso() == null) fc.setCodDocReembolso("41");
                     facturaCompraDaoService.save(fc, fc.getId());
@@ -3893,9 +3893,9 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         } else if ("NOTA_DEBITO_COMPRA".equals(tipo)) {
             aplicacionPagoCxpService.eliminarAplicacionesDeDocumento("NOTA_DEBITO", idDocBD, usuario);
         } else if ("RETENCION_COMPRA".equals(tipo)) {
-            aplicacionPagoCxcService.eliminarAplicacionesDeDocumento("RETENCION", idDocBD);
+            aplicacionPagoCxcService.eliminarAplicacionesDeDocumento("RETENCION", idDocBD, usuario);
         } else if ("RETENCION_COMPRA_V2".equals(tipo)) {
-            aplicacionPagoCxcService.eliminarAplicacionesDeDocumento("RETENCION_V2", idDocBD);
+            aplicacionPagoCxcService.eliminarAplicacionesDeDocumento("RETENCION_V2", idDocBD, usuario);
         } else if ("FACTURA_COMPRA".equals(tipo)) {
             // No se puede borrar una factura que ya tiene pagos o abonos aplicados.
             java.util.List<com.saa.model.cxp.AplicacionPagoCxp> aplicaciones =
@@ -3953,7 +3953,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         }
 
         // ── Anular asiento contable vinculado ──────────────────────────────────
-        anularAsientoDeDocumento(tipo, idDocBD);
+        anularAsientoDeDocumento(tipo, idDocBD, usuario);
 
         switch (tipo) {
             case "FACTURA_COMPRA":
@@ -4000,54 +4000,48 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
      * Anula el asiento contable vinculado al documento CXP cambiando su estado a ANULADO (2).
      * Si el documento no tiene asiento vinculado, no hace nada.
      */
-    private void anularAsientoDeDocumento(String tipo, Long idDocBD) {
-        try {
-            com.saa.model.cnt.Asiento asiento = null;
-            switch (tipo) {
-                case "FACTURA_COMPRA": {
-                    FacturaCompra fc = em.find(FacturaCompra.class, idDocBD);
-                    if (fc != null) asiento = fc.getAsiento();
-                    break;
-                }
-                case "NOTA_CREDITO_COMPRA": {
-                    com.saa.model.cxp.NotaCreditoCompra nc = em.find(com.saa.model.cxp.NotaCreditoCompra.class, idDocBD);
-                    if (nc != null) asiento = nc.getAsiento();
-                    break;
-                }
-                case "NOTA_DEBITO_COMPRA": {
-                    com.saa.model.cxp.NotaDebitoCompra nd = em.find(com.saa.model.cxp.NotaDebitoCompra.class, idDocBD);
-                    if (nd != null) asiento = nd.getAsiento();
-                    break;
-                }
-                case "LIQUIDACION_COMPRA_COMPRA": {
-                    com.saa.model.cxp.LiquidacionCompraCompra lq = em.find(com.saa.model.cxp.LiquidacionCompraCompra.class, idDocBD);
-                    if (lq != null) asiento = lq.getAsiento();
-                    break;
-                }
-                case "RETENCION_COMPRA": {
-                    com.saa.model.cxp.RetencionCompra rc = em.find(com.saa.model.cxp.RetencionCompra.class, idDocBD);
-                    if (rc != null) asiento = rc.getAsiento();
-                    break;
-                }
-                case "RETENCION_COMPRA_V2": {
-                    com.saa.model.cxp.RetencionCompraV2 rc = em.find(com.saa.model.cxp.RetencionCompraV2.class, idDocBD);
-                    if (rc != null) asiento = rc.getAsiento();
-                    break;
-                }
+    private void anularAsientoDeDocumento(String tipo, Long idDocBD, String usuario) throws Throwable {
+        // U-5b: sin try/catch: si el asiento falla, falla el proceso entero (nada queda sin asiento).
+        com.saa.model.cnt.Asiento asiento = null;
+        switch (tipo) {
+            case "FACTURA_COMPRA": {
+                FacturaCompra fc = em.find(FacturaCompra.class, idDocBD);
+                if (fc != null) asiento = fc.getAsiento();
+                break;
             }
-            if (asiento != null) {
-                asiento.setEstado((long) com.saa.rubros.EstadoAsiento.ANULADO);
-                asientoService.anulaAsientoDeDocumento(asiento); // C17: período cerrado -> reverso en período abierto
-                System.out.println("✓ Asiento " + asiento.getNumeroAlterno() + " anulado por reversión del documento " + tipo + " id=" + idDocBD);
-            } else {
-                System.out.println("ℹ Documento " + tipo + " id=" + idDocBD + " no tiene asiento vinculado, nada que anular.");
+            case "NOTA_CREDITO_COMPRA": {
+                com.saa.model.cxp.NotaCreditoCompra nc = em.find(com.saa.model.cxp.NotaCreditoCompra.class, idDocBD);
+                if (nc != null) asiento = nc.getAsiento();
+                break;
             }
-        } catch (com.saa.basico.util.IncomeException e) {
-            // C17: una regla de negocio (p.ej. no hay período abierto para el reverso) marca la transacción
-            // para rollback; tragarla dejaría un error confuso al confirmar. Se propaga tal cual.
-            throw e;
-        } catch (Throwable e) {
-            System.err.println("⚠ No se pudo anular el asiento del documento " + tipo + " id=" + idDocBD + ": " + e.getMessage());
+            case "NOTA_DEBITO_COMPRA": {
+                com.saa.model.cxp.NotaDebitoCompra nd = em.find(com.saa.model.cxp.NotaDebitoCompra.class, idDocBD);
+                if (nd != null) asiento = nd.getAsiento();
+                break;
+            }
+            case "LIQUIDACION_COMPRA_COMPRA": {
+                com.saa.model.cxp.LiquidacionCompraCompra lq = em.find(com.saa.model.cxp.LiquidacionCompraCompra.class, idDocBD);
+                if (lq != null) asiento = lq.getAsiento();
+                break;
+            }
+            case "RETENCION_COMPRA": {
+                com.saa.model.cxp.RetencionCompra rc = em.find(com.saa.model.cxp.RetencionCompra.class, idDocBD);
+                if (rc != null) asiento = rc.getAsiento();
+                break;
+            }
+            case "RETENCION_COMPRA_V2": {
+                com.saa.model.cxp.RetencionCompraV2 rc = em.find(com.saa.model.cxp.RetencionCompraV2.class, idDocBD);
+                if (rc != null) asiento = rc.getAsiento();
+                break;
+            }
+        }
+        if (asiento != null) {
+            asiento.setEstado((long) com.saa.rubros.EstadoAsiento.ANULADO);
+            asiento.setUsuarioAnulacion(usuario); // U-5b: la anulación queda a nombre de quien revierte (validado), sin relleno
+            asientoService.anulaAsientoDeDocumento(asiento); // C17: período cerrado -> reverso en período abierto
+            System.out.println("✓ Asiento " + asiento.getNumeroAlterno() + " anulado por reversión del documento " + tipo + " id=" + idDocBD);
+        } else {
+            System.out.println("ℹ Documento " + tipo + " id=" + idDocBD + " no tiene asiento vinculado, nada que anular.");
         }
     }
 
@@ -5193,12 +5187,20 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
             System.out.println("ℹ Asiento CXP pendiente de configurar para tipo="
                     + doc.getTipoTablaDestino());
 
-        } catch (Exception e) {
-            // Error de negocio (asiento descuadrado, cuenta no configurada, etc.)
+        } catch (RuntimeException e) {
+            // Error de negocio (asiento descuadrado, cuenta no configurada, IncomeException, usuario inválido…)
             // → propagar para revertir toda la transacción (factura + asiento)
             System.err.println("⚠ Error generando asiento CXP tipo=" + doc.getTipoTablaDestino()
                     + ": " + e.getMessage());
             throw e;
+        } catch (Exception e) {
+            // U-5b (#16): una Exception CHECKED no es @ApplicationException y NO marca rollback: el flujo terminaba en
+            // COMMIT con el documento registrado sin asiento (y marcarError fallaba con ORA-00054 por la fila bloqueada).
+            // Se convierte en IncomeException (rollback=true): el documento no queda registrado sin su asiento.
+            System.err.println("⚠ Error generando asiento CXP tipo=" + doc.getTipoTablaDestino()
+                    + ": " + e.getMessage());
+            throw new com.saa.basico.util.IncomeException(e.getMessage() != null ? e.getMessage()
+                    : "No se pudo generar el asiento contable del documento " + doc.getTipoTablaDestino());
         }
     }
 
