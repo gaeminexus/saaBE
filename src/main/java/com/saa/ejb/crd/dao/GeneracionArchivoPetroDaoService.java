@@ -35,6 +35,15 @@ public interface GeneracionArchivoPetroDaoService extends EntityDao<GeneracionAr
      * @throws Throwable Si ocurre un error
      */
     List<GeneracionArchivoPetro> selectByFilial(Long codigoFilial) throws Throwable;
+
+    /**
+     * Carga de la respuesta de ARCH (DISENO-CARGA-RESPUESTA-ARCH.md §9.2): la generación de una
+     * filial para un mes/año. A diferencia de {@link #selectByPeriodo}, que usa getSingleResult y
+     * revienta si hay más de una, devuelve la de GNAPCDGO mayor.
+     *
+     * @return la generación de código mayor del periodo, o null si no hay ninguna
+     */
+    GeneracionArchivoPetro selectUltimaByPeriodo(Long mes, Long anio, Long codigoFilial) throws Throwable;
     
     /**
      * Lista generaciones por estado.

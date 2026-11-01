@@ -93,7 +93,15 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
     
     @EJB
     private EntidadDaoService entidadDaoService;
-    
+
+    // Carga de la respuesta de ARCH (DISENO-CARGA-RESPUESTA-ARCH.md §9): la generacion que ARCH
+    // contesta y sus lineas por entidad (GNAP / PDGA).
+    @EJB
+    private com.saa.ejb.crd.dao.GeneracionArchivoPetroDaoService generacionArchivoPetroDaoService;
+
+    @EJB
+    private com.saa.ejb.crd.dao.ParticipeDetalleGeneracionArchivoDaoService participeDetalleGeneracionArchivoDaoService;
+
     @EJB
     private com.saa.ejb.crd.dao.ProductoDaoService productoDaoService;
     
@@ -529,9 +537,20 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
                         cargaArchivo.getMesAfectacion(), "la carga de archivos Petro");
             }
             // 0. PROCESAR EL CONTENIDO DEL ARCHIVO
-            String contenido = leerContenidoArchivo(archivoInputStream);
-            List<ParticipeXCargaArchivo> registrosProcesados = procesarContenido(contenido);
-            
+            // ARCH (filial 2, DISENO-CARGA-RESPUESTA-ARCH.md §9.2): lector propio. Se leen los bytes
+            // una sola vez y se deja un stream nuevo para subir el archivo fisico; Petrocomercial
+            // sigue exactamente igual (streamArchivo == archivoInputStream).
+            InputStream streamArchivo = archivoInputStream;
+            List<ParticipeXCargaArchivo> registrosProcesados;
+            if (esFilialArch(cargaArchivo)) {
+                byte[] bytesArch = archivoInputStream.readAllBytes();
+                registrosProcesados = procesarContenidoArch(bytesArch, fileName, cargaArchivo);
+                streamArchivo = new java.io.ByteArrayInputStream(bytesArch);
+            } else {
+                String contenido = leerContenidoArchivo(archivoInputStream);
+                registrosProcesados = procesarContenido(contenido);
+            }
+
             // Agrupar por aporte (DetalleCargaArchivo)
             Map<String, DetalleCargaArchivo> aporteAgrupados = agruparPorAporte(registrosProcesados);
             
@@ -546,11 +565,11 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
             
             // 2. AL FINAL: Cargar el archivo físico (NO TRANSACCIONAL)
             // Solo se ejecuta si todas las operaciones de BD fueron exitosas
-            String rutaArchivo = cargarArchivo(archivoInputStream, fileName, cargaArchivo);
-            
+            String rutaArchivo = cargarArchivo(streamArchivo, fileName, cargaArchivo);
+
             cargaArchivoGuardado.setRutaArchivo(rutaArchivo);
             cargaArchivoGuardado = cargaArchivoService.saveSingle(cargaArchivoGuardado);
-            
+
             return rutaArchivo;
             
         } catch (Throwable e) {
@@ -1010,6 +1029,403 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
         return registrosProcesados;
     }
     
+    // ==========================================================================================
+    // RESPUESTA DE ARCH (filial 2) — DISENO-CARGA-RESPUESTA-ARCH.md §9 (2026-10-31)
+    //
+    // ARCH no contesta con el reporte posicional de Petrocomercial sino con una planilla de
+    // cuatro columnas (IDENTIFICACION; NOMBRES; MONTO_CALCULADO; MONTO_DESCONTADO). Este lector
+    // la TRADUCE a la misma List<ParticipeXCargaArchivo> que arma procesarContenido, para que
+    // agruparPorAporte, calcularTotalesGenerales, almacenaRegistros y todo el proceso de
+    // aplicacion queden intactos. El reparto por producto sale de la generacion ARCH del mes
+    // (GNAP/DTGA/PDGA): lo que ARCH descuenta completo se reparte como se le envio; lo parcial
+    // va a una fila AH para que el operador lo reparta con las afectaciones manuales (D1).
+    // ==========================================================================================
+
+    /** Base del rol tecnico de ARCH: 7 digitos, sobre cualquier rol real de Petro (§9.1). */
+    private static final long ROL_TECNICO_ARCH_BASE = 9000000L;
+
+    /** Tolerancia entre lo descontado y lo enviado para considerar el descuento completo. */
+    private static final double TOLERANCIA_DESCUENTO_ARCH = 0.01;
+
+    /** Fila de la planilla de ARCH, con las cedulas repetidas ya sumadas (D3). */
+    private static class FilaArch {
+        String cedula;
+        String nombre;
+        double calculado;
+        double descontado;
+    }
+
+    /**
+     * {@code true} si la carga es de la filial ARCH (CRD.FLLL 2). A diferencia de
+     * {@link #esFilialPetrocomercial}, una filial ausente NO cuenta como ARCH: sin filial se
+     * sigue el camino de Petro de siempre.
+     */
+    private boolean esFilialArch(CargaArchivo cargaArchivo) {
+        return cargaArchivo != null && cargaArchivo.getFilial() != null
+            && cargaArchivo.getFilial().getCodigo() != null
+            && cargaArchivo.getFilial().getCodigo().longValue() == Filiales.ARCH;
+    }
+
+    /** Extensiones que acepta la respuesta de ARCH (D2). */
+    private boolean tieneExtensionArch(String fileName) {
+        String nombre = fileName.toLowerCase();
+        return nombre.endsWith(".xlsx") || nombre.endsWith(".xls") || nombre.endsWith(".csv") || nombre.endsWith(".txt");
+    }
+
+    /**
+     * Lee la respuesta de ARCH y devuelve las mismas filas que {@link #procesarContenido} para
+     * Petro (cada una con su {@link DetalleCargaArchivo} temporal por producto). Pasos de §9.2:
+     * cedula normalizada, entidad por ENTDNMID en filial 2, rol tecnico, generacion GNAP del
+     * mes/anio de afectacion y reparto por las lineas PDGA de la entidad.
+     */
+    private List<ParticipeXCargaArchivo> procesarContenidoArch(byte[] archivo, String fileName,
+            CargaArchivo cargaArchivo) throws Throwable {
+        System.out.println("procesarContenidoArch (respuesta de ARCH): " + fileName);
+
+        Map<String, FilaArch> filas = leerFilasArch(archivo, fileName);
+
+        Long mes = cargaArchivo.getMesAfectacion();
+        Long anio = cargaArchivo.getAnioAfectacion();
+        if (mes == null || anio == null) {
+            throw new IncomeException("La carga no tiene mes y año de afectación: no se puede buscar la generación "
+                + "de descuentos ARCH que corresponde a esta respuesta.");
+        }
+        com.saa.model.crd.GeneracionArchivoPetro generacion =
+            generacionArchivoPetroDaoService.selectUltimaByPeriodo(mes, anio, Filiales.ARCH);
+        if (generacion == null) {
+            throw new IncomeException("No existe la generación de descuentos ARCH de " + mes + "/" + anio);
+        }
+        System.out.println("  Generación ARCH usada: " + generacion.getCodigo());
+
+        // Las lineas PDGA de toda la generacion, agrupadas por entidad: una sola consulta en vez
+        // de una por cedula, y de paso sirve para contar los que no contestaron (§9.2 paso 6).
+        Map<Long, List<com.saa.model.crd.ParticipeDetalleGeneracionArchivo>> lineasPorEntidad = new HashMap<>();
+        List<com.saa.model.crd.ParticipeDetalleGeneracionArchivo> lineasGeneracion =
+            participeDetalleGeneracionArchivoDaoService.selectByGeneracion(generacion.getCodigo());
+        if (lineasGeneracion != null) {
+            for (com.saa.model.crd.ParticipeDetalleGeneracionArchivo linea : lineasGeneracion) {
+                if (linea.getEntidad() == null || linea.getEntidad().getCodigo() == null) {
+                    continue;
+                }
+                lineasPorEntidad.computeIfAbsent(linea.getEntidad().getCodigo(), k -> new ArrayList<>()).add(linea);
+            }
+        }
+
+        List<ParticipeXCargaArchivo> registros = new ArrayList<>();
+        Set<Long> entidadesQueContestaron = new HashSet<>();
+        int completos = 0;
+        int parciales = 0;
+        int sinDescuento = 0;
+
+        for (FilaArch fila : filas.values()) {
+            // Paso 2: la entidad por cedula dentro de ARCH. Sin entidad no se sabe a quien
+            // pertenece el dinero: aborta, igual que "sin entidad" en Petro.
+            Entidad entidad = entidadDaoService.selectByNumeroIdentificacionYFilial(fila.cedula, Filiales.ARCH);
+            if (entidad == null) {
+                throw new IncomeException("No se encontró la entidad de ARCH con identificación " + fila.cedula
+                    + " (nombre en el archivo: \"" + fila.nombre + "\"), archivo " + fileName
+                    + ", monto descontado $" + fila.descontado + ": cree o corrija la entidad y vuelva a cargar.");
+            }
+            entidadesQueContestaron.add(entidad.getCodigo());
+
+            // Paso 3: rol tecnico si no tiene. Mismo efecto que actualizaCodigoPetroEntidad: se
+            // graba en ENTDRLPC, porque la carga identifica por rol en todo su recorrido.
+            Long rol = entidad.getRolPetroComercial();
+            if (rol == null || rol.longValue() == 0L) {
+                rol = ROL_TECNICO_ARCH_BASE + entidad.getCodigo();
+                entidad.setRolPetroComercial(rol);
+                entidad = entidadDaoService.save(entidad, entidad.getCodigo());
+                System.out.println("  Rol técnico asignado a la entidad " + entidad.getCodigo() + ": " + rol);
+            }
+            String nombreEntidad = entidad.getRazonSocial() != null ? entidad.getRazonSocial() : fila.nombre;
+
+            // Paso 5
+            double descontado = fila.descontado;
+            if (descontado <= TOLERANCIA_DESCUENTO_ARCH) {
+                sinDescuento++;
+                continue;
+            }
+
+            List<com.saa.model.crd.ParticipeDetalleGeneracionArchivo> lineas = lineasPorEntidad.get(entidad.getCodigo());
+            double enviado = 0.0;
+            if (lineas != null) {
+                for (com.saa.model.crd.ParticipeDetalleGeneracionArchivo linea : lineas) {
+                    enviado += nullSafe(linea.getMontoEnviado());
+                }
+            }
+
+            if (lineas != null && !lineas.isEmpty() && Math.abs(descontado - enviado) <= TOLERANCIA_DESCUENTO_ARCH) {
+                completos++;
+                for (com.saa.model.crd.ParticipeDetalleGeneracionArchivo linea : lineas) {
+                    double monto = nullSafe(linea.getMontoEnviado());
+                    if (monto <= TOLERANCIA_DESCUENTO_ARCH) {
+                        continue;
+                    }
+                    String producto = linea.getCodigoProductoPetro();
+                    if (producto == null || producto.trim().isEmpty()) {
+                        throw new IncomeException("La línea " + linea.getCodigo() + " de la generación ARCH "
+                            + generacion.getCodigo() + " (entidad " + entidad.getCodigo() + ") no tiene código de producto.");
+                    }
+                    String descripcion = linea.getDetalleGeneracionArchivo() != null
+                        && linea.getDetalleGeneracionArchivo().getDescripcionProducto() != null
+                        ? linea.getDetalleGeneracionArchivo().getDescripcionProducto() : producto;
+                    ParticipeXCargaArchivo registro = nuevoRegistroArch(rol, nombreEntidad, producto.trim(), descripcion);
+                    registro.setSaldoActual(monto);
+                    registro.setMontoDescontar(monto);
+                    registro.setCapitalDescontado(monto);
+                    registro.setTotalDescontado(monto);
+                    registros.add(registro);
+                }
+            } else {
+                // Descuento parcial, o la entidad no tiene lineas en la generacion: una fila AH
+                // con lo descontado. La validacion de aportes la marca como novedad y el
+                // operador la reparte (D1).
+                parciales++;
+                System.out.println("  ⚠️ Descuento parcial o sin líneas en la generación - rol " + rol + ": descontado $"
+                    + descontado + ", enviado $" + enviado + " -> fila AH");
+                ParticipeXCargaArchivo registro = nuevoRegistroArch(rol, nombreEntidad, CODIGO_PRODUCTO_APORTES, "APORTES");
+                registro.setMontoDescontar(descontado);
+                registro.setTotalDescontado(descontado);
+                registros.add(registro);
+            }
+        }
+
+        // Paso 6: los de la generacion que no vienen en la respuesta no generan fila.
+        int sinRespuesta = 0;
+        for (Long codigoEntidad : lineasPorEntidad.keySet()) {
+            if (!entidadesQueContestaron.contains(codigoEntidad)) {
+                sinRespuesta++;
+            }
+        }
+        System.out.println("ℹ️ Respuesta ARCH: " + filas.size() + " cédulas, " + completos + " con descuento completo, "
+            + parciales + " parciales o sin líneas (fila AH), " + sinDescuento + " sin descuento; "
+            + sinRespuesta + " partícipes de la generación " + generacion.getCodigo() + " no vienen en la respuesta.");
+        return registros;
+    }
+
+    /** Fila Petro de ARCH con todos los montos en 0 y plazo 1: quien llama pone solo los que aplican. */
+    private ParticipeXCargaArchivo nuevoRegistroArch(Long rol, String nombre, String codigoProducto, String descripcion) {
+        ParticipeXCargaArchivo registro = new ParticipeXCargaArchivo();
+        DetalleCargaArchivo detalleTemp = new DetalleCargaArchivo();
+        detalleTemp.setCodigoPetroProducto(codigoProducto);
+        detalleTemp.setNombreProductoPetro(descripcion);
+        registro.setDetalleCargaArchivo(detalleTemp);
+        registro.setCodigoPetro(rol);
+        registro.setNombre(nombre);
+        registro.setPlazoInicial(1L);
+        registro.setMesesPlazo(1L);
+        registro.setSaldoActual(0.0);
+        registro.setInteresAnual(0.0);
+        registro.setValorSeguro(0.0);
+        registro.setMontoDescontar(0.0);
+        registro.setCapitalDescontado(0.0);
+        registro.setInteresDescontado(0.0);
+        registro.setSeguroDescontado(0.0);
+        registro.setTotalDescontado(0.0);
+        registro.setCapitalNoDescontado(0.0);
+        registro.setInteresNoDescontado(0.0);
+        registro.setDesgravamenNoDescontado(0.0);
+        return registro;
+    }
+
+    /**
+     * Lee la planilla (Excel o texto) y devuelve una fila por cedula normalizada, con los montos
+     * de las cedulas repetidas sumados (D3). Se ignoran las filas cuya identificacion no es
+     * numerica (encabezado, "Total").
+     */
+    private Map<String, FilaArch> leerFilasArch(byte[] archivo, String fileName) throws Throwable {
+        String nombre = fileName.toLowerCase();
+        List<String[]> filasCrudas = (nombre.endsWith(".xlsx") || nombre.endsWith(".xls"))
+            ? leerFilasExcelArch(archivo) : leerFilasTextoArch(archivo);
+
+        Map<String, FilaArch> acumulado = new LinkedHashMap<>();
+        int numero = 0;
+        int ignoradas = 0;
+        for (String[] columnas : filasCrudas) {
+            numero++;
+            String cedula = normalizarCedulaArch(columnas.length > 0 ? columnas[0] : null);
+            if (cedula == null) {
+                if (columnas.length > 0 && columnas[0] != null && !columnas[0].trim().isEmpty()) {
+                    ignoradas++;
+                    System.out.println("  Fila " + numero + " ignorada (identificación no numérica): \"" + columnas[0].trim() + "\"");
+                }
+                continue;
+            }
+            if (columnas.length < 4) {
+                throw new IllegalArgumentException("Fila " + numero + " del archivo (identificación " + cedula
+                    + "): se esperan 4 columnas IDENTIFICACION; NOMBRES; MONTO_CALCULADO; MONTO_DESCONTADO.");
+            }
+            double calculado;
+            double descontado;
+            try {
+                calculado = parseMontoArch(columnas[2]);
+                descontado = parseMontoArch(columnas[3]);
+            } catch (IllegalArgumentException e) {
+                throw new IllegalArgumentException("Fila " + numero + " del archivo (identificación " + cedula + "): " + e.getMessage(), e);
+            }
+            FilaArch fila = acumulado.get(cedula);
+            if (fila == null) {
+                fila = new FilaArch();
+                fila.cedula = cedula;
+                fila.nombre = columnas[1] != null ? columnas[1].trim() : "";
+                acumulado.put(cedula, fila);
+            } else {
+                System.out.println("  Cédula repetida " + cedula + " (fila " + numero + "): se suman los montos");
+            }
+            fila.calculado += calculado;
+            fila.descontado += descontado;
+        }
+        if (acumulado.isEmpty()) {
+            throw new IllegalArgumentException("No se encontraron registros válidos en el archivo de ARCH: ninguna fila "
+                + "tiene una identificación numérica. Columnas esperadas: IDENTIFICACION; NOMBRES; MONTO_CALCULADO; MONTO_DESCONTADO.");
+        }
+        System.out.println("ℹ️ Archivo ARCH leído: " + acumulado.size() + " cédulas, " + ignoradas + " filas ignoradas.");
+        return acumulado;
+    }
+
+    /**
+     * Solo digitos; si quedan 9 se antepone un 0 (Excel se come el cero inicial). {@code null}
+     * si la celda no es una identificacion numerica. Admite el ".0" que deja una celda numerica
+     * leida como texto.
+     */
+    private String normalizarCedulaArch(String valor) {
+        if (valor == null) {
+            return null;
+        }
+        String limpio = valor.trim().replaceAll("[\\s-]", "");
+        if (limpio.matches("\\d+\\.0+")) {
+            limpio = limpio.substring(0, limpio.indexOf('.'));
+        }
+        if (!limpio.matches("\\d+")) {
+            return null;
+        }
+        return limpio.length() == 9 ? "0" + limpio : limpio;
+    }
+
+    /**
+     * Monto de la planilla. Con coma Y punto, el ultimo de los dos es el decimal ("1.234,56" y
+     * "1,234.56"); con uno solo, {@link #parseDouble} ya lo resuelve. Vacio es 0.
+     */
+    private double parseMontoArch(String valor) {
+        if (valor == null) {
+            return 0.0;
+        }
+        String limpio = valor.trim().replaceAll("[\\s$]", "");
+        if (limpio.isEmpty()) {
+            return 0.0;
+        }
+        int ultimaComa = limpio.lastIndexOf(',');
+        int ultimoPunto = limpio.lastIndexOf('.');
+        if (ultimaComa >= 0 && ultimoPunto >= 0) {
+            limpio = ultimoPunto > ultimaComa ? limpio.replace(",", "") : limpio.replace(".", "").replace(",", ".");
+        }
+        return parseDouble(limpio);
+    }
+
+    /** CSV/TXT: separador ';' (o ',' y luego tabulador si la primera linea con datos no trae ';'). */
+    private List<String[]> leerFilasTextoArch(byte[] archivo) {
+        String texto = new String(archivo, StandardCharsets.UTF_8);
+        if (texto.indexOf('�') >= 0) {
+            texto = new String(archivo, StandardCharsets.ISO_8859_1);
+        }
+        if (texto.startsWith("﻿")) {
+            texto = texto.substring(1);
+        }
+        String[] lineas = texto.split("\\r?\\n");
+        char separador = ';';
+        for (String linea : lineas) {
+            if (!linea.trim().isEmpty()) {
+                separador = linea.indexOf(';') >= 0 ? ';' : (linea.indexOf(',') >= 0 ? ',' : '\t');
+                break;
+            }
+        }
+        List<String[]> filas = new ArrayList<>();
+        for (String linea : lineas) {
+            if (!linea.trim().isEmpty()) {
+                filas.add(dividirLineaArch(linea, separador));
+            }
+        }
+        return filas;
+    }
+
+    /** Divide una linea por el separador respetando las comillas dobles. */
+    private String[] dividirLineaArch(String linea, char separador) {
+        List<String> campos = new ArrayList<>();
+        StringBuilder actual = new StringBuilder();
+        boolean entreComillas = false;
+        for (int i = 0; i < linea.length(); i++) {
+            char c = linea.charAt(i);
+            if (c == '"') {
+                if (entreComillas && i + 1 < linea.length() && linea.charAt(i + 1) == '"') {
+                    actual.append('"');
+                    i++;
+                } else {
+                    entreComillas = !entreComillas;
+                }
+            } else if (c == separador && !entreComillas) {
+                campos.add(actual.toString().trim());
+                actual.setLength(0);
+            } else {
+                actual.append(c);
+            }
+        }
+        campos.add(actual.toString().trim());
+        return campos.toArray(new String[0]);
+    }
+
+    /**
+     * Excel (.xlsx / .xls) con Apache POI, primera hoja. La identificacion se lee con
+     * DataFormatter (nunca como double: saldria en notacion cientifica); los montos, como numero
+     * sin formato para que "$ 1,234.50" de la celda no se redondee ni cambie de separador.
+     */
+    private List<String[]> leerFilasExcelArch(byte[] archivo) throws Throwable {
+        List<String[]> filas = new ArrayList<>();
+        try (org.apache.poi.ss.usermodel.Workbook libro =
+                org.apache.poi.ss.usermodel.WorkbookFactory.create(new java.io.ByteArrayInputStream(archivo))) {
+            org.apache.poi.ss.usermodel.Sheet hoja = libro.getSheetAt(0);
+            org.apache.poi.ss.usermodel.DataFormatter formateador = new org.apache.poi.ss.usermodel.DataFormatter();
+            org.apache.poi.ss.usermodel.FormulaEvaluator evaluador = libro.getCreationHelper().createFormulaEvaluator();
+            for (int r = hoja.getFirstRowNum(); r <= hoja.getLastRowNum(); r++) {
+                org.apache.poi.ss.usermodel.Row fila = hoja.getRow(r);
+                if (fila == null) {
+                    continue;
+                }
+                String[] columnas = new String[4];
+                for (int c = 0; c < 4; c++) {
+                    org.apache.poi.ss.usermodel.Cell celda = fila.getCell(c,
+                        org.apache.poi.ss.usermodel.Row.MissingCellPolicy.RETURN_BLANK_AS_NULL);
+                    if (celda == null) {
+                        columnas[c] = "";
+                    } else if (c < 2) {
+                        columnas[c] = formateador.formatCellValue(celda, evaluador).trim();
+                    } else {
+                        columnas[c] = montoDeCeldaArch(celda, evaluador, formateador);
+                    }
+                }
+                filas.add(columnas);
+            }
+        } catch (Exception e) {
+            throw new IllegalArgumentException("No se pudo leer el archivo Excel de ARCH: " + e.getMessage(), e);
+        }
+        return filas;
+    }
+
+    private String montoDeCeldaArch(org.apache.poi.ss.usermodel.Cell celda,
+            org.apache.poi.ss.usermodel.FormulaEvaluator evaluador, org.apache.poi.ss.usermodel.DataFormatter formateador) {
+        org.apache.poi.ss.usermodel.CellType tipo = celda.getCellType();
+        if (tipo == org.apache.poi.ss.usermodel.CellType.FORMULA) {
+            org.apache.poi.ss.usermodel.CellValue valor = evaluador.evaluate(celda);
+            if (valor.getCellType() == org.apache.poi.ss.usermodel.CellType.NUMERIC) {
+                return java.math.BigDecimal.valueOf(valor.getNumberValue()).toPlainString();
+            }
+            return valor.getCellType() == org.apache.poi.ss.usermodel.CellType.STRING ? valor.getStringValue() : "";
+        }
+        if (tipo == org.apache.poi.ss.usermodel.CellType.NUMERIC) {
+            return java.math.BigDecimal.valueOf(celda.getNumericCellValue()).toPlainString();
+        }
+        return formateador.formatCellValue(celda).trim();
+    }
+
     /**
      * Extrae un campo de una línea
      */
@@ -1218,34 +1634,48 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 	public CargaArchivo validarArchivoPetro(InputStream archivoInputStream, String fileName, CargaArchivo cargaArchivo) throws Throwable {
 		System.out.println("Iniciando validarArchivoPetro: " + fileName);
 		
-		// VALIDACIÓN 1: Verificar que el archivo tenga extensión .txt
-		if (fileName == null || !fileName.toLowerCase().endsWith(".txt")) {
+		// ARCH (filial 2, DISENO-CARGA-RESPUESTA-ARCH.md §9.2): sus validaciones propias reemplazan
+		// a las de Petro (.txt obligatorio, que empiece con "EP"); Petrocomercial queda igual.
+		boolean esArch = esFilialArch(cargaArchivo);
+
+		// VALIDACIÓN 1: Verificar que el archivo tenga extensión .txt (ARCH: .xlsx .xls .csv .txt)
+		if (esArch) {
+			if (fileName == null || !tieneExtensionArch(fileName)) {
+				throw new IllegalArgumentException("El archivo de la respuesta de ARCH debe tener extensión .xlsx, .xls, .csv o .txt. Archivo recibido: " + fileName);
+			}
+		} else if (fileName == null || !fileName.toLowerCase().endsWith(".txt")) {
 			throw new IllegalArgumentException("El archivo debe tener extensión .txt. Archivo recibido: " + fileName);
 		}
-		
+
 		// Leer el InputStream completo en un byte array para poder reutilizarlo
 		byte[] archivoBytes = archivoInputStream.readAllBytes();
-		
+
 		// VALIDACIÓN 2: Verificar que el archivo no esté vacío
 		if (archivoBytes == null || archivoBytes.length == 0) {
 			throw new IllegalArgumentException("El archivo está vacío");
 		}
-		
+
+		List<ParticipeXCargaArchivo> registrosProcesados;
+		if (esArch) {
+			// VALIDACIÓN 3 de ARCH: al menos una fila válida (la lanza procesarContenidoArch)
+			registrosProcesados = procesarContenidoArch(archivoBytes, fileName, cargaArchivo);
+		} else {
 		// Crear un nuevo InputStream desde el byte array para leer el contenido
 		java.io.ByteArrayInputStream contenidoStream = new java.io.ByteArrayInputStream(archivoBytes);
 		String contenido = leerContenidoArchivo(contenidoStream);
-		
+
 		// VALIDACIÓN 3: Verificar que el contenido tenga el formato correcto (debe empezar con "EP")
 		if (contenido == null || contenido.trim().isEmpty()) {
 			throw new IllegalArgumentException("El archivo no tiene contenido legible");
 		}
-		
+
 		if (!contenido.trim().startsWith("EP")) {
 			throw new IllegalArgumentException("El formato del archivo es incorrecto. El archivo debe comenzar con 'EP' según el formato PETROCOMERCIAL");
 		}
-		
-        List<ParticipeXCargaArchivo> registrosProcesados = procesarContenido(contenido);
-        
+
+        registrosProcesados = procesarContenido(contenido);
+		}
+
         // VALIDACIÓN 4: Verificar que se hayan procesado registros
         if (registrosProcesados == null || registrosProcesados.isEmpty()) {
         	throw new IllegalArgumentException("No se encontraron registros válidos en el archivo. Verifique que el formato sea correcto");
@@ -4519,6 +4949,17 @@ private boolean procesarSeguroIncendioHuerfano(ParticipeXCargaArchivo participeH
 		return false;
 	}
 
+	// 2026-10-31 (DISENO-AFECTACION-MANUAL-V2.md §4bis, arreglo urgente de la carga 492): un HS
+	// huerfano con AVPC se resuelve SOLO con ellas, igual que las filas de prestamo; antes se
+	// ignoraban y se buscaba el prestamo candidato. true = "se hizo algo con este HS", que es lo
+	// que el llamador cuenta como exito (mismo significado que la novedad bloqueante).
+	System.out.println("🔍 Verificando existencia de registros AfectacionValoresParticipeCarga (HS huérfano)...");
+	if (verificarYAplicarAfectacionesManualesTotales(participeHS, CODIGO_PRODUCTO_HS, cargaArchivo)) {
+		System.out.println("✅ Se aplicaron afectaciones manuales - HS huérfano finalizado para el partícipe "
+			+ participeHS.getCodigoPetro());
+		return true;
+	}
+
 	System.out.println("  ⚠️ HS HUÉRFANO - Partícipe " + participeHS.getCodigoPetro() + " ("
 		+ participeHS.getNombre() + ") - Monto: $" + montoHS + " - Sin fila PH/PP en esta carga");
 
@@ -6083,6 +6524,21 @@ private int aplicarAporteAH(ParticipeXCargaArchivo participe, CargaArchivo carga
 	if (!modoReproceso) {
 		restaurarActivoPorPago(entidad, montoRecibido);
 	}
+
+	// 2026-10-31 (DISENO-AFECTACION-MANUAL-V2.md §4bis, arreglo urgente de la carga 492): las
+	// afectaciones manuales (AVPC) solo se miraban desde aplicarPagoParticipe, asi que una fila AH
+	// con AVPC las ignoraba y repartia por devengo, y la carga abortaba en recibido != aplicado.
+	// Misma semantica que en las filas de prestamo: si la fila tiene AVPC se aplican SOLO ellas
+	// y no corre el devengo. Se devuelve 1 (> 0) para que el llamador la cuente como exito.
+	System.out.println("🔍 Verificando existencia de registros AfectacionValoresParticipeCarga (AH)...");
+	boolean aplicadoManual = verificarYAplicarAfectacionesManualesTotales(participe, CODIGO_PRODUCTO_APORTES, cargaArchivo);
+	if (aplicadoManual) {
+		System.out.println("✅ Se aplicaron afectaciones manuales - AH finalizado para el partícipe "
+			+ participe.getCodigoPetro() + " sin reparto por devengo");
+		System.out.println("========================================");
+		return 1;
+	}
+	System.out.println("   No se encontraron afectaciones manuales - Continuando con el reparto por devengo");
 
 	System.out.println("📥 Monto total recibido: $" + montoRecibido);
 

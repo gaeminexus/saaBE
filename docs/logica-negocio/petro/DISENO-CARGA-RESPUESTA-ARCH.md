@@ -1,8 +1,12 @@
 # Diseño — carga de la respuesta de ARCH (filial 2)
 
-**Estado: BORRADOR, con decisiones abiertas (§6).** Lo escribió omen-saa-1-arb el 2026-10-29 a
-pedido del usuario. **No despachar a los ejecutores hasta cerrar el §6 y tener la salida del
-`crd/sql/332` (PARTE B).**
+**Estado: CONGELADO para implementar (2026-10-31, §9).** Borrador original de omen-saa-1-arb del
+2026-10-29. El usuario ordenó el 2026-10-31 programarlo de inmediato («ya no hagas versiones
+puente»), para procesar ARCH de octubre el mismo día. Las decisiones del §6 quedan tomadas con la
+recomendación del árbitro (§9.1); el usuario puede vetar cualquiera. Salida del `crd/sql/332`
+PARTE B: hay generación ARCH de octubre (GNAP 173, 8 líneas, 1.358,91); 7 entidades de filial 2,
+**5 sin rol y 2 con rol 0**; ninguna carga previa de filial 2. El `crd/sql/335` (puente por SQL)
+queda **descartado**: no correrlo.
 
 ## 1. El pedido
 
@@ -116,3 +120,79 @@ confirma que la generación de agosto cuadra con el PDF.
 
 - Leer el PDF directamente: es un reporte de pantalla del sistema de ARCH, no un formato estable.
 - Cambiar el formato que SAA le envía a ARCH.
+
+## 9. Especificación para implementar (2026-10-31)
+
+### 9.1 Decisiones tomadas (recomendación del árbitro, orden del usuario de programarlo ya)
+
+- **D1, descuento parcial:** la novedad es BLOQUEANTE y el operador reparte a mano en «Afectar
+  cuotas». Desde `364dc1c8` las AVPC también se aplican en filas AH.
+- **D2, formato:** se aceptan `.xlsx`, `.xls`, `.csv` y `.txt`. En CSV/TXT el separador es `;`
+  (también `,` o tabulador si no hay `;`). Columnas en este orden:
+  `IDENTIFICACION; NOMBRES; MONTO_CALCULADO; MONTO_DESCONTADO`. Primera fila de encabezado
+  opcional. Se ignoran las filas cuya identificación no sea numérica (encabezados, «Total»).
+- **D3:** si una cédula aparece más de una vez, se suman sus montos.
+- **D4:** la transferencia se registra igual que en Petro (`TRCR`, confirmar recepción).
+- **Rol técnico:** la carga identifica por rol en todo su recorrido. A una entidad de ARCH con
+  `ENTDRLPC` nulo o 0, el lector le asigna y **graba** `ENTDRLPC = 9000000 + ENTDCDGO`. Es el
+  mismo efecto que ya tiene `actualizaCodigoPetroEntidad`: 7 dígitos, por encima de cualquier rol
+  real de Petro, único porque ENTDCDGO es único.
+
+### 9.2 Backend
+
+- **Punto de entrada:** `CargaArchivoPetroServiceImpl.validarArchivoPetro` (~1003) y
+  `procesarArchivoPetro` (~310). Hoy los dos llaman a `procesarContenido(contenido)`, que lee el
+  formato de Petrocomercial. Si `cargaArchivo.getFilial().getCodigo() == Filiales.ARCH`, en su
+  lugar se llama a un método nuevo `procesarContenidoArch(byte[] archivo, String fileName,
+  CargaArchivo cargaArchivo)`. Ese método devuelve la **misma** `List<ParticipeXCargaArchivo>`
+  (cada una con su `DetalleCargaArchivo` temporal por producto), así que `agruparPorAporte`,
+  `calcularTotalesGenerales`, `almacenaRegistros` y todo lo de abajo no cambian.
+- **Las validaciones propias de Petro** (extensión `.txt`, que empiece con «EP») se saltan para
+  ARCH y se reemplazan por las suyas: extensión de la lista de D2, archivo no vacío, al menos una
+  fila válida.
+- **`procesarContenidoArch`**, por cada cédula con su descontado sumado:
+  1. Normaliza la cédula: solo dígitos; si quedan 9, antepone un `0` (Excel come el cero).
+  2. Busca la entidad por `ENTDNMID` dentro de filial 2. Si no existe, **aborta** con un mensaje
+     que nombra la cédula y el nombre del archivo (igual que «sin entidad» en Petro).
+  3. Le asigna el rol técnico si no tiene (§9.1) y lo graba.
+  4. Busca la generación: `GNAP` con filial 2, `GNAPMSPE = mesAfectacion` y
+     `GNAPANPE = anioAfectacion` de la carga. Si hay varias, la de `GNAPCDGO` mayor. Si no hay
+     ninguna, **aborta**: «No existe la generación de descuentos ARCH de {mes}/{año}».
+  5. Toma las líneas PDGA de esa entidad en esa generación:
+     - **|descontado − Σ enviado| ≤ 0,01:** una fila por línea PDGA. Producto = `PDGACDPT`;
+       `totalDescontado = montoDescontar = capitalDescontado = saldoActual = PDGAMNEN`; el resto de
+       montos en 0; plazo y meses en 1; `codigoPetro` = rol; `nombre` = `ENTDRZNS`, el de la base y
+       no el del archivo, para que no salte «código no coincide con nombre».
+     - **Descontado > 0,01 pero distinto de lo enviado, o la entidad no tiene líneas en la
+       generación:** UNA fila de producto `AH` con `totalDescontado = montoDescontar = descontado`.
+       La validación de aportes la marca como novedad y el operador la reparte (D1).
+     - **Descontado ≤ 0,01:** no se crea fila.
+  6. Los partícipes de la generación que no vienen en la respuesta no generan fila. Se cuentan en
+     el log.
+- **Lectura de Excel con POI** (ya está en el `pom.xml`). La cédula puede llegar como celda
+  numérica: leerla con `DataFormatter` o como `long`, nunca como `double` con notación científica.
+- **Fuera de alcance:** `PDGAMNDC`/`PDGAFCDC`, llenar las líneas no descontadas, y tocar nada del
+  proceso de aplicación.
+
+### 9.3 Frontend (`crd/forms/archivos-petro/carga/carga-aporte-back`)
+
+> Corregido el 2026-10-31 a raíz del reporte del FE: la pantalla del menú «Carga Aportes» es
+> `carga-aporte-back/`, y es la única que llama a `validarArchivoPetro` (valida `.txt` en el html,
+> en la extensión y en el MIME). `carga-aportes/` está fuera del menú, arma las filas en el
+> navegador y llama a `procesarArchivoPetro`: no se toca.
+
+- Si la filial elegida es ARCH (código 2): el selector de archivo acepta
+  `.xlsx,.xls,.csv,.txt`, y la pantalla muestra el formato esperado (las 4 columnas, la cédula
+  como texto) con un botón «Descargar plantilla» que genera en el navegador un CSV con el
+  encabezado `IDENTIFICACION;NOMBRES;MONTO_CALCULADO;MONTO_DESCONTADO`.
+- **Si la filial es Petrocomercial, nada cambia.**
+- **Mismo endpoint y mismo cuerpo:** `POST /rest/asgn/validarArchivoPetro`, multipart con
+  `archivo`, `archivoNombre` y `cargaArchivo` (que ya lleva la filial).
+- Hay que quitar cualquier validación del FE que exija `.txt` o «EP», pero solo para ARCH.
+
+### 9.4 Aceptación
+
+Cargar la respuesta de octubre como filial ARCH, mes 10, año 2026. La vista previa muestra a los
+partícipes con sus productos según la generación 173. Los de descuento completo quedan sin novedad
+de monto; los parciales, con novedad bloqueante. Se registra la transferencia y se procesa: el
+recibido es igual al aplicado y se genera el asiento.

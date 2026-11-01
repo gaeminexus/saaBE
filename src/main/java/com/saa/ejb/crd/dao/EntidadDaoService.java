@@ -116,6 +116,16 @@ public interface EntidadDaoService extends EntityDao<Entidad> {
 	Entidad selectByNumeroIdentificacion(String numeroIdentificacion) throws Throwable;
 
 	/**
+	 * Carga de la respuesta de ARCH (DISENO-CARGA-RESPUESTA-ARCH.md §9.2): busca una Entidad por su
+	 * número de identificación DENTRO de una filial. A diferencia de
+	 * {@link #selectByNumeroIdentificacion}, no mezcla cédulas de otras filiales.
+	 * @param numeroIdentificacion : Cédula ya normalizada (solo dígitos, 10)
+	 * @param codigoFilial : Código de la filial (CRD.FLLL)
+	 * @return : Entidad de menor código si hay varias, o null si no existe
+	 */
+	Entidad selectByNumeroIdentificacionYFilial(String numeroIdentificacion, Long codigoFilial) throws Throwable;
+
+	/**
 	 * Busca una Entidad por su código usando em.find() — retorna null si no existe.
 	 */
 	Entidad findById(Long codigo) throws Throwable;

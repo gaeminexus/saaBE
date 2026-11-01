@@ -459,6 +459,16 @@ de mora; con el motor eso deja de ser una limitación, porque ya no hace falta q
 **Desde el 2026-08-31, una AVPC sin cuota YA NO se omite**: si tiene tipo de aporte va por
 §3.6b; si no tiene ninguno de los dos, aborta la carga (ver el punto 2 de §3.3).
 
+**Desde el 2026-10-31, las AVPC se aplican también en las filas AH y en el HS huérfano.** Hasta
+esa fecha `verificarYAplicarAfectacionesManualesTotales` solo se llamaba desde
+`aplicarPagoParticipe` (filas PE/PH/PQ/PP): una fila AH iba directo al reparto por devengo y un HS
+huérfano a buscar préstamo candidato, **ignorando sin aviso** la afectación del operador (carga
+492: AVPC 688-692 a cesantía, la carga abortaba en recibido ≠ aplicado). Ahora `aplicarAporteAH`
+(después de `restaurarActivoPorPago`) y `procesarSeguroIncendioHuerfano` (después del control de
+monto 0) llaman al mismo método. Misma semántica que en préstamos: si la fila tiene AVPC se aplican
+**solo** ellas (todo o nada por fila); lo que no cubran queda sin aplicar y lo atrapa el control
+final. Diseño: `DISENO-AFECTACION-MANUAL-V2.md` §4bis.
+
 **Estado del préstamo** (`verificarYActualizarEstadoPrestamo`):
 - Se escribe en `idEstado` (PRSTIDST). Sale temprano si ya está en estado terminal (3/4/5).
 - Exige `contarCuotasByPrestamo > 0` (un préstamo sin amortización NO se cancela).
@@ -821,3 +831,32 @@ esta siempre resuelve un `PlanCuenta` con empresa (verificado contra `TSR.CNBC`/
   (`ClasificadorBandaService.clasificarEnBandas`) aplicado a cada cuota pagada de la carga.
 - El reverso de `precondición 0b` cuando se reversa el paso 2 (hoy `reversarRecepcion`
   rechaza si `CRARESTD == PROCESADO`; falta el reverso simétrico del propio paso 2).
+
+## 7. Respuesta de ARCH (filial 2) — 2026-10-31
+
+La carga de una `CargaArchivo` con filial ARCH (`Filiales.ARCH = 2`) usa **el mismo flujo** que la de
+Petrocomercial (`validarArchivoPetro` → `almacenaRegistros` → fases 2 y 3), pero la lectura no es la del
+reporte posicional: la hace `procesarContenidoArch` en `CargaArchivoPetroServiceImpl`, que traduce la
+planilla de ARCH a la misma `List<ParticipeXCargaArchivo>`. Todo lo de abajo (agrupación, totales,
+validaciones, aplicación) no cambia. **El contrato completo es
+`DISENO-CARGA-RESPUESTA-ARCH.md` §9**; acá solo lo que hay que saber al tocar el código:
+
+- **Punto de entrada:** `validarArchivoPetro` y `procesarArchivoPetro` bifurcan con `esFilialArch`. Para
+  ARCH se saltan el `.txt` obligatorio y el «EP» y se exige extensión `.xlsx/.xls/.csv/.txt`, archivo no
+  vacío y al menos una fila con identificación numérica. Petrocomercial queda idéntico.
+- **Formato:** `IDENTIFICACION; NOMBRES; MONTO_CALCULADO; MONTO_DESCONTADO`. CSV/TXT con `;` (o `,` y
+  tabulador si la primera línea con datos no trae `;`); Excel por Apache POI, primera hoja. Las filas con
+  identificación no numérica se ignoran; la misma cédula repetida se suma.
+- **Entidad y rol:** cédula normalizada (solo dígitos, 9 → antepone 0) contra `ENTDNMID` en filial 2
+  (`EntidadDaoService.selectByNumeroIdentificacionYFilial`); sin entidad, aborta nombrando la cédula. Si
+  `ENTDRLPC` es nulo o 0 se graba `9000000 + ENTDCDGO`: la carga identifica por rol en todo su recorrido.
+- **Generación:** `GNAP` de filial 2 con `mesPeriodo/anioPeriodo` = mes/año de afectación de la carga; si
+  hay varias, la de código mayor (`GeneracionArchivoPetroDaoService.selectUltimaByPeriodo`); si no hay,
+  aborta.
+- **Reparto:** con |descontado − Σ `PDGAMNEN`| ≤ 0,01 → una fila por línea PDGA (producto `PDGACDPT`, montos
+  = `PDGAMNEN`, plazo 1, `codigoPetro` = rol, nombre = razón social de la base; las líneas en 0 se
+  omiten). Parcial o sin líneas → una fila `AH` con lo descontado (queda como novedad bloqueante y el
+  operador la reparte con «Afectar cuotas»). Descontado ≤ 0,01 → sin fila. Los partícipes de la generación
+  que no contestan no generan fila y se cuentan en el log.
+- **Pendiente conocido:** `FileService.EXTENSIONES_PERMITIDAS` (módulo basico) no incluye `.csv`; mientras
+  no se agregue, el REST y la subida del archivo físico rechazan el `.csv` aunque el lector lo entienda.

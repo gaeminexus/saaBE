@@ -50,6 +50,22 @@ public class GeneracionArchivoPetroDaoServiceImpl extends EntityDaoImpl<Generaci
     }
 
     @Override
+    @SuppressWarnings("unchecked")
+    public GeneracionArchivoPetro selectUltimaByPeriodo(Long mes, Long anio, Long codigoFilial) throws Throwable {
+        System.out.println("Buscando la ultima generacion del periodo: " + mes + "/" + anio + " - Filial: " + codigoFilial);
+        Query query = em.createQuery(
+            "SELECT g FROM GeneracionArchivoPetro g " +
+            "WHERE g.mesPeriodo = :mes AND g.anioPeriodo = :anio AND g.filial.codigo = :codigoFilial " +
+            "ORDER BY g.codigo DESC");
+        query.setParameter("mes", mes);
+        query.setParameter("anio", anio);
+        query.setParameter("codigoFilial", codigoFilial);
+        query.setMaxResults(1);
+        List<GeneracionArchivoPetro> resultados = query.getResultList();
+        return resultados.isEmpty() ? null : resultados.get(0);
+    }
+
+    @Override
     public List<GeneracionArchivoPetro> selectByFilial(Long codigoFilial) throws Throwable {
         System.out.println("Listando generaciones de la filial: " + codigoFilial);
         
