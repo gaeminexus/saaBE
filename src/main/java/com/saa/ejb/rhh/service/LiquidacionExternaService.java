@@ -86,7 +86,7 @@ public interface LiquidacionExternaService extends EntityService<LiquidacionExte
 	 * @return				: La liquidacion, sincronizada
 	 * @throws Throwable	: Excepcion
 	 */
-	LiquidacionExterna sincronizarPago(Long idLiquidacion) throws Throwable;
+	LiquidacionExterna sincronizarPago(Long idLiquidacion, String usuario) throws Throwable;
 
 	/**
 	 * Anula la liquidacion (§4). En REGISTRADA pasa directo a ANULADA; en EN_TESORERIA

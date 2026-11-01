@@ -73,7 +73,7 @@ public interface ProcesoNominaService {
 	 * @throws Throwable		: Excepcion
 	 */
 	@TransactionAttribute(TransactionAttributeType.SUPPORTS)
-	ResultadoCalculoNomina simular(Long idContrato, Long idPeriodoNomina) throws Throwable;
+	ResultadoCalculoNomina simular(Long idContrato, Long idPeriodoNomina, String usuario) throws Throwable;
 
 	/**
 	 * Aprueba el periodo. Es el momento en que se validan las cuentas contables, para

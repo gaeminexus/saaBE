@@ -80,6 +80,10 @@ import jakarta.persistence.PersistenceContext;
 @Stateless
 public class ImportacionMarcacionesServiceImpl implements ImportacionMarcacionesService {
 
+    /** U-4: todo proceso que graba valida el usuario PRIMERO. */
+    @jakarta.ejb.EJB
+    private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
     /** Bandera afirmativa. */
     private static final String SI = "S";
 
@@ -132,6 +136,8 @@ public class ImportacionMarcacionesServiceImpl implements ImportacionMarcaciones
     @TransactionAttribute(TransactionAttributeType.REQUIRED)
     public ResultadoImportacionMarcaciones confirmar(InputStream archivo, String nombreArchivo,
             Long idFormato, Long idEmpresa, String usuario) throws Throwable {
+        // U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+        usuario = usuarioValidacionService.validar(usuario);
         System.out.println("Ingresa al metodo confirmar de importacionMarcaciones service, archivo: "
                 + nombreArchivo);
         return procesa(archivo, nombreArchivo, idFormato, idEmpresa, usuario, true);
@@ -143,6 +149,8 @@ public class ImportacionMarcacionesServiceImpl implements ImportacionMarcaciones
     @Override
     @TransactionAttribute(TransactionAttributeType.REQUIRED)
     public void anular(Long idCarga, String motivo, String usuario) throws Throwable {
+        // U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+        usuario = usuarioValidacionService.validar(usuario);
         System.out.println("Ingresa al metodo anular de importacionMarcaciones service, carga: " + idCarga);
         if (motivo == null || motivo.trim().isEmpty()) {
             throw new IncomeException("La anulacion de una carga de marcaciones exige un motivo.");

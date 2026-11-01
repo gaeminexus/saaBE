@@ -52,6 +52,10 @@ import jakarta.persistence.PersistenceContext;
 @Stateless
 public class RetencionRentaServiceImpl implements RetencionRentaService {
 
+	/** U-4: todo proceso que graba valida el usuario PRIMERO. */
+	@jakarta.ejb.EJB
+	private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
 	/** Marca de "si" de las banderas S/N del esquema. */
 	private static final String SI = "S";
 
@@ -95,6 +99,8 @@ public class RetencionRentaServiceImpl implements RetencionRentaService {
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
 	public ResultadoProyeccionIr proyectar(Long idEmpleado, Integer anio, Integer mesDesde,
 			String usuario) throws Throwable {
+		// U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+		usuario = usuarioValidacionService.validar(usuario);
 		System.out.println("Ingresa al metodo proyectar de retencionRenta service, empleado: " + idEmpleado
 				+ ", anio: " + anio + ", mes desde: " + mesDesde);
 		return proyecta(idEmpleado, anio, mesDesde, usuario, false);
@@ -106,6 +112,8 @@ public class RetencionRentaServiceImpl implements RetencionRentaService {
 	@Override
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
 	public ResultadoProyeccionIr liquidarAnio(Long idEmpleado, Integer anio, String usuario) throws Throwable {
+		// U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+		usuario = usuarioValidacionService.validar(usuario);
 		System.out.println("Ingresa al metodo liquidarAnio de retencionRenta service, empleado: " + idEmpleado
 				+ ", anio: " + anio);
 		// En la liquidacion anual no hay meses futuros: todo lo del anio ya se percibio.
@@ -118,6 +126,8 @@ public class RetencionRentaServiceImpl implements RetencionRentaService {
 	@Override
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
 	public int proyectarTodos(Long idEmpresa, Integer anio, String usuario) throws Throwable {
+		// U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+		usuario = usuarioValidacionService.validar(usuario);
 		System.out.println("Ingresa al metodo proyectarTodos de retencionRenta service, empresa: " + idEmpresa
 				+ ", anio: " + anio);
 		LocalDate desde = LocalDate.of(anio.intValue(), 1, 1);
@@ -143,7 +153,7 @@ public class RetencionRentaServiceImpl implements RetencionRentaService {
 	 */
 	@Override
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
-	public Double obtenerRetencionMensual(Long idEmpleado, Integer anio, Integer mes) throws Throwable {
+	public Double obtenerRetencionMensual(Long idEmpleado, Integer anio, Integer mes, String usuario) throws Throwable {
 		System.out.println("Ingresa al metodo obtenerRetencionMensual de retencionRenta service, empleado: "
 				+ idEmpleado + ", " + mes + "/" + anio);
 		ProyeccionImpuestoRenta vigente = proyeccionImpuestoRentaDaoService.selectVigente(idEmpleado, anio);
@@ -152,7 +162,7 @@ public class RetencionRentaServiceImpl implements RetencionRentaService {
 			// pide el paso 11 del algoritmo de calcularPeriodo.
 			System.out.println("No hay proyeccion vigente para el empleado " + idEmpleado
 					+ " en " + anio + ": se genera en linea.");
-			ResultadoProyeccionIr resultado = proyectar(idEmpleado, anio, mes, "SISTEMA");
+			ResultadoProyeccionIr resultado = proyectar(idEmpleado, anio, mes, usuario); // U-4: el usuario real del cálculo (antes «SISTEMA»)
 			return RedondeoNomina.redondea(resultado.getRetencionMensual());
 		}
 		return RedondeoNomina.redondea(vigente.getRetencionMensual());

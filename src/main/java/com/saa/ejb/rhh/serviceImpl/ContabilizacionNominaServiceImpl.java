@@ -85,6 +85,10 @@ import jakarta.ejb.TransactionAttributeType;
 @Stateless
 public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaService {
 
+    /** U-4: todo proceso que graba valida el usuario PRIMERO. */
+    @jakarta.ejb.EJB
+    private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
     /** Movimiento DEBE en CNT.DTPL.DTPLMVMN. */
     private static final long MOVIMIENTO_DEBE = 1L;
 
@@ -211,6 +215,8 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
     @Override
     @TransactionAttribute(TransactionAttributeType.REQUIRED)
     public Asiento contabilizarRol(Long idPeriodoNomina, String usuario) throws Throwable {
+        // U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+        usuario = usuarioValidacionService.validar(usuario);
         System.out.println("Ingresa al metodo contabilizarRol de contabilizacionNomina service, periodo: "
                 + idPeriodoNomina);
 
@@ -284,6 +290,8 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
     @Override
     @TransactionAttribute(TransactionAttributeType.REQUIRED)
     public Asiento contabilizarProvisiones(Long idPeriodoNomina, String usuario) throws Throwable {
+        // U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+        usuario = usuarioValidacionService.validar(usuario);
         System.out.println("Ingresa al metodo contabilizarProvisiones de contabilizacionNomina service, periodo: "
                 + idPeriodoNomina);
 
@@ -341,6 +349,8 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
     @Override
     @TransactionAttribute(TransactionAttributeType.REQUIRED)
     public void descontabilizarPeriodo(Long idPeriodoNomina, String motivo, String usuario) throws Throwable {
+        // U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+        usuario = usuarioValidacionService.validar(usuario);
         System.out.println("Ingresa al metodo descontabilizarPeriodo de contabilizacionNomina service, periodo: "
                 + idPeriodoNomina);
 
@@ -435,6 +445,8 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
     @TransactionAttribute(TransactionAttributeType.REQUIRED)
     public Asiento contabilizarPago(Long idOrdenPago, LocalDate fechaAcreditacion,
             String usuario) throws Throwable {
+        // U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+        usuario = usuarioValidacionService.validar(usuario);
         System.out.println("Ingresa al metodo contabilizarPago de contabilizacionNomina service, orden: "
                 + idOrdenPago);
 
@@ -605,6 +617,8 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
     @Override
     @TransactionAttribute(TransactionAttributeType.REQUIRED)
     public Asiento contabilizarLiquidacion(Long idLiquidacion, String usuario) throws Throwable {
+        // U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+        usuario = usuarioValidacionService.validar(usuario);
         System.out.println("Ingresa al metodo contabilizarLiquidacion de contabilizacionNomina service,"
                 + " liquidacion: " + idLiquidacion);
 
@@ -949,6 +963,8 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
     public Asiento contabilizarBajaProvisionBeneficioSocial(Long idEmpresa, int tipoBeneficio,
             List<Long> idsEmpleados, Double total, LocalDate fecha, String descripcion, String usuario)
             throws Throwable {
+        // U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+        usuario = usuarioValidacionService.validar(usuario);
         System.out.println("Ingresa al metodo contabilizarBajaProvisionBeneficioSocial de"
                 + " contabilizacionNomina service, empresa: " + idEmpresa + ", tipo: " + tipoBeneficio
                 + ", " + (idsEmpleados != null ? idsEmpleados.size() : 0) + " empleado(s)");

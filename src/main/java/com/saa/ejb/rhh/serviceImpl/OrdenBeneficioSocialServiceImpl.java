@@ -55,6 +55,10 @@ import jakarta.persistence.PersistenceContext;
 @Stateless
 public class OrdenBeneficioSocialServiceImpl implements OrdenBeneficioSocialService {
 
+    /** U-4: todo proceso que graba valida el usuario PRIMERO. */
+    @jakarta.ejb.EJB
+    private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
     /** Prefijo del numero de la orden: ODBS-{anio}-{secuencial de 4 digitos}. */
     private static final String PREFIJO_NUMERO = "ODBS-%d-%04d";
 
@@ -156,6 +160,8 @@ public class OrdenBeneficioSocialServiceImpl implements OrdenBeneficioSocialServ
     @Override
     public Map<String, Object> generar(Long idEmpresa, Long tipoBeneficio, Integer anio, Long region,
             String usuario) throws Throwable {
+        // U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+        usuario = usuarioValidacionService.validar(usuario);
         System.out.println("=== generar orden de beneficio social | idEmpresa=" + idEmpresa
                 + " | tipoBeneficio=" + tipoBeneficio + " | anio=" + anio + " | region=" + region + " ===");
 
@@ -306,6 +312,8 @@ public class OrdenBeneficioSocialServiceImpl implements OrdenBeneficioSocialServ
     @Override
     public Map<String, Object> enviarATesoreria(Long idOrden, Long idUsuario, String observacion)
             throws Throwable {
+        // U-4: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+        usuarioValidacionService.validarPorId(idUsuario);
         System.out.println("=== enviarATesoreria orden de beneficio social | idOrden=" + idOrden
                 + " | idUsuario=" + idUsuario + " ===");
 
@@ -365,6 +373,8 @@ public class OrdenBeneficioSocialServiceImpl implements OrdenBeneficioSocialServ
     @Override
     public Map<String, Object> confirmarPago(Long idOrden, LocalDate fechaPago, String usuario)
             throws Throwable {
+        // U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+        usuario = usuarioValidacionService.validar(usuario);
         System.out.println("=== confirmarPago orden de beneficio social | idOrden=" + idOrden
                 + " | fechaPago=" + fechaPago + " ===");
 
@@ -438,6 +448,8 @@ public class OrdenBeneficioSocialServiceImpl implements OrdenBeneficioSocialServ
 
     @Override
     public Map<String, Object> anular(Long idOrden, String motivo, String usuario) throws Throwable {
+        // U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+        usuario = usuarioValidacionService.validar(usuario);
         System.out.println("=== anular orden de beneficio social | idOrden=" + idOrden + " ===");
 
         OrdenBeneficioSocial orden = em.find(OrdenBeneficioSocial.class, idOrden);
@@ -518,6 +530,8 @@ public class OrdenBeneficioSocialServiceImpl implements OrdenBeneficioSocialServ
 
     @Override
     public Map<String, Object> revertirPago(Long idOrden, String motivo, String usuario) throws Throwable {
+        // U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+        usuario = usuarioValidacionService.validar(usuario);
         System.out.println("=== revertirPago orden de beneficio social | idOrden=" + idOrden + " ===");
 
         OrdenBeneficioSocial orden = em.find(OrdenBeneficioSocial.class, idOrden);
@@ -596,7 +610,7 @@ public class OrdenBeneficioSocialServiceImpl implements OrdenBeneficioSocialServ
 
         Long idAsiento = orden.getAsiento();
         if (idAsiento != null) {
-            asientoService.anulaAsiento(idAsiento);
+            asientoService.anulaAsiento(idAsiento, usuario, motivo); // U-4: con el usuario que revierte (validado al entrar)
         }
 
         for (LiquidacionBeneficioSocial liquidacion : liquidaciones) {
@@ -877,11 +891,8 @@ public class OrdenBeneficioSocialServiceImpl implements OrdenBeneficioSocialServ
         }
     }
 
-    private String nombreUsuario(Long idUsuario) {
-        if (idUsuario == null) {
-            return "SISTEMA";
-        }
-        Usuario usuario = em.find(Usuario.class, idUsuario);
-        return (usuario != null && usuario.getNombre() != null) ? usuario.getNombre() : "SISTEMA";
+    private String nombreUsuario(Long idUsuario) throws Throwable {
+        // U-4: sin relleno. Un idUsuario nulo o inexistente (incluido el 0 del frontend sin sesión) detiene el proceso.
+        return usuarioValidacionService.validarPorId(idUsuario);
     }
 }

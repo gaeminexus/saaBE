@@ -63,6 +63,10 @@ import jakarta.persistence.PersistenceContext;
 @Stateless
 public class CalculoUtilidadesServiceImpl implements CalculoUtilidadesService {
 
+    /** U-4: todo proceso que graba valida el usuario PRIMERO. */
+    @jakarta.ejb.EJB
+    private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
     /** Bandera afirmativa. */
     private static final String SI = "S";
 
@@ -97,6 +101,8 @@ public class CalculoUtilidadesServiceImpl implements CalculoUtilidadesService {
     @TransactionAttribute(TransactionAttributeType.REQUIRED)
     public Utilidad calcular(Long idEmpresa, Integer anio, Double utilidadContable, String usuario)
             throws Throwable {
+        // U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+        usuario = usuarioValidacionService.validar(usuario);
         System.out.println("Ingresa al metodo calcular de calculoUtilidades service, empresa: "
                 + idEmpresa + ", anio: " + anio);
 

@@ -38,6 +38,10 @@ import jakarta.persistence.PersistenceContext;
 @Stateless
 public class AnticipoEmpleadoServiceImpl implements AnticipoEmpleadoService {
 
+	/** U-4: todo proceso que graba valida el usuario PRIMERO. */
+	@jakarta.ejb.EJB
+	private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
 	@EJB
 	private AnticipoEmpleadoDaoService anticipoEmpleadoDaoService;
 
@@ -113,6 +117,8 @@ public class AnticipoEmpleadoServiceImpl implements AnticipoEmpleadoService {
 	public AnticipoEmpleado solicitar(Long idEmpleado, Double valor, Integer numeroCuotas,
 			LocalDate fechaInicioDescuento, String motivo, String observacion, Long idUsuario)
 			throws Throwable {
+		// U-4: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 		System.out.println("=== solicitar anticipo | idEmpleado=" + idEmpleado + " | valor=" + valor
 				+ " | numeroCuotas=" + numeroCuotas + " ===");
 
@@ -163,6 +169,8 @@ public class AnticipoEmpleadoServiceImpl implements AnticipoEmpleadoService {
 	@Override
 	public Map<String, Object> aprobar(Long idAnticipo, Long idCuentaBancariaOrigen, Long formaPago,
 			boolean debitoAutomatico, String referencia, Long idUsuario) throws Throwable {
+		// U-4: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 		System.out.println("=== aprobar anticipo | idAnticipo=" + idAnticipo
 				+ " | idCuentaBancariaOrigen=" + idCuentaBancariaOrigen + " | formaPago=" + formaPago + " ===");
 
@@ -266,6 +274,8 @@ public class AnticipoEmpleadoServiceImpl implements AnticipoEmpleadoService {
 
 	@Override
 	public void anular(Long idAnticipo, String motivo, Long idUsuario) throws Throwable {
+		// U-4: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 		System.out.println("=== anular anticipo | idAnticipo=" + idAnticipo + " ===");
 
 		AnticipoEmpleado anticipo = anticipoEmpleadoDaoService.selectById(idAnticipo, NombreEntidadesRhh.ANTICIPO_EMPLEADO);
@@ -337,12 +347,9 @@ public class AnticipoEmpleadoServiceImpl implements AnticipoEmpleadoService {
 		return nombre.isEmpty() ? ("empleado " + empleado.getCodigo()) : nombre;
 	}
 
-	private String nombreUsuario(Long idUsuario) {
-		if (idUsuario == null) {
-			return "SISTEMA";
-		}
-		Usuario usuario = em.find(Usuario.class, idUsuario);
-		return (usuario != null && usuario.getNombre() != null) ? usuario.getNombre() : "SISTEMA";
+	private String nombreUsuario(Long idUsuario) throws Throwable {
+		// U-4: sin relleno. Un idUsuario nulo o inexistente (incluido el 0 del frontend sin sesión) detiene el proceso.
+		return usuarioValidacionService.validarPorId(idUsuario);
 	}
 
 	private String nvl(String valor, String porDefecto) {

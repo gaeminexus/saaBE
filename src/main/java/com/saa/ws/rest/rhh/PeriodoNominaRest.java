@@ -90,6 +90,11 @@ public class PeriodoNominaRest {
         try {
             PeriodoNomina actualizado = PeriodoNominaService.saveSingle(registro);
             return Response.status(Response.Status.OK).entity(actualizado).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-4: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar registro: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
@@ -103,6 +108,11 @@ public class PeriodoNominaRest {
         try {
             PeriodoNomina creado = PeriodoNominaService.saveSingle(registro);
             return Response.status(Response.Status.CREATED).entity(creado).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-4: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear registro: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
@@ -131,6 +141,11 @@ public class PeriodoNominaRest {
             PeriodoNomina elimina = new PeriodoNomina();
             PeriodoNominaDaoService.remove(elimina, id);
             return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-4: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar registro: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
@@ -151,6 +166,11 @@ public class PeriodoNominaRest {
         try {
             List<String> mensajes = procesoNominaService.validarPeriodo(idPeriodo);
             return Response.status(Response.Status.OK).entity(mensajes).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-4: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al validar el periodo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
@@ -168,6 +188,11 @@ public class PeriodoNominaRest {
         try {
             ResultadoCalculoPeriodo resultado = procesoNominaService.calcularPeriodo(idPeriodo, usuario);
             return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-4: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al calcular el periodo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
@@ -190,6 +215,11 @@ public class PeriodoNominaRest {
             ResultadoCalculoNomina resultado = procesoNominaService.recalcularEmpleado(
                     idPeriodo, idEmpleado, preservar, usuario);
             return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-4: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al recalcular el empleado: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
@@ -207,7 +237,8 @@ public class PeriodoNominaRest {
         try {
             Long idContrato = leeLong(datos, "idContrato");
             Long idPeriodo = leeLong(datos, "idPeriodo");
-            ResultadoCalculoNomina resultado = procesoNominaService.simular(idContrato, idPeriodo);
+            ResultadoCalculoNomina resultado = procesoNominaService.simular(idContrato, idPeriodo,
+                    datos.get("usuario") != null ? String.valueOf(datos.get("usuario")) : null);
             return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al simular: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
@@ -226,6 +257,11 @@ public class PeriodoNominaRest {
         try {
             procesoNominaService.aprobarPeriodo(idPeriodo, usuario);
             return Response.status(Response.Status.OK).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-4: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al aprobar el periodo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
@@ -244,6 +280,11 @@ public class PeriodoNominaRest {
             procesoNominaService.reabrirPeriodo(idPeriodo, leeTexto(datos, "motivo"),
                     leeTexto(datos, "usuarioRegistro"));
             return Response.status(Response.Status.OK).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-4: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al reabrir el periodo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
@@ -264,6 +305,11 @@ public class PeriodoNominaRest {
             contabilizacionNominaService.descontabilizarPeriodo(idPeriodo, leeTexto(datos, "motivo"),
                     leeTexto(datos, "usuarioRegistro"));
             return Response.status(Response.Status.OK).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-4: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al descontabilizar el periodo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
@@ -293,6 +339,11 @@ public class PeriodoNominaRest {
                         .type(MediaType.APPLICATION_JSON).build();
             }
             return Response.status(Response.Status.OK).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-4: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al cerrar el periodo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
@@ -312,6 +363,11 @@ public class PeriodoNominaRest {
                     leeLong(datos, "idEmpleado"), leeTexto(datos, "motivo"),
                     leeTexto(datos, "usuarioRegistro"));
             return Response.status(Response.Status.OK).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-4: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al excluir el empleado: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
@@ -350,6 +406,11 @@ public class PeriodoNominaRest {
                 return Response.status(Response.Status.NO_CONTENT).build();
             }
             return Response.status(Response.Status.OK).entity(asiento).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-4: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al contabilizar el periodo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
@@ -371,6 +432,11 @@ public class PeriodoNominaRest {
                 return Response.status(Response.Status.NO_CONTENT).build();
             }
             return Response.status(Response.Status.OK).entity(asiento).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-4: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al contabilizar las provisiones: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }

@@ -59,6 +59,10 @@ import jakarta.persistence.PersistenceContext;
 @Stateless
 public class BeneficioSocialServiceImpl implements BeneficioSocialService {
 
+	/** U-4: todo proceso que graba valida el usuario PRIMERO. */
+	@jakarta.ejb.EJB
+	private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
 	/** Meses del anio, divisor del decimo tercero. */
 	private static final double MESES_ANIO = 12D;
 
@@ -101,6 +105,8 @@ public class BeneficioSocialServiceImpl implements BeneficioSocialService {
 	@Override
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
 	public int generarDecimoTercero(Long idEmpresa, Integer anio, String usuario) throws Throwable {
+		// U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+		usuario = usuarioValidacionService.validar(usuario);
 		System.out.println("Ingresa al metodo generarDecimoTercero de beneficioSocial service, empresa: "
 				+ idEmpresa + ", anio: " + anio);
 
@@ -132,6 +138,8 @@ public class BeneficioSocialServiceImpl implements BeneficioSocialService {
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
 	public int generarDecimoCuarto(Long idEmpresa, Integer anio, Integer region,
 			String usuario) throws Throwable {
+		// U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+		usuario = usuarioValidacionService.validar(usuario);
 		System.out.println("Ingresa al metodo generarDecimoCuarto de beneficioSocial service, empresa: "
 				+ idEmpresa + ", anio: " + anio + ", region: " + region);
 
@@ -173,6 +181,8 @@ public class BeneficioSocialServiceImpl implements BeneficioSocialService {
 	@Override
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
 	public int generarFondosReserva(Long idEmpresa, Integer anio, String usuario) throws Throwable {
+		// U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+		usuario = usuarioValidacionService.validar(usuario);
 		System.out.println("Ingresa al metodo generarFondosReserva de beneficioSocial service, empresa: "
 				+ idEmpresa + ", anio: " + anio);
 

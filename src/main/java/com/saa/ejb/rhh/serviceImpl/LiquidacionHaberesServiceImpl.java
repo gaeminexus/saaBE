@@ -84,6 +84,10 @@ import jakarta.persistence.PersistenceContext;
 @Stateless
 public class LiquidacionHaberesServiceImpl implements LiquidacionHaberesService {
 
+    /** U-4: todo proceso que graba valida el usuario PRIMERO. */
+    @jakarta.ejb.EJB
+    private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
     /** Bandera afirmativa. */
     private static final String SI = "S";
 
@@ -190,6 +194,8 @@ public class LiquidacionHaberesServiceImpl implements LiquidacionHaberesService 
     @TransactionAttribute(TransactionAttributeType.REQUIRED)
     public Liquidacion calcular(Long idContrato, LocalDate fechaSalida, Long idCausal,
             String observaciones, String usuario) throws Throwable {
+        // U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+        usuario = usuarioValidacionService.validar(usuario);
         System.out.println("Ingresa al metodo calcular de liquidacionHaberes service, contrato: " + idContrato);
         List<RenglonCalculado> rubros = new ArrayList<RenglonCalculado>();
         return calculaFiniquito(idContrato, fechaSalida, idCausal, observaciones, usuario, true, rubros);
@@ -201,6 +207,8 @@ public class LiquidacionHaberesServiceImpl implements LiquidacionHaberesService 
     @Override
     @TransactionAttribute(TransactionAttributeType.REQUIRED)
     public void aprobar(Long idLiquidacion, String usuario) throws Throwable {
+        // U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+        usuario = usuarioValidacionService.validar(usuario);
         System.out.println("Ingresa al metodo aprobar de liquidacionHaberes service, liquidacion: "
                 + idLiquidacion);
         Liquidacion liquidacion = recuperaLiquidacion(idLiquidacion);
@@ -226,6 +234,8 @@ public class LiquidacionHaberesServiceImpl implements LiquidacionHaberesService 
     @Override
     @TransactionAttribute(TransactionAttributeType.REQUIRED)
     public void ejecutarSalida(Long idLiquidacion, String usuario) throws Throwable {
+        // U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+        usuario = usuarioValidacionService.validar(usuario);
         System.out.println("Ingresa al metodo ejecutarSalida de liquidacionHaberes service, liquidacion: "
                 + idLiquidacion);
 

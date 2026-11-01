@@ -66,6 +66,10 @@ import jakarta.persistence.PersistenceContext;
 @Stateless
 public class AcreditacionVacacionesServiceImpl implements AcreditacionVacacionesService {
 
+	/** U-4: todo proceso que graba valida el usuario PRIMERO. */
+	@jakarta.ejb.EJB
+	private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
 	/** Marca de "si" de las banderas S/N del esquema. */
 	private static final String SI = "S";
 
@@ -105,6 +109,8 @@ public class AcreditacionVacacionesServiceImpl implements AcreditacionVacaciones
 	@Override
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
 	public int acreditar(Long idEmpresa, LocalDate fechaCorte, String usuario) throws Throwable {
+		// U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+		usuario = usuarioValidacionService.validar(usuario);
 		return acreditar(idEmpresa, fechaCorte, usuario, RhhOrigenCorridaAcreditacion.MANUAL);
 	}
 
@@ -114,6 +120,8 @@ public class AcreditacionVacacionesServiceImpl implements AcreditacionVacaciones
 	@Override
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
 	public int acreditar(Long idEmpresa, LocalDate fechaCorte, String usuario, String origen) throws Throwable {
+		// U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+		usuario = usuarioValidacionService.validar(usuario);
 		System.out.println("Ingresa al metodo acreditar (con bitacora) de acreditacionVacaciones service, empresa: "
 				+ idEmpresa + ", corte: " + fechaCorte + ", origen: " + origen);
 
@@ -276,6 +284,8 @@ public class AcreditacionVacacionesServiceImpl implements AcreditacionVacaciones
 	@Override
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
 	public int revertirAcreditacion(Long idEmpresa, Integer anio, String usuario) throws Throwable {
+		// U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+		usuario = usuarioValidacionService.validar(usuario);
 		System.out.println("Ingresa al metodo revertirAcreditacion de acreditacionVacaciones service, empresa: "
 				+ idEmpresa + ", anio: " + anio);
 
@@ -375,6 +385,8 @@ public class AcreditacionVacacionesServiceImpl implements AcreditacionVacaciones
 	@Override
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
 	public void consumir(Long idEmpleado, Double dias, String usuario) throws Throwable {
+		// U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+		usuario = usuarioValidacionService.validar(usuario);
 		System.out.println("Ingresa al metodo consumir de acreditacionVacaciones service, empleado: "
 				+ idEmpleado + ", dias: " + dias);
 
@@ -414,6 +426,8 @@ public class AcreditacionVacacionesServiceImpl implements AcreditacionVacaciones
 	@Override
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
 	public void revertirConsumo(Long idEmpleado, Double dias, String usuario) throws Throwable {
+		// U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+		usuario = usuarioValidacionService.validar(usuario);
 		System.out.println("Ingresa al metodo revertirConsumo de acreditacionVacaciones service, empleado: "
 				+ idEmpleado + ", dias: " + dias);
 
@@ -456,6 +470,8 @@ public class AcreditacionVacacionesServiceImpl implements AcreditacionVacaciones
 	@Override
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
 	public List<String> caducarSaldos(Long idEmpresa, LocalDate fechaCorte, String usuario) throws Throwable {
+		// U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+		usuario = usuarioValidacionService.validar(usuario);
 		System.out.println("Ingresa al metodo caducarSaldos de acreditacionVacaciones service, corte: "
 				+ fechaCorte);
 

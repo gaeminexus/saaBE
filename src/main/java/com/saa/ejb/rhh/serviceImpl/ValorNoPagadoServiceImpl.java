@@ -33,6 +33,10 @@ import jakarta.persistence.PersistenceContext;
 @Stateless
 public class ValorNoPagadoServiceImpl implements ValorNoPagadoService {
 
+    /** U-4: todo proceso que graba valida el usuario PRIMERO. */
+    @jakarta.ejb.EJB
+    private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
     @PersistenceContext
     private EntityManager em;
 
@@ -101,6 +105,8 @@ public class ValorNoPagadoServiceImpl implements ValorNoPagadoService {
     @Override
     public Map<String, Object> registrar(Long idEmpresa, Long idEmpleado, Long idPeriodo, Double valor,
             String motivo, String usuario) throws Throwable {
+        // U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+        usuario = usuarioValidacionService.validar(usuario);
         System.out.println("=== registrar valor no pagado | idEmpresa=" + idEmpresa + " | idEmpleado="
                 + idEmpleado + " | idPeriodo=" + idPeriodo + " | valor=" + valor + " ===");
 
@@ -180,6 +186,8 @@ public class ValorNoPagadoServiceImpl implements ValorNoPagadoService {
 
     @Override
     public Map<String, Object> anular(Long idRegistro, String motivo, String usuario) throws Throwable {
+        // U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+        usuario = usuarioValidacionService.validar(usuario);
         System.out.println("=== anular valor no pagado | idRegistro=" + idRegistro + " ===");
 
         ValorNoPagado registro = em.find(ValorNoPagado.class, idRegistro);

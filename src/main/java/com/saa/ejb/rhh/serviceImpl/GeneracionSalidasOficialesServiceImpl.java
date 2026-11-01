@@ -53,6 +53,10 @@ import jakarta.persistence.PersistenceContext;
 @Stateless
 public class GeneracionSalidasOficialesServiceImpl implements GeneracionSalidasOficialesService {
 
+    /** U-4: todo proceso que graba valida el usuario PRIMERO. */
+    @jakarta.ejb.EJB
+    private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
     /** Algoritmo del hash del contenido generado. */
     private static final String ALGORITMO_HASH = "SHA-256";
 
@@ -85,6 +89,8 @@ public class GeneracionSalidasOficialesServiceImpl implements GeneracionSalidasO
     @Override
     @TransactionAttribute(TransactionAttributeType.REQUIRED)
     public byte[] generarRdep(Long idEmpresa, Integer anio, String usuario) throws Throwable {
+        // U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+        usuario = usuarioValidacionService.validar(usuario);
         System.out.println("Ingresa al metodo generarRdep de generacionSalidasOficiales service,"
                 + " empresa: " + idEmpresa + ", anio: " + anio);
 
@@ -236,6 +242,8 @@ public class GeneracionSalidasOficialesServiceImpl implements GeneracionSalidasO
     public SalidaOficial registrarGeneracion(Long idEmpresa, int tipoSalida, Integer anio,
             Integer mes, Long idEmpleado, String nombreArchivo, byte[] contenido, String usuario)
             throws Throwable {
+        // U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+        usuario = usuarioValidacionService.validar(usuario);
 
         // Idempotencia por servicio: se busca la salida del periodo y se actualiza. El indice
         // IX_SLOF_BUSQ no es unico a proposito, porque con SLOFMESS o MPLDCDGO en nulo Oracle
@@ -276,6 +284,8 @@ public class GeneracionSalidasOficialesServiceImpl implements GeneracionSalidasO
     @TransactionAttribute(TransactionAttributeType.REQUIRED)
     public SalidaOficial registrarPresentacion(Long idSalida, LocalDate fechaPresentacion,
             String numeroComprobante, String usuario) throws Throwable {
+        // U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+        usuario = usuarioValidacionService.validar(usuario);
         System.out.println("Ingresa al metodo registrarPresentacion de generacionSalidasOficiales"
                 + " service, salida: " + idSalida);
 

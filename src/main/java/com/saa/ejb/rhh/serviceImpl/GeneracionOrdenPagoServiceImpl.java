@@ -110,6 +110,10 @@ import jakarta.persistence.PersistenceContext;
 @Stateless
 public class GeneracionOrdenPagoServiceImpl implements GeneracionOrdenPagoService {
 
+    /** U-4: todo proceso que graba valida el usuario PRIMERO. */
+    @jakarta.ejb.EJB
+    private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
     /** Bandera de cuenta principal del empleado. */
     private static final String SI = "S";
 
@@ -195,6 +199,10 @@ public class GeneracionOrdenPagoServiceImpl implements GeneracionOrdenPagoServic
     @TransactionAttribute(TransactionAttributeType.REQUIRED)
     public OrdenPagoNomina generar(Long idPeriodoNomina, Long idCuentaBancaria, String usuario,
             Long idUsuario) throws Throwable {
+        // U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+        usuario = usuarioValidacionService.validar(usuario);
+        // U-4: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+        usuarioValidacionService.validarPorId(idUsuario);
         System.out.println("Ingresa al metodo generar de generacionOrdenPago service, periodo: "
                 + idPeriodoNomina + ", cuenta: " + idCuentaBancaria);
 
@@ -1022,6 +1030,10 @@ public class GeneracionOrdenPagoServiceImpl implements GeneracionOrdenPagoServic
     @TransactionAttribute(TransactionAttributeType.REQUIRED)
     public OrdenPagoNomina confirmar(Long idOrdenPago, LocalDate fechaAcreditacion, String usuario,
             Long idUsuario) throws Throwable {
+        // U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+        usuario = usuarioValidacionService.validar(usuario);
+        // U-4: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+        usuarioValidacionService.validarPorId(idUsuario);
         System.out.println("Ingresa al metodo confirmar de generacionOrdenPago service, orden: "
                 + idOrdenPago);
 
@@ -1617,6 +1629,8 @@ public class GeneracionOrdenPagoServiceImpl implements GeneracionOrdenPagoServic
     @Override
     @TransactionAttribute(TransactionAttributeType.REQUIRED)
     public DetalleOrdenPagoNomina reenviar(Long idDetalle, Long idUsuario) throws Throwable {
+        // U-4: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+        usuarioValidacionService.validarPorId(idUsuario);
         System.out.println("Ingresa al metodo reenviar de generacionOrdenPago service, detalle: " + idDetalle);
 
         DetalleOrdenPagoNomina detalle = detalleOrdenPagoNominaDaoService.selectById(idDetalle,

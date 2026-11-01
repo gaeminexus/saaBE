@@ -38,6 +38,10 @@ import jakarta.ejb.TransactionAttributeType;
 @Stateless
 public class NovedadIessServiceImpl implements NovedadIessService {
 
+	/** U-4: todo proceso que graba valida el usuario PRIMERO. */
+	@jakarta.ejb.EJB
+	private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
 	@EJB
 	private NovedadIessDaoService novedadIessDaoService;
 
@@ -112,6 +116,8 @@ public class NovedadIessServiceImpl implements NovedadIessService {
 	@Override
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
 	public NovedadIess generarAvisoEntrada(Long idContrato, String usuario) throws Throwable {
+		// U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+		usuario = usuarioValidacionService.validar(usuario);
 		System.out.println("Ingresa al metodo generarAvisoEntrada de novedadIess service, contrato: " + idContrato);
 
 		ContratoEmpleado contrato = recuperaContrato(idContrato);
@@ -131,6 +137,8 @@ public class NovedadIessServiceImpl implements NovedadIessService {
 	@Override
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
 	public NovedadIess generarAvisoSalida(Long idLiquidacion, String usuario) throws Throwable {
+		// U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+		usuario = usuarioValidacionService.validar(usuario);
 		System.out.println("Ingresa al metodo generarAvisoSalida de novedadIess service, liquidacion: " + idLiquidacion);
 
 		Liquidacion liquidacion = liquidacionDaoService.selectById(idLiquidacion, NombreEntidadesRhh.LIQUIDACION);
@@ -160,6 +168,8 @@ public class NovedadIessServiceImpl implements NovedadIessService {
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
 	public NovedadIess generarModificacionSueldo(Long idContrato, Double sueldoAnterior,
 			Double sueldoNuevo, LocalDate vigencia, String usuario) throws Throwable {
+		// U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+		usuario = usuarioValidacionService.validar(usuario);
 		System.out.println("Ingresa al metodo generarModificacionSueldo de novedadIess service, contrato: " + idContrato);
 
 		ContratoEmpleado contrato = recuperaContrato(idContrato);
@@ -181,6 +191,8 @@ public class NovedadIessServiceImpl implements NovedadIessService {
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
 	public NovedadIess generarVariacionPorExtras(Long idContrato, LocalDate fechaHecho, Double valorVariacion,
 			LocalDate desde, LocalDate hasta, String usuario) throws Throwable {
+		// U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+		usuario = usuarioValidacionService.validar(usuario);
 		System.out.println("Ingresa al metodo generarVariacionPorExtras de novedadIess service, contrato: "
 				+ idContrato + ", valor: " + valorVariacion);
 
@@ -231,6 +243,8 @@ public class NovedadIessServiceImpl implements NovedadIessService {
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
 	public int anularVariacionPorExtrasPendiente(Long idContrato, LocalDate desde, LocalDate hasta,
 			String usuario) throws Throwable {
+		// U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+		usuario = usuarioValidacionService.validar(usuario);
 		System.out.println("Ingresa al metodo anularVariacionPorExtrasPendiente de novedadIess service, contrato: "
 				+ idContrato);
 		int anuladas = 0;
@@ -254,6 +268,8 @@ public class NovedadIessServiceImpl implements NovedadIessService {
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
 	public NovedadIess generarCambioRelacionTrabajo(Long idContrato, LocalDate vigencia, String detalle,
 			String usuario) throws Throwable {
+		// U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+		usuario = usuarioValidacionService.validar(usuario);
 		System.out.println("Ingresa al metodo generarCambioRelacionTrabajo de novedadIess service, contrato: "
 				+ idContrato);
 
@@ -274,6 +290,8 @@ public class NovedadIessServiceImpl implements NovedadIessService {
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
 	public NovedadIess generarCambioJornada(Long idContrato, LocalDate vigencia, Double sueldoAnterior,
 			Double sueldoNuevo, Long diasDeclarados, String aviso, String usuario) throws Throwable {
+		// U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+		usuario = usuarioValidacionService.validar(usuario);
 		System.out.println("Ingresa al metodo generarCambioJornada de novedadIess service, contrato: "
 				+ idContrato + ", dias: " + diasDeclarados);
 
@@ -300,6 +318,8 @@ public class NovedadIessServiceImpl implements NovedadIessService {
 	@Override
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
 	public NovedadIess marcarEnviada(Long idNovedad, String lote, String usuario) throws Throwable {
+		// U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+		usuario = usuarioValidacionService.validar(usuario);
 		System.out.println("Ingresa al metodo marcarEnviada de novedadIess service, novedad: " + idNovedad);
 
 		NovedadIess novedad = recuperaNovedad(idNovedad);
@@ -335,6 +355,8 @@ public class NovedadIessServiceImpl implements NovedadIessService {
 	@Override
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
 	public NovedadIess marcarAceptada(Long idNovedad, String usuario) throws Throwable {
+		// U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+		usuario = usuarioValidacionService.validar(usuario);
 		System.out.println("Ingresa al metodo marcarAceptada de novedadIess service, novedad: " + idNovedad);
 
 		NovedadIess novedad = recuperaNovedad(idNovedad);
@@ -356,6 +378,8 @@ public class NovedadIessServiceImpl implements NovedadIessService {
 	@Override
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
 	public NovedadIess marcarRechazada(Long idNovedad, String motivo, String usuario) throws Throwable {
+		// U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+		usuario = usuarioValidacionService.validar(usuario);
 		System.out.println("Ingresa al metodo marcarRechazada de novedadIess service, novedad: " + idNovedad);
 
 		if (motivo == null || motivo.trim().isEmpty()) {
@@ -380,6 +404,8 @@ public class NovedadIessServiceImpl implements NovedadIessService {
 	@Override
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
 	public NovedadIess anular(Long idNovedad, String motivo, String usuario) throws Throwable {
+		// U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+		usuario = usuarioValidacionService.validar(usuario);
 		System.out.println("Ingresa al metodo anular de novedadIess service, novedad: " + idNovedad);
 
 		NovedadIess novedad = recuperaNovedad(idNovedad);
@@ -404,6 +430,8 @@ public class NovedadIessServiceImpl implements NovedadIessService {
 	@Override
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
 	public NovedadIess registrar(NovedadIess novedad, String usuario) throws Throwable {
+		// U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+		usuario = usuarioValidacionService.validar(usuario);
 		System.out.println("Ingresa al metodo registrar de novedadIess service");
 
 		if (novedad == null) {

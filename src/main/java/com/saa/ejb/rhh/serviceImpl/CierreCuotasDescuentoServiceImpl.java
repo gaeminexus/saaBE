@@ -35,6 +35,10 @@ import jakarta.ejb.TransactionAttributeType;
 @Stateless
 public class CierreCuotasDescuentoServiceImpl implements CierreCuotasDescuentoService {
 
+    /** U-4: todo proceso que graba valida el usuario PRIMERO. */
+    @jakarta.ejb.EJB
+    private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
     /** Tabla de origen que ProcesoNominaServiceImpl escribe en RNGLTBOR para un renglon de cuota. */
     private static final String ORIGEN_CUOTA_DESCUENTO = "RHH.CTDS";
 
@@ -62,6 +66,8 @@ public class CierreCuotasDescuentoServiceImpl implements CierreCuotasDescuentoSe
     @Override
     @TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
     public void descuentaCuotasDelPeriodo(Long idPeriodoNomina, Long idOrdenPago, String usuario) {
+        // U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+        usuario = usuarioValidacionService.validar(usuario);
         try {
             PeriodoNomina periodo = periodoNominaDaoService.selectById(idPeriodoNomina,
                     NombreEntidadesRhh.PERIODO_NOMINA);

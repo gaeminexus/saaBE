@@ -103,6 +103,11 @@ public class OrdenBeneficioSocialRest {
         try {
             OrdenBeneficioSocial resultado = ordenBeneficioSocialService.saveSingle(registro);
             return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-4: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("Error al crear OrdenBeneficioSocial: " + e.getMessage())
@@ -117,6 +122,11 @@ public class OrdenBeneficioSocialRest {
         try {
             OrdenBeneficioSocial resultado = ordenBeneficioSocialService.saveSingle(registro);
             return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-4: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("Error al actualizar OrdenBeneficioSocial: " + e.getMessage())
@@ -135,6 +145,11 @@ public class OrdenBeneficioSocialRest {
             return Response.status(Response.Status.OK)
                     .entity("OrdenBeneficioSocial eliminada correctamente")
                     .type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-4: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("Error al eliminar OrdenBeneficioSocial: " + e.getMessage())
@@ -185,6 +200,11 @@ public class OrdenBeneficioSocialRest {
             Response.Status status = resultado.containsKey("idOrdenExistente")
                     ? Response.Status.CONFLICT : Response.Status.OK;
             return Response.status(status).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-4: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (IncomeException e) {
             return respuestaConflicto(e.getMessage());
         } catch (Throwable e) {
@@ -260,6 +280,11 @@ public class OrdenBeneficioSocialRest {
             Map<String, Object> resultado =
                     ordenBeneficioSocialService.enviarATesoreria(id, idUsuario, observacion);
             return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-4: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (IncomeException e) {
             return respuestaConflicto(e.getMessage());
         } catch (Throwable e) {
@@ -288,6 +313,11 @@ public class OrdenBeneficioSocialRest {
 
             Map<String, Object> resultado = ordenBeneficioSocialService.confirmarPago(id, fechaPago, usuario);
             return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-4: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (IncomeException e) {
             return respuestaConflicto(e.getMessage());
         } catch (Throwable e) {
@@ -314,6 +344,11 @@ public class OrdenBeneficioSocialRest {
 
             Map<String, Object> resultado = ordenBeneficioSocialService.anular(id, motivo, usuario);
             return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-4: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (IncomeException e) {
             return respuestaConflicto(e.getMessage());
         } catch (Throwable e) {
@@ -341,6 +376,11 @@ public class OrdenBeneficioSocialRest {
 
             Map<String, Object> resultado = ordenBeneficioSocialService.revertirPago(id, motivo, usuario);
             return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-4: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (IncomeException e) {
             return respuestaConflicto(e.getMessage());
         } catch (Throwable e) {

@@ -60,6 +60,10 @@ import jakarta.persistence.PersistenceContext;
 @Stateless
 public class ConsolidacionMarcacionesServiceImpl implements ConsolidacionMarcacionesService {
 
+    /** U-4: todo proceso que graba valida el usuario PRIMERO. */
+    @jakarta.ejb.EJB
+    private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
     /** Bandera afirmativa. */
     private static final String SI = "S";
 
@@ -90,6 +94,8 @@ public class ConsolidacionMarcacionesServiceImpl implements ConsolidacionMarcaci
     @Override
     @TransactionAttribute(TransactionAttributeType.REQUIRED)
     public int consolidar(LocalDate desde, LocalDate hasta, String usuario) throws Throwable {
+        // U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+        usuario = usuarioValidacionService.validar(usuario);
         System.out.println("Ingresa al metodo consolidar de consolidacionMarcaciones service, rango: "
                 + desde + " a " + hasta);
 

@@ -109,6 +109,10 @@ import jakarta.persistence.PersistenceContext;
 @Stateless
 public class ProcesoNominaServiceImpl implements ProcesoNominaService {
 
+    /** U-4: todo proceso que graba valida el usuario PRIMERO. */
+    @jakarta.ejb.EJB
+    private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
 	/** Marca de "si" de las banderas S/N del esquema. */
 	private static final String SI = "S";
 
@@ -324,6 +328,8 @@ public class ProcesoNominaServiceImpl implements ProcesoNominaService {
 	@Override
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
 	public ResultadoCalculoPeriodo calcularPeriodo(Long idPeriodoNomina, String usuario) throws Throwable {
+		// U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+		usuario = usuarioValidacionService.validar(usuario);
 		System.out.println("Ingresa al metodo calcularPeriodo de procesoNomina service, periodo: " + idPeriodoNomina);
 
 		PeriodoNomina periodo = recuperaPeriodo(idPeriodoNomina);
@@ -477,6 +483,8 @@ public class ProcesoNominaServiceImpl implements ProcesoNominaService {
 	@TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
 	public ResultadoCalculoNomina recalcularEmpleado(Long idPeriodoNomina, Long idEmpleado,
 			boolean preservarManuales, String usuario) throws Throwable {
+		// U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+		usuario = usuarioValidacionService.validar(usuario);
 		System.out.println("Ingresa al metodo recalcularEmpleado, periodo: " + idPeriodoNomina
 				+ ", empleado: " + idEmpleado);
 
@@ -501,7 +509,9 @@ public class ProcesoNominaServiceImpl implements ProcesoNominaService {
 	 */
 	@Override
 	@TransactionAttribute(TransactionAttributeType.SUPPORTS)
-	public ResultadoCalculoNomina simular(Long idContrato, Long idPeriodoNomina) throws Throwable {
+	public ResultadoCalculoNomina simular(Long idContrato, Long idPeriodoNomina, String usuario) throws Throwable {
+		// U-4: la simulación puede generar la proyección de renta del empleado si no existe: pide usuario y lo valida primero.
+		usuario = usuarioValidacionService.validar(usuario);
 		System.out.println("Ingresa al metodo simular, contrato: " + idContrato
 				+ ", periodo: " + idPeriodoNomina);
 
@@ -517,7 +527,7 @@ public class ProcesoNominaServiceImpl implements ProcesoNominaService {
 
 		// persistir = false: no se toca la base, es solo previsualizacion.
 		List<ReglonNomina> renglones = new ArrayList<ReglonNomina>();
-		Nomina nomina = calculaContrato(periodo, contrato, prnm, conceptos, "SIMULACION", false, false, renglones);
+		Nomina nomina = calculaContrato(periodo, contrato, prnm, conceptos, usuario, false, false, renglones);
 		return armaResultado(nomina, renglones);
 	}
 
@@ -531,6 +541,8 @@ public class ProcesoNominaServiceImpl implements ProcesoNominaService {
 	@Override
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
 	public void aprobarPeriodo(Long idPeriodoNomina, String usuario) throws Throwable {
+		// U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+		usuario = usuarioValidacionService.validar(usuario);
 		System.out.println("Ingresa al metodo aprobarPeriodo, periodo: " + idPeriodoNomina);
 		PeriodoNomina periodo = recuperaPeriodo(idPeriodoNomina);
 		if (!Long.valueOf(RhhEstadoPeriodoNomina.CALCULADO).equals(periodo.getEstado())) {
@@ -573,6 +585,8 @@ public class ProcesoNominaServiceImpl implements ProcesoNominaService {
 	@Override
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
 	public void reabrirPeriodo(Long idPeriodoNomina, String motivo, String usuario) throws Throwable {
+		// U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+		usuario = usuarioValidacionService.validar(usuario);
 		System.out.println("Ingresa al metodo reabrirPeriodo, periodo: " + idPeriodoNomina);
 		if (motivo == null || motivo.trim().isEmpty()) {
 			throw new IncomeException("La reapertura de un periodo exige un motivo.");
@@ -695,6 +709,8 @@ public class ProcesoNominaServiceImpl implements ProcesoNominaService {
 	@Override
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
 	public void cerrarPeriodo(Long idPeriodoNomina, String usuario) throws Throwable {
+		// U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+		usuario = usuarioValidacionService.validar(usuario);
 		System.out.println("Ingresa al metodo cerrarPeriodo, periodo: " + idPeriodoNomina);
 		PeriodoNomina periodo = recuperaPeriodo(idPeriodoNomina);
 
@@ -778,6 +794,8 @@ public class ProcesoNominaServiceImpl implements ProcesoNominaService {
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
 	public void excluirEmpleado(Long idPeriodoNomina, Long idEmpleado, String motivo,
 			String usuario) throws Throwable {
+		// U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+		usuario = usuarioValidacionService.validar(usuario);
 		System.out.println("Ingresa al metodo excluirEmpleado, periodo: " + idPeriodoNomina
 				+ ", empleado: " + idEmpleado);
 		PeriodoNomina periodo = recuperaPeriodo(idPeriodoNomina);
@@ -1080,7 +1098,7 @@ public class ProcesoNominaServiceImpl implements ProcesoNominaService {
 					+ " (art. 43 LRTI). Motivo: " + contrato.getMotivoNoRetencion());
 		} else if (!SI.equals(contrato.getRetieneFuente())) {
 			retencionIr = retencionRentaService.obtenerRetencionMensual(idEmpleado,
-					periodo.getAnio(), periodo.getMes());
+					periodo.getAnio(), periodo.getMes(), usuario);
 			ConceptoNomina conceptoIr = conceptoPorRol(conceptos, RhhRolConceptoMotor.IMPUESTO_A_LA_RENTA);
 			if (conceptoIr != null && retencionIr != null && retencionIr.doubleValue() > 0D) {
 				renglones.add(nuevoRenglon(nomina, conceptoIr, null, retencionIr, baseIr, null,

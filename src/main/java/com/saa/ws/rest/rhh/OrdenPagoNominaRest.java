@@ -87,6 +87,11 @@ public class OrdenPagoNominaRest {
         try {
             OrdenPagoNomina actualizado = ordenPagoNominaService.saveSingle(registro);
             return Response.status(Response.Status.OK).entity(actualizado).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-4: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar registro: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
@@ -100,6 +105,11 @@ public class OrdenPagoNominaRest {
         try {
             OrdenPagoNomina creado = ordenPagoNominaService.saveSingle(registro);
             return Response.status(Response.Status.CREATED).entity(creado).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-4: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear registro: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
@@ -133,6 +143,11 @@ public class OrdenPagoNominaRest {
             ordenPagoNominaService.remove(Collections.singletonList(id));
             // ===== FIN enganche valores no pagados =====
             return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-4: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (IncomeException e) {
             Map<String, Object> cuerpo = new LinkedHashMap<String, Object>();
             cuerpo.put("exito", Boolean.FALSE);
@@ -162,6 +177,11 @@ public class OrdenPagoNominaRest {
             Long idUsuario = leeLong(datos, "idUsuario");
             OrdenPagoNomina orden = generacionOrdenPagoService.generar(idPeriodo, idCuentaBancaria, usuario, idUsuario);
             return Response.status(Response.Status.OK).entity(orden).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-4: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al generar la orden de pago: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
@@ -200,6 +220,11 @@ public class OrdenPagoNominaRest {
             Long idUsuario = leeLong(datos, "idUsuario");
             OrdenPagoNomina orden = generacionOrdenPagoService.confirmar(id, fechaAcreditacion, usuario, idUsuario);
             return Response.status(Response.Status.OK).entity(orden).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-4: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al confirmar la orden de pago: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
@@ -217,6 +242,11 @@ public class OrdenPagoNominaRest {
         try {
             OrdenPagoNomina orden = generacionOrdenPagoService.sincronizarPagos(id);
             return Response.status(Response.Status.OK).entity(orden).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-4: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al sincronizar los pagos de la orden: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }

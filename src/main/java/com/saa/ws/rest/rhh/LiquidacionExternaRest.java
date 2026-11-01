@@ -112,6 +112,11 @@ public class LiquidacionExternaRest {
 			LiquidacionExterna resultado = liquidacionExternaService.registrar(liquidacion, detalles);
 			return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON)
 					.build();
+		} catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+			// U-4: usuario faltante o inexistente -> 400; no se procesó nada.
+			return Response.status(Response.Status.BAD_REQUEST)
+					.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+					.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
 		} catch (Throwable e) {
 			return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
 					.entity("Error al registrar la liquidacion: " + e.getMessage())
@@ -132,6 +137,11 @@ public class LiquidacionExternaRest {
 							: new ArrayList<DetalleLiquidacionExterna>();
 			LiquidacionExterna resultado = liquidacionExternaService.actualizar(liquidacion, detalles);
 			return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+		} catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+			// U-4: usuario faltante o inexistente -> 400; no se procesó nada.
+			return Response.status(Response.Status.BAD_REQUEST)
+					.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+					.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
 		} catch (Throwable e) {
 			return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
 					.entity("Error al actualizar la liquidacion: " + e.getMessage())
@@ -149,6 +159,11 @@ public class LiquidacionExternaRest {
 			Long idUsuario = toLong(datos != null ? datos.get("idUsuario") : null);
 			Map<String, Object> resultado = liquidacionExternaService.enviarATesoreria(id, idUsuario);
 			return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+		} catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+			// U-4: usuario faltante o inexistente -> 400; no se procesó nada.
+			return Response.status(Response.Status.BAD_REQUEST)
+					.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+					.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
 		} catch (Throwable e) {
 			return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
 					.entity("Error al enviar la liquidacion a tesoreria: " + e.getMessage())
@@ -159,11 +174,16 @@ public class LiquidacionExternaRest {
 	@POST
 	@Path("/sincronizarPago/{id}")
 	@Produces(MediaType.APPLICATION_JSON)
-	public Response sincronizarPago(@PathParam("id") Long id) {
+	public Response sincronizarPago(@PathParam("id") Long id, @jakarta.ws.rs.QueryParam("usuario") String usuario) {
 		System.out.println("LLEGA AL SERVICIO POST /lqex/sincronizarPago/" + id);
 		try {
-			LiquidacionExterna resultado = liquidacionExternaService.sincronizarPago(id);
+			LiquidacionExterna resultado = liquidacionExternaService.sincronizarPago(id, usuario);
 			return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+		} catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+			// U-4: usuario faltante o inexistente -> 400; no se procesó nada.
+			return Response.status(Response.Status.BAD_REQUEST)
+					.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+					.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
 		} catch (Throwable e) {
 			return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
 					.entity("Error al sincronizar el pago de la liquidacion: " + e.getMessage())
@@ -182,6 +202,11 @@ public class LiquidacionExternaRest {
 			String motivo = datos != null ? (String) datos.get("motivo") : null;
 			LiquidacionExterna resultado = liquidacionExternaService.anular(id, idUsuario, motivo);
 			return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+		} catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+			// U-4: usuario faltante o inexistente -> 400; no se procesó nada.
+			return Response.status(Response.Status.BAD_REQUEST)
+					.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+					.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
 		} catch (Throwable e) {
 			return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
 					.entity("Error al anular la liquidacion: " + e.getMessage())

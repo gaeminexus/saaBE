@@ -80,6 +80,10 @@ import jakarta.persistence.PersistenceContext;
 @Stateless
 public class MigracionRhhServiceImpl implements MigracionRhhService {
 
+    /** U-4: todo proceso que graba valida el usuario PRIMERO. */
+    @jakarta.ejb.EJB
+    private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
 	/** Delimitador del archivo CSV de migracion. */
 	private static final String DELIMITADOR = ";";
 
@@ -135,6 +139,8 @@ public class MigracionRhhServiceImpl implements MigracionRhhService {
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
 	public int cargarSaldosApertura(InputStream archivo, Long idEmpresa, LocalDate fechaCorte,
 			String usuario) throws Throwable {
+		// U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+		usuario = usuarioValidacionService.validar(usuario);
 		System.out.println("Ingresa al metodo cargarSaldosApertura, empresa: " + idEmpresa
 				+ ", corte: " + fechaCorte);
 
@@ -257,6 +263,8 @@ public class MigracionRhhServiceImpl implements MigracionRhhService {
 	@Override
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
 	public int aplicarSaldosApertura(Long idEmpresa, LocalDate fechaCorte, String usuario) throws Throwable {
+		// U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+		usuario = usuarioValidacionService.validar(usuario);
 		System.out.println("Ingresa al metodo aplicarSaldosApertura, empresa: " + idEmpresa
 				+ ", corte: " + fechaCorte);
 
@@ -336,6 +344,8 @@ public class MigracionRhhServiceImpl implements MigracionRhhService {
 	@Override
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
 	public int revertirSaldosApertura(Long idEmpresa, LocalDate fechaCorte, String usuario) throws Throwable {
+		// U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+		usuario = usuarioValidacionService.validar(usuario);
 		System.out.println("Ingresa al metodo revertirSaldosApertura, empresa: " + idEmpresa
 				+ ", corte: " + fechaCorte);
 

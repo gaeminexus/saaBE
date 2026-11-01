@@ -45,6 +45,10 @@ import jakarta.ejb.TransactionAttributeType;
 @Stateless
 public class ExportacionNovedadesIessServiceImpl implements ExportacionNovedadesIessService {
 
+	/** U-4: todo proceso que graba valida el usuario PRIMERO. */
+	@jakarta.ejb.EJB
+	private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
 	/** Separador de campos del archivo batch. */
 	private static final String SEPARADOR = ";";
 
@@ -113,6 +117,8 @@ public class ExportacionNovedadesIessServiceImpl implements ExportacionNovedades
 	@Override
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
 	public ArchivoBatchIess generarArchivo(Long idPeriodo, Long tipoNovedad, String usuario) throws Throwable {
+		// U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+		usuario = usuarioValidacionService.validar(usuario);
 		System.out.println("Ingresa al metodo generarArchivo de exportacionNovedadesIess, tipo: "
 				+ tipoNovedad + ", periodo: " + idPeriodo);
 

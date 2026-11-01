@@ -42,6 +42,10 @@ import jakarta.ejb.TransactionAttributeType;
 @Stateless
 public class CierreNominaVacacionesServiceImpl implements CierreNominaVacacionesService {
 
+	/** U-4: todo proceso que graba valida el usuario PRIMERO. */
+	@jakarta.ejb.EJB
+	private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
 	@EJB
 	private PeriodoNominaDaoService periodoNominaDaoService;
 
@@ -63,6 +67,8 @@ public class CierreNominaVacacionesServiceImpl implements CierreNominaVacaciones
 	@Override
 	@TransactionAttribute(TransactionAttributeType.NOT_SUPPORTED)
 	public String acreditarAlCerrarPeriodo(Long idPeriodoNomina, String usuario) {
+		// U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+		usuario = usuarioValidacionService.validar(usuario);
 		System.out.println("Ingresa al metodo acreditarAlCerrarPeriodo, periodo: " + idPeriodoNomina);
 		try {
 			PeriodoNomina periodo = periodoNominaDaoService.selectById(idPeriodoNomina,

@@ -84,6 +84,11 @@ public class AnticipoEmpleadoRest {
 		try {
 			AnticipoEmpleado resultado = anticipoEmpleadoService.saveSingle(registro);
 			return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+		} catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+			// U-4: usuario faltante o inexistente -> 400; no se procesó nada.
+			return Response.status(Response.Status.BAD_REQUEST)
+					.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+					.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
 		} catch (Throwable e) {
 			return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
 					.entity("Error al actualizar AnticipoEmpleado: " + e.getMessage())
@@ -98,6 +103,11 @@ public class AnticipoEmpleadoRest {
 		try {
 			AnticipoEmpleado resultado = anticipoEmpleadoService.saveSingle(registro);
 			return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+		} catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+			// U-4: usuario faltante o inexistente -> 400; no se procesó nada.
+			return Response.status(Response.Status.BAD_REQUEST)
+					.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+					.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
 		} catch (Throwable e) {
 			return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
 					.entity("Error al crear AnticipoEmpleado: " + e.getMessage())
@@ -116,6 +126,11 @@ public class AnticipoEmpleadoRest {
 			return Response.status(Response.Status.OK)
 					.entity("AnticipoEmpleado eliminado correctamente")
 					.type(MediaType.APPLICATION_JSON).build();
+		} catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+			// U-4: usuario faltante o inexistente -> 400; no se procesó nada.
+			return Response.status(Response.Status.BAD_REQUEST)
+					.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+					.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
 		} catch (Throwable e) {
 			return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
 					.entity("Error al eliminar AnticipoEmpleado: " + e.getMessage())
@@ -175,6 +190,11 @@ public class AnticipoEmpleadoRest {
 					idEmpleado, valor, numeroCuotas, fecha, motivo, observacion, idUsuario);
 			return Response.status(Response.Status.CREATED).entity(resultado)
 					.type(MediaType.APPLICATION_JSON).build();
+		} catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+			// U-4: usuario faltante o inexistente -> 400; no se procesó nada.
+			return Response.status(Response.Status.BAD_REQUEST)
+					.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+					.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
 		} catch (Throwable e) {
 			System.err.println("ERROR en solicitar anticipo: " + e.getMessage());
 			return Response.status(Response.Status.BAD_REQUEST)
@@ -215,6 +235,11 @@ public class AnticipoEmpleadoRest {
 					referencia, idUsuario);
 			return Response.status(Response.Status.OK).entity(resultado)
 					.type(MediaType.APPLICATION_JSON).build();
+		} catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+			// U-4: usuario faltante o inexistente -> 400; no se procesó nada.
+			return Response.status(Response.Status.BAD_REQUEST)
+					.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+					.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
 		} catch (Throwable e) {
 			System.err.println("ERROR en aprobar anticipo: " + e.getMessage());
 			return Response.status(Response.Status.BAD_REQUEST)
@@ -241,6 +266,11 @@ public class AnticipoEmpleadoRest {
 			return Response.status(Response.Status.OK)
 					.entity("Anticipo anulado correctamente")
 					.type(MediaType.APPLICATION_JSON).build();
+		} catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+			// U-4: usuario faltante o inexistente -> 400; no se procesó nada.
+			return Response.status(Response.Status.BAD_REQUEST)
+					.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+					.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
 		} catch (Throwable e) {
 			System.err.println("ERROR en anular anticipo: " + e.getMessage());
 			return Response.status(Response.Status.BAD_REQUEST)

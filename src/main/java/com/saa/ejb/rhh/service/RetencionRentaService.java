@@ -63,7 +63,7 @@ public interface RetencionRentaService {
 	 * @throws Throwable	: Excepcion
 	 */
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
-	Double obtenerRetencionMensual(Long idEmpleado, Integer anio, Integer mes) throws Throwable;
+	Double obtenerRetencionMensual(Long idEmpleado, Integer anio, Integer mes, String usuario) throws Throwable;
 
 	/**
 	 * Aplica la tabla progresiva del anio a una base imponible.

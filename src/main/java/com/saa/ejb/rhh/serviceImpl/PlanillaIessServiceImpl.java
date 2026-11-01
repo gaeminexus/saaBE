@@ -53,6 +53,10 @@ import jakarta.persistence.PersistenceContext;
 @Stateless
 public class PlanillaIessServiceImpl implements PlanillaIessService {
 
+	/** U-4: todo proceso que graba valida el usuario PRIMERO. */
+	@jakarta.ejb.EJB
+	private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
 	@EJB
 	private PlanillaIessDaoService planillaIessDaoService;
 
@@ -172,6 +176,8 @@ public class PlanillaIessServiceImpl implements PlanillaIessService {
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
 	public PlanillaIess registrar(PlanillaIess planilla, List<DetallePlanillaIess> renglones, Long idUsuario)
 			throws Throwable {
+		// U-4: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 
 		System.out.println("=== registrar planilla IESS ===");
 
@@ -275,6 +281,8 @@ public class PlanillaIessServiceImpl implements PlanillaIessService {
 	@Override
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
 	public Map<String, Object> conciliar(Long idPlanilla, Long idUsuario) throws Throwable {
+		// U-4: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 
 		System.out.println("=== conciliar planilla IESS | id=" + idPlanilla + " ===");
 
@@ -340,6 +348,8 @@ public class PlanillaIessServiceImpl implements PlanillaIessService {
 	@Override
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
 	public PlanillaIess anular(Long idPlanilla, String motivo, Long idUsuario) throws Throwable {
+		// U-4: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 
 		System.out.println("=== anular planilla IESS | id=" + idPlanilla + " ===");
 
@@ -366,6 +376,8 @@ public class PlanillaIessServiceImpl implements PlanillaIessService {
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
 	public Map<String, Object> pagar(Long idPlanilla, Long idCuentaBancaria, LocalDate fechaPago, Long idUsuario)
 			throws Throwable {
+		// U-4: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 
 		System.out.println("=== pagar planilla IESS | id=" + idPlanilla + " ===");
 
@@ -442,6 +454,8 @@ public class PlanillaIessServiceImpl implements PlanillaIessService {
 	@Override
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
 	public PlanillaIess reversarPago(Long idPlanilla, String motivo, Long idUsuario) throws Throwable {
+		// U-4: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 
 		System.out.println("=== reversarPago planilla IESS | id=" + idPlanilla + " ===");
 

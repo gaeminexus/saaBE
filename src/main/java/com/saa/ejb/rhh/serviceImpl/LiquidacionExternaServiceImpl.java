@@ -48,6 +48,10 @@ import jakarta.persistence.PersistenceContext;
 @Stateless
 public class LiquidacionExternaServiceImpl implements LiquidacionExternaService {
 
+	/** U-4: todo proceso que graba valida el usuario PRIMERO. */
+	@jakarta.ejb.EJB
+	private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
 	/** Fecha de salida limite (D7): solo salidas anteriores a este dia. */
 	private static final LocalDate LIMITE_FECHA_SALIDA = LocalDate.of(2026, 1, 1);
 
@@ -104,7 +108,8 @@ public class LiquidacionExternaServiceImpl implements LiquidacionExternaService 
 		// Decision del arbitro (2026-09-30): getAll tambien devuelve [] con 200 en vacio --
 		// la primera vez que se abra la pantalla no va a haber ninguna, y un 500 ahi se lee
 		// como error. A diferencia del resto de la casa, que lanza IncomeException.
-		sincronizaLista(result);
+		// U-4: el listado NO sincroniza (antes un GET podía generar el asiento del pago). La sincronización con
+		// Tesorería es POST /lqex/sincronizarPago/{id}?usuario=, con el usuario de quien la pide.
 		return result;
 	}
 
@@ -115,7 +120,7 @@ public class LiquidacionExternaServiceImpl implements LiquidacionExternaService 
 				liquidacionExternaDaoService.selectByCriteria(datos, NombreEntidadesRhh.LIQUIDACION_EXTERNA);
 		// §6, explicito en el contrato: sin resultados devuelve [] con 200, no 500 -- a
 		// diferencia del resto de la casa (selectAll incluido), que lanza IncomeException.
-		sincronizaLista(result);
+		// U-4: el listado NO sincroniza (ver selectAll): ningún GET/consulta genera asientos.
 		return result;
 	}
 
@@ -345,6 +350,8 @@ public class LiquidacionExternaServiceImpl implements LiquidacionExternaService 
 	@Override
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
 	public Map<String, Object> enviarATesoreria(Long idLiquidacion, Long idUsuario) throws Throwable {
+		// U-4: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 		System.out.println("=== enviarATesoreria liquidacion externa | id=" + idLiquidacion + " ===");
 
 		LiquidacionExterna liquidacion = recuperaLiquidacion(idLiquidacion);
@@ -437,14 +444,18 @@ public class LiquidacionExternaServiceImpl implements LiquidacionExternaService 
 	// unica transaccion de ese request.
 	@Override
 	@TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
-	public LiquidacionExterna sincronizarPago(Long idLiquidacion) throws Throwable {
-		System.out.println("=== sincronizarPago liquidacion externa | id=" + idLiquidacion + " ===");
-		return sincroniza(recuperaLiquidacion(idLiquidacion));
+	public LiquidacionExterna sincronizarPago(Long idLiquidacion, String usuario) throws Throwable {
+		System.out.println("=== sincronizarPago liquidacion externa | id=" + idLiquidacion + " | usuario=" + usuario + " ===");
+		// U-4: lo primero, el usuario que sincroniza existe; el asiento del pago queda a su nombre.
+		usuario = usuarioValidacionService.validar(usuario);
+		return sincroniza(recuperaLiquidacion(idLiquidacion), usuario);
 	}
 
 	@Override
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
 	public LiquidacionExterna anular(Long idLiquidacion, Long idUsuario, String motivo) throws Throwable {
+		// U-4: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 		System.out.println("=== anular liquidacion externa | id=" + idLiquidacion + " ===");
 		if (motivo == null || motivo.trim().isEmpty()) {
 			throw new IncomeException("Debe indicar el motivo de la anulación.");
@@ -523,7 +534,7 @@ public class LiquidacionExternaServiceImpl implements LiquidacionExternaService 
 	 * @return				: La liquidacion, guardada si cambio de estado
 	 * @throws Throwable	: Excepcion
 	 */
-	private LiquidacionExterna sincroniza(LiquidacionExterna liquidacion) throws Throwable {
+	private LiquidacionExterna sincroniza(LiquidacionExterna liquidacion, String usuario) throws Throwable {
 		if (liquidacion.getEstado() == null
 				|| liquidacion.getEstado().intValue() != RhhEstadoLiquidacionExterna.EN_TESORERIA
 				|| liquidacion.getIdPago() == null) {
@@ -546,7 +557,7 @@ public class LiquidacionExternaServiceImpl implements LiquidacionExternaService 
 			// se graban en la MISMA transaccion que el asiento (generaAsientoYPasaAPagada no
 			// atrapa su propia excepcion: si el asiento falla, nada de esto se graba y la
 			// liquidacion sigue EN_TESORERIA).
-			liquidacion = generaAsientoYPasaAPagada(liquidacion);
+			liquidacion = generaAsientoYPasaAPagada(liquidacion, usuario);
 		} else if (estado == EstadoPagoProgramado.RECHAZADO || estado == EstadoPagoProgramado.ANULADO) {
 			liquidacion.setIdPago(null);
 			liquidacion.setEstado(Long.valueOf(RhhEstadoLiquidacionExterna.REGISTRADA));
@@ -584,7 +595,7 @@ public class LiquidacionExternaServiceImpl implements LiquidacionExternaService 
 	 * @throws Throwable	: IncomeException si falta alguna cuenta contable, el asiento no
 	 *						  cuadra, o cualquier otro error de {@code generarAsiento}
 	 */
-	private LiquidacionExterna generaAsientoYPasaAPagada(LiquidacionExterna liquidacion) throws Throwable {
+	private LiquidacionExterna generaAsientoYPasaAPagada(LiquidacionExterna liquidacion, String usuario) throws Throwable {
 		PagoProgramado pago = em.find(PagoProgramado.class, liquidacion.getIdPago());
 		if (pago == null) {
 			throw new IncomeException("No se encontró el pago " + liquidacion.getIdPago()
@@ -644,8 +655,7 @@ public class LiquidacionExternaServiceImpl implements LiquidacionExternaService 
 		}
 
 		String observacion = "Pago de liquidación - " + nombreCompleto + " - administración anterior";
-		String usuario = (liquidacion.getUsuarioRegistro() != null && !liquidacion.getUsuarioRegistro().trim().isEmpty())
-				? liquidacion.getUsuarioRegistro() : "SISTEMA";
+		// U-4: el asiento queda a nombre de quien sincroniza (ya validado), sin relleno.
 
 		Asiento asiento = asientoContableService.generarAsiento(
 				liquidacion.getEmpresa().getCodigo(),
@@ -685,32 +695,6 @@ public class LiquidacionExternaServiceImpl implements LiquidacionExternaService 
 		linea.setValorDebe(esDebe ? valorRedondeado : 0.0);
 		linea.setValorHaber(esDebe ? 0.0 : valorRedondeado);
 		return linea;
-	}
-
-	/**
-	 * Sincroniza en el sitio cada liquidacion EN_TESORERIA de la lista (getAll/selectByCriteria, §6).
-	 *
-	 * <p>Cada liquidacion se sincroniza A TRAVES de {@code self}, en su propia transaccion
-	 * REQUIRES_NEW: si el asiento de una falla, se atrapa aqui y esa liquidacion se deja tal
-	 * como estaba (EN_TESORERIA) en la lista -- no debe abortar ni afectar la sincronizacion
-	 * de las demas.</p>
-	 *
-	 * @param lista			: Lista a sincronizar
-	 * @throws Throwable	: Excepcion
-	 */
-	private void sincronizaLista(List<LiquidacionExterna> lista) throws Throwable {
-		for (int i = 0; i < lista.size(); i++) {
-			LiquidacionExterna liquidacion = lista.get(i);
-			if (liquidacion.getEstado() != null
-					&& liquidacion.getEstado().intValue() == RhhEstadoLiquidacionExterna.EN_TESORERIA) {
-				try {
-					lista.set(i, self.sincronizarPago(liquidacion.getCodigo()));
-				} catch (Throwable e) {
-					System.err.println("No se pudo sincronizar la liquidación " + liquidacion.getCodigo()
-							+ ": " + e.getMessage() + ". Queda EN_TESORERIA.");
-				}
-			}
-		}
 	}
 
 	private Long estadoPago(Long idPago) throws Throwable {

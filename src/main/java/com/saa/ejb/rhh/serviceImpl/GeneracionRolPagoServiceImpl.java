@@ -52,6 +52,10 @@ import jakarta.ejb.TransactionAttributeType;
 @Stateless
 public class GeneracionRolPagoServiceImpl implements GeneracionRolPagoService {
 
+	/** U-4: todo proceso que graba valida el usuario PRIMERO. */
+	@jakarta.ejb.EJB
+	private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
 	/** Marcador tecnico de fila vigente. Convencion de las tablas de RHH con estado VARCHAR2. */
 	private static final String ESTADO_VIGENTE = "A";
 
@@ -85,6 +89,8 @@ public class GeneracionRolPagoServiceImpl implements GeneracionRolPagoService {
 	@Override
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
 	public int generarRoles(Long idPeriodoNomina, String usuario) throws Throwable {
+		// U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+		usuario = usuarioValidacionService.validar(usuario);
 		System.out.println("Ingresa al metodo generarRoles, periodo: " + idPeriodoNomina);
 		PeriodoNomina periodo = recuperaPeriodo(idPeriodoNomina);
 		exigeEstadoEmitible(periodo);
@@ -164,6 +170,8 @@ public class GeneracionRolPagoServiceImpl implements GeneracionRolPagoService {
 	@Override
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
 	public int registrarRecepcion(List<Long> idsRolPago, String usuario) throws Throwable {
+		// U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
+		usuario = usuarioValidacionService.validar(usuario);
 		System.out.println("Ingresa al metodo registrarRecepcion, roles: "
 				+ (idsRolPago != null ? idsRolPago.size() : 0));
 		if (idsRolPago == null || idsRolPago.isEmpty()) {
