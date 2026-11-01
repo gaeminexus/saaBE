@@ -208,3 +208,17 @@ cualquier WAR de `main` (de cualquier equipo) hay que haber corrido `crd/sql/354
 si no, toda lectura de `CRD.PXCA`, también en las cargas de Petrocomercial, falla con ORA-00904.
 Lista de prerrequisitos del próximo EAR (en orden): `353` (verificación, ya dio OK) → `354` (DDL) →
 EAR.
+
+## EAR de correcciones (2026-11-01 01:29)
+- `F:\ears\asoprep\correcciones-1101\SaaEAR.ear`, SHA-256 `41BDDCC324C779439AD0A05230FF84955E522A5E67F77CD8E4708C8A70544998`.
+  Se armó sobre el EAR de la fusión (`fusion\SaaEAR.ear`); solo cambian los dos WAR.
+  - `saaBE.war` `2CE9D44598D877DBC120D33867517F21A872CA402BDC2E49672D512D96723D13`: saaBE `main` en `f7a5299c`
+    (B1, B2, B3, B4 con A5, B5, B7).
+  - `SaaFE.war` `9AA629027C0BB53C04F03B534D3A6053868252886AEDC2BC03CB716A6B520129`: saaFE `main` en `6e4e92d`
+    (F1, F2). `web.xml` igual al de producción.
+  - Copia partida en `correcciones-1101\partes`.
+- **Prerrequisitos:** `353` (OK) y `354` (corrido y verificado: columna NUMBER nullable y la FK habilitada).
+- **Desplegar sin ninguna carga en proceso.** Vuelta atrás: `fusion\SaaEAR.ear`. Ojo: con el EAR de
+  la fusión, la columna `PRSTCDGO` sobra pero no estorba.
+- **Después de desplegar, verificar el hash** de los dos WAR desplegados (procedimiento en
+  `PASE-PRODUCCION-FUSION-2026-11-01.md` §5).
