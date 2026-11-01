@@ -81,3 +81,5 @@ estado financiero por rubro 250). Los literales están concentrados en 4 archivo
   y su `.25` existente. `1.3.12` tiene 6 bandas, con `1.3.12.00` como banda 1, y la de más días
   sigue siendo la `.25`. **→ Aprobado P3-arranque:** la cuenta que absorbe en modo arranque es la
   banda de mayor número (`BNDPNMRO`) de cada madre en `CRD.BNDP`. Sin literal y sin semilla.
+- **`cnt/sql/c20-01` corrido en producción (2026-11-01):** rubro 250, detalles 8-12 = 5/4/1/2/3; plantilla
+  alterno 1, aux1 1-4 = 1.4.05.05 / 1.4.05.10 / 2.3.02.05 / 2.3.02.10. **P1 y P2 sin semilla, confirmado.**
