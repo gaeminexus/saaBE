@@ -42,6 +42,10 @@ import jakarta.xml.soap.SOAPMessage;
 import jakarta.xml.soap.SOAPPart;
 @Stateless
 public class NotaCreditoServiceImpl implements NotaCreditoService {
+
+	/** U-3: todo proceso que graba valida el usuario PRIMERO. */
+	@jakarta.ejb.EJB
+	private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
 	@EJB
 	private NotaCreditoDaoService notaCreditoDaoService;
 	
@@ -855,6 +859,8 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 			Long ambiente, Long conectaSRI, String destinatario, String pathLogo) throws Throwable {
 
 		System.out.println("=== INICIO procesarNotaCreditoCompleta ===");
+		// U-3: lo primero, el usuario del documento existe; sin usuario válido no se emite ni se contabiliza nada.
+		usuarioValidacionService.validar(notaCredito.getUsuario());
 
 		// ── Emisión ante el SRI, en UNA transacción propia ────────────────────
 		java.util.Map<String, Object> resultado = self().emitirNotaCreditoAnteSRI(
@@ -1342,8 +1348,7 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 					+ observacionDocumentoOrigen(notaCredito)
 					+ " | Cliente: " + (notaCredito.getTitular() != null ? notaCredito.getTitular().getNombre() : "")
 					+ " | " + nvl(notaCredito.getObservacion(), "");
-			String usuarioAsiento = notaCredito.getUsuario() != null
-					? notaCredito.getUsuario().getNombre() : "SISTEMA";
+			String usuarioAsiento = usuarioValidacionService.validar(notaCredito.getUsuario());
 
 			com.saa.model.cnt.Asiento asientoGenerado =
 					asientoContableService.generarAsientoNotaCredito(
@@ -1466,8 +1471,7 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 		}
 
 		Long idEmpresa = notaCredito.getFacturador().getEmpresa().getCodigo();
-		String usuario = notaCredito.getUsuario() != null
-				? notaCredito.getUsuario().getNombre() : "SISTEMA";
+		String usuario = usuarioValidacionService.validar(notaCredito.getUsuario());
 
 		try {
 			com.saa.model.cxc.AplicacionPagoCxc aplicacion =
@@ -1594,6 +1598,8 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 	@Override
 	public java.util.Map<String, Object> anularNotaCredito(Long idNotaCredito, String motivo, String usuario,
 			Long idUsuario, boolean anularEnCascada) throws Throwable {
+		// U-3: lo primero, el usuario que anula existe (antes, vacío se grababa como «SISTEMA»).
+		usuario = usuarioValidacionService.validar(usuario);
 		System.out.println("=== anularNotaCredito | id=" + idNotaCredito + " | usuario=" + usuario
 				+ " | anularEnCascada=" + anularEnCascada + " ===");
 		java.util.Map<String, Object> resultado = new java.util.HashMap<>();
@@ -1609,7 +1615,7 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 			return resultado;
 		}
 
-		String usuarioAnulacion = (usuario != null && !usuario.trim().isEmpty()) ? usuario.trim() : "SISTEMA";
+		String usuarioAnulacion = usuario; // validado al entrar al método
 		String motivoFinal      = (motivo  != null && !motivo.trim().isEmpty())  ? motivo.trim()  : "Anulación manual";
 		java.time.LocalDateTime ahora = java.time.LocalDateTime.now();
 

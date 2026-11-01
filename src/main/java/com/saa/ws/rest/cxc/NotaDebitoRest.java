@@ -50,6 +50,11 @@ public class NotaDebitoRest {
 		try {
 			NotaDebito resultado = notaDebitoService.saveSingle(registro);
 			return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+		} catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+			// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+			return Response.status(Response.Status.BAD_REQUEST)
+					.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+					.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
 		} catch (Throwable e) {
 			return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
 		}
@@ -62,6 +67,11 @@ public class NotaDebitoRest {
 		try {
 			NotaDebito resultado = notaDebitoService.saveSingle(registro);
 			return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+		} catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+			// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+			return Response.status(Response.Status.BAD_REQUEST)
+					.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+					.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
 		} catch (Throwable e) {
 			return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
 		}
@@ -135,6 +145,11 @@ public class NotaDebitoRest {
 					.entity(resultado)
 					.type(MediaType.APPLICATION_JSON).build();
 					
+		} catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+			// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+			return Response.status(Response.Status.BAD_REQUEST)
+					.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+					.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
 		} catch (Throwable e) {
 			System.err.println("ERROR en procesarNotaDebitoCompleta REST: " + e.getMessage());
 			e.printStackTrace();
@@ -182,6 +197,11 @@ public class NotaDebitoRest {
 			java.util.Map<String, Object> resultado = notaDebitoService.contabilizarNotaDebito(idNotaDebito);
 			return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
 
+		} catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+			// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+			return Response.status(Response.Status.BAD_REQUEST)
+					.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+					.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
 		} catch (jakarta.persistence.NoResultException e) {
 			java.util.Map<String, Object> err = new java.util.HashMap<>();
 			err.put("exito", false);
@@ -216,6 +236,11 @@ public class NotaDebitoRest {
 			ids.add(id);
 			notaDebitoService.remove(ids);
 			return Response.status(Response.Status.OK).entity("NotaDebito eliminada correctamente").type(MediaType.APPLICATION_JSON).build();
+		} catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+			// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+			return Response.status(Response.Status.BAD_REQUEST)
+					.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+					.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
 		} catch (Throwable e) {
 			return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
 		}
@@ -309,6 +334,11 @@ public class NotaDebitoRest {
 			response.put("clave", clave);
 			
 			return Response.status(Response.Status.OK).entity(response).type(MediaType.APPLICATION_JSON).build();
+		} catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+			// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+			return Response.status(Response.Status.BAD_REQUEST)
+					.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+					.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
 		} catch (Throwable e) {
 			e.printStackTrace();
 			java.util.Map<String, String> errorResponse = new java.util.HashMap<>();
@@ -365,6 +395,11 @@ public class NotaDebitoRest {
 			return Response.status(exito ? Response.Status.OK : Response.Status.BAD_REQUEST)
 					.entity(resultado).type(MediaType.APPLICATION_JSON).build();
 
+		} catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+			// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+			return Response.status(Response.Status.BAD_REQUEST)
+					.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+					.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
 		} catch (com.saa.basico.util.IncomeException e) {
 			java.util.Map<String, Object> err = new java.util.HashMap<>();
 			err.put("exito", false);
@@ -420,6 +455,11 @@ public class NotaDebitoRest {
 			boolean exito = Boolean.TRUE.equals(resultado.get("exito"));
 			return Response.status(exito ? Response.Status.OK : Response.Status.BAD_REQUEST)
 					.entity(resultado).type(MediaType.APPLICATION_JSON).build();
+		} catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+			// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+			return Response.status(Response.Status.BAD_REQUEST)
+					.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+					.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
 		} catch (Throwable e) {
 			System.err.println("ERROR en reenviarEmail ND REST: " + e.getMessage());
 			java.util.Map<String, Object> err = new java.util.HashMap<>();

@@ -44,6 +44,10 @@ import jakarta.xml.soap.SOAPMessage;
 import jakarta.xml.soap.SOAPPart;
 @Stateless
 public class RetencionServiceImpl implements RetencionService {
+
+	/** U-3: todo proceso que graba valida el usuario PRIMERO. */
+	@jakarta.ejb.EJB
+	private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
 	@EJB
 	private RetencionDaoService retencionDaoService;
 
@@ -668,6 +672,8 @@ public class RetencionServiceImpl implements RetencionService {
 			Long ambiente, Long conectaSRI, String destinatario, String pathLogo) throws Throwable {
 
 		System.out.println("=== INICIANDO PROCESO COMPLETO DE RETENCIÓN ===");
+		// U-3: lo primero, el usuario del documento existe; sin usuario válido no se emite ni se contabiliza nada.
+		usuarioValidacionService.validar(retencion.getUsuario());
 
 		// ── Emisión ante el SRI, en UNA transacción propia ────────────────────
 		java.util.Map<String, Object> resultado = self().emitirRetencionAnteSRI(
@@ -1201,8 +1207,7 @@ public class RetencionServiceImpl implements RetencionService {
 			String obsAsiento = "Retención N° " + nvl(retencion.getNumero(), retencion.getClave())
 					+ " | Proveedor: " + (retencion.getProveedor() != null ? retencion.getProveedor().getNombre() : "")
 					+ " | " + nvl(retencion.getObservacion(), "");
-			String usuarioAsiento = retencion.getUsuario() != null
-					? retencion.getUsuario().getNombre() : "SISTEMA";
+			String usuarioAsiento = usuarioValidacionService.validar(retencion.getUsuario());
 
 			com.saa.model.cnt.Asiento asientoGenerado =
 					asientoContableService.generarAsientoRetencion(
@@ -1328,6 +1333,8 @@ public class RetencionServiceImpl implements RetencionService {
 
 	@Override
 	public java.util.Map<String, Object> anularRetencion(Long idRetencion, String motivo, String usuario) throws Throwable {
+		// U-3: lo primero, el usuario que anula existe (antes, vacío se grababa como «SISTEMA»).
+		usuario = usuarioValidacionService.validar(usuario);
 		System.out.println("=== anularRetencion | id=" + idRetencion + " | usuario=" + usuario + " ===");
 		java.util.Map<String, Object> resultado = new java.util.HashMap<>();
 		resultado.put("exito", false);
@@ -1342,7 +1349,7 @@ public class RetencionServiceImpl implements RetencionService {
 			return resultado;
 		}
 
-		String usuarioAnulacion = (usuario != null && !usuario.trim().isEmpty()) ? usuario.trim() : "SISTEMA";
+		String usuarioAnulacion = usuario; // validado al entrar al método
 		String motivoFinal      = (motivo  != null && !motivo.trim().isEmpty())  ? motivo.trim()  : "Anulación manual";
 		LocalDateTime ahora = LocalDateTime.now();
 

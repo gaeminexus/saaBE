@@ -54,6 +54,10 @@ import jakarta.xml.soap.SOAPPart;
 @Stateless
 public class FacturaServiceImpl implements FacturaService {
 
+	/** U-3: todo proceso que graba valida el usuario PRIMERO. */
+	@jakarta.ejb.EJB
+	private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
 	@EJB
 	private FacturaDaoService facturaDaoService;
 	
@@ -238,6 +242,8 @@ public class FacturaServiceImpl implements FacturaService {
 			java.util.List<DetalleFactura> detalles,
 			Long ambiente, Long conectaSRI, String destinatario, String pathLogo) throws Throwable {
 		System.out.println("=== INICIANDO PROCESO COMPLETO DE FACTURA (nuevo flujo: BD tras RECIBIDA) ===");
+		// U-3: lo primero, el usuario del documento existe; sin usuario válido no se emite ni se contabiliza nada.
+		usuarioValidacionService.validar(factura.getUsuario());
 
 		// ── PASO 0: Validar cuentas contables (sin escribir en BD) ────────────
 		java.util.Map<String, Object> validacion = validarContabilidadFactura(factura, detalles);
@@ -893,8 +899,7 @@ public class FacturaServiceImpl implements FacturaService {
 			String obsAsiento = "Factura N° " + nvl(factura.getNumero(), factura.getClave())
 					+ " | Cliente: " + (factura.getTitular() != null ? factura.getTitular().getNombre() : "")
 					+ " | " + nvl(factura.getObservacion(), "");
-			String usuarioAsiento = factura.getUsuario() != null
-					? factura.getUsuario().getNombre() : "SISTEMA";
+			String usuarioAsiento = usuarioValidacionService.validar(factura.getUsuario());
 
 			com.saa.model.cnt.Asiento asientoGenerado =
 					asientoContableService.generarAsientoFactura(
@@ -2394,8 +2399,11 @@ public class FacturaServiceImpl implements FacturaService {
 	// =========================================================================
 
 	@Override
-	public java.util.Map<String, Object> reintentarAutorizacion(Long idFactura) throws Throwable {
-		System.out.println("=== reintentarAutorizacion | idFactura=" + idFactura + " ===");
+	public java.util.Map<String, Object> reintentarAutorizacion(Long idFactura, String usuario) throws Throwable {
+		System.out.println("=== reintentarAutorizacion | idFactura=" + idFactura + " | usuario=" + usuario + " ===");
+		// U-3: lo primero, el usuario que ejecuta la recepción del SRI existe; el asiento que genera la autorización
+		// queda a su nombre (antes, el literal «SISTEMA»).
+		usuario = usuarioValidacionService.validar(usuario);
 
 		java.util.Map<String, Object> resultado = new java.util.HashMap<>();
 		resultado.put("exito", false);
@@ -2479,7 +2487,7 @@ public class FacturaServiceImpl implements FacturaService {
 								asientoContableService.generarAsientoFactura(
 										factura.getId(), idEmpresa,
 										com.saa.rubros.TipoAsientos.FACTURAS_VENTA,
-										factura.getFecha(), obsAsiento, "SISTEMA");
+										factura.getFecha(), obsAsiento, usuario);
 						factura.setAsiento(asientoGenerado);
 						facturaDaoService.save(factura, factura.getId());
 						resultado.put("asiento", asientoGenerado.getNumeroAlterno());
@@ -2682,6 +2690,8 @@ public class FacturaServiceImpl implements FacturaService {
 	@Override
 	public java.util.Map<String, Object> anularFactura(Long idFactura, String motivo, String usuario,
 			Long idUsuario, boolean anularEnCascada) throws Throwable {
+		// U-3: lo primero, el usuario que anula existe (antes, vacío se grababa como «SISTEMA»).
+		usuario = usuarioValidacionService.validar(usuario);
 		System.out.println("=== anularFactura | idFactura=" + idFactura + " | usuario=" + usuario
 				+ " | anularEnCascada=" + anularEnCascada + " ===");
 
@@ -2702,7 +2712,7 @@ public class FacturaServiceImpl implements FacturaService {
 		}
 
 		// 3. Datos de anulación
-		String usuarioAnulacion = (usuario != null && !usuario.trim().isEmpty()) ? usuario.trim() : "SISTEMA";
+		String usuarioAnulacion = usuario; // validado al entrar al método
 		String motivoFinal      = (motivo  != null && !motivo.trim().isEmpty())  ? motivo.trim()  : "Anulación manual";
 		java.time.LocalDateTime ahora = java.time.LocalDateTime.now();
 

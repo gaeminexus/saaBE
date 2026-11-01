@@ -36,4 +36,31 @@ public class UsuarioValidacionServiceImpl implements UsuarioValidacionService {
 		}
 		return limpio;
 	}
+
+	@Override
+	public String validar(com.saa.model.scp.Usuario usuario) throws UsuarioInvalidoException {
+		if (usuario == null) {
+			throw new UsuarioInvalidoException("falta el usuario");
+		}
+		if (usuario.getNombre() != null && !usuario.getNombre().trim().isEmpty()) {
+			return validar(usuario.getNombre());
+		}
+		return validarPorId(usuario.getCodigo());
+	}
+
+	@Override
+	@SuppressWarnings("unchecked")
+	public String validarPorId(Long idUsuario) throws UsuarioInvalidoException {
+		if (idUsuario == null) {
+			throw new UsuarioInvalidoException("falta el usuario");
+		}
+		Query q = em.createQuery("select u.nombre from Usuario u where u.codigo = :codigo");
+		q.setParameter("codigo", idUsuario);
+		q.setMaxResults(1);
+		List<String> r = q.getResultList();
+		if (r.isEmpty() || r.get(0) == null || r.get(0).trim().isEmpty()) {
+			throw new UsuarioInvalidoException("el usuario con código " + idUsuario + " no existe en el sistema");
+		}
+		return r.get(0).trim();
+	}
 }

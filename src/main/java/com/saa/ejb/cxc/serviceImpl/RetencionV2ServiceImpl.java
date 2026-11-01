@@ -43,6 +43,10 @@ import jakarta.xml.soap.SOAPMessage;
 import jakarta.xml.soap.SOAPPart;
 @Stateless
 public class RetencionV2ServiceImpl implements RetencionV2Service {
+
+	/** U-3: todo proceso que graba valida el usuario PRIMERO. */
+	@jakarta.ejb.EJB
+	private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
 	
 	// Constantes para códigos del SRI
 	// private static final String COD_IVA = "2";
@@ -759,8 +763,7 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 				+ observacionDocumentoOrigen(retencion.getId())
 				+ " | Proveedor: " + (retencion.getProveedor() != null
 						? retencion.getProveedor().getNombre() : "");
-		String usuarioAsiento = (retencion.getUsuario() != null)
-				? retencion.getUsuario().getNombre() : "SISTEMA";
+		String usuarioAsiento = usuarioValidacionService.validar(retencion.getUsuario());
 
 		// La etapa es atómica: si algo falla no puede quedar medio asiento. Se
 		// marca el rollback a mano porque IncomeException es una application
@@ -840,8 +843,7 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 		}
 
 		Long idEmpresa = retencion.getFacturador().getEmpresa().getCodigo();
-		String usuario = (retencion.getUsuario() != null)
-				? retencion.getUsuario().getNombre() : "SISTEMA";
+		String usuario = usuarioValidacionService.validar(retencion.getUsuario());
 
 		// Etapa atómica: o queda el cruce completo con el saldo de la factura
 		// recalculado, o no queda nada. Sólo esta transacción se reversa.
@@ -1801,6 +1803,8 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 			Long ambiente, Long conectaSRI, String destinatario, String pathLogo) throws Throwable {
 
 		System.out.println("=== INICIANDO PROCESO COMPLETO DE RETENCIÓN V2 ===");
+		// U-3: lo primero, el usuario del documento existe; sin usuario válido no se emite ni se contabiliza nada.
+		usuarioValidacionService.validar(retencion.getUsuario());
 		java.util.Map<String, Object> resultado = new java.util.HashMap<>();
 		resultado.put("exito", false);
 
@@ -2156,6 +2160,8 @@ public java.util.List<java.util.Map<String, Object>> movimientosRelacionadosRete
 @Override
 public java.util.Map<String, Object> anularRetencionV2(Long idRetencion, String motivo, String usuario,
 		Long idUsuario, boolean anularEnCascada) throws Throwable {
+		// U-3: lo primero, el usuario que anula existe (antes, vacío se grababa como «SISTEMA»).
+		usuario = usuarioValidacionService.validar(usuario);
 	System.out.println("=== anularRetencionV2 | idRetencion=" + idRetencion + " | usuario=" + usuario
 			+ " | anularEnCascada=" + anularEnCascada + " ===");
 
@@ -2176,7 +2182,7 @@ public java.util.Map<String, Object> anularRetencionV2(Long idRetencion, String 
 	}
 
 	// 3. Datos de anulación
-	String usuarioAnulacion = (usuario != null && !usuario.trim().isEmpty()) ? usuario.trim() : "SISTEMA";
+	String usuarioAnulacion = usuario; // validado al entrar al método
 	String motivoFinal      = (motivo  != null && !motivo.trim().isEmpty())  ? motivo.trim()  : "Anulación manual";
 	java.time.LocalDateTime ahora = java.time.LocalDateTime.now();
 

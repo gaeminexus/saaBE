@@ -111,6 +111,11 @@ public class AnticipoClienteRest {
             AnticipoCliente resultado = anticiPoClienteService.saveSingle(registro);
             return Response.status(Response.Status.CREATED)
                     .entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return error500("Error al crear anticipo: " + e.getMessage());
         }
@@ -125,6 +130,11 @@ public class AnticipoClienteRest {
         try {
             AnticipoCliente resultado = anticiPoClienteService.saveSingle(registro);
             return Response.ok(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return error500("Error al actualizar anticipo: " + e.getMessage());
         }
@@ -205,6 +215,11 @@ public class AnticipoClienteRest {
             // Cuando falta la confirmación de los cruces la respuesta sigue
             // siendo 200: no es un error, es la pregunta al usuario.
             return Response.ok(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return error500("Error al anular anticipo: " + e.getMessage());
         }
@@ -226,6 +241,11 @@ public class AnticipoClienteRest {
             java.util.Map<String, Object> resultado = anticiPoClienteService.anularAnticipo(
                     id, "Anulación desde la interfaz (DELETE)", null, false);
             return Response.ok(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return error500("Error al anular anticipo: " + e.getMessage());
         }
@@ -270,6 +290,11 @@ public class AnticipoClienteRest {
                         .entity(resultado).type(MediaType.APPLICATION_JSON).build();
             }
 
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             System.err.println("ERROR en confirmarAnticipo REST: " + e.getMessage());
             e.printStackTrace();
@@ -330,6 +355,11 @@ public class AnticipoClienteRest {
             return Response.status(exito ? Response.Status.CREATED : Response.Status.INTERNAL_SERVER_ERROR)
                     .entity(resultado).type(MediaType.APPLICATION_JSON).build();
 
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return error500("Error al procesar anticipo de cliente: " + e.getMessage());
         }
@@ -359,6 +389,11 @@ public class AnticipoClienteRest {
                     anticiPoClienteService.solicitarDevolucion(idAnticipo, valor, idUsuario);
             return Response.status(Response.Status.CREATED)
                     .entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return error500("Error al solicitar la devolución del anticipo: " + e.getMessage());
         }
@@ -399,6 +434,11 @@ public class AnticipoClienteRest {
         try {
             java.util.Map<String, Object> resultado = anticiPoClienteService.sincronizarDevoluciones();
             return Response.ok(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return error500("Error al sincronizar las devoluciones pendientes: " + e.getMessage());
         }

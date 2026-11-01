@@ -77,6 +77,11 @@ public class LiquidacionCompraRest {
 		try {
 			LiquidacionCompra resultado = liquidacionCompraService.saveSingle(registro);
 			return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+		} catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+			// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+			return Response.status(Response.Status.BAD_REQUEST)
+					.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+					.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
 		} catch (Throwable e) {
 			return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
 					.entity("Error al actualizar LiquidacionCompra: " + e.getMessage())
@@ -92,6 +97,11 @@ public class LiquidacionCompraRest {
 		try {
 			LiquidacionCompra resultado = liquidacionCompraService.saveSingle(registro);
 			return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+		} catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+			// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+			return Response.status(Response.Status.BAD_REQUEST)
+					.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+					.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
 		} catch (Throwable e) {
 			return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
 					.entity("Error al crear LiquidacionCompra: " + e.getMessage())
@@ -201,6 +211,11 @@ public class LiquidacionCompraRest {
 						.entity(resultado).type(MediaType.APPLICATION_JSON).build();
 			}
 
+		} catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+			// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+			return Response.status(Response.Status.BAD_REQUEST)
+					.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+					.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
 		} catch (Throwable e) {
 			System.err.println("ERROR en procesarLiquidacionCompleta REST: " + e.getMessage());
 			e.printStackTrace();
@@ -251,6 +266,11 @@ public class LiquidacionCompraRest {
 			boolean exito = Boolean.TRUE.equals(resultado.get("exito"));
 			return Response.status(exito ? Response.Status.OK : Response.Status.BAD_REQUEST)
 					.entity(resultado).type(MediaType.APPLICATION_JSON).build();
+		} catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+			// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+			return Response.status(Response.Status.BAD_REQUEST)
+					.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+					.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
 		} catch (com.saa.basico.util.IncomeException e) {
 			java.util.Map<String, Object> err = new java.util.HashMap<>();
 			err.put("exito", false);
@@ -296,6 +316,11 @@ public class LiquidacionCompraRest {
 			boolean exito = Boolean.TRUE.equals(resultado.get("exito"));
 			return Response.status(exito ? Response.Status.OK : Response.Status.OK)
 					.entity(resultado).type(MediaType.APPLICATION_JSON).build();
+		} catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+			// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+			return Response.status(Response.Status.BAD_REQUEST)
+					.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+					.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
 		} catch (Throwable e) {
 			e.printStackTrace();
 			java.util.Map<String, Object> err = new java.util.HashMap<>();
@@ -349,6 +374,11 @@ public class LiquidacionCompraRest {
 			boolean exito = Boolean.TRUE.equals(resultado.get("exito"));
 			return Response.status(exito ? Response.Status.OK : Response.Status.BAD_REQUEST)
 					.entity(resultado).type(MediaType.APPLICATION_JSON).build();
+		} catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+			// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+			return Response.status(Response.Status.BAD_REQUEST)
+					.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+					.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
 		} catch (Throwable e) {
 			e.printStackTrace();
 			java.util.Map<String, Object> err = new java.util.HashMap<>();
@@ -371,6 +401,11 @@ public class LiquidacionCompraRest {
 		try {
 			java.util.Map<String, Object> resultado = liquidacionCompraService.crearDocumentoCxp(id);
 			return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+		} catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+			// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+			return Response.status(Response.Status.BAD_REQUEST)
+					.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+					.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
 		} catch (Throwable e) {
 			e.printStackTrace();
 			java.util.Map<String, Object> err = new java.util.HashMap<>();
@@ -470,6 +505,11 @@ public class LiquidacionCompraRest {
 			err.put("mensaje", "No se encontró la liquidación de compra con ID: " + idLiquidacion);
 			return Response.status(Response.Status.NOT_FOUND).entity(err).type(MediaType.APPLICATION_JSON).build();
 
+		} catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+			// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+			return Response.status(Response.Status.BAD_REQUEST)
+					.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+					.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
 		} catch (Throwable e) {
 			System.err.println("ERROR en contabilizar LiquidacionCompra REST: " + e.getMessage());
 			e.printStackTrace();
@@ -513,6 +553,11 @@ public class LiquidacionCompraRest {
 			return Response.status(Response.Status.OK)
 					.entity("LiquidacionCompra eliminada correctamente")
 					.type(MediaType.APPLICATION_JSON).build();
+		} catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+			// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+			return Response.status(Response.Status.BAD_REQUEST)
+					.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+					.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
 		} catch (Throwable e) {
 			return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
 					.entity("Error al eliminar LiquidacionCompra: " + e.getMessage())
@@ -611,6 +656,11 @@ public class LiquidacionCompraRest {
 			response.put("clave", clave);
 			
 			return Response.status(Response.Status.OK).entity(response).type(MediaType.APPLICATION_JSON).build();
+		} catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+			// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+			return Response.status(Response.Status.BAD_REQUEST)
+					.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+					.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
 		} catch (Throwable e) {
 			e.printStackTrace();
 			java.util.Map<String, String> errorResponse = new java.util.HashMap<>();

@@ -55,6 +55,10 @@ import jakarta.persistence.PersistenceContext;
 @Stateless
 public class AplicacionPagoCxcServiceImpl implements AplicacionPagoCxcService {
 
+	/** U-3: todo proceso que graba valida el usuario PRIMERO. */
+	@jakarta.ejb.EJB
+	private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
 	/** Tolerancia para comparar valores monetarios. */
 	private static final double TOLERANCIA = 0.01;
 
@@ -281,6 +285,8 @@ public class AplicacionPagoCxcServiceImpl implements AplicacionPagoCxcService {
 			String fechaAplicacion, Long idEmpresa, Long idUsuario, String observacion)
 			throws Throwable {
 
+		// U-3: lo primero, el usuario (idUsuario) existe; sin usuario válido no se aplica ni se revierte nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 		System.out.println("=== aplicarAnticipo (FIFO) | factura=" + idFactura
 				+ " | valor=" + valor + " | empresa=" + idEmpresa + " ===");
 
@@ -308,6 +314,8 @@ public class AplicacionPagoCxcServiceImpl implements AplicacionPagoCxcService {
 			List<Map<String, Object>> detalles, String fechaAplicacion, Long idEmpresa,
 			Long idUsuario, String observacion) throws Throwable {
 
+		// U-3: lo primero, el usuario (idUsuario) existe; sin usuario válido no se aplica ni se revierte nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 		System.out.println("=== aplicarAnticipos | factura=" + idFactura
 				+ " | detalles=" + ((detalles != null) ? detalles.size() : 0)
 				+ " | empresa=" + idEmpresa + " ===");
@@ -612,6 +620,8 @@ public class AplicacionPagoCxcServiceImpl implements AplicacionPagoCxcService {
 			String fechaCobro, String numeroTransferencia, Long idCuentaBancaria, Long idEmpresa,
 			Long idUsuario, String observacion) throws Throwable {
 
+		// U-3: lo primero, el usuario (idUsuario) existe; sin usuario válido no se aplica ni se revierte nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 		System.out.println("=== aplicarCobroTransferencia | factura=" + idFactura
 				+ " | valor=" + valor + " | transferencia=" + numeroTransferencia + " ===");
 
@@ -698,6 +708,8 @@ public class AplicacionPagoCxcServiceImpl implements AplicacionPagoCxcService {
 	public Map<String, Object> revertirAplicacion(Long idAplicacion, String motivo, Long idUsuario)
 			throws Throwable {
 
+		// U-3: lo primero, el usuario (idUsuario) existe; sin usuario válido no se aplica ni se revierte nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 		System.out.println("=== revertirAplicacion (CXC) | aplicacion=" + idAplicacion + " ===");
 
 		Map<String, Object> resultado = new HashMap<>();
@@ -753,6 +765,8 @@ public class AplicacionPagoCxcServiceImpl implements AplicacionPagoCxcService {
 	public int revertirAplicacionesDeFactura(Long idFactura, String motivo, Long idUsuario)
 			throws Throwable {
 
+		// U-3: lo primero, el usuario (idUsuario) existe; sin usuario válido no se aplica ni se revierte nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 		System.out.println("=== revertirAplicacionesDeFactura | factura=" + idFactura + " ===");
 
 		List<AplicacionPagoCxc> aplicaciones =
@@ -1274,12 +1288,9 @@ public class AplicacionPagoCxcServiceImpl implements AplicacionPagoCxcService {
 	 * @param idUsuario : Id del usuario
 	 * @return          : Nombre del usuario o SISTEMA
 	 */
-	private String usuarioNombre(Long idUsuario) {
-		if (idUsuario == null) {
-			return "SISTEMA";
-		}
-		Usuario usuario = em.find(Usuario.class, idUsuario);
-		return (usuario != null && usuario.getNombre() != null) ? usuario.getNombre() : "SISTEMA";
+	private String usuarioNombre(Long idUsuario) throws Throwable {
+		// U-3: sin relleno. Un idUsuario nulo o inexistente (incluido el 0 del frontend sin sesión) detiene el proceso.
+		return usuarioValidacionService.validarPorId(idUsuario);
 	}
 
 	/**

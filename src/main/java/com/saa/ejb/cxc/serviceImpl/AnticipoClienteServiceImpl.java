@@ -49,6 +49,10 @@ import jakarta.persistence.TypedQuery;
 @Stateless
 public class AnticipoClienteServiceImpl implements AnticipoClienteService {
 
+    /** U-3: todo proceso que graba valida el usuario PRIMERO. */
+    @jakarta.ejb.EJB
+    private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
     /** Estado Confirmado: el anticipo tiene asiento y saldo acreditado. */
     private static final int ESTADO_CONFIRMADO = 2;
 
@@ -239,6 +243,8 @@ public class AnticipoClienteServiceImpl implements AnticipoClienteService {
     public java.util.Map<String, Object> confirmarAnticipo(Long idAnticipo, String usuario)
             throws Throwable {
         System.out.println("=== confirmarAnticipo | id=" + idAnticipo + " ===");
+        // U-3: lo primero, el usuario que confirma existe (antes: nulo -> «SISTEMA»; el FE no lo mandaba).
+        usuario = usuarioValidacionService.validar(usuario);
 
         java.util.Map<String, Object> resultado = new java.util.HashMap<>();
         resultado.put("exito", false);
@@ -284,7 +290,7 @@ public class AnticipoClienteServiceImpl implements AnticipoClienteService {
         try {
             asiento = asientoContableService.generarAsientoAnticipo(
                     anticipo, TipoAsientos.ANTICIPOS_CLIENTE,
-                    usuario != null ? usuario : "SISTEMA");
+                    usuario);
 
             // 5. Actualizar anticipo: estado=2 (Confirmado) + vincular asiento
             anticipo.setEstado(2L); // 2 = Confirmado
@@ -546,6 +552,8 @@ public class AnticipoClienteServiceImpl implements AnticipoClienteService {
             throw new IncomeException("Debe indicar el motivo de la anulación.");
         }
         String motivoLimpio = motivo.trim();
+        // U-3: el usuario que anula existe (validado por su código); el asiento y el cruce quedan a su nombre.
+        String usuarioAnula = usuarioValidacionService.validarPorId(idUsuario);
 
         AnticipoCliente anticipo = em.find(AnticipoCliente.class, idAnticipo);
         if (anticipo == null) {
@@ -604,7 +612,7 @@ public class AnticipoClienteServiceImpl implements AnticipoClienteService {
                             + idAsiento + ": " + e.getMessage());
                 }
                 try {
-                    asientoService.anulaAsiento(idAsiento);
+                    asientoService.anulaAsiento(idAsiento, usuarioAnula, motivoLimpio);
                     System.out.println("✓ Asiento " + idAsiento + " anulado / reversado.");
                 } catch (Throwable e) {
                     System.err.println("⚠ No se pudo anular el asiento " + idAsiento
@@ -1014,6 +1022,8 @@ public class AnticipoClienteServiceImpl implements AnticipoClienteService {
             throws Throwable {
         System.out.println("=== solicitarDevolucion (anticipo cliente) | idAnticipo=" + idAnticipo
                 + " | valor=" + valor + " ===");
+        // U-3: lo primero, el usuario existe.
+        usuarioValidacionService.validarPorId(idUsuario);
 
         if (idAnticipo == null) {
             throw new IncomeException("Debe indicar el anticipo a devolver.");

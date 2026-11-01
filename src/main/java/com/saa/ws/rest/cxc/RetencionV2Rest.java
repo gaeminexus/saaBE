@@ -50,6 +50,11 @@ public class RetencionV2Rest {
 		try {
 			RetencionV2 resultado = retencionV2Service.saveSingle(registro);
 			return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+		} catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+			// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+			return Response.status(Response.Status.BAD_REQUEST)
+					.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+					.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
 		} catch (Throwable e) {
 			return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
 		}
@@ -62,6 +67,11 @@ public class RetencionV2Rest {
 		try {
 			RetencionV2 resultado = retencionV2Service.saveSingle(registro);
 			return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+		} catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+			// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+			return Response.status(Response.Status.BAD_REQUEST)
+					.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+					.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
 		} catch (Throwable e) {
 			return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
 		}
@@ -76,6 +86,11 @@ public class RetencionV2Rest {
 			ids.add(id);
 			retencionV2Service.remove(ids);
 			return Response.status(Response.Status.OK).entity("RetencionV2 eliminada correctamente").type(MediaType.APPLICATION_JSON).build();
+		} catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+			// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+			return Response.status(Response.Status.BAD_REQUEST)
+					.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+					.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
 		} catch (Throwable e) {
 			return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
 		}
@@ -226,6 +241,11 @@ public class RetencionV2Rest {
 						.entity(resultado).type(MediaType.APPLICATION_JSON).build();
 			}
 
+		} catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+			// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+			return Response.status(Response.Status.BAD_REQUEST)
+					.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+					.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
 		} catch (Throwable e) {
 			System.err.println("ERROR en procesarRetencionV2Completa REST: " + e.getMessage());
 			e.printStackTrace();
@@ -320,6 +340,11 @@ public class RetencionV2Rest {
 			}
 			
 			return Response.status(Response.Status.OK).entity(response).type(MediaType.APPLICATION_JSON).build();
+		} catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+			// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+			return Response.status(Response.Status.BAD_REQUEST)
+					.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+					.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
 		} catch (Throwable e) {
 			e.printStackTrace();
 			java.util.Map<String, String> errorResponse = new java.util.HashMap<>();
@@ -387,6 +412,11 @@ public class RetencionV2Rest {
 			return Response.status(exito ? Response.Status.OK : Response.Status.BAD_REQUEST)
 					.entity(resultado).type(MediaType.APPLICATION_JSON).build();
 
+		} catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+			// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+			return Response.status(Response.Status.BAD_REQUEST)
+					.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+					.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
 		} catch (com.saa.basico.util.IncomeException e) {
 			java.util.Map<String, Object> err = new java.util.HashMap<>();
 			err.put("exito", false);
@@ -425,6 +455,11 @@ public class RetencionV2Rest {
 			java.util.Map<String, Object> resultado = retencionV2Service.reenviarRetencionV2AlSri(idRetencion);
 			return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
 
+		} catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+			// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+			return Response.status(Response.Status.BAD_REQUEST)
+					.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+					.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
 		} catch (jakarta.persistence.NoResultException e) {
 			// selectById usa getSingleResult(): una fila faltante lanza esto, NUNCA null
 			// (CLAUDE.md, EntityDaoImpl.selectById) -- por eso se distingue por tipo acá y no
@@ -469,6 +504,11 @@ public class RetencionV2Rest {
 			java.util.Map<String, Object> resultado = retencionV2Service.contabilizarRetencionV2(idRetencion);
 			return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
 
+		} catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+			// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+			return Response.status(Response.Status.BAD_REQUEST)
+					.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+					.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
 		} catch (jakarta.persistence.NoResultException e) {
 			java.util.Map<String, Object> err = new java.util.HashMap<>();
 			err.put("exito", false);
@@ -537,6 +577,11 @@ public class RetencionV2Rest {
 			boolean exito = Boolean.TRUE.equals(resultado.get("exito"));
 			return Response.status(exito ? Response.Status.OK : Response.Status.BAD_REQUEST)
 					.entity(resultado).type(MediaType.APPLICATION_JSON).build();
+		} catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+			// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+			return Response.status(Response.Status.BAD_REQUEST)
+					.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+					.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
 		} catch (Throwable e) {
 			System.err.println("ERROR en reenviarEmail RTV2 REST: " + e.getMessage());
 			java.util.Map<String, Object> err = new java.util.HashMap<>();

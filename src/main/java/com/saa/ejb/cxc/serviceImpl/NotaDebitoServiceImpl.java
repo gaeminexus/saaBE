@@ -42,6 +42,10 @@ import jakarta.xml.soap.SOAPMessage;
 import jakarta.xml.soap.SOAPPart;
 @Stateless
 public class NotaDebitoServiceImpl implements NotaDebitoService {
+
+	/** U-3: todo proceso que graba valida el usuario PRIMERO. */
+	@jakarta.ejb.EJB
+	private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
 	@EJB
 	private NotaDebitoDaoService notaDebitoDaoService;
 	
@@ -841,6 +845,8 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 			Long ambiente, Long conectaSRI, String destinatario, String pathLogo) throws Throwable {
 
 		System.out.println("=== INICIO procesarNotaDebitoCompleta ===");
+		// U-3: lo primero, el usuario del documento existe; sin usuario válido no se emite ni se contabiliza nada.
+		usuarioValidacionService.validar(notaDebito.getUsuario());
 
 		// ── Emisión ante el SRI, en UNA transacción propia ────────────────────
 		java.util.Map<String, Object> resultado = self().emitirNotaDebitoAnteSRI(
@@ -1333,8 +1339,7 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 					+ observacionDocumentoOrigen(notaDebito)
 					+ " | Cliente: " + (notaDebito.getTitular() != null ? notaDebito.getTitular().getNombre() : "")
 					+ " | " + nvl(notaDebito.getObservacion(), "");
-			String usuarioAsiento = notaDebito.getUsuario() != null
-					? notaDebito.getUsuario().getNombre() : "SISTEMA";
+			String usuarioAsiento = usuarioValidacionService.validar(notaDebito.getUsuario());
 
 			com.saa.model.cnt.Asiento asientoGenerado =
 					asientoContableService.generarAsientoNotaDebito(
@@ -1457,8 +1462,7 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 		}
 
 		Long idEmpresa = notaDebito.getFacturador().getEmpresa().getCodigo();
-		String usuario = notaDebito.getUsuario() != null
-				? notaDebito.getUsuario().getNombre() : "SISTEMA";
+		String usuario = usuarioValidacionService.validar(notaDebito.getUsuario());
 
 		try {
 			com.saa.model.cxc.AplicacionPagoCxc aplicacion =
@@ -1704,6 +1708,8 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 	@Override
 	public java.util.Map<String, Object> anularNotaDebito(Long idNotaDebito, String motivo, String usuario,
 			Long idUsuario, boolean anularEnCascada) throws Throwable {
+		// U-3: lo primero, el usuario que anula existe (antes, vacío se grababa como «SISTEMA»).
+		usuario = usuarioValidacionService.validar(usuario);
 		System.out.println("=== anularNotaDebito | id=" + idNotaDebito + " | usuario=" + usuario
 				+ " | anularEnCascada=" + anularEnCascada + " ===");
 		java.util.Map<String, Object> resultado = new java.util.HashMap<>();
@@ -1719,7 +1725,7 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 			return resultado;
 		}
 
-		String usuarioAnulacion = (usuario != null && !usuario.trim().isEmpty()) ? usuario.trim() : "SISTEMA";
+		String usuarioAnulacion = usuario; // validado al entrar al método
 		String motivoFinal      = (motivo  != null && !motivo.trim().isEmpty())  ? motivo.trim()  : "Anulación manual";
 		LocalDateTime ahora = LocalDateTime.now();
 

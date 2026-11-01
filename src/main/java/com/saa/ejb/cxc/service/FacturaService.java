@@ -101,7 +101,7 @@ public interface FacturaService extends EntityService<Factura> {
 	 * @return Mapa con el resultado: exito, estado, numeroAutorizacion, mensaje
 	 * @throws Throwable Si la factura no existe o no está en estado enviado/pendiente
 	 */
-	java.util.Map<String, Object> reintentarAutorizacion(Long idFactura) throws Throwable;
+	java.util.Map<String, Object> reintentarAutorizacion(Long idFactura, String usuario) throws Throwable;
 
 	/**
 	 * Reenvía el correo electrónico de una factura ya autorizada a una lista

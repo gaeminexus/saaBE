@@ -24,4 +24,17 @@ public interface UsuarioValidacionService {
 	 * @throws UsuarioInvalidoException si falta, está vacío o no existe (con el motivo)
 	 */
 	String validar(String nombre) throws UsuarioInvalidoException;
+
+	/**
+	 * Igual que {@link #validar(String)} para un {@code Usuario} que llega en un documento (factura, nota, retención…):
+	 * usa su nombre; si el cliente solo mandó el código, lo resuelve por código. Devuelve el nombre del usuario.
+	 */
+	String validar(com.saa.model.scp.Usuario usuario) throws UsuarioInvalidoException;
+
+	/**
+	 * Valida un usuario dado por su código ({@code idUsuario}, como llega en los procesos de cxp, tsr y rhh) y devuelve su
+	 * nombre. Nulo o inexistente: {@link UsuarioInvalidoException}. No hay valor por defecto: el 0 del frontend sin sesión
+	 * tampoco existe.
+	 */
+	String validarPorId(Long idUsuario) throws UsuarioInvalidoException;
 }

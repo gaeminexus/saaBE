@@ -77,6 +77,11 @@ public class FacturaRest {
 		try {
 			Factura resultado = facturaService.saveSingle(registro);
 			return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+		} catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+			// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+			return Response.status(Response.Status.BAD_REQUEST)
+					.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+					.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
 		} catch (Throwable e) {
 			return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
 					.entity("Error al actualizar Factura: " + e.getMessage())
@@ -92,6 +97,11 @@ public class FacturaRest {
 		try {
 			Factura resultado = facturaService.saveSingle(registro);
 			return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+		} catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+			// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+			return Response.status(Response.Status.BAD_REQUEST)
+					.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+					.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
 		} catch (Throwable e) {
 			return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
 					.entity("Error al crear Factura: " + e.getMessage())
@@ -177,6 +187,11 @@ public class FacturaRest {
 						.type(MediaType.APPLICATION_JSON).build();
 			}
 
+		} catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+			// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+			return Response.status(Response.Status.BAD_REQUEST)
+					.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+					.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
 		} catch (Throwable e) {
 			System.err.println("ERROR en procesarFacturaCompleta REST: " + e.getMessage());
 			e.printStackTrace();
@@ -237,6 +252,11 @@ public class FacturaRest {
 			return Response.status(exito ? Response.Status.OK : Response.Status.BAD_REQUEST)
 					.entity(resultado).type(MediaType.APPLICATION_JSON).build();
 
+		} catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+			// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+			return Response.status(Response.Status.BAD_REQUEST)
+					.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+					.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
 		} catch (com.saa.basico.util.IncomeException e) {
 			java.util.Map<String, Object> err = new java.util.HashMap<>();
 			err.put("exito", false);
@@ -291,6 +311,11 @@ public class FacturaRest {
 			java.util.Map<String, Object> resultado = facturaService.contabilizarFactura(idFactura);
 			return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
 
+		} catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+			// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+			return Response.status(Response.Status.BAD_REQUEST)
+					.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+					.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
 		} catch (jakarta.persistence.NoResultException e) {
 			java.util.Map<String, Object> err = new java.util.HashMap<>();
 			err.put("exito", false);
@@ -327,6 +352,11 @@ public class FacturaRest {
 			return Response.status(Response.Status.OK)
 					.entity("Factura eliminada correctamente")
 					.type(MediaType.APPLICATION_JSON).build();
+		} catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+			// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+			return Response.status(Response.Status.BAD_REQUEST)
+					.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+					.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
 		} catch (Throwable e) {
 			return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
 					.entity("Error al eliminar Factura: " + e.getMessage())
@@ -424,6 +454,11 @@ public class FacturaRest {
 			response.put("ambiente", String.valueOf(ambiente));
 			return Response.status(Response.Status.OK).entity(response).type(MediaType.APPLICATION_JSON).build();
 
+		} catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+			// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+			return Response.status(Response.Status.BAD_REQUEST)
+					.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+					.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
 		} catch (Throwable e) {
 			e.printStackTrace();
 			java.util.Map<String, String> errorResponse = new java.util.HashMap<>();
@@ -462,7 +497,8 @@ public class FacturaRest {
 						.entity(err).type(MediaType.APPLICATION_JSON).build();
 			}
 
-			java.util.Map<String, Object> resultado = facturaService.reintentarAutorizacion(idFactura);
+			java.util.Map<String, Object> resultado = facturaService.reintentarAutorizacion(idFactura,
+					params.get("usuario") != null ? String.valueOf(params.get("usuario")) : null);
 
 			boolean exito = Boolean.TRUE.equals(resultado.get("exito"));
 			String estado = (String) resultado.getOrDefault("estado", "");
@@ -478,6 +514,12 @@ public class FacturaRest {
 						.entity(resultado).type(MediaType.APPLICATION_JSON).build();
 			}
 
+		} catch (com.saa.basico.util.UsuarioInvalidoException e) {
+			java.util.Map<String, Object> err = new java.util.HashMap<>();
+			err.put("exito", false);
+			err.put("mensaje", "No se puede reintentar la autorización sin un usuario válido: " + e.getMotivo());
+			return Response.status(Response.Status.BAD_REQUEST)
+					.entity(err).type(MediaType.APPLICATION_JSON).build();
 		} catch (Throwable e) {
 			System.err.println("ERROR en reintentarAutorizacion REST: " + e.getMessage());
 			e.printStackTrace();
@@ -529,6 +571,11 @@ public class FacturaRest {
 			return Response.status(exito ? Response.Status.OK : Response.Status.INTERNAL_SERVER_ERROR)
 					.entity(resultado).type(MediaType.APPLICATION_JSON).build();
 
+		} catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+			// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+			return Response.status(Response.Status.BAD_REQUEST)
+					.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+					.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
 		} catch (Throwable e) {
 			System.err.println("ERROR en reenviarEmail REST: " + e.getMessage());
 			e.printStackTrace();

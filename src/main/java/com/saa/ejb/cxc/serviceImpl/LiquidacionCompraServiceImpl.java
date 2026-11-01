@@ -47,6 +47,10 @@ import jakarta.xml.soap.SOAPPart;
 @Stateless
 public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 
+	/** U-3: todo proceso que graba valida el usuario PRIMERO. */
+	@jakarta.ejb.EJB
+	private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
 	@EJB
 	private LiquidacionCompraDaoService liquidacionCompraDaoService;
 
@@ -220,6 +224,8 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 			java.util.List<com.saa.model.cxc.FormaPagoLiquidacion> formasPago,
 			Long ambiente, Long conectaSRI, String destinatario, String pathLogo) throws Throwable {
 		System.out.println("=== INICIANDO PROCESO COMPLETO DE LIQUIDACION DE COMPRA ===");
+		// U-3: lo primero, el usuario del documento existe; sin usuario válido no se emite ni se contabiliza nada.
+		usuarioValidacionService.validar(liquidacion.getUsuario());
 
 		// ── PASO 0: Validar cuentas contables (sin escribir en BD) ────────────
 		// La liquidación emitida no genera su propia cuenta por pagar: al
@@ -912,8 +918,7 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 				String obsAsiento = "Liquidación de Compra N° " + nvl(liquidacion.getNumero(), liquidacion.getClave())
 						+ " | Proveedor: " + (liquidacion.getTitular() != null ? liquidacion.getTitular().getNombre() : "")
 						+ " | Aut: " + nvl(liquidacion.getAutorizacion(), liquidacion.getClave());
-				String usuarioAsiento = liquidacion.getUsuario() != null
-						? liquidacion.getUsuario().getNombre() : "SISTEMA";
+				String usuarioAsiento = usuarioValidacionService.validar(liquidacion.getUsuario());
 
 				com.saa.model.cnt.Asiento asientoGenerado =
 						asientoContableService.generarAsientoLiquidacionCompraCompra(
@@ -2183,6 +2188,8 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 	@Override
 	public java.util.Map<String, Object> anularLiquidacion(Long idLiquidacion, String motivo, String usuario,
 			Long idUsuario, boolean anularEnCascada) throws Throwable {
+		// U-3: lo primero, el usuario que anula existe (antes, vacío se grababa como «SISTEMA»).
+		usuario = usuarioValidacionService.validar(usuario);
 		System.out.println("=== anularLiquidacion | idLiquidacion=" + idLiquidacion + " | usuario=" + usuario
 				+ " | anularEnCascada=" + anularEnCascada + " ===");
 
@@ -2200,7 +2207,7 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 			return resultado;
 		}
 
-		String usuarioAnulacion = (usuario != null && !usuario.trim().isEmpty()) ? usuario.trim() : "SISTEMA";
+		String usuarioAnulacion = usuario; // validado al entrar al método
 		String motivoFinal      = (motivo  != null && !motivo.trim().isEmpty())  ? motivo.trim()  : "Anulación manual";
 		java.time.LocalDateTime ahora = java.time.LocalDateTime.now();
 
