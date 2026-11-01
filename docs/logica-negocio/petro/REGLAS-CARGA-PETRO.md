@@ -806,3 +806,32 @@ esta siempre resuelve un `PlanCuenta` con empresa (verificado contra `TSR.CNBC`/
   (`ClasificadorBandaService.clasificarEnBandas`) aplicado a cada cuota pagada de la carga.
 - El reverso de `precondición 0b` cuando se reversa el paso 2 (hoy `reversarRecepcion`
   rechaza si `CRARESTD == PROCESADO`; falta el reverso simétrico del propio paso 2).
+
+## 7. Respuesta de ARCH (filial 2) — 2026-10-31
+
+La carga de una `CargaArchivo` con filial ARCH (`Filiales.ARCH = 2`) usa **el mismo flujo** que la de
+Petrocomercial (`validarArchivoPetro` → `almacenaRegistros` → fases 2 y 3), pero la lectura no es la del
+reporte posicional: la hace `procesarContenidoArch` en `CargaArchivoPetroServiceImpl`, que traduce la
+planilla de ARCH a la misma `List<ParticipeXCargaArchivo>`. Todo lo de abajo (agrupación, totales,
+validaciones, aplicación) no cambia. **El contrato completo es
+`DISENO-CARGA-RESPUESTA-ARCH.md` §9**; acá solo lo que hay que saber al tocar el código:
+
+- **Punto de entrada:** `validarArchivoPetro` y `procesarArchivoPetro` bifurcan con `esFilialArch`. Para
+  ARCH se saltan el `.txt` obligatorio y el «EP» y se exige extensión `.xlsx/.xls/.csv/.txt`, archivo no
+  vacío y al menos una fila con identificación numérica. Petrocomercial queda idéntico.
+- **Formato:** `IDENTIFICACION; NOMBRES; MONTO_CALCULADO; MONTO_DESCONTADO`. CSV/TXT con `;` (o `,` y
+  tabulador si la primera línea con datos no trae `;`); Excel por Apache POI, primera hoja. Las filas con
+  identificación no numérica se ignoran; la misma cédula repetida se suma.
+- **Entidad y rol:** cédula normalizada (solo dígitos, 9 → antepone 0) contra `ENTDNMID` en filial 2
+  (`EntidadDaoService.selectByNumeroIdentificacionYFilial`); sin entidad, aborta nombrando la cédula. Si
+  `ENTDRLPC` es nulo o 0 se graba `9000000 + ENTDCDGO`: la carga identifica por rol en todo su recorrido.
+- **Generación:** `GNAP` de filial 2 con `mesPeriodo/anioPeriodo` = mes/año de afectación de la carga; si
+  hay varias, la de código mayor (`GeneracionArchivoPetroDaoService.selectUltimaByPeriodo`); si no hay,
+  aborta.
+- **Reparto:** con |descontado − Σ `PDGAMNEN`| ≤ 0,01 → una fila por línea PDGA (producto `PDGACDPT`, montos
+  = `PDGAMNEN`, plazo 1, `codigoPetro` = rol, nombre = razón social de la base; las líneas en 0 se
+  omiten). Parcial o sin líneas → una fila `AH` con lo descontado (queda como novedad bloqueante y el
+  operador la reparte con «Afectar cuotas»). Descontado ≤ 0,01 → sin fila. Los partícipes de la generación
+  que no contestan no generan fila y se cuentan en el log.
+- **Pendiente conocido:** `FileService.EXTENSIONES_PERMITIDAS` (módulo basico) no incluye `.csv`; mientras
+  no se agregue, el REST y la subida del archivo físico rechazan el `.csv` aunque el lector lo entienda.

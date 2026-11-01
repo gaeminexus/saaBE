@@ -370,6 +370,24 @@ public class EntidadDaoServiceImpl extends EntityDaoImpl<Entidad> implements Ent
 
 	@Override
 	@SuppressWarnings("unchecked")
+	public Entidad selectByNumeroIdentificacionYFilial(String numeroIdentificacion, Long codigoFilial) throws Throwable {
+		System.out.println("EntidadDaoServiceImpl.selectByNumeroIdentificacionYFilial: " + numeroIdentificacion
+			+ " - filial " + codigoFilial);
+		Query query = em.createQuery(
+			" select e from Entidad e " +
+			" where  e.numeroIdentificacion = :numeroIdentificacion " +
+			" and    e.filial.codigo = :codigoFilial " +
+			" order by e.codigo "
+		);
+		query.setParameter("numeroIdentificacion", numeroIdentificacion);
+		query.setParameter("codigoFilial", codigoFilial);
+		query.setMaxResults(1);
+		List<Entidad> result = query.getResultList();
+		return result.isEmpty() ? null : result.get(0);
+	}
+
+	@Override
+	@SuppressWarnings("unchecked")
 	public List<Entidad> findByCodigosIn(List<Long> codigos) throws Throwable {
 		if (codigos == null || codigos.isEmpty()) {
 			return new java.util.ArrayList<>();
