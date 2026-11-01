@@ -257,6 +257,13 @@ public interface CrdLineaAsiento {
 	public static final int CUADRE = 90;
 
 	/**
+	 * Devolución al partícipe del sobrante de un descuento Petro/ARCH (B8, DSSB destino 3), plantilla 21. Pasivo
+	 * «socios por pagar», hoy {@code 2.3.90.90.10}. La puente contraria es el aux1 3 (dinero entrado por aportes) o el
+	 * aux1 4 (por préstamos). Semilla en {@code crd/sql/357}.
+	 */
+	public static final int DEVOLUCION_DESCUENTO_PARTICIPE = 61;
+
+	/**
 	 * Línea de la plantilla 21 (aplicación Petro/ARCH y liquidaciones) para un tipo de aporte
 	 * (CRD.TPAP.TPAPCDGO), o {@code null} si el tipo no tiene línea parametrizada. Es el mismo
 	 * mapa que {@code CRD.CTAP} (cuenta de pasivo por tipo): 11 → 50, 9 → 51, 2 → 52, 23 → 53,

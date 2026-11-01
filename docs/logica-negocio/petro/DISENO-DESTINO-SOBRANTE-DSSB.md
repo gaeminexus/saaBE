@@ -115,3 +115,21 @@ frontend → EAR. El DDL y la semilla van antes del EAR.
   (dinero que entró por préstamos, puente aux1 4). Así las puentes quedan en cero. `crd/sql/357` ya
   está editado; todavía no se había corrido.
 - REST `/rest/dssb` hecho; contrato del FE en `saaFE/docs/crd/API-DESTINO-SOBRANTE.md`.
+
+## 9. Implementado (2026-11-01) y pendientes aceptados por el árbitro
+- **Hecho:**
+  - helper en los 5 puntos;
+  - destinos 1, 2 y 3;
+  - la devolución en el invariante y en el asiento de aplicación (línea 61, con las puentes aux1 3 y
+    4 por origen);
+  - el pago en Tesorería con `CRD_DEVOLUCION_DESCUENTO`;
+  - DU1 en el reproceso;
+  - U4;
+  - B8-r: el reproceso graba con `REPROCESO` hasta 2026-08 y con `usuarioCarga` desde 2026-09.
+- **Pendiente (a):** el reproceso NO vuelve a aplicar el sobrante por el destino. No afecta al reproceso
+  definitivo, porque ninguna carga histórica tiene DSSB. Para una carga futura con destino que se
+  reprocese, el operador usa D-010 hasta que se implemente.
+- **Pendiente (d):**
+  - el resolutor de cxp (equipo 2);
+  - el desglose de bandas (DSBN) no muestra la devolución por partícipe.
+- **Prerrequisitos de base:** `357` (con DSSBVLAH y DSSBVLPR) y `c20-04` (usuario REPROCESO), antes del EAR.

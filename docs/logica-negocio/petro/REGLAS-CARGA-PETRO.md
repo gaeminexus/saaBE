@@ -979,7 +979,60 @@ registros `CRD.ANCP` y la auditoría de bandas decían «SISTEMA»/«sistema»; 
   `usuarioCarga` (quien cargó el archivo). La validación de «activo» se limita a «existe» porque la entidad `Usuario` no
   mapea ninguna columna de estado.
 - **`crearContextoPagoCarga`** setea `ContextoPago.usuario` con el mismo usuario.
-- **Modo reproceso:** sin cambio de resultado. Pasa «SISTEMA» explícito a los asientos (antes lo ponía el relleno
-  de cnt) y no setea `ContextoPago.usuario` (sigue nulo).
+- **Modo reproceso (B8-r, 2026-11-01, reemplaza lo anterior):** ya no pasa «SISTEMA» ni «SAA_REPROCESO». Graba con el
+  usuario de la regla del periodo, validado con el helper al entrar a `aplicarPagosArchivoPetroReproceso`: el usuario
+  técnico **`REPROCESO`** si el periodo de la carga es **2026-08 o anterior**, y el `usuarioCarga` de la carga si es
+  **2026-09 o posterior** (`resolverUsuarioReproceso`; la fecha de corte es la constante
+  `ULTIMO_PERIODO_CON_USUARIO_TECNICO_REPROCESO`, ver `cnt/DISENO-USUARIO-OBLIGATORIO.md` §8). Si el usuario no existe
+  (p. ej. falta crear `REPROCESO`), el reproceso falla con un mensaje claro y no toca nada. Lo estampan los asientos de
+  reparto y aplicación, `ContextoPago.usuario` (los `PagoPrestamo`), el contrato de D-022 y el `PagoAporte`. Cambia solo
+  el usuario, no los montos. `ReprocesoCargaPetroService.reprocesar` además valida `solicitud.usuario` (quien ordena la
+  corrida) con el helper y es quien figura en lo que anula. `SAA_AH` (aportes creados por la carga) no cambia.
 - **Fuera de este cambio:** el asiento de recepción confirmada (`confirmarRecepcion`, `:464`) sigue usando el
   usuario de la solicitud del cliente, que puede llegar nulo.
+
+## 11. Destino del sobrante por partícipe (B8, `CRD.DSSB`, 2026-11-01)
+
+Diseño: `DISENO-DESTINO-SOBRANTE-DSSB.md`; DDL y semilla de la línea 61: `crd/sql/357`; contrato del FE:
+`saaFE/docs/crd/API-DESTINO-SOBRANTE.md`. Decisiones del usuario: DU1 (devolución ya pagada queda viva), DU2 (sin destino
+elegido sigue la novedad bloqueante), DU3 (BE y FE completos, sin el resolutor de cxp).
+
+- **Qué es.** Antes, todo dinero que la carga no podía aplicar era una novedad bloqueante que el operador repartía a mano
+  por monto (AVPC). Ahora el operador elige UN destino por partícipe y carga, antes de procesar: **1 siguiente cuota**
+  (préstamo opcional), **2 aporte** (tipo 9 jubilación u 11 cesantía) o **3 devolución**. `POST/PUT /rest/dssb?usuario=`
+  (valida el usuario primero), `POST /rest/dssb/anular/{id}?usuario=`, `GET /rest/dssb/selectByCarga/{idCarga}`; no hay
+  DELETE (se anula). Un solo destino activo por (carga, partícipe): registrar otro anula el anterior. Con la carga
+  PROCESADA no se registra ni se anula. AVPC no cambia y sirve para los casos raros.
+- **Dónde actúa.** El diseño decía «un paso posterior a la aplicación y las AVPC»; en el código el sobrante se detecta en
+  cinco puntos y por eso hay un **helper único**, `aplicarDestinoSobrante`, que cada uno llama ANTES de registrar la
+  novedad bloqueante: (1) excedente del motor sin cuota (`manejarExcedenteNoAplicado`), (2) aporte que no cabe en ningún mes
+  (`distribuirAportePorDevengo`), (3) HS sin seguro en la cuota, (4) HS huérfano sin préstamo destino, (5) préstamo de la
+  línea ARCH que ya no está activo. Si el partícipe tiene destino activo, aplica el sobrante por él y registra la novedad
+  solo por lo que no pudo aplicar; sin destino, todo igual que antes. El parcial de ARCH (fase 2, `registrarParcialArchBloqueante`)
+  no es un sobrante de fase 3 y sigue por AVPC.
+- **Cómo aplica.** Siguiente cuota: el motor, al préstamo elegido o a la cuota pendiente más antigua de un préstamo
+  VIGENTE o EN_MORA del partícipe (el plazo vencido no entra). Aporte: reparto por devengo en el tipo elegido (con la marca
+  `EXCEDENTE_PETRO` del producto de entrada si el dinero vino de una fila de préstamo, como la AVPC a aporte). Devolución:
+  solo queda anotada. Una guarda (`aplicandoDestinoSobrante`) impide que un sobrante dentro de la aplicación del destino
+  vuelva a buscar destino. **No actúa en modo reproceso.**
+- **Origen del dinero.** `DSSBVLAH` suma lo aplicado cuyo dinero entró por una fila de AH (aportes) y `DSSBVLPR` lo que entró
+  por una de préstamos (PH, PP, HS, …). De ahí sale la puente del asiento de aplicación.
+- **Validaciones.** Un destino activo cuenta como «con destino» para la novedad de sobrante (`MONTO_INCONSISTENTE`) en
+  `buscarValoresSinDestino`; cualquier otro tipo de novedad sigue bloqueando. `validarRecibidoIgualAplicado` suma las
+  devoluciones (`aplicado = préstamos + aportes + devoluciones`).
+- **Contabilidad** (`CobroPetroContableServiceImpl.contabilizarAplicacion`). Devolución: HABER a la línea **61** de la
+  plantilla 21 (`CrdLineaAsiento.DEVOLUCION_DESCUENTO_PARTICIPE`, hoy `2.3.90.90.10`), con DEBE a la puente de aportes
+  (aux1 3) por `DSSBVLAH` y a la de préstamos (aux1 4) por `DSSBVLPR`. Una cuota pagada con plata que entró por una fila de
+  aportes pasa su DEBE de la puente 4 a la 3. Las puentes quedan en cero (D-024). Sin la línea 61 el proceso se detiene
+  nombrando la plantilla.
+- **Tesorería.** Por cada devolución, `registrarPagoDeOrigenExterno` con el origen `CRD_DEVOLUCION_DESCUENTO` e
+  `idOrigen` = `DSSBCDGO`, sin cuenta bancaria (nace POR_APROBAR). El producto de pago sale de la cuenta de la línea 61
+  (el activo cuyo grupo tiene esa cuenta; cero o más de uno detiene el proceso). `DSSBPGTR` y `DSSBASNT` guardan la orden y
+  el asiento. Falta el resolutor de seguimiento en cxp (equipo 2): el pago funciona igual.
+- **Reproceso (DU1).** `ReprocesoCargaPetroServiceImpl` trata los destinos tras anular los asientos: la devolución con
+  orden CONFIRMADA queda viva y no se repite (el asiento nuevo la lleva otra vez a socios por pagar); la que no está pagada
+  se anula con la carga (orden incluida) y el destino queda anulado; los destinos 1 y 2 solo limpian sus valores. El
+  reproceso **no** vuelve a aplicar el sobrante por el destino: usa su mecanismo propio (D-010).
+- **U4.** `validarAporteAH` ya no marca `APORTE_MONTO_INCONSISTENTE` cuando el descuento supera el esperado del mes pero la
+  capacidad del devengo por vigencias (`capacidadDeAbsorcionDevengo`: lo que falta por aportar desde el primer mes
+  incompleto, jubilación y cesantía, hasta 60 meses) lo absorbe entero. Un descuento menor al esperado sigue marcándose.

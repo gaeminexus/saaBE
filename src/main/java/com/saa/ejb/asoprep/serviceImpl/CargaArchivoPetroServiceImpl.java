@@ -254,6 +254,13 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
      */
     private String usuarioProcesoCargaActual = null;
 
+    /** B8: guarda de reentrada. Mientras el destino del sobrante se aplica, un sobrante nuevo NO vuelve a buscar destino. */
+    private boolean aplicandoDestinoSobrante = false;
+
+    /** B8: destino del sobrante por partícipe (CRD.DSSB). */
+    @EJB
+    private com.saa.ejb.crd.dao.DestinoSobranteDaoService destinoSobranteDaoService;
+
     @EJB
     private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
     private List<String> novedadesGeneradasCargaActual = new ArrayList<>();
@@ -366,8 +373,56 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
     @EJB
     private com.saa.ejb.crd.dao.TipoContratoDaoService tipoContratoDaoService;
 
-    /** Usuario que ordenó el reproceso (lo estampa D-022 en lo que crea). Solo en modo reproceso. */
+    /**
+     * Usuario con el que el reproceso graba sus asientos y pagos (B8-r, 2026-11-01). Ya validado con
+     * {@code UsuarioValidacionService}: es {@link #USUARIO_TECNICO_REPROCESO} hasta
+     * {@link #ULTIMO_PERIODO_CON_USUARIO_TECNICO_REPROCESO}, y desde el periodo siguiente el {@code usuarioCarga} de la
+     * carga. Solo en modo reproceso.
+     */
     private String usuarioReproceso = null;
+
+    /**
+     * Último periodo (mes/año de afectación de la carga, inclusive) cuyo reproceso graba con el usuario técnico
+     * {@link #USUARIO_TECNICO_REPROCESO}. Decisión del usuario, 2026-11-01 (docs/logica-negocio/cnt/DISENO-USUARIO-OBLIGATORIO.md
+     * §8): hasta agosto de 2026 la operación todavía no estaba en el SAA y no hay un usuario real al que atribuirla; desde
+     * septiembre de 2026 ya se usaban usuarios reales y el reproceso graba con el {@code usuarioCarga} de la carga.
+     */
+    static final java.time.YearMonth ULTIMO_PERIODO_CON_USUARIO_TECNICO_REPROCESO = java.time.YearMonth.of(2026, 8);
+
+    /** Usuario técnico del reproceso (SCP.PJRQ, sin acceso al sistema; se crea con cnt/sql/c20-04). */
+    static final String USUARIO_TECNICO_REPROCESO = "REPROCESO";
+
+    /**
+     * B8-r: usuario con el que el reproceso graba la carga, validado con el helper (si no existe, falla claro). Nunca
+     * «SISTEMA» ni «SAA_REPROCESO». Ver {@link #ULTIMO_PERIODO_CON_USUARIO_TECNICO_REPROCESO}.
+     */
+    private String resolverUsuarioReproceso(CargaArchivo cargaArchivo) throws Throwable {
+        if (cargaArchivo.getMesAfectacion() == null || cargaArchivo.getAnioAfectacion() == null) {
+            throw new IncomeException("La carga " + cargaArchivo.getCodigo() + " no tiene mes/año de afectación: no se puede"
+                + " saber con qué usuario graba el reproceso.");
+        }
+        java.time.YearMonth periodo = java.time.YearMonth.of(cargaArchivo.getAnioAfectacion().intValue(),
+            cargaArchivo.getMesAfectacion().intValue());
+        boolean tecnico = !periodo.isAfter(ULTIMO_PERIODO_CON_USUARIO_TECNICO_REPROCESO);
+        String nombre;
+        if (tecnico) {
+            nombre = USUARIO_TECNICO_REPROCESO;
+        } else {
+            nombre = cargaArchivo.getUsuarioCarga() != null ? cargaArchivo.getUsuarioCarga().getNombre() : null;
+            if (nombre == null || nombre.trim().isEmpty()) {
+                throw new IncomeException("La carga " + cargaArchivo.getCodigo() + " (periodo " + periodo + ") no tiene usuario"
+                    + " de carga: el reproceso de un periodo desde 2026-09 graba con el usuario real de la operación original.");
+            }
+        }
+        try {
+            return usuarioValidacionService.validar(nombre);
+        } catch (com.saa.basico.util.UsuarioInvalidoException e) {
+            throw new IncomeException("El reproceso de la carga " + cargaArchivo.getCodigo() + " (periodo " + periodo
+                + ") graba con el usuario '" + nombre + "' y no es válido: " + e.getMotivo()
+                + (tecnico ? ". Cree el usuario técnico " + USUARIO_TECNICO_REPROCESO
+                    + " (docs/logica-negocio/cnt/DISENO-USUARIO-OBLIGATORIO.md §8, cnt/sql/c20-04)." : "."));
+        }
+    }
 
     /** D-022: tipo de contrato de los aportantes de la carga, resuelto una vez por corrida. */
     private Long tipoContratoAportantesReproceso = null;
@@ -2377,7 +2432,8 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 			// 2a. REPARTO: D 2.3.01.15.01 -> H 1.4.05.05/1.4.05.10, plantilla alterno 20.
 			// B6-a: los asientos llevan el usuario de la carga, no «SISTEMA» por perderlo. Modo reproceso:
 			// sin cambio, sigue grabando «SISTEMA» (ahora explícito, antes era el relleno de cnt).
-			String usuarioAsientos = modoReproceso ? "SISTEMA" : usuarioDeLaCarga(cargaArchivo);
+			// B8-r: en reproceso, el usuario de la regla del periodo (REPROCESO hasta 2026-08; desde 2026-09 el usuarioCarga).
+			String usuarioAsientos = usuarioDeLaCarga(cargaArchivo);
 			cobroPetroContableService.contabilizarReparto(codigoCargaArchivo, usuarioAsientos);
 			// 2b. APLICACION: D 2.3.02.05/2.3.02.10 -> H cuentas reales, plantilla 21 + bandas.
 			cobroPetroContableService.contabilizarAplicacion(codigoCargaArchivo, usuarioAsientos);
@@ -2423,7 +2479,10 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 		System.out.println("=== APLICACIÓN DE PAGOS EN MODO REPROCESO - Carga: " + codigoCargaArchivo
 			+ " - " + etiquetaCorrida + " ===");
 		modoReproceso = true;
-		usuarioReproceso = usuarioCorrida != null && !usuarioCorrida.trim().isEmpty() ? usuarioCorrida.trim() : "SAA_REPROCESO";
+		// B8-r: ya no «SAA_REPROCESO» ni el usuario que ordenó la corrida: la regla del periodo, validada acá, lo primero.
+		// (usuarioCorrida sigue en la firma por compatibilidad; quien ordenó el reproceso queda en lo que anula
+		// ReprocesoCargaPetroServiceImpl.)
+		usuarioReproceso = resolverUsuarioReproceso(cargaArchivoService.selectById(codigoCargaArchivo));
 		etiquetaReproceso = etiquetaCorrida != null ? etiquetaCorrida : ("REPROCESO carga " + codigoCargaArchivo);
 		excedentesDevueltosReproceso.clear();
 		try {
@@ -3159,6 +3218,20 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 					// El proceso automático sabe qué hacer con este valor.
 					continue;
 				}
+				// B8: con un destino del sobrante activo, la novedad de sobrante (MONTO_INCONSISTENTE) ya tiene a dónde
+				// ir: el proceso lo aplica al procesar. Cualquier otro tipo de novedad sigue bloqueando.
+				if (tieneDestinoSobrante(cargaArchivo, participe)) {
+					boolean soloSobrante = true;
+					for (Long tipoNovedad : novedadesSinResolver) {
+						if (tipoNovedad == null || tipoNovedad.intValue() != ASPNovedadesCargaArchivo.MONTO_INCONSISTENTE) {
+							soloSobrante = false;
+							break;
+						}
+					}
+					if (soloSobrante) {
+						continue;
+					}
+				}
 				if (modoReproceso) {
 					// MODO REPROCESO (C4): un rol sin partícipe en el SAA va SIEMPRE a
 					// registrarSinParticipeReproceso, traiga la novedad que traiga de la carga
@@ -3378,7 +3451,19 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 				aplicadoAportes += nullSafe(aporte.getValor());
 			}
 		}
-		double aplicado = aplicadoPrestamos + aplicadoAportes;
+		// B8: lo que se devuelve al partícipe (DSSB destino 3) también es dinero aplicado: sale por socios por pagar.
+		double aplicadoDevoluciones = 0.0;
+		List<com.saa.model.crd.DestinoSobrante> destinosSobrante = destinoSobranteDaoService.selectActivosByCarga(idCarga);
+		if (destinosSobrante != null) {
+			for (com.saa.model.crd.DestinoSobrante destino : destinosSobrante) {
+				if (destino.getTipoDestino() != null
+						&& destino.getTipoDestino().intValue() == com.saa.rubros.DestinoSobrante.DEVOLUCION) {
+					aplicadoDevoluciones += nullSafe(destino.getValorAplicadoAportes())
+						+ nullSafe(destino.getValorAplicadoPrestamos());
+				}
+			}
+		}
+		double aplicado = aplicadoPrestamos + aplicadoAportes + aplicadoDevoluciones;
 		double diferencia = aplicado - recibido;
 
 		if (Math.abs(diferencia) <= TOLERANCIA_INVARIANTE) {
@@ -3393,7 +3478,8 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 		       .append(String.format("%,.2f", recibido)).append(notaReproceso)
 		       .append(", aplicado $").append(String.format("%,.2f", aplicado))
 		       .append(" (préstamos $").append(String.format("%,.2f", aplicadoPrestamos))
-		       .append(" + aportes $").append(String.format("%,.2f", aplicadoAportes)).append(")")
+		       .append(" + aportes $").append(String.format("%,.2f", aplicadoAportes))
+		       .append(" + devoluciones $").append(String.format("%,.2f", aplicadoDevoluciones)).append(")")
 		       .append(", diferencia $").append(String.format("%,.2f", Math.abs(diferencia)))
 		       .append(diferencia > 0 ? " aplicados de más" : " aplicados de menos")
 		       .append(" de lo recibido. La carga NO quedó procesada: corrija y vuelva a intentar.");
@@ -4947,11 +5033,17 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 			if (prestamosDeLaLinea.isEmpty()) {
 				System.out.println("⛔ El préstamo " + idPrestamoLinea + " de la línea de la generación ARCH no está entre los activos de "
 					+ "la entidad " + entidad.getCodigo() + " para el producto " + codigoProducto + " - no se aplica");
+				// B8: el destino que el operador eligió para el sobrante, antes de la novedad bloqueante.
+				double lineaConDestino = aplicarDestinoSobrante(participe, cargaArchivo, montoArchivo,
+					"préstamo " + idPrestamoLinea + " de la línea ARCH ya no activo");
+				if (montoArchivo - lineaConDestino <= 0.01) {
+					return;
+				}
 				registrarNovedadDeAplicacion(participe, ASPNovedadesCargaArchivo.MONTO_INCONSISTENTE,
 					"El préstamo " + idPrestamoLinea + " de la línea de la generación ARCH (producto " + codigoProducto
-						+ ") ya no está activo: no se aplicaron $" + String.format("%.2f", montoArchivo)
+						+ ") ya no está activo: no se aplicaron $" + String.format("%.2f", montoArchivo - lineaConDestino)
 						+ ". Requiere distribución manual (AVPC).",
-					null, idPrestamoLinea, null, montoArchivo);
+					null, idPrestamoLinea, null, montoArchivo - lineaConDestino);
 				return;
 			}
 			System.out.println("   A5: se aplica al préstamo " + idPrestamoLinea + " de la línea de la generación ARCH");
@@ -5038,13 +5130,18 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 			                    montoArchivo += hsFila;
 			                    hsSinSeguroEnCuotaFila = true;
 			                } else {
+			                    // B8: el destino que el operador eligió para el sobrante, antes de la novedad bloqueante.
+			                    double hsConDestino = aplicarDestinoSobrante(participe, cargaArchivo, hsFila,
+			                        "HS sin seguro en la cuota #" + cuotaValidar.getNumeroCuota());
+			                    if (hsFila - hsConDestino > 0.01) {
 			                    registrarNovedadDeAplicacion(participe, ASPNovedadesCargaArchivo.MONTO_INCONSISTENTE,
 			                        "HS de $" + String.format("%.2f", hsFila) + " descontado por Petro, pero la cuota #"
 			                            + cuotaValidar.getNumeroCuota() + " del préstamo "
 			                            + (cuotaValidar.getPrestamo() != null ? cuotaValidar.getPrestamo().getCodigo() : null)
 			                            + " no tiene seguro de incendio: no se aplicó. Requiere distribución manual (AVPC).",
 			                        null, cuotaValidar.getPrestamo() != null ? cuotaValidar.getPrestamo().getCodigo() : null,
-			                        0.0, hsFila);
+			                        0.0, hsFila - hsConDestino);
+			                    }
 			                }
 			            }
 			        }
@@ -5197,9 +5294,14 @@ private boolean procesarSeguroIncendioHuerfano(ParticipeXCargaArchivo participeH
 	if (destino == null) {
 		System.err.println("⛔ NOVEDAD BLOQUEANTE (HS huérfano): partícipe " + participeHS.getCodigoPetro()
 			+ " (" + participeHS.getNombre() + ") - " + descripcionSinDestino[0]);
+		// B8: el destino que el operador eligió para el sobrante, antes de la novedad bloqueante.
+		double hsConDestino = aplicarDestinoSobrante(participeHS, cargaArchivo, montoHS, "HS huérfano sin préstamo destino");
+		if (montoHS - hsConDestino <= 0.01) {
+			return true;
+		}
 		// §15: transacción PROPIA — ver comentario del otro registrarNovedad de este método.
 		registrarNovedadDeAplicacion(participeHS, ASPNovedadesCargaArchivo.MONTO_INCONSISTENTE, descripcionSinDestino[0],
-			null, null, null, Double.valueOf(montoHS));
+			null, null, null, Double.valueOf(montoHS - hsConDestino));
 		return true;
 	}
 
@@ -5542,6 +5644,11 @@ private void recalcularMoraAlCorteDeLaCarga(Long idPrestamo, CargaArchivo cargaA
  * usuario de proceso aborta: nunca se rellena con «SISTEMA» ni con otro usuario.
  */
 private String usuarioDeLaCarga(CargaArchivo cargaArchivo) throws Throwable {
+	// B8-r: en modo reproceso el usuario es el de la regla del periodo (REPROCESO hasta 2026-08, desde 2026-09 el
+	// usuarioCarga), ya validado al entrar a aplicarPagosArchivoPetroReproceso.
+	if (modoReproceso && usuarioReproceso != null) {
+		return usuarioReproceso;
+	}
 	if (usuarioProcesoCargaActual != null && !usuarioProcesoCargaActual.trim().isEmpty()) {
 		return usuarioProcesoCargaActual.trim();
 	}
@@ -5570,16 +5677,246 @@ private ContextoPago crearContextoPagoCarga(CargaArchivo cargaArchivo, String or
 		cargaArchivo.getMesAfectacion(), cargaArchivo.getAnioAfectacion()).atTime(23, 59, 59);
 
 	ContextoPago ctx = new ContextoPago();
-	// B6-a: ContextoPago.usuario es obligatorio y la carga no lo seteaba (PGPR con usuario nulo). Modo
-	// reproceso: sin cambio (queda sin usuario, como hoy).
-	if (!modoReproceso) {
-		ctx.setUsuario(usuarioDeLaCarga(cargaArchivo));
-	}
+	// B6-a: ContextoPago.usuario es obligatorio y la carga no lo seteaba (PGPR con usuario nulo). B8-r: también en
+	// modo reproceso, con el usuario de la regla del periodo (no cambia ningún monto, solo quién figura).
+	ctx.setUsuario(usuarioDeLaCarga(cargaArchivo));
 	ctx.setIdCargaArchivo(cargaArchivo.getCodigo());
 	ctx.setFechaPago(fechaPagoEfecto);
 	ctx.setObservacion(String.format("%s: Carga Petro %d - Mes %d/%d",
 		origen, cargaArchivo.getCodigo(), cargaArchivo.getMesAfectacion(), cargaArchivo.getAnioAfectacion()));
 	return ctx;
+}
+
+/**
+ * B8 / U4: cuánto dinero puede absorber el devengo por vigencias de un partícipe, SIN escribir nada: la suma de lo que
+ * falta por aportar (esperado menos aportado, jubilación y cesantía) desde el primer mes incompleto, hasta el tope de
+ * {@link #TOPE_MESES_DEVENGO} meses. Es el mismo recorrido de {@link #distribuirAportePorDevengo}, de solo lectura:
+ * si el descuento cabe en esta capacidad, el reparto lo coloca entero y no hay inconsistencia que avisar.
+ */
+private double capacidadDeAbsorcionDevengo(Entidad entidad, CargaArchivo cargaArchivo) throws Throwable {
+	if (cargaArchivo.getMesAfectacion() == null || cargaArchivo.getAnioAfectacion() == null) {
+		return 0.0;
+	}
+	CacheVigenciaParticipe cacheVigencia = new CacheVigenciaParticipe();
+	java.time.LocalDate mesCarga = java.time.LocalDate.of(
+		cargaArchivo.getAnioAfectacion().intValue(), cargaArchivo.getMesAfectacion().intValue(), 1);
+	java.util.Map<String, Double> aportadoPorMesTipo = new java.util.HashMap<>();
+	List<Object[]> filas = aporteDaoService.sumValorPorEntidadTipoYRangoDevengo(
+		entidad.getCodigo(), ALCANCE_MINIMO_DEVENGO, mesCarga);
+	if (filas != null) {
+		for (Object[] fila : filas) {
+			java.time.LocalDate periodo = (java.time.LocalDate) fila[0];
+			Long idTipo = ((Number) fila[1]).longValue();
+			aportadoPorMesTipo.put(claveMesTipo(periodo, idTipo), fila[2] != null ? ((Number) fila[2]).doubleValue() : 0.0);
+		}
+	}
+	java.time.LocalDate mes = ALCANCE_MINIMO_DEVENGO;
+	java.time.LocalDate inicio = null;
+	int guard = 0;
+	while (!mes.isAfter(mesCarga) && guard < TOPE_MESES_DEVENGO) {
+		guard++;
+		for (Long idTipo : ORDEN_TIPOS_APORTE) {
+			double esperado = esperadoMensual(entidad, idTipo, mes, null, null, cacheVigencia, mesCarga);
+			if (esperado - aportadoPorMesTipo.getOrDefault(claveMesTipo(mes, idTipo), 0.0) > 0.01) {
+				inicio = mes;
+				break;
+			}
+		}
+		if (inicio != null) {
+			break;
+		}
+		mes = mes.plusMonths(1);
+	}
+	if (inicio == null) {
+		inicio = mesCarga;
+	}
+	double capacidad = 0.0;
+	mes = inicio;
+	for (guard = 0; guard < TOPE_MESES_DEVENGO; guard++) {
+		for (Long idTipo : ORDEN_TIPOS_APORTE) {
+			double esperado = esperadoMensual(entidad, idTipo, mes, null, null, cacheVigencia, mesCarga);
+			double faltante = esperado - aportadoPorMesTipo.getOrDefault(claveMesTipo(mes, idTipo), 0.0);
+			if (esperado > 0.0 && faltante > 0.01) {
+				capacidad += faltante;
+			}
+		}
+		mes = mes.plusMonths(1);
+	}
+	return Math.round(capacidad * 100.0) / 100.0;
+}
+
+/**
+ * B8 (DISENO-DESTINO-SOBRANTE-DSSB.md): el destino que el operador eligió para el SOBRANTE del partícipe. Se llama
+ * ANTES de registrar la novedad bloqueante del sobrante, en cada punto donde el proceso detecta dinero que no pudo
+ * aplicar: si el partícipe tiene un destino activo en la carga (CRD.DSSB), lo aplica por ese destino y el llamador
+ * registra la novedad solo por lo que quede; sin destino (o en modo reproceso) devuelve 0 y todo sigue como hoy (DU2).
+ *
+ * <ul>
+ * <li><b>Siguiente cuota (1):</b> el motor aplica el sobrante al préstamo elegido o, sin préstamo, a la cuota pendiente
+ * más antigua de un préstamo VIGENTE o EN_MORA del partícipe (el plazo vencido no entra).</li>
+ * <li><b>Aporte (2):</b> reparte por devengo en el tipo elegido (jubilación o cesantía).</li>
+ * <li><b>Devolución (3):</b> no mueve dinero acá; queda anotado y {@code contabilizarAplicacion} lo lleva a socios por
+ * pagar (línea 61) y crea la orden de pago.</li>
+ * </ul>
+ *
+ * Lo aplicado se suma en {@code DSSBVLAH} si el dinero entró por una fila de aportes, o en {@code DSSBVLPR} si entró
+ * por una de préstamos: de ahí sale la puente (aux1 3 o 4) del asiento de aplicación.
+ *
+ * @return lo que se aplicó por el destino (0 si no hay destino, o no se pudo aplicar nada)
+ */
+private double aplicarDestinoSobrante(ParticipeXCargaArchivo participe, CargaArchivo cargaArchivo, double monto,
+		String motivo) throws Throwable {
+	if (modoReproceso || aplicandoDestinoSobrante || participe == null || monto <= 0.01) {
+		return 0.0;
+	}
+	List<Entidad> entidades = entidadDaoService.selectByCodigoPetro(participe.getCodigoPetro());
+	if (entidades == null || entidades.isEmpty()) {
+		return 0.0;
+	}
+	Entidad entidad = entidades.get(0);
+	com.saa.model.crd.DestinoSobrante destino = destinoSobranteDaoService.selectActivoByCargaYEntidad(
+		cargaArchivo.getCodigo(), entidad.getCodigo());
+	if (destino == null) {
+		return 0.0;
+	}
+	monto = Math.round(monto * 100.0) / 100.0;
+	final String productoEntrada = participe.getDetalleCargaArchivo() != null
+			? participe.getDetalleCargaArchivo().getCodigoPetroProducto() : null;
+	final boolean entroPorAportes = productoEntrada == null
+			|| com.saa.rubros.EntradaExcedentePetro.PRODUCTO_APORTES.equalsIgnoreCase(productoEntrada);
+	int tipo = destino.getTipoDestino() != null ? destino.getTipoDestino().intValue() : 0;
+
+	double aplicado;
+	aplicandoDestinoSobrante = true;
+	try {
+		switch (tipo) {
+		case com.saa.rubros.DestinoSobrante.DEVOLUCION:
+			aplicado = monto;
+			break;
+		case com.saa.rubros.DestinoSobrante.APORTE:
+			aplicado = aplicarSobranteAAporte(destino, entidad, participe, cargaArchivo, monto, productoEntrada,
+				entroPorAportes);
+			break;
+		case com.saa.rubros.DestinoSobrante.SIGUIENTE_CUOTA:
+			aplicado = aplicarSobranteASiguienteCuota(destino, entidad, cargaArchivo, monto);
+			break;
+		default:
+			throw new IncomeException("El destino del sobrante " + destino.getCodigo() + " tiene un tipo desconocido ("
+				+ destino.getTipoDestino() + ").");
+		}
+	} finally {
+		aplicandoDestinoSobrante = false;
+	}
+	aplicado = Math.round(aplicado * 100.0) / 100.0;
+	if (aplicado <= 0.01) {
+		System.out.println("   B8: el destino del sobrante " + destino.getCodigo() + " (tipo " + tipo + ") no pudo aplicar nada de $"
+			+ monto + " del partícipe " + participe.getCodigoPetro() + " (" + motivo + "): queda la novedad bloqueante.");
+		return 0.0;
+	}
+	if (entroPorAportes) {
+		destino.setValorAplicadoAportes(nullSafe(destino.getValorAplicadoAportes()) + aplicado);
+	} else {
+		destino.setValorAplicadoPrestamos(nullSafe(destino.getValorAplicadoPrestamos()) + aplicado);
+	}
+	destino.setUsuarioModificacion(usuarioDeLaCarga(cargaArchivo));
+	destino.setFechaModificacion(java.time.LocalDateTime.now());
+	destinoSobranteDaoService.save(destino, destino.getCodigo());
+	System.out.println("   ✅ B8: sobrante de $" + aplicado + " del partícipe " + participe.getCodigoPetro() + " (" + motivo
+		+ ") aplicado por el destino " + destino.getCodigo() + " (tipo " + tipo + ", entró por "
+		+ (entroPorAportes ? "aportes" : "préstamos") + ")");
+	return aplicado;
+}
+
+/** B8, destino 2: reparte el sobrante por devengo en el tipo de aporte elegido; devuelve lo que sí encontró dónde caer. */
+private double aplicarSobranteAAporte(com.saa.model.crd.DestinoSobrante destino, Entidad entidad,
+		ParticipeXCargaArchivo participe, CargaArchivo cargaArchivo, double monto, final String productoEntrada,
+		boolean entroPorAportes) throws Throwable {
+	if (destino.getTipoAporte() == null || destino.getTipoAporte().getCodigo() == null) {
+		throw new IncomeException("El destino del sobrante " + destino.getCodigo() + " es «aporte» pero no tiene tipo de aporte.");
+	}
+	final double[] colocado = { 0.0 };
+	// Mismo criterio que aplicarAfectacionAAporte: si el dinero entró por una fila de préstamo, el aporte conserva el
+	// tipo EXCEDENTE_PETRO con la marca del producto para que el asiento de aplicación debite la puente de préstamos.
+	int tipoMovimiento = entroPorAportes ? com.saa.rubros.CrdTipoMovimientoAporte.APORTE_MENSUAL
+			: com.saa.rubros.CrdTipoMovimientoAporte.EXCEDENTE_PETRO;
+	final Long idDestino = destino.getCodigo();
+	distribuirAportePorDevengo(entidad, monto, cargaArchivo, participe, null, null,
+		java.util.Collections.singletonList(destino.getTipoAporte().getCodigo()), tipoMovimiento, aporte -> {
+			colocado[0] += nullSafe(aporte.getValor());
+			if (productoEntrada != null) {
+				aporte.setGlosa(truncarTexto(com.saa.rubros.EntradaExcedentePetro.marca(productoEntrada) + " "
+						+ aporte.getGlosa() + " - DSSB " + idDestino, 2000));
+				aporteDaoService.save(aporte, aporte.getCodigo());
+			}
+		});
+	return colocado[0];
+}
+
+/** B8, destino 1: aplica el sobrante por el motor al préstamo elegido o a la cuota pendiente más antigua; devuelve lo aplicado. */
+private double aplicarSobranteASiguienteCuota(com.saa.model.crd.DestinoSobrante destino, Entidad entidad,
+		CargaArchivo cargaArchivo, double monto) throws Throwable {
+	Prestamo prestamo = null;
+	if (destino.getPrestamo() != null && destino.getPrestamo().getCodigo() != null) {
+		prestamo = prestamoDaoService.selectById(destino.getPrestamo().getCodigo(), "Prestamo");
+		if (prestamo == null || !esPrestamoVigenteOEnMora(prestamo)) {
+			System.out.println("   B8: el préstamo " + destino.getPrestamo().getCodigo() + " del destino " + destino.getCodigo()
+				+ " ya no está vigente ni en mora: no se aplica el sobrante.");
+			return 0.0;
+		}
+	} else {
+		List<Prestamo> candidatos = prestamoDaoService.selectVigentesByEntidad(entidad.getCodigo());
+		java.time.LocalDateTime masAntigua = null;
+		if (candidatos != null) {
+			for (Prestamo candidato : candidatos) {
+				if (!esPrestamoVigenteOEnMora(candidato)) {
+					continue;
+				}
+				DetallePrestamo cuota = buscarCuotaAPagar(java.util.Collections.singletonList(candidato), cargaArchivo);
+				if (cuota == null) {
+					continue;
+				}
+				java.time.LocalDateTime vencimiento = cuota.getFechaVencimiento();
+				if (prestamo == null || (vencimiento != null && (masAntigua == null || vencimiento.isBefore(masAntigua)))) {
+					prestamo = candidato;
+					masAntigua = vencimiento;
+				}
+			}
+		}
+		if (prestamo == null) {
+			System.out.println("   B8: el partícipe " + entidad.getCodigo() + " no tiene un préstamo vigente o en mora con cuota"
+				+ " pendiente para el destino " + destino.getCodigo() + ".");
+			return 0.0;
+		}
+	}
+	recalcularMoraAlCorteDeLaCarga(prestamo.getCodigo(), cargaArchivo);
+	ContextoPago ctx = crearContextoPagoCarga(cargaArchivo, "DESTINO_SOBRANTE");
+	ctx.setObservacion(ctx.getObservacion() + " - DSSB " + destino.getCodigo());
+	ResultadoAplicacionPago resultado = motorPagoPrestamoService.aplicarPago(prestamo.getCodigo(), monto, ctx);
+	verificarYActualizarEstadoPrestamo(prestamo);
+	return resultado.getValorAplicado();
+}
+
+/** Préstamo VIGENTE (2) o EN_MORA (11); el plazo vencido y los terminales no reciben el sobrante (U2). */
+private boolean esPrestamoVigenteOEnMora(Prestamo prestamo) {
+	Long estado = prestamo.getIdEstado();
+	return estado != null && (estado.longValue() == com.saa.rubros.EstadoPrestamo.VIGENTE
+		|| estado.longValue() == com.saa.rubros.EstadoPrestamo.EN_MORA);
+}
+
+/**
+ * B8: ¿el partícipe tiene un destino del sobrante activo en esta carga? Para las novedades de sobrante cuenta como
+ * «con destino» (DISENO-DESTINO-SOBRANTE-DSSB.md §3.2). Nunca en modo reproceso.
+ */
+private boolean tieneDestinoSobrante(CargaArchivo cargaArchivo, ParticipeXCargaArchivo participe) throws Throwable {
+	if (modoReproceso) {
+		return false;
+	}
+	List<Entidad> entidades = entidadDaoService.selectByCodigoPetro(participe.getCodigoPetro());
+	if (entidades == null || entidades.isEmpty()) {
+		return false;
+	}
+	return destinoSobranteDaoService.selectActivoByCargaYEntidad(cargaArchivo.getCodigo(),
+		entidades.get(0).getCodigo()) != null;
 }
 
 /**
@@ -5590,8 +5927,15 @@ private ContextoPago crearContextoPagoCarga(CargaArchivo cargaArchivo, String or
  * montoDiferencia positiva) para que el operador lo distribuya manualmente vía AVPC.
  */
 private void manejarExcedenteNoAplicado(ResultadoAplicacionPago resultado, Prestamo prestamo,
-                                         CargaArchivo cargaArchivo, ParticipeXCargaArchivo participe) {
+                                         CargaArchivo cargaArchivo, ParticipeXCargaArchivo participe) throws Throwable {
 	double excedente = resultado.getExcedenteNoAplicado();
+	if (excedente <= 0.01) {
+		return;
+	}
+	// B8: el destino que el operador eligió para el sobrante del partícipe, antes de la novedad bloqueante.
+	double conDestinoSobrante = aplicarDestinoSobrante(participe, cargaArchivo, excedente,
+		"excedente del motor sin cuota (préstamo " + prestamo.getCodigo() + ")");
+	excedente = Math.round((excedente - conDestinoSobrante) * 100.0) / 100.0;
 	if (excedente <= 0.01) {
 		return;
 	}
@@ -5607,7 +5951,8 @@ private void manejarExcedenteNoAplicado(ResultadoAplicacionPago resultado, Prest
 	// aplicarPagosArchivoPetro; si la red del §11 revierte después, no puede llevarse esta
 	// novedad con ella.
 	registrarNovedadDeAplicacion(participe, ASPNovedadesCargaArchivo.MONTO_INCONSISTENTE, descripcion,
-		null, prestamo.getCodigo(), resultado.getValorAplicado(), resultado.getValorRecibido());
+		null, prestamo.getCodigo(), resultado.getValorAplicado(),
+		conDestinoSobrante > 0.0 ? resultado.getValorAplicado() + excedente : resultado.getValorRecibido());
 }
 
 /**
@@ -6530,6 +6875,16 @@ private void validarAporteAH(ParticipeXCargaArchivo participe, CargaArchivo carg
 		double diferencia = Math.abs(montoEsperado - montoArchivo);
 		
 		if (diferencia > TOLERANCIA) {
+			// B8 / U4 (DISENO-AFECTACION-MANUAL-V2.md F6): si el descuento SUPERA el esperado del mes pero el reparto por
+			// vigencias (atrasos y anticipo) lo absorbe entero, no es una inconsistencia: se aplicará por el devengo.
+			if (montoArchivo > montoEsperado) {
+				double capacidad = capacidadDeAbsorcionDevengo(entidad, cargaArchivo);
+				if (capacidad + 0.01 >= montoArchivo) {
+					System.out.println("  ✅ U4: descuento de aportes $" + montoArchivo + " mayor al esperado del mes ($"
+						+ montoEsperado + ") pero el devengo por vigencias lo absorbe (capacidad $" + capacidad + "): sin novedad");
+					return;
+				}
+			}
 			String descripcion = String.format("Monto de aportes inconsistente - Esperado: $%.2f (Jub:$%.2f + Ces:$%.2f), Archivo: $%.2f, Diferencia: $%.2f",
 				montoEsperado, montoJubilacion, montoCesantia, montoArchivo, diferencia);
 			registrarNovedad(participe, ASPNovedadesCargaArchivo.APORTE_MONTO_INCONSISTENTE,
@@ -7335,6 +7690,15 @@ private int distribuirAportePorDevengo(Entidad entidad, double montoRecibido,
 		// registradorNovedadTransaccionPropia (§15), que es IDEMPOTENTE — si esta fila ya tiene
 		// una novedad de este tipo (p.ej. de un intento anterior que revirtió más adelante en la
 		// red del §11), la ACTUALIZA en vez de crear una segunda.
+		// B8: el destino que el operador eligió para el sobrante, antes de la novedad bloqueante.
+		double conDestinoSobrante = aplicarDestinoSobrante(participe, cargaArchivo, disponible,
+			"aporte sin mes donde caber (contrato " + contratoActivo.getCodigo() + ")");
+		if (conDestinoSobrante > 0.0) {
+			disponible = Math.round((disponible - conDestinoSobrante) * 100.0) / 100.0;
+			if (disponible <= 0.01) {
+				return aportesCreados;
+			}
+		}
 		String descripcion = "Contrato activo (código " + contratoActivo.getCodigo()
 			+ ") pero su vigencia no cubre uno o más de los " + TOPE_MESES_DEVENGO
 			+ " meses evaluados (sin vigencia vigente, o vigencia con monto $0): quedaron $"
@@ -7758,7 +8122,7 @@ private int crearContratoYAplicarReproceso(Entidad entidad, double montoRecibido
 	double monto = Math.round(montoRecibido * 100.0) / 100.0;
 	String observacion = "D-022 reproceso carga " + cargaArchivo.getCodigo()
 		+ ": contrato creado para aplicar el aporte Petro (" + etiquetaReproceso + ")";
-	String usuario = truncarTexto(usuarioReproceso != null ? usuarioReproceso : "SAA_REPROCESO", 50);
+	String usuario = truncarTexto(usuarioDeLaCarga(cargaArchivo), 50);
 	java.time.LocalDateTime ahora = java.time.LocalDateTime.now();
 
 	Contrato contrato = new Contrato();
@@ -8019,7 +8383,7 @@ private void crearRegistroPagoAporte(Aporte aporte, double montoPagado,
 		                               participe.getNombre(),
 		                               cargaArchivo.getCodigo()));
 		pago.setFechaRegistro(java.time.LocalDateTime.now());
-		pago.setUsuarioRegistro("SISTEMA");
+		pago.setUsuarioRegistro(usuarioDeLaCarga(cargaArchivo)); // B8-r: ya no «SISTEMA»
 		pago.setEstado(1L);
 		
 		pagoAporteService.saveSingle(pago);

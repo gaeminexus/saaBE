@@ -96,6 +96,12 @@ public interface OrigenPagoExterno {
 	public static final String CRD_SEGURO_JUBILADOS = "CRD_SEGURO_JUBILADOS";
 
 	/**
+	 * Devolución al partícipe del sobrante de un descuento Petro/ARCH (B8, destino 3 de {@code CRD.DSSB}).
+	 * {@code idOrigen} = {@code DSSBCDGO}, un código real de CRD.DSSB. 24 caracteres (cabe en PGTRIDOR).
+	 */
+	public static final String CRD_DEVOLUCION_DESCUENTO = "CRD_DEVOLUCION_DESCUENTO";
+
+	/**
 	 * Pago de una planilla del IESS (rol normal, prestamos quirografarios, prestamos
 	 * hipotecarios o fondos de reserva), originado en RHH.PLIS. PGTRIDOR lleva el
 	 * RHH.PLIS.PLISCDGO correspondiente. Nace CONFIRMADO por debito automatico: el IESS ya

@@ -96,6 +96,7 @@ public interface NombreEntidadesCredito {
 	String VIGENCIA_CONTRATO = "VigenciaContrato";
 	String TRANSFERENCIA_CARGA_PETRO = "TransferenciaCargaPetro";
 	String ASIENTO_CARGA_PETRO = "AsientoCargaPetro";
+	String DESTINO_SOBRANTE = "DestinoSobrante";
 	String CERTIFICADO = "Certificado";
 	String HISTORICO_PAGO_CUENTA_INDIVIDUAL = "HistoricoPagoCuentaIndividual";
 	String COBRO_CREDITO = "CobroCredito";

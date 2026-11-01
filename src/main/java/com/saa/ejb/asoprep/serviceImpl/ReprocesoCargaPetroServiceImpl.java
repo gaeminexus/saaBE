@@ -107,6 +107,23 @@ public class ReprocesoCargaPetroServiceImpl implements ReprocesoCargaPetroServic
     @EJB
     private TransferenciaCargaPetroDaoService transferenciaCargaPetroDaoService;
 
+    /** B8 / DU1: destino del sobrante por partícipe (CRD.DSSB). */
+    @EJB
+    private com.saa.ejb.crd.dao.DestinoSobranteDaoService destinoSobranteDaoService;
+
+    /** B8 / DU1: estado de la orden de pago de una devolución y su anulación. */
+    @EJB
+    private com.saa.ejb.cxp.dao.PagoProgramadoDaoService pagoProgramadoDaoService;
+
+    @EJB
+    private com.saa.ejb.cxp.service.PagoProgramadoService pagoProgramadoService;
+
+    @EJB
+    private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
+    @EJB
+    private com.saa.basico.ejb.UsuarioDaoService usuarioDaoService;
+
     /** C17: mes cerrado para cartera / contabilidad (CIERRES-BLOQUEANTES.md). */
     @jakarta.ejb.EJB
     private com.saa.ejb.cnt.service.EstadoCierreService estadoCierreService;
@@ -146,7 +163,8 @@ public class ReprocesoCargaPetroServiceImpl implements ReprocesoCargaPetroServic
             throw new IncomeException("El motivo del reproceso es obligatorio: queda estampado en"
                     + " cada pago, aporte y asiento anulado.");
         }
-        String usuario = solicitud.getUsuario().trim();
+        // U-2: el usuario que ordena el reproceso se valida con el helper, lo primero (existe en el sistema).
+        String usuario = usuarioValidacionService.validar(solicitud.getUsuario());
         String motivo = solicitud.getMotivo().trim();
 
         CargaArchivo carga = cargaArchivoService.selectById(idCarga);
@@ -213,6 +231,10 @@ public class ReprocesoCargaPetroServiceImpl implements ReprocesoCargaPetroServic
         long inicioFase = inicioFase(etiqueta, "anular asientos REPARTO/APLICACION");
         anularAsientosDeAplicacion(idCarga, usuario, motivoCompleto, resultado);
         finFase(etiqueta, "anular asientos REPARTO/APLICACION", inicioFase, 0);
+
+        // 2b. B8 / DU1: destino del sobrante. La devolución que Tesorería ya pagó queda viva y no se repite; la que
+        // todavía no está pagada se anula junto con la carga (su orden de pago también).
+        tratarDestinosDelSobrante(idCarga, usuario, motivoCompleto, resultado);
 
         // ------------------------------------------------------------------
         // 3. Anular pagos de préstamo (enlazados + esquema viejo por observación)
@@ -325,7 +347,9 @@ public class ReprocesoCargaPetroServiceImpl implements ReprocesoCargaPetroServic
                 + resultado.getPagosMigradosAnulados() + " pagos migrados = descuento de la carga anulados ($"
                 + formato(resultado.getMontoPagosMigradosAnulados()) + ") y " + resultado.getPagosMigradosParciales().size()
                 + " parciales listados ($" + formato(resultado.getMontoPagosMigradosParciales()) + ") (D-025); complemento"
-                + " de apertura $" + formato(resultado.getMontoComplementoApertura()) + " (D-024).");
+                + " de apertura $" + formato(resultado.getMontoComplementoApertura()) + " (D-024); devoluciones del sobrante: "
+                + resultado.getDevolucionesAnuladas() + " anuladas y " + resultado.getDevolucionesConservadas()
+                + " conservadas por estar ya pagadas (B8/DU1).");
         System.out.println("=== REPROCESO CARGA PETRO - FIN: " + resultado.getMensaje());
         return resultado;
     }
@@ -340,6 +364,79 @@ public class ReprocesoCargaPetroServiceImpl implements ReprocesoCargaPetroServic
      * como reversada, igual que {@code CobroPetroContableServiceImpl.reversarRecepcion} hace
      * con el TRANSITORIO. El TRANSITORIO no se toca: pertenece al paso 1 y sigue vigente.
      */
+    /**
+     * B8 / DU1 (DISENO-DESTINO-SOBRANTE-DSSB.md §7). Recorre los destinos activos del sobrante de la carga:
+     * <ul>
+     * <li><b>Devolución (3) con orden de pago CONFIRMADA</b> (Tesorería ya pagó): queda viva con sus valores; el asiento de
+     * aplicación que regenera el reproceso la vuelve a llevar a socios por pagar sin crear otra orden.</li>
+     * <li><b>Devolución sin pagar</b> (sin orden, o con la orden aún sin confirmar): se anula junto con la carga (la orden
+     * de pago también, si existe) y el destino queda anulado.</li>
+     * <li><b>Siguiente cuota (1) y aporte (2):</b> sus pagos y aportes los anulan los pasos siguientes; los valores
+     * aplicados del destino se limpian. El reproceso no vuelve a aplicar el sobrante por el destino: usa su mecanismo
+     * propio (D-010).</li>
+     * </ul>
+     */
+    private void tratarDestinosDelSobrante(Long idCarga, String usuario, String motivoCompleto,
+            ResultadoReprocesoCargaPetro resultado) throws Throwable {
+        List<com.saa.model.crd.DestinoSobrante> destinos = destinoSobranteDaoService.selectActivosByCarga(idCarga);
+        if (destinos == null || destinos.isEmpty()) {
+            return;
+        }
+        Long idUsuario = null;
+        int anuladas = 0;
+        int conservadas = 0;
+        for (com.saa.model.crd.DestinoSobrante destino : destinos) {
+            int tipo = destino.getTipoDestino() != null ? destino.getTipoDestino().intValue() : 0;
+            if (tipo != com.saa.rubros.DestinoSobrante.DEVOLUCION) {
+                destino.setValorAplicadoAportes(null);
+                destino.setValorAplicadoPrestamos(null);
+                destino.setUsuarioModificacion(usuario);
+                destino.setFechaModificacion(LocalDateTime.now());
+                destinoSobranteDaoService.save(destino, destino.getCodigo());
+                continue;
+            }
+            com.saa.model.cxp.PagoProgramado pago = null;
+            if (destino.getIdPagoProgramado() != null) {
+                pago = pagoProgramadoDaoService.selectById(destino.getIdPagoProgramado(),
+                    com.saa.model.cxp.NombreEntidadesCompra.PAGO_PROGRAMADO);
+            }
+            boolean pagada = pago != null && pago.getEstado() != null
+                    && pago.getEstado().intValue() == com.saa.rubros.EstadoPagoProgramado.CONFIRMADO;
+            if (pagada) {
+                conservadas++;
+                System.out.println("  DU1: devolución DSSB " + destino.getCodigo() + " ya pagada por Tesorería (orden "
+                        + destino.getIdPagoProgramado() + "): queda viva, no se repite.");
+                continue;
+            }
+            if (pago != null && pago.getEstado() != null
+                    && pago.getEstado().intValue() != com.saa.rubros.EstadoPagoProgramado.ANULADO
+                    && pago.getEstado().intValue() != com.saa.rubros.EstadoPagoProgramado.RECHAZADO) {
+                if (idUsuario == null) {
+                    idUsuario = usuarioDaoService.selectByNombre(usuario).getCodigo();
+                }
+                pagoProgramadoService.anularPago(destino.getIdPagoProgramado(), motivoCompleto, idUsuario);
+            }
+            destino.setEstado(0L);
+            destino.setValorAplicadoAportes(null);
+            destino.setValorAplicadoPrestamos(null);
+            destino.setIdPagoProgramado(null);
+            destino.setIdAsiento(null);
+            destino.setObservacion(textoCorto(
+                (destino.getObservacion() != null ? destino.getObservacion() + " | " : "") + motivoCompleto, 1000));
+            destino.setUsuarioModificacion(usuario);
+            destino.setFechaModificacion(LocalDateTime.now());
+            destinoSobranteDaoService.save(destino, destino.getCodigo());
+            anuladas++;
+            System.out.println("  DU1: devolución DSSB " + destino.getCodigo() + " sin pagar: anulada junto con la carga.");
+        }
+        resultado.setDevolucionesAnuladas(anuladas);
+        resultado.setDevolucionesConservadas(conservadas);
+    }
+
+    private String textoCorto(String texto, int largo) {
+        return texto != null && texto.length() > largo ? texto.substring(0, largo) : texto;
+    }
+
     private void anularAsientosDeAplicacion(Long idCarga, String usuario, String motivoCompleto,
             ResultadoReprocesoCargaPetro resultado) throws Throwable {
         // D-024: el complemento de apertura nace con el reparto y se anula/regenera con él.

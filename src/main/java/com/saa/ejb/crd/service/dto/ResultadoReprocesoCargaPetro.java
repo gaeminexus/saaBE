@@ -35,6 +35,10 @@ public class ResultadoReprocesoCargaPetro {
     private int cuotasRecalculadas;
     private int prestamosReabiertos;
     private List<Long> asientosAnulados = new ArrayList<>();
+    /** B8 / DU1: devoluciones del sobrante (DSSB destino 3) anuladas junto con la carga (aún sin pagar por Tesorería). */
+    private int devolucionesAnuladas;
+    /** B8 / DU1: devoluciones ya pagadas por Tesorería: quedan vivas y no se repiten. */
+    private int devolucionesConservadas;
     private Long asientoReProvision;
 
     // --- Aplicado (lógica vigente) ---
@@ -318,4 +322,19 @@ public class ResultadoReprocesoCargaPetro {
     public void setDetalleSinParticipe(List<String> detalleSinParticipe) { this.detalleSinParticipe = detalleSinParticipe; }
     public String getMensaje() { return mensaje; }
     public void setMensaje(String mensaje) { this.mensaje = mensaje; }
+    public int getDevolucionesAnuladas() {
+        return devolucionesAnuladas;
+    }
+
+    public void setDevolucionesAnuladas(int devolucionesAnuladas) {
+        this.devolucionesAnuladas = devolucionesAnuladas;
+    }
+
+    public int getDevolucionesConservadas() {
+        return devolucionesConservadas;
+    }
+
+    public void setDevolucionesConservadas(int devolucionesConservadas) {
+        this.devolucionesConservadas = devolucionesConservadas;
+    }
 }

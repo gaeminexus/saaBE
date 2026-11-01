@@ -180,6 +180,18 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
     @EJB
     private DetallePlantillaDaoService detallePlantillaDaoService;
 
+    /** B8: destino del sobrante por partícipe (CRD.DSSB); la devolución (destino 3) se contabiliza acá. */
+    @EJB
+    private com.saa.ejb.crd.dao.DestinoSobranteDaoService destinoSobranteDaoService;
+
+    /** B8: la devolución al partícipe nace como orden de pago en la bandeja de tesorería. */
+    @EJB
+    private com.saa.ejb.cxp.service.PagoProgramadoService pagoProgramadoService;
+
+    /** B8: producto de pago de la devolución, deducido de la cuenta de la línea 61 de la plantilla 21. */
+    @EJB
+    private com.saa.ejb.cxp.dao.ProductoPagoDaoService productoPagoDaoService;
+
     // =====================================================================
     // Transferencias (§2.1 del contrato)
     // =====================================================================
@@ -820,7 +832,32 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
         List<Object[]> aportesPorTipo = aporteDaoService.sumValorPorTipoAporteByCarga(idCarga);
         boolean sinPagos = pagos == null || pagos.isEmpty();
         boolean sinAportes = aportesPorTipo == null || aportesPorTipo.isEmpty();
-        if (sinPagos && sinAportes) {
+        // B8: el destino del sobrante (CRD.DSSB). Devolución (destino 3): H línea 61 / D puente. Siguiente cuota
+        // (destino 1) pagada con plata que entró por una fila de APORTES: mueve el D del puente de préstamos al de aportes.
+        List<com.saa.model.crd.DestinoSobrante> destinosSobrante = destinoSobranteDaoService.selectActivosByCarga(idCarga);
+        double devolucionPorAportes = 0.0;
+        double devolucionPorPrestamos = 0.0;
+        double cuotaPagadaConAportes = 0.0;
+        List<com.saa.model.crd.DestinoSobrante> devoluciones = new ArrayList<>();
+        if (destinosSobrante != null) {
+            for (com.saa.model.crd.DestinoSobrante destino : destinosSobrante) {
+                int tipoDestino = destino.getTipoDestino() != null ? destino.getTipoDestino().intValue() : 0;
+                double deAportes = nvl(destino.getValorAplicadoAportes());
+                double dePrestamos = nvl(destino.getValorAplicadoPrestamos());
+                if (tipoDestino == com.saa.rubros.DestinoSobrante.DEVOLUCION && (deAportes + dePrestamos) > 0.005) {
+                    devolucionPorAportes += deAportes;
+                    devolucionPorPrestamos += dePrestamos;
+                    devoluciones.add(destino);
+                } else if (tipoDestino == com.saa.rubros.DestinoSobrante.SIGUIENTE_CUOTA) {
+                    cuotaPagadaConAportes += deAportes;
+                }
+            }
+        }
+        devolucionPorAportes = redondear(devolucionPorAportes);
+        devolucionPorPrestamos = redondear(devolucionPorPrestamos);
+        cuotaPagadaConAportes = redondear(cuotaPagadaConAportes);
+        double devolucionTotal = redondear(devolucionPorAportes + devolucionPorPrestamos);
+        if (sinPagos && sinAportes && devoluciones.isEmpty()) {
             // Esperado para cargas anteriores al 2026-08-28 (CRARCDGO sin backfill) o para una
             // carga que solo tuvo valores sin destino. No es un error: no hay nada que aplicar.
             System.out.println("CobroPetroContableService.contabilizarAplicacion - la carga "
@@ -1201,6 +1238,23 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
         }
         totalOtrosAportes = redondear(totalOtrosAportes);
 
+        // H: devolución al partícipe del sobrante de su descuento (B8, DSSB destino 3) -> socios por pagar.
+        // Línea 61 de la plantilla 21; si falta, se detiene con mensaje claro (nunca una cuenta escrita en el código).
+        DetallePlantilla lineaDevolucion = null;
+        if (devolucionTotal > 0.0) {
+            lineaDevolucion = detallePlantillaDaoService.selectByPlantillaYAuxiliar(
+                    idPlantilla, CrdLineaAsiento.DEVOLUCION_DESCUENTO_PARTICIPE);
+            if (lineaDevolucion == null) {
+                throw new IncomeException("La plantilla alterno " + PlantillasCredito.APLICACION_PETRO
+                        + " no tiene la línea de devolución al partícipe (aux1="
+                        + CrdLineaAsiento.DEVOLUCION_DESCUENTO_PARTICIPE + "), y la carga " + idCarga + " tiene $"
+                        + devolucionTotal + " por devolver. Corra crd/sql/357 (semilla de la línea 61).");
+            }
+            lineas.add(lineaDesdePlantilla(lineaDevolucion, devolucionTotal,
+                    "Aplicación Petro/ARCH carga " + idCarga + " - devolución al partícipe (socios por pagar)"));
+            totalHaber += devolucionTotal;
+        }
+
         if (lineas.isEmpty()) {
             System.out.println("CobroPetroContableService.contabilizarAplicacion - carga " + idCarga
                     + " sin montos que aplicar; no se genera asiento.");
@@ -1210,13 +1264,25 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
         // D: por aplicar — se arman DESPUÉS de sumar el Haber real, así el asiento cuadra
         // por construcción (D = suma de las líneas de H ya redondeadas), sin necesitar un
         // ajuste de centavos.
-        double totalPrestamos = redondear(totalHaber - totalCesantia - totalJubilacion - totalOtrosAportes);
+        double totalPrestamos = redondear(totalHaber - totalCesantia - totalJubilacion - totalOtrosAportes
+                - devolucionTotal);
         // D-010 corrección (28-oct-2026): el excedente devuelto a la cuenta individual que vino de
         // una fila de PRÉSTAMO entró en el reparto por 1.4.05.10, así que sale de 2.3.02.10 —no de
         // 2.3.02.05— aunque su haber sea la cuenta de aportes. Regla general: cada valor debita el
         // puente del producto por el que ENTRÓ en el reparto.
         double excedentePorPrestamos = excedentesQueEntraronPorPrestamos(idCarga);
         double totalAportes = redondear(totalCesantia + totalJubilacion + totalOtrosAportes - excedentePorPrestamos);
+        // B8: cada valor debita el puente del producto por el que ENTRÓ (D-024: las puentes quedan en cero). La
+        // devolución sale del puente de aportes o del de préstamos según la fila de la que vino; una cuota pagada con
+        // plata que entró por una fila de aportes pasa su D del puente de préstamos al de aportes.
+        totalAportes = redondear(totalAportes + devolucionPorAportes + cuotaPagadaConAportes);
+        totalPrestamos = redondear(totalPrestamos + devolucionPorPrestamos - cuotaPagadaConAportes);
+        if (totalPrestamos < -0.005 || totalAportes < -0.005) {
+            throw new IncomeException("El asiento de aplicación de la carga " + idCarga + " dejaría un puente en negativo"
+                    + " (aportes por aplicar $" + totalAportes + ", préstamos por aplicar $" + totalPrestamos
+                    + "): revise el destino del sobrante (devolución $" + devolucionTotal + ", cuotas pagadas con"
+                    + " aportes $" + cuotaPagadaConAportes + ").");
+        }
 
         List<DetalleAsiento> lineasFinal = new ArrayList<>();
         if (totalAportes > 0.0) {
@@ -1279,6 +1345,12 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
         registro.setFechaRegistro(LocalDateTime.now());
         asientoCargaPetroDaoService.save(registro, null);
 
+        // B8: la devolución al partícipe: una orden de pago por cada DSSB (destino 3) en la bandeja de tesorería.
+        if (!devoluciones.isEmpty()) {
+            registrarOrdenesDeDevolucion(devoluciones, lineaDevolucion, idEmpresa, idCarga, fechaAsiento,
+                    asiento.getCodigo(), usuario);
+        }
+
         // PLAN-AUDITORIA-BANDAS.md: el único enganche con contabilidad — se completa DESPUÉS
         // de que el asiento existe, nunca antes (las filas ya estaban escritas desde el
         // principio de este método, con o sin este asiento).
@@ -1326,6 +1398,90 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
                     + ": excedentes devueltos que entraron por préstamos $" + suma + " -> D 2.3.02.10 (D-010)");
         }
         return suma;
+    }
+
+    /**
+     * B8: crea la orden de pago de cada devolución (DSSB destino 3) por origen externo
+     * {@link com.saa.rubros.OrigenPagoExterno#CRD_DEVOLUCION_DESCUENTO}, {@code idOrigen} = DSSBCDGO. Sin cuenta
+     * bancaria: nace POR_APROBAR y tesorería la asigna al aprobar (igual que desembolsos y devolución de aportes).
+     * Una devolución que ya tiene orden ({@code idPagoProgramado}) no se repite (DU1). El asiento queda anotado en
+     * DSSBASNT para que el reproceso pueda anularlo.
+     */
+    private void registrarOrdenesDeDevolucion(List<com.saa.model.crd.DestinoSobrante> devoluciones,
+            DetallePlantilla lineaDevolucion, Long idEmpresa, Long idCarga, LocalDate fechaAsiento, Long idAsiento,
+            String usuario) throws Throwable {
+        Long idProductoPago = resolverProductoPagoDevolucion(idEmpresa, lineaDevolucion);
+        Long idUsuario = usuarioDaoService.selectByNombre(usuario).getCodigo();
+        for (com.saa.model.crd.DestinoSobrante devolucion : devoluciones) {
+            double valor = redondear(nvl(devolucion.getValorAplicadoAportes()) + nvl(devolucion.getValorAplicadoPrestamos()));
+            if (devolucion.getIdPagoProgramado() != null) {
+                // DU1: ya tiene su orden de una corrida anterior; solo se reasigna el asiento nuevo.
+                devolucion.setIdAsiento(idAsiento);
+                destinoSobranteDaoService.save(devolucion, devolucion.getCodigo());
+                continue;
+            }
+            Entidad entidad = devolucion.getEntidad();
+            com.saa.ejb.cxp.service.dto.BeneficiarioOcasional beneficiario =
+                    new com.saa.ejb.cxp.service.dto.BeneficiarioOcasional();
+            beneficiario.setNombre(entidad.getRazonSocial());
+            beneficiario.setIdentificacion(entidad.getNumeroIdentificacion());
+            com.saa.ejb.cxp.service.dto.LineaContablePago lineaPago = new com.saa.ejb.cxp.service.dto.LineaContablePago();
+            lineaPago.setIdProductoPago(idProductoPago);
+            lineaPago.setValor(valor);
+            lineaPago.setConcepto("Devolución de descuento Petro/ARCH carga " + idCarga + " - " + entidad.getRazonSocial());
+            List<com.saa.ejb.cxp.service.dto.LineaContablePago> desglose = new ArrayList<>();
+            desglose.add(lineaPago);
+            Map<String, Object> respuesta = pagoProgramadoService.registrarPagoDeOrigenExterno(
+                    com.saa.rubros.OrigenPagoExterno.CRD_DEVOLUCION_DESCUENTO, devolucion.getCodigo(), idEmpresa, null,
+                    valor, fechaAsiento.toString(), beneficiario, desglose,
+                    "Devolución de descuento Petro/ARCH carga " + idCarga + " - " + entidad.getRazonSocial(),
+                    idUsuario, false, null);
+            Object idPago = respuesta != null ? respuesta.get("pago") : null;
+            if (idPago == null) {
+                throw new IncomeException("Cuentas por Pagar no devolvió el número de la orden de la devolución "
+                        + devolucion.getCodigo() + " (carga " + idCarga + ").");
+            }
+            devolucion.setIdPagoProgramado(((Number) idPago).longValue());
+            devolucion.setIdAsiento(idAsiento);
+            devolucion.setUsuarioModificacion(usuario);
+            devolucion.setFechaModificacion(LocalDateTime.now());
+            destinoSobranteDaoService.save(devolucion, devolucion.getCodigo());
+            System.out.println("CobroPetroContableService.contabilizarAplicacion - devolución DSSB " + devolucion.getCodigo()
+                    + " $" + valor + " -> orden de pago " + idPago);
+        }
+    }
+
+    /**
+     * B8: producto de pago de la devolución = el producto ACTIVO de la empresa cuyo grupo tiene la cuenta de la línea
+     * 61 de la plantilla 21 (como {@code resolverProductoPagoDesembolso}). Cero o más de uno: se detiene y dice cuál.
+     */
+    private Long resolverProductoPagoDevolucion(Long idEmpresa, DetallePlantilla lineaDevolucion) throws Throwable {
+        if (lineaDevolucion == null || lineaDevolucion.getPlanCuenta() == null) {
+            throw new IncomeException("La línea de devolución al partícipe (aux1="
+                    + CrdLineaAsiento.DEVOLUCION_DESCUENTO_PARTICIPE + ") de la plantilla de aplicación no tiene cuenta.");
+        }
+        com.saa.model.cnt.PlanCuenta cuenta = lineaDevolucion.getPlanCuenta();
+        String cuentaTexto = cuenta.getCuentaContable() + " (" + cuenta.getNombre() + ")";
+        List<com.saa.model.cxp.ProductoPago> productos = productoPagoDaoService.selectActivosByEmpresaYCuentaGrupo(
+                idEmpresa, cuenta.getCodigo());
+        if (productos == null || productos.isEmpty()) {
+            throw new IncomeException("No hay un producto de pago activo en la empresa " + idEmpresa + " cuyo grupo tenga la"
+                    + " cuenta " + cuentaTexto + ", que es la de la devolución al partícipe (línea aux1="
+                    + CrdLineaAsiento.DEVOLUCION_DESCUENTO_PARTICIPE + " de la plantilla de aplicación). Cree el producto"
+                    + " en CXP (grupo con esa cuenta).");
+        }
+        if (productos.size() > 1) {
+            StringBuilder lista = new StringBuilder();
+            for (com.saa.model.cxp.ProductoPago producto : productos) {
+                if (lista.length() > 0) {
+                    lista.append(", ");
+                }
+                lista.append(producto.getId()).append(" «").append(producto.getNombre()).append("»");
+            }
+            throw new IncomeException("Hay más de un producto de pago activo en la empresa " + idEmpresa + " cuyo grupo tiene"
+                    + " la cuenta " + cuentaTexto + ": " + lista + ". Deje uno solo; no se elige uno al azar.");
+        }
+        return productos.get(0).getId();
     }
 
     // =====================================================================
