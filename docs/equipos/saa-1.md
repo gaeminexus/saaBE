@@ -185,3 +185,53 @@ Ninguno de los tres está diagnosticado.
 - `saaBE docs/logica-negocio/crd/modelos/`: sin seguimiento desde antes de esta sesión; no se sabe de
   quién es.
 - `saaFE routes.json`: sin seguimiento; no es del equipo 1.
+
+---
+
+# Jornada del 2026-10-31 (sesión reanudada, alcance ampliado: crd, cnt, cxp, cxc, pagos, tsr, rhh, sri, y asoprep autorizado)
+
+## Producción
+- **Ambientes:** producción = `F:\ears\asoprep\produccion\SaaEAR.ear` (GitHub `main`); «cuadre de
+  producción» = `F:\ears\asoprep\SaaEAR.ear` (reproceso de la laptop). No confundirlos.
+- **Desplegado esta noche:** `F:\ears\asoprep\arch-v2\SaaEAR.ear` = `main` `8ac1d97a` (saaBE) +
+  saaFE `080e7da`. Trae A1 (AVPC en AH/HS huérfano), la carga ARCH, el orden de meses por filial y el
+  recorte del nombre a 35.
+- **Sin desplegar (EAR v3, pendiente de armar):** saaBE `c6718e24` (glosa «Mes X (pagado en Y)») y
+  saaFE `ec496e8` + `47d1cf1` (columna «Mes del aporte» y fecha de caja en el ojo).
+
+## Cargas de octubre: las dos procesadas antes del 01-11
+- **Petro 492:** procesada tras A1. Las AVPC 688-692 a cesantía quedaron en una fila sin mes; se
+  partieron por mes con `crd/sql/337` y la glosa se corrigió con el `338`.
+- **ARCH 510:** primera respuesta de ARCH cargada por el sistema. Abortó la primera vez por 0,10: el
+  aporte migrado 267360 tenía `APRTIDAS = 510`. Se corrigió con el `341`, y el `342` borró `APRTIDAS`
+  de los ~2 M aportes migrados (BATCH sin carga; respaldo en `CRD.BK_APRT_APRTIDAS_20261031`). Al
+  correr el `342` en paralelo con la carga, la base se saturó (free buffer waits). **Nunca correr un
+  UPDATE masivo con una carga en proceso.** Aportes corregidos con el `343` y el `345`: junio y julio
+  de `SAA_JUL_FIN` no tenían devengo y contaban los dos como julio, por eso octubre cayó en junio.
+
+## Hallazgos (con su documento)
+- `petro/DISENO-AFECTACION-MANUAL-V2.md`: F1-F9, H1-H6, P1-P8; §4bis (A1); §6 (glosa y mes del aporte).
+- `petro/DISENO-CARGA-TARDIA-SIN-MORA.md`: la carga cobra la mora guardada antes que el capital. Si se
+  procesa después de las 02:00 del día 1, deja cuotas PARCIALES. Decisiones MA a ME del usuario.
+- `petro/DISENO-CARGA-RESPUESTA-ARCH.md` §9 y §9.5: carga ARCH implementada. Pendientes: .csv no
+  permitido en FileService, parcial no siempre bloqueante (A6), PE con atraso marcado inconsistente
+  (A4), no usa el préstamo de la línea PDGA (A5), normalización de cédula (A8).
+- `REGLAS-CARGA-PETRO.md`: anticipo de aportes roto (esperado en lote solo hasta el mes de la
+  carga); aportes de la carga contados por `APRTIDAS` (los migrados chocaban).
+- La afectación manual a aporte graba una fila sin mes: pendiente repartir por mes, junto con el
+  arreglo del anticipo.
+
+## Pendiente (orden sugerido)
+1. Armar y desplegar el EAR v3.
+2. Revisar las cargas 448, 449, 450 y 492, que mandaron aportes a junio 2026 (CONTROL 2b del `345`):
+   ¿legítimo o corrimiento?
+3. Código: AVPC a aporte por mes + anticipo; control y asiento por carga real (no por `APRTIDAS`);
+   mora en la carga tardía (decisiones MA a ME); pendientes de ARCH (A4-A8); procesar meses atrasados
+   de una filial.
+4. Unificación con el cuadre: `origin/cuadre` saaBE `9ecdd2f2` (ya fusionado con `main` hasta
+   `bb36d423` por un pull en la laptop; hay que revisar los merges `36e5867b` y `f8b0a809`) y saaFE
+   `9f1cc4b` (le falta `080e7da`). Choques de numeración de sql: 332, 335, 336 y 338 (renumerar los
+   del cuadre). Plan de pase con ensayo sobre un dump; decisiones I-3, `moraNoDevengadaAIngreso`,
+   c12-01, permisos, IGFNCMNM y firmantes de C19-04.
+5. Diseño de la carga ARCH con el PDF: las respuestas de junio a septiembre se registraron por
+   cobros personales (agosto y septiembre con devengo correcto).
