@@ -136,3 +136,5 @@ cuenta solos**, con el mismo efecto que la marcadora de la nómina:
 - **P12** hecho (`b286f871`, junto con N2). **P11** hecho: plantilla 38, aux1 2 `GASTO_SIN_CLASIFICAR`;
   `obtenerCuentaGastoDefaultCxp` borrado. Semilla `cnt/sql/c20-06`, con la cuenta de hoy (4.4.01.05),
   **obligatoria antes del EAR**. Contabilidad la cambia cuando decida.
+- **`cnt/sql/c20-06` corrido en producción (2026-11-01):** plantilla 38 (código 1202): aux1 1 = 4.8.90.90.35
+  (redondeo SRI) y aux1 2 = 4.4.01.05 (gasto sin clasificar, provisional hasta que contabilidad decida).
