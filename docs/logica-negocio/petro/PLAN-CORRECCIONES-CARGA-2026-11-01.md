@@ -244,3 +244,11 @@ EAR.
 - **Qué cambia para el usuario:** los asientos de la carga Petro/ARCH quedan a nombre de quien cargó
   el archivo, no de SISTEMA. Los controles y el cierre de cartera dan los mismos montos; las cuentas
   ahora se pueden editar en la pantalla de plantillas y del rubro 250.
+
+## Decisiones del usuario, 2026-11-01 (después del EAR de cuentas a plantilla)
+- **B8:** DU1, DU2 y DU3 según la recomendación (`DISENO-DESTINO-SOBRANTE-DSSB.md` §7).
+- **B6-b:** los asientos y pagos de la carga quedan a nombre de **quien pulsa «Procesar»**, no de quien
+  cargó el archivo. Contrato: `saaFE/docs/crd/API-PROCESAR-CARGA-CON-USUARIO.md`. BE y FE en el mismo EAR.
+- **Usuario obligatorio en todos los procesos:** `cnt/DISENO-USUARIO-OBLIGATORIO.md`.
+- **Cargadores históricos:** el usuario dijo eliminarlos. Antes, el árbitro le pidió confirmar,
+  porque son C11/C13 del cuadre con la Superintendencia. Pendiente.

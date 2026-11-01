@@ -92,3 +92,10 @@ frontend → EAR. El DDL y la semilla van antes del EAR.
 - DDL y semilla escritos: `crd/sql/357_DDL_DSSB_DESTINO_SOBRANTE_Y_LINEA_61.sql`. Auditoría
   `DSSBUSRG/FCRG/USMD/FCMD`; `DSSBPGTR` y `DSSBASNT` sin FK. **No se corre hasta las decisiones
   DU1-DU3 y el código del B8.**
+
+## 7. Decisiones del usuario (2026-11-01): las tres según la recomendación
+- **DU1:** si Tesorería ya pagó la devolución, queda viva y el reproceso no la repite. Si todavía no
+  está pagada, se anula junto con la carga.
+- **DU2:** el sobrante sin destino elegido sigue siendo novedad bloqueante.
+- **DU3:** backend y frontend completos, sin el resolutor de cxp hasta que vuelva el equipo 2.
+**→ B8 despachado al backend.** El `357` se corre antes del EAR que lo traiga.
