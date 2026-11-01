@@ -1,6 +1,10 @@
 # Reclasificación: pagos de nómina individualizados de octubre 2026 en honorarios por pagar
 
-**omen-saa-1-arb, 2026-11-01.** Para contabilidad. Diagnóstico: `rhh/sql/omen1-03`, corrido en producción.
+> **REEMPLAZADO (2026-11-01):** el usuario autorizó corregir los 20 asientos con un **UPDATE directo**
+> (`rhh/sql/omen1-05`) en lugar de una reclasificación. Este documento queda solo como detalle de lo que
+> se corrigió. El grupo «PAGO DE NOMINA» ya está corregido (`omen1-04`, corrido: GRPP 38 → 9689 2.5.01).
+
+**omen-saa-1-arb, 2026-11-01.** Diagnóstico: `rhh/sql/omen1-03`, corrido en producción.
 
 ## Qué pasó
 Los 20 pagos de nómina individualizados (un pago por empleado desde la bandeja de Tesorería, origen
