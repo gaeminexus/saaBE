@@ -143,3 +143,6 @@ cuenta solos**, con el mismo efecto que la marcadora de la nómina:
   un parámetro de rubro, verificado contra la cuenta de la plantilla. 2.3.90.90.06 = 516, 2.5.01 = 345 y
   2.3.90.90.10 = 976 («Desembolso de prestamo a socio»): un solo producto cada uno, así que funcionan, pero son
   frágiles si se crea otro producto con esa cuenta.
+
+## Estado final (2026-11-01 04:28)
+En producción con el EAR único: P1, P2, P3 (con arranque), P4 (A, B, C), P5, P8, P9/P9b, P11 (cuenta provisional 4.4.01.05), P12 y el producto de pago por parámetro. Pendientes: P10 (decisión de contabilidad) y la cuenta definitiva de P11. P6/P7 descartados (los cargadores históricos se eliminan al cierre).

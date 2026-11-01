@@ -1,5 +1,65 @@
 # Traspaso — equipo omen-saa-1 (máquina omen, proyecto saa, equipo 1)
 
+# ESTADO VIGENTE AL 2026-11-01 04:30 (léase primero; lo de más abajo es historia)
+
+**Producción corre el EAR único** (saaBE `5bae67db`, saaFE `3e3c9dc`), desplegado a las 04:28 con el hash
+verificado y el log limpio: `docs/logica-negocio/DESPLIEGUE-EAR-UNICO-2026-11-01.md`.
+
+**Alcance actual del equipo 1** (ampliado por el usuario el 31-10/01-11): crd, cnt, cxp, cxc, pagos, tsr, rhh, sri y
+asoprep. Los equipos 2 y 3 están abajo; sus avisos están al final de este archivo.
+
+## Hecho y en producción
+| Frente | Documento rector |
+|---|---|
+| Carga Petro/ARCH: B1 sin mora sobre lo descontado, B2 adelanto y AVPC a aporte por mes, B3 aportes por carga real, B4 ARCH (.csv, parcial bloqueante, cédula, préstamo exacto), B5 seguro de incendio, B7 limpieza | `petro/PLAN-CORRECCIONES-CARGA-2026-11-01.md` |
+| B8 destino del sobrante por partícipe (CRD.DSSB) y devolución a socios por pagar con orden en Tesorería (producto 1222) | `petro/DISENO-DESTINO-SOBRANTE-DSSB.md` |
+| B6-a/b asientos de la carga a nombre de quien pulsa «Procesar»; reproceso con REPROCESO (≤2026-08) o el usuario de la carga | `cnt/DISENO-USUARIO-OBLIGATORIO.md` §8 |
+| Cuentas fuera del código: P1-P5, P8, P11, P12; P9/P9b y producto de pago por parámetro (rubro 237: 517/516/1222/976; RHH.CFNM.CFNMPRPG = 345) | `cnt/PLAN-CUENTAS-A-PLANTILLA-2026-11-01.md` |
+| N1 nómina por empleado (producto desde la línea 50); datos de octubre corregidos | `rhh/RECLASIFICACION-NOMINA-OCTUBRE-2026.md` |
+| N2 NC de compra contra la factura que modifica (intermediario sin IVA); las 3 NC mal contabilizadas, corregidas por UPDATE | `cxp/DISENO-FACTURA-INTERMEDIARIO.md` §8, `cxp/sql/omen1-02` y `omen1-03` |
+| Usuario obligatorio en TODOS los módulos (U-2 a U-4) y defensa central atómica (U-5): sin usuario real no se graba nada y un asiento rechazado revierte el proceso entero | `cnt/DISENO-USUARIO-OBLIGATORIO.md`, `cnt/INVENTARIO-USUARIO-OBLIGATORIO.md`, `cnt/INVENTARIO-ATOMICIDAD-ASIENTOS.md` |
+| FE: F1-F12 (sesión obligatoria, ARCH, destino del sobrante, número de cuenta en los combos de cxp, usuario en todos los servicios, «Actualizar estado» en liquidaciones externas) | contratos en `saaFE/docs/{crd,cxc,cxp,tsr,rrh}/API-*.md` |
+| Integración del C11 del cuadre (`6a43d585`) | — |
+
+**Esto resuelve los pendientes de la historia de abajo:** asientos con «SISTEMA» (U-2 a U-5); `/prst/pagarCuota` y
+`/pagarMultiplesCuotas` cerrados (410); estados 12 y 13 medidos con `crd/sql/350` en producción: vacíos, así que no hay
+impacto hoy (la corrección preventiva sigue pendiente).
+
+## Pendiente — decisión del usuario
+- **Pago de origen externo sin desglose** confirmado sin asiento (`PagoProgramadoServiceImpl` ~3260): ¿se bloquea?
+  Recomendado: bloquear, salvo cuando el origen tiene la contabilidad apagada a propósito.
+- **P11:** cuenta definitiva del gasto sin clasificar de compras (hoy 4.4.01.05 provisional, plantilla 38 línea 2).
+- **P10:** cuenta sugerida por concepto en la liquidación de excolaboradores (conceptos 1-4 tienen dos candidatas).
+  La propuesta del BE (plantilla por concepto + endpoint) está en el traspaso del 01-11.
+- **Cuenta del producto 1222** (devolución): hoy en el mismo grupo que el desembolso (2.3.90.90.10), hasta que
+  contabilidad confirme.
+
+## Pendiente — técnico (sin prisa)
+- Resolutor de seguimiento de cxp para `CRD_DEVOLUCION_DESCUENTO` (equipo 2).
+- «SAA_AH» como usuario de los aportes de la carga: hay SQL de diagnóstico que filtra por él.
+- El reproceso no vuelve a aplicar el destino del sobrante (no afecta al reproceso definitivo: ninguna carga histórica tiene DSSB).
+- Endpoint «autorizados sin asiento» en cxc (opcional).
+- Mora sobre capital ya pagado (ME/M1), aparte, por decisión del usuario.
+- Corrección preventiva de los estados 12 y 13 en el motor de saldos.
+- Los 400 de `/extr/selectByCriteria` del 01-11 a las 00:51 (otra pantalla; no es de este equipo).
+- Al cierre del proyecto: eliminar los cargadores históricos C11/C13 (ver abajo).
+
+## Pendiente — coordinación con el reproceso (árbitro del cuadre)
+- Mensaje a pasar: los 64 pagos `PAGO_MANUAL` sin cobro del 14 al 26-08 (4.755,37) y los 33 de hora 00:00 de
+  jun-jul (11.581,43) no tienen CBCR; si el reproceso solo rehace cobros, quedarían sin asiento. Script:
+  `crd/sql/VERIFICACION-PAGOS-MANUALES-SIN-ASIENTO.sql`. Los 6 cobros sin asiento del 31-07 (contabilidad
+  apagada) se contabilizan al rehacer el cobro.
+
+## Lecciones del 01-11
+- **Un producto de pago nuevo en una cuenta que ya tiene uno se crea INACTIVO** y se activa con el EAR que lo usa
+  por parámetro. Se corrió activo por error y detuvo los desembolsos hasta desactivarlo (`crd/sql/362`).
+- **El asiento de un pago de caja vive en el cobro (DCBC/CBCR), no en el evento del préstamo**: un EVPR/PGPR sin
+  asiento propio no prueba nada.
+
+---
+
+# HISTORIA (anterior al 2026-11-01)
+
 **Cierre ordenado: 2026-10-28.** Lo escribió el árbitro (omen-saa-1-arb). Este archivo es lo que hay
 que leer primero para retomar. Lo que no está acá ni en un commit se perdió con la sesión.
 

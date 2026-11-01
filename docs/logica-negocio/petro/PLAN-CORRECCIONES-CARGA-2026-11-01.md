@@ -1,5 +1,11 @@
 # Plan de correcciones de la carga y pendientes del equipo 1 (2026-11-01)
 
+> **ESTADO FINAL (2026-11-01 04:28): TODO EN PRODUCCIÓN con el EAR único** (saaBE `5bae67db`, saaFE `3e3c9dc`).
+> - B1, B2, B3, B4 con A5, B5, B6-a/b, B7 y B8 con B8-r, más F1 a F12: desplegados.
+> - Lo que quedó fuera está en `docs/equipos/saa-1.md`, «ESTADO VIGENTE».
+> - Runbook: `docs/logica-negocio/DESPLIEGUE-EAR-UNICO-2026-11-01.md`.
+
+
 omen-saa-1-arb, por orden del usuario: «procesemos todos los pendientes de una vez». Este documento
 es el contrato para los ejecutores. Cada ítem remite a su diseño, que manda en el detalle. Si el
 código contradice lo que dice aquí, **el ejecutor para y reporta**, no improvisa.

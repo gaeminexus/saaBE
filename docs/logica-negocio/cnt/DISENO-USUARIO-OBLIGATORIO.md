@@ -157,3 +157,6 @@ transacción del proceso de negocio entero se revierte. Para garantizarlo:
 - **Legacy tsr (decisión b)**: no tienen REST ni llamadores; `AsientoService.anulaAsiento(Long)` queda `@Deprecated` y lanza error claro.
 - **Defensa central activa**: `generarAsiento`, `anulaAsientoDeDocumento`, `marcaAuditoriaAnulacion`, `insertarCabeceraAsiento` y
   `generaCabeceraTransferencia` validan el usuario con el helper; ya no hay relleno a «SISTEMA».
+
+## 13bis. Estado final (2026-11-01 04:28)
+U-1 a U-5 en producción con el EAR único: el usuario es obligatorio en todos los módulos y la defensa central rechaza, de forma atómica, todo asiento sin usuario real. Usuario técnico REPROCESO (PJRQ 1562) para el reproceso hasta 2026-08.
