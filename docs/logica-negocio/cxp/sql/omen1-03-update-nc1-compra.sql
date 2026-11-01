@@ -50,3 +50,7 @@ SELECT SUM(NVL(d.DTASDBEE, 0)) - SUM(NVL(d.DTASHBRR, 0)) AS DIFERENCIA
 --        (SELECT b.PLNNCDGO, b.DTASCNTA, b.DTASNMCT FROM CNT.BK_DTAS_NC1_OCT26 b WHERE b.DTASCDGO = d.DTASCDGO)
 --  WHERE d.DTASCDGO IN (SELECT b.DTASCDGO FROM CNT.BK_DTAS_NC1_OCT26 b);
 -- COMMIT;
+
+-- RESULTADO (2026-11-01, producción): corrido. NC 1 → DEBE 2.3.90.10 23,78 / HABER 4.8.90.90.05 20,68 + IVA
+-- 1.9.01.90.15 3,10; diferencia 0. Con esto quedan corregidas las 3 NC de compra que el motor viejo había mandado
+-- a servicios básicos (omen1-01, bloque 5).
