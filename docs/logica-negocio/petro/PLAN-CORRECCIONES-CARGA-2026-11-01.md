@@ -193,5 +193,5 @@ reporta.
   - que la vigencia haya cambiado entre cargas (el patrón de 0,50 a 5,00 lo sugiere);
   - que el aportado del reparto no viera las filas de la carga anterior.
 
-  El B2 (`5…`, anticipo con la vigencia) cambia ese mismo reparto en el modo normal, no en el
+  El B2 (`71a08381`, anticipo con la vigencia) cambia ese mismo reparto en el modo normal, no en el
   reproceso.
