@@ -263,3 +263,18 @@ Ninguno de los tres está diagnosticado.
   - frontend: nada, porque no hay ninguna llamada a `/historico`.
   - Ojo: `esHistorico()` de nómina y `cargarHistoricoCierres()` de tsr son otra cosa; no se tocan.
 - Mientras tanto, opcional: desactivar el REST `/historico` en producción, conservando el código.
+
+## AVISO para los equipos 2 y 3: usuario obligatorio en sus módulos (2026-11-01)
+Decisión del usuario: «Asientos sin usuario se deben rechazar y el proceso que los ejecute no se debe
+realizar […] lo primero que se debe validar en los procesos es si el usuario existe».
+- Con los equipos 2 y 3 abajo y el usuario pidiendo todo en un solo EAR, el equipo 1 hace **U-3 (cxc/cxp)**
+  y **U-4 (tsr, rhh, pagos y sri)** en sus módulos:
+  - cada proceso que graba valida primero el usuario con
+    `com.saa.basico.ejb.UsuarioValidacionService` (existe en `SCP.PJRQ`);
+  - se quitan los rellenos `x != null ? x : "SISTEMA"`;
+  - la recepción del SRI en cxp graba con el usuario de quien la ejecuta.
+- Inventario: `docs/logica-negocio/cnt/INVENTARIO-USUARIO-OBLIGATORIO.md`. Diseño:
+  `cnt/DISENO-USUARIO-OBLIGATORIO.md`.
+- Contratos del FE en `saaFE/docs/{crd,cxc,cxp,...}/API-USUARIO-OBLIGATORIO-*.md`.
+- **Al retomar:** `git pull` y revisar los commits `cxp(omen1)`, `cxc(omen1)`, `tsr(omen1)` y `rhh(omen1)` en
+  sus archivos.
