@@ -84,7 +84,7 @@ En la consola de WildFly (`jboss-cli`) o en `standalone.xml` → `<system-proper
 | 5.3 | `rpr/sql/C19-02-semilla-b17.sql` | Semilla del B17 (534 renglones) | COMMIT a mano |
 | 5.4 | `rpr/sql/C19-03-semilla-flujo-de-caja.sql` | Semilla del flujo de caja | COMMIT a mano |
 | 5.5 | `rpr/sql/C19-04-estados-financieros-oficiales.sql` | Títulos y rubro 250 (firmantes en blanco) | COMMIT a mano |
-| 5.6 | `cnt/sql/c12-01-vigencia-tipos-automaticos.sql` | Rubro 249: vigencia IN-A/EG-A/DI-A = 2025-06-01 para la 1236 | COMMIT a mano. Los controles verifican que PRBR 249 y PDTR 1518 estén libres y que los tipos 7/8/9 tengan `PLNTSSTM = 1`. Si no, parar: sin eso, todo asiento automático falla |
+| 5.6 | `cnt/sql/c12-01b-vigencia-tipos-automaticos-produccion.sql` (NO el c12-01: su PDTR fijo 1518 choca con el rubro 250 del 5.5) | Rubro 249: vigencia IN-A/EG-A/DI-A = 2025-06-01 para la 1236 | COMMIT a mano. Los controles verifican que PRBR 249 y PDTR 1518 estén libres y que los tipos 7/8/9 tengan `PLNTSSTM = 1`. Si no, parar: sin eso, todo asiento automático falla |
 | 5.7 | `cnt/sql/c12-02-bancos-reales.sql` | **Solo SELECT**: verifica la marca de banco real (12 en 1, 6 en 0) | Ya la puso el `e2-111` del equipo 2. Es solo la comprobación |
 | 5.8 | `cnt/sql/c5-01-apertura-alterno-10.sql` | `APERTURA = 10` | COMMIT a mano. Correrlo solo si su control muestra que hace falta |
 
