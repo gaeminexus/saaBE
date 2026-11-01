@@ -278,3 +278,7 @@ realizar […] lo primero que se debe validar en los procesos es si el usuario e
 - Contratos del FE en `saaFE/docs/{crd,cxc,cxp,...}/API-USUARIO-OBLIGATORIO-*.md`.
 - **Al retomar:** `git pull` y revisar los commits `cxp(omen1)`, `cxc(omen1)`, `tsr(omen1)` y `rhh(omen1)` en
   sus archivos.
+- **Equipo 3, FE rrh:** la tabla compartida `rrh/forms/comunes/tabla-rrh` ganó una acción por fila OPCIONAL
+  (`@Input accionExtra` / `@Output accionExtraClick`, tipo `AccionFilaTabla` en `modelo-formulario.ts`; saaFE `F12`). Las
+  pantallas que no la usan no cambian. La lista de liquidaciones de excolaboradores ya no sincroniza sola con
+  Tesorería: botón «Actualizar estado».
