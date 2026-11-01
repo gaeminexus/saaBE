@@ -196,3 +196,22 @@ Cargar la respuesta de octubre como filial ARCH, mes 10, año 2026. La vista pre
 partícipes con sus productos según la generación 173. Los de descuento completo quedan sin novedad
 de monto; los parciales, con novedad bloqueante. Se registra la transferencia y se procesa: el
 recibido es igual al aplicado y se genera el asiento.
+
+### 9.5 Arreglos urgentes tras la revisión del 2026-10-31 (antes de procesar ARCH de octubre)
+
+- **A2 (bloquea):** `validarOrdenProcesamiento` (`CargaArchivoPetroServiceImpl` ~5092) exige que la
+  carga sea del mes siguiente a la última procesada, pero `CargaArchivoDaoServiceImpl.selectUltimaCargaProcesada`
+  no filtra por filial. Con Petro de octubre procesada, ARCH de octubre se rechaza (y al revés).
+  Corrección: el orden de meses se evalúa **por filial**, con un método nuevo
+  `selectUltimaCargaProcesada(Long estado, Long codigoFilial)` (el de un parámetro queda tal cual por
+  si otro lo usa) llamado con la filial de la carga. Si la carga no tiene filial, se usa el
+  comportamiento de hoy.
+- **A3 (bloquea a un partícipe):** la fase 1 compara los primeros 35 caracteres de la razón social
+  contra el nombre de la fila; el lector ARCH pone la razón social completa, así que un nombre de más
+  de 35 caracteres sale como «código no coincide con nombre» (bloqueante en filial 2). Corrección: en
+  `procesarContenidoArch`, el nombre de la fila es la razón social recortada a 35 caracteres (y vacía
+  si es null, sin NPE).
+- **Pendientes, no van esta noche:** `.csv` no está en `FileService.EXTENSIONES_PERMITIDAS` (usar
+  `.xlsx`); un parcial cercano al aporte no queda bloqueante (A6); las filas PE con atraso salen
+  MONTO_INCONSISTENTE (A4); no se usa el préstamo de la línea PDGA (A5); normalización de cédula más
+  amplia (A8).
