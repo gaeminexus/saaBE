@@ -116,3 +116,20 @@ estado financiero por rubro 250). Los literales están concentrados en 4 archivo
     única vía para cargar jun-2025 → jul-2026, cuando la operación corría en Delta 21 (D-012, D-013);
   - después se **eliminan enteros** (pendiente del cierre del proyecto);
   - sus literales se quedan como están mientras tanto.
+
+## Segunda revisión, leyendo archivo por archivo (2026-11-01)
+Se leyeron cnt (`AsientoContableServiceImpl`), tsr, cxc, cxp, asoprep, sri y rhh. **No hay ningún número
+de cuenta ni id de PlanCuenta escrito** fuera de lo ya corregido. Hay dos **respaldos que eligen una
+cuenta solos**, con el mismo efecto que la marcadora de la nómina:
+- **P11 (ALTA):** `AsientoContableServiceImpl.obtenerCuentaGastoDefaultCxp` toma la cuenta del grupo de
+  producto de pago activo de MENOR código de la empresa, sin filtrar el tipo. Se usa en la nota de
+  crédito de compra (HABER), la nota de débito de compra (DEBE) y la liquidación de compra sin
+  clasificar (DEBE).
+  - **Pasa a la plantilla 38, aux1 2** (`CxpLineaAsiento.GASTO_SIN_CLASIFICAR`).
+  - Diagnóstico: `cnt/sql/c20-05`.
+  - La cuenta de la semilla la decide contabilidad.
+- **P12 (MEDIA/ALTA):** `obtenerCuentaIVACxp` busca en `TsriCompra` sin filtrar la tabla 17 y, si no
+  encuentra, cae al IVA de ventas (cxc). Se usa en NC, ND y liquidación de compra.
+  - **Pasa a `obtenerCuentaIVACxpPorCodigo`**, la que ya usa la factura de compra: filtra la tabla 17 y
+    no tiene respaldo; si falta la cuenta, error claro.
+  - Sin semilla.
