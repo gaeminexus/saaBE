@@ -1757,11 +1757,6 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
         // Calcular totales generales para CargaArchivo
         cargaArchivo = calcularTotalesGenerales(cargaArchivo, detallesGenerados);
         
-        List <Entidad> entidadesPetro35 = entidadDaoService.selectByNombrePetro35("ALVAREZ TOAPANTA DAYUMA");
-        System.out.println("registros recuperados:" + entidadesPetro35.size());
-        for(Entidad entPetro35 : entidadesPetro35) {
-        	System.out.println("Entidad encontrada por nombre petro 35: " + entPetro35.getCodigo() + " - " + entPetro35.getRolPetroComercial());
-        }
         // 1. PRIMERO: Almacenar registros en BD (TRANSACCIONAL)
         CargaArchivo cargaArchivoGuardado = almacenaRegistros(cargaArchivo, detallesGenerados, registrosProcesados);
 		

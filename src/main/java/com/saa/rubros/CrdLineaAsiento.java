@@ -160,7 +160,8 @@ public interface CrdLineaAsiento {
 	 * Aporte tipo 12 (RENDIMIENTO CESANTIA PERSONAL), plantilla 21. Pasivo
 	 * {@code 2.1.01.05.02 RENDIMIENTOS PERSONALES CESANTIA} — la misma que {@code CRD.CTAP} del
 	 * tipo 12 y la que usan los asientos de rendimientos y la apertura del 31-may-2025 (B17 210105).
-	 * C4, 29-oct-2026; la línea la crea {@code docs/logica-negocio/crd/sql/335_LINEAS_RENDIMIENTOS_PLANTILLA_21.sql}.
+	 * C4, 29-oct-2026; la línea la crea {@code docs/logica-negocio/crd/sql/347_LINEAS_RENDIMIENTOS_PLANTILLA_21.sql}
+	 * (antes 335; renumerado, B7 del 2026-11-01).
 	 */
 	public static final int RENDIMIENTOS_CESANTIA_PERSONAL = 56;
 
