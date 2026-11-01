@@ -80,3 +80,7 @@ Fuente: investigación de solo lectura del código + verificación del árbitro 
 - **MD:** sin límite de antigüedad para procesar tarde. *Recomendado: sí, igual que la caja.*
 - **ME:** ¿se corrige M1 (mora sobre capital pendiente) en el mismo cambio o aparte? *Recomendado:
   aparte; cambia la mora de toda la cartera.*
+
+## 6. Decisiones tomadas (usuario, 2026-11-01)
+MA sí · MB sí · MC sí · MD sí · ME sí (la mora sobre capital pagado se corrige APARTE, no en este
+cambio). Implementación despachada: `PLAN-CORRECCIONES-CARGA-2026-11-01.md` B1.
