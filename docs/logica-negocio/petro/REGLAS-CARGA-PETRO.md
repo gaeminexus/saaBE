@@ -492,6 +492,21 @@ tratamientos, según **si se sabe a quién pertenece el dinero y si esa persona 
 | Contrato activo, pero ninguna `VigenciaContrato` cubre el mes (o vigencia en $0) | **NOVEDAD BLOQUEANTE** desde el 2026-09-03 (`VALIDACION-TOPE-AFECTACION-MANUAL.md` §12): el sobrante queda como pozo para «Afectar cuotas» (AVPC) y la carga no procesa hasta repartirlo; hasta esa fecha era solo advertencia. Primer caso real: carga 492, rol 1625 (2026-10-29) | `distribuirAportePorDevengo` |
 | Monto recibido = $0 | Sin cambios — no hay plata que perder | `aplicarAporteAH` |
 
+> **⛔ DEFECTO ABIERTO (hallado 2026-10-30, carga 492, rol 1625): el anticipo a meses futuros (D4)
+> no funciona para las entidades del lote, y produce una novedad «vigencia no cubre» FALSA.**
+> `aplicarPagosArchivoPetro` (~1365) arma `esperadoEnLotePorFilial(filial, ALCANCE_MINIMO_DEVENGO,
+> mesCarga)`: el mapa del esperado llega **solo hasta el mes de la carga**. Cuando
+> `distribuirAportePorDevengo` intenta anticipar a un mes posterior, `esperadoMensual` no
+> encuentra la clave en el lote, ve que la entidad está en `entidadesCubiertas` y devuelve
+> **0** («dato, no duda»), sin ir a `esperadoDesdeCache`. Resultado: todo lo que exceda lo
+> pendiente hasta el mes de la carga queda como sobrante y se registra como
+> `MONTO_INCONSISTENTE` con el texto «su vigencia no cubre…», aunque la vigencia esté abierta y
+> sin fecha de fin. Caso real: vigencia 2651 (tipo 11, 66,95, sin fin), 334,75 recibidos,
+> 264,25 aplicados hasta octubre y 70,50 «sin vigencia». Confirmación de los meses en
+> `crd/sql/333`. Corrección propuesta: en `esperadoMensual`, un mes posterior a `mesCarga` no se
+> responde desde el lote (va a `esperadoDesdeCache`, una sola consulta por partícipe y solo
+> para los que anticipan).
+
 **La NOVEDAD reusa el mismo mecanismo del excedente Petro a un aporte (§3.6b):**
 `registrarNovedad` (`HISTORIAL_SUELDO_NO_ENCONTRADO` / `VALORES_HISTORIAL_NULOS`, rubro 169, ya
 estaban en `NOVEDADES_REQUIEREN_AFECTACION_MANUAL`) + la pantalla de novedades, donde el operador
