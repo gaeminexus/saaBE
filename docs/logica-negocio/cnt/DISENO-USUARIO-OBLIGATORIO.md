@@ -120,3 +120,22 @@ transacción del proceso de negocio entero se revierte. Para garantizarlo:
 5. Los rellenos centrales (`AsientoContableServiceImpl:719`, `AsientoServiceImpl:688/712`,
    `CierrePeriodoContable:212`) se reemplazan por el rechazo. El usuario tiene que existir (helper), así
    que «REPROCESO» pasa.
+
+## 12. Decisiones del árbitro sobre el inventario U-5a (`INVENTARIO-ATOMICIDAD-ASIENTOS.md`), 2026-11-01
+- **(a) #18** `/prst/pagarCuota` y `/prst/pagarMultiplesCuotas` aplican el pago SIN asiento (el stub
+  `contabilizarPagoCuota` devuelve null). **Ninguna pantalla del FE los llama** (verificado: el servicio existe,
+  pero no tiene llamadores). Se **cierran**: responden error claro («usar el cobro de crédito»). Los cobros reales
+  pasan por `CobroCredito`, que sí contabiliza. Antes, con una consulta de solo lectura, se mide si hubo pagos
+  aplicados por esa vía sin asiento.
+- **(b) §5.A** anulaciones legacy de tsr de un argumento (código muerto con REST vivo): se **deprecan**. El REST
+  responde un error claro y no se reparan.
+- **(c) §5.B** la defensa cubre también `insertarCabeceraAsiento` y `generaCabeceraTransferencia`.
+- **(d) zona gris** (pago de origen externo sin desglose, confirmado sin asiento): **decisión del usuario**.
+- **(e)** el endpoint «autorizados sin asiento» de cxc: fuera de este EAR.
+- **CLASE 1** (#1-14): se quitan los try/catch que tragan el asiento; el error sube con su 400.
+- **CLASE 2** #16 y #19-#21: se corrigen para que el negocio y el asiento sean atómicos. #17 y #22 son
+  reintentables, así que se aceptan.
+- **#15**: `procesarRespuestaBanco` aísla de verdad por pago (`REQUIRES_NEW` por pago con su asiento dentro), o
+  todo el lote es atómico; no puede quedar a medias.
+- **§5.C** los 9 relanzamientos que pierden el 400: corregidos. **§5.D** `generarPensionIndividual`: verificar
+  antes de llamar, sin atrapar la excepción después.
