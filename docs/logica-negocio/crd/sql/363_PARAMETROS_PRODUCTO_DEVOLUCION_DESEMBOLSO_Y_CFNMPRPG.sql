@@ -64,3 +64,6 @@ SELECT CFNMCDGO, PJRQCDGO, CFNMPRPG FROM RHH.CFNM;
 -- DELETE FROM SCP.PDTR d WHERE d.PDTRALTR IN (4, 5) AND d.PRBRCDGO = (SELECT r.PRBRCDGO FROM SCP.PRBR r WHERE r.PRBRALTR = 237);
 -- ALTER TABLE RHH.CFNM DROP COLUMN CFNMPRPG;   -- solo con un EAR que no la mapee
 -- COMMIT;
+
+-- RESULTADO (2026-11-01, producción): bloques 0-3 corridos. Rubro 237: 2=517, 3=516, 4=1222, 5=976 (PDTR 1536-1539).
+-- RHH.CFNM 1 (empresa 1236) CFNMPRPG = 345. Pendiente: el bloque 4 (activar 1222) en el despliegue del EAR único.
