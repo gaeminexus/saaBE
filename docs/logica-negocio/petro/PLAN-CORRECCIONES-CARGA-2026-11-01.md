@@ -170,3 +170,28 @@ reporta.
 - `REGLAS-CARGA-PETRO.md` se actualiza en el mismo cambio que toca la carga (regla del CLAUDE.md).
 - Después de B1-B5 se arma un EAR y se despliega **sin cargas en proceso**. El ensayo de la carga
   se hace con la de noviembre, o con una copia, nunca reprocesando en producción.
+
+## Hallazgo para el reproceso (crd/sql/351 y 352, 2026-11-01): meses de aporte pagados DE MÁS
+- **Qué se encontró:** meses de aporte (9/11) cuyo total por período efectivo supera el esperado
+  de la vigencia, con filas puestas por cargas (`SAA_AH`). Por mes:
+  - 2025-07: 2; 2025-08: 3; 2025-09 a 2025-12: 1 por mes; 2026-01: 4; 2026-02: 7; 2026-03: 8;
+    2026-04: 13; 2026-05: 23;
+  - **2026-06: 68 casos (3.501,88)**;
+  - **2026-07: 616 casos (13.858,49)**;
+  - 2026-08: 1.
+- **Dos patrones:**
+  1. **Duplicado exacto:** la carga 427 llenó julio y la 448 lo volvió a llenar con el mismo monto
+     (p. ej. 115,55 + 115,55; 133,50 + 133,50). Lo mismo con 360/363/364/366/367/407/427 en meses
+     anteriores.
+  2. **Pequeño sobrante:** la 427 pagó lo esperado y la 448 agregó entre 0,50 y 5,00.
+- **Decisión del usuario:** NO se corrigen en producción; se corrigen con el **reproceso
+  definitivo** (escenario A, D-049), que vuelve a aplicar todas las cargas desde jun-2025 sobre la
+  copia nueva.
+- **Para el agente del reproceso, antes de reprocesar:** averiguar la causa. Si es un defecto del
+  reparto que sigue en el código, el reproceso lo repite. Hipótesis a descartar:
+  - que una carga se haya procesado o reprocesado fuera de orden (427 después de 448);
+  - que la vigencia haya cambiado entre cargas (el patrón de 0,50 a 5,00 lo sugiere);
+  - que el aportado del reparto no viera las filas de la carga anterior.
+
+  El B2 (`5…`, anticipo con la vigencia) cambia ese mismo reparto en el modo normal, no en el
+  reproceso.
