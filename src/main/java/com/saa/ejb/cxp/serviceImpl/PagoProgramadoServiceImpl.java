@@ -2104,17 +2104,9 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 				pago.setEstado(Long.valueOf(EstadoPagoProgramado.RECHAZADO));
 				pago.setMotivo(respuesta.getMotivo() != null
 						? respuesta.getMotivo() : "Rechazado por la entidad financiera");
-				try {
-					anularMovimientoCajaChicaSiAplica(pago, "PAGO RECHAZADO POR EL BANCO: "
-							+ nvl(respuesta.getMotivo(), "sin motivo informado"));
-				} catch (RuntimeException e) {
-					// No abortar el procesamiento del resto del archivo por un
-					// movimiento de caja chica que no se pudo anular (p.ej. ya
-					// quedó en un cierre confirmado); el pago igual se marca
-					// RECHAZADO, sólo queda el movimiento sin anular.
-					System.err.println("⚠ No se pudo anular el movimiento de caja chica del pago "
-							+ pago.getId() + ": " + e.getMessage());
-				}
+				// U-5b: sin try/catch: si el asiento falla, falla el proceso entero (nada queda sin asiento).
+				anularMovimientoCajaChicaSiAplica(pago, "PAGO RECHAZADO POR EL BANCO: "
+						+ nvl(respuesta.getMotivo(), "sin motivo informado"));
 				pagoProgramadoDaoService.save(pago, pago.getId());
 				rechazados++;
 			}
