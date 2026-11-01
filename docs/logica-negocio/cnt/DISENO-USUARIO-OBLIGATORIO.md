@@ -77,3 +77,17 @@ El reproceso del cuadre corre con el código de `main`.
   - Hay que avisar al árbitro del cuadre, con la confirmación del usuario: cambia el usuario de los
     asientos del reproceso, no los montos.
 - Ningún timer crea asientos. Queda abierta la **recepción automática del SRI** (`FacturaServiceImpl:2482`).
+
+## 8. Usuario técnico REPROCESO (decisión del usuario, 2026-11-01) — REEMPLAZA la decisión del §7 sobre el reproceso
+> «Creemos un usuario llamado reproceso, pero este debería utilizarse solo hasta el reproceso de agosto
+> del 2026, porque desde septiembre ya usaban usuarios reales.»
+- Se crea **`REPROCESO`** como usuario real en `SCP.PJRQ`, sin acceso al sistema.
+  - Paso 1, solo lectura: `cnt/sql/c20-03`.
+  - Paso 2, el INSERT: `c20-04`, se escribe con la salida del paso 1.
+- **El reproceso graba con `REPROCESO` los periodos hasta 2026-08 inclusive.** Desde 2026-09 graba con el
+  usuario real de la operación original. En la carga Petro, ese usuario es el `usuarioCarga` de la
+  carga; antes de B6-b no se guardaba quién la procesó.
+- Se reemplazan «SISTEMA» y «SAA_REPROCESO» del modo reproceso. Los cargadores históricos (usuario 38)
+  quedan como están: cubren jun-2025 → jul-2026 y ya usan un usuario real.
+- **Hay que avisar al árbitro del cuadre** (texto aprobado por el usuario): cambia el usuario de los
+  asientos del reproceso, no los montos.
