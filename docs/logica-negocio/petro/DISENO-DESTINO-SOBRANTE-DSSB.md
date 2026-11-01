@@ -85,3 +85,10 @@ Restricciones:
 ## 5. Orden
 `355` (verificación) → DDL `357` + semilla de la línea 61 (árbitro) → backend → contrato de API →
 frontend → EAR. El DDL y la semilla van antes del EAR.
+
+## 6. Avance (2026-11-01)
+- `crd/sql/355` corrido en producción: el nombre DSSB está libre, los aux1 61 y 62 están libres en la
+  plantilla 21, y la cuenta 2.3.90.90.10 existe (PLNNCDGO 10398). **D5 confirmada: aux1 61.**
+- DDL y semilla escritos: `crd/sql/357_DDL_DSSB_DESTINO_SOBRANTE_Y_LINEA_61.sql`. Auditoría
+  `DSSBUSRG/FCRG/USMD/FCMD`; `DSSBPGTR` y `DSSBASNT` sin FK. **No se corre hasta las decisiones
+  DU1-DU3 y el código del B8.**
