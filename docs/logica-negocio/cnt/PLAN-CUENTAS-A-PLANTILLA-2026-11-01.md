@@ -110,3 +110,9 @@ estado financiero por rubro 250). Los literales están concentrados en 4 archivo
   bandas o tiene varias cuentas en la banda máxima: advertencia y no se ajusta. **Ya no queda ninguna
   cuenta escrita en el cierre de cartera ni en sus controles**; solo el `SUBSTR` de 6 caracteres de la
   madre, que es estructura del código de cuenta.
+- **P6 y P7 (cargadores históricos C11/C13): NO SE HACEN.** Decisión del usuario (2026-11-01), con la
+  recomendación del árbitro del cuadre:
+  - los cargadores se conservan hasta que el reproceso definitivo llegue a producción, porque son la
+    única vía para cargar jun-2025 → jul-2026, cuando la operación corría en Delta 21 (D-012, D-013);
+  - después se **eliminan enteros** (pendiente del cierre del proyecto);
+  - sus literales se quedan como están mientras tanto.

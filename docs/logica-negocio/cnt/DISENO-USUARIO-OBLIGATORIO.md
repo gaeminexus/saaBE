@@ -55,3 +55,15 @@ usuario es válido si no es nulo, no está vacío y existe `Usuario.nombre` (`SC
 - **Límite:** `Usuario` no mapea ninguna columna de estado, así que hoy «activo» = «existe». El estado
   lo controla el procedimiento del login. Si hiciera falta exigir el estado en cada proceso, hay que
   saber en qué columna o tabla vive.
+
+## 6. ⛔ El reproceso no se puede romper (2026-11-01)
+El reproceso del cuadre corre con el código de `main`.
+- Graba como «SISTEMA»:
+  - el modo reproceso de la carga (B6-a/B6-b);
+  - los cargadores históricos C11/C13 (`ctx.usuario`), que se conservan hasta que el reproceso llegue a
+    producción.
+- Si «SISTEMA» no existe como `Usuario` real, **la defensa central (U-5) tumba el reproceso**.
+- **Antes de U-5 hay que decidir cómo se identifica:**
+  - un usuario técnico real en `SCP.PJRQ` (recomendado: uno con nombre propio, p. ej. `REPROCESO`);
+  - o el usuario de la persona que lo lanza.
+- Se coordina con el árbitro del cuadre, con la confirmación del usuario.

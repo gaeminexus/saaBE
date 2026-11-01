@@ -253,3 +253,13 @@ Ninguno de los tres está diagnosticado.
    (`|| 0`); lo usan anulaciones de cxc/cxp. Hay que acordar el cambio a `null`.
 4. **Bancos reales:** el BLOQUE 2 del `e2-111` se corrió en el pase (6 bancos en 0 y 12 en 1).
 5. **Regla del usuario:** ninguna cuenta contable escrita en el código; todas por plantilla.
+
+## Pendiente del cierre del proyecto (decisión del usuario, 2026-11-01)
+- **Eliminar los cargadores históricos C11 y C13** después de que el reproceso definitivo llegue a
+  producción. Hoy son la única vía del reproceso para jun-2025 → jul-2026 (respuesta del árbitro del
+  cuadre, D-012/D-013).
+- Qué eliminar:
+  - backend: `ejb/historico`, `model/historico` y `ws/rest/historico`;
+  - frontend: nada, porque no hay ninguna llamada a `/historico`.
+  - Ojo: `esHistorico()` de nómina y `cargarHistoricoCierres()` de tsr son otra cosa; no se tocan.
+- Mientras tanto, opcional: desactivar el REST `/historico` en producción, conservando el código.
