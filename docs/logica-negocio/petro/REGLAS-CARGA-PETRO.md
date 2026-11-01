@@ -935,3 +935,27 @@ Diseño: `DISENO-CARGA-TARDIA-SIN-MORA.md` §3; contrato: `PLAN-CORRECCIONES-CAR
   carga en proceso; la mora sobre capital ya pagado (M1) se corrige aparte.
 - **Modo reproceso:** no corre (`!modoReproceso`); el cuadre recalcula la mora de las cuotas reabiertas por
   su cuenta (D-019).
+
+## 9. Seguro de incendio (HS): H1, H2, H4 y H6 (B5, 2026-11-01)
+
+Diseño: `DISENO-AFECTACION-MANUAL-V2.md` §2 (H1-H6) y §3.4; contrato: `PLAN-CORRECCIONES-CARGA-2026-11-01.md` B5.
+Regla general: **el HS que encuentra su cuota no genera novedad**, y es UN solo importe que nunca se suma a dos filas.
+
+- **H1, filas PH y PP:** `hsLeCorrespondeAFila` decide a cuál va el HS. Si el partícipe tiene solo una de las dos,
+  a esa. Con las dos (fuera del modo reproceso) se la lleva la fila cuyo préstamo tiene, en su cuota pendiente
+  más antigua, el `valorSeguroIncendio` MÁS CERCANO al HS (`seguroDeLaCuotaDeLaFila`); PP solo si es
+  estrictamente más cercano, en empate PH. La misma decisión la usan `montoConHsMergeado` (fase 1 y
+  revalidación), la fase 2 y `aplicarPagoParticipe`: la otra fila se compara y se aplica sin HS.
+- **H2, fila PH/PP en $0 con HS:** `aplicarPagoParticipe` ya no retorna (ni marca mora) cuando la fila está en
+  $0 pero lleva el HS (`hsDeLaFila` > 0): sigue el camino normal con `montoArchivo` = 0 y la rama PH/PP le suma
+  el HS. Si la cuota no tiene seguro, sigue la novedad bloqueante de siempre.
+- **H4, HS huérfano con varios candidatos:** `resolverDestinoHsHuerfano` (compartido con la vista previa)
+  desempata por el `valorSeguroIncendio` de la cuota pendiente de cada candidato: si exactamente uno coincide
+  con el HS (±$0,01) es el destino; si ninguno o varios coinciden, novedad `MONTO_INCONSISTENTE` bloqueante
+  con los seguros de cada candidato en el texto.
+- **H6, vista previa:** el HS huérfano calcula sus novedades en la fase 2 (`validarSeguroIncendioHuerfanoFase2`,
+  también en `revalidarCarga`) con las mismas reglas y textos que al procesar; las filas HS ya no se saltan
+  del todo. Al procesar se registran de nuevo de forma idempotente. `MONTO_INCONSISTENTE` no es un tipo
+  revalidable: si la situación se resuelve, la novedad vieja no se desactiva sola.
+- **Modo reproceso:** sin cambio. `hsLeCorrespondeAFila` conserva «PH se lleva siempre el HS», H2 no corre y la
+  fase 2 no corre; D-023 y C4f (HS sobre cuota sin seguro) no se tocaron.

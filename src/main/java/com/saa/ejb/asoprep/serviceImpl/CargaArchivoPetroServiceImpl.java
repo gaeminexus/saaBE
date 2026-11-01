@@ -873,6 +873,11 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 			// El producto AH (aportes) SÍ debe validarse en Fase 2
 			boolean esProductoHS = CODIGO_PRODUCTO_HS.equalsIgnoreCase(codigoProducto);
 
+			// H6 (B5): el HS huérfano calcula sus novedades acá, en la vista previa, no al procesar.
+			if (esProductoHS && !modoReproceso) {
+				validarSeguroIncendioHuerfanoFase2(participe, cargaArchivo, productosCache);
+			}
+
 			if (!esProductoHS && participe.getCodigo() != null) {
 				try {
 					validarNovedadesFase2(participe, codigoProducto, cargaArchivo, productosCache);
@@ -3790,9 +3795,16 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 
 			for (DetalleCargaArchivo detalle : detalles) {
 				String codigoProducto = detalle.getCodigoPetroProducto();
-				// El HS nunca tiene novedad propia (viaja dentro de la de su PH/PP) — nada que
-				// revalidar en esta fila.
+				// El HS con PH/PP nunca tiene novedad propia (viaja dentro de la de su PH/PP). El HS
+				// HUÉRFANO sí (H6, B5): se recalcula igual que en la fase 2 de una carga nueva.
 				if (CODIGO_PRODUCTO_HS.equalsIgnoreCase(codigoProducto)) {
+					List<ParticipeXCargaArchivo> participesHs =
+						participeXCargaArchivoDaoService.selectByDetalleCargaArchivo(detalle.getCodigo());
+					if (participesHs != null) {
+						for (ParticipeXCargaArchivo participeHs : participesHs) {
+							validarSeguroIncendioHuerfanoFase2(participeHs, cargaArchivo, productosCache);
+						}
+					}
 					continue;
 				}
 				List<ParticipeXCargaArchivo> participesDetalle =
@@ -4476,31 +4488,101 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 		if (!esPH && !esPP) {
 			return monto;
 		}
-		if (esPP) {
-			ParticipeXCargaArchivo filaPH = participeXCargaArchivoDaoService.selectByCodigoPetroYProductoEnCarga(
-				participe.getCodigoPetro(), CODIGO_PRODUCTO_PH, cargaArchivo.getCodigo());
-			if (filaPH != null) {
-				// PH existe: el HS se lo lleva PH (ver el log del lado PH), nunca PP.
-				return monto;
-			}
-		}
 		ParticipeXCargaArchivo filaHS = participeXCargaArchivoDaoService.selectByCodigoPetroYProductoEnCarga(
 			participe.getCodigoPetro(), CODIGO_PRODUCTO_HS, cargaArchivo.getCodigo());
 		if (filaHS == null) {
 			return monto;
 		}
-		if (esPH) {
-			ParticipeXCargaArchivo filaPP = participeXCargaArchivoDaoService.selectByCodigoPetroYProductoEnCarga(
-				participe.getCodigoPetro(), CODIGO_PRODUCTO_PP, cargaArchivo.getCodigo());
-			if (filaPP != null) {
-				System.out.println("⚠️ CASO AMBIGUO (§16): partícipe " + participe.getCodigoPetro() + " ("
-					+ participe.getNombre() + ") tiene fila PH Y PP en la carga " + cargaArchivo.getCodigo()
-					+ " — el HS ($" + nullSafe(filaHS.getTotalDescontado()) + ") se asigna a PH (fila "
-					+ participe.getCodigo() + "), NUNCA a PP (fila " + filaPP.getCodigo()
-					+ "). Revisar si esto es correcto para este partícipe.");
-			}
+		// H1 (B5): el HS es UN solo importe y va a UNA fila; cuál, lo decide hsLeCorrespondeAFila.
+		if (!hsLeCorrespondeAFila(participe, codigoProducto, cargaArchivo)) {
+			return monto;
 		}
 		return monto + nullSafe(filaHS.getTotalDescontado());
+	}
+
+	/**
+	 * H1 (B5, PLAN-CORRECCIONES-CARGA-2026-11-01.md, DISENO-AFECTACION-MANUAL-V2.md §2/§3.4): ¿el HS del
+	 * partícipe le corresponde a ESTA fila PH/PP? El HS es un solo importe: nunca se suma a dos filas.
+	 *
+	 * <ul>
+	 * <li>Solo hay una de las dos filas (PH o PP): le corresponde.</li>
+	 * <li>Hay PH y PP: fuera del modo reproceso, se la lleva la fila del préstamo cuya cuota pendiente
+	 * tiene el {@code valorSeguroIncendio} MÁS CERCANO al HS; PP solo si es estrictamente más cercana,
+	 * en empate PH, como siempre ({@code montoConHsMergeado}). La otra fila se compara y se aplica sin HS.
+	 * Antes las dos filas lo sumaban: la que no correspondía salía {@code MONTO_INCONSISTENTE} por el valor
+	 * del HS y, al aplicar, había riesgo de cobrarlo dos veces.</li>
+	 * <li>Modo reproceso: sin cambio (D-023, C4f), PH se lleva siempre el HS.</li>
+	 * </ul>
+	 */
+	private boolean hsLeCorrespondeAFila(ParticipeXCargaArchivo participe, String codigoProducto,
+			CargaArchivo cargaArchivo) throws Throwable {
+		boolean esPH = CODIGO_PRODUCTO_PH.equalsIgnoreCase(codigoProducto);
+		boolean esPP = CODIGO_PRODUCTO_PP.equalsIgnoreCase(codigoProducto);
+		if (!esPH && !esPP) {
+			return false;
+		}
+		ParticipeXCargaArchivo filaPH = esPH ? participe : participeXCargaArchivoDaoService
+			.selectByCodigoPetroYProductoEnCarga(participe.getCodigoPetro(), CODIGO_PRODUCTO_PH, cargaArchivo.getCodigo());
+		ParticipeXCargaArchivo filaPP = esPP ? participe : participeXCargaArchivoDaoService
+			.selectByCodigoPetroYProductoEnCarga(participe.getCodigoPetro(), CODIGO_PRODUCTO_PP, cargaArchivo.getCodigo());
+		if (filaPH == null || filaPP == null) {
+			return true; // solo existe esta fila
+		}
+		ParticipeXCargaArchivo filaHS = participeXCargaArchivoDaoService.selectByCodigoPetroYProductoEnCarga(
+			participe.getCodigoPetro(), CODIGO_PRODUCTO_HS, cargaArchivo.getCodigo());
+		double hs = filaHS != null ? nullSafe(filaHS.getTotalDescontado()) : 0.0;
+		if (modoReproceso) {
+			System.out.println("⚠️ CASO AMBIGUO (§16): partícipe " + participe.getCodigoPetro() + " tiene fila PH Y PP"
+				+ " en la carga " + cargaArchivo.getCodigo() + " — el HS ($" + hs + ") se asigna a PH, NUNCA a PP.");
+			return esPH;
+		}
+		Double seguroPH = seguroDeLaCuotaDeLaFila(filaPH, CODIGO_PRODUCTO_PH);
+		Double seguroPP = seguroDeLaCuotaDeLaFila(filaPP, CODIGO_PRODUCTO_PP);
+		double distanciaPH = seguroPH != null ? Math.abs(seguroPH - hs) : Double.MAX_VALUE;
+		double distanciaPP = seguroPP != null ? Math.abs(seguroPP - hs) : Double.MAX_VALUE;
+		boolean ganaPP = distanciaPP < distanciaPH - 0.005;
+		System.out.println("  H1: partícipe " + participe.getCodigoPetro() + " con filas PH y PP — HS $" + hs
+			+ ", seguro de la cuota PH $" + seguroPH + ", PP $" + seguroPP + " -> el HS va a " + (ganaPP ? "PP" : "PH"));
+		return esPP ? ganaPP : !ganaPP;
+	}
+
+	/**
+	 * {@code valorSeguroIncendio} de la cuota pendiente más antigua del primer préstamo ACTIVO del partícipe
+	 * para el producto de la fila, o {@code null} si no hay. Solo lectura (a diferencia de
+	 * {@link #buscarCuotaAPagar}, no marca cuotas como pagadas).
+	 */
+	private Double seguroDeLaCuotaDeLaFila(ParticipeXCargaArchivo fila, String codigoProducto) throws Throwable {
+		List<Entidad> entidades = entidadDaoService.selectByCodigoPetro(fila.getCodigoPetro());
+		if (entidades == null || entidades.isEmpty()) {
+			return null;
+		}
+		List<Producto> productos = productoDaoService.selectAllByCodigoPetro(codigoProducto);
+		if (productos == null) {
+			return null;
+		}
+		for (Producto producto : productos) {
+			List<Prestamo> prestamos = prestamoDaoService.selectByEntidadYProductoActivosById(
+				entidades.get(0).getCodigo(), producto.getCodigo());
+			if (prestamos == null) {
+				continue;
+			}
+			for (Prestamo prestamo : prestamos) {
+				Double seguro = seguroDeLaCuotaPendiente(prestamo);
+				if (seguro != null) {
+					return seguro;
+				}
+			}
+		}
+		return null;
+	}
+
+	/** {@code valorSeguroIncendio} de la cuota no pagada más antigua del préstamo, o {@code null} si no tiene cuota pendiente. */
+	private Double seguroDeLaCuotaPendiente(Prestamo prestamo) throws Throwable {
+		List<DetallePrestamo> resultado = detallePrestamoDaoService.selectMinCuotaNoPagadaByPrestamo(prestamo.getCodigo());
+		if (resultado == null || resultado.isEmpty()) {
+			return null;
+		}
+		return nullSafe(resultado.get(0).getValorSeguroIncendio());
 	}
 
 	/**
@@ -4725,15 +4807,25 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 		// Sin hacer búsquedas innecesarias de entidad, productos, préstamos o seguro HS
 		double montoArchivo = nullSafe(participe.getTotalDescontado());
 		if (montoArchivo == 0.0 || Math.abs(montoArchivo) < 0.01) {
-			System.out.println("⚠️ Monto descontado es $0 - No se realizó pago - Marcando cuotas en MORA");
-			marcarCuotasEnMoraPorFaltaDePago(participe, codigoProducto, cargaArchivo, productosCache);
-			// MODO REPROCESO (§4.12): si esta fila PH/PP es la que lleva el HS del partícipe, ese HS
-			// no lo aplica nadie (el HS huérfano se salta porque existe la fila PH/PP): se nombra.
-			if (modoReproceso) {
-				registrarFilaSinPagoReproceso(participe, CODIGO_PRODUCTO_HS, hsDeLaFila(participe, codigoProducto, cargaArchivo),
-					"HS con fila " + codigoProducto + " sin descuento");
+			// H2 (B5, PLAN-CORRECCIONES-CARGA-2026-11-01.md): una fila PH/PP en $0 que lleva el HS del
+			// partícipe NO sale por acá: antes retornaba y el HS quedaba sin aplicar y sin novedad (el
+			// control final tumbaba la carga). Sigue por el camino normal con montoArchivo = 0 y la rama
+			// PH/PP le suma el HS. Modo reproceso: sin cambio (D-023 / §4.12 lo nombra abajo).
+			double hsFilaEnCero = modoReproceso ? 0.0 : hsDeLaFila(participe, codigoProducto, cargaArchivo);
+			if (hsFilaEnCero > 0.01) {
+				System.out.println("   H2: fila " + codigoProducto + " en $0 con HS $" + hsFilaEnCero
+					+ " - se aplica el HS por el camino normal");
+			} else {
+				System.out.println("⚠️ Monto descontado es $0 - No se realizó pago - Marcando cuotas en MORA");
+				marcarCuotasEnMoraPorFaltaDePago(participe, codigoProducto, cargaArchivo, productosCache);
+				// MODO REPROCESO (§4.12): si esta fila PH/PP es la que lleva el HS del partícipe, ese HS
+				// no lo aplica nadie (el HS huérfano se salta porque existe la fila PH/PP): se nombra.
+				if (modoReproceso) {
+					registrarFilaSinPagoReproceso(participe, CODIGO_PRODUCTO_HS, hsDeLaFila(participe, codigoProducto, cargaArchivo),
+						"HS con fila " + codigoProducto + " sin descuento");
+				}
+				return;
 			}
-			return;
 		}
 		
 		// ========================================
@@ -4872,9 +4964,15 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 							cargaArchivo.getCodigo()
 						);
 						
-						if (participeHS != null) {
+						// H1 (B5): con filas PH y PP el HS se aplica a UNA sola (la otra va sin HS). Modo reproceso: sin cambio.
+						if (participeHS != null && !modoReproceso && !hsLeCorrespondeAFila(participe, codigoProducto, cargaArchivo)) {
+							System.out.println("   H1: el HS de $" + nullSafe(participeHS.getTotalDescontado())
+								+ " corresponde a la otra fila (PH/PP) del partícipe - " + codigoProducto + " se aplica sin HS");
+							participeHS = null;
+							montoHS = 0.0;
+						} else if (participeHS != null) {
 							montoHS = nullSafe(participeHS.getTotalDescontado());
-							System.out.println("✅ Registro HS encontrado con monto: $" + montoHS);	
+							System.out.println("✅ Registro HS encontrado con monto: $" + montoHS);
 							double diferenciaHS = Math.abs(seguroIncendioEsperado - montoHS);
 							
 							System.out.println("  Validando HS contra valorSeguroIncendio de la cuota:");
@@ -5067,9 +5165,41 @@ private boolean procesarSeguroIncendioHuerfano(ParticipeXCargaArchivo participeH
 	}
 	Entidad entidad = entidades.get(0);
 
-	// Candidatos: préstamos ACTIVOS de código Petro PH o PP, sin importar si tienen detalle en
-	// ESTA carga — el HS no trae declarado su propio producto de préstamo. MISMA resolución
-	// que la rama PH/PP de más arriba, no una nueva.
+	// Destino del HS: único candidato, o desempatado por el seguro de la cuota (H4, B5). Compartido con la
+	// vista previa (H6): la misma decisión en fase 2 y al procesar.
+	String[] descripcionSinDestino = new String[1];
+	Prestamo destino = resolverDestinoHsHuerfano(entidad, participeHS, montoHS, cargaArchivo, productosCache, descripcionSinDestino);
+	if (destino == null) {
+		System.err.println("⛔ NOVEDAD BLOQUEANTE (HS huérfano): partícipe " + participeHS.getCodigoPetro()
+			+ " (" + participeHS.getNombre() + ") - " + descripcionSinDestino[0]);
+		// §15: transacción PROPIA — ver comentario del otro registrarNovedad de este método.
+		registrarNovedadDeAplicacion(participeHS, ASPNovedadesCargaArchivo.MONTO_INCONSISTENTE, descripcionSinDestino[0],
+			null, null, null, Double.valueOf(montoHS));
+		return true;
+	}
+
+	System.out.println("  ✅ HS huérfano resuelto - Partícipe " + participeHS.getCodigoPetro() + " ("
+		+ participeHS.getNombre() + ") - Préstamo #" + destino.getCodigo() + " - Monto: $" + montoHS
+		+ " - aplicado por la cascada del motor (misma prelación que el caso normal)");
+	aplicarPagoNormalConMotor(destino, montoHS, cargaArchivo, participeHS);
+	return true;
+}
+
+/**
+ * Préstamo al que va un HS huérfano, o {@code null} si no hay destino inequívoco (en cuyo caso
+ * {@code descripcionSinDestino[0]} trae el texto de la novedad). Compartido entre
+ * {@link #procesarSeguroIncendioHuerfano} (al procesar) y {@link #validarSeguroIncendioHuerfanoFase2}
+ * (vista previa, H6).
+ *
+ * <p>Candidatos: préstamos ACTIVOS de código Petro PH o PP, sin importar si tienen detalle en ESTA carga —
+ * el HS no trae declarado su propio producto de préstamo — que tengan una cuota pendiente donde caer; no
+ * se filtra por seguro de incendio, la prelación de la cascada decide dónde cae el dinero dentro de la
+ * cuota. <b>H4 (B5):</b> con más de un candidato se desempata por el {@code valorSeguroIncendio} de la
+ * cuota pendiente de cada uno: si exactamente uno coincide con el HS (±$0,01) es el destino; solo si sigue
+ * ambiguo (ninguno o varios coinciden) es novedad. Con cero candidatos, novedad.</p>
+ */
+private Prestamo resolverDestinoHsHuerfano(Entidad entidad, ParticipeXCargaArchivo participeHS, double montoHS,
+		CargaArchivo cargaArchivo, Map<String, List<Producto>> productosCache, String[] descripcionSinDestino) throws Throwable {
 	Map<Long, Prestamo> prestamosPorCodigo = new LinkedHashMap<>();
 	for (String codigoProductoPrestamo : new String[] { CODIGO_PRODUCTO_PH, CODIGO_PRODUCTO_PP }) {
 		for (Producto producto : resolverProductosPorCodigo(codigoProductoPrestamo, productosCache)) {
@@ -5083,9 +5213,6 @@ private boolean procesarSeguroIncendioHuerfano(ParticipeXCargaArchivo participeH
 		}
 	}
 
-	// Candidatos REALES: los que tienen una cuota pendiente donde caer — sin filtrar por
-	// seguro de incendio a propósito: la prelación de la cascada decide dónde cae el dinero
-	// dentro de esa cuota, no este método.
 	List<Prestamo> candidatos = new ArrayList<>();
 	for (Prestamo prestamo : prestamosPorCodigo.values()) {
 		if (tieneCuotaPendiente(prestamo, cargaArchivo)) {
@@ -5093,28 +5220,85 @@ private boolean procesarSeguroIncendioHuerfano(ParticipeXCargaArchivo participeH
 		}
 	}
 
-	if (candidatos.size() != 1) {
-		String detalleCandidatos = candidatos.isEmpty()
-			? "ningún préstamo hipotecario/prendario activo del partícipe tiene una cuota pendiente"
-			: candidatos.size() + " préstamos tienen cuota pendiente ("
-				+ candidatos.stream().map(p -> "#" + p.getCodigo()).collect(java.util.stream.Collectors.joining(", "))
-				+ ") — no hay destino inequívoco";
-		String descripcion = "HS huérfano (sin PH/PP en esta carga): $" + montoHS + " recibidos de seguro de"
-			+ " incendio, pero " + detalleCandidatos + ". Requiere distribución manual (AVPC).";
-		System.err.println("⛔ NOVEDAD BLOQUEANTE (HS huérfano): partícipe " + participeHS.getCodigoPetro()
-			+ " (" + participeHS.getNombre() + ") - " + descripcion);
-		// §15: transacción PROPIA — ver comentario del otro registrarNovedad de este método.
-		registrarNovedadDeAplicacion(participeHS, ASPNovedadesCargaArchivo.MONTO_INCONSISTENTE, descripcion,
-			null, null, null, Double.valueOf(montoHS));
-		return true;
+	if (candidatos.size() == 1) {
+		return candidatos.get(0);
 	}
 
-	Prestamo unico = candidatos.get(0);
-	System.out.println("  ✅ HS huérfano resuelto - Partícipe " + participeHS.getCodigoPetro() + " ("
-		+ participeHS.getNombre() + ") - Préstamo #" + unico.getCodigo() + " - Monto: $" + montoHS
-		+ " - aplicado por la cascada del motor (misma prelación que el caso normal)");
-	aplicarPagoNormalConMotor(unico, montoHS, cargaArchivo, participeHS);
-	return true;
+	String detalleCandidatos;
+	if (candidatos.isEmpty()) {
+		detalleCandidatos = "ningún préstamo hipotecario/prendario activo del partícipe tiene una cuota pendiente";
+	} else {
+		// H4: desempate por el valor del seguro de la cuota pendiente de cada candidato.
+		List<Prestamo> coinciden = new ArrayList<>();
+		StringBuilder segurosPorPrestamo = new StringBuilder();
+		for (Prestamo candidato : candidatos) {
+			Double seguro = seguroDeLaCuotaPendiente(candidato);
+			if (segurosPorPrestamo.length() > 0) {
+				segurosPorPrestamo.append(", ");
+			}
+			segurosPorPrestamo.append("#").append(candidato.getCodigo()).append(" $").append(seguro);
+			if (seguro != null && Math.abs(seguro - montoHS) <= 0.01) {
+				coinciden.add(candidato);
+			}
+		}
+		if (coinciden.size() == 1) {
+			System.out.println("  H4: HS huérfano del rol " + participeHS.getCodigoPetro() + " desempatado por el seguro de la cuota -> préstamo #"
+				+ coinciden.get(0).getCodigo() + " (seguros: " + segurosPorPrestamo + ", HS $" + montoHS + ")");
+			return coinciden.get(0);
+		}
+		detalleCandidatos = candidatos.size() + " préstamos tienen cuota pendiente ("
+			+ candidatos.stream().map(p -> "#" + p.getCodigo()).collect(java.util.stream.Collectors.joining(", "))
+			+ ") y el seguro de sus cuotas (" + segurosPorPrestamo + ") no desempata el HS — no hay destino inequívoco";
+	}
+	descripcionSinDestino[0] = "HS huérfano (sin PH/PP en esta carga): $" + montoHS + " recibidos de seguro de"
+		+ " incendio, pero " + detalleCandidatos + ". Requiere distribución manual (AVPC).";
+	return null;
+}
+
+/**
+ * H6 (B5, DISENO-AFECTACION-MANUAL-V2.md §3.4): las novedades del HS huérfano se calculan en la fase 2
+ * (vista previa), no recién al procesar. Mismas reglas y mismo texto que {@link #procesarSeguroIncendioHuerfano};
+ * aquí se registran con {@code registrarNovedad} (la fase 2 corre en la transacción de la validación). Un HS
+ * con fila PH/PP en la carga, de monto $0, o con AVPC ya colgadas, no genera nada nuevo.
+ */
+private void validarSeguroIncendioHuerfanoFase2(ParticipeXCargaArchivo participeHS, CargaArchivo cargaArchivo,
+		Map<String, List<Producto>> productosCache) {
+	try {
+		if (participeHS.getCodigo() == null) {
+			return;
+		}
+		ParticipeXCargaArchivo filaPH = participeXCargaArchivoDaoService.selectByCodigoPetroYProductoEnCarga(
+			participeHS.getCodigoPetro(), CODIGO_PRODUCTO_PH, cargaArchivo.getCodigo());
+		ParticipeXCargaArchivo filaPP = participeXCargaArchivoDaoService.selectByCodigoPetroYProductoEnCarga(
+			participeHS.getCodigoPetro(), CODIGO_PRODUCTO_PP, cargaArchivo.getCodigo());
+		if (filaPH != null || filaPP != null) {
+			return;
+		}
+		double montoHS = nullSafe(participeHS.getTotalDescontado());
+		if (montoHS <= 0.01) {
+			return;
+		}
+		List<Entidad> entidades = entidadDaoService.selectByCodigoPetro(participeHS.getCodigoPetro());
+		if (entidades == null || entidades.isEmpty()) {
+			registrarNovedad(participeHS, ASPNovedadesCargaArchivo.PRESTAMO_NO_ENCONTRADO,
+				"HS huérfano (sin PH/PP en esta carga): no se encontró entidad con código Petro "
+					+ participeHS.getCodigoPetro() + " para determinar a qué préstamo aplicar el seguro de $"
+					+ montoHS + ".",
+				null, null, null, montoHS);
+			return;
+		}
+		String[] descripcionSinDestino = new String[1];
+		Prestamo destino = resolverDestinoHsHuerfano(entidades.get(0), participeHS, montoHS, cargaArchivo,
+			productosCache, descripcionSinDestino);
+		if (destino == null) {
+			registrarNovedad(participeHS, ASPNovedadesCargaArchivo.MONTO_INCONSISTENTE, descripcionSinDestino[0],
+				null, null, null, Double.valueOf(montoHS));
+		}
+	} catch (Throwable e) {
+		System.err.println("❌ ERROR en validación fase 2 del HS huérfano del partícipe "
+			+ participeHS.getCodigoPetro() + ": " + e.getMessage());
+		e.printStackTrace();
+	}
 }
 
 /**
@@ -5916,9 +6100,15 @@ private void validarNovedadesFase2(ParticipeXCargaArchivo participe,
 				
 				if (participeHS != null) {
 					double montoHS = nullSafe(participeHS.getTotalDescontado());
-					montoArchivo += montoHS;
-					System.out.println("Monto HS encontrado: $" + montoHS);
-					System.out.println("TOTAL A VALIDAR (" + codigoProducto + " + HS): $" + montoArchivo);
+					// H1 (B5): con filas PH y PP el HS se compara contra UNA sola (modo reproceso: sin cambio).
+					if (modoReproceso || hsLeCorrespondeAFila(participe, codigoProducto, cargaArchivo)) {
+						montoArchivo += montoHS;
+						System.out.println("Monto HS encontrado: $" + montoHS);
+						System.out.println("TOTAL A VALIDAR (" + codigoProducto + " + HS): $" + montoArchivo);
+					} else {
+						System.out.println("Monto HS $" + montoHS + " corresponde a la otra fila (PH/PP) - se valida "
+							+ codigoProducto + " sin HS: $" + montoArchivo);
+					}
 				} else {
 					System.out.println("⚠️ ADVERTENCIA: No se encontró registro HS para este partícipe");
 					System.out.println("Se validará solo con monto " + codigoProducto + ": $" + montoArchivo);
