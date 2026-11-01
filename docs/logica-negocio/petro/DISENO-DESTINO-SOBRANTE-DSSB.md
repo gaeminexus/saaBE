@@ -133,3 +133,5 @@ frontend → EAR. El DDL y la semilla van antes del EAR.
   - el resolutor de cxp (equipo 2);
   - el desglose de bandas (DSBN) no muestra la devolución por partícipe.
 - **Prerrequisitos de base:** `357` (con DSSBVLAH y DSSBVLPR) y `c20-04` (usuario REPROCESO), antes del EAR.
+- **`crd/sql/357` corrido en producción (2026-11-01):** CRD.DSSB con PK, 4 FK y 3 CHECK habilitados, índices
+  `UX_DSSB_CARGA_PARTICIPE` e `IDX_DSSB_CARGA`, secuencia `SQ_DSSBCDGO`; plantilla 21 línea 61 → 2.3.90.90.10 (HABER).
