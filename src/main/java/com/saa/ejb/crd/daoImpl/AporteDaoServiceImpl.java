@@ -1120,10 +1120,18 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 			// mismo error que la trazabilidad se creó para evitar.
 			// Migrar cuando: (a) el backfill corrió en producción, y (b) su control 3.1 (aportes
 			// con idAsoprep sin CRARCDGO) da 0. Ahí este WHERE cambia a a.cargaArchivo.codigo.
+			// B3 (PLAN-CORRECCIONES-CARGA-2026-11-01.md, 2026-11-01): ademas de idAsoprep exige CARGA
+			// REAL (a.cargaArchivo is not null). Un aporte sin carga (migrado del sistema anterior,
+			// cobro personal) puede traer en APRTIDAS un numero que coincide con el de una carga y se
+			// sumaba a ella (carga ARCH 510, crd/sql/340-342). Se conserva idAsoprep porque
+			// el reverso del reproceso y los aportes nuevos llevan las DOS columnas, asi que el neteo
+			// original/contra-movimiento no cambia. Requiere sql/78 control 3.1 = 0 (todo aporte de
+			// carga con idAsoprep tiene CRARCDGO); si no, un aporte historico sin CRARCDGO quedaria fuera.
 			Query query = em.createQuery(
 				" select   a.tipoAporte.codigo, sum(a.valor) " +
 				" from     Aporte a " +
 				" where    a.idAsoprep = :idCarga " +
+				"   and    a.cargaArchivo is not null " +
 				" group by a.tipoAporte.codigo " +
 				" order by a.tipoAporte.codigo "
 			);
@@ -1149,8 +1157,10 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 			// Mismo filtro (a.idAsoprep, no a.cargaArchivo) que sumValorPorTipoAporteByCarga —
 			// ver su javadoc para el porqué transitorio. Tienen que leer exactamente la misma
 			// carga o el detalle y el asiento pueden divergir.
+			// B3: tambien exige carga real (a.cargaArchivo is not null), igual que
+			// sumValorPorTipoAporteByCarga — ver el comentario de ese metodo.
 			Query query = em.createQuery(
-				" select a from Aporte a where a.idAsoprep = :idCarga "
+				" select a from Aporte a where a.idAsoprep = :idCarga and a.cargaArchivo is not null "
 			);
 			query.setParameter("idCarga", idCarga);
 			return query.getResultList();
@@ -1168,10 +1178,13 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 		System.out.println("AporteDaoServiceImpl.selectAplicadoPorEntidadEnCarga - Carga: " + idCarga);
 
 		try {
+			// B3: tambien exige carga real (a.cargaArchivo is not null) — mismo universo que
+			// selectByCarga y sumValorPorTipoAporteByCarga.
 			Query query = em.createQuery(
 				" select   a.entidad.codigo, sum(a.valor) " +
 				" from     Aporte a " +
 				" where    a.idAsoprep = :idCarga " +
+				"   and    a.cargaArchivo is not null " +
 				" group by a.entidad.codigo "
 			);
 			query.setParameter("idCarga", idCarga);

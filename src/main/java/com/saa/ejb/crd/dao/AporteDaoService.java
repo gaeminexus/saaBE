@@ -473,6 +473,12 @@ public interface AporteDaoService extends EntityDao<Aporte>{
 	 * agrupada por tipo de aporte. Base del asiento de APLICACION del cobro de Petro en dos
 	 * pasos — ver {@code CobroPetroContableService.contabilizarAplicacion}.
 	 *
+	 * <p><b>B3 (2026-11-01):</b> ademas de {@code idAsoprep}, exige carga real
+	 * ({@code cargaArchivo is not null}); lo mismo hacen {@link #selectByCarga} y
+	 * {@link #selectAplicadoPorEntidadEnCarga}. Un aporte sin carga (migrado, cobro personal) nunca se
+	 * suma a una carga aunque su APRTIDAS coincida con el numero de una. Precondicion: el control 3.1
+	 * de {@code 78_BACKFILL_CRARCDGO_APORTES.sql} en 0.</p>
+	 *
 	 * <p><b>⚠️ TRANSITORIO (2026-08-28/29): filtra por {@code idAsoprep}, NO por
 	 * {@code cargaArchivo}/{@code CRARCDGO}</b>, aunque esta última es la columna gobernada
 	 * (FK + índice) que se sigue llenando en cargas nuevas — ver

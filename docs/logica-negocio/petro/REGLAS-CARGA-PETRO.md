@@ -881,9 +881,15 @@ validaciones, aplicación) no cambia. **El contrato completo es
 > (asiento de aplicación) filtran `a.idAsoprep = :idCarga`. Los aportes migrados (`APRTUSRG = 'BATCH'`,
 > `CRARCDGO` nulo) tienen `APRTIDAS` con números de 0 a 999995 que no son cargas. El 267360 (0,10,
 > APRTIDAS = 510) hizo abortar la carga ARCH 510 por «0,10 aplicados de más»; sin el control, habría
-> entrado al asiento. Datos corregidos con `crd/sql/341`. **Pendiente de código:** contar por
-> `CRARCDGO` (la carga real), o excluir `CRARCDGO IS NULL`. Hasta entonces, toda carga cuyo número
-> coincida con un `APRTIDAS` migrado choca igual: lo mide el CONTROL 2 del 341.
+> entrado al asiento. Datos corregidos con `crd/sql/341` y `342`.
+>
+> **✅ CORREGIDO EN CÓDIGO 2026-11-01 (B3, `PLAN-CORRECCIONES-CARGA-2026-11-01.md`):** `selectByCarga`,
+> `sumValorPorTipoAporteByCarga` y `selectAplicadoPorEntidadEnCarga` exigen además `a.cargaArchivo is not
+> null` (carga real), sin dejar de filtrar por `idAsoprep`: el reverso del reproceso y los aportes nuevos
+> llevan las dos columnas, así que el neteo original/contra-movimiento no cambia. Un aporte sin carga
+> (migrado, cobro personal) ya no se suma a ninguna carga aunque su `APRTIDAS` coincida. **Precondición:**
+> el control 3.1 de `crd/sql/78_BACKFILL_CRARCDGO_APORTES.sql` en 0 (todo aporte de carga con `idAsoprep`
+> tiene `CRARCDGO`); si no, un aporte histórico sin `CRARCDGO` quedaría fuera de la suma de su carga.
 
 ## 8. Carga procesada después del día 1: la mora se recalcula al corte (B1, 2026-11-01)
 
