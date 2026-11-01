@@ -38,7 +38,7 @@ empresa con `ASNTFCHA <= fin de mes`; saldo **deudor** (debe − haber).
 | (e) ASIENTOS | `ASIENTOS_BORRADOR` | Asientos del mes en estado 4 (INCOMPLETO) | ADVERTENCIA si hay |
 | (e) ASIENTOS | `ASIENTOS_SIN_LINEAS` | Asientos 1/3 del mes sin líneas | ADVERTENCIA si hay |
 | (f) B17_G | `B17_OFICIAL` | Integridad del archivo B17 (líneas, suma de control, padres = hijas): **pendiente C19b** | ADVERTENCIA siempre |
-| (f) B17_G | `B17_21_VS_G42` | −saldo 2.1 (cuenta 21 del B17) = Σ G42 (saldos patronal + personal + voluntario + rendimiento) | ERROR si ≠ |
+| (f) B17_G | `B17_21_VS_G42` | −saldo de la cuenta 21 del B17 = Σ G42 (saldos patronal + personal + voluntario + rendimiento). La cuenta (FCPC: `2.1`) se lee del rubro 250, detalle `CUENTA_APORTES_PARTICIPES` (16), no está en el código (P8, 2026-11-01); sin el detalle no se mide | ERROR si ≠; ADVERTENCIA si falta el detalle |
 | (f) B17_G | `B17_13_VS_G48` | 1.3 sin 1.3.99 (13 − 1399 del B17, cartera bruta) = Σ G48 por vencer + vencido | ERROR si ≠ |
 | (f) B17_G | `B17_1399_VS_G48` | −1.3.99 = Σ provisión constituida G48 (D-015) | ERROR si ≠ |
 | (f) B17_G | `G_NO_GENERADAS` / sin G42 o G48 | No hay ejecución OK de la estructura en el mes | ADVERTENCIA |

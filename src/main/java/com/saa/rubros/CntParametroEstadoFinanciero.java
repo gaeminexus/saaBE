@@ -35,4 +35,10 @@ public interface CntParametroEstadoFinanciero {
 	int NIVEL_MAXIMO = 14;
 	/** Linea de moneda bajo el periodo. */
 	int TEXTO_MONEDA = 15;
+	/**
+	 * Cuenta de nivel 2 de los aportes de los partícipes (B17 cuenta 21; FCPC: 2.1): la cuenta y sus subcuentas son los
+	 * saldos individuales que la G42 detalla. La lee el control de cierre B17 ↔ G42 (P8, 2026-11-01). Sin este detalle
+	 * el control no se mide (ADVERTENCIA): no hay cuenta de respaldo.
+	 */
+	int CUENTA_APORTES_PARTICIPES = 16;
 }

@@ -489,14 +489,31 @@ public class ControlCierreServiceImpl implements ControlCierreService {
         }
 
         if (ejrdG42 != null) {
-            double c21 = -saldoDeudor(idEmpresa, corteSig, "2.1.", null);
-            double g42 = suma(" SELECT SUM(NVL(CG42SAPP, 0) + NVL(CG42SAPE, 0) + NVL(CG42SAVL, 0) + NVL(CG42RNDM, 0)) "
-                    + " FROM RPR.CG42 WHERE CG42EJRD = :ejrd", ejrdG42);
-            ControlCierre c = new ControlCierre("B17_G", "B17_21_VS_G42",
-                    "Cuenta 21 (2.1, cuentas individuales) = saldo total de la G42");
-            compara(c, c21, g42, "Saldo acreedor 2.1 al " + corte + ": " + fmt(c21) + "; G42 (ejecución detalle " + ejrdG42
-                    + ", saldos patronal + personal + voluntario + rendimiento): " + fmt(g42) + ".");
-            controles.add(c);
+            // P8 (PLAN-CUENTAS-A-PLANTILLA-2026-11-01.md): la cuenta 21 del B17 (cuentas individuales de los
+            // partícipes) se LEE del rubro 250, detalle CUENTA_APORTES_PARTICIPES; antes era el literal "2.1.".
+            // Sin el detalle no se mide: no hay cuenta de respaldo.
+            String cuenta21 = parametrosEstadosFinancieros().get(CntParametroEstadoFinanciero.CUENTA_APORTES_PARTICIPES);
+            if (cuenta21 == null) {
+                ControlCierre c = new ControlCierre("B17_G", "B17_21_VS_G42",
+                        "Cuenta 21 (cuentas individuales de los partícipes) = saldo total de la G42");
+                c.setEstado(ControlCierre.ADVERTENCIA);
+                c.setDetalle("No se pudo medir: el rubro " + Rubros.CNT_PARAMETROS_ESTADOS_FINANCIEROS
+                        + " no tiene el detalle CUENTA_APORTES_PARTICIPES (" + CntParametroEstadoFinanciero.CUENTA_APORTES_PARTICIPES
+                        + ") con la cuenta de nivel 2 de los aportes de los partícipes (B17 cuenta 21). Cárguelo; no hay"
+                        + " cuenta de respaldo.");
+                controles.add(c);
+            } else {
+                // mismo criterio de prefijo que el literal anterior ("2.1." con punto): la cuenta y sus subcuentas
+                String prefijo21 = cuenta21.endsWith(".") ? cuenta21 : cuenta21 + ".";
+                double c21 = -saldoDeudor(idEmpresa, corteSig, prefijo21, null);
+                double g42 = suma(" SELECT SUM(NVL(CG42SAPP, 0) + NVL(CG42SAPE, 0) + NVL(CG42SAVL, 0) + NVL(CG42RNDM, 0)) "
+                        + " FROM RPR.CG42 WHERE CG42EJRD = :ejrd", ejrdG42);
+                ControlCierre c = new ControlCierre("B17_G", "B17_21_VS_G42",
+                        "Cuenta 21 (" + cuenta21 + ", cuentas individuales) = saldo total de la G42");
+                compara(c, c21, g42, "Saldo acreedor " + cuenta21 + " al " + corte + ": " + fmt(c21) + "; G42 (ejecución detalle "
+                        + ejrdG42 + ", saldos patronal + personal + voluntario + rendimiento): " + fmt(g42) + ".");
+                controles.add(c);
+            }
         } else {
             controles.add(sinEstructura("B17_21_VS_G42", "G42", anio, mes));
         }

@@ -45,3 +45,16 @@ estado financiero por rubro 250). Los literales están concentrados en 4 archivo
     en `CRD.BNDP`; antes hay que verificarlo en la base.
   - **P5:** plantilla nueva alterno 38, reservada en el registro §2c, aux1 1.
   - **⛔ Semilla `crd/sql/356` ANTES del EAR que los traiga.**
+- **P8**: control B17_21_VS_G42 lee el detalle 16 nuevo del rubro 250
+  (`CntParametroEstadoFinanciero.CUENTA_APORTES_PARTICIPES`). Semilla `cnt/sql/c20-02` (valor `2.1`).
+  Sin ella, el control queda en advertencia. La comparación contra `CRD.CTAP` se descartó: no cubre
+  los tipos patronales 3, 13 y 14 que suma la G42.
+- **P3, modo arranque**: verificación `crd/sql/358`, de solo lectura. Se decide con su salida.
+- **Texto pendiente**: el detalle del control B17_OFICIAL (~477) menciona `2.1`, `1.3` y `1.3.99`;
+  va con P4.
+
+## Prerrequisitos de base del próximo EAR (en orden)
+1. `crd/sql/356`: semillas de P3 y P5. **Si falta, el EAR rompe el cierre de cartera y las compras con
+   redondeo.**
+2. `cnt/sql/c20-02`: detalle 16 del rubro 250 (si falta, solo deja una advertencia).
+3. `cnt/sql/c20-01`: verificación.
