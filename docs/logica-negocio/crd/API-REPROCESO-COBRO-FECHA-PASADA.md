@@ -103,6 +103,6 @@ la precancelación del 3-jun: el motor recalcula el valor con las 14 cuotas que 
 
 ## 5. Control
 
-`sql/333_CONTROL_REPROCESO_COBRO_D019.sql`: antes (los préstamos del lote vigentes al corte), después (cobros del
+`sql/348_CONTROL_REPROCESO_COBRO_D019.sql`: antes (los préstamos del lote vigentes al corte), después (cobros del
 mes, préstamo, estado de hoy, valor aplicado y marca D-019; préstamos y eventos marcados; cuotas del mes; fecha de
 los tres asientos = fecha de afectación).

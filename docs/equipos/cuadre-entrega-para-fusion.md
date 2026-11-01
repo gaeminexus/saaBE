@@ -56,8 +56,8 @@ partícipes. En los documentos de bancos reales (`c12-02`) aparecen números de 
 
 | Número | En el cuadre | En `main` |
 |---|---|---|
-| `crd/sql/332_` | `332_C15_PLANTILLA_37_Y_SUBPROCESOS_8_9_10.sql` (DDL + plantilla, va a producción) | `332_MEDICION_CARGA_492_ROL_1625_Y_ARCH.sql` (medición) |
-| `crd/sql/335_` | `335_LINEAS_RENDIMIENTOS_PLANTILLA_21.sql` (semilla, va a producción) | `335_PUENTE_RESPUESTA_ARCH_OCTUBRE_2026.sql` |
+| `crd/sql/332_` | `346_C15_PLANTILLA_37_Y_SUBPROCESOS_8_9_10.sql` (DDL + plantilla, va a producción) | `332_MEDICION_CARGA_492_ROL_1625_Y_ARCH.sql` (medición) |
+| `crd/sql/335_` | `347_LINEAS_RENDIMIENTOS_PLANTILLA_21.sql` (semilla, va a producción) | `335_PUENTE_RESPUESTA_ARCH_OCTUBRE_2026.sql` |
 | `336_` | `reportes/sql/336_D035_REGISTRO_SUJETOS_G45.sql` | `crd/sql/336_APORTES_SIN_DEVENGO_CARGA_492.sql` |
 
 Sugerencia: al fusionar, renombrar los del cuadre con el siguiente número libre y referirse a ellos siempre por el
@@ -77,7 +77,7 @@ no lo tiene**. Confírmalo con el control de cada script antes de correrlo.
 | 1.1 | `../equipos/cuadre-ddl-produccion-29102026.sql` bloque 1 (`CK_DCBC_MDLD`) | Abono sin regenerar tabla (C16b) guarda 0 o −N | ORA-02290 en el abono C16b | ⏳ | ✅ |
 | 1.2 | mismo archivo, bloque 2 (`UK_ANCP_VIGENTE`) | Índice único solo sobre las filas vigentes | Un re-proceso repetido choca con las filas reversadas | ⏳ | ✅ |
 | 1.3 | `cnt/sql/C17-01-cierre-contable-y-bitacora.sql` | `CNT.PRDO.PRDOCNCR/PRDOFCCN/PRDOUSCN` + tabla `CNT.HCPR` | **ORA-00904 al leer cualquier `Periodo`**: rompe toda la contabilidad | ⏳ | ✅ |
-| 1.4 | `crd/sql/332_C15_PLANTILLA_37_Y_SUBPROCESOS_8_9_10.sql` | `CK_ANCC_TPOO` 1..10 + plantilla 37 (provisión ⑧ y bandas ⑨) | Cierre de cartera al corte: sin provisión y ORA-02290 en el ⑨ | ⏳ | ✅ |
+| 1.4 | `crd/sql/346_C15_PLANTILLA_37_Y_SUBPROCESOS_8_9_10.sql` | `CK_ANCC_TPOO` 1..10 + plantilla 37 (provisión ⑧ y bandas ⑨) | Cierre de cartera al corte: sin provisión y ORA-02290 en el ⑨ | ⏳ | ✅ |
 | 1.5 | `rpr/sql/C19-01-ddl-estructuras-de-renglones.sql` | Estructuras de renglones (B17 y flujo como configuración) | `/esrp` y `/esfo` responden error; `/dtmt/generarBalance` sigue igual | ⏳ | ✅ |
 | 1.6 | `reportes/sql/336_D035_REGISTRO_SUJETOS_G45.sql` | `RPR.SG45` + semilla + HM45 | La G45 no se genera | ⏳ | ✅ (29-oct) |
 | 1.7 | `reportes/sql/337_D038_REGISTRO_G41.sql` | `RPR.SG41` + semilla | La G41 no se genera | ⏳ | ✅ (29-oct) |
@@ -85,7 +85,7 @@ no lo tiene**. Confírmalo con el control de cada script antes de correrlo.
 | 1.9 | Dato: `UPDATE CRD.IGFN SET IGFNCMNM = 'SI'` o `'NO'` (lo decide ASOPREP) | El manual de catastros solo admite SI/NO | La G40 no se genera | ⏳ | ✅ |
 | 1.10 | `cnt/sql/D043-01-asnh-observacion-2000.sql` | `CNT.ASNH.ASNHOBSR` a 2000 | ORA-12899 en la desmayorización | ⏳ | ✅ (29-oct) |
 | 4.1 | `seguridad/sql/C17-FE-01-permisos-cierres.sql` | Permisos 1558–1561 | No aparecen las opciones de cierre y reapertura | ⏳ | ✅ |
-| 4.2 | `crd/sql/335_LINEAS_RENDIMIENTOS_PLANTILLA_21.sql` | Plantilla 21: aux1 56 → 2.1.01.05.02 y 57 → 2.1.02.05.02 | **El asiento de la carga Petro se detiene** si llega un tipo de aporte sin línea (`204a7950`). **Imprescindible para la 492** | ⏳ | ⏳ **sin evidencia de que se haya corrido en ninguna base** |
+| 4.2 | `crd/sql/347_LINEAS_RENDIMIENTOS_PLANTILLA_21.sql` | Plantilla 21: aux1 56 → 2.1.01.05.02 y 57 → 2.1.02.05.02 | **El asiento de la carga Petro se detiene** si llega un tipo de aporte sin línea (`204a7950`). **Imprescindible para la 492** | ⏳ | ⏳ **sin evidencia de que se haya corrido en ninguna base** |
 | 4.3 | `rpr/sql/C19-02-semilla-b17.sql`, `C19-03-semilla-flujo-de-caja.sql` | Semillas del B17 (534 renglones) y del flujo de caja | Sin B17 ni flujo desde el sistema | ⏳ | ✅ |
 | 4.4 | `rpr/sql/C19-04-estados-financieros-oficiales.sql` | Títulos y rubro 250 (razón social, RUC, firmantes) | Estados oficiales sin encabezado | ⏳ (faltan los firmantes) | ✅ |
 | 4.5 | `cnt/sql/c11-01-centros-de-costo-asoprep.sql` | Centros de costo (solo los usa el cargador histórico C11) | — | opcional | ✅ |

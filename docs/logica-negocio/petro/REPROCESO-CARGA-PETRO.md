@@ -806,7 +806,7 @@ quedó en 30,91 a cesantía (11) y **0,09 a RENDIMIENTO CESANTIA PERSONAL (12)**
 advertencia en el log. Cada tipo que la carga creó lleva su línea de HABER con la cuenta de su tipo
 (`CrdLineaAsiento.aux1ParaTipoAporte`, el mismo mapa que `CRD.CTAP`): 12 → aux1 56
 (2.1.01.05.02 RENDIMIENTOS PERSONALES CESANTIA) y 24 → aux1 57 (2.1.02.05.02), creadas por
-`crd/sql/335_LINEAS_RENDIMIENTOS_PLANTILLA_21.sql`. El DEBE de 2.3.02.05 incluye esos tipos. Si un tipo
+`crd/sql/347_LINEAS_RENDIMIENTOS_PLANTILLA_21.sql`. El DEBE de 2.3.02.05 incluye esos tipos. Si un tipo
 no tiene línea en la plantilla, el asiento **se detiene** con mensaje claro.
 
 **Corrida 3 de la 352:** sin aportes 12/24. 5079 queda con 30,91 + 0,09 en cesantía de junio, el

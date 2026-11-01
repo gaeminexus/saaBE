@@ -324,7 +324,7 @@ tras el ⑥, `1.4.05.10` = `2.3.02.10` = 0,00.
 
 ## 2. Antes del primer mes (una vez)
 
-1. Correr `docs/logica-negocio/crd/sql/332_C15_PLANTILLA_37_Y_SUBPROCESOS_8_9_10.sql` (bloques 0 → C): plantilla 37 y
+1. Correr `docs/logica-negocio/crd/sql/346_C15_PLANTILLA_37_Y_SUBPROCESOS_8_9_10.sql` (bloques 0 → C): plantilla 37 y
    `CK_ANCC_TPOO` 1..10.
 2. Propiedades de WildFly del entorno de re-proceso: `-Dsaa.cartera.inicioDevengoMora=2025-05-31` (recomendado);
    `saa.cartera.alCorte` y `saa.cartera.corteInclusivo` por defecto.

@@ -148,7 +148,7 @@ detalle del pago masivo (`14-pension-complementaria-junio.md` §3.2). El cheque 
 
 ## 6. Control
 
-- `sql/334_CONTROL_REPROCESO_PENSION_PERIODO.sql` (saaBE): por jubilado (PGPC, neto, seguro, cruzado, asientos,
+- `sql/349_CONTROL_REPROCESO_PENSION_PERIODO.sql` (saaBE): por jubilado (PGPC, neto, seguro, cruzado, asientos,
   orden), totales del período, asiento de devengo por cuenta, asientos del cruce por cuenta, órdenes de pago por
   estado/cuenta/fecha/referencia, asiento del pago por fecha y cuenta, préstamos reabiertos por D-019.
 - `cuadreSuper/03-trabajo/meses/2025-06/sql/14b-control-reproceso-pension-junio.sql` (expediente): **rol vs SAA por
