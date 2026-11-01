@@ -201,3 +201,10 @@ reporta.
 `CNT.DTPL`, por `aux1`), nunca escritas en el código.** Si un ítem necesita una cuenta que la
 plantilla todavía no tiene, el ejecutor PARA y pide la línea; el árbitro escribe la semilla y el
 usuario la corre.
+
+## ⛔ Prerrequisito de base para CUALQUIER WAR compilado de `main` desde el commit del A5
+Desde el A5, la entidad `ParticipeXCargaArchivo` mapea `CRD.PXCA.PRSTCDGO`. **Antes de desplegar
+cualquier WAR de `main` (de cualquier equipo) hay que haber corrido `crd/sql/354_DDL_PXCA_PRESTAMO_DE_LA_LINEA.sql`**;
+si no, toda lectura de `CRD.PXCA`, también en las cargas de Petrocomercial, falla con ORA-00904.
+Lista de prerrequisitos del próximo EAR (en orden): `353` (verificación, ya dio OK) → `354` (DDL) →
+EAR.

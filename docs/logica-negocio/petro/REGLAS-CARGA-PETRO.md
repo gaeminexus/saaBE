@@ -891,8 +891,13 @@ validaciones, aplicación) no cambia. **El contrato completo es
   montos cuya identificación sigue sin ser válida **aborta** nombrando la fila; se ignoran solo el encabezado,
   las filas «Total…» y la fila de totales sin identificación ni nombre.
 - **Tarjeta:** la fila AH del reparto parcial lleva también `capitalDescontado` = lo descontado.
-- **A5 (préstamo de la línea PDGA): NO hecho.** `ParticipeXCargaArchivo` no tiene dónde guardar el préstamo
-  (ver el reporte B4); espera decisión.
+- **A5, préstamo de la línea PDGA (hecho, requiere DDL):** `ParticipeXCargaArchivo.prestamo`
+  (`CRD.PXCA.PRSTCDGO`, nullable, FK a `CRD.PRST`; `crd/sql/354_DDL_PXCA_PRESTAMO_DE_LA_LINEA.sql`, **correrlo
+  ANTES del EAR**: sin la columna toda consulta a PXCA falla). El lector ARCH lo llena con `linea.getPrestamo()`
+  en el descuento completo. `aplicarPagoParticipe`, tras armar los préstamos activos del producto, si la fila
+  trae préstamo restringe la aplicación a ESE préstamo; si ya no está activo no adivina otro: novedad
+  `MONTO_INCONSISTENTE` bloqueante con el monto de la fila. Con `null` (Petrocomercial, reproceso, parciales)
+  nada cambia.
 
 > **⛔ DEFECTO ABIERTO (2026-10-31, carga ARCH 510): los aportes de una carga se cuentan por
 > `APRTIDAS`, y los aportes MIGRADOS traen ahí un número del sistema anterior.**

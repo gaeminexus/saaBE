@@ -1193,6 +1193,8 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
                         && linea.getDetalleGeneracionArchivo().getDescripcionProducto() != null
                         ? linea.getDetalleGeneracionArchivo().getDescripcionProducto() : producto;
                     ParticipeXCargaArchivo registro = nuevoRegistroArch(rol, nombreEntidad, producto.trim(), descripcion);
+                    // B4-A5: el préstamo de la línea PDGA viaja con la fila, para aplicar a ESE préstamo.
+                    registro.setPrestamo(linea.getPrestamo());
                     registro.setSaldoActual(monto);
                     registro.setMontoDescontar(monto);
                     registro.setCapitalDescontado(monto);
@@ -4812,6 +4814,32 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 			return;
 		}
 		System.out.println("✅ Préstamo(s) activo(s) encontrado(s): " + prestamos.size());
+
+		// B4-A5 (DISENO-CARGA-RESPUESTA-ARCH.md §9.5): una fila de la respuesta de ARCH trae el préstamo de
+		// su línea PDGA; el descuento se aplica a ESE préstamo y no al primero del producto. Si ese préstamo
+		// ya no está entre los activos, no se adivina otro: queda como novedad bloqueante para el operador.
+		// Petrocomercial y el reproceso no llenan PXCA.PRSTCDGO (null): nada cambia.
+		if (participe.getPrestamo() != null && participe.getPrestamo().getCodigo() != null) {
+			final Long idPrestamoLinea = participe.getPrestamo().getCodigo();
+			List<Prestamo> prestamosDeLaLinea = new ArrayList<>();
+			for (Prestamo candidato : prestamos) {
+				if (idPrestamoLinea.equals(candidato.getCodigo())) {
+					prestamosDeLaLinea.add(candidato);
+				}
+			}
+			if (prestamosDeLaLinea.isEmpty()) {
+				System.out.println("⛔ El préstamo " + idPrestamoLinea + " de la línea de la generación ARCH no está entre los activos de "
+					+ "la entidad " + entidad.getCodigo() + " para el producto " + codigoProducto + " - no se aplica");
+				registrarNovedadDeAplicacion(participe, ASPNovedadesCargaArchivo.MONTO_INCONSISTENTE,
+					"El préstamo " + idPrestamoLinea + " de la línea de la generación ARCH (producto " + codigoProducto
+						+ ") ya no está activo: no se aplicaron $" + String.format("%.2f", montoArchivo)
+						+ ". Requiere distribución manual (AVPC).",
+					null, idPrestamoLinea, null, montoArchivo);
+				return;
+			}
+			System.out.println("   A5: se aplica al préstamo " + idPrestamoLinea + " de la línea de la generación ARCH");
+			prestamos = prestamosDeLaLinea;
+		}
 
 		// Inicializar variables para HS
 		double montoHS = 0.0;

@@ -132,7 +132,17 @@ public class ParticipeXCargaArchivo implements Serializable {
     @Basic
     @Column(name = "PXCANVFN")
     private Long novedadesFinancieras;
-    
+
+    /**
+     * FK - Préstamo de la fila (PRSTCDGO, nullable). B4-A5 (2026-11-01): la carga de la respuesta de
+     * ARCH lo llena con el préstamo de la línea PDGA de la generación, para aplicar el descuento a ESE
+     * préstamo y no al primero del producto. Petrocomercial no lo llena (null). DDL:
+     * docs/logica-negocio/crd/sql/354_DDL_PXCA_PRESTAMO_DE_LA_LINEA.sql.
+     */
+    @ManyToOne
+    @JoinColumn(name = "PRSTCDGO", referencedColumnName = "PRSTCDGO")
+    private Prestamo prestamo;
+
 
 
     // ============================================================
@@ -305,5 +315,13 @@ public class ParticipeXCargaArchivo implements Serializable {
 
 	public void setNovedadesFinancieras(Long novedadesFinancieras) {
 		this.novedadesFinancieras = novedadesFinancieras;
+	}
+
+	public Prestamo getPrestamo() {
+		return prestamo;
+	}
+
+	public void setPrestamo(Prestamo prestamo) {
+		this.prestamo = prestamo;
 	}
 }
