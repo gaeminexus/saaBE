@@ -69,3 +69,11 @@ estado financiero por rubro 250). Los literales están concentrados en 4 archivo
   - Una cuenta sin grupo derivable: advertencia, no se ajusta (igual que P3).
   - El modo arranque queda fuera (`crd/sql/358`).
 - **P4-A** hecho: raíz de cartera desde el detalle 17. Helper único `ParametroContableService` (cnt) para el rubro 250. Con `1.3` cargado, el resultado es idéntico. Quedan escritos hasta P4-B/C: `1.3.99` y los rangos.
+- **`crd/sql/359` corrido en producción (2026-11-01):**
+  - (1) las 51 cuentas de banda dan IGUAL. Aparece `1.3.12.00` en una banda: queda en H, sin
+    problema.
+  - (2) solo `1.3.07`, saldo 0 con 2 movimientos (una madre usada y reversada).
+  - (3) `1.3.99.05/.10/.15` todas EN_PLANTILLA.
+  - (4) el usuario no pegó salida; se asume vacía.
+  - **→ P4-B y P4-C aprobados.** Una cuenta sin grupo con saldo 0 se ignora sin advertencia; con
+    saldo distinto de 0, advertencia.
