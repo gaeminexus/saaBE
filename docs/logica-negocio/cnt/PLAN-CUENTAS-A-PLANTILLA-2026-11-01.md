@@ -138,3 +138,8 @@ cuenta solos**, con el mismo efecto que la marcadora de la nómina:
   **obligatoria antes del EAR**. Contabilidad la cambia cuando decida.
 - **`cnt/sql/c20-06` corrido en producción (2026-11-01):** plantilla 38 (código 1202): aux1 1 = 4.8.90.90.35
   (redondeo SRI) y aux1 2 = 4.4.01.05 (gasto sin clasificar, provisional hasta que contabilidad decida).
+- **`crd/sql/360` corrido en producción (2026-11-01):** 2.3.01.10.03 tiene **2 productos** (411 DEVPECO y 517) →
+  el P9 por cuenta fallaría en el pago de pensión. **P9b:** el producto de pago de pensión y de seguro pasa a
+  un parámetro de rubro, verificado contra la cuenta de la plantilla. 2.3.90.90.06 = 516, 2.5.01 = 345 y
+  2.3.90.90.10 = 976 («Desembolso de prestamo a socio»): un solo producto cada uno, así que funcionan, pero son
+  frágiles si se crea otro producto con esa cuenta.
