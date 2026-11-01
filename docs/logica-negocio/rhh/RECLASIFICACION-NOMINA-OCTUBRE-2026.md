@@ -42,3 +42,10 @@ corre, y con el código N1 del EAR único.
 12135: 633,85 · 12136: 1.647,39 · 12137: 457,86 · 12138: 441,88 · 12139: 488,03 · 12140: 889,92 ·
 12141: 192,16 · 12142: 1.308,76 · 12143: 493,01 · 12144: 1.390,17 · 12145: 692,16 · 12146: 1.479,04 ·
 12147: 1.992,10 · 12148: 486,07 — **total 17.244,97**.
+
+## Resultado (2026-11-01)
+- `omen1-04` corrido: GRPP 38 «PAGO DE NOMINA» → 9689 2.5.01.
+- `omen1-05` corrido: las 20 líneas DEBE pasaron de 2.3.90.15 a 2.5.01 (PLNNCDGO, DTASCNTA y DTASNMCT). Los
+  asientos siguen cuadrados. No estaban mayorizados (`MYRZCDGO` vacío), así que no hace falta volver a
+  mayorizar. Respaldo en `CNT.BK_DTAS_NOMINA_OCT26`.
+- Código: N1 (`d302666b`) en el EAR único.
