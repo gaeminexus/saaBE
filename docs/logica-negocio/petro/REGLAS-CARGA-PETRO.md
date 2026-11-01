@@ -502,8 +502,13 @@ tratamientos, según **si se sabe a quién pertenece el dinero y si esa persona 
 | Contrato activo, pero ninguna `VigenciaContrato` cubre el mes (o vigencia en $0) | **NOVEDAD BLOQUEANTE** desde el 2026-09-03 (`VALIDACION-TOPE-AFECTACION-MANUAL.md` §12): el sobrante queda como pozo para «Afectar cuotas» (AVPC) y la carga no procesa hasta repartirlo; hasta esa fecha era solo advertencia. Primer caso real: carga 492, rol 1625 (2026-10-29) | `distribuirAportePorDevengo` |
 | Monto recibido = $0 | Sin cambios — no hay plata que perder | `aplicarAporteAH` |
 
-> **⛔ DEFECTO ABIERTO (hallado 2026-10-30, carga 492, rol 1625): el anticipo a meses futuros (D4)
-> no funciona para las entidades del lote, y produce una novedad «vigencia no cubre» FALSA.**
+> **✅ CORREGIDO 2026-11-01 (B2/F2, `PLAN-CORRECCIONES-CARGA-2026-11-01.md`):** `esperadoMensual` recibe el
+> mes de la carga y un mes posterior ya no se responde desde el lote sino desde `esperadoDesdeCache` (una consulta
+> por partícipe, solo para quien anticipa). Fuera del modo reproceso; en reproceso queda como estaba. Lo de abajo
+> es el diagnóstico original.
+>
+> **⛔ (histórico) DEFECTO hallado 2026-10-30, carga 492, rol 1625: el anticipo a meses futuros (D4)
+> no funcionaba para las entidades del lote, y produce una novedad «vigencia no cubre» FALSA.**
 > `aplicarPagosArchivoPetro` (~1365) arma `esperadoEnLotePorFilial(filial, ALCANCE_MINIMO_DEVENGO,
 > mesCarga)`: el mapa del esperado llega **solo hasta el mes de la carga**. Cuando
 > `distribuirAportePorDevengo` intenta anticipar a un mes posterior, `esperadoMensual` no
@@ -631,7 +636,16 @@ de la bifurcación de tres del punto 2, §3.3) se aplica así, no como pago de p
   distinguible de un aporte del mes. `crearNuevoAporte` ahora recibe el tipo de movimiento como
   parámetro explícito (antes lo tenía fijo); el único llamador del devengo normal
   (`distribuirAportePorDevengo`) pasa `APORTE_MENSUAL` explícito.
-- `periodoDevengo = null`: un excedente no cubre el aporte esperado de ningún mes en particular
+- **Cambio B2 (2026-11-01, fuera del modo reproceso):** la afectación a un aporte YA NO crea una sola fila
+  sin mes. `aplicarAfectacionAAporte` llama a `distribuirAportePorDevengo` parametrizado por tipo (solo el tipo
+  de la AVPC): reparte por mes desde el primer mes incompleto desde `ALCANCE_MINIMO_DEVENGO`, hasta el esperado
+  de cada mes, anticipando lo que sobre; una fila con su `periodoDevengo` por tramo. Tipo de movimiento:
+  `APORTE_MENSUAL` si la AVPC viene de una fila AH; `EXCEDENTE_PETRO` (con devengo) si viene de una fila de
+  préstamo, porque el asiento de aplicación solo reconoce como «entró por préstamos» (puente 2.3.02.10) a los
+  `EXCEDENTE_PETRO` con la marca `[Entrada Petro XX]`, que se conserva en la glosa. Lo que no se pueda ubicar
+  (el tipo no tiene vigencia) queda como la novedad bloqueante del sobrante; sin contrato activo aborta. En modo
+  reproceso (D-010) sigue la fila única de abajo.
+- (regla anterior, vigente en modo reproceso) `periodoDevengo = null`: un excedente no cubre el aporte esperado de ningún mes en particular
   (mismo criterio que el remanente sin anticipo de `DevolucionAporteServiceImpl`, D5 §2.4 del
   plan de devengo de aportes — "retiro/aporte de saldo, no altera ningún mes").
 - `idAsoprep = idCarga` (vía `crearNuevoAporte`, como cualquier aporte de esta carga).

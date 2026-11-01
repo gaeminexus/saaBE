@@ -6750,6 +6750,39 @@ private static final List<Long> ORDEN_TIPOS_APORTE = Arrays.asList(TIPO_APORTE_J
 private int distribuirAportePorDevengo(Entidad entidad, double montoRecibido,
         CargaArchivo cargaArchivo, ParticipeXCargaArchivo participe,
         Map<String, Double> esperadoEnLote, java.util.Set<Long> entidadesCubiertas) throws Throwable {
+	return distribuirAportePorDevengo(entidad, montoRecibido, cargaArchivo, participe, esperadoEnLote,
+		entidadesCubiertas, ORDEN_TIPOS_APORTE, com.saa.rubros.CrdTipoMovimientoAporte.APORTE_MENSUAL, null);
+}
+
+/** Gancho para ajustar cada Aporte recien creado por el reparto, antes de registrar su pago. */
+private interface AlCrearAporteDevengo {
+	void alCrear(Aporte aporte) throws Throwable;
+}
+
+/**
+ * Nombre legible del tipo de aporte: jubilacion y cesantia son constantes de este archivo, otro
+ * tipo se lee del catalogo.
+ */
+private String nombreTipoAporteDevengo(Long idTipo) throws Throwable {
+	if (TIPO_APORTE_JUBILACION.equals(idTipo)) {
+		return "Jubilación";
+	}
+	if (TIPO_APORTE_CESANTIA.equals(idTipo)) {
+		return "Cesantía";
+	}
+	return tipoAporteDaoService.selectById(idTipo, "TipoAporte").getNombre();
+}
+
+/**
+ * Reparto por devengo parametrizado (B2, PLAN-CORRECCIONES-CARGA-2026-11-01.md): el mismo
+ * algoritmo para el aporte automatico del archivo (los dos tipos, jubilacion antes que cesantia,
+ * {@code APORTE_MENSUAL}) y para la afectacion manual a un aporte (UN solo tipo, el de la AVPC, ver
+ * {@link #aplicarAfectacionAAporte}). {@code alCrearAporte} puede ser null.
+ */
+private int distribuirAportePorDevengo(Entidad entidad, double montoRecibido,
+        CargaArchivo cargaArchivo, ParticipeXCargaArchivo participe,
+        Map<String, Double> esperadoEnLote, java.util.Set<Long> entidadesCubiertas,
+        List<Long> tiposAporte, int tipoMovimiento, AlCrearAporteDevengo alCrearAporte) throws Throwable {
 
 	// CORRECCION-TORMENTA-CONSULTAS-VIGENCIA.md §3.2: caché LOCAL a esta llamada (un
 	// partícipe) — nunca global, nunca compartido entre partícipes. Si el lote no cubrió a
@@ -6794,8 +6827,8 @@ private int distribuirAportePorDevengo(Entidad entidad, double montoRecibido,
 	while (!mes.isAfter(mesCarga) && guard < TOPE_MESES_DEVENGO) {
 		guard++;
 		boolean incompleto = false;
-		for (Long idTipo : ORDEN_TIPOS_APORTE) {
-			double esperado = esperadoMensual(entidad, idTipo, mes, esperadoEnLote, entidadesCubiertas, cacheVigencia);
+		for (Long idTipo : tiposAporte) {
+			double esperado = esperadoMensual(entidad, idTipo, mes, esperadoEnLote, entidadesCubiertas, cacheVigencia, mesCarga);
 			double aportado = aportadoPorMesTipo.getOrDefault(claveMesTipo(mes, idTipo), 0.0);
 			if (esperado - aportado > 0.01) {
 				incompleto = true;
@@ -6820,11 +6853,11 @@ private int distribuirAportePorDevengo(Entidad entidad, double montoRecibido,
 	guard = 0;
 	while (disponible > 0.01 && guard < TOPE_MESES_DEVENGO) {
 		guard++;
-		for (Long idTipo : ORDEN_TIPOS_APORTE) {
+		for (Long idTipo : tiposAporte) {
 			if (disponible <= 0.01) {
 				break;
 			}
-			double esperado = esperadoMensual(entidad, idTipo, mes, esperadoEnLote, entidadesCubiertas, cacheVigencia);
+			double esperado = esperadoMensual(entidad, idTipo, mes, esperadoEnLote, entidadesCubiertas, cacheVigencia, mesCarga);
 			if (esperado <= 0.0) {
 				continue;
 			}
@@ -6833,10 +6866,13 @@ private int distribuirAportePorDevengo(Entidad entidad, double montoRecibido,
 			double faltante = esperado - aportado;
 			if (faltante > 0.01) {
 				double aplicar = Math.min(disponible, faltante);
-				String nombreTipo = TIPO_APORTE_JUBILACION.equals(idTipo) ? "Jubilación" : "Cesantía";
+				String nombreTipo = nombreTipoAporteDevengo(idTipo);
 				System.out.println("   📍 Devengo " + mes + " - " + nombreTipo + ": $" + aplicar);
 				Aporte nuevoAporte = crearNuevoAporte(entidad, idTipo, nombreTipo, aplicar, mes,
-						cargaArchivo, com.saa.rubros.CrdTipoMovimientoAporte.APORTE_MENSUAL);
+						cargaArchivo, tipoMovimiento);
+				if (alCrearAporte != null) {
+					alCrearAporte.alCrear(nuevoAporte);
+				}
 				crearRegistroPagoAporte(nuevoAporte, aplicar, cargaArchivo, participe);
 				disponible -= aplicar;
 				aportadoPorMesTipo.put(clave, aportado + aplicar);
@@ -6995,8 +7031,15 @@ private String claveMesTipo(java.time.LocalDate mes, Long idTipo) {
  */
 private double esperadoMensual(Entidad entidad, Long idTipoAporte, java.time.LocalDate mes,
 		Map<String, Double> esperadoEnLote, java.util.Set<Long> entidadesCubiertas,
-		CacheVigenciaParticipe cache) throws Throwable {
-	if (esperadoEnLote != null) {
+		CacheVigenciaParticipe cache, java.time.LocalDate mesCarga) throws Throwable {
+	// B2 / F2 (PLAN-CORRECCIONES-CARGA-2026-11-01.md, DISENO-AFECTACION-MANUAL-V2.md §2): el lote
+	// (esperadoEnLotePorFilial) se construye SOLO hasta el mes de la carga, asi que un mes
+	// posterior no esta en el mapa y la entidad cubierta devolvia 0.0 ("no debe nada"): el anticipo
+	// nunca funcionaba y el sobrante quedaba sin aplicar con el texto falso "la vigencia no cubre".
+	// Los meses posteriores se responden desde la vigencia del contrato (esperadoDesdeCache); los
+	// meses dentro del lote dan el mismo resultado de siempre. Modo reproceso: sin cambio.
+	boolean mesPosteriorALaCarga = !modoReproceso && mesCarga != null && mes.isAfter(mesCarga);
+	if (esperadoEnLote != null && !mesPosteriorALaCarga) {
 		String clave = entidad.getCodigo() + "|" + idTipoAporte + "|" + mes;
 		Double valorEnLote = esperadoEnLote.get(clave);
 		if (valorEnLote != null) {
@@ -7418,12 +7461,42 @@ private void aplicarAfectacionAAporte(AfectacionValoresParticipeCarga afectacion
 	}
 	Entidad entidad = entidades.get(0);
 
-	Aporte nuevoAporte = crearNuevoAporte(entidad, tipoAporte.getCodigo(), tipoAporte.getNombre(),
-			monto, null, cargaArchivo, com.saa.rubros.CrdTipoMovimientoAporte.EXCEDENTE_PETRO);
 	// D-010 corrección (28-oct-2026): producto de la fila por la que entró el dinero, para que el
 	// asiento de aplicación debite el puente correcto (2.3.02.10 si vino de una fila de préstamo).
-	String productoEntrada = participe.getDetalleCargaArchivo() != null
+	final String productoEntrada = participe.getDetalleCargaArchivo() != null
 			? participe.getDetalleCargaArchivo().getCodigoPetroProducto() : null;
+
+	// B2 (PLAN-CORRECCIONES-CARGA-2026-11-01.md, DISENO-AFECTACION-MANUAL-V2.md §6): la afectacion
+	// a un aporte ya no cae en UNA fila sin mes: se reparte por mes DENTRO del tipo de la AVPC, con
+	// la misma regla del devengo (desde el primer mes incompleto, hasta el esperado de cada mes,
+	// anticipando lo que sobre), una fila con su periodoDevengo por tramo. Lo que no se pueda ubicar
+	// en ningun mes (el tipo no tiene vigencia) queda como la novedad bloqueante del sobrante.
+	// Modo reproceso: sin cambio (D-010), sigue la fila unica EXCEDENTE_PETRO de abajo.
+	if (!modoReproceso) {
+		// El asiento de aplicacion (CobroPetroContableServiceImpl.excedentesQueEntraronPorPrestamos)
+		// solo reconoce como "entro por prestamos" a los EXCEDENTE_PETRO con la marca de producto: si
+		// la AVPC viene de una fila de prestamo, sus tramos conservan ese tipo de movimiento (con
+		// devengo) para que el puente 2.3.02.10 se debite igual; desde una fila AH son aportes
+		// mensuales, como los del devengo automatico.
+		boolean entroPorAportes = productoEntrada == null
+				|| com.saa.rubros.EntradaExcedentePetro.PRODUCTO_APORTES.equalsIgnoreCase(productoEntrada);
+		int tipoMovimiento = entroPorAportes ? com.saa.rubros.CrdTipoMovimientoAporte.APORTE_MENSUAL
+				: com.saa.rubros.CrdTipoMovimientoAporte.EXCEDENTE_PETRO;
+		int tramos = distribuirAportePorDevengo(entidad, monto, cargaArchivo, participe, null, null,
+			java.util.Collections.singletonList(tipoAporte.getCodigo()), tipoMovimiento, aporte -> {
+				if (productoEntrada != null) {
+					aporte.setGlosa(truncarTexto(com.saa.rubros.EntradaExcedentePetro.marca(productoEntrada) + " "
+							+ aporte.getGlosa() + " - AVPC " + afectacion.getCodigo(), 2000));
+					aporteDaoService.save(aporte, aporte.getCodigo());
+				}
+			});
+		System.out.println("   ✅ Afectación a aporte " + tipoAporte.getNombre() + " repartida por mes: $" + monto
+			+ " en " + tramos + " tramo(s) (AVPC " + afectacion.getCodigo() + ")");
+		return;
+	}
+
+	Aporte nuevoAporte = crearNuevoAporte(entidad, tipoAporte.getCodigo(), tipoAporte.getNombre(),
+			monto, null, cargaArchivo, com.saa.rubros.CrdTipoMovimientoAporte.EXCEDENTE_PETRO);
 	if (productoEntrada != null) {
 		nuevoAporte.setGlosa(truncarTexto(com.saa.rubros.EntradaExcedentePetro.marca(productoEntrada) + " "
 				+ nuevoAporte.getGlosa() + " - AVPC " + afectacion.getCodigo(), 2000));
