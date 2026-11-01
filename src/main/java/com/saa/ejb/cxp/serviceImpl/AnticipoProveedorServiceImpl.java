@@ -62,6 +62,10 @@ import jakarta.persistence.TypedQuery;
 @Stateless
 public class AnticipoProveedorServiceImpl implements AnticipoProveedorService {
 
+    /** U-3: todo proceso que graba valida el usuario PRIMERO. */
+    @jakarta.ejb.EJB
+    private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
     /** Tolerancia de centavos al comparar el valor del anticipo contra el saldo. */
     private static final double TOLERANCIA = 0.01;
 
@@ -385,9 +389,8 @@ public class AnticipoProveedorServiceImpl implements AnticipoProveedorService {
         Long idEmpresa = anticipo.getEmpresa().getCodigo();
         LocalDate fecha = (fechaPago != null) ? fechaPago : LocalDate.now();
 
-        Usuario usuario = (idUsuario != null) ? em.find(Usuario.class, idUsuario) : null;
-        String nombreUsuario = (usuario != null && usuario.getNombre() != null)
-                ? usuario.getNombre() : "SISTEMA";
+        // U-3: sin relleno. El pago confirmado trae el idUsuario de quien lo confirma; nulo o inexistente detiene el proceso.
+        String nombreUsuario = usuarioValidacionService.validarPorId(idUsuario);
 
         // 1. Asiento de ANTICIPO: DEBE cuenta de anticipos del proveedor /
         //    HABER banco, con la fecha real del pago.
@@ -414,15 +417,15 @@ public class AnticipoProveedorServiceImpl implements AnticipoProveedorService {
     }
 
     @Override
-    public void revertirContabilidadAnticipo(Long idAnticipo, String motivo) throws Throwable {
-        revertirContabilidadAnticipo(idAnticipo, motivo, Boolean.FALSE, null, null, null, null);
+    public void revertirContabilidadAnticipo(Long idAnticipo, String motivo, String usuario) throws Throwable {
+        revertirContabilidadAnticipo(idAnticipo, motivo, Boolean.FALSE, null, null, null, null, usuario);
     }
 
     // ===== INICIO anular-vs-reversar pago rebotado (equipo omen-saa-2) =====
     @Override
     public void revertirContabilidadAnticipo(Long idAnticipo, String motivo, Boolean reversarAsiento,
             java.time.LocalDate fechaReverso, Long idEmpresa, com.saa.model.tsr.CuentaBancaria cuentaBancaria,
-            Double valor) throws Throwable {
+            Double valor, String usuario) throws Throwable {
 
         System.out.println("=== revertirContabilidadAnticipo | anticipo=" + idAnticipo
                 + " | reversarAsiento=" + reversarAsiento + " | fechaReverso=" + fechaReverso + " ===");
@@ -481,7 +484,7 @@ public class AnticipoProveedorServiceImpl implements AnticipoProveedorService {
             } else {
                 // Comportamiento de siempre: no interrumpe el flujo si falla.
                 try {
-                    asientoService.anulaAsiento(idAsiento);
+                    asientoService.anulaAsiento(idAsiento, usuario, motivo); // U-3: con usuario, sin «SISTEMA»
                     System.out.println("✓ Asiento " + idAsiento + " anulado / reversado.");
                 } catch (Throwable e) {
                     System.err.println("⚠ No se pudo anular el asiento " + idAsiento
@@ -692,7 +695,7 @@ public class AnticipoProveedorServiceImpl implements AnticipoProveedorService {
 
             // 4. Anular el asiento del anticipo y descontar el saldo de
             //    anticipos del proveedor. El anticipo vuelve a Ingresado.
-            revertirContabilidadAnticipo(idAnticipo, motivoLimpio);
+            revertirContabilidadAnticipo(idAnticipo, motivoLimpio, usuarioValidacionService.validarPorId(idUsuario));
             anticipo = em.find(AnticipoProveedor.class, idAnticipo);
         }
 

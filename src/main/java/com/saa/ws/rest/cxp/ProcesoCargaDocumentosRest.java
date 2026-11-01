@@ -44,6 +44,10 @@ import jakarta.ws.rs.core.*;
 @Path("carga-documentos")
 public class ProcesoCargaDocumentosRest {
 
+    /** U-3: todo proceso que graba valida el usuario PRIMERO. */
+    @jakarta.ejb.EJB
+    private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
     @EJB private ProcesoCargaDocumentosService procesoCargaDocumentosService;
     @EJB private ProcesoLoteCxpService         procesoLoteCxpService;
     @EJB private ClasificacionProductosLoteService clasificacionProductosLoteService;
@@ -82,6 +86,11 @@ public class ProcesoCargaDocumentosRest {
 
             return Response.status(Response.Status.CREATED)
                     .entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity(errorMap("Error al cargar TXT: " + e.getMessage()))
@@ -182,6 +191,11 @@ public class ProcesoCargaDocumentosRest {
             return Response.status(Response.Status.OK)
                     .entity(resultado).type(MediaType.APPLICATION_JSON).build();
 
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity(errorMap("Error al procesar XML: " + e.getMessage()))
@@ -220,6 +234,11 @@ public class ProcesoCargaDocumentosRest {
 
             return Response.status(Response.Status.OK)
                     .entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (com.saa.basico.util.IncomeException e) {
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(errorMap(e.getMessage()))
@@ -314,6 +333,11 @@ public class ProcesoCargaDocumentosRest {
 
             return Response.status(Response.Status.OK)
                     .entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity(errorMap("Error al cargar XML: " + e.getMessage()))
@@ -386,6 +410,11 @@ public class ProcesoCargaDocumentosRest {
 
             return Response.status(Response.Status.OK)
                     .entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             java.util.Map<String, Object> error = new java.util.HashMap<>();
             error.put("error", e.getMessage());
@@ -443,6 +472,11 @@ public class ProcesoCargaDocumentosRest {
 
             return Response.status(Response.Status.OK)
                     .entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity(errorMap("Error al resolver novedad: " + e.getMessage()))
@@ -471,6 +505,11 @@ public class ProcesoCargaDocumentosRest {
 
             return Response.status(Response.Status.OK)
                     .entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity(errorMap("Error al revertir: " + e.getMessage()))
@@ -509,6 +548,11 @@ public class ProcesoCargaDocumentosRest {
 
             return Response.status(Response.Status.OK)
                     .entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (com.saa.basico.util.IncomeException e) {
             // 409 y no 500: no es un fallo del servidor, es que el documento no está en
             // condiciones de esta operación (estado equivocado, o hay pagos vigentes).
@@ -541,6 +585,11 @@ public class ProcesoCargaDocumentosRest {
 
             return Response.status(Response.Status.OK)
                     .entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (com.saa.basico.util.IncomeException e) {
             return Response.status(Response.Status.CONFLICT)
                     .entity(errorMap(e.getMessage())).type(MediaType.APPLICATION_JSON).build();
@@ -573,6 +622,11 @@ public class ProcesoCargaDocumentosRest {
 
             return Response.status(Response.Status.OK)
                     .entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (com.saa.basico.util.IncomeException e) {
             return Response.status(Response.Status.CONFLICT)
                     .entity(errorMap(e.getMessage())).type(MediaType.APPLICATION_JSON).build();
@@ -708,6 +762,11 @@ public class ProcesoCargaDocumentosRest {
 
             return Response.status(Response.Status.OK)
                     .entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity(errorMap("Error al crear productos y registrar: " + e.getMessage()))
@@ -857,6 +916,8 @@ public class ProcesoCargaDocumentosRest {
         try {
             Long idEmpresa = Long.valueOf(params.get("idEmpresa").toString());
             Long idUsuario = Long.valueOf(params.get("idUsuario").toString());
+            // U-3: el lote corre en un hilo aparte; el usuario se valida ANTES de lanzarlo (si no, el fallo se perdería en el hilo).
+            usuarioValidacionService.validarPorId(idUsuario);
 
             Map<String, Object> arranque = procesoLoteCxpService.reservarDescargaLote(idCargaTxt);
             if (Boolean.TRUE.equals(arranque.get("conflicto")))
@@ -874,6 +935,11 @@ public class ProcesoCargaDocumentosRest {
             return Response.status(Response.Status.ACCEPTED)
                     .entity(arranque).type(MediaType.APPLICATION_JSON).build();
 
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             // Si ya se había reservado, hay que soltar la carga o queda trabada
             // para siempre: el lote que la liberaría no llegó a arrancar.
@@ -909,6 +975,8 @@ public class ProcesoCargaDocumentosRest {
         try {
             Long idEmpresa = Long.valueOf(params.get("idEmpresa").toString());
             Long idUsuario = Long.valueOf(params.get("idUsuario").toString());
+            // U-3: el lote corre en un hilo aparte; el usuario se valida ANTES de lanzarlo (si no, el fallo se perdería en el hilo).
+            usuarioValidacionService.validarPorId(idUsuario);
 
             Map<String, Object> arranque = procesoLoteCxpService.reservarRegistroLote(idCargaTxt);
             if (Boolean.TRUE.equals(arranque.get("conflicto")))
@@ -925,6 +993,11 @@ public class ProcesoCargaDocumentosRest {
             return Response.status(Response.Status.ACCEPTED)
                     .entity(arranque).type(MediaType.APPLICATION_JSON).build();
 
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             // Si ya se había reservado hay que soltar la carga, o queda trabada:
             // el lote que la liberaría no llegó a arrancar.
@@ -1023,6 +1096,11 @@ public class ProcesoCargaDocumentosRest {
             return Response.status(Response.Status.OK)
                     .entity(resultado).type(MediaType.APPLICATION_JSON).build();
 
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (com.saa.basico.util.IncomeException e) {
             // Error de negocio: el usuario puede corregirlo y reenviar.
             return Response.status(422)

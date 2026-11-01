@@ -89,6 +89,10 @@ import jakarta.persistence.PersistenceContext;
 @Stateless
 public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 
+	/** U-3: todo proceso que graba valida el usuario PRIMERO. */
+	@jakarta.ejb.EJB
+	private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
 	/** Tolerancia para comparar valores monetarios. */
 	private static final double TOLERANCIA = 0.01;
 
@@ -228,6 +232,8 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 			Long idCuentaDestinoTitular, Double valor, String fechaProgramada, Long idEmpresa,
 			Long idUsuario, String observacion, boolean debitoAutomatico, String referencia)
 			throws Throwable {
+		// U-3: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 		return registrarPago(idFacturaCompra, idCuentaBancariaOrigen, idCuentaDestinoTitular, valor,
 				fechaProgramada, idEmpresa, idUsuario, observacion, debitoAutomatico, referencia,
 				Long.valueOf(debitoAutomatico ? FormaPagoProgramado.DEBITO_AUTOMATICO
@@ -239,6 +245,8 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 			Long idCuentaDestinoTitular, Double valor, String fechaProgramada, Long idEmpresa,
 			Long idUsuario, String observacion, boolean debitoAutomatico, String referencia,
 			Long formaPago) throws Throwable {
+		// U-3: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 
 		System.out.println("=== registrarPago | factura=" + idFacturaCompra + " | valor=" + valor
 				+ " | cuentaOrigen=" + idCuentaBancariaOrigen
@@ -458,6 +466,8 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 			Long idCuentaDestinoTitular, Double valor, String fechaProgramada, Long idEmpresa,
 			Long idUsuario, String observacion, boolean debitoAutomatico, String referencia,
 			Long formaPago) throws Throwable {
+		// U-3: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 
 		System.out.println("=== registrarPagoLiquidacion | liquidacion=" + idLiquidacionCompra
 				+ " | valor=" + valor + " | cuentaOrigen=" + idCuentaBancariaOrigen
@@ -659,6 +669,8 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	public Map<String, Object> registrarPagoDeEgreso(Long idEgreso, Long idCuentaBancariaOrigen,
 			Long idCuentaDestinoTitular, Long idUsuario, boolean debitoAutomatico,
 			String referencia) throws Throwable {
+		// U-3: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 		return registrarPagoDeEgreso(idEgreso, idCuentaBancariaOrigen, idCuentaDestinoTitular,
 				idUsuario, debitoAutomatico, referencia,
 				Long.valueOf(debitoAutomatico ? FormaPagoProgramado.DEBITO_AUTOMATICO
@@ -669,6 +681,8 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	public Map<String, Object> registrarPagoDeEgreso(Long idEgreso, Long idCuentaBancariaOrigen,
 			Long idCuentaDestinoTitular, Long idUsuario, boolean debitoAutomatico,
 			String referencia, Long formaPago) throws Throwable {
+		// U-3: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 
 		System.out.println("=== registrarPagoDeEgreso | egreso=" + idEgreso
 				+ " | cuentaOrigen=" + idCuentaBancariaOrigen
@@ -859,6 +873,8 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	public Map<String, Object> registrarPagoDeAnticipo(Long idAnticipo, Long idCuentaBancariaOrigen,
 			Long idCuentaDestinoTitular, Long idUsuario, boolean debitoAutomatico,
 			String referencia) throws Throwable {
+		// U-3: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 		return registrarPagoDeAnticipo(idAnticipo, idCuentaBancariaOrigen, idCuentaDestinoTitular,
 				idUsuario, debitoAutomatico, referencia,
 				Long.valueOf(debitoAutomatico ? FormaPagoProgramado.DEBITO_AUTOMATICO
@@ -869,6 +885,8 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	public Map<String, Object> registrarPagoDeAnticipo(Long idAnticipo, Long idCuentaBancariaOrigen,
 			Long idCuentaDestinoTitular, Long idUsuario, boolean debitoAutomatico,
 			String referencia, Long formaPago) throws Throwable {
+		// U-3: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 
 		System.out.println("=== registrarPagoDeAnticipo | anticipo=" + idAnticipo
 				+ " | cuentaOrigen=" + idCuentaBancariaOrigen
@@ -1057,6 +1075,8 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 			BeneficiarioOcasional beneficiario, List<LineaContablePago> desglose,
 			String observacion, Long idUsuario, boolean debitoAutomatico, String referencia)
 			throws Throwable {
+		// U-3: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 		return registrarPagoDeOrigenExterno(origen, idOrigen, idEmpresa, idCuentaBancariaOrigen,
 				valor, fechaProgramada, beneficiario, desglose, observacion, idUsuario,
 				debitoAutomatico, referencia,
@@ -1070,6 +1090,8 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 			BeneficiarioOcasional beneficiario, List<LineaContablePago> desglose,
 			String observacion, Long idUsuario, boolean debitoAutomatico, String referencia,
 			Long formaPago) throws Throwable {
+		// U-3: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 
 		System.out.println("=== registrarPagoDeOrigenExterno | origen=" + origen
 				+ " | idOrigen=" + idOrigen + " | valor=" + valor
@@ -1428,6 +1450,8 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
 	public Map<String, Object> aprobar(List<Long> idsPagos, Long idCuentaBancaria, Long formaPago,
 			String fechaPago, Long idUsuario) throws Throwable {
+		// U-3: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 		return aprobar(idsPagos, idCuentaBancaria, formaPago, fechaPago, idUsuario, null);
 	}
 
@@ -1435,6 +1459,8 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
 	public Map<String, Object> aprobar(List<Long> idsPagos, Long idCuentaBancaria, Long formaPago,
 			String fechaPago, Long idUsuario, Boolean agruparEnUnCheque) throws Throwable {
+		// U-3: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 		System.out.println("=== aprobar (pagos) | ids=" + idsPagos + " | cuenta=" + idCuentaBancaria
 				+ " | formaPago=" + formaPago + " | agruparEnUnCheque=" + agruparEnUnCheque + " ===");
 
@@ -1823,6 +1849,8 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	@Override
 	public Map<String, Object> generarLote(List<Long> idsPagos, Long idCuentaOrigen, Long idEmpresa,
 			Long idUsuario) throws Throwable {
+		// U-3: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 
 		System.out.println("=== generarLote | pagos=" + (idsPagos != null ? idsPagos.size() : 0)
 				+ " | cuentaOrigen=" + idCuentaOrigen + " ===");
@@ -1997,12 +2025,16 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	@Override
 	public Map<String, Object> procesarRespuestaBanco(Long idLote, byte[] archivoRespuesta,
 			Long idUsuario) throws Throwable {
+		// U-3: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 		return procesarRespuestaBanco(idLote, archivoRespuesta, idUsuario, null);
 	}
 
 	@Override
 	public Map<String, Object> procesarRespuestaBanco(Long idLote, byte[] archivoRespuesta,
 			Long idUsuario, LocalDate fechaRespuesta) throws Throwable {
+		// U-3: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 
 		System.out.println("=== procesarRespuestaBanco | lote=" + idLote
 				+ " | fechaRespuesta=" + fechaRespuesta + " ===");
@@ -2120,6 +2152,8 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	public Map<String, Object> confirmarPagosManual(List<Long> idsPagos, String referencia,
 			Map<Long, String> referenciasPorPago, String fechaPago, String observacion, Long idUsuario)
 			throws Throwable {
+		// U-3: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 
 		System.out.println("=== confirmarPagosManual | pagos=" + idsPagos
 				+ " | referenciasPorPago=" + referenciasPorPago + " ===");
@@ -2224,6 +2258,8 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	@TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
 	public Map<String, Object> confirmarUnPagoManual(Long idPago, String refPago, LocalDate fecha,
 			String nota, Long idUsuario) throws Throwable {
+		// U-3: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 		System.out.println("=== confirmarUnPagoManual | pago=" + idPago + " ===");
 
 		Map<String, Object> r = new HashMap<>();
@@ -2320,6 +2356,8 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	@Override
 	public Map<String, Object> asignarCuentaDestino(Long idPago, Long idCuentaDestinoTitular, Long idUsuario)
 			throws Throwable {
+		// U-3: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 		System.out.println("=== asignarCuentaDestino | pago=" + idPago + " | cuenta=" + idCuentaDestinoTitular + " ===");
 
 		if (idCuentaDestinoTitular == null) {
@@ -2370,6 +2408,8 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	@Override
 	public Map<String, Object> anularPago(Long idPago, String motivo, Long idUsuario)
 			throws Throwable {
+		// U-3: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 
 		System.out.println("=== anularPago | pago=" + idPago + " ===");
 
@@ -2485,12 +2525,16 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	@Override
 	public Map<String, Object> revertirPagoConfirmado(Long idPago, String motivo, Long idUsuario)
 			throws Throwable {
+		// U-3: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 		return revertirPagoConfirmado(idPago, motivo, idUsuario, Boolean.FALSE);
 	}
 
 	@Override
 	public Map<String, Object> revertirPagoConfirmado(Long idPago, String motivo, Long idUsuario,
 			Boolean reversarAsiento) throws Throwable {
+		// U-3: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 		return revertirPagoConfirmado(idPago, motivo, idUsuario, reversarAsiento, null);
 	}
 
@@ -2498,6 +2542,8 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	@Override
 	public Map<String, Object> revertirPagoConfirmado(Long idPago, String motivo, Long idUsuario,
 			Boolean reversarAsiento, LocalDate fechaReverso) throws Throwable {
+		// U-3: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 
 		System.out.println("=== revertirPagoConfirmado | pago=" + idPago
 				+ " | reversarAsiento=" + reversarAsiento + " | fechaReverso=" + fechaReverso + " ===");
@@ -2535,17 +2581,17 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 			// bancario y el asiento que cuelga del propio pago. El documento origen
 			// NO se toca: CXP no lo conoce. Es el módulo origen el que consulta el
 			// estado del pago y reacciona (no hay callback desde CXP).
-			revertirContabilidadOrigenExterno(pago, motivo.trim(), reversarAsiento, fechaReverso);
+			revertirContabilidadOrigenExterno(pago, motivo.trim(), reversarAsiento, fechaReverso, usuarioNombre(idUsuario));
 		} else if (pago.getAnticipo() != null) {
 			// Pago de un anticipo a proveedor: se anula el movimiento bancario
 			// y el asiento de anticipo, se descuenta el saldo de anticipos del
 			// proveedor, y el anticipo vuelve a quedar Ingresado.
-			revertirContabilidadAnticipoPago(pago, motivo.trim(), reversarAsiento, fechaReverso);
+			revertirContabilidadAnticipoPago(pago, motivo.trim(), reversarAsiento, fechaReverso, usuarioNombre(idUsuario));
 		} else if (pago.getEgreso() != null) {
 			// Pago de un egreso de tesorería: no hay aplicación que reversar.
 			// Se anula el asiento y el movimiento bancario, y el egreso vuelve
 			// a quedar pendiente de pago.
-			revertirContabilidadEgreso(pago, motivo.trim(), reversarAsiento, fechaReverso);
+			revertirContabilidadEgreso(pago, motivo.trim(), reversarAsiento, fechaReverso, usuarioNombre(idUsuario));
 		} else if (pago.getAplicacion() != null) {
 			// Reversa la aplicación: devuelve el saldo a la factura, anula el
 			// asiento y el movimiento bancario.
@@ -3079,8 +3125,8 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	 *                            {@code AsientoService}, sin atrapar
 	 */
 	private void anulaOReversaAsiento(Long idAsiento, Boolean reversarAsiento, LocalDate fechaReverso,
-			Long idEmpresa, CuentaBancaria cuentaBancaria, Double valor, String descripcionReverso)
-			throws Throwable {
+			Long idEmpresa, CuentaBancaria cuentaBancaria, Double valor, String descripcionReverso,
+			String usuarioAnula) throws Throwable {
 		if (Boolean.TRUE.equals(reversarAsiento)) {
 			// Sin try/catch a propósito: la excepcion de periodo (inexistente, MAYORIZADO o
 			// CERRADO) tiene que llegar tal cual al usuario, no quedar en el log del servidor.
@@ -3107,7 +3153,7 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		} else {
 			// Comportamiento de siempre: no interrumpe el flujo si falla.
 			try {
-				asientoService.anulaAsiento(idAsiento);
+				asientoService.anulaAsiento(idAsiento, usuarioAnula, descripcionReverso); // U-3: con usuario, sin «SISTEMA»
 				System.out.println("✓ Asiento " + idAsiento + " anulado / reversado.");
 			} catch (Throwable e) {
 				System.err.println("⚠ No se pudo anular el asiento " + idAsiento + ": " + e.getMessage());
@@ -3126,7 +3172,7 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	 * @throws Throwable : Excepcion
 	 */
 	private void revertirContabilidadEgreso(PagoProgramado pago, String motivo, Boolean reversarAsiento,
-			LocalDate fechaReverso) throws Throwable {
+			LocalDate fechaReverso, String usuarioAnula) throws Throwable {
 
 		Egreso egreso = pago.getEgreso();
 		Long idAsiento = (egreso.getAsiento() != null) ? egreso.getAsiento().getCodigo() : null;
@@ -3143,7 +3189,7 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 			anulaOReversaAsiento(idAsiento, reversarAsiento, fechaReverso,
 					pago.getEmpresa() != null ? pago.getEmpresa().getCodigo() : null,
 					pago.getCuentaBancaria(), pago.getValor(),
-					"Reverso egreso: " + egreso.getDescripcion() + " | " + motivo);
+					"Reverso egreso: " + egreso.getDescripcion() + " | " + motivo, usuarioAnula);
 		}
 
 		egreso.setEstado(Long.valueOf(EstadoEgresoTesoreria.PENDIENTE_PAGO));
@@ -3592,7 +3638,7 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	 * @throws Throwable : Excepcion
 	 */
 	private void revertirContabilidadOrigenExterno(PagoProgramado pago, String motivo,
-			Boolean reversarAsiento, LocalDate fechaReverso) throws Throwable {
+			Boolean reversarAsiento, LocalDate fechaReverso, String usuarioAnula) throws Throwable {
 
 		Long idAsiento = (pago.getAsiento() != null) ? pago.getAsiento().getCodigo() : null;
 
@@ -3613,7 +3659,7 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		anulaOReversaAsiento(idAsiento, reversarAsiento, fechaReverso,
 				pago.getEmpresa() != null ? pago.getEmpresa().getCodigo() : null,
 				pago.getCuentaBancaria(), pago.getValor(),
-				"Reverso pago de origen externo | " + motivo);
+				"Reverso pago de origen externo | " + motivo, usuarioAnula);
 
 		pago.setAsiento(null);
 
@@ -3883,7 +3929,7 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	 * @throws Throwable : Excepcion
 	 */
 	private void revertirContabilidadAnticipoPago(PagoProgramado pago, String motivo,
-			Boolean reversarAsiento, LocalDate fechaReverso) throws Throwable {
+			Boolean reversarAsiento, LocalDate fechaReverso, String usuarioAnula) throws Throwable {
 
 		AnticipoProveedor anticipo = pago.getAnticipo();
 		Long idAsiento = (anticipo.getAsiento() != null)
@@ -3901,7 +3947,7 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 
 		anticipoProveedorService.revertirContabilidadAnticipo(anticipo.getId(), motivo, reversarAsiento,
 				fechaReverso, pago.getEmpresa() != null ? pago.getEmpresa().getCodigo() : null,
-				pago.getCuentaBancaria(), pago.getValor());
+				pago.getCuentaBancaria(), pago.getValor(), usuarioAnula);
 	}
 
 	/**
@@ -3909,12 +3955,10 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	 * @param idUsuario : Id del usuario
 	 * @return          : Nombre del usuario o SISTEMA
 	 */
-	private String usuarioNombre(Long idUsuario) {
-		if (idUsuario == null) {
-			return "SISTEMA";
-		}
-		Usuario usuario = em.find(Usuario.class, idUsuario);
-		return (usuario != null && usuario.getNombre() != null) ? usuario.getNombre() : "SISTEMA";
+	private String usuarioNombre(Long idUsuario) throws Throwable {
+		// U-3/U-4: sin relleno. Un idUsuario nulo o inexistente (incluido el 0 del frontend sin sesión) detiene el
+		// proceso: este helper lo usan también los pagos de tsr y rhh (egreso, caja chica, anticipo de empleado, planilla IESS…).
+		return usuarioValidacionService.validarPorId(idUsuario);
 	}
 
 	private String nvl(String valor, String porDefecto) {

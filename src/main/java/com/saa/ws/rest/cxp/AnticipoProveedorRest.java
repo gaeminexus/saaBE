@@ -114,6 +114,11 @@ public class AnticipoProveedorRest {
                     .entity(resultado)
                     .type(MediaType.APPLICATION_JSON).build();
 
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return error500("Error al procesar anticipo a proveedor: " + e.getMessage());
         }
@@ -191,6 +196,11 @@ public class AnticipoProveedorRest {
             // Cuando falta la confirmación de los cruces la respuesta sigue
             // siendo 200: no es un error, es la pregunta al usuario.
             return Response.ok(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return error500("Error al anular anticipo: " + e.getMessage());
         }
@@ -253,6 +263,11 @@ public class AnticipoProveedorRest {
             AnticipoProveedor resultado = anticiPoProveedorService.saveSingle(registro);
             return Response.status(Response.Status.CREATED)
                     .entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return error500("Error al crear anticipo: " + e.getMessage());
         }
@@ -267,6 +282,11 @@ public class AnticipoProveedorRest {
         try {
             AnticipoProveedor resultado = anticiPoProveedorService.saveSingle(registro);
             return Response.ok(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return error500("Error al actualizar anticipo: " + e.getMessage());
         }
@@ -288,6 +308,11 @@ public class AnticipoProveedorRest {
             Map<String, Object> resultado = anticiPoProveedorService.anularAnticipo(
                     id, "Anulación desde la interfaz (DELETE)", null);
             return Response.ok(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return error500("Error al anular anticipo: " + e.getMessage());
         }

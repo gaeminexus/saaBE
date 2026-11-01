@@ -197,6 +197,8 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
     @Override
     public Map<String, Object> cargarArchivoTxt(String contenidoTxt, String nombreArchivo,
                                                  Long idEmpresa, Long idUsuario, Long idPeriodo) throws Throwable {
+        // U-3: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+        nombreUsuarioObligatorio(idUsuario);
 
         System.out.println("=== INICIO cargarArchivoTxt === archivo: " + nombreArchivo + " periodo=" + idPeriodo);
 
@@ -411,6 +413,8 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
     // Método puente de compatibilidad — no está en la interfaz (usarlo internamente si es necesario)
     public Map<String, Object> cargarXmlDocumento(Long idDocumentoCxp, String contenidoXml,
                                                    String pathDestino, Long idUsuario) throws Throwable {
+        // U-3: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+        nombreUsuarioObligatorio(idUsuario);
         return cargarXmlDocumento(idDocumentoCxp, contenidoXml, pathDestino, idUsuario, null);
     }
 
@@ -418,6 +422,8 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
     public Map<String, Object> cargarXmlDocumento(Long idDocumentoCxp, String contenidoXml,
                                                    String pathDestino, Long idUsuario,
                                                    Boolean esReembolsoBody) throws Throwable {
+        // U-3: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+        nombreUsuarioObligatorio(idUsuario);
 
         System.out.println("=== cargarXmlDocumento idDocumentoCxp=" + idDocumentoCxp
                 + " esReembolsoBody=" + esReembolsoBody);
@@ -567,6 +573,8 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
     public Map<String, Object> cargarXmlYRegistrar(Long idDocumentoCxp, String contenidoXml,
                                                     String pathDestino, Long idEmpresa,
                                                     Long idUsuario) throws Throwable {
+        // U-3: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+        nombreUsuarioObligatorio(idUsuario);
         return cargarXmlYRegistrar(idDocumentoCxp, contenidoXml, pathDestino, idEmpresa, idUsuario,
                 false, null);
     }
@@ -576,6 +584,8 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                                                     String pathDestino, Long idEmpresa, Long idUsuario,
                                                     Boolean esSeguro, Long idDocumentoSeguro)
             throws Throwable {
+        // U-3: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+        nombreUsuarioObligatorio(idUsuario);
 
         System.out.println("=== cargarXmlYRegistrar idDocumentoCxp=" + idDocumentoCxp
                 + " esSeguro=" + esSeguro);
@@ -843,6 +853,8 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
     @Override
     public Map<String, Object> registrarDocumentoBD(Long idDocumentoCxp,
                                                      Long idEmpresa, Long idUsuario) throws Throwable {
+        // U-3: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+        nombreUsuarioObligatorio(idUsuario);
         return registrarDocumentoBD(idDocumentoCxp, idEmpresa, idUsuario, false, null);
     }
 
@@ -850,6 +862,8 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
     public Map<String, Object> registrarDocumentoBD(Long idDocumentoCxp, Long idEmpresa, Long idUsuario,
                                                       Boolean esIntermediario, Long idProductoIntermediario)
             throws Throwable {
+        // U-3: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+        nombreUsuarioObligatorio(idUsuario);
         return registrarDocumentoBD(idDocumentoCxp, idEmpresa, idUsuario, esIntermediario,
                 idProductoIntermediario, false, null);
     }
@@ -975,6 +989,8 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                                                       Boolean esIntermediario, Long idProductoIntermediario,
                                                       String observacionAdicional)
             throws Throwable {
+        // U-3: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+        nombreUsuarioObligatorio(idUsuario);
 
         System.out.println("=== registrarDocumentoBD (con observación adicional) idDocumentoCxp="
                 + idDocumentoCxp);
@@ -1014,6 +1030,8 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                                                       String observacionAdicional, Boolean esSeguro,
                                                       Long idDocumentoSeguro)
             throws Throwable {
+        // U-3: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+        nombreUsuarioObligatorio(idUsuario);
 
         System.out.println("=== registrarDocumentoBD (con observación adicional y marca de seguros) "
                 + "idDocumentoCxp=" + idDocumentoCxp);
@@ -1051,6 +1069,8 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
     public Map<String, Object> resolverNovedad(Long idDocumentoCxp, Integer accion,
                                                 String contenidoXml, String pathDestino,
                                                 Long idUsuario) throws Throwable {
+        // U-3: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+        nombreUsuarioObligatorio(idUsuario);
         return resolverNovedad(idDocumentoCxp, accion, contenidoXml, pathDestino, idUsuario, null);
     }
 
@@ -1061,6 +1081,8 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
 
         System.out.println("=== resolverNovedad idDocumentoCxp=" + idDocumentoCxp
                 + " accion=" + accion + " esReembolsoBody=" + esReembolsoBody);
+        // U-3: lo primero, el usuario existe (antes solo se resolvía con em.find, sin validar).
+        String usuarioNovedad = nombreUsuarioObligatorio(idUsuario);
 
         DocumentoCxp doc = documentoCxpDaoService.selectById(idDocumentoCxp,
                 NombreEntidadesCompra.DOCUMENTO_CXP);
@@ -1075,7 +1097,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
 
         if (AccionNovedad.REEMPLAZAR == accion) {
             if (doc.getIdDocumentoBD() != null) {
-                revertirRegistrosBD(doc);
+                revertirRegistrosBD(doc, usuarioNovedad);
             }
             doc.setPathXml(pathDestino);
             doc.setFechaCargaXml(LocalDateTime.now());
@@ -1128,6 +1150,8 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
     public Map<String, Object> revertirDocumento(Long idDocumentoCxp, Long idUsuario) throws Throwable {
 
         System.out.println("=== revertirDocumento idDocumentoCxp=" + idDocumentoCxp);
+        // U-3: lo primero, el usuario existe.
+        String usuarioReversion = nombreUsuarioObligatorio(idUsuario);
 
         DocumentoCxp doc = documentoCxpDaoService.selectById(idDocumentoCxp,
                 NombreEntidadesCompra.DOCUMENTO_CXP);
@@ -1138,7 +1162,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
             throw new Exception("Solo se pueden revertir documentos con estado REGISTRADO_BD (3). Estado actual: "
                     + doc.getEstadoDocumento());
 
-        revertirRegistrosBD(doc);
+        revertirRegistrosBD(doc, usuarioReversion);
 
         doc.setEstadoDocumento(ESTADO_REVERTIDO);
         doc.setFechaReversion(LocalDateTime.now());
@@ -1171,6 +1195,8 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
     @Override
     public Map<String, Object> anularContabilidadDocumento(Long idDocumentoCxp, String motivo,
             Long idUsuario) throws Throwable {
+        // U-3: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+        nombreUsuarioObligatorio(idUsuario);
 
         System.out.println("=== anularContabilidadDocumento idDocumentoCxp=" + idDocumentoCxp);
 
@@ -1278,6 +1304,8 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
     @Override
     public Map<String, Object> marcarDocumentoAnulado(Long idDocumentoCxp, String motivo,
             Long idUsuario) throws Throwable {
+        // U-3: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+        nombreUsuarioObligatorio(idUsuario);
 
         System.out.println("=== marcarDocumentoAnulado idDocumentoCxp=" + idDocumentoCxp);
 
@@ -1545,6 +1573,8 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
     @Override
     public Map<String, Object> crearProductosYRegistrar(Long idDocumentoCxp, Long idEmpresa,
             Long idUsuario, List<Map<String, Object>> productosConGrupo) throws Throwable {
+        // U-3: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+        nombreUsuarioObligatorio(idUsuario);
 
         System.out.println("=== crearProductosYRegistrar idDocumentoCxp=" + idDocumentoCxp);
 
@@ -2219,6 +2249,8 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
 
     @Override
     public Map<String, Object> marcarReembolso(Long idDocumentoCxp, boolean esReembolso, Long idUsuario) throws Throwable {
+        // U-3: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+        nombreUsuarioObligatorio(idUsuario);
         System.out.println("marcarReembolso idDocumentoCxp=" + idDocumentoCxp + " esReembolso=" + esReembolso);
         DocumentoCxp doc = documentoCxpDaoService.selectById(idDocumentoCxp, NombreEntidadesCompra.DOCUMENTO_CXP);
         if (doc == null) throw new com.saa.basico.util.IncomeException("DocumentoCxp no encontrado: " + idDocumentoCxp);
@@ -3845,7 +3877,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         }
     }
 
-    private void revertirRegistrosBD(DocumentoCxp doc) throws Throwable {
+    private void revertirRegistrosBD(DocumentoCxp doc, String usuario) throws Throwable {
         String tipo = doc.getTipoTablaDestino();
         Long idDocBD = doc.getIdDocumentoBD();
         if (tipo == null || idDocBD == null) return;
@@ -3857,9 +3889,9 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         // servicio marca la aplicación como reversada (para que el trigger
         // recalcule el estado de pago de la factura) y luego la borra.
         if ("NOTA_CREDITO_COMPRA".equals(tipo)) {
-            aplicacionPagoCxpService.eliminarAplicacionesDeDocumento("NOTA_CREDITO", idDocBD);
+            aplicacionPagoCxpService.eliminarAplicacionesDeDocumento("NOTA_CREDITO", idDocBD, usuario);
         } else if ("NOTA_DEBITO_COMPRA".equals(tipo)) {
-            aplicacionPagoCxpService.eliminarAplicacionesDeDocumento("NOTA_DEBITO", idDocBD);
+            aplicacionPagoCxpService.eliminarAplicacionesDeDocumento("NOTA_DEBITO", idDocBD, usuario);
         } else if ("RETENCION_COMPRA".equals(tipo)) {
             aplicacionPagoCxcService.eliminarAplicacionesDeDocumento("RETENCION", idDocBD);
         } else if ("RETENCION_COMPRA_V2".equals(tipo)) {

@@ -50,7 +50,7 @@ public interface FacturaCompraService extends EntityService<FacturaCompra> {
 	 *
 	 * @param idFactura			: Id de la factura de compra
 	 * @param motivo			: Motivo de la anulación (vacío = "Anulación manual")
-	 * @param usuario			: Usuario que anula (vacío = "SISTEMA")
+	 * @param usuario			: Usuario que anula (obligatorio: se valida primero, sin relleno)
 	 * @param idUsuario			: Id del usuario (SCP.PJRQ), lo pide {@code revertirPagoConfirmado}
 	 *							  para los movimientos de tipo pago directo; puede ser null si no
 	 *							  hay ninguno de ese tipo entre los movimientos a reversar

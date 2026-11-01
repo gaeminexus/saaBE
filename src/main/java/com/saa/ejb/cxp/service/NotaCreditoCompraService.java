@@ -14,7 +14,7 @@ public interface NotaCreditoCompraService extends EntityService<NotaCreditoCompr
 	 * que no hace falta pasar por {@code PagoProgramadoService}).
 	 * @param idNotaCredito		: Id de la nota de crédito de compra
 	 * @param motivo			: Motivo de la anulación (vacío = "Anulación manual")
-	 * @param usuario			: Usuario que anula (vacío = "SISTEMA")
+	 * @param usuario			: Usuario que anula (obligatorio: se valida primero, sin relleno)
 	 * @param idUsuario			: Id del usuario (SCP.PJRQ), para reversar las aplicaciones
 	 * @param anularEnCascada	: true = reversar los cruces contra facturas y anular igual
 	 * @return					: Mapa con exito, mensaje, asientoAnulado y movimientosReversados

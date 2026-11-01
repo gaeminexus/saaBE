@@ -56,6 +56,10 @@ import jakarta.persistence.PersistenceContext;
 @Stateless
 public class DevolucionAnticipoProveedorServiceImpl implements DevolucionAnticipoProveedorService {
 
+	/** U-3: todo proceso que graba valida el usuario PRIMERO. */
+	@jakarta.ejb.EJB
+	private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
     /** Tolerancia de centavos, igual que AplicacionPagoCxpServiceImpl / AnticipoProveedorServiceImpl. */
     private static final double TOLERANCIA = 0.01;
 
@@ -356,9 +360,8 @@ public class DevolucionAnticipoProveedorServiceImpl implements DevolucionAnticip
         }
 
         // ── Todo validado: una sola transacción ──────────────────────────────
-        Usuario usuario = (idUsuario != null) ? em.find(Usuario.class, idUsuario) : null;
-        String nombreUsuario = (usuario != null && usuario.getNombre() != null)
-                ? usuario.getNombre() : "SISTEMA";
+        // U-3: sin relleno. idUsuario nulo o inexistente detiene el proceso.
+        String nombreUsuario = usuarioValidacionService.validarPorId(idUsuario);
 
         String observacionAsiento = "Devolución de anticipo: " + titular.getNombre()
                 + " | Ref: " + nvl(referencia, "")
@@ -385,7 +388,7 @@ public class DevolucionAnticipoProveedorServiceImpl implements DevolucionAnticip
         devolucion.setFormaPago(Long.valueOf(forma));
         devolucion.setAsiento(asiento);
         devolucion.setEstado(Long.valueOf(EstadoDevolucionAnticipoProveedor.ACTIVA));
-        devolucion.setUsuario(usuario);
+        devolucion.setUsuario(em.find(Usuario.class, idUsuario)); // idUsuario ya validado arriba
         devolucion.setFechaRegistro(LocalDateTime.now());
         devolucion = devolucionDaoService.save(devolucion, devolucion.getCodigo());
 
@@ -457,6 +460,8 @@ public class DevolucionAnticipoProveedorServiceImpl implements DevolucionAnticip
     @Override
     public Map<String, Object> anular(Long idDevolucion, String motivo, Long idUsuario) throws Throwable {
         System.out.println("=== anular (devolucion anticipo) | devolucion=" + idDevolucion + " ===");
+        // U-3: lo primero, el usuario existe; el asiento se anula a su nombre.
+        String usuarioAnula = usuarioValidacionService.validarPorId(idUsuario);
 
         if (motivo == null || motivo.trim().isEmpty()) {
             throw new IncomeException("Debe indicar el motivo de la anulación.");
@@ -506,7 +511,7 @@ public class DevolucionAnticipoProveedorServiceImpl implements DevolucionAnticip
         if (idAsiento != null) {
             movimientoBancoService.actualizaEstadoMovimiento(idAsiento,
                     Long.valueOf(com.saa.rubros.EstadoMovimientoBanco.ANULADO));
-            asientoService.anulaAsiento(idAsiento);
+            asientoService.anulaAsiento(idAsiento, usuarioAnula, motivo); // U-3: con usuario
         }
 
         // 4. Reponer el saldo de cada anticipo y el PRCC tipo 2 del proveedor

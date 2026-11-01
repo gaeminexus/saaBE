@@ -55,6 +55,10 @@ import jakarta.persistence.PersistenceContext;
 @Stateless
 public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 
+	/** U-3: todo proceso que graba valida el usuario PRIMERO. */
+	@jakarta.ejb.EJB
+	private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
 	/** Tolerancia para comparar valores monetarios. */
 	private static final double TOLERANCIA = 0.01;
 
@@ -324,6 +328,8 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 	@Override
 	public Map<String, Object> cruzarNotaCredito(Long idNotaCredito, Long idFacturaCompra, Long idNotaDebito, Double valor,
 			String fecha, Long idEmpresa, Long idUsuario, String observacion) throws Throwable {
+		// U-3: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 
 		System.out.println("=== cruzarNotaCredito | notaCredito=" + idNotaCredito + " | factura=" + idFacturaCompra
 				+ " | valor=" + valor + " | empresa=" + idEmpresa + " ===");
@@ -439,11 +445,11 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 		if (observacion != null && !observacion.trim().isEmpty()) {
 			obs += " | " + observacion.trim();
 		}
-		Usuario usuario = (idUsuario != null) ? em.find(Usuario.class, idUsuario) : null;
+		String nombreUsuarioCruce = usuarioValidacionService.validarPorId(idUsuario); // U-3: sin relleno
 		AplicacionPagoCxp aplicacion = nuevaAplicacion(factura, idEmpresa, TipoDocPagoAplicacion.NOTA_CREDITO,
 				redondea(valor),
 				(fecha != null && !fecha.trim().isEmpty()) ? LocalDate.parse(fecha.trim()) : LocalDate.now(),
-				obs, (usuario != null && usuario.getNombre() != null) ? usuario.getNombre() : "SISTEMA");
+				obs, nombreUsuarioCruce);
 		aplicacion.setNotaCredito(nota);
 		aplicacion.setAsiento(null);
 
@@ -499,6 +505,8 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 	public Map<String, Object> aplicarAnticipo(Long idFacturaCompra, Long idLiquidacionCompra, Double valor,
 			String fechaAplicacion, Long idEmpresa, Long idUsuario, String observacion)
 			throws Throwable {
+		// U-3: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 
 		System.out.println("=== aplicarAnticipo (FIFO) | factura=" + idFacturaCompra
 				+ " | liquidacion=" + idLiquidacionCompra + " | valor=" + valor
@@ -536,6 +544,8 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 	public Map<String, Object> aplicarAnticipos(Long idFacturaCompra, Long idLiquidacionCompra,
 			List<Map<String, Object>> detalles, String fechaAplicacion, Long idEmpresa,
 			Long idUsuario, String observacion, boolean permitirOtroProveedor) throws Throwable {
+		// U-3: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 
 		System.out.println("=== aplicarAnticipos | factura=" + idFacturaCompra
 				+ " | liquidacion=" + idLiquidacionCompra
@@ -956,12 +966,16 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 	@Override
 	public AplicacionPagoCxp aplicarPagoTransferencia(PagoProgramado pago, Long idUsuario)
 			throws Throwable {
+		// U-3: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 		return aplicarPagoTransferencia(pago, idUsuario, true);
 	}
 
 	@Override
 	public AplicacionPagoCxp aplicarPagoTransferencia(PagoProgramado pago, Long idUsuario,
 			boolean emitirMovimientoCheque) throws Throwable {
+		// U-3: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 
 		boolean debitoAutomatico = esDebitoAutomatico(pago);
 		com.saa.model.tsr.Cheque cheque = pago.getCheque();
@@ -1042,6 +1056,8 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 	@Override
 	public AplicacionPagoCxp aplicarPagoTransferenciaLiquidacion(PagoProgramado pago, Long idUsuario,
 			boolean emitirMovimientoCheque) throws Throwable {
+		// U-3: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 
 		boolean debitoAutomatico = esDebitoAutomatico(pago);
 		com.saa.model.tsr.Cheque cheque = pago.getCheque();
@@ -1132,6 +1148,8 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 	public AplicacionPagoCxp aplicarDesdeCajaChica(Long idFacturaCompra, Long idLiquidacionCompra,
 			MovimientoCajaChica movimiento, Long idPlanCuentaCaja, Long idEmpresa, Long idUsuario)
 			throws Throwable {
+		// U-3: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 
 		System.out.println("=== aplicarDesdeCajaChica | movimiento=" + movimiento.getCodigo()
 				+ " | factura=" + idFacturaCompra + " | liquidacion=" + idLiquidacionCompra + " ===");
@@ -1227,6 +1245,8 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 	@Override
 	public Map<String, Object> revertirAplicacion(Long idAplicacion, String motivo, Long idUsuario)
 			throws Throwable {
+		// U-3: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 		return revertirAplicacionInterna(idAplicacion, motivo, idUsuario, false, Boolean.FALSE,
 				null, null, null, null);
 	}
@@ -1236,6 +1256,8 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 	public Map<String, Object> revertirAplicacion(Long idAplicacion, String motivo, Long idUsuario,
 			Boolean reversarAsiento, java.time.LocalDate fechaReverso, Long idEmpresa,
 			com.saa.model.tsr.CuentaBancaria cuentaBancaria, Double valor) throws Throwable {
+		// U-3: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 		return revertirAplicacionInterna(idAplicacion, motivo, idUsuario, false, reversarAsiento,
 				fechaReverso, idEmpresa, cuentaBancaria, valor);
 	}
@@ -1244,6 +1266,8 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 	@Override
 	public Map<String, Object> revertirAplicacionOrigenCajaChica(Long idAplicacion, String motivo, Long idUsuario)
 			throws Throwable {
+		// U-3: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 		return revertirAplicacionInterna(idAplicacion, motivo, idUsuario, true, Boolean.FALSE,
 				null, null, null, null);
 	}
@@ -1290,7 +1314,8 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 					+ ": anule el gasto en Tesorería → Caja chica, no la aplicación directamente.");
 		}
 
-		revierteUnaAplicacion(aplicacion, motivo, reversarAsiento, fechaReverso, idEmpresa, cuentaBancaria, valor);
+		revierteUnaAplicacion(aplicacion, motivo, reversarAsiento, fechaReverso, idEmpresa, cuentaBancaria, valor,
+				usuarioNombre(idUsuario));
 		em.flush();
 
 		resultado.put("exito", true);
@@ -1307,6 +1332,8 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 	@Override
 	public int revertirAplicacionesDeDocumento(String tipoDocumento, Long idDocumento, String motivo,
 			Long idUsuario) throws Throwable {
+		// U-3: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 
 		System.out.println("=== revertirAplicacionesDeDocumento | tipo=" + tipoDocumento
 				+ " | documento=" + idDocumento + " ===");
@@ -1319,7 +1346,7 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 			revierteUnaAplicacion(aplicacion,
 					(motivo != null && !motivo.trim().isEmpty())
 							? motivo : "Anulación del documento de origen",
-					Boolean.FALSE, null, null, null, null);
+					Boolean.FALSE, null, null, null, null, usuarioNombre(idUsuario));
 			reversadas++;
 		}
 		System.out.println("✓ Aplicaciones reversadas: " + reversadas);
@@ -1327,8 +1354,10 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 	}
 
 	@Override
-	public int eliminarAplicacionesDeDocumento(String tipoDocumento, Long idDocumento)
+	public int eliminarAplicacionesDeDocumento(String tipoDocumento, Long idDocumento, String usuario)
 			throws Throwable {
+		// U-3: lo primero, el usuario existe (el asiento de la aplicación se anula a su nombre).
+		usuario = usuarioValidacionService.validar(usuario);
 
 		System.out.println("=== eliminarAplicacionesDeDocumento | tipo=" + tipoDocumento
 				+ " | documento=" + idDocumento + " ===");
@@ -1351,7 +1380,7 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 				recalcularEstadoPago(idFactura);
 			}
 			if (idAsiento != null) {
-				anulaAsientoSeguro(idAsiento, Boolean.FALSE, null, null, null, null, null);
+				anulaAsientoSeguro(idAsiento, Boolean.FALSE, null, null, null, null, null, usuario);
 			}
 			eliminadas++;
 		}
@@ -1786,7 +1815,7 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 	 */
 	private void revierteUnaAplicacion(AplicacionPagoCxp aplicacion, String motivo, Boolean reversarAsiento,
 			java.time.LocalDate fechaReverso, Long idEmpresaMovimiento,
-			com.saa.model.tsr.CuentaBancaria cuentaBancaria, Double valor) throws Throwable {
+			com.saa.model.tsr.CuentaBancaria cuentaBancaria, Double valor, String usuarioAnula) throws Throwable {
 
 		Long idAsiento = (aplicacion.getAsiento() != null)
 				? aplicacion.getAsiento().getCodigo() : null;
@@ -1894,7 +1923,7 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 		// 4. Anular / reversar el asiento contable
 		if (idAsiento != null) {
 			anulaAsientoSeguro(idAsiento, reversarAsiento, fechaReverso, idEmpresaMovimiento, cuentaBancaria,
-					valor, "Reverso aplicación de pago " + aplicacion.getId() + " | " + motivo);
+					valor, "Reverso aplicación de pago " + aplicacion.getId() + " | " + motivo, usuarioAnula);
 		}
 	}
 
@@ -1930,7 +1959,7 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 	 */
 	private void anulaAsientoSeguro(Long idAsiento, Boolean reversarAsiento, java.time.LocalDate fechaReverso,
 			Long idEmpresa, com.saa.model.tsr.CuentaBancaria cuentaBancaria, Double valor,
-			String descripcionReverso) throws Throwable {
+			String descripcionReverso, String usuarioAnula) throws Throwable {
 		if (Boolean.TRUE.equals(reversarAsiento)) {
 			// Sin try/catch a proposito: ver el javadoc.
 			com.saa.model.cnt.Asiento asientoOriginal = (fechaReverso != null)
@@ -1955,7 +1984,7 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 			}
 		} else {
 			try {
-				asientoService.anulaAsiento(idAsiento);
+				asientoService.anulaAsiento(idAsiento, usuarioAnula, descripcionReverso); // U-3: con usuario, sin «SISTEMA»
 				System.out.println("✓ Asiento " + idAsiento + " anulado / reversado.");
 			} catch (Throwable e) {
 				System.err.println("⚠ No se pudo anular el asiento " + idAsiento + ": " + e.getMessage());
@@ -2077,12 +2106,9 @@ public class AplicacionPagoCxpServiceImpl implements AplicacionPagoCxpService {
 	 * @param idUsuario : Id del usuario
 	 * @return          : Nombre del usuario o SISTEMA
 	 */
-	private String usuarioNombre(Long idUsuario) {
-		if (idUsuario == null) {
-			return "SISTEMA";
-		}
-		Usuario usuario = em.find(Usuario.class, idUsuario);
-		return (usuario != null && usuario.getNombre() != null) ? usuario.getNombre() : "SISTEMA";
+	private String usuarioNombre(Long idUsuario) throws Throwable {
+		// U-3: sin relleno. Un idUsuario nulo o inexistente (incluido el 0 del frontend sin sesión) detiene el proceso.
+		return usuarioValidacionService.validarPorId(idUsuario);
 	}
 
 	/**

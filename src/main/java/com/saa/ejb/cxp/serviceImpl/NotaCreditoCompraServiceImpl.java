@@ -17,6 +17,10 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 @Stateless
 public class NotaCreditoCompraServiceImpl implements NotaCreditoCompraService {
+
+	/** U-3: todo proceso que graba valida el usuario PRIMERO. */
+	@jakarta.ejb.EJB
+	private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
 	@EJB private NotaCreditoCompraDaoService notaCreditoCompraDaoService;
 	@EJB private SustentoTributarioService sustentoTributarioService;
 	@EJB private AplicacionPagoCxpDaoService aplicacionPagoCxpDaoService;
@@ -127,6 +131,8 @@ public class NotaCreditoCompraServiceImpl implements NotaCreditoCompraService {
 	@Override
 	public java.util.Map<String, Object> anularNotaCreditoCompra(Long idNotaCredito, String motivo, String usuario,
 			Long idUsuario, boolean anularEnCascada) throws Throwable {
+		// U-3: lo primero, el usuario que anula existe (antes, vacío se grababa como «SISTEMA»).
+		usuario = usuarioValidacionService.validar(usuario);
 		System.out.println("=== anularNotaCreditoCompra | id=" + idNotaCredito + " | usuario=" + usuario
 				+ " | anularEnCascada=" + anularEnCascada + " ===");
 
@@ -144,7 +150,7 @@ public class NotaCreditoCompraServiceImpl implements NotaCreditoCompraService {
 			return resultado;
 		}
 
-		String usuarioAnulacion = (usuario != null && !usuario.trim().isEmpty()) ? usuario.trim() : "SISTEMA";
+		String usuarioAnulacion = usuario; // validado al entrar al método
 		String motivoFinal = (motivo != null && !motivo.trim().isEmpty()) ? motivo.trim() : "Anulación manual";
 		java.time.LocalDateTime ahora = java.time.LocalDateTime.now();
 

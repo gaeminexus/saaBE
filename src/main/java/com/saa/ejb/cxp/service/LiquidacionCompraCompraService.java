@@ -18,7 +18,7 @@ public interface LiquidacionCompraCompraService extends EntityService<Liquidacio
 	 * huérfanas en silencio.
 	 * @param idLiquidacion	 : Id de la liquidación de compra
 	 * @param motivo		 : Motivo de la anulación (vacío = "Anulación manual")
-	 * @param usuario		 : Usuario que anula (vacío = "SISTEMA")
+	 * @param usuario		 : Usuario que anula (obligatorio: se valida primero, sin relleno)
 	 * @param idUsuario		 : Id del usuario que anula (sólo hace falta si anularEnCascada=true)
 	 * @param anularEnCascada: true para reversar las aplicaciones activas antes de anular
 	 * @return				 : Mapa con exito, mensaje, movimientosReversados y asientoAnulado si aplica

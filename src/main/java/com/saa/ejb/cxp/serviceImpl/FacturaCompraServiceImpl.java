@@ -40,6 +40,10 @@ import jakarta.persistence.PersistenceContext;
 @Stateless
 public class FacturaCompraServiceImpl implements FacturaCompraService {
 
+	/** U-3: todo proceso que graba valida el usuario PRIMERO. */
+	@jakarta.ejb.EJB
+	private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
 	/**
 	 * Tipo de comprobante SRI para la nota de venta de compra. ⚠️ SIN CONFIRMAR
 	 * contra la tabla de tipos de comprobante del SRI — ver
@@ -147,6 +151,8 @@ public class FacturaCompraServiceImpl implements FacturaCompraService {
 	@Override
 	public java.util.Map<String, Object> anularFacturaCompra(Long idFactura, String motivo, String usuario,
 			Long idUsuario, boolean anularEnCascada) throws Throwable {
+		// U-3: lo primero, el usuario que anula existe (antes, vacío se grababa como «SISTEMA»).
+		usuario = usuarioValidacionService.validar(usuario);
 		System.out.println("=== anularFacturaCompra | idFactura=" + idFactura + " | usuario=" + usuario
 				+ " | anularEnCascada=" + anularEnCascada + " ===");
 
@@ -163,7 +169,7 @@ public class FacturaCompraServiceImpl implements FacturaCompraService {
 			return resultado;
 		}
 
-		String usuarioAnulacion = (usuario != null && !usuario.trim().isEmpty()) ? usuario.trim() : "SISTEMA";
+		String usuarioAnulacion = usuario; // validado al entrar al método
 		String motivoFinal = (motivo != null && !motivo.trim().isEmpty()) ? motivo.trim() : "Anulación manual";
 		java.time.LocalDateTime ahora = java.time.LocalDateTime.now();
 
@@ -589,7 +595,7 @@ public class FacturaCompraServiceImpl implements FacturaCompraService {
 					com.saa.rubros.TipoAsientos.FACTURAS_COMPRA,
 					factura.getFecha() != null ? factura.getFecha().toLocalDate() : java.time.LocalDate.now(),
 					obsAsiento,
-					usuario.getNombre() != null ? usuario.getNombre() : "SISTEMA");
+					usuarioValidacionService.validar(usuario)); // U-3: sin relleno
 			factura.setAsiento(asiento);
 			factura = facturaCompraDaoService.save(factura, factura.getId());
 		}

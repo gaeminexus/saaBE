@@ -303,6 +303,11 @@ public class AplicacionPagoCxpRest {
                     idFactura, idLiquidacion, valor, fecha, idEmpresa, idUsuario, observacion);
             return Response.status(Response.Status.OK).entity(resultado)
                     .type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("Error al cruzar el anticipo: " + e.getMessage())
@@ -378,6 +383,11 @@ public class AplicacionPagoCxpRest {
                     permitirOtroProveedor);
             return Response.status(Response.Status.OK).entity(resultado)
                     .type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("Error al cruzar los anticipos: " + e.getMessage())
@@ -419,6 +429,11 @@ public class AplicacionPagoCxpRest {
                     idNotaCredito, idFacturaCompra, idNotaDebito, valor, fecha, idEmpresa, idUsuario, observacion);
             return Response.status(Response.Status.OK).entity(resultado)
                     .type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity("Error al cruzar la nota de crédito: " + e.getMessage())
@@ -450,6 +465,11 @@ public class AplicacionPagoCxpRest {
                     aplicacionPagoCxpService.revertirAplicacion(id, motivo, idUsuario);
             return Response.status(Response.Status.OK).entity(resultado)
                     .type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("Error al reversar la aplicación: " + e.getMessage())

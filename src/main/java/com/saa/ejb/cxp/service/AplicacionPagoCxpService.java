@@ -369,7 +369,7 @@ public interface AplicacionPagoCxpService extends EntityService<AplicacionPagoCx
 	 * @return              : Cantidad de aplicaciones eliminadas
 	 * @throws Throwable    : Excepcion
 	 */
-	int eliminarAplicacionesDeDocumento(String tipoDocumento, Long idDocumento) throws Throwable;
+	int eliminarAplicacionesDeDocumento(String tipoDocumento, Long idDocumento, String usuario) throws Throwable;
 
 	// ── Consultas ────────────────────────────────────────────────────────────
 

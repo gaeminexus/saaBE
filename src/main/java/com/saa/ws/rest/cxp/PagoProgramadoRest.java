@@ -326,6 +326,11 @@ public class PagoProgramadoRest {
                             formaPago);
             return Response.status(Response.Status.CREATED).entity(resultado)
                     .type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("Error al registrar el pago: " + e.getMessage())
@@ -507,6 +512,11 @@ public class PagoProgramadoRest {
             return Response.status(Response.Status.CONFLICT)
                     .entity("Error al aprobar los pagos: " + e.getMessage())
                     .type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity("Error al aprobar los pagos: " + e.getMessage())
@@ -579,6 +589,11 @@ public class PagoProgramadoRest {
                     pagoProgramadoService.generarLote(idsPagos, idCuentaOrigen, idEmpresa, idUsuario);
             return Response.status(Response.Status.OK).entity(resultado)
                     .type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("Error al generar el archivo de pagos: " + e.getMessage())
@@ -637,6 +652,11 @@ public class PagoProgramadoRest {
                     pagoProgramadoService.procesarRespuestaBanco(idLote, archivo, idUsuario, fechaRespuesta);
             return Response.status(Response.Status.OK).entity(resultado)
                     .type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("Error al procesar la respuesta del banco: " + e.getMessage())
@@ -679,6 +699,11 @@ public class PagoProgramadoRest {
                     idsPagos, referencia, referenciasPorPago, fechaPago, observacion, idUsuario);
             return Response.status(Response.Status.OK).entity(resultado)
                     .type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("Error al confirmar los pagos: " + e.getMessage())
@@ -709,6 +734,11 @@ public class PagoProgramadoRest {
             Map<String, Object> resultado = pagoProgramadoService.anularPago(id, motivo, idUsuario);
             return Response.status(Response.Status.OK).entity(resultado)
                     .type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("Error al anular el pago: " + e.getMessage())
@@ -736,6 +766,11 @@ public class PagoProgramadoRest {
                     id, idCuentaDestinoTitular, idUsuario);
             return Response.status(Response.Status.OK).entity(resultado)
                     .type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (com.saa.basico.util.IncomeException e) {
             return Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage())
                     .type(MediaType.APPLICATION_JSON).build();
@@ -795,6 +830,11 @@ public class PagoProgramadoRest {
             return Response.status(Response.Status.CONFLICT)
                     .entity("Error al reversar el pago: " + e.getMessage())
                     .type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-3: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("Error al reversar el pago: " + e.getMessage())

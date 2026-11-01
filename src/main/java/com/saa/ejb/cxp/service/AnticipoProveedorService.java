@@ -137,7 +137,7 @@ public interface AnticipoProveedorService extends EntityService<AnticipoProveedo
      * @param motivo     : Motivo de la reversión
      * @throws Throwable : Excepcion
      */
-    void revertirContabilidadAnticipo(Long idAnticipo, String motivo) throws Throwable;
+    void revertirContabilidadAnticipo(Long idAnticipo, String motivo, String usuario) throws Throwable;
 
     /**
      * Igual que {@link #revertirContabilidadAnticipo(Long, String)}, con la opción de
@@ -161,7 +161,7 @@ public interface AnticipoProveedorService extends EntityService<AnticipoProveedo
      */
     void revertirContabilidadAnticipo(Long idAnticipo, String motivo, Boolean reversarAsiento,
             java.time.LocalDate fechaReverso, Long idEmpresa, com.saa.model.tsr.CuentaBancaria cuentaBancaria,
-            Double valor) throws Throwable;
+            Double valor, String usuario) throws Throwable;
 
     /**
      * Anula un anticipo SIN aceptar la reversión de cruces con facturas.

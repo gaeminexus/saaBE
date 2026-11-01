@@ -12,7 +12,7 @@ public interface NotaDebitoCompraService extends EntityService<NotaDebitoCompra>
 	 * {@code false}, se rechaza; si es {@code true}, se reversan esos cruces primero.
 	 * @param idNotaDebito		: Id de la nota de débito de compra
 	 * @param motivo			: Motivo de la anulación (vacío = "Anulación manual")
-	 * @param usuario			: Usuario que anula (vacío = "SISTEMA")
+	 * @param usuario			: Usuario que anula (obligatorio: se valida primero, sin relleno)
 	 * @param idUsuario			: Id del usuario (SCP.PJRQ), para reversar las aplicaciones
 	 * @param anularEnCascada	: true = reversar los cruces contra facturas y anular igual
 	 * @return					: Mapa con exito, mensaje, asientoAnulado y movimientosReversados
