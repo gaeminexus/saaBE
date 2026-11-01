@@ -72,8 +72,8 @@ En la consola de WildFly (`jboss-cli`) o en `standalone.xml` → `<system-proper
 
 ### Paso 4. EAR
 - Desplegar `F:\ears\asoprep\fusion\SaaEAR.ear`. Al terminar, **verificar el hash** del
-  `saaBE.war` desplegado contra el que se informa en §5: ya pasó una vez que quedó desplegado el
-  WAR viejo.
+  `saaBE.war` **y del `SaaFE.war`** desplegados contra los de §5: ya pasó una vez que quedó
+  desplegado el WAR viejo.
 
 ### Paso 5. Semillas, DESPUÉS del EAR
 
@@ -93,8 +93,10 @@ scripts de control del reproceso (`C17-02`, `348`, `349`, `reproceso-carga-352-c
 
 ### Paso 6. Arranque y pruebas de humo (con un usuario que NO sea el 1)
 1. **Log de WildFly al arrancar:** sin `ORA-00904` y sin `ClassCastException`.
-2. **Contabilidad:** abrir Períodos y Cierre de Períodos. Ver un asiento y crear uno manual de
-   prueba (después se anula).
+2. **Contabilidad:** abrir Períodos y Cierre de Períodos. Ver un asiento existente y abrir el
+   diálogo de cierre de período **sin ejecutarlo**. ⛔ **Nunca crear asientos de prueba en
+   producción para anularlos** (regla del usuario): el asiento anulado queda para siempre y gasta
+   numeración, que desde este pase es la nueva por módulo.
 3. **Cartera:** abrir el detalle de un préstamo y la consulta de cargas Petro (la 492 y la 510 se
    ven procesadas).
 4. **Cierres:** correr
@@ -102,7 +104,12 @@ scripts de control del reproceso (`C17-02`, `348`, `349`, `reproceso-carga-352-c
    Lo esperado es julio, agosto y septiembre 2026: esos meses quedan **cerrados para cartera**
    (`CARTERA_CERRADA` en cobros o cargas con afectación ahí).
 5. **Dashboard del partícipe:** columna «Mes del aporte» y fecha de caja en el ojo.
-6. **Cobro de prueba**, si contabilidad lo autoriza: la mora no devengada va a ingreso (D-017).
+6. **Plantilla 21, después del 5.2:** el SELECT de control final del
+   `crd/sql/347_LINEAS_RENDIMIENTOS_PLANTILLA_21.sql`. Lo esperado: plantilla 21 con aux1 56 →
+   2.1.01.05.02 y aux1 57 → 2.1.02.05.02, las dos al HABER. Sin esas líneas, la próxima carga Petro
+   se detiene al generar el asiento (`204a7950`).
+7. **Sin cobros ni movimientos de prueba en producción.** La regla de la mora no devengada a
+   ingreso (D-017) se verá con el primer cobro real.
 
 ### Paso 7. Vuelta atrás
 - **Si el EAR nuevo falla:** volver a desplegar el EAR anterior (`F:\ears\asoprep\arch-v2\SaaEAR.ear`).
@@ -121,6 +128,22 @@ scripts de control del reproceso (`C17-02`, `348`, `349`, `reproceso-carga-352-c
   cerrada. Para las G de octubre, primero el cierre de cartera de octubre.
 - **Cierre mensual de cartera:** con `alCorte=siempre`, cada cierre corre provisión, bandas y
   devengo de mora, y genera más asientos que hoy.
+- ⛔ **REGLA OBLIGATORIA: el cierre de cartera de octubre 2026 se PREVISUALIZA primero**
+  (`POST /cierrecartera/previsualizar` o el botón «Previsualizar» de la pantalla). Es el primer
+  cierre en producción con `alCorte=siempre`, y corre por primera vez tres pasos:
+  - (8) la provisión lleva la cuenta 1399 de una vez al nivel de la G48;
+  - (9) el ajuste de bandas iguala la contabilidad con el módulo por grupo, y la contabilidad de
+    cartera de producción nunca cuadró;
+  - (10) el devengo de mora reconoce de una vez la mora desde el 2025-05-31.
+
+  Puede generar asientos de ajuste grandes. Son temporales, porque el reproceso definitivo de la
+  contabilidad los reemplaza, pero contabilidad los va a ver en los libros.
+
+  **Contabilidad revisa los montos de (8), (9) y (10) por grupo antes de ejecutar.** Si no los
+  acepta, se cambia la propiedad sin redesplegar:
+  `/system-property=saa.cartera.alCorte:write-attribute(name=value,value=auto)`. Con eso, el
+  cierre corre en modo normal hasta el reproceso. La propiedad **no** se cambia ahora (decisión del
+  usuario: «siempre»); solo se agrega este control previo.
 - **Mora cobrada no devengada:** va a ingreso.
 - **Asientos automáticos:** desde el pase salen IN-A/EG-A/DI-A con numeración mensual por módulo.
 
@@ -135,6 +158,16 @@ scripts de control del reproceso (`C17-02`, `348`, `349`, `reproceso-carga-352-c
 ## 5. Hashes (se completan al armar el EAR)
 - EAR `F:\ears\asoprep\fusion\SaaEAR.ear`: SHA-256 `3BC673DD83125A5B7DCEB558ED55DED141ED200DC753475F066CFC2CB24765CF`
 - saaBE.war (dentro del EAR): SHA-256 `A2B76F451AFD4049CF5406B19661F35FBF7BB48F7962AA7DA9921CC3B18DB975`
+- SaaFE.war (dentro del EAR): SHA-256 `A782932649DDED0DD4178B6500C4D751D0A0072257F9C4B2AAC3DE2B72565065`
+
+## 6. Qué mandarle al agente del cuadre después del pase
+- Los hashes desplegados de saaBE.war y SaaFE.war, confirmando que coinciden con §5.
+- Cada script corrido, en orden, con la salida de sus controles ANTES y DESPUÉS, y cuáles se
+  saltaron (por ejemplo 2.0, si `CK_ANCP_TPOO` ya estaba, o 5.8, si APERTURA no hacía falta).
+- Las propiedades JVM aplicadas: salida de `/system-property=saa.cartera.alCorte:read-resource` y
+  de `/system-property=saa.cartera.inicioDevengoMora:read-resource`.
+- El resultado del humo, incluido el SELECT de `CRD.CRCT` con los meses cerrados para cartera.
+- Cualquier error del log de WildFly al arrancar.
 - Verificado dentro del WAR: `ReprocesoCargaPetroServiceImpl` y `CierrePeriodoContableServiceImpl`
   (cuadre), A1, el lector de ARCH y la glosa «pagado en» (main).
 - Vuelta atrás: `F:\ears\asoprep\arch-v2\SaaEAR.ear` (el desplegado la noche del 31-10).
