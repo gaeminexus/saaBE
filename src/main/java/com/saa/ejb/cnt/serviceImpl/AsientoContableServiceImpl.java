@@ -3393,7 +3393,9 @@ public class AsientoContableServiceImpl implements AsientoContableService {
             DetalleAsiento haberGasto = new DetalleAsiento();
             haberGasto.setPlanCuenta(pc); haberGasto.setNumeroCuenta(pc.getCuentaContable());
             haberGasto.setNombreCuenta(pc.getNombre());
-            haberGasto.setDescripcion("NC Compra reverso gasto: " + pc.getNombre());
+            // EXACTAMENTE «NC Compra reverso gasto», sin sufijo: el cargador histórico C11 identifica esta línea por equals()
+            // (CargaHistoricaDocumentoServiceImpl.DESCRIPCION_HABER_GASTO_NC_COMPRA). No cambiar el texto sin avisar al cuadre.
+            haberGasto.setDescripcion("NC Compra reverso gasto");
             haberGasto.setValorDebe(0.0); haberGasto.setValorHaber(valor);
             lineas.add(haberGasto);
         }
