@@ -1317,8 +1317,9 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
         }
         // P4-A (PLAN-CUENTAS-A-PLANTILLA-2026-11-01.md): la raiz de la cartera se LEE del rubro 250
         // (CUENTA_CARTERA_CREDITOS); sin ella el cierre se detiene, no hay raiz de respaldo. Quedan escritos a
-        // proposito, hasta P4-C, los rangos 01-04/05-08/09-12. P4-B (2026-11-01): la provision se excluye por las
+        // proposito, solo en el arranque, la madre por substring. P4-B (2026-11-01): la provision se excluye por las
         // cuentas de las lineas aux1 83 de la plantilla 37 (ParametroContableService.cuentasProvisionCartera).
+        // P4-C: el grupo Q/P/H sale de la configuracion de bandas (BNDP -> CBPR -> PRDC.TPPRCDGO), no del rango del NN.
         String raizCartera = parametroContableService.valor(CntParametroEstadoFinanciero.CUENTA_CARTERA_CREDITOS);
         if (raizCartera == null) {
             throw new IncomeException("No se puede armar el ajuste de bandas (⑨): el rubro "
@@ -1334,6 +1335,8 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
                     + CrdLineaAsiento.PROVISION_CARTERA + " (cuenta de la provision de cartera). No hay cuenta de respaldo:"
                     + " cargue la linea en la plantilla.");
         }
+        final com.saa.ejb.cnt.service.dto.GruposBandaCartera gruposBanda = porMadre ? null
+                : parametroContableService.gruposBandaCartera(solicitud.getIdEmpresa(), prefijoRaiz);
         for (Object[] fila : cierreCarteraDaoService.selectSaldoContablePorCuentaExcluyendo(solicitud.getIdEmpresa(),
                 prefijoRaiz, cuentasProvision, corte)) {
             String cuenta = (String) fila[0];
@@ -1358,13 +1361,23 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
         cuentas.addAll(objetivo.keySet());
         cuentas.addAll(proyectado.keySet());
         for (String cuenta : cuentas) {
-            String grupo = grupoBanda(cuenta, porMadre, prefijoRaiz, cuentasProvision);
+            String grupo = grupoBanda(cuenta, porMadre, prefijoRaiz, cuentasProvision, gruposBanda);
             if (grupo == null) {
                 continue;
             }
-            double diferencia = redondeaDouble(Double.valueOf(
-                    (objetivo.containsKey(cuenta) ? objetivo.get(cuenta).doubleValue() : 0D)
-                    - (proyectado.containsKey(cuenta) ? proyectado.get(cuenta).doubleValue() : 0D)));
+            double valorModulo = objetivo.containsKey(cuenta) ? objetivo.get(cuenta).doubleValue() : 0D;
+            double valorContable = proyectado.containsKey(cuenta) ? proyectado.get(cuenta).doubleValue() : 0D;
+            if (com.saa.ejb.cnt.service.dto.GruposBandaCartera.SIN_GRUPO.equals(grupo)) {
+                // P4-C: cuenta sin banda activa de un unico tipo de prestamo. Con saldo 0 (p. ej. 1.3.07, una madre
+                // usada y reversada) se ignora sin aviso; con saldo, se avisa y NO se ajusta ni se agrupa.
+                if (Math.abs(valorModulo) >= MINIMO_LINEA || Math.abs(valorContable) >= MINIMO_LINEA) {
+                    advertencias.add("⑨ cuenta " + cuenta + " sin grupo: no esta en una banda activa de un unico tipo de"
+                            + " prestamo (contabilidad " + redondea(Double.valueOf(valorContable)) + ", modulo "
+                            + redondea(Double.valueOf(valorModulo)) + "); no se ajusta.");
+                }
+                continue;
+            }
+            double diferencia = redondeaDouble(Double.valueOf(valorModulo - valorContable));
             grupos.computeIfAbsent(grupo, k -> new TreeMap<String, Double>()).put(cuenta, Double.valueOf(diferencia));
         }
 
@@ -1426,33 +1439,23 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
      * Grupo de una cuenta de capital {@code 1.3.NN.xx}: la madre {@code 1.3.NN} (arranque) o la
      * familia (01–04 quirografario, 05–08 prendario, 09–12 hipotecario). null = no es de banda.
      * P4-A: la raiz ({@code prefijoRaiz}) se lee del rubro 250. P4-B: las cuentas de la provision
-     * ({@code cuentasProvision}) salen de la plantilla 37, no del prefijo "1.3.99". Los rangos siguen escritos
-     * hasta P4-C (PLAN-CUENTAS-A-PLANTILLA-2026-11-01.md, crd/sql/359).
+     * ({@code cuentasProvision}) salen de la plantilla 37. P4-C: en el cierre mensual el grupo sale de
+     * {@code gruposBanda} (BNDP -> CBPR -> PRDC.TPPRCDGO): la letra del tipo de prestamo, o
+     * {@link com.saa.ejb.cnt.service.dto.GruposBandaCartera#SIN_GRUPO} si no se puede derivar. En el ARRANQUE
+     * ({@code porMadre}) sigue siendo la madre del codigo de cuenta ({@code 1.3.NN}).
      */
-    private String grupoBanda(String cuenta, boolean porMadre, String prefijoRaiz, List<String> cuentasProvision) {
-        if (cuenta == null || !cuenta.startsWith(prefijoRaiz) || cuentasProvision.contains(cuenta) || cuenta.length() < 9) {
+    private String grupoBanda(String cuenta, boolean porMadre, String prefijoRaiz, List<String> cuentasProvision,
+            com.saa.ejb.cnt.service.dto.GruposBandaCartera gruposBanda) {
+        if (cuenta == null || !cuenta.startsWith(prefijoRaiz) || cuentasProvision.contains(cuenta)) {
             return null;
         }
-        String madre = cuenta.substring(0, 6);
         if (porMadre) {
-            return madre;
+            if (cuenta.length() < 9) {
+                return null;
+            }
+            return cuenta.substring(0, 6);
         }
-        int nn;
-        try {
-            nn = Integer.parseInt(cuenta.substring(4, 6));
-        } catch (NumberFormatException e) {
-            return madre;
-        }
-        if (nn >= 1 && nn <= 4) {
-            return "Q";
-        }
-        if (nn >= 5 && nn <= 8) {
-            return "P";
-        }
-        if (nn >= 9 && nn <= 12) {
-            return "H";
-        }
-        return madre;
+        return gruposBanda.grupoDe(cuenta);
     }
 
     /**

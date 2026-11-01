@@ -32,6 +32,14 @@ public interface ParametroContableService {
 	 */
 	List<String> cuentasProvisionCartera(Long idEmpresa) throws Throwable;
 
+	/**
+	 * P4-C (2026-11-01): agrupación Q/P/H de las cuentas de banda de la cartera derivada de la configuración de bandas
+	 * activa de la empresa ({@code CRD.BNDP → CRD.CBPR → CRD.PRDC.TPPRCDGO}): el tipo de préstamo del producto da la
+	 * letra (1 = Q, 3 = P, 2 = H, las constantes de {@link com.saa.rubros.CrdLineaAsiento}). Solo bandas activas con
+	 * cuenta bajo {@code prefijoRaiz}. Una cuenta con tipos mixtos o con un tipo sin letra queda sin grupo.
+	 */
+	com.saa.ejb.cnt.service.dto.GruposBandaCartera gruposBandaCartera(Long idEmpresa, String prefijoRaiz);
+
 	/** La cuenta como prefijo de sus subcuentas: la misma con un punto al final si no lo trae ({@code 1.3} → {@code 1.3.}). */
 	static String comoPrefijo(String cuenta) {
 		return cuenta.endsWith(".") ? cuenta : cuenta + ".";

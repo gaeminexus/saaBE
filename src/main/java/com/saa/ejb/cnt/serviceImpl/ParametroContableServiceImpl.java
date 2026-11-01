@@ -57,6 +57,77 @@ public class ParametroContableServiceImpl implements ParametroContableService {
 	}
 
 	@Override
+	@SuppressWarnings("unchecked")
+	public com.saa.ejb.cnt.service.dto.GruposBandaCartera gruposBandaCartera(Long idEmpresa, String prefijoRaiz) {
+		com.saa.ejb.cnt.service.dto.GruposBandaCartera grupos = new com.saa.ejb.cnt.service.dto.GruposBandaCartera();
+		Query q = em.createNativeQuery(
+				" SELECT DISTINCT n.PLNNCNTA, p.TPPRCDGO, t.TPPRNMBR "
+				+ " FROM CRD.BNDP b "
+				+ " JOIN CRD.CBPR c ON c.CBPRCDGO = b.CBPRCDGO "
+				+ " JOIN CRD.PRDC p ON p.PRDCCDGO = c.PRDCCDGO "
+				+ " JOIN CNT.PLNN n ON n.PLNNCDGO = b.PLNNCDGO "
+				+ " LEFT JOIN CRD.TPPR t ON t.TPPRCDGO = p.TPPRCDGO "
+				+ " WHERE b.BNDPESTD = 1 AND c.CBPRESTD = 1 AND n.PJRQCDGO = :empresa AND n.PLNNCNTA LIKE :raiz");
+		q.setParameter("empresa", idEmpresa);
+		q.setParameter("raiz", prefijoRaiz + "%");
+		// cuenta -> tipos de préstamo distintos de los productos que la usan
+		Map<String, java.util.Set<Long>> tiposPorCuenta = new java.util.TreeMap<String, java.util.Set<Long>>();
+		Map<Long, String> nombreTipo = new HashMap<Long, String>();
+		for (Object[] f : (List<Object[]>) q.getResultList()) {
+			String cuenta = f[0] != null ? f[0].toString().trim() : null;
+			if (cuenta == null) {
+				continue;
+			}
+			Long tipo = f[1] != null ? Long.valueOf(((Number) f[1]).longValue()) : null;
+			tiposPorCuenta.computeIfAbsent(cuenta, k -> new java.util.HashSet<Long>()).add(tipo);
+			if (tipo != null && f[2] != null) {
+				nombreTipo.put(tipo, f[2].toString().trim());
+			}
+		}
+		// grupo -> cuentas (para el rótulo con la cuenta mínima y máxima leídas)
+		Map<String, java.util.TreeSet<String>> cuentasPorGrupo = new HashMap<String, java.util.TreeSet<String>>();
+		Map<String, Long> tipoPorGrupo = new HashMap<String, Long>();
+		for (Map.Entry<String, java.util.Set<Long>> e : tiposPorCuenta.entrySet()) {
+			java.util.Set<Long> tipos = e.getValue();
+			String letra = null;
+			if (tipos.size() == 1) {
+				Long tipo = tipos.iterator().next();
+				letra = tipo != null ? letraGrupo(tipo.longValue()) : null;
+				if (letra != null) {
+					tipoPorGrupo.put(letra, tipo);
+				}
+			}
+			if (letra == null) {
+				System.out.println("gruposBandaCartera: la cuenta " + e.getKey() + " queda SIN GRUPO (tipos de préstamo "
+						+ tipos + ")");
+				continue;
+			}
+			grupos.asigna(e.getKey(), letra);
+			cuentasPorGrupo.computeIfAbsent(letra, k -> new java.util.TreeSet<String>()).add(e.getKey());
+		}
+		for (Map.Entry<String, java.util.TreeSet<String>> e : cuentasPorGrupo.entrySet()) {
+			String nombre = nombreTipo.get(tipoPorGrupo.get(e.getKey()));
+			grupos.nombra(e.getKey(), (nombre != null ? nombre : e.getKey()) + " (" + e.getValue().first() + " – "
+					+ e.getValue().last() + ")");
+		}
+		return grupos;
+	}
+
+	/** Letra del grupo de un tipo de préstamo (CRD.TPPR): 1 = Q, 3 = P, 2 = H; null si no tiene. */
+	private static String letraGrupo(long tipoPrestamo) {
+		if (tipoPrestamo == CrdLineaAsiento.TIPO_PRESTAMO_QUIROGRAFARIO) {
+			return "Q";
+		}
+		if (tipoPrestamo == CrdLineaAsiento.TIPO_PRESTAMO_PRENDARIO) {
+			return "P";
+		}
+		if (tipoPrestamo == CrdLineaAsiento.TIPO_PRESTAMO_HIPOTECARIO) {
+			return "H";
+		}
+		return null;
+	}
+
+	@Override
 	public List<String> cuentasProvisionCartera(Long idEmpresa) throws Throwable {
 		LinkedHashSet<String> cuentas = new LinkedHashSet<String>();
 		Long idPlantilla = plantillaService.codigoByAlterno(PlantillasCredito.PROVISION_CARTERA, idEmpresa);

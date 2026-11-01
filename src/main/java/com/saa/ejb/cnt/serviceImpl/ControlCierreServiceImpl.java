@@ -13,6 +13,7 @@ import com.saa.ejb.cnt.dao.DetallePlantillaDaoService;
 import com.saa.ejb.cnt.service.ControlCierreService;
 import com.saa.ejb.cnt.service.ParametroContableService;
 import com.saa.ejb.cnt.service.PlantillaService;
+import com.saa.ejb.cnt.service.dto.GruposBandaCartera;
 import com.saa.model.cnt.DetallePlantilla;
 import com.saa.rubros.CntParametroEstadoFinanciero;
 import com.saa.rubros.CrdLineaAsiento;
@@ -219,7 +220,20 @@ public class ControlCierreServiceImpl implements ControlCierreService {
                     "Cartera del módulo vs contabilidad por grupo al " + corte, idEmpresa));
             return;
         }
-        Map<String, Double> contable = capitalContablePorGrupo(idEmpresa, corteSig, prefijoRaiz, cuentasProvision);
+        // P4-C: el grupo Q/P/H sale de la configuración de bandas (BNDP → CBPR → PRDC.TPPRCDGO), una vez por control.
+        GruposBandaCartera gruposBanda = parametroContableService.gruposBandaCartera(idEmpresa, prefijoRaiz);
+        Map<String, Double> contable = capitalContablePorGrupo(idEmpresa, corteSig, prefijoRaiz, cuentasProvision, gruposBanda);
+        Double contableSinGrupo = contable.remove(GruposBandaCartera.SIN_GRUPO);
+        if (contableSinGrupo != null) {
+            ControlCierre sg = new ControlCierre("CARTERA", "CARTERA_SIN_GRUPO",
+                    "Cuentas de cartera sin grupo derivable de las bandas, con saldo contable");
+            sg.setValor(redondea(contableSinGrupo));
+            sg.setEstado(ControlCierre.ADVERTENCIA);
+            sg.setDetalle("Hay " + fmt(contableSinGrupo) + " de saldo contable en cuentas " + raiz + " que no están en una"
+                    + " banda activa de un único tipo de préstamo (CRD.BNDP/CBPR/PRDC): no entran a ningún grupo Q/P/H."
+                    + " Revise la configuración de bandas.");
+            controles.add(sg);
+        }
         Long idCorrida = estado != null ? estado.getIdCorridaCartera() : null;
         if (idCorrida == null) {
             ControlCierre c = new ControlCierre("CARTERA", "CARTERA_NO_CERRADA",
@@ -246,12 +260,25 @@ public class ControlCierreServiceImpl implements ControlCierreService {
         double sinCuenta = 0D;
         for (Object fila : q.getResultList()) {
             Object[] f = (Object[]) fila;
-            String grupo = grupoBanda(f[0] != null ? f[0].toString() : null, prefijoRaiz, cuentasProvision);
+            String grupo = grupoBanda(f[0] != null ? f[0].toString() : null, prefijoRaiz, cuentasProvision, gruposBanda);
             if (grupo == null) {
                 sinCuenta += aDouble(f[1]);
                 continue;
             }
+            if (GruposBandaCartera.SIN_GRUPO.equals(grupo) && Math.abs(aDouble(f[1])) < TOLERANCIA) {
+                continue; // sin grupo y sin capital: se ignora sin aviso (P4-C)
+            }
             modulo.merge(grupo, aDouble(f[1]), Double::sum);
+        }
+        Double moduloSinGrupo = modulo.remove(GruposBandaCartera.SIN_GRUPO);
+        if (moduloSinGrupo != null) {
+            ControlCierre sg = new ControlCierre("CARTERA", "CARTERA_SIN_GRUPO_MODULO",
+                    "Capital del módulo en bandas sin grupo derivable");
+            sg.setValor(redondea(moduloSinGrupo));
+            sg.setEstado(ControlCierre.ADVERTENCIA);
+            sg.setDetalle("La corrida " + idCorrida + " tiene " + fmt(moduloSinGrupo) + " de capital en cuentas " + raiz
+                    + " que no están en una banda activa de un único tipo de préstamo: no entran a ningún grupo Q/P/H.");
+            controles.add(sg);
         }
         java.util.Set<String> grupos = new java.util.TreeSet<String>();
         grupos.addAll(modulo.keySet());
@@ -260,7 +287,7 @@ public class ControlCierreServiceImpl implements ControlCierreService {
             double cnt = valor(contable, grupo);
             double mod = valor(modulo, grupo);
             ControlCierre c = new ControlCierre("CARTERA", "CARTERA_GRUPO_" + grupo,
-                    "Cartera grupo " + grupo + " (" + nombreGrupo(grupo) + "): contabilidad vs módulo al " + corte);
+                    "Cartera grupo " + grupo + " (" + gruposBanda.nombreDe(grupo) + "): contabilidad vs módulo al " + corte);
             compara(c, cnt, mod, "Contabilidad " + raiz + " (sin la provisión) " + fmt(cnt) + "; módulo (corrida de cierre " + idCorrida
                     + ", CRD.BDCC) " + fmt(mod) + ". La diferencia es la que el ⑨ deja en la banda .25 del grupo hasta"
                     + " explicarla o decidirla (D-011).");
@@ -281,11 +308,11 @@ public class ControlCierreServiceImpl implements ControlCierreService {
     /**
      * Capital contable de cartera (raíz sin la provisión) por grupo Q/P/H, la misma agrupación del ⑨ mensual.
      * P4-A: la raíz ({@code prefijoRaiz}, hoy «1.3.») se lee del rubro 250. P4-B: la provisión se excluye por las
-     * cuentas de la plantilla 37 ({@code cuentasProvision}). Quedan escritos, hasta P4-C, los rangos
-     * 01-04/05-08/09-12 de {@link #grupoBanda}: ver PLAN-CUENTAS-A-PLANTILLA-2026-11-01.md y crd/sql/359.
+     * cuentas de la plantilla 37 ({@code cuentasProvision}). P4-C: el grupo sale de {@code gruposBanda}; las cuentas
+     * sin grupo se acumulan bajo {@link GruposBandaCartera#SIN_GRUPO} solo si tienen saldo (con saldo 0 se ignoran).
      */
     private Map<String, Double> capitalContablePorGrupo(Long idEmpresa, LocalDate corteSig, String prefijoRaiz,
-            List<String> cuentasProvision) {
+            List<String> cuentasProvision, GruposBandaCartera gruposBanda) {
         Query q = em.createNativeQuery(
                 " SELECT d.DTASCNTA, SUM(NVL(d.DTASDBEE, 0)) - SUM(NVL(d.DTASHBRR, 0)) "
                 + " FROM CNT.DTAS d JOIN CNT.ASNT a ON a.ASNTCDGO = d.ASNTCDGO "
@@ -298,8 +325,11 @@ public class ControlCierreServiceImpl implements ControlCierreService {
         Map<String, Double> grupos = new TreeMap<String, Double>();
         for (Object fila : q.getResultList()) {
             Object[] f = (Object[]) fila;
-            String grupo = grupoBanda(f[0] != null ? f[0].toString() : null, prefijoRaiz, cuentasProvision);
+            String grupo = grupoBanda(f[0] != null ? f[0].toString() : null, prefijoRaiz, cuentasProvision, gruposBanda);
             if (grupo != null) {
+                if (GruposBandaCartera.SIN_GRUPO.equals(grupo) && Math.abs(aDouble(f[1])) < TOLERANCIA) {
+                    continue; // sin grupo y con saldo 0 (p. ej. 1.3.07): se ignora sin aviso
+                }
                 grupos.merge(grupo, aDouble(f[1]), Double::sum);
             }
         }
@@ -307,46 +337,16 @@ public class ControlCierreServiceImpl implements ControlCierreService {
     }
 
     /**
-     * Grupo de la cuenta de banda, igual que {@code CierreCarteraServiceImpl.grupoBanda} en el cierre mensual:
-     * 1.3.01–04 = Q (quirografarios), 1.3.05–08 = P (prendarios), 1.3.09–12 = H (hipotecarios); otra madre
-     * queda como su propio grupo; la provisión no entra. P4-A: la raíz ({@code prefijoRaiz}) se lee del rubro 250.
-     * P4-B: las cuentas de la provisión ({@code cuentasProvision}) salen de la plantilla 37. Los rangos siguen
-     * escritos hasta P4-C (PLAN-CUENTAS-A-PLANTILLA, crd/sql/359).
+     * Grupo de la cuenta de banda, el mismo del ⑨ mensual ({@code CierreCarteraServiceImpl.grupoBanda}): la letra que
+     * da {@code gruposBanda} (P4-C, BNDP → CBPR → PRDC.TPPRCDGO) o {@link GruposBandaCartera#SIN_GRUPO}; {@code null}
+     * si la cuenta no es de la raíz de cartera o es de la provisión (P4-A, P4-B).
      */
-    private static String grupoBanda(String cuenta, String prefijoRaiz, List<String> cuentasProvision) {
-        if (cuenta == null || !cuenta.startsWith(prefijoRaiz) || cuentasProvision.contains(cuenta) || cuenta.length() < 6) {
+    private static String grupoBanda(String cuenta, String prefijoRaiz, List<String> cuentasProvision,
+            GruposBandaCartera gruposBanda) {
+        if (cuenta == null || !cuenta.startsWith(prefijoRaiz) || cuentasProvision.contains(cuenta)) {
             return null;
         }
-        String madre = cuenta.substring(0, 6);
-        int nn;
-        try {
-            nn = Integer.parseInt(cuenta.substring(4, 6));
-        } catch (NumberFormatException e) {
-            return madre;
-        }
-        if (nn >= 1 && nn <= 4) {
-            return "Q";
-        }
-        if (nn >= 5 && nn <= 8) {
-            return "P";
-        }
-        if (nn >= 9 && nn <= 12) {
-            return "H";
-        }
-        return madre;
-    }
-
-    private static String nombreGrupo(String grupo) {
-        if ("Q".equals(grupo)) {
-            return "1.3.01–1.3.04";
-        }
-        if ("P".equals(grupo)) {
-            return "1.3.05–1.3.08";
-        }
-        if ("H".equals(grupo)) {
-            return "1.3.09–1.3.12";
-        }
-        return grupo;
+        return gruposBanda.grupoDe(cuenta);
     }
 
     // =====================================================================

@@ -93,3 +93,14 @@ estado financiero por rubro 250). Los literales están concentrados en 4 archivo
 - **`crd/sql/356` corrido en producción (2026-11-01):** 37/85/1 = 1.3.01.25, 37/85/2 = 1.3.09.25,
   37/85/3 = 1.3.05.25 y la plantilla nueva 38 con la línea 1 = 4.8.90.90.35. **Todos los prerrequisitos
   de base del siguiente EAR están cumplidos** (356, c20-02, c20-01).
+- **P4-C** hecho: el grupo Q/P/H de una cuenta de banda sale de la configuración de bandas
+  (`CRD.BNDP → CBPR → PRDC.TPPRCDGO`; tipo 1 = Q, 3 = P, 2 = H) con un helper único,
+  `ParametroContableService.gruposBandaCartera` más el DTO `GruposBandaCartera`, que comparten el ⑨ y
+  `ControlCierre`.
+  - Las cuentas con tipos mixtos o fuera de una banda activa quedan «sin grupo»: con saldo 0 se
+    ignoran (1.3.07); con saldo, advertencia, no se ajusta y no se agrupa (`CARTERA_SIN_GRUPO` /
+    `CARTERA_SIN_GRUPO_MODULO`).
+  - El rótulo es el nombre del tipo más la cuenta mínima y máxima leídas.
+  - Ya no quedan rangos 01-04/05-08/09-12 ni `nombreGrupo` escritos.
+  - **A vigilar:** desactivar una banda con saldo vigente o crear un producto con un tipo de préstamo
+    distinto de 1/2/3 deja esas cuentas sin grupo (advertencia en el cierre).
