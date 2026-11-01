@@ -157,6 +157,21 @@ public interface CrdLineaAsiento {
 	public static final int APORTES_CESANTIA_RETIRO_VOLUNTARIO = 55;
 
 	/**
+	 * Aporte tipo 12 (RENDIMIENTO CESANTIA PERSONAL), plantilla 21. Pasivo
+	 * {@code 2.1.01.05.02 RENDIMIENTOS PERSONALES CESANTIA} — la misma que {@code CRD.CTAP} del
+	 * tipo 12 y la que usan los asientos de rendimientos y la apertura del 31-may-2025 (B17 210105).
+	 * C4, 29-oct-2026; la línea la crea {@code docs/logica-negocio/crd/sql/335_LINEAS_RENDIMIENTOS_PLANTILLA_21.sql}.
+	 */
+	public static final int RENDIMIENTOS_CESANTIA_PERSONAL = 56;
+
+	/**
+	 * Aporte tipo 24 (RENDIMIENTO JUBILACION PERSONAL), plantilla 21. Pasivo
+	 * {@code 2.1.02.05.02 RENDIMIENTOS PERSONALES JUBILACION} (CRD.CTAP del tipo 24). Ver
+	 * {@link #RENDIMIENTOS_CESANTIA_PERSONAL}.
+	 */
+	public static final int RENDIMIENTOS_JUBILACION_PERSONAL = 57;
+
+	/**
 	 * Seguro de préstamo HIPOTECARIO. Activo, {@code 1.4.90.15.02}. Sin dimensión de tipo de
 	 * préstamo propia (a diferencia de intereses): cada tipo con seguro de incendio tiene su
 	 * propio código de línea, no un aux2.
@@ -208,6 +223,15 @@ public interface CrdLineaAsiento {
 	 */
 	public static final int PROVISION_INTERESES = 81;
 
+	/** C15 — DEBE del gasto por provisión de cartera (4.7.04.xx). Plantilla alterno 37, por tipo de préstamo. */
+	public static final int PROVISION_CARTERA_GASTO = 82;
+
+	/** C15 — provisión de cartera 1.3.99.xx (HABER al constituir, DEBE al reversar). Plantilla 37. */
+	public static final int PROVISION_CARTERA = 83;
+
+	/** C15 — contrapartida HABER cuando la provisión requerida baja (reverso/recuperación; cuenta del contador). Plantilla 37. */
+	public static final int PROVISION_CARTERA_REVERSO = 84;
+
 	// ── Cuadre ──────────────────────────────────────────────────────────────
 
 	/**
@@ -217,5 +241,29 @@ public interface CrdLineaAsiento {
 	 * cada asiento entre las que ya armó.
 	 */
 	public static final int CUADRE = 90;
+
+	/**
+	 * Línea de la plantilla 21 (aplicación Petro/ARCH y liquidaciones) para un tipo de aporte
+	 * (CRD.TPAP.TPAPCDGO), o {@code null} si el tipo no tiene línea parametrizada. Es el mismo
+	 * mapa que {@code CRD.CTAP} (cuenta de pasivo por tipo): 11 → 50, 9 → 51, 2 → 52, 23 → 53,
+	 * 22 → 54, 21 → 55, 12 → 56, 24 → 57. Lo usa el asiento de aplicación de la carga Petro para
+	 * que TODO aporte creado por la aplicación tenga su línea (C4, 29-oct-2026).
+	 */
+	public static Integer aux1ParaTipoAporte(Long idTipoAporte) {
+		if (idTipoAporte == null) {
+			return null;
+		}
+		switch (idTipoAporte.intValue()) {
+		case 11: return APORTES_CESANTIA;
+		case 9: return APORTES_JUBILACION;
+		case 2: return APORTE_ADICIONAL_PERSONAL;
+		case 23: return APORTES_PENSION_COMPLEMENTARIA;
+		case 22: return APORTES_JUBILACION_RETIRO_VOLUNTARIO;
+		case 21: return APORTES_CESANTIA_RETIRO_VOLUNTARIO;
+		case 12: return RENDIMIENTOS_CESANTIA_PERSONAL;
+		case 24: return RENDIMIENTOS_JUBILACION_PERSONAL;
+		default: return null;
+		}
+	}
 
 }

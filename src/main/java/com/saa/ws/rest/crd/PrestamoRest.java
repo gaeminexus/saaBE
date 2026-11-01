@@ -74,11 +74,19 @@ public class PrestamoRest {
     @EJB
     private PrestamoService prestamoService;
 
+    /** C15 / D-018: listado de préstamos aprobados sin asiento de entrega. */
+    @EJB
+    private com.saa.ejb.crd.dao.CierreCarteraDaoService cierreCarteraDaoService;
+
     @EJB
     private com.saa.ejb.crd.service.SustitucionPrestamoService sustitucionPrestamoService;
 
     @EJB
     private ProcesoPagoPrestamoService procesoPagoPrestamoService;
+
+    /** C17: mes cerrado para cartera / contabilidad (CIERRES-BLOQUEANTES.md). */
+    @EJB
+    private com.saa.ejb.cnt.service.EstadoCierreService estadoCierreService;
 
     @EJB
     private AbonoCapitalPrestamoService abonoCapitalPrestamoService;
@@ -389,9 +397,13 @@ public class PrestamoRest {
         String observacion = solicitud != null ? solicitud.getObservacion() : null;
         Long idEmpresa = solicitud != null ? solicitud.getIdEmpresa() : null;
         Long idUsuario = solicitud != null ? solicitud.getIdUsuario() : null;
-        System.out.println("APROBAR PRÉSTAMO - ID: " + id + ", Usuario: " + usuario);
+        // C6: fechaContable opcional (yyyy-MM-dd) para re-procesar meses pasados; null = hoy.
+        java.time.LocalDate fechaContable = solicitud != null ? solicitud.getFechaContable() : null;
+        System.out.println("APROBAR PRÉSTAMO - ID: " + id + ", Usuario: " + usuario
+            + (fechaContable != null ? ", Fecha contable: " + fechaContable : ""));
         try {
-            Prestamo prestamo = prestamoService.aprobar(id, usuario, observacion, idEmpresa, idUsuario);
+            Prestamo prestamo = prestamoService.aprobar(id, usuario, observacion, idEmpresa, idUsuario,
+                fechaContable);
             return Response.status(Response.Status.OK)
                     .entity(prestamo)
                     .type(MediaType.APPLICATION_JSON)
@@ -406,6 +418,219 @@ public class PrestamoRest {
                     .type(MediaType.APPLICATION_JSON)
                     .build();
         }
+    }
+
+    /**
+     * C15 / D-018 (H6): préstamos aprobados SIN asiento de entrega con fecha de inicio en el rango.
+     * GET /prst/sinAsientoEntrega?desde=2025-06-01&hasta=2025-06-30
+     * Filas: [idPrestamo, idAsoprep, fechaInicio, monto, idEstado, esSustitucion(0/1)].
+     */
+    @GET
+    @Path("/sinAsientoEntrega")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response sinAsientoEntrega(@QueryParam("desde") String desde, @QueryParam("hasta") String hasta) {
+        System.out.println("LLEGA AL SERVICIO GET prst/sinAsientoEntrega - desde: " + desde + " - hasta: " + hasta);
+        try {
+            return Response.status(Response.Status.OK)
+                    .entity(cierreCarteraDaoService.selectPrestamosSinAsientoEntrega(
+                            java.time.LocalDate.parse(desde), java.time.LocalDate.parse(hasta)))
+                    .type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al listar prestamos sin asiento de entrega: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /**
+     * C15 / D-018 (H6) + C16 / D-021: contabiliza el desembolso de UN préstamo aprobado sin asiento
+     * de entrega (asiento de entrega por el bruto + precancelación del préstamo anterior pagada con el
+     * nuevo + otros descuentos + orden de pago confirmada con egreso por el NETO), con la fecha del
+     * desembolso real del extracto. Idempotente por préstamo.
+     * Body: { idPrestamo, idEmpresa, idUsuario, usuario, fechaContable: "2025-06-09",
+     *         idCuentaBancaria, valor (NETO), referencia,
+     *         idPrestamoCancelado?, capitalCancelado?, interesCancelado?, seguroCancelado?,
+     *         otrosDescuentos?: [ { concepto, valor, cuenta } ] }
+     * Regla: monto del préstamo = valor + capital + interés + seguro + otros, al centavo.
+     * Ver docs/logica-negocio/crd/DESEMBOLSO-NETO-CON-PRECANCELACION.md.
+     */
+    @POST
+    @Path("/contabilizarDesembolso")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response contabilizarDesembolso(SolicitudDesembolsoHistorico solicitud) {
+        System.out.println("LLEGA AL SERVICIO POST prst/contabilizarDesembolso - prestamo: "
+                + (solicitud != null ? solicitud.getIdPrestamo() : null));
+        try {
+            return Response.status(Response.Status.OK)
+                    .entity(contabilizarItemDesembolso(solicitud, null))
+                    .type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            if (e instanceof com.saa.basico.util.IncomeException) {
+                return respuestaErrorNegocio(e);
+            }
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al contabilizar el desembolso: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
+    /** Un ítem (unitario o del lote): los datos de cabecera del lote completan los que falten. */
+    private java.util.Map<String, Object> contabilizarItemDesembolso(SolicitudDesembolsoHistorico item,
+            LoteDesembolsoHistorico lote) throws Throwable {
+        return prestamoService.contabilizarDesembolsoHistorico(item.getIdPrestamo(),
+                item.getIdEmpresa() != null ? item.getIdEmpresa() : (lote != null ? lote.getIdEmpresa() : null),
+                item.getIdUsuario() != null ? item.getIdUsuario() : (lote != null ? lote.getIdUsuario() : null),
+                item.getUsuario() != null ? item.getUsuario() : (lote != null ? lote.getUsuario() : null),
+                item.getFechaContable(), item.getIdCuentaBancaria(), item.getValor(), item.getReferencia(),
+                item.getIdPrestamoCancelado(), item.getCapitalCancelado(), item.getInteresCancelado(),
+                item.getSeguroCancelado(), item.getOtrosDescuentos());
+    }
+
+    private static double centavos(Object valor) {
+        double v = valor instanceof Number ? ((Number) valor).doubleValue() : 0.0;
+        return java.math.BigDecimal.valueOf(v).setScale(2, java.math.RoundingMode.HALF_UP).doubleValue();
+    }
+
+    /**
+     * C15 / D-018 (H6) + C16 / D-021: lote. Cada préstamo en SU PROPIA transacción (una falla no
+     * tumba el resto). Idempotente: se puede volver a mandar el mismo lote.
+     * Body: { idEmpresa, idUsuario, usuario, items: [ ítem de /contabilizarDesembolso, ... ] }
+     * Respuesta: { items: [ resultado o error por ítem ], controlPorReferencia: [ { referencia,
+     *   items, itemsOk, sumaNetos, sumaNetosOk } ], totales: { items, ok, error, bruto, neto,
+     *   capitalCancelado, interesCancelado, seguroCancelado, otrosDescuentos } } (totales de los ok).
+     */
+    @POST
+    @Path("/contabilizarDesembolsos")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response contabilizarDesembolsos(LoteDesembolsoHistorico lote) {
+        System.out.println("LLEGA AL SERVICIO POST prst/contabilizarDesembolsos - items: "
+                + (lote != null && lote.getItems() != null ? lote.getItems().size() : 0));
+        java.util.List<java.util.Map<String, Object>> resultados = new java.util.ArrayList<>();
+        java.util.Map<String, java.util.Map<String, Object>> porReferencia = new java.util.LinkedHashMap<>();
+        java.util.Map<String, Object> totales = new java.util.LinkedHashMap<>();
+        String[] conceptos = { "bruto", "neto", "capitalCancelado", "interesCancelado", "seguroCancelado",
+                "otrosDescuentos" };
+        int ok = 0;
+        int error = 0;
+        for (String concepto : conceptos) {
+            totales.put(concepto, 0.0);
+        }
+        if (lote != null && lote.getItems() != null) {
+            for (SolicitudDesembolsoHistorico item : lote.getItems()) {
+                java.util.Map<String, Object> fila;
+                boolean filaOk;
+                try {
+                    fila = contabilizarItemDesembolso(item, lote);
+                    fila.put("ok", Boolean.TRUE);
+                    filaOk = true;
+                    ok++;
+                    for (String concepto : conceptos) {
+                        totales.put(concepto, centavos(centavos(totales.get(concepto)) + centavos(fila.get(concepto))));
+                    }
+                } catch (Throwable e) {
+                    fila = new java.util.LinkedHashMap<>();
+                    fila.put("idPrestamo", item.getIdPrestamo());
+                    fila.put("ok", Boolean.FALSE);
+                    fila.put("error", e.getMessage());
+                    filaOk = false;
+                    error++;
+                }
+                resultados.add(fila);
+                String referencia = item.getReferencia() != null ? item.getReferencia() : "(sin referencia)";
+                java.util.Map<String, Object> control = porReferencia.get(referencia);
+                if (control == null) {
+                    control = new java.util.LinkedHashMap<>();
+                    control.put("referencia", referencia);
+                    control.put("items", 0);
+                    control.put("itemsOk", 0);
+                    control.put("sumaNetos", 0.0);
+                    control.put("sumaNetosOk", 0.0);
+                    porReferencia.put(referencia, control);
+                }
+                control.put("items", ((Number) control.get("items")).intValue() + 1);
+                control.put("sumaNetos", centavos(centavos(control.get("sumaNetos")) + centavos(item.getValor())));
+                if (filaOk) {
+                    control.put("itemsOk", ((Number) control.get("itemsOk")).intValue() + 1);
+                    control.put("sumaNetosOk", centavos(centavos(control.get("sumaNetosOk")) + centavos(fila.get("neto"))));
+                }
+            }
+        }
+        totales.put("items", ok + error);
+        totales.put("ok", ok);
+        totales.put("error", error);
+        java.util.Map<String, Object> respuesta = new java.util.LinkedHashMap<>();
+        respuesta.put("items", resultados);
+        respuesta.put("controlPorReferencia", new java.util.ArrayList<>(porReferencia.values()));
+        respuesta.put("totales", totales);
+        return Response.status(Response.Status.OK).entity(respuesta).type(MediaType.APPLICATION_JSON).build();
+    }
+
+    /** C15 / D-018 + C16 / D-021: un desembolso histórico a contabilizar. */
+    public static class SolicitudDesembolsoHistorico {
+        private Long idPrestamo;
+        private Long idEmpresa;
+        private Long idUsuario;
+        private String usuario;
+        private java.time.LocalDate fechaContable;
+        private Long idCuentaBancaria;
+        /** C16: NETO transferido por el banco. */
+        private Double valor;
+        private String referencia;
+        /** C16 (D-021): préstamo anterior del mismo partícipe cancelado con este desembolso. */
+        private Long idPrestamoCancelado;
+        private Double capitalCancelado;
+        private Double interesCancelado;
+        private Double seguroCancelado;
+        private java.util.List<com.saa.ejb.crd.service.dto.DescuentoDesembolso> otrosDescuentos;
+
+        public Long getIdPrestamoCancelado() { return idPrestamoCancelado; }
+        public void setIdPrestamoCancelado(Long idPrestamoCancelado) { this.idPrestamoCancelado = idPrestamoCancelado; }
+        public Double getCapitalCancelado() { return capitalCancelado; }
+        public void setCapitalCancelado(Double capitalCancelado) { this.capitalCancelado = capitalCancelado; }
+        public Double getInteresCancelado() { return interesCancelado; }
+        public void setInteresCancelado(Double interesCancelado) { this.interesCancelado = interesCancelado; }
+        public Double getSeguroCancelado() { return seguroCancelado; }
+        public void setSeguroCancelado(Double seguroCancelado) { this.seguroCancelado = seguroCancelado; }
+        public java.util.List<com.saa.ejb.crd.service.dto.DescuentoDesembolso> getOtrosDescuentos() { return otrosDescuentos; }
+        public void setOtrosDescuentos(java.util.List<com.saa.ejb.crd.service.dto.DescuentoDesembolso> otrosDescuentos) {
+            this.otrosDescuentos = otrosDescuentos;
+        }
+
+        public Long getIdPrestamo() { return idPrestamo; }
+        public void setIdPrestamo(Long idPrestamo) { this.idPrestamo = idPrestamo; }
+        public Long getIdEmpresa() { return idEmpresa; }
+        public void setIdEmpresa(Long idEmpresa) { this.idEmpresa = idEmpresa; }
+        public Long getIdUsuario() { return idUsuario; }
+        public void setIdUsuario(Long idUsuario) { this.idUsuario = idUsuario; }
+        public String getUsuario() { return usuario; }
+        public void setUsuario(String usuario) { this.usuario = usuario; }
+        public java.time.LocalDate getFechaContable() { return fechaContable; }
+        public void setFechaContable(java.time.LocalDate fechaContable) { this.fechaContable = fechaContable; }
+        public Long getIdCuentaBancaria() { return idCuentaBancaria; }
+        public void setIdCuentaBancaria(Long idCuentaBancaria) { this.idCuentaBancaria = idCuentaBancaria; }
+        public Double getValor() { return valor; }
+        public void setValor(Double valor) { this.valor = valor; }
+        public String getReferencia() { return referencia; }
+        public void setReferencia(String referencia) { this.referencia = referencia; }
+    }
+
+    /** C15 / D-018: lote de desembolsos históricos. */
+    public static class LoteDesembolsoHistorico {
+        private Long idEmpresa;
+        private Long idUsuario;
+        private String usuario;
+        private java.util.List<SolicitudDesembolsoHistorico> items;
+
+        public Long getIdEmpresa() { return idEmpresa; }
+        public void setIdEmpresa(Long idEmpresa) { this.idEmpresa = idEmpresa; }
+        public Long getIdUsuario() { return idUsuario; }
+        public void setIdUsuario(Long idUsuario) { this.idUsuario = idUsuario; }
+        public String getUsuario() { return usuario; }
+        public void setUsuario(String usuario) { this.usuario = usuario; }
+        public java.util.List<SolicitudDesembolsoHistorico> getItems() { return items; }
+        public void setItems(java.util.List<SolicitudDesembolsoHistorico> items) { this.items = items; }
     }
 
     /**
@@ -669,6 +894,11 @@ public class PrestamoRest {
         }
 
         try {
+            // C17: el pago manual directo (no el que llega desde CBCR, que valida su fecha de afectación)
+            // se fecha con fechaPago (evento, PGPR y asiento): su mes tiene que estar abierto.
+            estadoCierreService.validarMovimientoCartera(solicitud.getIdEmpresa(),
+                    solicitud.getFechaPago() != null ? solicitud.getFechaPago() : java.time.LocalDate.now(),
+                    "pagos de cuota");
             ResultadoAplicacionPago resultado = procesoPagoPrestamoService.pagarCuota(solicitud);
 
             String mensaje = "Pago aplicado por $" + resultado.getValorAplicado()
@@ -729,6 +959,13 @@ public class PrestamoRest {
         }
 
         try {
+            // C17: cada renglón se fecha con su fechaPago.
+            for (SolicitudPagoCuota pago : solicitud.getPagos()) {
+                estadoCierreService.validarMovimientoCartera(
+                        pago.getIdEmpresa() != null ? pago.getIdEmpresa() : solicitud.getIdEmpresa(),
+                        pago.getFechaPago() != null ? pago.getFechaPago() : java.time.LocalDate.now(),
+                        "pagos de cuota (préstamo " + pago.getIdPrestamo() + ")");
+            }
             ResultadoPagoMultiple resultado = procesoPagoPrestamoService.pagarMultiplesCuotas(solicitud);
 
             String mensaje = "Pago aplicado por $" + resultado.getValorTotalAplicado()
@@ -915,6 +1152,8 @@ public class PrestamoRest {
      * @param idPrestamo Préstamo
      * @param valor      Monto del abono
      * @param modalidad  1 = mantiene la cuota y reduce el plazo; 2 = mantiene el plazo y reduce la cuota
+     * @param fecha      D-048 (opcional, yyyy-MM-dd): fecha del abono; si falta, hoy
+     * @param reproceso  D-048 (opcional): true = "al día" a {@code fecha} (re-proceso de un mes pasado)
      * @return 200 con la SimulacionAbonoCapital
      */
     @GET
@@ -922,7 +1161,9 @@ public class PrestamoRest {
     @Produces(MediaType.APPLICATION_JSON)
     public Response simularAbonoCapital(@PathParam("idPrestamo") Long idPrestamo,
                                         @QueryParam("valor") Double valor,
-                                        @QueryParam("modalidad") Integer modalidad) {
+                                        @QueryParam("modalidad") Integer modalidad,
+                                        @QueryParam("fecha") String fecha,
+                                        @QueryParam("reproceso") Boolean reproceso) {
         System.out.println("LLEGA AL SERVICIO SIMULAR ABONO CAPITAL - Préstamo: " + idPrestamo
             + " - Valor: " + valor + " - Modalidad: " + modalidad);
 
@@ -938,10 +1179,19 @@ public class PrestamoRest {
             return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
                 "Debe indicar la modalidad (1 o 2)", null);
         }
+        java.time.LocalDate fechaAbono = null;
+        if (fecha != null && !fecha.trim().isEmpty()) {
+            try {
+                fechaAbono = java.time.LocalDate.parse(fecha.trim());
+            } catch (Exception e) {
+                return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
+                    "La fecha debe tener el formato yyyy-MM-dd", null);
+            }
+        }
 
         try {
-            SimulacionAbonoCapital simulacion =
-                abonoCapitalPrestamoService.simular(idPrestamo, valor, modalidad);
+            SimulacionAbonoCapital simulacion = abonoCapitalPrestamoService.simular(idPrestamo, valor, modalidad,
+                fechaAbono, Boolean.TRUE.equals(reproceso));
 
             Map<String, Object> cuerpo = new LinkedHashMap<>();
             cuerpo.put("exito", Boolean.TRUE);
@@ -1187,7 +1437,9 @@ public class PrestamoRest {
             return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
                 "Debe indicar el préstamo (idPrestamo)", "PARAMETRO_INVALIDO");
         }
-        if (solicitud.getModalidad() == null || (solicitud.getModalidad() != 1 && solicitud.getModalidad() != 2)) {
+        // C16b: con regenerarTabla = false no hay modalidad (la tabla no se re-amortiza).
+        if (!Boolean.FALSE.equals(solicitud.getRegenerarTabla())
+                && (solicitud.getModalidad() == null || (solicitud.getModalidad() != 1 && solicitud.getModalidad() != 2))) {
             return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
                 "La modalidad es obligatoria y debe ser 1 (reduce plazo) o 2 (reduce cuota)", "PARAMETRO_INVALIDO");
         }
@@ -1637,7 +1889,9 @@ public class PrestamoRest {
         "PARAMETRO_INVALIDO",
         // API-FECHA-AFECTACION-COBRO.md §2bis (precancelación con fecha de afectación)
         "FECHA_AFECTACION_OBLIGATORIA", "FECHA_AFECTACION_MENOR_A_PAGO", "FECHA_AFECTACION_FUTURA",
-        "PERIODO_CERRADO");
+        "PERIODO_CERRADO",
+        // C17 CIERRES-BLOQUEANTES.md: mes cerrado para cartera
+        "CARTERA_CERRADA");
 
     /**
      * Mapea la excepción de un proceso de pago al status HTTP de §8, usando el CÓDIGO con el

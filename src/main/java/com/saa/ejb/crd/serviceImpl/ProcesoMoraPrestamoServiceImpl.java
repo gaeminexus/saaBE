@@ -46,6 +46,10 @@ public class ProcesoMoraPrestamoServiceImpl implements ProcesoMoraPrestamoServic
     @EJB
     private DetallePrestamoDaoService detallePrestamoDaoService;
 
+    /** C17: mes cerrado para cartera / contabilidad (CIERRES-BLOQUEANTES.md). */
+    @jakarta.ejb.EJB
+    private com.saa.ejb.cnt.service.EstadoCierreService estadoCierreService;
+
     @EJB
     private DetallePrestamoService detallePrestamoService;
 
@@ -82,6 +86,8 @@ public class ProcesoMoraPrestamoServiceImpl implements ProcesoMoraPrestamoServic
         if (fecha.isAfter(LocalDate.now())) {
             throw new IncomeException(ERR_FECHA_INVALIDA + ": la fecha de corte " + fecha + " es futura");
         }
+        // C17: la mora persistida al corte de un mes ya cerrado para cartera no se recalcula.
+        estadoCierreService.validarCarteraAbierta(null, fecha, "el cálculo de mora persistida");
 
         ResultadoCalculoMora resumen = new ResultadoCalculoMora();
         resumen.setFechaCorte(fecha);
@@ -147,6 +153,45 @@ public class ProcesoMoraPrestamoServiceImpl implements ProcesoMoraPrestamoServic
             e.printStackTrace();
         }
 
+        // 3. Solo con fecha de negocio PASADA (cuadre Superintendencia C4, paso 0 del reproceso
+        //    Petro): préstamos que no entraron por 1 ni por 2 pero tienen mora calculada en cuotas
+        //    que a esa fecha todavía no vencían (restos de corridas posteriores, p. ej. el timer
+        //    de hoy). calcularMoraPrestamo la retira. Con la fecha de hoy este bloque no corre: el
+        //    proceso diario queda exactamente igual que antes.
+        if (fecha.isBefore(LocalDate.now())) {
+            try {
+                java.util.Set<Long> yaVistos = new java.util.HashSet<>();
+                if (prestamos != null) {
+                    yaVistos.addAll(prestamos);
+                }
+                List<Long> regularizados = detallePrestamoDaoService.selectPrestamosEnMoraSinCuotasVencidas(corte);
+                if (regularizados != null) {
+                    yaVistos.addAll(regularizados);
+                }
+                List<Long> conMoraPosterior = detallePrestamoDaoService.selectPrestamosConMoraNoVencidaAlCorte(corte);
+                if (conMoraPosterior != null) {
+                    for (Long idPrestamo : conMoraPosterior) {
+                        if (!yaVistos.add(idPrestamo)) {
+                            continue;
+                        }
+                        try {
+                            ResultadoCalculoMora parcial = self.calcularMoraPrestamo(idPrestamo, fecha, usuario);
+                            acumular(resumen, parcial);
+                        } catch (Throwable e) {
+                            resumen.setPrestamosConError(resumen.getPrestamosConError() + 1);
+                            if (resumen.getErrores().size() < MAX_ERRORES_DETALLADOS) {
+                                resumen.getErrores().add("Préstamo " + idPrestamo + " (mora posterior al corte): "
+                                    + e.getMessage());
+                            }
+                        }
+                    }
+                }
+            } catch (Throwable e) {
+                System.err.println("Error al retirar mora posterior a la fecha de negocio: " + e.getMessage());
+                e.printStackTrace();
+            }
+        }
+
         LocalDateTime fin = LocalDateTime.now();
         resumen.setFechaFin(fin);
         resumen.setDuracionMs(ChronoUnit.MILLIS.between(inicio, fin));
@@ -180,6 +225,8 @@ public class ProcesoMoraPrestamoServiceImpl implements ProcesoMoraPrestamoServic
         if (fecha.isAfter(LocalDate.now())) {
             throw new IncomeException(ERR_FECHA_INVALIDA + ": la fecha de corte " + fecha + " es futura");
         }
+        // C17: ídem para un préstamo.
+        estadoCierreService.validarCarteraAbierta(null, fecha, "el cálculo de mora persistida");
 
         System.out.println("  → Calculando mora del préstamo " + idPrestamo + " al " + fecha);
 
@@ -272,6 +319,41 @@ public class ProcesoMoraPrestamoServiceImpl implements ProcesoMoraPrestamoServic
             }
         }
 
+        // Fecha de negocio PASADA (cuadre Superintendencia C4, paso 0): la mora es "a la fecha".
+        // Una cuota que a esa fecha todavía no vencía no puede traer mora, aunque una corrida
+        // posterior (el timer de hoy) se la haya calculado: se retira, con la misma recomposición
+        // idempotente del total que arriba, y EN_MORA vuelve a PENDIENTE (PARCIAL no se toca: lo
+        // gobierna el motor). Si la cuota ya tiene mora PAGADA, no se toca — se pagó después del
+        // corte y bajarla dejaría el pago por encima de lo debido (mismo criterio que H42).
+        // Con la fecha de hoy no corre: el proceso diario no cambia.
+        if (fecha.isBefore(LocalDate.now())) {
+            List<DetallePrestamo> noVencidas =
+                detallePrestamoDaoService.selectCuotasNoVencidasConMoraByPrestamo(idPrestamo, corte);
+            if (noVencidas != null) {
+                for (DetallePrestamo cuota : noVencidas) {
+                    if (nvl(cuota.getMoraPagado()) > 0.0) {
+                        continue;
+                    }
+                    double moraAnterior = nvl(cuota.getMora());
+                    double totalBase = redondear(nvl(cuota.getTotal()) - moraAnterior);
+                    cuota.setMora(0.0);
+                    cuota.setMoraCalculada(0.0);
+                    cuota.setDiasMora(0L);
+                    cuota.setTotal(totalBase);
+                    cuota.setTotalConSeguro(totalBase);
+                    cuota.setSaldoMora(0.0);
+                    if (cuota.getEstado() != null && cuota.getEstado() == EstadoCuotaPrestamo.EN_MORA) {
+                        cuota.setEstado((long) EstadoCuotaPrestamo.PENDIENTE);
+                        cuota.setIdEstado((long) EstadoCuotaPrestamo.PENDIENTE);
+                    }
+                    detallePrestamoService.saveSingle(cuota);
+                    resumen.setCuotasMoraRetirada(resumen.getCuotasMoraRetirada() + 1);
+                    System.out.println("      Cuota #" + cuota.getNumeroCuota() + " no vencida al " + fecha
+                        + ": mora $" + moraAnterior + " retirada");
+                }
+            }
+        }
+
         // Estado del préstamo. NUNCA se toca ESPSCDGO ni un estado terminal (3, 4, 5).
         boolean tieneVencidas = vencidas != null && !vencidas.isEmpty();
         Long estadoPrestamo = prestamo.getIdEstado();
@@ -356,6 +438,46 @@ public class ProcesoMoraPrestamoServiceImpl implements ProcesoMoraPrestamoServic
         }
         double capital = nvl(cuota.getCapital());
         return capital > 0.0 ? redondear(capital * tasaDiaria * diasMora) : 0.0;
+    }
+
+    @Override
+    public double recalcularMoraCuotaALaFecha(DetallePrestamo cuota, LocalDate fecha) throws Throwable {
+        if (cuota == null || fecha == null || cuota.getFechaVencimiento() == null) {
+            return 0.0;
+        }
+        Long estadoActual = cuota.getEstado();
+        if (estadoActual != null && (estadoActual == EstadoCuotaPrestamo.PAGADA
+                || estadoActual == EstadoCuotaPrestamo.CANCELADA_ANTICIPADA)) {
+            return nvl(cuota.getMora());
+        }
+        if (nvl(cuota.getMoraPagado()) > 0.0) {
+            return nvl(cuota.getMora());
+        }
+        double tasaDiaria = tasaDiariaDelPrestamo(cuota.getPrestamo(), false);
+        long diasMora = Math.max(0L, ChronoUnit.DAYS.between(cuota.getFechaVencimiento().toLocalDate(), fecha));
+        double moraNueva = diasMora > 0 ? calcularMoraCuota(cuota, tasaDiaria, fecha) : 0.0;
+
+        double moraAnterior = nvl(cuota.getMora());
+        double totalBase = redondear(nvl(cuota.getTotal()) - moraAnterior);
+        double totalNuevo = redondear(totalBase + moraNueva);
+        cuota.setMora(moraNueva);
+        cuota.setMoraCalculada(moraNueva);
+        cuota.setDiasMora(diasMora);
+        cuota.setTotal(totalNuevo);
+        cuota.setTotalConSeguro(totalNuevo);
+        cuota.setSaldoMora(moraNueva);
+        if (diasMora > 0) {
+            if (estadoActual == null || (estadoActual != EstadoCuotaPrestamo.EN_MORA
+                    && estadoActual != EstadoCuotaPrestamo.PARCIAL)) {
+                cuota.setEstado((long) EstadoCuotaPrestamo.EN_MORA);
+                cuota.setIdEstado((long) EstadoCuotaPrestamo.EN_MORA);
+            }
+        } else if (estadoActual != null && estadoActual == EstadoCuotaPrestamo.EN_MORA) {
+            cuota.setEstado((long) EstadoCuotaPrestamo.PENDIENTE);
+            cuota.setIdEstado((long) EstadoCuotaPrestamo.PENDIENTE);
+        }
+        detallePrestamoService.saveSingle(cuota);
+        return moraNueva;
     }
 
     // ========================================================================
@@ -504,6 +626,7 @@ public class ProcesoMoraPrestamoServiceImpl implements ProcesoMoraPrestamoServic
         resumen.setPrestamosMarcadosEnMora(
             resumen.getPrestamosMarcadosEnMora() + nvlInt(parcial.getPrestamosMarcadosEnMora()));
         resumen.setTotalMoraCalculada(resumen.getTotalMoraCalculada() + nvl(parcial.getTotalMoraCalculada()));
+        resumen.setCuotasMoraRetirada(nvlInt(resumen.getCuotasMoraRetirada()) + nvlInt(parcial.getCuotasMoraRetirada()));
     }
 
     /**

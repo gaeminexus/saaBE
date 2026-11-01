@@ -387,6 +387,30 @@ public interface DetallePrestamoDaoService extends EntityDao<DetallePrestamo> {
 	List<Long> selectPrestamosEnMoraSinCuotasVencidas(LocalDateTime fechaCorte) throws Throwable;
 
 	/**
+	 * Proceso de mora con fecha de negocio PASADA (cuadre Superintendencia C4, paso 0): préstamos
+	 * VIGENTE(2), DE_PLAZO_VENCIDO(8) o EN_MORA(11) con alguna cuota impaga que todavía NO estaba
+	 * vencida al corte ({@code fechaVencimiento >= fechaCorte}) y que trae mora calculada
+	 * ({@code mora > 0}) o está EN_MORA — restos de una corrida posterior a esa fecha.
+	 *
+	 * @param fechaCorte Instante de corte (inicio del día de la fecha de negocio)
+	 * @return Códigos de préstamo; vacía si no hay o si falla la consulta
+	 * @throws Throwable Si ocurre algún error
+	 */
+	List<Long> selectPrestamosConMoraNoVencidaAlCorte(LocalDateTime fechaCorte) throws Throwable;
+
+	/**
+	 * Detalle de {@link #selectPrestamosConMoraNoVencidaAlCorte}: cuotas impagas del préstamo con
+	 * {@code fechaVencimiento >= fechaCorte} y mora calculada o estado EN_MORA.
+	 *
+	 * @param codigoPrestamo Código del préstamo
+	 * @param fechaCorte     Instante de corte
+	 * @return Lista de cuotas; vacía si no hay o si falla la consulta
+	 * @throws Throwable Si ocurre algún error
+	 */
+	List<DetallePrestamo> selectCuotasNoVencidasConMoraByPrestamo(Long codigoPrestamo, LocalDateTime fechaCorte)
+			throws Throwable;
+
+	/**
 	 * TODAS las cuotas (entidades completas, con su grafo EAGER) de VARIOS préstamos a la vez,
 	 * en UNA consulta — para {@code GET /rest/plvn/candidatos} y {@code POST /rest/plvn/declarar}
 	 * (API-PASE-A-PLAZO-VENCIDO.md §2/§3): pueden ser cientos de préstamos, y una consulta por
@@ -437,6 +461,18 @@ public interface DetallePrestamoDaoService extends EntityDao<DetallePrestamo> {
 	 * @throws Throwable Si ocurre algún error
 	 */
 	List<DetallePrestamo> selectCuotasProvisionables(java.time.LocalDateTime corte) throws Throwable;
+
+	/**
+	 * C15 — {@link #selectCuotasProvisionables} con el estado de la cartera AL CORTE
+	 * ({@code com.saa.ejb.crd.service.ModoCorteCartera}): préstamos con fecha {@code <= corte}
+	 * que no estén en 0/1/6/7/12, cuotas con vencimiento {@code <= corte} no liquidadas al corte
+	 * (estado 4/7 con fecha de pago posterior al corte, o sin fecha, cuenta como impaga).
+	 *
+	 * @param corte fecha de corte (fin del mes que se cierra)
+	 * @return cuotas del universo, con el préstamo y su producto/tipo ya cargados
+	 * @throws Throwable Si ocurre algún error
+	 */
+	List<DetallePrestamo> selectCuotasProvisionablesAlCorte(java.time.LocalDate corte) throws Throwable;
 
 }
 

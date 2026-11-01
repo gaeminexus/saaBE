@@ -58,6 +58,48 @@ public interface ProvisionInteresService {
     Map<Long, double[]> calcularProvisionPorTipoPrestamo(LocalDate fechaCorte) throws Throwable;
 
     /**
+     * C15 (H1) — {@link #calcularProvisionPorTipoPrestamo(LocalDate)} con {@code alCorte = true}:
+     * cartera, pagos y libro MVIC tal como estaban a la fecha de corte
+     * ({@code ModoCorteCartera}). Con {@code false} es idéntico al de siempre.
+     */
+    Map<Long, double[]> calcularProvisionPorTipoPrestamo(LocalDate fechaCorte, boolean alCorte) throws Throwable;
+
+    /** C15 — {@link #registrarProvisionCierre(Long, Long, LocalDate, String)} con el modo al corte. */
+    void registrarProvisionCierre(Long idCorrida, Long idAsiento, LocalDate fechaCorte, String usuario,
+            boolean alCorte) throws Throwable;
+
+    /** C15 — {@link #registrarDevengoMoraCierre(Long, Long, LocalDate, LocalDate, Map, String)} medido al corte (null = hoy). */
+    void registrarDevengoMoraCierre(Long idCorrida, Long idAsiento, LocalDate desde, LocalDate hasta,
+            Map<Long, Double> totalMoraPorTipoAsiento, String usuario, LocalDate corte) throws Throwable;
+
+    /**
+     * C15 / H5 (D-016) — semilla del libro {@code CRD.MVIC} con la provisión de intereses que ya
+     * trae la apertura contable ({@code 1.4.99.05} al corte del ancla), para que el primer ⑦ no
+     * la vuelva a provisionar. Calcula lo provisionable por cuota al corte (mismo cálculo del
+     * ⑦, sin restar el libro) y reparte {@code montoObjetivo} en proporción, como MVIC tipo 1
+     * (PROVISION) origen {@code APERTURA}, sin asiento (el asiento es la apertura), enlazados a la
+     * corrida de arranque (el reverso de esa corrida los anula). El residuo de redondeo va a la
+     * cuota de mayor importe: el libro suma exactamente {@code montoObjetivo}.
+     *
+     * @return {@code {totalProvisionableCalculado, totalSembrado}}
+     */
+    double[] sembrarProvisionApertura(Long idCorrida, LocalDate fechaCorte, double montoObjetivo, String usuario)
+            throws Throwable;
+
+    /**
+     * C15 / D-017 (H4) — al cobrar mora: la parte ya devengada para esa cuota (libro MVIC tipo
+     * 5 − 6, menos la mora que ya pagaron otros pagos vigentes de la cuota) se acredita a la
+     * cuenta por cobrar 1.4.02.xx; el EXCEDENTE no devengado (la mora del mes en curso) va directo
+     * a ingreso 5.1.02.xx. Por cada pago con excedente graba un MVIC tipo 5 origen COBRO (así el
+     * próximo ⑩ no lo vuelve a devengar) y lo devuelve en el mapa, por identidad del pago.
+     * Propiedad {@code saa.cartera.moraNoDevengadaAIngreso=false} = comportamiento anterior (todo
+     * a 1.4.02; mapa vacío).
+     *
+     * @return excedente no devengado por pago (solo los que tienen)
+     */
+    Map<PagoPrestamo, Double> separarMoraNoDevengada(List<PagoPrestamo> pagos, String usuario) throws Throwable;
+
+    /**
      * Recalcula el paso ⑦ (misma fórmula que {@link #calcularProvisionPorTipoPrestamo}, nunca
      * confía en un cálculo previo) y REGISTRA un {@code MVIC} tipo 1 (PROVISION) por cada cuota
      * y componente con "a provisionar" {@code > 0}, enlazado a la corrida y al asiento. Se llama
@@ -149,7 +191,9 @@ public interface ProvisionInteresService {
      *
      * @param pagosAnulados pagos que se están anulando en esta misma operación
      * @param idEmpresa     empresa contable del asiento
-     * @param fecha         fecha contable del asiento (la de la anulación, no la del cobro original)
+     * @param fecha         fecha contable del asiento (la decide el llamador: CBCR usa la fecha de
+     *                      afectación si su período sigue abierto y si no la de hoy — D-043; el
+     *                      re-proceso Petro, la del mes de la carga)
      * @param origen        literal corto para {@code MVIC.origen} (p.ej. {@code "REVERSO_CBCR"})
      * @param idOrigen      código del registro que ordena la anulación
      * @param usuario       quién ejecuta la anulación

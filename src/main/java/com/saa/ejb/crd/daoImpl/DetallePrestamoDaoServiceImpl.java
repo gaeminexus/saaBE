@@ -988,6 +988,65 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 
 	@SuppressWarnings("unchecked")
 	@Override
+	public List<Long> selectPrestamosConMoraNoVencidaAlCorte(LocalDateTime fechaCorte) throws Throwable {
+		System.out.println("DetallePrestamoDaoServiceImpl.selectPrestamosConMoraNoVencidaAlCorte - corte: " + fechaCorte);
+		try {
+			String jpql = "SELECT DISTINCT d.prestamo.codigo FROM DetallePrestamo d " +
+						 "WHERE (d.estado IS NULL OR d.estado NOT IN (:estadoPagada, :estadoCanceladaAnticipada)) " +
+						 "AND d.fechaVencimiento >= :fechaCorte " +
+						 "AND (d.mora > 0 OR d.estado = :estadoEnMora) " +
+						 "AND d.prestamo.idEstado IN (:vigente, :deplazoVencido, :enMora) " +
+						 "ORDER BY d.prestamo.codigo ASC";
+			Query query = em.createQuery(jpql);
+			query.setParameter("estadoPagada", (long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
+			query.setParameter("estadoCanceladaAnticipada", (long) com.saa.rubros.EstadoCuotaPrestamo.CANCELADA_ANTICIPADA);
+			query.setParameter("estadoEnMora", (long) com.saa.rubros.EstadoCuotaPrestamo.EN_MORA);
+			query.setParameter("fechaCorte", fechaCorte);
+			query.setParameter("vigente", (long) com.saa.rubros.EstadoPrestamo.VIGENTE);
+			query.setParameter("deplazoVencido", (long) com.saa.rubros.EstadoPrestamo.DE_PLAZO_VENCIDO);
+			query.setParameter("enMora", (long) com.saa.rubros.EstadoPrestamo.EN_MORA);
+			List<Long> resultados = query.getResultList();
+			System.out.println("  Préstamos con mora en cuotas aún no vencidas al corte: "
+				+ (resultados != null ? resultados.size() : 0));
+			return resultados;
+		} catch (Exception e) {
+			System.err.println("Error en selectPrestamosConMoraNoVencidaAlCorte: " + e.getMessage());
+			e.printStackTrace();
+			// NO lanzar excepción - retornar lista vacía para no detener el proceso
+			return new ArrayList<>();
+		}
+	}
+
+	@SuppressWarnings("unchecked")
+	@Override
+	public List<DetallePrestamo> selectCuotasNoVencidasConMoraByPrestamo(Long codigoPrestamo, LocalDateTime fechaCorte)
+			throws Throwable {
+		System.out.println("DetallePrestamoDaoServiceImpl.selectCuotasNoVencidasConMoraByPrestamo - Préstamo: "
+			+ codigoPrestamo + " - corte: " + fechaCorte);
+		try {
+			String jpql = "SELECT d FROM DetallePrestamo d " +
+						 "WHERE d.prestamo.codigo = :codigoPrestamo " +
+						 "AND (d.estado IS NULL OR d.estado NOT IN (:estadoPagada, :estadoCanceladaAnticipada)) " +
+						 "AND d.fechaVencimiento >= :fechaCorte " +
+						 "AND (d.mora > 0 OR d.estado = :estadoEnMora) " +
+						 "ORDER BY d.numeroCuota ASC";
+			Query query = em.createQuery(jpql);
+			query.setParameter("codigoPrestamo", codigoPrestamo);
+			query.setParameter("estadoPagada", (long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
+			query.setParameter("estadoCanceladaAnticipada", (long) com.saa.rubros.EstadoCuotaPrestamo.CANCELADA_ANTICIPADA);
+			query.setParameter("estadoEnMora", (long) com.saa.rubros.EstadoCuotaPrestamo.EN_MORA);
+			query.setParameter("fechaCorte", fechaCorte);
+			return query.getResultList();
+		} catch (Exception e) {
+			System.err.println("Error en selectCuotasNoVencidasConMoraByPrestamo: " + e.getMessage());
+			e.printStackTrace();
+			// NO lanzar excepción - retornar lista vacía para no detener el proceso
+			return new ArrayList<>();
+		}
+	}
+
+	@SuppressWarnings("unchecked")
+	@Override
 	public List<Long> selectPrestamosEnMoraSinCuotasVencidas(LocalDateTime fechaCorte) throws Throwable {
 		System.out.println("DetallePrestamoDaoServiceImpl.selectPrestamosEnMoraSinCuotasVencidas - corte: " + fechaCorte);
 
@@ -1100,6 +1159,30 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 		query.setParameter("corte", corte);
 		List<DetallePrestamo> resultado = query.getResultList();
 		System.out.println("  Cuotas provisionables encontradas: " + resultado.size());
+		return resultado;
+	}
+
+	@Override
+	@SuppressWarnings("unchecked")
+	public List<DetallePrestamo> selectCuotasProvisionablesAlCorte(java.time.LocalDate corte) throws Throwable {
+		System.out.println("DetallePrestamoDaoServiceImpl.selectCuotasProvisionablesAlCorte - corte: " + corte);
+		java.time.LocalDateTime corteSig = corte.plusDays(1).atStartOfDay();
+		Query query = em.createQuery(
+			" select d from DetallePrestamo d " +
+			" join fetch d.prestamo " +
+			" left join fetch d.prestamo.producto " +
+			" left join fetch d.prestamo.producto.tipoPrestamo " +
+			" where d.prestamo.fecha < :corteSig " +
+			"   and coalesce(d.prestamo.idEstado, 0) not in (" + com.saa.ejb.crd.service.ModoCorteCartera.ESTADOS_FUERA_DE_CARTERA + ") " +
+			"   and not (coalesce(d.estado, 0) in ("
+				+ com.saa.rubros.EstadoCuotaPrestamo.PAGADA + ", "
+				+ com.saa.rubros.EstadoCuotaPrestamo.CANCELADA_ANTICIPADA + ") " +
+			"            and d.fechaPagado is not null and d.fechaPagado < :corteSig) " +
+			"   and d.fechaVencimiento < :corteSig "
+		);
+		query.setParameter("corteSig", corteSig);
+		List<DetallePrestamo> resultado = query.getResultList();
+		System.out.println("  Cuotas provisionables al corte encontradas: " + resultado.size());
 		return resultado;
 	}
 

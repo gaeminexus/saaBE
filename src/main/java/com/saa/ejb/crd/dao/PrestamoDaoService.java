@@ -39,6 +39,24 @@ public interface PrestamoDaoService extends EntityDao<Prestamo> {
     List<Prestamo> selectByEntidadYProductoActivosById(Long codigoEntidad, Long codigoProducto) throws Throwable;
 
     /**
+     * Reproceso de cargas Petro (cuadre Superintendencia C4, decisión D-019): préstamos de la
+     * entidad y producto que estaban VIGENTES a la fecha de corte, sin importar su estado de hoy.
+     * Entra un préstamo activo hoy (1, 2, 8, 10, 11), o uno terminal hoy (3, 4, 5, 9, 13) que
+     * empezó a más tardar en el corte, tiene alguna cuota vencida a más tardar en el corte (si su
+     * primera cuota vence después, Petro todavía no la descontaba) y alguna cuota que al corte no estaba saldada
+     * (estado distinto de PAGADA/CANCELADA_ANTICIPADA, o saldada sin fecha o con fecha posterior
+     * al corte): su cancelación es posterior al mes de la carga. Ordenados por código.
+     *
+     * @param codigoEntidad  Código de la entidad
+     * @param codigoProducto Código del producto
+     * @param fechaCorte     Fin del mes de la carga (inclusive)
+     * @return Lista de préstamos; vacía si no hay o si falla la consulta
+     * @throws Throwable Si ocurre algún error
+     */
+    List<Prestamo> selectByEntidadYProductoVigentesAlCorte(Long codigoEntidad, Long codigoProducto,
+            java.time.LocalDateTime fechaCorte) throws Throwable;
+
+    /**
      * Busca préstamos cuya fecha esté entre el primer y último día del mes indicado.
      */
     List<Prestamo> selectByRangoFechas(java.time.LocalDateTime fechaInicio, java.time.LocalDateTime fechaFin) throws Throwable;

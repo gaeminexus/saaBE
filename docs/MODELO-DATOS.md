@@ -249,7 +249,7 @@ Secuencia PK: `CNT.SQ_ASNHCDGO`
 | `fechaAsiento` | `LocalDate` | `ASNHFCHA` |  |
 | `numero` | `Long` | `ASNHNMRO` |  |
 | `estado` | `Long` | `ASNHESTD` |  |
-| `observaciones` | `String` | `ASNHOBSR` | length=200 |
+| `observaciones` | `String` | `ASNHOBSR` | length=2000 (D-043) |
 | `nombreUsuario` | `String` | `ASNHUSRO` | length=50 |
 | `idReversion` | `Long` | `ASNHASRV` |  |
 | `numeroMes` | `Long` | `ASNHPRDO` |  |

@@ -268,6 +268,42 @@ public interface ProcesoPagoPrestamoService {
     ResultadoPrecancelacion precancelar(SolicitudPrecancelacion solicitud) throws Throwable;
 
     /**
+     * C16 (D-021) — componentes de la precancelación de {@code idPrestamoCancelado} a {@code fecha},
+     * SOLO LECTURA: capital pendiente al corte anterior, interés y seguro COMPLETOS de la cuota del
+     * mes de {@code fecha}, y la mora de esa cuota a la fecha. Lanza (con el motivo) si el préstamo ya
+     * está cancelado a esa fecha por otro medio (pagos vigentes en la cuota del mes o posteriores,
+     * cuotas liquidadas con fecha &lt;= fecha, eventos vigentes del mes) o si tiene cuotas impagas de
+     * meses anteriores. Ver DESEMBOLSO-NETO-CON-PRECANCELACION.md §2.
+     */
+    com.saa.ejb.crd.service.dto.ComponentesPrecancelacionConPrestamo calcularPrecancelacionConPrestamo(
+            Long idPrestamoCancelado, LocalDate fecha) throws Throwable;
+
+    /**
+     * C16 (D-021) — la precancelación de {@code idPrestamoCancelado} pagada con
+     * {@code idPrestamoNuevo} ya registrada (evento PRECANCELACION vigente con la marca del préstamo
+     * nuevo), o null. Para la idempotencia del lote.
+     */
+    com.saa.ejb.crd.service.dto.ResultadoPrecancelacionConPrestamo buscarPrecancelacionConPrestamo(
+            Long idPrestamoCancelado, Long idPrestamoNuevo) throws Throwable;
+
+    /**
+     * C16 (D-021) — precancela {@code idPrestamoCancelado} con el dinero del préstamo nuevo
+     * {@code idPrestamoNuevo} (mismo partícipe), a {@code fecha} (pago y fecha contable). Mismo
+     * resultado que {@link #precancelar}: evento PRECANCELACION, PGPR por componente, cuota del mes
+     * PAGADA, futuras CANCELADA_ANTICIPADA (7) con fecha de pago, préstamo CANCELADO_ANTICIPADO (4),
+     * huella, asiento ({@code contabilizarPrecancelacionConPrestamo}: DEBE socios por pagar del nuevo)
+     * y reverso de la provisión de intereses. Diferencias con {@link #precancelar}, todas
+     * conservadoras: cobra la cuota del mes COMPLETA (regla del cliente), admite la cartera migrada
+     * en estado 4 con la cuota del mes saldada sin pago (la reabre como D-019 ampliada) y fecha la
+     * cuota del mes y las futuras con {@code fecha} (para que el préstamo salga de la cartera al
+     * corte). Los componentes enviados tienen que coincidir al centavo con
+     * {@link #calcularPrecancelacionConPrestamo}. Idempotente: si ya existe, la devuelve.
+     */
+    com.saa.ejb.crd.service.dto.ResultadoPrecancelacionConPrestamo precancelarConPrestamoNuevo(
+            Long idPrestamoCancelado, Long idPrestamoNuevo, Long idEmpresa, String usuario, LocalDate fecha,
+            double capital, double interes, double seguro, String observacion) throws Throwable;
+
+    /**
      * Anula (reversa) un EventoPrestamo completo, para los 4 tipos de operación (§7.6).
      *
      * El reverso es LIFO: no se puede anular un evento si existen operaciones posteriores

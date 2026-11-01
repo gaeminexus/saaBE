@@ -174,6 +174,37 @@ public class PagoPrestamoDaoServiceImpl extends EntityDaoImpl<PagoPrestamo> impl
 
 	@Override
 	@SuppressWarnings("unchecked")
+	public List<Object[]> selectDatosPagosVigentesAlCorte(List<Long> codigosDetallePrestamo, java.time.LocalDate corte)
+			throws Throwable {
+		System.out.println("PagoPrestamoDaoService.selectDatosPagosVigentesAlCorte - cuotas: "
+				+ (codigosDetallePrestamo != null ? codigosDetallePrestamo.size() : 0) + " - corte: " + corte);
+		if (codigosDetallePrestamo == null || codigosDetallePrestamo.isEmpty()) {
+			return new ArrayList<>();
+		}
+		String jpql = "SELECT p.detallePrestamo.codigo, p.desgravamen, p.moraPagada, " +
+			"       p.interesVencidoPagado, p.interesPagado, p.capitalPagado, p.valorSeguroIncendio, " +
+			"       CASE WHEN p.tipo IN :tiposConAbonoCapital THEN p.saldoOtros ELSE 0.0 END " +
+			"FROM PagoPrestamo p " +
+			"WHERE p.detallePrestamo.codigo IN :codigos " +
+			"AND (p.anulado IS NULL OR p.anulado = 0) " +
+			"AND p.fecha < :corteSig " +
+			"ORDER BY p.detallePrestamo.codigo";
+		final int TAMANIO_BLOQUE = 900;
+		List<Object[]> resultados = new ArrayList<>();
+		for (int inicio = 0; inicio < codigosDetallePrestamo.size(); inicio += TAMANIO_BLOQUE) {
+			List<Long> bloque = codigosDetallePrestamo.subList(inicio,
+					Math.min(inicio + TAMANIO_BLOQUE, codigosDetallePrestamo.size()));
+			Query query = em.createQuery(jpql);
+			query.setParameter("codigos", bloque);
+			query.setParameter("tiposConAbonoCapital", TIPOS_PAGO_CON_ABONO_CAPITAL);
+			query.setParameter("corteSig", corte.plusDays(1).atStartOfDay());
+			resultados.addAll(query.getResultList());
+		}
+		return resultados;
+	}
+
+	@Override
+	@SuppressWarnings("unchecked")
 	public List<Object[]> selectCapitalAbonadoEnMoraOParcialByPrestamos(List<Long> codigosPrestamo) throws Throwable {
 		System.out.println("PagoPrestamoDaoService.selectCapitalAbonadoEnMoraOParcialByPrestamos - préstamos solicitados: "
 				+ (codigosPrestamo != null ? codigosPrestamo.size() : 0));
@@ -377,6 +408,108 @@ public class PagoPrestamoDaoServiceImpl extends EntityDaoImpl<PagoPrestamo> impl
 
 		System.out.println("  Préstamos con pago vigente: " + resultados.size());
 		return resultados;
+	}
+
+	@Override
+	@SuppressWarnings("unchecked")
+	public List<PagoPrestamo> selectVigentesLegadoPorObservacionCarga(Long idCarga) throws Throwable {
+		System.out.println("PagoPrestamoDaoService.selectVigentesLegadoPorObservacionCarga - Carga: " + idCarga);
+
+		// Sin try/catch a propósito: es la base de una anulación (reproceso de carga). Un error
+		// que devolviera lista vacía dejaría la aplicación vieja viva debajo de la nueva.
+		Query query = em.createQuery(
+			"SELECT p " +
+			"FROM PagoPrestamo p " +
+			"WHERE p.cargaArchivo IS NULL " +
+			"AND (p.anulado IS NULL OR p.anulado = 0) " +
+			"AND p.observacion LIKE :patron " +
+			"ORDER BY p.codigo ASC"
+		);
+		query.setParameter("patron", "%[CargaArchivo: " + idCarga + "]%");
+
+		List<PagoPrestamo> resultados = query.getResultList();
+		System.out.println("  Pagos vigentes del esquema viejo de la carga: " + resultados.size());
+		return resultados;
+	}
+
+	@Override
+	public Integer selectMaxCorridaReproceso(Long idCarga) throws Throwable {
+		System.out.println("PagoPrestamoDaoService.selectMaxCorridaReproceso - Carga: " + idCarga);
+
+		// Nativo: REGEXP_SUBSTR no existe en JPQL. La etiqueta es fija
+		// ("REPROCESO carga N corrida M - motivo"), se extrae el M.
+		Query query = em.createNativeQuery(
+			" SELECT MAX(TO_NUMBER(REGEXP_SUBSTR(p.PGPRMTAN, 'corrida (\\d+)', 1, 1, NULL, 1))) " +
+			" FROM   CRD.PGPR p " +
+			" WHERE  p.PGPRMTAN LIKE :patron "
+		);
+		query.setParameter("patron", "REPROCESO carga " + idCarga + " corrida %");
+		Object resultado = query.getSingleResult();
+		return resultado != null ? Integer.valueOf(((Number) resultado).intValue()) : null;
+	}
+
+	/**
+	 * Observación con que la migración de Delta dejó sus pagos (D-025): en la base dice
+	 * "Pago cargado desde Excel - Migración de datos" (con tilde, UTF-8). El patrón deja un
+	 * comodín en la vocal acentuada para no depender de la codificación del cliente.
+	 */
+	private static final String PATRON_OBSERVACION_PAGO_MIGRADO = "Pago cargado desde Excel - Migraci_n de datos%";
+
+	@SuppressWarnings("unchecked")
+	@Override
+	public List<Object[]> selectMigradosDelMesConFilaEnCarga(Long idCarga, java.time.LocalDate desde,
+			java.time.LocalDate hasta) throws Throwable {
+		System.out.println("PagoPrestamoDaoService.selectMigradosDelMesConFilaEnCarga - Carga: " + idCarga
+			+ " - " + desde + " a " + hasta);
+
+		// Sin try/catch a propósito: es la base de una anulación (D-025, reproceso de carga).
+		// Fila de la carga: PXCA (rol) + DTCA (producto Petro), descuento REAL = PXCADSDO
+		// (totalDescontado, lo que el motor aplica), sumado por rol y producto por si el archivo
+		// trae dos filas. El pago migrado lleva el desgravamen aparte (PGPRDSGR): el descuento
+		// de Petro lo incluye, así que se compara PGPRVLRR + PGPRDSGR (medido 2026-10-28 en la
+		// carga 352: 42 grupos coinciden al centavo así, 26.841,61).
+		Query query = em.createNativeQuery(
+			" WITH fila AS ( " +
+			"   SELECT x.PXCACDPT rol, TRIM(c.DTCACDPP) prod, SUM(NVL(x.PXCADSDO,0)) descuento " +
+			"   FROM   CRD.PXCA x JOIN CRD.DTCA c ON c.DTCACDGO = x.DTCACDGO " +
+			"   WHERE  c.CRARCDGO = :carga " +
+			"   GROUP BY x.PXCACDPT, TRIM(c.DTCACDPP) ) " +
+			" SELECT g.PGPRCDGO, e.ENTDRLPC, TRIM(pr.PRDCCDPT), " +
+			"        ROUND(NVL(g.PGPRVLRR,0) + NVL(g.PGPRDSGR,0), 2), ROUND(f.descuento, 2), " +
+			"        p.PRSTCDGO, d.DTPRNMCT " +
+			" FROM   CRD.PGPR g " +
+			" JOIN   CRD.DTPR d  ON d.DTPRCDGO = g.DTPRCDGO " +
+			" JOIN   CRD.PRST p  ON p.PRSTCDGO = d.PRSTCDGO " +
+			" JOIN   CRD.ENTD e  ON e.ENTDCDGO = p.ENTDCDGO " +
+			" JOIN   CRD.PRDC pr ON pr.PRDCCDGO = p.PRDCCDGO " +
+			" JOIN   fila f      ON f.rol = e.ENTDRLPC AND f.prod = TRIM(pr.PRDCCDPT) " +
+			" WHERE  g.PGPRTPOO = 'MIGRACION' " +
+			" AND    g.PGPROBSR LIKE :observacion " +
+			" AND    g.CRARCDGO IS NULL " +
+			" AND    g.EVPRCDGO IS NULL " +
+			" AND    NVL(g.PGPRANUL, 0) = 0 " +
+			" AND    g.PGPRFCHA >= :desde AND g.PGPRFCHA < :hastaSig " +
+			" ORDER BY e.ENTDRLPC, TRIM(pr.PRDCCDPT), g.PGPRCDGO "
+		);
+		query.setParameter("carga", idCarga);
+		query.setParameter("observacion", PATRON_OBSERVACION_PAGO_MIGRADO);
+		query.setParameter("desde", java.sql.Date.valueOf(desde));
+		query.setParameter("hastaSig", java.sql.Date.valueOf(hasta.plusDays(1)));
+
+		List<Object[]> filas = query.getResultList();
+		List<Object[]> resultado = new ArrayList<>();
+		for (Object[] f : filas) {
+			resultado.add(new Object[] {
+				f[0] != null ? ((Number) f[0]).longValue() : null,
+				f[1] != null ? ((Number) f[1]).longValue() : null,
+				f[2] != null ? f[2].toString() : null,
+				f[3] != null ? ((Number) f[3]).doubleValue() : 0.0,
+				f[4] != null ? ((Number) f[4]).doubleValue() : 0.0,
+				f[5] != null ? ((Number) f[5]).longValue() : null,
+				f[6] != null ? ((Number) f[6]).longValue() : null });
+		}
+		System.out.println("  Pagos migrados del mes con fila en la carga: " + resultado.size());
+		return resultado;
 	}
 
 }

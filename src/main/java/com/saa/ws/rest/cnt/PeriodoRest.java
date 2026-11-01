@@ -88,6 +88,117 @@ public class PeriodoRest {
         }
     }
 
+    // =====================================================================
+    // C17 — Cierres bloqueantes (docs/logica-negocio/cnt/CIERRES-BLOQUEANTES.md)
+    // =====================================================================
+
+    @EJB
+    private com.saa.ejb.cnt.service.EstadoCierreService estadoCierreService;
+
+    @EJB
+    private com.saa.ejb.cnt.service.CierrePeriodoContableService cierrePeriodoContableService;
+
+    /**
+     * GET /prdo/estado/{idEmpresa}/{anio}/{mes} — estado de cierre del mes: contable (ABIERTO/CERRADO, que
+     * decide estados financieros DEFINITIVOS o PRELIMINARES) y de cartera, con fecha y usuario de cierre.
+     */
+    @GET
+    @Path("/estado/{idEmpresa}/{anio}/{mes}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response estado(@PathParam("idEmpresa") Long idEmpresa, @PathParam("anio") Long anio,
+            @PathParam("mes") Long mes) {
+        try {
+            return Response.ok(estadoCierreService.estadoPeriodo(idEmpresa, anio, mes), MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return respuestaCierre(e, "Error al consultar el estado del período: ");
+        }
+    }
+
+    /**
+     * POST /prdo/cerrar?idEmpresa=&anio=&mes=&usuario=&ip=&motivo= — cierre contable del mes. Exige período
+     * mayorizado, cartera del mes cerrada y orden (ver el diseño). Auditado en CNT.HCPR.
+     */
+    @POST
+    @Path("/cerrar")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response cerrar(@jakarta.ws.rs.QueryParam("idEmpresa") Long idEmpresa,
+            @jakarta.ws.rs.QueryParam("anio") Long anio, @jakarta.ws.rs.QueryParam("mes") Long mes,
+            @jakarta.ws.rs.QueryParam("usuario") String usuario, @jakarta.ws.rs.QueryParam("ip") String ip,
+            @jakarta.ws.rs.QueryParam("motivo") String motivo) {
+        System.out.println("LLEGA AL SERVICIO CERRAR - PERIODO " + anio + "-" + mes + " empresa " + idEmpresa);
+        try {
+            return Response.ok(cierrePeriodoContableService.cerrar(idEmpresa, anio, mes, usuario, ip, motivo),
+                    MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return respuestaCierre(e, "Error al cerrar el período contable: ");
+        }
+    }
+
+    /**
+     * POST /prdo/reabrir?idEmpresa=&anio=&mes=&usuario=&ip=&motivo= — reapertura del período contable.
+     * Solo el último cerrado (cascada desde el más reciente). Motivo obligatorio. Auditado en CNT.HCPR.
+     */
+    @POST
+    @Path("/reabrir")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response reabrir(@jakarta.ws.rs.QueryParam("idEmpresa") Long idEmpresa,
+            @jakarta.ws.rs.QueryParam("anio") Long anio, @jakarta.ws.rs.QueryParam("mes") Long mes,
+            @jakarta.ws.rs.QueryParam("usuario") String usuario, @jakarta.ws.rs.QueryParam("ip") String ip,
+            @jakarta.ws.rs.QueryParam("motivo") String motivo) {
+        System.out.println("LLEGA AL SERVICIO REABRIR - PERIODO " + anio + "-" + mes + " empresa " + idEmpresa);
+        try {
+            return Response.ok(cierrePeriodoContableService.reabrir(idEmpresa, anio, mes, usuario, ip, motivo),
+                    MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return respuestaCierre(e, "Error al reabrir el período contable: ");
+        }
+    }
+
+    /**
+     * GET /prdo/bitacora/{idEmpresa}?tipo=CONTABLE|CARTERA — bitácora de cierres y reaperturas (CNT.HCPR) de la
+     * empresa, de la más reciente a la más antigua. Solo lectura (la muestra la pantalla de cierre de períodos
+     * del frontend). {@code tipo} es opcional; sin él devuelve contable y cartera.
+     */
+    @GET
+    @Path("/bitacora/{idEmpresa}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response bitacora(@PathParam("idEmpresa") Long idEmpresa, @jakarta.ws.rs.QueryParam("tipo") String tipo) {
+        try {
+            return Response.ok(cierrePeriodoContableService.listarBitacora(idEmpresa, tipo), MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return respuestaCierre(e, "Error al consultar la bitácora de cierres: ");
+        }
+    }
+
+    @EJB
+    private com.saa.ejb.cnt.service.ControlCierreService controlCierreService;
+
+    /**
+     * GET /prdo/controlCierre/{idEmpresa}/{anio}/{mes} — semáforo de controles de cierre del mes (pase a
+     * producción B-1..B-3): cuentas puente D-024, ecuación contable, cartera vs contabilidad por grupo, bancos
+     * vs extracto, asientos descuadrados o en borrador y cuadratura B17 ↔ G. Lista de
+     * {grupo, codigo, descripcion, valor, esperado, diferencia, estado OK|ADVERTENCIA|ERROR, detalle}. Solo
+     * lectura; no bloquea el cierre. docs/logica-negocio/cnt/CONTROL-CIERRE-MES.md.
+     */
+    @GET
+    @Path("/controlCierre/{idEmpresa}/{anio}/{mes}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response controlCierre(@PathParam("idEmpresa") Long idEmpresa, @PathParam("anio") Long anio,
+            @PathParam("mes") Long mes) {
+        try {
+            return Response.ok(controlCierreService.controlar(idEmpresa, anio, mes), MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return respuestaCierre(e, "Error al consultar los controles de cierre: ");
+        }
+    }
+
+    /** Errores de negocio de cierre (IncomeException) son 400 con el mensaje; lo inesperado, 500. */
+    private Response respuestaCierre(Throwable e, String prefijo) {
+        boolean negocio = e instanceof com.saa.basico.util.IncomeException;
+        return Response.status(negocio ? Response.Status.BAD_REQUEST : Response.Status.INTERNAL_SERVER_ERROR)
+                .entity(prefijo + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+    }
+
     /**
      * PUT method for updating or creating an instance of PeriodoRest
      * 

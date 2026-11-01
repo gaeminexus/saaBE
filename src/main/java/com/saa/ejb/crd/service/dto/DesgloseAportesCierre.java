@@ -19,9 +19,17 @@ package com.saa.ejb.crd.service.dto;
  * <b>El piso en cero esconde información, y por eso está aquí.</b> Cuando lo registrado
  * supera a lo esperado —julio 2026: 156.797 registrados contra 121.161 esperados— la
  * diferencia es negativa y el asiento no la puede llevar: un neteo negativo invertiría el
- * asiento. Eso no es un error, lo resuelve el proceso de cobro en exceso (§3.7 del
- * levantamiento), pero antes desaparecía sin dejar rastro. Ahora sale en
- * {@code excesoCobro} para que se vea.
+ * asiento. Antes desaparecía sin dejar rastro; ahora sale en {@code excesoCobro} para que
+ * se vea. <b>Corrección C15 (2026-10-28):</b> no lo "resuelve el proceso de cobro en
+ * exceso" (§3.7 del levantamiento es una devolución por partícipe, D 2.3.02.05 / H
+ * 2.3.01.15.04): lo registrado ya está en la cuenta individual, así que el exceso queda como
+ * saldo deudor de aportes por aplicar (2.3.02.05) y acreedor de aportes por cobrar
+ * (1.4.05.05). Ver {@code CIERRE-CARTERA-A-FECHA-DE-CORTE.md} §4.1.
+ * </p>
+ *
+ * <p>
+ * <b>Registrado = aportes VIGENTES</b> (C15): sin el aporte anulado por un reproceso ni su
+ * contra-movimiento ({@code AporteVigenteSql}).
  * </p>
  *
  * <p>

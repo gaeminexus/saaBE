@@ -51,6 +51,10 @@ public class AporteServiceImpl implements AporteService {
     @EJB
     private AporteDaoService aporteDaoService;
 
+    /** C17: mes cerrado para cartera / contabilidad (CIERRES-BLOQUEANTES.md). */
+    @jakarta.ejb.EJB
+    private com.saa.ejb.cnt.service.EstadoCierreService estadoCierreService;
+
     @EJB
     private PagoAporteDaoService pagoAporteDaoService;
 
@@ -117,8 +121,26 @@ public class AporteServiceImpl implements AporteService {
     public void save(List<Aporte> lista) throws Throwable {
         System.out.println("Ingresa al metodo save de AporteService");
         for (Aporte registro : lista) {
+            validaMesAbiertoCrud(registro);
             aporteDaoService.save(registro, registro.getCodigo());
         }
+    }
+
+    /**
+     * C17 — Aportes manuales por el CRUD genérico (alta o cambio de estado): el mes de la fecha de
+     * transacción del aporte (la de la base si ya existe) tiene que estar abierto para cartera y contabilidad.
+     */
+    private void validaMesAbiertoCrud(Aporte aporte) throws Throwable {
+        LocalDateTime fecha = aporte.getFechaTransaccion();
+        if (aporte.getCodigo() != null) {
+            Aporte enBase = aporteDaoService.find(new Aporte(), aporte.getCodigo());
+            if (enBase != null && enBase.getFechaTransaccion() != null) {
+                estadoCierreService.validarMovimientoCartera(null, enBase.getFechaTransaccion().toLocalDate(),
+                        "cambios en aportes de un mes cerrado");
+            }
+        }
+        estadoCierreService.validarMovimientoCartera(null,
+                fecha != null ? fecha.toLocalDate() : LocalDate.now(), "aportes manuales");
     }
 
     /**
@@ -148,6 +170,7 @@ public class AporteServiceImpl implements AporteService {
     @Override
     public Aporte saveSingle(Aporte aporte) throws Throwable {
         System.out.println("saveSingle - Aporte");
+        validaMesAbiertoCrud(aporte);
         if (aporte.getCodigo() == null) {
             double valorNuevo = aporte.getValor() != null ? aporte.getValor() : 0.0;
             if (valorNuevo < 0) {
@@ -243,8 +266,13 @@ public class AporteServiceImpl implements AporteService {
     }
 
     @Override
-    public List<Object[]> selectTiposAportePorEntidad(java.time.LocalDateTime fechaCorte) throws Throwable {
-        return aporteDaoService.selectTiposAportePorEntidad(fechaCorte);
+    public List<Object[]> selectSumaPorGrupoPrestacionPorEntidad(java.time.LocalDateTime fechaCorte) throws Throwable {
+        return aporteDaoService.selectSumaPorGrupoPrestacionPorEntidad(fechaCorte);
+    }
+
+    @Override
+    public List<Object[]> selectAportePersonalDelPeriodoPorEntidad(java.time.LocalDate periodo) throws Throwable {
+        return aporteDaoService.selectAportePersonalDelPeriodoPorEntidad(periodo);
     }
 
     @Override
@@ -262,13 +290,18 @@ public class AporteServiceImpl implements AporteService {
     // ============================================================
 
     @Override
-    public Long selectCountImposicionesPersonalesPorEntidad(Long codigoEntidad) throws Throwable {
-        return aporteDaoService.selectCountImposicionesPersonalesPorEntidad(codigoEntidad);
+    public Long selectCountImposicionesPersonalesPorEntidad(Long codigoEntidad, java.time.LocalDate corte) throws Throwable {
+        return aporteDaoService.selectCountImposicionesPersonalesPorEntidad(codigoEntidad, corte);
     }
 
     @Override
-    public Long selectCountImposicionesPatronalesPorEntidad(Long codigoEntidad) throws Throwable {
-        return aporteDaoService.selectCountImposicionesPatronalesPorEntidad(codigoEntidad);
+    public Long selectCountImposicionesPatronalesPorEntidad(Long codigoEntidad, java.time.LocalDate corte) throws Throwable {
+        return aporteDaoService.selectCountImposicionesPatronalesPorEntidad(codigoEntidad, corte);
+    }
+
+    @Override
+    public Object[] selectLiquidacionMesPorEntidad(Long codigoEntidad, java.time.LocalDate desde, java.time.LocalDate hasta) throws Throwable {
+        return aporteDaoService.selectLiquidacionMesPorEntidad(codigoEntidad, desde, hasta);
     }
 
     @Override
@@ -426,6 +459,12 @@ public class AporteServiceImpl implements AporteService {
             throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": el aporte " + idAporte
                 + " ya es una fila de reverso (valor negativo); no se puede reversar de nuevo");
         }
+        // C17: el reverso se registra hoy (mes abierto para cartera) y, si el aporte original es de un mes
+        // cerrado para cartera, su contabilidad también tiene que estar cerrada.
+        estadoCierreService.validarCarteraAbierta(null, LocalDate.now(), "la reversa del aporte " + idAporte);
+        estadoCierreService.validarAnulacionCartera(null,
+                original.getFechaTransaccion() != null ? original.getFechaTransaccion().toLocalDate() : null,
+                "la reversa del aporte " + idAporte);
 
         // H61 (INVARIANTE-SALDO-APORTES.md §3.1/§3.2): bloqueo por partícipe, ANTES de leer el
         // saldo, y tope: reversar NO puede dejar el saldo del tipo por debajo de cero — el
@@ -526,6 +565,8 @@ public class AporteServiceImpl implements AporteService {
         if (fechaEfectiva.isAfter(LocalDate.now())) {
             throw new IncomeException(ERR_FECHA_INVALIDA + ": la fecha " + fechaEfectiva + " es futura");
         }
+        // C17: la jubilación mueve aportes con fechaEfectiva: mes abierto.
+        estadoCierreService.validarMovimientoCartera(null, fechaEfectiva, "el proceso de jubilación");
         LocalDateTime fechaHora = fechaEfectiva.isEqual(LocalDate.now())
             ? LocalDateTime.now() : fechaEfectiva.atStartOfDay();
 

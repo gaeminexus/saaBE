@@ -119,6 +119,10 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
     @EJB
     private com.saa.ejb.cnt.service.PeriodoService periodoService;
 
+    /** C17: mes cerrado para cartera / contabilidad (CIERRES-BLOQUEANTES.md). */
+    @EJB
+    private com.saa.ejb.cnt.service.EstadoCierreService estadoCierreService;
+
     @EJB
     private PrestamoService prestamoService;
 
@@ -612,6 +616,10 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
                 + " del préstamo; use la precancelación");
         }
 
+        // C17: el pago con aportes se fecha con fechaPago (evento, APRT, PGAP, asiento): mes abierto.
+        estadoCierreService.validarMovimientoCartera(solicitud.getIdEmpresa(), fechaPagoHora.toLocalDate(),
+                "pagos con aportes");
+
         // 1. Evento
         EventoPrestamo evento = crearEvento(prestamo, TIPO_PAGO_APORTES, valorTotal, fechaPagoHora,
             solicitud.getUsuario(), solicitud.getObservacion());
@@ -1084,6 +1092,9 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
             throw new IncomeException("PERIODO_CERRADO: el período contable de la fecha de afectación "
                     + fechaAfectacion + " está cerrado — " + e.getMessage());
         }
+        // C17: además, el mes no puede haber pasado por el cierre–apertura de cartera. Cubre a todos los
+        // que llaman a este validador (precancelación, abono con aportes, acuerdo de condonación).
+        estadoCierreService.validarCarteraAbierta(idEmpresa, fechaAfectacion, "movimientos de cartera");
     }
 
     @Override
@@ -1308,6 +1319,467 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
     }
 
     // ========================================================================
+    // C16 (D-021) — Precancelación pagada con el dinero de un préstamo nuevo
+    // (desembolso neto). Ver docs/logica-negocio/crd/DESEMBOLSO-NETO-CON-PRECANCELACION.md.
+    // ========================================================================
+
+    /** Marca en la observación del evento: identifica la precancelación del lote (idempotencia). */
+    private static String marcaPrecancelacionConPrestamo(Long idPrestamoNuevo) {
+        return "[D-021 préstamo nuevo " + idPrestamoNuevo + "]";
+    }
+
+    private static boolean esCuotaSaldada(DetallePrestamo cuota) {
+        Long estado = cuota.getEstado();
+        return estado != null && (estado.intValue() == EstadoCuotaPrestamo.PAGADA
+            || estado.intValue() == EstadoCuotaPrestamo.CANCELADA_ANTICIPADA);
+    }
+
+    /** Cuotas del préstamo partidas en: anteriores al mes, la del mes y las posteriores. */
+    private static class CuotasPorMes {
+        private final List<DetallePrestamo> anteriores = new ArrayList<>();
+        private final List<DetallePrestamo> delMes = new ArrayList<>();
+        private final List<DetallePrestamo> futuras = new ArrayList<>();
+    }
+
+    private CuotasPorMes cuotasPorMes(Long idPrestamo, LocalDate fecha) throws Throwable {
+        LocalDate inicioMes = fecha.withDayOfMonth(1);
+        LocalDate finMes = fecha.withDayOfMonth(fecha.lengthOfMonth());
+        CuotasPorMes resultado = new CuotasPorMes();
+        List<DetallePrestamo> cuotas = detallePrestamoDaoService.selectByPrestamo(idPrestamo);
+        if (cuotas == null) {
+            return resultado;
+        }
+        for (DetallePrestamo cuota : cuotas) {
+            if (cuota.getFechaVencimiento() == null) {
+                throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": la cuota " + cuota.getCodigo() + " del préstamo "
+                    + idPrestamo + " no tiene fecha de vencimiento.");
+            }
+            LocalDate vto = cuota.getFechaVencimiento().toLocalDate();
+            if (vto.isBefore(inicioMes)) {
+                resultado.anteriores.add(cuota);
+            } else if (vto.isAfter(finMes)) {
+                resultado.futuras.add(cuota);
+            } else {
+                resultado.delMes.add(cuota);
+            }
+        }
+        return resultado;
+    }
+
+    @Override
+    public com.saa.ejb.crd.service.dto.ComponentesPrecancelacionConPrestamo calcularPrecancelacionConPrestamo(
+            Long idPrestamoCancelado, LocalDate fecha) throws Throwable {
+        System.out.println("ProcesoPagoPrestamoService.calcularPrecancelacionConPrestamo - Préstamo: "
+            + idPrestamoCancelado + " - Fecha: " + fecha);
+        if (idPrestamoCancelado == null || fecha == null) {
+            throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": idPrestamoCancelado y fecha son obligatorios");
+        }
+        Prestamo prestamo = prestamoDaoService.find(new Prestamo(), idPrestamoCancelado);
+        if (prestamo == null) {
+            throw new IncomeException(ERR_PRESTAMO_NO_ENCONTRADO + ": no existe el préstamo " + idPrestamoCancelado);
+        }
+        long estado = prestamo.getIdEstado() != null ? prestamo.getIdEstado().longValue() : 0L;
+        // Vigentes, o cancelados que la migración dejó así (la regla de cuotas de abajo decide).
+        // Novación (5), reestructuración (13), por revisar (9), anulados y nunca aprobados: no.
+        if (estado != EstadoPrestamo.VIGENTE && estado != EstadoPrestamo.EN_MORA
+                && estado != EstadoPrestamo.DE_PLAZO_VENCIDO && estado != EstadoPrestamo.VIGENTE_POR_REVISAR
+                && estado != EstadoPrestamo.CANCELADO && estado != EstadoPrestamo.CANCELADO_ANTICIPADO) {
+            throw new IncomeException(ERR_ESTADO_NO_PERMITE + ": el préstamo " + idPrestamoCancelado
+                + " está en estado " + estado + "; no se precancela con un préstamo nuevo.");
+        }
+        LocalDate inicioMes = fecha.withDayOfMonth(1);
+
+        // Eventos vigentes del mes o posteriores: otra operación ya lo tocó.
+        List<EventoPrestamo> eventos = eventoPrestamoDaoService.selectByPrestamo(idPrestamoCancelado);
+        if (eventos != null) {
+            for (EventoPrestamo evento : eventos) {
+                if (evento.getFechaAnulacion() == null && evento.getFecha() != null
+                        && !evento.getFecha().toLocalDate().isBefore(inicioMes)) {
+                    throw new IncomeException(ERR_ESTADO_NO_PERMITE + ": el préstamo " + idPrestamoCancelado
+                        + " ya tiene la operación " + evento.getTipoOperacion() + " (evento " + evento.getCodigo()
+                        + ") del " + evento.getFecha().toLocalDate() + ": cancelado o cobrado por otro medio.");
+                }
+            }
+        }
+
+        CuotasPorMes partes = cuotasPorMes(idPrestamoCancelado, fecha);
+        for (DetallePrestamo cuota : partes.anteriores) {
+            if (!esCuotaSaldada(cuota)) {
+                throw new IncomeException(ERR_ESTADO_NO_PERMITE + ": el préstamo " + idPrestamoCancelado
+                    + " tiene la cuota #" + cuota.getNumeroCuota() + " (vence " + cuota.getFechaVencimiento().toLocalDate()
+                    + ") impaga: la regla (capital al corte anterior + cuota del mes) no la cubre.");
+            }
+        }
+        if (partes.delMes.size() != 1) {
+            throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": el préstamo " + idPrestamoCancelado + " tiene "
+                + partes.delMes.size() + " cuota(s) con vencimiento en el mes de " + fecha + "; se espera una.");
+        }
+        DetallePrestamo cuotaMes = partes.delMes.get(0);
+        LocalDateTime finDelDia = fecha.atTime(23, 59, 59);
+        List<DetallePrestamo> mesYFuturas = new ArrayList<>(partes.delMes);
+        mesYFuturas.addAll(partes.futuras);
+        for (DetallePrestamo cuota : mesYFuturas) {
+            List<PagoPrestamo> vigentes = pagoPrestamoDaoService.selectVigentesByIdDetallePrestamo(cuota.getCodigo());
+            if (vigentes != null && !vigentes.isEmpty()) {
+                throw new IncomeException(ERR_ESTADO_NO_PERMITE + ": la cuota #" + cuota.getNumeroCuota()
+                    + " del préstamo " + idPrestamoCancelado + " tiene " + vigentes.size() + " pago(s) vigente(s)"
+                    + " (CRD.PGPR): cancelado o cobrado por otro medio.");
+            }
+            if (esCuotaSaldada(cuota) && cuota.getFechaPagado() != null && !cuota.getFechaPagado().isAfter(finDelDia)) {
+                throw new IncomeException(ERR_ESTADO_NO_PERMITE + ": la cuota #" + cuota.getNumeroCuota()
+                    + " del préstamo " + idPrestamoCancelado + " ya está liquidada al " + cuota.getFechaPagado().toLocalDate()
+                    + ": cancelado a esa fecha por otro medio.");
+            }
+        }
+
+        double interes = redondear(nvl(cuotaMes.getInteres()));
+        double seguro = redondear(nvl(cuotaMes.getDesgravamen()) + nvl(cuotaMes.getValorSeguroIncendio()));
+        double tasaDiaria = procesoMoraPrestamoService.tasaDiariaDelPrestamo(prestamo, true);
+        double mora = cuotaMes.getFechaVencimiento().toLocalDate().isBefore(fecha)
+            ? redondear(procesoMoraPrestamoService.calcularMoraCuota(cuotaMes, tasaDiaria, fecha)) : 0.0;
+
+        boolean hayFuturasSaldadas = false;
+        boolean hayFuturasPendientes = false;
+        double capitalFuturasPendientes = 0.0;
+        for (DetallePrestamo futura : partes.futuras) {
+            if (esCuotaSaldada(futura)) {
+                hayFuturasSaldadas = true;
+            } else {
+                hayFuturasPendientes = true;
+                capitalFuturasPendientes += nvl(futura.getCapital());
+            }
+        }
+        if (hayFuturasSaldadas && hayFuturasPendientes) {
+            throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": el préstamo " + idPrestamoCancelado + " tiene cuotas"
+                + " futuras saldadas y pendientes a la vez: tabla no reconocible, revisar a mano.");
+        }
+        double capital;
+        String tabla;
+        double excesoTotal = 0.0;
+        if (hayFuturasPendientes) {
+            capital = redondear(nvl(cuotaMes.getCapital()) + capitalFuturasPendientes);
+            tabla = com.saa.ejb.crd.service.dto.ComponentesPrecancelacionConPrestamo.TABLA_VIGENTE;
+        } else {
+            // Cartera migrada de Delta. Tres patrones (los 22 de junio 2025), con el capital futuro
+            // contado UNA sola vez:
+            //  A) sin cuotas futuras: el futuro vive en DTPRSLDO/DTPRSLOT de la cuota del mes
+            //     → capital = DTPRCPTL + DTPRSLDO (regla de la G48 de mayo 2025);
+            //  B) futuras en 7 y la cuota del mes con TODO el capital en DTPRCPTL (DTPRTTLL = CPTL +
+            //     interés + seguro) → capital = DTPRCPTL;
+            //  C) futuras en 7, DTPRCPTL = capital propio y DTPRTTLL incluye además el futuro (= DTPRSLOT
+            //     = Σ capital de las futuras; préstamo 4116) → capital = DTPRCPTL + futuro; el exceso de
+            //     DTPRTTLL se descuenta antes de pagar la cuota (si no, el motor la deja PARCIAL).
+            double capitalCuota = nvl(cuotaMes.getCapital());
+            double totalMenosConceptos = redondear(nvl(cuotaMes.getTotal()) - nvl(cuotaMes.getInteres())
+                - nvl(cuotaMes.getDesgravamen()) - nvl(cuotaMes.getValorSeguroIncendio()) - nvl(cuotaMes.getMora()));
+            if (partes.futuras.isEmpty()) {
+                double capitalMasSaldo = capitalCuota + nvl(cuotaMes.getSaldo());
+                capital = redondear(Math.max(capitalMasSaldo, totalMenosConceptos));
+            } else {
+                double capitalFuturas = 0.0;
+                for (DetallePrestamo futura : partes.futuras) {
+                    capitalFuturas += nvl(futura.getCapital());
+                }
+                capitalFuturas = redondear(capitalFuturas);
+                double slot = redondear(nvl(cuotaMes.getSaldoOtros()));
+                if (slot > TOLERANCIA && Math.abs(slot - capitalFuturas) > TOLERANCIA) {
+                    throw new IncomeException(ERR_MONTO_NO_COINCIDE + ": en el préstamo " + idPrestamoCancelado
+                        + " el capital futuro no es único: DTPRSLOT de la cuota #" + cuotaMes.getNumeroCuota() + " = $"
+                        + formatoMonto(slot) + " pero las " + partes.futuras.size() + " cuotas futuras (estado 7) suman $"
+                        + formatoMonto(capitalFuturas) + ". Revisar la tabla a mano.");
+                }
+                if (Math.abs(totalMenosConceptos - capitalCuota) <= TOLERANCIA) {
+                    capital = redondear(capitalCuota); // patrón B
+                } else if (Math.abs(totalMenosConceptos - (capitalCuota + capitalFuturas)) <= TOLERANCIA) {
+                    capital = redondear(capitalCuota + capitalFuturas); // patrón C
+                    excesoTotal = capitalFuturas;
+                } else {
+                    throw new IncomeException(ERR_MONTO_NO_COINCIDE + ": la cuota #" + cuotaMes.getNumeroCuota()
+                        + " del préstamo " + idPrestamoCancelado + " no encaja en ningún patrón de tabla migrada:"
+                        + " capital $" + formatoMonto(capitalCuota) + ", total menos interés/seguro/mora $"
+                        + formatoMonto(totalMenosConceptos) + ", cuotas futuras en 7 $" + formatoMonto(capitalFuturas)
+                        + ". Revisar la tabla a mano.");
+                }
+            }
+            tabla = com.saa.ejb.crd.service.dto.ComponentesPrecancelacionConPrestamo.TABLA_MIGRADA;
+        }
+
+        com.saa.ejb.crd.service.dto.ComponentesPrecancelacionConPrestamo componentes =
+            new com.saa.ejb.crd.service.dto.ComponentesPrecancelacionConPrestamo();
+        componentes.setIdPrestamo(idPrestamoCancelado);
+        componentes.setIdCuotaDelMes(cuotaMes.getCodigo());
+        componentes.setNumeroCuotaDelMes(cuotaMes.getNumeroCuota());
+        componentes.setCapital(capital);
+        componentes.setInteres(interes);
+        componentes.setSeguro(seguro);
+        componentes.setMora(mora);
+        componentes.setTotal(redondear(capital + interes + seguro + mora));
+        componentes.setTabla(tabla);
+        componentes.setExcesoTotalCuotaDelMes(excesoTotal);
+        System.out.println("  Precancelación con préstamo nuevo al " + fecha + " (" + tabla + ") - capital $" + capital
+            + " - interés $" + interes + " - seguro $" + seguro + " - mora $" + mora);
+        return componentes;
+    }
+
+    @Override
+    public com.saa.ejb.crd.service.dto.ResultadoPrecancelacionConPrestamo buscarPrecancelacionConPrestamo(
+            Long idPrestamoCancelado, Long idPrestamoNuevo) throws Throwable {
+        List<EventoPrestamo> eventos = eventoPrestamoDaoService.selectByPrestamo(idPrestamoCancelado);
+        if (eventos == null) {
+            return null;
+        }
+        String marca = marcaPrecancelacionConPrestamo(idPrestamoNuevo);
+        for (EventoPrestamo evento : eventos) {
+            if (evento.getFechaAnulacion() != null || !TIPO_PRECANCELACION.equals(evento.getTipoOperacion())
+                    || evento.getObservacion() == null || !evento.getObservacion().contains(marca)) {
+                continue;
+            }
+            com.saa.ejb.crd.service.dto.ResultadoPrecancelacionConPrestamo resultado =
+                new com.saa.ejb.crd.service.dto.ResultadoPrecancelacionConPrestamo();
+            resultado.setIdPrestamoCancelado(idPrestamoCancelado);
+            resultado.setIdPrestamoNuevo(idPrestamoNuevo);
+            resultado.setIdEvento(evento.getCodigo());
+            resultado.setIdAsiento(evento.getNumeroAsiento());
+            double capital = 0.0;
+            double capitalFuturo = 0.0;
+            double interes = 0.0;
+            double seguro = 0.0;
+            List<PagoPrestamo> pagos = pagoPrestamoDaoService.selectByEvento(evento.getCodigo());
+            if (pagos != null) {
+                for (PagoPrestamo pago : pagos) {
+                    if (pago.getAnulado() != null && pago.getAnulado() == 1L) {
+                        continue;
+                    }
+                    resultado.getIdsPagoPrestamo().add(pago.getCodigo());
+                    capital += nvl(pago.getCapitalPagado()) + nvl(pago.getSaldoOtros());
+                    capitalFuturo += nvl(pago.getSaldoOtros());
+                    interes += nvl(pago.getInteresPagado()) + nvl(pago.getInteresVencidoPagado());
+                    seguro += nvl(pago.getDesgravamen()) + nvl(pago.getValorSeguroIncendio());
+                }
+            }
+            resultado.setCapital(redondear(capital));
+            resultado.setCapitalFuturo(redondear(capitalFuturo));
+            resultado.setInteres(redondear(interes));
+            resultado.setSeguro(redondear(seguro));
+            resultado.setTotal(redondear(capital + interes + seguro));
+            resultado.setYaExistia(true);
+            return resultado;
+        }
+        return null;
+    }
+
+    @Override
+    @TransactionAttribute(TransactionAttributeType.REQUIRED)
+    public com.saa.ejb.crd.service.dto.ResultadoPrecancelacionConPrestamo precancelarConPrestamoNuevo(
+            Long idPrestamoCancelado, Long idPrestamoNuevo, Long idEmpresa, String usuario, LocalDate fecha,
+            double capital, double interes, double seguro, String observacion) throws Throwable {
+        System.out.println("ProcesoPagoPrestamoService.precancelarConPrestamoNuevo - cancelado: " + idPrestamoCancelado
+            + " - nuevo: " + idPrestamoNuevo + " - fecha: " + fecha);
+        if (idPrestamoCancelado == null || idPrestamoNuevo == null || idEmpresa == null || fecha == null
+                || usuario == null || usuario.trim().isEmpty()) {
+            throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": idPrestamoCancelado, idPrestamoNuevo, idEmpresa,"
+                + " usuario y fecha son obligatorios");
+        }
+        if (idPrestamoCancelado.equals(idPrestamoNuevo)) {
+            throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": el préstamo no puede precancelarse a sí mismo");
+        }
+        Prestamo anterior = prestamoDaoService.find(new Prestamo(), idPrestamoCancelado);
+        Prestamo nuevo = prestamoDaoService.find(new Prestamo(), idPrestamoNuevo);
+        if (anterior == null || nuevo == null) {
+            throw new IncomeException(ERR_PRESTAMO_NO_ENCONTRADO + ": no existe el préstamo "
+                + (anterior == null ? idPrestamoCancelado : idPrestamoNuevo));
+        }
+        Long entidadAnterior = anterior.getEntidad() != null ? anterior.getEntidad().getCodigo() : null;
+        Long entidadNuevo = nuevo.getEntidad() != null ? nuevo.getEntidad().getCodigo() : null;
+        if (entidadAnterior == null || !entidadAnterior.equals(entidadNuevo)) {
+            throw new IncomeException(ERR_PARTICIPES_DISTINTOS + ": el préstamo " + idPrestamoCancelado
+                + " (entidad " + entidadAnterior + ") no es del mismo partícipe que el " + idPrestamoNuevo
+                + " (entidad " + entidadNuevo + ")");
+        }
+
+        // Idempotencia: ya registrada por un envío anterior del lote.
+        com.saa.ejb.crd.service.dto.ResultadoPrecancelacionConPrestamo existente =
+            buscarPrecancelacionConPrestamo(idPrestamoCancelado, idPrestamoNuevo);
+        if (existente != null) {
+            System.out.println("  Ya registrada: evento " + existente.getIdEvento());
+            return existente;
+        }
+
+        com.saa.ejb.crd.service.dto.ComponentesPrecancelacionConPrestamo componentes =
+            calcularPrecancelacionConPrestamo(idPrestamoCancelado, fecha);
+        if (componentes.getMora() > TOLERANCIA) {
+            throw new IncomeException(ERR_MONTO_NO_COINCIDE + ": la cuota del mes del préstamo " + idPrestamoCancelado
+                + " tiene mora $" + formatoMonto(componentes.getMora()) + " al " + fecha
+                + "; la regla del desembolso neto (capital + interés + seguro) no la contempla.");
+        }
+        if (Math.abs(redondear(capital - componentes.getCapital())) > TOLERANCIA
+                || Math.abs(redondear(interes - componentes.getInteres())) > TOLERANCIA
+                || Math.abs(redondear(seguro - componentes.getSeguro())) > TOLERANCIA) {
+            throw new IncomeException(ERR_MONTO_NO_COINCIDE + ": la precancelación del préstamo " + idPrestamoCancelado
+                + " enviada (capital $" + formatoMonto(capital) + ", interés $" + formatoMonto(interes) + ", seguro $"
+                + formatoMonto(seguro) + ") no coincide con la calculada desde CRD.DTPR (capital $"
+                + formatoMonto(componentes.getCapital()) + ", interés $" + formatoMonto(componentes.getInteres())
+                + ", seguro $" + formatoMonto(componentes.getSeguro()) + ", " + componentes.getTabla() + ")");
+        }
+
+        LocalDateTime fechaHora = validarFechaNoFutura(fecha);
+        validarFechaAfectacion(fecha, fecha, idEmpresa);
+        double total = redondear(componentes.getCapital() + componentes.getInteres() + componentes.getSeguro());
+        String marca = marcaPrecancelacionConPrestamo(idPrestamoNuevo);
+        String observacionEvento = (observacion != null && !observacion.trim().isEmpty() ? observacion.trim() + " " : "")
+            + "Pagada con el desembolso del préstamo " + idPrestamoNuevo + " " + marca;
+
+        // 1. Evento y contexto (fecha de pago = fecha contable = la del débito bancario).
+        EventoPrestamo evento = crearEvento(anterior, TIPO_PRECANCELACION, total, fechaHora, usuario, observacionEvento);
+        ContextoPago ctx = crearContexto(TIPO_PRECANCELACION, usuario, observacionEvento, fechaHora,
+            evento.getCodigo(), null, idEmpresa, null);
+        ctx.setFechaAfectacion(fecha);
+
+        // 2. Cuota del mes: si la migración la dejó saldada sin pago, vuelve a pendiente desde sus
+        //    pagos (regla D-019 ampliada); mora a la fecha; se paga COMPLETA con el motor.
+        DetallePrestamo cuotaMes = detallePrestamoDaoService.find(new DetallePrestamo(), componentes.getIdCuotaDelMes());
+        if (esCuotaSaldada(cuotaMes)) {
+            motorPagoPrestamoService.recalcularCuotaDesdePagos(cuotaMes);
+        }
+        procesoMoraPrestamoService.recalcularMoraCuotaALaFecha(cuotaMes, fecha);
+        double exceso = componentes.getExcesoTotalCuotaDelMes() != null ? componentes.getExcesoTotalCuotaDelMes() : 0.0;
+        if (exceso > TOLERANCIA) {
+            // Patrón C de la migración: DTPRTTLL repite el capital de las futuras, que se cancela una
+            // sola vez como capital futuro. Se corrige el total de la cuota a sus componentes.
+            System.out.println("  Cuota #" + cuotaMes.getNumeroCuota() + ": DTPRTTLL " + cuotaMes.getTotal()
+                + " incluye el capital futuro $" + exceso + " (migración); se descuenta del total");
+            cuotaMes.setTotal(redondear(nvl(cuotaMes.getTotal()) - exceso));
+            if (cuotaMes.getTotalConSeguro() != null) {
+                cuotaMes.setTotalConSeguro(redondear(cuotaMes.getTotalConSeguro() - exceso));
+            }
+            cuotaMes = detallePrestamoService.saveSingle(cuotaMes);
+        }
+        SaldosCuota saldosMes = motorPagoPrestamoService.calcularSaldosRealesCuota(cuotaMes);
+        DetalleAplicacionCuota aplicacion = motorPagoPrestamoService.aplicarPagoACuota(cuotaMes,
+            saldosMes.getTotalPendiente(), ctx);
+        double interesAplicado = redondear(aplicacion.getAplicadoInteres() + aplicacion.getAplicadoInteresVencido());
+        double seguroAplicado = redondear(aplicacion.getAplicadoDesgravamen() + aplicacion.getAplicadoSeguro());
+        if (Math.abs(redondear(interesAplicado - componentes.getInteres())) > TOLERANCIA
+                || Math.abs(redondear(seguroAplicado - componentes.getSeguro())) > TOLERANCIA
+                || aplicacion.getAplicadoMora() > TOLERANCIA) {
+            throw new IncomeException(ERR_MONTO_NO_COINCIDE + ": el motor aplicó a la cuota #" + cuotaMes.getNumeroCuota()
+                + " del préstamo " + idPrestamoCancelado + " interés $" + formatoMonto(interesAplicado) + ", seguro $"
+                + formatoMonto(seguroAplicado) + " y mora $" + formatoMonto(aplicacion.getAplicadoMora())
+                + "; se esperaba interés $" + formatoMonto(componentes.getInteres()) + " y seguro $"
+                + formatoMonto(componentes.getSeguro()) + " sin mora.");
+        }
+        if (cuotaMes.getEstado() == null || cuotaMes.getEstado().intValue() != EstadoCuotaPrestamo.PAGADA) {
+            throw new IncomeException(ERR_MONTO_NO_COINCIDE + ": la cuota #" + cuotaMes.getNumeroCuota() + " del préstamo "
+                + idPrestamoCancelado + " no quedó PAGADA tras aplicar $" + formatoMonto(saldosMes.getTotalPendiente()));
+        }
+        double capitalFuturo = redondear(componentes.getCapital() - aplicacion.getAplicadoCapital());
+        if (capitalFuturo < -TOLERANCIA) {
+            throw new IncomeException(ERR_MONTO_NO_COINCIDE + ": el capital aplicado a la cuota del mes ($"
+                + formatoMonto(aplicacion.getAplicadoCapital()) + ") supera el capital a cancelar ($"
+                + formatoMonto(componentes.getCapital()) + ") del préstamo " + idPrestamoCancelado);
+        }
+
+        // 3. Futuras: las pendientes pasan a CANCELADA_ANTICIPADA (7); todas quedan con fecha de
+        //    pago = fecha (para que el préstamo salga de la cartera AL CORTE: DTPRESTD 4/7 con
+        //    DTPRFCPG <= corte, la regla de CierreCarteraDaoServiceImpl y de la G48).
+        CuotasPorMes partes = cuotasPorMes(idPrestamoCancelado, fecha);
+        int canceladas = 0;
+        int fechadas = 0;
+        for (DetallePrestamo futura : partes.futuras) {
+            if (!esCuotaSaldada(futura)) {
+                futura.setEstado((long) EstadoCuotaPrestamo.CANCELADA_ANTICIPADA);
+                futura.setIdEstado((long) EstadoCuotaPrestamo.CANCELADA_ANTICIPADA);
+                canceladas++;
+            } else {
+                fechadas++;
+            }
+            futura.setFechaPagado(fechaHora);
+            detallePrestamoService.saveSingle(futura);
+        }
+
+        // 4. Capital futuro (el que no estaba en la cuota del mes): PGPR en saldoOtros sobre la
+        //    ancla = la cuota del mes, ya PAGADA (mismo registro que precancelar). Si la migración ya
+        //    dejó ese mismo saldo en DTPRSLOT de la ancla, no se vuelve a sumar.
+        List<Long> idsPago = new ArrayList<>();
+        if (aplicacion.getIdPagoPrestamo() != null) {
+            idsPago.add(aplicacion.getIdPagoPrestamo());
+        }
+        PagoPrestamo pagoCapitalFuturo = null;
+        if (capitalFuturo > TOLERANCIA) {
+            if (Math.abs(redondear(nvl(cuotaMes.getSaldoOtros()) - capitalFuturo)) > TOLERANCIA) {
+                cuotaMes.setSaldoOtros(redondear(nvl(cuotaMes.getSaldoOtros()) + capitalFuturo));
+                cuotaMes = detallePrestamoService.saveSingle(cuotaMes);
+            }
+            pagoCapitalFuturo = new PagoPrestamo();
+            pagoCapitalFuturo.setPrestamo(anterior);
+            pagoCapitalFuturo.setDetallePrestamo(cuotaMes);
+            pagoCapitalFuturo.setNumeroCuota(cuotaMes.getNumeroCuota());
+            pagoCapitalFuturo.setFecha(fechaHora);
+            pagoCapitalFuturo.setValor(capitalFuturo);
+            pagoCapitalFuturo.setSaldoOtros(capitalFuturo);
+            pagoCapitalFuturo.setCapitalPagado(0.0);
+            pagoCapitalFuturo.setInteresPagado(0.0);
+            pagoCapitalFuturo.setMoraPagada(0.0);
+            pagoCapitalFuturo.setInteresVencidoPagado(0.0);
+            pagoCapitalFuturo.setDesgravamen(0.0);
+            pagoCapitalFuturo.setValorSeguroIncendio(0.0);
+            pagoCapitalFuturo.setTipo(TIPO_PRECANCELACION);
+            pagoCapitalFuturo.setObservacion(observacionEvento + " [Evento: " + evento.getCodigo() + "]");
+            pagoCapitalFuturo.setUsuarioRegistro(usuario);
+            pagoCapitalFuturo.setFechaRegistro(LocalDateTime.now());
+            pagoCapitalFuturo.setEstado(1L);
+            pagoCapitalFuturo.setIdEstado(1L);
+            pagoCapitalFuturo.setAnulado(0L);
+            pagoCapitalFuturo.setEventoPrestamo(evento);
+            pagoCapitalFuturo = pagoPrestamoService.saveSingle(pagoCapitalFuturo);
+            idsPago.add(pagoCapitalFuturo.getCodigo());
+        }
+
+        // 5. Préstamo → CANCELADO_ANTICIPADO (4) y huella (en los dos préstamos).
+        anterior.setIdEstado(Long.valueOf(EstadoPrestamo.CANCELADO_ANTICIPADO));
+        anterior.setFechaModificacion(LocalDateTime.now());
+        prestamoDaoService.save(anterior, anterior.getCodigo());
+        registrarHuellaPrestamo(anterior, TIPO_PRECANCELACION, total,
+            "pagada con el préstamo " + idPrestamoNuevo + " (evento " + evento.getCodigo() + ")", fechaHora, usuario);
+        registrarHuellaPrestamo(nuevo, "DESEMBOLSO_NETO", total,
+            "precancela el préstamo " + idPrestamoCancelado + " (evento " + evento.getCodigo() + ")", fechaHora, usuario);
+
+        // 6. Asiento (DEBE socios por pagar del préstamo nuevo) y reverso de la provisión de intereses.
+        Long numeroAsiento = contabilidadPrestamoService.contabilizarPrecancelacionConPrestamo(evento, ctx, nuevo, total);
+        if (numeroAsiento != null) {
+            evento.setNumeroAsiento(numeroAsiento);
+            eventoPrestamoService.saveSingle(evento);
+            for (Long idPago : idsPago) {
+                PagoPrestamo pago = pagoPrestamoDaoService.find(new PagoPrestamo(), idPago);
+                if (pago != null) {
+                    pago.setAsiento(numeroAsiento);
+                    pagoPrestamoService.saveSingle(pago);
+                }
+            }
+        }
+
+        com.saa.ejb.crd.service.dto.ResultadoPrecancelacionConPrestamo resultado =
+            new com.saa.ejb.crd.service.dto.ResultadoPrecancelacionConPrestamo();
+        resultado.setIdPrestamoCancelado(idPrestamoCancelado);
+        resultado.setIdPrestamoNuevo(idPrestamoNuevo);
+        resultado.setIdEvento(evento.getCodigo());
+        resultado.setIdAsiento(numeroAsiento);
+        resultado.setCapital(componentes.getCapital());
+        resultado.setInteres(componentes.getInteres());
+        resultado.setSeguro(componentes.getSeguro());
+        resultado.setTotal(total);
+        resultado.setCapitalFuturo(Math.max(0.0, capitalFuturo));
+        resultado.setIdsPagoPrestamo(idsPago);
+        resultado.setCuotasCanceladas(canceladas);
+        resultado.setCuotasFechadas(fechadas);
+        resultado.setTabla(componentes.getTabla());
+        resultado.setYaExistia(false);
+        System.out.println("  ✅ Precancelación con préstamo nuevo OK - Evento: " + evento.getCodigo()
+            + " - Asiento: " + numeroAsiento + " - Total: $" + total);
+        return resultado;
+    }
+
+    // ========================================================================
     // §7.6 — Reverso
     // ========================================================================
 
@@ -1361,6 +1833,12 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
             throw new IncomeException(ERR_ESTADO_NO_PERMITE
                 + ": una reestructuración o novación no se anula desde el historial");
         }
+
+        // C17: anular una operación de un mes cerrado para cartera solo si su contabilidad también está
+        // cerrada (el asiento se reversa en el primer período abierto); si no, reabrir la cartera del mes.
+        estadoCierreService.validarAnulacionCartera(solicitud.getIdEmpresa(),
+                evento.getFecha() != null ? evento.getFecha().toLocalDate() : null,
+                "la anulación del evento " + evento.getCodigo());
 
         ResultadoAnulacion resultado = new ResultadoAnulacion();
         resultado.setIdEvento(evento.getCodigo());
@@ -1423,6 +1901,45 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
                         aEliminar.add(cuota);
                     }
                 }
+                // D-048: una cuota con pagos anticipados que el abono re-amortizó EN EL LUGAR (en
+                // re-proceso) conserva su código: es una de las historizadas por este evento
+                // (HDTP.codigoOriginal). No se borra ni bloquea: se restaura en el lugar desde HDTP,
+                // con sus pagos (que ya tenía antes del abono).
+                java.util.Set<Long> restaurarEnElLugar = new java.util.HashSet<>();
+                if (historicas != null) {
+                    java.util.Set<Long> codigosHistorizados = new java.util.HashSet<>();
+                    for (HistDetallePrestamo historica : historicas) {
+                        if (historica.getCodigoOriginal() != null) {
+                            codigosHistorizados.add(historica.getCodigoOriginal());
+                        }
+                    }
+                    for (DetallePrestamo cuota : aEliminar) {
+                        if (codigosHistorizados.contains(cuota.getCodigo())) {
+                            restaurarEnElLugar.add(cuota.getCodigo());
+                        }
+                    }
+                }
+                Map<Long, DetallePrestamo> vivasEnElLugar = new LinkedHashMap<>();
+                for (DetallePrestamo cuota : new ArrayList<>(aEliminar)) {
+                    if (restaurarEnElLugar.contains(cuota.getCodigo())) {
+                        // Solo puede conservar los pagos anticipados que ya tenía al abonar (fecha <=
+                        // la del abono); uno posterior se anula primero, como en cualquier cuota nueva.
+                        List<PagoPrestamo> vigentesCuota = pagoPrestamoDaoService.selectVigentesByIdDetallePrestamo(cuota.getCodigo());
+                        if (vigentesCuota != null && evento.getFecha() != null) {
+                            for (PagoPrestamo pago : vigentesCuota) {
+                                if (pago.getFecha() == null
+                                        || pago.getFecha().toLocalDate().isAfter(evento.getFecha().toLocalDate())) {
+                                    throw new IncomeException(ERR_PAGOS_SOBRE_TABLA_RECALCULADA
+                                        + ": hay pagos sobre la tabla recalculada (cuota #" + cuota.getNumeroCuota()
+                                        + ", pago " + pago.getCodigo() + " posterior al abono); anúlelos primero");
+                                }
+                            }
+                        }
+                        vivasEnElLugar.put(cuota.getCodigo(), cuota);
+                        aEliminar.remove(cuota);
+                    }
+                }
+
                 // Ninguna cuota generada puede tener pagos vigentes
                 for (DetallePrestamo cuota : aEliminar) {
                     Long vigentes = pagoPrestamoDaoService.contarVigentesByIdDetallePrestamo(cuota.getCodigo());
@@ -1442,12 +1959,19 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
                 for (DetallePrestamo cuota : aEliminar) {
                     idsAEliminar.add(cuota.getCodigo());
                 }
+                // D-048: los PSCT que el abono abrió sobre una cuota re-amortizada en el lugar también
+                // se cierran (se re-enlazan abajo como los de las demás).
+                idsAEliminar.addAll(vivasEnElLugar.keySet());
                 java.util.Set<String> polizasVivasAlMomentoDelAbono = new java.util.HashSet<>();
+                // D-048: PSCT cerrados por ESTE reverso (los que abrió el abono); en una cuota restaurada
+                // en el lugar comparten DTPRCDGO con los originales y no se tienen que re-enlazar.
+                java.util.Set<Long> psctCerradosAhora = new java.util.HashSet<>();
                 for (com.saa.model.crd.CuotaSeguro psct : cuotaSeguroDaoService.selectByCuotas(idsAEliminar)) {
                     if (psct.getFechaReverso() == null) {
                         polizasVivasAlMomentoDelAbono.add(psct.getDocumento().getCodigo() + "-" + psct.getCampo());
                         psct.setFechaReverso(ahora);
                         cuotaSeguroDaoService.save(psct, psct.getCodigo());
+                        psctCerradosAhora.add(psct.getCodigo());
                     }
                 }
 
@@ -1477,16 +2001,27 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
                 }
                 Map<Long, List<com.saa.model.crd.CuotaSeguro>> psctPorCuotaOriginal = new LinkedHashMap<>();
                 for (com.saa.model.crd.CuotaSeguro psct : cuotaSeguroDaoService.selectByCuotas(idsOriginales)) {
+                    if (psctCerradosAhora.contains(psct.getCodigo())) {
+                        continue;
+                    }
                     psctPorCuotaOriginal.computeIfAbsent(psct.getIdCuota(), k -> new ArrayList<>()).add(psct);
                 }
 
                 // Restaurar desde HDTP. El DTPRCDGO cambia: el original queda en HDTP.DTPRCDGO.
+                // D-048: salvo la cuota re-amortizada en el lugar, que vuelve a sus valores en su fila.
                 if (historicas != null) {
                     for (HistDetallePrestamo historica : historicas) {
                         DetallePrestamo cuota = restaurarDesdeHistorico(historica, prestamo);
-                        // DAO directo: DetallePrestamoService.saveSingle fuerza estado = 1 en las
-                        // filas nuevas y perdería el estado original que se está restaurando.
-                        cuota = detallePrestamoDaoService.save(cuota, null);
+                        DetallePrestamo viva = historica.getCodigoOriginal() != null
+                            ? vivasEnElLugar.get(historica.getCodigoOriginal()) : null;
+                        if (viva != null) {
+                            cuota.setCodigo(viva.getCodigo());
+                            cuota = detallePrestamoDaoService.save(cuota, viva.getCodigo());
+                        } else {
+                            // DAO directo: DetallePrestamoService.saveSingle fuerza estado = 1 en las
+                            // filas nuevas y perdería el estado original que se está restaurando.
+                            cuota = detallePrestamoDaoService.save(cuota, null);
+                        }
                         cuotasRestauradas++;
 
                         // S13 — re-enlazar: solo si la póliza de esa fila histórica seguía viva

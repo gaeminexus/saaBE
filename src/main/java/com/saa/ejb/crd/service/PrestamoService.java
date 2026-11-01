@@ -99,6 +99,37 @@ public interface PrestamoService extends EntityService<Prestamo>{
 			throws Throwable;
 
 	/**
+	 * Igual que {@link #aprobar(Long, String, String, Long, Long)} con una <b>fecha contable</b>
+	 * explícita para re-procesar meses pasados (C6, docs/logica-negocio/cnt/FECHA-CONTABLE-REPROCESO.md).
+	 *
+	 * @param fechaContable Fecha programada de la orden de pago del desembolso en CXP. {@code null}
+	 *                      = hoy (comportamiento de siempre). No puede ser futura. El asiento de
+	 *                      entrega sigue fechado con {@code PRSTFCIN}, que ya es fecha de negocio.
+	 */
+	Prestamo aprobar(Long idPrestamo, String usuario, String observacion, Long idEmpresa, Long idUsuario,
+			java.time.LocalDate fechaContable) throws Throwable;
+
+	/**
+	 * C15 / D-018 (H6): contabiliza el desembolso de un préstamo ya aprobado sin asiento de entrega:
+	 * asiento de entrega + orden de pago confirmada con su egreso, todo con la fecha del desembolso real
+	 * del extracto. Idempotente por préstamo. Ver CIERRE-CARTERA-A-FECHA-DE-CORTE.md §H6.
+	 */
+	java.util.Map<String, Object> contabilizarDesembolsoHistorico(Long idPrestamo, Long idEmpresa, Long idUsuario,
+			String usuario, java.time.LocalDate fechaContable, Long idCuentaBancaria, Double valor, String referencia)
+			throws Throwable;
+
+	/**
+	 * C16 (D-021): desembolso NETO. {@code valor} es el neto transferido por el banco; si el préstamo
+	 * canceló otro del mismo partícipe ({@code idPrestamoCancelado}), registra esa precancelación con el
+	 * motor pagada con el dinero del préstamo nuevo; {@code otrosDescuentos} opcionales. Regla: bruto =
+	 * neto + capital + interés + seguro + otros, al centavo. Ver DESEMBOLSO-NETO-CON-PRECANCELACION.md.
+	 */
+	java.util.Map<String, Object> contabilizarDesembolsoHistorico(Long idPrestamo, Long idEmpresa, Long idUsuario,
+			String usuario, java.time.LocalDate fechaContable, Long idCuentaBancaria, Double valor, String referencia,
+			Long idPrestamoCancelado, Double capitalCancelado, Double interesCancelado, Double seguroCancelado,
+			java.util.List<com.saa.ejb.crd.service.dto.DescuentoDesembolso> otrosDescuentos) throws Throwable;
+
+	/**
 	 * Rechaza un préstamo (PLAN-CICLO-OTORGAMIENTO.md §3, regla 5): PENDIENTE_DE_APROBACION (6)
 	 * o GENERADO (1) → RECHAZADO (7). NO borra la tabla de amortización: queda como evidencia de
 	 * qué se le ofreció al socio, y es inerte para el proceso de mora.

@@ -183,4 +183,13 @@ public interface TipoAsientos {
 	 */
 	public static final int CREDITOS = 1;
 
+	/**
+	 * Asientos de APERTURA (saldos iniciales): arranque del SAA al 31-may-2025 con el B17 de mayo 2025
+	 * (proyecto cuadre Superintendencia, cambios C1/C2/C5). codigoAlterno = <b>10</b> en CNT.PLNT de la
+	 * empresa 1236, PLNTSSTM = 1. Decision del coordinador del 2026-10-28: los alternos 7, 8 y 9 quedan
+	 * para IN-A / EG-A / DI-A ({@link TipoAsientoAutomatico}); la base del proyecto lo habia creado con 8 y
+	 * docs/logica-negocio/cnt/sql/c5-01-apertura-alterno-10.sql lo mueve al 10 (idempotente).
+	 */
+	public static final int APERTURA = 10;
+
 }

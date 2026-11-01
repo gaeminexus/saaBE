@@ -97,6 +97,14 @@ public class ContabilizacionIndividualCreditoServiceImpl implements Contabilizac
     @EJB
     private com.saa.ejb.crd.service.MotorPagoPrestamoService motorPagoPrestamoService;
 
+    /** C15 / D-017: separa la mora cobrada devengada (1.4.02) de la no devengada (ingreso). */
+    @EJB
+    private com.saa.ejb.crd.service.ProvisionInteresService provisionInteresService;
+
+    /** D-024: saldo contable de las cuentas por cobrar del período (misma lectura que C14/C15). */
+    @EJB
+    private com.saa.ejb.crd.dao.CierreCarteraDaoService cierreCarteraDaoService;
+
     @Override
     public Long resolverPlantillaAplicacion(Long idEmpresa) throws Throwable {
         Long idPlantilla = plantillaService.codigoByAlterno(PlantillasCredito.APLICACION_PETRO, idEmpresa);
@@ -132,6 +140,24 @@ public class ContabilizacionIndividualCreditoServiceImpl implements Contabilizac
         detalle.setValorDebe(0.0);
         detalle.setValorHaber(redondear(valor));
         return detalle;
+    }
+
+    @Override
+    public DetalleAsiento lineaIngresoMora(Long idEmpresa, Long idTipoPrestamo, double valor,
+            String prefijoDescripcion) throws Throwable {
+        if (idTipoPrestamo == null) {
+            throw new IncomeException(prefijoDescripcion + ": el préstamo no tiene tipo de préstamo asignado;"
+                    + " no se puede resolver la cuenta de ingreso por mora.");
+        }
+        Long idPlantilla = plantillaService.codigoByAlterno(PlantillasCredito.DEVENGO_INTERESES, idEmpresa);
+        DetallePlantilla linea = idPlantilla != null ? detallePlantillaDaoService.selectByPlantillaYAuxiliares(
+                idPlantilla, CrdLineaAsiento.INGRESO_INTERES_MORA, idTipoPrestamo.intValue()) : null;
+        if (linea == null || linea.getPlanCuenta() == null) {
+            throw new IncomeException("La plantilla alterno " + PlantillasCredito.DEVENGO_INTERESES
+                    + " no tiene la línea de ingreso por mora (aux1=" + CrdLineaAsiento.INGRESO_INTERES_MORA
+                    + ") para el tipo de préstamo " + idTipoPrestamo + " (D-017: la mora no devengada va a ingreso).");
+        }
+        return lineaHaberDesdePlantilla(linea, valor, prefijoDescripcion + " - interés de mora no devengado (ingreso)");
     }
 
     @Override
@@ -357,6 +383,26 @@ public class ContabilizacionIndividualCreditoServiceImpl implements Contabilizac
      * es porque nada más lo pagó todavía — era una futura — y entra al reparto por su propio
      * vencimiento. Si ya estaba en 0 (el caso normal: una cuota pagada hace tiempo), no se sostiene.</p>
      */
+    /**
+     * C16 (D-021) — ¿el capital futuro de una precancelación está FUERA de la tabla? Caso de la
+     * cartera migrada de Delta 21: la tabla de algunos préstamos termina en la cuota del mes de la
+     * cancelación y el saldo de capital posterior vive solo en {@code DTPRSLOT} de esa cuota (no hay
+     * ninguna cuota CANCELADA_ANTICIPADA que lo represente). Se reconoce, y solo entonces, cuando
+     * la ancla ya no tiene capital pendiente propio (la pagó el mismo evento) y su
+     * {@code DTPRSLOT} cubre el capital futuro. Antes este caso lanzaba en el reparto por banda; en
+     * el caso normal (hay cuotas en 7) no se llama.
+     */
+    private boolean esCapitalFuturoFueraDeTabla(double capitalFuturo, DetallePrestamo ancla) throws Throwable {
+        if (ancla == null || ancla.getFechaVencimiento() == null || capitalFuturo <= TOLERANCIA) {
+            return false;
+        }
+        if (nvl(ancla.getSaldoOtros()) + TOLERANCIA < redondear(capitalFuturo)) {
+            return false;
+        }
+        double capitalPendienteAncla = redondear(motorPagoPrestamoService.calcularSaldosCuota(ancla).getSaldoCapital());
+        return capitalPendienteAncla <= TOLERANCIA;
+    }
+
     private List<DetalleAsiento> lineasBandaCapitalFuturoPrecancelacion(Long idProducto, Long idEmpresa,
             double capitalFuturo, Prestamo prestamo, DetallePrestamo ancla, LocalDate fechaCorte,
             String prefijoDescripcion) throws Throwable {
@@ -369,6 +415,19 @@ public class ContabilizacionIndividualCreditoServiceImpl implements Contabilizac
                     canceladasAnticipadamente.add(cuota);
                 }
             }
+        }
+        if (canceladasAnticipadamente.isEmpty() && esCapitalFuturoFueraDeTabla(capitalFuturo, ancla)) {
+            // C16 (D-021): tabla migrada de Delta truncada en la cuota del mes — el capital futuro
+            // no tiene cuotas en CRD.DTPR, vive solo en DTPRSLOT de la ancla. Se banda como si
+            // venciera el mes siguiente a la ancla (la primera cuota que faltaría en la tabla).
+            LocalDate vencimientoSiguiente = ancla.getFechaVencimiento().toLocalDate().plusMonths(1);
+            vencimientoSiguiente = vencimientoSiguiente.withDayOfMonth(vencimientoSiguiente.lengthOfMonth());
+            List<EntradaBanda> entradasFueraDeTabla = new ArrayList<>();
+            entradasFueraDeTabla.add(new EntradaBanda(vencimientoSiguiente, redondear(capitalFuturo),
+                    "el capital futuro fuera de la tabla (DTPRSLOT de la cuota #" + ancla.getNumeroCuota() + ")"));
+            Map<String, LineaBandaAcumulada> bandasFueraDeTabla = acumulaPorBanda(idProducto, idEmpresa, fechaCorte,
+                    entradasFueraDeTabla, prefijoDescripcion);
+            return lineasHaberDesdeBandas(bandasFueraDeTabla, idProducto, prefijoDescripcion);
         }
         if (canceladasAnticipadamente.isEmpty()) {
             throw new IncomeException(prefijoDescripcion + ": el préstamo " + prestamo.getCodigo()
@@ -728,6 +787,11 @@ public class ContabilizacionIndividualCreditoServiceImpl implements Contabilizac
                     }
                     List<HistDetallePrestamo> historizadas =
                             histDetallePrestamoDaoService.selectByEvento(pago.getEventoPrestamo().getCodigo());
+                    if ((historizadas == null || historizadas.isEmpty()) && esAbonoSinRegenerarTabla(pago)) {
+                        // C16b (D-030): abono sobre una tabla que ya lo refleja — no hay historizadas;
+                        // el capital se reparte entre las cuotas que vencen después del abono.
+                        historizadas = cuotasFuturasAbonoSinTabla(pago, prefijoDescripcion);
+                    }
                     if (historizadas == null || historizadas.isEmpty()) {
                         throw new IncomeException(prefijoDescripcion + ": el abono " + pago.getCodigo()
                                 + " (evento " + pago.getEventoPrestamo().getCodigo() + ") no tiene"
@@ -768,8 +832,20 @@ public class ContabilizacionIndividualCreditoServiceImpl implements Contabilizac
             totalSeguroIncendio += nvl(pago.getValorSeguroIncendio());
         }
 
+        // C15 / D-017 (H4): la mora cobrada que no estaba devengada para su cuota (la del mes en
+        // curso) va directo a ingreso; solo la ya devengada cancela 1.4.02.xx.
+        double totalMoraIngreso = 0.0;
+        for (Double excedente : provisionInteresService.separarMoraNoDevengada(pagos, "SISTEMA").values()) {
+            totalMoraIngreso += nvl(excedente);
+        }
+        totalMoraIngreso = redondear(totalMoraIngreso);
+        totalMora = totalMora - totalMoraIngreso;
+
         totalInteres = redondear(totalInteres);
         totalMora = redondear(totalMora);
+        if (totalMoraIngreso > 0.0) {
+            lineas.add(lineaIngresoMora(idEmpresa, idTipoPrestamo, totalMoraIngreso, prefijoDescripcion));
+        }
         totalSeguroDesgravamen = redondear(totalSeguroDesgravamen);
         totalSeguroIncendio = redondear(totalSeguroIncendio);
 
@@ -815,6 +891,10 @@ public class ContabilizacionIndividualCreditoServiceImpl implements Contabilizac
                 }
                 List<HistDetallePrestamo> historizadas =
                         histDetallePrestamoDaoService.selectByEvento(pago.getEventoPrestamo().getCodigo());
+                if ((historizadas == null || historizadas.isEmpty()) && esAbonoSinRegenerarTabla(pago)) {
+                    // C16b: mismo universo que haberDesdePagos para el abono sin regenerar tabla.
+                    historizadas = cuotasFuturasAbonoSinTabla(pago, prefijoDescripcion);
+                }
                 if (historizadas == null || historizadas.isEmpty()) {
                     continue;
                 }
@@ -844,8 +924,13 @@ public class ContabilizacionIndividualCreditoServiceImpl implements Contabilizac
                 // graba ahí el PagoPrestamo del capital futuro) — queda en PAGADA, no en 7, pero
                 // su capital pendiente es parte del mismo capital futuro.
                 List<DetallePrestamo> todas = detallePrestamoDaoService.selectByPrestamo(prestamo.getCodigo());
+                boolean hayCanceladasAnticipadas = false;
                 if (todas != null) {
                     for (DetallePrestamo cuota : todas) {
+                        if (cuota.getEstado() != null
+                                && cuota.getEstado() == EstadoCuotaPrestamo.CANCELADA_ANTICIPADA) {
+                            hayCanceladasAnticipadas = true;
+                        }
                         if (cuota.getEstado() != null
                                 && cuota.getEstado() == EstadoCuotaPrestamo.CANCELADA_ANTICIPADA
                                 && cuota.getFechaVencimiento() != null
@@ -853,6 +938,18 @@ public class ContabilizacionIndividualCreditoServiceImpl implements Contabilizac
                             total += redondear(motorPagoPrestamoService.calcularSaldosCuota(cuota).getSaldoCapital());
                         }
                     }
+                }
+                DetallePrestamo anclaFueraDeTabla = pago.getDetallePrestamo();
+                if (!hayCanceladasAnticipadas && esCapitalFuturoFueraDeTabla(saldoOtros, anclaFueraDeTabla)) {
+                    // C16 (D-021): mismo caso que lineasBandaCapitalFuturoPrecancelacion — capital
+                    // futuro fuera de la tabla migrada; vence (a efectos de banda y de apertura) el
+                    // mes siguiente a la ancla, así que la apertura del mes de la ancla no lo abrió.
+                    LocalDate vencimientoSiguiente = anclaFueraDeTabla.getFechaVencimiento().toLocalDate().plusMonths(1);
+                    vencimientoSiguiente = vencimientoSiguiente.withDayOfMonth(vencimientoSiguiente.lengthOfMonth());
+                    if (vencimientoSiguiente.isAfter(fechaCorteApertura)) {
+                        total += redondear(saldoOtros);
+                    }
+                    continue;
                 }
                 DetallePrestamo ancla = pago.getDetallePrestamo();
                 if (ancla != null && ancla.getEstado() != null
@@ -882,6 +979,56 @@ public class ContabilizacionIndividualCreditoServiceImpl implements Contabilizac
             // esto en "si hay aportes de por medio, no cierra".)
         }
         return redondear(total);
+    }
+
+    /** C16b: el pago es de un abono registrado SIN regenerar la tabla (evento con modalidad 0). */
+    private boolean esAbonoSinRegenerarTabla(PagoPrestamo pago) {
+        return pago.getEventoPrestamo() != null && pago.getEventoPrestamo().getModalidad() != null
+                && pago.getEventoPrestamo().getModalidad().longValue()
+                        == com.saa.ejb.crd.service.AbonoCapitalPrestamoService.MODALIDAD_SIN_REGENERAR_TABLA;
+    }
+
+    /**
+     * C16b (D-030, 2026-10-29): para un abono sin regenerar tabla no hay cuotas historizadas. El
+     * capital que el abono cancela es capital FUTURO a su fecha — el que la tabla ya re-amortizada
+     * dejó de cobrar —, así que se reparte (con la misma {@link #repartirProporcionalPorCapital})
+     * entre las cuotas vivas que vencen DESPUÉS de la fecha del abono, proporcional a su capital.
+     * Copias transitorias en {@link HistDetallePrestamo} (nunca se persisten) para reusar el reparto
+     * y el bandeo del abono de siempre sin duplicarlos.
+     */
+    private List<HistDetallePrestamo> cuotasFuturasAbonoSinTabla(PagoPrestamo pago, String prefijoDescripcion)
+            throws Throwable {
+        Prestamo prestamo = pago.getPrestamo();
+        if (prestamo == null || prestamo.getCodigo() == null) {
+            throw new IncomeException(prefijoDescripcion + ": el abono " + pago.getCodigo()
+                    + " no tiene préstamo asociado; no se puede repartir el capital por banda.");
+        }
+        java.time.LocalDateTime fechaAbono = pago.getFecha() != null ? pago.getFecha()
+                : pago.getEventoPrestamo().getFecha();
+        if (fechaAbono == null) {
+            throw new IncomeException(prefijoDescripcion + ": el abono " + pago.getCodigo()
+                    + " no tiene fecha; no se puede saber qué cuotas son futuras.");
+        }
+        LocalDate dia = fechaAbono.toLocalDate();
+        List<HistDetallePrestamo> futuras = new ArrayList<>();
+        for (DetallePrestamo cuota : detallePrestamoDaoService.selectByPrestamo(prestamo.getCodigo())) {
+            if (cuota.getFechaVencimiento() == null || !cuota.getFechaVencimiento().toLocalDate().isAfter(dia)
+                    || nvl(cuota.getCapital()) <= 0.0) {
+                continue;
+            }
+            HistDetallePrestamo copia = new HistDetallePrestamo();
+            copia.setCodigo(cuota.getCodigo());
+            copia.setNumeroCuota(cuota.getNumeroCuota());
+            copia.setCapital(cuota.getCapital());
+            copia.setFechaVencimiento(cuota.getFechaVencimiento());
+            futuras.add(copia);
+        }
+        if (futuras.isEmpty()) {
+            throw new IncomeException(prefijoDescripcion + ": el abono sin regenerar tabla " + pago.getCodigo()
+                    + " no tiene cuotas con vencimiento posterior al " + dia + " en el préstamo "
+                    + prestamo.getCodigo() + "; no se puede repartir su capital por banda.");
+        }
+        return futuras;
     }
 
     private double nvl(Double valor) {
@@ -990,6 +1137,219 @@ public class ContabilizacionIndividualCreditoServiceImpl implements Contabilizac
                     prefijoDescripcion + " - préstamos"));
         }
         return lineas;
+    }
+
+    // =====================================================================
+    // D-024 (28-oct-2026) — complemento de apertura
+    // =====================================================================
+
+    /** D-032: ¿abrió algún ③ el mes {@code primeroDelMes}? (la última corrida EJECUTADA antes del mes lo abrió). */
+    @EJB
+    private com.saa.ejb.crd.dao.CorridaCierreCarteraDaoService corridaCierreCarteraDaoService;
+
+    @Override
+    public com.saa.ejb.crd.service.dto.ComplementoAperturaCobro complementoApertura(Long idEmpresa, LocalDate fecha,
+            List<DetalleAsiento> lineasDelCobro, String referencia) throws Throwable {
+        return complementoApertura(idEmpresa, fecha, lineasDelCobro, referencia, null, 0.0, null);
+    }
+
+    @Override
+    public com.saa.ejb.crd.service.dto.PuentePrestamosMes puentePrestamosMes(Long idEmpresa, String cuenta,
+            LocalDate finMes, Long excluirCarga) throws Throwable {
+        com.saa.ejb.crd.service.dto.PuentePrestamosMes puente = new com.saa.ejb.crd.service.dto.PuentePrestamosMes();
+        LocalDate desde = finMes.withDayOfMonth(1);
+        LocalDate corteAnterior = desde.minusDays(1);
+        // Lo abierto existe solo si una corrida EJECUTADA abrió el mes (la que cerró M−1, fechaProceso = 1.º de M).
+        com.saa.model.crd.CorridaCierreCartera corrida = corridaCierreCarteraDaoService.selectUltimaEjecutadaAntesDe(
+                idEmpresa, Long.valueOf(desde.getYear()), Long.valueOf(desde.getMonthValue()));
+        boolean abrioElMes = corrida != null && corrida.getFechaProceso() != null
+                && !corrida.getFechaProceso().isBefore(desde) && !corrida.getFechaProceso().isAfter(finMes);
+        if (abrioElMes) {
+            for (Object[] fila : cierreCarteraDaoService.selectAperturaPorPrestamo(finMes, corteAnterior)) {
+                if (fila[0] != null && fila[1] != null) {
+                    puente.getAbierto().merge((Long) fila[0], (Double) fila[1], Double::sum);
+                }
+            }
+        } else {
+            System.out.println("ContabilizacionIndividualCreditoService.puentePrestamosMes - ninguna corrida ejecutada"
+                    + " abrió " + desde + " (última: " + (corrida != null ? corrida.getCodigo() : null)
+                    + "): abierto por préstamo = 0.");
+        }
+        for (Object[] fila : cierreCarteraDaoService.selectCobradoPuentePorPrestamo(idEmpresa, cuenta, desde, finMes,
+                excluirCarga)) {
+            if (fila[0] != null && fila[1] != null) {
+                puente.getCobrado().merge((Long) fila[0], (Double) fila[1], Double::sum);
+            }
+        }
+        puente.setNoAtribuible(cierreCarteraDaoService.selectNoAtribuiblePetro(idEmpresa, cuenta, desde, finMes,
+                excluirCarga));
+        puente.setComplementoRegistrado(cierreCarteraDaoService.selectComplementoRegistrado(idEmpresa, cuenta, desde,
+                finMes));
+        return puente;
+    }
+
+    @Override
+    public Map<Long, Double> repartePorLineasDePrestamo(List<com.saa.model.crd.DetalleCobroCredito> detalles,
+            double monto) {
+        Map<Long, Double> pesos = new LinkedHashMap<>();
+        if (detalles != null) {
+            for (com.saa.model.crd.DetalleCobroCredito detalle : detalles) {
+                if (detalle.getPrestamo() != null && detalle.getPrestamo().getCodigo() != null) {
+                    pesos.merge(detalle.getPrestamo().getCodigo(), nvl(detalle.getValor()), Double::sum);
+                }
+            }
+        }
+        Map<Long, Double> reparto = new LinkedHashMap<>();
+        if (pesos.isEmpty() || monto == 0.0) {
+            return reparto;
+        }
+        double total = 0.0;
+        for (Double peso : pesos.values()) {
+            total += peso;
+        }
+        for (Map.Entry<Long, Double> e : pesos.entrySet()) {
+            reparto.put(e.getKey(), total != 0.0 ? monto * e.getValue() / total : monto / pesos.size());
+        }
+        return reparto;
+    }
+
+    @Override
+    public com.saa.ejb.crd.service.dto.ComplementoAperturaCobro complementoApertura(Long idEmpresa, LocalDate fecha,
+            List<DetalleAsiento> lineasDelCobro, String referencia, Map<Long, Double> cobradoPorPrestamo,
+            double noAtribuible, Long excluirCarga) throws Throwable {
+        com.saa.ejb.crd.service.dto.ComplementoAperturaCobro complemento =
+                new com.saa.ejb.crd.service.dto.ComplementoAperturaCobro();
+        if (lineasDelCobro == null || lineasDelCobro.isEmpty() || fecha == null) {
+            return complemento;
+        }
+        Long idPlantillaApertura = plantillaService.codigoByAlterno(PlantillasCredito.APERTURA_PLANILLA_MENSUAL,
+                idEmpresa);
+        if (idPlantillaApertura == null) {
+            throw new IncomeException("No existe la plantilla contable alterno "
+                    + PlantillasCredito.APERTURA_PLANILLA_MENSUAL + " (apertura del período) para la empresa "
+                    + idEmpresa + "; no se puede medir el complemento de apertura de " + referencia + " (D-024).");
+        }
+        DetallePlantilla aportesPorCobrar = lineaApertura(idPlantillaApertura, CrdLineaAsiento.APORTES_POR_COBRAR, referencia);
+        DetallePlantilla aportesPorAplicar = lineaApertura(idPlantillaApertura, CrdLineaAsiento.APORTES_POR_APLICAR, referencia);
+        DetallePlantilla prestamosPorCobrar = lineaApertura(idPlantillaApertura, CrdLineaAsiento.PRESTAMOS_POR_COBRAR, referencia);
+        DetallePlantilla prestamosPorAplicar = lineaApertura(idPlantillaApertura, CrdLineaAsiento.PRESTAMOS_POR_APLICAR, referencia);
+
+        String cuentaAportes = aportesPorCobrar.getPlanCuenta().getCuentaContable();
+        String cuentaPrestamos = prestamosPorCobrar.getPlanCuenta().getCuentaContable();
+        complemento.setCuentaAportes(cuentaAportes);
+        complemento.setCuentaPrestamos(cuentaPrestamos);
+
+        // Lo que el asiento del cobro acredita (haber − debe) en cada cuenta por cobrar.
+        double cobradoAportes = 0.0;
+        double cobradoPrestamos = 0.0;
+        for (DetalleAsiento linea : lineasDelCobro) {
+            String cuenta = linea.getNumeroCuenta() != null ? linea.getNumeroCuenta()
+                    : (linea.getPlanCuenta() != null ? linea.getPlanCuenta().getCuentaContable() : null);
+            double neto = nvl(linea.getValorHaber()) - nvl(linea.getValorDebe());
+            if (cuentaAportes.equals(cuenta)) {
+                cobradoAportes += neto;
+            } else if (cuentaPrestamos.equals(cuenta)) {
+                cobradoPrestamos += neto;
+            }
+        }
+        cobradoAportes = redondear(cobradoAportes);
+        cobradoPrestamos = redondear(cobradoPrestamos);
+        if (cobradoAportes <= 0.0 && cobradoPrestamos <= 0.0) {
+            return complemento;
+        }
+
+        LocalDate finDeMes = fecha.withDayOfMonth(fecha.lengthOfMonth());
+        String fechaTexto = finDeMes.toString();
+        if (cobradoAportes > 0.0) {
+            double abierto = saldoDeudor(idEmpresa, cuentaAportes, finDeMes);
+            double falta = redondear(cobradoAportes - Math.max(abierto, 0.0));
+            complemento.setCobradoAportes(cobradoAportes);
+            complemento.setAbiertoAportes(abierto);
+            if (falta >= TOLERANCIA) {
+                complemento.setComplementoAportes(falta);
+                String glosa = "Complemento de apertura " + referencia + " aportes: cobrado " + formato(cobradoAportes)
+                        + ", abierto " + formato(abierto) + " al " + fechaTexto;
+                complemento.getLineas().add(lineaMovimientoDesdePlantilla(aportesPorCobrar, falta, glosa));
+                complemento.getLineas().add(lineaMovimientoDesdePlantilla(aportesPorAplicar, falta, glosa));
+            }
+        }
+        if (cobradoPrestamos > 0.0 && cobradoPorPrestamo != null
+                && com.saa.ejb.crd.service.ModoCorteCartera.neteoPorPrestamo(finDeMes, null)) {
+            // D-032 (29-oct-2026): por préstamo contra lo que la apertura abrió de cada uno. Objetivo
+            // acumulado del mes (contando este cobro) menos lo ya complementado en el mes: lo que un
+            // cobro anterior del mes no abrió lo recoge este.
+            com.saa.ejb.crd.service.dto.PuentePrestamosMes puente = puentePrestamosMes(idEmpresa, cuentaPrestamos,
+                    finDeMes, excluirCarga);
+            puente.sumaCobrado(cobradoPorPrestamo);
+            puente.setNoAtribuible(puente.getNoAtribuible() + Math.max(noAtribuible, 0.0));
+            double objetivo = puente.complementoObjetivo();
+            double registrado = redondear(puente.getComplementoRegistrado());
+            double falta = redondear(objetivo - registrado);
+            complemento.setCobradoPrestamos(cobradoPrestamos);
+            complemento.setAbiertoPrestamos(redondear(puente.totalAbierto()));
+            complemento.setNotaPrestamos("por prestamo (D-032): cobrado sin abrir en el mes " + formato(puente.cobradoSinAbrir())
+                    + " en " + puente.prestamosConComplemento() + " prestamos + no atribuible " + formato(puente.getNoAtribuible())
+                    + " - ya complementado " + formato(registrado) + " = " + formato(Math.max(falta, 0.0)));
+            if (falta >= TOLERANCIA) {
+                complemento.setComplementoPrestamos(falta);
+                String glosa = com.saa.ejb.crd.service.dto.ComplementoAperturaCobro.GLOSA_PREFIJO + " " + referencia
+                        + " cuotas por prestamo (D-032): sin abrir " + formato(objetivo) + ", ya abierto "
+                        + formato(registrado) + " en " + fechaTexto;
+                complemento.getLineas().add(lineaMovimientoDesdePlantilla(prestamosPorCobrar, falta, glosa));
+                complemento.getLineas().add(lineaMovimientoDesdePlantilla(prestamosPorAplicar, falta, glosa));
+            } else if (falta <= -TOLERANCIA) {
+                System.out.println("ContabilizacionIndividualCreditoService.complementoApertura - " + referencia
+                        + ": el mes ya tiene " + registrado + " de complemento de cuotas y el objetivo es " + objetivo
+                        + " (un cobro del mes se reversó con su complemento en otro asiento): no se resta; lo muestra"
+                        + " el control del ⑥.");
+            }
+        } else if (cobradoPrestamos > 0.0) {
+            double abierto = saldoDeudor(idEmpresa, cuentaPrestamos, finDeMes);
+            double falta = redondear(cobradoPrestamos - Math.max(abierto, 0.0));
+            complemento.setCobradoPrestamos(cobradoPrestamos);
+            complemento.setAbiertoPrestamos(abierto);
+            if (falta >= TOLERANCIA) {
+                complemento.setComplementoPrestamos(falta);
+                String glosa = "Complemento de apertura " + referencia + " cuotas: cobrado " + formato(cobradoPrestamos)
+                        + ", abierto " + formato(abierto) + " al " + fechaTexto;
+                complemento.getLineas().add(lineaMovimientoDesdePlantilla(prestamosPorCobrar, falta, glosa));
+                complemento.getLineas().add(lineaMovimientoDesdePlantilla(prestamosPorAplicar, falta, glosa));
+            }
+        }
+        System.out.println("ContabilizacionIndividualCreditoService.complementoApertura - " + referencia + " al "
+                + fechaTexto + ": aportes cobrado " + cobradoAportes + " / abierto " + complemento.getAbiertoAportes()
+                + " -> complemento " + complemento.getComplementoAportes() + "; cuotas cobrado " + cobradoPrestamos
+                + " / abierto " + complemento.getAbiertoPrestamos() + " -> complemento "
+                + complemento.getComplementoPrestamos());
+        return complemento;
+    }
+
+    private DetallePlantilla lineaApertura(Long idPlantillaApertura, int codigoLinea, String referencia)
+            throws Throwable {
+        DetallePlantilla linea = detallePlantillaDaoService.selectByPlantillaYAuxiliar(idPlantillaApertura, codigoLinea);
+        if (linea == null || linea.getPlanCuenta() == null) {
+            throw new IncomeException("La plantilla alterno " + PlantillasCredito.APERTURA_PLANILLA_MENSUAL
+                    + " no tiene la línea " + codigoLinea + " del catálogo CRD_LINEA_ASIENTO; no se puede armar el"
+                    + " complemento de apertura de " + referencia + " (D-024).");
+        }
+        return linea;
+    }
+
+    /** Saldo deudor (debe − haber) de la cuenta y sus hijas al corte, asientos activos/mayorizados. */
+    private double saldoDeudor(Long idEmpresa, String cuenta, LocalDate corte) throws Throwable {
+        double saldo = 0.0;
+        for (Object[] fila : cierreCarteraDaoService.selectSaldoContablePorCuenta(idEmpresa, cuenta, null, corte)) {
+            String cuentaFila = fila[0] != null ? fila[0].toString() : "";
+            // LIKE 'cuenta%' también traería, p. ej., 1.4.05.050 si existiera: solo la cuenta y sus hijas.
+            if (cuentaFila.equals(cuenta) || cuentaFila.startsWith(cuenta + ".")) {
+                saldo += fila[2] != null ? ((Number) fila[2]).doubleValue() : 0.0;
+            }
+        }
+        return redondear(saldo);
+    }
+
+    private static String formato(double valor) {
+        return String.format("%,.2f", valor);
     }
 
     /**

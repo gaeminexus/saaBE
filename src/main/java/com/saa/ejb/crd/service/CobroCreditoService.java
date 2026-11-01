@@ -258,6 +258,24 @@ public interface CobroCreditoService {
     ResultadoProcesoCobro procesarCobro(Long idCobro, String usuario) throws Throwable;
 
     /**
+     * Igual que {@link #procesarCobro(Long, String)}, con el modo re-proceso de un mes pasado
+     * (D-019 en el motor de cobros, 2026-10-28 — docs/logica-negocio/crd/API-REPROCESO-COBRO-FECHA-PASADA.md).
+     *
+     * <p>Con {@code reproceso = true}: exige que la fecha de pago y la de afectación del cobro caigan
+     * en un mes ANTERIOR al mes en curso, que el período contable de la fecha de afectación siga
+     * abierto y que el tipo de operación tenga préstamo (PAGO_CUOTA, PAGO_MULTIPLE, ABONO_CAPITAL,
+     * PRECANCELACION, COBRO_MIXTO). Antes de llamar al motor, cada préstamo del cobro se evalúa
+     * VIGENTE AL CORTE (último día del mes de la fecha de pago): si hoy está cancelado y al corte
+     * estaba vigente, se reabre (D-019); en cualquier caso, las cuotas de ese mes saldadas sin pago
+     * vigente vuelven a pendiente (D-019 ampliada). Un préstamo que no estaba vigente al corte
+     * rechaza el proceso ({@code PRESTAMO_NO_VIGENTE_AL_CORTE}) sin tocar nada. Después el cobro
+     * se aplica exactamente como en el proceso normal.</p>
+     *
+     * <p>Con {@code reproceso = false} es exactamente {@link #procesarCobro(Long, String)}.</p>
+     */
+    ResultadoProcesoCobro procesarCobro(Long idCobro, String usuario, boolean reproceso) throws Throwable;
+
+    /**
      * Seguimiento mensual de cobros personales — una fila por cada {@code CRD.CBCR} cuya fecha
      * de DEPÓSITO ({@code fecha}, no la de registro) cae en el rango, con la huella completa
      * del circuito (registro, aprobación, rechazo, proceso, anulación, reverso) y los tres

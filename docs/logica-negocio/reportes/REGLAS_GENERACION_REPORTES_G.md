@@ -25,6 +25,8 @@
 | 2 | Con novedades / Error |
 | 3 | Pendiente |
 
+> D-038: la G41 ya no usa `ENTDIDST` (ver G41). La marca puede seguir existiendo para otros usos.
+
 ### Entidad (ENTD.ENTDIDST)
 | Valor | Significado en G41 |
 |---|---|
@@ -33,115 +35,113 @@
 
 ---
 
-## ✅ G40 — CreditoG40 — COMPLETADO
+## ✅ G40 — CreditoG40 — D-038/D-039 (29-oct-2026)
 
-**Tabla destino:** `RPR.CG40`  
-**Fuente:** `CRD.IGFN` (InformacionGeneralFondo) — siempre tiene UN solo registro
+**Tabla destino:** `RPR.CG40` · **Fuente única:** `CRD.IGFN` (pantalla Información General del Fondo, un registro).
+**Periodicidad:** semestral (junio y diciembre). **Manual:** Catastros FCPC v1.2 §2.1 (campos) y §4.1 (controles).
 
-**Regla:**
-- Si `IGFN.IGFNESTD = 2` (Modificado) → copiar todos los campos de IGFN a CG40, luego resetear `IGFNESTD = 1`
-- Si `IGFN.IGFNESTD = 1` (Sin cambios) → G40 vacío, retornar 0 registros, EJRD queda OK
+**Regla:** todos los valores salen de IGFN; el código no fija ninguno (se retiraron provincia `17`, cantón `01`, tipo
+FCPC `3` y cambio de nombre `NO`). El generador solo lleva cada valor al tipo, la longitud y la codificación del manual,
+y si un valor no cumple, **no genera** y la novedad del EJRD dice qué campo corregir en la pantalla (una estructura con
+errores se considera información no recibida, §1).
 
-**Cuándo se marca IGFN como modificado:**
-- El `saveSingle` de `InformacionGeneralFondoServiceImpl` setea automáticamente `estado=2` y `fechaModificacion=hoy` cuando se actualiza un registro existente (codigo != null)
+| # | Campo (manual) | IGFN | Tratamiento |
+|---|---|---|---|
+| 1 | Tipo identificación C(1), tabla 4 | `IGFNTIDF` | tal cual; debe ser `R` |
+| 2 | Identificación C(13) | `IGFNIDFC` | tal cual; 13 dígitos (RUC) |
+| 3 | No. resolución C(15) | `IGFNNMRS` | tal cual; ≤ 15 |
+| 4 | Fecha resolución | `IGFNFCRS` | obligatoria |
+| 5 | Provincia C(2), tabla 6 | `IGFNPRVN` (nombre) | código INEC de `CRD.PRVN.PRVNCDAL` por nombre (o el código si IGFN ya lo trae) |
+| 6 | Cantón C(2), tabla 7 | `IGFNCNTN` (nombre) | código de `CRD.CDDD.CDDDCDAL` dentro de la provincia |
+| 7 | Dirección C(60) | `IGFNDRCC` | ≤ 60 |
+| 8 | Teléfonos C(30) | `IGFNTLFN` | texto tal cual (el 0 inicial es dato de IGFN) |
+| 9 | Correo C(60) | `IGFNCEFD` | ≤ 60 |
+| 10 | Tipo sistema, tabla 193 | `IGFNTPSS` | D/I/M |
+| 11 | Tipo prestación, tabla 194 | `IGFNTPPR` | C/J/M |
+| 12 | Tipo aporte, tabla 318 | `IGFNTPAP` | P/V |
+| 13 | Tipo administración, tabla 319 | `IGFNTPAD` | B/P |
+| 14 | Fecha traspaso (condicional) | `IGFNFCTR` | obligatoria si 13 = B |
+| 15 | Tipo FCPC, tabla 320 | `IGFNTPFC` | `III`/`Tipo III` → `3` (1 = tipo I, 2 = II, 3 = III) |
+| 16–17 | Resolución y fecha de cambio de estatuto (condicional) | `IGFNNRCE` (≤ 16), `IGFNFRCE` | fecha obligatoria si hay resolución |
+| 18 | Cambio de nombre C(2), SI/NO | `IGFNCMNM` | solo `SI`/`NO` (§4.1); otro texto → no genera |
+| 19–22 | Porcentajes N(5,2) | `IGFNPAPC`, `IGFNPARC`, `IGFNPAPJ`, `IGFNPARJ` | 0 a 999,99 |
+| 23–24 | Valor aporte personal cesantía/jubilación N(5,2) = aporte **mínimo** | `IGFNVARC`, `IGFNVARJ` | 0 a 999,99 |
 
-**Campos fijos:** Ninguno. Todos vienen de IGFN.
+**Retirada:** la regla "valorAportePersonalCesantia + valorAportePersonalJubilacion = Σ saldoAportePersonal de la G42"
+(contradice el manual: el campo es el aporte mínimo, Numérico(5,2), máximo 999,99).
 
-**Archivos creados/modificados:**
-- `docs/ALTER_TABLE_IGFN_agregar_auditoria.sql` → agrega `IGFNESTD`, `IGFNUSRM`, `IGFNFCMD`
-- `InformacionGeneralFondo.java` → campos `estado`, `usuarioModificacion`, `fechaModificacion`
-- `InformacionGeneralFondoDaoService/Impl` → método `selectModificados()`
-- `InformacionGeneralFondoService/Impl` → método `selectModificados()`
-- `GeneracionG40Service.java` + `GeneracionG40ServiceImpl.java`
-
----
-
-## ✅ G41 — ParticipeActivoG41 — COMPLETADO
-
-**Tabla destino:** `RPR.CG41`  
-**Fuente principal:** `CRD.ENTD` (Entidad) con `idEstado = 1`  
-**Fuente secundaria 1:** `CRD.PRTC` (Participe) — join por `ENTD.ENTDCDGO = PRTC.ENTDCDGO`  
-**Fuente secundaria 2:** `CRD.EXTER` (Exter) — join por `ENTD.ENTDNMID = EXTER.cedula`
-
-**Regla:**
-- Si no hay entidades con `idEstado = 1` → G41 vacío, retornar 0, EJRD queda OK
-- Por cada entidad con `idEstado = 1`:
-  - Buscar su `Participe` (por `entidad.codigo`)
-  - Buscar su `Exter` (por `entidad.numeroIdentificacion = exter.cedula`)
-  - Mapear campos a `CG41`
-  - Actualizar `entidad.idEstado = 10`
-
-**Mapeo de campos:**
-| Campo CG41 | Fuente | Valor |
-|---|---|---|
-| `tipoIdentificacion` | `Entidad.tipoIdentificacion.nombre` | dinámico |
-| `identificacion` | `Entidad.numeroIdentificacion` | dinámico |
-| `genero` | `Exter.genero` | dinámico |
-| `estadoCivil` | `Exter.estadoCivil` | dinámico |
-| `fechaNacimiento` | `Exter.fechaNacimiento.toLocalDate()` | dinámico |
-| `fechaIngreso` | `Participe.fechaIngresoFondo.toLocalDate()` | dinámico |
-| `estadoParticipe` | — | **FIJO: `"A"`** |
-| `tipoSistema` | — | **FIJO: `"I"`** |
-| `baseCalculoAportacion` | — | **FIJO: `"S"`** |
-| `tipoRelacionLaboral` | — | **FIJO: `"N"`** |
-| `estadoRegistro` | — | **FIJO: `"A"`** |
-
-**Archivos creados/modificados:**
-- `EntidadDaoService/Impl` → `selectByIdEstado(Long idEstado)`
-- `EntidadService/Impl` → `selectByIdEstado(Long idEstado)`
-- `ExterDaoService/Impl` → `selectByCedula(String cedula)`
-- `ExterService/Impl` → `selectByCedula(String cedula)`
-- `ParticipeDaoService/Impl` → `selectByEntidad(Long codigoEntidad)`
-- `ParticipeService/Impl` → `selectByEntidad(Long codigoEntidad)`
-- `GeneracionG41Service.java` + `GeneracionG41ServiceImpl.java`
+**Archivos:** `GeneracionG40ServiceImpl`, `CatalogoGeograficoDaoService/Impl` (códigos de tablas 6, 7 y 50 desde los
+catálogos del SAA, compartido con G45 y G46).
 
 ---
 
-## ✅ G42 — SaldoCuentaG42 — COMPLETADO
+## ✅ G41 — ParticipeActivoG41 — D-038 (29-oct-2026)
 
-**Tabla destino:** `RPR.CG42`  
-**Fuente 1:** `CRD.APRT` (Aporte) — join con `CRD.TPAP` (TipoAporte)  
-**Fuente 2:** `CRD.HSTR` (HistorialSueldo) — solo registros con estado = 99
+**Tabla destino:** `RPR.CG41` · **Registro:** `RPR.SG41` (script `sql/337_D038_REGISTRO_G41.sql`).
+**Manual:** Catastros §2.2 y §4.2: mensual, solo los partícipes que **ingresan (I)** o cuyo estado **cambia (A)**.
 
-**Regla general:** Solo se consideran TipoAportes con `estado = 1`. Todas las entidades que tengan suma > 0 en cualquiera de los grupos aparecen en G42, independientemente del estado de la entidad.
+**Regla (GeneracionG41ServiceImpl):**
+1. **Universo:** los sujetos de la G42 de la misma ejecución que no están en la G43 ni en la G44 del mes. Orden de
+   generación: G42 → G44 → G43 → G41.
+2. **Estado del partícipe (tabla 195):** `A` si aportó en el mes (aporte personal del mes de la G42 > 0 = aportes 9/11
+   > 0 del período efectivo), `P` si no.
+3. **Contra lo último reportado** (`RPR.SG41`, fila con el mayor período < mes): no está → `I`; cambió → `A`;
+   no cambió → no va. Cada registro emitido se agrega a SG41 (origen `EJECUCION`). Regenerar el mes borra primero las
+   filas `EJECUCION` del mes. Si existen filas de meses posteriores, avisa que hay que regenerarlos.
+4. **Mes presentado:** si el período tiene filas de origen `SEMILLA`/`HM41` (mayo 2025), la G41 reproduce lo presentado
+   (las 66 filas con estado de registro) y no toca el registro.
+5. **Campos:** tipo de identificación de la G42; género `HOMBRE→M`, `MUJER→F` (tabla 8); estado civil desde
+   `EXTRESCV` (tabla 183: CASADO→C, SOLTERO→S, DIVORCIADO→D, VIUDO→V, `…UNION DE HECHO`→U); fecha de nacimiento
+   `EXTRFCNC`; fecha de ingreso `PRTCFCIF`; tipo de sistema = `IGFNTPSS` del fondo; base de cálculo `S` y relación
+   laboral `N` (el SAA no guarda esos datos por partícipe, N11); **fecha de actualización = corte en `A` y en blanco en
+   `I`** (§4.2: "caso contrario se registrará en blanco"; mayo la llenó también en el I).
+6. **No se reportan** cambios de estado civil ni de relación laboral (el SAA no guarda su historia) ni `E` (decisión
+   pendiente de ASOPREP). Ya no se usa `ENTDIDST = 9`.
 
-**3 grupos de aportes (todos con SUM en BD, agrupados por entidad):**
-
-| Grupo | Condición | Campo destino |
-|---|---|---|
-| 1 | `tipoAporte.estado=1` y `tipoAporte.codigoSBS='RE'` | `rendimiento` |
-| 2 | `tipoAporte.estado=1` y `tipoAporte.codigo IN (3,13,14)` | `saldoAportePatronal` |
-| 3 | `tipoAporte.estado=1` excluyendo grupos 1 y 2 | `saldoAportePersonal` |
-
-**Aporte Personal:**
-- Fuente: `CRD.HSTR` con `estado = 99`
-- Valor: `SUM(montoCesantia + montoJubilacion)` agrupado por entidad
-- Campo destino: `aportePersonal`
-
-**Lógica de persistencia:**
-- Los 4 SELECTs con SUM se ejecutan en BD (no en memoria)
-- Se consolida un mapa `<codigoEntidad, SaldoCuentaG42>` con los 4 grupos
-- Por cada entidad: buscar en `CG42` por `entidad + detalleEjecucion`
-  - Si existe → UPDATE de los campos con valor
-  - Si no existe → INSERT con datos de identificación de `Entidad`
-
-**Cambios de BD:**
-- `docs/ALTER_TABLE_CG42_agregar_entidad.sql` → agrega `CG42ENTD` (FK a `CRD.ENTD`) + índice `IDX_CG42_ENTD_EJRD`
-
-**Archivos creados/modificados:**
-- `SaldoCuentaG42.java` → campo `entidad` (FK a ENTD) agregado
-- `SaldoCuentaG42DaoService` → método `selectByEntidadYDetalle(codigoEntidad, detalle)` agregado
-- `SaldoCuentaG42DaoServiceImpl` → implementación del método anterior
-- `AporteDaoService/Impl` → métodos `selectSumaRendimientoPorEntidad()`, `selectSumaPatronalPorEntidad()`, `selectSumaPersonalPorEntidad()` agregados
-- `AporteService/Impl` → mismos 3 métodos expuestos
-- `HistorialSueldoDaoService/Impl` → método `selectSumaAportePersonalPorEntidad()` agregado
-- `HistorialSueldoService/Impl` → método expuesto
-- `GeneracionG42Service.java` + `GeneracionG42ServiceImpl.java` → creados
-- Orquestador → `@EJB g42Service` activo, `case "G42"` descomentado
+**Semilla de SG41:** estado de mayo 2025 de cada sujeto de la HM42 (`A` si `HM42APPR > 0`) y la HM41 donde existe.
+**Junio 2025 esperado:** 2 `I` + 13 `A` (A→P) + 47 `A` (P→A) = **62** (el diagnóstico contaba 64 con 4 `I`: 2 de esos 4
+solo estaban en la G42 por el sueldo de HOY de `HSTR`; con el aporte personal del período ya no entran a la G42).
+**Mayo:** la regla con el estado de abril de `APRT` reproduce 64 de los 66 presentados (control 4.b del script 337); con
+el estado de mayo de `APRT` daría 477, porque el período mayo está contaminado por la migración: por eso mayo es "mes
+presentado".
 
 ---
+
+## ✅ G42 — SaldoCuentaG42 — D-038 (29-oct-2026)
+
+**Tabla destino:** `RPR.CG42` · **Fuente:** `CRD.APRT` + `CRD.TPAP` (aportes vigentes, `AporteVigenteSql`).
+**Manual:** Catastros §2.3 y §4.3.
+
+| Campo | Regla |
+|---|---|
+| Tipo de prestación (3, tabla 194) | Por el saldo vigente al corte de cada **grupo de prestación** (`CRD.TPAP.TPAPTPPR`, script `338`): `M` si J ≠ 0 y C ≠ 0; `J` si solo J; `C` si solo C o ninguno (tolerancia medio centavo). J = 9, 10, 13, 15, 22, 23, 24, 25; C = 11, 12, 14, 16, 21. Antes: presencia de alguna fila 9/11 (reproducía 1.745 de 4.585 en mayo; ahora 4.564). |
+| Aporte patronal (4) | 0 (no hay aporte patronal mensual: IGFN 0 %) |
+| Aporte personal (5) | Σ aportes 9/11 > 0 vigentes con **período efectivo = mes** (`AporteDaoServiceImpl.selectAportePersonalDelPeriodoPorEntidad`). Sin filtro de fecha de caja: el aporte de junio que llega en julio es de junio. Antes: `HSTR` vigente hoy (un mes pasado salía con el sueldo de hoy). |
+| Saldo patronal (7) | Σ tipos 3, 13, 14 al corte |
+| Saldo personal (8) | Σ demás tipos activos no `RE` al corte |
+| Rendimiento (10) | Σ tipos `RE` al corte |
+
+Universo: entidades con algún valor > 0 (los negativos van en 0). **Junio 2025:** 4.585 sujetos (antes 4.587: 2 sujetos
+sin saldo ni aporte en junio entraban solo por el sueldo de hoy), aporte personal 166.540,22 en 2.051 sujetos (antes
+168.412,92 en 2.100), 22 cambios de tipo de prestación frente a mayo (antes 2.838).
+Control del manual §4.3 "aporte personal (debe ser mayor a cero)": no se aplica fila a fila (los partícipes pasivos
+aportan 0; mayo se aceptó con 0 en 2.570 filas).
+
+**Archivos:** `GeneracionG42ServiceImpl`, `AporteDaoService/Impl` y `AporteService/Impl`
+(`selectSumaPorGrupoPrestacionPorEntidad`, `selectAportePersonalDelPeriodoPorEntidad`; se retiró
+`selectTiposAportePorEntidad`).
+
+---
+
 
 ## ✅ G43 — ParticipeCesanteG43 — COMPLETADO
+
+> **D-038/D-039 (29-oct-2026), vigente — prevalece sobre lo que sigue.** Manual de catastros §2.4/§4.4.
+> - No son cesantes los jubilados: se omiten los sujetos de la G44 del mismo mes (la G44 se genera antes) y las entidades en estado de jubilado (3, 6, 7). Junio 2025: los 2 registros de la ejecución 565 eran jubilados pasivos de la G44 cuyo saldo se agotó con el último pago de pensión → la G43 de junio queda **vacía**.
+> - Fecha de liquidación: la del último movimiento negativo del mes (la devolución real); sin movimientos, el corte.
+> - Fecha de término de la relación laboral: `PRTCFCSL` si existe y es anterior a la liquidación; si no, el día anterior a la liquidación (criterio de 8 de las 11 filas de mayo 2025). El SAA no guarda la fecha de salida laboral (solo 17 de 7.311 partícipes la tienen).
+> - Imposiciones personales (9, 11) y patronales (13, 14): meses de devengo **hasta el corte** (antes contaba también los posteriores).
+> - Saldo de la cuenta individual: el de la G42 anterior (patronal + personal + voluntario + rendimiento); si no hay, lo liquidado en el mes. Compensados = cruce con préstamos del mes (`APRTTPMV` 4); pagados = liquidado − compensado. Así se cumple compensados y pagados ≥ 0 y ≤ saldo (§4.4).
 
 **Tabla destino:** `RPR.CG43`  
 **Fuente principal:** `RPR.CG42` del mes anterior (o `RPR.HM42` si es primera ejecución)  
@@ -185,6 +185,8 @@
 
 ## ✅ G44 — ParticipeJubiladoG44 — COMPLETADO
 
+> **D-039 (29-oct-2026).** Caso 3 (cuotas a descontar > pensión): compensados = pensión y neto = 0 (antes compensados = cuotas − pensión, y pensión ≠ neto + compensados). Sin efecto en junio 2025 (ningún caso). Pendiente, sin cambio: el valor de la pensión sale de `VPPC` sin período (mismo defecto que tenía la G42 con HSTR); fuente alternativa con período: APRT tipo 23 con `APRTTPMV` 9 del mes.
+
 **Tabla destino:** `RPR.CG44`  
 **Fuente principal:** `CRD.ENTD` con `idEstado = 30` (jubilados)  
 **Fuente imposiciones:** `CRD.APRT` con `tipoAporte.codigo IN (9, 11)` — COUNT agrupado por entidad  
@@ -221,9 +223,59 @@
 
 ## ✅ G45 — NuevoParticipeG45 — COMPLETADO
 
+> **D-039 (29-oct-2026).** Manual de crédito §3.1/§5.1. Estado civil (tabla 211) desde `EXTRESCV` con el mismo mapeo de
+> la G41 (antes `S` fijo). Residencia (tablas 6, 7, 50): provincia y cantón de `EXTR` codificados con los catálogos
+> `PRVN`/`CDDD`; si EXTR no da los dos, la dirección vigente `DRCC → PRRQ → CDDD → PRVN` (`resolverUbicacion`; con la
+> G46 de mayo presentada EXTR coincide en 47 de 73, DRCC en 39); parroquia `PRRQCDEX` o, mientras no esté cargado,
+> `50` (antes cantón `01` y parroquia `50` fijos). Patrimonio: si el sujeto no tiene saldo en la G42, sus ingresos
+> (`EXTRSLTT`), como pide el manual ("en caso de que el deudor no posea bienes, se tomará como referencia el valor de sus
+> ingresos"; control: > 0). Sin dato en el SAA (se mantienen y se documentan): cargas familiares 0, profesión `O`
+> (`EXTRPRFS` es texto libre, falta una tabla de equivalencias a la tabla 216), actividad económica `009`, origen de
+> ingresos `B`.
+
 **Tabla destino:** `RPR.CG45`  
-**Fuente principal:** `RPR.CG41` del mismo EJRC (los partícipes que G41 insertó en este ciclo)  
-**Nota importante:** G41 corre antes que G45 y cambia `idEstado 1→10`, por eso G45 **no puede filtrar por `idEstado=1`** — lee directamente de `CG41` del mismo EJRC.
+**Regla vigente (D-035, 29-oct-2026) — sujetos de riesgo NUEVOS.** El manual de la Superintendencia (Estructuras de
+Operaciones de Crédito FCPC v2.4, 18-08-2023, §3.1 y §5.2) define la G45 con los titulares, garantes y codeudores de las
+operaciones de crédito, y en los controles de la G46 exige que el sujeto "conste en la base de datos de la estructura G45":
+la Superintendencia mantiene una base ACUMULADA de sujetos. Por eso:
+
+- **G45 del mes = sujetos de la G46 del mes (titulares) y de la G50 (garantes/codeudores, hoy stub en 0) que todavía no
+  constan en el registro `RPR.SG45`** con un período anterior al que se genera.
+- `RPR.SG45` (DDL y carga inicial: `docs/logica-negocio/reportes/sql/336_D035_REGISTRO_SUJETOS_G45.sql`) es la copia local
+  de esa base: una fila por sujeto con su primer período reportado y su origen — `SEMILLA` (reportados antes de mayo
+  2025, período 202504), `HM45` (G45 presentada en mayo 2025, 202505) o `EJECUCION` (G45 generada por el SAA, con su EJRD).
+- Al generar, cada sujeto nuevo se agrega con el período del mes. Al **regenerar** un mes se borran primero las filas
+  `EJECUCION` de ese período (no se duplica). Si un sujeto ya estaba registrado con un período POSTERIOR (se generó antes
+  un mes siguiente), su registro pasa al mes que se genera y el log pide regenerar ese mes siguiente.
+- **Semilla (supuesto a confirmar con ASOPREP):** no se encontró la fecha en que ASOPREP empezó a reportar la G45. Se
+  toma como ya reportado a todo sujeto con un préstamo concedido antes de mayo 2025 (estado fuera de 0, 1, 6, 7, 12) cuya
+  última cuota vence en 2021-07 o después. Cualquier corte en (2019-08-31, 2021-07-31] reproduce la G45 de mayo; se elige
+  el más tardío (semilla más chica: ante la duda se vuelve a reportar un sujeto en vez de omitir uno nuevo, que haría
+  rechazar la G46). Con la base del 29-oct-2026: semilla 1.726 sujetos + 10 de la HM45.
+- **Aceptación:** mayo 2025 = exactamente los 10 sujetos presentados (de 73 en la G46); junio 2025 = 1 (de 29), igual para
+  cualquier corte del rango. Evidencia sin cédulas: `cuadreSuper/03-trabajo/meses/2025-06/sql/33-g45-registro.sql` y
+  `resultados/33-g45-registro-01..04.csv`, `33-g45-reglas.txt`.
+- Se descartó la regla de `LogicaArchivosSuper.txt` 311-313 (sin otro préstamo vigente/mora/plazo vencido ni cancelado con
+  última cuota en el período): daba 13 en mayo (`33-g45-reglas.sql`); los 3 de más ya constaban en la base de sujetos.
+
+**Datos de cada registro** (`LogicaArchivosSuper.txt` 315-337, sin cambios salvo el tipo de partícipe): patrimonio =
+saldo aporte patronal + personal + rendimiento de la `CG42` del mismo EJRC; género, fecha de nacimiento y provincia desde
+`EXTR`; fijos: estado civil `S`, actividad `009`, cantón `01`, parroquia `50`, profesión `O`, cargas `0`, origen `B`.
+**Tipo de partícipe = `P` siempre** (D-035): el manual admite C cesante, J jubilado y P partícipe, pero la G45 de mayo
+2025 (aceptada) trae P en los 10 y el área financiera (correo del 5-jun-2026) indica, por directriz de la
+Superintendencia, que el jubilado se reporta como P. J y C no se usan (antes: J si la entidad era jubilado complementario).
+La tabla de enriquecimiento de abajo (CG41, PerfilEconomico, Participe) es la versión original y ya no rige.
+
+**Orden de generación (D-034/D-035):** la G45 depende de la G46 y de la G50 (y la G49 de la G48). El orquestador
+(`GeneracionReportesServiceImpl`) procesa los EJRD en el orden de `GeneracionUnReporteServiceImpl.TIPOS_REPORTE`
+(G40, G41, G42, G43, G44, **G46, G50, G45**, G47, G48, G49, G51), no en el `order by d.tipoReporte` del DAO. Desde
+4184bb1c (5-oct-2026) la G45 corría antes que la G46, la encontraba vacía y salía con 0 registros sin error.
+
+**Relación con la G48:** el manual pide cuenta individual 0 en la G48 para jubilados reportados en la G45 con `J`. Como
+la G45 ya no usa `J`, esa condición no se da; la G48 mantiene su regla acordada (cuenta individual 0 si la entidad es
+jubilado complementario, `ENTDIDST` 3, antes PK 30) — pendiente de confirmar con ASOPREP si se conserva.
+
+**Nota histórica:** G41 corre antes que G45 y cambia `idEstado 1→10`, por eso G45 **no puede filtrar por `idEstado=1`**.
 
 **Enriquecimiento por entidad:**
 
@@ -265,12 +317,19 @@
 
 ## ⏳ G46 — NuevoPrestamoG46 — PENDIENTE
 
+> **D-039 (29-oct-2026).** Manual de crédito §3.2/§5.2.
+> - Solo operaciones concedidas: se excluyen los préstamos en estado 0, 1, 6, 7 y 12 (raíz, generado, pendiente, rechazado, anulado).
+> - Destino geográfico (tablas 6, 7, 50): el SAA no guarda un destino propio del préstamo; se usa la residencia del sujeto (`GeneracionG45ServiceImpl.resolverUbicacion`): provincia y cantón de `EXTR` codificados con `PRVN.PRVNCDAL` y `CDDD.CDDDCDAL` (con la G46 de mayo presentada coinciden 47 de 73 operaciones, provincia 63); si EXTR no da los dos, la dirección vigente `CRD.DRCC` → `PRRQ` → `CDDD` → `PRVN` (39 de 73). Junio 2025: provincia igual en las 29, cantón distinto de 01 en 11. Parroquia: `PRRQCDEX` (código INEC); **mientras no esté cargado** (hoy vacío en las 1.551 parroquias), `50` = cabecera cantonal. Antes: cantón `01` y parroquia `50` fijos. Dato sucio conocido: en Pichincha, POMASQUI, SANGOLQUI y CAPELO llevan `CDDDCDAL` 1.
+> - Sin cambio, documentado: estado de la operación `N` (las marcas de novación/reestructuración están en 0 en junio), periodicidad `ME`, frecuencia de revisión 365, garantías `GA`, tipo de crédito por la inicial del producto (E→Q; frágil: mapear desde `TPPR`).
+
 **Tabla destino:** `RPR.CG46`  
 **Regla:** pendiente — el usuario la proporcionará
 
 ---
 
 ## ✅ G47 — NovacionG47 — COMPLETADO
+
+> **D-039 (29-oct-2026), pendiente de decisión — sin cambio de código.** El generador filtra `ESTADO_NOVACION = 9`, que en `EstadoPrestamo` es CANCELADO_POR_REVISAR (novación = 5, reestructuración = 13), no filtra por mes y deja nula la operación anterior (obligatoria). La fuente existe: `CRD.RLPR` (hijo `PRSTCDGH`, padre `PRSTCDGP`, tipo Novacion). Antes de cambiarlo hay que decidir la definición: RLPR da 30 novaciones en mayo 2025 y la G47 aceptada de mayo trae 1 (que no está en RLPR); la G46 de mayo reportó esos casos como `N`. Junio: 0 (correcto con cualquiera de las dos lecturas: ninguna de las 35 cancelaciones tiene novación).
 
 **Tabla destino:** `RPR.CG47`  
 **Fuente:** `CRD.PRST` (Prestamo) con `estadoPrestamo = 9`
@@ -298,6 +357,13 @@
 ---
 
 ## ✅ G48 — SaldoOperacionG48 — COMPLETADO
+
+> **D-038/D-039 (29-oct-2026).** Manual de crédito §3.4/§5.4.
+> - Campo 20 **cuota del crédito = solo el capital** de las cuotas que vencen en el mes de reporte (columna `CAPMES` de `selectOperacionesAlCorte`; en el modo normal, capital de la cuota del mes del grupo 1). Antes: `DTPRCTAA` (capital + interés) de la cuota ancla. Sin cuota que venza en el mes (plazo vencido) = 0.
+> - Fecha de exigibilidad (22): **se mantiene** la de la cuota exigible (cuota impaga más antigua o próxima por vencer), lectura literal del manual; mayo 2025 llevaba el corte en todas las filas. Cambio de criterio con constancia en el acta (D-038).
+> - Tasa (7): la del préstamo (`PRSTINNM`); las operaciones 54175 (préstamo 8323, 10 %) y 52802 (8331, 13 %), hipotecarias, se reportan con su tasa (mayo llevaba 9 en todas). No se cambia.
+> - Control de conteo §5.4 G48(mes) = G48(anterior) + G46 − G49: junio 1.594 + 29 − 35 = 1.588; la 565 trae 1.589 por la operación 64481 (residuo de migración, ver `cuadreSuper/03-trabajo/meses/2025-06/sql/40-depura-64481.md`).
+> - Pendientes documentados: dividendo (21) de la cuota ancla y no de la del mes; cuenta individual 0 por estado de entidad 3 y no por el código J de la G45 (hoy no hay J); sistema de amortización `FR` fijo (correcto para la cartera actual); tipo de crédito por inicial del producto.
 
 **Tabla destino:** `RPR.CG48`
 
@@ -403,6 +469,8 @@
 
 ## ✅ G49 — CancelacionG49 — COMPLETADO
 
+> **D-038 (29-oct-2026).** Fecha de cancelación **real** dentro del mes (manual de crédito §3.5 campo 4, §5.5): 1) novación en el mes (`CRD.RLPR`, fecha del préstamo hijo) → forma `O`; 2) último evento de pago del préstamo en el mes (`CRD.EVPR`, estado 1: precancelación, pago manual, pago con aportes…); 3) último pago vigente del mes (`CRD.PGPR`); 4) última cuota marcada pagada en el mes (`DTPRFCPG`); 5) sin evento, el fin de mes. `CancelacionG49DaoServiceImpl.selectCancelacionReal`. Junio 2025: las 35 caen en junio (14 el 09-jun y 8 el 16-jun por precancelación, 1 el 10-jun por pago manual, 12 el 30-jun por pago de rol/aportes); forma `N` en las 35 (sin novaciones). Antes: 30/06/2025 en todas.
+
 **Tabla destino:** `RPR.CG49`
 
 **Fuente principal:** `CRD.DTPR` (DetallePrestamo) — tres grupos
@@ -418,6 +486,19 @@
 **GRUPO 3:** Operaciones que estaban en el **G48 del período anterior** pero ya **no aparecen en el G48 del período actual**. Si no hay EJRC anterior → grupo 3 vacío.
 
 > Se usa un `Set<numeroOperacion>` para evitar duplicados entre los tres grupos.
+
+**Al corte (D-034, 29-oct-2026):** los grupos 1 y 2 leen el estado de HOY (`DTPRESTD`, `PRSTIDST`). Cuando el mes se
+genera al corte (`ModoCorteCartera.esAlCorte(fin de mes, null)`), la G49 carga los préstamos con saldo al corte con la
+misma lectura de la G48 (`CarteraAlCorteService.calcularPorPrestamo`) y **no** los marca cancelados por los grupos 1/2;
+por tanto tampoco los borra de la G48. Caso: préstamo 8179 (operación 69105) en junio 2025: G49 35 (no 36) y G48 1.589.
+Fuera del modo al corte (el mes que se cierra normalmente) no cambia nada.
+
+**Grupo 3 de junio 2025 (D-044, 29-oct-2026):** el período anterior es `RPR.HM48` (G48 de mayo aceptada) y se compara
+**solo contra la G48 de la ejecución que se genera** (`HistoricoG48DaoService.selectEnHm48NoEnCg48(detalleG48)`). Antes
+comparaba contra la G48 de cualquier ejecución de junio 2025: la operación 68489 (préstamo 6201), que salió de la cartera
+en la corrida nueva, seguía en las G48 de las ejecuciones 564/565 y no entraba a la G49 (ejecución 584: G49 35, control
+§5.4 del manual 1.594 + 29 − 35 = 1.588 ≠ 1.587). Con la regla: G49 36 y 1.594 + 29 − 36 = 1.587. Si la ejecución no
+tiene G48, el grupo 3 queda vacío.
 
 ---
 

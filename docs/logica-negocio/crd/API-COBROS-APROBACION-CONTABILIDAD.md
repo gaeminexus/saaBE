@@ -209,6 +209,10 @@ el `motivoRechazo`.
 
 `motivo` es obligatorio en `rechazar` y `anular`; se ignora en `aprobar` y `procesar`.
 
+`reproceso` (opcional, solo `procesar`, 2026-10-28): `true` procesa un cobro de un mes pasado evaluando cada
+préstamo vigente al corte de ese mes (D-019: reabre el que hoy está cancelado). Sin el campo, nada cambia. Ver
+`API-REPROCESO-COBRO-FECHA-PASADA.md`.
+
 ### `SolicitudEdicionCobro`
 
 Los mismos campos editables del registro (`idCuentaBancaria`, `referencia`, `rutaRespaldo`,

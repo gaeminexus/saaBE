@@ -26,7 +26,42 @@ public class SolicitudAbonoCapitalConAportes {
     /** Opcional: no entra dinero de afuera, no hay comprobante bancario. */
     private String rutaDocumentoRespaldo;
 
+    /** C16b: {@code false} = registrar el abono sobre la tabla vigente sin re-amortizar (ver
+     * {@link SolicitudAbonoCapital#getRegenerarTabla()}); {@code null}/{@code true} = de siempre. */
+    private Boolean regenerarTabla;
+
+    /** C16b: cuota donde se registra el abono sin regenerar tabla; {@code null} = la vigente. */
+    private Integer numeroCuota;
+
+    /** D-048: {@code true} = re-proceso; "al día" se evalúa a la fecha del abono (ver
+     * {@link SolicitudAbonoCapital#getReproceso()}). */
+    private Boolean reproceso;
+
     public SolicitudAbonoCapitalConAportes() {
+    }
+
+    public Boolean getReproceso() {
+        return reproceso;
+    }
+
+    public void setReproceso(Boolean reproceso) {
+        this.reproceso = reproceso;
+    }
+
+    public Boolean getRegenerarTabla() {
+        return regenerarTabla;
+    }
+
+    public void setRegenerarTabla(Boolean regenerarTabla) {
+        this.regenerarTabla = regenerarTabla;
+    }
+
+    public Integer getNumeroCuota() {
+        return numeroCuota;
+    }
+
+    public void setNumeroCuota(Integer numeroCuota) {
+        this.numeroCuota = numeroCuota;
     }
 
     public Long getIdEmpresa() {

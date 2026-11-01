@@ -10,6 +10,10 @@ cierre/apertura §4octies)
 Plan de fondo: `PLAN-PAGO-JUBILADOS.md`. Este documento es el contrato; ante una diferencia entre
 los dos, manda el **código**, y los dos documentos se corrigen.
 
+> **Mes pasado (re-proceso, C20, 2026-10-28):** para generar la pensión de un período anterior con el rol de
+> ese mes (sin ancla, sin el estado de hoy, D-019 en los cruces, pago con la fecha del banco) se usa
+> `POST /pgpc/reprocesarPeriodo` — ver `API-REPROCESO-PENSION-PERIODO.md`. Este documento es el del motor mensual.
+
 ---
 
 ## ⚠️ Corrección del 2026-09-04 — leer antes de implementar

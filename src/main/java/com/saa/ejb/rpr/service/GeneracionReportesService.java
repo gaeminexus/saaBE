@@ -20,4 +20,13 @@ public interface GeneracionReportesService {
      * @throws Throwable : Excepcion
      */
     EjecucionReporte ejecutarGeneracion(Long mes, Long anio, String usuario) throws Throwable;
+
+    /**
+     * C15 — igual que {@link #ejecutarGeneracion(Long, Long, String)}, pero con
+     * {@code regenerar = true} crea SIEMPRE una ejecución nueva del mes aunque ya exista una (la
+     * anterior queda como histórico; todas las lecturas toman la más reciente: {@code
+     * selectByMesAnio} ordena por fecha de generación descendente y la cuadratura C14 toma la
+     * última EJRD). Para regenerar las G de un mes re-procesado.
+     */
+    EjecucionReporte ejecutarGeneracion(Long mes, Long anio, String usuario, boolean regenerar) throws Throwable;
 }

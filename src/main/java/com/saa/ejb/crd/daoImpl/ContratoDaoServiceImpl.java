@@ -19,6 +19,44 @@ public class ContratoDaoServiceImpl extends EntityDaoImpl<Contrato> implements C
     @PersistenceContext
     EntityManager em;
 
+    @Override
+    public Long selectTipoContratoMasFrecuenteAportantesCarga(Long idCarga) throws Throwable {
+        System.out.println("ContratoDaoService.selectTipoContratoMasFrecuenteAportantesCarga carga " + idCarga);
+        Query query = em.createNativeQuery(
+            " select c.TPCNCDGO " +
+            " from   CRD.CNTR c " +
+            " join   CRD.ENTD e on e.ENTDCDGO = c.ENTDCDGO " +
+            " join   CRD.PXCA x on TRIM(x.PXCACDPT) = TO_CHAR(e.ENTDRLPC) " +
+            " join   CRD.DTCA t on t.DTCACDGO = x.DTCACDGO " +
+            " where  t.CRARCDGO = :idCarga " +
+            "   and  TRIM(t.DTCACDPP) = 'AH' " +
+            "   and  c.CNTRESTD = " + EstadoContrato.ACTIVO +
+            "   and  c.TPCNCDGO is not null " +
+            " group by c.TPCNCDGO " +
+            " order by count(*) desc, c.TPCNCDGO " +
+            " fetch first 1 rows only ");
+        query.setParameter("idCarga", idCarga);
+        List<?> resultado = query.getResultList();
+        return resultado.isEmpty() || resultado.get(0) == null ? null : ((Number) resultado.get(0)).longValue();
+    }
+
+    @SuppressWarnings("unchecked")
+    @Override
+    public Contrato selectVigenteAlCortePorEntidad(Long idEntidad, java.time.LocalDateTime corte) throws Throwable {
+        System.out.println("ContratoDaoService.selectVigenteAlCortePorEntidad entidad " + idEntidad + " corte " + corte);
+        Query query = em.createQuery(
+            " select c from Contrato c " +
+            " where  c.entidad.codigo = :idEntidad " +
+            "   and  c.fechaInicio <= :corte " +
+            "   and  (c.fechaTerminacion is null or c.fechaTerminacion > :corte) " +
+            " order by c.fechaInicio desc, c.codigo desc");
+        query.setParameter("idEntidad", idEntidad);
+        query.setParameter("corte", corte);
+        query.setMaxResults(1);
+        List<Contrato> resultado = query.getResultList();
+        return resultado.isEmpty() ? null : resultado.get(0);
+    }
+
     @SuppressWarnings("unchecked")
 	@Override
     public List<Contrato> selectByEntidad(Long idEntidad) throws Throwable {

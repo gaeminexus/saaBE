@@ -80,6 +80,13 @@ public interface PagoPrestamoDaoService extends EntityDao<PagoPrestamo> {
 	List<Object[]> selectDatosPagosVigentes(List<Long> codigosDetallePrestamo) throws Throwable;
 
 	/**
+	 * C15 — {@link #selectDatosPagosVigentes(List)} restringido a los pagos con fecha
+	 * {@code <= corte} (estado de la cartera al corte). Mismo orden de columnas.
+	 */
+	List<Object[]> selectDatosPagosVigentesAlCorte(List<Long> codigosDetallePrestamo, java.time.LocalDate corte)
+			throws Throwable;
+
+	/**
 	 * Capital ABONADO (Σ {@code PGPRCPPG} de pagos vigentes) de las cuotas EN_MORA (5) o
 	 * PARCIAL (6) de VARIOS préstamos, con UN {@code SUM} AGRUPADO en la base — una fila por
 	 * préstamo, no una por pago. Tercio «en mora/parcial» de {@code capitalPagado}
@@ -217,5 +224,57 @@ public interface PagoPrestamoDaoService extends EntityDao<PagoPrestamo> {
 	 * @throws Throwable Si ocurre algún error
 	 */
 	List<Object[]> selectMaxFechaPagoByPrestamos(List<Long> codigosPrestamo) throws Throwable;
+
+	/**
+	 * Pagos VIGENTES del ESQUEMA VIEJO de una carga Petro: sin {@code CRARCDGO} (anteriores a la
+	 * trazabilidad del 2026-08-28), donde la carga solo figura en la observación con la forma
+	 * {@code "Pago cuota #N - Mes M/AAAA - Carga N [CargaArchivo: N]"}. Se filtra por el sufijo
+	 * {@code "[CargaArchivo: N]"} (con corchetes, para que la 35 no arrastre a la 352). Base de
+	 * la anulación del reproceso de una carga — {@code ReprocesoCargaPetroService}, ver
+	 * {@code docs/logica-negocio/petro/REPROCESO-CARGA-PETRO.md}.
+	 *
+	 * <p>Medido en la base del proyecto (2026-10-28): la carga 352 tiene 1.313 pagos así,
+	 * todos con {@code PRSTCDGO} NULO — el préstamo se resuelve por la cuota.</p>
+	 *
+	 * @param idCarga Código de la carga (CRD.CRAR)
+	 * @return Pagos vigentes sin enlace cuya observación nombra la carga; vacía si no hay
+	 * @throws Throwable Si ocurre algún error (NO se absorbe: es la base de una anulación)
+	 */
+	List<PagoPrestamo> selectVigentesLegadoPorObservacionCarga(Long idCarga) throws Throwable;
+
+	/**
+	 * Mayor número de corrida de reproceso estampado en {@code PGPRMTAN} con la etiqueta
+	 * {@code "REPROCESO carga N corrida M"} para la carga dada; {@code null} si nunca se
+	 * reprocesó. La siguiente corrida es este valor + 1 (junto con el gemelo de
+	 * {@code AporteDaoService}, se toma el máximo de los dos).
+	 *
+	 * @param idCarga Código de la carga (CRD.CRAR)
+	 * @return Máximo M encontrado, o {@code null}
+	 * @throws Throwable Si ocurre algún error
+	 */
+	Integer selectMaxCorridaReproceso(Long idCarga) throws Throwable;
+
+	/**
+	 * D-025 (reproceso de carga Petro): pagos de préstamo MIGRADOS de Delta con fecha dentro del
+	 * mes de la carga, sobre cuotas de préstamos cuyo partícipe tiene fila en la carga para el
+	 * mismo producto. Criterio estricto de "migrado": {@code PGPRTPOO = 'MIGRACION'},
+	 * observación de migración ("Pago cargado desde Excel - Migracion de datos"), sin carga
+	 * ({@code CRARCDGO} nulo), sin evento ({@code EVPRCDGO} nulo) y vigente. El préstamo se
+	 * resuelve por la cuota ({@code PGPR.PRSTCDGO} puede venir nulo).
+	 *
+	 * <p>No decide nada: el llamador compara, por rol y producto, la suma de estos pagos con el
+	 * descuento real de la fila ({@code PXCADSDO}) al centavo y anula solo los grupos que
+	 * coinciden con descuento mayor que cero.</p>
+	 *
+	 * @param idCarga Código de la carga (CRD.CRAR)
+	 * @param desde   Primer día del mes de la carga
+	 * @param hasta   Último día del mes de la carga
+	 * @return Filas {@code [idPago (Long), rolPetro (Long), codigoProductoPetro (String),
+	 *         valorConDesgravamen (Double), descuentoFila (Double), idPrestamo (Long),
+	 *         numeroCuota (Long)]}, ordenadas por rol, producto y pago
+	 * @throws Throwable Si ocurre algún error (NO se absorbe: es la base de una anulación)
+	 */
+	List<Object[]> selectMigradosDelMesConFilaEnCarga(Long idCarga, java.time.LocalDate desde,
+			java.time.LocalDate hasta) throws Throwable;
 
 }

@@ -204,7 +204,7 @@ public class GeneracionG44ServiceImpl implements GeneracionG44Service {
                 valoresCompensados = sumaCuotas;
                 valorNetoRecibir   = valorPension - valoresCompensados;
             } else if (sumaCuotas > valorPension) {
-                valoresCompensados = sumaCuotas - valorPension;
+                valoresCompensados = valorPension; // D-039: lo compensado no puede pasar de la pensión (neto = pensión - compensados = 0)
                 valorNetoRecibir   = 0.0;
             } else {
                 valoresCompensados = sumaCuotas;
@@ -284,7 +284,7 @@ public class GeneracionG44ServiceImpl implements GeneracionG44Service {
                     valorNetoRecibir   = valorPension - valoresCompensados;
                 } else if (sumaCuotas > valorPension) {
                     // Caso 3: suma > valorPension
-                    valoresCompensados = sumaCuotas - valorPension;
+                    valoresCompensados = valorPension; // D-039: lo compensado no puede pasar de la pensión (neto = pensión - compensados = 0)
                     valorNetoRecibir   = 0.0;
                 } else {
                     // Caso 4: suma == valorPension

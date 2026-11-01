@@ -8,7 +8,9 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+import com.saa.ejb.crd.service.CarteraAlCorteService;
 import com.saa.ejb.crd.service.DetallePrestamoService;
+import com.saa.ejb.crd.service.ModoCorteCartera;
 import com.saa.ejb.rpr.dao.CancelacionG49DaoService;
 import com.saa.ejb.rpr.dao.SaldoOperacionG48DaoService;
 import com.saa.ejb.rpr.service.DetalleEjecucionReporteService;
@@ -37,6 +39,7 @@ public class GeneracionG49ServiceImpl implements GeneracionG49Service {
     @EJB private DetalleEjecucionReporteService ejrdService;
     @EJB private EjecucionReporteService        ejrcService;
     @EJB private HistoricoG48Service            historicoG48Service;
+    @EJB private CarteraAlCorteService          carteraAlCorteService;
 
     @Override
     public long generar(DetalleEjecucionReporte detalle) throws Throwable {
@@ -61,6 +64,21 @@ public class GeneracionG49ServiceImpl implements GeneracionG49Service {
         // Set de numeroOperacion ya insertados para evitar duplicados entre grupos
         Set<String> operacionesInsertadas = new HashSet<>();
 
+        // D-034 (29-oct-2026): un mes pasado se genera AL CORTE (C15, ModoCorteCartera). Los
+        // grupos 1 y 2 leen el estado de HOY (DTPRESTD / PRSTIDST) y tomaban como "cancelada en el
+        // mes" una operación que al corte todavía tenía saldo — y la borraban de la G48 (préstamo
+        // 8179, operación 69105, en junio 2025: 1.286,48). Con la misma lectura al corte que usa la
+        // G48 (CarteraAlCorteService), una operación con saldo al corte no se canceló en el mes: no
+        // entra a la G49 por los grupos 1/2 y, por tanto, no se borra de la G48.
+        Set<Long> prestamosConSaldoAlCorte = prestamosConSaldoAlCorte(fechaCancelacion);
+
+        // D-038: fecha real de cancelación (y forma O si hubo novación) de cada operación con eventos en el mes.
+        cancelacionesReales.clear();
+        for (Object[] f : cg49DaoService.selectCancelacionReal(fechaCancelacion.withDayOfMonth(1), fechaCancelacion)) {
+            if (f[0] != null && f[1] != null) cancelacionesReales.put(f[0].toString().trim(), f);
+        }
+        System.out.println("G49 - operaciones con evento de cancelacion en el mes: " + cancelacionesReales.size());
+
         // -------------------------------------------------------
         // GRUPO 1: Cuota con mayor numeroCuota del préstamo
         //          dentro del mes y en estado pagada (4).
@@ -75,6 +93,7 @@ public class GeneracionG49ServiceImpl implements GeneracionG49Service {
                 if (prestamo == null) continue;
                 String numOp = prestamo.getIdAsoprep() != null ? String.valueOf(prestamo.getIdAsoprep()) : null;
                 if (numOp == null || operacionesInsertadas.contains(numOp)) continue;
+                if (conSaldoAlCorte(prestamo, prestamosConSaldoAlCorte, "grupo 1")) continue;
 
                 insertarG49(prestamo, numOp, fechaCancelacion, detalle);
                 operacionesInsertadas.add(numOp);
@@ -99,6 +118,7 @@ public class GeneracionG49ServiceImpl implements GeneracionG49Service {
                 if (prestamo == null) continue;
                 String numOp = prestamo.getIdAsoprep() != null ? String.valueOf(prestamo.getIdAsoprep()) : null;
                 if (numOp == null || operacionesInsertadas.contains(numOp)) continue;
+                if (conSaldoAlCorte(prestamo, prestamosConSaldoAlCorte, "grupo 2")) continue;
 
                 insertarG49(prestamo, numOp, fechaCancelacion, detalle);
                 operacionesInsertadas.add(numOp);
@@ -182,7 +202,12 @@ public class GeneracionG49ServiceImpl implements GeneracionG49Service {
             // -------------------------------------------------------
             if (mes == 6L && anio == 2025L) {
                 System.out.println("G49 Grupo 3 - Caso especial Junio 2025: leyendo desde HM48 con NOT EXISTS en CG48");
-                List<HistoricoG48> hm48NoEnCg48 = historicoG48Service.selectEnHm48NoEnCg48Junio2025();
+                // D-044: solo contra la G48 de ESTA ejecución (antes, cualquier ejecución de junio 2025).
+                if (ejrdG48Actual == null) {
+                    System.out.println("G49 Grupo 3 - La ejecución no tiene G48; no hay contra qué comparar la HM48.");
+                    return 0L;
+                }
+                List<HistoricoG48> hm48NoEnCg48 = historicoG48Service.selectEnHm48NoEnCg48(ejrdG48Actual.getCodigo());
                 System.out.println("G49 Grupo 3 - Registros en HM48 no presentes en CG48 junio 2025: " + hm48NoEnCg48.size());
 
                 for (HistoricoG48 anterior : hm48NoEnCg48) {
@@ -195,8 +220,8 @@ public class GeneracionG49ServiceImpl implements GeneracionG49Service {
                             ? anterior.getTipoIdentificacion() : "C");
                     g49.setIdentificacion(anterior.getIdentificacion());
                     g49.setNumeroOperacion(numOp);
-                    g49.setFechaCancelacion(fechaCancelacion);
-                    g49.setFormaCancelacion("N");
+                    g49.setFechaCancelacion(fechaReal(numOp, fechaCancelacion));
+                    g49.setFormaCancelacion(formaReal(numOp));
                     g49.setDetalleEjecucion(detalle);
 
                     cg49DaoService.save(g49, null);
@@ -239,8 +264,8 @@ public class GeneracionG49ServiceImpl implements GeneracionG49Service {
                             ? anterior.getTipoIdentificacion() : "C");
                     g49.setIdentificacion(anterior.getIdentificacion());
                     g49.setNumeroOperacion(numOp);
-                    g49.setFechaCancelacion(fechaCancelacion);
-                    g49.setFormaCancelacion("N");
+                    g49.setFechaCancelacion(fechaReal(numOp, fechaCancelacion));
+                    g49.setFormaCancelacion(formaReal(numOp));
                     g49.setDetalleEjecucion(detalle);
 
                     cg49DaoService.save(g49, null);
@@ -258,8 +283,57 @@ public class GeneracionG49ServiceImpl implements GeneracionG49Service {
         return contador;
     }
 
-    /** Crea y persiste un registro en CG49. */
-    private void insertarG49(Prestamo prestamo, String numOp,
+    /**
+     * D-034 — préstamos con saldo al corte, con la misma lectura de la G48 al corte
+     * ({@link CarteraAlCorteService#calcularPorPrestamo}). Fuera del modo al corte (el mes que se
+     * cierra normalmente) devuelve un conjunto vacío: los grupos 1 y 2 quedan como siempre.
+     */
+    private Set<Long> prestamosConSaldoAlCorte(LocalDate corte) throws Throwable {
+        if (!ModoCorteCartera.esAlCorte(corte, null)) {
+            return new HashSet<>();
+        }
+        boolean inclusivo = ModoCorteCartera.corteInclusivo(null);
+        Set<Long> ids = new HashSet<>(carteraAlCorteService.calcularPorPrestamo(corte, inclusivo).keySet());
+        System.out.println("G49 - modo AL CORTE " + corte + ": " + ids.size()
+            + " prestamos con saldo al corte (no se marcan cancelados ni se borran de la G48)");
+        return ids;
+    }
+
+    private boolean conSaldoAlCorte(Prestamo prestamo, Set<Long> prestamosConSaldoAlCorte, String grupo) {
+        if (prestamo.getCodigo() != null && prestamosConSaldoAlCorte.contains(prestamo.getCodigo())) {
+            System.out.println("G49 - " + grupo + ": prestamo " + prestamo.getCodigo()
+                + " (op " + prestamo.getIdAsoprep() + ") tiene saldo al corte; no se cancela en el mes");
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * D-038: operaciones con evento en el mes → {op, fecha, forma}. Se llena al inicio de cada generar(); el bean
+     * es @Stateless y cada llamada lo usa de forma exclusiva.
+     */
+    private final java.util.Map<String, Object[]> cancelacionesReales = new java.util.HashMap<>();
+
+    /** Fecha real de cancelación (manual §3.5 campo 4); sin evento en el mes, el fin de mes (cumple §5.5). */
+    private LocalDate fechaReal(String numOp, LocalDate finDeMes) {
+        Object[] f = numOp != null ? cancelacionesReales.get(numOp.trim()) : null;
+        if (f == null || f[1] == null) return finDeMes;
+        Object o = f[1];
+        LocalDate d = o instanceof java.sql.Timestamp ? ((java.sql.Timestamp) o).toLocalDateTime().toLocalDate()
+                    : o instanceof java.sql.Date ? ((java.sql.Date) o).toLocalDate()
+                    : o instanceof java.time.LocalDateTime ? ((java.time.LocalDateTime) o).toLocalDate()
+                    : o instanceof LocalDate ? (LocalDate) o
+                    : new java.sql.Date(((java.util.Date) o).getTime()).toLocalDate();
+        return d.isAfter(finDeMes) || d.isBefore(finDeMes.withDayOfMonth(1)) ? finDeMes : d;
+    }
+
+    /** Forma de cancelación (tabla 39): O = con otra operación (novación en el mes); N = en efectivo. */
+    private String formaReal(String numOp) {
+        Object[] f = numOp != null ? cancelacionesReales.get(numOp.trim()) : null;
+        return f != null && "O".equals(f[2]) ? "O" : "N";
+    }
+
+    /** Crea y persiste un registro en CG49. */    private void insertarG49(Prestamo prestamo, String numOp,
             LocalDate fechaCancelacion, DetalleEjecucionReporte detalle) throws Throwable {
         CancelacionG49 g49 = new CancelacionG49();
         g49.setTipoIdentificacion("C");
@@ -267,8 +341,8 @@ public class GeneracionG49ServiceImpl implements GeneracionG49Service {
             g49.setIdentificacion(prestamo.getEntidad().getNumeroIdentificacion());
         }
         g49.setNumeroOperacion(numOp);
-        g49.setFechaCancelacion(fechaCancelacion);
-        g49.setFormaCancelacion("N");
+        g49.setFechaCancelacion(fechaReal(numOp, fechaCancelacion));
+        g49.setFormaCancelacion(formaReal(numOp));
         g49.setDetalleEjecucion(detalle);
         cg49DaoService.save(g49, null);
         System.out.println("G49 INSERT op: " + numOp

@@ -95,6 +95,10 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
     @EJB
     private DevolucionAporteDaoService devolucionAporteDaoService;
 
+    /** C17: mes cerrado para cartera / contabilidad (CIERRES-BLOQUEANTES.md). */
+    @jakarta.ejb.EJB
+    private com.saa.ejb.cnt.service.EstadoCierreService estadoCierreService;
+
     @EJB
     private DetalleDevolucionAporteDaoService detalleDevolucionAporteDaoService;
 
@@ -295,6 +299,8 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
 
         // 8. Fecha no futura
         LocalDate fecha = resolverFecha(solicitud.getFecha());
+        // C17: la devolución (DVAP, APRT, PGAP, asiento) se fecha con "fecha": mes abierto.
+        estadoCierreService.validarMovimientoCartera(solicitud.getIdEmpresa(), fecha, "devoluciones de aportes");
 
         // 9. Cuenta bancaria del partícipe (salvo débito automático, que no transfiere)
         CuentaBancariaParticipe cuentaParticipe = null;
@@ -860,6 +866,9 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
         boolean contabiliza = validado.contabiliza;
 
         LocalDate fecha = resolverFecha(solicitud.getFecha());
+        // C17: mes de la fecha abierto para cartera y contabilidad.
+        estadoCierreService.validarMovimientoCartera(solicitud.getIdEmpresa(), fecha,
+                "devoluciones de aportes a beneficiarios");
 
         // ------------------------------------------------------------------
         // EL REPARTO — §5.1 del contrato: POR TIPO DE APORTE, no por el total. Repartir
@@ -1194,6 +1203,11 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
             throw new IncomeException(ERR_ESTADO_NO_PERMITE + ": la devolución " + idDevolucion
                 + " está " + nombreEstado(devolucion.getEstado()) + " y no se puede anular");
         }
+
+        // C17: anular una devolución de un mes cerrado para cartera solo si su contabilidad también está
+        // cerrada (los asientos se reversan en el primer período abierto); si no, reabrir la cartera.
+        estadoCierreService.validarAnulacionCartera(devolucion.getIdEmpresa(), devolucion.getFecha(),
+                "la anulación de la devolución " + idDevolucion);
 
         // La orden de pago: se anula antes de tocar los aportes, para que el fallo de CXP
         // deje todo como estaba.

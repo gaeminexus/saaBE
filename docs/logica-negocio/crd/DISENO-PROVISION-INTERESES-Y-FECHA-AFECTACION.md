@@ -118,6 +118,16 @@ Genera **un asiento separado** **D `149905` / H `470510`** por el total de la op
 tipo 2 de esos pagos se compensan con tipo 4 (re-provisión) y su asiento espejo. **Sin esto, anular un cobro
 dejaría la provisión reversada de un interés que vuelve a estar impago.**
 
+**Fecha de la re-provisión en CBCR (D-043, 29-oct-2026).** `anularCobro` y `reversarProceso` la registran con la
+**fecha de afectación del cobro** si su período contable sigue abierto (ACTIVO o DESMAYORIZADO, sin cierre C17:
+`verificaPeriodoAbierto`), que es la misma fecha del reverso de provisión que compensa; en ese caso los asientos
+del cobro se anulan en su sitio y el mes queda como si el cobro no se hubiera procesado. Si ese período ya está
+mayorizado o cerrado, va con la fecha de hoy (los asientos del cobro se reversan en el período abierto), como
+antes. Antes iba siempre con la fecha de hoy: reversar en re-proceso un cobro de un mes pasado dejaba la
+re-provisión en el mes en curso (cobro 227, secuencia 44 del expediente). El hook de `anularOperacion` fuera de
+CBCR (`ContabilidadPrestamoServiceImpl.contabilizarReverso`, CASO A) y el re-proceso Petro no cambian: el
+primero sigue con hoy, el segundo ya recibe la fecha contable del mes de la carga.
+
 ---
 
 ## 6. Fecha de afectación y cobro tardío

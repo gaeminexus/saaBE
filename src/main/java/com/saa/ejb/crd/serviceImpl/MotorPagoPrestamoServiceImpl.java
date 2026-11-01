@@ -224,9 +224,11 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
 
             aplicarEstadoCuota(cuota, (long) EstadoCuotaPrestamo.PAGADA);
 
-            // ✅ Respetar la fecha de pago existente; solo se establece si falta
+            // ✅ Respetar la fecha de pago existente; solo se establece si falta — y en ese
+            // caso con la fecha del ÚLTIMO pago vigente (C6, FECHA-CONTABLE-REPROCESO.md), no
+            // con la de hoy: en un re-proceso de meses pasados la cuota quedaba pagada "hoy".
             if (cuota.getFechaPagado() == null) {
-                cuota.setFechaPagado(LocalDateTime.now());
+                cuota.setFechaPagado(fechaUltimoPago(pagos));
             } else {
                 System.out.println("    ℹ️ Respetando fecha de pago existente: " + cuota.getFechaPagado());
             }
@@ -482,10 +484,42 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
         // ------------------------------------------------------------------
         LocalDateTime fechaPago = ctx != null && ctx.getFechaPago() != null ? ctx.getFechaPago() : LocalDateTime.now();
 
-        if (Math.abs(montoAplicar - saldos.getTotalPendiente()) <= TOLERANCIA_CUOTA) {
+        // D-044 (29-oct-2026): lo que queda por componente después de esta aplicación. El total
+        // pendiente de una cuota sin pagos es DTPRTTLL, que en datos migrados puede ser MENOR que la
+        // suma de sus componentes; entonces "aplicado = total pendiente" no significa que el capital
+        // quedó cubierto (préstamos 6557 y 7140 en junio 2025: 3,45 y 7,19 de capital sin cubrir).
+        double pendienteComponentes = redondear(saldos.getSaldoSeguroIncendio() + saldos.getSaldoDesgravamen()
+            + saldos.getSaldoMora() + saldos.getSaldoInteresVencido() + saldos.getSaldoInteres()
+            + saldos.getSaldoCapital() - totalAplicado);
+
+        if (Math.abs(montoAplicar - saldos.getTotalPendiente()) <= TOLERANCIA_CUOTA
+                && pendienteComponentes > TOLERANCIA_CUOTA) {
+            // D-044: la cuota no quedó saldada: PARCIAL con lo que falta (capital incluido). El
+            // reparto del dinero y el pago registrado no cambian; solo el estado.
+            aplicarEstadoCuota(cuota, (long) EstadoCuotaPrestamo.PARCIAL);
+            cuota.setFechaPagado(null);
+            System.out.println("      ⚠️ Cuota #" + cuota.getNumeroCuota() + " PARCIAL (D-044) - Aplicado $"
+                + totalAplicado + " = total pendiente, pero quedan $" + pendienteComponentes
+                + " por componentes (capital pendiente $" + redondear(saldos.getSaldoCapital() - aplicadoCapital) + ")");
+        } else if (Math.abs(montoAplicar - saldos.getTotalPendiente()) <= TOLERANCIA_CUOTA) {
             aplicarEstadoCuota(cuota, (long) EstadoCuotaPrestamo.PAGADA);
-            cuota.setFechaPagado(fechaPago);
-            System.out.println("      ✅ Cuota #" + cuota.getNumeroCuota() + " PAGADA con $" + totalAplicado);
+            // D-044 (29-oct-2026): la cuota queda saldada en la fecha del ÚLTIMO de sus pagos. En
+            // un re-proceso de un mes pasado la cuota puede tener pagos vigentes con fecha
+            // POSTERIOR a este cobro (cargas Petro de meses siguientes, pagos registrados después);
+            // con la fecha de este cobro quedaba "saldada en junio" aunque su capital lo pagó un
+            // pago de julio o de 2026 y ningún pago ni asiento de junio lo acreditaba (35 de las 37
+            // operaciones del residuo de junio 2025). Con la fecha del pago que la completa, al
+            // corte del mes la cuota sigue pendiente con exactamente el capital que falta, igual que
+            // una PARCIAL (CierreCarteraDaoServiceImpl.pendiente/pagos al corte), y hoy sigue
+            // saldada: el reparto del dinero, la cascada y los asientos no cambian.
+            LocalDateTime ultimoPagoPrevio = ultimaFechaPago(
+                pagoPrestamoDaoService.selectVigentesByIdDetallePrestamo(cuota.getCodigo()));
+            LocalDateTime fechaSaldada = ultimoPagoPrevio != null && ultimoPagoPrevio.isAfter(fechaPago)
+                ? ultimoPagoPrevio : fechaPago;
+            cuota.setFechaPagado(fechaSaldada);
+            System.out.println("      ✅ Cuota #" + cuota.getNumeroCuota() + " PAGADA con $" + totalAplicado
+                + (fechaSaldada != fechaPago ? " - saldada al " + fechaSaldada
+                    + " por un pago posterior a este cobro (D-044)" : ""));
         } else {
             aplicarEstadoCuota(cuota, (long) EstadoCuotaPrestamo.PARCIAL);
             System.out.println("      ⚠️ Cuota #" + cuota.getNumeroCuota() + " PARCIAL - Aplicado $"
@@ -762,7 +796,8 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
         if (totalPendiente <= TOLERANCIA_CUOTA) {
             aplicarEstadoCuota(cuota, (long) EstadoCuotaPrestamo.PAGADA);
             if (cuota.getFechaPagado() == null) {
-                cuota.setFechaPagado(LocalDateTime.now());
+                // C6: la fecha del último pago vigente, no la de hoy (ver calcularSaldosRealesCuota).
+                cuota.setFechaPagado(fechaUltimoPago(pagos));
             }
             System.out.println("  → Cuota #" + cuota.getNumeroCuota() + " queda PAGADA");
         } else if (totalPagado > MEDIO_CENTAVO) {
@@ -785,6 +820,31 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
     // ========================================================================
     // Helpers
     // ========================================================================
+
+    /**
+     * Fecha de pago que le corresponde a una cuota que queda PAGADA a partir de sus pagos
+     * vigentes: la mayor {@code PGPRFCHA} de la lista. Si ningún pago trae fecha (datos
+     * migrados), se cae a la hora del sistema — el comportamiento que había antes de C6.
+     * Así, en un re-proceso de meses pasados la cuota queda pagada en la fecha real del
+     * último pago y no en la fecha en que se corrió el proceso.
+     */
+    private LocalDateTime fechaUltimoPago(List<PagoPrestamo> pagos) {
+        LocalDateTime ultima = ultimaFechaPago(pagos);
+        return ultima != null ? ultima : LocalDateTime.now();
+    }
+
+    /** La mayor {@code PGPRFCHA} de la lista, o null si ningún pago trae fecha. */
+    private LocalDateTime ultimaFechaPago(List<PagoPrestamo> pagos) {
+        LocalDateTime ultima = null;
+        if (pagos != null) {
+            for (PagoPrestamo pago : pagos) {
+                if (pago.getFecha() != null && (ultima == null || pago.getFecha().isAfter(ultima))) {
+                    ultima = pago.getFecha();
+                }
+            }
+        }
+        return ultima;
+    }
 
     /** Escribe SIEMPRE los dos campos de estado de la cuota (regla de estados espejo). */
     private void aplicarEstadoCuota(DetallePrestamo cuota, long estado) {

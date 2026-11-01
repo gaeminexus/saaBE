@@ -64,7 +64,7 @@ TransferenciaDTO = { idTransferencia, idCarga,
 
 ```
 POST   /rest/asgn/confirmarRecepcion/{idCarga}
-       body: { usuario, ip, observacion }
+       body: { usuario, ip, observacion, paraReproceso? }
        → { idCarga, confirmada: true,
            idAsiento, numeroAsiento, fechaAsiento, valorAsiento,
            contabilidadActiva,      // false = se confirmó pero NO se generó asiento
@@ -76,7 +76,11 @@ POST   /rest/asgn/confirmarRecepcion/{idCarga}
 2. La carga **no está confirmada** ya.
 3. Hay **al menos una** transferencia vigente.
 4. La suma de las transferencias **cuadra** con el total del archivo (tolerancia `0.01`).
-5. La carga está en un estado que admite la confirmación.
+5. La carga está en un estado que admite la confirmación: CARGADO (1). Con `paraReproceso: true`
+   (opcional, agregado 2026-10-28 para el cuadre Superintendencia, C4) se admite además una carga
+   PROCESADA (3) por el proceso viejo que nunca tuvo paso 1: se sella `CRARFCAC` y se genera el
+   TRANSITORIO igual, pero **el estado no cambia** (sigue en 3; lo mueve `POST /rest/crar/reprocesar/{id}`).
+   Ver `petro/REPROCESO-CARGA-PETRO.md` §9.
 
 **Efecto:** sella `CRARUSCC`/`CRARFCAC`, mueve el estado de la carga, y —si
 `contabilidadActiva()`— genera el asiento transitorio y lo registra en `CRD.ANCP` tipo 1.

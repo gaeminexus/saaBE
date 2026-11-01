@@ -79,6 +79,10 @@ public class RetencionServiceImpl implements RetencionService {
 
 	@PersistenceContext
 	private EntityManager em;
+
+	/** C17: anulación del asiento con la regla de período cerrado (reverso en período abierto). */
+	@jakarta.ejb.EJB
+	private com.saa.ejb.cnt.service.AsientoService asientoService;
 	
 	@Override
 	public Retencion selectById(Long id) throws Throwable {
@@ -1351,7 +1355,7 @@ public class RetencionServiceImpl implements RetencionService {
 					asiento.setMotivoAnulacion(motivoFinal);
 					asiento.setFechaAnulacion(ahora);
 					asiento.setUsuarioAnulacion(usuarioAnulacion);
-					em.merge(asiento);
+					asientoService.anulaAsientoDeDocumento(asiento); // C17: período cerrado -> reverso en período abierto
 					em.flush();
 					System.out.println("✓ Asiento contable anulado: " + asiento.getCodigo());
 					resultado.put("asientoAnulado", asiento.getCodigo());

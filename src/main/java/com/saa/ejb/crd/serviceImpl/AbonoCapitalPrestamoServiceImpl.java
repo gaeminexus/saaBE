@@ -62,6 +62,10 @@ public class AbonoCapitalPrestamoServiceImpl implements AbonoCapitalPrestamoServ
     @EJB
     private MotorPagoPrestamoService motorPagoPrestamoService;
 
+    /** C17: mes cerrado para cartera / contabilidad (CIERRES-BLOQUEANTES.md). */
+    @jakarta.ejb.EJB
+    private com.saa.ejb.cnt.service.EstadoCierreService estadoCierreService;
+
     @EJB
     private ProcesoPagoPrestamoService procesoPagoPrestamoService;
 
@@ -112,12 +116,20 @@ public class AbonoCapitalPrestamoServiceImpl implements AbonoCapitalPrestamoServ
 
     @Override
     public SimulacionAbonoCapital simular(Long idPrestamo, double valor, int modalidad) throws Throwable {
+        return simular(idPrestamo, valor, modalidad, null, false);
+    }
+
+    @Override
+    public SimulacionAbonoCapital simular(Long idPrestamo, double valor, int modalidad, LocalDate fecha,
+            boolean reproceso) throws Throwable {
         System.out.println("AbonoCapitalPrestamoService.simular - Préstamo: " + idPrestamo
-            + " - Valor: $" + valor + " - Modalidad: " + modalidad);
+            + " - Valor: $" + valor + " - Modalidad: " + modalidad
+            + (fecha != null ? " - Fecha: " + fecha : "") + (reproceso ? " - RE-PROCESO (D-048)" : ""));
 
         // Bug corregido 2026-08-28: simular() es de solo lectura y NO debe autocorregir/persistir
         // cuotas (ver javadoc de MotorPagoPrestamoService.calcularSaldosCuota).
-        CalculoAbono calculo = calcular(idPrestamo, valor, modalidad, LocalDate.now(), true);
+        CalculoAbono calculo = calcular(idPrestamo, valor, modalidad, fecha != null ? fecha : LocalDate.now(), true,
+            reproceso);
 
         SimulacionAbonoCapital simulacion = new SimulacionAbonoCapital();
         simulacion.setIdPrestamo(idPrestamo);
@@ -138,9 +150,16 @@ public class AbonoCapitalPrestamoServiceImpl implements AbonoCapitalPrestamoServ
 
     @Override
     public String motivoAbonoInviable(Long idPrestamo, double valorTotal, int modalidad) {
+        return motivoAbonoInviable(idPrestamo, valorTotal, modalidad, null, false);
+    }
+
+    @Override
+    public String motivoAbonoInviable(Long idPrestamo, double valorTotal, int modalidad, LocalDate fecha,
+            boolean reproceso) {
         try {
             // Misma ruta de solo lectura que simular(), por self-call: no cruza el proxy EJB.
-            calcular(idPrestamo, redondear(valorTotal), modalidad, LocalDate.now(), true);
+            calcular(idPrestamo, redondear(valorTotal), modalidad, fecha != null ? fecha : LocalDate.now(), true,
+                reproceso);
             return null;
         } catch (IncomeException e) {
             return e.getMessage();
@@ -184,7 +203,9 @@ public class AbonoCapitalPrestamoServiceImpl implements AbonoCapitalPrestamoServ
             throw new IncomeException(ProcesoPagoPrestamoService.ERR_PARAMETRO_INVALIDO
                 + ": idPrestamo es obligatorio");
         }
-        if (solicitud.getModalidad() == null || (solicitud.getModalidad() != 1 && solicitud.getModalidad() != 2)) {
+        boolean sinRegenerar = Boolean.FALSE.equals(solicitud.getRegenerarTabla());
+        if (!sinRegenerar
+                && (solicitud.getModalidad() == null || (solicitud.getModalidad() != 1 && solicitud.getModalidad() != 2))) {
             throw new IncomeException(ProcesoPagoPrestamoService.ERR_PARAMETRO_INVALIDO
                 + ": modalidad es obligatoria y debe ser 1 (reduce plazo) o 2 (reduce cuota)");
         }
@@ -220,7 +241,9 @@ public class AbonoCapitalPrestamoServiceImpl implements AbonoCapitalPrestamoServ
         SolicitudAbonoCapital interna = new SolicitudAbonoCapital();
         interna.setIdPrestamo(solicitud.getIdPrestamo());
         interna.setValor(total);
-        interna.setModalidad(solicitud.getModalidad());
+        interna.setModalidad(sinRegenerar ? null : solicitud.getModalidad());
+        interna.setRegenerarTabla(solicitud.getRegenerarTabla());
+        interna.setNumeroCuota(solicitud.getNumeroCuota());
         interna.setUsuario(solicitud.getUsuario());
         interna.setObservacion(solicitud.getObservacion());
         interna.setFecha(fecha);
@@ -230,6 +253,8 @@ public class AbonoCapitalPrestamoServiceImpl implements AbonoCapitalPrestamoServ
         // Llamada directa: sin cobro. Con esto aplicarConMovimientos genera el asiento ÚNICO (AA6).
         interna.setIdCobroCredito(null);
         interna.setFechaAfectacion(solicitud.getFechaAfectacion());
+        // D-048: en re-proceso, "al día" a la fecha del abono.
+        interna.setReproceso(solicitud.getReproceso());
 
         AplicacionAbono aplicacion = aplicarConMovimientos(interna);
 
@@ -255,7 +280,7 @@ public class AbonoCapitalPrestamoServiceImpl implements AbonoCapitalPrestamoServ
             throw new IncomeException(ProcesoPagoPrestamoService.ERR_PARAMETRO_INVALIDO
                 + ": usuario es obligatorio");
         }
-        if (solicitud.getModalidad() == null) {
+        if (solicitud.getModalidad() == null && !solicitud.esSinRegenerarTabla()) {
             throw new IncomeException(ERR_MODALIDAD_INVALIDA + ": debe indicar la modalidad (1 o 2)");
         }
         if (solicitud.getIdEmpresa() == null) {
@@ -269,6 +294,12 @@ public class AbonoCapitalPrestamoServiceImpl implements AbonoCapitalPrestamoServ
                 + ": la fecha " + fecha + " es futura");
         }
         LocalDateTime fechaHora = fecha.isEqual(LocalDate.now()) ? LocalDateTime.now() : fecha.atStartOfDay();
+
+        // C17: el mes de la fecha de afectación (o de la fecha, si no viene) tiene que estar abierto para
+        // cartera y para contabilidad. Antes de calcular y de grabar el evento.
+        estadoCierreService.validarMovimientoCartera(solicitud.getIdEmpresa(),
+                solicitud.getFechaAfectacion() != null ? solicitud.getFechaAfectacion() : fecha,
+                "abonos a capital");
 
         double valor = redondear(solicitud.getValor() != null ? solicitud.getValor() : 0.0);
 
@@ -289,11 +320,28 @@ public class AbonoCapitalPrestamoServiceImpl implements AbonoCapitalPrestamoServ
             }
         }
 
-        CalculoAbono calculo = calcular(solicitud.getIdPrestamo(), valor, solicitud.getModalidad(), fecha, false);
+        // C16b (D-030): la tabla ya refleja el abono — se registra sin re-amortizar.
+        if (solicitud.esSinRegenerarTabla()) {
+            return aplicarSinRegenerarTabla(solicitud, valor, fecha, fechaHora, aportes, conAportes);
+        }
+
+        // D-048: en re-proceso "al día" se evalúa a la fecha del abono (la de pago; si no viene, la de
+        // afectación). Fuera de re-proceso, `fecha` de siempre (la del abono o hoy).
+        LocalDate fechaAlDia = fecha;
+        if (solicitud.esReproceso() && solicitud.getFecha() == null && solicitud.getFechaAfectacion() != null) {
+            fechaAlDia = solicitud.getFechaAfectacion();
+        }
+        CalculoAbono calculo = calcular(solicitud.getIdPrestamo(), valor, solicitud.getModalidad(), fechaAlDia, false,
+            solicitud.esReproceso());
         Prestamo prestamo = calculo.prestamo;
 
-        // Ninguna cuota a historizar puede tener PagoPrestamo: el DELETE violaría FK_PGPR_DTPR
+        // Ninguna cuota a historizar puede tener PagoPrestamo: el DELETE violaría FK_PGPR_DTPR.
+        // D-048: en re-proceso, las cuotas con pagos anticipados (fecha <= abono) no se borran: se
+        // actualizan en el lugar (calculo.cuotasReutilizadas), así que no entran en esta regla.
         for (DetallePrestamo cuota : calculo.cuotasAHistorizar) {
+            if (esReutilizada(calculo, cuota)) {
+                continue;
+            }
             List<PagoPrestamo> pagos = pagoPrestamoDaoService.selectByIdDetallePrestamo(cuota.getCodigo());
             if (pagos != null && !pagos.isEmpty()) {
                 throw new IncomeException(ERR_PRESTAMO_NO_AL_DIA + ": la cuota #" + cuota.getNumeroCuota()
@@ -327,15 +375,28 @@ public class AbonoCapitalPrestamoServiceImpl implements AbonoCapitalPrestamoServ
             historizadas++;
         }
         for (DetallePrestamo cuota : calculo.cuotasAHistorizar) {
+            if (esReutilizada(calculo, cuota)) {
+                continue;
+            }
             detallePrestamoDaoService.remove(cuota, cuota.getCodigo());
         }
-        System.out.println("  📦 Cuotas historizadas y borradas de DTPR: " + historizadas);
+        System.out.println("  📦 Cuotas historizadas: " + historizadas + " (borradas de DTPR: "
+            + (historizadas - calculo.cuotasReutilizadas.size()) + ", actualizadas en el lugar por D-048: "
+            + calculo.cuotasReutilizadas.size() + ")");
 
         // 3. Generar la nueva tabla
         List<DetallePrestamo> nuevas = new ArrayList<>();
         for (CuotaProyectada proyectada : calculo.tabla) {
-            DetallePrestamo cuota = construirCuota(prestamo, proyectada, calculo);
-            cuota = detallePrestamoService.saveSingle(cuota);
+            Long numero = Math.round(proyectada.getNumeroCuota());
+            DetallePrestamo reutilizada = calculo.cuotasReutilizadas.get(numero);
+            DetallePrestamo cuota;
+            if (reutilizada != null) {
+                cuota = reutilizarCuota(reutilizada, prestamo, proyectada, calculo,
+                    calculo.pagosReutilizadas.get(numero));
+            } else {
+                cuota = construirCuota(prestamo, proyectada, calculo);
+                cuota = detallePrestamoService.saveSingle(cuota);
+            }
             nuevas.add(cuota);
         }
         System.out.println("  📄 Cuotas nuevas generadas: " + nuevas.size());
@@ -381,6 +442,11 @@ public class AbonoCapitalPrestamoServiceImpl implements AbonoCapitalPrestamoServ
 
         // 4. Cuota ANCLA donde se acumula el abono en DTPRSLOT
         DetallePrestamo ancla = detallePrestamoDaoService.selectUltimaCuotaPagada(prestamo.getCodigo());
+        if (solicitud.esReproceso() && ancla != null && esReutilizada(calculo, ancla)) {
+            // D-048: una cuota futura que los pagos anticipados dejaron PAGADA no es el ancla del
+            // abono; el ancla es la última cuota pagada que no se re-amortizó.
+            ancla = ultimaPagadaNoReutilizada(prestamo.getCodigo(), calculo);
+        }
         if (ancla == null) {
             // Préstamo sin cuotas pagadas: el abono se registra en la PRIMERA cuota nueva
             ancla = nuevas.isEmpty() ? null : nuevas.get(0);
@@ -511,6 +577,226 @@ public class AbonoCapitalPrestamoServiceImpl implements AbonoCapitalPrestamoServ
     }
 
     // ========================================================================
+    // C16b — abono sobre una tabla que YA lo refleja (sin regenerar), D-030 2026-10-29
+    // ========================================================================
+
+    /** Cuota donde se registra el abono sin regenerar tabla y el cuadre de la tabla con él. */
+    private static final class CuadreSinRegenerar {
+        private Prestamo prestamo;
+        private DetallePrestamo cuota;
+        private double capitalTabla;
+        private double abonosPrevios;
+        private double monto;
+        private double totalDespues;
+    }
+
+    @Override
+    public String motivoAbonoSinRegenerarInviable(Long idPrestamo, double valorTotal, Integer numeroCuota) {
+        try {
+            cuadreSinRegenerar(idPrestamo, redondear(valorTotal), numeroCuota, LocalDate.now());
+            return null;
+        } catch (IncomeException e) {
+            return e.getMessage();
+        } catch (Throwable e) {
+            return "No se pudo validar el abono sin regenerar tabla: " + e.getMessage();
+        }
+    }
+
+    /**
+     * SOLO LECTURA. Ubica la cuota del abono y valida que, con él, la tabla cuadre con el monto:
+     * {@code Σ DTPRCPTL (todas las cuotas) + Σ DTPRSLOT (abonos ya registrados) + valor = PRSTMNSL}.
+     * La cuota es {@code numeroCuota} si viene; si no, la "vigente" a la fecha del abono: la de mayor
+     * vencimiento {@code <=} fecha (el periodo en curso; no depende del estado de HOY de las cuotas,
+     * para que un abono de un mes pasado caiga en su cuota de entonces); sin ninguna, la primera.
+     */
+    private CuadreSinRegenerar cuadreSinRegenerar(Long idPrestamo, double valor, Integer numeroCuota,
+            LocalDate fecha) throws Throwable {
+        Prestamo prestamo = prestamoDaoService.find(new Prestamo(), idPrestamo);
+        if (prestamo == null) {
+            throw new IncomeException(ProcesoPagoPrestamoService.ERR_PRESTAMO_NO_ENCONTRADO
+                + ": no existe el préstamo " + idPrestamo);
+        }
+        if (esEstadoTerminalPrestamo(prestamo.getIdEstado())) {
+            throw new IncomeException(ProcesoPagoPrestamoService.ERR_ESTADO_NO_PERMITE
+                + ": el préstamo " + idPrestamo + " está en estado " + textoEstadoTerminal(prestamo.getIdEstado())
+                + " (terminal) y no admite abonos");
+        }
+        if (valor <= 0.0) {
+            throw new IncomeException(ProcesoPagoPrestamoService.ERR_VALOR_INVALIDO
+                + ": el valor del abono debe ser mayor a cero");
+        }
+        if (prestamo.getMontoSolicitado() == null || prestamo.getMontoSolicitado() <= 0.0) {
+            throw new IncomeException(ERR_ABONO_NO_CUADRA_CON_TABLA + ": el préstamo " + idPrestamo
+                + " no tiene monto (PRSTMNSL); no se puede validar que la tabla cuadre con el abono");
+        }
+        List<DetallePrestamo> cuotas = detallePrestamoDaoService.selectByPrestamo(idPrestamo);
+        if (cuotas == null || cuotas.isEmpty()) {
+            throw new IncomeException(ERR_SIN_CUOTAS_PENDIENTES + ": el préstamo " + idPrestamo
+                + " no tiene tabla de amortización");
+        }
+
+        CuadreSinRegenerar cuadre = new CuadreSinRegenerar();
+        cuadre.prestamo = prestamo;
+        DetallePrestamo vigente = null;
+        DetallePrestamo primera = null;
+        for (DetallePrestamo cuota : cuotas) {
+            cuadre.capitalTabla += nvl(cuota.getCapital());
+            cuadre.abonosPrevios += nvl(cuota.getSaldoOtros());
+            if (cuota.getNumeroCuota() == null) {
+                continue;
+            }
+            if (numeroCuota != null && Math.round(cuota.getNumeroCuota()) == numeroCuota.longValue()) {
+                cuadre.cuota = cuota;
+            }
+            if (primera == null || cuota.getNumeroCuota() < primera.getNumeroCuota()) {
+                primera = cuota;
+            }
+            if (cuota.getFechaVencimiento() != null && !cuota.getFechaVencimiento().toLocalDate().isAfter(fecha)
+                    && (vigente == null || cuota.getFechaVencimiento().isAfter(vigente.getFechaVencimiento()))) {
+                vigente = cuota;
+            }
+        }
+        if (numeroCuota != null && cuadre.cuota == null) {
+            throw new IncomeException(ProcesoPagoPrestamoService.ERR_PARAMETRO_INVALIDO + ": el préstamo "
+                + idPrestamo + " no tiene la cuota #" + numeroCuota + " en su tabla (CRD.DTPR)");
+        }
+        if (cuadre.cuota == null) {
+            cuadre.cuota = vigente != null ? vigente : primera;
+        }
+        cuadre.capitalTabla = redondear(cuadre.capitalTabla);
+        cuadre.abonosPrevios = redondear(cuadre.abonosPrevios);
+        cuadre.monto = redondear(prestamo.getMontoSolicitado());
+        cuadre.totalDespues = redondear(cuadre.capitalTabla + cuadre.abonosPrevios + valor);
+        double diferencia = redondear(cuadre.monto - cuadre.totalDespues);
+        if (Math.abs(diferencia) > TOLERANCIA) {
+            throw new IncomeException(ERR_ABONO_NO_CUADRA_CON_TABLA + ": el abono sin regenerar tabla de $"
+                + valor + " no cuadra con la tabla del préstamo " + idPrestamo + ": capital de la tabla $"
+                + cuadre.capitalTabla + " + abonos ya registrados (DTPRSLOT) $" + cuadre.abonosPrevios
+                + " + este abono $" + valor + " = $" + cuadre.totalDespues + ", y el monto del préstamo es $"
+                + cuadre.monto + " (" + (diferencia > 0 ? "faltan $" + diferencia : "sobran $" + (-diferencia))
+                + "). La tabla vigente no refleja exactamente este abono: corrija la tabla o el valor,"
+                + " o use el abono con re-amortización.");
+        }
+        return cuadre;
+    }
+
+    /**
+     * C16b: registra el abono sobre la tabla vigente, SIN historizar ni regenerar cuotas: evento
+     * ABONO_CAPITAL con modalidad {@link #MODALIDAD_SIN_REGENERAR_TABLA}, {@code DTPRSLOT} de la cuota
+     * (acumulativo) y el PagoPrestamo con {@code PGPRSLOT} = valor, igual que el abono de siempre.
+     * Asiento: con cobro CBCR lo arma CBCRASN2 (D banco / H capital por banda, ver
+     * {@code ContabilizacionIndividualCreditoService#haberDesdePagos}); acá no hay re-bandeo porque la
+     * tabla no cambia. Camino directo con aportes: asiento único sin re-bandeo.
+     */
+    private AplicacionAbono aplicarSinRegenerarTabla(SolicitudAbonoCapital solicitud, double valor, LocalDate fecha,
+            LocalDateTime fechaHora, List<DesgloseAporte> aportes, boolean conAportes) throws Throwable {
+        CuadreSinRegenerar cuadre = cuadreSinRegenerar(solicitud.getIdPrestamo(), valor, solicitud.getNumeroCuota(), fecha);
+        Prestamo prestamo = cuadre.prestamo;
+        DetallePrestamo ancla = cuadre.cuota;
+        String marca = "[C16b abono sin regenerar tabla, cuota #" + Math.round(nvl(ancla.getNumeroCuota())) + "]";
+        String observacion = (solicitud.getObservacion() != null ? solicitud.getObservacion() + " " : "") + marca;
+
+        EventoPrestamo evento = new EventoPrestamo();
+        evento.setPrestamo(prestamo);
+        evento.setTipoOperacion(ProcesoPagoPrestamoService.TIPO_ABONO_CAPITAL);
+        evento.setValor(valor);
+        evento.setModalidad(MODALIDAD_SIN_REGENERAR_TABLA);
+        evento.setPlazoAnterior(prestamo.getPlazo());
+        evento.setCuotaAnterior(prestamo.getValorCuota());
+        evento.setPlazoNuevo(prestamo.getPlazo());
+        evento.setCuotaNueva(prestamo.getValorCuota());
+        evento.setFecha(fechaHora);
+        evento.setObservacion(observacion);
+        evento.setUsuario(solicitud.getUsuario());
+        evento.setFechaRegistro(LocalDateTime.now());
+        evento.setEstado(1L);
+        evento = eventoPrestamoService.saveSingle(evento);
+
+        ancla.setSaldoOtros(redondear(nvl(ancla.getSaldoOtros()) + valor));
+        ancla = detallePrestamoService.saveSingle(ancla);
+
+        PagoPrestamo pago = new PagoPrestamo();
+        pago.setPrestamo(prestamo);
+        pago.setDetallePrestamo(ancla);
+        pago.setNumeroCuota(ancla.getNumeroCuota());
+        pago.setFecha(fechaHora);
+        pago.setValor(valor);
+        pago.setSaldoOtros(valor);
+        pago.setCapitalPagado(0.0);
+        pago.setInteresPagado(0.0);
+        pago.setMoraPagada(0.0);
+        pago.setInteresVencidoPagado(0.0);
+        pago.setDesgravamen(0.0);
+        pago.setValorSeguroIncendio(0.0);
+        pago.setTipo(ProcesoPagoPrestamoService.TIPO_ABONO_CAPITAL);
+        pago.setObservacion(observacion + " [Evento: " + evento.getCodigo() + "]");
+        pago.setUsuarioRegistro(solicitud.getUsuario());
+        pago.setFechaRegistro(LocalDateTime.now());
+        pago.setEstado(1L);
+        pago.setIdEstado(1L);
+        pago.setAnulado(0L);
+        pago.setEventoPrestamo(evento);
+        pago.setRutaDocumentoRespaldo(solicitud.getRutaDocumentoRespaldo());
+        pago = pagoPrestamoService.saveSingle(pago);
+
+        List<MovimientoAporte> movimientosAporte = new ArrayList<>();
+        if (conAportes) {
+            if (prestamo.getEntidad() == null || prestamo.getEntidad().getCodigo() == null) {
+                throw new IncomeException(ProcesoPagoPrestamoService.ERR_PARAMETRO_INVALIDO + ": el préstamo "
+                    + prestamo.getCodigo() + " no tiene partícipe asociado; no se puede abonar con aportes");
+            }
+            String glosa = "ABONO CAPITAL " + prestamo.getCodigo() + " - Evento " + evento.getCodigo();
+            movimientosAporte = procesoPagoPrestamoService.consumirAportes(prestamo.getEntidad(), aportes,
+                fechaHora, solicitud.getUsuario(), glosa, pago, solicitud.getRutaDocumentoRespaldo());
+        }
+
+        procesoPagoPrestamoService.registrarHuellaPrestamo(prestamo,
+            ProcesoPagoPrestamoService.TIPO_ABONO_CAPITAL, valor, observacion, fechaHora, solicitud.getUsuario());
+
+        // Asiento: solo el camino directo con aportes genera uno acá (cruce + cierre de apertura, sin
+        // re-bandeo). Con cobro, CBCRASN2 lleva la plata; el hook de re-bandeo no aplica (la tabla no cambia).
+        if (conAportes && solicitud.getIdCobroCredito() == null) {
+            Long numeroAsiento = contabilidadPrestamoService.contabilizarAbonoCapitalConAportes(evento,
+                movimientosAporte, solicitud.getIdEmpresa(),
+                solicitud.getFechaAfectacion() != null ? solicitud.getFechaAfectacion() : fecha);
+            if (numeroAsiento != null) {
+                evento.setNumeroAsiento(numeroAsiento);
+                eventoPrestamoService.saveSingle(evento);
+                pago.setAsiento(numeroAsiento);
+                pagoPrestamoService.saveSingle(pago);
+            }
+        }
+
+        procesoMoraPrestamoService.regularizarPrestamoSiSinMora(prestamo.getCodigo());
+
+        ResultadoAbonoCapital resultado = new ResultadoAbonoCapital();
+        resultado.setIdPrestamo(prestamo.getCodigo());
+        resultado.setIdEvento(evento.getCodigo());
+        resultado.setIdPagoPrestamo(pago.getCodigo());
+        resultado.setIdCuotaConSaldoOtros(ancla.getCodigo());
+        resultado.setValorAbono(valor);
+        resultado.setModalidad((int) MODALIDAD_SIN_REGENERAR_TABLA);
+        resultado.setPlazoAnterior(prestamo.getPlazo());
+        resultado.setPlazoNuevo(prestamo.getPlazo());
+        resultado.setCuotaAnterior(prestamo.getValorCuota());
+        resultado.setCuotaNueva(prestamo.getValorCuota());
+        resultado.setCuotasHistorizadas(0);
+        resultado.setCuotasGeneradas(0);
+        resultado.setSeguroIncendioLiberado(0.0);
+        resultado.setTablaRegenerada(Boolean.FALSE);
+        resultado.setCapitalTablaMasAbonos(cuadre.totalDespues);
+
+        System.out.println("  ✅ Abono a capital SIN regenerar tabla - Evento: " + evento.getCodigo()
+            + " - cuota #" + ancla.getNumeroCuota() + " - $" + valor + " - tabla + abonos = $" + cuadre.totalDespues
+            + " = monto $" + cuadre.monto);
+
+        AplicacionAbono aplicacion = new AplicacionAbono();
+        aplicacion.resultado = resultado;
+        aplicacion.movimientos = movimientosAporte;
+        return aplicacion;
+    }
+
+    // ========================================================================
     // Cálculo compartido por simular() y aplicar()
     // ========================================================================
 
@@ -557,6 +843,18 @@ public class AbonoCapitalPrestamoServiceImpl implements AbonoCapitalPrestamoServ
          * {@code cuotasAHistorizar} — mismo comportamiento que antes de S13.
          */
         private List<ReRepartoPoliza> reRepartosAplicados = new ArrayList<>();
+        /**
+         * D-048, solo en re-proceso: cuotas pendientes (vencimiento posterior al abono) que ya tienen
+         * filas en {@code CRD.PGPR} — pagos anticipados con fecha {@code <=} abono, o pagos anulados.
+         * No se pueden borrar (FK_PGPR_DTPR, FK_DSBN_DTPR): se historizan igual que las demás y se
+         * actualizan EN EL LUGAR con la cuota nueva del mismo número, conservando su código y sus
+         * pagos. Clave: número de cuota (redondeado).
+         */
+        private Map<Long, DetallePrestamo> cuotasReutilizadas = new java.util.HashMap<>();
+        /** D-048: pagos VIGENTES de cada cuota reutilizada (misma clave). */
+        private Map<Long, List<PagoPrestamo>> pagosReutilizadas = new java.util.HashMap<>();
+        /** D-048: capital ya pagado por anticipado en las cuotas reutilizadas (vuelve a la tabla nueva). */
+        private double capitalPrepagado;
     }
 
     /** S13 — una póliza viva (documento + campo) cuyo seguro se re-repartió al abonar. */
@@ -576,9 +874,12 @@ public class AbonoCapitalPrestamoServiceImpl implements AbonoCapitalPrestamoServ
      *                    {@code CRD.DTPR}. {@code false} desde {@code aplicar()}: puede
      *                    autocorregir cuotas mal etiquetadas antes de re-amortizar (bug
      *                    corregido 2026-08-28, ver MotorPagoPrestamoService.calcularSaldosCuota).
+     * @param reproceso   D-048: {@code true} = el préstamo tiene que estar al día A {@code fecha}
+     *                    (ver {@link #validarAlDiaALaFecha}); {@code false} = regla de siempre
+     *                    (ninguna cuota PARCIAL ni vencida antes de {@code fecha} en el estado de hoy).
      */
     private CalculoAbono calcular(Long idPrestamo, double valorAbono, int modalidad, LocalDate fecha,
-            boolean soloLectura) throws Throwable {
+            boolean soloLectura, boolean reproceso) throws Throwable {
 
         CalculoAbono calculo = new CalculoAbono();
 
@@ -639,18 +940,25 @@ public class AbonoCapitalPrestamoServiceImpl implements AbonoCapitalPrestamoServ
                 + ": el préstamo " + idPrestamo + " no tiene cuotas pendientes que re-amortizar");
         }
 
-        for (DetallePrestamo cuota : pendientes) {
-            if (cuota.getEstado() != null && cuota.getEstado() == EstadoCuotaPrestamo.PARCIAL) {
-                throw new IncomeException(ERR_PRESTAMO_NO_AL_DIA
-                    + ": El préstamo tiene cuotas vencidas o parciales; regularícelas antes de abonar"
-                    + " a capital (cuota #" + cuota.getNumeroCuota() + " está PARCIAL)");
-            }
-            if (cuota.getFechaVencimiento() != null
-                    && cuota.getFechaVencimiento().toLocalDate().isBefore(fecha)) {
-                throw new IncomeException(ERR_PRESTAMO_NO_AL_DIA
-                    + ": El préstamo tiene cuotas vencidas o parciales; regularícelas antes de abonar"
-                    + " a capital (cuota #" + cuota.getNumeroCuota() + " venció el "
-                    + cuota.getFechaVencimiento().toLocalDate() + ")");
+        if (reproceso) {
+            // D-048: al día A LA FECHA DEL ABONO, con la lectura al corte de ModoCorteCartera (D-019,
+            // D-044), y las cuotas futuras con pagos anticipados se re-amortizan en el lugar.
+            validarAlDiaALaFecha(idPrestamo, fecha);
+            prepararCuotasReutilizadas(calculo, pendientes, fecha);
+        } else {
+            for (DetallePrestamo cuota : pendientes) {
+                if (cuota.getEstado() != null && cuota.getEstado() == EstadoCuotaPrestamo.PARCIAL) {
+                    throw new IncomeException(ERR_PRESTAMO_NO_AL_DIA
+                        + ": El préstamo tiene cuotas vencidas o parciales; regularícelas antes de abonar"
+                        + " a capital (cuota #" + cuota.getNumeroCuota() + " está PARCIAL)");
+                }
+                if (cuota.getFechaVencimiento() != null
+                        && cuota.getFechaVencimiento().toLocalDate().isBefore(fecha)) {
+                    throw new IncomeException(ERR_PRESTAMO_NO_AL_DIA
+                        + ": El préstamo tiene cuotas vencidas o parciales; regularícelas antes de abonar"
+                        + " a capital (cuota #" + cuota.getNumeroCuota() + " venció el "
+                        + cuota.getFechaVencimiento().toLocalDate() + ")");
+                }
             }
         }
         calculo.cuotasAHistorizar = pendientes;
@@ -680,7 +988,9 @@ public class AbonoCapitalPrestamoServiceImpl implements AbonoCapitalPrestamoServ
                 + saldoCapitalPendiente + "; use la precancelación");
         }
 
-        calculo.nuevoCapital = redondear(saldoCapitalPendiente - valorAbono);
+        // D-048: el capital que una cuota reutilizada ya tiene pagado por anticipado vuelve a la tabla
+        // nueva (su pago se queda en esa cuota); sin cuotas reutilizadas capitalPrepagado = 0.
+        calculo.nuevoCapital = redondear(saldoCapitalPendiente + calculo.capitalPrepagado - valorAbono);
 
         // --- Parámetros de la re-amortización ----------------------------------
         DetallePrestamo primeraPendiente = pendientes.get(0);
@@ -724,6 +1034,10 @@ public class AbonoCapitalPrestamoServiceImpl implements AbonoCapitalPrestamoServ
         // que caen dentro de la MISMA vigencia, proporcional a su propio saldo inicial de capital.
         // Sin póliza viva sobre 'pendientes', este método no toca nada (comportamiento de siempre).
         aplicarReRepartoPolizaViva(calculo, pendientes);
+
+        // D-048: cada cuota reutilizada tiene que seguir existiendo en la tabla nueva y sus pagos
+        // anticipados tienen que caber en ella, componente por componente.
+        validarCuotasReutilizadas(calculo);
 
         // Requerimiento futuro (2026-08-29, anotado y NO implementado — no se construye el
         // proceso de reembolso): en modalidad 1 (acorta plazo), si la tabla nueva tiene menos
@@ -1066,6 +1380,255 @@ public class AbonoCapitalPrestamoServiceImpl implements AbonoCapitalPrestamoServ
             }
         }
         return false;
+    }
+
+    // ========================================================================
+    // D-048 — "al día" a la fecha del abono, en re-proceso
+    // ========================================================================
+
+    /**
+     * D-048 (29-oct-2026): en re-proceso el préstamo tiene que estar al día A LA FECHA DEL ABONO, no
+     * hoy. Misma lectura al corte que {@code CierreCarteraDaoServiceImpl.pendiente} (C15/D-019/D-044):
+     * una cuota está liquidada a {@code fecha} si su estado es PAGADA (4) o CANCELADA_ANTICIPADA (7)
+     * y su fecha de pago ({@code DTPRFCPG}, que D-044 deja en la del ÚLTIMO pago que la completa) es
+     * {@code <=} fecha. Reglas:
+     * <ul>
+     * <li>Cuota con vencimiento {@code <=} fecha (convención inclusiva de ModoCorteCartera): tiene
+     *     que estar liquidada a esa fecha; si no → {@code PRESTAMO_NO_AL_DIA}.</li>
+     * <li>Cuota con vencimiento {@code >} fecha liquidada DESPUÉS de la fecha → {@code
+     *     PAGOS_POSTERIORES_AL_ABONO}: la operación posterior ya está aplicada y la re-amortización
+     *     no la puede mover; el abono se re-procesa antes que ella.</li>
+     * </ul>
+     * Una cuota futura PARCIAL por un pago anticipado (p. ej. el excedente Petro del mes) no impide
+     * el abono: la trata {@link #prepararCuotasReutilizadas}.
+     */
+    private void validarAlDiaALaFecha(Long idPrestamo, LocalDate fecha) throws Throwable {
+        List<DetallePrestamo> todas = detallePrestamoDaoService.selectByPrestamo(idPrestamo);
+        if (todas == null) {
+            return;
+        }
+        for (DetallePrestamo cuota : todas) {
+            if (cuota.getFechaVencimiento() == null) {
+                continue;
+            }
+            LocalDate vencimiento = cuota.getFechaVencimiento().toLocalDate();
+            boolean liquidada = cuota.getEstado() != null
+                && (cuota.getEstado() == EstadoCuotaPrestamo.PAGADA
+                    || cuota.getEstado() == EstadoCuotaPrestamo.CANCELADA_ANTICIPADA);
+            LocalDate fechaPago = cuota.getFechaPagado() != null ? cuota.getFechaPagado().toLocalDate() : null;
+            if (!vencimiento.isAfter(fecha)) {
+                if (!liquidada || fechaPago == null || fechaPago.isAfter(fecha)) {
+                    throw new IncomeException(ERR_PRESTAMO_NO_AL_DIA + ": a la fecha del abono (" + fecha
+                        + ", re-proceso D-048) la cuota #" + cuota.getNumeroCuota() + " (vence " + vencimiento
+                        + ") no estaba liquidada"
+                        + (liquidada ? (fechaPago != null ? " (se liquidó el " + fechaPago + ", después del abono)"
+                                                          : " (está liquidada sin fecha de pago)")
+                                     : " (estado de hoy " + cuota.getEstado() + ")")
+                        + "; regularícela a esa fecha antes de abonar a capital");
+                }
+            } else if (liquidada && fechaPago != null && fechaPago.isAfter(fecha)) {
+                throw new IncomeException(ERR_PAGOS_POSTERIORES_AL_ABONO + ": la cuota #" + cuota.getNumeroCuota()
+                    + " (vence " + vencimiento + ") se liquidó el " + fechaPago + ", después del abono del " + fecha
+                    + "; la re-amortización no puede mover ese pago. Re-procese el abono antes que él.");
+            }
+        }
+    }
+
+    /**
+     * D-048: de las cuotas a re-amortizar (todas con vencimiento posterior al abono, por
+     * {@link #validarAlDiaALaFecha}), las que ya tienen filas en {@code CRD.PGPR} no se pueden borrar
+     * (FK_PGPR_DTPR; los pagos Petro también dejan FK_DSBN_DTPR). Si sus pagos VIGENTES son todos de
+     * fecha {@code <=} abono (pago anticipado: el excedente de la cuota del mes que el motor imputa a
+     * la siguiente), la cuota se reutiliza: se historiza y se actualiza en el lugar con la cuota nueva
+     * del mismo número. Un pago vigente posterior al abono → {@code PAGOS_POSTERIORES_AL_ABONO}. Los
+     * pagos anulados no cuentan, pero también obligan a conservar la fila.
+     */
+    private void prepararCuotasReutilizadas(CalculoAbono calculo, List<DetallePrestamo> pendientes, LocalDate fecha)
+            throws Throwable {
+        double capitalPrepagado = 0.0;
+        for (DetallePrestamo cuota : pendientes) {
+            List<PagoPrestamo> pagos = pagoPrestamoDaoService.selectByIdDetallePrestamo(cuota.getCodigo());
+            if (pagos == null || pagos.isEmpty()) {
+                continue;
+            }
+            if (cuota.getNumeroCuota() == null) {
+                throw new IncomeException(ERR_PRESTAMO_NO_AL_DIA + ": la cuota " + cuota.getCodigo()
+                    + " tiene pagos registrados y no tiene número de cuota; no puede re-amortizarse");
+            }
+            List<PagoPrestamo> vigentes = new ArrayList<>();
+            for (PagoPrestamo pago : pagos) {
+                if (pago.getAnulado() != null && pago.getAnulado() != 0L) {
+                    continue;
+                }
+                LocalDate fechaPago = pago.getFecha() != null ? pago.getFecha().toLocalDate() : null;
+                if (fechaPago == null || fechaPago.isAfter(fecha)) {
+                    throw new IncomeException(ERR_PAGOS_POSTERIORES_AL_ABONO + ": la cuota #" + cuota.getNumeroCuota()
+                        + " tiene el pago " + pago.getCodigo() + " del " + fechaPago + ", posterior al abono del "
+                        + fecha + "; la re-amortización no puede mover ese pago. Re-procese el abono antes que él.");
+                }
+                vigentes.add(pago);
+                capitalPrepagado += nvl(pago.getCapitalPagado());
+            }
+            Long numero = Math.round(cuota.getNumeroCuota());
+            calculo.cuotasReutilizadas.put(numero, cuota);
+            calculo.pagosReutilizadas.put(numero, vigentes);
+            System.out.println("  ♻️ D-048 - cuota #" + numero + " (" + cuota.getCodigo() + ") con " + vigentes.size()
+                + " pago(s) vigente(s) anticipado(s) y " + (pagos.size() - vigentes.size())
+                + " anulado(s): se re-amortiza en el lugar");
+        }
+        calculo.capitalPrepagado = redondear(capitalPrepagado);
+    }
+
+    /**
+     * D-048: cada cuota reutilizada tiene una cuota nueva con su número, y sus pagos anticipados caben
+     * en ella componente por componente (la cuota nueva no tiene mora ni interés vencido).
+     */
+    private void validarCuotasReutilizadas(CalculoAbono calculo) throws Throwable {
+        for (Map.Entry<Long, DetallePrestamo> entrada : calculo.cuotasReutilizadas.entrySet()) {
+            CuotaProyectada nueva = null;
+            for (CuotaProyectada proyectada : calculo.tabla) {
+                if (proyectada.getNumeroCuota() != null && Math.round(proyectada.getNumeroCuota()) == entrada.getKey()) {
+                    nueva = proyectada;
+                    break;
+                }
+            }
+            if (nueva == null) {
+                throw new IncomeException(ERR_PRESTAMO_NO_AL_DIA + ": la cuota #" + entrada.getKey()
+                    + " tiene pagos registrados y la tabla nueva termina antes de ella; no puede re-amortizarse");
+            }
+            double[] pagado = sumarPagos(calculo.pagosReutilizadas.get(entrada.getKey()));
+            String exceso = null;
+            if (pagado[0] > nvl(nueva.getCapital()) + TOLERANCIA) {
+                exceso = "capital " + redondear(pagado[0]) + " > " + nueva.getCapital();
+            } else if (pagado[1] > nvl(nueva.getInteres()) + TOLERANCIA) {
+                exceso = "interés " + redondear(pagado[1]) + " > " + nueva.getInteres();
+            } else if (pagado[2] > nvl(nueva.getDesgravamen()) + TOLERANCIA) {
+                exceso = "desgravamen " + redondear(pagado[2]) + " > " + nueva.getDesgravamen();
+            } else if (pagado[3] > TOLERANCIA || pagado[4] > TOLERANCIA) {
+                exceso = "mora/interés vencido " + redondear(pagado[3] + pagado[4]) + " > 0";
+            } else if (pagado[5] > nvl(nueva.getSeguroIncendio()) + TOLERANCIA) {
+                exceso = "seguro de incendio " + redondear(pagado[5]) + " > " + nueva.getSeguroIncendio();
+            }
+            if (exceso != null) {
+                throw new IncomeException(ERR_PRESTAMO_NO_AL_DIA + ": los pagos anticipados de la cuota #"
+                    + entrada.getKey() + " no caben en la cuota nueva (" + exceso + ")");
+            }
+        }
+    }
+
+    /** {capital, interés, desgravamen, mora, interés vencido, seguro de incendio} pagados. */
+    private double[] sumarPagos(List<PagoPrestamo> pagos) {
+        double[] suma = new double[6];
+        if (pagos != null) {
+            for (PagoPrestamo pago : pagos) {
+                suma[0] += nvl(pago.getCapitalPagado());
+                suma[1] += nvl(pago.getInteresPagado());
+                suma[2] += nvl(pago.getDesgravamen());
+                suma[3] += nvl(pago.getMoraPagada());
+                suma[4] += nvl(pago.getInteresVencidoPagado());
+                suma[5] += nvl(pago.getValorSeguroIncendio());
+            }
+        }
+        return suma;
+    }
+
+    private boolean esReutilizada(CalculoAbono calculo, DetallePrestamo cuota) {
+        if (cuota == null || cuota.getCodigo() == null) {
+            return false;
+        }
+        for (DetallePrestamo reutilizada : calculo.cuotasReutilizadas.values()) {
+            if (cuota.getCodigo().equals(reutilizada.getCodigo())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** D-048: última cuota PAGADA (mayor número) que no es una cuota reutilizada. */
+    private DetallePrestamo ultimaPagadaNoReutilizada(Long idPrestamo, CalculoAbono calculo) throws Throwable {
+        DetallePrestamo ultima = null;
+        for (DetallePrestamo cuota : detallePrestamoDaoService.selectByPrestamo(idPrestamo)) {
+            if (cuota.getEstado() == null || cuota.getEstado() != EstadoCuotaPrestamo.PAGADA
+                    || cuota.getNumeroCuota() == null || esReutilizada(calculo, cuota)) {
+                continue;
+            }
+            if (ultima == null || cuota.getNumeroCuota() > ultima.getNumeroCuota()) {
+                ultima = cuota;
+            }
+        }
+        return ultima;
+    }
+
+    /**
+     * D-048: actualiza EN EL LUGAR una cuota reutilizada con los valores de la cuota nueva del mismo
+     * número (mismo cálculo que {@link #construirCuota}) y recompone sus acumulados con sus pagos
+     * vigentes, igual que el motor al aplicar un pago parcial (MotorPagoPrestamoServiceImpl): pagado
+     * por componente, saldo de capital = saldo inicial − capital pagado, saldo = total − pagado, y
+     * estado PARCIAL (o PAGADA, con la fecha del último pago, si los pagos la cubren).
+     */
+    private DetallePrestamo reutilizarCuota(DetallePrestamo cuota, Prestamo prestamo, CuotaProyectada proyectada,
+            CalculoAbono calculo, List<PagoPrestamo> pagos) throws Throwable {
+        DetallePrestamo nueva = construirCuota(prestamo, proyectada, calculo);
+        cuota.setNumeroCuota(nueva.getNumeroCuota());
+        cuota.setFechaVencimiento(nueva.getFechaVencimiento());
+        cuota.setCapital(nueva.getCapital());
+        cuota.setInteres(nueva.getInteres());
+        cuota.setCuota(nueva.getCuota());
+        cuota.setSaldoInicialCapital(nueva.getSaldoInicialCapital());
+        cuota.setSaldoCapital(nueva.getSaldoCapital());
+        cuota.setDesgravamen(nueva.getDesgravamen());
+        cuota.setDesgravamenOriginal(nueva.getDesgravamenOriginal());
+        cuota.setDesgravamenFirmado(nueva.getDesgravamenFirmado());
+        cuota.setDesgravamenDiferido(nueva.getDesgravamenDiferido());
+        cuota.setValorDiferido(nueva.getValorDiferido());
+        cuota.setValorSeguroIncendio(nueva.getValorSeguroIncendio());
+        cuota.setOtrosSeguros(nueva.getOtrosSeguros());
+        cuota.setTotal(nueva.getTotal());
+        cuota.setTotalConSeguro(nueva.getTotalConSeguro());
+        cuota.setSaldo(nueva.getSaldo());
+        cuota.setMora(0.0);
+        cuota.setInteresVencido(0.0);
+        cuota.setSaldoInteres(nueva.getSaldoInteres());
+        cuota.setSaldoMora(0.0);
+        cuota.setSaldoInteresVencido(0.0);
+        cuota.setMoraCalculada(0.0);
+        cuota.setDiasMora(0L);
+        cuota.setAbono(0.0);
+        cuota.setSaldoOtros(0.0);
+        cuota.setFechaPagado(null);
+        cuota.setEstado((long) EstadoCuotaPrestamo.PENDIENTE);
+
+        double[] pagado = sumarPagos(pagos);
+        double totalPagado = redondear(pagado[0] + pagado[1] + pagado[2] + pagado[3] + pagado[4] + pagado[5]);
+        cuota.setCapitalPagado(redondear(pagado[0]));
+        cuota.setInteresPagado(redondear(pagado[1]));
+        cuota.setDesgravamenPagado(redondear(pagado[2]));
+        cuota.setMoraPagado(redondear(pagado[3]));
+        cuota.setInteresVendidoPagado(redondear(pagado[4]));
+        if (totalPagado > TOLERANCIA) {
+            cuota.setSaldoCapital(Math.max(0, redondear(nvl(cuota.getSaldoInicialCapital()) - pagado[0])));
+            cuota.setSaldoInteres(Math.max(0, redondear(nvl(cuota.getInteres()) - pagado[1])));
+            double saldo = Math.max(0, redondear(nvl(cuota.getTotal()) - totalPagado));
+            cuota.setSaldo(saldo);
+            if (saldo <= TOLERANCIA) {
+                cuota.setEstado((long) EstadoCuotaPrestamo.PAGADA);
+                LocalDateTime ultimoPago = null;
+                for (PagoPrestamo pago : pagos) {
+                    if (pago.getFecha() != null && (ultimoPago == null || pago.getFecha().isAfter(ultimoPago))) {
+                        ultimoPago = pago.getFecha();
+                    }
+                }
+                cuota.setFechaPagado(ultimoPago);
+            } else {
+                cuota.setEstado((long) EstadoCuotaPrestamo.PARCIAL);
+            }
+        }
+        cuota.setIdEstado(cuota.getEstado());
+        cuota = detallePrestamoService.saveSingle(cuota);
+        System.out.println("  ♻️ D-048 - cuota #" + cuota.getNumeroCuota() + " (" + cuota.getCodigo()
+            + ") re-amortizada en el lugar: total $" + cuota.getTotal() + ", pagado anticipado $" + totalPagado
+            + ", estado " + cuota.getEstado());
+        return cuota;
     }
 
     // ========================================================================

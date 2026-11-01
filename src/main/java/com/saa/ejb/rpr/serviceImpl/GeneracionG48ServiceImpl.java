@@ -52,6 +52,9 @@ public class GeneracionG48ServiceImpl implements GeneracionG48Service {
     /** PLAN-CALIFICACION-RIESGO-PARAMETRIZABLE.md: la escala de calificación/provisión ya no
      * está cableada acá — se resuelve contra CRD.CFCR/CRD.ESCR. */
     @EJB private CalificacionRiesgoService       calificacionRiesgoService;
+    /** C15: G48 a fecha de corte (mismo cálculo que la provisión ⑧ del cierre). */
+    @EJB private com.saa.ejb.crd.service.CarteraAlCorteService carteraAlCorteService;
+    @EJB private com.saa.ejb.crd.dao.DetallePrestamoDaoService detallePrestamoDaoService;
 
     @Override
     public long generar(DetalleEjecucionReporte detalle) throws Throwable {
@@ -70,6 +73,12 @@ public class GeneracionG48ServiceImpl implements GeneracionG48Service {
         LocalDate     fechaFinDate = fechaFin.toLocalDate();
 
         System.out.println("G48 - Rango: " + fechaInicio + " a " + fechaFin);
+
+        // C15 (H1, D-015): un mes pasado se genera con la cartera COMO ESTABA al corte y con la
+        // provisión del mismo cálculo que asienta el paso ⑧ del cierre (CarteraAlCorteService).
+        if (com.saa.ejb.crd.service.ModoCorteCartera.esAlCorte(fechaFinDate, null)) {
+            return generarAlCorte(detalle, fechaFinDate);
+        }
 
         // -------------------------------------------------------
         // 1. Cargar valorTotalCuentaIndividual desde G42 del mismo mes
@@ -427,7 +436,9 @@ public class GeneracionG48ServiceImpl implements GeneracionG48Service {
                 g48.setProvisionRequeridaOriginal(provisionRequeridaOriginal);
                 g48.setProvisionConstituida(provisionConstituida);
                 g48.setTipoSistemaAmortizacion("FR");
-                g48.setCuotaCredito(cuota.getCuota() != null ? cuota.getCuota() : 0.0);
+                // D-039 (manual §3.4 campo 20): solo el CAPITAL de la cuota del mes (grupo 1); una operación
+                // del grupo 2 (cuota vencida de meses anteriores) no suma vencidos anteriores: 0.
+                g48.setCuotaCredito(esGrupo1 && cuota.getCapital() != null ? cuota.getCapital() : 0.0);
                 // El dividendo es la cuota a cobrar SIN mora: desde que existe el proceso diario
                 // de mora (ProcesoMoraPrestamoService) DTPRTTLL la incluye, y este reporte ya
                 // lleva la mora en su propia columna (mapaMoraGrupo2). Restarla mantiene el G48
@@ -457,6 +468,80 @@ public class GeneracionG48ServiceImpl implements GeneracionG48Service {
         }
 
         System.out.println("G48 generado con " + contador + " registros");
+        return contador;
+    }
+
+    /**
+     * C15 — G48 a fecha de corte: una fila por operación con saldo al corte, desde
+     * {@link com.saa.ejb.crd.service.CarteraAlCorteService} (regla de corte de C3 §2.1, mora con la
+     * fórmula del proceso diario al corte, provisión con la regla del SAA). La provisión
+     * constituida es la requerida: el paso ⑧ del cierre deja 1.3.99 exactamente en ese valor a la
+     * misma fecha (D-015: B17 = G48). Interés ordinario: el pendiente de las cuotas vencidas, o el
+     * de la cuota del mes si la operación está al día (la convención grupo 2 / grupo 1 de siempre).
+     */
+    private long generarAlCorte(DetalleEjecucionReporte detalle, LocalDate corte) throws Throwable {
+        boolean inclusivo = com.saa.ejb.crd.service.ModoCorteCartera.corteInclusivo(null);
+        System.out.println("G48 - modo AL CORTE " + corte + " (convencion inclusiva: " + inclusivo + ")");
+        List<com.saa.ejb.crd.service.dto.OperacionCarteraCorte> operaciones =
+            carteraAlCorteService.calcular(corte, inclusivo);
+        List<Long> anclas = new ArrayList<>();
+        for (com.saa.ejb.crd.service.dto.OperacionCarteraCorte op : operaciones) {
+            if (op.getIdCuotaAncla() != null) {
+                anclas.add(op.getIdCuotaAncla());
+            }
+        }
+        Map<Long, DetallePrestamo> cuotaPorId = new HashMap<>();
+        for (DetallePrestamo cuota : detallePrestamoDaoService.selectByCodigos(anclas)) {
+            cuotaPorId.put(cuota.getCodigo(), cuota);
+        }
+        long contador = 0L;
+        for (com.saa.ejb.crd.service.dto.OperacionCarteraCorte op : operaciones) {
+            DetallePrestamo cuota = cuotaPorId.get(op.getIdCuotaAncla());
+            if (cuota == null || cuota.getPrestamo() == null) {
+                System.out.println("G48 AL CORTE - prestamo " + op.getIdPrestamo() + " sin cuota ancla; se omite");
+                continue;
+            }
+            Prestamo prestamo = cuota.getPrestamo();
+            SaldoOperacionG48 g48 = new SaldoOperacionG48();
+            g48.setTipoIdentificacion("C");
+            if (prestamo.getEntidad() != null) {
+                g48.setIdentificacion(prestamo.getEntidad().getNumeroIdentificacion());
+            }
+            g48.setNumeroOperacion(prestamo.getIdAsoprep() != null ? String.valueOf(prestamo.getIdAsoprep()) : null);
+            if (prestamo.getProducto() != null && prestamo.getProducto().getNombre() != null
+                    && !prestamo.getProducto().getNombre().isEmpty()) {
+                char inicial = Character.toUpperCase(prestamo.getProducto().getNombre().charAt(0));
+                g48.setTipoCredito(String.valueOf(inicial == 'E' ? 'Q' : inicial));
+            }
+            g48.setDiasMorosidad(Long.valueOf(op.getDiasMora()));
+            g48.setCalificacionPropia(op.getCalificacion());
+            g48.setTasaInteres((prestamo.getInteresNominal() != null && prestamo.getInteresNominal() > 0.0)
+                ? prestamo.getInteresNominal() : 9.0);
+            g48.setValorPorVencer(op.getPorVencer());
+            g48.setValorVencido(op.getVencido());
+            g48.setCostosOperativos(0.0);
+            g48.setInteresOrdinario(op.getInteresOrdinarioReporte());
+            g48.setInteresMora(op.getMora());
+            g48.setValorDemandaJudicial(0.0);
+            g48.setCarteraCastigada(0.0);
+            g48.setValorTotalCuentaIndividual(op.getCuentaIndividual());
+            g48.setValorSujetoProvision(op.getValorSujetoProvision());
+            g48.setProvisionRequeridaOriginal(op.getProvisionRequerida());
+            g48.setProvisionConstituida(op.getProvisionConstituida());
+            g48.setTipoSistemaAmortizacion("FR");
+            // D-039 (manual §3.4 campo 20): "cuota del crédito" = solo el CAPITAL del dividendo del mes de
+            // reporte, sin vencidos de meses anteriores ni intereses (antes: DTPRCTAA, capital + interés, de la
+            // cuota ancla). Sin cuota que venza en el mes (plazo vencido) es 0.
+            g48.setCuotaCredito(op.getCapitalCuotasDelMes());
+            g48.setDividendo(dividendoSinMora(cuota));
+            if (cuota.getFechaVencimiento() != null) {
+                g48.setFechaExigibilidad(cuota.getFechaVencimiento().toLocalDate());
+            }
+            g48.setDetalleEjecucion(detalle);
+            cg48DaoService.save(g48, null);
+            contador++;
+        }
+        System.out.println("G48 AL CORTE generado con " + contador + " registros");
         return contador;
     }
 

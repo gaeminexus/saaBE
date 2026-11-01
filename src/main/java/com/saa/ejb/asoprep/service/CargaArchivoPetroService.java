@@ -171,4 +171,57 @@ public interface CargaArchivoPetroService {
      */
     Map<String, Object> revalidarCarga(Long codigoCargaArchivo) throws Throwable;
 
+    /**
+     * Fase 3 en MODO REPROCESO — la llama únicamente {@code ReprocesoCargaPetroService} DESPUÉS
+     * de anular la aplicación anterior de la carga y de devolverla a CONFIRMADO_CONTABILIDAD
+     * (cuadre Superintendencia, cambio C4; {@code docs/logica-negocio/petro/REPROCESO-CARGA-PETRO.md}).
+     * Es el MISMO {@link #aplicarPagosArchivoPetro} (misma prelación, mismo motor, misma fecha de
+     * efecto = último día del mes de la carga, mismos asientos), con exactamente cuatro
+     * diferencias, todas acotadas a este modo:
+     * <ol>
+     *   <li>no valida el orden cronológico ({@code validarOrdenProcesamiento}): se reprocesa
+     *       una carga pasada con cargas posteriores ya en estado 3;</li>
+     *   <li>un rol Petro sin partícipe en el SAA NO aborta (aportes) ni se omite en silencio
+     *       (préstamos): se registra como novedad {@code PARTICIPE_NO_ENCONTRADO}, se acumula
+     *       en el resumen y su monto se descuenta del "recibido" en el invariante
+     *       recibido == aplicado;</li>
+     *   <li>{@code validarValoresConDestino} no bloquea por esa misma novedad (sí por las demás);</li>
+     *   <li>no toca el estado del partícipe ({@code ACTIVO}/{@code ACTIVO_EN_MORA}): el
+     *       historial de estados se reconstruye aparte, no desde un mes reprocesado.</li>
+     * </ol>
+     * Las demás precondiciones (recepción confirmada, valores con destino, tope de afectación
+     * manual, recibido == aplicado) siguen vigentes.
+     *
+     * @param codigoCargaArchivo : ID de la carga (CRD.CRAR), ya devuelta a estado 2 por el reproceso
+     * <p><b>D-010 (excedentes devueltos)</b>, también solo en este modo: cada
+     * {@link com.saa.ejb.crd.service.dto.ExcedenteDevueltoReproceso} de la lista se registra como
+     * aporte {@code EXCEDENTE_PETRO} del partícipe (fecha de caja = último día del mes de la carga,
+     * sin devengo) y su monto se descuenta de lo que la fila entrega al motor de pagos o a la
+     * prelación de aportes. Una novedad de validación {@code MONTO_INCONSISTENTE} heredada de la
+     * carga original no bloquea: el excedente que no está en la lista sigue a la cascada del
+     * motor (lo que de verdad pasó cuando no hubo devolución). Ver REPROCESO-CARGA-PETRO.md §4.7.</p>
+     *
+     * @param codigoCargaArchivo : ID de la carga (CRD.CRAR), ya devuelta a estado 2 por el reproceso
+     * @param etiquetaCorrida    : {@code "REPROCESO carga N corrida M"}, solo para el log y el resumen
+     * @param excedentesDevueltos: excedentes devueltos (D-010), ya resueltos a rol Petro; puede ser null o vacía
+     * @return : Map con {@code resumen} (String, el mismo de {@link #aplicarPagosArchivoPetro}),
+     *           {@code sinParticipe} (List&lt;String&gt;, una línea por fila PXCA sin entidad),
+     *           {@code filasSinParticipe} (Integer), {@code montoSinParticipe} (Double),
+     *           {@code excedentesDevueltos} (List&lt;String&gt;) y {@code montoExcedentesDevueltos} (Double)
+     * @throws Throwable : Excepción (todo o nada, igual que la fase 3 normal)
+     */
+    Map<String, Object> aplicarPagosArchivoPetroReproceso(Long codigoCargaArchivo, String etiquetaCorrida,
+            java.util.List<com.saa.ejb.crd.service.dto.ExcedenteDevueltoReproceso> excedentesDevueltos) throws Throwable;
+
+    /**
+     * Igual que {@link #aplicarPagosArchivoPetroReproceso(Long, String, java.util.List)}, con el
+     * usuario que ordena la corrida: lo estampa en los contratos y vigencias que D-022 crea para un
+     * partícipe sin ningún contrato (REPROCESO-CARGA-PETRO.md §4.10). El Map trae además
+     * {@code aportesContratoAlCorte}/{@code montoAportesContratoAlCorte} y
+     * {@code contratosCreados}/{@code montoContratosCreados}.
+     */
+    Map<String, Object> aplicarPagosArchivoPetroReproceso(Long codigoCargaArchivo, String etiquetaCorrida,
+            java.util.List<com.saa.ejb.crd.service.dto.ExcedenteDevueltoReproceso> excedentesDevueltos,
+            String usuarioCorrida) throws Throwable;
+
 }

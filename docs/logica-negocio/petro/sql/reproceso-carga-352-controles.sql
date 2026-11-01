@@ -1,0 +1,391 @@
+-- =====================================================================================
+-- REPROCESO DE LA CARGA PETRO 352 (junio 2025) — CONTROLES ANTES / DESPUES
+-- Cuadre Superintendencia, cambio C4. Diseño: ../REPROCESO-CARGA-PETRO.md
+-- Solo SELECT. Se corre sobre la base del proyecto (saa-oracle-cuadre, FREEPDB1).
+-- Para otra carga, reemplazar 352 y la fecha 2025-06-30 / el periodo 2025-06-01.
+-- =====================================================================================
+
+-- =====================================================================================
+-- A. ANTES — lo que la anulación tiene que encontrar (medido el 2026-10-28, ver doc §2)
+-- =====================================================================================
+
+-- A.1 Cabecera: estado 3, 6/2025, descontado 535.477,39; CRARFCAC NULO (paso 1 pendiente)
+SELECT CRARCDGO, CRARESTD, CRARMSAF, CRARANAF, CRARTTDS AS DESCONTADO, CRARTTDO AS A_DESCONTAR,
+       CRARFCAC AS CONFIRMACION_CONTABILIDAD, CRARUSCC
+FROM   CRD.CRAR WHERE CRARCDGO = 352;
+
+-- A.2 Transferencias y asientos de la carga (esperado antes: 0 y 0)
+SELECT 'TRCR' AS TABLA, COUNT(*) AS N FROM CRD.TRCR WHERE CRARCDGO = 352
+UNION ALL
+SELECT 'ANCP', COUNT(*) FROM CRD.ANCP WHERE CRARCDGO = 352;
+
+-- A.3 Pagos del esquema viejo: 1.313 / 319.328,38, fecha 06-abr-2026, sin CRARCDGO ni PRSTCDGO
+SELECT COUNT(*) AS N, SUM(PGPRVLRR) AS TOTAL, MIN(TRUNC(PGPRFCHA)) AS FMIN, MAX(TRUNC(PGPRFCHA)) AS FMAX,
+       COUNT(CRARCDGO) AS CON_CARGA, COUNT(PRSTCDGO) AS CON_PRESTAMO, COUNT(PGPRASNT) AS CON_ASIENTO,
+       SUM(PGPRCPPG) AS CAPITAL, SUM(PGPRINPG) AS INTERES, SUM(PGPRDSGR) AS DESGRAVAMEN, SUM(PGPRVLSI) AS SEG_INCENDIO
+FROM   CRD.PGPR
+WHERE  PGPROBSR LIKE '%[CargaArchivo: 352]%' AND NVL(PGPRANUL, 0) = 0;
+
+-- A.4 Pagos enlazados (esperado antes: 0)
+SELECT COUNT(*) AS N, SUM(PGPRVLRR) AS TOTAL FROM CRD.PGPR WHERE CRARCDGO = 352 AND NVL(PGPRANUL, 0) = 0;
+
+-- A.5 Aportes del esquema viejo: 2.635 / 160.350,81 (cesantia 1.725 / jubilacion 910), caja 30-jun-2025
+SELECT TPAPCDGO, COUNT(*) AS N, SUM(APRTVLRR) AS TOTAL, MIN(APRTFCTR) AS FMIN, MAX(APRTFCTR) AS FMAX,
+       COUNT(DISTINCT ENTDCDGO) AS ENTIDADES
+FROM   CRD.APRT
+WHERE  APRTGLSA LIKE '%CargaArchivo: 352' AND APRTIDAS IS NULL AND CRARCDGO IS NULL
+AND    NVL(APRTTPMV, 1) <> 5 AND NVL(APRTIDST, 4) <> 0
+GROUP  BY TPAPCDGO ORDER BY 1;
+
+-- A.6 Aportes enlazados (esperado antes: 3 filas, 174,08 — prueba del 27-ago-2026)
+SELECT TPAPCDGO, APRTTPMV, APRTIDST, COUNT(*) AS N, SUM(APRTVLRR) AS TOTAL
+FROM   CRD.APRT WHERE APRTIDAS = 352 GROUP BY TPAPCDGO, APRTTPMV, APRTIDST ORDER BY 1, 2, 3;
+
+-- A.7 Roles del retorno sin participe en el SAA: 14 filas / 4.872,04 (AH 7, PH 4, PE 1, HS 2)
+SELECT d.DTCACDPP AS PRODUCTO, COUNT(*) AS N, SUM(p.PXCADSDO) AS DESCONTADO
+FROM   CRD.PXCA p JOIN CRD.DTCA d ON d.DTCACDGO = p.DTCACDGO
+WHERE  d.CRARCDGO = 352
+AND    NOT EXISTS (SELECT 1 FROM CRD.ENTD e WHERE e.ENTDRLPC = p.PXCACDPT)
+GROUP  BY d.DTCACDPP ORDER BY 1;
+
+-- A.8 Lo que Petro desconto en aportes (producto AH) a roles CON participe: 161.257,56 en 2.061
+SELECT COUNT(*) AS PARTICIPES, SUM(p.PXCADSDO) AS AH_DESCONTADO
+FROM   CRD.PXCA p JOIN CRD.DTCA d ON d.DTCACDGO = p.DTCACDGO
+WHERE  d.CRARCDGO = 352 AND d.DTCACDPP = 'AH' AND p.PXCADSDO > 0
+AND    EXISTS (SELECT 1 FROM CRD.ENTD e WHERE e.ENTDRLPC = p.PXCACDPT);
+
+-- A.9 Cuotas tocadas por los pagos viejos y su estado hoy (1.306 PAGADA, 3 PARCIAL, 4 CANCELADA_ANTICIPADA)
+SELECT d.DTPRESTD, COUNT(*) AS PAGOS, COUNT(DISTINCT p.DTPRCDGO) AS CUOTAS
+FROM   CRD.PGPR p JOIN CRD.DTPR d ON d.DTPRCDGO = p.DTPRCDGO
+WHERE  p.PGPROBSR LIKE '%[CargaArchivo: 352]%' AND NVL(p.PGPRANUL, 0) = 0
+GROUP  BY d.DTPRESTD ORDER BY 1;
+
+-- A.10 Periodo contable de junio 2025 (debe existir y estar abierto: 4524 / estado 1)
+SELECT PRDOCDGO, PRDOANNN, PRDOMSSS, PRDOESTD FROM CNT.PRDO WHERE PJRQCDGO = 1236 AND PRDOANNN = 2025 AND PRDOMSSS = 6;
+
+
+-- =====================================================================================
+-- B. DESPUES — criterio de aceptacion (doc §7). Etiqueta de la corrida: 'REPROCESO carga 352 corrida N'
+-- =====================================================================================
+
+-- B.0 Corridas registradas (la etiqueta de cada una)
+SELECT 'PGPR' AS ORIGEN, REGEXP_SUBSTR(PGPRMTAN, 'REPROCESO carga 352 corrida \d+') AS ETIQUETA, COUNT(*) AS FILAS, SUM(PGPRVLRR) AS TOTAL
+FROM   CRD.PGPR WHERE PGPRMTAN LIKE 'REPROCESO carga 352 corrida %' GROUP BY REGEXP_SUBSTR(PGPRMTAN, 'REPROCESO carga 352 corrida \d+')
+UNION ALL
+SELECT 'APRT', REGEXP_SUBSTR(APRTGLSA, 'REPROCESO carga 352 corrida \d+'), COUNT(*), SUM(APRTVLRR)
+FROM   CRD.APRT WHERE APRTGLSA LIKE 'REPROCESO carga 352 corrida %' GROUP BY REGEXP_SUBSTR(APRTGLSA, 'REPROCESO carga 352 corrida \d+')
+ORDER  BY 1, 2;
+
+-- B.1 CONTROL 1 — total aplicado = 535.477,39 - 4.872,04 = 530.605,35
+--     pagos vigentes enlazados + aportes netos de la carga (originales reversados y sus contra-movimientos suman 0)
+SELECT ROUND(NVL(pg.TOTAL, 0) + NVL(ap.TOTAL, 0), 2) AS APLICADO,
+       NVL(pg.TOTAL, 0) AS PAGOS_PRESTAMO, NVL(ap.TOTAL, 0) AS APORTES_NETO,
+       (SELECT CRARTTDS FROM CRD.CRAR WHERE CRARCDGO = 352) AS DESCONTADO_RETORNO,
+       ROUND((SELECT CRARTTDS FROM CRD.CRAR WHERE CRARCDGO = 352) - NVL(pg.TOTAL, 0) - NVL(ap.TOTAL, 0), 2) AS DIFERENCIA_ESPERADA_4872_04
+FROM   (SELECT SUM(PGPRVLRR) AS TOTAL FROM CRD.PGPR WHERE CRARCDGO = 352 AND NVL(PGPRANUL, 0) = 0) pg,
+       (SELECT SUM(APRTVLRR) AS TOTAL FROM CRD.APRT WHERE APRTIDAS = 352) ap;
+
+-- B.1b Desglose de los pagos aplicados por componente (el seguro de incendio viaja dentro del pago)
+SELECT COUNT(*) AS N, SUM(PGPRVLRR) AS TOTAL, SUM(PGPRCPPG) AS CAPITAL, SUM(PGPRINPG) AS INTERES,
+       SUM(PGPRMRPG) AS MORA, SUM(PGPRINVP) AS INT_VENCIDO, SUM(PGPRDSGR) AS DESGRAVAMEN, SUM(PGPRVLSI) AS SEG_INCENDIO,
+       SUM(CASE WHEN PGPROBSR LIKE 'AFECTACION_MANUAL:%' THEN PGPRVLRR ELSE 0 END) AS MANUAL
+FROM   CRD.PGPR WHERE CRARCDGO = 352 AND NVL(PGPRANUL, 0) = 0;
+
+-- B.2 CONTROL 2 — todos los pagos vigentes de la 352 fechados 30-jun-2025, con CRARCDGO y PRSTCDGO (esperado: una sola fila, OK)
+SELECT TRUNC(PGPRFCHA) AS FECHA, COUNT(*) AS N, SUM(PGPRVLRR) AS TOTAL,
+       SUM(CASE WHEN PRSTCDGO IS NULL THEN 1 ELSE 0 END) AS SIN_PRESTAMO,
+       SUM(CASE WHEN PGPRTPOO IS NULL THEN 1 ELSE 0 END) AS SIN_TIPO
+FROM   CRD.PGPR WHERE CRARCDGO = 352 AND NVL(PGPRANUL, 0) = 0
+GROUP  BY TRUNC(PGPRFCHA) ORDER BY 1;
+
+-- B.3 CONTROL 3 — esquema viejo: 1.313 anulados con la etiqueta, 0 vigentes
+SELECT NVL(PGPRANUL, 0) AS ANULADO, COUNT(*) AS N, SUM(PGPRVLRR) AS TOTAL,
+       MIN(PGPRMTAN) AS MOTIVO_MIN, MAX(PGPRMTAN) AS MOTIVO_MAX
+FROM   CRD.PGPR WHERE PGPROBSR LIKE '%[CargaArchivo: 352]%' AND CRARCDGO IS NULL
+GROUP  BY NVL(PGPRANUL, 0) ORDER BY 1;
+
+-- B.4 CONTROL 4 — aporte de junio por participe = producto AH del retorno (161.257,56 en 2.061)
+--     Esperado: TOTAL_APLICADO = TOTAL_RETORNO, CON_DIFERENCIA = 0
+WITH retorno AS (
+  SELECT e.ENTDCDGO, p.PXCACDPT AS ROL, SUM(p.PXCADSDO) AS AH
+  FROM   CRD.PXCA p JOIN CRD.DTCA d ON d.DTCACDGO = p.DTCACDGO JOIN CRD.ENTD e ON e.ENTDRLPC = p.PXCACDPT
+  WHERE  d.CRARCDGO = 352 AND d.DTCACDPP = 'AH' AND p.PXCADSDO > 0
+  GROUP  BY e.ENTDCDGO, p.PXCACDPT
+), aplicado AS (
+  SELECT ENTDCDGO, SUM(APRTVLRR) AS APLICADO
+  FROM   CRD.APRT WHERE APRTIDAS = 352 AND TPAPCDGO IN (9, 11)
+  GROUP  BY ENTDCDGO
+)
+SELECT COUNT(*) AS PARTICIPES, SUM(r.AH) AS TOTAL_RETORNO, SUM(NVL(a.APLICADO, 0)) AS TOTAL_APLICADO,
+       SUM(CASE WHEN ABS(r.AH - NVL(a.APLICADO, 0)) > 0.01 THEN 1 ELSE 0 END) AS CON_DIFERENCIA,
+       SUM(ABS(r.AH - NVL(a.APLICADO, 0))) AS DIFERENCIA_ABS
+FROM   retorno r LEFT JOIN aplicado a ON a.ENTDCDGO = r.ENTDCDGO;
+
+-- B.4b Los participes con diferencia (esperado: ninguna fila). Se listan por entidad y rol, no por nombre.
+WITH retorno AS (
+  SELECT e.ENTDCDGO, p.PXCACDPT AS ROL, SUM(p.PXCADSDO) AS AH
+  FROM   CRD.PXCA p JOIN CRD.DTCA d ON d.DTCACDGO = p.DTCACDGO JOIN CRD.ENTD e ON e.ENTDRLPC = p.PXCACDPT
+  WHERE  d.CRARCDGO = 352 AND d.DTCACDPP = 'AH' AND p.PXCADSDO > 0
+  GROUP  BY e.ENTDCDGO, p.PXCACDPT
+), aplicado AS (
+  SELECT ENTDCDGO, SUM(APRTVLRR) AS APLICADO FROM CRD.APRT WHERE APRTIDAS = 352 AND TPAPCDGO IN (9, 11) GROUP BY ENTDCDGO
+)
+SELECT r.ENTDCDGO, r.ROL, r.AH AS RETORNO, NVL(a.APLICADO, 0) AS APLICADO, ROUND(r.AH - NVL(a.APLICADO, 0), 2) AS DIFERENCIA
+FROM   retorno r LEFT JOIN aplicado a ON a.ENTDCDGO = r.ENTDCDGO
+WHERE  ABS(r.AH - NVL(a.APLICADO, 0)) > 0.01
+ORDER  BY 5 DESC;
+
+-- B.5 CONTROL 5 — esquema viejo de aportes: originales marcados (APRTIDST = 0) y contra-movimientos; neto 0 por entidad/tipo/devengo
+SELECT 'ORIGINALES_MARCADOS' AS QUE, COUNT(*) AS N, SUM(APRTVLRR) AS TOTAL
+FROM   CRD.APRT WHERE APRTGLSA LIKE '%CargaArchivo: 352' AND APRTIDAS IS NULL AND APRTIDST = 0 AND NVL(APRTTPMV, 1) <> 5
+UNION ALL
+SELECT 'CONTRA_MOVIMIENTOS', COUNT(*), SUM(APRTVLRR)
+FROM   CRD.APRT WHERE APRTGLSA LIKE 'REPROCESO carga 352 corrida %' AND APRTTPMV = 5
+UNION ALL
+SELECT 'VIEJOS_TODAVIA_VIGENTES_(esperado 0)', COUNT(*), SUM(APRTVLRR)
+FROM   CRD.APRT WHERE APRTGLSA LIKE '%CargaArchivo: 352' AND APRTIDAS IS NULL AND CRARCDGO IS NULL
+AND    NVL(APRTTPMV, 1) <> 5 AND NVL(APRTIDST, 4) <> 0;
+
+--     Neto por entidad/tipo/devengo de todo lo que nombra la carga en la glosa y no es de esta corrida (esperado: 0 filas)
+SELECT ENTDCDGO, TPAPCDGO, NVL(APRTPRDV, TRUNC(APRTFCTR, 'MM')) AS PERIODO, SUM(APRTVLRR) AS NETO
+FROM   CRD.APRT
+WHERE  (APRTGLSA LIKE '%CargaArchivo: 352' OR APRTGLSA LIKE 'REPROCESO carga 352 corrida %') AND APRTIDAS IS NULL
+GROUP  BY ENTDCDGO, TPAPCDGO, NVL(APRTPRDV, TRUNC(APRTFCTR, 'MM'))
+HAVING ABS(SUM(APRTVLRR)) > 0.001;
+
+-- B.6 CONTROL 6 — asientos de la carga: REPARTO y APLICACION vigentes, fecha 30-jun-2025, periodo 6/2025, cuadrados
+SELECT c.ANCPTPOO AS SUBPROCESO, c.ANCPIDST AS VIGENTE, c.ANCPASNT AS ASIENTO, a.ASNTFCHA, a.ASNTESTD, a.PRDOCDGO,
+       (SELECT SUM(d.DTASDBEE) FROM CNT.DTAS d WHERE d.ASNTCDGO = a.ASNTCDGO) AS DEBE,
+       (SELECT SUM(d.DTASHBRR) FROM CNT.DTAS d WHERE d.ASNTCDGO = a.ASNTCDGO) AS HABER,
+       c.ANCPVLRR, SUBSTR(c.ANCPOBSR, 1, 120) AS OBS
+FROM   CRD.ANCP c LEFT JOIN CNT.ASNT a ON a.ASNTCDGO = c.ANCPASNT
+WHERE  c.CRARCDGO = 352 ORDER BY c.ANCPTPOO, c.ANCPCDGO;
+
+--     Lineas del asiento de APLICACION vigente (para cruzar el HABER de aportes con el control 4 y las bandas con B.1b)
+SELECT d.DTASCNTA AS CUENTA, d.DTASNMCT AS NOMBRE, d.DTASDBEE AS DEBE, d.DTASHBRR AS HABER, SUBSTR(d.DTASDSCR, 1, 80) AS DESCRIPCION
+FROM   CNT.DTAS d
+WHERE  d.ASNTCDGO = (SELECT ANCPASNT FROM CRD.ANCP WHERE CRARCDGO = 352 AND ANCPTPOO = 3 AND ANCPIDST = 1)
+ORDER  BY d.DTASCDGO;
+
+-- B.7 CONTROL 7 — novedades tipo 1 (PARTICIPE_NO_ENCONTRADO) generadas por el reproceso: 14 filas / 4.872,04
+SELECT COUNT(*) AS N, SUM(n.NVPCMNRC) AS RECIBIDO
+FROM   CRD.NVPC n JOIN CRD.PXCA p ON p.PXCACDGO = n.PXCACDGO JOIN CRD.DTCA d ON d.DTCACDGO = p.DTCACDGO
+WHERE  d.CRARCDGO = 352 AND n.NVPCTPNV = 1;
+
+-- B.8 Estado de la carga al final (esperado 3) y CRARFCAC conservada
+SELECT CRARCDGO, CRARESTD, CRARFCAC FROM CRD.CRAR WHERE CRARCDGO = 352;
+
+-- B.9 Prestamos tocados: estado despues (ningun CANCELADO con cuotas pendientes)
+SELECT pr.PRSTIDST, COUNT(*) AS PRESTAMOS
+FROM   CRD.PRST pr
+WHERE  pr.PRSTCDGO IN (SELECT DISTINCT PRSTCDGO FROM CRD.PGPR WHERE CRARCDGO = 352 AND NVL(PGPRANUL, 0) = 0)
+GROUP  BY pr.PRSTIDST ORDER BY 1;
+
+-- (esperado: 0)
+SELECT COUNT(*) AS CANCELADOS_CON_PENDIENTES
+FROM   CRD.PRST pr
+WHERE  pr.PRSTIDST = 3
+AND    pr.PRSTCDGO IN (SELECT DISTINCT PRSTCDGO FROM CRD.PGPR WHERE CRARCDGO = 352 AND NVL(PGPRANUL, 0) = 0)
+AND    EXISTS (SELECT 1 FROM CRD.DTPR d WHERE d.PRSTCDGO = pr.PRSTCDGO AND (d.DTPRESTD IS NULL OR d.DTPRESTD NOT IN (4, 7)));
+
+-- B.10 D-022 (doc §4.10) — aportes AH marcados por corrida, por caso:
+--   '[D-022 contrato inactivo hoy, vigente al corte]'  esperado en la 352: 8 aportes / 1.154,32
+--   '[D-022 contrato creado en reproceso]'             esperado: los participes AH sin ningun contrato
+--   '[D-022 vigencia no cubre el mes]'                 esperado en la 352: 18 aportes / 1.440,32 (B.10d)
+SELECT REGEXP_SUBSTR(a.APRTGLSA, 'REPROCESO carga 352 corrida [0-9]+') AS CORRIDA,
+       REGEXP_SUBSTR(a.APRTGLSA, '\[D-022[^]]*\]') AS CASO,
+       COUNT(*) AS N, SUM(a.APRTVLRR) AS TOTAL
+FROM   CRD.APRT a
+WHERE  a.APRTIDAS = 352 AND a.APRTGLSA LIKE '%[D-022 %' AND NVL(a.APRTIDST, 4) <> 0
+GROUP  BY REGEXP_SUBSTR(a.APRTGLSA, 'REPROCESO carga 352 corrida [0-9]+'), REGEXP_SUBSTR(a.APRTGLSA, '\[D-022[^]]*\]')
+ORDER  BY 1, 2;
+
+-- B.10b Filas AH de la carga sin contrato activo hoy vs. su aporte de la corrida vigente (esperado: DIFERENCIA 0 en todas)
+WITH ah AS (
+  SELECT e.ENTDCDGO, TRIM(x.PXCACDPT) AS ROL, x.PXCADSDO AS DESCONTADO
+  FROM   CRD.PXCA x JOIN CRD.DTCA t ON t.DTCACDGO = x.DTCACDGO
+         JOIN CRD.ENTD e ON TO_CHAR(e.ENTDRLPC) = TRIM(x.PXCACDPT)
+  WHERE  t.CRARCDGO = 352 AND TRIM(t.DTCACDPP) = 'AH' AND x.PXCADSDO > 0
+  AND    NOT EXISTS (SELECT 1 FROM CRD.CNTR c WHERE c.ENTDCDGO = e.ENTDCDGO AND c.CNTRIDST = 1 AND c.CNTRESTD = 1
+                     AND NVL(c.CNTROBSR, ' ') NOT LIKE 'D-022 reproceso carga 352%'))
+SELECT ah.ENTDCDGO, ah.ROL, ah.DESCONTADO,
+       (SELECT SUM(a.APRTVLRR) FROM CRD.APRT a WHERE a.ENTDCDGO = ah.ENTDCDGO AND a.APRTIDAS = 352
+          AND a.APRTGLSA LIKE '%[D-022 %' AND NVL(a.APRTIDST, 4) <> 0) AS APORTE_D022,
+       ah.DESCONTADO - NVL((SELECT SUM(a.APRTVLRR) FROM CRD.APRT a WHERE a.ENTDCDGO = ah.ENTDCDGO AND a.APRTIDAS = 352
+          AND a.APRTGLSA LIKE '%[D-022 %' AND NVL(a.APRTIDST, 4) <> 0), 0) AS DIFERENCIA
+FROM   ah ORDER BY 1;
+
+-- B.10d Filas AH con contrato ACTIVO hoy sin vigencia activa (9/11) que cubra el 30-jun-2025, vs. su aporte
+--       '[D-022 vigencia no cubre el mes]' de la corrida vigente (esperado: 18 filas, 1.440,32, DIFERENCIA 0)
+WITH ah AS (
+  SELECT e.ENTDCDGO, TRIM(x.PXCACDPT) AS ROL, x.PXCADSDO AS DESCONTADO
+  FROM   CRD.PXCA x JOIN CRD.DTCA t ON t.DTCACDGO = x.DTCACDGO
+         JOIN CRD.ENTD e ON TO_CHAR(e.ENTDRLPC) = TRIM(x.PXCACDPT)
+  WHERE  t.CRARCDGO = 352 AND TRIM(t.DTCACDPP) = 'AH' AND x.PXCADSDO > 0
+  AND    EXISTS (SELECT 1 FROM CRD.CNTR c WHERE c.ENTDCDGO = e.ENTDCDGO AND c.CNTRESTD = 1
+                 AND NOT EXISTS (SELECT 1 FROM CRD.VGCN v WHERE v.CNTRCDGO = c.CNTRCDGO AND v.VGCNIDST = 1
+                                 AND v.TPAPCDGO IN (9, 11) AND v.VGCNFCIN <= DATE '2025-06-30'
+                                 AND (v.VGCNFCFN IS NULL OR v.VGCNFCFN >= DATE '2025-06-30'))))
+SELECT ah.ENTDCDGO, ah.ROL, ah.DESCONTADO,
+       (SELECT SUM(a.APRTVLRR) FROM CRD.APRT a WHERE a.ENTDCDGO = ah.ENTDCDGO AND a.APRTIDAS = 352
+          AND a.APRTGLSA LIKE '%[D-022 vigencia no cubre el mes]' AND NVL(a.APRTIDST, 4) <> 0) AS APORTE_D022,
+       ah.DESCONTADO - NVL((SELECT SUM(a.APRTVLRR) FROM CRD.APRT a WHERE a.ENTDCDGO = ah.ENTDCDGO AND a.APRTIDAS = 352
+          AND a.APRTGLSA LIKE '%[D-022 vigencia no cubre el mes]' AND NVL(a.APRTIDST, 4) <> 0), 0) AS DIFERENCIA
+FROM   ah ORDER BY 1;
+
+-- B.10c Contratos y vigencias creados por D-022 ampliada (uno por participe sin ningun contrato)
+SELECT c.CNTRCDGO, c.ENTDCDGO, c.TPCNCDGO, c.CNTRFCIN, c.CNTRESTD, c.CNTRIDST, c.CNTRUSRG,
+       v.VGCNCDGO, v.TPAPCDGO, v.VGCNFCIN, v.VGCNFCFN, v.VGCNMNTO
+FROM   CRD.CNTR c LEFT JOIN CRD.VGCN v ON v.CNTRCDGO = c.CNTRCDGO
+WHERE  c.CNTROBSR LIKE 'D-022 reproceso carga 352%'
+ORDER  BY c.ENTDCDGO;
+
+-- B.11 D-023 (doc §4.12) — seguro de incendio pagado (PGPRVLSI) por los pagos vigentes de la 352 vs. la fila HS
+--      del mismo rol. Esperado: DIFERENCIA 0 en las filas HS con participe y fila PH/PP; las 8 con
+--      MARCADOS_D023 > 0 son los HS aplicados a una cuota que no traia seguro (145,63 en total).
+WITH hs AS (
+  SELECT TRIM(x.PXCACDPT) AS ROL, x.PXCADSDO AS HS
+  FROM   CRD.PXCA x JOIN CRD.DTCA t ON t.DTCACDGO = x.DTCACDGO
+  WHERE  t.CRARCDGO = 352 AND TRIM(t.DTCACDPP) = 'HS' AND x.PXCADSDO > 0),
+seg AS (
+  SELECT TO_CHAR(e.ENTDRLPC) AS ROL, SUM(g.PGPRVLSI) AS SEGURO_PAGADO,
+         SUM(CASE WHEN g.PGPROBSR LIKE '%[D-023 HS sin seguro en la cuota]%' THEN g.PGPRVLSI ELSE 0 END) AS MARCADOS_D023
+  FROM   CRD.PGPR g JOIN CRD.PRST p ON p.PRSTCDGO = g.PRSTCDGO JOIN CRD.ENTD e ON e.ENTDCDGO = p.ENTDCDGO
+  WHERE  g.CRARCDGO = 352 AND NVL(g.PGPRANUL, 0) = 0 AND NVL(g.PGPRVLSI, 0) > 0
+  GROUP  BY TO_CHAR(e.ENTDRLPC))
+SELECT hs.ROL, hs.HS, NVL(seg.SEGURO_PAGADO, 0) AS SEGURO_PAGADO, NVL(seg.MARCADOS_D023, 0) AS MARCADOS_D023,
+       hs.HS - NVL(seg.SEGURO_PAGADO, 0) AS DIFERENCIA
+FROM   hs LEFT JOIN seg ON seg.ROL = hs.ROL
+ORDER  BY ABS(hs.HS - NVL(seg.SEGURO_PAGADO, 0)) DESC, hs.ROL;
+
+-- B.11b Total marcado D-023 en la corrida vigente (esperado: 8 roles / 145,63 de seguro de incendio)
+SELECT COUNT(DISTINCT g.PRSTCDGO) AS PRESTAMOS, SUM(g.PGPRVLSI) AS SEGURO_D023
+FROM   CRD.PGPR g
+WHERE  g.CRARCDGO = 352 AND NVL(g.PGPRANUL, 0) = 0 AND g.PGPROBSR LIKE '%[D-023 HS sin seguro en la cuota]%';
+
+-- B.12 D-024 / D-010 (doc §4.13) — cuentas puente al 30-jun-2025 (asientos activos o mayorizados, empresa 1236).
+--      Saldo DEUDOR (debe - haber). Esperado tras la corrida 3, ANTES del cierre de junio:
+--        1.4.05.05 = 0 (apertura 122.487,88 + complemento 39.516,42 - reparto 162.004,30)
+--        2.3.02.05 = 0 (-122.487,88 - 39.516,42 + aplicacion de aportes 162.004,30; los 545,35 D-010 ya no salen de aqui)
+--        1.4.05.10 y 2.3.02.10: iguales y de signo contrario salvo el residuo previo de 0,02; los cierra el neteo del cierre
+SELECT d.DTASCNTA AS CUENTA, ROUND(SUM(NVL(d.DTASDBEE, 0)) - SUM(NVL(d.DTASHBRR, 0)), 2) AS SALDO_DEUDOR
+FROM   CNT.DTAS d JOIN CNT.ASNT a ON a.ASNTCDGO = d.ASNTCDGO
+WHERE  a.PJRQCDGO = 1236 AND a.ASNTESTD IN (1, 3) AND a.ASNTFCHA < DATE '2025-07-01'
+AND    (d.DTASCNTA LIKE '1.4.05.05%' OR d.DTASCNTA LIKE '1.4.05.10%' OR d.DTASCNTA LIKE '2.3.02.05%' OR d.DTASCNTA LIKE '2.3.02.10%')
+GROUP  BY d.DTASCNTA ORDER BY d.DTASCNTA;
+
+--      Movimiento de junio 2025 de las cuatro cuentas por asiento (apertura, complemento, reparto, aplicacion, neteo, otros)
+SELECT a.ASNTCDGO AS ASIENTO, TO_CHAR(a.ASNTFCHA, 'YYYY-MM-DD') AS FECHA, a.ASNTESTD AS ESTADO,
+       (SELECT MAX(c.ANCPTPOO) FROM CRD.ANCP c WHERE c.ANCPASNT = a.ASNTCDGO) AS SUBPROCESO_CARGA,
+       SUBSTR(a.ASNTOBSR, 1, 70) AS GLOSA,
+       ROUND(SUM(CASE WHEN d.DTASCNTA LIKE '1.4.05.05%' THEN NVL(d.DTASDBEE, 0) - NVL(d.DTASHBRR, 0) ELSE 0 END), 2) AS C_140505,
+       ROUND(SUM(CASE WHEN d.DTASCNTA LIKE '2.3.02.05%' THEN NVL(d.DTASDBEE, 0) - NVL(d.DTASHBRR, 0) ELSE 0 END), 2) AS C_230205,
+       ROUND(SUM(CASE WHEN d.DTASCNTA LIKE '1.4.05.10%' THEN NVL(d.DTASDBEE, 0) - NVL(d.DTASHBRR, 0) ELSE 0 END), 2) AS C_140510,
+       ROUND(SUM(CASE WHEN d.DTASCNTA LIKE '2.3.02.10%' THEN NVL(d.DTASDBEE, 0) - NVL(d.DTASHBRR, 0) ELSE 0 END), 2) AS C_230210
+FROM   CNT.DTAS d JOIN CNT.ASNT a ON a.ASNTCDGO = d.ASNTCDGO
+WHERE  a.PJRQCDGO = 1236 AND a.ASNTESTD IN (1, 3) AND a.ASNTFCHA >= DATE '2025-06-01' AND a.ASNTFCHA < DATE '2025-07-01'
+AND    (d.DTASCNTA LIKE '1.4.05.05%' OR d.DTASCNTA LIKE '1.4.05.10%' OR d.DTASCNTA LIKE '2.3.02.05%' OR d.DTASCNTA LIKE '2.3.02.10%')
+GROUP  BY a.ASNTCDGO, TO_CHAR(a.ASNTFCHA, 'YYYY-MM-DD'), a.ASNTESTD, SUBSTR(a.ASNTOBSR, 1, 70)
+ORDER  BY 2, 1;
+
+--      Asiento de complemento de la carga (sub-proceso 4) y su observacion (cobrado, abierto, complemento por producto)
+SELECT c.ANCPCDGO, c.ANCPIDST AS VIGENTE, c.ANCPASNT AS ASIENTO, c.ANCPFCHA, c.ANCPVLRR, SUBSTR(c.ANCPOBSR, 1, 200) AS OBS
+FROM   CRD.ANCP c WHERE c.CRARCDGO = 352 AND c.ANCPTPOO = 4 ORDER BY c.ANCPCDGO;
+
+-- B.13 D-025 (doc §4.14) — pagos MIGRADOS de junio 2025 por rol y producto vs. el descuento real de la fila (PXCADSDO).
+--      CASO = ANULADO_D025 (suma = descuento al centavo, anulados con la marca), PARCIAL (no coincide, quedan vigentes y
+--      se listan en pagosMigradosParciales), FILA_SIN_DESCUENTO. Esperado tras la corrida 3:
+--        ANULADO_D025 42 grupos / 42 pagos / 26.841,61 ; PARCIAL 17 / 17 / 3.440,41 ; FILA_SIN_DESCUENTO 2 / 2 / 246,20
+WITH fila AS (
+  SELECT x.PXCACDPT AS ROL, TRIM(c.DTCACDPP) AS PROD, SUM(NVL(x.PXCADSDO, 0)) AS DESCUENTO
+  FROM   CRD.PXCA x JOIN CRD.DTCA c ON c.DTCACDGO = x.DTCACDGO
+  WHERE  c.CRARCDGO = 352 GROUP BY x.PXCACDPT, TRIM(c.DTCACDPP)),
+mig AS (
+  SELECT e.ENTDRLPC AS ROL, TRIM(pr.PRDCCDPT) AS PROD, g.PGPRCDGO,
+         NVL(g.PGPRVLRR, 0) + NVL(g.PGPRDSGR, 0) AS VALOR,
+         CASE WHEN g.PGPRMTAN LIKE '%[D-025 pago migrado = descuento de la carga]%' THEN 1 ELSE 0 END AS MARCADO,
+         NVL(g.PGPRANUL, 0) AS ANULADO
+  FROM   CRD.PGPR g JOIN CRD.DTPR d ON d.DTPRCDGO = g.DTPRCDGO JOIN CRD.PRST p ON p.PRSTCDGO = d.PRSTCDGO
+         JOIN CRD.ENTD e ON e.ENTDCDGO = p.ENTDCDGO JOIN CRD.PRDC pr ON pr.PRDCCDGO = p.PRDCCDGO
+  WHERE  g.PGPRTPOO = 'MIGRACION' AND g.PGPROBSR LIKE 'Pago cargado desde Excel - Migraci_n de datos%'
+  AND    g.CRARCDGO IS NULL AND g.EVPRCDGO IS NULL
+  AND    g.PGPRFCHA >= DATE '2025-06-01' AND g.PGPRFCHA < DATE '2025-07-01'),
+grupo AS (
+  SELECT m.ROL, m.PROD, COUNT(*) AS PAGOS, ROUND(SUM(m.VALOR), 2) AS MIGRADO, ROUND(MAX(f.DESCUENTO), 2) AS DESCUENTO,
+         SUM(m.MARCADO) AS MARCADOS, SUM(CASE WHEN m.ANULADO = 0 THEN 1 ELSE 0 END) AS VIGENTES
+  FROM   mig m JOIN fila f ON f.ROL = m.ROL AND f.PROD = m.PROD
+  GROUP  BY m.ROL, m.PROD)
+SELECT CASE WHEN DESCUENTO > 0 AND MIGRADO = DESCUENTO THEN 'ANULADO_D025' WHEN DESCUENTO > 0 THEN 'PARCIAL'
+            ELSE 'FILA_SIN_DESCUENTO' END AS CASO,
+       COUNT(*) AS GRUPOS, SUM(PAGOS) AS PAGOS, SUM(MIGRADO) AS MIGRADO, SUM(DESCUENTO) AS DESCUENTO,
+       SUM(MARCADOS) AS MARCADOS_D025, SUM(VIGENTES) AS VIGENTES
+FROM   grupo
+GROUP  BY CASE WHEN DESCUENTO > 0 AND MIGRADO = DESCUENTO THEN 'ANULADO_D025' WHEN DESCUENTO > 0 THEN 'PARCIAL'
+               ELSE 'FILA_SIN_DESCUENTO' END
+ORDER  BY 1;
+--      (esperado: ANULADO_D025 con MARCADOS_D025 = 42 y VIGENTES = 0; PARCIAL y FILA_SIN_DESCUENTO con MARCADOS_D025 = 0)
+
+--      Detalle de los parciales (por prestamo y cuota; sin datos personales)
+WITH fila AS (
+  SELECT x.PXCACDPT AS ROL, TRIM(c.DTCACDPP) AS PROD, SUM(NVL(x.PXCADSDO, 0)) AS DESCUENTO
+  FROM   CRD.PXCA x JOIN CRD.DTCA c ON c.DTCACDGO = x.DTCACDGO
+  WHERE  c.CRARCDGO = 352 GROUP BY x.PXCACDPT, TRIM(c.DTCACDPP))
+SELECT p.PRSTCDGO AS PRESTAMO, d.DTPRNMCT AS CUOTA, g.PGPRCDGO AS PAGO, TRIM(pr.PRDCCDPT) AS PROD,
+       ROUND(NVL(g.PGPRVLRR, 0) + NVL(g.PGPRDSGR, 0), 2) AS VALOR_MIGRADO, ROUND(f.DESCUENTO, 2) AS DESCUENTO_FILA,
+       NVL(g.PGPRANUL, 0) AS ANULADO
+FROM   CRD.PGPR g JOIN CRD.DTPR d ON d.DTPRCDGO = g.DTPRCDGO JOIN CRD.PRST p ON p.PRSTCDGO = d.PRSTCDGO
+       JOIN CRD.ENTD e ON e.ENTDCDGO = p.ENTDCDGO JOIN CRD.PRDC pr ON pr.PRDCCDGO = p.PRDCCDGO
+       JOIN fila f ON f.ROL = e.ENTDRLPC AND f.PROD = TRIM(pr.PRDCCDPT)
+WHERE  g.PGPRTPOO = 'MIGRACION' AND g.PGPROBSR LIKE 'Pago cargado desde Excel - Migraci_n de datos%'
+AND    g.CRARCDGO IS NULL AND g.EVPRCDGO IS NULL
+AND    g.PGPRFCHA >= DATE '2025-06-01' AND g.PGPRFCHA < DATE '2025-07-01'
+AND    NVL(g.PGPRMTAN, ' ') NOT LIKE '%[D-025 %'
+ORDER  BY p.PRSTCDGO, d.DTPRNMCT;
+
+-- B.14 C4 (doc §4.15) — por TIPO de aporte: lo que la carga creo en CRD.APRT (APRTIDAS = '352', neto de originales
+--      reversados y contra-movimientos, el mismo universo que sumValorPorTipoAporteByCarga) vs. el HABER neto de
+--      las lineas del asiento de APLICACION vigente en la cuenta de pasivo del tipo (CRD.CTAP). Esperado: una fila
+--      por tipo con DIFERENCIA 0 y ningun tipo 12/24. En la corrida 2 salio tipo 12 con 0,09 creado y 0 asentado.
+WITH creado AS (
+  SELECT a.TPAPCDGO, ROUND(SUM(a.APRTVLRR), 2) AS CREADO
+  FROM   CRD.APRT a
+  WHERE  a.APRTIDAS = '352'
+  GROUP  BY a.TPAPCDGO
+  HAVING ABS(SUM(a.APRTVLRR)) > 0.001),
+cuenta AS (
+  SELECT c.TPAPCDGO, n.PLNNCNTA AS CUENTA
+  FROM   CRD.CTAP c JOIN CNT.PLNN n ON n.PLNNCDGO = c.CTAPPLNP
+  WHERE  c.PJRQCDGO = 1236),
+asentado AS (
+  SELECT d.DTASCNTA AS CUENTA, ROUND(SUM(NVL(d.DTASHBRR, 0)) - SUM(NVL(d.DTASDBEE, 0)), 2) AS ASENTADO
+  FROM   CNT.DTAS d
+  WHERE  d.ASNTCDGO = (SELECT ANCPASNT FROM CRD.ANCP WHERE CRARCDGO = 352 AND ANCPTPOO = 3 AND ANCPIDST = 1)
+  AND    d.DTASCNTA IN (SELECT CUENTA FROM cuenta)
+  GROUP  BY d.DTASCNTA)
+SELECT COALESCE(cr.TPAPCDGO, cu.TPAPCDGO) AS TIPO_APORTE, COALESCE(cu.CUENTA, s.CUENTA) AS CUENTA,
+       NVL(cr.CREADO, 0) AS CREADO, NVL(s.ASENTADO, 0) AS ASENTADO,
+       NVL(cr.CREADO, 0) - NVL(s.ASENTADO, 0) AS DIFERENCIA
+FROM   creado cr
+       LEFT JOIN cuenta cu ON cu.TPAPCDGO = cr.TPAPCDGO
+       FULL OUTER JOIN asentado s ON s.CUENTA = cu.CUENTA
+ORDER  BY 1;
+--      (2.3.02.05 en 0 al 30-jun lo confirma B.12; con DIFERENCIA 0 aqui, el DEBE de 2.3.02.05 del asiento =
+--       suma de CREADO - excedentes D-010 que entraron por prestamos, sin centavos sueltos)
+
+
+-- =====================================================================================
+-- C. LECTURAS DE APOYO (no son criterio de aceptacion)
+-- =====================================================================================
+
+-- C.1 Aportes de la corrida por devengo: cuanto quedo en junio y cuanto se anticipo (regla D4 de la prelacion)
+SELECT APRTPRDV AS DEVENGO, TPAPCDGO, COUNT(*) AS N, SUM(APRTVLRR) AS TOTAL
+FROM   CRD.APRT WHERE APRTIDAS = 352 AND APRTTPMV = 1 AND NVL(APRTIDST, 4) <> 0
+GROUP  BY APRTPRDV, TPAPCDGO ORDER BY 1, 2;
+
+-- C.2 Distribucion en bandas reescrita por la re-aplicacion
+SELECT COUNT(*) AS FILAS_DSBN FROM CRD.DSBN WHERE DSBNORGN = 'CARGA_PETRO' AND DSBNIDOR = 352;
+
+-- C.3 Cuotas que quedaron PARCIAL o con excedente (novedades tipo 13 nuevas de la corrida)
+SELECT n.NVPCTPNV, COUNT(*) AS N, SUM(n.NVPCMNRC) AS RECIBIDO, SUM(n.NVPCMNES) AS ESPERADO
+FROM   CRD.NVPC n JOIN CRD.PXCA p ON p.PXCACDGO = n.PXCACDGO JOIN CRD.DTCA d ON d.DTCACDGO = p.DTCACDGO
+WHERE  d.CRARCDGO = 352 GROUP BY n.NVPCTPNV ORDER BY 1;

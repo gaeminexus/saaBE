@@ -1,0 +1,5 @@
+fecha;numero_asiento;glosa;cuenta;nombre_cuenta;debe;haber;documento_respaldo;centro_costo
+2025-06-20;AF-2025-06-001;Compra de equipo de computacion;160215;Equipo de computacion;1250.00;0.00;Factura 001-001-000012345;
+2025-06-20;AF-2025-06-001;Compra de equipo de computacion;1.1.02.05.40;Banco Amazonas cta. aho.;0.00;1250.00;Factura 001-001-000012345;
+2025-06-15;INV-2025-06-001;Colocacion de inversion renta fija sector financiero privado;1.2.01.05.02.17;Certificado de deposito 31 a 90 dias - Banco Pichincha;50000.00;0.00;Certificado No. 123456;
+2025-06-15;INV-2025-06-001;Colocacion de inversion renta fija sector financiero privado;1.1.02.05.40;Banco Amazonas cta. aho.;0.00;50000.00;Certificado No. 123456;

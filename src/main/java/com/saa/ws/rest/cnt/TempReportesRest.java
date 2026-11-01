@@ -34,6 +34,9 @@ public class TempReportesRest {
     @EJB
     private TempReportesService tempReportesService;
 
+    @EJB
+    private com.saa.ejb.cnt.service.EstructuraReporteService estructuraReporteService;
+
     @Context
     private UriInfo context;
 
@@ -193,8 +196,17 @@ public class TempReportesRest {
                     .type(MediaType.APPLICATION_JSON).build();
             }
             
+            // C19: una estructura de renglones (B17, flujo...) no tiene rangos de cuentas en DTRP; se genera
+            // con /esrp/generar. Sin el DDL C19-01 esEstructura devuelve false y esto no cambia nada.
+            if (estructuraReporteService.esEstructura(parametros.getEmpresa(), parametros.getCodigoAlterno())) {
+                RespuestaBalance respuesta = new RespuestaBalance();
+                respuesta.setExitoso(false);
+                respuesta.setMensaje("El tipo de reporte elegido es una estructura de la Superintendencia: se genera desde /esrp/generar, no como balance");
+                return Response.status(Response.Status.BAD_REQUEST).entity(respuesta).type(MediaType.APPLICATION_JSON).build();
+            }
+
             Long idEjecucion = null;
-            
+
             // Determinar tipo de reporte según parámetros
             if (parametros.getReporteDistribuido() != null && parametros.getReporteDistribuido()) {
                 // Reporte distribuido: plan de cuentas por centros de costo

@@ -98,6 +98,10 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	@EJB
 	private PagoProgramadoDaoService pagoProgramadoDaoService;
 
+	/** C17: mes cerrado para cartera / contabilidad (CIERRES-BLOQUEANTES.md). */
+	@jakarta.ejb.EJB
+	private com.saa.ejb.cnt.service.EstadoCierreService estadoCierreService;
+
 	@EJB
 	private LotePagoDaoService lotePagoDaoService;
 
@@ -1993,8 +1997,27 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	@Override
 	public Map<String, Object> procesarRespuestaBanco(Long idLote, byte[] archivoRespuesta,
 			Long idUsuario) throws Throwable {
+		return procesarRespuestaBanco(idLote, archivoRespuesta, idUsuario, null);
+	}
 
-		System.out.println("=== procesarRespuestaBanco | lote=" + idLote + " ===");
+	@Override
+	public Map<String, Object> procesarRespuestaBanco(Long idLote, byte[] archivoRespuesta,
+			Long idUsuario, LocalDate fechaRespuesta) throws Throwable {
+
+		System.out.println("=== procesarRespuestaBanco | lote=" + idLote
+				+ " | fechaRespuesta=" + fechaRespuesta + " ===");
+
+		// C6 (FECHA-CONTABLE-REPROCESO.md): la fecha de respuesta del banco es la fecha contable
+		// del pago (asiento y movimiento bancario salen de PGTRFRSP en contabilizarSegunOrigen).
+		// Por defecto hoy; explícita para re-procesar un lote de un mes pasado. Nunca futura.
+		LocalDate fechaRespuestaEfectiva = (fechaRespuesta != null) ? fechaRespuesta : LocalDate.now();
+		if (fechaRespuestaEfectiva.isAfter(LocalDate.now())) {
+			throw new IncomeException("FECHA_CONTABLE_FUTURA: la fecha de respuesta del banco "
+					+ fechaRespuestaEfectiva + " es futura.");
+		}
+		// C17: validación temprana del cierre contable: todo el lote se contabiliza con esta fecha.
+		estadoCierreService.validarContableAbierto(null, fechaRespuestaEfectiva,
+				"la confirmación de pagos por respuesta del banco (lote " + idLote + ")");
 
 		Map<String, Object> resultado = new HashMap<>();
 
@@ -2033,7 +2056,7 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 				continue;
 			}
 
-			pago.setFechaRespuesta(LocalDate.now());
+			pago.setFechaRespuesta(fechaRespuestaEfectiva);
 
 			if (respuesta.isConfirmado()) {
 				try {
@@ -2106,6 +2129,8 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		}
 
 		LocalDate fecha = parseFecha(fechaPago);
+		// C17: validación temprana del cierre contable, antes del bucle que junta errores por pago.
+		estadoCierreService.validarContableAbierto(null, fecha, "la confirmación manual de pagos");
 		// referencia (para todos) sigue funcionando igual que siempre - retrocompatible.
 		// referenciasPorPago, si trae una entrada para el pago, gana sobre esa.
 		String ref  = (referencia != null && !referencia.trim().isEmpty())

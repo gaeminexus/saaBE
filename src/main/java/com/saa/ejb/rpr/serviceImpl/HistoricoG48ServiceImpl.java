@@ -66,7 +66,7 @@ public class HistoricoG48ServiceImpl implements HistoricoG48Service {
     }
 
     @Override
-    public List<HistoricoG48> selectEnHm48NoEnCg48Junio2025() throws Throwable {
-        return historicoG48DaoService.selectEnHm48NoEnCg48Junio2025();
+    public List<HistoricoG48> selectEnHm48NoEnCg48(Long codigoDetalleG48) throws Throwable {
+        return historicoG48DaoService.selectEnHm48NoEnCg48(codigoDetalleG48);
     }
 }

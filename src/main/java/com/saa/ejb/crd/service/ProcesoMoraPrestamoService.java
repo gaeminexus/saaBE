@@ -150,6 +150,20 @@ public interface ProcesoMoraPrestamoService {
     double calcularMoraCuota(DetallePrestamo cuota, double tasaDiaria, LocalDate fecha);
 
     /**
+     * Reproceso Petro (cuadre Superintendencia C4): calcula y GUARDA la mora de UNA cuota a la
+     * fecha dada, dentro de la transacción del llamador (no abre una propia, a diferencia de
+     * {@link #calcularMoraPrestamo}). Lo usa el reproceso para las cuotas que acaba de reabrir
+     * (pagos anulados, cancelación posterior al mes) y que el proceso de mora no pudo ver porque
+     * en ese momento figuraban pagadas. Misma fórmula y misma recomposición idempotente del
+     * total que el proceso diario; vencida → EN_MORA salvo PARCIAL; no vencida a esa fecha → mora
+     * 0 y EN_MORA → PENDIENTE. Una cuota saldada (PAGADA/CANCELADA_ANTICIPADA) o con mora ya
+     * pagada no se toca.
+     *
+     * @return la mora que quedó en la cuota
+     */
+    double recalcularMoraCuotaALaFecha(DetallePrestamo cuota, LocalDate fecha) throws Throwable;
+
+    /**
      * H42 (cobro tardío, FASE 1, {@code docs/logica-negocio/crd/DISENO-COBRO-CON-FECHA-EFECTIVA.md}
      * §4quater): recalcula y <b>persiste</b> la mora de TODAS las cuotas no PAGADA(4) y no
      * CANCELADA_ANTICIPADA(7) de un préstamo, a la fecha EFECTIVA de un pago que se procesa

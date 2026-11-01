@@ -407,6 +407,16 @@ public interface PagoProgramadoService extends EntityService<PagoProgramado> {
 			throws Throwable;
 
 	/**
+	 * Igual que {@link #procesarRespuestaBanco(Long, byte[], Long)} con la <b>fecha contable</b>
+	 * explícita (C6, docs/logica-negocio/cnt/FECHA-CONTABLE-REPROCESO.md): es la fecha de
+	 * respuesta del banco ({@code PGTRFRSP}) con la que se fechan el asiento del pago y su
+	 * movimiento bancario. {@code null} = hoy (comportamiento de siempre). No puede ser futura.
+	 * @param fechaRespuesta : Fecha real en que el banco ejecutó los pagos del lote
+	 */
+	Map<String, Object> procesarRespuestaBanco(Long idLote, byte[] archivoRespuesta, Long idUsuario,
+			LocalDate fechaRespuesta) throws Throwable;
+
+	/**
 	 * Confirma manualmente uno o varios pagos, como si hubiera llegado la
 	 * respuesta del banco. Produce exactamente el mismo efecto contable que
 	 * procesarRespuestaBanco sobre un pago confirmado: aplicación de pago (o

@@ -35,10 +35,23 @@ public class GeneracionReportesServiceImpl implements GeneracionReportesService 
     // javadoc de la interfaz para por qué esto ya no puede ser un método privado de esta
     // misma clase. Reemplaza a los doce @EJB de GeneracionGxxService que vivían acá.
     @EJB private GeneracionUnReporteService     unReporteService;
+    /** C17: solo se generan reportes de meses cerrados para cartera. */
+    @EJB private com.saa.ejb.cnt.service.EstadoCierreService estadoCierreService;
 
     @Override
     public EjecucionReporte ejecutarGeneracion(Long mes, Long anio, String usuario) throws Throwable {
-        System.out.println("Ingresa al metodo ejecutarGeneracion con mes: " + mes + ", anio: " + anio + ", usuario: " + usuario);
+        return ejecutarGeneracion(mes, anio, usuario, false);
+    }
+
+    @Override
+    public EjecucionReporte ejecutarGeneracion(Long mes, Long anio, String usuario, boolean regenerar) throws Throwable {
+        System.out.println("Ingresa al metodo ejecutarGeneracion con mes: " + mes + ", anio: " + anio + ", usuario: " + usuario
+                + ", regenerar: " + regenerar);
+
+        // C17 (CIERRES-BLOQUEANTES.md §6): las estructuras G40–G51 solo se generan para meses que ya pasaron
+        // por el cierre–apertura de cartera. Sin empresa en la solicitud: basta con que cualquier empresa
+        // tenga el mes cerrado (ASOPREP opera con una sola).
+        estadoCierreService.validarReporteCartera(null, anio, mes, "Las estructuras G40–G51");
 
         EjecucionReporte ejrc     = null;
         List<DetalleEjecucionReporte> ejrdsAProcesar = new ArrayList<>();
@@ -55,7 +68,7 @@ public class GeneracionReportesServiceImpl implements GeneracionReportesService 
             ejecucionesExistentes = new ArrayList<>();
         }
 
-        if (!ejecucionesExistentes.isEmpty()) {
+        if (!ejecucionesExistentes.isEmpty() && !regenerar) {
             ejrc = ejecucionesExistentes.get(0);
             System.out.println("Ejecucion existente encontrada con id: " + ejrc.getCodigo() + ", estado: " + ejrc.getEstado());
 
@@ -98,6 +111,11 @@ public class GeneracionReportesServiceImpl implements GeneracionReportesService 
         // -------------------------------------------------------
         // 6. Ejecutar la lógica de generación por cada EJRD
         // -------------------------------------------------------
+        // D-034 (29-oct-2026): en orden de dependencias (G46 antes que G45, G48 antes que G49), no
+        // en el orden alfabético del DAO — ver GeneracionUnReporteServiceImpl#TIPOS_REPORTE.
+        ejrdsAProcesar = new ArrayList<>(ejrdsAProcesar);
+        ejrdsAProcesar.sort(java.util.Comparator.comparingInt(
+                (DetalleEjecucionReporte d) -> GeneracionUnReporteServiceImpl.ordenGeneracion(d.getTipoReporte())));
         List<String> reportesConNovedades = new ArrayList<>();
         for (DetalleEjecucionReporte ejrd : ejrdsAProcesar) {
             System.out.println("Procesando reporte: " + ejrd.getTipoReporte());

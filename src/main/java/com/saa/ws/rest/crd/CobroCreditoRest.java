@@ -175,7 +175,8 @@ public class CobroCreditoRest {
     private Response respuestaErrorFechaAfectacion(Throwable e, String prefijo) {
         String mensaje = e.getMessage() != null ? e.getMessage() : "Error inesperado";
         String codigo = mensaje.contains(":") ? mensaje.substring(0, mensaje.indexOf(':')).trim() : "";
-        boolean esFechaAfectacion = codigo.startsWith("FECHA_AFECTACION_") || "PERIODO_CERRADO".equals(codigo);
+        boolean esFechaAfectacion = codigo.startsWith("FECHA_AFECTACION_") || "PERIODO_CERRADO".equals(codigo)
+                || "CARTERA_CERRADA".equals(codigo);
         int status = esFechaAfectacion ? Response.Status.BAD_REQUEST.getStatusCode()
                 : Response.Status.INTERNAL_SERVER_ERROR.getStatusCode();
         return Response.status(status).entity(prefijo + mensaje).type(MediaType.APPLICATION_JSON).build();
@@ -292,6 +293,8 @@ public class CobroCreditoRest {
 
     /**
      * POST /rest/cbcr/{id}/procesar — paso 3 (PROCESO), lado crédito. Solo desde APROBADO.
+     * Cuerpo {@code {"usuario": "...", "reproceso": true}}: {@code reproceso} (opcional) activa el
+     * modo re-proceso de un mes pasado (D-019, docs/logica-negocio/crd/API-REPROCESO-COBRO-FECHA-PASADA.md).
      */
     @POST
     @Path("/{id}/procesar")
@@ -301,7 +304,8 @@ public class CobroCreditoRest {
         System.out.println("LLEGA AL SERVICIO POST procesar - CBCR - id: " + id);
         try {
             ResultadoProcesoCobro resultado = cobroCreditoService.procesarCobro(id,
-                    solicitud != null ? solicitud.getUsuario() : null);
+                    solicitud != null ? solicitud.getUsuario() : null,
+                    solicitud != null && Boolean.TRUE.equals(solicitud.getReproceso()));
             return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)

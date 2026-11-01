@@ -66,11 +66,18 @@ public interface AporteDaoService extends EntityDao<Aporte>{
 	List<Object[]> selectSumaAportesTipo23EnRango(LocalDateTime fechaInicio, LocalDateTime fechaFin) throws Throwable;
 
 	/**
-	 * Para G42 — Tipo de prestación: Obtiene los códigos de tipoAporte distintos (9, 11) por entidad
-	 * con tipoAporte.estado=1 y fechaTransaccion <= fechaCorte.
-	 * Retorna Object[]{Long codigoEntidad, List<Long> codigosTipoAporte}.
+	 * Para G42 — Tipo de prestación (D-038): saldo vigente al corte por entidad y GRUPO de prestación
+	 * del tipo de aporte ({@code CRD.TPAP.TPAPTPPR}: J jubilación, C cesantía; los tipos sin grupo no
+	 * cuentan). Retorna Object[]{Long codigoEntidad, String grupo, Double suma}.
 	 */
-	List<Object[]> selectTiposAportePorEntidad(LocalDateTime fechaCorte) throws Throwable;
+	List<Object[]> selectSumaPorGrupoPrestacionPorEntidad(LocalDateTime fechaCorte) throws Throwable;
+
+	/**
+	 * Para G42 (aporte personal del mes) y G41 (estado A/P) — D-038: suma de los aportes personales
+	 * (tipos 9 jubilación personal y 11 cesantía personal) con valor &gt; 0, vigentes, cuyo PERIODO
+	 * EFECTIVO es el mes indicado (devengo, no fecha de caja). Retorna Object[]{Long codigoEntidad, Double suma}.
+	 */
+	List<Object[]> selectAportePersonalDelPeriodoPorEntidad(java.time.LocalDate periodo) throws Throwable;
 
 	/**
 	 * Para G40 — Suma total (todas las entidades) de aportes con tipoAporte.codigo = tipoAporte,
@@ -101,7 +108,7 @@ public interface AporteDaoService extends EntityDao<Aporte>{
 	 * @param codigoEntidad Código de la entidad cesante
 	 * @return Cantidad de meses de devengo con imposición personal
 	 */
-	Long selectCountImposicionesPersonalesPorEntidad(Long codigoEntidad) throws Throwable;
+	Long selectCountImposicionesPersonalesPorEntidad(Long codigoEntidad, java.time.LocalDate corte) throws Throwable;
 
 	/**
 	 * Para G43 — Imposiciones patronales: tipoAporte.codigo IN (13, 14) y valor > 0, para una
@@ -113,7 +120,10 @@ public interface AporteDaoService extends EntityDao<Aporte>{
 	 * @param codigoEntidad Código de la entidad cesante
 	 * @return Cantidad de meses de devengo con imposición patronal
 	 */
-	Long selectCountImposicionesPatronalesPorEntidad(Long codigoEntidad) throws Throwable;
+	Long selectCountImposicionesPatronalesPorEntidad(Long codigoEntidad, java.time.LocalDate corte) throws Throwable;
+
+	/** G43 (D-038): movimientos negativos del mes de una entidad: {Date fechaUltimo, Double sumaNegativos, Double sumaPagoPrestamo (APRTTPMV 4)}. */
+	Object[] selectLiquidacionMesPorEntidad(Long codigoEntidad, java.time.LocalDate desde, java.time.LocalDate hasta) throws Throwable;
 
 	/**
 	 * Para G43 — Saldo cuenta individual: SUM de aportes con valor < 0,
@@ -538,5 +548,56 @@ public interface AporteDaoService extends EntityDao<Aporte>{
 	 * @throws Throwable Si ocurre un error
 	 */
 	LocalDateTime selectFechaMovimientoJubilacion(Long idEntidad, Long idTipoAporte, Long tipoMovimiento) throws Throwable;
+
+	/**
+	 * Aportes del ESQUEMA VIEJO de una carga Petro: sin {@code APRTIDAS} ni {@code CRARCDGO}
+	 * (las cargas de jun-2025 a jul-2026 se aplicaron sin enlace), donde la carga solo figura al
+	 * final de la glosa: {@code "Aporte cesantia - CargaArchivo: N"} (o
+	 * {@code "... (reubicado desde M/AAAA) - CargaArchivo: N"}). Se filtra por el sufijo
+	 * anclado al final para que la 35 no arrastre a la 352. Excluye los contra-movimientos
+	 * (tipo REVERSO) y los ya reversados ({@code APRTIDST = 0}). Base de la anulación del
+	 * reproceso de una carga — {@code ReprocesoCargaPetroService}.
+	 *
+	 * <p>Medido en la base del proyecto (2026-10-28): la carga 352 tiene 2.635 aportes así
+	 * (160.350,81), con devengo poblado por el backfill.</p>
+	 *
+	 * @param idCarga Código de la carga (CRD.CRAR)
+	 * @return Aportes sin enlace cuya glosa termina en la carga; vacía si no hay
+	 * @throws Throwable Si ocurre algún error (NO se absorbe: es la base de una anulación)
+	 */
+	List<Aporte> selectVigentesLegadoPorGlosaCarga(Long idCarga) throws Throwable;
+
+	/**
+	 * Mayor número de corrida de reproceso estampado en la glosa de los contra-movimientos
+	 * ({@code "REPROCESO carga N corrida M - ..."}) para la carga dada; {@code null} si nunca
+	 * se reprocesó. Gemelo de {@code PagoPrestamoDaoService#selectMaxCorridaReproceso}.
+	 *
+	 * @param idCarga Código de la carga (CRD.CRAR)
+	 * @return Máximo M encontrado, o {@code null}
+	 * @throws Throwable Si ocurre algún error
+	 */
+	Integer selectMaxCorridaReproceso(Long idCarga) throws Throwable;
+
+	/**
+	 * D-022 (reproceso, cuadre Superintendencia C4): tipo de aporte ({@code TPAPCDGO}) del último
+	 * aporte vigente de la entidad con fecha de caja anterior a {@code antesDe}:
+	 * {@code NVL(APRTIDST, 4) <> 0}, mayor {@code APRTFCTR < antesDe} (a igual fecha, mayor código).
+	 * Solo cuentan los tipos de APORTE MENSUAL (9 jubilación personal, 11 cesantía personal): un
+	 * rendimiento (12/24) u otro movimiento no es un tipo de aporte que el AH pueda recibir (C4,
+	 * 29-oct-2026: el 0,09 de la entidad 5079 terminó en el 12 porque su último movimiento antes de
+	 * jun-2025 era un rendimiento migrado del 31-mar-2025). Ver REPROCESO-CARGA-PETRO.md §4.10.
+	 *
+	 * @param idEntidad Código de la entidad
+	 * @param antesDe   Inicio del mes de la carga (exclusivo)
+	 * @return código del tipo de aporte, o {@code null} si la entidad no tiene aportes anteriores
+	 * @throws Throwable Si ocurre algún error
+	 */
+	Long selectTipoAporteUltimoAnteriorA(Long idEntidad, LocalDateTime antesDe) throws Throwable;
+
+	/**
+	 * D-022 ampliada (reproceso): menor {@code APRTFCTR} de los aportes vigentes
+	 * ({@code NVL(APRTIDST, 4) <> 0}) de la entidad; null si no tiene ninguno.
+	 */
+	LocalDateTime selectFechaPrimerAporteVigente(Long idEntidad) throws Throwable;
 
 }

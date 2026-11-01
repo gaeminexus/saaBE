@@ -20,6 +20,9 @@ import jakarta.ejb.Local;
  *   <li><b>2</b> = mantener el plazo y <b>reducir el valor de la cuota</b></li>
  * </ul>
  *
+ * C16b (2026-10-29): con {@code regenerarTabla = false} el abono se registra sobre la tabla que ya
+ * lo refleja, sin re-amortizar (ver {@code SolicitudAbonoCapital#getRegenerarTabla()}).
+ *
  * El abono se registra en {@code DTPRSLOT} (saldoOtros) de la cuota ancla y en
  * {@code PGPRSLOT} del PagoPrestamo, NUNCA en {@code capitalPagado}: así no contamina la
  * reconstrucción de saldos por cuota del motor (§6.2).
@@ -46,6 +49,51 @@ public interface AbonoCapitalPrestamoService {
      * perderlo. No se aplica el abono.
      */
     String ERR_POLIZA_SIN_CUOTAS_EN_VIGENCIA = "POLIZA_SIN_CUOTAS_EN_VIGENCIA";
+    /**
+     * 422 - C16b: abono sin regenerar tabla que no cuadra — después de aplicarlo,
+     * {@code Σ DTPRCPTL + Σ DTPRSLOT} del préstamo no es igual a su monto ({@code PRSTMNSL}).
+     */
+    String ERR_ABONO_NO_CUADRA_CON_TABLA = "ABONO_NO_CUADRA_CON_TABLA";
+    /**
+     * 422 - D-048, solo en re-proceso: el préstamo tiene pagos vigentes, o cuotas liquidadas, con
+     * fecha POSTERIOR a la del abono. La re-amortización no puede mover esos pagos; hay que
+     * re-procesar el abono antes que ellos (anularlos, abonar, y volver a aplicarlos).
+     */
+    String ERR_PAGOS_POSTERIORES_AL_ABONO = "PAGOS_POSTERIORES_AL_ABONO";
+
+    /**
+     * C16b: valor de {@code EVPR.EVPRMDLD} (modalidad del evento) de un abono registrado SIN
+     * regenerar la tabla. Lo leen el asiento del cobro (haberDesdePagos: sin cuotas historizadas,
+     * reparte el capital entre las cuotas que vencen después del abono) y el asiento único del
+     * camino directo (sin re-bandeo).
+     */
+    long MODALIDAD_SIN_REGENERAR_TABLA = 0L;
+
+    /**
+     * C16b: cómo se guarda en {@code CRD.DCBC.DCBCMDLD} (sin DDL) un abono del CBCR registrado sin
+     * regenerar tabla: {@code 0} = en la cuota vigente; {@code -N} = en la cuota N. Las modalidades
+     * de siempre (1, 2) son positivas, así que no se confunden.
+     */
+    static Long modalidadCobroSinRegenerar(Long numeroCuota) {
+        return numeroCuota == null ? Long.valueOf(0L) : Long.valueOf(-Math.abs(numeroCuota));
+    }
+
+    /** C16b: {@code true} si {@code DCBCMDLD} codifica un abono sin regenerar tabla (0 o negativo). */
+    static boolean esModalidadCobroSinRegenerar(Long modalidadCobro) {
+        return modalidadCobro != null && modalidadCobro <= 0L;
+    }
+
+    /** C16b: cuota indicada en {@code DCBCMDLD} ({@code -N} → N); {@code null} = la vigente. */
+    static Integer numeroCuotaDeModalidadCobro(Long modalidadCobro) {
+        return modalidadCobro != null && modalidadCobro < 0L ? Integer.valueOf((int) -modalidadCobro) : null;
+    }
+
+    /**
+     * C16b — pre-chequeo de SOLO LECTURA que NUNCA lanza, para el abono sin regenerar tabla: la
+     * cuota existe y {@code Σ capital + Σ DTPRSLOT + valorTotal = monto}. Devuelve el motivo o
+     * {@code null}. Mismo uso que {@link #motivoAbonoInviable} (rechazo automático del CBCR).
+     */
+    String motivoAbonoSinRegenerarInviable(Long idPrestamo, double valorTotal, Integer numeroCuota);
 
     /**
      * Calcula cómo quedaría el préstamo tras el abono, SIN escribir nada.
@@ -57,6 +105,14 @@ public interface AbonoCapitalPrestamoService {
      * @throws Throwable Si ocurre un error
      */
     SimulacionAbonoCapital simular(Long idPrestamo, double valor, int modalidad) throws Throwable;
+
+    /**
+     * D-048: {@link #simular(Long, double, int)} a una fecha. Con {@code reproceso = true} el préstamo
+     * tiene que estar al día a {@code fecha} (cuotas con vencimiento {@code <=} fecha liquidadas con
+     * fecha de pago {@code <=} fecha), no hoy. {@code fecha} null = hoy.
+     */
+    SimulacionAbonoCapital simular(Long idPrestamo, double valor, int modalidad, java.time.LocalDate fecha,
+            boolean reproceso) throws Throwable;
 
     /**
      * Aplica el abono a capital en UNA transacción: crea el EventoPrestamo, acumula el monto en
@@ -78,6 +134,13 @@ public interface AbonoCapitalPrestamoService {
      * marcaría la transacción rollback-only y se llevaría el RECHAZADO.
      */
     String motivoAbonoInviable(Long idPrestamo, double valorTotal, int modalidad);
+
+    /**
+     * D-048: {@link #motivoAbonoInviable(Long, double, int)} a la fecha del abono (la misma con la que
+     * se aplicará) y, con {@code reproceso}, con la regla "al día a esa fecha". {@code fecha} null = hoy.
+     */
+    String motivoAbonoInviable(Long idPrestamo, double valorTotal, int modalidad, java.time.LocalDate fecha,
+            boolean reproceso);
 
     /**
      * Abono a capital 100% con aportes del partícipe, llamada DIRECTA que se aplica en el acto, sin

@@ -206,4 +206,114 @@ public interface CierreCarteraDaoService {
      * @throws Throwable : Excepcion
      */
     Object[] selectAportesRegistrados(LocalDate desde, LocalDate hasta) throws Throwable;
+
+    // =====================================================================
+    // C15 — variantes "a fecha de corte" (ver com.saa.ejb.crd.service.ModoCorteCartera).
+    // Con corte == null son idénticas a las de arriba (el comportamiento normal no cambia).
+    // Con corte: préstamos aprobados con PRSTFCHA <= corte (no 0/1/6/7/12), cuotas no
+    // liquidadas AL CORTE, pagos vigentes con PGPRFCHA <= corte (capital = PGPRSLOT si > 0, si
+    // no PGPRCPPG; el abono a capital solo PGPRCPPG — C14b, ModoCorteCartera.CAPITAL_PAGADO_CUOTA_SQL)
+    // y mora con la fórmula del proceso diario a la fecha de corte.
+    // =====================================================================
+
+    /** {@link #selectCapitalPorProductoYVencimiento(Long)} al corte. */
+    List<Object[]> selectCapitalPorProductoYVencimiento(Long idEmpresa, LocalDate corte) throws Throwable;
+
+    /** {@link #selectCuotasPendientesPorPrestamo(Long)} al corte (solo cuotas con capital pendiente). */
+    List<Object[]> selectCuotasPendientesPorPrestamo(Long idEmpresa, LocalDate corte) throws Throwable;
+
+    /** {@link #selectInteresPorTipoPrestamoEnRango(LocalDate, LocalDate)} al corte. */
+    List<Object[]> selectInteresPorTipoPrestamoEnRango(LocalDate desde, LocalDate hasta, LocalDate corte)
+            throws Throwable;
+
+    /** {@link #selectCuotasDevengoMoraEnRango(LocalDate, LocalDate)} al corte. */
+    List<Object[]> selectCuotasDevengoMoraEnRango(LocalDate desde, LocalDate hasta, LocalDate corte)
+            throws Throwable;
+
+    /** {@link #selectCobrablePrestamosHasta(LocalDate)} medido al corte. */
+    List<Object[]> selectCobrablePrestamosHasta(LocalDate hasta, LocalDate corte) throws Throwable;
+
+    /**
+     * Cartera al corte POR OPERACIÓN: la base común de la G48, el CCPM y la provisión de
+     * cartera ⑧ del cierre (D-015: el mismo cálculo).
+     *
+     * @param corte          : Fecha de corte (obligatoria)
+     * @param corteInclusivo : true = la cuota que vence el día del corte e impaga ya es vencida
+     * @return Filas {@code [idPrestamo, idProducto, idTipoPrestamo, idEntidad, porVencer,
+     *         vencido, diasMora, interesVencidoPendiente, moraPendiente, idCuotaAncla,
+     *         interesCuotasDelMes, cuentaIndividual]}; la cuenta individual (aportes TPAPIDST = 1
+     *         con caja <= corte) va solo en la primera operación del partícipe y en 0 si es
+     *         jubilado complementario — regla del generador G48.
+     */
+    List<Object[]> selectOperacionesAlCorte(LocalDate corte, boolean corteInclusivo) throws Throwable;
+
+    /**
+     * D-017 (H4) — mora a devengar al corte por cuota: mora bruta de la cuota vencida impaga
+     * (fórmula del proceso diario a la fecha de corte) menos lo ya reconocido en {@code CRD.MVIC}
+     * (tipo 5 − tipo 6, fecha contable {@code <= corte}). Requiere corte (modo al corte).
+     *
+     * @return Filas {@code [idCuota, idPrestamo, idTipoPrestamo, moraADevengar]}, solo > 0
+     */
+    List<Object[]> selectMoraPorDevengarAlCorte(LocalDate corte, LocalDate inicioDevengo) throws Throwable;
+
+    /**
+     * Saldo contable deudor por cuenta al corte (asientos 1/3 con fecha <= corte), misma regla
+     * de la cuadratura C14.
+     *
+     * @return Filas {@code [cuenta (String), idPlanCuenta (Long), saldoDeudor (Double)]}
+     */
+    List<Object[]> selectSaldoContablePorCuenta(Long idEmpresa, String prefijo, String prefijoExcluido,
+            LocalDate corte) throws Throwable;
+
+    /**
+     * H6: préstamos aprobados (no 0/1/6/7/12) sin asiento de entrega ({@code PRSTASEN} nulo) con
+     * fecha de inicio en el rango.
+     *
+     * @return Filas {@code [idPrestamo, idAsoprep, fechaInicio, monto, idEstado, esSustitucion(0/1)]}
+     */
+    List<Object[]> selectPrestamosSinAsientoEntrega(LocalDate desde, LocalDate hasta) throws Throwable;
+
+    // =====================================================================
+    // D-032 (29-oct-2026) — cuenta por cobrar de cuotas (1.4.05.10) préstamo por préstamo.
+    // =====================================================================
+
+    /**
+     * Lo que la apertura ③ abrió POR PRÉSTAMO: la misma lectura de
+     * {@link #selectCobrablePrestamosHasta(LocalDate, LocalDate)} (cuotas con vto {@code <= hasta}
+     * pendientes al {@code corte}: capital + interés no condonado + mora bruta al corte + desgravamen
+     * + seguro), agrupada por préstamo en vez de por producto. Con {@code hasta} = fin del mes M y
+     * {@code corte} = fin de M−1 reproduce el ③ que abrió M (corrida al corte).
+     *
+     * @return Filas {@code [idPrestamo (Long), abierto (Double)]}
+     */
+    List<Object[]> selectAperturaPorPrestamo(LocalDate hasta, LocalDate corte) throws Throwable;
+
+    /**
+     * Lo que los cobros con asiento en {@code [desde, hasta]} acreditaron en {@code cuenta} (y sus
+     * hijas) POR PRÉSTAMO, sin contar las líneas de complemento de apertura:
+     * <ul>
+     * <li>Petro/Arch: componentes (capital, interés, mora, desgravamen, seguro, interés vencido) de los
+     *     pagos vigentes de las cargas con reparto vigente ({@code CRD.ANCP} sub-proceso 2) en el rango;</li>
+     * <li>cobro CBCR: haber neto de la cuenta en sus asientos ({@code CBCRASN1/ASN2/ASRP}), prorrateado
+     *     entre sus líneas de préstamo por {@code DCBCVLRR} (partes iguales si todas valen 0);</li>
+     * <li>camino directo (precancelación, pago con aportes, cruce): haber neto de la cuenta en el asiento
+     *     {@code PGPRASNT}, prorrateado por los componentes de sus pagos.</li>
+     * </ul>
+     *
+     * @param excluirCarga carga Petro que se está contabilizando (sus pagos ya existen; null = ninguna)
+     * @return Filas {@code [idPrestamo (Long), cobrado (Double)]}
+     */
+    List<Object[]> selectCobradoPuentePorPrestamo(Long idEmpresa, String cuenta, LocalDate desde, LocalDate hasta,
+            Long excluirCarga) throws Throwable;
+
+    /**
+     * Haber de {@code cuenta} en los repartos Petro vigentes del rango que no es pago de préstamo
+     * (haber del reparto − componentes de los pagos de la carga): los excedentes D-010.
+     */
+    double selectNoAtribuiblePetro(Long idEmpresa, String cuenta, LocalDate desde, LocalDate hasta, Long excluirCarga)
+            throws Throwable;
+
+    /** Débito neto de {@code cuenta} en las líneas de complemento de apertura de los asientos vigentes del rango. */
+    double selectComplementoRegistrado(Long idEmpresa, String cuenta, LocalDate desde, LocalDate hasta)
+            throws Throwable;
 }

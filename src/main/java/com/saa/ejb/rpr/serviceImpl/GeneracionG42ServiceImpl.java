@@ -5,15 +5,14 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.YearMonth;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 
 import com.saa.ejb.crd.service.AporteService;
 import com.saa.ejb.crd.service.EntidadService;
-import com.saa.ejb.crd.service.HistorialSueldoService;
 import com.saa.ejb.rpr.dao.SaldoCuentaG42DaoService;
 import com.saa.ejb.rpr.service.GeneracionG42Service;
+import com.saa.ejb.rpr.service.GeneracionGException;
 import com.saa.model.crd.Entidad;
 import com.saa.model.rpr.DetalleEjecucionReporte;
 import com.saa.model.rpr.SaldoCuentaG42;
@@ -25,7 +24,6 @@ import jakarta.ejb.Stateless;
 public class GeneracionG42ServiceImpl implements GeneracionG42Service {
 
     @EJB private AporteService            aporteService;
-    @EJB private HistorialSueldoService   historialSueldoService;
     @EJB private EntidadService           entidadService;
     @EJB private SaldoCuentaG42DaoService cg42DaoService;
 
@@ -53,14 +51,23 @@ public class GeneracionG42ServiceImpl implements GeneracionG42Service {
         List<Object[]> rendimientos   = aporteService.selectSumaRendimientoPorEntidad(fechaCorte);
         List<Object[]> patronales     = aporteService.selectSumaPatronalPorEntidad(fechaCorte);
         List<Object[]> personales     = aporteService.selectSumaPersonalPorEntidad(fechaCorte);
-        List<Object[]> aportePersonal = historialSueldoService.selectSumaAportePersonalPorEntidad(fechaCorte);
-        List<Object[]> tiposAporte    = aporteService.selectTiposAportePorEntidad(fechaCorte);
+        // D-038: aporte personal del MES = aportes personales 9/11 del período efectivo (devengo), ya no el
+        // sueldo vigente hoy en HSTR (que hacía que un mes pasado saliera con el sueldo de hoy).
+        List<Object[]> aportePersonal = aporteService.selectAportePersonalDelPeriodoPorEntidad(
+                LocalDate.of((int) anio, (int) mes, 1));
+        // D-038: tipo de prestación por saldo de cada grupo de prestación (CRD.TPAP.TPAPTPPR).
+        List<Object[]> gruposPrestacion = aporteService.selectSumaPorGrupoPrestacionPorEntidad(fechaCorte);
 
         System.out.println("G42 - Rendimientos: "   + rendimientos.size()   + " entidades");
         System.out.println("G42 - Patronales: "      + patronales.size()     + " entidades");
         System.out.println("G42 - Personales: "      + personales.size()     + " entidades");
         System.out.println("G42 - AportePersonal: "  + aportePersonal.size() + " entidades");
-        System.out.println("G42 - TiposAporte: "     + tiposAporte.size()    + " registros");
+        System.out.println("G42 - GruposPrestacion: " + gruposPrestacion.size() + " registros");
+        if (gruposPrestacion.isEmpty() && !(rendimientos.isEmpty() && patronales.isEmpty() && personales.isEmpty())) {
+            // Sin grupos el tipo de prestación saldría "C" para todos: falta la columna/los datos del script 338.
+            throw new GeneracionGException("G42: ningún tipo de aporte tiene grupo de prestación (CRD.TPAP.TPAPTPPR). "
+                    + "Aplicar el script 338_D038_TIPO_PRESTACION_TPAP.sql antes de generar.");
+        }
 
         // Si no hay ningún dato en ningún grupo → G42 vacío, OK
         if (rendimientos.isEmpty() && patronales.isEmpty() && personales.isEmpty() && aportePersonal.isEmpty()) {
@@ -69,15 +76,16 @@ public class GeneracionG42ServiceImpl implements GeneracionG42Service {
         }
 
         // -------------------------------------------------------
-        // 1.5. Construir mapa de tipos de aporte por entidad para calcular tipoPrestacion
-        //      Regla: tipoAporte=11 → C, tipoAporte=9 → J, ambos → M
+        // 1.5. Saldo por grupo de prestación (J / C) por entidad, para el tipo de prestación
         // -------------------------------------------------------
-        Map<Long, java.util.Set<Long>> mapaTiposAporte = new HashMap<>();
-        for (Object[] fila : tiposAporte) {
+        Map<Long, double[]> mapaGrupos = new HashMap<>(); // [0] = J, [1] = C
+        for (Object[] fila : gruposPrestacion) {
             Long codigoEntidad = toLong(fila[0]);
-            Long codigoTipoAporte = toLong(fila[1]);
-            if (codigoEntidad == null || codigoTipoAporte == null) continue;
-            mapaTiposAporte.computeIfAbsent(codigoEntidad, k -> new HashSet<>()).add(codigoTipoAporte);
+            String grupo       = fila[1] != null ? fila[1].toString().trim() : null;
+            Double suma        = toDouble(fila[2]);
+            if (codigoEntidad == null || grupo == null || suma == null) continue;
+            double[] s = mapaGrupos.computeIfAbsent(codigoEntidad, k -> new double[2]);
+            if ("J".equals(grupo)) s[0] += suma; else if ("C".equals(grupo)) s[1] += suma;
         }
 
         // -------------------------------------------------------
@@ -110,7 +118,7 @@ public class GeneracionG42ServiceImpl implements GeneracionG42Service {
             obtenerOCrear(mapaRegistros, codigoEntidad, detalle).setSaldoAportePersonal(suma);
         }
 
-        // Grupo 4 — Aporte Personal (desde HistorialSueldo estado=99)
+        // Grupo 4 — Aporte Personal del mes (aportes 9/11 del período efectivo, D-038)
         for (Object[] fila : aportePersonal) {
             Long codigoEntidad = toLong(fila[0]);
             Double suma        = toDouble(fila[1]);
@@ -154,7 +162,7 @@ public class GeneracionG42ServiceImpl implements GeneracionG42Service {
                 if (nuevo.getSaldoAportePersonal() != null) existente.setSaldoAportePersonal(nuevo.getSaldoAportePersonal());
                 if (nuevo.getAportePersonal()      != null) existente.setAportePersonal(nuevo.getAportePersonal());
                 // Recalcular tipoPrestacion también en UPDATE
-                String tipoPrestacionUpd = calcularTipoPrestacion(mapaTiposAporte.get(codigoEntidad));
+                String tipoPrestacionUpd = calcularTipoPrestacion(mapaGrupos.get(codigoEntidad));
                 existente.setTipoPrestacion(tipoPrestacionUpd);
                 cg42DaoService.save(existente, existente.getCodigo());
                 System.out.println("G42 UPDATE entidad: " + codigoEntidad + " tipoPrestacion: " + tipoPrestacionUpd);
@@ -170,7 +178,7 @@ public class GeneracionG42ServiceImpl implements GeneracionG42Service {
                 nuevo.setTipoIdentificacion("C");
                 
                 // Calcular tipoPrestacion basándose en los tipos de aporte
-                String tipoPrestacion = calcularTipoPrestacion(mapaTiposAporte.get(codigoEntidad));
+                String tipoPrestacion = calcularTipoPrestacion(mapaGrupos.get(codigoEntidad));
                 nuevo.setTipoPrestacion(tipoPrestacion);
                 
                 cg42DaoService.save(nuevo, null);
@@ -216,30 +224,20 @@ public class GeneracionG42ServiceImpl implements GeneracionG42Service {
         return ((Number) obj).doubleValue();
     }
 
+    /** Medio centavo: un grupo cuyo saldo neto queda en cero no da prestación. */
+    static final double TOLERANCIA_SALDO = 0.005;
+
     /**
-     * Calcula el tipo de prestación basándose en los tipos de aporte de la entidad.
-     * Regla:
-     * - Si solo tiene tipoAporte = 11 → "C" (Cesantía)
-     * - Si solo tiene tipoAporte = 9  → "J" (Jubilación)
-     * - Si tiene ambos (9 y 11)       → "M" (Mixto)
-     * - Si no tiene ninguno           → null
+     * Tipo de prestación de la cuenta individual (tabla 194: C cesantía, J jubilación, M mixto), D-038.
+     * {@code saldos[0]} = saldo del grupo J, {@code saldos[1]} = saldo del grupo C (CRD.TPAP.TPAPTPPR).
+     * M si los dos grupos tienen saldo distinto de cero; C o J si solo uno; C si ninguno (no ocurre:
+     * todo sujeto de la G42 tiene algún saldo). Reproduce 4.564 de los 4.585 sujetos de la G42 de mayo 2025.
      */
-    private String calcularTipoPrestacion(java.util.Set<Long> tiposAporte) {
-        if (tiposAporte == null || tiposAporte.isEmpty()) {
-            return "C"; // Valor por defecto
-        }
-
-        boolean tiene9  = tiposAporte.contains(9L);
-        boolean tiene11 = tiposAporte.contains(11L);
-
-        if (tiene9 && tiene11) {
-            return "M"; // Mixto
-        } else if (tiene11) {
-            return "C"; // Cesantía
-        } else if (tiene9) {
-            return "J"; // Jubilación
-        }
-
-        return "C"; // Valor por defecto si no coincide ningún tipo conocido
+    static String calcularTipoPrestacion(double[] saldos) {
+        boolean jubilacion = saldos != null && Math.abs(saldos[0]) >= TOLERANCIA_SALDO;
+        boolean cesantia   = saldos != null && Math.abs(saldos[1]) >= TOLERANCIA_SALDO;
+        if (jubilacion && cesantia) return "M";
+        if (jubilacion)             return "J";
+        return "C";
     }
 }

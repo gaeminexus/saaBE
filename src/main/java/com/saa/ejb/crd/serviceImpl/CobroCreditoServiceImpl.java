@@ -154,6 +154,10 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
     @EJB
     private com.saa.ejb.cnt.service.PeriodoService periodoService;
 
+    /** C17: mes cerrado para cartera / contabilidad (CIERRES-BLOQUEANTES.md). */
+    @EJB
+    private com.saa.ejb.cnt.service.EstadoCierreService estadoCierreService;
+
     @EJB
     private CorridaCierreCarteraDaoService corridaCierreCarteraDaoService;
 
@@ -269,7 +273,7 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
                 linea.setPrestamo(buscarPrestamo(lineaSolicitud.getIdPrestamo()));
             }
             linea.setValor(redondear(lineaSolicitud.getValor()));
-            linea.setModalidad(lineaSolicitud.getModalidad());
+            linea.setModalidad(modalidadAPersistir(lineaSolicitud));
             if (lineaSolicitud.getIdTipoAporte() != null) {
                 linea.setTipoAporte(buscarTipoAporte(lineaSolicitud.getIdTipoAporte()));
             }
@@ -336,6 +340,9 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
                     + textoEstado(cobro.getEstado()) + "; solo se puede aprobar un cobro en"
                     + " estado REGISTRADO");
         }
+        // C17: no se aprueba un cobro cuya fecha de afectación cae en un mes ya cerrado.
+        estadoCierreService.validarMovimientoCartera(derivarEmpresaCobro(cobro), cobro.getFechaAfectacion(),
+                "la aprobación del cobro " + idCobro);
         cobro.setEstado(Long.valueOf(CrdEstadoCobro.APROBADO));
         cobro.setUsuarioAprobacion(usuario);
         cobro.setFechaAprobacion(LocalDateTime.now());
@@ -471,7 +478,7 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
                 linea.setPrestamo(buscarPrestamo(lineaSolicitud.getIdPrestamo()));
             }
             linea.setValor(redondear(lineaSolicitud.getValor()));
-            linea.setModalidad(lineaSolicitud.getModalidad());
+            linea.setModalidad(modalidadAPersistir(lineaSolicitud));
             if (lineaSolicitud.getIdTipoAporte() != null) {
                 linea.setTipoAporte(buscarTipoAporte(lineaSolicitud.getIdTipoAporte()));
             }
@@ -544,6 +551,10 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
         // del detalle, en la MISMA transacción que este método: si cualquier línea falla, el
         // contenedor revierte todo y ninguna queda a medias.
         if (estado == CrdEstadoCobro.PROCESADO) {
+            // C17: anular un cobro procesado de un mes cerrado para cartera solo si su contabilidad
+            // también está cerrada (el efecto va al reverso en un mes abierto); si no, reabrir la cartera.
+            estadoCierreService.validarAnulacionCartera(derivarEmpresaCobro(cobro), cobro.getFechaAfectacion(),
+                    "la anulación del cobro " + idCobro);
             String motivoLinea = "Anulación del cobro " + idCobro + ": " + motivo.trim();
             reversarLineasProcesadas(cobro, usuario, motivoLinea);
         }
@@ -591,7 +602,7 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
                 }
             }
             provisionInteresService.reProvisionarPorAnulacion(pagosAnuladosDelCobro, derivarEmpresaCobro(cobro),
-                LocalDate.now(), "REVERSO_CBCR", idCobro, usuario);
+                fechaReProvision(cobro), "REVERSO_CBCR", idCobro, usuario);
         }
 
         cobro.setEstado(Long.valueOf(CrdEstadoCobro.ANULADO));
@@ -702,6 +713,9 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
         }
         String motivoTrim = motivo.trim();
         String motivoLinea = "Reverso del cobro " + idCobro + ": " + motivoTrim;
+        // C17: mismo criterio que la anulación de un cobro procesado.
+        estadoCierreService.validarAnulacionCartera(derivarEmpresaCobro(cobro), cobro.getFechaAfectacion(),
+                "el reverso del cobro " + idCobro);
 
         // Paso 2 — reversar TODAS las líneas del detalle (mismo bucle que anularCobro, ver
         // reversarLineasProcesadas).
@@ -718,7 +732,7 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
             }
         }
         provisionInteresService.reProvisionarPorAnulacion(pagosAnuladosDelReverso, derivarEmpresaCobro(cobro),
-            LocalDate.now(), "REVERSO_CBCR", idCobro, usuario);
+            fechaReProvision(cobro), "REVERSO_CBCR", idCobro, usuario);
 
         // ACUERDO_CONDONACION (2026-09-07, CORRECCION-REVERSO-ACUERDO-CONDONACION.md): además
         // del reverso de línea de arriba, el acuerdo mismo tiene que volver a VIGENTE, y
@@ -876,7 +890,82 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
 
     @Override
     public ResultadoProcesoCobro procesarCobro(Long idCobro, String usuario) throws Throwable {
-        System.out.println("CobroCreditoService.procesarCobro - cobro: " + idCobro);
+        return procesarCobro(idCobro, usuario, false);
+    }
+
+    /** D-019 en CBCR: la misma regla del re-proceso Petro, compartida. */
+    @EJB
+    private com.saa.ejb.crd.service.ReaperturaVigenteAlCorteService reaperturaVigenteAlCorteService;
+
+    /**
+     * Modo re-proceso de un mes pasado (D-019 en el motor de cobros, aprobado por el líder el
+     * 2026-10-28 — docs/logica-negocio/crd/API-REPROCESO-COBRO-FECHA-PASADA.md). Corre ANTES de
+     * cualquier motor y de la corrección H42 de la mora, en la MISMA transacción que el proceso:
+     * si el motor rechaza después, la reapertura también se revierte.
+     *
+     * <p>Se exige pedirlo explícitamente ({@code reproceso: true}) y que la fecha de pago y la de
+     * afectación caigan en un mes anterior al mes en curso: un cobro tardío normal (sin la bandera)
+     * no reabre préstamos cancelados. El corte es el último día del mes de la fecha de PAGO (el
+     * estado del préstamo cuando entró el dinero).</p>
+     *
+     * @return las líneas de lo que se reabrió (vacía si nada cambió)
+     */
+    private List<String> prepararReprocesoFechaPasada(CobroCredito cobro, List<DetalleCobroCredito> detalles)
+            throws Throwable {
+        String tipoOperacion = cobro.getTipoOperacion();
+        if (!CrdTipoOperacionCobro.PAGO_CUOTA.equals(tipoOperacion)
+                && !CrdTipoOperacionCobro.PAGO_MULTIPLE.equals(tipoOperacion)
+                && !CrdTipoOperacionCobro.ABONO_CAPITAL.equals(tipoOperacion)
+                && !CrdTipoOperacionCobro.PRECANCELACION.equals(tipoOperacion)
+                && !CrdTipoOperacionCobro.COBRO_MIXTO.equals(tipoOperacion)) {
+            throw new IncomeException("REPROCESO_NO_APLICA: el modo re-proceso solo aplica a cobros con"
+                    + " préstamo (PAGO_CUOTA, PAGO_MULTIPLE, ABONO_CAPITAL, PRECANCELACION, COBRO_MIXTO);"
+                    + " el cobro " + cobro.getCodigo() + " es " + tipoOperacion);
+        }
+        if (cobro.getFecha() == null || cobro.getFechaAfectacion() == null) {
+            throw new IncomeException("REPROCESO_NO_APLICA: el cobro " + cobro.getCodigo()
+                    + " no tiene fecha de pago o de afectación");
+        }
+        java.time.YearMonth mesEnCurso = java.time.YearMonth.now();
+        if (!java.time.YearMonth.from(cobro.getFecha()).isBefore(mesEnCurso)
+                || !java.time.YearMonth.from(cobro.getFechaAfectacion()).isBefore(mesEnCurso)) {
+            throw new IncomeException("REPROCESO_NO_APLICA: el modo re-proceso es para cobros de un mes"
+                    + " pasado; el cobro " + cobro.getCodigo() + " tiene fecha de pago " + cobro.getFecha()
+                    + " y de afectación " + cobro.getFechaAfectacion() + " (mes en curso " + mesEnCurso
+                    + "). Procéselo sin reproceso.");
+        }
+        // El período de la fecha de afectación tiene que seguir abierto (se validó al registrar;
+        // se repite acá porque entre el registro y el proceso pudo cerrarse).
+        Long idEmpresa = derivarEmpresaCobro(cobro);
+        try {
+            periodoService.verificaPeriodoAbierto(idEmpresa, cobro.getFechaAfectacion());
+        } catch (IncomeException e) {
+            throw new IncomeException("PERIODO_CERRADO: el período contable de la fecha de afectación "
+                    + cobro.getFechaAfectacion() + " está cerrado — " + e.getMessage());
+        }
+
+        LocalDate fechaCorte = java.time.YearMonth.from(cobro.getFecha()).atEndOfMonth();
+        String etiqueta = "REPROCESO CBCR " + cobro.getCodigo() + " (corte " + fechaCorte + ")";
+        List<String> bitacora = new ArrayList<>();
+        Set<Long> preparados = new LinkedHashSet<>();
+        for (DetalleCobroCredito linea : detalles) {
+            if (linea.getPrestamo() == null || linea.getTipoAporte() != null
+                    || !preparados.add(linea.getPrestamo().getCodigo())) {
+                continue;
+            }
+            Prestamo prestamo = buscarPrestamo(linea.getPrestamo().getCodigo());
+            reaperturaVigenteAlCorteService.prepararPrestamoAlCorte(prestamo, fechaCorte, etiqueta, bitacora);
+        }
+        System.out.println("  [REPROCESO] Cobro " + cobro.getCodigo() + " - corte " + fechaCorte + " - "
+                + preparados.size() + " préstamo(s) evaluados vigentes al corte, " + bitacora.size()
+                + " cambio(s): " + bitacora);
+        return bitacora;
+    }
+
+    @Override
+    public ResultadoProcesoCobro procesarCobro(Long idCobro, String usuario, boolean reproceso) throws Throwable {
+        System.out.println("CobroCreditoService.procesarCobro - cobro: " + idCobro
+                + (reproceso ? " - MODO REPROCESO (D-019)" : ""));
         if (usuario == null || usuario.trim().isEmpty()) {
             throw new IncomeException("usuario es obligatorio");
         }
@@ -889,6 +978,10 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
                     + textoEstado(cobro.getEstado()) + "; solo se puede procesar un cobro en"
                     + " estado APROBADO");
         }
+        // C17: validación temprana, antes de la primera escritura: el mes de la fecha de afectación
+        // tiene que estar abierto para cartera y para contabilidad.
+        estadoCierreService.validarMovimientoCartera(derivarEmpresaCobro(cobro), cobro.getFechaAfectacion(),
+                "el procesamiento del cobro " + idCobro);
 
         // Idempotente por (origen, idOrigen) — PLAN-AUDITORIA-BANDAS.md §9, mismo criterio que
         // Petro (§5.1 punto 2). UNA sola vez acá arriba: este método puede llamar a
@@ -905,6 +998,11 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
         String tipoOperacion = cobro.getTipoOperacion();
         LocalDateTime fechaNegocio = cobro.getFecha() != null
                 ? cobro.getFecha().atStartOfDay() : LocalDateTime.now();
+
+        // D-019 en CBCR (modo re-proceso, solo con la bandera): préstamos evaluados vigentes al
+        // corte del mes del cobro ANTES de la mora H42 y de cualquier motor.
+        List<String> reaperturaAlCorte = reproceso
+                ? prepararReprocesoFechaPasada(cobro, detalles) : new ArrayList<>();
 
         // H42 (cobro tardío, FASE 1 — DISENO-COBRO-CON-FECHA-EFECTIVA.md §4quater): si la fecha
         // efectiva del pago es anterior a hoy, la mora que calculó la corrida nocturna hasta
@@ -1050,6 +1148,9 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
                 // informa igual para que quien lea el resultado sepa que el préstamo quedó con
                 // la mora corregida aunque el cobro no se haya podido procesar.
                 resultado.setMoraEliminada(moraEliminadaTotal);
+                // Re-proceso: la reapertura D-019 ya quedó (igual que la mora H42); se informa.
+                resultado.setReproceso(reproceso);
+                resultado.setReaperturaAlCorte(reaperturaAlCorte);
                 return resultado;
             }
 
@@ -1126,6 +1227,9 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
             }
             totalAportesAbono = redondear(totalAportesAbono);
             double valorTotalAbono = redondear(nvl(linea.getValor()) + totalAportesAbono);
+            // C16b: DCBCMDLD 0 / -N = abono sin regenerar tabla (en la cuota vigente / en la N).
+            boolean abonoSinRegenerar = AbonoCapitalPrestamoService.esModalidadCobroSinRegenerar(linea.getModalidad());
+            Integer numeroCuotaAbono = AbonoCapitalPrestamoService.numeroCuotaDeModalidadCobro(linea.getModalidad());
 
             // Pre-chequeo de SOLO LECTURA (AA8), solo si hay aportes: el saldo de aportes NO se
             // reserva al registrar, y la simulación se repite con el TOTAL. Si algo falló, el
@@ -1139,9 +1243,15 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
                     motivoRechazo = "Rechazado automáticamente por el sistema: el saldo de aportes"
                             + " cambió entre el registro y el proceso — " + motivoRechazo;
                 } else {
-                    String motivoSimulacion = abonoCapitalPrestamoService.motivoAbonoInviable(
-                            linea.getPrestamo().getCodigo(), valorTotalAbono,
-                            linea.getModalidad() != null ? linea.getModalidad().intValue() : 0);
+                    String motivoSimulacion = abonoSinRegenerar
+                            ? abonoCapitalPrestamoService.motivoAbonoSinRegenerarInviable(
+                                    linea.getPrestamo().getCodigo(), valorTotalAbono, numeroCuotaAbono)
+                            // D-048: el pre-chequeo se hace a la fecha del abono (la misma con la que se
+                            // aplica más abajo), no hoy, y con la regla de re-proceso si corresponde.
+                            : abonoCapitalPrestamoService.motivoAbonoInviable(
+                                    linea.getPrestamo().getCodigo(), valorTotalAbono,
+                                    linea.getModalidad() != null ? linea.getModalidad().intValue() : 0,
+                                    cobro.getFecha(), reproceso);
                     if (motivoSimulacion != null) {
                         motivoRechazo = "Rechazado automáticamente por el sistema: el abono total ($"
                                 + valorTotalAbono + " = depósito $" + linea.getValor() + " + aportes $"
@@ -1162,6 +1272,8 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
                     resultadoRechazo.setProcesado(false);
                     resultadoRechazo.setMensaje(motivoRechazo);
                     resultadoRechazo.setMoraEliminada(moraEliminadaTotal);
+                    resultadoRechazo.setReproceso(reproceso);
+                    resultadoRechazo.setReaperturaAlCorte(reaperturaAlCorte);
                     return resultadoRechazo;
                 }
             }
@@ -1174,7 +1286,13 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
             // Discriminador de origen: con cobro, el cruce de aportes lo genera CBCRASN2 y el
             // hook contable del abono solo hace el re-bandeo (nunca lo manda el cliente).
             solicitud.setIdCobroCredito(idCobro);
-            solicitud.setModalidad(linea.getModalidad() != null ? linea.getModalidad().intValue() : null);
+            if (abonoSinRegenerar) {
+                solicitud.setRegenerarTabla(Boolean.FALSE);
+                solicitud.setNumeroCuota(numeroCuotaAbono);
+                solicitud.setModalidad(null);
+            } else {
+                solicitud.setModalidad(linea.getModalidad() != null ? linea.getModalidad().intValue() : null);
+            }
             solicitud.setUsuario(usuario);
             solicitud.setObservacion(observacionLinea(cobro, linea));
             solicitud.setFecha(cobro.getFecha());
@@ -1182,6 +1300,10 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
             // idEmpresa lo pone CBCR con la empresa derivada de la cuenta bancaria del cobro,
             // NUNCA la que vino del cliente (contrato API-EMPRESA-CONTABLE-CRD.md §2).
             solicitud.setIdEmpresa(derivarEmpresaCobro(cobro));
+            // D-048: fecha de afectación del cobro (C17 valida ese mes, igual que la precancelación
+            // desde 2026-10-05) y modo re-proceso: "al día" a la fecha del abono, no hoy.
+            solicitud.setFechaAfectacion(cobro.getFechaAfectacion());
+            solicitud.setReproceso(reproceso);
             ResultadoAbonoCapital resultado = abonoCapitalPrestamoService.aplicar(solicitud);
             enlazarEvento(linea, resultado.getIdEvento());
             clasificacionBandaPorPago.putAll(registrarDistribucionBandaEvento(idCobro, derivarEmpresaCobro(cobro),
@@ -1460,6 +1582,14 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
         resultado.setProvisionReversada(provisionReversadaTotal);
         resultado.setIdAsientoReversoProvision(idAsientoReversoProvisionTotal);
         resultado.setIdAsientoCobroTardio(idAsientoCobroTardioTotal);
+        resultado.setReproceso(reproceso);
+        resultado.setReaperturaAlCorte(reaperturaAlCorte);
+        if (reproceso) {
+            resultado.setMensaje("Cobro procesado en modo re-proceso (D-019, corte "
+                    + java.time.YearMonth.from(cobro.getFecha()).atEndOfMonth() + ")."
+                    + (reaperturaAlCorte.isEmpty() ? "" : " Reapertura al corte: " + reaperturaAlCorte.size()
+                        + " cambio(s), ver reaperturaAlCorte."));
+        }
         return resultado;
     }
 
@@ -1595,6 +1725,36 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
             throw new IncomeException("PERIODO_CERRADO: el período contable de la fecha de afectación "
                     + fechaAfectacion + " está cerrado — " + e.getMessage());
         }
+        // C17: además, el mes no puede haber pasado por el cierre–apertura de cartera.
+        estadoCierreService.validarCarteraAbierta(idEmpresa, fechaAfectacion, "cobros (CBCR)");
+    }
+
+    /**
+     * D-043 — Fecha contable de la re-provisión al anular o reversar un cobro PROCESADO.
+     *
+     * <p>El reverso de provisión del proceso se registró con la fecha de afectación del cobro
+     * ({@code reversarPorPagos}). Si el período de esa fecha sigue abierto (ACTIVO o DESMAYORIZADO,
+     * sin cierre contable: {@code PeriodoService.verificaPeriodoAbierto}), los asientos del cobro
+     * se anulan en su sitio ({@code AsientoService.anulaAsiento}) y la re-provisión va en esa misma
+     * fecha: el mes queda como si el cobro no se hubiera procesado. Si el período ya está mayorizado
+     * o cerrado, los asientos del cobro se reversan en el período abierto y la re-provisión va con la
+     * fecha de hoy, como antes. Antes iba siempre con la fecha de hoy: al reversar en re-proceso un
+     * cobro de un mes pasado dejaba un asiento de re-provisión en el mes en curso.</p>
+     */
+    private LocalDate fechaReProvision(CobroCredito cobro) throws Throwable {
+        LocalDate fechaAfectacion = cobro.getFechaAfectacion();
+        if (fechaAfectacion == null || fechaAfectacion.isAfter(LocalDate.now())) {
+            return LocalDate.now();
+        }
+        try {
+            if (periodoService.verificaPeriodoAbierto(derivarEmpresaCobro(cobro), fechaAfectacion) != null) {
+                return fechaAfectacion;
+            }
+        } catch (IncomeException e) {
+            System.out.println("  Re-provisión del cobro " + cobro.getCodigo() + " con fecha de hoy: el período de "
+                    + fechaAfectacion + " no está abierto (" + e.getMessage() + ")");
+        }
+        return LocalDate.now();
     }
 
     /**
@@ -1878,13 +2038,38 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
                 }
             }
 
-            if (esAbono) {
+            if (esAbono && Boolean.FALSE.equals(linea.getRegenerarTabla())) {
+                // C16b (D-030): abono sobre una tabla que ya lo refleja — sin modalidad. Se valida
+                // ya (solo lectura) que la tabla cuadre con él; al procesar se vuelve a validar.
+                if (linea.getModalidad() != null) {
+                    throw new IncomeException("Con regenerarTabla = false no se envía modalidad: la tabla"
+                            + " no se re-amortiza");
+                }
+                if (linea.getNumeroCuotaAbono() != null && linea.getNumeroCuotaAbono() <= 0L) {
+                    throw new IncomeException("numeroCuotaAbono debe ser un número de cuota mayor a cero");
+                }
+                double totalAbono = nvl(linea.getValor());
+                if (linea.getAportes() != null) {
+                    for (DesgloseAporte renglon : linea.getAportes()) {
+                        totalAbono += renglon != null ? nvl(renglon.getValor()) : 0.0;
+                    }
+                }
+                String motivo = abonoCapitalPrestamoService.motivoAbonoSinRegenerarInviable(linea.getIdPrestamo(),
+                        redondear(totalAbono), linea.getNumeroCuotaAbono() != null
+                                ? Integer.valueOf(linea.getNumeroCuotaAbono().intValue()) : null);
+                if (motivo != null) {
+                    throw new IncomeException(motivo);
+                }
+            } else if (esAbono) {
                 if (linea.getModalidad() == null || (linea.getModalidad() != 1L && linea.getModalidad() != 2L)) {
                     throw new IncomeException("modalidad es obligatoria en ABONO_CAPITAL y debe ser"
                             + " 1 (reduce plazo) o 2 (reduce cuota)");
                 }
             } else if (linea.getModalidad() != null) {
                 throw new IncomeException("modalidad solo aplica a ABONO_CAPITAL");
+            }
+            if (!esAbono && (linea.getRegenerarTabla() != null || linea.getNumeroCuotaAbono() != null)) {
+                throw new IncomeException("regenerarTabla y numeroCuotaAbono solo aplican a ABONO_CAPITAL");
             }
 
             // Consumo de aportes (precancelación mixta, 2026-08-30): SOLO en PRECANCELACION —
@@ -2017,6 +2202,18 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
      * (ÍTEM 5, tipo 8) — no reimplementado ahí porque esa lista es privada de ese DAO y acá
      * hace falta para UN pago en la mano, no una consulta en lote.
      */
+    /**
+     * C16b: {@code DCBCMDLD} a guardar. Un ABONO_CAPITAL con {@code regenerarTabla = false} se
+     * codifica sin DDL ({@link AbonoCapitalPrestamoService#modalidadCobroSinRegenerar}: 0 = cuota
+     * vigente, -N = cuota N); cualquier otra línea guarda la modalidad tal cual vino.
+     */
+    private Long modalidadAPersistir(DetalleRegistroCobroDTO lineaSolicitud) {
+        if (Boolean.FALSE.equals(lineaSolicitud.getRegenerarTabla())) {
+            return AbonoCapitalPrestamoService.modalidadCobroSinRegenerar(lineaSolicitud.getNumeroCuotaAbono());
+        }
+        return lineaSolicitud.getModalidad();
+    }
+
     private boolean esTipoPagoConAbonoCapital(String tipoPago) {
         return ProcesoPagoPrestamoService.TIPO_ABONO_CAPITAL.equals(tipoPago)
                 || ProcesoPagoPrestamoService.TIPO_PRECANCELACION.equals(tipoPago)
@@ -2397,6 +2594,15 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
         lineas.add(debe);
         lineas.addAll(contabilizacionIndividualCreditoService.lineasReparto(idPlantillaReparto, totalAportes,
                 totalPrestamosCerrado, "Cobro crédito " + cobro.getCodigo() + " - reparto"));
+        // D-024 (28-oct-2026): si el reparto acredita 1.4.05.05 / 1.4.05.10 por más de lo abierto
+        // en el mes, las líneas que abren la diferencia (D por cobrar / H por aplicar) van en
+        // este MISMO asiento: el reverso del cobro anula el reparto y con él el complemento.
+        // D-032 (29-oct-2026): lo que el reparto acredita a 1.4.05.10 se reparte entre los préstamos del
+        // cobro por el valor de cada línea, la misma regla con que el cierre lee después este asiento.
+        lineas.addAll(contabilizacionIndividualCreditoService.complementoApertura(idEmpresa,
+                cobro.getFechaAfectacion(), lineas, "cobro " + cobro.getCodigo(),
+                contabilizacionIndividualCreditoService.repartePorLineasDePrestamo(detalles, totalPrestamosCerrado),
+                0.0, null).getLineas());
 
         // Cuadre explícito, no asumido: si la plantilla de reparto tuviera el movimiento
         // configurado al revés de lo que espera Petro, esto lo revienta acá en vez de dejar
@@ -2580,6 +2786,13 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
         if (tramoAbiertoPagadoConAportes > 0.0) {
             lineasCierreTramoAportes.addAll(contabilidadPrestamoService.lineasCierreApertura(idEmpresa,
                     tramoAbiertoPagadoConAportes, "cobro " + cobro.getCodigo() + " (tramo pagado con aportes)"));
+            // D-024: el cierre del tramo acredita 1.4.05.10; si supera lo abierto en el mes, se
+            // abre la diferencia en este mismo asiento (líneas autobalanceadas: no tocan el cuadre).
+            lineasCierreTramoAportes.addAll(contabilizacionIndividualCreditoService.complementoApertura(idEmpresa,
+                    cobro.getFechaAfectacion(), lineasCierreTramoAportes,
+                    "cobro " + cobro.getCodigo() + " (tramo pagado con aportes)",
+                    contabilizacionIndividualCreditoService.repartePorLineasDePrestamo(detalles,
+                            tramoAbiertoPagadoConAportes), 0.0, null).getLineas());
         }
 
         List<DetalleAsiento> lineas = new ArrayList<>();

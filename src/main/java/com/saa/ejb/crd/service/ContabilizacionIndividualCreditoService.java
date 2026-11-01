@@ -58,6 +58,14 @@ public interface ContabilizacionIndividualCreditoService {
             String prefijoDescripcion) throws Throwable;
 
     /**
+     * C15 / D-017 (H4): línea HABER de ingreso por mora NO devengada (5.1.02.xx del tipo de
+     * préstamo, papel 40 de la plantilla 17 de devengo) — el excedente que
+     * {@code ProvisionInteresService#separarMoraNoDevengada} separa de la mora cobrada.
+     */
+    DetalleAsiento lineaIngresoMora(Long idEmpresa, Long idTipoPrestamo, double valor, String prefijoDescripcion)
+            throws Throwable;
+
+    /**
      * Línea de seguro de incendio (aux1 42 hipotecario / 43 prendario). Solo esos dos tipos de
      * préstamo tienen esta cuenta — para cualquier otro tipo con valor &gt; 0, falla fuerte.
      */
@@ -307,6 +315,74 @@ public interface ContabilizacionIndividualCreditoService {
      */
     List<DetalleAsiento> lineasReparto(Long idPlantilla, double totalAportes, double totalPrestamos,
             String prefijoDescripcion) throws Throwable;
+
+    /**
+     * D-024 (28-oct-2026, decisión del líder) — complemento de apertura. Toma las líneas de un
+     * asiento de cobro que está por grabarse ({@code lineasDelCobro}) y mide cuánto acredita en
+     * las cuentas por cobrar del período: {@code APORTES_POR_COBRAR} (1.4.05.05) y
+     * {@code PRESTAMOS_POR_COBRAR} (1.4.05.10) de la plantilla de apertura (alterno 1, la MISMA
+     * que usa el ③ del cierre). Si lo acreditado en una de ellas supera su saldo abierto —saldo
+     * deudor contable al ÚLTIMO DÍA DEL MES de {@code fecha}, asientos activos o mayorizados,
+     * la misma lectura que la cuadratura C14/C15 ({@code CierreCarteraDaoService
+     * #selectSaldoContablePorCuenta})—, devuelve las líneas que abren la diferencia con la
+     * plantilla de apertura tal como la declara: D por cobrar / H por aplicar (2.3.02.05 /
+     * 2.3.02.10). Si lo acreditado no supera lo abierto, devuelve un complemento vacío: lo no
+     * cobrado lo cierra el ⑥ del cierre.
+     *
+     * <p>Por qué el saldo contable y no el esperado del ③: el saldo ya descuenta lo que otros
+     * cobros del mes acreditaron antes (Petro, Arch, cobros por banco). El fin de mes (y no el
+     * día del cobro) para que un cobro de mitad de mes vea también lo ya registrado con fecha de
+     * fin de mes. Un saldo NEGATIVO heredado cuenta como cero: el complemento nunca supera lo que
+     * el propio cobro acredita (no repara diferencias de meses anteriores, que se cuadran aparte).</p>
+     *
+     * @param idEmpresa      empresa contable
+     * @param fecha          fecha del asiento del cobro (se lleva al fin de su mes)
+     * @param lineasDelCobro líneas del asiento del cobro, todavía sin grabar
+     * @param referencia     p. ej. {@code "carga 352"} o {@code "cobro 201"}, para las glosas
+     * @return el complemento (vacío si no hace falta); nunca null
+     */
+    com.saa.ejb.crd.service.dto.ComplementoAperturaCobro complementoApertura(Long idEmpresa, LocalDate fecha,
+            List<DetalleAsiento> lineasDelCobro, String referencia) throws Throwable;
+
+    /**
+     * D-032 (29-oct-2026, decisión del líder) — complemento de apertura de CUOTAS por préstamo. Igual
+     * que {@link #complementoApertura(Long, LocalDate, List, String)} para aportes (por cuenta), pero
+     * el lado cuotas ({@code 1.4.05.10}), cuando
+     * {@link com.saa.ejb.crd.service.ModoCorteCartera#neteoPorPrestamo} está activo para el mes del
+     * cobro, se mide préstamo por préstamo contra lo que la apertura ③ abrió de cada uno
+     * ({@link com.saa.ejb.crd.service.dto.PuentePrestamosMes}): complemento de este cobro =
+     * [Σ max(cobrado − abierto, 0) del mes, contando este cobro, + lo no atribuible a préstamos] −
+     * complementos ya registrados en el mes. Así se abre al cobrar lo que la apertura no abrió (cuotas
+     * que vencen después del mes, préstamos nuevos, mora del mes, excedentes D-010) y, si un cobro
+     * anterior del mes no lo abrió, lo recoge el siguiente. Con la regla inactiva, idéntico al D-024.
+     *
+     * @param cobradoPorPrestamo lo que este cobro acredita en 1.4.05.10 por préstamo (null = regla D-024)
+     * @param noAtribuible       lo que este cobro acredita en 1.4.05.10 sin ser pago de un préstamo
+     *                           (excedentes Petro D-010); 0 si no hay
+     * @param excluirCarga       carga Petro que se está contabilizando (sus pagos ya existen); null si no
+     */
+    com.saa.ejb.crd.service.dto.ComplementoAperturaCobro complementoApertura(Long idEmpresa, LocalDate fecha,
+            List<DetalleAsiento> lineasDelCobro, String referencia, java.util.Map<Long, Double> cobradoPorPrestamo,
+            double noAtribuible, Long excluirCarga) throws Throwable;
+
+    /**
+     * D-032 — la cuenta por cobrar de cuotas del mes que termina en {@code finMes}, préstamo por
+     * préstamo: abierto por la apertura (lectura al corte del mes anterior), cobrado por los cobros
+     * del mes con asiento vigente, lo no atribuible (excedentes Petro) y el complemento registrado.
+     *
+     * @param cuenta       cuenta por cobrar de cuotas (línea PRESTAMOS_POR_COBRAR de la plantilla de apertura)
+     * @param excluirCarga carga Petro a dejar fuera (la que se está contabilizando), o null
+     */
+    com.saa.ejb.crd.service.dto.PuentePrestamosMes puentePrestamosMes(Long idEmpresa, String cuenta, LocalDate finMes,
+            Long excluirCarga) throws Throwable;
+
+    /**
+     * D-032 — reparte lo que un cobro CBCR acredita en 1.4.05.10 entre sus líneas de préstamo por el
+     * valor de cada línea (partes iguales si todas valen 0): la MISMA regla con que
+     * {@code CierreCarteraDaoService#selectCobradoPuentePorPrestamo} lee después ese asiento.
+     */
+    java.util.Map<Long, Double> repartePorLineasDePrestamo(List<com.saa.model.crd.DetalleCobroCredito> detalles,
+            double monto);
 
     /**
      * Líneas "por aplicar" ({@code CrdLineaAsiento#APORTES_POR_APLICAR}/{@code
