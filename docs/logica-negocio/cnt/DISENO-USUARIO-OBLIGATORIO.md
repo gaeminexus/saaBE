@@ -103,3 +103,20 @@ El reproceso del cuadre corre con el código de `main`.
 ## 10. Usuario REPROCESO creado en producción (2026-11-01)
 `cnt/sql/c20-04` corrido: `SCP.PJRQ` 1562 «REPROCESO» (PGSPCDGO 9, nivel 1, padre 51), sin filas en `PDCN`, así que
 no puede entrar al sistema. Falta crearlo también en la base del reproceso (lo hace el árbitro del cuadre).
+
+## 11. U-5 — defensa central, DECIDIDA por el usuario (2026-11-01)
+> «Sí, métela en este EAR, teniendo en cuenta que si esa defensa salta, el proceso que la generó no se debe
+> ejecutar; no podemos dejar datos ejecutados en un módulo pero no contabilizados.»
+
+**Requisito de atomicidad (obligatorio):** si `grabarAsiento` o la anulación rechazan el usuario, la
+transacción del proceso de negocio entero se revierte. Para garantizarlo:
+1. La excepción de rechazo es `@ApplicationException(rollback = true)` (`UsuarioInvalidoException`) y se propaga:
+   **ningún llamador puede atraparla y seguir.**
+2. El asiento se crea en la **misma transacción** que los datos del proceso. Un asiento en `REQUIRES_NEW`,
+   asíncrono o después del commit del negocio es un hueco: si falla, el negocio ya quedó grabado.
+3. Los lotes que absorben errores fila por fila (`CORRECCION_MANEJO_EXCEPCIONES_DAO.md`) son válidos solo si
+   cada fila es una unidad atómica (negocio + asiento juntos) y la fila que falla no deja nada.
+4. Inventario previo obligatorio de esos tres puntos; cada hueco se corrige antes de activar la defensa.
+5. Los rellenos centrales (`AsientoContableServiceImpl:719`, `AsientoServiceImpl:688/712`,
+   `CierrePeriodoContable:212`) se reemplazan por el rechazo. El usuario tiene que existir (helper), así
+   que «REPROCESO» pasa.
