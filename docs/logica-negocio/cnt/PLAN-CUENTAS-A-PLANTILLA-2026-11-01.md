@@ -77,3 +77,7 @@ estado financiero por rubro 250). Los literales están concentrados en 4 archivo
   - (4) el usuario no pegó salida; se asume vacía.
   - **→ P4-B y P4-C aprobados.** Una cuenta sin grupo con saldo 0 se ignora sin advertencia; con
     saldo distinto de 0, advertencia.
+- **`crd/sql/358` corrido en producción (2026-11-01):** las 10 madres dan IGUAL, con una sola fila
+  y su `.25` existente. `1.3.12` tiene 6 bandas, con `1.3.12.00` como banda 1, y la de más días
+  sigue siendo la `.25`. **→ Aprobado P3-arranque:** la cuenta que absorbe en modo arranque es la
+  banda de mayor número (`BNDPNMRO`) de cada madre en `CRD.BNDP`. Sin literal y sin semilla.
