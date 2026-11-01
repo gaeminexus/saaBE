@@ -194,3 +194,15 @@ Para destrabar la carga 492 antes del pase grande. Coincide con el «A1» del eq
     del mes.
   - El modelo `aporte.ts` agrega `periodoDevengo`. La fecha llega como arreglo de Jackson o como
     texto ISO: hay que aceptar las dos.
+
+## 7. U3, devolución: DECIDIDA por el usuario (2026-11-01)
+- **Cuenta:** la existente **`2.3.90.90.10 SOCIOS POR PAGAR`** (creada con `crd/sql/322`, la misma
+  que usan los desembolsos). La misma cuenta para una devolución de aportes y una de préstamos.
+- **Asiento al procesar la carga:** DEBE la cuenta puente de donde vino el dinero (`2.3.02.05`
+  aportes por aplicar, o `2.3.02.10` préstamos por aplicar, según el producto de la fila) / HABER
+  `2.3.90.90.10`. La puente queda en cero (control D-024 del cierre).
+- **Pago:** se registra un pago programado al partícipe en la bandeja de Tesorería (un origen nuevo
+  de la carga, como los demás pagos a partícipes). Tesorería lo paga **en el mismo mes o lo
+  acumula**, cuando decida. El pago debita `2.3.90.90.10` contra el banco, por el circuito existente.
+- **Implementación:** junto con el destino del sobrante (B8 del plan), después de que el usuario
+  corra el DDL que lo soporta.

@@ -21,7 +21,7 @@ reporta.
   - **U2:** «siguiente cuota» = la cuota pendiente más antigua (vencimiento) entre los préstamos
     VIGENTE y EN_MORA del partícipe. Plazo vencido sigue fuera (decisión del 2026-09-01).
   - **U4:** el tipo 22 deja de bloquear cuando el reparto por vigencias absorbe el monto.
-  - **U3 (devolución): BLOQUEADA**, falta la cuenta contable del contador. No se implementa el
+  - **U3 (devolución): DECIDIDA el 2026-11-01**: cuenta existente `2.3.90.90.10 SOCIOS POR PAGAR`, la misma para aportes y préstamos; pago en el mismo mes o acumulado (DISENO-AFECTACION-MANUAL-V2.md §7). Entra en el B8. (Texto anterior: «falta la cuenta contable del contador. No se implementa el
     destino devolución en este plan.
 - **Estados 12/13:** pendiente de medir (`crd/sql/350`); no se toca el motor en este plan.
 
