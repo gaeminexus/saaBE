@@ -454,6 +454,16 @@ de mora; con el motor eso deja de ser una limitación, porque ya no hace falta q
 **Desde el 2026-08-31, una AVPC sin cuota YA NO se omite**: si tiene tipo de aporte va por
 §3.6b; si no tiene ninguno de los dos, aborta la carga (ver el punto 2 de §3.3).
 
+**Desde el 2026-10-31, las AVPC se aplican también en las filas AH y en el HS huérfano.** Hasta
+esa fecha `verificarYAplicarAfectacionesManualesTotales` solo se llamaba desde
+`aplicarPagoParticipe` (filas PE/PH/PQ/PP): una fila AH iba directo al reparto por devengo y un HS
+huérfano a buscar préstamo candidato, **ignorando sin aviso** la afectación del operador (carga
+492: AVPC 688-692 a cesantía, la carga abortaba en recibido ≠ aplicado). Ahora `aplicarAporteAH`
+(después de `restaurarActivoPorPago`) y `procesarSeguroIncendioHuerfano` (después del control de
+monto 0) llaman al mismo método. Misma semántica que en préstamos: si la fila tiene AVPC se aplican
+**solo** ellas (todo o nada por fila); lo que no cubran queda sin aplicar y lo atrapa el control
+final. Diseño: `DISENO-AFECTACION-MANUAL-V2.md` §4bis.
+
 **Estado del préstamo** (`verificarYActualizarEstadoPrestamo`):
 - Se escribe en `idEstado` (PRSTIDST). Sale temprano si ya está en estado terminal (3/4/5).
 - Exige `contarCuotasByPrestamo > 0` (un préstamo sin amortización NO se cancela).

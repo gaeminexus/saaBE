@@ -3439,6 +3439,17 @@ private boolean procesarSeguroIncendioHuerfano(ParticipeXCargaArchivo participeH
 		return false;
 	}
 
+	// 2026-10-31 (DISENO-AFECTACION-MANUAL-V2.md §4bis, arreglo urgente de la carga 492): un HS
+	// huerfano con AVPC se resuelve SOLO con ellas, igual que las filas de prestamo; antes se
+	// ignoraban y se buscaba el prestamo candidato. true = "se hizo algo con este HS", que es lo
+	// que el llamador cuenta como exito (mismo significado que la novedad bloqueante).
+	System.out.println("🔍 Verificando existencia de registros AfectacionValoresParticipeCarga (HS huérfano)...");
+	if (verificarYAplicarAfectacionesManualesTotales(participeHS, CODIGO_PRODUCTO_HS, cargaArchivo)) {
+		System.out.println("✅ Se aplicaron afectaciones manuales - HS huérfano finalizado para el partícipe "
+			+ participeHS.getCodigoPetro());
+		return true;
+	}
+
 	System.out.println("  ⚠️ HS HUÉRFANO - Partícipe " + participeHS.getCodigoPetro() + " ("
 		+ participeHS.getNombre() + ") - Monto: $" + montoHS + " - Sin fila PH/PP en esta carga");
 
@@ -4884,6 +4895,21 @@ private int aplicarAporteAH(ParticipeXCargaArchivo participe, CargaArchivo carga
 
 	// Llegó pago: si venía en mora, se pone al día.
 	restaurarActivoPorPago(entidad, montoRecibido);
+
+	// 2026-10-31 (DISENO-AFECTACION-MANUAL-V2.md §4bis, arreglo urgente de la carga 492): las
+	// afectaciones manuales (AVPC) solo se miraban desde aplicarPagoParticipe, asi que una fila AH
+	// con AVPC las ignoraba y repartia por devengo, y la carga abortaba en recibido != aplicado.
+	// Misma semantica que en las filas de prestamo: si la fila tiene AVPC se aplican SOLO ellas
+	// y no corre el devengo. Se devuelve 1 (> 0) para que el llamador la cuente como exito.
+	System.out.println("🔍 Verificando existencia de registros AfectacionValoresParticipeCarga (AH)...");
+	boolean aplicadoManual = verificarYAplicarAfectacionesManualesTotales(participe, CODIGO_PRODUCTO_APORTES, cargaArchivo);
+	if (aplicadoManual) {
+		System.out.println("✅ Se aplicaron afectaciones manuales - AH finalizado para el partícipe "
+			+ participe.getCodigoPetro() + " sin reparto por devengo");
+		System.out.println("========================================");
+		return 1;
+	}
+	System.out.println("   No se encontraron afectaciones manuales - Continuando con el reparto por devengo");
 
 	System.out.println("📥 Monto total recibido: $" + montoRecibido);
 
