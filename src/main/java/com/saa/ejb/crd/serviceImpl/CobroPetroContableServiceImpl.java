@@ -84,6 +84,10 @@ import jakarta.ejb.Stateless;
 @Stateless
 public class CobroPetroContableServiceImpl implements CobroPetroContableService {
 
+    /** U-2: todo proceso que graba valida el usuario PRIMERO. */
+    @jakarta.ejb.EJB
+    private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
     private static final double TOLERANCIA_CUADRE = 0.01;
 
     /** TRCRIDST / ANCPIDST: 1 vigente, 0 anulado/reversado. */
@@ -240,6 +244,8 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
         if (solicitud == null || solicitud.getIdCarga() == null) {
             throw new IncomeException("idCarga es obligatorio");
         }
+        // U-2: lo primero, el usuario existe (queda en la transferencia y en el asiento).
+        solicitud.setUsuario(usuarioValidacionService.validar(solicitud.getUsuario()));
         CargaArchivo carga = buscarCarga(solicitud.getIdCarga());
         exigeNoConfirmada(carga, "registrar una transferencia");
 
@@ -287,6 +293,8 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
     public void anularTransferencia(Long idTransferencia, String usuario) throws Throwable {
         System.out.println("CobroPetroContableService.anularTransferencia - Transferencia: "
                 + idTransferencia);
+        // U-2: lo primero, el usuario existe.
+        usuario = usuarioValidacionService.validar(usuario);
         if (idTransferencia == null) {
             throw new IncomeException("idTransferencia es obligatorio");
         }
@@ -309,6 +317,11 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
     public ResultadoConfirmarRecepcion confirmarRecepcion(Long idCarga,
             SolicitudConfirmarRecepcion solicitud) throws Throwable {
         System.out.println("CobroPetroContableService.confirmarRecepcion - Carga: " + idCarga);
+        // U-2: lo primero, el usuario existe (el asiento de recepción queda a su nombre).
+        if (solicitud == null) {
+            throw new IncomeException("Falta la solicitud de confirmación de la recepción.");
+        }
+        solicitud.setUsuario(usuarioValidacionService.validar(solicitud.getUsuario()));
 
         // Validación 1: la carga existe.
         CargaArchivo carga = buscarCarga(idCarga);
@@ -508,6 +521,11 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
     public ResultadoReversarRecepcion reversarRecepcion(Long idCarga,
             SolicitudReversarRecepcion solicitud) throws Throwable {
         System.out.println("CobroPetroContableService.reversarRecepcion - Carga: " + idCarga);
+        // U-2: lo primero, el usuario existe.
+        if (solicitud == null) {
+            throw new IncomeException("Falta la solicitud de reverso de la recepción.");
+        }
+        solicitud.setUsuario(usuarioValidacionService.validar(solicitud.getUsuario()));
         CargaArchivo carga = buscarCarga(idCarga);
 
         if (carga.getFechaAutorizacionContabilidad() == null) {
@@ -1494,9 +1512,12 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
      * asiento salía «SISTEMA» por el relleno de cnt. Un proceso automático debe pasar su usuario explícito.
      */
     private void exigeUsuario(String usuario, String que, Long idCarga) throws Throwable {
-        if (usuario == null || usuario.trim().isEmpty()) {
+        // U-2: además de no vacío, el usuario tiene que existir (helper único).
+        try {
+            usuarioValidacionService.validar(usuario);
+        } catch (com.saa.basico.util.UsuarioInvalidoException e) {
             throw new IncomeException("No se puede generar " + que + " de la carga " + idCarga
-                    + ": no se recibió el usuario que lo genera. Un asiento no se graba sin usuario.");
+                    + ": el usuario que lo genera no es válido (" + e.getMotivo() + "). Un asiento no se graba sin usuario.");
         }
     }
 

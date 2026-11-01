@@ -148,8 +148,7 @@ public class DistribucionBandaRest {
         }
         try {
             java.util.Map<Long, com.saa.ejb.crd.service.dto.ResultadoClasificacionBanda> clasificacionPorPago =
-                distribucionBandaService.recalcularDistribucionCargaPetro(idOrigen,
-                    usuario != null && !usuario.trim().isEmpty() ? usuario : "sistema");
+                distribucionBandaService.recalcularDistribucionCargaPetro(idOrigen, usuario); // U-2: el servicio valida el usuario; sin relleno
 
             java.util.Map<String, Object> cuerpo = new java.util.LinkedHashMap<>();
             cuerpo.put("idCarga", idOrigen);

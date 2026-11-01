@@ -1036,3 +1036,10 @@ elegido sigue la novedad bloqueante), DU3 (BE y FE completos, sin el resolutor d
 - **U4.** `validarAporteAH` ya no marca `APORTE_MONTO_INCONSISTENTE` cuando el descuento supera el esperado del mes pero la
   capacidad del devengo por vigencias (`capacidadDeAbsorcionDevengo`: lo que falta por aportar desde el primer mes
   incompleto, jubilación y cesantía, hasta 60 meses) lo absorbe entero. Un descuento menor al esperado sigue marcándose.
+
+## Usuario obligatorio en la fase 2 y en la contabilidad de la carga (U-2, 2026-11-01)
+- `ProcesoCargaPetroServiceImpl` (fase 2) graba con el usuario recibido: se acabaron «SISTEMA» y
+  «SISTEMA_PETRO». El REST `asgn/procesarCargaPetro/{id}` exige `?usuario=`.
+- `CobroPetroContableServiceImpl`: registrar y anular transferencia, confirmar y reversar recepción
+  validan el usuario primero (`exigeUsuario` exige que exista en `SCP.PJRQ`).
+- Sigue igual: «SAA_AH» en los aportes de la carga, porque hay SQL de diagnóstico que filtra por él.

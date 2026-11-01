@@ -170,7 +170,7 @@ public interface ContabilizacionIndividualCreditoService {
      *                    cuota con fecha de vencimiento, o si falta una línea en la plantilla
      */
     List<DetalleAsiento> haberDesdePagos(List<PagoPrestamo> pagos, Long idEmpresa, Long idPlantillaAplicacion,
-            LocalDate fechaCorte, String prefijoDescripcion) throws Throwable;
+            LocalDate fechaCorte, String prefijoDescripcion, String usuario) throws Throwable;
 
     /**
      * Suma el capital de un conjunto de {@code PagoPrestamo} (típicamente los de UN

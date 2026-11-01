@@ -99,6 +99,10 @@ import jakarta.ejb.TransactionAttributeType;
 @Stateless
 public class PagoPensionComplementariaServiceImpl implements PagoPensionComplementariaService {
 
+    /** U-2: todo proceso que graba valida el usuario PRIMERO (sin usuario válido no se hace nada). */
+    @jakarta.ejb.EJB
+    private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
     /** CRD.TPAP.TPAPCDGO — pensión complementaria (J6, confirmado por el usuario). */
     private static final long TIPO_APORTE_PENSION_COMPLEMENTARIA = 23L;
 
@@ -361,9 +365,8 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         if (anio == null || mes == null || mes < 1 || mes > 12) {
             throw new IncomeException("Debe indicar un año y un mes (1-12) válidos.");
         }
-        if (usuario == null || usuario.trim().isEmpty()) {
-            throw new IncomeException("usuario es obligatorio");
-        }
+        // U-2: lo primero, el usuario existe (helper único); sin usuario válido no se hace nada.
+        usuario = usuarioValidacionService.validar(usuario);
 
         LocalDate finDeMes = YearMonth.of(anio, mes).atEndOfMonth();
         YearMonth corrida = YearMonth.of(anio, mes);
@@ -728,9 +731,8 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         if (anio == null || mes == null || mes < 1 || mes > 12) {
             throw new IncomeException("Debe indicar un año y un mes (1-12) válidos.");
         }
-        if (usuario == null || usuario.trim().isEmpty()) {
-            throw new IncomeException("usuario es obligatorio");
-        }
+        // U-2: lo primero, el usuario existe (helper único); sin usuario válido no se hace nada.
+        usuario = usuarioValidacionService.validar(usuario);
         // C17: el mes (anio, mes) del proceso tiene que estar abierto para cartera y contabilidad.
         estadoCierreService.validarMovimientoCartera(idEmpresa, Long.valueOf(anio), Long.valueOf(mes),
                 "la generación de seguro / pensiones de jubilados");
@@ -1123,9 +1125,8 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         if (anio == null || mes == null || mes < 1 || mes > 12) {
             throw new IncomeException("Debe indicar un año y un mes (1-12) válidos.");
         }
-        if (usuario == null || usuario.trim().isEmpty()) {
-            throw new IncomeException("usuario es obligatorio");
-        }
+        // U-2: lo primero, el usuario existe (helper único); sin usuario válido no se hace nada.
+        usuario = usuarioValidacionService.validar(usuario);
         // C17: el mes (anio, mes) del proceso tiene que estar abierto para cartera y contabilidad.
         estadoCierreService.validarMovimientoCartera(idEmpresa, Long.valueOf(anio), Long.valueOf(mes),
                 "la generación de seguro / pensiones de jubilados");
@@ -1304,9 +1305,8 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         if (anio == null || mes == null || mes < 1 || mes > 12) {
             throw new IncomeException("Debe indicar un año y un mes (1-12) válidos.");
         }
-        if (usuario == null || usuario.trim().isEmpty()) {
-            throw new IncomeException("usuario es obligatorio");
-        }
+        // U-2: lo primero, el usuario existe (helper único); sin usuario válido no se hace nada.
+        usuario = usuarioValidacionService.validar(usuario);
         // C17: el mes (anio, mes) del proceso tiene que estar abierto para cartera y contabilidad.
         estadoCierreService.validarMovimientoCartera(idEmpresa, Long.valueOf(anio), Long.valueOf(mes),
                 "la generación de seguro / pensiones de jubilados");
@@ -2970,9 +2970,8 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         if (anio == null || mes == null || mes < 1 || mes > 12) {
             throw new IncomeException("PARAMETRO_INVALIDO: debe indicar un año y un mes (1-12) válidos");
         }
-        if (usuario == null || usuario.trim().isEmpty()) {
-            throw new IncomeException("PARAMETRO_INVALIDO: usuario es obligatorio");
-        }
+        // U-2: lo primero, el usuario existe (helper único); sin usuario válido no se hace nada.
+        usuario = usuarioValidacionService.validar(usuario);
         YearMonth periodo = YearMonth.of(anio, mes);
         if (!periodo.isBefore(YearMonth.now())) {
             throw new IncomeException("PARAMETRO_INVALIDO: el re-proceso es para un período pasado; " + periodo

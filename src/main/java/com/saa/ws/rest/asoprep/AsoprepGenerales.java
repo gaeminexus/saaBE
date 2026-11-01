@@ -328,7 +328,8 @@ public class AsoprepGenerales {
     @POST
     @Path("/procesarCargaPetro/{idCargaArchivo}")
     @Produces(MediaType.APPLICATION_JSON)
-    public Response procesarCargaPetro(@PathParam("idCargaArchivo") Long idCargaArchivo) {
+    public Response procesarCargaPetro(@PathParam("idCargaArchivo") Long idCargaArchivo,
+            @QueryParam("usuario") String usuario) {
         System.out.println("========================================");
         System.out.println("REST: PROCESAR CARGA PETRO FASE 2");
         System.out.println("ID Carga Archivo: " + idCargaArchivo);
@@ -343,11 +344,15 @@ public class AsoprepGenerales {
             }
             
             // Procesar con el servicio FASE 2
-            CargaArchivo resultado = procesoCargaPetroService.procesarCargaPetro(idCargaArchivo);
+            CargaArchivo resultado = procesoCargaPetroService.procesarCargaPetro(idCargaArchivo, usuario);
             
             System.out.println("Procesamiento completado exitosamente");
             return Response.ok(resultado).build();
             
+        } catch (com.saa.basico.util.UsuarioInvalidoException e) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(new FileResponse(false, "No se puede procesar la carga sin un usuario válido: " + e.getMotivo(), null))
+                    .build();
         } catch (Throwable e) {
             System.err.println("ERROR al procesar carga Petro FASE 2:");
             e.printStackTrace();

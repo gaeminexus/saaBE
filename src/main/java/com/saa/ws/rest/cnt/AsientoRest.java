@@ -33,6 +33,10 @@ import jakarta.ws.rs.core.UriInfo;
 @Path("asnt")
 public class AsientoRest {
 
+    /** U-2: todo proceso que graba valida el usuario PRIMERO. */
+    @jakarta.ejb.EJB
+    private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
     @EJB
     private AsientoDaoService asientoDaoService;
 
@@ -134,6 +138,8 @@ public class AsientoRest {
             @jakarta.ws.rs.QueryParam("motivo") String motivo,
             @jakarta.ws.rs.QueryParam("fechaReverso") String fechaReverso) {
         try {
+            // U-2: lo primero, el usuario que anula existe (antes, nulo o vacío se grababa como «SISTEMA»).
+            usuario = usuarioValidacionService.validar(usuario);
             if (motivo == null || motivo.trim().isEmpty()) {
                 return Response.status(Response.Status.BAD_REQUEST).entity("El motivo de la anulación es obligatorio.")
                         .type(MediaType.APPLICATION_JSON).build();
@@ -142,6 +148,10 @@ public class AsientoRest {
                     ? java.time.LocalDate.parse(fechaReverso.trim()) : null;
             return Response.status(Response.Status.OK)
                     .entity(asientoService.anulaAsiento(idAsiento, usuario, motivo, fecha))
+                    .type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException e) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("No se puede anular el asiento sin un usuario válido: " + e.getMotivo())
                     .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             String m = e.getMessage() != null ? e.getMessage() : "Error inesperado";

@@ -25,6 +25,10 @@ import jakarta.persistence.PersistenceContext;
 @Stateless
 public class CierrePeriodoContableServiceImpl implements CierrePeriodoContableService {
 
+    /** U-2: todo proceso que graba valida el usuario PRIMERO (sin usuario válido no se hace nada). */
+    @jakarta.ejb.EJB
+    private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
 	@PersistenceContext
 	private EntityManager em;
 
@@ -48,13 +52,12 @@ public class CierrePeriodoContableServiceImpl implements CierrePeriodoContableSe
 		return (c / 100L) + "-" + (m < 10 ? "0" + m : String.valueOf(m));
 	}
 
-	private static void validaParametros(Long idEmpresa, Long anio, Long mes, String usuario) {
+	private void validaParametros(Long idEmpresa, Long anio, Long mes, String usuario) {
 		if (idEmpresa == null || anio == null || mes == null || mes < 1 || mes > 12) {
 			throw new IncomeException("idEmpresa, anio y mes (1 a 12) son obligatorios.");
 		}
-		if (usuario == null || usuario.trim().isEmpty()) {
-			throw new IncomeException("El usuario es obligatorio.");
-		}
+		// U-2: lo primero, el usuario existe (helper único); sin usuario válido no se hace nada.
+		usuario = usuarioValidacionService.validar(usuario);
 	}
 
 	private Periodo periodo(Long idEmpresa, Long anio, Long mes) {
@@ -209,7 +212,8 @@ public class CierrePeriodoContableServiceImpl implements CierrePeriodoContableSe
 		h.setAnio(anio);
 		h.setMes(mes);
 		h.setFecha(LocalDateTime.now());
-		h.setUsuario(usuario != null && !usuario.trim().isEmpty() ? usuario.trim() : "SISTEMA");
+		// U-2: sin relleno; la bitácora lleva al usuario real (validado por quien llama, y acá otra vez).
+		h.setUsuario(usuarioValidacionService.validar(usuario));
 		h.setIp(ip);
 		if (motivo != null && !motivo.trim().isEmpty()) {
 			String m = motivo.trim();

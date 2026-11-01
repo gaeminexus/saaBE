@@ -87,6 +87,10 @@ import jakarta.ejb.TransactionAttributeType;
 @Stateless
 public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoService {
 
+    /** U-2: todo proceso que graba valida el usuario PRIMERO (sin usuario válido no se hace nada). */
+    @jakarta.ejb.EJB
+    private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
     /** Tolerancia de UN CENTAVO (§6.1) */
     private static final double TOLERANCIA = 0.01;
 
@@ -1796,9 +1800,8 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
             throw new IncomeException("idEmpresa es obligatorio: es la empresa contable sobre la que"
                 + " se genera el asiento de la operación.");
         }
-        if (solicitud.getUsuario() == null || solicitud.getUsuario().trim().isEmpty()) {
-            throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": usuario es obligatorio");
-        }
+        // U-2: lo primero, el usuario existe (helper único); sin usuario válido no se hace nada.
+        solicitud.setUsuario(usuarioValidacionService.validar(solicitud.getUsuario()));
         if (solicitud.getMotivo() == null || solicitud.getMotivo().trim().isEmpty()) {
             throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": motivo es obligatorio");
         }
@@ -2241,9 +2244,8 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
         if (idPrestamo == null) {
             throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": idPrestamo es obligatorio");
         }
-        if (usuario == null || usuario.trim().isEmpty()) {
-            throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": usuario es obligatorio");
-        }
+        // U-2: lo primero, el usuario existe (helper único); sin usuario válido no se hace nada.
+        usuario = usuarioValidacionService.validar(usuario);
         Prestamo prestamo = prestamoDaoService.find(new Prestamo(), idPrestamo);
         if (prestamo == null) {
             throw new IncomeException(ERR_PRESTAMO_NO_ENCONTRADO + ": no existe el préstamo " + idPrestamo);

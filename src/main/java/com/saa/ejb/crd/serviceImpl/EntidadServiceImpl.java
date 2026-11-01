@@ -20,6 +20,10 @@ import jakarta.ejb.Stateless;
 @Stateless
 public class EntidadServiceImpl implements EntidadService {
 
+    /** U-2: todo proceso que graba valida el usuario PRIMERO (sin usuario válido no se hace nada). */
+    @jakarta.ejb.EJB
+    private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
     @EJB
     private EntidadDaoService entidadDaoService;
 
@@ -178,14 +182,8 @@ public class EntidadServiceImpl implements EntidadService {
 	@Override
 	public void sellarActualizacion(Long idEntidad, String usuario) throws Throwable {
 		System.out.println("sellarActualizacion EntidadService - idEntidad: " + idEntidad + " - usuario: " + usuario);
-		if (usuario == null || usuario.trim().isEmpty()) {
-			// Sin usuario no es una edicion de pantalla (p.ej. un batch): no se sella,
-			// para no mentir sobre quien hizo el cambio. Ver CLAUDE.md / feedback del usuario
-			// del 2026-08-27.
-			System.out.println("sellarActualizacion EntidadService - usuario vacio/nulo, no se sella"
-				+ " (idEntidad: " + idEntidad + ")");
-			return;
-		}
+		// U-2: lo primero, el usuario existe (helper único); sin usuario válido no se hace nada.
+		usuario = usuarioValidacionService.validar(usuario);
 		Entidad entidad = entidadDaoService.selectById(idEntidad, NombreEntidadesCredito.ENTIDAD);
 		entidad.setFechaModificacion(LocalDateTime.now().format(FORMATO_FECHA_MODIFICACION));
 		entidad.setUsuarioModificacion(usuario);

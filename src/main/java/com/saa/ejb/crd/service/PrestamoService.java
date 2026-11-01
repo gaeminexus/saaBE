@@ -33,7 +33,8 @@ public interface PrestamoService extends EntityService<Prestamo>{
 	 * @return Préstamo con la tabla de amortización cargada y actualizada
 	 * @throws Throwable Si ocurre algún error durante la carga
 	 */
-	Prestamo cargarTablaAmortizacionDesdeExcel(Long idPrestamo, java.io.InputStream archivoExcel) throws Throwable;
+	Prestamo cargarTablaAmortizacionDesdeExcel(Long idPrestamo, java.io.InputStream archivoExcel, String usuario)
+			throws Throwable;
 
 	// NOTA: el abono a capital vive ahora en com.saa.ejb.crd.service.AbonoCapitalPrestamoService
 	// (simular + aplicar, con re-amortización, historización en CRD.HDTP y EventoPrestamo).

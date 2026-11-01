@@ -111,6 +111,10 @@ import jakarta.persistence.NoResultException;
 @Stateless
 public class CertificadoServiceImpl implements CertificadoService {
 
+    /** U-2: todo proceso que graba valida el usuario PRIMERO (sin usuario válido no se hace nada). */
+    @jakarta.ejb.EJB
+    private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
     /** Tipos de aporte (CRD.TPAP) que usan las reglas. Verificados contra el catálogo el 2026-08-29. */
     private static final List<Long> TIPOS_APORTE_PERSONAL = Arrays.asList(9L, 11L);          // jubilación y cesantía personal
     private static final List<Long> TIPOS_JUBILACION_PATRONAL = Arrays.asList(13L, 15L);    // + su rendimiento
@@ -265,9 +269,8 @@ public class CertificadoServiceImpl implements CertificadoService {
         if (solicitud == null) {
             throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": la solicitud es obligatoria");
         }
-        if (solicitud.getUsuario() == null || solicitud.getUsuario().trim().isEmpty()) {
-            throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": el usuario es obligatorio");
-        }
+        // U-2: lo primero, el usuario existe (helper único); sin usuario válido no se hace nada.
+        solicitud.setUsuario(usuarioValidacionService.validar(solicitud.getUsuario()));
         if (solicitud.getTipo() != null && solicitud.getTipo().intValue() == CrdTipoCertificado.NO_ADEUDAR_CREDITO
                 && solicitud.getIdPrestamo() == null) {
             throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": el certificado por credito requiere idPrestamo");
@@ -410,9 +413,8 @@ public class CertificadoServiceImpl implements CertificadoService {
         if (motivo == null || motivo.trim().isEmpty()) {
             throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": el motivo de anulacion es obligatorio");
         }
-        if (usuario == null || usuario.trim().isEmpty()) {
-            throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": el usuario es obligatorio");
-        }
+        // U-2: lo primero, el usuario existe (helper único); sin usuario válido no se hace nada.
+        usuario = usuarioValidacionService.validar(usuario);
         Certificado certificado = buscar(idCertificado);
         if (certificado.getEstado() != null
                 && certificado.getEstado().intValue() == EstadoCertificado.ANULADO) {

@@ -108,6 +108,10 @@ import jakarta.persistence.NoResultException;
 @Stateless
 public class CobroCreditoServiceImpl implements CobroCreditoService {
 
+    /** U-2: todo proceso que graba valida el usuario PRIMERO (sin usuario válido no se hace nada). */
+    @jakarta.ejb.EJB
+    private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
     private static final double TOLERANCIA_CUADRE = 0.01;
 
     /**
@@ -248,6 +252,12 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
         System.out.println("CobroCreditoService.registrarCobro - entidad: "
                 + (solicitud != null ? solicitud.getIdEntidad() : null));
 
+        // U-2: lo primero, el usuario existe (el asiento transitorio y el cobro quedan a su nombre).
+        if (solicitud == null) {
+            throw new IncomeException("Falta la solicitud de registro del cobro.");
+        }
+        solicitud.setUsuario(usuarioValidacionService.validar(solicitud.getUsuario()));
+
         Entidad entidad = validar(solicitud);
 
         CobroCredito cobro = new CobroCredito();
@@ -331,9 +341,8 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
     @Override
     public CobroCredito aprobarCobro(Long idCobro, String usuario) throws Throwable {
         System.out.println("CobroCreditoService.aprobarCobro - cobro: " + idCobro);
-        if (usuario == null || usuario.trim().isEmpty()) {
-            throw new IncomeException("usuario es obligatorio");
-        }
+        // U-2: lo primero, el usuario existe (helper único); sin usuario válido no se hace nada.
+        usuario = usuarioValidacionService.validar(usuario);
         CobroCredito cobro = buscarCobro(idCobro);
         if (cobro.getEstado() == null || cobro.getEstado() != CrdEstadoCobro.REGISTRADO) {
             throw new IncomeException("El cobro " + idCobro + " está en estado "
@@ -352,9 +361,8 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
     @Override
     public CobroCredito rechazarCobro(Long idCobro, String usuario, String motivo) throws Throwable {
         System.out.println("CobroCreditoService.rechazarCobro - cobro: " + idCobro);
-        if (usuario == null || usuario.trim().isEmpty()) {
-            throw new IncomeException("usuario es obligatorio");
-        }
+        // U-2: lo primero, el usuario existe (helper único); sin usuario válido no se hace nada.
+        usuario = usuarioValidacionService.validar(usuario);
         if (motivo == null || motivo.trim().isEmpty()) {
             throw new IncomeException("El motivo del rechazo es obligatorio");
         }
@@ -380,9 +388,8 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
     public CobroCredito editarYReenviarCobro(Long idCobro, String usuario,
             SolicitudEdicionCobro correccion) throws Throwable {
         System.out.println("CobroCreditoService.editarYReenviarCobro - cobro: " + idCobro);
-        if (usuario == null || usuario.trim().isEmpty()) {
-            throw new IncomeException("usuario es obligatorio");
-        }
+        // U-2: lo primero, el usuario existe (helper único); sin usuario válido no se hace nada.
+        usuario = usuarioValidacionService.validar(usuario);
         if (correccion == null) {
             throw new IncomeException("La corrección es obligatoria");
         }
@@ -510,9 +517,8 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
     @Override
     public CobroCredito anularCobro(Long idCobro, String usuario, String motivo) throws Throwable {
         System.out.println("CobroCreditoService.anularCobro - cobro: " + idCobro);
-        if (usuario == null || usuario.trim().isEmpty()) {
-            throw new IncomeException("usuario es obligatorio");
-        }
+        // U-2: lo primero, el usuario existe (helper único); sin usuario válido no se hace nada.
+        usuario = usuarioValidacionService.validar(usuario);
         if (motivo == null || motivo.trim().isEmpty()) {
             throw new IncomeException("El motivo de la anulación es obligatorio");
         }
@@ -697,9 +703,8 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
     @Override
     public CobroCredito reversarProceso(Long idCobro, String usuario, String motivo) throws Throwable {
         System.out.println("CobroCreditoService.reversarProceso - cobro: " + idCobro);
-        if (usuario == null || usuario.trim().isEmpty()) {
-            throw new IncomeException("usuario es obligatorio");
-        }
+        // U-2: lo primero, el usuario existe (helper único); sin usuario válido no se hace nada.
+        usuario = usuarioValidacionService.validar(usuario);
         // Comprobación de estado DENTRO de la misma transacción que el cambio — mismo
         // razonamiento que aprobarCobro/rechazarCobro/procesarCobro.
         CobroCredito cobro = buscarCobro(idCobro);
@@ -966,9 +971,8 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
     public ResultadoProcesoCobro procesarCobro(Long idCobro, String usuario, boolean reproceso) throws Throwable {
         System.out.println("CobroCreditoService.procesarCobro - cobro: " + idCobro
                 + (reproceso ? " - MODO REPROCESO (D-019)" : ""));
-        if (usuario == null || usuario.trim().isEmpty()) {
-            throw new IncomeException("usuario es obligatorio");
-        }
+        // U-2: lo primero, el usuario existe (helper único); sin usuario válido no se hace nada.
+        usuario = usuarioValidacionService.validar(usuario);
 
         // Comprobación de estado DENTRO de la misma transacción que el cambio — mismo
         // razonamiento que aprobarCobro/rechazarCobro.
@@ -1133,7 +1137,7 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
             }
             if (motivoRechazo != null) {
                 cobro.setEstado(Long.valueOf(CrdEstadoCobro.RECHAZADO));
-                cobro.setUsuarioRechazo("SISTEMA");
+                cobro.setUsuarioRechazo(usuario); // U-2: quien procesa (antes «SISTEMA»)
                 cobro.setFechaRechazo(LocalDateTime.now());
                 cobro.setMotivoRechazo(motivoRechazo);
                 cobroCreditoDaoService.save(cobro, cobro.getCodigo());
@@ -1261,7 +1265,7 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
                 }
                 if (motivoRechazo != null) {
                     cobro.setEstado(Long.valueOf(CrdEstadoCobro.RECHAZADO));
-                    cobro.setUsuarioRechazo("SISTEMA");
+                    cobro.setUsuarioRechazo(usuario); // U-2: quien procesa (antes «SISTEMA»)
                     cobro.setFechaRechazo(LocalDateTime.now());
                     cobro.setMotivoRechazo(motivoRechazo);
                     cobroCreditoDaoService.save(cobro, cobro.getCodigo());
@@ -1347,7 +1351,7 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
             String motivoStaleness = acuerdoCondonacionService.verificarVigencia(idAcuerdo);
             if (motivoStaleness != null) {
                 cobro.setEstado(Long.valueOf(CrdEstadoCobro.RECHAZADO));
-                cobro.setUsuarioRechazo("SISTEMA");
+                cobro.setUsuarioRechazo(usuario); // U-2: quien procesa (antes «SISTEMA»)
                 cobro.setFechaRechazo(LocalDateTime.now());
                 cobro.setMotivoRechazo(motivoStaleness);
                 cobroCreditoDaoService.save(cobro, cobro.getCodigo());
@@ -2660,7 +2664,7 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
         for (DetalleCobroCredito detalle : detalles) {
             if (detalle.getPrestamo() != null && detalle.getEventoPrestamo() != null) {
                 haber.addAll(haberDesdeEvento(detalle.getEventoPrestamo().getCodigo(), idEmpresa,
-                        idPlantillaAplicacion, fechaCorte, "Cobro " + cobro.getCodigo()));
+                        idPlantillaAplicacion, fechaCorte, "Cobro " + cobro.getCodigo(), cobro.getUsuarioProceso()));
             } else if (detalle.getTipoAporte() != null) {
                 double valorAporte = detalle.getPagoAporte() != null && detalle.getPagoAporte().getValor() != null
                         ? detalle.getPagoAporte().getValor() : nvl(detalle.getValor());
@@ -2849,14 +2853,14 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
      * ContabilizacionIndividualCreditoService#haberDesdePagos}).
      */
     private List<DetalleAsiento> haberDesdeEvento(Long idEvento, Long idEmpresa, Long idPlantillaAplicacion,
-            LocalDate fechaCorte, String prefijoDescripcion) throws Throwable {
+            LocalDate fechaCorte, String prefijoDescripcion, String usuario) throws Throwable {
         // Delegado a ContabilizacionIndividualCreditoService.haberDesdePagos (2026-08-31,
         // PLAN-CIERRE-CONTABLE-TOTAL): la MISMA regla la necesitaba también el cruce de
         // valores/precancelación directa — un tercer lugar con esta lógica copiada era
         // exactamente el riesgo de divergencia que este servicio existe para evitar.
         List<PagoPrestamo> pagos = pagoPrestamoDaoService.selectByEvento(idEvento);
         return contabilizacionIndividualCreditoService.haberDesdePagos(pagos, idEmpresa, idPlantillaAplicacion,
-                fechaCorte, prefijoDescripcion);
+                fechaCorte, prefijoDescripcion, usuario);
     }
 
     // =====================================================================

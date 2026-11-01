@@ -54,6 +54,10 @@ import jakarta.persistence.PersistenceContext;
 @Stateless
 public class CargaAsientosManualesServiceImpl implements CargaAsientosManualesService {
 
+    /** U-2: todo proceso que graba valida el usuario PRIMERO (sin usuario válido no se hace nada). */
+    @jakarta.ejb.EJB
+    private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
     @PersistenceContext
     private EntityManager em;
 
@@ -138,9 +142,8 @@ public class CargaAsientosManualesServiceImpl implements CargaAsientosManualesSe
         if (solicitud.getIdEmpresa() == null) {
             errores.add(new ErrorLinea(0, null, "El campo idEmpresa es obligatorio."));
         }
-        if (solicitud.getUsuario() == null || solicitud.getUsuario().trim().isEmpty()) {
-            errores.add(new ErrorLinea(0, null, "El campo usuario es obligatorio."));
-        }
+        // U-2: lo primero, el usuario existe (helper único); sin usuario válido no se hace nada.
+        solicitud.setUsuario(usuarioValidacionService.validar(solicitud.getUsuario()));
         if (nombreArchivo.isEmpty()) {
             errores.add(new ErrorLinea(0, null, "El campo nombreArchivo es obligatorio: identifica el origen de los "
                     + "asientos y evita cargar dos veces el mismo archivo."));

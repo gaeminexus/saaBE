@@ -257,3 +257,8 @@ TOTALES;2 PARTICIPES;50.00;70.00;95.20;180.45;12.30;0.00;0.00;407.95
   deuda acumulada (meses × aporte mensual).
 - El seguro de incendio sale como producto `HS` (saldo por entidad) y regresa como registro `HS`
   que la carga suma al PH/PP correspondiente.
+
+## Usuario obligatorio (U-2, 2026-11-01)
+`GeneracionArchivoPetroServiceImpl.crearCabeceraGeneracion` valida el usuario LO PRIMERO con
+`UsuarioValidacionService` (no nulo, no vacío y existente en `SCP.PJRQ`). Sin usuario válido no se crea la
+generación. El REST `gnap/crearCabecera` exige `?usuario=`. Ver `cnt/DISENO-USUARIO-OBLIGATORIO.md`.

@@ -61,6 +61,10 @@ import jakarta.ejb.Stateless;
 @Stateless
 public class DistribucionBandaServiceImpl implements DistribucionBandaService {
 
+    /** U-2: todo proceso que graba valida el usuario PRIMERO (sin usuario válido no se hace nada). */
+    @jakarta.ejb.EJB
+    private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
     private static final double TOLERANCIA = 0.01;
 
     /**
@@ -389,9 +393,8 @@ public class DistribucionBandaServiceImpl implements DistribucionBandaService {
         if (idCarga == null) {
             throw new IncomeException("idCarga es obligatorio");
         }
-        if (usuario == null || usuario.trim().isEmpty()) {
-            throw new IncomeException("usuario es obligatorio");
-        }
+        // U-2: lo primero, el usuario existe (helper único); sin usuario válido no se hace nada.
+        usuario = usuarioValidacionService.validar(usuario);
 
         // Misma fuente que contabilizarAplicacion: la empresa sale de las transferencias
         // vigentes de la carga (única definición, TransferenciaCargaPetroDaoService), los pagos

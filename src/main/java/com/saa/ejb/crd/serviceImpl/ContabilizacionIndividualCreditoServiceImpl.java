@@ -740,7 +740,7 @@ public class ContabilizacionIndividualCreditoServiceImpl implements Contabilizac
 
     @Override
     public List<DetalleAsiento> haberDesdePagos(List<PagoPrestamo> pagos, Long idEmpresa,
-            Long idPlantillaAplicacion, LocalDate fechaCorte, String prefijoDescripcion) throws Throwable {
+            Long idPlantillaAplicacion, LocalDate fechaCorte, String prefijoDescripcion, String usuario) throws Throwable {
         List<DetalleAsiento> lineas = new ArrayList<>();
         if (pagos == null) {
             return lineas;
@@ -835,7 +835,7 @@ public class ContabilizacionIndividualCreditoServiceImpl implements Contabilizac
         // C15 / D-017 (H4): la mora cobrada que no estaba devengada para su cuota (la del mes en
         // curso) va directo a ingreso; solo la ya devengada cancela 1.4.02.xx.
         double totalMoraIngreso = 0.0;
-        for (Double excedente : provisionInteresService.separarMoraNoDevengada(pagos, "SISTEMA").values()) {
+        for (Double excedente : provisionInteresService.separarMoraNoDevengada(pagos, usuario).values()) {
             totalMoraIngreso += nvl(excedente);
         }
         totalMoraIngreso = redondear(totalMoraIngreso);

@@ -94,6 +94,10 @@ public class PrestamoServiceImpl implements PrestamoService {
     @EJB
     private PagoProgramadoService pagoProgramadoService;
 
+    /** U-2: todo proceso que graba valida el usuario PRIMERO (sin usuario válido no se hace nada). */
+    @EJB
+    private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
     @EJB
     private ContabilidadPrestamoService contabilidadPrestamoService;
 
@@ -384,6 +388,8 @@ public class PrestamoServiceImpl implements PrestamoService {
             LocalDate fechaContable) throws Throwable {
         System.out.println("Aprobando préstamo ID: " + idPrestamo + " - Usuario: " + usuario
             + " - Fecha contable: " + fechaContable);
+        // U-2: lo primero, el usuario.
+        usuario = usuarioValidacionService.validar(usuario);
 
         if (idEmpresa == null) {
             throw new IncomeException("No se puede aprobar el préstamo " + idPrestamo + ": falta idEmpresa.");
@@ -602,6 +608,8 @@ public class PrestamoServiceImpl implements PrestamoService {
         System.out.println("PrestamoServiceImpl.contabilizarDesembolsoHistorico - préstamo: " + idPrestamo
             + " - fecha: " + fechaContable + " - cuenta: " + idCuentaBancaria + " - valor (neto): " + valor
             + " - préstamo cancelado: " + idPrestamoCancelado);
+        // U-2: lo primero, el usuario (antes se rellenaba con «CUADRE»).
+        usuario = usuarioValidacionService.validar(usuario);
         if (idPrestamo == null || idEmpresa == null || idUsuario == null || fechaContable == null) {
             throw new IncomeException("idPrestamo, idEmpresa, idUsuario y fechaContable son obligatorios.");
         }
@@ -736,7 +744,7 @@ public class PrestamoServiceImpl implements PrestamoService {
             com.saa.ejb.crd.service.dto.ResultadoPrecancelacionConPrestamo precancelacion = precancelacionExistente != null
                 ? precancelacionExistente
                 : procesoPagoPrestamoService.precancelarConPrestamoNuevo(idPrestamoCancelado, idPrestamo, idEmpresa,
-                    usuario != null ? usuario : "CUADRE", fechaContable, capital, interes, seguro,
+                    usuario, fechaContable, capital, interes, seguro,
                     "Desembolso neto (re-proceso, extracto " + fechaContable
                         + (referencia != null ? ", " + referencia : "") + ").");
             precancelacionGenerada = !precancelacion.isYaExistia();
@@ -1055,9 +1063,8 @@ public class PrestamoServiceImpl implements PrestamoService {
     public Prestamo anular(Long idPrestamo, String usuario, String motivo, Long idEmpresa, Long idUsuario)
             throws Throwable {
         System.out.println("Anulando préstamo ID: " + idPrestamo + " - Usuario: " + usuario);
-        if (usuario == null || usuario.trim().isEmpty()) {
-            throw new IncomeException("No se puede anular el préstamo " + idPrestamo + ": falta el usuario.");
-        }
+        // U-2: lo primero, el usuario existe (helper único); sin usuario válido no se hace nada.
+        usuario = usuarioValidacionService.validar(usuario);
         if (motivo == null || motivo.trim().isEmpty()) {
             throw new IncomeException("No se puede anular el préstamo " + idPrestamo + ": falta el motivo.");
         }
@@ -1121,6 +1128,8 @@ public class PrestamoServiceImpl implements PrestamoService {
     @Override
     public Prestamo rechazar(Long idPrestamo, String usuario, String observacion) throws Throwable {
         System.out.println("Rechazando préstamo ID: " + idPrestamo + " - Usuario: " + usuario);
+        // U-2: lo primero, el usuario.
+        usuario = usuarioValidacionService.validar(usuario);
 
         Prestamo prestamo = prestamoDaoService.selectById(idPrestamo, NombreEntidadesCredito.PRESTAMO);
         if (prestamo == null) {
@@ -1348,8 +1357,12 @@ public class PrestamoServiceImpl implements PrestamoService {
     }
 
     @Override
-    public Prestamo cargarTablaAmortizacionDesdeExcel(Long idPrestamo, InputStream archivoExcel) throws Throwable {
-        System.out.println("Cargando tabla de amortización desde Excel para préstamo ID: " + idPrestamo);
+    public Prestamo cargarTablaAmortizacionDesdeExcel(Long idPrestamo, InputStream archivoExcel, String usuario)
+            throws Throwable {
+        System.out.println("Cargando tabla de amortización desde Excel para préstamo ID: " + idPrestamo
+            + " - Usuario: " + usuario);
+        // U-2: lo primero, el usuario (los pagos de migración ya no se graban como «SISTEMA»).
+        usuario = usuarioValidacionService.validar(usuario);
         
         // Obtener el préstamo
         Prestamo prestamo = prestamoDaoService.selectById(idPrestamo, NombreEntidadesCredito.PRESTAMO);
@@ -1514,7 +1527,7 @@ public class PrestamoServiceImpl implements PrestamoService {
             if (detalle.getEstado() != null && 
                 (detalle.getEstado() == EstadoCuotaPrestamo.PAGADA || 
                  detalle.getEstado() == EstadoCuotaPrestamo.CANCELADA_ANTICIPADA)) {
-                crearPagoPrestamo(prestamo, detalle);
+                crearPagoPrestamo(prestamo, detalle, usuario);
             }
         }
         
@@ -1623,7 +1636,7 @@ public class PrestamoServiceImpl implements PrestamoService {
      * @param prestamo Préstamo asociado
      * @param detalle Detalle de la cuota pagada
      */
-    private void crearPagoPrestamo(Prestamo prestamo, DetallePrestamo detalle) throws Throwable {
+    private void crearPagoPrestamo(Prestamo prestamo, DetallePrestamo detalle, String usuario) throws Throwable {
         System.out.println("Creando PagoPrestamo para cuota " + detalle.getNumeroCuota());
         
         PagoPrestamo pago = new PagoPrestamo();
@@ -1655,7 +1668,7 @@ public class PrestamoServiceImpl implements PrestamoService {
         
         // Fecha y usuario de registro
         pago.setFechaRegistro(LocalDateTime.now());
-        pago.setUsuarioRegistro("SISTEMA");
+        pago.setUsuarioRegistro(usuario);
         
         // Guardar el pago
         pagoPrestamoDaoService.save(pago, pago.getCodigo());

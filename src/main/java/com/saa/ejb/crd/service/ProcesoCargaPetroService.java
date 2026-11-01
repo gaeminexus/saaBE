@@ -19,6 +19,6 @@ public interface ProcesoCargaPetroService {
      * @return CargaArchivo procesado con estadísticas
      * @throws Throwable Si ocurre algún error
      */
-    CargaArchivo procesarCargaPetro(Long idCargaArchivo) throws Throwable;
+    CargaArchivo procesarCargaPetro(Long idCargaArchivo, String usuario) throws Throwable;
 
 }

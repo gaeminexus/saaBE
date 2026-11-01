@@ -40,6 +40,10 @@ import jakarta.ejb.TransactionAttributeType;
 @Stateless
 public class ProcesoCargaPetroServiceImpl implements ProcesoCargaPetroService {
 
+    /** U-2: todo proceso que graba valida el usuario PRIMERO. */
+    @jakarta.ejb.EJB
+    private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
     @EJB
     private CargaArchivoService cargaArchivoService;
     
@@ -72,7 +76,9 @@ public class ProcesoCargaPetroServiceImpl implements ProcesoCargaPetroService {
 
     @Override
     @TransactionAttribute(TransactionAttributeType.REQUIRED)
-    public CargaArchivo procesarCargaPetro(Long idCargaArchivo) throws Throwable {
+    public CargaArchivo procesarCargaPetro(Long idCargaArchivo, String usuario) throws Throwable {
+        // U-2: lo primero, el usuario existe (los pagos y el procesamiento de la fase 2 quedan a su nombre).
+        usuario = usuarioValidacionService.validar(usuario);
         System.out.println("========================================");
         System.out.println("INICIANDO PROCESAMIENTO FASE 2");
         System.out.println("ID Carga Archivo: " + idCargaArchivo);
@@ -129,7 +135,7 @@ public class ProcesoCargaPetroServiceImpl implements ProcesoCargaPetroService {
                     continue;
                 }
                 
-                ProcesamientoCargaArchivo procesamiento = procesarRegistro(registro, cargaArchivo);
+                ProcesamientoCargaArchivo procesamiento = procesarRegistro(registro, cargaArchivo, usuario);
                 
                 if (procesamiento.getProcesado() == 1) {
                     procesadosOK++;
@@ -172,7 +178,7 @@ public class ProcesoCargaPetroServiceImpl implements ProcesoCargaPetroService {
     /**
      * Procesa un registro individual del archivo
      */
-    private ProcesamientoCargaArchivo procesarRegistro(ParticipeXCargaArchivo registro, CargaArchivo cargaArchivo) throws Throwable {
+    private ProcesamientoCargaArchivo procesarRegistro(ParticipeXCargaArchivo registro, CargaArchivo cargaArchivo, String usuario) throws Throwable {
         System.out.println("\n--- Procesando registro ---");
         System.out.println("Código Petro: " + registro.getCodigoPetro());
         System.out.println("Nombre: " + registro.getNombre());
@@ -181,7 +187,7 @@ public class ProcesoCargaPetroServiceImpl implements ProcesoCargaPetroService {
         ProcesamientoCargaArchivo procesamiento = new ProcesamientoCargaArchivo();
         procesamiento.setParticipeXCargaArchivo(registro);
         procesamiento.setFechaProcesamiento(LocalDateTime.now());
-        procesamiento.setUsuarioRegistro("SISTEMA");
+        procesamiento.setUsuarioRegistro(usuario);
         procesamiento.setEstado(Estado.ACTIVO);
         
         try {
@@ -211,7 +217,7 @@ public class ProcesoCargaPetroServiceImpl implements ProcesoCargaPetroService {
                 procesarAporte(registro, producto, procesamiento);
             } else {
                 // Es un préstamo
-                procesarPrestamo(registro, producto, procesamiento, cargaArchivo);
+                procesarPrestamo(registro, producto, procesamiento, cargaArchivo, usuario);
             }
             
             // Guardar el procesamiento
@@ -242,7 +248,7 @@ public class ProcesoCargaPetroServiceImpl implements ProcesoCargaPetroService {
      * Procesa un registro de PRÉSTAMO
      */
     private void procesarPrestamo(ParticipeXCargaArchivo registro, Producto producto,
-                                 ProcesamientoCargaArchivo procesamiento, CargaArchivo cargaArchivo) throws Throwable {
+                                 ProcesamientoCargaArchivo procesamiento, CargaArchivo cargaArchivo, String usuario) throws Throwable {
         
         // 1. Buscar el préstamo activo
         // Convertir codigoPetro a String (el método espera String, no Long)
@@ -343,7 +349,7 @@ public class ProcesoCargaPetroServiceImpl implements ProcesoCargaPetroService {
         
         // 5. Crear el registro de pago si hubo descuento
         if (totalDescontado > 0) {
-            PagoPrestamo pago = crearPagoPrestamo(registro, prestamo, cuota, cargaArchivo);
+            PagoPrestamo pago = crearPagoPrestamo(registro, prestamo, cuota, cargaArchivo, usuario);
             pago = pagoPrestamoService.saveSingle(pago);
             procesamiento.setIdPagoGenerado(pago.getCodigo());
             System.out.println("Pago creado: ID " + pago.getCodigo());
@@ -424,7 +430,7 @@ public class ProcesoCargaPetroServiceImpl implements ProcesoCargaPetroService {
      * - Si el pago es parcial: prioridad = capital > interes > desgravamen
      */
     private PagoPrestamo crearPagoPrestamo(ParticipeXCargaArchivo registro, Prestamo prestamo,
-                                          DetallePrestamo cuota, CargaArchivo cargaArchivo) {
+                                          DetallePrestamo cuota, CargaArchivo cargaArchivo, String usuario) {
         PagoPrestamo pago = new PagoPrestamo();
         
         // ====================================================================
@@ -520,7 +526,7 @@ public class ProcesoCargaPetroServiceImpl implements ProcesoCargaPetroService {
         pago.setEstado(Long.valueOf(Estado.ACTIVO));
         pago.setIdEstado(Long.valueOf(Estado.ACTIVO));
         pago.setFechaRegistro(LocalDateTime.now());
-        pago.setUsuarioRegistro("SISTEMA_PETRO");
+        pago.setUsuarioRegistro(usuario);
         // Trazabilidad (2026-08-28): de qué carga salió este pago, para el asiento de
         // APLICACION del cobro de Petro en dos pasos. Ver DDL-TRAZABILIDAD-CARGA-PETRO.sql.
         pago.setCargaArchivo(cargaArchivo);

@@ -190,7 +190,7 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
         List<PagoPrestamo> pagos = pagoPrestamoDaoService.selectByEvento(ctx.getIdEvento());
         LocalDate fechaCorte = ctx.getFechaPago() != null ? ctx.getFechaPago().toLocalDate() : LocalDate.now();
         List<DetalleAsiento> haber = contabilizacionIndividualCreditoService.haberDesdePagos(pagos, idEmpresa,
-                idPlantillaAplicacion, fechaCorte, prefijo);
+                idPlantillaAplicacion, fechaCorte, prefijo, ctx.getUsuario());
         lineas.addAll(haber);
 
         double totalHaber = 0.0;
@@ -670,7 +670,7 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
         // HABER: capital por banda del abono (haberDesdePagos, la MISMA regla de CBCRASN2).
         List<PagoPrestamo> pagos = pagoPrestamoDaoService.selectByEvento(evento.getCodigo());
         List<DetalleAsiento> haber = contabilizacionIndividualCreditoService.haberDesdePagos(pagos, idEmpresa,
-                idPlantillaAplicacion, fechaCorte, prefijo);
+                idPlantillaAplicacion, fechaCorte, prefijo, evento.getUsuario());
         lineas.addAll(haber);
 
         double totalHaber = 0.0;
@@ -803,7 +803,7 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
         List<PagoPrestamo> pagos = pagoPrestamoDaoService.selectByEvento(ctx.getIdEvento());
         LocalDate fechaCorte = ctx.getFechaPago() != null ? ctx.getFechaPago().toLocalDate() : LocalDate.now();
         List<DetalleAsiento> haber = contabilizacionIndividualCreditoService.haberDesdePagos(pagos, idEmpresa,
-                idPlantillaAplicacion, fechaCorte, prefijo);
+                idPlantillaAplicacion, fechaCorte, prefijo, ctx.getUsuario());
         lineas.addAll(haber);
 
         double totalHaber = 0.0;
@@ -891,7 +891,7 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
         List<PagoPrestamo> pagos = pagoPrestamoDaoService.selectByEvento(ctx.getIdEvento());
         LocalDate fechaCorte = ctx.getFechaPago() != null ? ctx.getFechaPago().toLocalDate() : LocalDate.now();
         List<DetalleAsiento> haber = contabilizacionIndividualCreditoService.haberDesdePagos(pagos, idEmpresa,
-                idPlantillaAplicacion, fechaCorte, prefijo);
+                idPlantillaAplicacion, fechaCorte, prefijo, ctx.getUsuario());
         double totalHaber = 0.0;
         for (DetalleAsiento linea : haber) {
             totalHaber += nvl(linea.getValorHaber()) - nvl(linea.getValorDebe());
@@ -1076,8 +1076,12 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
             // no contabiliza.
             return null;
         }
-        String usuario = eventoAnulado.getUsuarioAnulacion() != null
-                ? eventoAnulado.getUsuarioAnulacion() : "SISTEMA";
+        // U-2: sin relleno. El evento anulado trae a quien lo anuló (anularOperacion lo valida primero); si no, se detiene.
+        if (eventoAnulado.getUsuarioAnulacion() == null || eventoAnulado.getUsuarioAnulacion().trim().isEmpty()) {
+            throw new IncomeException("El evento " + eventoAnulado.getCodigo() + " no tiene usuario de anulación: no se"
+                    + " puede reversar su asiento sin saber quién lo anula.");
+        }
+        String usuario = eventoAnulado.getUsuarioAnulacion();
         asientoService.anulaAsiento(eventoAnulado.getNumeroAsiento(), usuario,
                 "Reverso de la operación " + eventoAnulado.getCodigo() + " ("
                         + eventoAnulado.getTipoOperacion() + ")"

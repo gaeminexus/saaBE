@@ -80,6 +80,10 @@ import jakarta.persistence.NoResultException;
 @Stateless
 public class DevolucionAporteServiceImpl implements DevolucionAporteService {
 
+    /** U-2: todo proceso que graba valida el usuario PRIMERO (sin usuario válido no se hace nada). */
+    @jakarta.ejb.EJB
+    private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
     /** Longitud máxima en BYTES de APRT.APRTGLSA (VARCHAR2(2000)) */
     private static final int MAX_BYTES_GLOSA = 2000;
 
@@ -255,9 +259,8 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
         if (solicitud.getIdEmpresa() == null) {
             throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": idEmpresa es obligatorio");
         }
-        if (solicitud.getUsuario() == null || solicitud.getUsuario().trim().isEmpty()) {
-            throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": usuario es obligatorio");
-        }
+        // U-2: lo primero, el usuario existe (helper único); sin usuario válido no se hace nada.
+        solicitud.setUsuario(usuarioValidacionService.validar(solicitud.getUsuario()));
         if (solicitud.getDetalle() == null) {
             throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": detalle es obligatorio");
         }
@@ -810,9 +813,8 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
         if (solicitud.getIdEmpresa() == null) {
             throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": idEmpresa es obligatorio");
         }
-        if (solicitud.getUsuario() == null || solicitud.getUsuario().trim().isEmpty()) {
-            throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": usuario es obligatorio");
-        }
+        // U-2: lo primero, el usuario existe (helper único); sin usuario válido no se hace nada.
+        solicitud.setUsuario(usuarioValidacionService.validar(solicitud.getUsuario()));
         if (solicitud.getDetalle() == null) {
             throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": detalle es obligatorio");
         }
@@ -1163,9 +1165,8 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
             throw new IncomeException(ERR_PARAMETRO_INVALIDO
                 + ": debe indicar el motivo de la anulación");
         }
-        if (usuario == null || usuario.trim().isEmpty()) {
-            throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": usuario es obligatorio");
-        }
+        // U-2: lo primero, el usuario existe (helper único); sin usuario válido no se hace nada.
+        usuario = usuarioValidacionService.validar(usuario);
 
         DevolucionAporte devolucion = devolucionAporteDaoService.find(
             new DevolucionAporte(), idDevolucion);
@@ -1288,9 +1289,8 @@ public class DevolucionAporteServiceImpl implements DevolucionAporteService {
         if (solicitud.getIdEmpresa() == null) {
             throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": idEmpresa es obligatorio");
         }
-        if (solicitud.getUsuario() == null || solicitud.getUsuario().trim().isEmpty()) {
-            throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": usuario es obligatorio");
-        }
+        // U-2: lo primero, el usuario existe (helper único); sin usuario válido no se hace nada.
+        solicitud.setUsuario(usuarioValidacionService.validar(solicitud.getUsuario()));
 
         // ------------------------------------------------------------------
         // Reglas, en el orden exacto del §3.2 del contrato

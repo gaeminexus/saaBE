@@ -42,6 +42,10 @@ import jakarta.ejb.TransactionAttributeType;
 @Stateless
 public class AporteServiceImpl implements AporteService {
 
+    /** U-2: todo proceso que graba valida el usuario PRIMERO (sin usuario válido no se hace nada). */
+    @jakarta.ejb.EJB
+    private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
     /** Longitud máxima en BYTES de APRT.APRTGLSA (VARCHAR2(2000)) */
     private static final int MAX_BYTES_GLOSA = 2000;
 
@@ -339,9 +343,8 @@ public class AporteServiceImpl implements AporteService {
             throw new IncomeException("idEmpresa es obligatorio: es la empresa contable sobre la que"
                 + " se genera el asiento de la operación.");
         }
-        if (solicitud.getUsuario() == null || solicitud.getUsuario().trim().isEmpty()) {
-            throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": usuario es obligatorio");
-        }
+        // U-2: lo primero, el usuario existe (helper único); sin usuario válido no se hace nada.
+        solicitud.setUsuario(usuarioValidacionService.validar(solicitud.getUsuario()));
 
         // find() (em.find) devuelve null si no existe, a diferencia de selectById
         Entidad entidad = entidadDaoService.find(new Entidad(), solicitud.getIdEntidad());
@@ -443,9 +446,8 @@ public class AporteServiceImpl implements AporteService {
         if (idAporte == null) {
             throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": idAporte es obligatorio");
         }
-        if (usuario == null || usuario.trim().isEmpty()) {
-            throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": usuario es obligatorio");
-        }
+        // U-2: lo primero, el usuario existe (helper único); sin usuario válido no se hace nada.
+        usuario = usuarioValidacionService.validar(usuario);
         if (motivo == null || motivo.trim().isEmpty()) {
             throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": el motivo de la reversa es obligatorio");
         }
@@ -538,9 +540,8 @@ public class AporteServiceImpl implements AporteService {
         if (idEntidad == null) {
             throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": idEntidad es obligatorio");
         }
-        if (usuario == null || usuario.trim().isEmpty()) {
-            throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": usuario es obligatorio");
-        }
+        // U-2: lo primero, el usuario existe (helper único); sin usuario válido no se hace nada.
+        usuario = usuarioValidacionService.validar(usuario);
         if (idEmpresa == null) {
             throw new IncomeException("idEmpresa es obligatorio: es la empresa contable sobre la que"
                 + " se genera el asiento de la jubilación.");

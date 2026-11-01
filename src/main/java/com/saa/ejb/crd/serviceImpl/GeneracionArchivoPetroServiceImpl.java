@@ -59,6 +59,10 @@ import jakarta.persistence.Query;
 @Stateless
 public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetroService {
 
+    /** U-2: todo proceso que graba valida el usuario PRIMERO. */
+    @jakarta.ejb.EJB
+    private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
     /**
      * Orden en que se recorren los productos al armar el archivo.
      * Es también el orden de los bloques en el archivo de Petrocomercial.
@@ -204,6 +208,8 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
     @Override
     public GeneracionArchivoPetro crearCabeceraGeneracion(Long mes, Long anio, Long codigoFilial, String usuario) throws Exception {
         System.out.println("=== SERVICIO: CREANDO CABECERA DE GENERACIÓN PETROCOMERCIAL ===");
+        // U-2: lo primero, el usuario existe (queda como usuarioGeneracion).
+        usuario = usuarioValidacionService.validar(usuario);
         System.out.println("Periodo: " + mes + "/" + anio + " - Filial: " + codigoFilial);
         
         // 1. Verificar si ya existe generación para este periodo

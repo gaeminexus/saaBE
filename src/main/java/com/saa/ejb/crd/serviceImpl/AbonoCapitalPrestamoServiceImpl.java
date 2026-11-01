@@ -54,6 +54,10 @@ import jakarta.ejb.TransactionAttributeType;
 @Stateless
 public class AbonoCapitalPrestamoServiceImpl implements AbonoCapitalPrestamoService {
 
+    /** U-2: todo proceso que graba valida el usuario PRIMERO (sin usuario válido no se hace nada). */
+    @jakarta.ejb.EJB
+    private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
     private static final double TOLERANCIA = 0.01;
 
     /** Tope de seguridad al calcular el plazo nuevo de la modalidad 1 */
@@ -209,10 +213,8 @@ public class AbonoCapitalPrestamoServiceImpl implements AbonoCapitalPrestamoServ
             throw new IncomeException(ProcesoPagoPrestamoService.ERR_PARAMETRO_INVALIDO
                 + ": modalidad es obligatoria y debe ser 1 (reduce plazo) o 2 (reduce cuota)");
         }
-        if (solicitud.getUsuario() == null || solicitud.getUsuario().trim().isEmpty()) {
-            throw new IncomeException(ProcesoPagoPrestamoService.ERR_PARAMETRO_INVALIDO
-                + ": usuario es obligatorio");
-        }
+        // U-2: lo primero, el usuario existe (helper único); sin usuario válido no se hace nada.
+        solicitud.setUsuario(usuarioValidacionService.validar(solicitud.getUsuario()));
 
         Prestamo prestamo;
         try {
@@ -276,10 +278,8 @@ public class AbonoCapitalPrestamoServiceImpl implements AbonoCapitalPrestamoServ
             throw new IncomeException(ProcesoPagoPrestamoService.ERR_PARAMETRO_INVALIDO
                 + ": idPrestamo es obligatorio");
         }
-        if (solicitud.getUsuario() == null || solicitud.getUsuario().trim().isEmpty()) {
-            throw new IncomeException(ProcesoPagoPrestamoService.ERR_PARAMETRO_INVALIDO
-                + ": usuario es obligatorio");
-        }
+        // U-2: lo primero, el usuario existe (helper único); sin usuario válido no se hace nada.
+        solicitud.setUsuario(usuarioValidacionService.validar(solicitud.getUsuario()));
         if (solicitud.getModalidad() == null && !solicitud.esSinRegenerarTabla()) {
             throw new IncomeException(ERR_MODALIDAD_INVALIDA + ": debe indicar la modalidad (1 o 2)");
         }

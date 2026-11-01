@@ -79,6 +79,10 @@ import jakarta.persistence.NoResultException;
 @Stateless
 public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService {
 
+    /** U-2: todo proceso que graba valida el usuario PRIMERO (sin usuario válido no se hace nada). */
+    @jakarta.ejb.EJB
+    private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
     private static final double TOLERANCIA = 0.01;
 
     @EJB
@@ -393,9 +397,8 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
         // para RECHAZADO(3), reciclado con el estado. Si estos llegan nulos, Oracle revienta
         // con ORA-02290 y de paso arrastra a la anulación del CBCR completo — validar acá
         // ANTES de tocar nada, con un mensaje legible en vez de ese error crudo.
-        if (usuario == null || usuario.trim().isEmpty()) {
-            throw new IncomeException("usuario es obligatorio para anular el acuerdo " + idAcuerdo);
-        }
+        // U-2: lo primero, el usuario existe (helper único); sin usuario válido no se hace nada.
+        usuario = usuarioValidacionService.validar(usuario);
         if (motivo == null || motivo.trim().isEmpty()) {
             throw new IncomeException("El motivo es obligatorio para anular el acuerdo " + idAcuerdo);
         }
@@ -418,9 +421,8 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
     public void reabrirAcuerdoPorReverso(Long idAcuerdo, String usuario, LocalDateTime fecha, String motivo)
             throws Throwable {
         System.out.println("AcuerdoCondonacionService.reabrirAcuerdoPorReverso - acuerdo: " + idAcuerdo);
-        if (usuario == null || usuario.trim().isEmpty()) {
-            throw new IncomeException("usuario es obligatorio para reabrir el acuerdo " + idAcuerdo);
-        }
+        // U-2: lo primero, el usuario existe (helper único); sin usuario válido no se hace nada.
+        usuario = usuarioValidacionService.validar(usuario);
         if (motivo == null || motivo.trim().isEmpty()) {
             throw new IncomeException("El motivo es obligatorio para reabrir el acuerdo " + idAcuerdo);
         }
@@ -496,9 +498,8 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
             throws Throwable {
         System.out.println("AcuerdoCondonacionService.aplicarAcuerdo - acuerdo: " + idAcuerdo
                 + " - fechaAfectacion: " + fechaAfectacion);
-        if (usuario == null || usuario.trim().isEmpty()) {
-            throw new IncomeException("usuario es obligatorio");
-        }
+        // U-2: lo primero, el usuario existe (helper único); sin usuario válido no se hace nada.
+        usuario = usuarioValidacionService.validar(usuario);
         AcuerdoCondonacion acuerdo = buscarAcuerdo(idAcuerdo);
         if (acuerdo.getEstado() == null || acuerdo.getEstado() != CrdEstadoAcuerdoCondonacion.VIGENTE) {
             throw new IncomeException("El acuerdo " + idAcuerdo + " está en estado "
@@ -965,7 +966,8 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
         // regla (saldoOtros si es > 0, si no capitalPagado) que usan CBCRASN2 y el cruce de
         // valores, en vez de una tercera copia divergente.
         lineas.addAll(contabilizacionIndividualCreditoService.haberDesdePagos(
-                java.util.Collections.singletonList(pago), idEmpresa, idPlantillaAplicacion, fechaPago, prefijo));
+                java.util.Collections.singletonList(pago), idEmpresa, idPlantillaAplicacion, fechaPago, prefijo,
+                acuerdo.getUsuarioRegistro()));
 
         if (lineas.isEmpty()) {
             System.out.println("  AcuerdoCondonacionService.generarAsientoCruceAportesAcuerdo - acuerdo "
@@ -1073,9 +1075,8 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
         if (solicitud.getFecha() == null) {
             throw new IncomeException("La fecha del acuerdo es obligatoria");
         }
-        if (solicitud.getUsuario() == null || solicitud.getUsuario().trim().isEmpty()) {
-            throw new IncomeException("usuario es obligatorio");
-        }
+        // U-2: lo primero, el usuario existe (helper único); sin usuario válido no se hace nada.
+        solicitud.setUsuario(usuarioValidacionService.validar(solicitud.getUsuario()));
         if (solicitud.getDetalles() == null || solicitud.getDetalles().size() != 5) {
             throw new IncomeException("El acuerdo debe traer exactamente los 5 conceptos del"
                     + " préstamo (Capital, Interés, Mora, Desgravamen, Seguro de incendio)");

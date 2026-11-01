@@ -67,6 +67,10 @@ import jakarta.ws.rs.core.UriInfo;
 
 @Path("prst")
 public class PrestamoRest {
+
+    /** U-2: todo proceso que graba valida el usuario PRIMERO. */
+    @jakarta.ejb.EJB
+    private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
     
     @EJB
     private PrestamoDaoService prestamoDaoService;
@@ -408,6 +412,8 @@ public class PrestamoRest {
                     .entity(prestamo)
                     .type(MediaType.APPLICATION_JSON)
                     .build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException e) {
+            return respuestaUsuarioInvalido(e);
         } catch (Throwable e) {
             // GA2: un rechazo de regla de negocio (IncomeException) sale 422 con { mensaje }.
             if (e instanceof com.saa.basico.util.IncomeException) {
@@ -465,6 +471,8 @@ public class PrestamoRest {
             return Response.status(Response.Status.OK)
                     .entity(contabilizarItemDesembolso(solicitud, null))
                     .type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException e) {
+            return respuestaUsuarioInvalido(e);
         } catch (Throwable e) {
             if (e instanceof com.saa.basico.util.IncomeException) {
                 return respuestaErrorNegocio(e);
@@ -758,6 +766,8 @@ public class PrestamoRest {
                     .entity(prestamo)
                     .type(MediaType.APPLICATION_JSON)
                     .build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException e) {
+            return respuestaUsuarioInvalido(e);
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("Error al rechazar el préstamo: " + e.getMessage())
@@ -780,6 +790,7 @@ public class PrestamoRest {
     @Produces(MediaType.APPLICATION_JSON)
     public Response cargarTablaAmortizacionDesdeExcel(
             @PathParam("id") Long id,
+            @QueryParam("usuario") String usuario,
             @org.jboss.resteasy.annotations.providers.multipart.MultipartForm MultipartFormDataInput input) {
         System.out.println("CARGAR TABLA DE AMORTIZACIÓN DESDE EXCEL - Préstamo ID: " + id);
         
@@ -825,13 +836,15 @@ public class PrestamoRest {
             }
             
             System.out.println("Archivo recibido correctamente, procesando...");
-            Prestamo prestamo = prestamoService.cargarTablaAmortizacionDesdeExcel(id, inputStream);
+            Prestamo prestamo = prestamoService.cargarTablaAmortizacionDesdeExcel(id, inputStream, usuario);
             
             return Response.status(Response.Status.OK)
                     .entity(prestamo)
                     .type(MediaType.APPLICATION_JSON)
                     .build();
                     
+        } catch (com.saa.basico.util.UsuarioInvalidoException e) {
+            return respuestaUsuarioInvalido(e);
         } catch (Throwable e) {
             System.err.println("ERROR al cargar tabla desde Excel:");
             e.printStackTrace();
@@ -1752,8 +1765,7 @@ public class PrestamoRest {
         try {
             ResultadoCalculoMora resultado = procesoMoraPrestamoService.calcularMoraDiaria(
                 fechaCorte,
-                usuario != null && !usuario.trim().isEmpty()
-                    ? usuario.trim() : ProcesoMoraPrestamoService.USUARIO_PROCESO);
+                usuarioValidacionService.validar(usuario)); // U-2: el cálculo manual lo hace una persona (el timer usa SAA_MORA)
 
             Map<String, Object> cuerpo = new LinkedHashMap<>();
             cuerpo.put("exito", Boolean.TRUE);
@@ -1769,6 +1781,8 @@ public class PrestamoRest {
             return Response.status(Response.Status.OK)
                     .entity(cuerpo).type(MediaType.APPLICATION_JSON).build();
 
+        } catch (com.saa.basico.util.UsuarioInvalidoException e) {
+            return respuestaUsuarioInvalido(e);
         } catch (Throwable e) {
             System.err.println("ERROR al calcular la mora: " + e.getMessage());
             e.printStackTrace();
@@ -1813,8 +1827,7 @@ public class PrestamoRest {
         try {
             ResultadoCalculoMora resultado = procesoMoraPrestamoService.calcularMoraPrestamo(
                 idPrestamo, fechaCorte,
-                usuario != null && !usuario.trim().isEmpty()
-                    ? usuario.trim() : ProcesoMoraPrestamoService.USUARIO_PROCESO);
+                usuarioValidacionService.validar(usuario)); // U-2: el cálculo manual lo hace una persona (el timer usa SAA_MORA)
 
             Map<String, Object> cuerpo = new LinkedHashMap<>();
             cuerpo.put("exito", Boolean.TRUE);
@@ -1827,6 +1840,8 @@ public class PrestamoRest {
             return Response.status(Response.Status.OK)
                     .entity(cuerpo).type(MediaType.APPLICATION_JSON).build();
 
+        } catch (com.saa.basico.util.UsuarioInvalidoException e) {
+            return respuestaUsuarioInvalido(e);
         } catch (Throwable e) {
             System.err.println("ERROR al calcular la mora del préstamo: " + e.getMessage());
             e.printStackTrace();
@@ -1898,6 +1913,12 @@ public class PrestamoRest {
      * que el servicio prefija el mensaje ({@code CODIGO: descripción}). Las reglas de negocio
      * sin código explícito caen en 422; lo inesperado, en 500.
      */
+    /** U-2: usuario faltante o inexistente -> 400, no se procesó nada. */
+    private Response respuestaUsuarioInvalido(com.saa.basico.util.UsuarioInvalidoException e) {
+        return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
+            "No se puede procesar sin un usuario válido: " + e.getMotivo(), "USUARIO_INVALIDO");
+    }
+
     private Response respuestaErrorNegocio(Throwable e) {
         String mensaje = e.getMessage() != null ? e.getMessage() : "Error inesperado";
         String codigo = mensaje.contains(":") ? mensaje.substring(0, mensaje.indexOf(':')).trim() : "";

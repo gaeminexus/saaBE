@@ -76,6 +76,10 @@ import jakarta.ejb.TransactionAttributeType;
 @Stateless
 public class CierreCarteraServiceImpl implements CierreCarteraService {
 
+    /** U-2: todo proceso que graba valida el usuario PRIMERO (sin usuario válido no se hace nada). */
+    @jakarta.ejb.EJB
+    private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
     /** Movimiento de una línea de plantilla: 1 = DEBE. */
     private static final long MOVIMIENTO_DEBE = 1L;
 
@@ -211,6 +215,11 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
         System.out.println("Ingresa al metodo (ejecutar) CierreCarteraService - empresa: "
                 + (solicitud != null ? solicitud.getIdEmpresa() : null) + " periodo: "
                 + (solicitud != null ? solicitud.getAnio() + "-" + solicitud.getMes() : null));
+        // U-2: lo primero, el usuario existe (helper único); sin usuario válido no se cierra nada.
+        if (solicitud == null) {
+            throw new IncomeException("Falta la solicitud del cierre de cartera.");
+        }
+        solicitud.setUsuario(usuarioValidacionService.validar(solicitud.getUsuario()));
         valida(solicitud);
 
         // Idempotencia. El indice UK_CRCT_PERIODO lo garantiza tambien en la base, pero un
@@ -259,7 +268,7 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
         corrida.setObservacion(Boolean.TRUE.equals(solicitud.getOmitirControlArchivoPetro())
                 ? concatena(solicitud.getObservacion(),
                         "CONTROL DE ARCHIVO PETRO OMITIDO por "
-                        + (solicitud.getUsuario() != null ? solicitud.getUsuario() : "SISTEMA")
+                        + solicitud.getUsuario()
                         + ": " + solicitud.getMotivoOmisionControl())
                 : solicitud.getObservacion());
         corrida.setEstado(Long.valueOf(Estado.ACTIVO));
@@ -331,6 +340,8 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
             throws Throwable {
         System.out.println("Ingresa al metodo (reversar) CierreCarteraService - corrida: "
                 + idCorrida);
+        // U-2: lo primero, el usuario existe.
+        usuario = usuarioValidacionService.validar(usuario);
         if (idCorrida == null) {
             throw new IncomeException("La corrida a reversar es obligatoria");
         }
@@ -421,6 +432,8 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
             throws Throwable {
         System.out.println("Ingresa al metodo (reabrir) CierreCarteraService - empresa: " + idEmpresa
                 + " periodo: " + anio + "-" + mes);
+        // U-2: lo primero, el usuario existe.
+        usuario = usuarioValidacionService.validar(usuario);
         if (idEmpresa == null) {
             throw new IncomeException("La empresa es obligatoria");
         }
