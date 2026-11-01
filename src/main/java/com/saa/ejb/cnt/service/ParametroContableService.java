@@ -40,6 +40,15 @@ public interface ParametroContableService {
 	 */
 	com.saa.ejb.cnt.service.dto.GruposBandaCartera gruposBandaCartera(Long idEmpresa, String prefijoRaiz);
 
+	/**
+	 * P3-ARRANQUE (2026-11-01): para cada madre ({@code 1.3.NN}, los primeros 6 caracteres de la cuenta) de la
+	 * cartera, la cuenta de la banda de MAYOR {@code BNDPNMRO} de cada configuración de banda activa
+	 * ({@code CRD.BNDP/CBPR}) de la empresa. Solo incluye las madres en que TODAS las configuraciones coinciden en
+	 * una única cuenta; una madre sin bandas o con varias cuentas en la banda máxima no aparece (el llamador avisa,
+	 * no adivina). Es la cuenta que absorbe la diferencia neta del ⑨ en el modo arranque.
+	 */
+	Map<String, String> cuentaBandaMayorPorMadre(Long idEmpresa, String prefijoRaiz);
+
 	/** La cuenta como prefijo de sus subcuentas: la misma con un punto al final si no lo trae ({@code 1.3} → {@code 1.3.}). */
 	static String comoPrefijo(String cuenta) {
 		return cuenta.endsWith(".") ? cuenta : cuenta + ".";

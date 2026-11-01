@@ -113,6 +113,60 @@ public class ParametroContableServiceImpl implements ParametroContableService {
 		return grupos;
 	}
 
+	@Override
+	@SuppressWarnings("unchecked")
+	public Map<String, String> cuentaBandaMayorPorMadre(Long idEmpresa, String prefijoRaiz) {
+		Query q = em.createNativeQuery(
+				" SELECT c.CBPRCDGO, b.BNDPNMRO, n.PLNNCNTA "
+				+ " FROM CRD.BNDP b "
+				+ " JOIN CRD.CBPR c ON c.CBPRCDGO = b.CBPRCDGO "
+				+ " JOIN CNT.PLNN n ON n.PLNNCDGO = b.PLNNCDGO "
+				+ " WHERE b.BNDPESTD = 1 AND c.CBPRESTD = 1 "
+				+ " AND (c.CBPRFCFN IS NULL OR c.CBPRFCFN >= TRUNC(SYSDATE)) "
+				+ " AND n.PJRQCDGO = :empresa AND n.PLNNCNTA LIKE :raiz");
+		q.setParameter("empresa", idEmpresa);
+		q.setParameter("raiz", prefijoRaiz + "%");
+		// por configuración: la banda de mayor número (y su cuenta)
+		Map<Long, Long> numeroMaximo = new HashMap<Long, Long>();
+		Map<Long, java.util.Set<String>> cuentasDelMaximo = new HashMap<Long, java.util.Set<String>>();
+		for (Object[] f : (List<Object[]>) q.getResultList()) {
+			if (f[0] == null || f[1] == null || f[2] == null) {
+				continue;
+			}
+			Long config = Long.valueOf(((Number) f[0]).longValue());
+			long numero = ((Number) f[1]).longValue();
+			String cuenta = f[2].toString().trim();
+			Long actual = numeroMaximo.get(config);
+			if (actual == null || numero > actual.longValue()) {
+				numeroMaximo.put(config, Long.valueOf(numero));
+				cuentasDelMaximo.put(config, new java.util.HashSet<String>());
+				actual = Long.valueOf(numero);
+			}
+			if (numero == actual.longValue()) {
+				cuentasDelMaximo.get(config).add(cuenta);
+			}
+		}
+		// por madre: el conjunto de cuentas de la banda máxima entre las configuraciones
+		Map<String, java.util.Set<String>> cuentasPorMadre = new HashMap<String, java.util.Set<String>>();
+		for (java.util.Set<String> cuentas : cuentasDelMaximo.values()) {
+			for (String cuenta : cuentas) {
+				if (cuenta.length() >= 6) {
+					cuentasPorMadre.computeIfAbsent(cuenta.substring(0, 6), k -> new java.util.HashSet<String>()).add(cuenta);
+				}
+			}
+		}
+		Map<String, String> resultado = new HashMap<String, String>();
+		for (Map.Entry<String, java.util.Set<String>> e : cuentasPorMadre.entrySet()) {
+			if (e.getValue().size() == 1) {
+				resultado.put(e.getKey(), e.getValue().iterator().next());
+			} else {
+				System.out.println("cuentaBandaMayorPorMadre: la madre " + e.getKey()
+						+ " tiene varias cuentas en la banda máxima " + e.getValue() + ": sin cuenta que absorba");
+			}
+		}
+		return resultado;
+	}
+
 	/** Letra del grupo de un tipo de préstamo (CRD.TPPR): 1 = Q, 3 = P, 2 = H; null si no tiene. */
 	private static String letraGrupo(long tipoPrestamo) {
 		if (tipoPrestamo == CrdLineaAsiento.TIPO_PRESTAMO_QUIROGRAFARIO) {

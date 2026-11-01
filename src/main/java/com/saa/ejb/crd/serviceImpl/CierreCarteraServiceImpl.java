@@ -1337,6 +1337,9 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
         }
         final com.saa.ejb.cnt.service.dto.GruposBandaCartera gruposBanda = porMadre ? null
                 : parametroContableService.gruposBandaCartera(solicitud.getIdEmpresa(), prefijoRaiz);
+        // P3-ARRANQUE: en el arranque la cuenta que absorbe es la banda de mayor numero de cada madre (BNDP/CBPR).
+        final Map<String, String> absorbePorMadre = porMadre
+                ? parametroContableService.cuentaBandaMayorPorMadre(solicitud.getIdEmpresa(), prefijoRaiz) : null;
         for (Object[] fila : cierreCarteraDaoService.selectSaldoContablePorCuentaExcluyendo(solicitud.getIdEmpresa(),
                 prefijoRaiz, cuentasProvision, corte)) {
             String cuenta = (String) fila[0];
@@ -1382,10 +1385,13 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
         }
 
         for (Map.Entry<String, Map<String, Double>> grupo : grupos.entrySet()) {
-            String absorbe = cuentaQueAbsorbe(grupo.getKey(), porMadre, solicitud.getIdEmpresa());
+            String absorbe = cuentaQueAbsorbe(grupo.getKey(), porMadre, solicitud.getIdEmpresa(), absorbePorMadre);
             if (absorbe == null) {
                 advertencias.add("⑨ grupo " + grupo.getKey() + ": no tiene cuenta que absorba la diferencia definida"
-                        + " (solo los grupos Q, P y H la tienen en la plantilla); el grupo no se ajusta.");
+                        + (porMadre
+                                ? " (la madre no tiene bandas activas, o sus configuraciones no coinciden en la cuenta de la banda de mayor numero)"
+                                : " (solo los grupos Q, P y H la tienen en la plantilla)")
+                        + "; el grupo no se ajusta.");
                 continue;
             }
             Map<String, Double> diferencias = grupo.getValue();
@@ -1467,12 +1473,16 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
      * claro; no hay cuenta de respaldo. Un grupo que no es Q/P/H (una madre fuera de 01-12) devuelve {@code null}:
      * el llamador no lo ajusta y lo avisa.</p>
      *
-     * <p>ARRANQUE ({@code porMadre}): sin cambio, sigue siendo la {@code .25} de la madre del grupo. Es la única
-     * cuenta que queda construida en el código; pendiente de la decisión del árbitro (ver reporte P3).</p>
+     * <p>ARRANQUE ({@code porMadre}, P3-ARRANQUE 2026-11-01): la cuenta es la de la banda de mayor {@code BNDPNMRO}
+     * de esa madre entre las configuraciones de banda activas de la empresa
+     * ({@code ParametroContableService.cuentaBandaMayorPorMadre}); ya no se construye con un literal. Una madre sin
+     * bandas, o cuyas configuraciones no coinciden en la cuenta de la banda máxima, devuelve {@code null}: el llamador
+     * lo avisa y no ajusta el grupo (no adivina).</p>
      */
-    private String cuentaQueAbsorbe(String grupo, boolean porMadre, Long idEmpresa) throws Throwable {
+    private String cuentaQueAbsorbe(String grupo, boolean porMadre, Long idEmpresa,
+            Map<String, String> absorbePorMadre) throws Throwable {
         if (porMadre) {
-            return grupo + ".25";
+            return absorbePorMadre != null ? absorbePorMadre.get(grupo) : null;
         }
         long tipoPrestamo;
         if ("Q".equals(grupo)) {

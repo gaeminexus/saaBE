@@ -104,3 +104,9 @@ estado financiero por rubro 250). Los literales están concentrados en 4 archivo
   - Ya no quedan rangos 01-04/05-08/09-12 ni `nombreGrupo` escritos.
   - **A vigilar:** desactivar una banda con saldo vigente o crear un producto con un tipo de préstamo
     distinto de 1/2/3 deja esas cuentas sin grupo (advertencia en el cierre).
+- **P3-ARRANQUE** hecho: en el modo arranque, la cuenta que absorbe la diferencia del ⑨ es la de la
+  banda de mayor `BNDPNMRO` de cada madre, entre las configuraciones de banda activas de la empresa
+  (`ParametroContableService.cuentaBandaMayorPorMadre`, la lógica de `crd/sql/358`). Si la madre no tiene
+  bandas o tiene varias cuentas en la banda máxima: advertencia y no se ajusta. **Ya no queda ninguna
+  cuenta escrita en el cierre de cartera ni en sus controles**; solo el `SUBSTR` de 6 caracteres de la
+  madre, que es estructura del código de cuenta.
