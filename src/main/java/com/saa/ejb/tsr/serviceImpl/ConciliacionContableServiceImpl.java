@@ -43,6 +43,10 @@ import jakarta.ejb.Stateless;
 @Stateless
 public class ConciliacionContableServiceImpl implements ConciliacionContableService {
 
+    /** U-4: todo proceso que graba valida el usuario PRIMERO. */
+    @jakarta.ejb.EJB
+    private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
     @EJB
     private ConciliacionContableDaoService conciliacionContableDaoService;
 
@@ -135,6 +139,8 @@ public class ConciliacionContableServiceImpl implements ConciliacionContableServ
 
     @Override
     public void verificar(Long idConciliacionContable, String usuario) throws Throwable {
+        // U-4: lo primero, el usuario existe; sin usuario válido no se concilia ni se cierra nada.
+        usuario = usuarioValidacionService.validar(usuario);
         System.out.println("Ingresa al metodo verificar con idConciliacionContable: " + idConciliacionContable
                 + ", usuario: " + usuario);
         ConciliacionContable conciliacion = conciliacionContableDaoService

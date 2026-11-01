@@ -34,6 +34,10 @@ import jakarta.persistence.PersistenceContext;
 @Stateless
 public class IngresoServiceImpl implements IngresoService {
 
+	/** U-4: todo proceso que graba valida el usuario PRIMERO. */
+	@jakarta.ejb.EJB
+	private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
 	@EJB
 	private IngresoDaoService ingresoDaoService;
 
@@ -123,6 +127,8 @@ public class IngresoServiceImpl implements IngresoService {
 	public Map<String, Object> procesarIngreso(Long idEmpresa, Long idTitular, Long idProductoCobro,
 			String descripcion, Double valor, String fecha, Long idCuentaBancaria,
 			String referencia, String observacion, Long idUsuario) throws Throwable {
+		// U-4: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 
 		System.out.println("=== procesarIngreso | empresa=" + idEmpresa + " | producto=" + idProductoCobro
 				+ " | valor=" + valor + " | cuenta=" + idCuentaBancaria + " ===");
@@ -208,6 +214,8 @@ public class IngresoServiceImpl implements IngresoService {
 	@Override
 	public Map<String, Object> anularIngreso(Long idIngreso, String motivo, Long idUsuario)
 			throws Throwable {
+		// U-4: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 
 		System.out.println("=== anularIngreso | ingreso=" + idIngreso + " ===");
 
@@ -237,7 +245,7 @@ public class IngresoServiceImpl implements IngresoService {
 			}
 			// 2. Anular / reversar el asiento contable
 			try {
-				asientoService.anulaAsiento(idAsiento);
+				asientoService.anulaAsiento(idAsiento, usuarioNombre(idUsuario), motivo); // U-4: con usuario
 				System.out.println("✓ Asiento " + idAsiento + " anulado / reversado.");
 			} catch (Throwable e) {
 				System.err.println("⚠ No se pudo anular el asiento " + idAsiento + ": " + e.getMessage());
@@ -275,12 +283,9 @@ public class IngresoServiceImpl implements IngresoService {
 	 * @param idUsuario : Id del usuario
 	 * @return          : Nombre del usuario o SISTEMA
 	 */
-	private String usuarioNombre(Long idUsuario) {
-		if (idUsuario == null) {
-			return "SISTEMA";
-		}
-		Usuario usuario = em.find(Usuario.class, idUsuario);
-		return (usuario != null && usuario.getNombre() != null) ? usuario.getNombre() : "SISTEMA";
+	private String usuarioNombre(Long idUsuario) throws Throwable {
+		// U-4: sin relleno. Un idUsuario nulo o inexistente (incluido el 0 del frontend sin sesión) detiene el proceso.
+		return usuarioValidacionService.validarPorId(idUsuario);
 	}
 
 	/**

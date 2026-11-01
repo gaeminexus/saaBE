@@ -34,6 +34,10 @@ import jakarta.persistence.PersistenceContext;
 @Stateless
 public class CajaChicaServiceImpl implements CajaChicaService {
 
+	/** U-4: todo proceso que graba valida el usuario PRIMERO. */
+	@jakarta.ejb.EJB
+	private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
 	private static final double TOLERANCIA = 0.01;
 
 	@EJB
@@ -153,6 +157,8 @@ public class CajaChicaServiceImpl implements CajaChicaService {
 
 	@Override
 	public CajaChica registrar(CajaChica caja, Double saldoInicialMigrado, Long idUsuario) throws Throwable {
+		// U-4: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 
 		System.out.println("=== registrar CajaChica | nombre=" + (caja != null ? caja.getNombre() : null)
 				+ " | saldoInicialMigrado=" + saldoInicialMigrado + " ===");
@@ -252,6 +258,8 @@ public class CajaChicaServiceImpl implements CajaChicaService {
 
 	@Override
 	public Map<String, Object> darDeBaja(Long idCaja, String motivo, Long idUsuario) throws Throwable {
+		// U-4: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 		System.out.println("=== darDeBaja caja chica | caja=" + idCaja + " ===");
 
 		if (motivo == null || motivo.trim().isEmpty()) {
@@ -300,6 +308,8 @@ public class CajaChicaServiceImpl implements CajaChicaService {
 
 	@Override
 	public Map<String, Object> activar(Long idCaja, Long idUsuario) throws Throwable {
+		// U-4: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 		System.out.println("=== activar caja chica | caja=" + idCaja + " ===");
 
 		CajaChica caja = selectById(idCaja);

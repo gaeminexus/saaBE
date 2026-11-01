@@ -35,6 +35,10 @@ import jakarta.persistence.PersistenceContext;
 @Stateless
 public class CierreCajaChicaServiceImpl implements CierreCajaChicaService {
 
+	/** U-4: todo proceso que graba valida el usuario PRIMERO. */
+	@jakarta.ejb.EJB
+	private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
 	private static final double TOLERANCIA = 0.01;
 
 	@EJB
@@ -115,6 +119,8 @@ public class CierreCajaChicaServiceImpl implements CierreCajaChicaService {
 
 	@Override
 	public Map<String, Object> prepararCierre(Long idCaja, LocalDate fecha, Long idUsuario) throws Throwable {
+		// U-4: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 
 		System.out.println("=== prepararCierre caja chica | caja=" + idCaja + " | fecha=" + fecha + " ===");
 
@@ -180,6 +186,8 @@ public class CierreCajaChicaServiceImpl implements CierreCajaChicaService {
 	@Override
 	public CierreCajaChica confirmarCierre(Long idCierre, Double saldoFisico, String observacion,
 			Long idPlanCuentaDiferencia, Long idUsuario) throws Throwable {
+		// U-4: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 
 		System.out.println("=== confirmarCierre caja chica | cierre=" + idCierre
 				+ " | saldoFisico=" + saldoFisico + " ===");
@@ -279,6 +287,8 @@ public class CierreCajaChicaServiceImpl implements CierreCajaChicaService {
 
 	@Override
 	public void anularCierre(Long idCierre, String motivo, Long idUsuario) throws Throwable {
+		// U-4: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 
 		System.out.println("=== anularCierre caja chica | cierre=" + idCierre + " ===");
 
@@ -302,7 +312,7 @@ public class CierreCajaChicaServiceImpl implements CierreCajaChicaService {
 				Long idAsiento = (movimiento.getAsiento() != null) ? movimiento.getAsiento().getCodigo() : null;
 				if (idAsiento != null) {
 					try {
-						asientoService.anulaAsiento(idAsiento);
+						asientoService.anulaAsiento(idAsiento, usuarioNombre(idUsuario), motivo); // U-4: con usuario
 					} catch (Throwable e) {
 						System.err.println("⚠ No se pudo anular el asiento " + idAsiento + ": " + e.getMessage());
 					}
@@ -405,12 +415,9 @@ public class CierreCajaChicaServiceImpl implements CierreCajaChicaService {
 		return Math.round(valor * 100.0) / 100.0;
 	}
 
-	private String usuarioNombre(Long idUsuario) {
-		if (idUsuario == null) {
-			return "SISTEMA";
-		}
-		Usuario usuario = em.find(Usuario.class, idUsuario);
-		return (usuario != null && usuario.getNombre() != null) ? usuario.getNombre() : "SISTEMA";
+	private String usuarioNombre(Long idUsuario) throws Throwable {
+		// U-4: sin relleno. Un idUsuario nulo o inexistente (incluido el 0 del frontend sin sesión) detiene el proceso.
+		return usuarioValidacionService.validarPorId(idUsuario);
 	}
 
 	private String nvl(String valor, String porDefecto) {

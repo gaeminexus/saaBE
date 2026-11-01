@@ -38,6 +38,10 @@ import jakarta.ejb.Stateless;
 @Stateless
 public class ControlExtractoBancarioServiceImpl implements ControlExtractoBancarioService {
 
+    /** U-4: todo proceso que graba valida el usuario PRIMERO. */
+    @jakarta.ejb.EJB
+    private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
     @EJB
     private ControlExtractoBancarioDaoService controlExtractoBancarioDaoService;
 
@@ -204,6 +208,8 @@ public class ControlExtractoBancarioServiceImpl implements ControlExtractoBancar
 
     @Override
     public ControlExtractoBancario cerrarPeriodo(Long idEmpresa, Long idPeriodo, String usuario) throws Throwable {
+        // U-4: lo primero, el usuario existe; sin usuario válido no se concilia ni se cierra nada.
+        usuario = usuarioValidacionService.validar(usuario);
         System.out.println("Ingresa al metodo cerrarPeriodo con idEmpresa: " + idEmpresa + ", idPeriodo: " + idPeriodo
                 + ", usuario: " + usuario);
         // generarPeriodo es idempotente: si el control ya existe lo devuelve tal

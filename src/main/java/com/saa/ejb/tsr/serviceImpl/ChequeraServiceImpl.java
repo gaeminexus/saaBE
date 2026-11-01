@@ -33,6 +33,10 @@ import jakarta.persistence.PersistenceContext;
 @Stateless
 public class ChequeraServiceImpl implements ChequeraService {
 
+	/** U-4: todo proceso que graba valida el usuario PRIMERO. */
+	@jakarta.ejb.EJB
+	private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
 	@EJB
 	private ChequeraDaoService chequeraDaoService;
 
@@ -128,6 +132,8 @@ public class ChequeraServiceImpl implements ChequeraService {
 	@Override
 	public Chequera registrarRecepcion(Long idCuentaBancaria, Long comienza, Long finaliza,
 			LocalDateTime fechaEntrega, Long idUsuario) throws Throwable {
+		// U-4: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 		// idUsuario se recibe por simetría con el resto de los registrar*/procesar*
 		// del módulo (y por si mañana Chequera agrega auditoría de quién la
 		// recibió), pero hoy no se usa: la entidad Chequera no tiene columna de
@@ -230,6 +236,8 @@ public class ChequeraServiceImpl implements ChequeraService {
 
 	@Override
 	public void anularChequera(Long idChequera, String motivo, Long idUsuario) throws Throwable {
+		// U-4: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 		System.out.println("=== anularChequera | id=" + idChequera + " ===");
 
 		if (motivo == null || motivo.trim().isEmpty()) {

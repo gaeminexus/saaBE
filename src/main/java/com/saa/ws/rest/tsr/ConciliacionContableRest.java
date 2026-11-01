@@ -198,6 +198,11 @@ public class ConciliacionContableRest {
                     solicitud.getIdsDetalleAsiento(), solicitud.getUsuario());
             return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON)
                     .build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-4: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("Error al conciliar: " + e.getMessage())
@@ -218,6 +223,11 @@ public class ConciliacionContableRest {
             conciliacionContableMatchService.deshacerGrupo(idGrupo, usuario);
             return Response.status(Response.Status.OK).entity("Grupo deshecho correctamente")
                     .type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-4: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("Error al deshacer el grupo: " + e.getMessage())
@@ -239,6 +249,11 @@ public class ConciliacionContableRest {
             conciliacionContableService.verificar(idConciliacionContable, usuario);
             return Response.status(Response.Status.OK).entity("Cuenta/periodo verificado correctamente")
                     .type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-4: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("Error al verificar: " + e.getMessage())
@@ -261,6 +276,11 @@ public class ConciliacionContableRest {
             conciliacionContableMatchService.cerrarMes(idEmpresa, idPeriodo, usuario);
             return Response.status(Response.Status.OK).entity("Mes cerrado correctamente")
                     .type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-4: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("Error al cerrar el mes: " + e.getMessage())
@@ -279,6 +299,11 @@ public class ConciliacionContableRest {
             conciliacionContableMatchService.reabrirMes(idEmpresa, idPeriodo);
             return Response.status(Response.Status.OK).entity("Mes reabierto correctamente")
                     .type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-4: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("Error al reabrir el mes: " + e.getMessage())
@@ -347,6 +372,11 @@ public class ConciliacionContableRest {
                     solicitud.getIdPeriodo(), solicitud.getPartidas(), solicitud.getSaldoExtracto(),
                     solicitud.getIdUsuario());
             return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-4: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(e.getMessage())
@@ -368,6 +398,11 @@ public class ConciliacionContableRest {
             Long idUsuario = solicitud != null ? solicitud.getIdUsuario() : null;
             Conciliacion resultado = conciliacionCierreService.anularCierre(idCierre, motivo, idUsuario);
             return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+        	// U-4: usuario faltante o inexistente -> 400; no se procesó nada.
+        	return Response.status(Response.Status.BAD_REQUEST)
+        			.entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+        			.type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(e.getMessage())

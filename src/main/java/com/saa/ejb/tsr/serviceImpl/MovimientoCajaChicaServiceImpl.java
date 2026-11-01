@@ -45,6 +45,10 @@ import jakarta.persistence.PersistenceContext;
 @Stateless
 public class MovimientoCajaChicaServiceImpl implements MovimientoCajaChicaService {
 
+	/** U-4: todo proceso que graba valida el usuario PRIMERO. */
+	@jakarta.ejb.EJB
+	private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
 	private static final double TOLERANCIA = 0.01;
 
 	@EJB
@@ -137,6 +141,8 @@ public class MovimientoCajaChicaServiceImpl implements MovimientoCajaChicaServic
 	public MovimientoCajaChica registrarGasto(Long idCaja, LocalDate fecha, Double valor, String descripcion,
 			String observacion, Long idProducto, Long idTitular, String numeroDocumento, Long idUsuario,
 			Long idFacturaCompra, Long idLiquidacionCompra) throws Throwable {
+		// U-4: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 
 		System.out.println("=== registrarGasto caja chica | caja=" + idCaja + " | valor=" + valor
 				+ " | factura=" + idFacturaCompra + " | liquidacion=" + idLiquidacionCompra + " ===");
@@ -344,6 +350,8 @@ public class MovimientoCajaChicaServiceImpl implements MovimientoCajaChicaServic
 
 	@Override
 	public void anularGasto(Long idMovimiento, String motivo, Long idUsuario) throws Throwable {
+		// U-4: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 
 		System.out.println("=== anularGasto caja chica | movimiento=" + idMovimiento + " ===");
 
@@ -408,7 +416,7 @@ public class MovimientoCajaChicaServiceImpl implements MovimientoCajaChicaServic
 			Long idAsiento = (movimiento.getAsiento() != null) ? movimiento.getAsiento().getCodigo() : null;
 			if (idAsiento != null) {
 				try {
-					asientoService.anulaAsiento(idAsiento);
+					asientoService.anulaAsiento(idAsiento, usuarioNombre(idUsuario), motivo); // U-4: con usuario
 					System.out.println("✓ Asiento " + idAsiento + " anulado / reversado.");
 				} catch (Throwable e) {
 					System.err.println("⚠ No se pudo anular el asiento " + idAsiento + ": " + e.getMessage());
@@ -425,6 +433,8 @@ public class MovimientoCajaChicaServiceImpl implements MovimientoCajaChicaServic
 
 	@Override
 	public String anularMovimiento(Long idMovimiento, String motivo, Long idUsuario) throws Throwable {
+		// U-4: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 
 		System.out.println("=== anularMovimiento caja chica | movimiento=" + idMovimiento + " ===");
 
@@ -513,6 +523,8 @@ public class MovimientoCajaChicaServiceImpl implements MovimientoCajaChicaServic
 	public Map<String, Object> registrarReposicion(Long idCaja, Double valor, Long idCuentaBancariaOrigen,
 			Long formaPago, boolean debitoAutomatico, String referencia, LocalDate fecha,
 			String descripcion, Long idUsuario) throws Throwable {
+		// U-4: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 		return registrarPagoBanco(idCaja, valor, idCuentaBancariaOrigen, formaPago, debitoAutomatico,
 				referencia, fecha, descripcion, idUsuario, TipoMovimientoCajaChica.REPOSICION);
 	}
@@ -521,6 +533,8 @@ public class MovimientoCajaChicaServiceImpl implements MovimientoCajaChicaServic
 	public Map<String, Object> registrarApertura(Long idCaja, Double valor, Long idCuentaBancariaOrigen,
 			Long formaPago, boolean debitoAutomatico, String referencia, LocalDate fecha,
 			String descripcion, Long idUsuario) throws Throwable {
+		// U-4: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 		return registrarPagoBanco(idCaja, valor, idCuentaBancariaOrigen, formaPago, debitoAutomatico,
 				referencia, fecha, descripcion, idUsuario, TipoMovimientoCajaChica.APERTURA);
 	}
@@ -726,12 +740,9 @@ public class MovimientoCajaChicaServiceImpl implements MovimientoCajaChicaServic
 	// Helpers privados
 	// =====================================================================
 
-	private String usuarioNombre(Long idUsuario) {
-		if (idUsuario == null) {
-			return "SISTEMA";
-		}
-		Usuario usuario = em.find(Usuario.class, idUsuario);
-		return (usuario != null && usuario.getNombre() != null) ? usuario.getNombre() : "SISTEMA";
+	private String usuarioNombre(Long idUsuario) throws Throwable {
+		// U-4: sin relleno. Un idUsuario nulo o inexistente (incluido el 0 del frontend sin sesión) detiene el proceso.
+		return usuarioValidacionService.validarPorId(idUsuario);
 	}
 
 	private String nvl(String valor, String porDefecto) {

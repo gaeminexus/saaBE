@@ -37,6 +37,10 @@ import jakarta.persistence.PersistenceContext;
 @Stateless
 public class EgresoServiceImpl implements EgresoService {
 
+	/** U-4: todo proceso que graba valida el usuario PRIMERO. */
+	@jakarta.ejb.EJB
+	private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
 	/** Tolerancia de centavos, igual que AplicacionPagoCxpServiceImpl / DevolucionAnticipoProveedorServiceImpl. */
 	private static final double TOLERANCIA = 0.01;
 
@@ -136,6 +140,8 @@ public class EgresoServiceImpl implements EgresoService {
 			String descripcion, Double valor, String fecha, Long idCuentaBancariaOrigen,
 			Long idCuentaDestinoTitular, boolean debitoAutomatico, String referencia,
 			String observacion, Long idUsuario) throws Throwable {
+		// U-4: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 		return procesarEgreso(idEmpresa, idTitular, idProductoPago, descripcion, valor, fecha,
 				idCuentaBancariaOrigen, idCuentaDestinoTitular, debitoAutomatico, referencia,
 				observacion, idUsuario, null);
@@ -146,6 +152,8 @@ public class EgresoServiceImpl implements EgresoService {
 			String descripcion, Double valor, String fecha, Long idCuentaBancariaOrigen,
 			Long idCuentaDestinoTitular, boolean debitoAutomatico, String referencia,
 			String observacion, Long idUsuario, Long formaPago) throws Throwable {
+		// U-4: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 		return procesarEgreso(idEmpresa, idTitular, idProductoPago, descripcion, valor, fecha,
 				idCuentaBancariaOrigen, idCuentaDestinoTitular, debitoAutomatico, referencia,
 				observacion, idUsuario, formaPago, null);
@@ -156,6 +164,8 @@ public class EgresoServiceImpl implements EgresoService {
 			String descripcion, Double valor, String fecha, Long idCuentaBancariaOrigen,
 			Long idCuentaDestinoTitular, boolean debitoAutomatico, String referencia,
 			String observacion, Long idUsuario, Long formaPago, Long idAnticipo) throws Throwable {
+		// U-4: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 
 		System.out.println("=== procesarEgreso | empresa=" + idEmpresa + " | producto=" + idProductoPago
 				+ " | valor=" + valor + " | debitoAutomatico=" + debitoAutomatico
@@ -302,9 +312,8 @@ public class EgresoServiceImpl implements EgresoService {
 					+ ". Revise el cuadre entre los anticipos y la cuenta contable.");
 		}
 
-		Usuario usuario = (idUsuario != null) ? em.find(Usuario.class, idUsuario) : null;
-		String nombreUsuario = (usuario != null && usuario.getNombre() != null)
-				? usuario.getNombre() : "SISTEMA";
+		// U-4: sin relleno. idUsuario nulo o inexistente detiene el proceso.
+		String nombreUsuario = usuarioValidacionService.validarPorId(idUsuario);
 		LocalDate fechaEgreso = parseFecha(fecha);
 
 		String observacionAsiento = "Egreso pagado con el anticipo "
@@ -333,7 +342,7 @@ public class EgresoServiceImpl implements EgresoService {
 		egreso.setAsiento(asiento);
 		egreso.setAnticipo(anticipo);
 		egreso.setObservacion(observacion);
-		egreso.setUsuario(usuario);
+		egreso.setUsuario(em.find(Usuario.class, idUsuario));
 		egreso.setFechaRegistro(LocalDateTime.now());
 		egreso = saveSingle(egreso);
 
@@ -381,6 +390,8 @@ public class EgresoServiceImpl implements EgresoService {
 	@Override
 	public Map<String, Object> anularEgreso(Long idEgreso, String motivo, Long idUsuario)
 			throws Throwable {
+		// U-4: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 
 		System.out.println("=== anularEgreso | egreso=" + idEgreso + " ===");
 
@@ -466,7 +477,7 @@ public class EgresoServiceImpl implements EgresoService {
 
 		Long idAsiento = (egreso.getAsiento() != null) ? egreso.getAsiento().getCodigo() : null;
 		if (idAsiento != null) {
-			asientoService.anulaAsiento(idAsiento);
+			asientoService.anulaAsiento(idAsiento, usuarioValidacionService.validarPorId(idUsuario), motivo); // U-4: con usuario
 		}
 
 		AnticipoProveedor anticipo = em.find(AnticipoProveedor.class, egreso.getAnticipo().getId());

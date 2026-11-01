@@ -79,6 +79,10 @@ import jakarta.ejb.TransactionAttributeType;
 @Stateless
 public class ConciliacionContableMatchServiceImpl implements ConciliacionContableMatchService {
 
+    /** U-4: todo proceso que graba valida el usuario PRIMERO. */
+    @jakarta.ejb.EJB
+    private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
     /**
      * Tolerancia de redondeo monetario entre ambos lados de un grupo -
      * distinta de la tolerancia de DIAS (que sí es configurable vía rubro):
@@ -177,6 +181,8 @@ public class ConciliacionContableMatchServiceImpl implements ConciliacionContabl
     @TransactionAttribute(TransactionAttributeType.REQUIRED)
     public GrupoConciliacionContable conciliarGrupo(Long idCuentaBancaria, Long idPeriodo,
             List<Long> idsDetalleExtracto, List<Long> idsDetalleAsiento, String usuario) throws Throwable {
+        // U-4: lo primero, el usuario existe; sin usuario válido no se concilia ni se cierra nada.
+        usuario = usuarioValidacionService.validar(usuario);
         System.out.println("Ingresa al metodo conciliarGrupo con idCuentaBancaria: " + idCuentaBancaria
                 + ", idPeriodo: " + idPeriodo + ", extracto: " + idsDetalleExtracto + ", asiento: "
                 + idsDetalleAsiento);
@@ -452,6 +458,8 @@ public class ConciliacionContableMatchServiceImpl implements ConciliacionContabl
     @Override
     @TransactionAttribute(TransactionAttributeType.REQUIRED)
     public void deshacerGrupo(Long idGrupo, String usuario) throws Throwable {
+        // U-4: lo primero, el usuario existe; sin usuario válido no se concilia ni se cierra nada.
+        usuario = usuarioValidacionService.validar(usuario);
         System.out.println("Ingresa al metodo deshacerGrupo con idGrupo: " + idGrupo + ", usuario: " + usuario);
         GrupoConciliacionContable grupo = grupoConciliacionContableService.selectById(idGrupo);
         if (grupo == null) {
@@ -794,6 +802,8 @@ public class ConciliacionContableMatchServiceImpl implements ConciliacionContabl
     @Override
     @TransactionAttribute(TransactionAttributeType.REQUIRED)
     public void cerrarMes(Long idEmpresa, Long idPeriodo, String usuario) throws Throwable {
+        // U-4: lo primero, el usuario existe; sin usuario válido no se concilia ni se cierra nada.
+        usuario = usuarioValidacionService.validar(usuario);
         System.out.println("Ingresa al metodo cerrarMes con idEmpresa: " + idEmpresa + ", idPeriodo: " + idPeriodo
                 + ", usuario: " + usuario);
         List<ResumenConciliacionCuenta> resumen = resumenPorPeriodo(idEmpresa, idPeriodo);

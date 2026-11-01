@@ -53,6 +53,10 @@ import jakarta.persistence.PersistenceException;
  */
 @Stateless
 public class ChequeServiceImpl implements ChequeService {
+
+	/** U-4: todo proceso que graba valida el usuario PRIMERO. */
+	@jakarta.ejb.EJB
+	private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
 	
 	@EJB
 	private ChequeDaoService chequeDaoService;
@@ -468,6 +472,8 @@ public class ChequeServiceImpl implements ChequeService {
 	@Override
 	public Cheque asignarAPago(Long idCuentaBancaria, Double valor, Titular titular, String beneficiario,
 			Long idUsuario) throws Throwable {
+		// U-4: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 
 		System.out.println("=== asignarAPago | cuenta=" + idCuentaBancaria + " | valor=" + valor + " ===");
 
@@ -490,6 +496,8 @@ public class ChequeServiceImpl implements ChequeService {
 	@Override
 	public Cheque asignarAGrupo(Long idCuentaBancaria, Double valorTotal, Titular titular, String beneficiario,
 			Long idUsuario) throws Throwable {
+		// U-4: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 
 		System.out.println("=== asignarAGrupo | cuenta=" + idCuentaBancaria + " | valorTotal=" + valorTotal + " ===");
 
@@ -520,6 +528,8 @@ public class ChequeServiceImpl implements ChequeService {
 
 	@Override
 	public void anularChequeSuelto(Long idCheque, Long motivo, Long idUsuario) throws Throwable {
+		// U-4: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 		System.out.println("=== anularChequeSuelto | cheque=" + idCheque + " ===");
 
 		if (motivo == null || motivo.longValue() < com.saa.rubros.MotivoAnulacionCheque.ERROR_DE_TIPEO
@@ -565,6 +575,8 @@ public class ChequeServiceImpl implements ChequeService {
 
 	@Override
 	public void marcarImpresos(List<Long> ids, Long idUsuario) throws Throwable {
+		// U-4: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 		System.out.println("=== marcarImpresos | ids=" + ids + " ===");
 
 		if (ids == null || ids.isEmpty()) {
@@ -590,6 +602,8 @@ public class ChequeServiceImpl implements ChequeService {
 
 	@Override
 	public void marcarEntregados(List<Long> ids, Long idUsuario) throws Throwable {
+		// U-4: lo primero, el usuario (idUsuario) existe; sin usuario válido no se hace nada.
+		usuarioValidacionService.validarPorId(idUsuario);
 		System.out.println("=== marcarEntregados | ids=" + ids + " ===");
 
 		if (ids == null || ids.isEmpty()) {
