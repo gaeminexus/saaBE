@@ -162,3 +162,15 @@ Para destrabar la carga 492 antes del pase grande. Coincide con el «A1» del eq
 - **U4 — tipo 22:** que deje de bloquear cuando el reparto por vigencias puede absorber el monto
   (atrasos y anticipo). *Recomendación: sí.*
 - **U5 — fase 0:** autorizar el despacho ya, para reprocesar la carga 492.
+
+## 6. Hallazgo del 2026-10-31: el mes del aporte no se ve
+
+- `crearNuevoAporte` arma la glosa **siempre con el mes de la carga** («Mes 10/2026»), también en
+  el reparto automático por devengo. La pantalla de aportes muestra la fecha de caja (APRTFCTR,
+  último día del mes de la carga, por diseño) y la glosa. Resultado: un aporte que paga julio, o
+  uno anticipado a noviembre, se ve como de octubre. El mes real está en `APRTPRDV`.
+- Datos de la 492 corregidos con `crd/sql/338`.
+- **Corrección de código pendiente:** (1) la glosa usa el mes de devengo cuando existe: «Aporte X -
+  Mes {devengo} (pagado en {mes carga}) - CargaArchivo: N»; (2) la pantalla de aportes muestra una
+  columna «Mes de devengo» (`periodoDevengo`); (3) la afectación manual a aporte reparte por mes
+  (F1 bis), junto con el arreglo del anticipo (F2).
