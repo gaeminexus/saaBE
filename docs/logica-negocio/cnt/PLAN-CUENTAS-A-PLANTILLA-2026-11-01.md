@@ -74,7 +74,7 @@ estado financiero por rubro 250). Los literales están concentrados en 4 archivo
     problema.
   - (2) solo `1.3.07`, saldo 0 con 2 movimientos (una madre usada y reversada).
   - (3) `1.3.99.05/.10/.15` todas EN_PLANTILLA.
-  - (4) el usuario no pegó salida; se asume vacía.
+  - (4) vacía (confirmado por el usuario): todos los productos con banda tienen tipo de préstamo.
   - **→ P4-B y P4-C aprobados.** Una cuenta sin grupo con saldo 0 se ignora sin advertencia; con
     saldo distinto de 0, advertencia.
 - **`crd/sql/358` corrido en producción (2026-11-01):** las 10 madres dan IGUAL, con una sola fila
