@@ -28,7 +28,8 @@ empresa con `ASNTFCHA <= fin de mes`; saldo **deudor** (debe − haber).
 |---|---|---|---|
 | (a) PUENTES | `PUENTE_1.4.05.05`, `PUENTE_2.3.02.05` | Saldo de la cuenta y sus subcuentas = 0 (D-024) | ERROR si ≠ 0 |
 | (a) PUENTES | `PUENTE_1.4.05.10_2.3.02.10` | Saldo deudor 1.4.05.10 = saldo acreedor 2.3.02.10 (con D-032, tras el ⑥ del cierre de cartera las dos en 0: `crd/CIERRE-CARTERA-A-FECHA-DE-CORTE.md` §1.9) | ERROR si ≠ |
-| (b) ECUACION | `ECUACION_CONTABLE` | Activo (1) = pasivo (2) + patrimonio (3) + resultado (5 − 4) | ERROR si ≠ |
+| (b) ECUACION | `ECUACION_CONTABLE` | Activo = pasivo + patrimonio + resultado (ingresos − gastos). Los grupos de nivel 1 salen del rubro 250 (`CntParametroEstadoFinanciero.GRUPO_ACTIVO/PASIVO/PATRIMONIO/INGRESOS/GASTOS`; FCPC: 1/2/3/5/4), no están en el código (P2, 2026-11-01). Si falta alguno: no se mide | ERROR si ≠; ADVERTENCIA si falta el rubro |
+| (a) PUENTES | `PUENTES_SIN_PLANTILLA` | Las cuatro cuentas puente se LEEN de la plantilla de apertura (alterno 1) aux1 1-4 (`CrdLineaAsiento`), no están en el código (P1, 2026-11-01). Si falta la plantilla o una línea: no se mide, el detalle dice cuál | ADVERTENCIA |
 | (c) CARTERA | `CARTERA_GRUPO_Q/P/H` | Contabilidad 1.3 sin 1.3.99 por grupo (Q = 1.3.01–04, P = 05–08, H = 09–12, la agrupación del ⑨) vs la distribución del módulo que dejó la corrida de cierre de cartera **vigente** del mes (`CRD.BDCC`, snapshot de `distNueva`). La diferencia es la que el ⑨ deja en la banda .25 | ERROR si ≠ |
 | (c) CARTERA | `CARTERA_NO_CERRADA` | El mes no tiene corrida CRCT EJECUTADA vigente: se informa el capital contable por grupo | ADVERTENCIA |
 | (c) CARTERA | `CARTERA_SIN_CUENTA` | Capital del módulo en bandas sin cuenta 1.3 | ADVERTENCIA |

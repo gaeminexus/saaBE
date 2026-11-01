@@ -9,7 +9,14 @@ import java.util.Map;
 import java.util.TreeMap;
 
 import com.saa.basico.util.IncomeException;
+import com.saa.ejb.cnt.dao.DetallePlantillaDaoService;
 import com.saa.ejb.cnt.service.ControlCierreService;
+import com.saa.ejb.cnt.service.PlantillaService;
+import com.saa.model.cnt.DetallePlantilla;
+import com.saa.rubros.CntParametroEstadoFinanciero;
+import com.saa.rubros.CrdLineaAsiento;
+import com.saa.rubros.PlantillasCredito;
+import com.saa.rubros.Rubros;
 import com.saa.ejb.cnt.service.EstadoCierreService;
 import com.saa.ejb.cnt.service.dto.ControlCierre;
 import com.saa.ejb.cnt.service.dto.EstadoPeriodo;
@@ -39,6 +46,13 @@ public class ControlCierreServiceImpl implements ControlCierreService {
     @EJB
     private EstadoCierreService estadoCierreService;
 
+    /** P1: las cuentas puente salen de las líneas de la plantilla de apertura (no escritas en el código). */
+    @EJB
+    private PlantillaService plantillaService;
+
+    @EJB
+    private DetallePlantillaDaoService detallePlantillaDaoService;
+
     @Override
     public List<ControlCierre> controlar(Long idEmpresa, Long anio, Long mes) throws Throwable {
         if (idEmpresa == null || anio == null || mes == null || mes < 1 || mes > 12) {
@@ -63,8 +77,31 @@ public class ControlCierreServiceImpl implements ControlCierreService {
     // (a) Cuentas puente (D-024)
     // =====================================================================
 
-    private void controlesPuentes(List<ControlCierre> controles, Long idEmpresa, LocalDate corte, LocalDate corteSig) {
-        for (String cuenta : new String[] { "1.4.05.05", "2.3.02.05" }) {
+    private void controlesPuentes(List<ControlCierre> controles, Long idEmpresa, LocalDate corte, LocalDate corteSig)
+            throws Throwable {
+        // P1 (PLAN-CUENTAS-A-PLANTILLA-2026-11-01.md): las cuatro cuentas puente se LEEN de la plantilla de
+        // apertura del mes (alterno 1, PlantillasCredito.APERTURA_PLANILLA_MENSUAL), que tiene las cuatro
+        // líneas del catálogo CrdLineaAsiento (aux1 1-4). Ya no hay cuentas escritas en el código ni respaldo:
+        // si falta la plantilla o una línea, el control lo dice y no se evalúa.
+        String cobrarAportes = cuentaPuente(idEmpresa, CrdLineaAsiento.APORTES_POR_COBRAR);
+        String aplicarAportes = cuentaPuente(idEmpresa, CrdLineaAsiento.APORTES_POR_APLICAR);
+        String cobrarPrestamos = cuentaPuente(idEmpresa, CrdLineaAsiento.PRESTAMOS_POR_COBRAR);
+        String aplicarPrestamos = cuentaPuente(idEmpresa, CrdLineaAsiento.PRESTAMOS_POR_APLICAR);
+        if (cobrarAportes == null || aplicarAportes == null || cobrarPrestamos == null || aplicarPrestamos == null) {
+            ControlCierre c = new ControlCierre("PUENTES", "PUENTES_SIN_PLANTILLA",
+                    "Cuentas puente en cero al " + corte + " (D-024)");
+            c.setEstado(ControlCierre.ADVERTENCIA);
+            c.setDetalle("No se pudo medir: la plantilla contable alterno " + PlantillasCredito.APERTURA_PLANILLA_MENSUAL
+                    + " (apertura de la planilla mensual) de la empresa " + idEmpresa + " no tiene todas las líneas de las"
+                    + " cuentas puente. Faltan: " + faltantes(cobrarAportes, "aportes por cobrar (aux1 " + CrdLineaAsiento.APORTES_POR_COBRAR + ")",
+                            aplicarAportes, "aportes por aplicar (aux1 " + CrdLineaAsiento.APORTES_POR_APLICAR + ")",
+                            cobrarPrestamos, "préstamos por cobrar (aux1 " + CrdLineaAsiento.PRESTAMOS_POR_COBRAR + ")",
+                            aplicarPrestamos, "préstamos por aplicar (aux1 " + CrdLineaAsiento.PRESTAMOS_POR_APLICAR + ")")
+                    + ". Corrija la plantilla; no hay cuenta de respaldo.");
+            controles.add(c);
+            return;
+        }
+        for (String cuenta : new String[] { cobrarAportes, aplicarAportes }) {
             double saldo = saldoDeudor(idEmpresa, corteSig, cuenta, null);
             ControlCierre c = new ControlCierre("PUENTES", "PUENTE_" + cuenta,
                     "Cuenta puente " + cuenta + " en cero al " + corte + " (D-024)");
@@ -72,14 +109,42 @@ public class ControlCierreServiceImpl implements ControlCierreService {
                     + ". D-024: la cuenta puente de excedentes/compensaciones debe quedar en 0 cada mes.");
             controles.add(c);
         }
-        double s14 = saldoDeudor(idEmpresa, corteSig, "1.4.05.10", null);
-        double s23 = saldoDeudor(idEmpresa, corteSig, "2.3.02.10", null);
-        ControlCierre c = new ControlCierre("PUENTES", "PUENTE_1.4.05.10_2.3.02.10",
-                "1.4.05.10 igual y opuesta a 2.3.02.10 al " + corte + " (D-024)");
-        // valor = 1.4.05.10 (deudor), esperado = −2.3.02.10 (deudor), es decir el saldo acreedor de la 2.3.02.10.
-        compara(c, s14, -s23, "Saldo deudor 1.4.05.10: " + fmt(s14) + "; saldo acreedor 2.3.02.10: " + fmt(-s23)
-                + ". Deben ser iguales (excedentes D-010 por 2.3.02.10).");
+        double s14 = saldoDeudor(idEmpresa, corteSig, cobrarPrestamos, null);
+        double s23 = saldoDeudor(idEmpresa, corteSig, aplicarPrestamos, null);
+        ControlCierre c = new ControlCierre("PUENTES", "PUENTE_" + cobrarPrestamos + "_" + aplicarPrestamos,
+                cobrarPrestamos + " igual y opuesta a " + aplicarPrestamos + " al " + corte + " (D-024)");
+        // valor = por cobrar (deudor), esperado = −por aplicar (deudor), es decir el saldo acreedor de la por aplicar.
+        compara(c, s14, -s23, "Saldo deudor " + cobrarPrestamos + ": " + fmt(s14) + "; saldo acreedor " + aplicarPrestamos + ": "
+                + fmt(-s23) + ". Deben ser iguales (excedentes D-010 por " + aplicarPrestamos + ").");
         controles.add(c);
+    }
+
+    /** Cuenta contable de la línea {@code aux1} de la plantilla de apertura de la empresa, o {@code null} si no existe. */
+    private String cuentaPuente(Long idEmpresa, int aux1) throws Throwable {
+        Long idPlantilla = plantillaService.codigoByAlterno(PlantillasCredito.APERTURA_PLANILLA_MENSUAL, idEmpresa);
+        if (idPlantilla == null) {
+            return null;
+        }
+        DetallePlantilla linea = detallePlantillaDaoService.selectByPlantillaYAuxiliar(idPlantilla, aux1);
+        if (linea == null || linea.getPlanCuenta() == null || linea.getPlanCuenta().getCuentaContable() == null
+                || linea.getPlanCuenta().getCuentaContable().trim().isEmpty()) {
+            return null;
+        }
+        return linea.getPlanCuenta().getCuentaContable().trim();
+    }
+
+    /** Lista, separada por comas, las descripciones cuyo valor leído es {@code null}. Pares (valor, descripción). */
+    private static String faltantes(String... paresValorDescripcion) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i + 1 < paresValorDescripcion.length; i += 2) {
+            if (paresValorDescripcion[i] == null) {
+                if (sb.length() > 0) {
+                    sb.append(", ");
+                }
+                sb.append(paresValorDescripcion[i + 1]);
+            }
+        }
+        return sb.toString();
     }
 
     // =====================================================================
@@ -87,29 +152,56 @@ public class ControlCierreServiceImpl implements ControlCierreService {
     // =====================================================================
 
     private void controlEcuacion(List<ControlCierre> controles, Long idEmpresa, LocalDate corte, LocalDate corteSig) {
-        Query q = em.createNativeQuery(
-                " SELECT SUBSTR(d.DTASCNTA, 1, 1), SUM(NVL(d.DTASDBEE, 0)) - SUM(NVL(d.DTASHBRR, 0)) "
-                + " FROM CNT.DTAS d JOIN CNT.ASNT a ON a.ASNTCDGO = d.ASNTCDGO "
-                + " WHERE a.PJRQCDGO = :empresa AND a.ASNTESTD IN (1, 3) AND a.ASNTFCHA < :corteSig "
-                + " GROUP BY SUBSTR(d.DTASCNTA, 1, 1)");
-        q.setParameter("empresa", idEmpresa);
-        q.setParameter("corteSig", Date.valueOf(corteSig));
-        Map<String, Double> porNaturaleza = new TreeMap<String, Double>();
-        for (Object fila : q.getResultList()) {
-            Object[] f = (Object[]) fila;
-            porNaturaleza.put(String.valueOf(f[0]), aDouble(f[1]));
-        }
-        double activo = valor(porNaturaleza, "1");
-        double pasivo = -valor(porNaturaleza, "2");
-        double patrimonio = -valor(porNaturaleza, "3");
-        double resultado = -valor(porNaturaleza, "5") - valor(porNaturaleza, "4");
+        // P2 (PLAN-CUENTAS-A-PLANTILLA-2026-11-01.md): los grupos de nivel 1 salen del rubro 250
+        // (CntParametroEstadoFinanciero.GRUPO_*), el mismo que leen los estados financieros oficiales
+        // (EstadoFinancieroOficialServiceImpl). Antes eran los dígitos 1-5 escritos aquí. Sin el rubro o con un
+        // grupo vacío no hay respaldo: el control lo dice y no se evalúa.
+        Map<Integer, String> p = parametrosEstadosFinancieros();
+        String gActivo = p.get(CntParametroEstadoFinanciero.GRUPO_ACTIVO);
+        String gPasivo = p.get(CntParametroEstadoFinanciero.GRUPO_PASIVO);
+        String gPatrimonio = p.get(CntParametroEstadoFinanciero.GRUPO_PATRIMONIO);
+        String gIngresos = p.get(CntParametroEstadoFinanciero.GRUPO_INGRESOS);
+        String gGastos = p.get(CntParametroEstadoFinanciero.GRUPO_GASTOS);
         ControlCierre c = new ControlCierre("ECUACION", "ECUACION_CONTABLE",
                 "Ecuación contable al " + corte + ": activo = pasivo + patrimonio + resultado");
+        if (gActivo == null || gPasivo == null || gPatrimonio == null || gIngresos == null || gGastos == null) {
+            c.setEstado(ControlCierre.ADVERTENCIA);
+            c.setDetalle("No se pudo medir: el rubro " + Rubros.CNT_PARAMETROS_ESTADOS_FINANCIEROS
+                    + " (parámetros de los estados financieros) no tiene todos los grupos de nivel 1. Faltan: "
+                    + faltantes(gActivo, "activo (GRUPO_ACTIVO " + CntParametroEstadoFinanciero.GRUPO_ACTIVO + ")",
+                            gPasivo, "pasivo (GRUPO_PASIVO " + CntParametroEstadoFinanciero.GRUPO_PASIVO + ")",
+                            gPatrimonio, "patrimonio (GRUPO_PATRIMONIO " + CntParametroEstadoFinanciero.GRUPO_PATRIMONIO + ")",
+                            gIngresos, "ingresos (GRUPO_INGRESOS " + CntParametroEstadoFinanciero.GRUPO_INGRESOS + ")",
+                            gGastos, "gastos (GRUPO_GASTOS " + CntParametroEstadoFinanciero.GRUPO_GASTOS + ")")
+                    + ". Corrija el rubro; no hay grupo de respaldo.");
+            controles.add(c);
+            return;
+        }
+        double activo = saldoDeudor(idEmpresa, corteSig, gActivo, null);
+        double pasivo = -saldoDeudor(idEmpresa, corteSig, gPasivo, null);
+        double patrimonio = -saldoDeudor(idEmpresa, corteSig, gPatrimonio, null);
+        double resultado = -saldoDeudor(idEmpresa, corteSig, gIngresos, null) - saldoDeudor(idEmpresa, corteSig, gGastos, null);
         compara(c, activo, pasivo + patrimonio + resultado,
-                "Activo (1) " + fmt(activo) + "; pasivo (2) " + fmt(pasivo) + "; patrimonio (3) " + fmt(patrimonio)
-                        + "; resultado (5 − 4) " + fmt(resultado) + ". Mismo cálculo que la línea \"1 − 2 − 3 − (5 − 4)\" de"
+                "Activo (" + gActivo + ") " + fmt(activo) + "; pasivo (" + gPasivo + ") " + fmt(pasivo) + "; patrimonio ("
+                        + gPatrimonio + ") " + fmt(patrimonio) + "; resultado (" + gIngresos + " − " + gGastos + ") "
+                        + fmt(resultado) + ". Mismo cálculo que la línea \"activo − pasivo − patrimonio − resultado\" de"
                         + " la cuadratura B17 ↔ G.");
         controles.add(c);
+    }
+
+    /** Parámetros del rubro 250 (estados financieros) activos: PDTRALTR → PDTRVLRV, sin vacíos. */
+    @SuppressWarnings("unchecked")
+    private Map<Integer, String> parametrosEstadosFinancieros() {
+        Map<Integer, String> m = new java.util.HashMap<Integer, String>();
+        Query q = em.createNativeQuery("SELECT d.PDTRALTR, d.PDTRVLRV FROM SCP.PDTR d JOIN SCP.PRBR r ON r.PRBRCDGO = d.PRBRCDGO"
+                + " WHERE r.PRBRALTR = ?1 AND d.PDTRESTD = 1");
+        q.setParameter(1, Rubros.CNT_PARAMETROS_ESTADOS_FINANCIEROS);
+        for (Object[] f : (List<Object[]>) q.getResultList()) {
+            if (f[0] != null && f[1] != null && !f[1].toString().trim().isEmpty()) {
+                m.put(((Number) f[0]).intValue(), f[1].toString().trim());
+            }
+        }
+        return m;
     }
 
     // =====================================================================
