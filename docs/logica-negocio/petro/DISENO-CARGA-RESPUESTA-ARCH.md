@@ -174,7 +174,12 @@ confirma que la generación de agosto cuadra con el PDF.
 - **Fuera de alcance:** `PDGAMNDC`/`PDGAFCDC`, llenar las líneas no descontadas, y tocar nada del
   proceso de aplicación.
 
-### 9.3 Frontend (`crd/forms/archivos-petro/carga/carga-aportes`)
+### 9.3 Frontend (`crd/forms/archivos-petro/carga/carga-aporte-back`)
+
+> Corregido el 2026-10-31 a raíz del reporte del FE: la pantalla del menú «Carga Aportes» es
+> `carga-aporte-back/`, y es la única que llama a `validarArchivoPetro` (valida `.txt` en el html,
+> en la extensión y en el MIME). `carga-aportes/` está fuera del menú, arma las filas en el
+> navegador y llama a `procesarArchivoPetro`: no se toca.
 
 - Si la filial elegida es ARCH (código 2): el selector de archivo acepta
   `.xlsx,.xls,.csv,.txt`, y la pantalla muestra el formato esperado (las 4 columnas, la cédula
