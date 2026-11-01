@@ -129,6 +129,27 @@ seguiría ignorada (F1), pero su intención era la misma (cesantía); el resulta
 además, queda con devengo. La AVPC 688 se puede dejar: no se aplica y las validaciones la cuentan
 como «con destino». Hay que confirmarlo con el `333` (total faltante = 264,25).
 
+## 4bis. Arreglo urgente del 2026-10-31 (autorizado por el usuario): solo F1 en AH y HS huérfano
+
+Para destrabar la carga 492 antes del pase grande. Coincide con el «A1» del equipo de cuadre.
+
+- `aplicarAporteAH` (~4833): justo después de `restaurarActivoPorPago(entidad, montoRecibido)` y
+  antes de buscar el `HistorialSueldo`, llamar
+  `verificarYAplicarAfectacionesManualesTotales(participe, CODIGO_PRODUCTO_APORTES, cargaArchivo)`.
+  Si devuelve `true`, la fila se dio por aplicada con sus AVPC: no se corre el devengo y se devuelve
+  un valor > 0, para que el resumen la cuente como éxito.
+- `procesarSeguroIncendioHuerfano` (~3424): después del control `montoHS <= 0.01` y antes de buscar
+  la entidad y los préstamos candidatos, la misma llamada con `CODIGO_PRODUCTO_HS`. Si devuelve
+  `true`, la fila HS queda resuelta (con el mismo valor de retorno que «procesado» tenga para el
+  llamador; hay que verificarlo, no suponerlo).
+- **Misma semántica que en las filas de préstamo:** si la fila tiene AVPC, se aplican SOLO las AVPC
+  (todo o nada por fila). Lo que la afectación no cubra queda sin aplicar y el control
+  recibido = aplicado lo detecta. Por eso, antes de procesar, `crd/sql/334` verifica que las AVPC de
+  la 492 cubran el 100 % de su fila. No se cambia a «AVPC + automático por el resto» esta noche: eso
+  es la fase 1 (§3.2).
+- **Fuera de este arreglo:** F2 (anticipo), F4 (filtro de estado), el seguro de incendio H1-H6, la
+  pantalla y el «A4» del equipo de cuadre.
+
 ## 5. Decisiones del usuario
 
 - **U1 — modelo:** M2 (destino del sobrante) como camino principal, manteniendo M1 para casos
