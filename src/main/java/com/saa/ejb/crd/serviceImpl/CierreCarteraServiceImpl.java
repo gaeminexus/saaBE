@@ -15,6 +15,7 @@ import com.saa.ejb.cnt.dao.DetallePlantillaDaoService;
 import com.saa.ejb.cnt.dao.PlanCuentaDaoService;
 import com.saa.ejb.cnt.service.AsientoContableService;
 import com.saa.ejb.cnt.service.AsientoService;
+import com.saa.ejb.cnt.service.ParametroContableService;
 import com.saa.ejb.cnt.service.PlantillaService;
 import com.saa.ejb.crd.dao.AsientoCierreCarteraDaoService;
 import com.saa.ejb.crd.dao.BandaCierreCarteraDaoService;
@@ -49,6 +50,7 @@ import com.saa.model.crd.NombreEntidadesCredito;
 import com.saa.model.crd.Producto;
 import com.saa.model.scp.Empresa;
 import com.saa.model.scp.NombreEntidadesSistema;
+import com.saa.rubros.CntParametroEstadoFinanciero;
 import com.saa.rubros.CrdEstadoCargaArchivo;
 import com.saa.rubros.CrdLineaAsiento;
 import com.saa.rubros.Estado;
@@ -146,6 +148,10 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
 
     @EJB
     private PlantillaService plantillaService;
+
+    /** P4-A: la raiz de la cartera de creditos se lee del rubro 250 (no esta en el codigo). */
+    @EJB
+    private ParametroContableService parametroContableService;
 
     @EJB
     private DetallePlantillaDaoService detallePlantillaDaoService;
@@ -1309,7 +1315,18 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
             idCuenta.put(fila.getCuenta(), fila.getIdPlanCuenta());
             nombreCuenta.put(fila.getCuenta(), fila.getNombreCuenta());
         }
-        for (Object[] fila : cierreCarteraDaoService.selectSaldoContablePorCuenta(solicitud.getIdEmpresa(), "1.3.",
+        // P4-A (PLAN-CUENTAS-A-PLANTILLA-2026-11-01.md): la raiz de la cartera se LEE del rubro 250
+        // (CUENTA_CARTERA_CREDITOS); sin ella el cierre se detiene, no hay raiz de respaldo. Quedan escritos a
+        // proposito, hasta P4-B/C (crd/sql/359), la exclusion "1.3.99" de la provision y los rangos 01-04/05-08/09-12.
+        String raizCartera = parametroContableService.valor(CntParametroEstadoFinanciero.CUENTA_CARTERA_CREDITOS);
+        if (raizCartera == null) {
+            throw new IncomeException("No se puede armar el ajuste de bandas (⑨): el rubro "
+                    + com.saa.rubros.Rubros.CNT_PARAMETROS_ESTADOS_FINANCIEROS + " no tiene el detalle CUENTA_CARTERA_CREDITOS ("
+                    + CntParametroEstadoFinanciero.CUENTA_CARTERA_CREDITOS + ") con la cuenta de la cartera de creditos."
+                    + " No hay raiz de respaldo: cargue el detalle.");
+        }
+        final String prefijoRaiz = ParametroContableService.comoPrefijo(raizCartera);
+        for (Object[] fila : cierreCarteraDaoService.selectSaldoContablePorCuenta(solicitud.getIdEmpresa(), prefijoRaiz,
                 "1.3.99", corte)) {
             String cuenta = (String) fila[0];
             proyectado.merge(cuenta, (Double) fila[2], Double::sum);
@@ -1333,7 +1350,7 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
         cuentas.addAll(objetivo.keySet());
         cuentas.addAll(proyectado.keySet());
         for (String cuenta : cuentas) {
-            String grupo = grupoBanda(cuenta, porMadre);
+            String grupo = grupoBanda(cuenta, porMadre, prefijoRaiz);
             if (grupo == null) {
                 continue;
             }
@@ -1400,9 +1417,11 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
     /**
      * Grupo de una cuenta de capital {@code 1.3.NN.xx}: la madre {@code 1.3.NN} (arranque) o la
      * familia (01–04 quirografario, 05–08 prendario, 09–12 hipotecario). null = no es de banda.
+     * P4-A: la raiz ({@code prefijoRaiz}) se lee del rubro 250; la exclusion "1.3.99" y los rangos siguen escritos
+     * hasta P4-B/C (PLAN-CUENTAS-A-PLANTILLA-2026-11-01.md, crd/sql/359).
      */
-    private String grupoBanda(String cuenta, boolean porMadre) {
-        if (cuenta == null || !cuenta.startsWith("1.3.") || cuenta.startsWith("1.3.99") || cuenta.length() < 9) {
+    private String grupoBanda(String cuenta, boolean porMadre, String prefijoRaiz) {
+        if (cuenta == null || !cuenta.startsWith(prefijoRaiz) || cuenta.startsWith("1.3.99") || cuenta.length() < 9) {
             return null;
         }
         String madre = cuenta.substring(0, 6);

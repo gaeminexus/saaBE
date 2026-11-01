@@ -41,4 +41,10 @@ public interface CntParametroEstadoFinanciero {
 	 * el control no se mide (ADVERTENCIA): no hay cuenta de respaldo.
 	 */
 	int CUENTA_APORTES_PARTICIPES = 16;
+	/**
+	 * Cuenta de nivel 2 de la cartera de créditos (B17 cuenta 13; FCPC: 1.3): la raíz de las cuentas de banda
+	 * ({@code 1.3.NN.xx}) y de su provisión. La leen el cierre de cartera y los controles de cierre (P4-A,
+	 * 2026-11-01). Sin este detalle el cierre se detiene y los controles no se miden: no hay cuenta de respaldo.
+	 */
+	int CUENTA_CARTERA_CREDITOS = 17;
 }

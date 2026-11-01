@@ -56,7 +56,8 @@ estado financiero por rubro 250). Los literales están concentrados en 4 archivo
 ## Prerrequisitos de base del próximo EAR (en orden)
 1. `crd/sql/356`: semillas de P3 y P5. **Si falta, el EAR rompe el cierre de cartera y las compras con
    redondeo.**
-2. `cnt/sql/c20-02`: detalle 16 del rubro 250 (si falta, solo deja una advertencia).
+2. `cnt/sql/c20-02` (detalles 16 y 17 del rubro 250). **También es obligatorio desde P4-A:** sin el
+   detalle 17, el cierre de cartera se detiene y los controles de cartera quedan en advertencia.
 3. `cnt/sql/c20-01`: verificación.
 - **P4** (propuesta de omen-saa-1-be; decisiones técnicas del árbitro):
   - **A, raíz `1.3`:** detalle 17 del rubro 250 (`CUENTA_CARTERA_CREDITOS`), semilla agregada al
@@ -67,3 +68,4 @@ estado financiero por rubro 250). Los literales están concentrados en 4 archivo
     2 y 4 en cero). Si no da, se quedan como están, documentadas.
   - Una cuenta sin grupo derivable: advertencia, no se ajusta (igual que P3).
   - El modo arranque queda fuera (`crd/sql/358`).
+- **P4-A** hecho: raíz de cartera desde el detalle 17. Helper único `ParametroContableService` (cnt) para el rubro 250. Con `1.3` cargado, el resultado es idéntico. Quedan escritos hasta P4-B/C: `1.3.99` y los rangos.
