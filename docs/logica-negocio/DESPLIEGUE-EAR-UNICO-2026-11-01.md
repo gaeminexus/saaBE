@@ -48,3 +48,10 @@ asientos de prueba.
 P10 (cuentas sugeridas de liquidación externa), P11 (cuenta definitiva del gasto sin clasificar: hoy 4.4.01.05
 provisional), zona gris del pago externo sin desglose, resolutor de cxp de la devolución (equipo 2), «SAA_AH»,
 reproceso que reaplique el destino del sobrante, eliminación de los cargadores históricos (cierre del proyecto).
+
+## 7. Resultado (2026-11-01)
+- **DESPLEGADO a las 04:28:33.** El hash en el servidor (`D:\ears\01112026\SaaEAR.ear`) coincide: `B16F4A08…ABB86A187`.
+  Producto 1222 activado antes del despliegue.
+- Log limpio desde el despliegue: sin ERROR, ORA-, ClassCastException ni Caused by (las coincidencias son el nombre del bean
+  `MarcadoErrorDocumentoServiceImpl`). Los `error 400 de /extr/selectByCriteria` son de las 00:51, anteriores y ajenos.
+- Pendiente: las pruebas de humo de solo lectura y la guía `PRUEBAS-EAR-UNICO-2026-11-01.md` con las operaciones reales.

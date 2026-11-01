@@ -282,3 +282,9 @@ realizar […] lo primero que se debe validar en los procesos es si el usuario e
   (`@Input accionExtra` / `@Output accionExtraClick`, tipo `AccionFilaTabla` en `modelo-formulario.ts`; saaFE `F12`). Las
   pantallas que no la usan no cambian. La lista de liquidaciones de excolaboradores ya no sincroniza sola con
   Tesorería: botón «Actualizar estado».
+
+## 2026-11-01 04:28 — EAR único desplegado en producción (saaBE 5bae67db, saaFE 3e3c9dc)
+Trae B1-B8 (carga Petro/ARCH, destino del sobrante y devolución), B6-a/b (asientos a nombre de quien procesa), cuentas a
+plantilla (P1-P5, P8, P9/P9b, P11, P12 y producto de pago por parámetro), N1 (nómina individualizada), N2 (NC de compra),
+y el usuario obligatorio con defensa central atómica (U-2 a U-5) en todos los módulos.
+Runbook y resultado: `docs/logica-negocio/DESPLIEGUE-EAR-UNICO-2026-11-01.md`.
