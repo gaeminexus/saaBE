@@ -40,6 +40,10 @@ import jakarta.ejb.Stateless;
 
 @Stateless
 public class AsientoServiceImpl implements AsientoService {
+
+	/** U-2: todo proceso que graba valida el usuario PRIMERO. */
+	@jakarta.ejb.EJB
+	private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
 	
 	/*@EJB*/
 	/*private AsientoArray asientoArray;*/   
@@ -915,6 +919,27 @@ public class AsientoServiceImpl implements AsientoService {
 	}
 
 	@Override
+	public Asiento reversionAsientoDeUsuario(Long idAsiento, String usuario) throws Throwable {
+		// U-2: lo primero, el usuario existe.
+		String usuarioValido = usuarioValidacionService.validar(usuario);
+		Asiento original = reversionAsiento(idAsiento);
+		if (original != null && original.getIdReversion() != null) {
+			Asiento reverso = asientoDaoService.selectById(original.getIdReversion(), NombreEntidadesContabilidad.ASIENTO);
+			reverso.setNombreUsuario(usuarioValido);
+			asientoDaoService.save(reverso, reverso.getCodigo());
+		}
+		return original;
+	}
+
+	@Override
+	public Asiento copiaAsientoDeUsuario(Long idAsientoOriginal, String usuario) throws Throwable {
+		// U-2: lo primero, el usuario existe.
+		String usuarioValido = usuarioValidacionService.validar(usuario);
+		Asiento copia = copiaAsiento(idAsientoOriginal);
+		copia.setNombreUsuario(usuarioValido);
+		return asientoDaoService.save(copia, copia.getCodigo());
+	}
+
 	public Asiento copiaAsiento(Long idAsientoOriginal) throws Throwable {
 		System.out.println("Ingresa al metodo copiaAsiento con Id Asiento: " + idAsientoOriginal);
 		Asiento asientoOriginal = asientoDaoService.selectById(idAsientoOriginal, NombreEntidadesContabilidad.ASIENTO);

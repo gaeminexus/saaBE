@@ -188,6 +188,10 @@ public class AsoprepGenerales {
             try {
                 rutaArchivo = cargaArchivoPetroService.procesarArchivoPetro(
                     archivoInputStream, fileName, cargaArchivo, detallesCargaArchivos, participesXCargaArchivo);
+            } catch (com.saa.basico.util.UsuarioInvalidoException e) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity(new FileResponse(false, "No se puede procesar el archivo sin un usuario válido: " + e.getMotivo(), null))
+                        .build();
             } catch (Throwable e) {
                 return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                         .entity(new FileResponse(false, "Error al procesar archivo en EJB: " + e.getMessage(), null))
@@ -265,6 +269,10 @@ public class AsoprepGenerales {
             try {
             	cargaArchivo = cargaArchivoPetroService.validarArchivoPetro(
                     archivoInputStream, fileName, cargaArchivo);
+            } catch (com.saa.basico.util.UsuarioInvalidoException e) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity(new FileResponse(false, "No se puede validar el archivo sin un usuario válido: " + e.getMotivo(), null))
+                        .build();
             } catch (Throwable e) {
                 return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                         .entity(new FileResponse(false, "Error al procesar archivo en EJB: " + e.getMessage(), null))
@@ -584,7 +592,8 @@ public class AsoprepGenerales {
     @POST
     @Path("/revalidarCarga/{idCargaArchivo}")
     @Produces(MediaType.APPLICATION_JSON)
-    public Response revalidarCarga(@PathParam("idCargaArchivo") Long idCargaArchivo) {
+    public Response revalidarCarga(@PathParam("idCargaArchivo") Long idCargaArchivo,
+            @QueryParam("usuario") String usuario) {
         System.out.println("========================================");
         System.out.println("REST: REVALIDAR CARGA (§16) - Carga: " + idCargaArchivo);
         System.out.println("========================================");
@@ -596,10 +605,14 @@ public class AsoprepGenerales {
                         .build();
             }
 
-            Map<String, Object> resumen = cargaArchivoPetroService.revalidarCarga(idCargaArchivo);
+            Map<String, Object> resumen = cargaArchivoPetroService.revalidarCarga(idCargaArchivo, usuario);
 
             return Response.ok().entity(resumen).build();
 
+        } catch (com.saa.basico.util.UsuarioInvalidoException e) {
+            return Response.status(Status.BAD_REQUEST)
+                    .entity(new FileResponse(false, "No se puede revalidar la carga sin un usuario válido: " + e.getMotivo(), null))
+                    .build();
         } catch (IncomeException e) {
             return Response.status(Status.CONFLICT)
                     .entity(new FileResponse(false, e.getMessage(), null))

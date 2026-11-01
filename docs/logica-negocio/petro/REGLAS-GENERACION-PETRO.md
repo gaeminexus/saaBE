@@ -262,3 +262,5 @@ TOTALES;2 PARTICIPES;50.00;70.00;95.20;180.45;12.30;0.00;0.00;407.95
 `GeneracionArchivoPetroServiceImpl.crearCabeceraGeneracion` valida el usuario LO PRIMERO con
 `UsuarioValidacionService` (no nulo, no vacío y existente en `SCP.PJRQ`). Sin usuario válido no se crea la
 generación. El REST `gnap/crearCabecera` exige `?usuario=`. Ver `cnt/DISENO-USUARIO-OBLIGATORIO.md`.
+- `POST /gnap` (saveSingle), el camino que usa el FE, valida al CREAR la cabecera el `usuarioGeneracion` (o
+  `usuarioIngreso`) y deja el validado en `usuarioGeneracion`.

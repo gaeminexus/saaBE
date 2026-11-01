@@ -15,4 +15,11 @@ public interface CxpLineaAsiento {
 	 * decide el código según el signo de la diferencia; el movimiento de la línea es indiferente. DTPLAXL2 = 0.
 	 */
 	public static final int REDONDEO_SRI = 1;
+
+	/**
+	 * Cuenta de gasto para lo que no tiene producto clasificado: el detalle sin producto de una liquidación de compra y
+	 * la base de una nota de débito de compra (P11, 2026-11-01). Antes se tomaba la cuenta del grupo de producto de
+	 * MENOR código de la empresa. La cuenta la decide contabilidad (semilla pendiente). DTPLAXL2 = 0.
+	 */
+	public static final int GASTO_SIN_CLASIFICAR = 2;
 }

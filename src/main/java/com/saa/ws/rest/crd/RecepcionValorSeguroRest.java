@@ -144,6 +144,11 @@ public class RecepcionValorSeguroRest {
             return respuestaExito(Response.Status.CREATED,
                     "Recepción registrada. El valor entra a la cuenta del partícipe cuando contabilidad la apruebe.",
                     recepcion);
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+            // U-2: usuario faltante o inexistente -> 400; no se procesó nada.
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+                    .type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return respuestaError(e, "registrar la recepción");
         }
@@ -162,6 +167,11 @@ public class RecepcionValorSeguroRest {
             return respuestaExito(Response.Status.OK,
                     "Recepción aprobada: asiento generado y valor registrado en la cuenta del partícipe.",
                     recepcion);
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+            // U-2: usuario faltante o inexistente -> 400; no se procesó nada.
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+                    .type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return respuestaError(e, "aprobar la recepción " + id);
         }
@@ -179,6 +189,11 @@ public class RecepcionValorSeguroRest {
                     solicitud != null ? solicitud.getUsuario() : null,
                     solicitud != null ? solicitud.getMotivo() : null);
             return respuestaExito(Response.Status.OK, "Recepción rechazada.", recepcion);
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+            // U-2: usuario faltante o inexistente -> 400; no se procesó nada.
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+                    .type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return respuestaError(e, "rechazar la recepción " + id);
         }
@@ -196,6 +211,11 @@ public class RecepcionValorSeguroRest {
                     solicitud != null ? solicitud.getUsuario() : null,
                     solicitud != null ? solicitud.getMotivo() : null);
             return respuestaExito(Response.Status.OK, "Recepción anulada: asiento y aporte reversados.", recepcion);
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+            // U-2: usuario faltante o inexistente -> 400; no se procesó nada.
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+                    .type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return respuestaError(e, "anular la recepción " + id);
         }

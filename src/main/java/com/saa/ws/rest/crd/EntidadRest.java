@@ -168,6 +168,11 @@ public class EntidadRest {
         Response respuesta = null;
         try {
             respuesta = Response.status(Response.Status.OK).entity(entidadService.saveSingle(registro, usuario)).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+            // U-2: usuario faltante o inexistente -> 400; no se procesó nada.
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+                    .type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
@@ -187,6 +192,11 @@ public class EntidadRest {
         Response respuesta = null;
         try {
             respuesta = Response.status(Response.Status.OK).entity(entidadService.saveSingle(registro, usuario)).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+            // U-2: usuario faltante o inexistente -> 400; no se procesó nada.
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+                    .type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             respuesta = Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
@@ -229,6 +239,11 @@ public class EntidadRest {
             entidadDaoService.remove(elimina, id);
             return Response.status(Response.Status.NO_CONTENT)
                     .build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+            // U-2: usuario faltante o inexistente -> 400; no se procesó nada.
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+                    .type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("Error al eliminar entidad: " + e.getMessage())

@@ -18,6 +18,10 @@ import jakarta.persistence.NoResultException;
 @Stateless
 public class AfectacionValoresParticipeCargaServiceImpl implements AfectacionValoresParticipeCargaService {
 
+    /** U-2: todo proceso que graba valida el usuario PRIMERO. */
+    @jakarta.ejb.EJB
+    private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
     @EJB
     private AfectacionValoresParticipeCargaDaoService afectacionDaoService;
 
@@ -41,6 +45,8 @@ public class AfectacionValoresParticipeCargaServiceImpl implements AfectacionVal
 
     @Override
     public AfectacionValoresParticipeCarga saveSingle(AfectacionValoresParticipeCarga registro) throws Throwable {
+        // U-2: lo primero, el usuario que registra la afectación existe (antes podía llegar '' o nulo).
+        registro.setUsuarioRegistro(usuarioValidacionService.validar(registro.getUsuarioRegistro()));
         Long codigo = registro.getCodigo();
         return afectacionDaoService.save(registro, codigo);
     }

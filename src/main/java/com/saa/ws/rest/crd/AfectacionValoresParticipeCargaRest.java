@@ -63,6 +63,10 @@ import jakarta.ws.rs.core.UriInfo;
 @Path("avpc")
 public class AfectacionValoresParticipeCargaRest {
 
+    /** U-2: todo proceso que graba valida el usuario PRIMERO. */
+    @jakarta.ejb.EJB
+    private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
+
     @EJB
     private AfectacionValoresParticipeCargaDaoService afectacionDaoService;
 
@@ -226,6 +230,10 @@ public class AfectacionValoresParticipeCargaRest {
             System.out.println("✅ Afectación creada exitosamente con código: " + resultado.getCodigo());
             
             return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException e) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("No se puede registrar la afectación sin un usuario válido: " + e.getMotivo())
+                    .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             System.err.println("❌ Error al crear afectación: " + e.getMessage());
             e.printStackTrace();
@@ -249,6 +257,10 @@ public class AfectacionValoresParticipeCargaRest {
             
             AfectacionValoresParticipeCarga resultado = afectacionService.saveSingle(registro);
             return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException e) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("No se puede registrar la afectación sin un usuario válido: " + e.getMotivo())
+                    .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("Error al actualizar afectación: " + e.getMessage())
@@ -312,6 +324,11 @@ public class AfectacionValoresParticipeCargaRest {
         System.out.println("========================================");
         
         try {
+            // U-2: el usuario de TODAS las filas se valida antes de guardar la primera (cada fila se guarda en su
+            // propia transacción: una fila inválida a la mitad dejaría el lote a medias).
+            for (AfectacionValoresParticipeCarga afectacion : afectaciones) {
+                afectacion.setUsuarioRegistro(usuarioValidacionService.validar(afectacion.getUsuarioRegistro()));
+            }
             List<AfectacionValoresParticipeCarga> resultados = new java.util.ArrayList<>();
             java.util.Set<Long> novedadesTocadas = new java.util.LinkedHashSet<>();
 
@@ -360,6 +377,10 @@ public class AfectacionValoresParticipeCargaRest {
             respuesta.put("advertenciasReparto", advertenciasReparto);
 
             return Response.status(Response.Status.CREATED).entity(respuesta).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException e) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("No se pueden registrar las afectaciones sin un usuario válido: " + e.getMotivo())
+                    .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             System.err.println("❌ Error al crear afectaciones en lote: " + e.getMessage());
             e.printStackTrace();

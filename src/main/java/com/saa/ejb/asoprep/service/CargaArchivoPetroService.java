@@ -172,7 +172,7 @@ public interface CargaArchivoPetroService {
      *           {@code errores} (partícipes que fallaron individualmente, sin abortar el resto)
      * @throws Throwable : Excepción en caso de error
      */
-    Map<String, Object> revalidarCarga(Long codigoCargaArchivo) throws Throwable;
+    Map<String, Object> revalidarCarga(Long codigoCargaArchivo, String usuario) throws Throwable;
 
     /**
      * Fase 3 en MODO REPROCESO — la llama únicamente {@code ReprocesoCargaPetroService} DESPUÉS

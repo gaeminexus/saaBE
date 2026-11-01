@@ -114,9 +114,13 @@ public class AsientoRest {
     @GET
     @Produces(MediaType.APPLICATION_JSON)
     @Path("/generaReversion/{idAsiento}")
-    public Response generaReversion(@PathParam("idAsiento") Long idAsiento) {
+    public Response generaReversion(@PathParam("idAsiento") Long idAsiento,
+            @jakarta.ws.rs.QueryParam("usuario") String usuario) {
         try {
-            return Response.status(Response.Status.OK).entity(asientoService.reversionAsiento(idAsiento)).type(MediaType.APPLICATION_JSON).build();
+            // U-2: el reverso queda a nombre de quien lo pide (valida el usuario primero).
+            return Response.status(Response.Status.OK).entity(asientoService.reversionAsientoDeUsuario(idAsiento, usuario)).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException e) {
+            return respuestaUsuarioInvalido(e);
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener asiento: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
@@ -130,6 +134,13 @@ public class AsientoRest {
      *
      * POST /asnt/anular/{idAsiento}?usuario=...&motivo=...&fechaReverso=2025-07-01
      */
+    /** U-2: usuario faltante o inexistente -> 400, no se procesó nada. */
+    private Response respuestaUsuarioInvalido(com.saa.basico.util.UsuarioInvalidoException e) {
+        return Response.status(Response.Status.BAD_REQUEST)
+                .entity("No se puede procesar el asiento sin un usuario válido: " + e.getMotivo())
+                .type(MediaType.APPLICATION_JSON).build();
+    }
+
     @POST
     @Produces(MediaType.APPLICATION_JSON)
     @Path("/anular/{idAsiento}")
@@ -163,9 +174,13 @@ public class AsientoRest {
     @GET
     @Produces(MediaType.APPLICATION_JSON)
     @Path("/generaCopia/{idAsiento}")
-    public Response generaCopia(@PathParam("idAsiento") Long idAsiento) {
+    public Response generaCopia(@PathParam("idAsiento") Long idAsiento,
+            @jakarta.ws.rs.QueryParam("usuario") String usuario) {
         try {
-            return Response.status(Response.Status.OK).entity(asientoService.copiaAsiento(idAsiento)).type(MediaType.APPLICATION_JSON).build();
+            // U-2: la copia queda a nombre de quien la pide (valida el usuario primero).
+            return Response.status(Response.Status.OK).entity(asientoService.copiaAsientoDeUsuario(idAsiento, usuario)).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException e) {
+            return respuestaUsuarioInvalido(e);
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener asiento: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
@@ -177,8 +192,12 @@ public class AsientoRest {
     public Response put(Asiento registro) {
         System.out.println("LLEGA AL SERVICIO PUT - ASIENTO");
         try {
+            // U-2: lo primero, el usuario del asiento manual existe.
+            registro.setNombreUsuario(usuarioValidacionService.validar(registro.getNombreUsuario()));
             Asiento resultado = asientoService.saveSingle(registro);
             return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException e) {
+            return respuestaUsuarioInvalido(e);
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar asiento: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
@@ -190,8 +209,12 @@ public class AsientoRest {
     public Response post(Asiento registro) {
         System.out.println("LLEGA AL SERVICIO POST - ASIENTO");
         try {
+            // U-2: lo primero, el usuario del asiento manual existe.
+            registro.setNombreUsuario(usuarioValidacionService.validar(registro.getNombreUsuario()));
             Asiento resultado = asientoService.saveSingle(registro);
             return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException e) {
+            return respuestaUsuarioInvalido(e);
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear asiento: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }

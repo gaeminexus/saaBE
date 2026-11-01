@@ -1920,6 +1920,9 @@ public class PrestamoRest {
     }
 
     private Response respuestaErrorNegocio(Throwable e) {
+        if (e instanceof com.saa.basico.util.UsuarioInvalidoException) {
+            return respuestaUsuarioInvalido((com.saa.basico.util.UsuarioInvalidoException) e); // U-2: 400, no 422
+        }
         String mensaje = e.getMessage() != null ? e.getMessage() : "Error inesperado";
         String codigo = mensaje.contains(":") ? mensaje.substring(0, mensaje.indexOf(':')).trim() : "";
 

@@ -160,6 +160,17 @@ public interface AsientoService extends EntityService<Asiento> {
 	 Asiento copiaAsiento(Long idAsientoOriginal) throws Throwable;
 
 	/**
+	 * U-2: reversa un asiento a nombre de quien lo pide. Valida el usuario PRIMERO (existe en el sistema); el asiento de
+	 * reverso queda con ese usuario y no con el del original. Devuelve el asiento original (con {@code idReversion}).
+	 */
+	 Asiento reversionAsientoDeUsuario(Long idAsiento, String usuario) throws Throwable;
+
+	/**
+	 * U-2: copia un asiento a nombre de quien lo pide. Valida el usuario PRIMERO; la copia queda con ese usuario.
+	 */
+	 Asiento copiaAsientoDeUsuario(Long idAsientoOriginal, String usuario) throws Throwable;
+
+	/**
 	 * Asigna al asiento su consecutivo mensual por modulo origen (numeroMesModulo) y su numero alterno por
 	 * modulo (numeroAlternoModulo, p. ej. CXP-2026-11-0001), con el mismo patron MAX+1 por empresa + modulo +
 	 * anio + mes que usa numeroMesTipo. Si el asiento no tiene moduloOrigen no hace nada. El asiento debe

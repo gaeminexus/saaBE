@@ -257,6 +257,22 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
     /** B8: guarda de reentrada. Mientras el destino del sobrante se aplica, un sobrante nuevo NO vuelve a buscar destino. */
     private boolean aplicandoDestinoSobrante = false;
 
+    @EJB
+    private com.saa.basico.ejb.UsuarioDaoService usuarioDaoService;
+
+    /**
+     * U-2: el usuario que carga o revalida el archivo existe, validado ANTES de tocar nada. Sale del
+     * {@code usuarioCarga} del JSON de la carga (por nombre, o por código si el FE solo mandó el código).
+     */
+    private void validarUsuarioCarga(CargaArchivo cargaArchivo) throws Throwable {
+        com.saa.model.scp.Usuario usuarioCarga = cargaArchivo != null ? cargaArchivo.getUsuarioCarga() : null;
+        String nombre = usuarioCarga != null ? usuarioCarga.getNombre() : null;
+        if ((nombre == null || nombre.trim().isEmpty()) && usuarioCarga != null && usuarioCarga.getCodigo() != null) {
+            nombre = usuarioDaoService.selectById(usuarioCarga.getCodigo(), "Usuario").getNombre();
+        }
+        usuarioValidacionService.validar(nombre);
+    }
+
     /** B8: destino del sobrante por partícipe (CRD.DSSB). */
     @EJB
     private com.saa.ejb.crd.dao.DestinoSobranteDaoService destinoSobranteDaoService;
@@ -609,6 +625,8 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
                                      CargaArchivo cargaArchivo, 
                                      List<DetalleCargaArchivo> detallesCargaArchivos,
                                      List<ParticipeXCargaArchivo> participesXCargaArchivo) throws Throwable {
+        // U-2: lo primero, el usuario de la carga existe.
+        validarUsuarioCarga(cargaArchivo);
         
         try {
             // C17: no se carga un archivo para un mes ya cerrado para cartera / contabilidad.
@@ -1761,6 +1779,8 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
 	public CargaArchivo validarArchivoPetro(InputStream archivoInputStream, String fileName, CargaArchivo cargaArchivo) throws Throwable {
 		System.out.println("Iniciando validarArchivoPetro: " + fileName);
+		// U-2: lo primero, el usuario de la carga existe.
+		validarUsuarioCarga(cargaArchivo);
 		
 		// ARCH (filial 2, DISENO-CARGA-RESPUESTA-ARCH.md §9.2): sus validaciones propias reemplazan
 		// a las de Petro (.txt obligatorio, que empiece con "EP"); Petrocomercial queda igual.
@@ -3874,8 +3894,10 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 	 */
 	@Override
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
-	public Map<String, Object> revalidarCarga(Long codigoCargaArchivo) throws Throwable {
+	public Map<String, Object> revalidarCarga(Long codigoCargaArchivo, String usuario) throws Throwable {
 		System.out.println("=== REVALIDANDO CARGA (§16) - Carga: " + codigoCargaArchivo + " ===");
+		// U-2: lo primero, el usuario que revalida existe (queda a su nombre lo que la revalidación escribe).
+		usuarioValidacionService.validar(usuario);
 
 		if (codigoCargaArchivo == null) {
 			throw new IncomeException("El id de la carga es obligatorio");

@@ -1043,3 +1043,6 @@ elegido sigue la novedad bloqueante), DU3 (BE y FE completos, sin el resolutor d
 - `CobroPetroContableServiceImpl`: registrar y anular transferencia, confirmar y reversar recepción
   validan el usuario primero (`exigeUsuario` exige que exista en `SCP.PJRQ`).
 - Sigue igual: «SAA_AH» en los aportes de la carga, porque hay SQL de diagnóstico que filtra por él.
+- (U-2 pendientes, 2026-11-01) `procesarArchivoPetro` y `validarArchivoPetro` validan primero el
+  `usuarioCarga` del JSON. `revalidarCarga` recibe `?usuario=` obligatorio. La fase 2 corre DENTRO de
+  `procesarArchivoPetro`; `/asgn/procesarCargaPetro` es una vía alterna sin llamador en el FE.

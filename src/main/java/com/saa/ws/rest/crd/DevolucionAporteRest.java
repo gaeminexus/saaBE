@@ -171,6 +171,11 @@ public class DevolucionAporteRest {
             return Response.status(Response.Status.CREATED)
                     .entity(cuerpo).type(MediaType.APPLICATION_JSON).build();
 
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+            // U-2: usuario faltante o inexistente -> 400; no se procesó nada.
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+                    .type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return respuestaError("registrar la devolución de aportes", e);
         }
@@ -241,6 +246,11 @@ public class DevolucionAporteRest {
             return Response.status(Response.Status.CREATED)
                     .entity(resultado).type(MediaType.APPLICATION_JSON).build();
 
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+            // U-2: usuario faltante o inexistente -> 400; no se procesó nada.
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+                    .type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return respuestaError("registrar la devolución para beneficiarios", e);
         }
@@ -346,6 +356,11 @@ public class DevolucionAporteRest {
             return Response.status(Response.Status.OK)
                     .entity(cuerpo).type(MediaType.APPLICATION_JSON).build();
 
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+            // U-2: usuario faltante o inexistente -> 400; no se procesó nada.
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+                    .type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return respuestaError("anular la devolución de aportes", e);
         }
@@ -428,6 +443,11 @@ public class DevolucionAporteRest {
             return Response.status(Response.Status.OK)
                     .entity(cuerpo).type(MediaType.APPLICATION_JSON).build();
 
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+            // U-2: usuario faltante o inexistente -> 400; no se procesó nada.
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+                    .type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return respuestaError("reemitir el pago de la devolución de aportes", e);
         }
@@ -465,6 +485,11 @@ public class DevolucionAporteRest {
             return Response.status(Response.Status.OK)
                     .entity(cuerpo).type(MediaType.APPLICATION_JSON).build();
 
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+            // U-2: usuario faltante o inexistente -> 400; no se procesó nada.
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+                    .type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return respuestaError("sincronizar las devoluciones de aportes", e);
         }

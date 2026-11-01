@@ -96,6 +96,11 @@ public class CargaArchivoRest {
         try {
             CargaArchivo resultado = cargaArchivoService.saveSingle(registro);
             return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+            // U-2: usuario faltante o inexistente -> 400; no se procesó nada.
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+                    .type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar carga de archivo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
@@ -109,6 +114,11 @@ public class CargaArchivoRest {
         try {
             CargaArchivo resultado = cargaArchivoService.saveSingle(registro);
             return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+            // U-2: usuario faltante o inexistente -> 400; no se procesó nada.
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+                    .type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear carga de archivo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
@@ -147,6 +157,11 @@ public class CargaArchivoRest {
         try {
             ResultadoReprocesoCargaPetro resultado = reprocesoCargaPetroService.reprocesar(idCarga, solicitud);
             return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+            // U-2: usuario faltante o inexistente -> 400; no se procesó nada.
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+                    .type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (IncomeException e) {
             System.err.println("Carga no reprocesada: " + e.getMessage());
             return Response.status(Response.Status.CONFLICT)
@@ -170,6 +185,11 @@ public class CargaArchivoRest {
             CargaArchivo elimina = new CargaArchivo();
             cargaArchivoDaoService.remove(elimina, id);
             return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+            // U-2: usuario faltante o inexistente -> 400; no se procesó nada.
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+                    .type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar carga de archivo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }

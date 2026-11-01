@@ -162,6 +162,11 @@ public class CobroCreditoRest {
             ResultadoRegistroCobro resultado = cobroCreditoService.registrarCobro(solicitud);
             return Response.status(Response.Status.CREATED).entity(resultado)
                     .type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+            // U-2: usuario faltante o inexistente -> 400; no se procesó nada.
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+                    .type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return respuestaErrorFechaAfectacion(e, "Error al registrar el cobro: ");
         }
@@ -195,6 +200,11 @@ public class CobroCreditoRest {
             CobroCredito cobro = cobroCreditoService.aprobarCobro(id,
                     solicitud != null ? solicitud.getUsuario() : null);
             return Response.status(Response.Status.OK).entity(cobro).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+            // U-2: usuario faltante o inexistente -> 400; no se procesó nada.
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+                    .type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("Error al aprobar el cobro " + id + ": " + e.getMessage())
@@ -216,6 +226,11 @@ public class CobroCreditoRest {
                     solicitud != null ? solicitud.getUsuario() : null,
                     solicitud != null ? solicitud.getMotivo() : null);
             return Response.status(Response.Status.OK).entity(cobro).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+            // U-2: usuario faltante o inexistente -> 400; no se procesó nada.
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+                    .type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("Error al rechazar el cobro " + id + ": " + e.getMessage())
@@ -239,6 +254,11 @@ public class CobroCreditoRest {
             CobroCredito cobro = cobroCreditoService.editarYReenviarCobro(id,
                     correccion != null ? correccion.getUsuario() : null, correccion);
             return Response.status(Response.Status.OK).entity(cobro).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+            // U-2: usuario faltante o inexistente -> 400; no se procesó nada.
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+                    .type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return respuestaErrorFechaAfectacion(e, "Error al reenviar el cobro " + id + ": ");
         }
@@ -259,6 +279,11 @@ public class CobroCreditoRest {
                     solicitud != null ? solicitud.getUsuario() : null,
                     solicitud != null ? solicitud.getMotivo() : null);
             return Response.status(Response.Status.OK).entity(cobro).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+            // U-2: usuario faltante o inexistente -> 400; no se procesó nada.
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+                    .type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("Error al anular el cobro " + id + ": " + e.getMessage())
@@ -284,6 +309,11 @@ public class CobroCreditoRest {
                     solicitud != null ? solicitud.getUsuario() : null,
                     solicitud != null ? solicitud.getMotivo() : null);
             return Response.status(Response.Status.OK).entity(cobro).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+            // U-2: usuario faltante o inexistente -> 400; no se procesó nada.
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+                    .type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("Error al reversar el cobro " + id + ": " + e.getMessage())
@@ -307,6 +337,11 @@ public class CobroCreditoRest {
                     solicitud != null ? solicitud.getUsuario() : null,
                     solicitud != null && Boolean.TRUE.equals(solicitud.getReproceso()));
             return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+            // U-2: usuario faltante o inexistente -> 400; no se procesó nada.
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+                    .type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("Error al procesar el cobro " + id + ": " + e.getMessage())

@@ -2018,6 +2018,12 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
     public GeneracionArchivoPetro saveSingle(GeneracionArchivoPetro entity) throws Throwable {
     	System.out.println("saveSingle - GeneracionArchivoPetro");
     	if(entity.getCodigo() == null){
+    		// U-2: al crear la cabecera, el usuario existe (el FE lo manda en el cuerpo: usuarioGeneracion o, si no,
+    		// usuarioIngreso). Sin usuario válido no se crea.
+    		String usuarioCabecera = entity.getUsuarioGeneracion() != null && !entity.getUsuarioGeneracion().trim().isEmpty()
+    				? entity.getUsuarioGeneracion() : entity.getUsuarioIngreso();
+    		usuarioCabecera = usuarioValidacionService.validar(usuarioCabecera);
+    		entity.setUsuarioGeneracion(usuarioCabecera);
     		entity.setFechaGeneracion(LocalDate.now());
 		}
     	entity = dao.save(entity, entity.getCodigo());

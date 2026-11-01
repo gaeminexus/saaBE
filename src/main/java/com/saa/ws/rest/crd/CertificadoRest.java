@@ -178,6 +178,11 @@ public class CertificadoRest {
         try {
             ResultadoEmisionCertificado resultado = certificadoService.emitir(solicitud);
             return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+            // U-2: usuario faltante o inexistente -> 400; no se procesó nada.
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+                    .type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (IncomeException e) {
             return Response.status(HTTP_REGLA_DE_NEGOCIO)
                     .entity(e.getMessage())
@@ -210,6 +215,11 @@ public class CertificadoRest {
         try {
             Certificado certificado = certificadoService.anular(id, motivo, usuario);
             return Response.status(Response.Status.OK).entity(certificado).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+            // U-2: usuario faltante o inexistente -> 400; no se procesó nada.
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+                    .type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (IncomeException e) {
             return Response.status(HTTP_REGLA_DE_NEGOCIO)
                     .entity(e.getMessage())

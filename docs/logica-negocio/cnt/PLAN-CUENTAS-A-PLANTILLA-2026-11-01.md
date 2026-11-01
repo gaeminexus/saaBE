@@ -133,3 +133,6 @@ cuenta solos**, con el mismo efecto que la marcadora de la nómina:
   - **Pasa a `obtenerCuentaIVACxpPorCodigo`**, la que ya usa la factura de compra: filtra la tabla 17 y
     no tiene respaldo; si falta la cuenta, error claro.
   - Sin semilla.
+- **P12** hecho (`b286f871`, junto con N2). **P11** hecho: plantilla 38, aux1 2 `GASTO_SIN_CLASIFICAR`;
+  `obtenerCuentaGastoDefaultCxp` borrado. Semilla `cnt/sql/c20-06`, con la cuenta de hoy (4.4.01.05),
+  **obligatoria antes del EAR**. Contabilidad la cambia cuando decida.

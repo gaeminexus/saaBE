@@ -227,6 +227,11 @@ public class AporteRest {
             return Response.status(Response.Status.CREATED)
                     .entity(cuerpo).type(MediaType.APPLICATION_JSON).build();
 
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+            // U-2: usuario faltante o inexistente -> 400; no se procesó nada.
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+                    .type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             System.err.println("ERROR al registrar el aporte: " + e.getMessage());
             e.printStackTrace();
@@ -303,6 +308,11 @@ public class AporteRest {
             return Response.status(Response.Status.CREATED)
                     .entity(cuerpo).type(MediaType.APPLICATION_JSON).build();
 
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+            // U-2: usuario faltante o inexistente -> 400; no se procesó nada.
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+                    .type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             System.err.println("ERROR al procesar la jubilación: " + e.getMessage());
             e.printStackTrace();
@@ -387,6 +397,11 @@ public class AporteRest {
         try {
             Aporte resultado = aporteService.saveSingle(registro);
             return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+            // U-2: usuario faltante o inexistente -> 400; no se procesó nada.
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+                    .type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (com.saa.basico.util.IncomeException e) {
             // H61 (INVARIANTE-SALDO-APORTES.md §3.3): saveSingle rechaza valor/tipo/entidad
             // distintos del guardado — es una validación de negocio, no un error del servidor.
@@ -404,6 +419,11 @@ public class AporteRest {
         try {
             Aporte resultado = aporteService.saveSingle(registro);
             return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+            // U-2: usuario faltante o inexistente -> 400; no se procesó nada.
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+                    .type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (com.saa.basico.util.IncomeException e) {
             // H61: saveSingle rechaza valor negativo en un alta — validación de negocio.
             return Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
@@ -449,6 +469,11 @@ public class AporteRest {
             // AporteServiceImpl#remove.
             aporteService.remove(Arrays.asList(id));
             return Response.status(Response.Status.NO_CONTENT).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+            // U-2: usuario faltante o inexistente -> 400; no se procesó nada.
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+                    .type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
         } catch (com.saa.basico.util.IncomeException e) {
             return Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
