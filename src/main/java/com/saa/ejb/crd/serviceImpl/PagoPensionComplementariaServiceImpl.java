@@ -2409,6 +2409,11 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
                 + alternoParametro + " del rubro " + com.saa.rubros.Rubros.CRD_PARAMETROS_CONTABILIDAD
                 + ") no existe en PGS.PRDP.");
         }
+        if (producto.getEstado() == null || producto.getEstado().longValue() != Estado.ACTIVO) {
+            throw new IncomeException(codigoError + ": el producto de pago " + idProducto + " «" + producto.getNombre()
+                + "» no está ACTIVO. Actívelo en CXP o corrija el parámetro " + alternoParametro + " del rubro "
+                + com.saa.rubros.Rubros.CRD_PARAMETROS_CONTABILIDAD + ".");
+        }
         if (producto.getGrupoProducto() == null || producto.getGrupoProducto().getPlanCuenta() == null) {
             throw new IncomeException(codigoError + ": el producto de pago " + idProducto + " («" + producto.getNombre()
                 + "») no tiene grupo o el grupo no tiene cuenta contable: no se puede verificar que cierre contra la cuenta"

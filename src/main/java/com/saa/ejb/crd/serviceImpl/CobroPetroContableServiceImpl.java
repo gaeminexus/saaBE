@@ -194,7 +194,7 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
 
     /** B8: producto de pago de la devolución, deducido de la cuenta de la línea 61 de la plantilla 21. */
     @EJB
-    private com.saa.ejb.cxp.dao.ProductoPagoDaoService productoPagoDaoService;
+    private com.saa.ejb.crd.service.ProductoPagoParametroService productoPagoParametroService;
 
     // =====================================================================
     // Transferencias (§2.1 del contrato)
@@ -1478,28 +1478,11 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
             throw new IncomeException("La línea de devolución al partícipe (aux1="
                     + CrdLineaAsiento.DEVOLUCION_DESCUENTO_PARTICIPE + ") de la plantilla de aplicación no tiene cuenta.");
         }
-        com.saa.model.cnt.PlanCuenta cuenta = lineaDevolucion.getPlanCuenta();
-        String cuentaTexto = cuenta.getCuentaContable() + " (" + cuenta.getNombre() + ")";
-        List<com.saa.model.cxp.ProductoPago> productos = productoPagoDaoService.selectActivosByEmpresaYCuentaGrupo(
-                idEmpresa, cuenta.getCodigo());
-        if (productos == null || productos.isEmpty()) {
-            throw new IncomeException("No hay un producto de pago activo en la empresa " + idEmpresa + " cuyo grupo tenga la"
-                    + " cuenta " + cuentaTexto + ", que es la de la devolución al partícipe (línea aux1="
-                    + CrdLineaAsiento.DEVOLUCION_DESCUENTO_PARTICIPE + " de la plantilla de aplicación). Cree el producto"
-                    + " en CXP (grupo con esa cuenta).");
-        }
-        if (productos.size() > 1) {
-            StringBuilder lista = new StringBuilder();
-            for (com.saa.model.cxp.ProductoPago producto : productos) {
-                if (lista.length() > 0) {
-                    lista.append(", ");
-                }
-                lista.append(producto.getId()).append(" «").append(producto.getNombre()).append("»");
-            }
-            throw new IncomeException("Hay más de un producto de pago activo en la empresa " + idEmpresa + " cuyo grupo tiene"
-                    + " la cuenta " + cuentaTexto + ": " + lista + ". Deje uno solo; no se elige uno al azar.");
-        }
-        return productos.get(0).getId();
+        // (2026-11-01) El producto sale de un PARÁMETRO (rubro 237, detalle 4), verificado contra la cuenta de la línea 61:
+        // existe, está ACTIVO y su grupo tiene esa cuenta. Ya no se busca por cuenta.
+        return productoPagoParametroService.resolver(
+                com.saa.rubros.CrdParametroContabilidad.PRODUCTO_PAGO_DEVOLUCION_DESCUENTO, lineaDevolucion.getPlanCuenta(),
+                "devolución al partícipe del sobrante de la carga Petro/ARCH", "PRODUCTO_PAGO_DEVOLUCION_NO_RESUELTO");
     }
 
     // =====================================================================

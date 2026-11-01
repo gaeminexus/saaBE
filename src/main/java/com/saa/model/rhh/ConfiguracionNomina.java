@@ -68,6 +68,15 @@ public class ConfiguracionNomina implements Serializable, EntidadAuditableFechaH
     private Long plantillaPago;
 
     /**
+     * N1/P9b (2026-11-01): id del producto de pago (PGS.PRDP) del pago de nomina INDIVIDUALIZADO (origen
+     * RHH_NOMINA_EMPLEADO). El codigo VERIFICA que exista, este ACTIVO y que la cuenta de su grupo sea la de la linea 50
+     * (SUELDOS_POR_PAGAR_DEBE) de la plantilla de pago. DDL: rhh CFNM.CFNMPRPG NUMBER.
+     */
+    @Basic
+    @Column(name = "CFNMPRPG")
+    private Long productoPagoNomina;
+
+    /**
      * Codigo alterno de la plantilla del asiento de liquidacion.
      */
     @Basic
@@ -235,6 +244,14 @@ public class ConfiguracionNomina implements Serializable, EntidadAuditableFechaH
 
     public void setPlantillaProvision(Long plantillaProvision) {
         this.plantillaProvision = plantillaProvision;
+    }
+
+    public Long getProductoPagoNomina() {
+        return productoPagoNomina;
+    }
+
+    public void setProductoPagoNomina(Long productoPagoNomina) {
+        this.productoPagoNomina = productoPagoNomina;
     }
 
     public Long getPlantillaPago() {

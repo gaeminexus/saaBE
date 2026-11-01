@@ -85,6 +85,10 @@ import jakarta.ejb.TransactionAttributeType;
 @Stateless
 public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaService {
 
+    /** N1: lectura del producto de pago del pago por empleado (PGS.PRDP). */
+    @jakarta.persistence.PersistenceContext
+    private jakarta.persistence.EntityManager em;
+
     /** U-4: todo proceso que graba valida el usuario PRIMERO. */
     @jakarta.ejb.EJB
     private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
@@ -104,9 +108,6 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
     @EJB
     private PeriodoNominaDaoService periodoNominaDaoService;
 
-    /** N1: producto de pago del pago de nomina individualizado, deducido de la cuenta de la linea 50. */
-    @EJB
-    private com.saa.ejb.cxp.dao.ProductoPagoDaoService productoPagoDaoService;
 
     /** C17: mes cerrado para cartera / contabilidad (CIERRES-BLOQUEANTES.md). */
     @jakarta.ejb.EJB
@@ -1635,28 +1636,39 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
         exigeCuentaReal(lineaSueldos, marcadora, "pago");
         PlanCuenta cuenta = lineaSueldos.getPlanCuenta();
         String cuentaTexto = cuenta.getCuentaContable() + " (" + cuenta.getNombre() + ")";
-        List<com.saa.model.cxp.ProductoPago> productos = productoPagoDaoService.selectActivosByEmpresaYCuentaGrupo(
-                idEmpresa, cuenta.getCodigo());
-        if (productos == null || productos.isEmpty()) {
-            throw new IncomeException("No hay un producto de pago activo en la empresa " + idEmpresa + " cuyo grupo tenga la"
-                    + " cuenta " + cuentaTexto + ", que es la de la linea " + RhhLineaAsiento.SUELDOS_POR_PAGAR_DEBE
-                    + " (sueldos por pagar) de la plantilla de pago de nomina. El pago por empleado tiene que"
-                    + " contabilizarse en la MISMA cuenta que el pago consolidado: corrija el grupo del producto de nomina"
-                    + " en CXP (PGS.GRPP.PLNNCDGO) para que apunte a esa cuenta, o cree un producto cuyo grupo la tenga.");
+        // El producto sale de la configuracion de nomina de la empresa (RHH.CFNM.CFNMPRPG), no de una busqueda por cuenta
+        // (que se rompe cuando hay dos productos activos con la misma). Se verifica que exista, este ACTIVO y que su grupo
+        // tenga la cuenta de la linea 50: el pago individual cierra la MISMA cuenta que el consolidado.
+        Long idProducto = configuracion.getProductoPagoNomina();
+        if (idProducto == null) {
+            throw new IncomeException("PRODUCTO_PAGO_NOMINA_NO_RESUELTO: la configuracion de nomina de la empresa " + idEmpresa
+                    + " (RHH.CFNM) no tiene el producto de pago del pago por empleado (CFNMPRPG). Debe ser un producto activo"
+                    + " cuyo grupo tenga la cuenta " + cuentaTexto + " (linea " + RhhLineaAsiento.SUELDOS_POR_PAGAR_DEBE
+                    + " de la plantilla de pago).");
         }
-        if (productos.size() > 1) {
-            StringBuilder lista = new StringBuilder();
-            for (com.saa.model.cxp.ProductoPago producto : productos) {
-                if (lista.length() > 0) {
-                    lista.append(", ");
-                }
-                lista.append(producto.getId()).append(" «").append(producto.getNombre()).append("»");
-            }
-            throw new IncomeException("Hay mas de un producto de pago activo en la empresa " + idEmpresa + " cuyo grupo tiene"
-                    + " la cuenta " + cuentaTexto + " (sueldos por pagar): " + lista + ". Deje uno solo; no se elige"
-                    + " uno al azar.");
+        com.saa.model.cxp.ProductoPago producto = em.find(com.saa.model.cxp.ProductoPago.class, idProducto);
+        if (producto == null) {
+            throw new IncomeException("PRODUCTO_PAGO_NOMINA_NO_RESUELTO: el producto de pago " + idProducto
+                    + " (RHH.CFNM.CFNMPRPG) no existe en PGS.PRDP.");
         }
-        return productos.get(0).getId();
+        if (producto.getEstado() == null || producto.getEstado().longValue() != com.saa.rubros.Estado.ACTIVO) {
+            throw new IncomeException("PRODUCTO_PAGO_NOMINA_NO_RESUELTO: el producto de pago " + idProducto + " «"
+                    + producto.getNombre() + "» no esta ACTIVO. Activelo en CXP o corrija RHH.CFNM.CFNMPRPG.");
+        }
+        if (producto.getGrupoProducto() == null || producto.getGrupoProducto().getPlanCuenta() == null) {
+            throw new IncomeException("PRODUCTO_PAGO_NOMINA_NO_RESUELTO: el producto de pago " + idProducto + " «"
+                    + producto.getNombre() + "» no tiene grupo o el grupo no tiene cuenta contable.");
+        }
+        PlanCuenta cuentaProducto = producto.getGrupoProducto().getPlanCuenta();
+        if (cuentaProducto.getCodigo() == null || !cuentaProducto.getCodigo().equals(cuenta.getCodigo())) {
+            throw new IncomeException("PRODUCTO_PAGO_NOMINA_NO_RESUELTO: la cuenta de la linea "
+                    + RhhLineaAsiento.SUELDOS_POR_PAGAR_DEBE + " de la plantilla de pago de nomina (" + cuentaTexto
+                    + ") no coincide con la del grupo del producto de pago " + idProducto + " «" + producto.getNombre()
+                    + "» (" + cuentaProducto.getCuentaContable() + " (" + cuentaProducto.getNombre() + ")). El pago por"
+                    + " empleado tiene que contabilizarse en la MISMA cuenta que el consolidado: corrija RHH.CFNM.CFNMPRPG"
+                    + " o el grupo del producto.");
+        }
+        return idProducto;
     }
 
     private boolean esMarcadora(PlanCuenta cuenta, Long marcadora) {

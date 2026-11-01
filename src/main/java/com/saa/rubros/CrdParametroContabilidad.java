@@ -22,4 +22,16 @@ public interface CrdParametroContabilidad {
 	 */
 	int PRODUCTO_PAGO_SEGURO_JUBILADOS = 3;
 
+	/**
+	 * (2026-11-01) id del producto de pago de la DEVOLUCIÓN al partícipe del sobrante de la carga Petro/ARCH (B8), en
+	 * {@code PDTRVLRN}. Se verifica contra la cuenta de la línea aux1 61 de la plantilla de aplicación. Hoy 1222.
+	 */
+	int PRODUCTO_PAGO_DEVOLUCION_DESCUENTO = 4;
+
+	/**
+	 * (2026-11-01) id del producto de pago del DESEMBOLSO de préstamos, en {@code PDTRVLRN}. Se verifica contra la cuenta
+	 * SOCIOS POR PAGAR de la plantilla de entrega del préstamo. Hoy 976.
+	 */
+	int PRODUCTO_PAGO_DESEMBOLSO_PRESTAMO = 5;
+
 }

@@ -68,6 +68,9 @@ import jakarta.ejb.Stateless;
 @Stateless
 public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoService {
 
+    @jakarta.ejb.EJB
+    private com.saa.ejb.crd.service.ProductoPagoParametroService productoPagoParametroService;
+
     private static final double TOLERANCIA_CUADRE = 0.01;
 
     /**
@@ -1183,29 +1186,11 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
             throw new IncomeException("La plantilla alterno " + plantillaEntrega.alterno()
                     + " no tiene la línea aux1=" + aux1 + " (SOCIOS POR PAGAR).");
         }
-        PlanCuenta cuenta = linea.getPlanCuenta();
-        List<ProductoPago> productos = productoPagoDaoService.selectActivosByEmpresaYCuentaGrupo(
-                idEmpresa, cuenta.getCodigo());
-        String cuentaTexto = cuenta.getCuentaContable() + " (" + cuenta.getNombre() + ")";
-        if (productos == null || productos.isEmpty()) {
-            throw new IncomeException("No hay un producto de pago activo en la empresa " + idEmpresa
-                    + " cuyo grupo tenga la cuenta " + cuentaTexto + ", que es la de SOCIOS POR PAGAR de la"
-                    + " plantilla de entrega alterno " + plantillaEntrega.alterno()
-                    + ". Cree el producto en CXP (grupo con esa cuenta).");
-        }
-        if (productos.size() > 1) {
-            StringBuilder lista = new StringBuilder();
-            for (ProductoPago producto : productos) {
-                if (lista.length() > 0) {
-                    lista.append(", ");
-                }
-                lista.append(producto.getId()).append(" «").append(producto.getNombre()).append("»");
-            }
-            throw new IncomeException("Hay más de un producto de pago activo en la empresa " + idEmpresa
-                    + " cuyo grupo tiene la cuenta " + cuentaTexto + ": " + lista
-                    + ". Deje uno solo; no se elige uno al azar.");
-        }
-        return productos.get(0).getId();
+        // (2026-11-01) El producto sale de un PARÁMETRO (rubro 237, detalle 5), verificado contra la cuenta SOCIOS POR PAGAR de
+        // la plantilla de entrega: ya no se busca por cuenta (se rompe cuando hay dos productos activos con la misma).
+        return productoPagoParametroService.resolver(
+                com.saa.rubros.CrdParametroContabilidad.PRODUCTO_PAGO_DESEMBOLSO_PRESTAMO, linea.getPlanCuenta(),
+                "entrega (desembolso) del préstamo " + prestamo.getCodigo(), "PRODUCTO_PAGO_DESEMBOLSO_NO_RESUELTO");
     }
 
     @Override
