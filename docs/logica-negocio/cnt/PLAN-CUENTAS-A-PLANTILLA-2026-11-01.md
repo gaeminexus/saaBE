@@ -69,6 +69,7 @@ estado financiero por rubro 250). Los literales están concentrados en 4 archivo
   - Una cuenta sin grupo derivable: advertencia, no se ajusta (igual que P3).
   - El modo arranque queda fuera (`crd/sql/358`).
 - **P4-A** hecho: raíz de cartera desde el detalle 17. Helper único `ParametroContableService` (cnt) para el rubro 250. Con `1.3` cargado, el resultado es idéntico. Quedan escritos hasta P4-B/C: `1.3.99` y los rangos.
+- **P4-B** hecho (implementado, pendiente de commit): la provisión sale de las cuentas distintas de las líneas aux1 83 de la plantilla 37 de la empresa (`ParametroContableService.cuentasProvisionCartera`). El ⑨ y los controles excluyen esas cuentas EXACTAS (no el prefijo `1.3.99`); `B17_1399_VS_G48` suma esas mismas cuentas. DAO nuevo `CierreCarteraDaoService.selectSaldoContablePorCuentaExcluyendo(…, List<String>, …)` (la de un prefijo se queda). Sin la plantilla o la línea 83: el cierre se detiene con `IncomeException` y los controles quedan en ADVERTENCIA (`CARTERA_SIN_PROVISION`, `B17_13_VS_G48`). Ya no queda `1.3.99` en cálculos ni mensajes. Los rangos 01-04/05-08/09-12 siguen hasta P4-C.
 - **`crd/sql/359` corrido en producción (2026-11-01):**
   - (1) las 51 cuentas de banda dan IGUAL. Aparece `1.3.12.00` en una banda: queda en H, sin
     problema.
@@ -83,3 +84,4 @@ estado financiero por rubro 250). Los literales están concentrados en 4 archivo
   banda de mayor número (`BNDPNMRO`) de cada madre en `CRD.BNDP`. Sin literal y sin semilla.
 - **`cnt/sql/c20-01` corrido en producción (2026-11-01):** rubro 250, detalles 8-12 = 5/4/1/2/3; plantilla
   alterno 1, aux1 1-4 = 1.4.05.05 / 1.4.05.10 / 2.3.02.05 / 2.3.02.10. **P1 y P2 sin semilla, confirmado.**
+- **`cnt/sql/c20-02` corrido en producción (2026-11-01):** PDTR 1534 (16 = 2.1) y 1535 (17 = 1.3).
