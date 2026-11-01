@@ -835,3 +835,13 @@ validaciones, aplicación) no cambia. **El contrato completo es
   que no contestan no generan fila y se cuentan en el log.
 - **Pendiente conocido:** `FileService.EXTENSIONES_PERMITIDAS` (módulo basico) no incluye `.csv`; mientras
   no se agregue, el REST y la subida del archivo físico rechazan el `.csv` aunque el lector lo entienda.
+
+> **⛔ DEFECTO ABIERTO (2026-10-31, carga ARCH 510): los aportes de una carga se cuentan por
+> `APRTIDAS`, y los aportes MIGRADOS traen ahí un número del sistema anterior.**
+> `AporteDaoServiceImpl.selectByCarga` (control recibido = aplicado) y `sumValorPorTipoAporteByCarga`
+> (asiento de aplicación) filtran `a.idAsoprep = :idCarga`. Los aportes migrados (`APRTUSRG = 'BATCH'`,
+> `CRARCDGO` nulo) tienen `APRTIDAS` con números de 0 a 999995 que no son cargas. El 267360 (0,10,
+> APRTIDAS = 510) hizo abortar la carga ARCH 510 por «0,10 aplicados de más»; sin el control, habría
+> entrado al asiento. Datos corregidos con `crd/sql/341`. **Pendiente de código:** contar por
+> `CRARCDGO` (la carga real), o excluir `CRARCDGO IS NULL`. Hasta entonces, toda carga cuyo número
+> coincida con un `APRTIDAS` migrado choca igual: lo mide el CONTROL 2 del 341.
