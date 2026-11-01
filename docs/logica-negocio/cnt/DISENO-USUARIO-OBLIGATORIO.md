@@ -91,3 +91,11 @@ El reproceso del cuadre corre con el código de `main`.
   quedan como están: cubren jun-2025 → jul-2026 y ya usan un usuario real.
 - **Hay que avisar al árbitro del cuadre** (texto aprobado por el usuario): cambia el usuario de los
   asientos del reproceso, no los montos.
+
+## 9. Recepción del SRI (decisión del usuario, 2026-11-01)
+> «Este proceso, Recepción automática del SRI, sí lo ejecuta un usuario en cxp. Ese usuario debería registrarse.»
+- `FacturaServiceImpl:2482` (literal «SISTEMA») pasa a recibir el usuario de quien la ejecuta desde la
+  pantalla de cxp, y lo valida al empezar, como todos. Va en **U-3 (cxc/cxp)**, con contrato de API si
+  el FE todavía no manda el usuario.
+- Con esto **no queda ningún proceso sin persona** salvo el reproceso (usuario `REPROCESO` hasta 2026-08,
+  §8). Ningún timer crea asientos.
