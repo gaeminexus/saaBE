@@ -90,3 +90,6 @@ estado financiero por rubro 250). Los literales están concentrados en 4 archivo
   la plantilla o la línea, el cierre se detiene y los controles quedan en advertencia
   (`CARTERA_SIN_PROVISION`). Riesgo a vigilar: una subcuenta nueva de 1.3.99 que no esté en una línea 83
   se contaría como capital. El control es la consulta 3 del `crd/sql/359`.
+- **`crd/sql/356` corrido en producción (2026-11-01):** 37/85/1 = 1.3.01.25, 37/85/2 = 1.3.09.25,
+  37/85/3 = 1.3.05.25 y la plantilla nueva 38 con la línea 1 = 4.8.90.90.35. **Todos los prerrequisitos
+  de base del siguiente EAR están cumplidos** (356, c20-02, c20-01).
