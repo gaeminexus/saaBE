@@ -54,3 +54,9 @@ SELECT p.ID, p.CODIGO, p.NOMBRE, p.GRUPOPRODUCTO, n.PLNNCNTA, p.ESTADO
 -- REVERSO (comentado; solo si ninguna orden de pago lo usa todavía):
 -- DELETE FROM PGS.PRDP WHERE UPPER(NOMBRE) = 'DEVOLUCION DE DESCUENTO PETRO/ARCH A PARTICIPE';
 -- COMMIT;
+
+-- RESULTADO (2026-11-01, producción): se corrió la PRIMERA versión (activo) → producto 1222 «DEVDESC» quedó con ESTADO 1
+-- en el grupo 79 (2.3.90.90.10), junto al 976. Eso detiene los desembolsos del código de producción (dos productos
+-- activos en la cuenta). Corrección inmediata indicada al usuario: UPDATE PGS.PRDP SET ESTADO = 0 WHERE ID = 1222.
+-- El 1222 se activa en el despliegue del EAR único, con la semilla de los parámetros (rubro 237, devolución = 1222,
+-- desembolso = 976).
