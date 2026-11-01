@@ -2249,7 +2249,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
                     String codSRI = mapPorcentajeIVAaCodigo(d.getPorcentajeIVA());
                     if (!ivaValidados.contains(codSRI)) {
                         ivaValidados.add(codSRI);
-                        PlanCuenta cuentaIVA = obtenerCuentaIVACxp(codSRI);
+                        PlanCuenta cuentaIVA = obtenerCuentaIVACxpPorCodigo(parseLongSafe(codSRI)); // P12: tabla 17, sin respaldo en cxc
                         if (cuentaIVA == null) {
                             errores.add("El IVA " + d.getPorcentajeIVA() + "% (código SRI: " + codSRI
                                     + ") no tiene cuenta de crédito tributario configurada. "
@@ -3267,6 +3267,22 @@ public class AsientoContableServiceImpl implements AsientoContableService {
     // ---------------------------------------------------------------
     // generarAsientoNotaCreditoCompra  (inverso de FacturaCompra)
     // ---------------------------------------------------------------
+    /**
+     * Asiento de una nota de crédito de compra: el ESPEJO del asiento de la factura que modifica (N2, 2026-11-01).
+     * Antes acreditaba siempre la cuenta de gasto del grupo de producto de menor código, sin mirar la factura: dos NC
+     * de facturas de INTERMEDIARIO acreditaron «servicios básicos» (correo de contabilidad del 29-10).
+     *
+     * <ul>
+     * <li>Se resuelve la factura modificada (proveedor + {@code numDocModificado}, viva). Si no se encuentra, o hay más
+     * de una, error claro: nunca una cuenta por defecto.</li>
+     * <li><b>Factura de intermediario</b> ({@code FCTCESIN = 1}): DEBE proveedor / HABER cuenta del grupo del producto
+     * intermediario de ESA factura, por el total de la NC, sin IVA ni ajuste de redondeo (espejo exacto de
+     * {@code generarAsientoFacturaCompraIntermediario}).</li>
+     * <li><b>Factura normal:</b> el reverso del gasto va a la cuenta del grupo del producto de cada detalle de la NC. Un
+     * detalle sin producto se reparte, en proporción, entre las cuentas de gasto del asiento de la factura modificada
+     * (sin IVA ni proveedor). IVA por {@link #obtenerCuentaIVACxpPorCodigo} (tabla 17, sin respaldo).</li>
+     * </ul>
+     */
     @Override
     public com.saa.model.cnt.Asiento generarAsientoNotaCreditoCompra(
             Long idNotaCreditoCompra, Long idEmpresa, int codigoAltTipoAsiento,
@@ -3279,7 +3295,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         com.saa.model.cxp.NotaCreditoCompra nc =
                 em.find(com.saa.model.cxp.NotaCreditoCompra.class, idNotaCreditoCompra);
         if (nc == null)
-            throw new IncomeException("No se encontrÃ³ NotaCreditoCompra con ID: " + idNotaCreditoCompra);
+            throw new IncomeException("No se encontró NotaCreditoCompra con ID: " + idNotaCreditoCompra);
 
         @SuppressWarnings("unchecked")
         List<com.saa.model.cxp.DetalleNotaCreditoCompra> detalles = em.createQuery(
@@ -3288,11 +3304,15 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         if (detalles == null || detalles.isEmpty())
             throw new IncomeException("NotaCreditoCompra " + idNotaCreditoCompra + " no tiene detalles activos.");
 
-        List<DetalleAsiento> lineas = new ArrayList<>();
-
-        // â”€â”€ DEBE: CxP Proveedor (reduce lo que le debemos) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         if (nc.getTitular() == null)
             throw new IncomeException("NotaCreditoCompra " + idNotaCreditoCompra + " no tiene proveedor.");
+
+        // La factura que la NC modifica decide a qué cuenta se acredita: nunca una cuenta por defecto.
+        com.saa.model.cxp.FacturaCompra facturaModificada = resolverFacturaModificadaPorNcCompra(nc, idEmpresa);
+
+        List<DetalleAsiento> lineas = new ArrayList<>();
+
+        // ── DEBE: CxP Proveedor (reduce lo que le debemos) ──────────────────────
         PlanCuenta cuentaProv = obtenerCuentaProveedor(nc.getTitular().getCodigo(), idEmpresa);
         if (cuentaProv == null)
             throw new IncomeException("El proveedor '" + nc.getTitular().getNombre()
@@ -3304,29 +3324,82 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         debe.setValorDebe(nvl(nc.getTotal())); debe.setValorHaber(0.0);
         lineas.add(debe);
 
-        // â”€â”€ HABER: reverso gasto por grupo (sin grupo en NC compra â†’ usar descripciÃ³n) â”€
-        // NC compra no trae GrupoProductoPago en el detalle; se acredita gasto genÃ©rico
-        double totalBase = 0.0;
-        for (com.saa.model.cxp.DetalleNotaCreditoCompra d : detalles)
-            totalBase += nvl(d.getSubTotal());
-        totalBase = redondear2(totalBase);
-        // Intentar obtener cuenta de gasto del primer grupo activo de la empresa
-        PlanCuenta cuentaGasto = obtenerCuentaGastoDefaultCxp(idEmpresa);
-        if (cuentaGasto == null)
-            throw new IncomeException("No se encontrÃ³ cuenta de gasto para la NC de compra. "
-                    + "Configure un GrupoProductoPago con cuenta contable y tipo GASTOS GENERALES.");
-        if (totalBase > 0) {
+        // ── Factura de INTERMEDIARIO: espejo exacto, sin IVA y sin redondeo ─────────
+        if (facturaModificada.getEsIntermediario() != null && facturaModificada.getEsIntermediario().longValue() == 1L) {
+            PlanCuenta cuentaGrupo = cuentaDelGrupoIntermediario(facturaModificada);
+            double totalNcInterm = redondear2(nvl(nc.getTotal()));
+            debe.setValorDebe(totalNcInterm);
+            DetalleAsiento haberInterm = new DetalleAsiento();
+            haberInterm.setPlanCuenta(cuentaGrupo); haberInterm.setNumeroCuenta(cuentaGrupo.getCuentaContable());
+            haberInterm.setNombreCuenta(cuentaGrupo.getNombre());
+            haberInterm.setDescripcion("NC Compra intermediario (reverso de la factura "
+                    + facturaModificada.getNumero() + "): " + cuentaGrupo.getNombre());
+            haberInterm.setValorDebe(0.0); haberInterm.setValorHaber(totalNcInterm);
+            lineas.add(haberInterm);
+            return generarAsiento(idEmpresa, codigoAltTipoAsiento,
+                    fechaAsiento, observaciones, usuario, lineas, Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR), ModuloOrigenAsiento.CXP);
+        }
+
+        // ── HABER: reverso del gasto, por la cuenta del grupo del producto de cada detalle ──
+        Map<Long, Double> baseCuenta = new LinkedHashMap<>();
+        Map<Long, PlanCuenta> cuentaPorId = new LinkedHashMap<>();
+        double baseSinProducto = 0.0;
+        for (com.saa.model.cxp.DetalleNotaCreditoCompra d : detalles) {
+            if (d.getProducto() == null) {
+                baseSinProducto += nvl(d.getSubTotal());
+                continue;
+            }
+            com.saa.model.cxp.ProductoPago producto = em.find(com.saa.model.cxp.ProductoPago.class, d.getProducto());
+            if (producto == null)
+                throw new IncomeException("Producto ID " + d.getProducto() + " del detalle '" + d.getDescripcion()
+                        + "' de la NC de compra no encontrado en BD.");
+            com.saa.model.cxp.GrupoProductoPago grupo = producto.getGrupoProducto();
+            if (grupo == null)
+                throw new IncomeException("Producto ID " + d.getProducto() + " ('" + producto.getNombre()
+                        + "') no tiene grupo asignado. Clasifíquelo antes de contabilizar la NC.");
+            if (grupo.getPlanCuenta() == null)
+                throw new IncomeException("GrupoProductoPago '" + grupo.getNombre() + "' no tiene cuenta contable.");
+            Long idCuenta = grupo.getPlanCuenta().getCodigo();
+            baseCuenta.merge(idCuenta, nvl(d.getSubTotal()), Double::sum);
+            cuentaPorId.putIfAbsent(idCuenta, grupo.getPlanCuenta());
+        }
+        baseSinProducto = redondear2(baseSinProducto);
+        if (baseSinProducto > 0.0) {
+            // Detalle sin producto: se reparte en proporción entre las cuentas de gasto del asiento de la factura modificada.
+            Map<PlanCuenta, Double> gastoFactura = cuentasDeGastoDelAsientoDeFactura(facturaModificada, cuentaProv);
+            double totalGasto = 0.0;
+            for (Double v : gastoFactura.values()) totalGasto += v;
+            if (gastoFactura.isEmpty() || totalGasto <= 0.0)
+                throw new IncomeException("La NC de compra " + nc.getNumero() + " tiene detalle(s) sin producto ($" + baseSinProducto
+                        + ") y no se pudo repartir entre las cuentas de gasto de la factura modificada "
+                        + facturaModificada.getNumero() + " (sin asiento de gasto). Asigne un producto a esos detalles.");
+            double asignado = 0.0;
+            int i = 0;
+            for (Map.Entry<PlanCuenta, Double> e : gastoFactura.entrySet()) {
+                i++;
+                double parte = (i == gastoFactura.size())
+                        ? redondear2(baseSinProducto - asignado)
+                        : redondear2(baseSinProducto * e.getValue() / totalGasto);
+                asignado += parte;
+                Long idCuenta = e.getKey().getCodigo();
+                baseCuenta.merge(idCuenta, parte, Double::sum);
+                cuentaPorId.putIfAbsent(idCuenta, e.getKey());
+            }
+        }
+        for (Map.Entry<Long, Double> e : baseCuenta.entrySet()) {
+            double valor = redondear2(e.getValue());
+            if (valor <= 0.0) continue;
+            PlanCuenta pc = cuentaPorId.get(e.getKey());
             DetalleAsiento haberGasto = new DetalleAsiento();
-            haberGasto.setPlanCuenta(cuentaGasto); haberGasto.setNumeroCuenta(cuentaGasto.getCuentaContable());
-            haberGasto.setNombreCuenta(cuentaGasto.getNombre());
-            haberGasto.setDescripcion("NC Compra reverso gasto");
-            haberGasto.setValorDebe(0.0); haberGasto.setValorHaber(totalBase);
+            haberGasto.setPlanCuenta(pc); haberGasto.setNumeroCuenta(pc.getCuentaContable());
+            haberGasto.setNombreCuenta(pc.getNombre());
+            haberGasto.setDescripcion("NC Compra reverso gasto: " + pc.getNombre());
+            haberGasto.setValorDebe(0.0); haberGasto.setValorHaber(valor);
             lineas.add(haberGasto);
         }
 
-        // â”€â”€ HABER: IVA crÃ©dito tributario reverso â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        // El VALOR sale de la cabecera de la NC (vIVA); los detalles solo
-        // definen quÃ© cuentas intervienen. Ver distribuirIvaCabecera().
+        // ── HABER: IVA crédito tributario reverso ───────────────────────────────
+        // El VALOR sale de la cabecera de la NC (vIVA); los detalles solo definen qué cuentas intervienen.
         Map<String, Double> ivaMap = new LinkedHashMap<>();
         for (com.saa.model.cxp.DetalleNotaCreditoCompra d : detalles) {
             if (d.getValorIVA() != null && d.getValorIVA() > 0 && d.getPorcentajeIVA() != null) {
@@ -3337,35 +3410,23 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         ivaMap = distribuirIvaCabecera("NotaCreditoCompra", idNotaCreditoCompra, nc.getvIVA(),
                 ivaMap, codigoIvaTextoDesdeTarifa(nc.getpIVA()));
         for (Map.Entry<String, Double> e : ivaMap.entrySet()) {
-            PlanCuenta pcIVA = obtenerCuentaIVACxp(e.getKey());
+            PlanCuenta pcIVA = obtenerCuentaIVACxpPorCodigo(parseLongSafe(e.getKey()));
             if (pcIVA == null)
-                throw new IncomeException("No hay cuenta IVA crÃ©dito tributario para cÃ³digo SRI: " + e.getKey());
+                throw new IncomeException("No hay cuenta de IVA crédito tributario para código SRI: " + e.getKey()
+                        + " (PGS.TSRI lsri.tabla=17). Configure en Compras → Tipos SRI.");
             DetalleAsiento haberIVA = new DetalleAsiento();
             haberIVA.setPlanCuenta(pcIVA); haberIVA.setNumeroCuenta(pcIVA.getCuentaContable());
             haberIVA.setNombreCuenta(pcIVA.getNombre());
-            haberIVA.setDescripcion("NC IVA crÃ©dito tributario reverso cÃ³digo SRI: " + e.getKey());
+            haberIVA.setDescripcion("NC IVA crédito tributario reverso código SRI: " + e.getKey());
             haberIVA.setValorDebe(0.0); haberIVA.setValorHaber(e.getValue());
             lineas.add(haberIVA);
         }
 
-        // El DEBE (CxP proveedor) cuadra contra el importeTotal de la cabecera
-        // (nc.getTotal()), no contra la suma del HABER: es el espejo de
-        // generarAsientoFacturaCompra, con la CxP del lado del DEBE en vez del
-        // HABER (docs/logica-negocio/cxp/DISENO-CUADRE-CONTRA-IMPORTE-TOTAL.md §6.1).
-        //
-        // El helper agregarDiferenciaRedondeoSri(lineas, a, b, etiqueta) calcula
-        // diferencia = a - b y agrega DEBE si es positiva, HABER si es negativa.
-        // Acá se le pasa (totalHaber, importeTotalNc) CRUZADO respecto de la
-        // factura — pasar (importeTotalNc, totalHaber) como en la factura cuadra
-        // igual pero deja el ajuste del lado equivocado, que es justo el defecto
-        // que este cambio corrige. Prueba de cuadre:
-        //   diferencia = totalHaber − importeTotalNc
-        //   positiva -> va al DEBE -> DEBE = importeTotalNc + diferencia
-        //                                   = importeTotalNc + (totalHaber − importeTotalNc)
-        //                                   = totalHaber = HABER  ✅
-        //   negativa -> va al HABER -> HABER = totalHaber + |diferencia|
-        //                                     = totalHaber + (importeTotalNc − totalHaber)
-        //                                     = importeTotalNc = DEBE  ✅
+        // El DEBE (CxP proveedor) cuadra contra el importeTotal de la cabecera (nc.getTotal()), no contra la suma del
+        // HABER: es el espejo de generarAsientoFacturaCompra, con la CxP del lado del DEBE
+        // (docs/logica-negocio/cxp/DISENO-CUADRE-CONTRA-IMPORTE-TOTAL.md §6.1). agregarDiferenciaRedondeoSri(a, b) pone la
+        // diferencia a - b en el DEBE si es positiva y en el HABER si es negativa; acá se le pasa (totalHaber, importeTotalNc)
+        // CRUZADO respecto de la factura a propósito.
         double totalHaber = lineas.stream().mapToDouble(l -> nvl(l.getValorHaber())).sum();
         double importeTotalNc = redondear2(nvl(nc.getTotal()));
         agregarDiferenciaRedondeoSri(lineas, totalHaber, importeTotalNc,
@@ -3374,6 +3435,87 @@ public class AsientoContableServiceImpl implements AsientoContableService {
 
         return generarAsiento(idEmpresa, codigoAltTipoAsiento,
                 fechaAsiento, observaciones, usuario, lineas, Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR), ModuloOrigenAsiento.CXP);
+    }
+
+    /**
+     * N2: la factura de compra que modifica una NC de compra, por proveedor y número (con o sin guiones), en la empresa
+     * y viva (no anulada). Cero o más de una: error claro. Misma búsqueda que
+     * {@code AplicacionPagoCxpServiceImpl.resolverFacturaCompraPorNumero}, más el filtro de estado.
+     */
+    private com.saa.model.cxp.FacturaCompra resolverFacturaModificadaPorNcCompra(
+            com.saa.model.cxp.NotaCreditoCompra nc, Long idEmpresa) throws Throwable {
+        String numero = nc.getNumDocModificado();
+        if (numero == null || numero.trim().isEmpty())
+            throw new IncomeException("La NC de compra " + nc.getNumero() + " no indica el número de la factura que modifica:"
+                    + " no se puede saber a qué cuenta se acredita.");
+        @SuppressWarnings("unchecked")
+        List<com.saa.model.cxp.FacturaCompra> facturas = em.createQuery(
+                "SELECT f FROM FacturaCompra f WHERE FUNCTION('replace', f.numero, '-', '') = :numero "
+                + "AND f.titular.codigo = :titular AND f.empresa.codigo = :empresa AND f.estado = :vivo")
+                .setParameter("numero", numero.trim().replace("-", ""))
+                .setParameter("titular", nc.getTitular().getCodigo())
+                .setParameter("empresa", idEmpresa)
+                .setParameter("vivo", Long.valueOf(Estado.ACTIVO))
+                .getResultList();
+        if (facturas.isEmpty())
+            throw new IncomeException("No existe (viva) la factura de compra N° " + numero + " del proveedor '"
+                    + nc.getTitular().getNombre() + "' que modifica la NC " + nc.getNumero() + ". Cargue primero la factura:"
+                    + " la NC se contabiliza contra su cuenta, nunca contra una cuenta por defecto.");
+        if (facturas.size() > 1)
+            throw new IncomeException("Existe más de una factura de compra viva con el número " + numero + " del proveedor '"
+                    + nc.getTitular().getNombre() + "'. Revise los documentos duplicados antes de contabilizar la NC "
+                    + nc.getNumero() + ".");
+        return facturas.get(0);
+    }
+
+    /** N2: cuenta del grupo del producto intermediario de la factura, con las mismas validaciones del asiento de la factura. */
+    private PlanCuenta cuentaDelGrupoIntermediario(com.saa.model.cxp.FacturaCompra fc) throws Throwable {
+        Long idFacturaCompra = fc.getId();
+        Long idProducto = fc.getIdProductoIntermediario();
+        if (idProducto == null)
+            throw new IncomeException("FacturaCompra " + idFacturaCompra
+                    + " está marcada como intermediario pero no tiene idProductoIntermediario.");
+        com.saa.model.cxp.ProductoPago producto = em.find(com.saa.model.cxp.ProductoPago.class, idProducto);
+        if (producto == null)
+            throw new IncomeException("Producto ID " + idProducto + " (intermediario de FacturaCompra "
+                    + idFacturaCompra + ") no encontrado en BD.");
+        com.saa.model.cxp.GrupoProductoPago grupo = producto.getGrupoProducto();
+        if (grupo == null)
+            throw new IncomeException("Producto '" + producto.getNombre() + "' (intermediario de FacturaCompra "
+                    + idFacturaCompra + ") no tiene grupo asignado.");
+        if (grupo.getPlanCuenta() == null)
+            throw new IncomeException("GrupoProductoPago '" + grupo.getNombre() + "' (producto: '"
+                    + producto.getNombre() + "', intermediario de FacturaCompra " + idFacturaCompra
+                    + ") no tiene cuenta contable.");
+        return grupo.getPlanCuenta();
+    }
+
+    /**
+     * N2: cuentas de GASTO del asiento de una factura de compra y lo que debita cada una: las líneas de DEBE sin IVA
+     * crédito tributario (cuentas de PGS.TSRI tabla 17), sin la cuenta del proveedor y sin la de diferencia por redondeo.
+     * Vacío si la factura no tiene asiento.
+     */
+    private Map<PlanCuenta, Double> cuentasDeGastoDelAsientoDeFactura(com.saa.model.cxp.FacturaCompra fc,
+            PlanCuenta cuentaProveedor) {
+        Map<PlanCuenta, Double> gasto = new LinkedHashMap<>();
+        if (fc.getAsiento() == null || fc.getAsiento().getCodigo() == null)
+            return gasto;
+        java.util.Set<Long> excluidas = new java.util.HashSet<>();
+        if (cuentaProveedor != null) excluidas.add(cuentaProveedor.getCodigo());
+        @SuppressWarnings("unchecked")
+        List<PlanCuenta> cuentasIva = em.createQuery(
+                "SELECT t.planCuenta FROM TsriCompra t WHERE t.lsri.tabla = '17' AND t.planCuenta IS NOT NULL")
+                .getResultList();
+        for (PlanCuenta c : cuentasIva) excluidas.add(c.getCodigo());
+        @SuppressWarnings("unchecked")
+        List<DetalleAsiento> lineasFactura = em.createQuery(
+                "SELECT d FROM DetalleAsiento d WHERE d.asiento.codigo = :asiento AND d.valorDebe > 0")
+                .setParameter("asiento", fc.getAsiento().getCodigo()).getResultList();
+        for (DetalleAsiento d : lineasFactura) {
+            if (d.getPlanCuenta() == null || excluidas.contains(d.getPlanCuenta().getCodigo())) continue;
+            gasto.merge(d.getPlanCuenta(), nvl(d.getValorDebe()), Double::sum);
+        }
+        return gasto;
     }
 
     // ---------------------------------------------------------------
@@ -3415,10 +3557,10 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         }
         double baseND = redondear2(totalND - ivaND);
 
-        PlanCuenta cuentaGasto = obtenerCuentaGastoDefaultCxp(idEmpresa);
-        if (cuentaGasto == null)
-            throw new IncomeException("No se encontrÃ³ cuenta de gasto para la ND de compra. "
-                    + "Configure un GrupoProductoPago con cuenta contable y tipo GASTOS GENERALES.");
+        // P11: la cuenta de gasto sin clasificar sale de la plantilla de compras (línea GASTO_SIN_CLASIFICAR), no del
+        // grupo de producto de menor código.
+        PlanCuenta cuentaGasto = obtenerCuentaGastoSinClasificarCxp(idEmpresa,
+                "la ND de compra " + (nd.getNumero() != null ? nd.getNumero() : nd.getClave()));
         DetalleAsiento debe = new DetalleAsiento();
         debe.setPlanCuenta(cuentaGasto); debe.setNumeroCuenta(cuentaGasto.getCuentaContable());
         debe.setNombreCuenta(cuentaGasto.getNombre());
@@ -3431,7 +3573,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         // â”€â”€ DEBE: IVA crÃ©dito tributario de la cabecera â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         if (ivaND > 0.0) {
             String codIVA = codigoIvaTextoDesdeTarifa(nd.getpIVA());
-            PlanCuenta pcIVA = obtenerCuentaIVACxp(codIVA);
+            PlanCuenta pcIVA = obtenerCuentaIVACxpPorCodigo(parseLongSafe(codIVA)); // P12: tabla 17, sin respaldo en cxc
             if (pcIVA == null)
                 throw new IncomeException("No hay cuenta IVA crÃ©dito tributario para cÃ³digo SRI: "
                         + codIVA + ", requerida por la ND de compra "
@@ -3526,12 +3668,10 @@ public class AsientoContableServiceImpl implements AsientoContableService {
             lineas.add(ln);
         }
         if (totalSinClasificar > 0) {
-            PlanCuenta cuentaGasto = obtenerCuentaGastoDefaultCxp(idEmpresa);
-            if (cuentaGasto == null)
-                throw new IncomeException("Hay detalles de la LiquidaciÃ³n de Compra sin producto "
-                        + "clasificado y no se encontrÃ³ cuenta de gasto default para la empresa. "
-                        + "Configure un GrupoProductoPago con cuenta contable y tipo GASTOS GENERALES, "
-                        + "o clasifique los productos: " + detallesSinClasificar);
+            // P11: la cuenta de gasto sin clasificar sale de la plantilla de compras (línea GASTO_SIN_CLASIFICAR).
+            PlanCuenta cuentaGasto = obtenerCuentaGastoSinClasificarCxp(idEmpresa,
+                    "la liquidación de compra (detalles sin producto clasificado: " + detallesSinClasificar
+                    + "; también puede clasificar los productos)");
             DetalleAsiento ln = new DetalleAsiento();
             ln.setPlanCuenta(cuentaGasto); ln.setNumeroCuenta(cuentaGasto.getCuentaContable());
             ln.setNombreCuenta(cuentaGasto.getNombre());
@@ -3555,7 +3695,7 @@ public class AsientoContableServiceImpl implements AsientoContableService {
         ivaMap = distribuirIvaCabecera("LiquidacionCompraCompra", idLiquidacion, lq.getvIVA(),
                 ivaMap, codigoIvaTextoDesdeTarifa(lq.getpIVA()));
         for (Map.Entry<String, Double> e : ivaMap.entrySet()) {
-            PlanCuenta pcIVA = obtenerCuentaIVACxp(e.getKey());
+            PlanCuenta pcIVA = obtenerCuentaIVACxpPorCodigo(parseLongSafe(e.getKey())); // P12: tabla 17, sin respaldo en cxc
             if (pcIVA == null)
                 throw new IncomeException("No hay cuenta IVA crÃ©dito tributario para cÃ³digo SRI: " + e.getKey());
             DetalleAsiento ln = new DetalleAsiento();
@@ -3791,38 +3931,34 @@ public class AsientoContableServiceImpl implements AsientoContableService {
     }
 
     /**
-     * Obtiene la cuenta de IVA crÃ©dito tributario (compras) desde LSRI tabla='17'.
-     * Usa el mismo mÃ©todo que CXC pero busca en Lsri de compras (com.saa.model.cxp.Lsri).
-     * Si no encuentra en CXP, cae a la cuenta CXC como fallback.
+     * Cuenta de gasto para lo que no tiene producto clasificado, leída de la línea
+     * {@link com.saa.rubros.CxpLineaAsiento#GASTO_SIN_CLASIFICAR} de la plantilla
+     * {@link com.saa.rubros.PlantillasCxp#COMPRAS} de la empresa del asiento (P11, 2026-11-01). Antes era la cuenta del
+     * grupo de producto de menor código. Si falta la plantilla, la línea o su cuenta, o la cuenta está inactiva, lanza
+     * {@code IncomeException} que lo dice (plantilla y aux1): nunca una cuenta de respaldo.
      */
-    private PlanCuenta obtenerCuentaIVACxp(String codigoSRI) {
-        // Intentar primero en LSRI de compras (PGS.LSRC)
-        try {
-            List<?> r = em.createQuery(
-                    "SELECT t.planCuenta FROM TsriCompra t WHERE t.codigo = :cod AND t.estado = 1")
-                    .setParameter("cod", codigoSRI).setMaxResults(1).getResultList();
-            if (!r.isEmpty() && r.get(0) != null) return (PlanCuenta) r.get(0);
-        } catch (Exception e) { /* fallback */ }
-        // Fallback: usar la misma cuenta de IVA de CXC
-        return obtenerCuentaIVA(codigoSRI);
-    }
-
-    /**
-     * Obtiene la cuenta de gasto por defecto para CXP.
-     * Busca el GrupoProductoPago con tipo GASTOS_GENERALES (o el primero con cuenta configurada).
-     */
-    private PlanCuenta obtenerCuentaGastoDefaultCxp(Long idEmpresa) {
-        try {
-            List<?> r = em.createQuery(
-                    "SELECT g.planCuenta FROM GrupoProductoPago g "
-                    + "WHERE g.empresa.codigo = :emp AND g.planCuenta IS NOT NULL AND g.estado = 1 "
-                    + "ORDER BY g.codigo ASC")
-                    .setParameter("emp", idEmpresa).setMaxResults(1).getResultList();
-            return r.isEmpty() ? null : (PlanCuenta) r.get(0);
-        } catch (Exception e) {
-            System.err.println("âš  obtenerCuentaGastoDefaultCxp: " + e.getMessage());
-            return null;
+    private PlanCuenta obtenerCuentaGastoSinClasificarCxp(Long idEmpresa, String etiquetaDocumento) throws Throwable {
+        Long idPlantilla = plantillaService.codigoByAlterno(com.saa.rubros.PlantillasCxp.COMPRAS, idEmpresa);
+        if (idPlantilla == null || idPlantilla.longValue() == 0L) {
+            throw new IncomeException("No se pudo contabilizar " + etiquetaDocumento + ": la empresa " + idEmpresa
+                    + " no tiene la plantilla contable de compras (alterno " + com.saa.rubros.PlantillasCxp.COMPRAS
+                    + ") con la cuenta de gasto sin clasificar (aux1 " + com.saa.rubros.CxpLineaAsiento.GASTO_SIN_CLASIFICAR + ").");
         }
+        com.saa.model.cnt.DetallePlantilla linea = detallePlantillaDaoService.selectByPlantillaYAuxiliar(idPlantilla,
+                com.saa.rubros.CxpLineaAsiento.GASTO_SIN_CLASIFICAR);
+        if (linea == null || linea.getPlanCuenta() == null) {
+            throw new IncomeException("No se pudo contabilizar " + etiquetaDocumento + ": la plantilla de compras (alterno "
+                    + com.saa.rubros.PlantillasCxp.COMPRAS + ") de la empresa " + idEmpresa
+                    + " no tiene la línea aux1 " + com.saa.rubros.CxpLineaAsiento.GASTO_SIN_CLASIFICAR
+                    + " (cuenta de gasto sin clasificar) o no tiene cuenta asignada.");
+        }
+        PlanCuenta cuenta = linea.getPlanCuenta();
+        if (cuenta.getEstado() == null || cuenta.getEstado().longValue() != Estado.ACTIVO) {
+            throw new IncomeException("No se pudo contabilizar " + etiquetaDocumento + ": la cuenta de gasto sin clasificar"
+                    + " de la plantilla de compras (" + cuenta.getCuentaContable() + " " + cuenta.getNombre()
+                    + ") está inactiva.");
+        }
+        return cuenta;
     }
 
     /**

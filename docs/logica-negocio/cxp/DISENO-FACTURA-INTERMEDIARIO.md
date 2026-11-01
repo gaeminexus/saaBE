@@ -204,3 +204,40 @@ Pasa a un diálogo con:
 ⚠️ **El lote es un hueco real, no un olvido.** Si una factura de intermediario se registra por lote,
 se contabiliza como gasto normal y hay que anularla y volver a registrarla a mano. Conviene que el
 usuario lo sepa antes de usar el lote con estas facturas.
+
+## 8. Nota de crédito de compra sobre una factura (N2, 2026-11-01)
+
+**Defecto en producción.** Las NC de compra `002-002-000035370` y `002-002-000035420` modificaban facturas de
+INTERMEDIARIO y su asiento acreditó «servicios básicos». Causa: `AsientoContableServiceImpl.generarAsientoNotaCreditoCompra`
+acreditaba SIEMPRE `obtenerCuentaGastoDefaultCxp` (la cuenta del grupo de producto de menor código de la empresa) por el
+subtotal, más el IVA aparte, y no miraba la factura que la NC modifica.
+
+**Corrección.** La NC se contabiliza como el espejo del asiento de su factura:
+
+1. Se resuelve la factura modificada: proveedor de la NC + `numDocModificado` (con o sin guiones), en la empresa, **viva**
+   (estado activo de `PGS.FCTC`). Si no se encuentra, o hay más de una, error claro. No hay cuenta por defecto.
+2. **Factura de intermediario** (`FCTCESIN = 1`): DEBE proveedor por el total de la NC / HABER cuenta del grupo del producto
+   intermediario de ESA factura (`FCTCPRIN`) por el mismo total. Sin líneas de IVA y sin ajuste de redondeo. Mismas
+   validaciones de producto, grupo y cuenta que el asiento de la factura (§5).
+3. **Factura normal:** el reverso del gasto va a la cuenta del grupo del producto de cada detalle de la NC
+   (`DetalleNotaCreditoCompra.producto`), como hace la factura de compra. Un detalle sin producto se reparte, en
+   proporción, entre las cuentas de gasto del asiento de la factura modificada (DEBE sin IVA, sin proveedor). Si la factura no
+   tiene asiento de gasto, error claro pidiendo asignar el producto.
+4. **IVA:** en el caso normal, con `obtenerCuentaIVACxpPorCodigo` (PGS.TSRI, `lsri.tabla = 17`, sin respaldo en la cuenta de
+   IVA de cxc). Si falta la cuenta, error claro.
+5. `obtenerCuentaGastoDefaultCxp` ya no se usa en la NC; sigue en la ND y la liquidación (P11).
+
+**El primer síntoma del correo del 27-10** («el valor a aplicar supera el saldo pendiente de la factura ($0.00)») no es un
+defecto de este asiento: lo daba `validaMontoContraSaldo` dentro de `AplicacionPagoCxpServiceImpl.aplicarNotaCredito` y ya se
+resolvió con `NC-EXCEDE-SALDO-FACTURA.md` (la NC se aplica solo hasta el saldo y el resto queda como saldo de la NC). El texto
+literal «Saldo por pagar al proveedor igual a cero» no existe en el código de `main`.
+
+**NC ya contabilizadas con la cuenta equivocada.** El asiento queda con la línea HABER (gasto) en la cuenta incorrecta y, si la
+factura es de intermediario, además con líneas de IVA que no corresponden. Hay que corregirlo por SQL, sobre `CNT.DTAS` del
+asiento de cada NC (`PGS.NTCC.ASIENTO`), no sobre `PGS.NTCC`:
+- la línea HABER de gasto (`DTASHBRR > 0`): `PLNNCDGO` (la cuenta) y los textos denormalizados `DTASCNTA` (número), `DTASNMCT` (nombre) y `DTASDSCR` (descripción);
+- en intermediario: borrar las líneas de IVA y llevar la línea de gasto al total de la NC (`PGS.NTCC.TOTAL`), de modo que
+  DEBE = HABER; y si había una línea de diferencia por redondeo, también se borra. (Nombres de columna de NTCC/FCTC a
+  confirmar en el esquema real antes de escribir el UPDATE.)
+Los saldos mayorizados (`CNT.SALD`/mayor) del período deben recalcularse con la desmayorización y mayorización de esos meses.
+
