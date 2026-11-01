@@ -206,3 +206,12 @@ Para destrabar la carga 492 antes del pase grande. Coincide con el «A1» del eq
   acumula**, cuando decida. El pago debita `2.3.90.90.10` contra el banco, por el circuito existente.
 - **Implementación:** junto con el destino del sobrante (B8 del plan), después de que el usuario
   corra el DDL que lo soporta.
+- **⛔ Ninguna cuenta fija en el código (regla del usuario, 2026-11-01): todas parametrizables por
+  plantilla.** La devolución usa una **línea nueva de la plantilla 21** (aplicación Petro, la misma
+  de `CrdLineaAsiento`/`ACTUALIZACION-PLANTILLA-21-PETRO-APLICACION.md`), con el siguiente `aux1`
+  libre y una constante nueva en `CrdLineaAsiento` (p. ej. `DEVOLUCION_DESCUENTO_PARTICIPE`), que
+  hoy apunta a `2.3.90.90.10`. Las puentes de origen salen de las líneas que ya existen
+  (`APORTES_POR_APLICAR` aux1 3 → `2.3.02.05`, `PRESTAMOS_POR_APLICAR` aux1 4 → `2.3.02.10`). La
+  semilla de la línea nueva la escribe el árbitro (patrón de `crd/sql/347`) y la corre el usuario
+  antes del EAR. Si la línea falta, el asiento se detiene con un mensaje claro, igual que con las
+  demás líneas de la 21 (`204a7950`), nunca con una cuenta de respaldo escrita en el código.

@@ -195,3 +195,9 @@ reporta.
 
   El B2 (`71a08381`, anticipo con la vigencia) cambia ese mismo reparto en el modo normal, no en el
   reproceso.
+
+## Regla transversal (usuario, 2026-11-01)
+**Todas las cuentas contables que use cualquier ítem de este plan salen de una plantilla (`CNT.PLNS` /
+`CNT.DTPL`, por `aux1`), nunca escritas en el código.** Si un ítem necesita una cuenta que la
+plantilla todavía no tiene, el ejecutor PARA y pide la línea; el árbitro escribe la semilla y el
+usuario la corre.
