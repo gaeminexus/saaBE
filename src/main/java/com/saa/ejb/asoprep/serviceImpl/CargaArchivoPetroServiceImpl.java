@@ -180,6 +180,13 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
     @EJB
     private com.saa.ejb.crd.service.ProcesoMoraPrestamoService procesoMoraPrestamoService;
 
+    /** B1 (PLAN-CORRECCIONES-CARGA-2026-11-01.md): reversos contables de la mora de una carga tardia. */
+    @EJB
+    private com.saa.ejb.crd.service.ConfiguracionContabilidadService configuracionContabilidadService;
+
+    @EJB
+    private com.saa.ejb.crd.service.ProvisionInteresService provisionInteresService;
+
     /** D-019 (reproceso): para marcar los eventos de cancelación posteriores al mes de la carga. */
     @EJB
     private com.saa.ejb.crd.dao.EventoPrestamoDaoService eventoPrestamoDaoService;
@@ -231,6 +238,14 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
      * {@code @Stateful}: una instancia por sesión de carga.
      */
     private List<String> advertenciasVigenciaCargaActual = new ArrayList<>();
+
+    /**
+     * B1 (DISENO-CARGA-TARDIA-SIN-MORA.md §3): prestamos cuya mora ya se recalculo al corte de la
+     * carga en ESTA ejecucion de {@link #aplicarPagosArchivoPetro} — el recalculo va una vez por
+     * prestamo y por carga. Como los demas campos "...CargaActual" de aqui, se vacia AL ENTRAR a
+     * la fase 3 (no al salir) y nunca se lee fuera de ella; la clase es {@code @Stateful}.
+     */
+    private Set<Long> prestamosConMoraRecalculadaCargaActual = new HashSet<>();
     private List<String> novedadesGeneradasCargaActual = new ArrayList<>();
 
     /**
@@ -1895,6 +1910,7 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 		// Reset AL ENTRAR, no al salir — ver el javadoc de los campos.
 		advertenciasVigenciaCargaActual.clear();
 		novedadesGeneradasCargaActual.clear();
+		prestamosConMoraRecalculadaCargaActual.clear();
 		sinParticipeCargaActual.clear();
 		montoSinParticipeCargaActual = 0.0;
 		excedentesDevueltosAplicados.clear();
@@ -5180,6 +5196,8 @@ private void aplicarPagoNormalConMotor(Prestamo prestamo, double monto, CargaArc
 		registrarFilaSinPagoReproceso(participe, null, monto, "la cuota encontrada no tiene préstamo asociado");
 		return;
 	}
+	// B1: la mora se recalcula al corte de la carga ANTES de que el motor la cobre.
+	recalcularMoraAlCorteDeLaCarga(prestamo.getCodigo(), cargaArchivo);
 	ContextoPago ctx = crearContextoPagoCarga(cargaArchivo, "PAGO_NORMAL");
 	if (sufijoObservacion != null && !sufijoObservacion.isEmpty()) {
 		ctx.setObservacion(ctx.getObservacion() + sufijoObservacion);
@@ -5189,6 +5207,60 @@ private void aplicarPagoNormalConMotor(Prestamo prestamo, double monto, CargaArc
 	                   " - Aplicado: $" + resultado.getValorAplicado() +
 	                   " - Cuotas afectadas: " + resultado.getCuotasAfectadas().size());
 	manejarExcedenteNoAplicado(resultado, prestamo, cargaArchivo, participe);
+}
+
+/**
+ * B1 (PLAN-CORRECCIONES-CARGA-2026-11-01.md, DISENO-CARGA-TARDIA-SIN-MORA.md §3): una carga procesada
+ * despues del dia 1 fecha el pago al ultimo dia del mes de afectacion, pero el motor cobra la mora
+ * GUARDADA, que el proceso diario de las 02:00 ya hizo correr hasta hoy. Ese dinero ya se descontó
+ * en el rol, se asume que se pagó a tiempo: la mora de las cuotas del prestamo se recalcula al corte
+ * ANTES de aplicar el pago (despues, la mora ya se habria comido el descuento). Lo que la carga no
+ * cubre vuelve a tener mora esa noche (el proceso diario la recalcula desde el vencimiento).
+ *
+ * <p>Una vez por prestamo y por carga ({@link #prestamosConMoraRecalculadaCargaActual}). Si la
+ * contabilidad esta activa, el exceso de mora ya provisionado/devengado por un cierre anterior se
+ * reversa con asientos propios (tipos 3 y 6), copiando el bloque H42 de
+ * {@code CobroCreditoServiceImpl.procesarCobro}.</p>
+ *
+ * <p>No corre en modo reproceso: el cuadre fecha y recalcula la mora por su cuenta (D-019).</p>
+ */
+private void recalcularMoraAlCorteDeLaCarga(Long idPrestamo, CargaArchivo cargaArchivo) throws Throwable {
+	if (modoReproceso || idPrestamo == null) {
+		return;
+	}
+	if (cargaArchivo.getMesAfectacion() == null || cargaArchivo.getAnioAfectacion() == null) {
+		return; // crearContextoPagoCarga ya grita por esto justo despues
+	}
+	java.time.LocalDate fechaEfectiva = fechaService.ultimoDiaMesAnioLocal(
+		cargaArchivo.getMesAfectacion(), cargaArchivo.getAnioAfectacion());
+	if (!fechaEfectiva.isBefore(java.time.LocalDate.now())) {
+		return;
+	}
+	if (!prestamosConMoraRecalculadaCargaActual.add(idPrestamo)) {
+		return;
+	}
+
+	List<Object[]> detalleMora = procesoMoraPrestamoService.recalcularMoraALaFechaDePagoDetalle(idPrestamo, fechaEfectiva);
+	double moraEliminada = 0.0;
+	for (Object[] fila : detalleMora) {
+		moraEliminada += Math.round(((Double) fila[1] - (Double) fila[2]) * 100.0) / 100.0;
+	}
+	moraEliminada = Math.round(moraEliminada * 100.0) / 100.0;
+	System.out.println("  [H42] Carga " + cargaArchivo.getCodigo() + " - préstamo " + idPrestamo
+		+ " - fecha de pago " + fechaEfectiva + " (anterior a hoy) - mora eliminada: $" + moraEliminada);
+
+	if (configuracionContabilidadService.contabilidadActiva()) {
+		if (cargaArchivo.getUsuarioCarga() == null || cargaArchivo.getUsuarioCarga().getNombre() == null) {
+			throw new IncomeException("La carga " + cargaArchivo.getCodigo() + " no tiene usuario: no se pueden"
+				+ " registrar los reversos de mora del cobro tardío del préstamo " + idPrestamo + ".");
+		}
+		String usuario = cargaArchivo.getUsuarioCarga().getNombre();
+		Long idEmpresa = transferenciaCargaPetroDaoService.resolverEmpresaByCarga(cargaArchivo.getCodigo());
+		provisionInteresService.reversarExcesoProvisionPorCobroTardio(idPrestamo, detalleMora,
+			idEmpresa, fechaEfectiva, "PETRO_TARDIO", cargaArchivo.getCodigo(), usuario);
+		provisionInteresService.reversarExcesoDevengoPorCobroTardio(idPrestamo, detalleMora,
+			idEmpresa, fechaEfectiva, "PETRO_TARDIO", cargaArchivo.getCodigo(), usuario);
+	}
 }
 
 /**
@@ -5637,6 +5709,8 @@ private void aplicarAfectacionManualConRegistroPago(
 			+ ") no tiene préstamo asociado a través de su cuota; no hay destino donde aplicar el pago.");
 	}
 
+	// B1: igual que en el pago normal, la mora se recalcula al corte de la carga antes del motor.
+	recalcularMoraAlCorteDeLaCarga(cuota.getPrestamo().getCodigo(), cargaArchivo);
 	ContextoPago ctx = crearContextoPagoCarga(cargaArchivo, "AFECTACION_MANUAL");
 	ctx.setObservacion(ctx.getObservacion() + " - AVPC " + afectacion.getCodigo());
 	ResultadoAplicacionPago resultado = motorPagoPrestamoService.aplicarPago(

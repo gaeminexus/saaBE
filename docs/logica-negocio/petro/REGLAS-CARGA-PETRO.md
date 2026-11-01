@@ -870,3 +870,24 @@ validaciones, aplicación) no cambia. **El contrato completo es
 > entrado al asiento. Datos corregidos con `crd/sql/341`. **Pendiente de código:** contar por
 > `CRARCDGO` (la carga real), o excluir `CRARCDGO IS NULL`. Hasta entonces, toda carga cuyo número
 > coincida con un `APRTIDAS` migrado choca igual: lo mide el CONTROL 2 del 341.
+
+## 8. Carga procesada después del día 1: la mora se recalcula al corte (B1, 2026-11-01)
+
+Diseño: `DISENO-CARGA-TARDIA-SIN-MORA.md` §3; contrato: `PLAN-CORRECCIONES-CARGA-2026-11-01.md` B1.
+
+- **Problema:** el pago de la carga se fecha el último día del mes de afectación, pero el motor cobra la
+  mora *guardada*, que el proceso diario (02:00) ya corrió hasta hoy. Con la carga procesada el día 2 en
+  adelante, parte del descuento se gastaba en mora de días posteriores al corte y la cuota quedaba PARCIAL.
+- **Regla:** antes de `motorPagoPrestamoService.aplicarPago` —en `aplicarPagoNormalConMotor` y en
+  `aplicarAfectacionManualConRegistroPago`— si el último día del mes de afectación es anterior a hoy, se
+  llama `recalcularMoraAlCorteDeLaCarga` → `ProcesoMoraPrestamoService.recalcularMoraALaFechaDePagoDetalle`
+  a esa fecha. **Una vez por préstamo y por carga** (`prestamosConMoraRecalculadaCargaActual`, se vacía al
+  entrar a la fase 3). Lo que la carga no cubre vuelve a tener mora la noche siguiente.
+- **Contabilidad:** si `contabilidadActiva()`, tras el recálculo se reversan el exceso de mora provisionada
+  (MVIC tipo 3) y devengada (tipo 6) con origen `PETRO_TARDIO` y la carga como id de origen, fecha = fin del
+  mes de afectación, empresa de las transferencias de la carga y usuario = `usuarioCarga`. Mismo bloque que
+  el H42 de `CobroCreditoServiceImpl`.
+- **No incluido:** la reclasificación de bandas (tipo 8) y el bloqueo del timer de las 02:00 durante una
+  carga en proceso; la mora sobre capital ya pagado (M1) se corrige aparte.
+- **Modo reproceso:** no corre (`!modoReproceso`); el cuadre recalcula la mora de las cuotas reabiertas por
+  su cuenta (D-019).
