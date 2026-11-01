@@ -173,3 +173,39 @@ scripts de control del reproceso (`C17-02`, `348`, `349`, `reproceso-carga-352-c
 - Vuelta atrás: `F:\ears\asoprep\arch-v2\SaaEAR.ear` (el desplegado la noche del 31-10).
 - Para verificar el hash del WAR desplegado en el servidor (PowerShell):
   `Get-FileHash <ruta del saaBE.war desplegado> -Algorithm SHA256`
+
+## 7. Resultado del pase (2026-11-01, madrugada) — COMPLETADO
+
+| Paso | Resultado |
+|---|---|
+| 1 | Dump de producción sacado por el usuario |
+| 2.0 | **Saltado**: `CK_ANCP_TPOO` ya estaba (`ANCPTPOO IN (1, 2, 3, 4)`) |
+| 2.1 | OK: `CK_DCBC_MDLD ... OR DCBCMDLD <= 0`; `UK_ANCP_VIGENTE` con dos `CASE`; 0 duplicados |
+| 2.2 | OK: 3 columnas en `CNT.PRDO`; `CNT.HCPR` con 13 columnas y 0 filas; 0 períodos cerrados |
+| 2.3 | OK: plantilla 37, 9 líneas (82 al debe 4.7.04.xx, 83 al haber 1.3.99.xx, 84 al haber 5.3.90.05) |
+| 2.4 | OK: `CNT.RPRT` con 15 columnas, 5 reportes con tipo NULL, `CNT.CRRP` y `CNT.RNRP` con sus secuencias |
+| 2.5 | OK: `RPR.SG45` con 1.726 de SEMILLA y 10 de HM45; los 73 de la HM46 en el registro |
+| 2.6 | OK: SEMILLA 4.519, HM41 66, total 202505 = 4.585 = HM42; reproducción 66/64 |
+| 2.7 | Catálogo OK (8 J, 5 C, 10 sin grupo). ⚠ El control 3.b dio **4.585 / 3.933** (esperado 4.564): los datos de producción no tienen la depuración del cuadre. **No presentar la G42 desde producción sin revisarla** hasta el reproceso |
+| 2.8 | OK: `ASNHOBSR` y `ASNTOBSR` a 2000 |
+| Privilegios | `SCP` (usuario del datasource) tiene el rol DBA: no hizo falta ningún GRANT |
+| 3 | OK, cargadas desde la consola web: `saa.cartera.alCorte=siempre`, `saa.cartera.inicioDevengoMora=2025-05-31`; sin `saa.cierres.permitirFueraDeOrden`. Sin reinicio |
+| 4 | EAR SHA-256 `3BC673DD…24765CF`, verificado en el servidor (`D:\ears\01112026`). Desplegado a las 00:19; log limpio (sin ERROR, ORA- ni ClassCastException) |
+| 5.1 | OK: permisos 1558 (padre 1277), 1559 y 1560 (padre 1558), 1561 (padre 1412); COMMIT |
+| 5.2 | OK: plantilla 21, aux1 56 → 2.1.01.05.02 (tipo 12) y 57 → 2.1.02.05.02 (tipo 24), «SI» |
+| 5.3 | OK: 90 «B17 BALANCES FCPC», alterno 6, 534 renglones, 33 reglas; 6.2-6.4 vacíos |
+| 5.4 | OK: 91 «FLUJO DE CAJA (FORMATO BIESS)», alterno 7, 26 renglones, 12 reglas |
+| 5.5 | OK: títulos oficiales; rubro 250 con 15 detalles (PDTR 1518-1532), firmantes en blanco; COMMIT |
+| 5.6 | **A mano, con otros códigos**: el `c12-01` (PRBR 249 / PDTR 1518 fijos) chocaba. Quedó **PRBR 312 con alterno 249** y **PDTR 1533**, empresa 1236, vigencia 2025-06-01. El sistema busca por el alterno 249: funciona igual. Archivo de respaldo con el criterio: `cnt/sql/c12-01b-…` |
+| 5.7 | ⚠ Los 18 bancos estaban en `BNCOREAL = 1`: el **BLOQUE 2 del `e2-111`** (equipo 2) nunca se había corrido. Se corrió en este pase: 12 en 1 y 6 en 0 (425, 427, 432, 433, 435 y 438). BLOQUE 0a: alternos 7, 8 y 9 únicos (IN-A 1257, EG-A 1258, DI-A 1259), sistema 1 |
+| 5.8 | Corrido, sin efecto: APERTURA no existe en producción y el alterno 8 es EG-A |
+| Humo | OK: log limpio; Cierre de Períodos funciona (nada se puede cerrar: el más antiguo, enero 2026, tiene la cartera abierta); detalle de préstamo OK; consulta de cargas OK (492 y 510 procesadas); dashboard OK |
+| CRD.CRCT | Meses cerrados para cartera: **2026-07 (#1), 2026-08 (#2), 2026-09 (#4)** |
+
+**Pendiente tras el pase:**
+- Verificar en `CNT.PRDO` que existen los períodos de junio a diciembre 2025, que el reproceso necesita. La pantalla solo listaba hasta enero 2026.
+- **No cerrar ningún período hasta terminar el reproceso.** Un período cerrado no admite asientos.
+- Para reprocesar julio, agosto y septiembre (cartera cerrada) hace falta reabrirlos con motivo, o el modo de reproceso: se planifica con el agente del cuadre.
+- Cierre de cartera de octubre: previsualizar con contabilidad antes de ejecutar (§3).
+- Asignar a roles los permisos 1412, 1494 y 1558-1561; definir IGFNCMNM y los firmantes.
+- Tarjeta de la carga ARCH: «Capital descontado» no incluye el parcial de Benitez (446,55 en vez de 866,55). Es solo de visualización; va con los pendientes de ARCH.
