@@ -33,6 +33,16 @@ public interface CargaArchivoDaoService extends EntityDao<CargaArchivo>{
 	CargaArchivo selectUltimaCargaProcesada(Long estado) throws Throwable;
 
 	/**
+	 * Igual que {@link #selectUltimaCargaProcesada(Long)} pero solo de UNA filial: el orden de
+	 * meses de la carga es por filial (DISENO-CARGA-RESPUESTA-ARCH.md §9.5), no global.
+	 * @param estado Estado de la carga (3 = procesada)
+	 * @param codigoFilial Código de la filial (CRD.FLLL)
+	 * @return Última CargaArchivo procesada de esa filial o null
+	 * @throws Throwable Si ocurre un error
+	 */
+	CargaArchivo selectUltimaCargaProcesada(Long estado, Long codigoFilial) throws Throwable;
+
+	/**
 	 * Cargas de un MES DE AFECTACION en un estado dado, de la mas reciente a la mas antigua.
 	 *
 	 * <p>El mes de afectacion ({@code CRARANAF}/{@code CRARMSAF}) es el mes al que pertenece
