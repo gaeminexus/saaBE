@@ -1011,6 +1011,7 @@ public class CargaHistoricaDocumentoServiceImpl implements CargaHistoricaDocumen
     // =====================================================================================================
 
     static final String DESCRIPCION_HABER_GASTO_NC_COMPRA = "NC Compra reverso gasto"; // literal que escribe generarAsientoNotaCreditoCompra
+    static final String DESCRIPCION_HABER_INTERMEDIARIO_NC_COMPRA = "NC Compra intermediario"; // espejo de la factura de intermediario (N2): no se toca
 
     @Override
     @TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
@@ -1123,9 +1124,10 @@ public class CargaHistoricaDocumentoServiceImpl implements CargaHistoricaDocumen
     }
 
     /**
-     * En el asiento de la NC de compra reemplaza la cuenta de la línea HABER de gasto (que el motor toma de un grupo
-     * genérico) por la cuenta de la NC y le pone el centro de costo. Identifica la línea por la descripción que escribe
-     * el motor y, si no la encuentra, por exclusión (haber que no es IVA ni redondeo).
+     * En el asiento de la NC de compra reemplaza la cuenta de la línea HABER de gasto por la cuenta de la NC y le pone
+     * el centro de costo. Identifica la línea solo por la descripción que escribe el motor (N2, 2026-11-01): las de
+     * IVA, redondeo e intermediario no se tocan nunca, y no hay respaldo por número de cuenta (las cuentas salen de
+     * plantilla). Si la NC es de intermediario el motor no escribe línea de gasto y no se cambia nada.
      */
     private int imponerCuentaHaberGastoNc(Long idAsiento, PlanCuenta cuenta, CentroCosto centro) {
         List<DetalleAsiento> lineas = em.createQuery("select d from DetalleAsiento d where d.asiento.codigo = :a", DetalleAsiento.class).setParameter("a", idAsiento).getResultList();
@@ -1133,8 +1135,9 @@ public class CargaHistoricaDocumentoServiceImpl implements CargaHistoricaDocumen
         for (DetalleAsiento d : lineas) {
             boolean haber = d.getValorHaber() != null && d.getValorHaber() > 0;
             if (!haber) continue;
-            String c = d.getNumeroCuenta() != null ? d.getNumeroCuenta() : "";
-            boolean esGasto = DESCRIPCION_HABER_GASTO_NC_COMPRA.equals(d.getDescripcion()) || !(c.startsWith("1.9.01.90") || "4.8.90.90.35".equals(c));
+            String descripcion = d.getDescripcion() != null ? d.getDescripcion() : "";
+            boolean esGasto = descripcion.startsWith(DESCRIPCION_HABER_GASTO_NC_COMPRA)
+                    && !descripcion.startsWith(DESCRIPCION_HABER_INTERMEDIARIO_NC_COMPRA);
             if (!esGasto) continue;
             d.setPlanCuenta(cuenta);
             d.setNumeroCuenta(cuenta.getCuentaContable());
