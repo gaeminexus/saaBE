@@ -246,6 +246,16 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
      * la fase 3 (no al salir) y nunca se lee fuera de ella; la clase es {@code @Stateful}.
      */
     private Set<Long> prestamosConMoraRecalculadaCargaActual = new HashSet<>();
+
+    /**
+     * B6-b (2026-11-01): usuario que pulsa «Procesar» en la ejecucion en curso de {@link #aplicarPagosArchivoPetro}.
+     * Ya validado (existe). Lo lee {@link #usuarioDeLaCarga}. Se fija al entrar a la fase 3 y NO se rellena con nada:
+     * en modo reproceso queda nulo (el reproceso conserva su comportamiento).
+     */
+    private String usuarioProcesoCargaActual = null;
+
+    @EJB
+    private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
     private List<String> novedadesGeneradasCargaActual = new ArrayList<>();
 
     /**
@@ -1943,7 +1953,23 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 	 */
 	@Override
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
-	public String aplicarPagosArchivoPetro(Long codigoCargaArchivo) throws Throwable {
+	public String aplicarPagosArchivoPetro(Long codigoCargaArchivo, String usuario) throws Throwable {
+		// B6-b: LO PRIMERO, antes de tocar nada: el usuario que pulsa «Procesar» tiene que existir. Si no, no se
+		// procesa y no queda nada a medias (UsuarioInvalidoException -> 400 en el REST).
+		String usuarioValido = usuarioValidacionService.validar(usuario);
+		usuarioProcesoCargaActual = usuarioValido;
+		try {
+			return aplicarPagosArchivoPetroNucleo(codigoCargaArchivo);
+		} finally {
+			usuarioProcesoCargaActual = null;
+		}
+	}
+
+	/**
+	 * Cuerpo de la fase 3. Lo llaman {@link #aplicarPagosArchivoPetro(Long, String)} (con el usuario ya validado en
+	 * {@link #usuarioProcesoCargaActual}) y el modo reproceso (sin usuario de proceso: conserva su comportamiento).
+	 */
+	private String aplicarPagosArchivoPetroNucleo(Long codigoCargaArchivo) throws Throwable {
 		System.out.println("=== INICIANDO APLICACIÓN DE PAGOS - Carga: " + codigoCargaArchivo + " ===");
 
 		// Reset AL ENTRAR, no al salir — ver el javadoc de los campos.
@@ -2410,7 +2436,8 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 					}
 				}
 			}
-			String resumen = aplicarPagosArchivoPetro(codigoCargaArchivo);
+			usuarioProcesoCargaActual = null; // el reproceso no tiene "quien pulsa Procesar": conserva su comportamiento
+			String resumen = aplicarPagosArchivoPetroNucleo(codigoCargaArchivo);
 			Map<String, Object> resultado = new LinkedHashMap<>();
 			resultado.put("resumen", resumen);
 			resultado.put("sinParticipe", new ArrayList<>(sinParticipeCargaActual));
@@ -5497,11 +5524,8 @@ private void recalcularMoraAlCorteDeLaCarga(Long idPrestamo, CargaArchivo cargaA
 		+ " - fecha de pago " + fechaEfectiva + " (anterior a hoy) - mora eliminada: $" + moraEliminada);
 
 	if (configuracionContabilidadService.contabilidadActiva()) {
-		if (cargaArchivo.getUsuarioCarga() == null || cargaArchivo.getUsuarioCarga().getNombre() == null) {
-			throw new IncomeException("La carga " + cargaArchivo.getCodigo() + " no tiene usuario: no se pueden"
-				+ " registrar los reversos de mora del cobro tardío del préstamo " + idPrestamo + ".");
-		}
-		String usuario = cargaArchivo.getUsuarioCarga().getNombre();
+		// B6-b: los reversos de mora quedan a nombre de quien procesa la carga (ya no de quien la cargó).
+		String usuario = usuarioDeLaCarga(cargaArchivo);
 		Long idEmpresa = transferenciaCargaPetroDaoService.resolverEmpresaByCarga(cargaArchivo.getCodigo());
 		provisionInteresService.reversarExcesoProvisionPorCobroTardio(idPrestamo, detalleMora,
 			idEmpresa, fechaEfectiva, "PETRO_TARDIO", cargaArchivo.getCodigo(), usuario);
@@ -5511,18 +5535,17 @@ private void recalcularMoraAlCorteDeLaCarga(Long idPrestamo, CargaArchivo cargaA
 }
 
 /**
- * B6-a (PLAN-CORRECCIONES-CARGA-2026-11-01.md): usuario al que se atribuyen los asientos y los pagos de la
- * carga. {@code aplicarPagosArchivoPetro} solo recibe el código de la carga (el REST no manda quién la
- * procesa) y CRD.CRAR no guarda al procesador, así que se usa el usuario que CARGÓ el archivo
- * ({@code usuarioCarga}, obligatorio desde la carga). Si no hubiera ninguno aborta: nunca se rellena con
- * «SISTEMA». Para atribuir al usuario que pulsa «Procesar» hay que cambiar el contrato REST (ver reporte B6-a).
+ * B6-a / B6-b (PLAN-CORRECCIONES-CARGA-2026-11-01.md, API-PROCESAR-CARGA-CON-USUARIO.md): usuario al que se atribuyen
+ * los asientos y los pagos de la carga = el que PULSA «Procesar», que llega a
+ * {@link #aplicarPagosArchivoPetro(Long, String)}, se valida ahí lo primero y queda en
+ * {@link #usuarioProcesoCargaActual}. Ya no se usa {@code usuarioCarga} (quien cargó el archivo). Si no hubiera
+ * usuario de proceso aborta: nunca se rellena con «SISTEMA» ni con otro usuario.
  */
 private String usuarioDeLaCarga(CargaArchivo cargaArchivo) throws Throwable {
-	if (cargaArchivo.getUsuarioCarga() != null && cargaArchivo.getUsuarioCarga().getNombre() != null
-			&& !cargaArchivo.getUsuarioCarga().getNombre().trim().isEmpty()) {
-		return cargaArchivo.getUsuarioCarga().getNombre().trim();
+	if (usuarioProcesoCargaActual != null && !usuarioProcesoCargaActual.trim().isEmpty()) {
+		return usuarioProcesoCargaActual.trim();
 	}
-	throw new IncomeException("La carga " + cargaArchivo.getCodigo() + " no tiene usuario de carga: no se puede"
+	throw new IncomeException("La carga " + cargaArchivo.getCodigo() + " se está procesando sin usuario: no se puede"
 		+ " atribuir a nadie los asientos y pagos de su procesamiento.");
 }
 

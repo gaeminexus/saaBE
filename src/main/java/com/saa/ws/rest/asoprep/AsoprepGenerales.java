@@ -373,10 +373,11 @@ public class AsoprepGenerales {
     @POST
     @Path("/aplicarPagosArchivoPetro/{idCargaArchivo}")
     @Produces(MediaType.APPLICATION_JSON)
-    public Response aplicarPagosArchivoPetro(@PathParam("idCargaArchivo") Long idCargaArchivo) {
+    public Response aplicarPagosArchivoPetro(@PathParam("idCargaArchivo") Long idCargaArchivo,
+            @QueryParam("usuario") String usuario) {
         System.out.println("========================================");
         System.out.println("REST: APLICAR PAGOS ARCHIVO PETRO");
-        System.out.println("ID Carga Archivo: " + idCargaArchivo);
+        System.out.println("ID Carga Archivo: " + idCargaArchivo + " - usuario: " + usuario);
         System.out.println("========================================");
         
         try {
@@ -387,8 +388,9 @@ public class AsoprepGenerales {
                         .build();
             }
             
-            // Aplicar pagos con el servicio
-            String resumen = cargaArchivoPetroService.aplicarPagosArchivoPetro(idCargaArchivo);
+            // Aplicar pagos con el servicio. B6-b: el servicio valida el usuario LO PRIMERO (query param
+            // obligatorio, API-PROCESAR-CARGA-CON-USUARIO.md); sin usuario válido no procesa nada.
+            String resumen = cargaArchivoPetroService.aplicarPagosArchivoPetro(idCargaArchivo, usuario);
 
             System.out.println("Aplicación de pagos completada exitosamente");
             System.out.println(resumen);
@@ -397,6 +399,13 @@ public class AsoprepGenerales {
                     .entity(new FileResponse(true, resumen, null))
                     .build();
 
+        } catch (com.saa.basico.util.UsuarioInvalidoException e) {
+            // B6-b: usuario faltante o inexistente -> 400 con el texto del contrato; no se procesó nada.
+            System.err.println("Carga no procesada, usuario inválido: " + e.getMessage());
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(new FileResponse(false,
+                            "No se puede procesar la carga sin un usuario válido: " + e.getMotivo(), null))
+                    .build();
         } catch (IncomeException e) {
             // Validaciones de negocio (valores sin destino, carga inexistente):
             // no se procesó nada y el mensaje está listo para mostrarse al usuario.

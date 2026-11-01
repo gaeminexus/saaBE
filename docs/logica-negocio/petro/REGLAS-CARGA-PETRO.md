@@ -971,10 +971,13 @@ registros `CRD.ANCP` y la auditoría de bandas decían «SISTEMA»/«sistema»; 
   reciben el usuario y lo pasan a `generarAsiento`, a `ANCP.usuarioRegistro`, a
   `registrarDistribucionCargaPetro`, a `separarMoraNoDevengada` y a `reversarPorPagos`. Sin usuario (nulo o
   vacío) lanzan `IncomeException`: un asiento no se graba sin usuario.
-- **Origen del usuario:** `aplicarPagosArchivoPetro` solo recibe el código de la carga y `CRD.CRAR` no guarda
-  quién la procesa; se usa `usuarioDeLaCarga` = `usuarioCarga` (quien cargó el archivo, obligatorio). Atribuir al
-  usuario que pulsa «Procesar» exige que el FE lo mande en `POST /asgn/aplicarPagosArchivoPetro/{id}` (hoy sin
-  cuerpo ni parámetro).
+- **Origen del usuario (B6-b, 2026-11-01):** el de QUIEN PULSA «Procesar». `POST /asgn/aplicarPagosArchivoPetro/{id}`
+  recibe `?usuario=` (obligatorio, `API-PROCESAR-CARGA-CON-USUARIO.md`) y `aplicarPagosArchivoPetro(id, usuario)` lo
+  valida LO PRIMERO con `UsuarioValidacionService` (basico): no nulo, no vacío y existente en `SCP.PJRQ`. Si falla,
+  `UsuarioInvalidoException` -> HTTP 400 «No se puede procesar la carga sin un usuario válido: <motivo>» y no se
+  procesa nada. `usuarioDeLaCarga` lee ese usuario (`usuarioProcesoCargaActual`, se limpia al salir); ya no usa
+  `usuarioCarga` (quien cargó el archivo). La validación de «activo» se limita a «existe» porque la entidad `Usuario` no
+  mapea ninguna columna de estado.
 - **`crearContextoPagoCarga`** setea `ContextoPago.usuario` con el mismo usuario.
 - **Modo reproceso:** sin cambio de resultado. Pasa «SISTEMA» explícito a los asientos (antes lo ponía el relleno
   de cnt) y no setea `ContextoPago.usuario` (sigue nulo).

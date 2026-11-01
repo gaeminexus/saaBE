@@ -45,3 +45,13 @@
 cxc, cxp, tsr y rhh tienen trabajo de los equipos 2 y 3, que **están abajo**. El usuario decidió la regla
 y esos módulos están en el alcance del equipo 1. Antes de tocar un archivo: `git status` y su historial, y
 dejar el aviso en `docs/equipos/saa-1.md` para cuando vuelvan.
+
+## 5. Helper (hecho en B6-b, 2026-11-01)
+`com.saa.basico.ejb.UsuarioValidacionService.validar(nombre)` y `UsuarioInvalidoException` (rollback). Un
+usuario es válido si no es nulo, no está vacío y existe `Usuario.nombre` (`SCP.PJRQ.PJRQNMBR`).
+- **Verificado por el árbitro:** es la misma búsqueda que hace el login (`UsuarioDaoServiceImpl.validaUsuarioSucursal`
+  → `selectByNombre`, después de `pr_vlda_usro_clve`), y el FE guarda el nombre en MAYÚSCULAS. Un
+  usuario que entró al sistema siempre pasa.
+- **Límite:** `Usuario` no mapea ninguna columna de estado, así que hoy «activo» = «existe». El estado
+  lo controla el procedimiento del login. Si hiciera falta exigir el estado en cada proceso, hay que
+  saber en qué columna o tabla vive.

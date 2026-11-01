@@ -58,10 +58,13 @@ public interface CargaArchivoPetroService {
      * Solo procesa los registros que están OK (sin novedades bloqueantes).
      * 
      * @param codigoCargaArchivo : ID del CargaArchivo a procesar
+     * @param usuario : Usuario que pulsa «Procesar» (B6-b, 2026-11-01). A su nombre quedan los asientos y los pagos
+     *                  de la carga. Se valida LO PRIMERO, antes de tocar nada: no nulo, no vacío y existente.
      * @return : Resumen del procesamiento (cantidad de pagos aplicados, errores, etc.)
+     * @throws com.saa.basico.util.UsuarioInvalidoException : si el usuario falta o no existe (no se procesa nada)
      * @throws Throwable : Excepción en caso de error
      */
-    String aplicarPagosArchivoPetro(Long codigoCargaArchivo) throws Throwable;
+    String aplicarPagosArchivoPetro(Long codigoCargaArchivo, String usuario) throws Throwable;
 
     /**
      * Devuelve los registros de la carga cuyo valor descontado NO tiene definido
