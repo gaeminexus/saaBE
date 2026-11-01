@@ -58,3 +58,12 @@ estado financiero por rubro 250). Los literales están concentrados en 4 archivo
    redondeo.**
 2. `cnt/sql/c20-02`: detalle 16 del rubro 250 (si falta, solo deja una advertencia).
 3. `cnt/sql/c20-01`: verificación.
+- **P4** (propuesta de omen-saa-1-be; decisiones técnicas del árbitro):
+  - **A, raíz `1.3`:** detalle 17 del rubro 250 (`CUENTA_CARTERA_CREDITOS`), semilla agregada al
+    `c20-02`. Mismo resultado de hoy. **Se implementa ya.**
+  - **B, provisión:** las cuentas de la línea 83 de la plantilla 37. **C, grupo Q/P/H:** el tipo de
+    préstamo del producto de cada banda (`BNDP → CBPR → PRDC.TPPRCDGO`). **No se implementan hasta
+    que `crd/sql/359` confirme que el resultado no cambia** (consultas 1 y 3 todas IGUAL/EN_PLANTILLA,
+    2 y 4 en cero). Si no da, se quedan como están, documentadas.
+  - Una cuenta sin grupo derivable: advertencia, no se ajusta (igual que P3).
+  - El modo arranque queda fuera (`crd/sql/358`).
