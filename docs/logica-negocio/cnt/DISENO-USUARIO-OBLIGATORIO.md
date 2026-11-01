@@ -67,3 +67,13 @@ El reproceso del cuadre corre con el código de `main`.
   - un usuario técnico real en `SCP.PJRQ` (recomendado: uno con nombre propio, p. ej. `REPROCESO`);
   - o el usuario de la persona que lo lanza.
 - Se coordina con el árbitro del cuadre, con la confirmación del usuario.
+
+## 7. Resultado del inventario U-1 (`INVENTARIO-USUARIO-OBLIGATORIO.md`) y decisión del árbitro
+- Los cargadores históricos graban con el usuario real 38 («usuario 1», decisión del coordinador del
+  cuadre, 28-oct). **Pasan la validación sin cambios.**
+- **El reproceso de la carga Petro** graba «SISTEMA» y «SAA_REPROCESO», pero lo lanza una persona y ya
+  recibe `solicitud.usuario` validado. **Decisión: graba con ese usuario.** Es la regla del usuario:
+  el que ejecuta.
+  - Hay que avisar al árbitro del cuadre, con la confirmación del usuario: cambia el usuario de los
+    asientos del reproceso, no los montos.
+- Ningún timer crea asientos. Queda abierta la **recepción automática del SRI** (`FacturaServiceImpl:2482`).
