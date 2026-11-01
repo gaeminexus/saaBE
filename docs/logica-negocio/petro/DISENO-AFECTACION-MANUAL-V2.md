@@ -174,3 +174,23 @@ Para destrabar la carga 492 antes del pase grande. Coincide con el «A1» del eq
   Mes {devengo} (pagado en {mes carga}) - CargaArchivo: N»; (2) la pantalla de aportes muestra una
   columna «Mes de devengo» (`periodoDevengo`); (3) la afectación manual a aporte reparte por mes
   (F1 bis), junto con el arreglo del anticipo (F2).
+
+### 6.1 Especificación (orden del usuario del 2026-10-31: «que en la glosa salga el mes al que corresponde el aporte y el mes en que se corrió, y poder ver la fecha de caja en pantalla, aunque sea con un botón de ojo»)
+
+- **Backend, glosa** (`CargaArchivoPetroServiceImpl.crearNuevoAporte`):
+  - Con `periodoDevengo` presente: «Aporte {tipo} - Mes {M/AAAA del devengo} (pagado en
+    {M/AAAA de la carga}) - CargaArchivo: {n}». Va igual aunque los dos meses coincidan.
+  - Con `periodoDevengo` nulo (excedente de la afectación manual): «Aporte {tipo} - Sin mes de
+    devengo (pagado en {M/AAAA de la carga}) - CargaArchivo: {n}».
+  - Montos, fechas y lógica no cambian.
+- **Backend, datos para la pantalla:** el endpoint que alimenta la tabla de aportes de
+  `participe-dash` tiene que traer `periodoDevengo` (APRTPRDV). Si devuelve la entidad `Aporte`,
+  ya viene, y Jackson lo serializa como arreglo `[2026,7,1]`. Si es un DTO, se agrega el campo.
+- **Frontend** (`crd/forms/entidad-participe/participe-dash`), tabla de aportes:
+  - La primera columna pasa a ser **«Mes del aporte»** = `periodoDevengo` en MM/AAAA. Si es
+    nulo, muestra «—» con tooltip «sin mes de devengo». El ordenamiento usa ese campo.
+  - La fecha de caja (`fechaTransaccion`) se ve en el **detalle del ojo** («Ver pagos de este
+    aporte»): «Mes del aporte: MM/AAAA · Fecha de caja: dd/MM/aaaa», y como tooltip de la celda
+    del mes.
+  - El modelo `aporte.ts` agrega `periodoDevengo`. La fecha llega como arreglo de Jackson o como
+    texto ISO: hay que aceptar las dos.
