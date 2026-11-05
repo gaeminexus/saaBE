@@ -1178,9 +1178,21 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 				+ com.saa.rubros.EstadoCuotaPrestamo.PAGADA + ", "
 				+ com.saa.rubros.EstadoCuotaPrestamo.CANCELADA_ANTICIPADA + ") " +
 			"            and d.fechaPagado is not null and d.fechaPagado < :corteSig) " +
-			"   and d.fechaVencimiento < :corteSig "
+			"   and d.fechaVencimiento < :corteSig " +
+			// C23: mismo universo que el cierre (ModoCorteCartera.CANCELADO_TERMINADO_AL_CORTE_SQL): un
+			// préstamo cancelado cuenta hasta su última cuota PAGADA, si no le quedan cuotas pendientes.
+			"   and not (coalesce(d.prestamo.idEstado, 0) in (" + com.saa.ejb.crd.service.ModoCorteCartera.ESTADOS_CANCELADOS + ") " +
+			"            and not exists (select cx from DetallePrestamo cx where cx.prestamo = d.prestamo " +
+			"                            and coalesce(cx.estado, 0) not in ("
+				+ com.saa.rubros.EstadoCuotaPrestamo.PAGADA + ", "
+				+ com.saa.rubros.EstadoCuotaPrestamo.CANCELADA_ANTICIPADA + ", "
+				+ com.saa.rubros.EstadoCuotaPrestamo.ANULADA + ")) " +
+			"            and not exists (select cy from DetallePrestamo cy where cy.prestamo = d.prestamo " +
+			"                            and cy.estado = " + com.saa.rubros.EstadoCuotaPrestamo.PAGADA +
+			"                            and cy.fechaPagado >= :corte)) "
 		);
 		query.setParameter("corteSig", corteSig);
+		query.setParameter("corte", corte.atStartOfDay());
 		List<DetallePrestamo> resultado = query.getResultList();
 		System.out.println("  Cuotas provisionables al corte encontradas: " + resultado.size());
 		return resultado;
