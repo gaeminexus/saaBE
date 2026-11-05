@@ -1207,6 +1207,10 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 			" where  a.entidad.codigo    = :idEntidad " +
 			" and    a.tipoAporte.codigo = :idTipoAporte " +
 			" and    a.valor             < 0 " +
+			// El seguro debitado al GENERAR el seguro no mueve el ancla mientras su PGPC siga siendo
+			// un stub (PGPCVLPN null): ver DISENO-SEGURO-MEDICO-DEBITO-AL-GENERAR.md §4.
+			" and    not exists (select 1 from PagoPensionComplementaria p " +
+			"                    where  p.idAporte = a.codigo and p.valorPension is null) " +
 			" and    " + VIGENTE_JPQL);
 		query.setParameter("idEntidad", idEntidad);
 		query.setParameter("idTipoAporte", idTipoAporte);

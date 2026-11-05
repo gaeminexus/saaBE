@@ -465,3 +465,37 @@ el camino viejo, una sola vez.
 Si el total del período es 0, **no se genera asiento** — mismo criterio que la orden de pago, que
 tampoco se crea (*«Sin seguro médico que pagar al proveedor… ($0)»*). Un asiento sin líneas no se
 graba: es el defecto que §11.2 ya había atajado para los meses sin stub.
+
+---
+
+## 11. El seguro se DEBITA del aporte 23 al GENERAR el seguro (2026-11-05)
+
+Diseño: `DISENO-SEGURO-MEDICO-DEBITO-AL-GENERAR.md`. Pedido del usuario: el seguro debe bajar el saldo
+del jubilado en el momento en que corre el proceso de seguro, no recién al pagar las pensiones.
+
+**Qué hace cada proceso ahora**
+
+| Proceso | Seguro |
+|---|---|
+| Seguro (`generarSeguroIndividual`, `REQUIRES_NEW` por jubilado) | Fija `PGPCVLSG` (topado por saldo libre) **y crea en la misma transacción el `CRD.APRT` negativo tipo 23** por ese valor (glosa `PAGO PENSION COMPLEMENTARIA m/a - Entidad N - SEGURO MEDICO`, `tipoMovimiento` `PAGO_PENSION`, fecha = `fechaDelPeriodo`). El código del APRT queda en `PGPC.PGPCIDAP` del stub. Si falla algo, revierten stub y APRT juntos. |
+| Pensiones (`registrarPgpcDelMes`) | Si el stub trae `PGPCIDAP` (`seguroYaDebitado`), **no crea otro negativo de seguro** y no lo reserva del saldo. Si no lo trae (stub anterior al despliegue) hace lo de siempre. |
+
+**La marca no necesita DDL:** stub con débito = `PGPCVLPN` null **y** `PGPCIDAP` no null. Un stub nunca
+tuvo `PGPCIDAP` antes de este cambio, así que no hay ambigüedad. Al completarse el stub la corrida
+sobrescribe `PGPCIDAP` (con el APRT de pensión, o conserva el del seguro si solo hubo seguro).
+
+**⛔ El ancla (`resolverAnclaRetroactivo`)**: `AporteDaoServiceImpl.selectFechaUltimoMovimientoNegativo`
+ignora un negativo mientras algún PGPC con `PGPCIDAP = ese APRT` siga siendo stub (`PGPCVLPN` null). Sin
+esto, el seguro del 05-11 dejaba el ancla en noviembre y la corrida de fin de mes veía `AL_DIA` y no pagaba
+la pensión. Al completarse el stub el negativo vuelve a contar: un mes procesado por pensiones queda saldado
+aunque solo haya salido el seguro (§6 del contrato, sin cambios).
+
+**Reserva del saldo:** `seguroPendientePrevio` (seguro) y `seguroReservado` (pensiones) suman solo stubs
+**sin** débito; los de débito ya bajaron el saldo. `previsualizarJubilado` suma de vuelta el seguro ya
+debitado del rango para no restarlo dos veces.
+
+**Reproceso C20 (`reprocesarDevengoJubilado`)**: si completa un stub con débito, debita solo la diferencia
+con el seguro del rol; si el rol trae menos que lo ya debitado, falla sin tocar nada.
+
+**Stubs viejos (noviembre 2026, ya generado sin débito):** siguen por el camino anterior; se debitan al
+generar las pensiones. No hay backfill.

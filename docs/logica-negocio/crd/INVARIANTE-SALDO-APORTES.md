@@ -131,3 +131,14 @@ bajo cero, que desde ahora es nadie.
   `crd/sql/222` (bloque 1) y lo que se haga con ellos es decisión de negocio.
 - **Un `UPDATE`/`DELETE` directo por SQL** sobre `CRD.APRT`. Eso lo previene la base (un trigger o
   quitar permisos de escritura al usuario de la aplicación), no Java. Queda como propuesta.
+
+## 5. Seguro médico de jubilados: se debita al generar el seguro (2026-11-05)
+
+`generarSeguroIndividual` ahora crea el negativo del seguro con `crearMovimientoNegativo` (mismo guardarraíl de
+saldo y `bloquearAportesEntidad` H61, dentro de su `REQUIRES_NEW`). Cambia el criterio de **dos** lecturas:
+
+- **Reserva:** el seguro de un stub con débito (`PGPCIDAP` no null, `PGPCVLPN` null) ya no se reserva del
+  saldo (`seguroPendientePrevio` / `seguroReservado`): ya salió. Solo se reservan los stubs sin débito.
+- **Ancla del retroactivo:** el negativo de un stub incompleto no cuenta (`NOT EXISTS` en
+  `selectFechaUltimoMovimientoNegativo`); cuenta cuando el stub se completa. Detalle y casos en
+  `API-DOS-PROCESOS-MENSUALES-JUBILADOS.md` §11.

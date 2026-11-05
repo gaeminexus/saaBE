@@ -532,6 +532,8 @@ public interface AporteDaoService extends EntityDao<Aporte>{
 	 * entidad. Es el ancla del pago retroactivo de pensión complementaria
 	 * (PLAN-PAGO-RETROACTIVO-JUBILADOS.md §3): el mes SIGUIENTE a esta fecha es desde donde
 	 * arranca el retroactivo — ya se descontó hasta ese movimiento, no antes.
+	 * <b>Excluye</b> el negativo del seguro de un PGPC todavía STUB ({@code PGPCVLPN} null): el débito
+	 * al generar el seguro no mueve el ancla (DISENO-SEGURO-MEDICO-DEBITO-AL-GENERAR.md §4).
 	 *
 	 * @param idEntidad    Código de la entidad
 	 * @param idTipoAporte Código del tipo de aporte (23 = pensión complementaria)

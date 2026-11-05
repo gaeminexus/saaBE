@@ -604,6 +604,10 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         }
         int mesesAdeudados = (int) (ChronoUnit.MONTHS.between(desde, corrida) + 1);
         fila.setMesesAdeudados(mesesAdeudados);
+        // El seguro de los meses del rango que el proceso de seguro YA debitó ya no está en el saldo:
+        // se suma de vuelta para que la prioridad «seguro» de abajo lo cuente una sola vez (misma
+        // cuenta que hace la corrida real, que solo reserva los stubs sin débito).
+        saldo = redondear(saldo + seguroYaDebitadoEnRango(idEntidad, desde, corrida));
 
         // Deuda EXIGIBLE (ítem 3/§3bis): mismo helper por préstamo vigente que usa la corrida
         // real — nunca el pendiente total, que pre-pagaría cuotas futuras. 0 si no hay ningún
@@ -1045,7 +1049,10 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
             double seguroPendientePrevio = 0.0;
             if (historicoPgpc != null) {
                 for (PagoPensionComplementaria fila : historicoPgpc) {
-                    if (fila.getValorPension() != null || fila.getAnio() == null || fila.getMes() == null) {
+                    // Solo stubs SIN débito: los que ya debitaron su seguro (idAporte) ya bajaron
+                    // el saldo y restarlos otra vez lo contaría dos veces.
+                    if (fila.getValorPension() != null || fila.getAnio() == null || fila.getMes() == null
+                            || seguroYaDebitado(fila)) {
                         continue;
                     }
                     YearMonth ymFila = YearMonth.of(fila.getAnio().intValue(), fila.getMes().intValue());
@@ -1077,12 +1084,28 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
 
         // filaExistente != null solo si algún camino ya la creó sin fijar valorSeguro (hoy no
         // pasa, pero cubre el reintento sin arriesgar UK_PGPC_ENTD_ANIO_MES).
+        // DISENO-SEGURO-MEDICO-DEBITO-AL-GENERAR.md: el seguro se DEBITA del aporte 23 ahora, en
+        // esta misma transaccion (REQUIRES_NEW, la misma que graba el stub): o quedan los dos o
+        // ninguno. Mismo tipo de movimiento, glosa y fecha del hecho que usaba la corrida de
+        // pensiones (registrarPgpcDelMes). El enlace con el stub es PGPC.PGPCIDAP: la corrida de
+        // pensiones lo lee para NO volver a debitar ni reservar este seguro, y el ancla del
+        // retroactivo lo ignora mientras el stub siga incompleto (resolverAnclaRetroactivo).
+        Aporte aporteSeguro = null;
+        if (seguroFijado > TOLERANCIA && !seguroYaDebitado(existente)) {
+            aporteSeguro = crearMovimientoNegativo(entidad, seguroFijado,
+                "PAGO PENSION COMPLEMENTARIA " + mes + "/" + anio + " - Entidad " + idEntidad + SUFIJO_GLOSA_SEGURO,
+                fecha.atStartOfDay(), usuario);
+        }
+
         PagoPensionComplementaria pago = existente != null ? existente : new PagoPensionComplementaria();
         pago.setEntidad(entidad);
         pago.setFilial(entidad.getFilial());
         pago.setAnio(anio.longValue());
         pago.setMes(mes.longValue());
         pago.setValorSeguro(seguroFijado);
+        if (aporteSeguro != null) {
+            pago.setIdAporte(aporteSeguro.getCodigo());
+        }
         // ⛔⛔ 2026-09-22: PGPCVLRR es NOT NULL en la base (crd/sql/97) — "Total pagado =
         // VLPN + VLSG", y este método nunca lo completaba (ORA-01400 la primera vez que
         // corrió de verdad). Se mantiene la invariante que declara la propia columna: se suma
@@ -1714,8 +1737,12 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
                         continue;
                     }
                     stubsEnRango.put(ymFila, fila);
-                    seguroReservado = redondear(seguroReservado
-                        + (fila.getValorSeguro() != null ? fila.getValorSeguro() : 0.0));
+                    // Solo se RESERVA el seguro de los stubs sin débito (los viejos): el de un stub
+                    // con débito ya salió del saldo cuando se generó el seguro.
+                    if (!seguroYaDebitado(fila)) {
+                        seguroReservado = redondear(seguroReservado
+                            + (fila.getValorSeguro() != null ? fila.getValorSeguro() : 0.0));
+                    }
                 }
             }
             if (saldoRestante < seguroReservado - TOLERANCIA) {
@@ -2102,16 +2129,29 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         // tramo cruzado ya generó el suyo propio dentro de pagarConAportes/consumirAportes —
         // duplicarlo acá bajaría el saldo dos veces.
         //
+        // Desde el débito al generar el seguro (DISENO-SEGURO-MEDICO-DEBITO-AL-GENERAR.md) el
+        // negativo del seguro de un stub NUEVO ya existe: acá solo se reutiliza (ver arriba).
+        //
         // ⚠️ Consecuencia querida y documentada (§6 del contrato): estos movimientos son el
-        // ANCLA del retroactivo (resolverAnclaRetroactivo mira CUALQUIER negativo de tipo 23,
-        // no un campo puntual de PGPC), así que traspasar el seguro de un mes lo da por SALDADO
+        // ANCLA del retroactivo (resolverAnclaRetroactivo mira los negativos de tipo 23 que no
+        // sean el seguro de un stub aún incompleto, no un campo puntual de PGPC), así que traspasar el seguro de un mes lo da por SALDADO
         // igual que si hubiera salido la pensión — la porción de pensión retenida por falta de
         // certificado no se vuelve a pagar retroactivamente después. NO es plata perdida: el
         // remanente de pensión retenido nunca se descuenta, se queda en el saldo del aporte 23.
         Aporte aporteSeguro = null;
-        if (traspasoSeguro > TOLERANCIA) {
+        if (seguroYaDebitado(filaExistente)) {
+            // El proceso de seguro YA debitó este seguro (PGPCIDAP del stub): no se crea un segundo
+            // negativo. Se conserva la referencia para que, si este mes no tiene negativo de
+            // pensión, PGPC siga enlazado al del seguro (como siempre que solo hubo seguro).
+            aporteSeguro = aporteDaoService.find(new Aporte(), filaExistente.getIdAporte());
+            if (aporteSeguro == null) {
+                throw new IncomeException("El PGPC " + filaExistente.getCodigo() + " dice haber debitado su seguro"
+                    + " en el movimiento " + filaExistente.getIdAporte() + " de CRD.APRT, que no existe; no se"
+                    + " completa para no debitar el seguro dos veces. Revisar el dato.");
+            }
+        } else if (traspasoSeguro > TOLERANCIA) {
             aporteSeguro = crearMovimientoNegativo(entidad, traspasoSeguro,
-                glosaMovimiento + " - SEGURO MEDICO", fechaHecho, usuario);
+                glosaMovimiento + SUFIJO_GLOSA_SEGURO, fechaHecho, usuario);
         }
         Aporte aportePension = null;
         if (saleAlBanco) {
@@ -2607,6 +2647,10 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
      * @return la fecha ancla, o {@code null} si la entidad no tiene ninguno de los dos
      */
     private LocalDate resolverAnclaRetroactivo(Long idEntidad) throws Throwable {
+        // selectFechaUltimoMovimientoNegativo EXCLUYE el negativo del seguro de un stub todavía
+        // incompleto (PGPC con PGPCIDAP = ese APRT y PGPCVLPN null): el débito al generar el seguro
+        // no puede mover el ancla, o la corrida de pensiones del mismo mes lo vería AL_DIA y no
+        // pagaría la pensión. Al completarse el stub el negativo vuelve a contar como siempre.
         LocalDateTime ultimaNegativa = aporteDaoService.selectFechaUltimoMovimientoNegativo(
             idEntidad, TIPO_APORTE_PENSION_COMPLEMENTARIA);
         if (ultimaNegativa != null) {
@@ -2615,6 +2659,34 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         LocalDateTime jubilacion = aporteDaoService.selectFechaMovimientoJubilacion(
             idEntidad, TIPO_APORTE_PENSION_COMPLEMENTARIA, (long) CrdTipoMovimientoAporte.JUBILACION);
         return jubilacion != null ? jubilacion.toLocalDate() : null;
+    }
+
+    /**
+     * {@code true} si la fila es un STUB (pensión aún sin generar) cuyo seguro YA se debitó del
+     * aporte 23 al generar el seguro: lo marca {@code PGPCIDAP} (los stubs viejos, anteriores al
+     * débito anticipado, lo tienen en null y siguen debitándose al generar las pensiones). Sin DDL.
+     */
+    private static boolean seguroYaDebitado(PagoPensionComplementaria fila) {
+        return fila != null && fila.getValorPension() == null && fila.getIdAporte() != null;
+    }
+
+    /** Suma del seguro de los stubs con débito cuyo período cae en [desde, hasta]. */
+    private double seguroYaDebitadoEnRango(Long idEntidad, YearMonth desde, YearMonth hasta) throws Throwable {
+        double total = 0.0;
+        List<PagoPensionComplementaria> historico = pagoPensionDaoService.selectByEntidad(idEntidad);
+        if (historico != null) {
+            for (PagoPensionComplementaria fila : historico) {
+                if (!seguroYaDebitado(fila) || fila.getAnio() == null || fila.getMes() == null) {
+                    continue;
+                }
+                YearMonth ym = YearMonth.of(fila.getAnio().intValue(), fila.getMes().intValue());
+                if (ym.isBefore(desde) || ym.isAfter(hasta)) {
+                    continue;
+                }
+                total = redondear(total + nvl(fila.getValorSeguro()));
+            }
+        }
+        return total;
     }
 
     /**
@@ -3192,6 +3264,25 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
 
         aporteDaoService.bloquearAportesEntidad(idEntidad);
 
+        // Seguro ya debitado por el proceso de seguro (stub con PGPCIDAP): no se debita de nuevo,
+        // solo la diferencia si el rol trae un seguro mayor. Se resuelve ANTES del cruce para que un
+        // dato imposible falle sin haber movido nada.
+        Aporte aporteSeguroPrevio = null;
+        double seguroDebitado = 0.0;
+        if (seguroYaDebitado(existente)) {
+            aporteSeguroPrevio = aporteDaoService.find(new Aporte(), existente.getIdAporte());
+            if (aporteSeguroPrevio == null) {
+                throw new IncomeException("El PGPC " + existente.getCodigo() + " dice haber debitado su seguro en el"
+                    + " movimiento " + existente.getIdAporte() + " de CRD.APRT, que no existe; no se re-procesa.");
+            }
+            seguroDebitado = redondear(Math.abs(nvl(aporteSeguroPrevio.getValor())));
+            if (seguroDebitado > valorSeguro + TOLERANCIA) {
+                throw new IncomeException("El seguro del período " + periodo + " de la entidad " + idEntidad
+                    + " ya se debitó por $" + seguroDebitado + " al generar el seguro y el rol trae $" + valorSeguro
+                    + ": el rol no puede ser menor que lo debitado. Revisar antes de re-procesar.");
+            }
+        }
+
         // 1. Descuentos de préstamos del rol → cobro con aportes de pensión (23) contra cada préstamo.
         String etiqueta = "REPROCESO PGPC " + periodo + " entidad " + idEntidad;
         double disponibleCruce = redondear(valorTotal - valorSeguro);
@@ -3304,8 +3395,10 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         // 3. Movimientos negativos del aporte 23 (fecha del período): seguro y neto. El cruce ya
         // generó el suyo dentro de pagarConAportes.
         String glosa = "PAGO PENSION COMPLEMENTARIA " + mes + "/" + anio + " - Entidad " + idEntidad + " (REPROCESO C20)";
-        Aporte aporteSeguro = valorSeguro > TOLERANCIA
-            ? crearMovimientoNegativo(entidad, valorSeguro, glosa + SUFIJO_GLOSA_SEGURO, fechaHecho, usuario) : null;
+        double seguroPorDebitar = redondear(valorSeguro - seguroDebitado);
+        Aporte aporteSeguro = seguroPorDebitar > TOLERANCIA
+            ? crearMovimientoNegativo(entidad, seguroPorDebitar, glosa + SUFIJO_GLOSA_SEGURO, fechaHecho, usuario)
+            : aporteSeguroPrevio;
         Aporte aportePension = neto > TOLERANCIA
             ? crearMovimientoNegativo(entidad, neto, glosa, fechaHecho, usuario) : null;
 
