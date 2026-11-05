@@ -55,40 +55,30 @@ Los 30 mayores son préstamos de 2012–2023 con último vencimiento entre 2017 
 Asientos del cierre de octubre: `12343` (①), `12344` (②), `12345` (①.1), `12352` (⑨), todos ya en
 `ASNTESTD = 2` (ANULADO) al 05-11.
 
-## 4. Regla (corregida con la salida del 364)
+## 4. Regla (corregida con la salida del 364 y con el usuario, 2026-11-05)
 
-Se corrige `pendiente(corte)`: la cuota en 4/7 **sin** `DTPRFCPG` toma como fecha de liquidación la primera
-evidencia que exista, en este orden:
+**Dato del usuario:** en la migración muchas cuotas solo se cambiaron a estado PAGADA, sin registrar pago ni
+fecha. Por eso la evidencia principal es la **cuota en estado pagada**, no el `PGPR`.
 
-1. `MAX(PGPRFCHA)` de los pagos vigentes de **esa cuota**;
-2. la fecha de cancelación deducida del **préstamo** (abajo);
-3. si no hay ninguna: **liquidada antes del corte** (fuera de la cartera).
+Se corrige `pendiente(corte)`. Una cuota en 4/7 **con** `DTPRFCPG` sigue la regla de siempre. **Sin**
+`DTPRFCPG`, su fecha de liquidación es:
 
-Una cuota en 4/7 **con** `DTPRFCPG` sigue la regla de siempre. Lo de abajo (fecha deducida del préstamo) queda
-como el paso 2.
+| Cuota | Fecha de liquidación |
+|---|---|
+| **4 PAGADA** sin fecha | **su propio vencimiento** (`DTPRFCVN`): se supone pagada al vencer |
+| **7 CANCELADA ANTICIPADA** sin fecha | la **fecha de la última cuota pagada del préstamo**: `MAX` sobre las cuotas 4 del préstamo de `NVL(DTPRFCPG, DTPRFCVN)` |
+| 7 sin fecha y el préstamo **no tiene** ninguna cuota 4 | la mayor entre: fecha del préstamo sustituto aprobado (`n.PRSTPROR = p.PRSTCDGO`), último `PGPRFCHA` vigente del préstamo, último `EVPRFCHA` vigente |
+| sin ninguna de las anteriores | **liquidada antes del corte** (fuera de la cartera) |
 
-### Fecha de cancelación deducida del préstamo (paso 2)
+Por qué la cuota 4 usa su propio vencimiento y no el del préstamo: en el reproceso de un mes viejo, la cuota 1
+de un préstamo migrado (vence 2020) tiene que salir pagada en 2022 aunque la última cuota pagada sea de 2024.
 
-`CRD.PRST` no tiene fecha de cancelación. Se deduce:
+Supuesto aceptado: una cuota migrada que se pagó tarde aparece pagada a tiempo. Sin fecha no hay cómo saberlo.
 
-```
-F_CANCELACION = GREATEST de la evidencia disponible:
-  fecha del préstamo sustituto (PRST n con n.PRSTPROR = p.PRSTCDGO, aprobado)   -- novación/reestructuración
-  MAX(DTPRFCPG) de sus cuotas
-  MAX(PGPRFCHA) de sus pagos vigentes
-  MAX(EVPRFCHA) de sus eventos vigentes
-```
-
-- Solo se usa para cuotas 4/7 sin `DTPRFCPG` y sin pagos propios (paso 2 de la regla).
 - `PRSTFCMD` no se usa: cambia con cualquier edición.
 - Vivos (2, 8, 10, 11) y el modo normal (`corte == null`): sin cambio. `universo(corte)` no cambia.
-
-Decisiones que esperan la salida del 365:
-- si `F_SUSTITUTO` existe para los novados de producción (si no, la novación migrada solo tiene las otras);
-- si algún cancelado revivido tiene evidencia `> 31-10` (debería ser casi nada en producción);
-- si conviene materializar la fecha deducida (columna nueva en `PRST` llenada por script + por el código que
-  cancela) en vez de calcularla en cada consulta. Recomendación del árbitro: **sí** a mediano plazo; para este
-  arreglo, cálculo en la consulta.
+- A mediano plazo conviene materializar la fecha (UPDATE de `DTPRFCPG` con la misma regla, con respaldo) para
+  no calcularla en cada consulta; para este arreglo, cálculo en la consulta.
 
 ## 5. Alcance del cambio de código
 
