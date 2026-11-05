@@ -86,6 +86,18 @@ public interface CierreCarteraDaoService {
     List<Object[]> selectCuotasPendientesPorPrestamo(Long idEmpresa) throws Throwable;
 
     /**
+     * C23 — Préstamos cancelados que siguen en el universo al corte porque les quedan cuotas en
+     * mora, parciales o pendientes ({@code ModoCorteCartera#CANCELADO_CON_CUOTAS_PENDIENTES_SQL}):
+     * dato incoherente de la migración que el cierre avisa para depurarlo.
+     *
+     * @param corte      : Fecha de corte
+     * @return           : Filas {@code [operacion (Long), estadoPrestamo (Long), cuotas (Long),
+     *                     capitalPendiente (Double)]}, de mayor a menor capital
+     * @throws Throwable : Excepcion
+     */
+    List<Object[]> selectCanceladosConCuotasPendientesAlCorte(LocalDate corte) throws Throwable;
+
+    /**
      * Interés ordinario y mora pendientes de las cuotas con vencimiento EN EL RANGO
      * {@code [desde, hasta]} (ambos inclusive), agrupados por TIPO DE PRÉSTAMO (quirografario /
      * hipotecario / prendario), que es la dimensión por la que cambia la cuenta contable del

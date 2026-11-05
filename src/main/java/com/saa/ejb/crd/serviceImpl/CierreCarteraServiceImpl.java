@@ -503,6 +503,7 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
                     + " corte (H3); convencion de vencimiento "
                     + (inclusivo ? "inclusiva (vto <= corte = vencida)" : "del SAA (vto = corte aun por vencer)")
                     + (arranque ? "; corrida de ARRANQUE (H5)" : "") + ".");
+            avisaCanceladosConCuotasPendientes(fechaCorte, resultado.getAdvertencias());
         }
 
         Map<Long, Producto> productos = indexaProductos();
@@ -1546,6 +1547,32 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
         cierra(sub, "No hay mora pendiente de devengar al corte.");
         cuadra(sub, CrdLineaAsiento.INGRESO_INTERES_MORA);
         return sub;
+    }
+
+    /**
+     * C23 — Avisa los préstamos cancelados que siguen en la cartera al corte porque les quedan
+     * cuotas en mora, parciales o pendientes (dato incoherente de la migración). No los saca: así
+     * estaban en la G48 de mayo 2025 aceptada; se depuran con su documento.
+     */
+    private void avisaCanceladosConCuotasPendientes(LocalDate corte, List<String> advertencias) throws Throwable {
+        List<Object[]> filas = cierreCarteraDaoService.selectCanceladosConCuotasPendientesAlCorte(corte);
+        if (filas == null || filas.isEmpty()) {
+            return;
+        }
+        double capital = 0.0;
+        StringBuilder operaciones = new StringBuilder();
+        for (int i = 0; i < filas.size(); i++) {
+            Object[] f = filas.get(i);
+            capital += f[3] != null ? ((Number) f[3]).doubleValue() : 0.0;
+            if (i < 10) {
+                operaciones.append(i == 0 ? "" : ", ").append(f[0]);
+            }
+        }
+        advertencias.add(filas.size() + " prestamo(s) cancelado(s) siguen en la cartera al " + corte
+                + " porque les quedan cuotas en mora, parciales o pendientes (capital "
+                + String.format(java.util.Locale.US, "%,.2f", capital) + "): operaciones " + operaciones
+                + (filas.size() > 10 ? " y " + (filas.size() - 10) + " mas" : "")
+                + ". Revisar su liquidacion y depurar las cuotas; no se sacan solos de la cartera.");
     }
 
     /** Fecha de la propiedad {@link #PROPIEDAD_INICIO_DEVENGO_MORA}, o null. */

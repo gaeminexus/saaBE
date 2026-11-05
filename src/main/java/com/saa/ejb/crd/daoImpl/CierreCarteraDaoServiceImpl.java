@@ -107,13 +107,17 @@ public class CierreCarteraDaoServiceImpl implements CierreCarteraDaoService {
     // fragmento devuelve EXACTAMENTE el de siempre: el comportamiento normal no cambia.
     // ------------------------------------------------------------------------
 
-    /** Universo de préstamos: vivos HOY, o existentes y aprobados al corte. */
+    /**
+     * Universo de préstamos: vivos HOY, o existentes y aprobados al corte y no cancelados antes del
+     * corte (C23, {@link ModoCorteCartera#CANCELADO_TERMINADO_AL_CORTE_SQL}).
+     */
     private static String universo(LocalDate corte) {
         if (corte == null) {
             return PRESTAMOS_VIVOS;
         }
         return " (p.PRSTFCHA < :corteSig AND NVL(p.PRSTIDST,0) NOT IN ("
-                + ModoCorteCartera.ESTADOS_FUERA_DE_CARTERA + ")) ";
+                + ModoCorteCartera.ESTADOS_FUERA_DE_CARTERA + ")"
+                + " AND NOT " + ModoCorteCartera.CANCELADO_TERMINADO_AL_CORTE_SQL + ") ";
     }
 
     /** Cuota no liquidada HOY, o no liquidada al corte (pagada con fecha posterior = impaga). */
@@ -217,6 +221,29 @@ public class CierreCarteraDaoServiceImpl implements CierreCarteraDaoService {
     @Override
     public List<Object[]> selectCuotasPendientesPorPrestamo(Long idEmpresa) throws Throwable {
         return selectCuotasPendientesPorPrestamo(idEmpresa, null);
+    }
+
+    @Override
+    public List<Object[]> selectCanceladosConCuotasPendientesAlCorte(LocalDate corte) throws Throwable {
+        System.out.println("Ingresa al metodo selectCanceladosConCuotasPendientesAlCorte - corte: " + corte);
+        Query query = em.createNativeQuery(
+                " SELECT p.PRSTIDAS, p.PRSTIDST, COUNT(*), "
+                + "        SUM(GREATEST(NVL(d.DTPRCPTL,0) - NVL(g.cap,0), 0)) "
+                + " FROM   CRD.DTPR d "
+                + " JOIN   CRD.PRST p ON p.PRSTCDGO = d.PRSTCDGO "
+                + " LEFT JOIN " + pagos(corte) + " ON g.DTPRCDGO = d.DTPRCDGO "
+                + " WHERE  " + universo(corte)
+                + " AND    " + pendiente(corte)
+                + " AND    " + ModoCorteCartera.CANCELADO_CON_CUOTAS_PENDIENTES_SQL
+                + " GROUP BY p.PRSTIDAS, p.PRSTIDST "
+                + " ORDER BY 4 DESC, 1");
+        parametroCorteSig(query, corte);
+        List<Object[]> filas = query.getResultList();
+        List<Object[]> resultado = new ArrayList<Object[]>();
+        for (Object[] f : filas) {
+            resultado.add(new Object[]{ aLong(f[0]), aLong(f[1]), aLong(f[2]), aDouble(f[3]) });
+        }
+        return resultado;
     }
 
     @Override

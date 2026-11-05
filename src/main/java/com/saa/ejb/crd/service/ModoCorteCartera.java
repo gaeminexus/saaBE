@@ -3,6 +3,7 @@ package com.saa.ejb.crd.service;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 
+import com.saa.rubros.EstadoCuotaPrestamo;
 import com.saa.rubros.TipoCarteraBanda;
 
 /**
@@ -28,7 +29,8 @@ import com.saa.rubros.TipoCarteraBanda;
  * <h3>Regla de corte (la de C3 §2.1 y la cuadratura C14)</h3>
  * <ul>
  * <li>Préstamo en el universo: {@code PRSTFCHA <= corte}, no anulado (12) ni nunca aprobado
- *     (1 generado, 6 pendiente de aprobación, 7 rechazado).</li>
+ *     (1 generado, 6 pendiente de aprobación, 7 rechazado), y no cancelado antes del corte
+ *     ({@link #CANCELADO_TERMINADO_AL_CORTE_SQL}, C23).</li>
  * <li>Cuota pagada al corte: {@code DTPRESTD IN (4,7) AND DTPRFCPG <= corte}.</li>
  * <li>Pagado al corte: pagos vigentes con {@code PGPRFCHA <= corte}; capital pagado de la cuota =
  *     {@code PGPRSLOT} si es mayor que cero, si no {@code PGPRCPPG} — salvo el abono a capital
@@ -58,6 +60,45 @@ public final class ModoCorteCartera {
 
     /** Préstamos que nunca formaron cartera: raíz, generado, pendiente, rechazado, anulado. */
     public static final String ESTADOS_FUERA_DE_CARTERA = "0, 1, 6, 7, 12";
+
+    /**
+     * Préstamos cancelados: normal, anticipado, por novación, por revisar y por reestructuración
+     * (3, 4, 5, 9, 13).
+     */
+    public static final String ESTADOS_CANCELADOS = "3, 4, 5, 9, 13";
+
+    /**
+     * C23 (2026-11-05, regla del líder): un préstamo cancelado cuenta en la cartera al corte hasta
+     * la fecha de su última cuota PAGADA, incluido ese día; desde el día siguiente ya no existe,
+     * aunque sus cuotas canceladas anticipadas no tengan fecha de pago (así quedan la novación, la
+     * migración y el cambio directo de estado). Sin esta regla el universo al corte los revivía con
+     * todo su capital: el cierre de octubre 2026 en producción los llevó a más de 360 días.
+     *
+     * <p>Solo sale si TODAS sus demás cuotas están pagadas, canceladas anticipadas o anuladas. Si
+     * le queda alguna en mora, parcial o pendiente, es un dato incoherente de la migración: sigue
+     * contando como antes (así estaban en la G48 de mayo 2025 aceptada las operaciones 68353, 68783
+     * y 61578) y el cierre lo avisa ({@link #CANCELADO_CON_CUOTAS_PENDIENTES_SQL}) para que se
+     * depure con su documento.</p>
+     *
+     * <p>SQL nativo: alias {@code p} = {@code CRD.PRST}, parámetro {@code :corteSig} = corte + 1 día.</p>
+     */
+    public static final String CANCELADO_TERMINADO_AL_CORTE_SQL =
+            " (NVL(p.PRSTIDST,0) IN (" + ESTADOS_CANCELADOS + ")"
+            + " AND NOT EXISTS (SELECT 1 FROM CRD.DTPR cx WHERE cx.PRSTCDGO = p.PRSTCDGO"
+            + "      AND NVL(cx.DTPRESTD,0) NOT IN (" + EstadoCuotaPrestamo.PAGADA + ", "
+            + EstadoCuotaPrestamo.CANCELADA_ANTICIPADA + ", " + EstadoCuotaPrestamo.ANULADA + "))"
+            + " AND NOT EXISTS (SELECT 1 FROM CRD.DTPR cy WHERE cy.PRSTCDGO = p.PRSTCDGO"
+            + "      AND cy.DTPRESTD = " + EstadoCuotaPrestamo.PAGADA + " AND cy.DTPRFCPG >= :corteSig - 1)) ";
+
+    /**
+     * C23: préstamo cancelado que sigue en el universo al corte porque le quedan cuotas en mora,
+     * parciales o pendientes (ver {@link #CANCELADO_TERMINADO_AL_CORTE_SQL}). Mismo alias.
+     */
+    public static final String CANCELADO_CON_CUOTAS_PENDIENTES_SQL =
+            " (NVL(p.PRSTIDST,0) IN (" + ESTADOS_CANCELADOS + ")"
+            + " AND EXISTS (SELECT 1 FROM CRD.DTPR cx WHERE cx.PRSTCDGO = p.PRSTCDGO"
+            + "      AND NVL(cx.DTPRESTD,0) NOT IN (" + EstadoCuotaPrestamo.PAGADA + ", "
+            + EstadoCuotaPrestamo.CANCELADA_ANTICIPADA + ", " + EstadoCuotaPrestamo.ANULADA + "))) ";
 
     /**
      * C14b (2026-10-29) — capital que un pago vigente ({@code CRD.PGPR}, columnas sin alias) descuenta
