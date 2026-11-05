@@ -41,4 +41,7 @@ siguiente). Con `nunca` el cierre mensual no corre ⑧, ⑨ ni ⑩ y el código 
 Hash desplegado, salida de las dos propiedades, avisos de la previsualización y número de la corrida de octubre.
 
 ## 6. Resultado
-_(pendiente)_
+- **Propiedades (2026-11-05, consola web, Configuration → System Properties):** `saa.cartera.alCorte` = `nunca`
+  (antes `siempre`); `saa.cartera.neteoPorPrestamo` = `nunca` (no existía, agregada). `saa.cartera.inicioDevengoMora`
+  sin cambio (`2025-05-31`). Rigen sin reiniciar (`System.getProperty` en cada corrida).
+- Despliegue del EAR: _(pendiente)_
