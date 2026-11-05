@@ -34,7 +34,40 @@ El universo incluye cancelados a propósito: el reproceso del cuadre cierra mese
 cancelado **después** de ese corte era cartera al corte. Eso no se toca. Lo que se corrige es el cancelado
 **antes** del corte.
 
-## 4. Regla propuesta (a confirmar con `sql/365`)
+## 3bis. Medido con el 364 en producción (2026-11-05) — la causa precisa
+
+| Estado préstamo | Préstamos | Cuotas | Capital que el modo al corte cuenta |
+|---|---|---|---|
+| 2 vigente | 812 | 38.691 | 8.586.728,76 |
+| 8 plazo vencido | 237 | 16.006 | 4.510.296,14 |
+| 11 en mora | 179 | 10.772 | 2.959.381,30 |
+| **3 cancelado** | 70 | 1.150 | **286.862,57** |
+| **4 cancelado anticipado** | 2.913 | 106.690 | **17.878.477,99** |
+
+Vivos = 16,06 M (la cartera real); cancelados = **18,17 M revividos** (los ~18 M de los avisos ⑨).
+
+**Todas** las cuotas revividas están en `DTPRESTD` 4 (PAGADA) o 7 (CANCELADA ANTICIPADA) **sin `DTPRFCPG`**. No
+son cuotas impagas: son cuotas liquidadas sin fecha de pago (migración, cancelación anticipada que no fecha las
+cuotas). El fragmento `pendiente(corte)` hace `NVL(d.DTPRFCPG, :corteSig) < :corteSig`: **una fecha nula se
+trata como «pagada después del corte»**, o sea pendiente. Ahí está el defecto; el universo no necesita cambio.
+Los 30 mayores son préstamos de 2012–2023 con último vencimiento entre 2017 y 2025.
+
+Asientos del cierre de octubre: `12343` (①), `12344` (②), `12345` (①.1), `12352` (⑨), todos ya en
+`ASNTESTD = 2` (ANULADO) al 05-11.
+
+## 4. Regla (corregida con la salida del 364)
+
+Se corrige `pendiente(corte)`: la cuota en 4/7 **sin** `DTPRFCPG` toma como fecha de liquidación la primera
+evidencia que exista, en este orden:
+
+1. `MAX(PGPRFCHA)` de los pagos vigentes de **esa cuota**;
+2. la fecha de cancelación deducida del **préstamo** (abajo);
+3. si no hay ninguna: **liquidada antes del corte** (fuera de la cartera).
+
+Una cuota en 4/7 **con** `DTPRFCPG` sigue la regla de siempre. Lo de abajo (fecha deducida del préstamo) queda
+como el paso 2.
+
+### Fecha de cancelación deducida del préstamo (paso 2)
 
 `CRD.PRST` no tiene fecha de cancelación. Se deduce:
 
@@ -46,10 +79,9 @@ F_CANCELACION = GREATEST de la evidencia disponible:
   MAX(EVPRFCHA) de sus eventos vigentes
 ```
 
-- Cancelado (3,4,5,9,13) entra al universo al corte **solo si `F_CANCELACION > corte`**.
-- Sin ninguna evidencia de fecha → **fuera** (no se puede afirmar que estuviera vivo; hoy está cancelado).
+- Solo se usa para cuotas 4/7 sin `DTPRFCPG` y sin pagos propios (paso 2 de la regla).
 - `PRSTFCMD` no se usa: cambia con cualquier edición.
-- Vivos (2, 8, 10, 11) y el modo normal (`corte == null`): sin cambio.
+- Vivos (2, 8, 10, 11) y el modo normal (`corte == null`): sin cambio. `universo(corte)` no cambia.
 
 Decisiones que esperan la salida del 365:
 - si `F_SUSTITUTO` existe para los novados de producción (si no, la novación migrada solo tiene las otras);
@@ -60,8 +92,11 @@ Decisiones que esperan la salida del 365:
 
 ## 5. Alcance del cambio de código
 
-- `CierreCarteraDaoServiceImpl.universo(corte)` — un solo fragmento, lo usan todas las lecturas al corte.
-- `PrestamoDaoServiceImpl.selectByEntidadYProductoVigentesAlCorte` — misma regla (decidir con el cuadre).
+- `CierreCarteraDaoServiceImpl.pendiente(corte)` — un solo fragmento, lo usan todas las lecturas al corte.
+  Revisar que ninguna otra lectura al corte del mismo DAO (o de los controles C14/G4x) repita
+  `NVL(DTPRFCPG, :corteSig)` por su cuenta.
+- `PrestamoDaoServiceImpl.selectByEntidadYProductoVigentesAlCorte` — misma condición
+  (`d.fechaPagado IS NULL` = vivo); misma regla.
 - Doc `CIERRE-CARTERA-A-FECHA-DE-CORTE.md` actualizado en el mismo cambio.
 - Dueño del código: el cuadre (C15). Se coordina con su árbitro antes de despachar; el texto lo aprueba el usuario.
 
