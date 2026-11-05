@@ -1,3 +1,9 @@
+> **⛔ REEMPLAZADO (2026-11-05) por C23 / D-052 del cuadre** (`a560cdfe`, `d8538ed8`): el cancelado cuenta al corte hasta la
+> fecha de su última cuota PAGADA; `ModoCorteCartera.CANCELADO_TERMINADO_AL_CORTE_SQL` en `universo(corte)` y en las
+> cuotas provisionables (⑧). La §4 de abajo **no se programó** (el avance del ejecutor quedó en un stash, sin aplicar).
+> Vale como registro del diagnóstico (§1–§3bis). Producción queda con `saa.cartera.alCorte=nunca` y
+> `saa.cartera.neteoPorPrestamo=nunca` hasta la base re-procesada.
+
 # Cancelados que el cierre «a fecha de corte» revive como cartera — diseño del arreglo de fondo
 
 **omen-saa-1-arb · 2026-11-05 · estado: DISEÑO, la regla final espera la salida de `sql/365`.**
