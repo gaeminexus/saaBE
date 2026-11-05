@@ -23,6 +23,13 @@ con `corte`), del ⑦ (`selectCuotasProvisionablesAlCorte`, `selectDatosPagosVig
 `fechaContable <= corte`), de la G48 y del CCPM:
 
 - préstamo en el universo: `PRSTFCHA <= corte` y estado no 0/1/6/7/12 (nunca aprobado o anulado);
+- **C23 (2026-11-05, D-052 del cuadre):** un préstamo cancelado (3, 4, 5, 9, 13) cuenta hasta la fecha de su última cuota
+  PAGADA, incluido ese día; desde el día siguiente sale del universo aunque sus cuotas canceladas anticipadas no tengan
+  fecha de pago (`ModoCorteCartera.CANCELADO_TERMINADO_AL_CORTE_SQL`, también en las cuotas provisionables del ⑧). Si le
+  quedan cuotas en mora, parciales o pendientes sigue contando y el cierre lo avisa (dato de la migración que se depura con
+  su documento: así estaban en la G48 de mayo 2025 las operaciones 68353, 68783 y 61578). Causa: el cierre de octubre 2026
+  en producción revivió 2.983 cancelados (18,17 M, `crd/sql/364`). Pendiente: la misma regla en
+  `PrestamoDaoServiceImpl.selectByEntidadYProductoVigentesAlCorte` (re-proceso Petro), con regresión de la carga 354;
 - cuota liquidada al corte: `DTPRESTD IN (4,7)` **y** `DTPRFCPG <= corte` (pagada después o sin fecha = impaga);
 - pagado al corte: pagos vigentes con `PGPRFCHA <= corte`; capital = `PGPRSLOT` si > 0, si no `PGPRCPPG`
   (regla de la cuadratura; ojo, en la base hay 3.394 pagos DEP y 506 MIGRACION con los dos campos > 0: **sumarlos** como
