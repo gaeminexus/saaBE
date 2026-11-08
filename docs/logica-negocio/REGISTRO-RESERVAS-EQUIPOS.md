@@ -265,7 +265,8 @@ seguidas** en `docs/logica-negocio/crd/sql/`.
 | **200–249** | **CRD · EQUIPO B** — continuación del anterior · **reservado 2026-09-05 por `omen-saa-1-arb`** |
 | **250–299** | **`lap-saa-1` (laptop)** · **reservado 2026-09-05** — ver el recuadro de abajo |
 | **300–349** | **CRD · EQUIPO B** (`omen-saa-1`) — continuación del 200–249, agotado con el `249` · **reservado 2026-09-30 por `omen-saa-1-arb`** |
-| ≥ 350 | sin asignar |
+| **350–399** | **CRD · EQUIPO B** (`omen-saa-1`) — continuación del 300–349 · **reservado 2026-11-07 por `omen-saa-1-arb`**. Regulariza: del `350` al `368` ya se usaron entre el 2026-10-30 y el 2026-11-05 sin anotar la reserva acá |
+| ≥ 400 | sin asignar |
 
 > ### ⛔ Una reserva escrita SÓLO en la bitácora del §5 no reserva nada — 2026-09-05
 >
@@ -981,3 +982,4 @@ derechas del panel de movimientos **sin barra de scroll horizontal**. Causa: `.r
 | 2026-11-01 | `omen-saa-1` (CRD) | **`PDTR` 1534 y 1535 CONSUMIDOS** (rubro 250, alternos 16 = `2.1` y 17 = `1.3`) | Cuentas de nivel 2 del B17 para los controles de cierre (P8, P4-A del plan de cuentas a plantilla). Script `cnt/sql/c20-02`, corrido en producción el 2026-11-01 con MAX+1 |
 | 2026-11-01 | `omen-saa-1` (CRD) | **`PDTR` 1536 y 1537 CONSUMIDOS** (rubro 237, alternos 2 = 517 y 3 = 516) | Producto de pago de la pensión y del seguro de jubilados (P9b). Script `crd/sql/361`, corrido en producción el 2026-11-01 con MAX+1 |
 | 2026-11-01 | `omen-saa-1` (CRD) | **`PDTR` 1538 y 1539 CONSUMIDOS** (rubro 237, alternos 4 = 1222 devolución y 5 = 976 desembolso) | Producto de pago por parámetro. Script `crd/sql/363`, corrido en producción el 2026-11-01. También se agregó la columna `RHH.CFNM.CFNMPRPG` = 345 |
+| 2026-11-07 | `omen-saa-1` (CRD) | **Rango de scripts `crd/sql/` 350–399** (anotado en la tabla del §2b) y **tabla `CRD.GRPR`** (garante del préstamo). Se reserva el NOMBRE; la tabla la crea el script `crd/sql/369` cuando el usuario lo corra | `crd/DISENO-SOLICITUD-V1-AUTORIZACION-Y-REGLAS-OTORGAMIENTO.md` §B3 |
