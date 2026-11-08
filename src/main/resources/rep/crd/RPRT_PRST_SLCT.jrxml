@@ -4,23 +4,31 @@
      IM1: el texto fijo es LITERAL del modelo (generado desde el texto del cliente). IM2: un dato sin fuente sale como
      línea para llenar a mano. IM14: las casillas son rectángulos dibujados (la fuente del PDF no trae el carácter).
      El anexo «Diccionario de campos» NO se imprime. Las secciones 6 y 7 (uso de Crédito) van en página aparte.
-     Los montos se formatean con NumeroALetrasUtil.formatearMontoEc (clase del WAR, crd.util). -->
+     Los montos se formatean con NumeroALetrasUtil.formatearMontoEc (clase del WAR, crd.util).
+     DISENO-SOLICITUD-V1-AUTORIZACION-Y-REGLAS-OTORGAMIENTO.md (2026-11-07): SV1-SV14. Formato V1 del cliente + las
+     correcciones de la «super». EMPLEADOR = filial de la entidad; INGRESO_MENSUAL = PRTC.PRTCRMUN; CAPACIDAD_PAGO = 50 %
+     del ingreso; MONTO_MAXIMO = cuenta individual (100 %); SALDO_CREDITOS_VIGENTES y DESCUENTOS se calculan en el query
+     (el original de una novación entra SIEMPRE, también ya cancelado: A1-bis). El saldo de capital traduce a SQL
+     PagoPrestamoService.calcularSaldoCapitalPendiente (cuotas fuera de 4/7: max(0, capital - capital pagado en PGPR
+     vigente)); NO se usa PRSTSLCP (columna muerta). Cuota de un préstamo = DTPRTTLL de su primera cuota no pagada (>=1),
+     o de la última si no le quedan pendientes. «Vigentes» = PRSTIDST IN (2, 8, 10, 11). -->
 <jasperReport name="RPRT_PRST_SLCT" language="java" pageWidth="595" pageHeight="842" columnWidth="535" leftMargin="30" rightMargin="30" topMargin="25" bottomMargin="25" whenNoDataType="AllSectionsNoDetail" uuid="a3000001-0000-0000-0000-000000000000">
 	<property name="com.jaspersoft.studio.data.defaultdataadapter" value="Oracle"/>
 	<property name="com.jaspersoft.studio.report.description" value="Solicitud de crédito (FOR-CRE-SOL-01)"/>
 	<parameter name="P_PRSTCDGO" class="java.lang.Long"><description><![CDATA[Código del préstamo (CRD.PRST.PRSTCDGO).]]></description></parameter>
 	<parameter name="P_IMAGEN" class="java.awt.Image"><description><![CDATA[Logo. Lo inyecta ReporteServiceImpl.]]></description></parameter>
 	<parameter name="P_USUARIO" class="java.lang.String"><description><![CDATA[Usuario que imprime (pie de página).]]></description></parameter>
-	<parameter name="P_SALDO_CREDITOS_VIGENTES" class="java.math.BigDecimal"><description><![CDATA[Opcional: saldo de los créditos vigentes del partícipe. No hay fuente en SQL (el saldo lo calcula el servicio de saldos); sin valor sale en blanco.]]></description></parameter>
 	<query language="SQL"><![CDATA[SELECT p.PRSTCDGO                                   AS NRO_SOLICITUD,
        COALESCE(TRUNC(p.PRSTFCRG), TRUNC(p.PRSTFCHA)) AS FECHA_SOLICITUD,
+       TRUNC(p.PRSTFCAP)                            AS FECHA_APROBACION,
+       (SELECT MAX(pg.PGTRFRSP) FROM PGS.PGTR pg WHERE pg.PGTRCDGO = p.PRSTIDPG AND pg.PGTRESTD = 3) AS FECHA_DESEMBOLSO,
        p.PRSTIDST                                   AS ID_ESTADO,
        e.ENTDCDGO                                   AS CODIGO_PARTICIPE,
        TRIM(e.ENTDRZNS)                             AS NOMBRES_APELLIDOS,
        TRIM(e.ENTDNMID)                             AS CEDULA,
        TRIM(e.ENTDFCNC)                             AS FECHA_NACIMIENTO,
        TRIM(ec.ESCVNMBR)                            AS ESTADO_CIVIL,
-       TRIM(pt.PRTCLGRT)                            AS EMPLEADOR,
+       TRIM(fl.FLLLNMBR)                            AS EMPLEADOR,
        CASE e.ENTDIDST WHEN 1 THEN 'ACTIVO' WHEN 8 THEN 'ACTIVO'
                        WHEN 3 THEN 'JUBILADO' WHEN 6 THEN 'JUBILADO' WHEN 7 THEN 'JUBILADO' END AS CONDICION,
        TRIM(pt.PRTCCRGA)                            AS CARGO,
@@ -44,14 +52,32 @@
        (SELECT SUM(a.APRTVLRR) FROM CRD.APRT a
           JOIN CRD.TPAP ta ON ta.TPAPCDGO = a.TPAPCDGO
          WHERE a.ENTDCDGO = e.ENTDCDGO AND ta.TPAPIDST = 1) AS SALDO_CTA_INDIVIDUAL,
-       (SELECT pe.PRECTTIN FROM CRD.PREC pe
-         WHERE pe.PRECCDGO = (SELECT MAX(pe2.PRECCDGO) FROM CRD.PREC pe2
-                               WHERE pe2.PRSTCDGO = p.PRSTCDGO AND NVL(pe2.PRECIDST, 1) = 1)) AS INGRESO_MENSUAL,
-       (SELECT SUM(v.PRSTVLCT) FROM CRD.PRST v
+       CASE WHEN pt.PRTCRMUN > 0 THEN pt.PRTCRMUN END AS INGRESO_MENSUAL,
+       CASE WHEN pt.PRTCRMUN > 0 THEN ROUND(pt.PRTCRMUN * 0.50, 2) END AS CAPACIDAD_PAGO,
+       (SELECT SUM(CASE WHEN v.PRSTIDST IN (2, 8, 10, 11) THEN NVL(ROUND((SELECT SUM(GREATEST(0, NVL(d.DTPRCPTL, 0) - NVL((SELECT SUM(NVL(g.PGPRCPPG, 0)) FROM CRD.PGPR g
+                                                                    WHERE g.DTPRCDGO = d.DTPRCDGO AND NVL(g.PGPRANUL, 0) = 0), 0)))
+                           FROM CRD.DTPR d WHERE d.PRSTCDGO = v.PRSTCDGO AND (d.DTPRESTD IS NULL OR d.DTPRESTD NOT IN (4, 7))), 2), 0) ELSE NVL(p.PRSTVLSS, 0) END)
+          FROM CRD.PRST v
          WHERE v.ENTDCDGO = e.ENTDCDGO AND v.PRSTCDGO <> p.PRSTCDGO
-           AND v.PRSTIDST IN (2, 8, 11))            AS CUOTAS_VIGENTES,
+           AND (v.PRSTIDST IN (2, 8, 10, 11) OR v.PRSTCDGO = p.PRSTPROR)) AS SALDO_CREDITOS_VIGENTES,
+       (SELECT SUM(COALESCE((SELECT MAX(d.DTPRTTLL) KEEP (DENSE_RANK FIRST ORDER BY d.DTPRNMCT) FROM CRD.DTPR d
+                             WHERE d.PRSTCDGO = v.PRSTCDGO AND d.DTPRNMCT >= 1 AND (d.DTPRESTD IS NULL OR d.DTPRESTD NOT IN (4, 7))),
+                           (SELECT MAX(d.DTPRTTLL) KEEP (DENSE_RANK LAST ORDER BY d.DTPRNMCT) FROM CRD.DTPR d
+                             WHERE d.PRSTCDGO = v.PRSTCDGO AND d.DTPRNMCT >= 1),
+                           v.PRSTVLCT, 0))
+          FROM CRD.PRST v
+         WHERE v.ENTDCDGO = e.ENTDCDGO AND v.PRSTCDGO <> p.PRSTCDGO
+           AND (v.PRSTIDST IN (2, 8, 10, 11) OR v.PRSTCDGO = p.PRSTPROR)) AS DESCUENTOS,
+       CASE WHEN p.PRSTPROR IS NOT NULL THEN COALESCE((SELECT MAX(d.DTPRTTLL) KEEP (DENSE_RANK FIRST ORDER BY d.DTPRNMCT) FROM CRD.DTPR d
+                             WHERE d.PRSTCDGO = po.PRSTCDGO AND d.DTPRNMCT >= 1 AND (d.DTPRESTD IS NULL OR d.DTPRESTD NOT IN (4, 7))),
+                           (SELECT MAX(d.DTPRTTLL) KEEP (DENSE_RANK LAST ORDER BY d.DTPRNMCT) FROM CRD.DTPR d
+                             WHERE d.PRSTCDGO = po.PRSTCDGO AND d.DTPRNMCT >= 1),
+                           po.PRSTVLCT, 0) ELSE 0 END AS CUOTAS_VIGENTES,
        CASE WHEN p.PRSTPROR IS NULL THEN p.PRSTMNSL
-            WHEN p.PRSTVLSS IS NOT NULL THEN p.PRSTMNSL - p.PRSTVLSS END AS VALOR_LIQUIDO,
+            WHEN p.PRSTVLSS IS NOT NULL THEN p.PRSTMNSL - p.PRSTVLSS
+            WHEN po.PRSTIDST IN (2, 8, 10, 11) THEN p.PRSTMNSL - NVL(ROUND((SELECT SUM(GREATEST(0, NVL(d.DTPRCPTL, 0) - NVL((SELECT SUM(NVL(g.PGPRCPPG, 0)) FROM CRD.PGPR g
+                                                                    WHERE g.DTPRCDGO = d.DTPRCDGO AND NVL(g.PGPRANUL, 0) = 0), 0)))
+                           FROM CRD.DTPR d WHERE d.PRSTCDGO = po.PRSTCDGO AND (d.DTPRESTD IS NULL OR d.DTPRESTD NOT IN (4, 7))), 2), 0) END AS VALOR_LIQUIDO,
        TRIM(bx.BEXTNMBR)                            AS BANCO,
        CASE cb.CNBPTPCN WHEN 1 THEN 'AHORROS' WHEN 2 THEN 'CORRIENTE' END AS TIPO_CUENTA,
        TRIM(cb.CNBPNMRO)                            AS NRO_CUENTA,
@@ -60,6 +86,7 @@
   FROM CRD.PRST p
   JOIN CRD.ENTD e   ON e.ENTDCDGO  = p.ENTDCDGO
   JOIN CRD.PRDC pr  ON pr.PRDCCDGO = p.PRDCCDGO
+  LEFT JOIN CRD.FLLL fl ON fl.FLLLCDGO = e.FLLLCDGO
   LEFT JOIN CRD.TPPR tp ON tp.TPPRCDGO = pr.TPPRCDGO
   LEFT JOIN CRD.MTVP mv ON mv.MTVPCDGO = p.MTVPCDGO
   LEFT JOIN CRD.PRST po ON po.PRSTCDGO = p.PRSTPROR
@@ -76,6 +103,8 @@
  WHERE p.PRSTCDGO = $P{P_PRSTCDGO}]]></query>
 	<field name="NRO_SOLICITUD" class="java.math.BigDecimal"/>
 	<field name="FECHA_SOLICITUD" class="java.sql.Timestamp"/>
+	<field name="FECHA_APROBACION" class="java.sql.Timestamp"/>
+	<field name="FECHA_DESEMBOLSO" class="java.sql.Timestamp"/>
 	<field name="ID_ESTADO" class="java.math.BigDecimal"/>
 	<field name="CODIGO_PARTICIPE" class="java.math.BigDecimal"/>
 	<field name="NOMBRES_APELLIDOS" class="java.lang.String"/>
@@ -102,6 +131,9 @@
 	<field name="NRO_OP_ANTERIOR" class="java.math.BigDecimal"/>
 	<field name="SALDO_CTA_INDIVIDUAL" class="java.math.BigDecimal"/>
 	<field name="INGRESO_MENSUAL" class="java.math.BigDecimal"/>
+	<field name="CAPACIDAD_PAGO" class="java.math.BigDecimal"/>
+	<field name="SALDO_CREDITOS_VIGENTES" class="java.math.BigDecimal"/>
+	<field name="DESCUENTOS" class="java.math.BigDecimal"/>
 	<field name="CUOTAS_VIGENTES" class="java.math.BigDecimal"/>
 	<field name="VALOR_LIQUIDO" class="java.math.BigDecimal"/>
 	<field name="BANCO" class="java.lang.String"/>
@@ -113,7 +145,7 @@
 	<background splitType="Stretch"/>
 
 	<detail>
-		<band height="738" splitType="Stretch">
+		<band height="586" splitType="Stretch">
 			<element kind="rectangle" uuid="a3000001-0000-0000-0000-000000000001" x="0" y="0" width="130" height="62" mode="Transparent">
 				<pen lineWidth="0.75" lineColor="#000000"/>
 			</element>
@@ -307,7 +339,7 @@
 				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
 			</element>
 			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000050" x="112" y="333" width="150" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
-				<expression><![CDATA["________ días"]]></expression>
+				<expression><![CDATA["MENSUAL"]]></expression>
 				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
 			</element>
 			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000051" x="262" y="333" width="130" height="14" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
@@ -375,7 +407,7 @@
 				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
 			</element>
 			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000067" x="392" y="393" width="143" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
-				<expression><![CDATA["USD " + ($P{P_SALDO_CREDITOS_VIGENTES} != null ? com.saa.ejb.crd.util.NumeroALetrasUtil.formatearMontoEc(Double.valueOf($P{P_SALDO_CREDITOS_VIGENTES}.doubleValue())) : "____________")]]></expression>
+				<expression><![CDATA["USD " + ($F{SALDO_CREDITOS_VIGENTES} != null ? com.saa.ejb.crd.util.NumeroALetrasUtil.formatearMontoEc(Double.valueOf($F{SALDO_CREDITOS_VIGENTES}.doubleValue())) : "____________")]]></expression>
 				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
 			</element>
 			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000068" x="0" y="407" width="112" height="14" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
@@ -391,7 +423,7 @@
 				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
 			</element>
 			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000071" x="392" y="407" width="143" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
-				<expression><![CDATA["USD ____________"]]></expression>
+				<expression><![CDATA["USD " + ($F{DESCUENTOS} != null ? com.saa.ejb.crd.util.NumeroALetrasUtil.formatearMontoEc(Double.valueOf($F{DESCUENTOS}.doubleValue())) : "____________")]]></expression>
 				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
 			</element>
 			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000072" x="0" y="421" width="112" height="14" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
@@ -407,7 +439,7 @@
 				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
 			</element>
 			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000075" x="392" y="421" width="143" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
-				<expression><![CDATA["USD ____________"]]></expression>
+				<expression><![CDATA["USD " + ($F{CAPACIDAD_PAGO} != null ? com.saa.ejb.crd.util.NumeroALetrasUtil.formatearMontoEc(Double.valueOf($F{CAPACIDAD_PAGO}.doubleValue())) : "____________")]]></expression>
 				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
 			</element>
 			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000076" x="0" y="435" width="112" height="14" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
@@ -415,7 +447,7 @@
 				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
 			</element>
 			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000077" x="112" y="435" width="150" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
-				<expression><![CDATA["USD ____________"]]></expression>
+				<expression><![CDATA["USD " + ($F{SALDO_CTA_INDIVIDUAL} != null ? com.saa.ejb.crd.util.NumeroALetrasUtil.formatearMontoEc(Double.valueOf($F{SALDO_CTA_INDIVIDUAL}.doubleValue())) : "____________")]]></expression>
 				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
 			</element>
 			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000078" x="262" y="435" width="130" height="14" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
@@ -458,25 +490,32 @@
 				<expression><![CDATA[($F{NRO_CUENTA} != null && !$F{NRO_CUENTA}.isEmpty() ? $F{NRO_CUENTA} : "____________")]]></expression>
 				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
 			</element>
-			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000088" x="0" y="547" width="535" height="13" mode="Opaque" backcolor="#1F3864" forecolor="#FFFFFF" fontSize="9.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000301" x="0" y="547" width="535" height="36" fontSize="8.0" hTextAlign="Justified" vTextAlign="Top" textAdjust="StretchHeight" markup="styled">
+				<expression><![CDATA["<style isBold='true'>Plazo de desembolso:</style> Una vez aprobada la presente solicitud y suscritos el pagaré y la tabla de amortización, el valor líquido del crédito será acreditado en la cuenta antes indicada en un plazo máximo de setenta y dos (72) horas hábiles, entendiéndose por tales las comprendidas en días laborables de lunes a viernes, excluidos feriados nacionales y locales."]]></expression>
+				<box leftPadding="0" rightPadding="0"/>
+			</element>
+		</band>
+		<band height="262" splitType="Stretch">
+			<element kind="break" uuid="a3000001-0000-0000-0000-000000000302" x="0" y="0" width="535" height="1"/>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000088" x="0" y="22" width="535" height="13" mode="Opaque" backcolor="#1F3864" forecolor="#FFFFFF" fontSize="9.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
 				<text><![CDATA[5. AUTORIZACIONES Y DECLARACIONES DEL PARTÍCIPE]]></text>
 				<box leftPadding="4" rightPadding="4"><pen lineWidth="0.5" lineColor="#000000"/></box>
 			</element>
-			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000089" x="0" y="563" width="535" height="125" fontSize="7.5" hTextAlign="Justified" vTextAlign="Top" textAdjust="StretchHeight">
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000089" x="0" y="38" width="535" height="125" fontSize="7.5" hTextAlign="Justified" vTextAlign="Top" textAdjust="StretchHeight">
 				<expression><![CDATA["a) Burós y referencias crediticias: Autorizo expresa e irrevocablemente a la ASOCIACIÓN DEL FONDO COMPLEMENTARIO PREVISIONAL CERRADO ASOPREP-FCPC, DE JUBILACIÓN Y CESANTÍA, DE LAS EMPRESAS PÚBLICAS DEL SECTOR HIDROCARBURÍFERO, o a quien sea el futuro cesionario, beneficiario o acreedor del crédito solicitado o del documento o título cambiario que lo respalde, para que obtenga cuantas veces sean necesarias, de cualquier fuente de información, incluidos los burós de crédito, mi información de riesgos crediticios; y, de igual forma, para que pueda transferir o entregar dicha información a los burós de crédito o a las entidades que los sustituyan, a cualquier persona jurídica que preste servicios de referencias crediticias, a la Central de Riesgos si fuera pertinente y/o a cualquier persona natural o jurídica que brinde servicios de cobranza.\nb) Garantía con cuenta individual: Acepto que, en caso de incumplimiento, cese o desvinculación, los valores adeudados a ASOPREP-FCPC sean compensados con el saldo de mi cuenta individual, de conformidad con la normativa vigente.\nc) Licitud de fondos: Declaro que los recursos con los que cancelaré el presente crédito provienen de actividades lícitas y que no serán destinados a ninguna actividad relacionada con el lavado de activos, financiamiento del terrorismo u otros delitos.\nd) Protección de datos personales: Conforme a la Ley Orgánica de Protección de Datos Personales, autorizo a ASOPREP-FCPC el tratamiento de mis datos personales para fines de análisis, otorgamiento, administración y recuperación del crédito.\ne) Veracidad: Declaro bajo juramento que la información y documentación entregadas son legítimas y verdaderas y, en consecuencia, eximo a ASOPREP-FCPC de toda responsabilidad si éstas fueran falsas o erróneas. Asimismo, autorizo expresamente a ASOPREP-FCPC a realizar el análisis que considere pertinente e informar a las autoridades competentes si fuera el caso."]]></expression>
 				<box leftPadding="0" rightPadding="0"/>
 			</element>
-			<element kind="line" positionType="Float" uuid="a3000001-0000-0000-0000-000000000090" x="150" y="705" width="235" height="1"/>
-			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000091" x="100" y="708" width="335" height="12" positionType="Float" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<element kind="line" positionType="Float" uuid="a3000001-0000-0000-0000-000000000090" x="150" y="225" width="235" height="1"/>
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000091" x="100" y="228" width="335" height="12" positionType="Float" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
 				<expression><![CDATA[($F{NOMBRES_APELLIDOS} != null && !$F{NOMBRES_APELLIDOS}.isEmpty() ? $F{NOMBRES_APELLIDOS} : "")]]></expression>
 				<box leftPadding="3" rightPadding="3"/>
 			</element>
-			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000092" x="100" y="720" width="335" height="12" positionType="Float" fontSize="8.0" hTextAlign="Center" vTextAlign="Middle">
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000092" x="100" y="240" width="335" height="12" positionType="Float" fontSize="8.0" hTextAlign="Center" vTextAlign="Middle">
 				<expression><![CDATA["Firma del Partícipe — C.C. " + ($F{CEDULA} != null && !$F{CEDULA}.isEmpty() ? $F{CEDULA} : "")]]></expression>
 				<box leftPadding="3" rightPadding="3"/>
 			</element>
 		</band>
-		<band height="468" splitType="Stretch">
+		<band height="496" splitType="Stretch">
 			<element kind="break" uuid="a3000001-0000-0000-0000-000000000093" x="0" y="0" width="535" height="1"/>
 			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000094" x="0" y="6" width="535" height="13" mode="Opaque" backcolor="#1F3864" forecolor="#FFFFFF" fontSize="9.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
 				<text><![CDATA[6. REQUISITOS Y VERIFICACIÓN DOCUMENTAL (uso de Crédito)]]></text>
@@ -559,7 +598,7 @@
 				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
 			</element>
 			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000115" x="25" y="81" width="285" height="24" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
-				<text><![CDATA[Último rol de pagos o certificado de ingresos (jubilados: último comprobante de pensión)]]></text>
+				<text><![CDATA[Último rol de pagos o certificado de ingresos]]></text>
 				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
 			</element>
 			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000116" x="310" y="81" width="50" height="24" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
@@ -770,84 +809,108 @@
 				<text><![CDATA[7. RESOLUCIÓN]]></text>
 				<box leftPadding="4" rightPadding="4"><pen lineWidth="0.5" lineColor="#000000"/></box>
 			</element>
-			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000172" x="0" y="306" width="112" height="14" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
-				<text><![CDATA[Monto pre aprobado]]></text>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000310" x="0" y="306" width="112" height="14" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[Fecha de solicitud]]></text>
 				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
 			</element>
-			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000173" x="112" y="306" width="150" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000311" x="112" y="306" width="150" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<expression><![CDATA[($F{FECHA_SOLICITUD} != null ? new java.text.SimpleDateFormat("yyyy-MM-dd").format($F{FECHA_SOLICITUD}) : "____________")]]></expression>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000312" x="262" y="306" width="130" height="14" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[Fecha de aprobación]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000313" x="392" y="306" width="143" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<expression><![CDATA[($F{FECHA_APROBACION} != null ? new java.text.SimpleDateFormat("yyyy-MM-dd").format($F{FECHA_APROBACION}) : "____________")]]></expression>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000314" x="0" y="320" width="150" height="14" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[Fecha máxima de desembolso]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000315" x="150" y="320" width="112" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+				<expression><![CDATA[($F{FECHA_DESEMBOLSO} != null ? new java.text.SimpleDateFormat("yyyy-MM-dd").format($F{FECHA_DESEMBOLSO}) : "____________")]]></expression>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000172" x="0" y="334" width="112" height="14" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[Monto aprobado]]></text>
+				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
+			</element>
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000173" x="112" y="334" width="150" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
 				<expression><![CDATA["USD ____________________"]]></expression>
 				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
 			</element>
-			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000174" x="262" y="306" width="130" height="14" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
-				<text><![CDATA[Plazo pre aprobado]]></text>
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000174" x="262" y="334" width="130" height="14" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+				<text><![CDATA[Plazo aprobado]]></text>
 				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
 			</element>
-			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000175" x="392" y="306" width="143" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000175" x="392" y="334" width="143" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
 				<expression><![CDATA["________ cuotas"]]></expression>
 				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
 			</element>
-			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000176" x="0" y="320" width="112" height="14" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000176" x="0" y="348" width="112" height="14" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
 				<text><![CDATA[Estado]]></text>
 				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
 			</element>
-			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000177" x="112" y="320" width="150" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000177" x="112" y="348" width="150" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
 				<expression><![CDATA[""]]></expression>
 				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
 			</element>
-			<element kind="rectangle" uuid="a3000001-0000-0000-0000-000000000178" x="118" y="323" width="9" height="9" mode="Transparent">
+			<element kind="rectangle" uuid="a3000001-0000-0000-0000-000000000178" x="118" y="351" width="9" height="9" mode="Transparent">
 				<pen lineWidth="0.75" lineColor="#000000"/>
 			</element>
-			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000179" x="130" y="320" width="60" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000179" x="130" y="348" width="60" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
 				<text><![CDATA[Aprobado]]></text>
 				<box leftPadding="3" rightPadding="3"/>
 			</element>
-			<element kind="rectangle" uuid="a3000001-0000-0000-0000-000000000180" x="194" y="323" width="9" height="9" mode="Transparent">
+			<element kind="rectangle" uuid="a3000001-0000-0000-0000-000000000180" x="194" y="351" width="9" height="9" mode="Transparent">
 				<pen lineWidth="0.75" lineColor="#000000"/>
 			</element>
-			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000181" x="206" y="320" width="60" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000181" x="206" y="348" width="60" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
 				<text><![CDATA[Negado]]></text>
 				<box leftPadding="3" rightPadding="3"/>
 			</element>
-			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000182" x="262" y="320" width="130" height="14" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000182" x="262" y="348" width="130" height="14" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
 				<text><![CDATA[Nivel de aprobación]]></text>
 				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
 			</element>
-			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000183" x="392" y="320" width="143" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000183" x="392" y="348" width="143" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
 				<expression><![CDATA["____________________"]]></expression>
 				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
 			</element>
-			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000184" x="0" y="334" width="112" height="60" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000184" x="0" y="362" width="112" height="60" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
 				<text><![CDATA[Observaciones]]></text>
 				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
 			</element>
-			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000185" x="112" y="334" width="423" height="60" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000185" x="112" y="362" width="423" height="60" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
 				<expression><![CDATA[""]]></expression>
 				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
 			</element>
-			<element kind="line" uuid="a3000001-0000-0000-0000-000000000186" x="8" y="428" width="162" height="1"/>
-			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000187" x="0" y="430" width="178" height="12" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<element kind="line" uuid="a3000001-0000-0000-0000-000000000186" x="8" y="456" width="162" height="1"/>
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000187" x="0" y="458" width="178" height="12" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
 				<expression><![CDATA[($F{USUARIO_ELABORA} != null && !$F{USUARIO_ELABORA}.isEmpty() ? $F{USUARIO_ELABORA} : "")]]></expression>
 				<box leftPadding="3" rightPadding="3"/>
 			</element>
-			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000188" x="0" y="442" width="178" height="22" fontSize="8.0" hTextAlign="Center" vTextAlign="Top">
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000188" x="0" y="470" width="178" height="22" fontSize="8.0" hTextAlign="Center" vTextAlign="Top">
 				<text><![CDATA[Elaborado por — Asistente de Crédito]]></text>
 				<box leftPadding="3" rightPadding="3"/>
 			</element>
-			<element kind="line" uuid="a3000001-0000-0000-0000-000000000189" x="186" y="428" width="162" height="1"/>
-			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000190" x="178" y="430" width="178" height="12" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<element kind="line" uuid="a3000001-0000-0000-0000-000000000189" x="186" y="456" width="162" height="1"/>
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000190" x="178" y="458" width="178" height="12" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
 				<expression><![CDATA[""]]></expression>
 				<box leftPadding="3" rightPadding="3"/>
 			</element>
-			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000191" x="178" y="442" width="178" height="22" fontSize="8.0" hTextAlign="Center" vTextAlign="Top">
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000191" x="178" y="470" width="178" height="22" fontSize="8.0" hTextAlign="Center" vTextAlign="Top">
 				<text><![CDATA[Revisado por — Jefe de Crédito]]></text>
 				<box leftPadding="3" rightPadding="3"/>
 			</element>
-			<element kind="line" uuid="a3000001-0000-0000-0000-000000000192" x="364" y="428" width="162" height="1"/>
-			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000193" x="356" y="430" width="178" height="12" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<element kind="line" uuid="a3000001-0000-0000-0000-000000000192" x="364" y="456" width="162" height="1"/>
+			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000193" x="356" y="458" width="178" height="12" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
 				<expression><![CDATA[($F{APROBADOR} != null && !$F{APROBADOR}.isEmpty() ? $F{APROBADOR} : "")]]></expression>
 				<box leftPadding="3" rightPadding="3"/>
 			</element>
-			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000194" x="356" y="442" width="178" height="22" fontSize="8.0" hTextAlign="Center" vTextAlign="Top">
+			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000194" x="356" y="470" width="178" height="22" fontSize="8.0" hTextAlign="Center" vTextAlign="Top">
 				<text><![CDATA[Aprobado por — Gerencia General / CAD]]></text>
 				<box leftPadding="3" rightPadding="3"/>
 			</element>

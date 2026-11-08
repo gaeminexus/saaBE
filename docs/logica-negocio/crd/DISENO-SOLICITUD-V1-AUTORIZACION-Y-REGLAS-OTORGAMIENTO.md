@@ -102,7 +102,7 @@ y fill verificado, **y PDF real mirado** (CLAUDE.md, reportes): se llena por `<q
   `API-CICLO-OTORGAMIENTO.md` §121 (`ClasificadorBandaService`, `CRD.BNDP`) **no son capacidad de pago**: clasifican la
   cartera por días de mora para la contabilidad. `saveSingle`, `generarTablaAmortizacion` y `aprobar` no miran ni la
   remuneración ni la cuenta individual.
-- `CRD.CRDT` (`CreditoMontoAprobacion`: monto mínimo, máximo, «idProceso») es CRUD sin uso.
+- `CRD.CRDT` (`CreditoMontoAprobacion`: monto mínimo, máximo, «idProceso») es CRUD sin uso. B4 **no** lo reusa (no tiene tipo, plazo, niveles ni usuarios); queda como está.
 - La tasa (`PRSTTSAA`) se escribe a mano en la pantalla (por defecto 0).
 - **No existe garante** en CRD.
 - La aprobación es de **un solo paso** (decisión del usuario del 2026-08-31, `API-CICLO-OTORGAMIENTO.md` §16).
@@ -169,13 +169,88 @@ Columnas: `GRPRCDGO` (PK, `SQ_GRPRCDGO`), `PRSTCDGO` (FK, obligatorio), `ENTDCDG
   como hoy.
 - La solicitud no cambia: el formato V1 no tiene lugar para el garante.
 
-### B4. Niveles de aprobación — ⛔ BLOQUEADO hasta que el cliente los defina
+### B4. Niveles de aprobación CONFIGURABLES (decisión del usuario, 2026-11-07)
 
-El cliente pide «coordinar la aprobación de acuerdo a los niveles de aprobación», pero no dice cuáles son, y el usuario
-decidió el 2026-08-31 que **no** había niveles. Hace falta confirmar que se revierte esa decisión y la tabla del
-cliente: rangos de monto → quién aprueba (asistente, jefe de crédito, gerencia, CAD) y cómo se identifica a cada uno en
-el sistema (usuario o perfil). Mientras tanto **no se programa nada** de niveles y la sección 7 de la solicitud sigue
-con «Nivel de aprobación» en blanco.
+> «Hagamos niveles de aprobación configurables. Que puedan ser por tipo de préstamo, monto, plazo. Y con eso
+> determinar el número de niveles de aprobación y qué usuario aprueba en cada nivel.»
+
+Esto **revierte** la decisión del 2026-08-31 («no hay niveles»). Los niveles concretos los carga crédito desde la
+pantalla. No hace falta esperar la tabla del cliente.
+
+**Tablas** (script `crd/sql/370`, lo corre el usuario antes del EAR):
+
+| Tabla | Qué es | Columnas clave |
+|---|---|---|
+| `CRD.RGAP` | **Regla**: a qué préstamos aplica | `TPPRCDGO` (nulo = cualquier tipo), `RGAPMNMN`/`RGAPMNMX` (monto, inclusive, nulo = abierto), `RGAPPLMN`/`RGAPPLMX` (plazo en cuotas, ídem), `RGAPPRRD` (prioridad), `RGAPNMBR`, `RGAPESTD` |
+| `CRD.NVAP` | **Nivel** de una regla | `RGAPCDGO`, `NVAPORDN` (1..n), `NVAPNMBR` («Jefe de Crédito», «Gerencia», «CAD»…). **El número de niveles es cuántos niveles activos tiene la regla.** |
+| `CRD.UNAP` | **Usuario** que puede aprobar un nivel | `NVAPCDGO`, `UNAPPJRQ` (= `SCP.PJRQ.PJRQCDGO`, el usuario del sistema). Varios por nivel: **basta uno** |
+| `CRD.APPR` | **Bitácora** de aprobaciones del préstamo | `PRSTCDGO`, `RGAPCDGO`, `NVAPCDGO`, `APPRORDN`, `APPRNMNV` (copia del nombre), `APPRPJRQ`/`APPRUSRO`, `APPRDCSN` (1 aprobado, 2 negado), `APPRFCHA`, `APPROBSR`, `APPRESTD` (1 vigente, 0 invalidada) |
+
+Las cuatro tablas se mapean con los cinco archivos del estándar cada una.
+
+**Resolver la regla de un préstamo** (`NivelAprobacionService.resolverRegla(prestamo)`):
+1. Se buscan las reglas activas donde coinciden el tipo (`TPPRCDGO` del producto, o la regla sin tipo), el monto
+   (`PRSTMNSL`) dentro del rango y el plazo (`PRSTPLZO`) dentro del rango.
+2. Gana la de **menor `RGAPPRRD`**. Si dos empatan en la prioridad menor → 422: «Configuración de niveles ambigua:
+   las reglas X y Y aplican a este préstamo con la misma prioridad».
+3. Si **ninguna** aplica:
+   - mientras **no exista ninguna regla activa en toda la tabla** (transición), el préstamo se aprueba **como hoy**,
+     en un paso, por cualquier usuario válido. Así el EAR puede salir antes de que crédito configure;
+   - en cuanto exista al menos una regla activa, un préstamo sin regla **no se aprueba** → 422: «No hay regla de
+     aprobación para tipo T, monto M, plazo P».
+4. Una regla activa **sin niveles activos**, o un nivel **sin usuarios activos**, es error de configuración → 422 con
+   el nombre de la regla o del nivel.
+
+**Aprobar** (`POST /prst/aprobar/{id}`, mismo endpoint y mismo cuerpo, con `idUsuario` obligatorio cuando hay
+niveles):
+1. El préstamo está en GENERADO (1), como hoy.
+2. Se resuelve la regla. Si el préstamo ya tiene aprobaciones vigentes, se usa la regla **de esas aprobaciones**
+   (`APPR.RGAPCDGO`) y no se re-resuelve, para que un cambio de configuración a mitad no mueva la meta.
+3. **Nivel pendiente** = el de menor orden sin `APPR` vigente.
+4. El usuario (`idUsuario` → `PJRQ`) tiene que estar en `UNAP` de ese nivel. Si no → 422: «El nivel N (nombre) lo
+   aprueba: usuario1, usuario2». **Un mismo usuario no puede aprobar dos niveles del mismo préstamo** (422).
+5. Se graba la `APPR` (decisión 1).
+   - Si **no** era el último nivel: el préstamo **sigue en GENERADO (1)**, y la respuesta dice «Nivel N de M
+     aprobado; falta: nombre del siguiente».
+   - Si **era el último**: corre el `aprobar` de hoy completo (evaluación B2, idAsoprep, orden de desembolso,
+     asiento, VIGENTE, `PRSTUSAP` = usuario del último nivel). Todo en la misma transacción que la última `APPR`: si
+     falla el aprobar, la última `APPR` se revierte.
+6. Las validaciones de B2 (capacidad y cupo) corren **en cada nivel**, no solo en el último, para que nadie apruebe un
+   nivel de algo que no se va a poder aprobar.
+
+**Negar:** `rechazar` registra una `APPR` con decisión 2 del nivel pendiente, si el usuario es de ese nivel o de
+cualquier nivel de la regla, y sigue con el rechazo de hoy (RECHAZADO 7). Sin niveles configurados, como hoy.
+
+**Invalidar:** si el préstamo cambia después de una aprobación parcial (guardar con otro monto, plazo, producto o
+tasa, o regenerar la tabla), todas sus `APPR` vigentes pasan a `APPRESTD = 0` y la aprobación **vuelve a empezar**
+desde el nivel 1. La pantalla lo avisa antes de guardar.
+
+**REST nuevos:**
+- CRUD estándar de `rgap`, `nvap` y `unap`, más `GET /rgap/completa/{id}` (regla con sus niveles y usuarios) para la
+  pantalla de configuración;
+- `GET /prst/estadoAprobacion/{id}` →
+  `{ regla: {id, nombre} | null, sinNiveles: bool, niveles: [{orden, nombre, usuarios:[nombre], aprobadoPor, fecha, decision}], nivelPendiente, puedeAprobar (para el idUsuario de la query) }`;
+- `GET /rgap/simular?idTipo=&monto=&plazo=` → qué regla aplicaría y sus niveles. Sirve para probar la configuración
+  sin un préstamo.
+
+**Pantallas (FE):**
+- Menú de créditos → **«Niveles de aprobación»**:
+  - lista de reglas (tipo, monto desde–hasta, plazo desde–hasta, prioridad, número de niveles, estado);
+  - edición de la regla con sus niveles ordenados (agregar, quitar, reordenar) y, en cada nivel, los usuarios
+    (selector de `SCP.PJRQ`);
+  - botón «Probar» con tipo, monto y plazo (usa `/rgap/simular`).
+- `prestamo-edit`, panel **«Aprobaciones»** (`/prst/estadoAprobacion`):
+  - los niveles con su estado (aprobado por / fecha / pendiente) y quién puede aprobar el pendiente;
+  - el botón dice **«Aprobar nivel N de M»** y solo se habilita si `puedeAprobar`; la garantía sigue siendo el 422.
+- El lote de impresos sale **solo** cuando se aprueba el **último** nivel.
+
+**Solicitud, sección 7:**
+- `NIVEL_APROBACION` = nombre del último nivel de la regla y «(N niveles)», si hay regla; en blanco si no hay.
+- `APROBADOR` = el usuario que aprobó el último nivel (`PRSTUSAP`, como hoy).
+- «Revisado por» = el usuario que aprobó el nivel anterior al último, si existe; en blanco si no.
+
+Lo que queda **fuera**: notificaciones por correo al aprobador siguiente y una bandeja de pendientes por usuario. La
+bandeja sería un buen paso siguiente si crédito la pide.
 
 ### B5. Tasa del 9 %
 
@@ -232,14 +307,14 @@ con «Nivel de aprobación» en blanco.
 | 3 | BE | B3: entidad y capas del garante (la tabla la crea el 369) y el bloque «GARANTE» del pagaré. |
 | 4 | FE | B5, B6 y B7, contra el contrato actualizado. |
 | 5 | BE | `API-CICLO-OTORGAMIENTO.md`: corregir §121 (las bandas no son capacidad de pago) y agregar evaluación, tasa, garante, simulador de novación y la autorización en el lote. Espejo en saaFE `docs/crd/`. |
-| — | nadie | B4 (niveles), hasta la respuesta del cliente. |
+| 3b | BE | B4: niveles configurables (tablas del 370, resolver, aprobar por nivel, invalidar, REST) y sección 7 de la solicitud. |
+| 4b | FE | B4: pantalla «Niveles de aprobación» y panel «Aprobaciones» de `prestamo-edit`. |
 
-Despliegue: el **369 antes** del EAR.
+Despliegue: el **369 y el 370 antes** del EAR.
 
-## PARTE D — Preguntas al usuario (no bloquean, salvo P1)
+## PARTE D — Preguntas al usuario (ninguna bloquea)
 
-- **P1 (bloquea B4).** ¿Se revierte la decisión del 2026-08-31 de no tener niveles de aprobación? Si es así: montos →
-  quién aprueba y cómo se le identifica en el sistema.
+- **P1.** ~~Niveles~~ → resuelto el 2026-11-07: configurables (B4).
 - **P2.** «Fecha máxima de desembolso»: ¿la fecha real del desembolso (diccionario del cliente; en blanco hasta que
   ocurra) o aprobación + 72 horas hábiles sin feriados? Por defecto, la real.
 - **P3.** Tasa del 9 %: ¿todos los productos, también hipotecarios y prendarios? Por defecto, todos los créditos nuevos.
