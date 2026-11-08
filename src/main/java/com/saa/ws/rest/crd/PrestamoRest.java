@@ -30,6 +30,9 @@ import com.saa.ejb.crd.service.dto.ResultadoPagoConAportes;
 import com.saa.ejb.crd.service.dto.ResultadoPagoMultiple;
 import com.saa.ejb.crd.service.dto.ResultadoPrecancelacion;
 import com.saa.ejb.crd.service.dto.ResultadoSimulacionCreditoNuevo;
+import com.saa.ejb.crd.service.dto.ResultadoSimulacionNovacion;
+import com.saa.ejb.crd.service.dto.SolicitudEvaluacionOtorgamiento;
+import com.saa.ejb.crd.service.dto.SolicitudSimulacionNovacion;
 import com.saa.ejb.crd.service.dto.ResultadoSimulacionReestructuracion;
 import com.saa.ejb.crd.service.dto.SimulacionAbonoCapital;
 import com.saa.ejb.crd.service.dto.SimulacionPrecancelacion;
@@ -100,6 +103,9 @@ public class PrestamoRest {
 
     @EJB
     private SimulacionPrestamoService simulacionPrestamoService;
+
+    @EJB
+    private com.saa.ejb.crd.service.EvaluacionOtorgamientoService evaluacionOtorgamientoService;
 
     @EJB
     private ReporteService reporteService;
@@ -270,6 +276,10 @@ public class PrestamoRest {
             if (esRechazoDeSustitucion(registro, e)) {
                 return respuestaFallo(HTTP_REGLA_DE_NEGOCIO, ETAPA_VALIDACION, e.getMessage(), "");
             }
+            // B2/B5: tasa distinta de 9 % o cupo superado -> 422 { mensaje }
+            if (e instanceof com.saa.basico.util.IncomeException) {
+                return respuestaErrorNegocio(e);
+            }
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("Error al actualizar préstamo: " + e.getMessage())
                     .type(MediaType.APPLICATION_JSON)
@@ -297,6 +307,10 @@ public class PrestamoRest {
         } catch (Throwable e) {
             if (esRechazoDeSustitucion(registro, e)) {
                 return respuestaFallo(HTTP_REGLA_DE_NEGOCIO, ETAPA_VALIDACION, e.getMessage(), "");
+            }
+            // B2/B5: tasa distinta de 9 % o cupo superado -> 422 { mensaje }
+            if (e instanceof com.saa.basico.util.IncomeException) {
+                return respuestaErrorNegocio(e);
             }
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("Error al crear préstamo: " + e.getMessage())
@@ -363,14 +377,24 @@ public class PrestamoRest {
     public Response generarTablaAmortizacion(
             @PathParam("id") Long id,
             @PathParam("tieneCuotaCero") Long tieneCuotaCero,
-            @QueryParam("regenerar") Boolean regenerar) {
+            @QueryParam("regenerar") Boolean regenerar,
+            @QueryParam("conEvaluacion") Boolean conEvaluacion) {
         System.out.println("GENERAR TABLA DE AMORTIZACIÓN - Préstamo ID: " + id + ", Cuota 0: " + tieneCuotaCero
-            + ", Regenerar: " + regenerar);
+            + ", Regenerar: " + regenerar + ", conEvaluacion: " + conEvaluacion);
         try {
             Prestamo prestamo = prestamoService.generarTablaAmortizacion(id, tieneCuotaCero,
                 regenerar != null && regenerar);
+            // B2: la capacidad de pago NO bloquea al generar la tabla; con ?conEvaluacion=true la respuesta pasa a
+            // { prestamo, evaluacion } para que la pantalla la muestre como aviso. Sin el parámetro, igual que siempre.
+            Object cuerpo = prestamo;
+            if (conEvaluacion != null && conEvaluacion) {
+                Map<String, Object> envuelto = new LinkedHashMap<>();
+                envuelto.put("prestamo", prestamo);
+                envuelto.put("evaluacion", evaluacionOtorgamientoService.evaluarPrestamo(id));
+                cuerpo = envuelto;
+            }
             return Response.status(Response.Status.OK)
-                    .entity(prestamo)
+                    .entity(cuerpo)
                     .type(MediaType.APPLICATION_JSON)
                     .build();
         } catch (Throwable e) {
@@ -1155,6 +1179,79 @@ public class PrestamoRest {
         } catch (Throwable e) {
             System.err.println("ERROR al simular crédito nuevo: " + e.getMessage());
             e.printStackTrace();
+            return respuestaErrorNegocio(e);
+        }
+    }
+
+    /**
+     * Evaluación del otorgamiento de un préstamo guardado: remuneración, capacidad de pago (50 %), cuotas vigentes,
+     * cuota nueva, cuenta individual, saldo de capital de los vigentes y cupo (100 %). Solo lectura. B1/B7.
+     *
+     * @return 200 con el {@code EvaluacionOtorgamiento} directo (sin sobre)
+     */
+    @GET
+    @Path("/evaluarOtorgamiento/{id}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response evaluarOtorgamiento(@PathParam("id") Long id) {
+        System.out.println("LLEGA AL SERVICIO GET prst/evaluarOtorgamiento - préstamo: " + id);
+        try {
+            return Response.status(Response.Status.OK)
+                    .entity(evaluacionOtorgamientoService.evaluarPrestamo(id))
+                    .type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return respuestaErrorNegocio(e);
+        }
+    }
+
+    /**
+     * Evaluación del otorgamiento de un crédito que todavía no existe (simulador). Mismo DTO que el GET.
+     * Body: { idEntidad, monto, cuotaNueva, idPrestamoOriginal }
+     */
+    @POST
+    @Path("/evaluarOtorgamiento")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response evaluarOtorgamientoSimulado(SolicitudEvaluacionOtorgamiento solicitud) {
+        System.out.println("LLEGA AL SERVICIO POST prst/evaluarOtorgamiento - entidad: "
+            + (solicitud != null ? solicitud.getIdEntidad() : null));
+        try {
+            if (solicitud == null) {
+                return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
+                        "Debe enviar el cuerpo de la solicitud", "PARAMETRO_INVALIDO");
+            }
+            return Response.status(Response.Status.OK)
+                    .entity(evaluacionOtorgamientoService.evaluar(solicitud.getIdEntidad(), solicitud.getMonto(),
+                        solicitud.getCuotaNueva(), null, solicitud.getIdPrestamoOriginal()))
+                    .type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return respuestaErrorNegocio(e);
+        }
+    }
+
+    /**
+     * Simula la novación de un quirografario o emergente: original sustituible, monto mayor al valor de sustitución,
+     * tabla nueva al 9 %, valor líquido y evaluación (sin el original). No escribe nada. B6.
+     * Body: { idPrestamoOriginal, monto, plazo }. Respuesta con el sobre de los otros simuladores:
+     * { exito, etapa, mensaje, resultado: ResultadoSimulacionNovacion }.
+     */
+    @POST
+    @Path("/simularNovacion")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response simularNovacion(SolicitudSimulacionNovacion solicitud) {
+        System.out.println("LLEGA AL SERVICIO SIMULAR NOVACION - Original: "
+            + (solicitud != null ? solicitud.getIdPrestamoOriginal() : null));
+        try {
+            ResultadoSimulacionNovacion resultado = simulacionPrestamoService.simularNovacion(solicitud);
+            Map<String, Object> cuerpo = new LinkedHashMap<>();
+            cuerpo.put("exito", Boolean.TRUE);
+            cuerpo.put("etapa", ETAPA_SIMULACION);
+            cuerpo.put("mensaje", "Simulación calculada");
+            cuerpo.put("resultado", resultado);
+            return Response.status(Response.Status.OK)
+                    .entity(cuerpo).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            System.err.println("ERROR al simular novación: " + e.getMessage());
             return respuestaErrorNegocio(e);
         }
     }

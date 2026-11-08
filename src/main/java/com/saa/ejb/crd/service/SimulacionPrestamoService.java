@@ -2,6 +2,8 @@ package com.saa.ejb.crd.service;
 
 import com.saa.ejb.crd.service.dto.ParametrosAmortizacion;
 import com.saa.ejb.crd.service.dto.ResultadoSimulacionCreditoNuevo;
+import com.saa.ejb.crd.service.dto.ResultadoSimulacionNovacion;
+import com.saa.ejb.crd.service.dto.SolicitudSimulacionNovacion;
 import com.saa.ejb.crd.service.dto.ResultadoSimulacionReestructuracion;
 import com.saa.ejb.crd.service.dto.SolicitudReestructuracion;
 
@@ -42,4 +44,13 @@ public interface SimulacionPrestamoService {
      * @throws Throwable Si el préstamo no existe, está en estado terminal, o algún parámetro es inválido
      */
     ResultadoSimulacionReestructuracion simularReestructuracion(SolicitudReestructuracion solicitud) throws Throwable;
+
+    /**
+     * Simula la novación de un quirografario o emergente (DISENO-SOLICITUD-V1-AUTORIZACION-Y-REGLAS-OTORGAMIENTO.md, B6):
+     * el original tiene que ser PQ o PE y sustituible (la misma validación que {@code SustitucionPrestamoService}); el
+     * monto tiene que superar el valor de sustitución; la tabla nueva se simula a la tasa del 9 %. No graba nada.
+     *
+     * @throws com.saa.basico.util.IncomeException con el motivo (la capa REST lo responde 422)
+     */
+    ResultadoSimulacionNovacion simularNovacion(SolicitudSimulacionNovacion solicitud) throws Throwable;
 }

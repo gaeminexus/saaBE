@@ -37,6 +37,20 @@ public interface SustitucionPrestamoService {
      *
      * @throws com.saa.basico.util.IncomeException con el motivo
      */
+    /**
+     * Evalúa UN préstamo como original de una sustitución (la misma fila que {@link #sustituibles}): si se puede, el
+     * motivo si no, y el valor de sustitución con su desglose. No lanza por una regla de negocio.
+     *
+     * @throws com.saa.basico.util.IncomeException si el préstamo no existe
+     */
+    SustituiblePrestamo evaluarOriginal(Long idPrestamo, String tipo) throws Throwable;
+
+    /**
+     * {@code true} si el préstamo es una REESTRUCTURACIÓN (sustituye a otro con un producto RESTRUCTURADO, o ya quedó
+     * marcado como reestructurado). La novación NO lo es. Un préstamo sin original tampoco.
+     */
+    boolean esReestructuracion(Prestamo nuevo) throws Throwable;
+
     void validarAlGuardar(Prestamo nuevo) throws Throwable;
 
     /**

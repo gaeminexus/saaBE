@@ -38,7 +38,7 @@ public class ProcesoMoraPrestamoServiceImpl implements ProcesoMoraPrestamoServic
     private static final double BASE_DIAS_ANIO = 360.0;
 
     /** Tasa por defecto cuando el préstamo no tiene interés nominal (mismo default del G48) */
-    private static final double TASA_POR_DEFECTO = 9.0;
+    private static final double TASA_POR_DEFECTO = com.saa.rubros.ParametroOtorgamiento.TASA_OTORGAMIENTO;
 
     /** Máximo de errores que se detallan en el resumen */
     private static final int MAX_ERRORES_DETALLADOS = 50;

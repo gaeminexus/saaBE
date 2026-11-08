@@ -74,6 +74,9 @@ public class PrestamoServiceImpl implements PrestamoService {
     private com.saa.ejb.crd.service.SustitucionPrestamoService sustitucionPrestamoService;
 
     @EJB
+    private com.saa.ejb.crd.service.EvaluacionOtorgamientoService evaluacionOtorgamientoService;
+
+    @EJB
     private com.saa.ejb.crd.dao.DetalleCobroCreditoDaoService detalleCobroCreditoDaoService;
 
     @EJB
@@ -220,6 +223,11 @@ public class PrestamoServiceImpl implements PrestamoService {
         	// (codigo == null): no se toca el estado de un préstamo existente en cada edición.
         	prestamo.setIdEstado(Long.valueOf(EstadoPrestamo.PENDIENTE_DE_APROBACION));
 		}
+
+        // B5/B2 (DISENO-SOLICITUD-V1-AUTORIZACION-Y-REGLAS-OTORGAMIENTO.md): un préstamo del otorgamiento (alta o 6/1, y no
+        // una reestructuración) lleva la tasa del 9 % y no puede superar el cupo de la cuenta individual. Lanza
+        // IncomeException (la capa REST responde 422). No aplica a Petro ni a migración: no pasan por saveSingle.
+        evaluacionOtorgamientoService.validarAlGuardar(prestamo, existente);
 
         // D10 (decisión 11 del plan de simuladores): PRSTTSAA y PRSTINNM son una sola tasa.
         // Se deriva interesNominal de tasa en cada guardado, para que el proceso de mora
@@ -444,6 +452,11 @@ public class PrestamoServiceImpl implements PrestamoService {
             throw new IncomeException("Falta la suma asegurada del bien: sin ella no se registra la garantía"
                 + " en cuentas de orden");
         }
+
+        // B2: capacidad de pago (≤ 50 % de la remuneración) y cupo (≤ 100 % de la cuenta individual) bloquean la
+        // aprobación; sin remuneración tampoco se aprueba. ANTES de numerar y de tocar nada. No aplica a la
+        // reestructuración de un préstamo en mora. IncomeException → 422.
+        evaluacionOtorgamientoService.validarAlAprobar(prestamo);
 
         // Reestructuración / novación: recalcula el VS y aplica RN7 y RN8 ANTES de gastar el número.
         ContextoSustitucion sustitucion = prestamo.getIdPrestamoOriginal() != null

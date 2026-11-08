@@ -18,16 +18,22 @@ import com.saa.ejb.crd.service.CalculadoraAmortizacionService;
 import com.saa.ejb.crd.service.MotorPagoPrestamoService;
 import com.saa.ejb.crd.service.PagoPrestamoService;
 import com.saa.ejb.crd.service.ProcesoPagoPrestamoService;
+import com.saa.ejb.crd.service.EvaluacionOtorgamientoService;
 import com.saa.ejb.crd.service.SimulacionPrestamoService;
+import com.saa.ejb.crd.service.SustitucionPrestamoService;
 import com.saa.ejb.crd.service.dto.CuotaProyectada;
 import com.saa.ejb.crd.service.dto.ParametrosAmortizacion;
 import com.saa.ejb.crd.service.dto.ResultadoSimulacionCreditoNuevo;
+import com.saa.ejb.crd.service.dto.ResultadoSimulacionNovacion;
+import com.saa.ejb.crd.service.dto.SolicitudSimulacionNovacion;
+import com.saa.ejb.crd.service.dto.SustituiblePrestamo;
 import com.saa.ejb.crd.service.dto.ResultadoSimulacionReestructuracion;
 import com.saa.ejb.crd.service.dto.SaldosCuota;
 import com.saa.ejb.crd.service.dto.SolicitudReestructuracion;
 import com.saa.model.crd.DetallePrestamo;
 import com.saa.model.crd.Prestamo;
 import com.saa.rubros.EstadoPrestamo;
+import com.saa.rubros.ParametroOtorgamiento;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
@@ -68,6 +74,91 @@ public class SimulacionPrestamoServiceImpl implements SimulacionPrestamoService 
      */
     @EJB
     private MotorPagoPrestamoService motorPagoPrestamoService;
+
+    @EJB
+    private SustitucionPrestamoService sustitucionPrestamoService;
+
+    @EJB
+    private EvaluacionOtorgamientoService evaluacionOtorgamientoService;
+
+    @Override
+    public ResultadoSimulacionNovacion simularNovacion(SolicitudSimulacionNovacion solicitud) throws Throwable {
+        System.out.println("SimulacionPrestamoServiceImpl.simularNovacion - original: "
+            + (solicitud != null ? solicitud.getIdPrestamoOriginal() : null));
+        if (solicitud == null || solicitud.getIdPrestamoOriginal() == null) {
+            throw new IncomeException(ProcesoPagoPrestamoService.ERR_PARAMETRO_INVALIDO
+                + ": idPrestamoOriginal es obligatorio");
+        }
+        if (solicitud.getMonto() == null || solicitud.getMonto() <= 0.0) {
+            throw new IncomeException(ProcesoPagoPrestamoService.ERR_PARAMETRO_INVALIDO + ": el monto es obligatorio");
+        }
+        if (solicitud.getPlazo() == null || solicitud.getPlazo() <= 0) {
+            throw new IncomeException(ProcesoPagoPrestamoService.ERR_PARAMETRO_INVALIDO + ": el plazo es obligatorio");
+        }
+        Prestamo original = prestamoDaoService.find(new Prestamo(), solicitud.getIdPrestamoOriginal());
+        if (original == null) {
+            throw new IncomeException(ProcesoPagoPrestamoService.ERR_PRESTAMO_NO_ENCONTRADO
+                + ": no existe el préstamo " + solicitud.getIdPrestamoOriginal());
+        }
+        // 1. Solo quirografarios (PQ) y emergentes (PE).
+        String codigoPetro = original.getProducto() != null && original.getProducto().getCodigoPetro() != null
+            ? original.getProducto().getCodigoPetro().trim().toUpperCase() : "";
+        if (!ParametroOtorgamiento.CODIGO_PETRO_QUIROGRAFARIO.equals(codigoPetro)
+                && !ParametroOtorgamiento.CODIGO_PETRO_EMERGENTE.equals(codigoPetro)) {
+            throw new IncomeException("El préstamo " + original.getCodigo()
+                + " no es quirografario ni emergente; la novación solo se simula para esos productos.");
+        }
+        // 1b. Sustituible: la misma validación que usa el guardado y la aprobación (sin mora; VS = capital).
+        SustituiblePrestamo fila = sustitucionPrestamoService.evaluarOriginal(original.getCodigo(),
+            SustitucionPrestamoService.TIPO_NOVACION);
+        if (!fila.isPuede()) {
+            throw new IncomeException(fila.getMotivo() != null ? fila.getMotivo()
+                : "El préstamo " + original.getCodigo() + " no se puede novar.");
+        }
+        double vs = fila.getValorSustitucion() != null ? fila.getValorSustitucion() : 0.0;
+        // 2. monto > VS, como validarAlGuardar.
+        if (solicitud.getMonto() <= vs + 0.005) {
+            throw new IncomeException("En una novación el monto ($"
+                + String.format(java.util.Locale.US, "%.2f", solicitud.getMonto())
+                + ") debe ser mayor que el valor de sustitución ($" + String.format(java.util.Locale.US, "%.2f", vs) + ").");
+        }
+        // 3. Tabla nueva a la tasa del 9 %, con el tipo de amortización del original.
+        ParametrosAmortizacion params = new ParametrosAmortizacion();
+        params.setMonto(solicitud.getMonto());
+        params.setTasaAnual(ParametroOtorgamiento.TASA_OTORGAMIENTO);
+        params.setPlazo(solicitud.getPlazo());
+        params.setTipoAmortizacion(original.getTipoAmortizacion() != null ? original.getTipoAmortizacion() : 1L);
+        params.setFechaInicio(LocalDate.now().atStartOfDay());
+        params.setTieneCuotaCero(Boolean.FALSE);
+        ResultadoSimulacionCreditoNuevo simulacion = simularCreditoNuevo(params);
+
+        // La cuota TOTAL de la primera cuota regular de la tabla simulada.
+        Double cuotaNueva = null;
+        if (simulacion.getTablaProyectada() != null) {
+            for (CuotaProyectada cuota : simulacion.getTablaProyectada()) {
+                if (cuota.getNumeroCuota() != null && cuota.getNumeroCuota() > 0) {
+                    cuotaNueva = cuota.getTotal();
+                    break;
+                }
+            }
+        }
+
+        ResultadoSimulacionNovacion resultado = new ResultadoSimulacionNovacion();
+        ResultadoSimulacionNovacion.Original datos = new ResultadoSimulacionNovacion.Original();
+        datos.setIdPrestamo(original.getCodigo());
+        datos.setIdAsoprep(original.getIdAsoprep());
+        datos.setProducto(fila.getProducto());
+        datos.setCuotaActual(redondear(evaluacionOtorgamientoService.cuotaVigenteDe(original.getCodigo())));
+        datos.setVs(redondear(vs));
+        datos.setDesgloseVs(fila.getDesglose());
+        resultado.setOriginal(datos);
+        resultado.setSimulacion(simulacion);
+        resultado.setValorLiquido(redondear(solicitud.getMonto() - vs));
+        Long idEntidad = original.getEntidad() != null ? original.getEntidad().getCodigo() : null;
+        resultado.setEvaluacion(evaluacionOtorgamientoService.evaluar(idEntidad, solicitud.getMonto(), cuotaNueva,
+            null, original.getCodigo()));
+        return resultado;
+    }
 
     @Override
     public ResultadoSimulacionCreditoNuevo simularCreditoNuevo(ParametrosAmortizacion params) throws Throwable {

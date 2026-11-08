@@ -105,34 +105,65 @@ public class SustitucionPrestamoServiceImpl implements SustitucionPrestamoServic
                     && estado != EstadoPrestamo.VIGENTE_POR_REVISAR && estado != EstadoPrestamo.EN_MORA)) {
                 continue;
             }
-            Evaluacion ev = evaluar(prestamo, novacion, hoy, null);
-            SustituiblePrestamo fila = new SustituiblePrestamo();
-            fila.setIdPrestamo(prestamo.getCodigo());
-            fila.setIdAsoprep(prestamo.getIdAsoprep());
-            fila.setProducto(prestamo.getProducto() != null ? prestamo.getProducto().getNombre() : null);
-            fila.setFamilia(ev.familia);
-            fila.setEstado(estado);
-            fila.setPuede(ev.motivo == null);
-            fila.setMotivo(ev.motivo);
-            if (ev.desglose != null) {
-                fila.setValorSustitucion(ev.valorSustitucion);
-                SustituiblePrestamo.Desglose desglose = new SustituiblePrestamo.Desglose();
-                desglose.setCapital(redondear(ev.desglose.getCapitalPendiente()));
-                desglose.setInteres(redondear(ev.desglose.getInteresPendiente()));
-                desglose.setMora(redondear(ev.desglose.getMoraPendiente()));
-                desglose.setSeguros(redondear(ev.desglose.getDesgravamenPendiente()
-                    + ev.desglose.getSeguroIncendioPendiente()));
-                fila.setDesglose(desglose);
-            }
-            if (ev.sugerido != null) {
-                SustituiblePrestamo.ProductoSugerido sugerido = new SustituiblePrestamo.ProductoSugerido();
-                sugerido.setIdProducto(ev.sugerido.getCodigo());
-                sugerido.setNombre(ev.sugerido.getNombre());
-                fila.setProductoSugerido(sugerido);
-            }
-            resultado.add(fila);
+            resultado.add(filaDe(prestamo, novacion, hoy));
         }
         return resultado;
+    }
+
+    /** La fila del listado de un préstamo: evalúa y arma el DTO (una sola fuente para el listado y B6). */
+    private SustituiblePrestamo filaDe(Prestamo prestamo, boolean novacion, LocalDate hoy) throws Throwable {
+        Evaluacion ev = evaluar(prestamo, novacion, hoy, null);
+        SustituiblePrestamo fila = new SustituiblePrestamo();
+        fila.setIdPrestamo(prestamo.getCodigo());
+        fila.setIdAsoprep(prestamo.getIdAsoprep());
+        fila.setProducto(prestamo.getProducto() != null ? prestamo.getProducto().getNombre() : null);
+        fila.setFamilia(ev.familia);
+        fila.setEstado(prestamo.getIdEstado());
+        fila.setPuede(ev.motivo == null);
+        fila.setMotivo(ev.motivo);
+        if (ev.desglose != null) {
+            fila.setValorSustitucion(ev.valorSustitucion);
+            SustituiblePrestamo.Desglose desglose = new SustituiblePrestamo.Desglose();
+            desglose.setCapital(redondear(ev.desglose.getCapitalPendiente()));
+            desglose.setInteres(redondear(ev.desglose.getInteresPendiente()));
+            desglose.setMora(redondear(ev.desglose.getMoraPendiente()));
+            desglose.setSeguros(redondear(ev.desglose.getDesgravamenPendiente()
+                + ev.desglose.getSeguroIncendioPendiente()));
+            fila.setDesglose(desglose);
+        }
+        if (ev.sugerido != null) {
+            SustituiblePrestamo.ProductoSugerido sugerido = new SustituiblePrestamo.ProductoSugerido();
+            sugerido.setIdProducto(ev.sugerido.getCodigo());
+            sugerido.setNombre(ev.sugerido.getNombre());
+            fila.setProductoSugerido(sugerido);
+        }
+        return fila;
+    }
+
+    @Override
+    public SustituiblePrestamo evaluarOriginal(Long idPrestamo, String tipo) throws Throwable {
+        System.out.println("SustitucionPrestamoService.evaluarOriginal - préstamo: " + idPrestamo + " - tipo: " + tipo);
+        if (idPrestamo == null) {
+            throw new IncomeException("PARAMETRO_INVALIDO: idPrestamo es obligatorio");
+        }
+        Prestamo prestamo = prestamoDaoService.find(new Prestamo(), idPrestamo);
+        if (prestamo == null) {
+            throw new IncomeException("PRESTAMO_NO_ENCONTRADO: no existe el préstamo " + idPrestamo);
+        }
+        return filaDe(prestamo, esTipoNovacion(tipo), LocalDate.now());
+    }
+
+    @Override
+    public boolean esReestructuracion(Prestamo nuevo) throws Throwable {
+        if (nuevo == null || nuevo.getIdPrestamoOriginal() == null) {
+            return false;
+        }
+        if (nuevo.getReestructurado() != null && nuevo.getReestructurado().longValue() == 1L) {
+            return true;
+        }
+        Long idProducto = nuevo.getProducto() != null ? nuevo.getProducto().getCodigo() : null;
+        Producto producto = idProducto != null ? productoDaoService.find(new Producto(), idProducto) : null;
+        return producto != null && esDelTipo(producto, false);
     }
 
     // =====================================================================
