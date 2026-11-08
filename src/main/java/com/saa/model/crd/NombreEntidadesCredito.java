@@ -72,6 +72,7 @@ public interface NombreEntidadesCredito {
 	String TRANSACCIONES_ASOPREP = "TransaccionesAsoprep";
 	String BASE_INICIAL_PARTICIPES = "BaseInicialParticipes";
 	String CONYUGE = "Conyuge";
+	String GARANTE_PRESTAMO = "GarantePrestamo";
 	String REFERENCIA_FAMILIAR = "ReferenciaFamiliar";
 	String REFERENCIA_PERSONAL = "ReferenciaPersonal";
 	String CUENTA_BANCARIA_PARTICIPE = "CuentaBancariaParticipe";

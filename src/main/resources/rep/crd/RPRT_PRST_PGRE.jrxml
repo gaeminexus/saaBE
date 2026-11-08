@@ -6,7 +6,10 @@
      IM2: un dato sin fuente sale como línea para llenar a mano (________); no se inventa.
      IM3: el número es PRSTIDAS (idAsoprep); sin él sale la marca BORRADOR y el número en blanco.
      IM4: letras y formatos del modelo con NumeroALetrasUtil (clase del WAR, crd.util): el verificador de
-     llenado y el compilador necesitan sólo esa .class en el classpath. -->
+     llenado y el compilador necesitan sólo esa .class en el classpath.
+     B3 (DISENO-SOLICITUD-V1-AUTORIZACION-Y-REGLAS-OTORGAMIENTO.md): con garante ACTIVO (CRD.GRPR, crd/sql/369) se agrega
+     un segundo bloque de firma «FIRMA DEL GARANTE». El texto legal NO cambia. Sin garante el pagaré sale como antes: las
+     firmas pasaron de <summary> a una banda de <detail> igual, y el bloque del garante solo se imprime si existe. -->
 <jasperReport name="RPRT_PRST_PGRE" language="java" pageWidth="595" pageHeight="842" columnWidth="515" leftMargin="40" rightMargin="40" topMargin="30" bottomMargin="30" whenNoDataType="AllSectionsNoDetail" uuid="a2000001-0000-0000-0000-000000000001">
 	<property name="com.jaspersoft.studio.data.defaultdataadapter" value="Oracle"/>
 	<property name="com.jaspersoft.studio.report.description" value="Pagaré a la orden — modelo V2 del cliente"/>
@@ -30,7 +33,9 @@
        UPPER(TRIM(cd.CDDDNMBR))                AS CIUDAD,
        TRIM(bx.BEXTNMBR)                       AS BANCO,
        TRIM(cb.CNBPNMRO)                       AS NRO_CUENTA,
-       CASE cb.CNBPTPCN WHEN 1 THEN 'AHORROS' WHEN 2 THEN 'CORRIENTE' END AS TIPO_CUENTA
+       CASE cb.CNBPTPCN WHEN 1 THEN 'AHORROS' WHEN 2 THEN 'CORRIENTE' END AS TIPO_CUENTA,
+       TRIM(g.GRPRNMBR)                        AS GARANTE_NOMBRES,
+       TRIM(g.GRPRNMID)                        AS GARANTE_CEDULA
   FROM CRD.PRST p
   JOIN CRD.ENTD e   ON e.ENTDCDGO  = p.ENTDCDGO
   JOIN CRD.PRDC pr  ON pr.PRDCCDGO = p.PRDCCDGO
@@ -44,6 +49,8 @@
                                              AND NOT EXISTS (SELECT 1 FROM CRD.DRTR t WHERE t.DRCCCDGO = d2.DRCCCDGO))
   LEFT JOIN CRD.PRRQ pq ON pq.PRRQCDGO = dr.PRRQCDGO
   LEFT JOIN CRD.CDDD cd ON cd.CDDDCDGO = pq.CDDDCDGO
+  LEFT JOIN CRD.GRPR g ON g.GRPRCDGO = (SELECT MAX(g2.GRPRCDGO) FROM CRD.GRPR g2
+                                         WHERE g2.PRSTCDGO = p.PRSTCDGO AND g2.GRPRESTD = 1)
   LEFT JOIN CRD.CNBP cb ON cb.CNBPCDGO = (SELECT MAX(c3.CNBPCDGO) FROM CRD.CNBP c3
                                            WHERE c3.ENTDCDGO = e.ENTDCDGO AND NVL(c3.CNBPIDST, 1) = 1)
   LEFT JOIN TSR.BEXT bx ON bx.BEXTCDGO = cb.BEXTCDGO
@@ -65,6 +72,8 @@
 	<field name="BANCO" class="java.lang.String"/>
 	<field name="NRO_CUENTA" class="java.lang.String"/>
 	<field name="TIPO_CUENTA" class="java.lang.String"/>
+	<field name="GARANTE_NOMBRES" class="java.lang.String"/>
+	<field name="GARANTE_CEDULA" class="java.lang.String"/>
 
 	<!-- Variables: cada una arma un pedazo del modelo; lo vacío sale como línea para llenar a mano (IM2). -->
 	<variable name="V_NUMERO" class="java.lang.String">
@@ -93,6 +102,9 @@
 	</variable>
 	<variable name="V_HAY_CONYUGE" class="java.lang.Boolean">
 		<expression><![CDATA[$F{CONYUGE_NOMBRES} != null && !$F{CONYUGE_NOMBRES}.isEmpty()]]></expression>
+	</variable>
+	<variable name="V_HAY_GARANTE" class="java.lang.Boolean">
+		<expression><![CDATA[$F{GARANTE_CEDULA} != null && !$F{GARANTE_CEDULA}.isEmpty()]]></expression>
 	</variable>
 	<variable name="V_DEUDOR_NOMBRES" class="java.lang.String">
 		<expression><![CDATA[$F{DEUDOR_NOMBRES} != null && !$F{DEUDOR_NOMBRES}.isEmpty() ? $F{DEUDOR_NOMBRES} : "______________________"]]></expression>
@@ -146,34 +158,47 @@
 				<expression><![CDATA["Yo (nosotros), " + $V{V_DEUDOR_NOMBRES} + ", cédula de ciudadanía " + $V{V_DEUDOR_CEDULA} + $V{V_CONYUGE_TXT} + ", con domicilio en: " + $V{V_DIRECCION} + ", en la ciudad de " + $V{V_CIUDAD} + "\n\nDebo (emos) y pagaré (emos), solidaria e incondicionalmente, en la ciudad de QUITO, a la orden de la ASOCIACION DEL FONDO COMPLEMENTARIO PREVISIONAL CERRADO ASOPREP-FCPC, DE JUBILACION Y CESANTIA DE LAS EMPRESAS PUBLICAS DEL SECTOR HIDROCARBURIFERO, la cantidad de: " + $V{V_MONTO_TXT} + ". Esta suma me (nos) obligo (amos) pagarla en la misma moneda, esto es, en dólares de los Estados Unidos de América, en " + $V{V_PLAZO_TXT} + " cuotas mensuales, iguales y sucesivas de " + $V{V_CUOTA_TXT} + ", más el valor del seguro de desgravamen que se gravará sobre saldos de capital. \n\nEl capital devengará intereses que se computarán a razón del " + $V{V_TASA_TXT} + " anual. La tasa de interés expresamente la reconozco(cemos) como reajustable. En cumplimiento de todo lo estipulado me(nos) obligo(amos) con todos mis(nuestos) bienes presentes o futuros, propios y gananciales.\n\nLas cuotas referidas previamente y que se detallan el atabla de amortización adjunta No. " + $V{V_NUMERO} + ", comprenden el capital y los intereses sobre el saldo deudor del capital, a lo que se sumará los intereses de mora de ser el caso, seguros de desgravamen, vehicular, contra incendio y líneas aliadas según corresponda, así como cualquier otro valor establecido por ley, que expresamente me(nos) obligo(amos) a pagarlos.\n\nDichos valores los pagaré (emos) a través del rol de pagos o débito bancario, de acuerdo a la tabla de amortización. En caso de no cubrir con el rol de pagos, autorizo (amos) voluntaria y expresamente a la ASOCIACION DEL FONDO COMPLEMENTARIO PREVISIONAL CERRADO ASOPREP-FCPC, DE JUBILACION Y CESANTIA DE LAS EMPRESAS PUBLICAS DEL SECTOR HIDROCARBURIFERO, que me (nos) debite de la cuenta " + $V{V_TIPO_CUENTA} + " No. " + $V{V_NRO_CUENTA} + " de la Institución Financiera " + $V{V_BANCO} + ".\n\nLas cuotas referidas en el apartado anterior, comprenden el capital y los intereses sobre el saldo deudor del capital, más los intereses de mora de ser el caso, así como cualquier otro valor no pagado y aquellos establecidos por ley.\n\nAutorizo de forma irrevocable a la ASOCIACION DEL FONDO COMPLEMENTARIO PREVISIONAL CERRADO ASOPREP-FCPC, DE JUBILACION Y CESANTIA DE LAS EMPRESAS PUBLICAS DEL SECTOR HIDROCARBURIFERO, o a la persona que sea cesionaria de los efectos u obligaciones contenidas o derivadas del presente documento, para que toda la información de riesgos crediticios, sea consultada, transferida y actualizada periódicamente a los Buros de Crédito u otras Entidades que puedan reemplazar a tales instituciones. Me(nos) comprometo(emos) ante la ASOCIACION DEL FONDO COMPLEMENTARIO PREVISIONAL CERRADO ASOPREP-FCPC, DE JUBILACION Y CESANTIA DE LAS EMPRESAS PUBLICAS DEL SECTOR HIDROCARBURIFERO, a notificar oportunamente, cualquier cambio importante respecto a los datos y declaraciones constantes en este documento y deslindo(amos) de toda responsabilidad a la ASOCIACION DEL FONDO COMPLEMENTARIO PREVISIONAL CERRADO ASOPREP-FCPC, DE JUBILACION Y CESANTIA DE LAS EMPRESAS PUBLICAS DEL SECTOR HIDROCARBURIFERO, en caso de no hacerlo.\n\nSe deja expresa constancia que la ASOCIACION DEL FONDO COMPLEMENTARIO PREVISIONAL CERRADO ASOPREP-FCPC, DE JUBILACION Y CESANTIA DE LAS EMPRESAS PUBLICAS DEL SECTOR HIDROCARBURIFERO, a su sola decisión, podrá ceder todos los derechos emanados de este Pagaré a la Orden, a cualquier persona natural y/o jurídica por lo que él(la/los) suscriptor(a/es) desde ya acepta(n) la pertinente cesión de derechos, incluso se da(n) por notificado(s) del traspaso del crédito. En tal virtud, la o las cesiones que se realicen, surtirán pleno efecto respecto al(los) Deudor(es), su(s) avalista(s) solidario(s) y respecto de terceros.\n\nEn caso de desvinculación laboral de la Empresa Pública EPPETROECUADOR, autorizo(amos) expresamente a la ASOCIACION DEL FONDO COMPLEMENTARIO PREVISIONAL CERRADO ASOPREP-FCPC, DE JUBILACION Y CESANTIA DE LAS EMPRESAS PUBLICAS DEL SECTOR HIDROCARBURIFERO, declarar de plazo vencido la totalidad de la obligación y que el saldo total pendiente de pago, se me debite de los valores que me corresponden por cesantía, jubilación, cuenta individual de pensión complementaria, o de cualquier otro valor que deba devolverme por cualquier concepto.\n\nEn caso de que el débito mencionado en el párrafo anterior no alcance a cubrir la totalidad de la deuda, el acreedor quedará facultado a tomar todas las acciones legales de cobro para recuperar el saldo pendiente por vencido el plazo de este pagaré, exigiendo el pago total del saldo pendiente.\n\nDeclaro(amos) tener conocimiento de nuestro derecho a realizar pagos anticipados sobre el importe de esta deuda sin que ello genere ningún tipo de penalidad o recargo adicional.\n\nEn caso de mora pagaré(emos), sobre los valores de capital no cancelados, desde la fecha de vencimiento de la obligación hasta su pago total, la tasa de interés vigente al momento del vencimiento más el recargo por mora máximo establecido por el Banco Central del Ecuador.\n\nAdemás, son de mi(nuestra), cuenta los impuestos y tasas que genere este pagaré a la orden, así como todos los gastos judiciales y/o extrajudiciales que demande el cobro del mismo, incluyendo honorarios de abogados, bastando para establecer su monto la simple afirmación que el acreedor haga al respecto.\n\nAcepto(amos) expresamente que en caso de mora en el pago de tres o más de los vencimientos estipulados en la tabla de amortización No. " + $V{V_NUMERO} + ", el acreedor podrá declarar de plazo vencido todo el saldo del importe de este pagaré que esté por vencer y proceder al reclamo judicial o extrajudicial de todo lo debido, para lo cual será suficiente la sola afirmación del acreedor en este sentido.\n\nRenuncio(amos) a mi(nuestro) domicilio, y me(nos) someto(emos) a los jueces de la Provincia de Pichincha, con sede en la ciudad de Quito. El presente título valor se emite sin protesto, eximiento al acreedor de su presentación para el pago y de avisos por falta de este. Dejo(amos) constancia expresa que el plazo de la vista correrá a partir de la fecha de aceptación que suscribo(imos) en este pagaré a la orden."]]></expression>
 			</element>
 		</band>
+		<band height="86" splitType="Prevent">
+			<element kind="staticText" uuid="a2000001-0000-0000-0000-000000002001" x="0" y="6" width="240" height="14" fontSize="9.0" bold="true">
+				<text><![CDATA[FIRMA DEL DEUDOR]]></text>
+			</element>
+			<element kind="line" uuid="a2000001-0000-0000-0000-000000002002" x="0" y="42" width="220" height="1"/>
+			<element kind="textField" uuid="a2000001-0000-0000-0000-000000002003" x="0" y="45" width="240" height="14" fontSize="9.0">
+				<expression><![CDATA[$V{V_DEUDOR_NOMBRES}]]></expression>
+			</element>
+			<element kind="textField" uuid="a2000001-0000-0000-0000-000000002004" x="0" y="59" width="240" height="14" fontSize="9.0">
+				<expression><![CDATA["C.C.: " + $V{V_DEUDOR_CEDULA}]]></expression>
+			</element>
+			<element kind="staticText" uuid="a2000001-0000-0000-0000-000000002005" x="270" y="6" width="240" height="14" fontSize="9.0" bold="true">
+				<printWhenExpression><![CDATA[$V{V_HAY_CONYUGE}]]></printWhenExpression>
+				<text><![CDATA[FIRMA DEL CONYUGE]]></text>
+			</element>
+			<element kind="line" uuid="a2000001-0000-0000-0000-000000002006" x="270" y="42" width="220" height="1">
+				<printWhenExpression><![CDATA[$V{V_HAY_CONYUGE}]]></printWhenExpression>
+			</element>
+			<element kind="textField" uuid="a2000001-0000-0000-0000-000000002007" x="270" y="45" width="240" height="14" fontSize="9.0">
+				<printWhenExpression><![CDATA[$V{V_HAY_CONYUGE}]]></printWhenExpression>
+				<expression><![CDATA[$F{CONYUGE_NOMBRES}]]></expression>
+			</element>
+			<element kind="textField" uuid="a2000001-0000-0000-0000-000000002008" x="270" y="59" width="240" height="14" fontSize="9.0">
+				<printWhenExpression><![CDATA[$V{V_HAY_CONYUGE}]]></printWhenExpression>
+				<expression><![CDATA["C.C.: " + ($F{CONYUGE_CEDULA} != null && !$F{CONYUGE_CEDULA}.isEmpty() ? $F{CONYUGE_CEDULA} : "____________")]]></expression>
+			</element>
+		</band>
+		<band height="86" splitType="Prevent">
+			<printWhenExpression><![CDATA[$V{V_HAY_GARANTE}]]></printWhenExpression>
+			<element kind="staticText" uuid="a2000001-0000-0000-0000-000000003001" x="0" y="6" width="240" height="14" fontSize="9.0" bold="true">
+				<text><![CDATA[FIRMA DEL GARANTE]]></text>
+			</element>
+			<element kind="line" uuid="a2000001-0000-0000-0000-000000003002" x="0" y="42" width="220" height="1"/>
+			<element kind="textField" uuid="a2000001-0000-0000-0000-000000003003" x="0" y="45" width="240" height="14" fontSize="9.0">
+				<expression><![CDATA[$F{GARANTE_NOMBRES}]]></expression>
+			</element>
+			<element kind="textField" uuid="a2000001-0000-0000-0000-000000003004" x="0" y="59" width="240" height="14" fontSize="9.0">
+				<expression><![CDATA["C.C.: " + $F{GARANTE_CEDULA}]]></expression>
+			</element>
+		</band>
 	</detail>
 
 	<!-- Firmas: una sola vez (IM6). Sin cónyuge sale sólo el deudor. La banda no se parte entre páginas. -->
-	<summary height="86" splitType="Prevent">
-		<element kind="staticText" uuid="a2000001-0000-0000-0000-000000002001" x="0" y="6" width="240" height="14" fontSize="9.0" bold="true">
-			<text><![CDATA[FIRMA DEL DEUDOR]]></text>
-		</element>
-		<element kind="line" uuid="a2000001-0000-0000-0000-000000002002" x="0" y="42" width="220" height="1"/>
-		<element kind="textField" uuid="a2000001-0000-0000-0000-000000002003" x="0" y="45" width="240" height="14" fontSize="9.0">
-			<expression><![CDATA[$V{V_DEUDOR_NOMBRES}]]></expression>
-		</element>
-		<element kind="textField" uuid="a2000001-0000-0000-0000-000000002004" x="0" y="59" width="240" height="14" fontSize="9.0">
-			<expression><![CDATA["C.C.: " + $V{V_DEUDOR_CEDULA}]]></expression>
-		</element>
-		<element kind="staticText" uuid="a2000001-0000-0000-0000-000000002005" x="270" y="6" width="240" height="14" fontSize="9.0" bold="true">
-			<printWhenExpression><![CDATA[$V{V_HAY_CONYUGE}]]></printWhenExpression>
-			<text><![CDATA[FIRMA DEL CONYUGE]]></text>
-		</element>
-		<element kind="line" uuid="a2000001-0000-0000-0000-000000002006" x="270" y="42" width="220" height="1">
-			<printWhenExpression><![CDATA[$V{V_HAY_CONYUGE}]]></printWhenExpression>
-		</element>
-		<element kind="textField" uuid="a2000001-0000-0000-0000-000000002007" x="270" y="45" width="240" height="14" fontSize="9.0">
-			<printWhenExpression><![CDATA[$V{V_HAY_CONYUGE}]]></printWhenExpression>
-			<expression><![CDATA[$F{CONYUGE_NOMBRES}]]></expression>
-		</element>
-		<element kind="textField" uuid="a2000001-0000-0000-0000-000000002008" x="270" y="59" width="240" height="14" fontSize="9.0">
-			<printWhenExpression><![CDATA[$V{V_HAY_CONYUGE}]]></printWhenExpression>
-			<expression><![CDATA["C.C.: " + ($F{CONYUGE_CEDULA} != null && !$F{CONYUGE_CEDULA}.isEmpty() ? $F{CONYUGE_CEDULA} : "____________")]]></expression>
-		</element>
-	</summary>
 </jasperReport>
