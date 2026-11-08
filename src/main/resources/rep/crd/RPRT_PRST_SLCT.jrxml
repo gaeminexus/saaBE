@@ -81,6 +81,27 @@
        TRIM(bx.BEXTNMBR)                            AS BANCO,
        CASE cb.CNBPTPCN WHEN 1 THEN 'AHORROS' WHEN 2 THEN 'CORRIENTE' END AS TIPO_CUENTA,
        TRIM(cb.CNBPNMRO)                            AS NRO_CUENTA,
+       (SELECT n.NVAPNMBR || ' (' || c.TOTAL || CASE WHEN c.TOTAL = 1 THEN ' nivel)' ELSE ' niveles)' END
+          FROM CRD.NVAP n
+          JOIN (SELECT RGAPCDGO, COUNT(*) AS TOTAL, MAX(NVAPORDN) AS MX FROM CRD.NVAP WHERE NVAPESTD = 1 GROUP BY RGAPCDGO) c
+            ON c.RGAPCDGO = n.RGAPCDGO AND n.NVAPORDN = c.MX AND n.NVAPESTD = 1
+         WHERE n.RGAPCDGO = COALESCE((SELECT MAX(a.RGAPCDGO) KEEP (DENSE_RANK FIRST ORDER BY a.APPRORDN) FROM CRD.APPR a
+                           WHERE a.PRSTCDGO = p.PRSTCDGO AND a.APPRESTD = 1),
+                         (SELECT MIN(r.RGAPCDGO) KEEP (DENSE_RANK FIRST ORDER BY r.RGAPPRRD, r.RGAPCDGO) FROM CRD.RGAP r
+                           WHERE r.RGAPESTD = 1 AND (r.TPPRCDGO IS NULL OR r.TPPRCDGO = pr.TPPRCDGO)
+                             AND (r.RGAPMNMN IS NULL OR p.PRSTMNSL >= r.RGAPMNMN) AND (r.RGAPMNMX IS NULL OR p.PRSTMNSL <= r.RGAPMNMX)
+                             AND (r.RGAPPLMN IS NULL OR p.PRSTPLZO >= r.RGAPPLMN) AND (r.RGAPPLMX IS NULL OR p.PRSTPLZO <= r.RGAPPLMX)))) AS NIVEL_APROBACION,
+       (SELECT MAX(a2.APPRUSRO) FROM CRD.APPR a2
+         WHERE a2.PRSTCDGO = p.PRSTCDGO AND a2.APPRESTD = 1 AND a2.APPRDCSN = 1
+           AND a2.APPRORDN = (SELECT MAX(n2.NVAPORDN) FROM CRD.NVAP n2
+                               WHERE n2.RGAPCDGO = COALESCE((SELECT MAX(a3.RGAPCDGO) KEEP (DENSE_RANK FIRST ORDER BY a3.APPRORDN) FROM CRD.APPR a3
+                           WHERE a3.PRSTCDGO = p.PRSTCDGO AND a3.APPRESTD = 1),
+                         (SELECT MIN(r3.RGAPCDGO) KEEP (DENSE_RANK FIRST ORDER BY r3.RGAPPRRD, r3.RGAPCDGO) FROM CRD.RGAP r3
+                           WHERE r3.RGAPESTD = 1 AND (r3.TPPRCDGO IS NULL OR r3.TPPRCDGO = pr.TPPRCDGO)
+                             AND (r3.RGAPMNMN IS NULL OR p.PRSTMNSL >= r3.RGAPMNMN) AND (r3.RGAPMNMX IS NULL OR p.PRSTMNSL <= r3.RGAPMNMX)
+                             AND (r3.RGAPPLMN IS NULL OR p.PRSTPLZO >= r3.RGAPPLMN) AND (r3.RGAPPLMX IS NULL OR p.PRSTPLZO <= r3.RGAPPLMX)))
+                                 AND n2.NVAPESTD = 1
+                                 AND n2.NVAPORDN < (SELECT MAX(n3.NVAPORDN) FROM CRD.NVAP n3 WHERE n3.RGAPCDGO = n2.RGAPCDGO AND n3.NVAPESTD = 1))) AS REVISADO_POR,
        TRIM(p.PRSTUSRG)                             AS USUARIO_ELABORA,
        TRIM(p.PRSTUSAP)                             AS APROBADOR
   FROM CRD.PRST p
@@ -139,6 +160,8 @@
 	<field name="BANCO" class="java.lang.String"/>
 	<field name="TIPO_CUENTA" class="java.lang.String"/>
 	<field name="NRO_CUENTA" class="java.lang.String"/>
+	<field name="NIVEL_APROBACION" class="java.lang.String"/>
+	<field name="REVISADO_POR" class="java.lang.String"/>
 	<field name="USUARIO_ELABORA" class="java.lang.String"/>
 	<field name="APROBADOR" class="java.lang.String"/>
 
@@ -876,7 +899,7 @@
 				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
 			</element>
 			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000183" x="392" y="348" width="143" height="14" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
-				<expression><![CDATA["____________________"]]></expression>
+				<expression><![CDATA[($F{NIVEL_APROBACION} != null && !$F{NIVEL_APROBACION}.isEmpty() ? $F{NIVEL_APROBACION} : "____________________")]]></expression>
 				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
 			</element>
 			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000184" x="0" y="362" width="112" height="60" mode="Opaque" backcolor="#E6E6E6" fontSize="8.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
@@ -898,7 +921,7 @@
 			</element>
 			<element kind="line" uuid="a3000001-0000-0000-0000-000000000189" x="186" y="456" width="162" height="1"/>
 			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000190" x="178" y="458" width="178" height="12" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
-				<expression><![CDATA[""]]></expression>
+				<expression><![CDATA[($F{REVISADO_POR} != null && !$F{REVISADO_POR}.isEmpty() ? $F{REVISADO_POR} : "")]]></expression>
 				<box leftPadding="3" rightPadding="3"/>
 			</element>
 			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000191" x="178" y="470" width="178" height="22" fontSize="8.0" hTextAlign="Center" vTextAlign="Top">

@@ -77,6 +77,9 @@ public class PrestamoServiceImpl implements PrestamoService {
     private com.saa.ejb.crd.service.EvaluacionOtorgamientoService evaluacionOtorgamientoService;
 
     @EJB
+    private com.saa.ejb.crd.service.NivelAprobacionService nivelAprobacionService;
+
+    @EJB
     private com.saa.ejb.crd.dao.DetalleCobroCreditoDaoService detalleCobroCreditoDaoService;
 
     @EJB
@@ -229,6 +232,17 @@ public class PrestamoServiceImpl implements PrestamoService {
         // IncomeException (la capa REST responde 422). No aplica a Petro ni a migración: no pasan por saveSingle.
         evaluacionOtorgamientoService.validarAlGuardar(prestamo, existente);
 
+        // B4: si el préstamo cambia después de una aprobación parcial (monto, plazo, producto o tasa), las aprobaciones
+        // vigentes se invalidan y la aprobación vuelve a empezar desde el nivel 1.
+        if (existente != null && !java.util.Objects.equals(existente.getMontoSolicitado(), prestamo.getMontoSolicitado())
+                || existente != null && !java.util.Objects.equals(existente.getPlazo(), prestamo.getPlazo())
+                || existente != null && !java.util.Objects.equals(existente.getTasa(), prestamo.getTasa())
+                || existente != null && !java.util.Objects.equals(
+                    existente.getProducto() != null ? existente.getProducto().getCodigo() : null,
+                    prestamo.getProducto() != null ? prestamo.getProducto().getCodigo() : null)) {
+            nivelAprobacionService.invalidarAprobaciones(existente.getCodigo(), "CAMBIO_PRESTAMO");
+        }
+
         // D10 (decisión 11 del plan de simuladores): PRSTTSAA y PRSTINNM son una sola tasa.
         // Se deriva interesNominal de tasa en cada guardado, para que el proceso de mora
         // (ProcesoMoraPrestamoServiceImpl) deje de caer al default silencioso de 9%.
@@ -357,6 +371,9 @@ public class PrestamoServiceImpl implements PrestamoService {
 
         prestamo = prestamoDaoService.save(prestamo, prestamo.getCodigo());
 
+        // B4: regenerar la tabla es un cambio del préstamo: la aprobación por niveles vuelve a empezar.
+        nivelAprobacionService.invalidarAprobaciones(idPrestamo, "TABLA_REGENERADA");
+
         System.out.println("Tabla de amortización generada exitosamente con " + detalles.size() + " cuotas");
         return prestamo;
     }
@@ -394,6 +411,12 @@ public class PrestamoServiceImpl implements PrestamoService {
     @Override
     public Prestamo aprobar(Long idPrestamo, String usuario, String observacion, Long idEmpresa, Long idUsuario,
             LocalDate fechaContable) throws Throwable {
+        return aprobarConNiveles(idPrestamo, usuario, observacion, idEmpresa, idUsuario, fechaContable).getPrestamo();
+    }
+
+    @Override
+    public com.saa.ejb.crd.service.dto.ResultadoAprobacionPrestamo aprobarConNiveles(Long idPrestamo, String usuario,
+            String observacion, Long idEmpresa, Long idUsuario, LocalDate fechaContable) throws Throwable {
         System.out.println("Aprobando préstamo ID: " + idPrestamo + " - Usuario: " + usuario
             + " - Fecha contable: " + fechaContable);
         // U-2: lo primero, el usuario.
@@ -457,6 +480,26 @@ public class PrestamoServiceImpl implements PrestamoService {
         // aprobación; sin remuneración tampoco se aprueba. ANTES de numerar y de tocar nada. No aplica a la
         // reestructuración de un préstamo en mora. IncomeException → 422.
         evaluacionOtorgamientoService.validarAlAprobar(prestamo);
+
+        // B4: aprobación por NIVELES. Se valida B2 en cada nivel (arriba) y se registra el nivel pendiente; si no es el
+        // último el préstamo sigue GENERADO y no se toca nada más. Si es el último, sigue el aprobar de siempre en ESTA
+        // misma transacción: si algo falla más abajo, la aprobación del nivel se revierte con todo. Sin reglas activas
+        // no registra nada y se aprueba como hoy, en un paso.
+        com.saa.ejb.crd.service.dto.ResultadoNivelAprobacion nivel =
+            nivelAprobacionService.registrarAprobacion(prestamo, idUsuario, usuario, observacion);
+        if (nivel.isConNiveles() && !nivel.isEsUltimo()) {
+            com.saa.ejb.crd.service.dto.ResultadoAprobacionPrestamo parcial =
+                new com.saa.ejb.crd.service.dto.ResultadoAprobacionPrestamo();
+            parcial.setPrestamo(prestamo);
+            parcial.setAprobacionCompleta(false);
+            parcial.setNivelAprobado(nivel.getOrdenAprobado());
+            parcial.setTotalNiveles(nivel.getTotalNiveles());
+            parcial.setSiguienteNivel(nivel.getSiguienteNivel());
+            parcial.setMensaje("Nivel " + nivel.getOrdenAprobado() + " de " + nivel.getTotalNiveles()
+                + " aprobado; falta: " + nivel.getSiguienteNivel());
+            System.out.println("Préstamo " + idPrestamo + ": " + parcial.getMensaje());
+            return parcial;
+        }
 
         // Reestructuración / novación: recalcula el VS y aplica RN7 y RN8 ANTES de gastar el número.
         ContextoSustitucion sustitucion = prestamo.getIdPrestamoOriginal() != null
@@ -553,7 +596,19 @@ public class PrestamoServiceImpl implements PrestamoService {
         prestamo = prestamoDaoService.save(prestamo, prestamo.getCodigo());
         System.out.println("Préstamo " + idPrestamo + " aprobado por " + usuario + " - orden de pago "
             + idPago + (idAsientoEntrega != null ? " - asiento de entrega " + idAsientoEntrega : ""));
-        return prestamo;
+        com.saa.ejb.crd.service.dto.ResultadoAprobacionPrestamo completo =
+            new com.saa.ejb.crd.service.dto.ResultadoAprobacionPrestamo();
+        completo.setPrestamo(prestamo);
+        completo.setAprobacionCompleta(true);
+        if (nivel.isConNiveles()) {
+            completo.setNivelAprobado(nivel.getOrdenAprobado());
+            completo.setTotalNiveles(nivel.getTotalNiveles());
+            completo.setMensaje("Nivel " + nivel.getOrdenAprobado() + " de " + nivel.getTotalNiveles()
+                + " aprobado; préstamo aprobado");
+        } else {
+            completo.setMensaje("Préstamo aprobado");
+        }
+        return completo;
     }
 
     /**
@@ -1160,6 +1215,11 @@ public class PrestamoServiceImpl implements PrestamoService {
                 + nombreEstadoPrestamo(idEstadoActual)
                 + "; solo se puede rechazar desde PENDIENTE_DE_APROBACION (6) o GENERADO (1).");
         }
+
+        // B4: con niveles configurados, solo un usuario de algún nivel de la regla puede negar, y queda la negación del
+        // nivel pendiente en la bitácora. Sin niveles aplicables, se rechaza como hoy.
+        nivelAprobacionService.registrarRechazo(prestamo, usuarioValidacionService.idPorNombre(usuario), usuario,
+            observacion);
 
         // La tabla de amortización NO se borra: queda como evidencia de qué se le ofreció al
         // socio. Es inerte para el proceso de mora, que filtra PRSTIDST IN (2,8,10,11) — el 7

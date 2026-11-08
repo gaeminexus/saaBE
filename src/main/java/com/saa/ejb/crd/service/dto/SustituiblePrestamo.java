@@ -11,6 +11,9 @@ public class SustituiblePrestamo {
     private Long idAsoprep;
     private String producto;
     private String familia;
+
+    /** Código Petro del producto (PRDC.PRDCCDPT): PQ, PE, PH… Para filtrar la novación sin depender del nombre. */
+    private String codigoPetro;
     private Long estado;
     private boolean puede;
     private String motivo;
@@ -26,6 +29,9 @@ public class SustituiblePrestamo {
 
     public String getProducto() { return producto; }
     public void setProducto(String producto) { this.producto = producto; }
+
+    public String getCodigoPetro() { return codigoPetro; }
+    public void setCodigoPetro(String codigoPetro) { this.codigoPetro = codigoPetro; }
 
     public String getFamilia() { return familia; }
     public void setFamilia(String familia) { this.familia = familia; }

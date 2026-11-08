@@ -107,6 +107,15 @@ public interface PrestamoService extends EntityService<Prestamo>{
 	 *                      = hoy (comportamiento de siempre). No puede ser futura. El asiento de
 	 *                      entrega sigue fechado con {@code PRSTFCIN}, que ya es fecha de negocio.
 	 */
+	/**
+	 * Igual que {@code aprobar} con fecha contable, pero con la APROBACIÓN POR NIVELES (B4,
+	 * DISENO-SOLICITUD-V1-AUTORIZACION-Y-REGLAS-OTORGAMIENTO.md): devuelve si se completó o solo se aprobó un nivel (el
+	 * préstamo sigue GENERADO). Sin reglas de niveles activas es el aprobar de siempre, en un paso. El usuario que aprueba
+	 * es {@code usuario} (validado; su código sale del nombre, U-3): tiene que ser de un usuario del nivel pendiente.
+	 */
+	com.saa.ejb.crd.service.dto.ResultadoAprobacionPrestamo aprobarConNiveles(Long idPrestamo, String usuario,
+			String observacion, Long idEmpresa, Long idUsuario, java.time.LocalDate fechaContable) throws Throwable;
+
 	Prestamo aprobar(Long idPrestamo, String usuario, String observacion, Long idEmpresa, Long idUsuario,
 			java.time.LocalDate fechaContable) throws Throwable;
 

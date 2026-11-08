@@ -108,6 +108,9 @@ public class PrestamoRest {
     private com.saa.ejb.crd.service.EvaluacionOtorgamientoService evaluacionOtorgamientoService;
 
     @EJB
+    private com.saa.ejb.crd.service.NivelAprobacionService nivelAprobacionService;
+
+    @EJB
     private ReporteService reporteService;
 
     @EJB
@@ -420,7 +423,8 @@ public class PrestamoRest {
     @Path("/aprobar/{id}")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    public Response aprobar(@PathParam("id") Long id, SolicitudDecisionPrestamo solicitud) {
+    public Response aprobar(@PathParam("id") Long id, SolicitudDecisionPrestamo solicitud,
+            @QueryParam("conDetalle") Boolean conDetalle) {
         String usuario = solicitud != null ? solicitud.getUsuario() : null;
         String observacion = solicitud != null ? solicitud.getObservacion() : null;
         Long idEmpresa = solicitud != null ? solicitud.getIdEmpresa() : null;
@@ -430,10 +434,14 @@ public class PrestamoRest {
         System.out.println("APROBAR PRÉSTAMO - ID: " + id + ", Usuario: " + usuario
             + (fechaContable != null ? ", Fecha contable: " + fechaContable : ""));
         try {
-            Prestamo prestamo = prestamoService.aprobar(id, usuario, observacion, idEmpresa, idUsuario,
-                fechaContable);
+            // B4: con niveles configurados el aprobar puede quedarse en un nivel intermedio (el préstamo sigue GENERADO).
+            // Sin ?conDetalle la respuesta es el Prestamo de siempre (su idEstado dice si quedó VIGENTE); con
+            // ?conDetalle=true es { prestamo, aprobacionCompleta, nivelAprobado, totalNiveles, siguienteNivel, mensaje }.
+            com.saa.ejb.crd.service.dto.ResultadoAprobacionPrestamo resultado = prestamoService.aprobarConNiveles(
+                id, usuario, observacion, idEmpresa, idUsuario, fechaContable);
+            Object cuerpo = (conDetalle != null && conDetalle) ? resultado : resultado.getPrestamo();
             return Response.status(Response.Status.OK)
-                    .entity(prestamo)
+                    .entity(cuerpo)
                     .type(MediaType.APPLICATION_JSON)
                     .build();
         } catch (com.saa.basico.util.UsuarioInvalidoException e) {
@@ -1179,6 +1187,25 @@ public class PrestamoRest {
         } catch (Throwable e) {
             System.err.println("ERROR al simular crédito nuevo: " + e.getMessage());
             e.printStackTrace();
+            return respuestaErrorNegocio(e);
+        }
+    }
+
+    /**
+     * Estado de la aprobación por niveles (B4): la regla, cada nivel con quién y cuándo aprobó, el nivel pendiente y si
+     * el usuario de la consulta ({@code idUsuario} = SCP.PJRQ) puede aprobarlo hoy. Solo lectura; no falla por la
+     * configuración: la explica en {@code mensaje}.
+     */
+    @GET
+    @Path("/estadoAprobacion/{id}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response estadoAprobacion(@PathParam("id") Long id, @QueryParam("idUsuario") Long idUsuario) {
+        System.out.println("LLEGA AL SERVICIO GET prst/estadoAprobacion - préstamo: " + id + " - usuario: " + idUsuario);
+        try {
+            return Response.status(Response.Status.OK)
+                    .entity(nivelAprobacionService.estadoAprobacion(id, idUsuario))
+                    .type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
             return respuestaErrorNegocio(e);
         }
     }

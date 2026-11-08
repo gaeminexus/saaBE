@@ -118,6 +118,8 @@ public class SustitucionPrestamoServiceImpl implements SustitucionPrestamoServic
         fila.setIdAsoprep(prestamo.getIdAsoprep());
         fila.setProducto(prestamo.getProducto() != null ? prestamo.getProducto().getNombre() : null);
         fila.setFamilia(ev.familia);
+        fila.setCodigoPetro(prestamo.getProducto() != null && prestamo.getProducto().getCodigoPetro() != null
+            ? prestamo.getProducto().getCodigoPetro().trim() : null);
         fila.setEstado(prestamo.getIdEstado());
         fila.setPuede(ev.motivo == null);
         fila.setMotivo(ev.motivo);
