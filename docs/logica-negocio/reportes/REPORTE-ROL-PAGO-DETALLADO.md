@@ -45,6 +45,27 @@ en cada fila. El layout es uno solo para los tres bloques.
 | Menos de 12 | Las casillas sobrantes quedan **en blanco** (encabezado nulo, valor nulo, total nulo). No se imprime «0.00» en una casilla sin concepto. |
 | Colaborador sin ese concepto | `0` (no blanco) en una casilla que sí tiene concepto. |
 
+### Columnas fijas de horas en INGRESOS (decisión del usuario, 2026-11-09)
+
+Tras ver la primera versión, el usuario pidió que **siempre** existan una columna de horas extras y
+una de horas complementarias, aunque nadie las tenga en el período (salen en 0). El SAA no tiene un
+concepto «horas complementarias»; el usuario eligió la equivalencia:
+
+| Columna | Conceptos que suma | Rol de motor (`CPNMROLM`, `RhhRolConceptoMotor`) |
+|---|---|---|
+| **HORAS EXTRAS** | Horas extraordinarias 100% | `HORA_EXTRAORDINARIA = 10` |
+| **HORAS COMPLEMENTARIAS** | Horas suplementarias 50% | `HORA_SUPLEMENTARIA = 9` |
+
+- Se identifican por **rol de motor**, no por `CPNMCDGO` ni `CPNMALTR` (hay dos empresas en
+  `SCP.PJRQ` y el rol es lo que el motor usa para localizar el concepto). Clave sintética `R10` /
+  `R09`; todos los renglones de conceptos con ese rol caen en esa columna.
+- Siempre presentes, ordenadas entre los demás conceptos por `MIN(CPNMORDN)` de los conceptos con
+  ese rol en `RHH.CPNM` (hoy 20 y 21: quedan después del sueldo, como en la muestra).
+- **Nunca caen en «OTROS».** Con más de 12 conceptos, los que se agrupan en OTROS son los últimos
+  conceptos **no fijos**.
+- El recargo nocturno (rol 11) **no** se suma a ninguna de las dos: sigue como concepto propio si
+  tiene valor.
+
 **Fondo de reserva acumulado en el IESS** (`CNTEFRMD = 2`, criterio e3-06 del consolidado): no es
 renglón, está en `RHH.PVNM` tipo 4 estado 1. Igual que `RPRT_ROLL_CNSL`/`RPRT_ROLL_INDV`, se agrega
 como **un concepto más al final** de los dos bloques: «FONDOS RESERVA IESS» en ingresos y
