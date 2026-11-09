@@ -86,6 +86,22 @@ public class PagoPensionComplementariaDaoServiceImpl extends EntityDaoImpl<PagoP
     }
 
     @Override
+    @SuppressWarnings("unchecked")
+    public List<Object[]> selectResumenRetenidosPendientes() throws Throwable {
+        System.out.println("Ingresa al metodo selectResumenRetenidosPendientes de PagoPensionComplementaria");
+        Query query = em.createQuery(
+                " select p.entidad.codigo, sum(p.valorRetenido), count(p) " +
+                " from   PagoPensionComplementaria p " +
+                " where  p.estado = :registrada " +
+                " and    p.idPagoProgramado is null " +
+                " and    p.valorRetenido > 0 " +
+                " group by p.entidad.codigo " +
+                " order by p.entidad.codigo");
+        query.setParameter("registrada", Long.valueOf(EstadoPagoPensionComplementaria.REGISTRADA));
+        return query.getResultList();
+    }
+
+    @Override
     public List<PagoPensionComplementaria> selectByPeriodo(Long anio, Long mes) throws Throwable {
         System.out.println("Ingresa al metodo selectByPeriodo de PagoPensionComplementaria"
                 + " - anio: " + anio + " mes: " + mes);

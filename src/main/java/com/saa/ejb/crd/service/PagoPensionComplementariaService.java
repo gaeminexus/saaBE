@@ -7,6 +7,8 @@ import com.saa.ejb.crd.service.dto.DetallePagoPension;
 import com.saa.ejb.crd.service.dto.ResultadoGeneracionPagosPension;
 import com.saa.ejb.crd.service.dto.ResultadoGeneracionSeguroMedico;
 import com.saa.ejb.crd.service.dto.ResultadoPagoRetenidos;
+import com.saa.ejb.crd.service.dto.ResultadoProcesoPendientes;
+import com.saa.ejb.crd.service.dto.ResumenRetenidosJubilado;
 import com.saa.ejb.crd.service.dto.ResultadoPrevisualizacionCorrida;
 import com.saa.ejb.crd.service.dto.ResultadoSeguimientoCorridaJubilados;
 import com.saa.ejb.crd.service.dto.ResultadoSincronizacion;
@@ -198,8 +200,27 @@ public interface PagoPensionComplementariaService extends EntityService<PagoPens
      */
     ResultadoPagoRetenidos pagarRetenidos(Long idEntidad, Long idEmpresa, String usuario) throws Throwable;
 
+    /**
+     * Igual que {@link #pagarRetenidos} pero en el período (anio, mes): el mes debe estar abierto y el pago se fecha
+     * {@code min(fin de ese mes, hoy)}. Expuesto para que {@link #procesarPendientes} invoque cada jubilado en su propia
+     * transacción ({@code REQUIRES_NEW}) a través del proxy EJB.
+     */
+    ResultadoPagoRetenidos pagarRetenidosPeriodo(Long idEntidad, Long idEmpresa, Integer anio, Integer mes, String usuario)
+            throws Throwable;
+
+    /**
+     * Proceso de pendientes (DISENO-PENSION-RETENIDA-SIN-CUENTA.md §3.4): paga solo a los jubilados que tienen
+     * pensiones pendientes (retenidas, o rechazadas que volvieron a pendiente) y salida válida, una orden por mes y una
+     * transacción por jubilado. No recorre el padrón ni toca seguro, cruce ni la pensión del mes; se puede repetir, también
+     * con las pensiones del mes ya cerradas (CRJB). Mes abierto (C17) y usuario validado (U-2).
+     */
+    ResultadoProcesoPendientes procesarPendientes(Long idEmpresa, Integer anio, Integer mes, String usuario) throws Throwable;
+
     /** Solo lectura: los meses retenidos pendientes de un jubilado, el total y si hoy tiene salida (para el botón). */
     ResultadoPagoRetenidos consultarRetenidos(Long idEntidad) throws Throwable;
+
+    /** Solo lectura, en bloque: un renglón por jubilado con pendientes (para el botón por fila sin una consulta por cada uno). */
+    List<ResumenRetenidosJubilado> consultarRetenidosEnBloque(Long idEmpresa) throws Throwable;
 
     /**
      * Reconcilia UN pago puntual. Expuesto para que {@link #sincronizarPagos} invoque cada uno

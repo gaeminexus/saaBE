@@ -9,6 +9,7 @@ import com.saa.ejb.crd.service.PagoPensionComplementariaService;
 import com.saa.ejb.crd.service.dto.ResultadoGeneracionPagosPension;
 import com.saa.ejb.crd.service.dto.ResultadoGeneracionSeguroMedico;
 import com.saa.ejb.crd.service.dto.ResultadoPagoRetenidos;
+import com.saa.ejb.crd.service.dto.ResultadoProcesoPendientes;
 import com.saa.ejb.crd.service.dto.ResultadoPrevisualizacionCorrida;
 import com.saa.ejb.crd.service.dto.ResultadoSeguimientoCorridaJubilados;
 import com.saa.ejb.crd.service.dto.ResultadoSincronizacion;
@@ -338,6 +339,61 @@ public class PagoPensionComplementariaRest {
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
                     .type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return respuestaError(e);
+        }
+    }
+
+    /**
+     * Proceso de pendientes (API-PENSION-RETENIDA.md): paga solo a los jubilados con pensiones pendientes y salida válida;
+     * no toca seguro, cruce ni la pensión del mes. {@code {exito, mensaje, resultado}}.
+     */
+    @POST
+    @Path("/procesarPendientes")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response procesarPendientes(@QueryParam("idEmpresa") Long idEmpresa, @QueryParam("anio") Integer anio,
+            @QueryParam("mes") Integer mes, @QueryParam("usuario") String usuario) {
+        System.out.println("LLEGA AL SERVICIO PROCESAR PENDIENTES - Periodo: " + mes + "/" + anio);
+        if (idEmpresa == null) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), "Debe indicar idEmpresa", null);
+        }
+        if (anio == null || mes == null) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), "Debe indicar anio y mes", null);
+        }
+        if (usuario == null || usuario.trim().isEmpty()) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), "Debe indicar el usuario", null);
+        }
+        try {
+            ResultadoProcesoPendientes resultado = pagoPensionService.procesarPendientes(idEmpresa, anio, mes, usuario);
+            Map<String, Object> cuerpo = new LinkedHashMap<>();
+            cuerpo.put("exito", Boolean.TRUE);
+            cuerpo.put("mensaje", "Pendientes " + mes + "/" + anio + " - " + resultado.getMesesPagados() + " mes(es) pagado(s) a "
+                + resultado.getConPagos() + " jubilado(s) por $" + resultado.getTotalPagado() + ", "
+                + resultado.getConPendientesSinPagar() + " con algo sin pagar, " + resultado.getConError()
+                + " con error, de " + resultado.getEvaluados() + " evaluados.");
+            cuerpo.put("resultado", resultado);
+            return Response.status(Response.Status.OK).entity(cuerpo).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+                    .type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return respuestaError(e);
+        }
+    }
+
+    /**
+     * Solo lectura, en bloque: un renglón por jubilado con pensiones pendientes (total, meses, tieneSalida, motivo), para
+     * mostrar el botón por fila sin una consulta por jubilado.
+     */
+    @GET
+    @Path("/retenidos")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response retenidosEnBloque(@QueryParam("idEmpresa") Long idEmpresa) {
+        System.out.println("LLEGA AL SERVICIO RETENIDOS EN BLOQUE - Empresa: " + idEmpresa);
+        try {
+            return Response.status(Response.Status.OK)
+                    .entity(pagoPensionService.consultarRetenidosEnBloque(idEmpresa)).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return respuestaError(e);
         }

@@ -512,8 +512,11 @@ Diseño: `DISENO-PENSION-RETENIDA-SIN-CUENTA.md`. Contrato FE: `API-PENSION-RETE
   la misma cuenta.
 - **Pago de lo acumulado:** una orden CXP por mes retenido, en orden de período, fechada el día del pago; al haber salida
   válida se paga (a) en la corrida de pensiones, antes de los meses de la corrida, y (b) con `POST /pgpc/pagarRetenidos`.
-- **Ancla:** el negativo del retenido pagado NO mueve el ancla del retroactivo (`selectFechaUltimoMovimientoNegativo`);
+- **Ancla:** el negativo del retenido pagado (glosa «PAGO PENSION RETENIDA …», excluido por glosa y no por `PGPCVLRT`) NO mueve el ancla del retroactivo (`selectFechaUltimoMovimientoNegativo`);
   si la moviera, la pensión del mes en curso quedaría AL_DIA sin generarse. El negativo del seguro de un mes retenido sí cuenta.
 - **Enlace:** al pagar, `PGPCIDAP` pasa al negativo del retenido (rechazo y neto usan `PGPCVLRT`). El del seguro queda sin enlace desde la fila.
-- **Rechazo:** un PGPC retenido RECHAZADO no se reintenta (igual que una pensión rechazada hoy).
+- **Rechazo (§3.4, reemplaza a «no se reintenta»):** toda pensión de jubilado cuyo pago termina RECHAZADO (la del mes, un retenido pagado, el re-proceso C20) queda **pendiente**: tras el contra-movimiento, el PGPC vuelve a `1 REGISTRADA` sin orden (`PGPCIDPG` y `PGPCIDAP` en null), con `PGPCVLRT` = lo devuelto y `PGPCDVRT` = 1 (su «por pagar» sigue en el mayor: el pago nunca se confirmó; no se devenga otra vez).
 - Fuera de alcance: re-proceso C20.
+
+### 12ter. Proceso de pendientes (§3.4)
+`POST /pgpc/procesarPendientes?idEmpresa&anio&mes&usuario` paga solo a los jubilados con pensiones pendientes (retenidas o rechazadas que volvieron a pendiente) y salida válida: una orden por mes, una transacción por jubilado, sin recorrer el padrón ni tocar seguro, cruce ni la pensión del mes. Se puede repetir y correr con las pensiones del mes ya cerradas (CRJB). Mes abierto (C17) y usuario validado (U-2). Los jubilados con pendientes salen de una consulta agregada (`selectResumenRetenidosPendientes`). Contrato en `API-PENSION-RETENIDA.md`.

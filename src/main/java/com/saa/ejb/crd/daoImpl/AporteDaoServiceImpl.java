@@ -1204,11 +1204,13 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 	 * <ol>
 	 *   <li><b>Stub de seguro</b> (PGPC con PGPCVLPN null): no cuenta; si contara, la corrida de pensiones del mismo mes
 	 *       lo vería AL_DIA y no pagaría la pensión.</li>
-	 *   <li><b>Retenido pagado</b> (PGPC con PGPCVLRT &gt; 0 y negativo que no es de seguro): no cuenta. Se fecha el mes
-	 *       en que se paga; si contara, movería el ancla a ese mes y la pensión del mes en curso quedaría AL_DIA sin
-	 *       generarse (DISENO-PENSION-RETENIDA-SIN-CUENTA.md §3.2).</li>
-	 *   <li><b>Negativo del seguro de un mes retenido</b> (glosa «- SEGURO MEDICO»): SÍ cuenta, como siempre; también el
-	 *       de los históricos con PGPCDVRT = 1.</li>
+	 *   <li><b>Pago de un retenido</b> (glosa propia «PAGO PENSION RETENIDA …»): no cuenta. Se fecha el mes en que se
+	 *       paga; si contara, movería el ancla a ese mes y la pensión del mes en curso quedaría AL_DIA sin generarse
+	 *       (DISENO-PENSION-RETENIDA-SIN-CUENTA.md §3.2). Se excluye por la GLOSA y no por PGPCVLRT &gt; 0 (§3.4): una
+	 *       pensión rechazada vuelve a pendiente con PGPCVLRT &gt; 0, y su negativo ORIGINAL sí debe seguir contando o el
+	 *       ancla retrocedería.</li>
+	 *   <li><b>Negativo del seguro de un mes retenido</b> (glosa «- SEGURO MEDICO») y el negativo original de una pensión
+	 *       rechazada: SÍ cuentan, como siempre.</li>
 	 * </ol>
 	 */
 	public LocalDateTime selectFechaUltimoMovimientoNegativo(Long idEntidad, Long idTipoAporte) throws Throwable {
@@ -1223,9 +1225,8 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 			// El seguro debitado al GENERAR el seguro no mueve el ancla mientras su PGPC siga siendo
 			// un stub (PGPCVLPN null): ver DISENO-SEGURO-MEDICO-DEBITO-AL-GENERAR.md §4.
 			" and    not exists (select 1 from PagoPensionComplementaria p " +
-			"                    where  p.idAporte = a.codigo " +
-			"                    and    (p.valorPension is null " +
-			"                            or (p.valorRetenido > 0 and a.glosa not like '% - SEGURO MEDICO'))) " +
+			"                    where  p.idAporte = a.codigo and p.valorPension is null) " +
+			" and    (a.glosa is null or a.glosa not like 'PAGO PENSION RETENIDA %') " +
 			" and    " + VIGENTE_JPQL);
 		query.setParameter("idEntidad", idEntidad);
 		query.setParameter("idTipoAporte", idTipoAporte);

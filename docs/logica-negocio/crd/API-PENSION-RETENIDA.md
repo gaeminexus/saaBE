@@ -59,5 +59,28 @@ Sin cuerpo. Una transacción propia. Errores HTTP: 400 si falta un parámetro o 
 
 ## Reglas que el FE debe conocer
 - Ancla: pagar un retenido no cuenta como «último movimiento» del jubilado; no cambia sus meses adeudados.
-- Un retenido cuya orden fue rechazada por el banco **no** se reintenta (igual que una pensión rechazada hoy); decisión pendiente.
+- **Un pago rechazado queda pendiente** (§3.4): cualquier pensión de jubilado cuyo pago termina rechazado (rechazo del banco, orden anulada o reversada y sincronizada) vuelve a `REGISTRADA` sin orden con `valorRetenido` = lo devuelto y `devengadoRetenido` = 1. Aparece de nuevo en `GET /retenidos` y se paga con `pagarRetenidos` / `procesarPendientes`; no se devenga otra vez. La orden rechazada sigue visible en tesorería.
 - Fuera de alcance: re-proceso de períodos pasados (C20).
+
+## Lectura en bloque (para el botón por fila)
+
+### GET `/retenidos?idEmpresa=`
+Una fila por jubilado con pendientes; evita un GET por jubilado. Solo lectura.
+```json
+[ { "idEntidad": 123, "nombre": "…", "identificacion": "…", "totalPendiente": 750.0, "meses": 3,
+    "tieneSalida": true, "motivoSinSalida": null } ]
+```
+Botón «Pagar pendientes» por fila: visible si hay fila; habilitado si `tieneSalida`; usa `POST /pagarRetenidos?idEntidad&idEmpresa&usuario`. Sin `tieneSalida`, mostrar `motivoSinSalida`.
+
+## Proceso de pendientes
+
+### POST `/procesarPendientes?idEmpresa=&anio=&mes=&usuario=`
+Paga, a todo jubilado con pendientes y salida válida, sus meses pendientes (una orden por mes, una transacción por jubilado). No recorre el padrón y no toca seguro, cruce ni la pensión del mes. Se puede repetir, también con las pensiones de ese mes ya generadas. El mes (anio, mes) debe estar abierto; las órdenes y devengos se fechan `min(fin de ese mes, hoy)`. 400 si falta un parámetro o el usuario no es válido.
+```json
+{ "exito": true, "mensaje": "Pendientes 11/2026 - 5 mes(es) pagado(s) a 2 jubilado(s) por $1250.0, 1 con algo sin pagar, 0 con error, de 3 evaluados.",
+  "resultado": { "anio": 2026, "mes": 11, "evaluados": 3, "conPagos": 2, "conPendientesSinPagar": 1, "conError": 0,
+                 "mesesPagados": 5, "totalPagado": 1250.0, "totalNoPagado": 250.0,
+                 "detalle": [ /* un ResultadoPagoRetenidos por jubilado: pagados[], noPagados[] con motivo */ ],
+                 "errores": [] } }
+```
+Un jubilado con error no detiene al resto: va en `errores` y `conError`.

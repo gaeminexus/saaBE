@@ -76,6 +76,8 @@ import com.saa.rubros.DsbnOrigen;
 import com.saa.rubros.Estado;
 import com.saa.rubros.EstadoCuotaPrestamo;
 import com.saa.ejb.crd.service.dto.ResultadoPagoRetenidos;
+import com.saa.ejb.crd.service.dto.ResultadoProcesoPendientes;
+import com.saa.ejb.crd.service.dto.ResumenRetenidosJubilado;
 import com.saa.rubros.EstadoPagoPensionComplementaria;
 import com.saa.rubros.EstadoPagoProgramado;
 import com.saa.rubros.EstadoParticipeEntidad;
@@ -3805,11 +3807,26 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
             System.out.println("  ✅ Pago " + idPago + " PAGADO - Fecha: " + pago.getFechaPago());
 
         } else if (estadoPago == EstadoPagoProgramado.RECHAZADO || estadoPago == EstadoPagoProgramado.ANULADO) {
-            generarContraMovimiento(pago);
-            pago.setEstado(Long.valueOf(EstadoPagoPensionComplementaria.RECHAZADA));
+            double devuelto = generarContraMovimiento(pago);
+            if (devuelto > TOLERANCIA) {
+                // DISENO-PENSION-RETENIDA-SIN-CUENTA.md §3.4: toda pensión de jubilado rechazada queda PENDIENTE (la del
+                // mes, un retenido pagado y el re-proceso C20: todos pasan por aquí). El pago nunca se confirmó, así que
+                // no hay asiento de pago que revertir y su «por pagar» sigue en el mayor: PGPCDVRT = 1 evita devengarlo
+                // otra vez. Vuelve a REGISTRADA sin orden (retenidosPendientes la recoge); la orden rechazada sigue
+                // trazable en CXP por idOrigen = este PGPC. PGPCIDAP se suelta: su negativo ya fue contra-movido y, si
+                // quedara enlazado, netoDelPgpc/reprocesarPagoJubilado pagarían de nuevo sin descontar del saldo.
+                pago.setValorRetenido(devuelto);
+                pago.setDevengadoRetenido(1L);
+                pago.setIdPagoProgramado(null);
+                pago.setIdAporte(null);
+                pago.setEstado(Long.valueOf(EstadoPagoPensionComplementaria.REGISTRADA));
+                System.out.println("  ↩ Pago " + idPago + " RECHAZADO: contra-movimiento generado, vuelve a pendiente por $" + devuelto);
+            } else {
+                pago.setEstado(Long.valueOf(EstadoPagoPensionComplementaria.RECHAZADA));
+                System.out.println("  ↩ Pago " + idPago + " RECHAZADO sin movimiento que devolver.");
+            }
             pagoPensionDaoService.save(pago, pago.getCodigo());
             parcial.setMarcadasRechazadas(1);
-            System.out.println("  ↩ Pago " + idPago + " RECHAZADO: contra-movimiento generado.");
 
         } else {
             System.out.println("  Pago " + idPago + ": el pago sigue en curso (estado " + estadoPago + "). Sin cambios.");
@@ -3826,8 +3843,8 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
 
     /**
      * Meses con pensión retenida por pagar (PGPC REGISTRADA, sin orden, PGPCVLRT &gt; 0), en orden de período.
-     * Un PGPC RECHAZADA queda fuera (estado distinto de REGISTRADA): hoy una pensión rechazada tampoco se reintenta;
-     * decisión pendiente del usuario, no se resuelve en este cambio.
+     * Un pago rechazado vuelve a REGISTRADA sin orden con PGPCVLRT = lo devuelto (§3.4, ver {@code sincronizarPago}), así
+     * que entra aquí sin tratamiento aparte; RECHAZADA queda solo para un rechazo sin nada que devolver.
      */
     private List<PagoPensionComplementaria> retenidosPendientes(Long idEntidad) throws Throwable {
         List<PagoPensionComplementaria> todos = pagoPensionDaoService.selectByEntidad(idEntidad);
@@ -3969,16 +3986,24 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
     @Override
     @TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
     public ResultadoPagoRetenidos pagarRetenidos(Long idEntidad, Long idEmpresa, String usuario) throws Throwable {
-        System.out.println("PagoPensionComplementariaService.pagarRetenidos - Entidad: " + idEntidad);
-        if (idEntidad == null || idEmpresa == null) {
-            throw new IncomeException("idEntidad e idEmpresa son obligatorios");
+        LocalDate hoy = LocalDate.now();
+        return pagarRetenidosPeriodo(idEntidad, idEmpresa, hoy.getYear(), hoy.getMonthValue(), usuario);
+    }
+
+    @Override
+    @TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
+    public ResultadoPagoRetenidos pagarRetenidosPeriodo(Long idEntidad, Long idEmpresa, Integer anio, Integer mes,
+            String usuario) throws Throwable {
+        System.out.println("PagoPensionComplementariaService.pagarRetenidosPeriodo - Entidad: " + idEntidad
+            + " - período: " + mes + "/" + anio);
+        if (idEntidad == null || idEmpresa == null || anio == null || mes == null || mes < 1 || mes > 12) {
+            throw new IncomeException("idEntidad, idEmpresa y un período (año, mes 1-12) válido son obligatorios");
         }
         // U-2: lo primero, el usuario existe (helper único).
         usuario = usuarioValidacionService.validar(usuario);
-        LocalDate hoy = LocalDate.now();
-        // C17: el mes en curso (el del pago) tiene que estar abierto para cartera y contabilidad.
-        estadoCierreService.validarMovimientoCartera(idEmpresa, Long.valueOf(hoy.getYear()),
-            Long.valueOf(hoy.getMonthValue()), "el pago de la pensión retenida del partícipe " + idEntidad);
+        // C17: el mes del pago tiene que estar abierto para cartera y contabilidad.
+        estadoCierreService.validarMovimientoCartera(idEmpresa, Long.valueOf(anio), Long.valueOf(mes),
+            "el pago de la pensión retenida del partícipe " + idEntidad);
         com.saa.model.scp.Usuario usuarioRegistro = usuarioDaoService.selectByNombre(usuario);
         if (usuarioRegistro == null) {
             throw new IncomeException("USUARIO_NO_ENCONTRADO: no existe el usuario '" + usuario + "' en el sistema.");
@@ -3992,13 +4017,93 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
             verificarCuentaProductoPagoPensionJubilados(idEmpresa);
         }
         ResultadoPagoRetenidos resultado = pagarRetenidosInterno(entidad, cuenta, idEmpresa,
-            fechaDelPeriodo(hoy.getYear(), hoy.getMonthValue()), usuario, usuarioRegistro.getCodigo());
+            fechaDelPeriodo(anio, mes), usuario, usuarioRegistro.getCodigo());
         if (cuenta == null) {
             resultado.setMotivoSinSalida("No tiene una cuenta bancaria activa única con certificado bancario cargado");
         }
         resultado.setMensaje(resultado.getPagados().size() + " mes(es) retenido(s) pagado(s) por $" + resultado.getTotalPagado()
             + ", " + resultado.getNoPagados().size() + " sin pagar por $" + resultado.getTotalNoPagado() + ".");
         return resultado;
+    }
+
+    @Override
+    @TransactionAttribute(TransactionAttributeType.NOT_SUPPORTED)
+    public ResultadoProcesoPendientes procesarPendientes(Long idEmpresa, Integer anio, Integer mes, String usuario)
+            throws Throwable {
+        System.out.println("PagoPensionComplementariaService.procesarPendientes - período: " + mes + "/" + anio);
+        if (idEmpresa == null) {
+            throw new IncomeException("idEmpresa es obligatorio");
+        }
+        if (anio == null || mes == null || mes < 1 || mes > 12) {
+            throw new IncomeException("Debe indicar un año y un mes (1-12) válidos.");
+        }
+        // U-2 y C17 antes de tocar nada. No se mira la corrida (CRJB): se puede repetir con las pensiones ya cerradas.
+        usuario = usuarioValidacionService.validar(usuario);
+        estadoCierreService.validarMovimientoCartera(idEmpresa, Long.valueOf(anio), Long.valueOf(mes),
+            "el pago de las pensiones pendientes de jubilados");
+
+        ResultadoProcesoPendientes resumen = new ResultadoProcesoPendientes();
+        resumen.setAnio(anio);
+        resumen.setMes(mes);
+        List<Object[]> filas = pagoPensionDaoService.selectResumenRetenidosPendientes();
+        if (filas == null || filas.isEmpty()) {
+            return resumen;
+        }
+        verificarCuentaProductoPagoPensionJubilados(idEmpresa);
+        for (Object[] fila : filas) {
+            Long idEntidad = ((Number) fila[0]).longValue();
+            resumen.setEvaluados(resumen.getEvaluados() + 1);
+            try {
+                ResultadoPagoRetenidos pagado = self.pagarRetenidosPeriodo(idEntidad, idEmpresa, anio, mes, usuario);
+                resumen.getDetalle().add(pagado);
+                resumen.setMesesPagados(resumen.getMesesPagados() + pagado.getPagados().size());
+                resumen.setTotalPagado(redondear(resumen.getTotalPagado() + pagado.getTotalPagado()));
+                resumen.setTotalNoPagado(redondear(resumen.getTotalNoPagado() + pagado.getTotalNoPagado()));
+                if (!pagado.getPagados().isEmpty()) {
+                    resumen.setConPagos(resumen.getConPagos() + 1);
+                }
+                if (!pagado.getNoPagados().isEmpty()) {
+                    resumen.setConPendientesSinPagar(resumen.getConPendientesSinPagar() + 1);
+                }
+            } catch (Throwable e) {
+                resumen.setConError(resumen.getConError() + 1);
+                resumen.getErrores().add("Entidad " + idEntidad + ": " + e.getMessage());
+                System.out.println("Error al pagar los pendientes de la entidad " + idEntidad + ": " + e.getMessage());
+            }
+        }
+        System.out.println("PROCESO DE PENDIENTES TERMINADO - Evaluados: " + resumen.getEvaluados() + " - Con pagos: "
+            + resumen.getConPagos() + " - Sin pagar: " + resumen.getConPendientesSinPagar() + " - Con error: "
+            + resumen.getConError() + " - Total pagado: $" + resumen.getTotalPagado());
+        return resumen;
+    }
+
+    @Override
+    @TransactionAttribute(TransactionAttributeType.NOT_SUPPORTED)
+    public List<ResumenRetenidosJubilado> consultarRetenidosEnBloque(Long idEmpresa) throws Throwable {
+        System.out.println("PagoPensionComplementariaService.consultarRetenidosEnBloque - empresa: " + idEmpresa);
+        List<ResumenRetenidosJubilado> filas = new ArrayList<>();
+        List<Object[]> resumen = pagoPensionDaoService.selectResumenRetenidosPendientes();
+        if (resumen == null) {
+            return filas;
+        }
+        for (Object[] r : resumen) {
+            Long idEntidad = ((Number) r[0]).longValue();
+            ResumenRetenidosJubilado fila = new ResumenRetenidosJubilado();
+            fila.setIdEntidad(idEntidad);
+            fila.setTotalPendiente(redondear(((Number) r[1]).doubleValue()));
+            fila.setMeses(((Number) r[2]).intValue());
+            Entidad entidad = entidadDaoService.find(new Entidad(), idEntidad);
+            if (entidad != null) {
+                fila.setNombre(entidad.getRazonSocial());
+                fila.setIdentificacion(entidad.getNumeroIdentificacion());
+            }
+            fila.setTieneSalida(resolverCuentaSalida(idEntidad) != null);
+            if (!fila.isTieneSalida()) {
+                fila.setMotivoSinSalida("No tiene una cuenta bancaria activa única con certificado bancario cargado");
+            }
+            filas.add(fila);
+        }
+        return filas;
     }
 
     @Override
@@ -4232,15 +4337,15 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
      * fila negativa (CRD.APRT es append-only). Mismo patrón que
      * {@code DevolucionAporteServiceImpl#generarContraMovimientos}.
      */
-    private void generarContraMovimiento(PagoPensionComplementaria pago) throws Throwable {
+    private double generarContraMovimiento(PagoPensionComplementaria pago) throws Throwable {
         if (pago.getIdAporte() == null) {
-            return;
+            return 0.0;
         }
         Aporte original = aporteDaoService.find(new Aporte(), pago.getIdAporte());
         if (original == null) {
             System.err.println("  ⚠ Pago " + pago.getCodigo() + " rechazado, pero su Aporte "
                 + pago.getIdAporte() + " ya no existe — no se genera contra-movimiento.");
-            return;
+            return 0.0;
         }
         double valor = Math.abs(original.getValor() != null ? original.getValor() : 0.0);
         LocalDateTime ahora = LocalDateTime.now();
@@ -4277,6 +4382,7 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         pagoAporteDaoService.save(pagoReverso, null);
 
         System.out.println("  ↩ Contra-movimiento APRT " + reverso.getCodigo() + " (+$" + valor + ")");
+        return redondear(valor);
     }
 
     private void acumular(ResultadoSincronizacion resumen, ResultadoSincronizacion parcial) {

@@ -48,6 +48,13 @@ public interface PagoPensionComplementariaDaoService extends EntityDao<PagoPensi
     List<PagoPensionComplementaria> selectPendientesConciliacion() throws Throwable;
 
     /**
+     * Pensión retenida pendiente de pago, agrupada por jubilado (PGPC REGISTRADA, sin orden, PGPCVLRT &gt; 0): una fila
+     * {@code {idEntidad, suma de PGPCVLRT, cantidad de meses}} por jubilado. Una sola consulta: ni el proceso de
+     * pendientes ni la lectura en bloque recorren el padrón.
+     */
+    List<Object[]> selectResumenRetenidosPendientes() throws Throwable;
+
+    /**
      * Todos los pagos de un período, sin importar el jubilado. Es el informe mensual completo:
      * la rama YA_EXISTIA de {@code generarPagosDelMes} sólo arma un renglón liviano de cinco
      * campos en una segunda corrida, así que este método es lo que lo recupera si el operador
