@@ -44,22 +44,31 @@ con estado **1, 2 o 3**. (Estado 0 o sin cabecera = no generado.)
 
 ## 4. ⛔ Trampa: la tabla se genera un día y se aprueba otro
 
-La tabla se genera con el préstamo en 6/1 y se aprueba días después. Entre medio puede generarse el archivo.
-- Si la tabla tiene la cuota 1 en el mes de inicio y el préstamo estaba en **estado 1 GENERADO** cuando se generó
-  el archivo, `recopilarPrestamos` **ya la incluyó** (queda en `CXPG`): se está cobrando, está bien.
-- Si NO quedó en el archivo (p. ej. el préstamo estaba en 6 al generar el archivo), aprobar así deja al partícipe
-  en mora desde la primera cuota.
+La tabla se genera con el préstamo en 6/1 y se aprueba días después. Entre medio puede generarse el archivo, y
+con §4-bis el archivo ya no toma préstamos en estado 1: la cuota 1 de un préstamo no aprobado nunca queda en él.
 
 **Al aprobar** (`aprobarConNiveles`, en cada nivel, antes de registrar la aprobación): si la cuota 1 vence en el
-mes de inicio, el GNAP de ese mes y filial está en 1/2/3 y la cuota 1 **no está en `CXPG`** de esa generación →
-422: «El archivo Petro de <mes> ya se generó sin la primera cuota de este préstamo; regenere la tabla de
-amortización (la primera cuota pasará a <mes siguiente>)». Regenerar la tabla ya invalida las aprobaciones por
-niveles (B4) — es lo correcto. Lo mismo al imprimir no hace falta: solo aprobar.
+mes de inicio y el GNAP de ese mes y filial está en 1/2/3 → 422: «El archivo Petro de <mes> ya se generó; regenere
+la tabla de amortización (la primera cuota pasará a <mes siguiente>)». Regenerar la tabla ya invalida las
+aprobaciones por niveles (B4) — es lo correcto. Como respaldo, si la cuota 1 sí aparece en `CXPG` de esa
+generación (préstamos que estaban en 1 antes de este cambio), se deja aprobar.
+
+## 4-bis. El archivo Petro deja de cobrar préstamos en estado 1 GENERADO (decisión del usuario, 2026-11-08)
+
+> «Es correcto, los generados no los debe incluir»
+
+- `GeneracionArchivoPetroServiceImpl.recopilarPrestamos` (~1408): `ESTADOS_PRESTAMO_A_COBRAR` queda en
+  2 VIGENTE y 11 EN_MORA; ajustar el `println` de filtros (~1399). Nada más en esa clase.
+- Actualizar en el mismo cambio `docs/logica-negocio/petro/REGLAS-GENERACION-PETRO.md` §2.2 (regla obligatoria
+  del CLAUDE.md).
+- `CargaArchivoPetroServiceImpl:6631` (aplica pagos a préstamos en estado GENERADO) **no se toca**: el ejecutor
+  solo reporta qué hace ahí, por si deja de tener sentido.
+- Antes del EAR el usuario corre un conteo de solo lectura de préstamos en estado 1 con cuotas ya vencidas o
+  pagadas (préstamos «vivos» mal marcados que dejarían de cobrarse). Lo arma el árbitro.
 
 ## 5. Fuera de alcance / no tocar
 
-- `GeneracionArchivoPetroServiceImpl` y su doc: **no cambian**. (Que el archivo incluya préstamos en estado 1
-  GENERADO, aún no aprobados ni desembolsados, es un tema aparte que se pregunta al usuario, no se toca aquí.)
+- El resto de `GeneracionArchivoPetroServiceImpl` (fuera de §4-bis) no cambia.
 - Préstamos ya generados o aprobados: conservan su tabla.
 - Abono a capital, reestructuración, novación: solo heredan la regla si llaman a la calculadora con el flag; por
   defecto se quedan como hoy. El ejecutor reporta qué caminos de novación/reestructuración generan la tabla y si
