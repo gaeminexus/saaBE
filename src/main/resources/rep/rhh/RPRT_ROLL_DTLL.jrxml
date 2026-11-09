@@ -63,10 +63,16 @@ NOM AS (
 REN AS (
     SELECT rn.NMNACDGO                                                   AS NMNACDGO,
            rn.RNGLTPCN                                                   AS SECC,
-           CASE WHEN rn.CPNMCDGO IS NOT NULL
+           -- Columnas fijas de horas (solo ingresos), por ROL DE MOTOR: 10 = horas extras (100%),
+           -- 9 = horas complementarias (50%). El recargo nocturno (11) no entra en ninguna.
+           CASE WHEN rn.RNGLTPCN = 1 AND c.CPNMROLM = 10 THEN 'R10'
+                WHEN rn.RNGLTPCN = 1 AND c.CPNMROLM = 9  THEN 'R09'
+                WHEN rn.CPNMCDGO IS NOT NULL
                 THEN 'C' || LPAD(TO_CHAR(rn.CPNMCDGO), 18, '0')
                 ELSE 'D' || rn.RNGLDSCR END                              AS CLAVE,
-           UPPER(NVL(NVL(c.CPNMABRV, c.CPNMNMBR), rn.RNGLDSCR))          AS HDR,
+           CASE WHEN rn.RNGLTPCN = 1 AND c.CPNMROLM = 10 THEN 'HORAS EXTRAS'
+                WHEN rn.RNGLTPCN = 1 AND c.CPNMROLM = 9  THEN 'HORAS COMPLEM.'
+                ELSE UPPER(NVL(NVL(c.CPNMABRV, c.CPNMNMBR), rn.RNGLDSCR)) END AS HDR,
            c.CPNMORDN                                                    AS ORDN,
            NVL(rn.RNGLVLRO, 0)                                           AS VLR
     FROM   RHH.RNGL rn
@@ -78,12 +84,19 @@ REN AS (
 CONC0 AS (
     SELECT SECC, CLAVE, MAX(HDR) AS HDR, MIN(ORDN) AS ORDN, 1 AS GRP
     FROM   REN
+    WHERE  CLAVE NOT IN ('R10', 'R09')
     GROUP  BY SECC, CLAVE
     HAVING SUM(ABS(VLR)) > 0
 ),
 -- Fondo de reserva acumulado en el IESS: un concepto mas, al final de ambos bloques, solo si alguien lo tiene.
+-- Horas extras (R10) y complementarias (R09): SIEMPRE presentes en ingresos, aunque nadie las tenga (salen en 0);
+-- su orden es el MIN(CPNMORDN) de los conceptos con ese rol de motor. Nunca caen en OTROS (ver CONC / CS).
 CONC1 AS (
     SELECT SECC, CLAVE, HDR, ORDN, GRP FROM CONC0
+    UNION ALL
+    SELECT 1, 'R10', 'HORAS EXTRAS', (SELECT MIN(CPNMORDN) FROM RHH.CPNM WHERE CPNMROLM = 10), 1 FROM DUAL
+    UNION ALL
+    SELECT 1, 'R09', 'HORAS COMPLEM.', (SELECT MIN(CPNMORDN) FROM RHH.CPNM WHERE CPNMROLM = 9), 1 FROM DUAL
     UNION ALL
     SELECT s.SECC, 'ZFR',
            CASE s.SECC WHEN 1 THEN 'FONDOS RESERVA IESS' ELSE 'FONDOS RESERVA DEPOSITADOS IESS' END,
@@ -92,16 +105,26 @@ CONC1 AS (
     WHERE  EXISTS (SELECT 1 FROM NOM WHERE NOM.FR_IESS_VALOR <> 0)
 ),
 CONC AS (
-    SELECT SECC, CLAVE, HDR,
-           ROW_NUMBER() OVER (PARTITION BY SECC ORDER BY GRP, NVL(ORDN, 999999999), CLAVE) AS RN,
-           COUNT(*)     OVER (PARTITION BY SECC)                                           AS TOTC
-    FROM   CONC1
+    SELECT SECC, CLAVE, HDR, GRP, ORDN, FIJO,
+           COUNT(*) OVER (PARTITION BY SECC)                                                          AS TOTC,
+           SUM(FIJO) OVER (PARTITION BY SECC)                                                         AS NFIJOS,
+           ROW_NUMBER() OVER (PARTITION BY SECC, FIJO ORDER BY GRP, NVL(ORDN, 999999999), CLAVE)      AS RN_FIJO
+    FROM   (SELECT c1.*, CASE WHEN c1.CLAVE IN ('R10', 'R09') THEN 1 ELSE 0 END AS FIJO FROM CONC1 c1)
 ),
--- Casilla de cada concepto: 1..12; con mas de 12 conceptos, la 12 = OTROS (suma del resto).
+-- Conservados: con 12 o menos, todos; con mas de 12, las fijas + los primeros no fijos hasta completar 11
+-- (la casilla 12 = OTROS con el resto de no fijos).
+CONC2 AS (
+    SELECT SECC, CLAVE, HDR, GRP, ORDN, TOTC,
+           CASE WHEN TOTC <= 12 OR FIJO = 1 OR RN_FIJO <= 11 - NFIJOS THEN 1 ELSE 0 END AS CONSERVADO
+    FROM   CONC
+),
+-- Casilla de cada concepto: 1..12 (la de un conservado = su posicion entre los conservados); la 12 = OTROS.
 CS AS (
     SELECT SECC, CLAVE, HDR, TOTC,
-           CASE WHEN TOTC <= 12 THEN RN WHEN RN <= 11 THEN RN ELSE 12 END AS CASILLA
-    FROM   CONC
+           CASE WHEN CONSERVADO = 1
+                THEN ROW_NUMBER() OVER (PARTITION BY SECC, CONSERVADO ORDER BY GRP, NVL(ORDN, 999999999), CLAVE)
+                ELSE 12 END AS CASILLA
+    FROM   CONC2
 ),
 HD AS (
     SELECT SECC, CASILLA,
@@ -419,7 +442,7 @@ ORDER  BY X.SECCION, X.APELLIDOS_ORDEN, X.NOMBRES_ORDEN, X.NMNACDGO]]></query>
 		<groupFooter>
 			<band height="26" splitType="Prevent">
 				<element kind="textField" uuid="cdb1eeb2-84ee-4256-856a-3fdf57ade460" mode="Opaque" x="0" y="0" width="212" height="14" backcolor="#EDF2F7" forecolor="#1A202C" fontSize="6.5" bold="true" blankWhenNull="true" hTextAlign="Left" vTextAlign="Middle">
-					<expression><![CDATA["TOTAL " + ($F{SECCION}.intValue() == 1 ? "INGRESOS" : ($F{SECCION}.intValue() == 2 ? "EGRESOS" : "PROVISIONES Y APORTES PATRONALES")) + " — " + $V{V_N} + ($V{V_N}.intValue() == 1 ? " colaborador" : " colaboradores")]]></expression>
+					<expression><![CDATA["TOTAL " + ($F{SECCION}.intValue() == 1 ? "INGRESOS " : ($F{SECCION}.intValue() == 2 ? "EGRESOS " : "")) + "— " + $V{V_N} + ($V{V_N}.intValue() == 1 ? " colaborador" : " colaboradores")]]></expression>
 					<box leftPadding="2"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
 				</element>
 				<element kind="textField" uuid="e80d64b1-6bdd-468f-85fa-15c3e98879f2" mode="Opaque" x="212" y="0" width="41" height="14" backcolor="#EDF2F7" pattern="#,##0.00" fontSize="6.0" bold="true" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
