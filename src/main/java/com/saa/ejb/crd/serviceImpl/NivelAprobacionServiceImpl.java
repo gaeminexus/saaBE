@@ -58,6 +58,9 @@ public class NivelAprobacionServiceImpl implements NivelAprobacionService {
     @EJB
     private UsuarioDaoService usuarioDaoService;
 
+    @EJB
+    private com.saa.ejb.crd.service.SustitucionPrestamoService sustitucionPrestamoService;
+
     /** Resultado interno de resolver la regla: la regla, «no hay reglas activas» (transición) o el motivo del fallo. */
     private static final class Resolucion {
         private ReglaAprobacionPrestamo regla;
@@ -84,11 +87,18 @@ public class NivelAprobacionServiceImpl implements NivelAprobacionService {
     }
 
     @Override
-    public SimulacionReglaAprobacion simular(Long idTipoPrestamo, Double monto, Long plazo) throws Throwable {
+    public SimulacionReglaAprobacion simular(Long idTipoPrestamo, Double monto, Long plazo, Long operacion)
+            throws Throwable {
         System.out.println("NivelAprobacionService.simular - tipo: " + idTipoPrestamo + " - monto: " + monto
-            + " - plazo: " + plazo);
+            + " - plazo: " + plazo + " - operación: " + operacion);
         SimulacionReglaAprobacion respuesta = new SimulacionReglaAprobacion();
-        Resolucion resolucion = resolverPorDatos(idTipoPrestamo, monto, plazo);
+        Long operacionEfectiva = operacion != null ? operacion : Long.valueOf(OPERACION_NUEVO);
+        respuesta.setOperacion(operacionEfectiva);
+        if (operacionEfectiva < OPERACION_NUEVO || operacionEfectiva > OPERACION_REESTRUCTURACION) {
+            respuesta.setMensaje("La operación es 1 (nuevo), 2 (novación) o 3 (reestructuración)");
+            return respuesta;
+        }
+        Resolucion resolucion = resolverPorDatos(idTipoPrestamo, monto, plazo, operacionEfectiva);
         respuesta.setSinReglasActivas(resolucion.sinReglasActivas);
         if (resolucion.sinReglasActivas) {
             respuesta.setMensaje("No hay ninguna regla de aprobación activa: el préstamo se aprueba en un solo paso, como hoy.");
@@ -325,10 +335,27 @@ public class NivelAprobacionServiceImpl implements NivelAprobacionService {
         Long idTipo = prestamo.getProducto() != null && prestamo.getProducto().getTipoPrestamo() != null
             ? prestamo.getProducto().getTipoPrestamo().getCodigo() : null;
         Long plazo = prestamo.getPlazo() != null ? Long.valueOf(prestamo.getPlazo().longValue()) : null;
-        return resolverPorDatos(idTipo, prestamo.getMontoSolicitado(), plazo);
+        return resolverPorDatos(idTipo, prestamo.getMontoSolicitado(), plazo, operacionDe(prestamo));
     }
 
-    private Resolucion resolverPorDatos(Long idTipo, Double monto, Long plazo) throws Throwable {
+    /** Operaciones de RGAP.RGAPTPOP. */
+    static final int OPERACION_NUEVO = 1;
+    static final int OPERACION_NOVACION = 2;
+    static final int OPERACION_REESTRUCTURACION = 3;
+
+    /**
+     * Operación del préstamo: sin original → NUEVO; con original → REESTRUCTURACIÓN o NOVACIÓN con la MISMA lógica que
+     * la sustitución real ({@code SustitucionPrestamoService.esReestructuracion}: PRSTRSTR = 1 o producto RESTRUCTURADO).
+     */
+    private Long operacionDe(Prestamo prestamo) throws Throwable {
+        if (prestamo.getIdPrestamoOriginal() == null) {
+            return Long.valueOf(OPERACION_NUEVO);
+        }
+        return Long.valueOf(sustitucionPrestamoService.esReestructuracion(prestamo)
+            ? OPERACION_REESTRUCTURACION : OPERACION_NOVACION);
+    }
+
+    private Resolucion resolverPorDatos(Long idTipo, Double monto, Long plazo, Long operacion) throws Throwable {
         Resolucion resolucion = new Resolucion();
         List<ReglaAprobacionPrestamo> activas = reglaDao.selectActivas();
         if (activas.isEmpty()) {
@@ -342,12 +369,14 @@ public class NivelAprobacionServiceImpl implements NivelAprobacionService {
                 && (regla.getMontoMaximo() == null || (monto != null && monto <= regla.getMontoMaximo()));
             boolean plazoOk = (regla.getPlazoMinimo() == null || (plazo != null && plazo >= regla.getPlazoMinimo()))
                 && (regla.getPlazoMaximo() == null || (plazo != null && plazo <= regla.getPlazoMaximo()));
-            if (tipoOk && montoOk && plazoOk) {
+            boolean operacionOk = regla.getOperacion() == null || regla.getOperacion().equals(operacion);
+            if (tipoOk && montoOk && plazoOk && operacionOk) {
                 aplican.add(regla);
             }
         }
         if (aplican.isEmpty()) {
-            resolucion.error = "No hay regla de aprobación para tipo " + idTipo + ", monto " + monto + ", plazo " + plazo;
+            resolucion.error = "No hay regla de aprobación para tipo " + idTipo + ", monto " + monto + ", plazo " + plazo
+                + ", operación " + operacion + " (1 nuevo, 2 novación, 3 reestructuración)";
             return resolucion;
         }
         long menor = Long.MAX_VALUE;

@@ -173,6 +173,8 @@ Columnas: `GRPRCDGO` (PK, `SQ_GRPRCDGO`), `PRSTCDGO` (FK, obligatorio), `ENTDCDG
 
 ### B4. Niveles de aprobación CONFIGURABLES (decisión del usuario, 2026-11-07)
 
+> **2026-11-08 — criterio «Operación»:** la regla filtra también por `RGAPTPOP` (nulo = cualquiera, 1 nuevo, 2 novación, 3 reestructuración). La operación del préstamo: sin original → 1; con original → 3 si `SustitucionPrestamoService.esReestructuracion` (PRSTRSTR = 1 o producto RESTRUCTURADO), si no 2. Prioridad y 422 por empate sin cambio; las aprobaciones ya registradas siguen con su regla. Ver `DISENO-CRITERIO-OPERACION-NIVELES-APROBACION.md`.
+
 > «Hagamos niveles de aprobación configurables. Que puedan ser por tipo de préstamo, monto, plazo. Y con eso
 > determinar el número de niveles de aprobación y qué usuario aprueba en cada nivel.»
 

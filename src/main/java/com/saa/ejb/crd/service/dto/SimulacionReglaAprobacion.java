@@ -10,6 +10,11 @@ public class SimulacionReglaAprobacion {
     private boolean sinReglasActivas;
     private ReglaAprobacionCompleta regla;
     private String mensaje;
+    /** Operación con la que se simuló: 1 NUEVO, 2 NOVACION, 3 REESTRUCTURACION. */
+    private Long operacion;
+
+    public Long getOperacion() { return operacion; }
+    public void setOperacion(Long operacion) { this.operacion = operacion; }
 
     public boolean isSinReglasActivas() { return sinReglasActivas; }
     public void setSinReglasActivas(boolean sinReglasActivas) { this.sinReglasActivas = sinReglasActivas; }

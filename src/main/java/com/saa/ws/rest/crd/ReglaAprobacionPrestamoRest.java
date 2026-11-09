@@ -90,15 +90,19 @@ public class ReglaAprobacionPrestamoRest {
         }
     }
 
-    /** Qué regla aplicaría a un tipo, monto y plazo, con sus niveles; sirve para probar la configuración. */
+    /**
+     * Qué regla aplicaría a un tipo, monto, plazo y operación, con sus niveles; sirve para probar la configuración.
+     * {@code operacion}: 1 NUEVO, 2 NOVACION, 3 REESTRUCTURACION; sin enviarla se simula un préstamo NUEVO.
+     */
     @GET
     @Path("/simular")
     @Produces(MediaType.APPLICATION_JSON)
     public Response simular(@QueryParam("idTipo") Long idTipo, @QueryParam("monto") Double monto,
-            @QueryParam("plazo") Long plazo) {
-        System.out.println("LLEGA AL SERVICIO GET - RGAP simular - tipo: " + idTipo + " monto: " + monto + " plazo: " + plazo);
+            @QueryParam("plazo") Long plazo, @QueryParam("operacion") Long operacion) {
+        System.out.println("LLEGA AL SERVICIO GET - RGAP simular - tipo: " + idTipo + " monto: " + monto + " plazo: " + plazo
+            + " operacion: " + operacion);
         try {
-            return Response.status(Response.Status.OK).entity(nivelAprobacionService.simular(idTipo, monto, plazo))
+            return Response.status(Response.Status.OK).entity(nivelAprobacionService.simular(idTipo, monto, plazo, operacion))
                     .type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return error(e, "Error al simular la regla: ");

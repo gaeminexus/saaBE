@@ -352,9 +352,9 @@ la tabla), las aprobaciones vigentes se invalidan y la aprobación **vuelve al n
 
 **Configuración** (pantalla «Niveles de aprobación»): CRUD de `rgap`, `nvap` y `unap` — `GET /getAll`, `GET /getId/{id}`,
 `POST ?usuario=`, `PUT ?usuario=`, `DELETE /{id}?usuario=` (deja **inactivo**, no borra), `POST /selectByCriteria` — más
-`GET /rgap/completa/{id}` (regla con niveles y usuarios), `GET /rgap/simular?idTipo=&monto=&plazo=` (qué regla aplicaría; no falla por
+`GET /rgap/completa/{id}` (regla con niveles y usuarios), `GET /rgap/simular?idTipo=&monto=&plazo=&operacion=` (qué regla aplicaría; `operacion` opcional: 1 NUEVO, 2 NOVACION, 3 REESTRUCTURACION, sin enviarla = NUEVO, y la respuesta la repite en `operacion`; no falla por
 la configuración, la explica en `mensaje`), `GET /nvap/porRegla/{idRegla}` y `GET /unap/porNivel/{idNivel}`.
-Campos: `ReglaAprobacionPrestamo { codigo, idTipoPrestamo, nombre, montoMinimo, montoMaximo, plazoMinimo, plazoMaximo, prioridad (def. 100), estado }`,
+Campos: `ReglaAprobacionPrestamo { codigo, idTipoPrestamo, nombre, montoMinimo, montoMaximo, plazoMinimo, plazoMaximo, operacion (null = cualquiera, 1 nuevo, 2 novación, 3 reestructuración; nuevo 2026-11-08, requiere crd/sql/372), prioridad (def. 100), estado }`,
 `NivelAprobacionPrestamo { codigo, idRegla, orden, nombre, estado }`, `UsuarioNivelAprobacion { codigo, idNivel, idUsuario, estado }`.
 
 **Solicitud, sección 7:** «Nivel de aprobación» = nombre del último nivel y «(N niveles)»; «Revisado por» = quien aprobó el nivel anterior

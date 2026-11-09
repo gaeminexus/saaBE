@@ -112,6 +112,11 @@ public class ReglaAprobacionPrestamoServiceImpl implements ReglaAprobacionPresta
         if (registro.getEstado() != null && registro.getEstado() != 0L && registro.getEstado() != 1L) {
             throw new IncomeException("El estado de la regla es 1 (activa) o 0 (inactiva)");
         }
+        // Operación: nula = cualquiera; 1 nuevo, 2 novación, 3 reestructuración (CHECK de crd/sql/372).
+        if (registro.getOperacion() != null
+                && (registro.getOperacion() < 1L || registro.getOperacion() > 3L)) {
+            throw new IncomeException("La operación de la regla es 1 (nuevo), 2 (novación), 3 (reestructuración) o vacía (cualquiera)");
+        }
         if (registro.getPrioridad() == null) {
             registro.setPrioridad(100L);
         }

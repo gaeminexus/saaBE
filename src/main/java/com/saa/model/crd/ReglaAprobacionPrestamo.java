@@ -67,6 +67,14 @@ public class ReglaAprobacionPrestamo implements Serializable {
     @Column(name = "RGAPPLMX")
     private Long plazoMaximo;
 
+    /**
+     * Operación a la que aplica la regla (crd/sql/372): {@code null} = cualquiera, 1 = NUEVO, 2 = NOVACION,
+     * 3 = REESTRUCTURACION. Ver DISENO-CRITERIO-OPERACION-NIVELES-APROBACION.md.
+     */
+    @Basic
+    @Column(name = "RGAPTPOP")
+    private Long operacion;
+
     /** Prioridad: gana la de número menor; empate = error de configuración. */
     @Basic
     @Column(name = "RGAPPRRD")
@@ -111,6 +119,8 @@ public class ReglaAprobacionPrestamo implements Serializable {
     public void setPlazoMinimo(Long plazoMinimo) { this.plazoMinimo = plazoMinimo; }
     public Long getPlazoMaximo() { return plazoMaximo; }
     public void setPlazoMaximo(Long plazoMaximo) { this.plazoMaximo = plazoMaximo; }
+    public Long getOperacion() { return operacion; }
+    public void setOperacion(Long operacion) { this.operacion = operacion; }
     public Long getPrioridad() { return prioridad; }
     public void setPrioridad(Long prioridad) { this.prioridad = prioridad; }
     public Long getEstado() { return estado; }

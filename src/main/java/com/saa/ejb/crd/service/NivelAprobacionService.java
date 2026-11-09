@@ -23,7 +23,11 @@ public interface NivelAprobacionService {
     ReglaAprobacionCompleta reglaCompleta(Long idRegla) throws Throwable;
 
     /** Qué regla aplicaría a un tipo, monto y plazo (sin préstamo). Nunca lanza por la configuración: la explica. */
-    SimulacionReglaAprobacion simular(Long idTipoPrestamo, Double monto, Long plazo) throws Throwable;
+    /**
+     * Qué regla aplicaría a un tipo, monto, plazo y operación (1 NUEVO, 2 NOVACION, 3 REESTRUCTURACION; {@code null} =
+     * NUEVO). No falla por la configuración: la explica en {@code mensaje}.
+     */
+    SimulacionReglaAprobacion simular(Long idTipoPrestamo, Double monto, Long plazo, Long operacion) throws Throwable;
 
     /**
      * Estado de la aprobación de un préstamo: la regla, cada nivel con quién y cuándo aprobó, el nivel pendiente y si el
