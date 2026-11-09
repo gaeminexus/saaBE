@@ -334,4 +334,23 @@ public class PagoPensionComplementaria implements Serializable {
     public void setMotivoAnulacion(String motivoAnulacion) {
         this.motivoAnulacion = motivoAnulacion;
     }
+
+    /**
+     * Pensión retenida pendiente de pago (PGPCVLRT, sql/374): remanente de pensión del mes que no tuvo salida
+     * (sin cuenta activa única con certificado). Queda en el aporte 23, sin negativo, sin orden y sin devengo hasta
+     * que se paga. Se conserva después de pagarse (el estado y PGPCIDPG dicen si sigue pendiente).
+     */
+    @Basic
+    @Column(name = "PGPCVLRT", nullable = false)
+    private Double valorRetenido = 0.0;
+
+    /** 1 = el retenido ya se devengó antes del cambio (histórico, D3-B): al pagarlo no se devenga otra vez (PGPCDVRT). */
+    @Basic
+    @Column(name = "PGPCDVRT", nullable = false)
+    private Long devengadoRetenido = 0L;
+
+    public Double getValorRetenido() { return valorRetenido; }
+    public void setValorRetenido(Double valorRetenido) { this.valorRetenido = valorRetenido; }
+    public Long getDevengadoRetenido() { return devengadoRetenido; }
+    public void setDevengadoRetenido(Long devengadoRetenido) { this.devengadoRetenido = devengadoRetenido; }
 }

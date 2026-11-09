@@ -327,4 +327,17 @@ public class DetallePagoPension {
     public void setParticipacion(String participacion) {
         this.participacion = participacion;
     }
+
+    /** Pensión de ESTE mes que quedó retenida (sin salida): no se devenga ni se paga hasta que haya cuenta. */
+    private double valorRetenido;
+    /** Retenido de meses anteriores que esta corrida pagó (una orden por mes), antes de los meses de la corrida. */
+    private double retenidoAcumuladoPagado;
+    /** Cantidad de meses retenidos pagados en esta corrida. */
+    private int mesesRetenidosPagados;
+    public double getValorRetenido() { return valorRetenido; }
+    public void setValorRetenido(double valorRetenido) { this.valorRetenido = valorRetenido; }
+    public double getRetenidoAcumuladoPagado() { return retenidoAcumuladoPagado; }
+    public void setRetenidoAcumuladoPagado(double retenidoAcumuladoPagado) { this.retenidoAcumuladoPagado = retenidoAcumuladoPagado; }
+    public int getMesesRetenidosPagados() { return mesesRetenidosPagados; }
+    public void setMesesRetenidosPagados(int mesesRetenidosPagados) { this.mesesRetenidosPagados = mesesRetenidosPagados; }
 }

@@ -6,6 +6,7 @@ import com.saa.basico.util.EntityService;
 import com.saa.ejb.crd.service.dto.DetallePagoPension;
 import com.saa.ejb.crd.service.dto.ResultadoGeneracionPagosPension;
 import com.saa.ejb.crd.service.dto.ResultadoGeneracionSeguroMedico;
+import com.saa.ejb.crd.service.dto.ResultadoPagoRetenidos;
 import com.saa.ejb.crd.service.dto.ResultadoPrevisualizacionCorrida;
 import com.saa.ejb.crd.service.dto.ResultadoSeguimientoCorridaJubilados;
 import com.saa.ejb.crd.service.dto.ResultadoSincronizacion;
@@ -189,6 +190,16 @@ public interface PagoPensionComplementariaService extends EntityService<PagoPens
      * @throws Throwable Si ocurre un error
      */
     ResultadoSincronizacion sincronizarPagos() throws Throwable;
+
+    /**
+     * Paga la pensión retenida de un jubilado (DISENO-PENSION-RETENIDA-SIN-CUENTA.md §3.2): una orden en CXP por cada
+     * mes retenido, en orden de período, fechada el día del pago. REQUIRES_NEW. Exige usuario válido, mes en curso
+     * abierto y salida válida; si no hay salida o el saldo no alcanza devuelve lo no pagado con su motivo (no lanza).
+     */
+    ResultadoPagoRetenidos pagarRetenidos(Long idEntidad, Long idEmpresa, String usuario) throws Throwable;
+
+    /** Solo lectura: los meses retenidos pendientes de un jubilado, el total y si hoy tiene salida (para el botón). */
+    ResultadoPagoRetenidos consultarRetenidos(Long idEntidad) throws Throwable;
 
     /**
      * Reconcilia UN pago puntual. Expuesto para que {@link #sincronizarPagos} invoque cada uno

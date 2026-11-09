@@ -192,4 +192,11 @@ public class ResultadoPrevisualizacionCorrida {
     public void setDetalle(List<DetallePrevisualizacionJubilado> detalle) {
         this.detalle = detalle;
     }
+
+    private double totalRetenido;
+    private double totalRetenidoAcumuladoAPagar;
+    public double getTotalRetenido() { return totalRetenido; }
+    public void setTotalRetenido(double totalRetenido) { this.totalRetenido = totalRetenido; }
+    public double getTotalRetenidoAcumuladoAPagar() { return totalRetenidoAcumuladoAPagar; }
+    public void setTotalRetenidoAcumuladoAPagar(double totalRetenidoAcumuladoAPagar) { this.totalRetenidoAcumuladoAPagar = totalRetenidoAcumuladoAPagar; }
 }

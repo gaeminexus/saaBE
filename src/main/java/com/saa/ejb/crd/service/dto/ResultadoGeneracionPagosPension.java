@@ -193,4 +193,13 @@ public class ResultadoGeneracionPagosPension {
     public void setDetalle(List<DetallePagoPension> detalle) {
         this.detalle = detalle;
     }
+
+    /** Pensión que quedó retenida en la corrida (jubilados sin salida). */
+    private double totalRetenido;
+    /** Retenido de meses anteriores que la corrida pagó. Está incluido en totalOrdenesGeneradas. */
+    private double totalRetenidoAcumuladoPagado;
+    public double getTotalRetenido() { return totalRetenido; }
+    public void setTotalRetenido(double totalRetenido) { this.totalRetenido = totalRetenido; }
+    public double getTotalRetenidoAcumuladoPagado() { return totalRetenidoAcumuladoPagado; }
+    public void setTotalRetenidoAcumuladoPagado(double totalRetenidoAcumuladoPagado) { this.totalRetenidoAcumuladoPagado = totalRetenidoAcumuladoPagado; }
 }

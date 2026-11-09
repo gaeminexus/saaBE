@@ -8,6 +8,7 @@ import java.util.Map;
 import com.saa.ejb.crd.service.PagoPensionComplementariaService;
 import com.saa.ejb.crd.service.dto.ResultadoGeneracionPagosPension;
 import com.saa.ejb.crd.service.dto.ResultadoGeneracionSeguroMedico;
+import com.saa.ejb.crd.service.dto.ResultadoPagoRetenidos;
 import com.saa.ejb.crd.service.dto.ResultadoPrevisualizacionCorrida;
 import com.saa.ejb.crd.service.dto.ResultadoSeguimientoCorridaJubilados;
 import com.saa.ejb.crd.service.dto.ResultadoSincronizacion;
@@ -304,6 +305,53 @@ public class PagoPensionComplementariaRest {
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
                     .type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return respuestaError(e);
+        }
+    }
+
+    /**
+     * Paga la pensión retenida de un jubilado (una orden por mes, en orden de período) — contrato en
+     * API-PENSION-RETENIDA.md. {@code {exito, mensaje, resultado}}; lo no pagado va en {@code resultado.noPagados}
+     * con su motivo, no es un error HTTP.
+     */
+    @POST
+    @Path("/pagarRetenidos")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response pagarRetenidos(@QueryParam("idEntidad") Long idEntidad, @QueryParam("idEmpresa") Long idEmpresa,
+            @QueryParam("usuario") String usuario) {
+        System.out.println("LLEGA AL SERVICIO PAGAR RETENIDOS - Entidad: " + idEntidad);
+        if (idEntidad == null || idEmpresa == null) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), "Debe indicar idEntidad e idEmpresa", null);
+        }
+        if (usuario == null || usuario.trim().isEmpty()) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), "Debe indicar el usuario", null);
+        }
+        try {
+            ResultadoPagoRetenidos resultado = pagoPensionService.pagarRetenidos(idEntidad, idEmpresa, usuario);
+            Map<String, Object> cuerpo = new LinkedHashMap<>();
+            cuerpo.put("exito", Boolean.TRUE);
+            cuerpo.put("mensaje", resultado.getMensaje());
+            cuerpo.put("resultado", resultado);
+            return Response.status(Response.Status.OK).entity(cuerpo).type(MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+                    .type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return respuestaError(e);
+        }
+    }
+
+    /** Solo lectura: meses retenidos pendientes de un jubilado y si hoy tiene salida (para mostrar el botón). */
+    @GET
+    @Path("/retenidos/{idEntidad}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response retenidos(@PathParam("idEntidad") Long idEntidad) {
+        System.out.println("LLEGA AL SERVICIO RETENIDOS - Entidad: " + idEntidad);
+        try {
+            return Response.status(Response.Status.OK)
+                    .entity(pagoPensionService.consultarRetenidos(idEntidad)).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return respuestaError(e);
         }

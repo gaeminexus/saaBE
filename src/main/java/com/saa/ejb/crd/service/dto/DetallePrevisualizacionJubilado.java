@@ -217,4 +217,13 @@ public class DetallePrevisualizacionJubilado {
     public void setMotivoBloqueo(String motivoBloqueo) {
         this.motivoBloqueo = motivoBloqueo;
     }
+
+    /** Pensión de la corrida que quedaría retenida (sin cuenta con certificado). */
+    private double montoRetenido;
+    /** Retenido de meses anteriores que se pagaría en la corrida (con cuenta con certificado). */
+    private double retenidoAcumuladoAPagar;
+    public double getMontoRetenido() { return montoRetenido; }
+    public void setMontoRetenido(double montoRetenido) { this.montoRetenido = montoRetenido; }
+    public double getRetenidoAcumuladoAPagar() { return retenidoAcumuladoAPagar; }
+    public void setRetenidoAcumuladoAPagar(double retenidoAcumuladoAPagar) { this.retenidoAcumuladoAPagar = retenidoAcumuladoAPagar; }
 }

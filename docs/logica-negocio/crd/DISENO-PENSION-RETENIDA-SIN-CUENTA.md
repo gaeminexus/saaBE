@@ -48,6 +48,16 @@ Por cada PGPC `REGISTRADA` con `PGPCVLRT > 0` y sin orden, en orden de período,
   validado) y botón «Pagar pensiones retenidas» en la pantalla de pago de jubilados, visible cuando el jubilado tiene
   retenidos pendientes. Devuelve lo pagado por mes y lo que no se pudo (sin salida, saldo insuficiente).
 
+### 3.2bis Reglas fijadas al implementar (2026-11-09, aprobadas por el árbitro)
+- **Ancla:** el negativo del retenido pagado lleva fecha del mes de pago; si contara para el ancla del retroactivo (último negativo del aporte 23), la corrida del mes en curso quedaría AL_DIA y su pensión no se generaría. `selectFechaUltimoMovimientoNegativo` lo excluye (PGPC con `PGPCVLRT` > 0 y negativo que no sea de seguro). Siguen contando el negativo del seguro de un mes retenido (también el de los históricos `PGPCDVRT = 1`) y, como antes, se excluye el del stub de seguro.
+- **Glosa:** «PAGO PENSION RETENIDA m/aaaa - Entidad n», sin el sufijo de seguro.
+- **Enlace:** al pagar, `PGPCIDAP` se re-apunta al negativo del retenido, así el rechazo (contra-movimiento) y `netoDelPgpc` devuelven `PGPCVLRT` y no el seguro. El negativo del seguro de ese mes queda en APRT sin enlace desde la fila.
+- **Reserva en el bucle:** el remanente retenido de un mes resta de `saldoLibre` para los meses siguientes de la misma corrida.
+- **Rechazo:** un PGPC retenido que termina RECHAZADA sale de los pendientes (estado distinto de 1) y no se reintenta; mismo comportamiento que una pensión rechazada hoy. Se plantea al usuario aparte.
+- **PGPCNMDV:** el devengo del retenido se guarda ahí solo si está libre (puede traer el asiento del seguro); el código del asiento va siempre en la respuesta y el PGPC en la glosa.
+- **Saldo insuficiente al pagar:** se corta en el primer mes que no alcanza (se paga en orden de período, no se salta un mes) y el resto va como no pagado con su motivo.
+
+
 ### 3.3 Históricos (los que ya se devengaron) — `crd/sql/373` los mide
 - Backfill de `PGPCVLRT` = HABER 2.3.01.10.03 de su asiento de devengo y **`PGPCDVRT = 1`** (columna nueva
   `NUMBER(1)`, «el retenido ya está devengado»), en el DDL 374, con control.

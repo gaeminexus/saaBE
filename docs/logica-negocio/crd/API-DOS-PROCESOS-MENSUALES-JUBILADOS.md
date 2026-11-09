@@ -499,3 +499,21 @@ con el seguro del rol; si el rol trae menos que lo ya debitado, falla sin tocar 
 
 **Stubs viejos (noviembre 2026, ya generado sin débito):** siguen por el camino anterior; se debitan al
 generar las pensiones. No hay backfill.
+
+## 12bis. Pensión retenida: el remanente sin salida no se devenga hasta pagarse (2026-11-09)
+
+Diseño: `DISENO-PENSION-RETENIDA-SIN-CUENTA.md`. Contrato FE: `API-PENSION-RETENIDA.md`. DDL: `sql/374`.
+
+- **Corrida de pensiones, mes con remanente > 0 y sin salida** (sin cuenta activa única con certificado): ya no hay línea de
+  pensión en el devengo (si queda sin líneas no se graba asiento, D-034). El PGPC queda `1 REGISTRADA` con
+  `PGPCVLRT` = remanente y `PGPCDVRT` = 0. Seguro y cruce con préstamos no cambian.
+- **Reserva:** `generarMesesRetroactivos` descuenta de `saldoLibre` los retenidos pendientes (PGPC 1, sin `PGPCIDPG`,
+  `PGPCVLRT` > 0) y, dentro del bucle, el remanente retenido de cada mes, igual que el seguro reservado. El prevuelo hace
+  la misma cuenta.
+- **Pago de lo acumulado:** una orden CXP por mes retenido, en orden de período, fechada el día del pago; al haber salida
+  válida se paga (a) en la corrida de pensiones, antes de los meses de la corrida, y (b) con `POST /pgpc/pagarRetenidos`.
+- **Ancla:** el negativo del retenido pagado NO mueve el ancla del retroactivo (`selectFechaUltimoMovimientoNegativo`);
+  si la moviera, la pensión del mes en curso quedaría AL_DIA sin generarse. El negativo del seguro de un mes retenido sí cuenta.
+- **Enlace:** al pagar, `PGPCIDAP` pasa al negativo del retenido (rechazo y neto usan `PGPCVLRT`). El del seguro queda sin enlace desde la fila.
+- **Rechazo:** un PGPC retenido RECHAZADO no se reintenta (igual que una pensión rechazada hoy).
+- Fuera de alcance: re-proceso C20.
