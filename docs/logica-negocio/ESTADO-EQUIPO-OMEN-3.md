@@ -35,6 +35,14 @@
 | 22 | Informe DELTA 21 consolidado (3 documentos → formato del «3. Informe Revisión Sistema DELTA21») | ✅ entregado por SendUserFile, **fechado 26-oct-2026 v2.0**, citando las fechas originales. Se NEGÓ fecharlo 10-oct-2025 (antedatar un documento para un auditor). Generador fuera del repo | — |
 | 15 | Documentación técnica para la auditoría (inventario, arquitectura, módulos, usuarios) | 🔵 Claude Docs + `docs/regulatorio/DOCUMENTACION-TECNICA-SAA-AUDITORIA.docx`; servidores levantados el 2026-10-25 con `docs/infra/auditoria/levantamiento-servidor.ps1`. **Falta:** [Completar] de la entidad y decisión del usuario sobre la sección 5.6 (brechas) | `f531db16` |
 
+| 23 | rhh — **rol de pagos detallado** (2026-11-09): pedido del usuario con muestra «Liquidación rol de pagos» (ingresos / egresos / provisiones, una columna por concepto), con los estilos de `RPRT_ROLL_CNSL`, en Reportes de nómina | 🔵 diseño en disco (`reportes/REPORTE-ROL-PAGO-DETALLADO.md`): columnas por concepto pivoteadas a 12 casillas en el SQL (no crosstab), casilla 12 = OTROS si sobran; e3-15 de medición (solo lectura). Prompts BE/FE escritos, sin despachar | — |
+
+> **Retomado el 2026-11-09** tras 12 días parado. Entretanto `omen-saa-1` aplicó U-3/U-4/U-5
+> (usuario obligatorio y atomicidad de asientos) y N1 en rhh/cxp/cxc/tsr/cnt, y se fusionó el cuadre
+> (EAR único del 01-11). Verificado: la acreditación automática al cerrar sigue usando el usuario
+> del cierre (`PeriodoNominaRest:335`). El frente 8 (producto NOMINA) lo resolvió N1. El frente 11
+> hay que re-diagnosticarlo: `dea44022` (cuadre C15) cambió `GeneracionCCPMServiceImpl`.
+
 ## Hallazgos (lo que costaba ver)
 
 - **Levantamiento de servidores (2026-10-25), corrige lo que decían los docs:** los dos son **Dell PowerEdge R360, Xeon 6353P (8n/16h), 32 GB, PERC H355**, no R350/E-2314 como decía el memorando de septiembre. El .4 se llama **SRVDEV2** (aunque es producción) y el .3 SRVDEV1, ambos en el dominio `asoprep.com.ec`. La base es **Oracle AI Database 26ai Free 23.26.0** en producción (23.26.3 en el .3), no «23ai».
