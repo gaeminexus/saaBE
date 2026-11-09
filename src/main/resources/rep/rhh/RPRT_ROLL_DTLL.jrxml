@@ -1,0 +1,611 @@
+<!-- Rol de pagos DETALLADO del periodo (RHH): tres bloques (INGRESOS, EGRESOS, PROVISIONES Y APORTES PATRONALES),
+     una fila por colaborador y una columna por concepto del periodo (12 casillas; la 12 = OTROS si hay mas).
+     Mismos estilos que RPRT_ROLL_CNSL. El diseno (reglas de casillas, fondo de reserva IESS, bloque 3, cuadres) esta en
+     docs/logica-negocio/reportes/REPORTE-ROL-PAGO-DETALLADO.md. Tiene <query>: se llena por la conexion JDBC de generarReporte.
+     Sin fontName="Tahoma" (el exportador PDF pierde la negrita). Sin SELECT *. -->
+<jasperReport name="RPRT_ROLL_DTLL" language="java" pageWidth="842" pageHeight="595" orientation="Landscape" columnWidth="792" leftMargin="25" rightMargin="25" topMargin="20" bottomMargin="20" whenNoDataType="NoDataSection" uuid="20b39d7c-e5bd-4387-bddd-e5b6c8434f10">
+	<property name="com.jaspersoft.studio.data.defaultdataadapter" value="Oracle"/>
+	<property name="com.jaspersoft.studio.report.description" value="Rol de pagos detallado de un periodo: ingresos, egresos y provisiones concepto por concepto."/>
+	<parameter name="P_PRDN_CODIGO" class="java.lang.Long">
+		<description><![CDATA[Codigo del periodo de nomina (RHH.PRDN.PRDNCDGO)]]></description>
+	</parameter>
+	<parameter name="P_IMAGEN" class="java.awt.Image">
+		<description><![CDATA[Logo del fondo. Lo inyecta ReporteServiceImpl si el frontend no lo envia.]]></description>
+	</parameter>
+	<parameter name="P_USUARIO" class="java.lang.String">
+		<description><![CDATA[Usuario que genera el reporte (opcional)]]></description>
+	</parameter>
+	<query language="SQL"><![CDATA[WITH
+-- Periodo y asiento de la nomina. PRDNASNT guarda el PK del asiento (ContabilizacionNominaServiceImpl:279,
+-- setAsientoRol(asiento.getCodigo())), asi que se une por ASNTCDGO. LEFT JOIN: periodo sin contabilizar = nulo.
+PER AS (
+    SELECT p.PRDNANOO AS ANIO, p.PRDNMSEE AS MES, p.PRDNFCHI AS DESDE, p.PRDNFCHF AS HASTA, a.ASNTNMRO AS NUMERO_ASIENTO
+    FROM   RHH.PRDN p
+           LEFT JOIN CNT.ASNT a ON a.ASNTCDGO = p.PRDNASNT
+    WHERE  p.PRDNCDGO = $P{P_PRDN_CODIGO}
+),
+-- Una fila por nomina del periodo (mismas filas y mismo orden que RPRT_ROLL_CNSL; no se filtra por estado).
+NOM AS (
+    SELECT n.NMNACDGO                                                    AS NMNACDGO,
+           n.MPLDCDGO                                                    AS MPLDCDGO,
+           n.PRDNCDGO                                                    AS PRDNCDGO,
+           e.MPLDIDNT                                                    AS IDENTIFICACION,
+           NVL(e.MPLDAPLL, ' ') || ' ' || NVL(e.MPLDNMBR, ' ')           AS EMPLEADO,
+           e.MPLDAPLL                                                    AS APELLIDOS_ORDEN,
+           e.MPLDNMBR                                                    AS NOMBRES_ORDEN,
+           NVL(n.NMNADITR, 0)                                            AS DIAS,
+           NVL(n.NMNAAPPT, 0)                                            AS APORTE_PATRONAL,
+           NVL(n.NMNAIESC, 0)                                            AS APORTE_IECE_SECAP,
+           -- Neto a pagar = NMNANETO + renglones de valor no pagado (rol de motor 34 / 35), con su signo
+           -- (mismo calculo que NETO_A_PAGAR de RPRT_ROLL_INDV, con NMNANETO en vez de RLPGNETO).
+           NVL(n.NMNANETO, 0) + NVL((
+               SELECT SUM(ra.RNGLVLRO)
+               FROM   RHH.RNGL ra
+                      JOIN RHH.CPNM ca ON ca.CPNMCDGO = ra.CPNMCDGO
+               WHERE  ra.NMNACDGO = n.NMNACDGO
+                      AND ca.CPNMROLM IN (34, 35)
+           ), 0)                                                         AS NETO_PAGAR,
+           -- e3-06: fondo de reserva ACUMULADO_EN_EL_IESS (CNTEFRMD=2), no es renglon, va a RHH.PVNM tipo 4.
+           -- Subconsulta FR_IESS_VALOR copiada tal cual de RPRT_ROLL_CNSL.
+           NVL((
+               SELECT pv.PVNMVLOR
+               FROM   RHH.PVNM pv
+               WHERE  pv.MPLDCDGO = e.MPLDCDGO AND pv.PRDNCDGO = p.PRDNCDGO
+                      AND pv.PVNMTPPR = 4 AND pv.PVNMESTD = 1 AND ct.CNTEFRMD = 2
+           ), 0)                                                         AS FR_IESS_VALOR
+    FROM   RHH.PRDN p
+           JOIN RHH.NMNA n ON n.PRDNCDGO = p.PRDNCDGO
+           JOIN RHH.MPLD e ON e.MPLDCDGO = n.MPLDCDGO
+           JOIN RHH.CNTE ct ON ct.CNTECDGO = n.CNTECDGO
+    WHERE  p.PRDNCDGO = $P{P_PRDN_CODIGO}
+),
+-- Renglones de ingreso (1) y egreso (2). Clave del concepto: CPNMCDGO; sin concepto, la descripcion.
+REN AS (
+    SELECT rn.NMNACDGO                                                   AS NMNACDGO,
+           rn.RNGLTPCN                                                   AS SECC,
+           CASE WHEN rn.CPNMCDGO IS NOT NULL
+                THEN 'C' || LPAD(TO_CHAR(rn.CPNMCDGO), 18, '0')
+                ELSE 'D' || rn.RNGLDSCR END                              AS CLAVE,
+           UPPER(NVL(NVL(c.CPNMABRV, c.CPNMNMBR), rn.RNGLDSCR))          AS HDR,
+           c.CPNMORDN                                                    AS ORDN,
+           NVL(rn.RNGLVLRO, 0)                                           AS VLR
+    FROM   RHH.RNGL rn
+           JOIN NOM ON NOM.NMNACDGO = rn.NMNACDGO
+           LEFT JOIN RHH.CPNM c ON c.CPNMCDGO = rn.CPNMCDGO
+    WHERE  rn.RNGLTPCN IN (1, 2)
+),
+-- Solo conceptos con algun valor distinto de 0 en el periodo.
+CONC0 AS (
+    SELECT SECC, CLAVE, MAX(HDR) AS HDR, MIN(ORDN) AS ORDN, 1 AS GRP
+    FROM   REN
+    GROUP  BY SECC, CLAVE
+    HAVING SUM(ABS(VLR)) > 0
+),
+-- Fondo de reserva acumulado en el IESS: un concepto mas, al final de ambos bloques, solo si alguien lo tiene.
+CONC1 AS (
+    SELECT SECC, CLAVE, HDR, ORDN, GRP FROM CONC0
+    UNION ALL
+    SELECT s.SECC, 'ZFR',
+           CASE s.SECC WHEN 1 THEN 'FONDOS RESERVA IESS' ELSE 'FONDOS RESERVA DEPOSITADOS IESS' END,
+           CAST(NULL AS NUMBER), 2
+    FROM   (SELECT 1 AS SECC FROM DUAL UNION ALL SELECT 2 FROM DUAL) s
+    WHERE  EXISTS (SELECT 1 FROM NOM WHERE NOM.FR_IESS_VALOR <> 0)
+),
+CONC AS (
+    SELECT SECC, CLAVE, HDR,
+           ROW_NUMBER() OVER (PARTITION BY SECC ORDER BY GRP, NVL(ORDN, 999999999), CLAVE) AS RN,
+           COUNT(*)     OVER (PARTITION BY SECC)                                           AS TOTC
+    FROM   CONC1
+),
+-- Casilla de cada concepto: 1..12; con mas de 12 conceptos, la 12 = OTROS (suma del resto).
+CS AS (
+    SELECT SECC, CLAVE, HDR, TOTC,
+           CASE WHEN TOTC <= 12 THEN RN WHEN RN <= 11 THEN RN ELSE 12 END AS CASILLA
+    FROM   CONC
+),
+HD AS (
+    SELECT SECC, CASILLA,
+           CASE WHEN CASILLA = 12 AND TOTC > 12 THEN 'OTROS' ELSE MAX(HDR) END AS HDR
+    FROM   CS
+    GROUP  BY SECC, CASILLA, TOTC
+    UNION ALL
+    SELECT 3, 1, 'TOTAL INGRESOS' FROM DUAL UNION ALL
+    SELECT 3, 2, 'DÉCIMO TERCERO' FROM DUAL UNION ALL
+    SELECT 3, 3, 'DÉCIMO CUARTO' FROM DUAL UNION ALL
+    SELECT 3, 4, 'VACACIONES' FROM DUAL UNION ALL
+    SELECT 3, 5, 'FONDOS DE RESERVA' FROM DUAL UNION ALL
+    SELECT 3, 6, 'APORTE PATRONAL IESS' FROM DUAL UNION ALL
+    SELECT 3, 7, 'IECE / SECAP' FROM DUAL UNION ALL
+    SELECT 3, 8, 'JUBILACIÓN PATRONAL' FROM DUAL UNION ALL
+    SELECT 3, 9, 'DESAHUCIO' FROM DUAL
+),
+HDP AS (
+    SELECT SECC,
+           MAX(CASE WHEN CASILLA = 1 THEN HDR END) AS H1,
+           MAX(CASE WHEN CASILLA = 2 THEN HDR END) AS H2,
+           MAX(CASE WHEN CASILLA = 3 THEN HDR END) AS H3,
+           MAX(CASE WHEN CASILLA = 4 THEN HDR END) AS H4,
+           MAX(CASE WHEN CASILLA = 5 THEN HDR END) AS H5,
+           MAX(CASE WHEN CASILLA = 6 THEN HDR END) AS H6,
+           MAX(CASE WHEN CASILLA = 7 THEN HDR END) AS H7,
+           MAX(CASE WHEN CASILLA = 8 THEN HDR END) AS H8,
+           MAX(CASE WHEN CASILLA = 9 THEN HDR END) AS H9,
+           MAX(CASE WHEN CASILLA = 10 THEN HDR END) AS H10,
+           MAX(CASE WHEN CASILLA = 11 THEN HDR END) AS H11,
+           MAX(CASE WHEN CASILLA = 12 THEN HDR END) AS H12
+    FROM   HD
+    GROUP  BY SECC
+),
+-- Valores de los bloques 1 y 2 por (nomina, seccion, casilla).
+VAL12 AS (
+    SELECT r.NMNACDGO, r.SECC, cs.CASILLA, r.VLR
+    FROM   REN r
+           JOIN CS cs ON cs.SECC = r.SECC AND cs.CLAVE = r.CLAVE
+    UNION ALL
+    SELECT NOM.NMNACDGO, cs.SECC, cs.CASILLA, NOM.FR_IESS_VALOR
+    FROM   NOM
+           JOIN CS cs ON cs.CLAVE = 'ZFR'
+    WHERE  NOM.FR_IESS_VALOR <> 0
+),
+-- Bloque 3: casillas fijas. PVNM siempre con PVNMESTD = 1 (el tipo 5 NO se usa: el aporte sale de NMNAAPPT).
+VAL AS (
+    SELECT NMNACDGO, SECC, CASILLA, VLR FROM VAL12
+    UNION ALL
+    SELECT NMNACDGO, 3, 1, SUM(VLR) FROM VAL12 WHERE SECC = 1 GROUP BY NMNACDGO
+    UNION ALL
+    SELECT n.NMNACDGO, 3,
+           DECODE(pv.PVNMTPPR, 1, 2, 2, 3, 3, 4, 4, 5, 6, 8, 7, 9),
+           NVL(pv.PVNMVLOR, 0)
+    FROM   NOM n
+           JOIN RHH.PVNM pv ON pv.MPLDCDGO = n.MPLDCDGO AND pv.PRDNCDGO = n.PRDNCDGO
+    WHERE  pv.PVNMESTD = 1 AND pv.PVNMTPPR IN (1, 2, 3, 4, 6, 7)
+    UNION ALL
+    SELECT NMNACDGO, 3, 6, APORTE_PATRONAL FROM NOM
+    UNION ALL
+    SELECT NMNACDGO, 3, 7, APORTE_IECE_SECAP FROM NOM
+),
+VP AS (
+    SELECT NMNACDGO, SECC,
+           SUM(CASE WHEN CASILLA = 1 THEN VLR END) AS S1,
+           SUM(CASE WHEN CASILLA = 2 THEN VLR END) AS S2,
+           SUM(CASE WHEN CASILLA = 3 THEN VLR END) AS S3,
+           SUM(CASE WHEN CASILLA = 4 THEN VLR END) AS S4,
+           SUM(CASE WHEN CASILLA = 5 THEN VLR END) AS S5,
+           SUM(CASE WHEN CASILLA = 6 THEN VLR END) AS S6,
+           SUM(CASE WHEN CASILLA = 7 THEN VLR END) AS S7,
+           SUM(CASE WHEN CASILLA = 8 THEN VLR END) AS S8,
+           SUM(CASE WHEN CASILLA = 9 THEN VLR END) AS S9,
+           SUM(CASE WHEN CASILLA = 10 THEN VLR END) AS S10,
+           SUM(CASE WHEN CASILLA = 11 THEN VLR END) AS S11,
+           SUM(CASE WHEN CASILLA = 12 THEN VLR END) AS S12
+    FROM   VAL
+    GROUP  BY NMNACDGO, SECC
+),
+-- Una fila por (seccion, nomina): 0 donde la casilla tiene concepto y el colaborador no; NULL donde no hay concepto.
+X AS (
+    SELECT g.SECC AS SECCION, g.IDENTIFICACION, g.EMPLEADO, g.APELLIDOS_ORDEN, g.NOMBRES_ORDEN, g.NMNACDGO, g.DIAS,
+           g.NETO_PAGAR,
+           h.H1 AS H1,
+           h.H2 AS H2,
+           h.H3 AS H3,
+           h.H4 AS H4,
+           h.H5 AS H5,
+           h.H6 AS H6,
+           h.H7 AS H7,
+           h.H8 AS H8,
+           h.H9 AS H9,
+           h.H10 AS H10,
+           h.H11 AS H11,
+           h.H12 AS H12,
+           CASE WHEN h.H1 IS NULL THEN NULL ELSE NVL(v.S1, 0) END AS V1,
+           CASE WHEN h.H2 IS NULL THEN NULL ELSE NVL(v.S2, 0) END AS V2,
+           CASE WHEN h.H3 IS NULL THEN NULL ELSE NVL(v.S3, 0) END AS V3,
+           CASE WHEN h.H4 IS NULL THEN NULL ELSE NVL(v.S4, 0) END AS V4,
+           CASE WHEN h.H5 IS NULL THEN NULL ELSE NVL(v.S5, 0) END AS V5,
+           CASE WHEN h.H6 IS NULL THEN NULL ELSE NVL(v.S6, 0) END AS V6,
+           CASE WHEN h.H7 IS NULL THEN NULL ELSE NVL(v.S7, 0) END AS V7,
+           CASE WHEN h.H8 IS NULL THEN NULL ELSE NVL(v.S8, 0) END AS V8,
+           CASE WHEN h.H9 IS NULL THEN NULL ELSE NVL(v.S9, 0) END AS V9,
+           CASE WHEN h.H10 IS NULL THEN NULL ELSE NVL(v.S10, 0) END AS V10,
+           CASE WHEN h.H11 IS NULL THEN NULL ELSE NVL(v.S11, 0) END AS V11,
+           CASE WHEN h.H12 IS NULL THEN NULL ELSE NVL(v.S12, 0) END AS V12
+    FROM   (SELECT s.SECC, NOM.* FROM NOM CROSS JOIN (SELECT 1 AS SECC FROM DUAL UNION ALL SELECT 2 FROM DUAL UNION ALL SELECT 3 FROM DUAL) s) g
+           LEFT JOIN VP  v ON v.NMNACDGO = g.NMNACDGO AND v.SECC = g.SECC
+           LEFT JOIN HDP h ON h.SECC = g.SECC
+)
+SELECT X.SECCION                                                          AS SECCION,
+       X.IDENTIFICACION                                                   AS IDENTIFICACION,
+       X.EMPLEADO                                                         AS EMPLEADO,
+       X.DIAS                                                             AS DIAS,
+       X.H1 AS H1,
+       X.H2 AS H2,
+       X.H3 AS H3,
+       X.H4 AS H4,
+       X.H5 AS H5,
+       X.H6 AS H6,
+       X.H7 AS H7,
+       X.H8 AS H8,
+       X.H9 AS H9,
+       X.H10 AS H10,
+       X.H11 AS H11,
+       X.H12 AS H12,
+       X.V1 AS V1,
+       X.V2 AS V2,
+       X.V3 AS V3,
+       X.V4 AS V4,
+       X.V5 AS V5,
+       X.V6 AS V6,
+       X.V7 AS V7,
+       X.V8 AS V8,
+       X.V9 AS V9,
+       X.V10 AS V10,
+       X.V11 AS V11,
+       X.V12 AS V12,
+       CASE WHEN X.SECCION = 3
+            THEN NVL(X.V2,0)+NVL(X.V3,0)+NVL(X.V4,0)+NVL(X.V5,0)+NVL(X.V6,0)+NVL(X.V7,0)+NVL(X.V8,0)+NVL(X.V9,0)
+            ELSE NVL(X.V1,0)+NVL(X.V2,0)+NVL(X.V3,0)+NVL(X.V4,0)+NVL(X.V5,0)+NVL(X.V6,0)+NVL(X.V7,0)+NVL(X.V8,0)+NVL(X.V9,0)+NVL(X.V10,0)+NVL(X.V11,0)+NVL(X.V12,0) END                                               AS TOT,
+       CASE WHEN X.SECCION = 2 THEN X.NETO_PAGAR END                      AS NETO,
+       PER.ANIO                                                           AS PERIODO_ANIO,
+       PER.MES                                                            AS PERIODO_MES,
+       PER.DESDE                                                          AS PERIODO_DESDE,
+       PER.HASTA                                                          AS PERIODO_HASTA,
+       PER.NUMERO_ASIENTO                                                 AS NUMERO_ASIENTO
+FROM   X
+       CROSS JOIN PER
+ORDER  BY X.SECCION, X.APELLIDOS_ORDEN, X.NOMBRES_ORDEN, X.NMNACDGO]]></query>
+	<field name="SECCION" class="java.math.BigDecimal"/>
+	<field name="IDENTIFICACION" class="java.lang.String"/>
+	<field name="EMPLEADO" class="java.lang.String"/>
+	<field name="DIAS" class="java.math.BigDecimal"/>
+	<field name="H1" class="java.lang.String"/>
+	<field name="H2" class="java.lang.String"/>
+	<field name="H3" class="java.lang.String"/>
+	<field name="H4" class="java.lang.String"/>
+	<field name="H5" class="java.lang.String"/>
+	<field name="H6" class="java.lang.String"/>
+	<field name="H7" class="java.lang.String"/>
+	<field name="H8" class="java.lang.String"/>
+	<field name="H9" class="java.lang.String"/>
+	<field name="H10" class="java.lang.String"/>
+	<field name="H11" class="java.lang.String"/>
+	<field name="H12" class="java.lang.String"/>
+	<field name="V1" class="java.math.BigDecimal"/>
+	<field name="V2" class="java.math.BigDecimal"/>
+	<field name="V3" class="java.math.BigDecimal"/>
+	<field name="V4" class="java.math.BigDecimal"/>
+	<field name="V5" class="java.math.BigDecimal"/>
+	<field name="V6" class="java.math.BigDecimal"/>
+	<field name="V7" class="java.math.BigDecimal"/>
+	<field name="V8" class="java.math.BigDecimal"/>
+	<field name="V9" class="java.math.BigDecimal"/>
+	<field name="V10" class="java.math.BigDecimal"/>
+	<field name="V11" class="java.math.BigDecimal"/>
+	<field name="V12" class="java.math.BigDecimal"/>
+	<field name="TOT" class="java.math.BigDecimal"/>
+	<field name="NETO" class="java.math.BigDecimal"/>
+	<field name="PERIODO_ANIO" class="java.math.BigDecimal"/>
+	<field name="PERIODO_MES" class="java.math.BigDecimal"/>
+	<field name="PERIODO_DESDE" class="java.sql.Timestamp"/>
+	<field name="PERIODO_HASTA" class="java.sql.Timestamp"/>
+	<field name="NUMERO_ASIENTO" class="java.math.BigDecimal"/>
+	<variable name="V_N" class="java.lang.Integer" calculation="Count" resetType="Group" resetGroup="G_SECCION">
+		<expression><![CDATA[$F{EMPLEADO}]]></expression>
+	</variable>
+	<variable name="T1" class="java.math.BigDecimal" calculation="Sum" resetType="Group" resetGroup="G_SECCION">
+		<expression><![CDATA[$F{V1}]]></expression>
+	</variable>
+	<variable name="T2" class="java.math.BigDecimal" calculation="Sum" resetType="Group" resetGroup="G_SECCION">
+		<expression><![CDATA[$F{V2}]]></expression>
+	</variable>
+	<variable name="T3" class="java.math.BigDecimal" calculation="Sum" resetType="Group" resetGroup="G_SECCION">
+		<expression><![CDATA[$F{V3}]]></expression>
+	</variable>
+	<variable name="T4" class="java.math.BigDecimal" calculation="Sum" resetType="Group" resetGroup="G_SECCION">
+		<expression><![CDATA[$F{V4}]]></expression>
+	</variable>
+	<variable name="T5" class="java.math.BigDecimal" calculation="Sum" resetType="Group" resetGroup="G_SECCION">
+		<expression><![CDATA[$F{V5}]]></expression>
+	</variable>
+	<variable name="T6" class="java.math.BigDecimal" calculation="Sum" resetType="Group" resetGroup="G_SECCION">
+		<expression><![CDATA[$F{V6}]]></expression>
+	</variable>
+	<variable name="T7" class="java.math.BigDecimal" calculation="Sum" resetType="Group" resetGroup="G_SECCION">
+		<expression><![CDATA[$F{V7}]]></expression>
+	</variable>
+	<variable name="T8" class="java.math.BigDecimal" calculation="Sum" resetType="Group" resetGroup="G_SECCION">
+		<expression><![CDATA[$F{V8}]]></expression>
+	</variable>
+	<variable name="T9" class="java.math.BigDecimal" calculation="Sum" resetType="Group" resetGroup="G_SECCION">
+		<expression><![CDATA[$F{V9}]]></expression>
+	</variable>
+	<variable name="T10" class="java.math.BigDecimal" calculation="Sum" resetType="Group" resetGroup="G_SECCION">
+		<expression><![CDATA[$F{V10}]]></expression>
+	</variable>
+	<variable name="T11" class="java.math.BigDecimal" calculation="Sum" resetType="Group" resetGroup="G_SECCION">
+		<expression><![CDATA[$F{V11}]]></expression>
+	</variable>
+	<variable name="T12" class="java.math.BigDecimal" calculation="Sum" resetType="Group" resetGroup="G_SECCION">
+		<expression><![CDATA[$F{V12}]]></expression>
+	</variable>
+	<variable name="T_TOT" class="java.math.BigDecimal" calculation="Sum" resetType="Group" resetGroup="G_SECCION">
+		<expression><![CDATA[$F{TOT}]]></expression>
+	</variable>
+	<variable name="T_NETO" class="java.math.BigDecimal" calculation="Sum" resetType="Group" resetGroup="G_SECCION">
+		<expression><![CDATA[$F{NETO}]]></expression>
+	</variable>
+	<group name="G_SECCION" reprintHeaderOnEachPage="true" minHeightToStartNewPage="70">
+		<expression><![CDATA[$F{SECCION}]]></expression>
+		<groupHeader>
+			<band height="44" splitType="Prevent">
+				<element kind="textField" uuid="c296177d-db93-4fd6-ad57-d90d838e0fd2" mode="Opaque" x="0" y="0" width="792" height="14" backcolor="#CBD5E0" forecolor="#1A202C" fontSize="8.0" bold="true" blankWhenNull="true" hTextAlign="Left" vTextAlign="Middle">
+					<expression><![CDATA[$F{SECCION}.intValue() == 1 ? "INGRESOS" : ($F{SECCION}.intValue() == 2 ? "EGRESOS" : "PROVISIONES Y APORTES PATRONALES")]]></expression>
+					<box leftPadding="2"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+				</element>
+				<element kind="staticText" uuid="f8fa64c8-37a8-4195-9a64-7da102ad68ca" mode="Opaque" x="0" y="14" width="14" height="30" backcolor="#EDF2F7" forecolor="#4A5568" fontSize="6.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+					<text><![CDATA[#]]></text>
+					<box><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+				</element>
+				<element kind="staticText" uuid="1104a3a0-bf75-4fae-ac88-3bee492fca4f" mode="Opaque" x="14" y="14" width="52" height="30" backcolor="#EDF2F7" forecolor="#4A5568" fontSize="6.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+					<text><![CDATA[IDENTIFICACIÓN]]></text>
+					<box><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+				</element>
+				<element kind="staticText" uuid="f9115d00-cf73-4742-9641-f87252d917b5" mode="Opaque" x="66" y="14" width="120" height="30" backcolor="#EDF2F7" forecolor="#4A5568" fontSize="6.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+					<text><![CDATA[EMPLEADO]]></text>
+					<box><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+				</element>
+				<element kind="staticText" uuid="1fdf147c-55fb-42e0-bb73-6deadef26798" mode="Opaque" x="186" y="14" width="26" height="30" backcolor="#EDF2F7" forecolor="#4A5568" fontSize="6.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+					<text><![CDATA[DÍAS]]></text>
+					<box><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+				</element>
+				<element kind="textField" uuid="25739808-9689-41e4-aea4-a08e8cd70a75" mode="Opaque" x="212" y="14" width="41" height="30" backcolor="#EDF2F7" forecolor="#4A5568" fontSize="5.5" bold="true" blankWhenNull="true" hTextAlign="Center" vTextAlign="Middle">
+					<expression><![CDATA[$F{H1}]]></expression>
+					<box><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+				</element>
+				<element kind="textField" uuid="937db8d5-dcea-4d31-a84b-4c5e3506443c" mode="Opaque" x="253" y="14" width="41" height="30" backcolor="#EDF2F7" forecolor="#4A5568" fontSize="5.5" bold="true" blankWhenNull="true" hTextAlign="Center" vTextAlign="Middle">
+					<expression><![CDATA[$F{H2}]]></expression>
+					<box><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+				</element>
+				<element kind="textField" uuid="c43bfc74-1909-46e4-b1de-991575ec180e" mode="Opaque" x="294" y="14" width="41" height="30" backcolor="#EDF2F7" forecolor="#4A5568" fontSize="5.5" bold="true" blankWhenNull="true" hTextAlign="Center" vTextAlign="Middle">
+					<expression><![CDATA[$F{H3}]]></expression>
+					<box><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+				</element>
+				<element kind="textField" uuid="db582527-db57-4c38-9fee-7b800097057a" mode="Opaque" x="335" y="14" width="41" height="30" backcolor="#EDF2F7" forecolor="#4A5568" fontSize="5.5" bold="true" blankWhenNull="true" hTextAlign="Center" vTextAlign="Middle">
+					<expression><![CDATA[$F{H4}]]></expression>
+					<box><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+				</element>
+				<element kind="textField" uuid="bc9cc94a-5ef7-48f8-b755-038a16beb641" mode="Opaque" x="376" y="14" width="41" height="30" backcolor="#EDF2F7" forecolor="#4A5568" fontSize="5.5" bold="true" blankWhenNull="true" hTextAlign="Center" vTextAlign="Middle">
+					<expression><![CDATA[$F{H5}]]></expression>
+					<box><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+				</element>
+				<element kind="textField" uuid="c10a7544-0c91-479a-bb80-26353cb6e150" mode="Opaque" x="417" y="14" width="41" height="30" backcolor="#EDF2F7" forecolor="#4A5568" fontSize="5.5" bold="true" blankWhenNull="true" hTextAlign="Center" vTextAlign="Middle">
+					<expression><![CDATA[$F{H6}]]></expression>
+					<box><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+				</element>
+				<element kind="textField" uuid="e417d8ae-4c77-435d-92ea-c463f2464e1e" mode="Opaque" x="458" y="14" width="41" height="30" backcolor="#EDF2F7" forecolor="#4A5568" fontSize="5.5" bold="true" blankWhenNull="true" hTextAlign="Center" vTextAlign="Middle">
+					<expression><![CDATA[$F{H7}]]></expression>
+					<box><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+				</element>
+				<element kind="textField" uuid="b093f344-b612-41ef-bd3f-9770241180cf" mode="Opaque" x="499" y="14" width="41" height="30" backcolor="#EDF2F7" forecolor="#4A5568" fontSize="5.5" bold="true" blankWhenNull="true" hTextAlign="Center" vTextAlign="Middle">
+					<expression><![CDATA[$F{H8}]]></expression>
+					<box><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+				</element>
+				<element kind="textField" uuid="d9de8ebb-e762-447c-8367-4ceb2164c85a" mode="Opaque" x="540" y="14" width="41" height="30" backcolor="#EDF2F7" forecolor="#4A5568" fontSize="5.5" bold="true" blankWhenNull="true" hTextAlign="Center" vTextAlign="Middle">
+					<expression><![CDATA[$F{H9}]]></expression>
+					<box><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+				</element>
+				<element kind="textField" uuid="dfc34a00-7ad8-409e-8d0a-2f6305e122dd" mode="Opaque" x="581" y="14" width="41" height="30" backcolor="#EDF2F7" forecolor="#4A5568" fontSize="5.5" bold="true" blankWhenNull="true" hTextAlign="Center" vTextAlign="Middle">
+					<expression><![CDATA[$F{H10}]]></expression>
+					<box><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+				</element>
+				<element kind="textField" uuid="f27531bd-9590-424c-bc9e-1fd854e1f314" mode="Opaque" x="622" y="14" width="41" height="30" backcolor="#EDF2F7" forecolor="#4A5568" fontSize="5.5" bold="true" blankWhenNull="true" hTextAlign="Center" vTextAlign="Middle">
+					<expression><![CDATA[$F{H11}]]></expression>
+					<box><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+				</element>
+				<element kind="textField" uuid="7045c43e-d220-4ca9-98df-145691fb3e31" mode="Opaque" x="663" y="14" width="41" height="30" backcolor="#EDF2F7" forecolor="#4A5568" fontSize="5.5" bold="true" blankWhenNull="true" hTextAlign="Center" vTextAlign="Middle">
+					<expression><![CDATA[$F{H12}]]></expression>
+					<box><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+				</element>
+				<element kind="textField" uuid="62116e37-cce6-40f9-8a76-cba7deee3e57" mode="Opaque" x="704" y="14" width="42" height="30" backcolor="#EDF2F7" forecolor="#1A202C" fontSize="5.5" bold="true" blankWhenNull="true" hTextAlign="Center" vTextAlign="Middle">
+					<expression><![CDATA[$F{SECCION}.intValue() == 1 ? "TOTAL INGRESOS" : ($F{SECCION}.intValue() == 2 ? "TOTAL EGRESOS" : "TOTAL")]]></expression>
+					<box><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+				</element>
+				<element kind="textField" uuid="07d3e4c0-7588-463a-8821-6bad189b091c" mode="Opaque" x="746" y="14" width="46" height="30" backcolor="#EDF2F7" forecolor="#1A202C" fontSize="5.5" bold="true" blankWhenNull="true" hTextAlign="Center" vTextAlign="Middle">
+					<expression><![CDATA["NETO A PAGAR"]]></expression>
+					<printWhenExpression><![CDATA[$F{SECCION}.intValue() == 2]]></printWhenExpression>
+					<box><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+				</element>
+			</band>
+		</groupHeader>
+		<groupFooter>
+			<band height="26" splitType="Prevent">
+				<element kind="textField" uuid="cdb1eeb2-84ee-4256-856a-3fdf57ade460" mode="Opaque" x="0" y="0" width="212" height="14" backcolor="#EDF2F7" forecolor="#1A202C" fontSize="6.5" bold="true" blankWhenNull="true" hTextAlign="Left" vTextAlign="Middle">
+					<expression><![CDATA["TOTAL " + ($F{SECCION}.intValue() == 1 ? "INGRESOS" : ($F{SECCION}.intValue() == 2 ? "EGRESOS" : "PROVISIONES Y APORTES PATRONALES")) + " — " + $V{V_N} + ($V{V_N}.intValue() == 1 ? " colaborador" : " colaboradores")]]></expression>
+					<box leftPadding="2"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+				</element>
+				<element kind="textField" uuid="e80d64b1-6bdd-468f-85fa-15c3e98879f2" mode="Opaque" x="212" y="0" width="41" height="14" backcolor="#EDF2F7" pattern="#,##0.00" fontSize="6.0" bold="true" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+					<expression><![CDATA[$V{T1}]]></expression>
+					<box rightPadding="2"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+				</element>
+				<element kind="textField" uuid="39c9c259-cf73-48e4-8ac4-27b456385825" mode="Opaque" x="253" y="0" width="41" height="14" backcolor="#EDF2F7" pattern="#,##0.00" fontSize="6.0" bold="true" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+					<expression><![CDATA[$V{T2}]]></expression>
+					<box rightPadding="2"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+				</element>
+				<element kind="textField" uuid="ca8fbab9-b747-4511-9664-6d75fc8f430a" mode="Opaque" x="294" y="0" width="41" height="14" backcolor="#EDF2F7" pattern="#,##0.00" fontSize="6.0" bold="true" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+					<expression><![CDATA[$V{T3}]]></expression>
+					<box rightPadding="2"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+				</element>
+				<element kind="textField" uuid="71109605-48db-458b-b66e-db8f697ec006" mode="Opaque" x="335" y="0" width="41" height="14" backcolor="#EDF2F7" pattern="#,##0.00" fontSize="6.0" bold="true" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+					<expression><![CDATA[$V{T4}]]></expression>
+					<box rightPadding="2"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+				</element>
+				<element kind="textField" uuid="739209aa-819c-48d9-9763-c2da4f2a60e9" mode="Opaque" x="376" y="0" width="41" height="14" backcolor="#EDF2F7" pattern="#,##0.00" fontSize="6.0" bold="true" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+					<expression><![CDATA[$V{T5}]]></expression>
+					<box rightPadding="2"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+				</element>
+				<element kind="textField" uuid="817b94ba-cdfb-43c9-95a3-469b3651f4d4" mode="Opaque" x="417" y="0" width="41" height="14" backcolor="#EDF2F7" pattern="#,##0.00" fontSize="6.0" bold="true" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+					<expression><![CDATA[$V{T6}]]></expression>
+					<box rightPadding="2"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+				</element>
+				<element kind="textField" uuid="70183cb8-3773-4b73-bf29-3c34184b6ffb" mode="Opaque" x="458" y="0" width="41" height="14" backcolor="#EDF2F7" pattern="#,##0.00" fontSize="6.0" bold="true" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+					<expression><![CDATA[$V{T7}]]></expression>
+					<box rightPadding="2"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+				</element>
+				<element kind="textField" uuid="5c06a376-0b6b-48e9-8d1a-8a4688526efb" mode="Opaque" x="499" y="0" width="41" height="14" backcolor="#EDF2F7" pattern="#,##0.00" fontSize="6.0" bold="true" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+					<expression><![CDATA[$V{T8}]]></expression>
+					<box rightPadding="2"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+				</element>
+				<element kind="textField" uuid="ce512d08-2361-4516-a31e-869b8fcfc01d" mode="Opaque" x="540" y="0" width="41" height="14" backcolor="#EDF2F7" pattern="#,##0.00" fontSize="6.0" bold="true" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+					<expression><![CDATA[$V{T9}]]></expression>
+					<box rightPadding="2"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+				</element>
+				<element kind="textField" uuid="350f372d-20f3-4682-a6c8-a937aef06132" mode="Opaque" x="581" y="0" width="41" height="14" backcolor="#EDF2F7" pattern="#,##0.00" fontSize="6.0" bold="true" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+					<expression><![CDATA[$V{T10}]]></expression>
+					<box rightPadding="2"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+				</element>
+				<element kind="textField" uuid="104c4c81-2ab0-43de-9565-152589e87ac6" mode="Opaque" x="622" y="0" width="41" height="14" backcolor="#EDF2F7" pattern="#,##0.00" fontSize="6.0" bold="true" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+					<expression><![CDATA[$V{T11}]]></expression>
+					<box rightPadding="2"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+				</element>
+				<element kind="textField" uuid="5ad0d77d-04c1-4c98-b2b1-6c5b4d34e666" mode="Opaque" x="663" y="0" width="41" height="14" backcolor="#EDF2F7" pattern="#,##0.00" fontSize="6.0" bold="true" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+					<expression><![CDATA[$V{T12}]]></expression>
+					<box rightPadding="2"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+				</element>
+				<element kind="textField" uuid="fec4d879-e593-42b6-903a-b0316e3840d6" mode="Opaque" x="704" y="0" width="42" height="14" backcolor="#EDF2F7" forecolor="#1A202C" pattern="#,##0.00" fontSize="6.2" bold="true" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+					<expression><![CDATA[$V{T_TOT}]]></expression>
+					<box rightPadding="2"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+				</element>
+				<element kind="textField" uuid="cf84f650-811a-442b-b40e-1e79c1528605" mode="Opaque" x="746" y="0" width="46" height="14" backcolor="#EDF2F7" forecolor="#1A202C" pattern="#,##0.00" fontSize="6.2" bold="true" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+					<expression><![CDATA[$V{T_NETO}]]></expression>
+					<printWhenExpression><![CDATA[$F{SECCION}.intValue() == 2]]></printWhenExpression>
+					<box rightPadding="2"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+				</element>
+			</band>
+		</groupFooter>
+	</group>
+	<background splitType="Stretch"/>
+	<title height="72" splitType="Stretch">
+		<element kind="image" uuid="a7f5d35a-2e4d-4959-9a65-070f08e50a76" x="0" y="4" width="110" height="52" scaleImage="RetainShape" onErrorType="Blank" hImageAlign="Center" vImageAlign="Middle">
+			<expression><![CDATA[$P{P_IMAGEN}]]></expression>
+		</element>
+		<element kind="rectangle" uuid="cdd7f0a4-d6e2-4bf8-b32f-485bd1d757b6" x="118" y="4" width="674" height="52">
+			<pen lineWidth="0.75" lineColor="#CBD5E0"/>
+		</element>
+		<element kind="textField" uuid="1abd2ef7-b9e9-4ca4-85cf-5333b68ad7d9" x="128" y="8" width="654" height="22" forecolor="#1A202C" fontSize="15.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<expression><![CDATA["ROL DE PAGOS DETALLADO — " + ($F{PERIODO_MES} != null && $F{PERIODO_MES}.intValue() >= 1 && $F{PERIODO_MES}.intValue() <= 12 ? new String[]{"ENERO","FEBRERO","MARZO","ABRIL","MAYO","JUNIO","JULIO","AGOSTO","SEPTIEMBRE","OCTUBRE","NOVIEMBRE","DICIEMBRE"}[$F{PERIODO_MES}.intValue() - 1] : "?") + " " + ($F{PERIODO_ANIO} != null ? $F{PERIODO_ANIO}.toBigInteger().toString() : "?")]]></expression>
+		</element>
+		<element kind="textField" uuid="6dcaaf38-c7e2-4ad0-bd31-23692925ebb7" x="128" y="30" width="654" height="12" forecolor="#718096" fontSize="9.0" hTextAlign="Center" vTextAlign="Middle">
+			<expression><![CDATA["Periodo " + ($F{PERIODO_MES} != null ? $F{PERIODO_MES}.toBigInteger().toString() : "?") + "/" + ($F{PERIODO_ANIO} != null ? $F{PERIODO_ANIO}.toBigInteger().toString() : "?")
++ "   ·   " + ($F{PERIODO_DESDE} != null ? new java.text.SimpleDateFormat("d/M/yyyy").format($F{PERIODO_DESDE}) : "?") + " al " + ($F{PERIODO_HASTA} != null ? new java.text.SimpleDateFormat("d/M/yyyy").format($F{PERIODO_HASTA}) : "?")]]></expression>
+		</element>
+		<element kind="textField" uuid="6d6e7742-df60-45b5-9bb6-195f641d6bb3" x="128" y="42" width="654" height="12" forecolor="#4A5568" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<expression><![CDATA["N° asiento: " + ($F{NUMERO_ASIENTO} != null ? $F{NUMERO_ASIENTO}.toBigInteger().toString() : "sin contabilizar")]]></expression>
+		</element>
+		<element kind="textField" uuid="2ae5651b-5f1d-450a-8a03-13651c6d2e04" x="592" y="58" width="200" height="11" forecolor="#718096" fontSize="6.5" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA["Generado: " + new java.text.SimpleDateFormat("d/M/yyyy h:mm a").format(new java.util.Date()) + ($P{P_USUARIO} != null ? ("  ·  Por: " + $P{P_USUARIO}) : "")]]></expression>
+		</element>
+	</title>
+	<pageHeader height="4" splitType="Stretch"/>
+	<detail>
+		<band height="12" splitType="Prevent">
+				<element kind="textField" uuid="e46a403d-53e6-4d0c-9aef-4cf1b24f5e74" x="0" y="0" width="14" height="12" fontSize="6.0" blankWhenNull="true" hTextAlign="Center" vTextAlign="Middle">
+					<expression><![CDATA[$V{V_N}]]></expression>
+					<box><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+				</element>
+				<element kind="textField" uuid="329a565e-d227-49df-9626-a5d70827824c" x="14" y="0" width="52" height="12" fontSize="6.2" blankWhenNull="true" hTextAlign="Left" vTextAlign="Middle">
+					<expression><![CDATA[$F{IDENTIFICACION}]]></expression>
+					<box leftPadding="2"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+				</element>
+				<element kind="textField" uuid="d973c1e6-adee-45c0-8387-c6f3f76e8050" x="66" y="0" width="120" height="12" fontSize="6.2" blankWhenNull="true" hTextAlign="Left" vTextAlign="Middle">
+					<expression><![CDATA[$F{EMPLEADO}]]></expression>
+					<box leftPadding="2"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+				</element>
+				<element kind="textField" uuid="00cf00f8-ecfc-49df-8946-6b11472f5240" x="186" y="0" width="26" height="12" pattern="#,##0" fontSize="6.2" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+					<expression><![CDATA[$F{DIAS}]]></expression>
+					<box rightPadding="2"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+				</element>
+				<element kind="textField" uuid="50ba2b21-ff4e-42b3-bef6-2003a66841bc" x="212" y="0" width="41" height="12" pattern="#,##0.00" fontSize="6.0" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+					<expression><![CDATA[$F{V1}]]></expression>
+					<box rightPadding="2"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+				</element>
+				<element kind="textField" uuid="f7843eed-032b-4b44-a856-dd24388c099f" x="253" y="0" width="41" height="12" pattern="#,##0.00" fontSize="6.0" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+					<expression><![CDATA[$F{V2}]]></expression>
+					<box rightPadding="2"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+				</element>
+				<element kind="textField" uuid="ff3c22bf-2f97-4fe1-9fad-e866966813d6" x="294" y="0" width="41" height="12" pattern="#,##0.00" fontSize="6.0" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+					<expression><![CDATA[$F{V3}]]></expression>
+					<box rightPadding="2"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+				</element>
+				<element kind="textField" uuid="f6e92274-bf68-46f6-b22c-5735d98a0b39" x="335" y="0" width="41" height="12" pattern="#,##0.00" fontSize="6.0" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+					<expression><![CDATA[$F{V4}]]></expression>
+					<box rightPadding="2"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+				</element>
+				<element kind="textField" uuid="5b6f9ece-71e3-4432-9408-b51103ed18df" x="376" y="0" width="41" height="12" pattern="#,##0.00" fontSize="6.0" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+					<expression><![CDATA[$F{V5}]]></expression>
+					<box rightPadding="2"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+				</element>
+				<element kind="textField" uuid="58fa52e3-ff43-4219-998c-3af9351a0142" x="417" y="0" width="41" height="12" pattern="#,##0.00" fontSize="6.0" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+					<expression><![CDATA[$F{V6}]]></expression>
+					<box rightPadding="2"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+				</element>
+				<element kind="textField" uuid="43f63093-1f1c-48a3-a057-304e4ff3cbb6" x="458" y="0" width="41" height="12" pattern="#,##0.00" fontSize="6.0" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+					<expression><![CDATA[$F{V7}]]></expression>
+					<box rightPadding="2"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+				</element>
+				<element kind="textField" uuid="309fda1a-6482-4b5c-85bb-7f025e44ecd1" x="499" y="0" width="41" height="12" pattern="#,##0.00" fontSize="6.0" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+					<expression><![CDATA[$F{V8}]]></expression>
+					<box rightPadding="2"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+				</element>
+				<element kind="textField" uuid="9e48bb30-ea0c-4bef-9aad-53f14bb48713" x="540" y="0" width="41" height="12" pattern="#,##0.00" fontSize="6.0" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+					<expression><![CDATA[$F{V9}]]></expression>
+					<box rightPadding="2"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+				</element>
+				<element kind="textField" uuid="e106aa20-0a5e-486c-aff4-2627d9a78d50" x="581" y="0" width="41" height="12" pattern="#,##0.00" fontSize="6.0" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+					<expression><![CDATA[$F{V10}]]></expression>
+					<box rightPadding="2"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+				</element>
+				<element kind="textField" uuid="e1e7ad8c-1904-4c9f-9e93-ceac2fb1c940" x="622" y="0" width="41" height="12" pattern="#,##0.00" fontSize="6.0" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+					<expression><![CDATA[$F{V11}]]></expression>
+					<box rightPadding="2"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+				</element>
+				<element kind="textField" uuid="602ac8fc-a29d-40a0-8037-1560783dcaca" x="663" y="0" width="41" height="12" pattern="#,##0.00" fontSize="6.0" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+					<expression><![CDATA[$F{V12}]]></expression>
+					<box rightPadding="2"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+				</element>
+				<element kind="textField" uuid="866491b2-0584-4a64-bfaa-5e1fef05b885" x="704" y="0" width="42" height="12" pattern="#,##0.00" fontSize="6.2" bold="true" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+					<expression><![CDATA[$F{TOT}]]></expression>
+					<box rightPadding="2"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+				</element>
+				<element kind="textField" uuid="a84c66b8-da3b-4aa5-a768-39faba047e18" x="746" y="0" width="46" height="12" pattern="#,##0.00" fontSize="6.2" bold="true" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+					<expression><![CDATA[$F{NETO}]]></expression>
+					<printWhenExpression><![CDATA[$F{SECCION}.intValue() == 2]]></printWhenExpression>
+					<box rightPadding="2"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+				</element>
+		</band>
+	</detail>
+	<pageFooter height="24" splitType="Stretch">
+		<element kind="line" uuid="0e1a0e26-27bf-4f70-8eb2-9d4919b4cae9" x="0" y="4" width="792" height="1">
+			<pen lineWidth="0.25" lineColor="#E2E8F0"/>
+		</element>
+		<element kind="staticText" uuid="25cc2a15-aab4-43be-99ff-4899447757c0" x="0" y="8" width="600" height="12" forecolor="#A0AEC0" fontSize="6.5" vTextAlign="Middle">
+			<text><![CDATA[ASOPREP-FCPC · Sistema de Administracion de Aportes (SAA) · Documento generado desde el sistema.]]></text>
+		</element>
+		<element kind="textField" uuid="64818729-cf96-4707-be11-f9e9b8afb7ec" x="620" y="8" width="130" height="12" forecolor="#A0AEC0" fontSize="7.0" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA["Pagina " + $V{PAGE_NUMBER} + " de"]]></expression>
+		</element>
+		<element kind="textField" uuid="29077380-cb5a-4888-90f4-5ba4c462c296" x="752" y="8" width="40" height="12" forecolor="#A0AEC0" fontSize="7.0" evaluationTime="Report" hTextAlign="Left" vTextAlign="Middle">
+			<expression><![CDATA[" " + $V{PAGE_NUMBER}]]></expression>
+		</element>
+	</pageFooter>
+	<noData height="120" splitType="Stretch">
+		<element kind="image" uuid="15770745-872b-4634-8b97-609a1b9d8840" x="0" y="4" width="110" height="52" scaleImage="RetainShape" onErrorType="Blank" hImageAlign="Center" vImageAlign="Middle">
+			<expression><![CDATA[$P{P_IMAGEN}]]></expression>
+		</element>
+		<element kind="staticText" uuid="cf74e282-df03-43d2-9c02-b8ce300ac874" mode="Opaque" x="0" y="80" width="792" height="16" backcolor="#EDF2F7" forecolor="#4A5568" fontSize="9.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[SIN INFORMACION PARA PRESENTAR]]></text>
+			<box><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
+		</element>
+		<element kind="textField" uuid="17e78260-3770-44b9-bff3-601fe015a0f9" x="0" y="100" width="792" height="16" fontSize="8.0" hTextAlign="Center" vTextAlign="Middle">
+			<expression><![CDATA["El periodo " + ($P{P_PRDN_CODIGO} != null ? String.valueOf($P{P_PRDN_CODIGO}) : "(nulo)") + " no existe o todavia no tiene nominas calculadas."]]></expression>
+		</element>
+	</noData>
+</jasperReport>
