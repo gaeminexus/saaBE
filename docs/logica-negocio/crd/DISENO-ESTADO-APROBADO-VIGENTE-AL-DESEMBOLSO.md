@@ -1,6 +1,6 @@
 # DISEÑO — Estado APROBADO: el préstamo es vigente recién cuando tesorería desembolsa
 
-omen-saa-1-arb · 2026-11-08 · **BORRADOR para aprobación del usuario** (no despachado).
+omen-saa-1-arb · 2026-11-08 · **Aprobado por el usuario** («El estado aprobado estaría bien», 2026-11-08), con las propuestas de §4 y §5 tal como están (asiento de entrega al desembolso, anular en APROBADO, reverso, tabla sin recalcular). Ejecutores: omen-saa-1-be y omen-saa-1-fe.
 Base: mapa de aprobación/desembolso (agente, 2026-11-08) y `BARRIDO-ESTADO-GENERADO-COMO-VIGENTE.md`.
 
 ## 1. Pedido (palabras del usuario)
