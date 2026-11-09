@@ -1,6 +1,6 @@
 # DISEÑO — Pensión retenida de jubilados sin cuenta bancaria: no se contabiliza hasta pagarse
 
-omen-saa-1-arb · 2026-11-09 · **Borrador: decisiones D1-D3 pendientes del usuario.** Ejecutor: omen-saa-1-be (y -fe si
+omen-saa-1-arb · 2026-11-09 · **Aprobado por el usuario (2026-11-09): D1 una orden por mes, D2 corrida + botón, D3 los históricos se dejan como están (opción B).** Ejecutor: omen-saa-1-be (y -fe si
 se aprueba el botón de D2).
 
 ## 1. Pedido (palabras del usuario)
@@ -43,11 +43,17 @@ Por cada PGPC `REGISTRADA` con `PGPCVLRT > 0` y sin orden, en orden de período,
    retenida m/aaaa».
 3. Orden en CXP origen `CRD_PAGO_PENSION_COMPLEMENTARIA`, idOrigen = ese PGPC, producto de pago de pensión → `2 EN_PAGO`.
    Confirmación, rechazo (contra-movimiento) y sincronización: los de siempre, sin cambio.
-- **Cuándo (D2).**
+- **Cuándo (D2, decidido a + b):** (a) en cada corrida de pensiones, para todo jubilado con salida, antes de los meses de
+  la corrida; (b) `POST /rest/pgpc/pagarRetenidos?idEntidad&idEmpresa&usuario` (REQUIRES_NEW, mes abierto, usuario
+  validado) y botón «Pagar pensiones retenidas» en la pantalla de pago de jubilados, visible cuando el jubilado tiene
+  retenidos pendientes. Devuelve lo pagado por mes y lo que no se pudo (sin salida, saldo insuficiente).
 
 ### 3.3 Históricos (los que ya se devengaron) — `crd/sql/373` los mide
-- Backfill de `PGPCVLRT` = HABER 2.3.01.10.03 de su asiento de devengo (en el DDL 374, con control).
-- **Asiento (D3).**
+- Backfill de `PGPCVLRT` = HABER 2.3.01.10.03 de su asiento de devengo y **`PGPCDVRT = 1`** (columna nueva
+  `NUMBER(1)`, «el retenido ya está devengado»), en el DDL 374, con control.
+- **D3-B (decisión):** no se reversan. Al pagarlos (3.2) se hace el negativo y la orden, **sin el paso 2 (devengo)**: el
+  «por pagar» ya existe y lo cierra la confirmación de tesorería (D 2.3.01.10.03 / H banco). Las filas nuevas nacen con
+  `PGPCDVRT = 0` y sí llevan el devengo del paso 2.
 
 ## 4. Decisiones del usuario
 - **D1 — una orden por mes retenido** (recomendado: reusa el idOrigen = PGPC, rechazo y conciliación por mes) **o una sola
@@ -59,7 +65,8 @@ Por cada PGPC `REGISTRADA` con `PGPCVLRT > 0` y sin orden, en orden de período,
   volver a devengar (el mayor sigue descuadrado hasta que se paguen).
 
 ## 5. Riesgos
-- Contabilidad: el reverso de D3-A toca 2.1.02.25.01 y 2.3.01.10.03; avisar antes del EAR.
+- Contabilidad: hasta que se paguen, los históricos siguen como «por pagar» en el mayor (decisión D3-B); el reporte de
+  `crd/sql/373` bloque 2 es la lista para contabilidad.
 - Pantalla/previsualización de la corrida: mostrar «retenido» y «retenido acumulado pagado» (el ejecutor revisa
   `previsualizarCorrida` para que diga lo mismo que la corrida).
 - Nada de esto se prueba en producción con pagos de prueba: humo solo de lectura.
