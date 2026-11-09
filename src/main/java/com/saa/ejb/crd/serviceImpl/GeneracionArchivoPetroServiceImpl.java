@@ -1396,7 +1396,7 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
     private void recopilarPrestamos(Long mes, Long anio, Map<String, List<LineaArchivo>> datosPorProducto,
                                     Long codigoFilial) throws Exception {
         System.out.println("Recopilando cuotas de préstamos de la filial " + codigoFilial + "...");
-        System.out.println("Filtros: Entidad en estado ACTIVO, Préstamo en estado GENERADO, VIGENTE o EN MORA");
+        System.out.println("Filtros: Entidad en estado ACTIVO, Préstamo en estado VIGENTE o EN MORA (un préstamo GENERADO aún no está aprobado ni desembolsado)");
         System.out.println("Incluyendo cuotas en estado: PENDIENTE, ACTIVA, EMITIDA, EN_MORA, PARCIAL, VENCIDA y sin estado");
         System.out.println("Excluyendo cuotas en estado: 4 (PAGADA), 7 (CANCELADA_ANTICIPADA)");
 
@@ -1406,7 +1406,6 @@ public class GeneracionArchivoPetroServiceImpl implements GeneracionArchivoPetro
         // Un préstamo EN MORA sigue debiendo: sus cuotas deben seguir yendo al
         // archivo igual que las de un préstamo vigente.
         final List<Long> ESTADOS_PRESTAMO_A_COBRAR = Arrays.asList(
-                (long) EstadoPrestamo.GENERADO,
                 (long) EstadoPrestamo.VIGENTE,
                 (long) EstadoPrestamo.EN_MORA);
 

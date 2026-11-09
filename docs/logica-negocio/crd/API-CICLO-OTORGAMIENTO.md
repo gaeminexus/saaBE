@@ -283,6 +283,11 @@ no esté sujeto (`aplicaReglas = false` y `motivoNoAplica`).
   422 si: el original no es quirografario ni emergente (`PRDC.PRDCCDPT` PQ/PE), no es sustituible (mismo motivo que
   `/sustituibles`: solo estados 2 y 11, sin mora, sin cobros en trámite), o el monto no supera el valor de sustitución.
   Simula a 9 %, con el tipo de amortización del original, desde hoy y sin cuota 0. **No graba nada.**
+- **PDF del simulador de novación (2026-11-08):** `POST /prst/simulacion/reporte` acepta `tipo: "NOVACION"`. Cuerpo exacto:
+  `{ "tipo": "NOVACION", "novacion": { "idPrestamoOriginal": <PRST del original>, "monto": <monto nuevo>, "plazo": <cuotas> },
+  "nombreSocio": "...", "identificacionSocio": "..." }`. Devuelve `application/pdf` (`RPRT_SMLC_NOVC`): la misma tabla de
+  `/simularNovacion` (se recalcula en el backend, el FE no manda filas) y el bloque «Préstamo a novar». Si la novación no es válida
+  responde 422 con el mensaje de siempre. `/simularNovacion` ahora también devuelve `tasa`, `tipoAmortizacion` y `fechaInicio`.
 - **`GET /prst/sustituibles/{idEntidad}?tipo=`** agrega a cada fila **`codigoPetro`** (`PRDC.PRDCCDPT`, p. ej. `PQ`/`PE`) para
   filtrar la novación sin depender del nombre de la familia.
 
@@ -350,3 +355,24 @@ Campos: `ReglaAprobacionPrestamo { codigo, idTipoPrestamo, nombre, montoMinimo, 
 
 **Solicitud, sección 7:** «Nivel de aprobación» = nombre del último nivel y «(N niveles)»; «Revisado por» = quien aprobó el nivel anterior
 al último; «Aprobado por» = quien aprobó el último.
+
+## 13. La primera cuota según el archivo Petro (NUEVO 2026-11-08)
+
+Diseño: `DISENO-PRIMERA-CUOTA-SEGUN-ARCHIVO-PETRO.md`. «Archivo del mes generado» = existe una cabecera `GNAP` del **mes y año de
+`fechaInicio`** y de la **filial del partícipe** en estado 1, 2 o 3 (0 = anulado o sin cabecera = no generado).
+
+| Archivo Petro del mes de inicio | Cuota 1 vence | Interés de la cuota 1 |
+|---|---|---|
+| No generado | **fin del mes de inicio** | solo los días reales del mes de inicio |
+| Generado | fin del mes siguiente (como siempre) | mes completo + proporcional (como siempre) |
+
+- Cuota 0 (gracia): si el archivo no se generó vence a fin del mes de inicio (días reales) y la cuota 1 al mes siguiente.
+- Inicio el último día del mes (0 días), partícipe sin filial o sin partícipe (simuladores) → regla de siempre (mes siguiente).
+- Aplica a la **tabla real** (`generarTablaAmortizacion`, incluidos novación y reestructuración, que pasan por el mismo generador) y a los
+  simuladores que conocen al partícipe: novación, reestructuración y `simularCreditoNuevo` **si el cuerpo trae `idEntidad`** (opcional).
+  Abono a capital no cambia. La respuesta de cada simulador trae la fecha de vencimiento de cada cuota: ahí se ve en qué mes cae la primera.
+- **Tabla generada un día y aprobada otro:** al aprobar (en **cada** nivel, antes de registrar la aprobación), si la primera cuota de la
+  tabla (la 0 de gracia si existe, si no la 1) vence en el mes de inicio y el archivo de ese mes y filial ya se generó → **422** «El archivo Petro de <mes> ya se generó; regenere la tabla de amortización
+  (la primera cuota pasará a <mes siguiente>)». Regenerar la tabla invalida las aprobaciones por niveles (sección 12), como siempre. Se deja
+  aprobar solo si esa cuota aparece en `CXPG` de esa generación (préstamos que el archivo tomó en estado 1 antes del cambio).
+- **El archivo Petro ya no cobra préstamos en estado 1 GENERADO**, solo 2 VIGENTE y 11 EN MORA.

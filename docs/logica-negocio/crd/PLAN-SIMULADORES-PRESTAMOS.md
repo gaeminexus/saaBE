@@ -131,6 +131,14 @@ código nunca tuvo claras:
 9. **El interés proporcional del primer mes SE COBRA, y va en la cuota 1** (defecto D1). La cuota 1
    pasa a valer capital + interés del mes + proporcional. Se corrige `PrestamoServiceImpl:279` para
    que la cuota lo incluya, **igual que ya hace la alemana en `:402`**.
+   > **Nota 2026-11-08 (primera cuota según el archivo Petro):** si el archivo Petro del mes de inicio
+   > (filial del partícipe) aún no se generó, la cuota 1 vence a **fin del mes de inicio** y su interés es
+   > **solo** el proporcional de los días reales (`capital × tasaDiaria × días`): el proporcional **no se suma**
+   > al interés del mes completo, porque ese mes ya es el de la cuota. El resto de cuotas se corre un mes antes.
+   > Con cuota 0, la 0 vence a fin del mes de inicio y la 1 al mes siguiente. Si el inicio es el último día del
+   > mes (0 días) rige la regla de arriba. Flag `ParametrosAmortizacion.primeraCuotaEnMesInicio`
+   > (`null`/`false` = esta regla de siempre); lo decide `PrimeraCuotaPetroService`. Ver
+   > `DISENO-PRIMERA-CUOTA-SEGUN-ARCHIVO-PETRO.md`.
 10. **Con cuota 0 de gracia, el período desde el desembolso hasta el primer vencimiento se cobra
     proporcional a los días reales** (defecto D4), no como mes comercial. En el ejemplo 15/03 →
     30/04 son 46 días: 153,33, no 100,00.
@@ -350,6 +358,13 @@ secas es ambiguo, y por eso el Java los desambigua. Los nombres del backend qued
 
 Los valores de `tipo` sí coincidían exacto: `CREDITO_NUEVO` | `ABONO_CAPITAL` | `REESTRUCTURACION`
 (`PrestamoRest:620,643,666`).
+
+**Desde el 2026-11-08 hay un cuarto valor, `NOVACION`**, con el campo `novacion`
+(`SolicitudSimulacionNovacion`: `{ idPrestamoOriginal, monto, plazo }`, el mismo cuerpo de
+`POST /prst/simularNovacion`). El backend recalcula con `simularNovacion` y llena `RPRT_SMLC_NOVC`
+(copia de `RPRT_SMLC_NUEV` con el bloque «Préstamo a novar»: N° Asoprep, producto, cuota actual, valor de
+sustitución, valor líquido y evaluación de capacidad y cupo: CUMPLE / NO CUMPLE / NO EVALUABLE, más los
+mensajes de lo incumplido).
 
 **Cómo habría fallado:** el reporte de abono habría llegado con `valorAbono` y `modalidadAbono` en
 null. Se salvó porque los botones están deshabilitados hasta la 3b. Es el segundo desajuste de

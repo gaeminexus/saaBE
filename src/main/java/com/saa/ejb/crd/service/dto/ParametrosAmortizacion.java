@@ -65,7 +65,39 @@ public class ParametrosAmortizacion {
      */
     private java.util.Map<Long, Double> seguroPorNumeroCuota;
 
+    /**
+     * DISENO-PRIMERA-CUOTA-SEGUN-ARCHIVO-PETRO.md: si es {@code true}, la cuota 1 vence a fin del MES DE INICIO con el
+     * interés solo de los días reales de ese mes (el archivo Petro de ese mes aún no se generó), y el resto de cuotas se
+     * corre un mes antes. Con cuota 0, la cuota 0 vence a fin del mes de inicio y la 1 al mes siguiente. Si el inicio es
+     * el último día del mes (0 días) se ignora y rige la regla de siempre. {@code null}/{@code false} = comportamiento de
+     * siempre (cuota 1 a fin del mes siguiente). Quien llama lo decide con {@code PrimeraCuotaPetroService}.
+     */
+    private Boolean primeraCuotaEnMesInicio;
+
+    /**
+     * Opcional, solo para los simuladores: partícipe (ENTD) para el que se simula. Si viene,
+     * {@code simularCreditoNuevo} decide {@link #primeraCuotaEnMesInicio} según el archivo Petro de su filial; si no,
+     * rige la regla de siempre.
+     */
+    private Long idEntidad;
+
     public ParametrosAmortizacion() {
+    }
+
+    public Boolean getPrimeraCuotaEnMesInicio() {
+        return primeraCuotaEnMesInicio;
+    }
+
+    public void setPrimeraCuotaEnMesInicio(Boolean primeraCuotaEnMesInicio) {
+        this.primeraCuotaEnMesInicio = primeraCuotaEnMesInicio;
+    }
+
+    public Long getIdEntidad() {
+        return idEntidad;
+    }
+
+    public void setIdEntidad(Long idEntidad) {
+        this.idEntidad = idEntidad;
     }
 
     public Double getMonto() {

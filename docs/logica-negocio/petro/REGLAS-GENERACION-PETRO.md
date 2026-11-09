@@ -157,7 +157,10 @@ real carga Petro DESPUÉS del cierre/apertura del mes).
 ### 2.2 Préstamos — `recopilarPrestamos`
 - Universo (una sola query): **TODAS** las cuotas con `fechaVencimiento <= fin del mes generado`
   (la del mes y las atrasadas) donde:
-  - préstamo `idEstado IN (GENERADO=1, VIGENTE=2, EN_MORA=11)`;
+  - préstamo `idEstado IN (VIGENTE=2, EN_MORA=11)` — **desde el 2026-11-08 el archivo ya NO cobra préstamos en
+    estado 1 GENERADO** (aún no están aprobados ni desembolsados; decisión del usuario, ver
+    `crd/DISENO-PRIMERA-CUOTA-SEGUN-ARCHIVO-PETRO.md` §4-bis). Antes del 2026-11-08 sí entraban;
+    un préstamo «vivo» que siga marcado en 1 deja de cobrarse hasta que se corrija su estado;
   - entidad en **ACTIVO (1)** y de la filial;
   - `producto.codigoPetro IS NOT NULL`;
   - cuota `(estado IS NULL OR estado NOT IN (4 PAGADA, 7 CANCELADA_ANTICIPADA))` — el `IS NULL`

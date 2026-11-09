@@ -97,22 +97,24 @@ public class CalculadoraAmortizacionServiceImpl implements CalculadoraAmortizaci
             Long.valueOf(fechaInicioLocal.getMonthValue()), Long.valueOf(fechaInicioLocal.getYear()));
         int diasMesInicial = (int) ChronoUnit.DAYS.between(fechaInicioLocal, ultimoDiaMesInicio);
         double interesesMesInicial = capital * tasaDiaria * diasMesInicial;
+        // Primera cuota en el mes de inicio (archivo Petro de ese mes sin generar): solo si hay días reales que cobrar.
+        boolean primeraEnMesInicio = Boolean.TRUE.equals(params.getPrimeraCuotaEnMesInicio()) && diasMesInicial > 0;
 
         List<CuotaProyectada> tabla = new ArrayList<>();
         double saldoCapital = capital;
 
         if (tieneCuotaCero) {
             saldoCapital = agregarCuotaCero(tabla, capital, tasaDiaria, fechaInicio, fechaInicioLocal,
-                desgravamenPorCuota, seguroIncendioPorCuota, calcularDesgravamenSobreSaldo);
+                desgravamenPorCuota, seguroIncendioPorCuota, calcularDesgravamenSobreSaldo, primeraEnMesInicio);
         }
 
         if (tipoAmortizacion == 2L) {
             calcularAlemana(tabla, capital, saldoCapital, tasaMensual, plazo, mesesGracia,
-                interesesMesInicial, fechaInicio, desgravamenPorCuota, seguroIncendioPorCuota,
+                interesesMesInicial, primeraEnMesInicio, fechaInicio, desgravamenPorCuota, seguroIncendioPorCuota,
                 calcularDesgravamenSobreSaldo, seguroPorNumeroCuota);
         } else {
             calcularFrancesa(tabla, capital, saldoCapital, tasaMensual, plazo, mesesGracia,
-                interesesMesInicial, fechaInicio, desgravamenPorCuota, seguroIncendioPorCuota,
+                interesesMesInicial, primeraEnMesInicio, fechaInicio, desgravamenPorCuota, seguroIncendioPorCuota,
                 calcularDesgravamenSobreSaldo, seguroPorNumeroCuota);
         }
 
@@ -183,9 +185,11 @@ public class CalculadoraAmortizacionServiceImpl implements CalculadoraAmortizaci
      */
     private double agregarCuotaCero(List<CuotaProyectada> tabla, double capital, double tasaDiaria,
             LocalDateTime fechaInicio, LocalDate fechaInicioLocal, double desgravamenPorCuota,
-            double seguroIncendioPorCuota, boolean calcularDesgravamenSobreSaldo) throws Throwable {
+            double seguroIncendioPorCuota, boolean calcularDesgravamenSobreSaldo, boolean primeraEnMesInicio)
+            throws Throwable {
 
-        LocalDate finDelMesSiguiente = fechaInicioLocal.plusMonths(1);
+        // Archivo del mes de inicio sin generar: la cuota 0 vence a fin del mes de inicio (días reales hasta ahí).
+        LocalDate finDelMesSiguiente = fechaInicioLocal.plusMonths(primeraEnMesInicio ? 0 : 1);
         LocalDate ultimoDia = fechaService.ultimoDiaMesAnioLocal(
             Long.valueOf(finDelMesSiguiente.getMonthValue()), Long.valueOf(finDelMesSiguiente.getYear()));
         LocalDateTime fechaVencimiento = ultimoDia.atTime(fechaInicio.toLocalTime());
@@ -224,7 +228,7 @@ public class CalculadoraAmortizacionServiceImpl implements CalculadoraAmortizaci
      * última cuota absorbe el saldo entero sin condición sobre la magnitud del residuo.
      */
     private void calcularFrancesa(List<CuotaProyectada> tabla, double capital, double saldoCapital,
-            double tasaMensual, int plazo, int mesesGracia, double interesesMesInicial,
+            double tasaMensual, int plazo, int mesesGracia, double interesesMesInicial, boolean primeraEnMesInicio,
             LocalDateTime fechaInicio, double desgravamenPorCuota, double seguroIncendioPorCuota,
             boolean calcularDesgravamenSobreSaldo, java.util.Map<Long, Double> seguroPorNumeroCuota)
             throws Throwable {
@@ -240,7 +244,8 @@ public class CalculadoraAmortizacionServiceImpl implements CalculadoraAmortizaci
             double interes = interesBase;
             if (i == 1 && mesesGracia == 0) {
                 // D1: sin cuota 0, el proporcional del mes inicial se cobra en la cuota 1.
-                interes += interesesMesInicial;
+                // Si la cuota 1 cae en el mes de inicio, cobra SOLO esos días (no el mes completo).
+                interes = primeraEnMesInicio ? interesesMesInicial : interes + interesesMesInicial;
             }
             interes = redondear(interes);
 
@@ -269,7 +274,7 @@ public class CalculadoraAmortizacionServiceImpl implements CalculadoraAmortizaci
                 ? redondear(saldoAntes * FACTOR_DESGRAVAMEN_SOBRE_SALDO)
                 : redondear(desgravamenPorCuota);
 
-            LocalDateTime fechaVencimiento = fechaVencimientoCuota(fechaInicio, i, mesesGracia);
+            LocalDateTime fechaVencimiento = fechaVencimientoCuota(fechaInicio, i, mesesGracia, primeraEnMesInicio);
 
             double seguroCuota = resolverSeguroCuota(i, seguroPorNumeroCuota, seguroIncendioPorCuota);
             tabla.add(fila(i, fechaVencimiento, capitalCuota, interes, cuota, saldoCapital,
@@ -282,7 +287,7 @@ public class CalculadoraAmortizacionServiceImpl implements CalculadoraAmortizaci
      * vez, saldo redondeado en cada paso, última cuota absorbe el saldo entero sin condición.
      */
     private void calcularAlemana(List<CuotaProyectada> tabla, double capital, double saldoCapital,
-            double tasaMensual, int plazo, int mesesGracia, double interesesMesInicial,
+            double tasaMensual, int plazo, int mesesGracia, double interesesMesInicial, boolean primeraEnMesInicio,
             LocalDateTime fechaInicio, double desgravamenPorCuota, double seguroIncendioPorCuota,
             boolean calcularDesgravamenSobreSaldo, java.util.Map<Long, Double> seguroPorNumeroCuota)
             throws Throwable {
@@ -292,7 +297,7 @@ public class CalculadoraAmortizacionServiceImpl implements CalculadoraAmortizaci
         for (int i = 1; i <= plazo; i++) {
             double interes = saldoCapital * tasaMensual;
             if (i == 1 && mesesGracia == 0) {
-                interes += interesesMesInicial;
+                interes = primeraEnMesInicio ? interesesMesInicial : interes + interesesMesInicial;
             }
             interes = redondear(interes);
 
@@ -315,7 +320,7 @@ public class CalculadoraAmortizacionServiceImpl implements CalculadoraAmortizaci
                 ? redondear(saldoAntes * FACTOR_DESGRAVAMEN_SOBRE_SALDO)
                 : redondear(desgravamenPorCuota);
 
-            LocalDateTime fechaVencimiento = fechaVencimientoCuota(fechaInicio, i, mesesGracia);
+            LocalDateTime fechaVencimiento = fechaVencimientoCuota(fechaInicio, i, mesesGracia, primeraEnMesInicio);
 
             double seguroCuota = resolverSeguroCuota(i, seguroPorNumeroCuota, seguroIncendioPorCuota);
             tabla.add(fila(i, fechaVencimiento, capitalCuota, interes, cuota, saldoCapital,
@@ -339,9 +344,11 @@ public class CalculadoraAmortizacionServiceImpl implements CalculadoraAmortizaci
         return seguroIncendioPorCuotaFijo;
     }
 
-    private LocalDateTime fechaVencimientoCuota(LocalDateTime fechaInicio, int numeroCuota, int mesesGracia)
-            throws Throwable {
-        int desplazamiento = numeroCuota + mesesGracia;
+    private LocalDateTime fechaVencimientoCuota(LocalDateTime fechaInicio, int numeroCuota, int mesesGracia,
+            boolean primeraEnMesInicio) throws Throwable {
+        // Archivo del mes de inicio sin generar: todo el calendario corre un mes antes (la cuota 1 sin gracia cae en el
+        // mes de inicio; con gracia, la cuota 0 cae ahí y la cuota 1 en el mes siguiente).
+        int desplazamiento = numeroCuota + mesesGracia - (primeraEnMesInicio ? 1 : 0);
         LocalDate fechaTemp = fechaInicio.toLocalDate().plusMonths(desplazamiento);
         LocalDate ultimoDia = fechaService.ultimoDiaMesAnioLocal(
             Long.valueOf(fechaTemp.getMonthValue()), Long.valueOf(fechaTemp.getYear()));

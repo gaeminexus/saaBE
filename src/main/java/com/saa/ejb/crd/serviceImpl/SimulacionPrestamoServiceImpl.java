@@ -56,6 +56,9 @@ public class SimulacionPrestamoServiceImpl implements SimulacionPrestamoService 
     private CalculadoraAmortizacionService calculadoraAmortizacionService;
 
     @EJB
+    private com.saa.ejb.crd.service.PrimeraCuotaPetroService primeraCuotaPetroService;
+
+    @EJB
     private PrestamoDaoService prestamoDaoService;
 
     @EJB
@@ -130,6 +133,7 @@ public class SimulacionPrestamoServiceImpl implements SimulacionPrestamoService 
         params.setTipoAmortizacion(original.getTipoAmortizacion() != null ? original.getTipoAmortizacion() : 1L);
         params.setFechaInicio(LocalDate.now().atStartOfDay());
         params.setTieneCuotaCero(Boolean.FALSE);
+        params.setIdEntidad(original.getEntidad() != null ? original.getEntidad().getCodigo() : null);
         ResultadoSimulacionCreditoNuevo simulacion = simularCreditoNuevo(params);
 
         // La cuota TOTAL de la primera cuota regular de la tabla simulada.
@@ -153,6 +157,9 @@ public class SimulacionPrestamoServiceImpl implements SimulacionPrestamoService 
         datos.setDesgloseVs(fila.getDesglose());
         resultado.setOriginal(datos);
         resultado.setSimulacion(simulacion);
+        resultado.setTasa(params.getTasaAnual());
+        resultado.setTipoAmortizacion(params.getTipoAmortizacion());
+        resultado.setFechaInicio(params.getFechaInicio());
         resultado.setValorLiquido(redondear(solicitud.getMonto() - vs));
         Long idEntidad = original.getEntidad() != null ? original.getEntidad().getCodigo() : null;
         resultado.setEvaluacion(evaluacionOtorgamientoService.evaluar(idEntidad, solicitud.getMonto(), cuotaNueva,
@@ -170,6 +177,13 @@ public class SimulacionPrestamoServiceImpl implements SimulacionPrestamoService 
         // de este simulador puntual (la reestructuración y el generador real NO cambian: siguen
         // con el valor fijo de ParametrosAmortizacion.desgravamenPorCuota).
         params.setCalcularDesgravamenSobreSaldo(true);
+
+        // Primera cuota según el archivo Petro: solo si el simulador conoce al partícipe (idEntidad). Sin partícipe, o si
+        // el cliente ya fijó el flag, rige lo que venga (por defecto, la regla de siempre: mes siguiente).
+        if (params.getPrimeraCuotaEnMesInicio() == null && params.getIdEntidad() != null && params.getFechaInicio() != null) {
+            params.setPrimeraCuotaEnMesInicio(primeraCuotaPetroService.primeraCuotaEnMesInicio(
+                params.getFechaInicio().toLocalDate(), params.getIdEntidad()));
+        }
 
         List<CuotaProyectada> tabla = calculadoraAmortizacionService.calcular(params);
 
@@ -376,6 +390,9 @@ public class SimulacionPrestamoServiceImpl implements SimulacionPrestamoService 
         params.setTipoAmortizacion(prestamo.getTipoAmortizacion());
         params.setFechaInicio(LocalDateTime.now());
         params.setTieneCuotaCero(mesesGracia == 1);
+        // La reestructuración conoce al partícipe: misma regla de la primera cuota según el archivo Petro.
+        params.setPrimeraCuotaEnMesInicio(primeraCuotaPetroService.primeraCuotaEnMesInicio(LocalDate.now(),
+            prestamo.getEntidad() != null ? prestamo.getEntidad().getCodigo() : null));
 
         // Bug corregido 2026-08-29: la reestructuración calculaba el desgravamen con un valor
         // FIJO copiado de ultimaPendiente, igual que abono a capital antes de su propio fix.

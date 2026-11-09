@@ -80,6 +80,9 @@ public class PrestamoServiceImpl implements PrestamoService {
     private com.saa.ejb.crd.service.NivelAprobacionService nivelAprobacionService;
 
     @EJB
+    private com.saa.ejb.crd.service.PrimeraCuotaPetroService primeraCuotaPetroService;
+
+    @EJB
     private com.saa.ejb.crd.dao.DetalleCobroCreditoDaoService detalleCobroCreditoDaoService;
 
     @EJB
@@ -480,6 +483,10 @@ public class PrestamoServiceImpl implements PrestamoService {
         // aprobación; sin remuneración tampoco se aprueba. ANTES de numerar y de tocar nada. No aplica a la
         // reestructuración de un préstamo en mora. IncomeException → 422.
         evaluacionOtorgamientoService.validarAlAprobar(prestamo);
+
+        // Primera cuota en el mes de inicio con el archivo Petro de ese mes ya generado: 422 pidiendo regenerar la tabla.
+        // En cada nivel, ANTES de registrar la aprobación.
+        primeraCuotaPetroService.validarAlAprobar(prestamo);
 
         // B4: aprobación por NIVELES. Se valida B2 en cada nivel (arriba) y se registra el nivel pendiente; si no es el
         // último el préstamo sigue GENERADO y no se toca nada más. Si es el último, sigue el aprobar de siempre en ESTA
@@ -1268,6 +1275,11 @@ public class PrestamoServiceImpl implements PrestamoService {
         params.setTipoAmortizacion(tipoAmortizacion);
         params.setFechaInicio(prestamo.getFechaInicio());
         params.setTieneCuotaCero(tieneCuotaCero != null && tieneCuotaCero == 1L);
+        // DISENO-PRIMERA-CUOTA-SEGUN-ARCHIVO-PETRO.md: si el archivo Petro del mes de inicio (filial del partícipe) aún no
+        // se generó, la cuota 1 vence a fin del mes de inicio; si ya se generó, al mes siguiente como siempre.
+        params.setPrimeraCuotaEnMesInicio(primeraCuotaPetroService.primeraCuotaEnMesInicio(
+            prestamo.getFechaInicio() != null ? prestamo.getFechaInicio().toLocalDate() : null,
+            prestamo.getEntidad() != null ? prestamo.getEntidad().getCodigo() : null));
         // U1 (decisión del usuario, 2026-08-31 — REVISION-MOTOR-ANTES-DE-OTORGAMIENTO.md §8):
         // el desgravamen del generador real se calcula con la misma fórmula que el simulador
         // (saldo * 0.9/1000 antes de amortizar cada cuota), para que la tabla que el sistema

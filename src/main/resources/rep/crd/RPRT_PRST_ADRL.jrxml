@@ -255,7 +255,7 @@ POR ROL DE PAGOS]]></text>
 				<box leftPadding="0" rightPadding="0"/>
 			</element>
 		</band>
-		<band height="550" splitType="Stretch">
+		<band height="420" splitType="Stretch">
 			<element kind="break" uuid="a4000001-0000-0000-0000-000000000050" x="0" y="0" width="535" height="1"/>
 			<element kind="staticText" uuid="a4000001-0000-0000-0000-000000000051" x="0" y="6" width="535" height="13" mode="Opaque" backcolor="#1F3864" forecolor="#FFFFFF" fontSize="9.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
 				<text><![CDATA[3. CLÁUSULAS DE LA AUTORIZACIÓN]]></text>
@@ -289,55 +289,7 @@ POR ROL DE PAGOS]]></text>
 				<text><![CDATA[Huella dactilar]]></text>
 				<box leftPadding="3" rightPadding="3"/>
 			</element>
-			<element kind="staticText" positionType="Float" uuid="a4000001-0000-0000-0000-000000000060" x="0" y="398" width="535" height="13" mode="Opaque" backcolor="#1F3864" forecolor="#FFFFFF" fontSize="9.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
-				<text><![CDATA[4. VERIFICACIÓN Y RECEPCIÓN]]></text>
-				<box leftPadding="4" rightPadding="4"><pen lineWidth="0.5" lineColor="#000000"/></box>
-			</element>
-			<element kind="rectangle" uuid="a4000001-0000-0000-0000-000000000061" positionType="Float" x="0" y="411" width="262" height="110" mode="Transparent">
-				<pen lineWidth="0.75" lineColor="#000000"/>
-			</element>
-			<element kind="rectangle" uuid="a4000001-0000-0000-0000-000000000062" positionType="Float" x="273" y="411" width="262" height="110" mode="Transparent">
-				<pen lineWidth="0.75" lineColor="#000000"/>
-			</element>
-			<element kind="staticText" uuid="a4000001-0000-0000-0000-000000000063" positionType="Float" x="0" y="414" width="262" height="12" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
-				<text><![CDATA[ASOPREP-FCPC — Área de Crédito]]></text>
-				<box leftPadding="3" rightPadding="3"/>
-			</element>
-			<element kind="staticText" uuid="a4000001-0000-0000-0000-000000000064" positionType="Float" x="273" y="414" width="262" height="12" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
-				<text><![CDATA[EP PETROECUADOR — Talento Humano / Nómina]]></text>
-				<box leftPadding="3" rightPadding="3"/>
-			</element>
-			<element kind="staticText" uuid="a4000001-0000-0000-0000-000000000065" positionType="Float" x="0" y="428" width="262" height="12" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
-				<text><![CDATA[Verifiqué la identidad y firma del partícipe.]]></text>
-				<box leftPadding="3" rightPadding="3"/>
-			</element>
-			<element kind="staticText" uuid="a4000001-0000-0000-0000-000000000066" positionType="Float" x="273" y="428" width="262" height="12" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
-				<text><![CDATA[Recibido y registrado en nómina.]]></text>
-				<box leftPadding="3" rightPadding="3"/>
-			</element>
-			<element kind="line" uuid="a4000001-0000-0000-0000-000000000067" positionType="Float" x="30" y="475" width="200" height="1"/>
-			<element kind="line" uuid="a4000001-0000-0000-0000-000000000068" positionType="Float" x="303" y="475" width="200" height="1"/>
-			<element kind="textField" uuid="a4000001-0000-0000-0000-000000000069" positionType="Float" x="0" y="477" width="262" height="12" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
-				<expression><![CDATA[($F{USUARIO_ELABORA} != null && !$F{USUARIO_ELABORA}.isEmpty() ? $F{USUARIO_ELABORA} : "")]]></expression>
-				<box leftPadding="3" rightPadding="3"/>
-			</element>
-			<element kind="staticText" uuid="a4000001-0000-0000-0000-000000000070" positionType="Float" x="0" y="489" width="262" height="12" fontSize="8.0" hTextAlign="Center" vTextAlign="Middle">
-				<text><![CDATA[Asistente de Crédito]]></text>
-				<box leftPadding="3" rightPadding="3"/>
-			</element>
-			<element kind="staticText" uuid="a4000001-0000-0000-0000-000000000071" positionType="Float" x="273" y="477" width="262" height="12" fontSize="8.0" hTextAlign="Center" vTextAlign="Middle">
-				<text><![CDATA[Nombre, firma y sello]]></text>
-				<box leftPadding="3" rightPadding="3"/>
-			</element>
-			<element kind="staticText" uuid="a4000001-0000-0000-0000-000000000072" positionType="Float" x="0" y="503" width="262" height="12" fontSize="8.0" hTextAlign="Center" vTextAlign="Middle">
-				<text><![CDATA[Fecha: ____/____/________]]></text>
-				<box leftPadding="3" rightPadding="3"/>
-			</element>
-			<element kind="staticText" uuid="a4000001-0000-0000-0000-000000000073" positionType="Float" x="273" y="503" width="262" height="12" fontSize="8.0" hTextAlign="Center" vTextAlign="Middle">
-				<text><![CDATA[Fecha: ____/____/________]]></text>
-				<box leftPadding="3" rightPadding="3"/>
-			</element>
-			<element kind="staticText" uuid="a4000001-0000-0000-0000-000000000074" positionType="Float" x="0" y="526" width="535" height="12" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
+			<element kind="staticText" uuid="a4000001-0000-0000-0000-000000000074" positionType="Float" x="0" y="398" width="535" height="12" fontSize="8.0" hTextAlign="Left" vTextAlign="Middle">
 				<text><![CDATA[Distribución: Original – EP PETROECUADOR  |  Copia 1 – ASOPREP-FCPC (expediente de crédito)  |  Copia 2 – Partícipe]]></text>
 				<box leftPadding="3" rightPadding="3"/>
 			</element>

@@ -34,6 +34,17 @@ public class ResultadoSimulacionNovacion {
     private ResultadoSimulacionCreditoNuevo simulacion;
     private Double valorLiquido;
     private EvaluacionOtorgamiento evaluacion;
+    /** Datos con los que se armó la tabla nueva (los usa el PDF): tasa, tipo de amortización (1 francesa, 2 alemana) y fecha de inicio. */
+    private Double tasa;
+    private Long tipoAmortizacion;
+    private java.time.LocalDateTime fechaInicio;
+
+    public Double getTasa() { return tasa; }
+    public void setTasa(Double tasa) { this.tasa = tasa; }
+    public Long getTipoAmortizacion() { return tipoAmortizacion; }
+    public void setTipoAmortizacion(Long tipoAmortizacion) { this.tipoAmortizacion = tipoAmortizacion; }
+    public java.time.LocalDateTime getFechaInicio() { return fechaInicio; }
+    public void setFechaInicio(java.time.LocalDateTime fechaInicio) { this.fechaInicio = fechaInicio; }
 
     public Original getOriginal() { return original; }
     public void setOriginal(Original original) { this.original = original; }

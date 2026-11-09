@@ -1323,7 +1323,7 @@ public class PrestamoRest {
      * NUNCA recibe las filas de la tabla del cliente— así el PDF no puede diferir de lo que se
      * mostró en pantalla ni ser manipulado desde el cliente (§7 del plan).
      *
-     * @param solicitud {@code tipo} (CREDITO_NUEVO | ABONO_CAPITAL | REESTRUCTURACION) + los
+     * @param solicitud {@code tipo} (CREDITO_NUEVO | ABONO_CAPITAL | REESTRUCTURACION | NOVACION) + los
      *                  mismos parámetros del simulador correspondiente
      * @return 200 con el PDF (application/pdf)
      */
@@ -1337,7 +1337,7 @@ public class PrestamoRest {
 
         if (solicitud == null || solicitud.getTipo() == null || solicitud.getTipo().trim().isEmpty()) {
             return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
-                "Debe indicar el tipo de simulación (CREDITO_NUEVO, ABONO_CAPITAL o REESTRUCTURACION)", null);
+                "Debe indicar el tipo de simulación (CREDITO_NUEVO, ABONO_CAPITAL, REESTRUCTURACION o NOVACION)", null);
         }
 
         try {
@@ -1422,9 +1422,44 @@ public class PrestamoRest {
                     parametros.put("P_TOTAL_A_PAGAR_NUEVO", resultado.getTotalAPagarNuevo());
                     break;
                 }
+                case "NOVACION": {
+                    if (solicitud.getNovacion() == null) {
+                        return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
+                            "Falta el cuerpo 'novacion'", null);
+                    }
+                    com.saa.ejb.crd.service.dto.ResultadoSimulacionNovacion resultado =
+                        simulacionPrestamoService.simularNovacion(solicitud.getNovacion());
+                    ResultadoSimulacionCreditoNuevo nueva = resultado.getSimulacion();
+                    tabla = nueva.getTablaProyectada();
+                    nombreReporte = "RPRT_SMLC_NOVC";
+
+                    parametros.put("P_MONTO", solicitud.getNovacion().getMonto());
+                    parametros.put("P_TASA", resultado.getTasa());
+                    parametros.put("P_PLAZO", solicitud.getNovacion().getPlazo());
+                    parametros.put("P_TIPO_AMORTIZACION", resultado.getTipoAmortizacion());
+                    parametros.put("P_FECHA_INICIO", formatoFecha(resultado.getFechaInicio()));
+                    parametros.put("P_TOTAL_CAPITAL", nueva.getTotalCapital());
+                    parametros.put("P_TOTAL_INTERES", nueva.getTotalInteres());
+                    parametros.put("P_TOTAL_DESGRAVAMEN", nueva.getTotalDesgravamen());
+                    parametros.put("P_TOTAL_SEGURO", nueva.getTotalSeguro());
+                    parametros.put("P_TOTAL_A_PAGAR", nueva.getTotalAPagar());
+                    parametros.put("P_VALOR_CUOTA", nueva.getValorCuota());
+                    // Bloque «Préstamo a novar»
+                    com.saa.ejb.crd.service.dto.ResultadoSimulacionNovacion.Original original = resultado.getOriginal();
+                    parametros.put("P_ID_ASOPREP", original.getIdAsoprep());
+                    parametros.put("P_PRODUCTO_ORIGINAL", original.getProducto());
+                    parametros.put("P_CUOTA_ACTUAL", original.getCuotaActual());
+                    parametros.put("P_VALOR_SUSTITUCION", original.getVs());
+                    parametros.put("P_VALOR_LIQUIDO", resultado.getValorLiquido());
+                    com.saa.ejb.crd.service.dto.EvaluacionOtorgamiento evaluacion = resultado.getEvaluacion();
+                    parametros.put("P_EVALUACION", textoEvaluacion(evaluacion));
+                    parametros.put("P_EVALUACION_DETALLE", evaluacion != null && evaluacion.getMensajes() != null
+                        ? String.join(" ", evaluacion.getMensajes()) : "");
+                    break;
+                }
                 default:
                     return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
-                        "tipo debe ser CREDITO_NUEVO, ABONO_CAPITAL o REESTRUCTURACION (vino '" + tipo + "')", null);
+                        "tipo debe ser CREDITO_NUEVO, ABONO_CAPITAL, REESTRUCTURACION o NOVACION (vino '" + tipo + "')", null);
             }
 
             parametros.put("P_NOMBRE_SOCIO", solicitud.getNombreSocio());
@@ -1443,6 +1478,18 @@ public class PrestamoRest {
             e.printStackTrace();
             return respuestaErrorNegocio(e);
         }
+    }
+
+    /** «Capacidad de pago: CUMPLE · Cupo: NO CUMPLE»; «NO EVALUABLE» si la regla no aplica o falta el dato. */
+    private String textoEvaluacion(com.saa.ejb.crd.service.dto.EvaluacionOtorgamiento e) {
+        if (e == null || !Boolean.TRUE.equals(e.getAplicaReglas())) {
+            return "No evaluable";
+        }
+        return "Capacidad de pago: " + veredicto(e.getCapacidadOk()) + "   ·   Cupo: " + veredicto(e.getCupoOk());
+    }
+
+    private String veredicto(Boolean ok) {
+        return ok == null ? "NO EVALUABLE" : (ok ? "CUMPLE" : "NO CUMPLE");
     }
 
     /** dd/MM/yyyy — convertirTiposParametros de ReporteServiceImpl no convierte fechas ni booleanos. */

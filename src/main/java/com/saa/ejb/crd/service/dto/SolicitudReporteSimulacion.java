@@ -10,7 +10,7 @@ package com.saa.ejb.crd.service.dto;
  */
 public class SolicitudReporteSimulacion {
 
-    /** "CREDITO_NUEVO" | "ABONO_CAPITAL" | "REESTRUCTURACION" */
+    /** "CREDITO_NUEVO" | "ABONO_CAPITAL" | "REESTRUCTURACION" | "NOVACION" */
     private String tipo;
 
     /** Cabecera del PDF. La calculadora no conoce entidades: el nombre lo manda el frontend. */
@@ -27,6 +27,9 @@ public class SolicitudReporteSimulacion {
 
     /** tipo = REESTRUCTURACION */
     private SolicitudReestructuracion reestructuracion;
+
+    /** tipo = NOVACION — el mismo cuerpo de POST /prst/simularNovacion: { idPrestamoOriginal, monto, plazo } */
+    private SolicitudSimulacionNovacion novacion;
 
     public SolicitudReporteSimulacion() {
     }
@@ -85,6 +88,14 @@ public class SolicitudReporteSimulacion {
 
     public void setModalidadAbono(Integer modalidadAbono) {
         this.modalidadAbono = modalidadAbono;
+    }
+
+    public SolicitudSimulacionNovacion getNovacion() {
+        return novacion;
+    }
+
+    public void setNovacion(SolicitudSimulacionNovacion novacion) {
+        this.novacion = novacion;
     }
 
     public SolicitudReestructuracion getReestructuracion() {
