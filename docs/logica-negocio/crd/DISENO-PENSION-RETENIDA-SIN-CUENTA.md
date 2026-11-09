@@ -53,10 +53,31 @@ Por cada PGPC `REGISTRADA` con `PGPCVLRT > 0` y sin orden, en orden de período,
 - **Glosa:** «PAGO PENSION RETENIDA m/aaaa - Entidad n», sin el sufijo de seguro.
 - **Enlace:** al pagar, `PGPCIDAP` se re-apunta al negativo del retenido, así el rechazo (contra-movimiento) y `netoDelPgpc` devuelven `PGPCVLRT` y no el seguro. El negativo del seguro de ese mes queda en APRT sin enlace desde la fila.
 - **Reserva en el bucle:** el remanente retenido de un mes resta de `saldoLibre` para los meses siguientes de la misma corrida.
-- **Rechazo:** un PGPC retenido que termina RECHAZADA sale de los pendientes (estado distinto de 1) y no se reintenta; mismo comportamiento que una pensión rechazada hoy. Se plantea al usuario aparte.
+- **Rechazo:** ~~sale de los pendientes y no se reintenta~~ — **reemplazado por §3.4** (decisión del usuario 2026-11-09).
 - **PGPCNMDV:** el devengo del retenido se guarda ahí solo si está libre (puede traer el asiento del seguro); el código del asiento va siempre en la respuesta y el PGPC en la glosa.
 - **Saldo insuficiente al pagar:** se corta en el primer mes que no alcanza (se paga en orden de período, no se salta un mes) y el resto va como no pagado con su motivo.
 
+
+### 3.4 Pago rechazado y proceso de pendientes (decisión del usuario 2026-11-09)
+
+> «El pago rechazado se queda pendiente, pero se debe poder procesar el mismo mes solo los pendientes no todo el padrón.
+> El de pensiones retenidas que sea con cada fila del listado»
+
+- **Reemplaza la regla de rechazo de §3.2bis.** Toda pensión de jubilado cuyo pago termina RECHAZADA (la del mes, una
+  retenida pagada o un re-proceso C20) queda **pendiente**: tras el contra-movimiento de siempre, `PGPCVLRT` = el valor
+  devuelto, `PGPCDVRT = 1` (su «por pagar» ya está en el mayor: el pago nunca se confirmó, no hay asiento de pago que
+  revertir — el ejecutor lo verifica en CXP) y vuelve a contar como pendiente (el ejecutor elige: volver a 1 REGISTRADA
+  sin `PGPCIDPG`, o incluir RECHAZADA en los pendientes; la orden rechazada sigue trazable por idOrigen = PGPC).
+- **Ancla:** la exclusión pasa a ser por la glosa propia del pago del retenido («PAGO PENSION RETENIDA …»), no por
+  `PGPCVLRT > 0`: el negativo ORIGINAL de una pensión rechazada sí debe seguir contando (si no, el ancla retrocedería).
+- **Proceso de pendientes:** `POST /rest/pgpc/procesarPendientes?idEmpresa&anio&mes&usuario` paga, para todo jubilado con
+  pendientes y salida válida, sus pendientes (la misma lógica de §3.2, una orden por mes). No recorre el padrón ni toca
+  seguro, cruce ni pensión del mes; se puede correr las veces que haga falta, también con las pensiones del mes ya
+  cerradas en la corrida (CRJB). Mes abierto (C17), usuario validado, una transacción por jubilado; devuelve el resumen
+  pagado / no pagado con motivo.
+- **Listado:** lectura en bloque `GET /rest/pgpc/retenidos?idEmpresa` (por jubilado: total pendiente, meses, tieneSalida,
+  motivo) para mostrar el botón «Pagar pendientes» en cada fila sin una consulta por jubilado. El botón por fila usa el
+  `POST pgpc/pagarRetenidos` individual que ya existe.
 
 ### 3.3 Históricos (los que ya se devengaron) — `crd/sql/373` los mide
 - Backfill de `PGPCVLRT` = HABER 2.3.01.10.03 de su asiento de devengo y **`PGPCDVRT = 1`** (columna nueva
