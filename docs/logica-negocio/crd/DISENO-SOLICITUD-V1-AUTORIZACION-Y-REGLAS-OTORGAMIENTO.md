@@ -139,6 +139,8 @@ individual».
 
 ### B2. Dónde se aplica
 
+> **2026-11-08:** el cupo solo suma el capital de los vigentes PQ/PE (`saldoCapitalCupo`) y solo se evalúa si el préstamo nuevo es PQ/PE; ver `DISENO-CUPO-SOLO-QUIROGRAFARIOS-EMERGENTES.md`.
+
 | Momento | Capacidad (≤ 50 %) | Cupo (≤ 100 % cuenta individual) |
 |---|---|---|
 | `saveSingle` de un préstamo en 6/1 | — (no hay cuota todavía) | **bloquea**, 422 |

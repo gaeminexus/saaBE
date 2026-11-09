@@ -26,7 +26,10 @@ public class EvaluacionOtorgamiento {
     private Boolean capacidadOk;
 
     private Double saldoCuentaIndividual;
+    /** Capital pendiente de TODOS los vigentes (informativo: panel y solicitud V1). */
     private Double saldoCapitalVigentes;
+    /** Capital pendiente solo de los vigentes quirografarios y emergentes (PQ/PE): el que usa la regla del cupo. */
+    private Double saldoCapitalCupo;
     private Boolean cupoOk;
 
     /** Uno por regla incumplida, con los números. Vacía si todo cumple. */
@@ -58,6 +61,8 @@ public class EvaluacionOtorgamiento {
     public void setSaldoCuentaIndividual(Double saldoCuentaIndividual) { this.saldoCuentaIndividual = saldoCuentaIndividual; }
     public Double getSaldoCapitalVigentes() { return saldoCapitalVigentes; }
     public void setSaldoCapitalVigentes(Double saldoCapitalVigentes) { this.saldoCapitalVigentes = saldoCapitalVigentes; }
+    public Double getSaldoCapitalCupo() { return saldoCapitalCupo; }
+    public void setSaldoCapitalCupo(Double saldoCapitalCupo) { this.saldoCapitalCupo = saldoCapitalCupo; }
     public Boolean getCupoOk() { return cupoOk; }
     public void setCupoOk(Boolean cupoOk) { this.cupoOk = cupoOk; }
     public List<String> getMensajes() { return mensajes; }

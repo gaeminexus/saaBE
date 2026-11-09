@@ -176,7 +176,8 @@ public class DocumentoSeguroServiceImpl implements DocumentoSeguroService {
         for (ItemCandidato item : candidatos) {
             PrestamoSeguro ps = new PrestamoSeguro();
             ps.setDocumento(doc);
-            ps.setPrestamo(item.prestamo);
+            // En desgravamen el candidato es liviano (no está cargado): se asocia por referencia.
+            ps.setPrestamo(prestamoDaoService.referencia(item.prestamo.getCodigo()));
             ps.setNovedad(NovedadPrestamoSeguro.ORIGINAL);
             ps.setBase(redondear(item.base));
             prestamoSeguroDaoService.save(ps, null);
@@ -195,6 +196,12 @@ public class DocumentoSeguroServiceImpl implements DocumentoSeguroService {
         }
         if (fechaCorte == null) {
             throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": fechaCorte es obligatoria");
+        }
+
+        // DESGRAVAMEN: una sola consulta agregada (DISENO-PREVIEW-DESGRAVAMEN-RAPIDO.md). Mismo universo, mismo plazo
+        // vigente (S15) y misma base que el camino por entidades de abajo, sin hidratar préstamos, cuotas ni pagos.
+        if (tipoSeguro == TipoSeguro.DESGRAVAMEN) {
+            return calcularCandidatosDesgravamen(fechaCorte);
         }
 
         // Elegibles: PRSTIDST IN (2 VIGENTE, 11 EN_MORA). El 8 (DE PLAZO VENCIDO) queda fuera
@@ -272,6 +279,37 @@ public class DocumentoSeguroServiceImpl implements DocumentoSeguroService {
                 item.base = redondear(suma);
                 item.sinSumaAsegurada = suma <= 0.0;
             }
+            resultado.add(item);
+        }
+        return resultado;
+    }
+
+    /**
+     * Candidatos de desgravamen desde la consulta agregada. El {@code Prestamo} del item es LIVIANO (no administrado:
+     * código, idAsoprep, estado, partícipe y tipo, lo que usa {@link #toCandidatoDTO}); para persistir se usa una
+     * referencia.
+     */
+    private List<ItemCandidato> calcularCandidatosDesgravamen(LocalDate fechaCorte) throws Throwable {
+        List<ItemCandidato> resultado = new ArrayList<>();
+        for (Object[] fila : prestamoDaoService.selectCandidatosDesgravamen(fechaCorte)) {
+            Prestamo p = new Prestamo();
+            p.setCodigo(((Number) fila[0]).longValue());
+            p.setIdAsoprep(fila[1] != null ? ((Number) fila[1]).longValue() : null);
+            p.setIdEstado(fila[2] != null ? ((Number) fila[2]).longValue() : null);
+            com.saa.model.crd.Entidad entidad = new com.saa.model.crd.Entidad();
+            entidad.setRazonSocial((String) fila[3]);
+            entidad.setNumeroIdentificacion((String) fila[4]);
+            p.setEntidad(entidad);
+            com.saa.model.crd.TipoPrestamo tipo = new com.saa.model.crd.TipoPrestamo();
+            tipo.setNombre((String) fila[5]);
+            com.saa.model.crd.Producto producto = new com.saa.model.crd.Producto();
+            producto.setTipoPrestamo(tipo);
+            p.setProducto(producto);
+
+            ItemCandidato item = new ItemCandidato();
+            item.prestamo = p;
+            item.base = redondear(fila[6] != null ? ((Number) fila[6]).doubleValue() : 0.0);
+            item.sinSumaAsegurada = false;
             resultado.add(item);
         }
         return resultado;

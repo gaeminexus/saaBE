@@ -234,7 +234,10 @@ Diseño: `docs/logica-negocio/crd/DISENO-SOLICITUD-V1-AUTORIZACION-Y-REGLAS-OTOR
 Un solo cálculo (`EvaluacionOtorgamientoService`) para guardar, generar la tabla, aprobar, el simulador y la pantalla.
 
 - **Capacidad:** cuota nueva + cuotas vigentes ≤ **50 %** de la remuneración unificada (`CRD.PRTC.PRTCRMUN`).
-- **Cupo:** saldo de capital de los vigentes + monto ≤ **100 %** de la cuenta individual.
+- **Cupo:** saldo de capital de los vigentes **quirografarios y emergentes (PQ/PE)** + monto ≤ **100 %** de la cuenta individual.
+  **Desde 2026-11-08** el cupo solo se evalúa si el préstamo nuevo es PQ/PE (hipotecario/prendario nuevo → `cupoOk: null`, no bloquea; producto
+  desconocido, p. ej. simulador sin producto, se evalúa) y solo suma capital de PQ/PE (las garantías de cuenta individual son solo de ellos).
+  La capacidad de pago no cambia: sigue sumando las cuotas de todos los vigentes.
 - «Vigentes» = estados 2, 8, 10 y 11, **sin** el préstamo evaluado y **sin** el original que se nova (se cancela con el nuevo).
   El capital pendiente usa `PagoPrestamoService.calcularSaldoCapitalPendiente`, nunca `PRSTSLCP` (columna muerta).
 - No pasan por estas reglas: la carga Petro, la migración y la **reestructuración** de un préstamo en mora.
@@ -257,10 +260,11 @@ no esté sujeto (`aplicaReglas = false` y `motivoNoAplica`).
 { "idEntidad": 3947, "idPrestamo": 5555, "idPrestamoOriginal": null, "monto": 15000.0,
   "aplicaReglas": true, "motivoNoAplica": null,
   "remuneracion": 3363.0, "capacidadPago": 1681.5, "cuotasVigentes": 482.38, "cuotaNueva": 255.69, "capacidadOk": true,
-  "saldoCuentaIndividual": 30171.87, "saldoCapitalVigentes": 20180.0, "cupoOk": true,
+  "saldoCuentaIndividual": 30171.87, "saldoCapitalVigentes": 20180.0, "saldoCapitalCupo": 12000.0, "cupoOk": true,
   "mensajes": [] }
 ```
-`capacidadOk` es `null` si no se pudo evaluar (sin cuota o sin remuneración); `cupoOk` es `null` sin monto.
+`capacidadOk` es `null` si no se pudo evaluar (sin cuota o sin remuneración); `cupoOk` es `null` sin monto o si el préstamo nuevo no es PQ/PE.
+`saldoCapitalVigentes` (todos los vigentes) es informativo; **`saldoCapitalCupo`** (solo PQ/PE) es el que usa la regla y el que cita el mensaje del cupo.
 
 **`generarTablaAmortizacion` con evaluación:** con `?conEvaluacion=true` la respuesta es `{ "prestamo": {…}, "evaluacion": {…} }`
 (para mostrar el aviso de capacidad). **Sin el parámetro, la respuesta es el `Prestamo`, igual que siempre.**

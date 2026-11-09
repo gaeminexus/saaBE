@@ -36,6 +36,14 @@ public interface EvaluacionOtorgamientoService {
     EvaluacionOtorgamiento evaluar(Long idEntidad, Double monto, Double cuotaNueva, Long idPrestamoActual,
             Long idPrestamoOriginal) throws Throwable;
 
+    /**
+     * Igual que la anterior, con el código Petro del producto del préstamo nuevo: el cupo de la cuenta individual solo
+     * se evalúa si es PQ/PE (con otro código, {@code cupoOk = null}: no aplica; una cadena VACÍA significa «producto
+     * sin código Petro», p. ej. CENAPRO, y tampoco aplica); con {@code null} (producto desconocido) se evalúa. El cupo suma solo el capital de los vigentes PQ/PE ({@code saldoCapitalCupo}).
+     */
+    EvaluacionOtorgamiento evaluar(Long idEntidad, Double monto, Double cuotaNueva, Long idPrestamoActual,
+            Long idPrestamoOriginal, String codigoPetroNuevo) throws Throwable;
+
     /** Evalúa un préstamo guardado: monto, cuota 1 de su tabla (si ya la tiene) y su original. Siempre informa. */
     EvaluacionOtorgamiento evaluarPrestamo(Long idPrestamo) throws Throwable;
 

@@ -176,6 +176,35 @@ public class PrestamoDaoServiceImpl extends EntityDaoImpl<Prestamo> implements P
 
     @Override
     @SuppressWarnings("unchecked")
+    public List<Object[]> selectCandidatosDesgravamen(java.time.LocalDate fechaCorte) throws Throwable {
+        System.out.println("PrestamoDaoServiceImpl.selectCandidatosDesgravamen - corte: " + fechaCorte);
+        // Un pago anulado no cuenta (PGPRANUL nulo = histórico anterior al ALTER). Cuota 4/7 no cuenta; DTPRESTD nulo sí.
+        // Plazo vigente: alguna cuota no 4/7 con vencimiento > corte (>= corte + 1 día, mismo criterio «>» de S15).
+        String sql = "SELECT p.PRSTCDGO, p.PRSTIDAS, p.PRSTIDST, e.ENTDRZNS, e.ENTDNMID, t.TPPRNMBR, "
+            + "       SUM(GREATEST(0, ROUND(NVL(d.DTPRCPTL, 0) - NVL(pg.CAPITAL_PAGADO, 0), 2))) AS SALDO "
+            + "FROM CRD.PRST p "
+            + "JOIN CRD.DTPR d ON d.PRSTCDGO = p.PRSTCDGO "
+            + "LEFT JOIN (SELECT DTPRCDGO, SUM(NVL(PGPRCPPG, 0)) AS CAPITAL_PAGADO FROM CRD.PGPR "
+            + "           WHERE PGPRANUL IS NULL OR PGPRANUL = 0 GROUP BY DTPRCDGO) pg ON pg.DTPRCDGO = d.DTPRCDGO "
+            + "LEFT JOIN CRD.ENTD e ON e.ENTDCDGO = p.ENTDCDGO "
+            + "LEFT JOIN CRD.PRDC pr ON pr.PRDCCDGO = p.PRDCCDGO "
+            + "LEFT JOIN CRD.TPPR t ON t.TPPRCDGO = pr.TPPRCDGO "
+            + "WHERE p.PRSTIDST IN (2, 11) AND (d.DTPRESTD IS NULL OR d.DTPRESTD NOT IN (4, 7)) "
+            + "GROUP BY p.PRSTCDGO, p.PRSTIDAS, p.PRSTIDST, e.ENTDRZNS, e.ENTDNMID, t.TPPRNMBR "
+            + "HAVING SUM(CASE WHEN d.DTPRFCVN >= :desde THEN 1 ELSE 0 END) > 0 "
+            + "ORDER BY p.PRSTCDGO";
+        Query query = em.createNativeQuery(sql);
+        query.setParameter("desde", fechaCorte.plusDays(1).atStartOfDay());
+        return query.getResultList();
+    }
+
+    @Override
+    public Prestamo referencia(Long codigo) {
+        return em.getReference(Prestamo.class, codigo);
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
     public List<Prestamo> selectVigentesByEntidad(Long codigoEntidad) throws Throwable {
         System.out.println("PrestamoDaoServiceImpl.selectVigentesByEntidad - Entidad: "
             + codigoEntidad);

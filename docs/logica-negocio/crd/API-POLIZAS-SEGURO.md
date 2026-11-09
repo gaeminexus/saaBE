@@ -83,6 +83,8 @@ La suma asegurada **no** genera ningún asiento: la garantía en cuentas de orde
 
 ## 3. Listado — paso 1
 
+> **Rendimiento (2026-11-08):** para **desgravamen** el universo y la base salen de **una sola consulta agregada** (`PrestamoDaoService.selectCandidatosDesgravamen`: préstamos 2 y 11, plazo vigente «>» corte, saldo = Σ por cuota no 4/7 de `GREATEST(0, ROUND(DTPRCPTL − Σ PGPRCPPG no anulados, 2))`), sin cargar préstamos, cuotas ni pagos como entidades. El contrato y los números **no cambian** (comparado préstamo por préstamo contra el cálculo anterior: 0 diferencias). Incendio y prendario siguen por el camino de siempre.
+
 ### `GET /posg/listado/preview?tipoSeguro=1&fechaCorte=yyyy-MM-dd`
 Devuelve los elegibles con su base, **sin grabar**:
 ```json

@@ -54,8 +54,15 @@ public class EvaluacionOtorgamientoServiceImpl implements EvaluacionOtorgamiento
     @Override
     public EvaluacionOtorgamiento evaluar(Long idEntidad, Double monto, Double cuotaNueva, Long idPrestamoActual,
             Long idPrestamoOriginal) throws Throwable {
+        return evaluar(idEntidad, monto, cuotaNueva, idPrestamoActual, idPrestamoOriginal, null);
+    }
+
+    @Override
+    public EvaluacionOtorgamiento evaluar(Long idEntidad, Double monto, Double cuotaNueva, Long idPrestamoActual,
+            Long idPrestamoOriginal, String codigoPetroNuevo) throws Throwable {
         System.out.println("EvaluacionOtorgamientoService.evaluar - entidad: " + idEntidad + " - monto: " + monto
-            + " - cuotaNueva: " + cuotaNueva + " - actual: " + idPrestamoActual + " - original: " + idPrestamoOriginal);
+            + " - cuotaNueva: " + cuotaNueva + " - actual: " + idPrestamoActual + " - original: " + idPrestamoOriginal
+            + " - producto nuevo: " + codigoPetroNuevo);
         if (idEntidad == null) {
             throw new IncomeException("PARAMETRO_INVALIDO: idEntidad es obligatorio");
         }
@@ -77,6 +84,7 @@ public class EvaluacionOtorgamientoServiceImpl implements EvaluacionOtorgamiento
         // nova (se cancela con el nuevo: su saldo ya está dentro del monto).
         double cuotas = 0.0;
         double capital = 0.0;
+        double capitalCupo = 0.0; // solo quirografarios y emergentes: las garantías de cuenta individual son solo de ellos
         List<Prestamo> prestamos = prestamoDaoService.selectByEntidad(idEntidad);
         if (prestamos != null) {
             for (Prestamo vigente : prestamos) {
@@ -88,11 +96,16 @@ public class EvaluacionOtorgamientoServiceImpl implements EvaluacionOtorgamiento
                 List<DetallePrestamo> pendientes =
                     detallePrestamoDaoService.selectCuotasPendientesByPrestamoOrdenadas(vigente.getCodigo());
                 cuotas += cuotaVigente(vigente.getCodigo(), pendientes);
-                capital += pagoPrestamoService.calcularSaldoCapitalPendiente(pendientes);
+                double capitalPendiente = pagoPrestamoService.calcularSaldoCapitalPendiente(pendientes);
+                capital += capitalPendiente;
+                if (esQuirografarioOEmergente(vigente.getProducto() != null ? vigente.getProducto().getCodigoPetro() : null)) {
+                    capitalCupo += capitalPendiente;
+                }
             }
         }
         ev.setCuotasVigentes(redondear(cuotas));
         ev.setSaldoCapitalVigentes(redondear(capital));
+        ev.setSaldoCapitalCupo(redondear(capitalCupo));
 
         double saldoCuenta = 0.0;
         List<SaldoTipoAporte> saldos = saldoAporteService.saldosPorEntidad(idEntidad);
@@ -115,14 +128,18 @@ public class EvaluacionOtorgamientoServiceImpl implements EvaluacionOtorgamiento
             }
         }
 
-        // Cupo: solo se evalúa con monto.
-        if (monto != null && monto > 0.0) {
-            boolean ok = ev.getSaldoCapitalVigentes() + monto
+        // Cupo: solo se evalúa con monto y solo si el préstamo nuevo es PQ/PE (producto desconocido, null = se evalúa).
+        // Hipotecario/prendario nuevo: cupoOk = null (no aplica), no bloquea.
+        // null = producto desconocido (se evalúa); vacío = producto sin código Petro (p. ej. CENAPRO): no es PQ/PE.
+        boolean cupoAplica = codigoPetroNuevo == null || esQuirografarioOEmergente(codigoPetroNuevo);
+        if (monto != null && monto > 0.0 && cupoAplica) {
+            boolean ok = ev.getSaldoCapitalCupo() + monto
                 <= ev.getSaldoCuentaIndividual() * ParametroOtorgamiento.PORCENTAJE_CUPO_CUENTA_INDIVIDUAL
                     + ParametroOtorgamiento.TOLERANCIA;
             ev.setCupoOk(ok);
             if (!ok) {
-                ev.getMensajes().add("El saldo de capital de los créditos vigentes " + f(ev.getSaldoCapitalVigentes())
+                ev.getMensajes().add("El saldo de capital de los créditos quirografarios y emergentes vigentes "
+                    + f(ev.getSaldoCapitalCupo())
                     + " más el monto solicitado " + f(monto) + " superan el saldo de la cuenta individual "
                     + f(ev.getSaldoCuentaIndividual()) + " (100 %)");
             }
@@ -136,7 +153,7 @@ public class EvaluacionOtorgamientoServiceImpl implements EvaluacionOtorgamiento
         Prestamo prestamo = cargar(idPrestamo);
         Long idEntidad = prestamo.getEntidad() != null ? prestamo.getEntidad().getCodigo() : null;
         EvaluacionOtorgamiento ev = evaluar(idEntidad, prestamo.getMontoSolicitado(), cuotaUnoDe(idPrestamo),
-            idPrestamo, prestamo.getIdPrestamoOriginal());
+            idPrestamo, prestamo.getIdPrestamoOriginal(), codigoPetroDe(prestamo));
         if (!aplicaReglas(prestamo, prestamo)) {
             ev.setAplicaReglas(Boolean.FALSE);
             ev.setMotivoNoAplica(sustitucionPrestamoService.esReestructuracion(prestamo)
@@ -181,7 +198,7 @@ public class EvaluacionOtorgamientoServiceImpl implements EvaluacionOtorgamiento
             return;
         }
         EvaluacionOtorgamiento ev = evaluar(idEntidad, monto, null, prestamo.getCodigo(),
-            prestamo.getIdPrestamoOriginal());
+            prestamo.getIdPrestamoOriginal(), codigoPetroDe(prestamo));
         if (Boolean.FALSE.equals(ev.getCupoOk())) {
             throw new IncomeException(String.join(" ", ev.getMensajes()));
         }
@@ -196,7 +213,7 @@ public class EvaluacionOtorgamientoServiceImpl implements EvaluacionOtorgamiento
         }
         Long idEntidad = prestamo.getEntidad() != null ? prestamo.getEntidad().getCodigo() : null;
         EvaluacionOtorgamiento ev = evaluar(idEntidad, prestamo.getMontoSolicitado(), cuotaUnoDe(prestamo.getCodigo()),
-            prestamo.getCodigo(), prestamo.getIdPrestamoOriginal());
+            prestamo.getCodigo(), prestamo.getIdPrestamoOriginal(), codigoPetroDe(prestamo));
         if (ev.getRemuneracion() == null || ev.getRemuneracion() <= 0.0) {
             throw new IncomeException(MSG_SIN_REMUNERACION);
         }
@@ -221,6 +238,21 @@ public class EvaluacionOtorgamientoServiceImpl implements EvaluacionOtorgamiento
             throw new IncomeException("PRESTAMO_NO_ENCONTRADO: no existe el préstamo " + idPrestamo);
         }
         return prestamo;
+    }
+
+    private static boolean esQuirografarioOEmergente(String codigoPetro) {
+        String c = codigoPetro != null ? codigoPetro.trim().toUpperCase() : "";
+        return ParametroOtorgamiento.CODIGO_PETRO_QUIROGRAFARIO.equals(c)
+            || ParametroOtorgamiento.CODIGO_PETRO_EMERGENTE.equals(c);
+    }
+
+    /** Código Petro del producto del préstamo; vacío (no {@code null}) si tiene producto sin código (p. ej. CENAPRO): no es PQ/PE. */
+    private String codigoPetroDe(Prestamo prestamo) {
+        if (prestamo == null || prestamo.getProducto() == null) {
+            return null; // producto desconocido
+        }
+        String c = prestamo.getProducto().getCodigoPetro();
+        return c != null ? c : "";
     }
 
     private boolean esVigente(Prestamo prestamo) {

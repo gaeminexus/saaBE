@@ -77,6 +77,20 @@ public interface PrestamoDaoService extends EntityDao<Prestamo> {
     List<Prestamo> selectByEstados(List<Long> estados) throws Throwable;
 
     /**
+     * Candidatos del seguro de DESGRAVAMEN en UNA consulta agregada (DISENO-PREVIEW-DESGRAVAMEN-RAPIDO.md): préstamos en
+     * estado 2 VIGENTE u 11 EN_MORA que tienen al menos una cuota no pagada (4) ni cancelada anticipada (7) con
+     * vencimiento posterior a {@code fechaCorte}, con su saldo de capital = Σ por cuota no 4/7 de
+     * {@code GREATEST(0, ROUND(DTPRCPTL − Σ PGPRCPPG de pagos no anulados, 2))}. Mismo resultado que cargar las cuotas y
+     * los pagos como entidades, sin hidratar nada.
+     *
+     * @return filas {@code [0] PRSTCDGO, [1] PRSTIDAS, [2] PRSTIDST, [3] ENTDRZNS, [4] ENTDNMID, [5] TPPRNMBR, [6] saldo}
+     */
+    List<Object[]> selectCandidatosDesgravamen(java.time.LocalDate fechaCorte) throws Throwable;
+
+    /** Referencia al préstamo por su código, sin consultar (para asociarlo a otra entidad). */
+    Prestamo referencia(Long codigo);
+
+    /**
      * Préstamos VIGENTES de una entidad: todos los que NO están en uno de los tres estados
      * terminales — 3 CANCELADO, 4 CANCELADO_ANTICIPADO, 5 CANCELADO_POR_NOVACION.
      *
