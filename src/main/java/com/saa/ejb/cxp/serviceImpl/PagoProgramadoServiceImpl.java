@@ -106,6 +106,10 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	@EJB
 	private com.saa.ejb.crd.service.PrestamoService prestamoService;
 
+	/** Hook del reverso de un pago de pensión de jubilados (DISENO-PENSION-RETENIDA-SIN-CUENTA.md §3.4). */
+	@EJB
+	private com.saa.ejb.crd.service.PagoPensionComplementariaService pagoPensionComplementariaService;
+
 	/** C17: mes cerrado para cartera / contabilidad (CIERRES-BLOQUEANTES.md). */
 	@jakarta.ejb.EJB
 	private com.saa.ejb.cnt.service.EstadoCierreService estadoCierreService;
@@ -3658,6 +3662,13 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		if (com.saa.rubros.OrigenPagoExterno.CRD_DESEMBOLSO_PRESTAMO.equals(pago.getOrigenExterno())
 				&& pago.getIdOrigen() != null) {
 			prestamoService.revertirDesembolso(pago.getIdOrigen(), motivo, fechaReverso, usuarioAnula);
+		}
+
+		// Pensión de jubilado: el pago no llegó, así que la pensión vuelve a pendiente (contra-movimiento del aporte, PGPCVLRT,
+		// PGPCDVRT = 1). Solo toca el PGPC; el devengo (el «por pagar») queda en el mayor y el asiento del pago se reversa abajo.
+		if (com.saa.rubros.OrigenPagoExterno.CRD_PAGO_PENSION_COMPLEMENTARIA.equals(pago.getOrigenExterno())
+				&& pago.getIdOrigen() != null) {
+			pagoPensionComplementariaService.volverAPendienteSiReversada(pago.getIdOrigen(), pago.getId());
 		}
 
 		Long idAsiento = (pago.getAsiento() != null) ? pago.getAsiento().getCodigo() : null;

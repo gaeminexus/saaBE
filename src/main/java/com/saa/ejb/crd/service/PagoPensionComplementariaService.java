@@ -231,6 +231,16 @@ public interface PagoPensionComplementariaService extends EntityService<PagoPens
     ResultadoSincronizacion sincronizarPago(Long idPago) throws Throwable;
 
     /**
+     * Callback de CXP al REVERSAR un pago confirmado de pensión (origen CRD_PAGO_PENSION_COMPLEMENTARIA): el pago no llegó
+     * al jubilado, así que el PGPC queda pendiente igual que con un rechazo (DISENO-PENSION-RETENIDA-SIN-CUENTA.md §3.4).
+     * Corre en la transacción del reverso (REQUIRED). Idempotente: solo actúa si el PGPC sigue apuntando a esa orden y está
+     * EN_PAGO o PAGADA; si ya volvió a pendiente no contra-mueve otra vez.
+     *
+     * @return {@code true} si el PGPC se dejó pendiente
+     */
+    boolean volverAPendienteSiReversada(Long idPgpc, Long idOrden) throws Throwable;
+
+    /**
      * Historial de pagos de un jubilado, del más reciente al más antiguo.
      *
      * @throws Throwable {@code IncomeException} {@link #ERR_ENTIDAD_NO_ENCONTRADA} si no existe

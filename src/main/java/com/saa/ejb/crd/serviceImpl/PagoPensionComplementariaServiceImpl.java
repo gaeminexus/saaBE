@@ -3807,24 +3807,7 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
             System.out.println("  ✅ Pago " + idPago + " PAGADO - Fecha: " + pago.getFechaPago());
 
         } else if (estadoPago == EstadoPagoProgramado.RECHAZADO || estadoPago == EstadoPagoProgramado.ANULADO) {
-            double devuelto = generarContraMovimiento(pago);
-            if (devuelto > TOLERANCIA) {
-                // DISENO-PENSION-RETENIDA-SIN-CUENTA.md §3.4: toda pensión de jubilado rechazada queda PENDIENTE (la del
-                // mes, un retenido pagado y el re-proceso C20: todos pasan por aquí). El pago nunca se confirmó, así que
-                // no hay asiento de pago que revertir y su «por pagar» sigue en el mayor: PGPCDVRT = 1 evita devengarlo
-                // otra vez. Vuelve a REGISTRADA sin orden (retenidosPendientes la recoge); la orden rechazada sigue
-                // trazable en CXP por idOrigen = este PGPC. PGPCIDAP se suelta: su negativo ya fue contra-movido y, si
-                // quedara enlazado, netoDelPgpc/reprocesarPagoJubilado pagarían de nuevo sin descontar del saldo.
-                pago.setValorRetenido(devuelto);
-                pago.setDevengadoRetenido(1L);
-                pago.setIdPagoProgramado(null);
-                pago.setIdAporte(null);
-                pago.setEstado(Long.valueOf(EstadoPagoPensionComplementaria.REGISTRADA));
-                System.out.println("  ↩ Pago " + idPago + " RECHAZADO: contra-movimiento generado, vuelve a pendiente por $" + devuelto);
-            } else {
-                pago.setEstado(Long.valueOf(EstadoPagoPensionComplementaria.RECHAZADA));
-                System.out.println("  ↩ Pago " + idPago + " RECHAZADO sin movimiento que devolver.");
-            }
+            dejarPendientePorPagoNoRecibido(pago, "RECHAZADO");
             pagoPensionDaoService.save(pago, pago.getCodigo());
             parcial.setMarcadasRechazadas(1);
 
@@ -4126,6 +4109,53 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
             resultado.setTotalPendiente(redondear(resultado.getTotalPendiente() + linea.getValor()));
         }
         return resultado;
+    }
+
+    /**
+     * Un pago que no llegó al jubilado queda PENDIENTE (DISENO-PENSION-RETENIDA-SIN-CUENTA.md §3.4): contra-movimiento del
+     * negativo; si devolvió algo, el PGPC vuelve a REGISTRADA sin orden con PGPCVLRT = lo devuelto y PGPCDVRT = 1. Su «por
+     * pagar» sigue en el mayor —el devengo no se toca y el asiento del pago, si lo hubo, lo reversa CXP— así que no se
+     * devenga otra vez. {@code retenidosPendientes} la recoge; la orden vieja sigue trazable en CXP por idOrigen = este PGPC.
+     * PGPCIDAP se suelta: su negativo ya fue contra-movido y, si quedara enlazado, netoDelPgpc/reprocesarPagoJubilado
+     * pagarían de nuevo sin descontar del saldo. Sin nada que devolver queda RECHAZADA, como antes. Lo usan el rechazo
+     * detectado por {@link #sincronizarPago} y el reverso de un pago confirmado ({@link #volverAPendienteSiReversada}).
+     * No guarda la fila: lo hace el llamador.
+     */
+    private void dejarPendientePorPagoNoRecibido(PagoPensionComplementaria pago, String causa) throws Throwable {
+        double devuelto = generarContraMovimiento(pago);
+        if (devuelto > TOLERANCIA) {
+            pago.setValorRetenido(devuelto);
+            pago.setDevengadoRetenido(1L);
+            pago.setIdPagoProgramado(null);
+            pago.setIdAporte(null);
+            pago.setFechaPago(null);
+            pago.setNumeroAsiento(null);
+            pago.setEstado(Long.valueOf(EstadoPagoPensionComplementaria.REGISTRADA));
+            System.out.println("  ↩ PGPC " + pago.getCodigo() + " " + causa + ": contra-movimiento generado, vuelve a pendiente por $" + devuelto);
+        } else {
+            pago.setEstado(Long.valueOf(EstadoPagoPensionComplementaria.RECHAZADA));
+            System.out.println("  ↩ PGPC " + pago.getCodigo() + " " + causa + " sin movimiento que devolver.");
+        }
+    }
+
+    @Override
+    @TransactionAttribute(TransactionAttributeType.REQUIRED)
+    public boolean volverAPendienteSiReversada(Long idPgpc, Long idOrden) throws Throwable {
+        if (idPgpc == null || idOrden == null) {
+            return false;
+        }
+        PagoPensionComplementaria pago = pagoPensionDaoService.find(new PagoPensionComplementaria(), idPgpc);
+        // Solo si el PGPC todavía apunta a ESA orden y está en pago o pagado: si ya volvió a pendiente (rechazo sincronizado
+        // antes, orden nueva) no se contra-mueve otra vez.
+        if (pago == null || pago.getIdPagoProgramado() == null || !idOrden.equals(pago.getIdPagoProgramado())
+                || pago.getEstado() == null
+                || (pago.getEstado() != EstadoPagoPensionComplementaria.EN_PAGO
+                    && pago.getEstado() != EstadoPagoPensionComplementaria.PAGADA)) {
+            return false;
+        }
+        dejarPendientePorPagoNoRecibido(pago, "REVERSADO en CXP");
+        pagoPensionDaoService.save(pago, pago.getCodigo());
+        return true;
     }
 
     // ========================================================================

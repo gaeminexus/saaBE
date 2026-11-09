@@ -520,3 +520,5 @@ Diseño: `DISENO-PENSION-RETENIDA-SIN-CUENTA.md`. Contrato FE: `API-PENSION-RETE
 
 ### 12ter. Proceso de pendientes (§3.4)
 `POST /pgpc/procesarPendientes?idEmpresa&anio&mes&usuario` paga solo a los jubilados con pensiones pendientes (retenidas o rechazadas que volvieron a pendiente) y salida válida: una orden por mes, una transacción por jubilado, sin recorrer el padrón ni tocar seguro, cruce ni la pensión del mes. Se puede repetir y correr con las pensiones del mes ya cerradas (CRJB). Mes abierto (C17) y usuario validado (U-2). Los jubilados con pendientes salen de una consulta agregada (`selectResumenRetenidosPendientes`). Contrato en `API-PENSION-RETENIDA.md`.
+
+**Reverso de un pago confirmado:** `revertirPagoConfirmado` de CXP, para origen `CRD_PAGO_PENSION_COMPLEMENTARIA`, llama a `PagoPensionComplementariaService.volverAPendienteSiReversada(idPgpc, idOrden)` en la misma transacción: el PGPC (EN_PAGO o PAGADA, que aún apunte a esa orden) queda pendiente igual que con un rechazo. El reverso solo anula el asiento del pago; el devengo (`PGPCNMDV`) sigue en el mayor, por eso `PGPCDVRT` = 1. Si ya volvió a pendiente no se contra-mueve otra vez.

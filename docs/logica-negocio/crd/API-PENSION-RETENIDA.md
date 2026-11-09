@@ -59,7 +59,7 @@ Sin cuerpo. Una transacción propia. Errores HTTP: 400 si falta un parámetro o 
 
 ## Reglas que el FE debe conocer
 - Ancla: pagar un retenido no cuenta como «último movimiento» del jubilado; no cambia sus meses adeudados.
-- **Un pago rechazado queda pendiente** (§3.4): cualquier pensión de jubilado cuyo pago termina rechazado (rechazo del banco, orden anulada o reversada y sincronizada) vuelve a `REGISTRADA` sin orden con `valorRetenido` = lo devuelto y `devengadoRetenido` = 1. Aparece de nuevo en `GET /retenidos` y se paga con `pagarRetenidos` / `procesarPendientes`; no se devenga otra vez. La orden rechazada sigue visible en tesorería.
+- **Un pago rechazado queda pendiente** (§3.4): cualquier pensión de jubilado cuyo pago termina rechazado (rechazo del banco, orden anulada, o pago ya confirmado que tesorería reversa: en este último caso el PGPC vuelve a pendiente en el mismo reverso, aunque estuviera PAGADA) vuelve a `REGISTRADA` sin orden con `valorRetenido` = lo devuelto y `devengadoRetenido` = 1. Aparece de nuevo en `GET /retenidos` y se paga con `pagarRetenidos` / `procesarPendientes`; no se devenga otra vez. La orden rechazada sigue visible en tesorería.
 - Fuera de alcance: re-proceso de períodos pasados (C20).
 
 ## Lectura en bloque (para el botón por fila)
