@@ -31,3 +31,8 @@ podría armar otra novación del mismo original (el desembolso la detectaría co
   - Opcional si es barato: desglose por producto y tiempo promedio registro → aprobación → desembolso.
 - Endpoint nuevo de solo lectura (una consulta agregada, sin hidratar entidades), contrato que el BE reporta al FE.
 - Docs: API del dashboard que corresponda.
+
+## Implementado (omen-saa-1-be, 2026-11-09)
+
+Ver `API-CICLO-OTORGAMIENTO.md` §15: bloqueo de sustitución en curso en `SustitucionPrestamoServiceImpl.evaluar` (consulta `PrestamoDaoService.selectSustitutosEnCurso`), resumen por estado solo cartera viva, y
+`GET /prst/resumenSolicitudes`. Definición de «desembolsadas»: estados donde el dinero salió (todos menos 1, 6, 7, 12 y 14) con `COALESCE(PRSTFCAC, fecha de registro)` en el rango. Sin desglose por producto ni tiempos promedio (no se hizo).

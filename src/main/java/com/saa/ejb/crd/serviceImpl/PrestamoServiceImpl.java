@@ -626,6 +626,38 @@ public class PrestamoServiceImpl implements PrestamoService {
     }
 
     @Override
+    public com.saa.ejb.crd.service.dto.ResumenSolicitudesPrestamo resumenSolicitudes(LocalDate desde, LocalDate hasta,
+            Long idFilial, Long idProducto) throws Throwable {
+        System.out.println("PrestamoServiceImpl.resumenSolicitudes - " + desde + " a " + hasta + " - filial " + idFilial
+            + " - producto " + idProducto);
+        LocalDate hoy = LocalDate.now();
+        LocalDate d = desde != null ? desde : hoy.withDayOfMonth(1);
+        LocalDate h = hasta != null ? hasta : hoy.withDayOfMonth(hoy.lengthOfMonth());
+        if (h.isBefore(d)) {
+            throw new IncomeException("PARAMETRO_INVALIDO: «hasta» (" + h + ") es anterior a «desde» (" + d + ")");
+        }
+        Object[] f = prestamoDaoService.selectResumenSolicitudes(d.atStartOfDay(), h.plusDays(1).atStartOfDay(),
+            idFilial, idProducto);
+        com.saa.ejb.crd.service.dto.ResumenSolicitudesPrestamo r = new com.saa.ejb.crd.service.dto.ResumenSolicitudesPrestamo();
+        r.setDesde(d);
+        r.setHasta(h);
+        r.setIdFilial(idFilial);
+        r.setIdProducto(idProducto);
+        r.setRecibidas(cifra(f, 0));
+        r.setEnTramite(cifra(f, 2));
+        r.setAprobadas(cifra(f, 4));
+        r.setDesembolsadas(cifra(f, 6));
+        r.setRechazadas(cifra(f, 8));
+        r.setAnuladas(cifra(f, 10));
+        return r;
+    }
+
+    private static com.saa.ejb.crd.service.dto.ResumenSolicitudesPrestamo.Cifra cifra(Object[] fila, int i) {
+        return new com.saa.ejb.crd.service.dto.ResumenSolicitudesPrestamo.Cifra(
+            ((Number) fila[i]).longValue(), redondearCentavo(((Number) fila[i + 1]).doubleValue()));
+    }
+
+    @Override
     public String activarPorDesembolso(Long idPrestamo, LocalDate fechaDesembolso, Long idEmpresa, String usuario)
             throws Throwable {
         System.out.println("PrestamoServiceImpl.activarPorDesembolso - préstamo: " + idPrestamo + " - fecha: "

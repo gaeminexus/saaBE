@@ -87,6 +87,22 @@ public interface PrestamoDaoService extends EntityDao<Prestamo> {
      */
     List<Object[]> selectCandidatosDesgravamen(java.time.LocalDate fechaCorte) throws Throwable;
 
+    /**
+     * Préstamos que sustituyen a {@code idOriginal} (PRSTPROR) y siguen EN TRÁMITE: estado 1 GENERADO, 6 PENDIENTE o 14
+     * APROBADO. {@code idExcluido} (el préstamo que se edita o aprueba) no cuenta; puede ser {@code null}.
+     */
+    List<Prestamo> selectSustitutosEnCurso(Long idOriginal, Long idExcluido) throws Throwable;
+
+    /**
+     * Sección «Solicitudes» del dashboard en UNA consulta agregada (sin hidratar entidades). {@code desde} inclusive y
+     * {@code hastaExclusivo} exclusivo (instantes); {@code idFilial} (ENTD.FLLLCDGO) e {@code idProducto} opcionales.
+     *
+     * @return 12 números, en pares {@code (cantidad, monto)}: recibidas, en trámite (1 y 6), aprobadas (14),
+     *         desembolsadas, rechazadas (7), anuladas (12)
+     */
+    Object[] selectResumenSolicitudes(java.time.LocalDateTime desde, java.time.LocalDateTime hastaExclusivo,
+            Long idFilial, Long idProducto) throws Throwable;
+
     /** Referencia al préstamo por su código, sin consultar (para asociarlo a otra entidad). */
     Prestamo referencia(Long codigo);
 

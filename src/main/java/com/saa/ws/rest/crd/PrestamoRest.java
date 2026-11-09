@@ -706,6 +706,30 @@ public class PrestamoRest {
         }
     }
 
+    /**
+     * Sección «Solicitudes» del dashboard de préstamos: cantidad y monto de recibidas, en trámite (6 y 1), aprobadas (14),
+     * desembolsadas, rechazadas (7) y anuladas (12). Solo lectura. {@code desde}/{@code hasta} (yyyy-MM-dd, inclusive; por
+     * defecto el mes en curso), {@code idFilial} e {@code idProducto} opcionales.
+     */
+    @GET
+    @Path("/resumenSolicitudes")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response resumenSolicitudes(@QueryParam("desde") String desde, @QueryParam("hasta") String hasta,
+            @QueryParam("idFilial") Long idFilial, @QueryParam("idProducto") Long idProducto) {
+        System.out.println("LLEGA AL SERVICIO GET prst/resumenSolicitudes - " + desde + " a " + hasta);
+        try {
+            java.time.LocalDate d = (desde != null && !desde.trim().isEmpty()) ? java.time.LocalDate.parse(desde.trim()) : null;
+            java.time.LocalDate h = (hasta != null && !hasta.trim().isEmpty()) ? java.time.LocalDate.parse(hasta.trim()) : null;
+            return Response.ok(prestamoService.resumenSolicitudes(d, h, idFilial, idProducto))
+                    .type(MediaType.APPLICATION_JSON).build();
+        } catch (java.time.format.DateTimeParseException e) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
+                    "desde y hasta deben ser yyyy-MM-dd", "PARAMETRO_INVALIDO");
+        } catch (Throwable e) {
+            return respuestaErrorNegocio(e);
+        }
+    }
+
     /** NoResultException de selectById, que cruzando el proxy EJB llega envuelta en EJBException. */
     private boolean esPrestamoInexistente(Throwable e) {
         for (Throwable causa = e; causa != null; causa = causa.getCause()) {

@@ -127,6 +127,14 @@ public interface PrestamoService extends EntityService<Prestamo>{
 	 * @return una advertencia para quien confirma el pago (p. ej. el VS cambió o el original ya no es novable), o
 	 *         {@code null} si no hay nada que avisar
 	 */
+	/**
+	 * Sección «Solicitudes» del dashboard (recibidas, en trámite, aprobadas, desembolsadas, rechazadas y anuladas, con
+	 * cantidad y monto) entre {@code desde} y {@code hasta} (inclusive; por defecto el mes en curso), con filial y producto
+	 * opcionales. Solo lectura. Ver {@code ResumenSolicitudesPrestamo}.
+	 */
+	com.saa.ejb.crd.service.dto.ResumenSolicitudesPrestamo resumenSolicitudes(java.time.LocalDate desde,
+			java.time.LocalDate hasta, Long idFilial, Long idProducto) throws Throwable;
+
 	String activarPorDesembolso(Long idPrestamo, java.time.LocalDate fechaDesembolso, Long idEmpresa, String usuario)
 			throws Throwable;
 

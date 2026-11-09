@@ -403,3 +403,15 @@ Diseño: `DISENO-ESTADO-APROBADO-VIGENTE-AL-DESEMBOLSO.md` y `BARRIDO-ESTADO-GEN
 - **«No cuenta en ningún lado»:** un préstamo en 1, 6, 7 o 14 no entra en el archivo Petro (solo 2 y 11), ni en cartera/cierre (`ESTADOS_FUERA_DE_CARTERA` + 14), mora, pagos, abonos, cobros, precancelación, reestructuración, certificado
   de no adeudar, deuda de la devolución de aportes (`RPRT_INFR_DVAP`), app móvil, G46 ni totales del dashboard de entidades. Lista blanca de «vivos»: `{2, 8, 10, 11}` (`EstadoPrestamo.esVivo`).
 - **Regenerar la tabla** de un préstamo en 14 se rechaza (como en VIGENTE); `saveSingle` no lo trata como editable.
+
+## 15. Sustitución en curso y dashboard de solicitudes (NUEVO 2026-11-09)
+
+- **Un original no es sustituible si otro préstamo lo tiene como `PRSTPROR` en estado 1 GENERADO, 6 PENDIENTE o 14 APROBADO** (excluido el que se edita/aprueba). Aplica a novación y reestructuración, en
+  `GET /prst/sustituibles/{idEntidad}` (la fila trae `puede: false` y el `motivo`: «El préstamo X ya tiene la novación/reestructuración Y (N° …) en trámite (estado …); termínela o anúlela primero.»),
+  `evaluarOriginal`, el guardado, la aprobación, el desembolso y `POST /prst/simularNovacion`. Sin cambio de contrato.
+- **Dashboard de entidades** (`/entd/resumen-prestamos-por-estado` y `/entd/resumen-consolidado-por-estado`): el total de préstamos suma **solo cartera viva** (`PRSTIDST IN (2, 8, 10, 11)`).
+- **`GET /rest/prst/resumenSolicitudes?desde=yyyy-MM-dd&hasta=yyyy-MM-dd&idProducto=&idFilial=`** (solo lectura, una consulta agregada). `desde`/`hasta` inclusive, por defecto el mes en curso; `idProducto` e `idFilial` (filial del partícipe) opcionales.
+  Respuesta: `{ desde, hasta, idFilial, idProducto, recibidas:{cantidad,monto}, enTramite:{…}, aprobadas:{…}, desembolsadas:{…}, rechazadas:{…}, anuladas:{…} }` (`monto` = suma del monto solicitado).
+  Definiciones: fecha de referencia = fecha de registro (`PRSTFCRG`, respaldo `PRSTFCHA`/`PRSTFCIN`). **recibidas** = registradas en el rango, cualquier estado; **enTramite** = estados 6 y 1; **aprobadas** = 14;
+  **rechazadas** = 7; **anuladas** = 12 (todas por fecha de registro en el rango). **desembolsadas** = el dinero salió (estados 2, 3, 4, 5, 8, 9, 10, 11 y 13) con fecha de desembolso (`PRSTFCAC`; si no la tiene,
+  la de registro) en el rango. Por eso `desembolsadas` puede incluir préstamos registrados antes del rango y no tiene que ser menor que `recibidas`.

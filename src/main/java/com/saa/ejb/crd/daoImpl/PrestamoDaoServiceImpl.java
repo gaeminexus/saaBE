@@ -199,6 +199,61 @@ public class PrestamoDaoServiceImpl extends EntityDaoImpl<Prestamo> implements P
     }
 
     @Override
+    @SuppressWarnings("unchecked")
+    public List<Prestamo> selectSustitutosEnCurso(Long idOriginal, Long idExcluido) throws Throwable {
+        if (idOriginal == null) {
+            return new java.util.ArrayList<>();
+        }
+        // Dos consultas en vez de «:excluido IS NULL OR …»: un parámetro nulo sin tipo falla en Oracle.
+        Query query = em.createQuery("SELECT p FROM Prestamo p WHERE p.idPrestamoOriginal = :original "
+            + "AND p.idEstado IN (1, 6, 14)" + (idExcluido != null ? " AND p.codigo <> :excluido" : "")
+            + " ORDER BY p.codigo");
+        query.setParameter("original", idOriginal);
+        if (idExcluido != null) {
+            query.setParameter("excluido", idExcluido);
+        }
+        return query.getResultList();
+    }
+
+    @Override
+    public Object[] selectResumenSolicitudes(java.time.LocalDateTime desde, java.time.LocalDateTime hastaExclusivo,
+            Long idFilial, Long idProducto) throws Throwable {
+        System.out.println("PrestamoDaoServiceImpl.selectResumenSolicitudes - " + desde + " a " + hastaExclusivo
+            + " - filial " + idFilial + " - producto " + idProducto);
+        // reg = fecha de registro (PRSTFCRG; respaldo PRSTFCHA / PRSTFCIN). dsm = fecha del desembolso (PRSTFCAC, respaldo reg).
+        // Desembolsada = el dinero salió: todos los estados menos 1, 6, 7, 12 y 14.
+        String sql = "SELECT "
+            + " NVL(SUM(CASE WHEN reg >= :desde AND reg < :hasta THEN 1 ELSE 0 END), 0), "
+            + " NVL(SUM(CASE WHEN reg >= :desde AND reg < :hasta THEN mnt ELSE 0 END), 0), "
+            + " NVL(SUM(CASE WHEN est IN (1, 6) AND reg >= :desde AND reg < :hasta THEN 1 ELSE 0 END), 0), "
+            + " NVL(SUM(CASE WHEN est IN (1, 6) AND reg >= :desde AND reg < :hasta THEN mnt ELSE 0 END), 0), "
+            + " NVL(SUM(CASE WHEN est = 14 AND reg >= :desde AND reg < :hasta THEN 1 ELSE 0 END), 0), "
+            + " NVL(SUM(CASE WHEN est = 14 AND reg >= :desde AND reg < :hasta THEN mnt ELSE 0 END), 0), "
+            + " NVL(SUM(CASE WHEN est IN (2, 3, 4, 5, 8, 9, 10, 11, 13) AND dsm >= :desde AND dsm < :hasta THEN 1 ELSE 0 END), 0), "
+            + " NVL(SUM(CASE WHEN est IN (2, 3, 4, 5, 8, 9, 10, 11, 13) AND dsm >= :desde AND dsm < :hasta THEN mnt ELSE 0 END), 0), "
+            + " NVL(SUM(CASE WHEN est = 7 AND reg >= :desde AND reg < :hasta THEN 1 ELSE 0 END), 0), "
+            + " NVL(SUM(CASE WHEN est = 7 AND reg >= :desde AND reg < :hasta THEN mnt ELSE 0 END), 0), "
+            + " NVL(SUM(CASE WHEN est = 12 AND reg >= :desde AND reg < :hasta THEN 1 ELSE 0 END), 0), "
+            + " NVL(SUM(CASE WHEN est = 12 AND reg >= :desde AND reg < :hasta THEN mnt ELSE 0 END), 0) "
+            + "FROM (SELECT NVL(p.PRSTIDST, 0) AS est, NVL(p.PRSTMNSL, 0) AS mnt, "
+            + "             COALESCE(p.PRSTFCRG, p.PRSTFCHA, p.PRSTFCIN) AS reg, "
+            + "             COALESCE(p.PRSTFCAC, p.PRSTFCRG, p.PRSTFCHA, p.PRSTFCIN) AS dsm "
+            + "      FROM CRD.PRST p "
+            + (idFilial != null ? "      JOIN CRD.ENTD e ON e.ENTDCDGO = p.ENTDCDGO AND e.FLLLCDGO = :filial " : "")
+            + "      WHERE 1 = 1 " + (idProducto != null ? "AND p.PRDCCDGO = :producto " : "") + ")";
+        Query query = em.createNativeQuery(sql);
+        query.setParameter("desde", desde);
+        query.setParameter("hasta", hastaExclusivo);
+        if (idFilial != null) {
+            query.setParameter("filial", idFilial);
+        }
+        if (idProducto != null) {
+            query.setParameter("producto", idProducto);
+        }
+        return (Object[]) query.getSingleResult();
+    }
+
+    @Override
     public Prestamo referencia(Long codigo) {
         return em.getReference(Prestamo.class, codigo);
     }

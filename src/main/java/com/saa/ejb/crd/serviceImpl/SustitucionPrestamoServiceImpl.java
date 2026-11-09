@@ -112,7 +112,7 @@ public class SustitucionPrestamoServiceImpl implements SustitucionPrestamoServic
 
     /** La fila del listado de un préstamo: evalúa y arma el DTO (una sola fuente para el listado y B6). */
     private SustituiblePrestamo filaDe(Prestamo prestamo, boolean novacion, LocalDate hoy) throws Throwable {
-        Evaluacion ev = evaluar(prestamo, novacion, hoy, null);
+        Evaluacion ev = evaluar(prestamo, novacion, hoy, null, null);
         SustituiblePrestamo fila = new SustituiblePrestamo();
         fila.setIdPrestamo(prestamo.getCodigo());
         fila.setIdAsoprep(prestamo.getIdAsoprep());
@@ -180,7 +180,7 @@ public class SustitucionPrestamoServiceImpl implements SustitucionPrestamoServic
         Producto producto = cargarProductoDe(nuevo);
         boolean novacion = tipoDeProducto(producto);
 
-        Evaluacion ev = evaluar(original, novacion, LocalDate.now(), producto);
+        Evaluacion ev = evaluar(original, novacion, LocalDate.now(), producto, nuevo.getCodigo());
         if (ev.motivo != null) {
             throw new IncomeException(ev.motivo);
         }
@@ -210,7 +210,7 @@ public class SustitucionPrestamoServiceImpl implements SustitucionPrestamoServic
         Producto producto = cargarProductoDe(nuevo);
         boolean novacion = tipoDeProducto(producto);
 
-        Evaluacion ev = evaluar(original, novacion, LocalDate.now(), producto);
+        Evaluacion ev = evaluar(original, novacion, LocalDate.now(), producto, nuevo.getCodigo());
         if (ev.motivo != null) {
             throw new IncomeException(ev.motivo);
         }
@@ -256,7 +256,7 @@ public class SustitucionPrestamoServiceImpl implements SustitucionPrestamoServic
             Producto producto = cargarProductoDe(nuevo);
             boolean novacion = tipoDeProducto(producto);
             contexto.setNovacion(novacion);
-            Evaluacion ev = evaluar(original, novacion, LocalDate.now(), producto);
+            Evaluacion ev = evaluar(original, novacion, LocalDate.now(), producto, nuevo.getCodigo());
             if (ev.motivo != null) {
                 contexto.setMotivoNoNovable(ev.motivo);
                 return contexto;
@@ -340,8 +340,8 @@ public class SustitucionPrestamoServiceImpl implements SustitucionPrestamoServic
      * @param productoElegido el producto del préstamo nuevo (al guardar o aprobar), o null (listado:
      *                        se busca el sugerido)
      */
-    private Evaluacion evaluar(Prestamo original, boolean novacion, LocalDate hoy, Producto productoElegido)
-            throws Throwable {
+    private Evaluacion evaluar(Prestamo original, boolean novacion, LocalDate hoy, Producto productoElegido,
+            Long idNuevoExcluido) throws Throwable {
         Evaluacion ev = new Evaluacion();
         ev.familia = familiaDe(original.getProducto());
 
@@ -352,6 +352,18 @@ public class SustitucionPrestamoServiceImpl implements SustitucionPrestamoServic
         if (!vivo) {
             ev.motivo = "El préstamo " + original.getCodigo() + " está en estado " + estado
                 + "; solo se " + (novacion ? "nova" : "reestructura") + " un préstamo VIGENTE (2) o EN MORA (11).";
+            return ev;
+        }
+
+        // Sustitución en curso: otro préstamo (1 GENERADO, 6 PENDIENTE o 14 APROBADO) ya apunta a este original. El que se
+        // edita/aprueba/desembolsa (idNuevoExcluido) no cuenta. Vale para novación y para reestructuración.
+        List<Prestamo> enCurso = prestamoDaoService.selectSustitutosEnCurso(original.getCodigo(), idNuevoExcluido);
+        if (enCurso != null && !enCurso.isEmpty()) {
+            Prestamo otro = enCurso.get(0);
+            ev.motivo = "El préstamo " + original.getCodigo() + " ya tiene la "
+                + (esReestructuracionDe(otro) ? "reestructuración" : "novación") + " " + otro.getCodigo()
+                + (otro.getIdAsoprep() != null ? " (N° " + otro.getIdAsoprep() + ")" : "") + " en trámite (estado "
+                + nombreEstadoEnCurso(otro.getIdEstado()) + "); termínela o anúlela primero.";
             return ev;
         }
 
@@ -428,6 +440,26 @@ public class SustitucionPrestamoServiceImpl implements SustitucionPrestamoServic
             }
         }
         return ev;
+    }
+
+    /** Reestructuración si el préstamo lo marca (PRSTRSTR = 1) o su producto es RESTRUCTURADO; si no, novación. */
+    private boolean esReestructuracionDe(Prestamo prestamo) {
+        if (prestamo.getReestructurado() != null && prestamo.getReestructurado().longValue() == 1L) {
+            return true;
+        }
+        return prestamo.getProducto() != null && esDelTipo(prestamo.getProducto(), false);
+    }
+
+    private String nombreEstadoEnCurso(Long idEstado) {
+        if (idEstado == null) {
+            return "sin estado";
+        }
+        switch (idEstado.intValue()) {
+            case EstadoPrestamo.GENERADO: return "GENERADO";
+            case EstadoPrestamo.PENDIENTE_DE_APROBACION: return "PENDIENTE DE APROBACIÓN";
+            case EstadoPrestamo.APROBADO: return "APROBADO, pendiente de desembolso";
+            default: return String.valueOf(idEstado);
+        }
     }
 
     private long diasVencidoMasAntiguo(Prestamo prestamo, LocalDate hoy) throws Throwable {
