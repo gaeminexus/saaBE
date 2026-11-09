@@ -2,6 +2,9 @@
 
 **omen-saa-1-arb.** Se armó sobre `otorga-1107` (el desplegado). Cambia solo el SaaFE.war.
 
+> **⛔ NO SE DESPLIEGA (decisión del usuario, 2026-11-08).** Su cambio (saaFE `8951965`) va en el EAR único siguiente,
+> junto con la primera cuota según el archivo Petro, la autorización sin el punto 4 y el PDF del simulador de novación.
+
 ## 1. El EAR
 - `F:\ears\asoprep\niveles-1108\SaaEAR.ear` — SHA-256 `5CCEA462BEB7CBF9CE9035DE051EA88EE4F8E39D03CFE4822DE57EAF5B9AF1BF`
   (partido en `niveles-1108\partes`, 3 partes; unir con
