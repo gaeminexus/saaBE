@@ -1,14 +1,17 @@
-# Despliegue del EAR «estado APROBADO y correcciones de otorgamiento» (2026-11-09)
+# Despliegue del EAR «estado APROBADO, tablero de solicitudes y correcciones de otorgamiento» (2026-11-09)
+
+> **Se despliega `tablero-1109`, no `aprobado-1109`** (decisión del usuario: un solo despliegue con el dashboard y la
+> novación en curso). `aprobado-1109` queda armado pero NO se despliega.
 
 **omen-saa-1-arb.** Se armó sobre el EAR desplegado `otorga-1107`. Cambian los dos WAR. Reemplaza al `niveles-1108`
 (que no se desplegó: su cambio va aquí).
 
 ## 1. El EAR
-- `F:\ears\asoprep\aprobado-1109\SaaEAR.ear` — SHA-256 `1F7871FFF5C5132DDECEC91627854B2BD1079526F91B9B6F40F5CA3B26FDB0BC`
-  (partido en `aprobado-1109\partes`, 3 partes; unir con
+- `F:\ears\asoprep\tablero-1109\SaaEAR.ear` — SHA-256 `053BC05A030C46FDEE1521298A987C3EB08910D67CF5C67FBDCE555A4C62C080`
+  (partido en `tablero-1109\partes`, 3 partes; unir con
   `copy /b SaaEAR.ear.part00+SaaEAR.ear.part01+SaaEAR.ear.part02 SaaEAR.ear`).
-  - `saaBE.war` `E9273B53C363756F71864B6F335080B8F4E4C0F3CB9F71D7E25330E5C01F9FE0` — saaBE `main` en `bebb1fc4`.
-  - `SaaFE.war` `A0CB2D35FA1F944ACFA39B59010E3CBC067DE137CE03D99775C37A5CC4CD2854` — saaFE `main` en `fcd8b5a`
+  - `saaBE.war` `94A558DE15F5D2381D9A2EC5B652AB650CFF2D9047F23E4C7A9F293C48559EDB` — saaBE `main` en `178d75a8`.
+  - `SaaFE.war` `2A04EFB06C300A5786A11565D6A9761E0D666F9579BAE2641D8FDBC4BD8679D6` — saaFE `main` en `c4990e6`
     (`ng build --configuration production`; `WEB-INF` y `MANIFEST.MF` del SaaFE.war anterior).
 - **Vuelta atrás:** `F:\ears\asoprep\otorga-1107\SaaEAR.ear` (`D71A05D5…8C787FC1`). Ver §5 antes de volver.
 
@@ -32,11 +35,13 @@
 | **Estado 14 APROBADO**: el préstamo nuevo o la novación queda APROBADO al último nivel y pasa a VIGENTE cuando tesorería confirma el pago del desembolso (asiento de entrega con la fecha del pago; en novación se cancela el original ahí). Reestructuración sin cambio. Anular en APROBADO. Reverso controlado. Un préstamo no desembolsado (1, 6, 7, 14) no cuenta en pagos, mora, carga Petro, devolución de aportes, certificados, app móvil ni cartera | BE `2140537c`, FE `1a3d8fd` |
 | Aviso persistente a tesorería con las advertencias del desembolso (aprobar pagos, confirmación manual, respuesta del banco) | FE `fcd8b5a` |
 | Criterio «Operación» (nuevo / novación / reestructuración) en las reglas de niveles de aprobación | BE `bebb1fc4`, FE `26e007c` |
+| Un original con una novación o reestructuración en trámite (1, 6, 14) no se puede volver a sustituir | BE `178d75a8` |
+| Dashboard de préstamos: resumen por estado solo con cartera viva (2, 8, 10, 11) y sección «Solicitudes» (recibidas, en trámite, aprobadas, desembolsadas, rechazadas, anuladas) | BE `178d75a8`, FE `c4990e6` |
 
 ## 4. Despliegue
 1. Correr 371 y 372 (§2) y verificar sus controles. Pasar al árbitro la salida del bloque 5 del 371.
-2. Desplegar `aprobado-1109\SaaEAR.ear`. Propiedades de sistema sin cambios.
-3. Verificar: `Get-FileHash <ruta>\SaaEAR.ear -Algorithm SHA256` = `1F7871FF…26FDB0BC`; «Last enabled at» con la hora
+2. Desplegar `tablero-1109\SaaEAR.ear`. Propiedades de sistema sin cambios.
+3. Verificar: `Get-FileHash <ruta>\SaaEAR.ear -Algorithm SHA256` = `053BC05A…4C62C080`; «Last enabled at» con la hora
    del despliegue; log sin `ERROR`/`ORA-` desde el despliegue.
 4. Humo (solo lectura, sin grabar nada de prueba):
    - Créditos → Parametrización → Niveles de Aprobación con un usuario distinto del 1 → abre; columna «Operación»;
@@ -44,6 +49,7 @@
    - Imprimir la solicitud y la autorización de un préstamo existente → salen (autorización sin sección 4).
    - Simulador de crédito → Novación → simular → «Exportar PDF» descarga el PDF.
    - Pólizas → Desgravamen → vista previa → responde en segundos.
+   - Créditos → Dashboard de préstamos → sección «Solicitudes» carga las seis tarjetas del mes.
    - Abrir un préstamo con hipotecario y quirografario → «Evaluación del otorgamiento» muestra «Saldo quirografarios y
      emergentes».
 5. El primer préstamo real del día valida el flujo nuevo: aprobar → queda **APROBADO** (chip ámbar) → tesorería
