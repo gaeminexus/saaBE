@@ -283,4 +283,35 @@ public class CuentaBancariaParticipeServiceImpl implements CuentaBancariaPartici
         }
         return tipos.get(0);
     }
+
+    private List<CuentaBancariaParticipe> cuentasActivas(Long idEntidad) {
+        List<CuentaBancariaParticipe> activas = new java.util.ArrayList<>();
+        List<CuentaBancariaParticipe> cuentas = idEntidad != null
+            ? cuentaBancariaParticipeDaoService.selectByParent(idEntidad) : null;
+        if (cuentas != null) {
+            for (CuentaBancariaParticipe cuenta : cuentas) {
+                if (cuenta.getEstado() != null && cuenta.getEstado() == Estado.ACTIVO) {
+                    activas.add(cuenta);
+                }
+            }
+        }
+        return activas;
+    }
+
+    @Override
+    public CuentaBancariaParticipe cuentaActivaUnica(Long idEntidad) throws Throwable {
+        List<CuentaBancariaParticipe> activas = cuentasActivas(idEntidad);
+        return activas.size() == 1 ? activas.get(0) : null;
+    }
+
+    @Override
+    public String motivoSinCuentaActivaUnica(Long idEntidad) throws Throwable {
+        int activas = cuentasActivas(idEntidad).size();
+        if (activas == 1) {
+            return null;
+        }
+        return activas == 0
+            ? "El socio no tiene una cuenta bancaria activa registrada; registre una (y deje una sola activa) antes de aprobar"
+            : "El socio tiene " + activas + " cuentas bancarias activas; deje una sola activa antes de aprobar";
+    }
 }

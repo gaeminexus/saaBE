@@ -415,3 +415,11 @@ Diseño: `DISENO-ESTADO-APROBADO-VIGENTE-AL-DESEMBOLSO.md` y `BARRIDO-ESTADO-GEN
   Definiciones: fecha de referencia = fecha de registro (`PRSTFCRG`, respaldo `PRSTFCHA`/`PRSTFCIN`). **recibidas** = registradas en el rango, cualquier estado; **enTramite** = estados 6 y 1; **aprobadas** = 14;
   **rechazadas** = 7; **anuladas** = 12 (todas por fecha de registro en el rango). **desembolsadas** = el dinero salió (estados 2, 3, 4, 5, 8, 9, 10, 11 y 13) con fecha de desembolso (`PRSTFCAC`; si no la tiene,
   la de registro) en el rango. Por eso `desembolsadas` puede incluir préstamos registrados antes del rango y no tiene que ser menor que `recibidas`.
+
+## 16. Cuenta de destino del desembolso (2026-11-09)
+
+La orden de desembolso (`CRD_DESEMBOLSO_PRESTAMO`) lleva banco, tipo y número de la **cuenta bancaria activa única** del socio (CRD.CNBP, estado 1); antes nacía sin ellos y tesorería veía «Sin cuenta de destino». El certificado bancario no se exige.
+
+- La aprobación del último nivel falla con `CUENTA_DESTINO_NO_VALIDA: …` (422) si el socio no tiene cuenta activa o tiene más de una, antes de crear la orden. No aplica a la reestructuración (no hay orden).
+- `GET /prst/estadoAprobacion` (o el endpoint que devuelve `EstadoAprobacionPrestamo`) trae `motivoSinCuentaDestino`: texto si el último nivel no podrá aprobar por este motivo, `null` si está bien. El FE puede avisar antes de aprobar.
+- El re-proceso histórico (`contabilizarDesembolsoHistorico`) completa la cuenta si existe y sigue sin ella (confirma con la cuenta del banco).

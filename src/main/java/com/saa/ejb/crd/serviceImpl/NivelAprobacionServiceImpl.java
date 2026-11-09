@@ -61,6 +61,9 @@ public class NivelAprobacionServiceImpl implements NivelAprobacionService {
     @EJB
     private com.saa.ejb.crd.service.SustitucionPrestamoService sustitucionPrestamoService;
 
+    @EJB
+    private com.saa.ejb.crd.service.CuentaBancariaParticipeService cuentaBancariaParticipeService;
+
     /** Resultado interno de resolver la regla: la regla, «no hay reglas activas» (transición) o el motivo del fallo. */
     private static final class Resolucion {
         private ReglaAprobacionPrestamo regla;
@@ -122,6 +125,11 @@ public class NivelAprobacionServiceImpl implements NivelAprobacionService {
             throw new IncomeException("PRESTAMO_NO_ENCONTRADO: no existe el préstamo " + idPrestamo);
         }
         EstadoAprobacionPrestamo estado = new EstadoAprobacionPrestamo();
+        // Aviso previo: la orden de desembolso (préstamo nuevo y novación; no la reestructuración) necesita cuenta de destino.
+        if (prestamo.getEntidad() != null && !sustitucionPrestamoService.esReestructuracion(prestamo)) {
+            estado.setMotivoSinCuentaDestino(
+                cuentaBancariaParticipeService.motivoSinCuentaActivaUnica(prestamo.getEntidad().getCodigo()));
+        }
         Resolucion resolucion = resolver(prestamo);
         if (resolucion.sinReglasActivas) {
             estado.setSinNiveles(true);

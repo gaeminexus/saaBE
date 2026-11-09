@@ -81,4 +81,16 @@ public interface CuentaBancariaParticipeService extends EntityService<CuentaBanc
      * @throws Throwable Si ocurre un error
      */
     Adjunto obtenerCertificado(Long idCuenta) throws Throwable;
+
+    /**
+     * La cuenta bancaria ACTIVA ÚNICA del partícipe (CRD.CNBP, estado 1), o {@code null} si no tiene ninguna activa o tiene
+     * más de una (no se adivina el destino). No exige certificado bancario.
+     */
+    CuentaBancariaParticipe cuentaActivaUnica(Long idEntidad) throws Throwable;
+
+    /**
+     * Por qué el partícipe no tiene cuenta activa única: texto listo para mostrar, o {@code null} si la tiene. Lo usan la
+     * aprobación del préstamo (la orden de desembolso necesita la cuenta de destino) y la consulta previa de la pantalla.
+     */
+    String motivoSinCuentaActivaUnica(Long idEntidad) throws Throwable;
 }

@@ -103,6 +103,9 @@ public class PrestamoServiceImpl implements PrestamoService {
     @EJB
     private PagoProgramadoService pagoProgramadoService;
 
+    @EJB
+    private com.saa.ejb.crd.service.CuentaBancariaParticipeService cuentaBancariaParticipeService;
+
     /** U-2: todo proceso que graba valida el usuario PRIMERO (sin usuario válido no se hace nada). */
     @EJB
     private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
@@ -546,6 +549,14 @@ public class PrestamoServiceImpl implements PrestamoService {
         double valorOrden = sustitucion != null ? sustitucion.getNeto() : monto;
         Long idPago = null;
         if (generaOrden) {
+        // La orden de desembolso necesita la cuenta de destino del socio (tesorería la ve en la orden): sin una cuenta activa
+        // única no se crea la orden y la aprobación del último nivel falla ANTES de tocar nada. El certificado bancario no se
+        // exige (para los préstamos nadie lo pedía).
+        String sinCuenta = cuentaBancariaParticipeService.motivoSinCuentaActivaUnica(
+            prestamo.getEntidad() != null ? prestamo.getEntidad().getCodigo() : null);
+        if (sinCuenta != null) {
+            throw new IncomeException("CUENTA_DESTINO_NO_VALIDA: " + sinCuenta);
+        }
         try {
             List<LineaContablePago> desglose = armarDesgloseEntrega(prestamo, valorOrden, idEmpresa);
             BeneficiarioOcasional beneficiario = armaBeneficiarioPrestamo(prestamo.getEntidad());
@@ -1091,15 +1102,22 @@ public class PrestamoServiceImpl implements PrestamoService {
     }
 
     /**
-     * Beneficiario del desembolso — el socio. Sin cuenta bancaria: el contrato de
-     * {@code aprobar} no la pide (PLAN-DESEMBOLSO-PRESTAMO.md §5), así que tesorería la
-     * completa al aprobar la orden, igual que la cuenta de origen.
+     * Beneficiario del desembolso — el socio, con banco, tipo y número de su cuenta bancaria ACTIVA ÚNICA (CRD.CNBP): es
+     * lo que tesorería ve como «cuenta de destino» en la orden. Mismo criterio que la devolución de aportes. Sin cuenta
+     * única los datos de la cuenta quedan vacíos; la aprobación ya lo rechazó antes de llegar aquí (el re-proceso histórico,
+     * que confirma con la cuenta del banco, la completa si existe y sigue si no).
      */
-    private BeneficiarioOcasional armaBeneficiarioPrestamo(Entidad entidad) {
+    private BeneficiarioOcasional armaBeneficiarioPrestamo(Entidad entidad) throws Throwable {
         BeneficiarioOcasional beneficiario = new BeneficiarioOcasional();
         if (entidad != null) {
             beneficiario.setNombre(entidad.getRazonSocial());
             beneficiario.setIdentificacion(entidad.getNumeroIdentificacion());
+            com.saa.model.crd.CuentaBancariaParticipe cuenta = cuentaBancariaParticipeService.cuentaActivaUnica(entidad.getCodigo());
+            if (cuenta != null) {
+                beneficiario.setIdBancoExterno(cuenta.getBancoExterno() != null ? cuenta.getBancoExterno().getCodigo() : null);
+                beneficiario.setTipoCuenta(cuenta.getTipoCuenta());
+                beneficiario.setNumeroCuenta(cuenta.getNumeroCuenta());
+            }
         }
         return beneficiario;
     }

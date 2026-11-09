@@ -58,6 +58,11 @@ public class EstadoAprobacionPrestamo {
     /** {@code true} si el usuario de la consulta ({@code idUsuario}) puede aprobar hoy el nivel pendiente. */
     private boolean puedeAprobar;
     private String mensaje;
+    /**
+     * Si el préstamo genera orden de desembolso y el socio no tiene cuenta bancaria activa única, el motivo (el último nivel
+     * no podrá aprobar hasta resolverlo); {@code null} si no hay problema. Para avisar antes de aprobar.
+     */
+    private String motivoSinCuentaDestino;
 
     public ReglaResumen getRegla() { return regla; }
     public void setRegla(ReglaResumen regla) { this.regla = regla; }
@@ -71,6 +76,8 @@ public class EstadoAprobacionPrestamo {
     public void setTotalNiveles(int totalNiveles) { this.totalNiveles = totalNiveles; }
     public boolean isPuedeAprobar() { return puedeAprobar; }
     public void setPuedeAprobar(boolean puedeAprobar) { this.puedeAprobar = puedeAprobar; }
+    public String getMotivoSinCuentaDestino() { return motivoSinCuentaDestino; }
+    public void setMotivoSinCuentaDestino(String motivoSinCuentaDestino) { this.motivoSinCuentaDestino = motivoSinCuentaDestino; }
     public String getMensaje() { return mensaje; }
     public void setMensaje(String mensaje) { this.mensaje = mensaje; }
 }
