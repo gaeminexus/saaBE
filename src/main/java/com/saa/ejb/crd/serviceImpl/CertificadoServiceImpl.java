@@ -722,6 +722,10 @@ public class CertificadoServiceImpl implements CertificadoService {
         if (ESTADOS_CANCELADO.contains(estado)) {
             return null;
         }
+        // Sin desembolsar (1, 6, 7, 14) o anulado (12): nunca fue deuda, no bloquea el certificado de no adeudar.
+        if (EstadoPrestamo.esNoDesembolsado(p.getIdEstado()) || estado == EstadoPrestamo.ANULADO) {
+            return null;
+        }
         String descripcion = "El prestamo " + descripcionPrestamo(p);
         if (ESTADOS_MORA.contains(estado)) {
             return bloqueoPrestamo(MotivoBloqueoCertificado.PRESTAMO_EN_MORA, p,
@@ -787,6 +791,9 @@ public class CertificadoServiceImpl implements CertificadoService {
             case EstadoPrestamo.CANCELADO_POR_REVISAR: return "CANCELADO POR REVISAR";
             case EstadoPrestamo.VIGENTE_POR_REVISAR: return "VIGENTE POR REVISAR";
             case EstadoPrestamo.EN_MORA: return "EN MORA";
+            case EstadoPrestamo.ANULADO: return "ANULADO";
+            case EstadoPrestamo.CANCELADO_POR_REESTRUCTURACION: return "CANCELADO POR REESTRUCTURACION";
+            case EstadoPrestamo.APROBADO: return "APROBADO (PENDIENTE DE DESEMBOLSO)";
             default: return "ESTADO " + idEstado;
         }
     }

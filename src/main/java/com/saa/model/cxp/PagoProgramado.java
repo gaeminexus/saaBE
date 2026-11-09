@@ -362,6 +362,16 @@ public class PagoProgramado implements Serializable {
     public String getOrigenExterno() { return origenExterno; }
     public void setOrigenExterno(String origenExterno) { this.origenExterno = origenExterno; }
 
+    /**
+     * Advertencia que dejó el módulo origen al confirmarse el pago (p. ej. el desembolso de una novación con valor de
+     * sustitución distinto). NO se persiste: viaja en la respuesta de la confirmación (y queda en la observación del pago).
+     */
+    @jakarta.persistence.Transient
+    private String advertenciaConfirmacion;
+
+    public String getAdvertenciaConfirmacion() { return advertenciaConfirmacion; }
+    public void setAdvertenciaConfirmacion(String advertenciaConfirmacion) { this.advertenciaConfirmacion = advertenciaConfirmacion; }
+
     public Long getIdOrigen() { return idOrigen; }
     public void setIdOrigen(Long idOrigen) { this.idOrigen = idOrigen; }
 

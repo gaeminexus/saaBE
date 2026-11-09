@@ -29,8 +29,8 @@ public class GeneracionG46ServiceImpl implements GeneracionG46Service {
     @EJB private NuevoPrestamoG46DaoService cg46DaoService;
     @EJB private com.saa.ejb.rpr.dao.CatalogoGeograficoDaoService geografia;
 
-    /** EstadoPrestamo: 0 raíz, 1 generado, 6 pendiente, 7 rechazado, 12 anulado (ModoCorteCartera.ESTADOS_FUERA_DE_CARTERA). */
-    static final java.util.Set<Long> ESTADOS_NO_CONCEDIDOS = java.util.Set.of(0L, 1L, 6L, 7L, 12L);
+    /** EstadoPrestamo: 0 raíz, 1 generado, 6 pendiente, 7 rechazado, 12 anulado, 14 aprobado sin desembolsar (ModoCorteCartera.ESTADOS_FUERA_DE_CARTERA). */
+    static final java.util.Set<Long> ESTADOS_NO_CONCEDIDOS = java.util.Set.of(0L, 1L, 6L, 7L, 12L, 14L);
 
     @Override
     public long generar(DetalleEjecucionReporte detalle) throws Throwable {

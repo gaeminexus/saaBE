@@ -125,3 +125,11 @@ Después de cualquier acción, volver a pedir `GET /pgtr/seguimiento/{id}`.
 - **No** calcular en el FE si se puede anular: usar `acciones`.
 - Un pago de **origen externo no tiene titular**: el beneficiario viene de `PGTRBFNM`/`PGTRBFID`.
 - En nómina y beneficios el «beneficiario» es un texto («Nomina 8/2026 - 12 empleado(s)»), no una persona.
+
+## Callback del desembolso de préstamos (NUEVO 2026-11-08)
+
+Al confirmarse un pago de origen `CRD_DESEMBOLSO_PRESTAMO` (por cualquiera de los cuatro caminos: aprobar con cheque, respuesta del banco, confirmación manual, orden creada confirmada), `contabilizarPagoOrigenExterno`
+llama primero a `PrestamoService.activarPorDesembolso` (mismo precedente que el anticipo a empleado): el préstamo APROBADO pasa a VIGENTE con su asiento de entrega fechado con `PGTRFRSP`, en la misma transacción y antes
+del asiento del pago. Idempotente (un préstamo que no está en APROBADO no se toca). Si el desembolso es una novación con diferencias, la respuesta trae **`advertencia`** (y `advertencias` cuando son varios pagos: `aprobar`,
+`procesarRespuestaBanco`); el pago se confirma igual. Al **revertir** un pago de desembolso confirmado (`revertirPagoConfirmado`) se llama a `PrestamoService.revertirDesembolso`: sin pagos y sin novación vuelve a APROBADO; si no, el
+reverso se rechaza con el motivo. Ver `crd/API-CICLO-OTORGAMIENTO.md` §14.

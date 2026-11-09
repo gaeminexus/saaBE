@@ -18,6 +18,15 @@ public class ContextoSustitucion {
     /** Novación: monto − VS (lo que se le desembolsa al socio). Reestructuración: 0. */
     private double neto;
 
+    /**
+     * Solo en {@code prepararDesembolso}: el motivo por el que el original YA no se puede novar (cambió entre la
+     * aprobación y el desembolso). {@code null} = se puede.
+     */
+    private String motivoNoNovable;
+
+    public String getMotivoNoNovable() { return motivoNoNovable; }
+    public void setMotivoNoNovable(String motivoNoNovable) { this.motivoNoNovable = motivoNoNovable; }
+
     public Prestamo getOriginal() { return original; }
     public void setOriginal(Prestamo original) { this.original = original; }
 

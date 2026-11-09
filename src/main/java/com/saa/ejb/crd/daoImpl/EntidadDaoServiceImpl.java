@@ -221,6 +221,7 @@ public class EntidadDaoServiceImpl extends EntityDaoImpl<Entidad> implements Ent
 			"    SUM(NVL(p.PRSTTTPR, NVL(p.PRSTMNSL, 0))) AS total_prestamos " +
 			"FROM CRD.ENTD e " +
 			"JOIN CRD.PRST p ON p.ENTDCDGO = e.ENTDCDGO " +
+			"  AND NVL(p.PRSTIDST, 0) NOT IN (" + com.saa.ejb.crd.service.ModoCorteCartera.ESTADOS_FUERA_DE_CARTERA + ") " +
 			"WHERE e.ENTDIDST IN (:estadosPermitidos) " +
 			"GROUP BY e.ENTDIDST " +
 			"ORDER BY e.ENTDIDST";
@@ -304,6 +305,7 @@ public class EntidadDaoServiceImpl extends EntityDaoImpl<Entidad> implements Ent
 			"        p.ENTDCDGO, " +
 			"        SUM(NVL(p.PRSTTTPR, NVL(p.PRSTMNSL, 0))) AS total_prestamos " +
 			"    FROM CRD.PRST p " +
+			"    WHERE NVL(p.PRSTIDST, 0) NOT IN (" + com.saa.ejb.crd.service.ModoCorteCartera.ESTADOS_FUERA_DE_CARTERA + ") " +
 			"    GROUP BY p.ENTDCDGO " +
 			") pr ON pr.ENTDCDGO = e.ENTDCDGO " +
 			"LEFT JOIN ( " +

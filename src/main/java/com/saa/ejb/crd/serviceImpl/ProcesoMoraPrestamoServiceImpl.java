@@ -641,7 +641,9 @@ public class ProcesoMoraPrestamoServiceImpl implements ProcesoMoraPrestamoServic
         return idEstado != null
             && (idEstado == EstadoPrestamo.CANCELADO
              || idEstado == EstadoPrestamo.CANCELADO_ANTICIPADO
-             || idEstado == EstadoPrestamo.CANCELADO_POR_NOVACION);
+             || idEstado == EstadoPrestamo.CANCELADO_POR_NOVACION
+             // Sin desembolsar (1, 6, 7, 14): no es un préstamo vivo, no genera mora ni cambia de estado.
+             || EstadoPrestamo.esNoDesembolsado(idEstado));
     }
 
     private int nvlInt(Integer valor) {

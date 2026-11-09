@@ -309,7 +309,8 @@ public class PrestamoServiceImpl implements PrestamoService {
             // con pagos aplicados por otro camino).
             Long idEstadoActual = prestamo.getIdEstado();
             if (idEstadoActual != null
-                && (idEstadoActual == EstadoPrestamo.VIGENTE || idEstadoActual == EstadoPrestamo.RECHAZADO)) {
+                && (idEstadoActual == EstadoPrestamo.VIGENTE || idEstadoActual == EstadoPrestamo.RECHAZADO
+                    || idEstadoActual == EstadoPrestamo.APROBADO)) {
                 throw new IncomeException("El préstamo " + idPrestamo + " está en estado "
                     + nombreEstadoPrestamo(idEstadoActual)
                     + "; la tabla de amortización está congelada y no se puede regenerar.");
@@ -401,6 +402,7 @@ public class PrestamoServiceImpl implements PrestamoService {
             case EstadoPrestamo.EN_MORA: return "EN_MORA (11)";
             case EstadoPrestamo.ANULADO: return "ANULADO (12)";
             case EstadoPrestamo.CANCELADO_POR_REESTRUCTURACION: return "CANCELADO_POR_REESTRUCTURACION (13)";
+            case EstadoPrestamo.APROBADO: return "APROBADO (14, pendiente de desembolso)";
             default: return "estado " + codigo;
         }
     }
@@ -576,26 +578,30 @@ public class PrestamoServiceImpl implements PrestamoService {
         }
         }
 
-        // 3. Asiento de entrega, con la plantilla del producto — o, si el préstamo sustituye a
-        // otro, el asiento del traslado (bandas del nuevo y del original + líneas no-banda).
-        Long idAsientoEntrega;
-        if (sustitucion == null) {
-            idAsientoEntrega = contabilidadPrestamoService.contabilizarEntrega(prestamo, cuotas, idEmpresa,
-                monto, usuario);
-        } else {
+        // 3. Reestructuración (no sale dinero, no hay orden de pago): sigue como siempre, asiento del traslado, cancelar
+        // el original y VIGENTE al aprobar. Todo lo demás (préstamo nuevo y novación) queda APROBADO (14): el asiento
+        // de entrega (o de sustitución + cancelar el original) se hace al CONFIRMARSE el pago del desembolso
+        // (activarPorDesembolso, desde tesorería), cuando el dinero sale; hasta entonces el préstamo no cuenta en ningún lado.
+        boolean reestructuracion = sustitucion != null && !sustitucion.isNovacion();
+        Long idAsientoEntrega = null;
+        if (reestructuracion) {
             idAsientoEntrega = contabilidadPrestamoService.contabilizarSustitucion(prestamo, cuotas,
                 sustitucion.getOriginal(), sustitucion.getDesglose(), sustitucion.isNovacion(),
                 sustitucion.getNeto(), sustitucion.isConLineas(), idEmpresa, usuario);
             // RN11/RN12: cancela el original DESPUÉS del asiento (que necesita sus saldos vivos).
             sustitucionPrestamoService.cancelarOriginal(prestamo, sustitucion, idAsientoEntrega, usuario);
+        } else if (sustitucion != null) {
+            // Novación: el VS se FIJA al aprobar (es el que se descontó del neto de la orden de pago); el desembolso lo
+            // compara con el VS real a esa fecha.
+            prestamo.setValorSustitucion(redondear(sustitucion.getValorSustitucion()));
         }
 
         // 4. Estado, auditoría y PRSTIDPG.
-        prestamo.setIdEstado(Long.valueOf(EstadoPrestamo.VIGENTE));
+        prestamo.setIdEstado(Long.valueOf(reestructuracion ? EstadoPrestamo.VIGENTE : EstadoPrestamo.APROBADO));
         prestamo.setUsuarioAprobacion(usuario);
         prestamo.setFechaAprobacion(LocalDateTime.now());
         prestamo.setIdPagoProgramado(idPago);
-        prestamo.setIdAsientoEntrega(idAsientoEntrega); // AN4: sin este id no hay cómo reversar
+        prestamo.setIdAsientoEntrega(idAsientoEntrega); // AN4: sin este id no hay cómo reversar (en 14 se llena al desembolsar)
         if (observacion != null && !observacion.trim().isEmpty()) {
             prestamo.setObservacion(concatenarObservacion(prestamo.getObservacion(), observacion));
         }
@@ -613,9 +619,127 @@ public class PrestamoServiceImpl implements PrestamoService {
             completo.setMensaje("Nivel " + nivel.getOrdenAprobado() + " de " + nivel.getTotalNiveles()
                 + " aprobado; préstamo aprobado");
         } else {
-            completo.setMensaje("Préstamo aprobado");
+            completo.setMensaje(reestructuracion ? "Préstamo aprobado"
+                : "Préstamo aprobado, pendiente de desembolso: pasa a VIGENTE cuando tesorería confirme el pago");
         }
         return completo;
+    }
+
+    @Override
+    public String activarPorDesembolso(Long idPrestamo, LocalDate fechaDesembolso, Long idEmpresa, String usuario)
+            throws Throwable {
+        System.out.println("PrestamoServiceImpl.activarPorDesembolso - préstamo: " + idPrestamo + " - fecha: "
+            + fechaDesembolso + " - usuario: " + usuario);
+        Prestamo prestamo = idPrestamo != null ? prestamoDaoService.find(new Prestamo(), idPrestamo) : null;
+        if (prestamo == null || prestamo.getIdEstado() == null || prestamo.getIdEstado() != EstadoPrestamo.APROBADO) {
+            // Idempotente y compatible: ya VIGENTE (aprobado antes del cambio) u otro estado → no se toca nada.
+            System.out.println("  activarPorDesembolso: el préstamo " + idPrestamo + " no está en APROBADO (estado "
+                + (prestamo != null ? prestamo.getIdEstado() : null) + "); no se hace nada.");
+            return null;
+        }
+        LocalDate fecha = fechaDesembolso != null ? fechaDesembolso : LocalDate.now();
+        if (idEmpresa == null) {
+            throw new IncomeException("No se puede activar el préstamo " + idPrestamo + " por desembolso: falta la empresa del pago.");
+        }
+        estadoCierreService.validarMovimientoCartera(idEmpresa, fecha,
+            "el desembolso del préstamo " + idPrestamo + " (asiento de entrega)");
+
+        List<DetallePrestamo> cuotas = detallePrestamoDaoService.selectByPrestamo(idPrestamo);
+        if (cuotas == null || cuotas.isEmpty()) {
+            throw new IncomeException("El préstamo " + idPrestamo + " no tiene tabla de amortización; no se puede activar.");
+        }
+        double monto = prestamo.getMontoSolicitado() != null ? prestamo.getMontoSolicitado() : 0.0;
+        StringBuilder advertencia = new StringBuilder();
+        Long idAsiento;
+
+        if (prestamo.getIdPrestamoOriginal() == null) {
+            idAsiento = contabilidadPrestamoService.contabilizarEntrega(prestamo, cuotas, idEmpresa, monto, usuario, fecha);
+        } else {
+            // Novación: se cancela el original con el VS REAL de hoy (para que su cartera cuadre).
+            double vsFijado = prestamo.getValorSustitucion() != null ? prestamo.getValorSustitucion() : 0.0;
+            ContextoSustitucion sustitucion = sustitucionPrestamoService.prepararDesembolso(prestamo);
+            if (sustitucion.getMotivoNoNovable() == null) {
+                double vsReal = redondear(sustitucion.getValorSustitucion());
+                idAsiento = contabilidadPrestamoService.contabilizarSustitucion(prestamo, cuotas,
+                    sustitucion.getOriginal(), sustitucion.getDesglose(), sustitucion.isNovacion(),
+                    sustitucion.getNeto(), sustitucion.isConLineas(), idEmpresa, usuario, fecha);
+                sustitucionPrestamoService.cancelarOriginal(prestamo, sustitucion, idAsiento, usuario);
+                if (Math.abs(vsReal - vsFijado) > 0.005) {
+                    double dif = redondear(vsReal - vsFijado);
+                    advertencia.append("Novación del préstamo ").append(prestamo.getCodigo())
+                        .append(": el valor de sustitución cambió entre la aprobación ($").append(formatoMoneda(vsFijado))
+                        .append(", el que se descontó del desembolso) y el desembolso ($").append(formatoMoneda(vsReal))
+                        .append("); diferencia $").append(formatoMoneda(dif))
+                        .append(dif > 0 ? " cobrada de MENOS al partícipe" : " cobrada de MÁS al partícipe")
+                        .append(". El original se canceló con el valor real. Regularizar a mano (no se creó ninguna devolución).");
+                }
+            } else {
+                // El original ya no se puede novar: el nuevo pasa a VIGENTE con su asiento de entrega normal y el original
+                // queda como está. Deja en SOCIOS POR PAGAR el crédito del VS sin pagar: caso manual.
+                idAsiento = contabilidadPrestamoService.contabilizarEntrega(prestamo, cuotas, idEmpresa, monto, usuario, fecha);
+                advertencia.append("ATENCIÓN, caso manual — novación del préstamo ").append(prestamo.getCodigo())
+                    .append(": el original ").append(prestamo.getIdPrestamoOriginal())
+                    .append(" ya no se puede novar (").append(sustitucion.getMotivoNoNovable())
+                    .append("). El préstamo nuevo quedó VIGENTE con su asiento de entrega normal y el original NO se canceló: ")
+                    .append("el partícipe tiene los dos vigentes y en socios por pagar queda a su favor el valor de sustitución ($")
+                    .append(formatoMoneda(vsFijado)).append(") que se descontó del desembolso. Crédito debe cancelar el original a mano.");
+            }
+        }
+
+        prestamo.setIdEstado(Long.valueOf(EstadoPrestamo.VIGENTE));
+        prestamo.setIdAsientoEntrega(idAsiento); // AN4: sin este id no hay cómo reversar
+        // PRSTFCAC/PRSTUSAC: desde ahora son la fecha y el usuario del DESEMBOLSO (sin escritor hasta este cambio).
+        prestamo.setFechaAcreditacion(fecha.atStartOfDay());
+        prestamo.setUsuarioAcreditacion(usuario);
+        if (advertencia.length() > 0) {
+            prestamo.setObservacion(acotarObservacion(concatenarObservacion(prestamo.getObservacion(),
+                advertencia.toString())));
+        }
+        prestamoDaoService.save(prestamo, prestamo.getCodigo());
+        System.out.println("Préstamo " + idPrestamo + " VIGENTE por desembolso - fecha " + fecha + " - asiento de entrega "
+            + idAsiento + (advertencia.length() > 0 ? " - ADVERTENCIA: " + advertencia : ""));
+        return advertencia.length() > 0 ? advertencia.toString() : null;
+    }
+
+    @Override
+    public void revertirDesembolso(Long idPrestamo, String motivo, LocalDate fechaReverso, String usuario)
+            throws Throwable {
+        System.out.println("PrestamoServiceImpl.revertirDesembolso - préstamo: " + idPrestamo + " - fecha: " + fechaReverso);
+        Prestamo prestamo = idPrestamo != null ? prestamoDaoService.find(new Prestamo(), idPrestamo) : null;
+        // Solo un préstamo activado por desembolso (VIGENTE con fecha de desembolso y asiento de entrega). Uno aprobado
+        // antes del cambio no se toca: su reverso siempre fue solo del pago.
+        if (prestamo == null || prestamo.getIdEstado() == null || prestamo.getIdEstado() != EstadoPrestamo.VIGENTE
+                || prestamo.getFechaAcreditacion() == null || prestamo.getIdAsientoEntrega() == null) {
+            return;
+        }
+        if (prestamo.getIdPrestamoOriginal() != null) {
+            throw new IncomeException("El préstamo " + idPrestamo + " es una novación: su desembolso canceló el préstamo "
+                + prestamo.getIdPrestamoOriginal() + " y no se revierte por sistema. Anule la novación con crédito (caso manual).");
+        }
+        if (!pagoPrestamoDaoService.selectVigentesByPrestamo(idPrestamo).isEmpty()) {
+            throw new IncomeException("El préstamo " + idPrestamo + " ya tiene pagos aplicados; no se puede revertir su desembolso.");
+        }
+        LocalDate fecha = fechaReverso != null ? fechaReverso : LocalDate.now();
+        com.saa.model.cnt.Asiento asientoOriginal = asientoService.reversionAsiento(prestamo.getIdAsientoEntrega(), fecha);
+        prestamo.setIdAsientoReverso(asientoOriginal != null ? asientoOriginal.getIdReversion() : null);
+        prestamo.setIdAsientoEntrega(null);
+        prestamo.setIdEstado(Long.valueOf(EstadoPrestamo.APROBADO));
+        prestamo.setFechaAcreditacion(null);
+        prestamo.setUsuarioAcreditacion(null);
+        prestamo.setObservacion(acotarObservacion(concatenarObservacion(prestamo.getObservacion(),
+            "Desembolso revertido por " + usuario + ": " + motivo)));
+        prestamoDaoService.save(prestamo, prestamo.getCodigo());
+        System.out.println("Préstamo " + idPrestamo + " vuelve a APROBADO; asiento de reverso " + prestamo.getIdAsientoReverso());
+    }
+
+    /** PRSTOBSR mide 2000: si la bitácora crece más, se conserva lo último. */
+    private static String acotarObservacion(String observacion) {
+        return observacion != null && observacion.length() > 2000
+            ? observacion.substring(observacion.length() - 2000) : observacion;
+    }
+
+    private static String formatoMoneda(double valor) {
+        return String.format(java.util.Locale.US, "%.2f", valor);
     }
 
     /**
@@ -704,7 +828,7 @@ public class PrestamoServiceImpl implements PrestamoService {
         long estado = prestamo.getIdEstado() != null ? prestamo.getIdEstado().longValue() : 0L;
         if (estado == EstadoPrestamo.RAIZ || estado == EstadoPrestamo.GENERADO
                 || estado == EstadoPrestamo.PENDIENTE_DE_APROBACION || estado == EstadoPrestamo.RECHAZADO
-                || estado == EstadoPrestamo.ANULADO) {
+                || estado == EstadoPrestamo.ANULADO || estado == EstadoPrestamo.APROBADO) {
             throw new IncomeException("El préstamo " + idPrestamo + " está en estado " + estado
                 + ": no fue aprobado (use POST /prst/aprobar/{id} con fechaContable).");
         }
@@ -961,21 +1085,24 @@ public class PrestamoServiceImpl implements PrestamoService {
         }
         Long idPrestamo = prestamo.getCodigo();
 
-        // AN1: solo VIGENTE (2) o EN_MORA (11).
+        // AN1: VIGENTE (2), EN_MORA (11) o APROBADO (14, aprobado y todavía sin desembolsar).
         Long idEstado = prestamo.getIdEstado();
-        if (idEstado == null || (idEstado != EstadoPrestamo.VIGENTE && idEstado != EstadoPrestamo.EN_MORA)) {
+        boolean aprobadoSinDesembolso = idEstado != null && idEstado == EstadoPrestamo.APROBADO;
+        if (idEstado == null || (idEstado != EstadoPrestamo.VIGENTE && idEstado != EstadoPrestamo.EN_MORA
+                && !aprobadoSinDesembolso)) {
             return "El préstamo " + idPrestamo + " está en estado " + nombreEstadoPrestamo(idEstado)
-                + "; solo se puede anular un préstamo VIGENTE (2) o EN_MORA (11).";
+                + "; solo se puede anular un préstamo APROBADO (14), VIGENTE (2) o EN_MORA (11).";
         }
 
-        // RN13: un préstamo que sustituyó a otro no se anula en esta fase (habría que resucitar el original).
-        if (prestamo.getIdPrestamoOriginal() != null) {
+        // RN13: un préstamo que sustituyó a otro no se anula en esta fase (habría que resucitar el original). Un
+        // APROBADO no sustituyó nada todavía (el original se cancela al desembolsar): se anula sin problema.
+        if (!aprobadoSinDesembolso && prestamo.getIdPrestamoOriginal() != null) {
             return "El préstamo " + idPrestamo + " sustituyó al préstamo " + prestamo.getIdPrestamoOriginal()
                 + " (reestructuración o novación); no se puede anular en esta fase, habría que resucitar el original.";
         }
 
-        // AN4: sin el id del asiento de entrega no hay cómo reversarlo.
-        if (prestamo.getIdAsientoEntrega() == null) {
+        // AN4: sin el id del asiento de entrega no hay cómo reversarlo. En APROBADO no hay asiento que reversar.
+        if (!aprobadoSinDesembolso && prestamo.getIdAsientoEntrega() == null) {
             return "No se encuentra el asiento de entrega del préstamo " + idPrestamo
                 + " (PRSTASEN vacío, aprobado antes de este cambio); reverse manualmente.";
         }
@@ -1059,8 +1186,9 @@ public class PrestamoServiceImpl implements PrestamoService {
 
         // AN5 (guarda aproximada, decisión del árbitro): no hay rastro por préstamo de un cierre de
         // cartera, así que se bloquea si hay una corrida EJECUTADA de la empresa del asiento de
-        // entrega con período >= el de la aprobación.
-        com.saa.model.cnt.Asiento asientoEntrega = asientoService.selectById(prestamo.getIdAsientoEntrega());
+        // entrega con período >= el de la aprobación. En APROBADO no hay asiento (no entró a la cartera).
+        com.saa.model.cnt.Asiento asientoEntrega = aprobadoSinDesembolso ? null
+            : asientoService.selectById(prestamo.getIdAsientoEntrega());
         if (asientoEntrega != null && asientoEntrega.getEmpresa() != null) {
             java.time.LocalDate referencia = prestamo.getFechaAprobacion() != null
                 ? prestamo.getFechaAprobacion().toLocalDate() : asientoEntrega.getFechaAsiento();
@@ -1161,13 +1289,18 @@ public class PrestamoServiceImpl implements PrestamoService {
         if (motivoNoAnulable != null) {
             throw new IncomeException(motivoNoAnulable);
         }
-        // C17: la anulación se registra hoy (reverso del asiento de entrega): el mes de hoy tiene que estar
-        // abierto para cartera; y si el desembolso es de un mes ya cerrado para cartera, su contabilidad
-        // también tiene que estar cerrada (si no, reabrir la cartera de ese mes).
-        estadoCierreService.validarMovimientoCartera(idEmpresa, LocalDate.now(), "la anulación del préstamo " + idPrestamo);
-        estadoCierreService.validarAnulacionCartera(idEmpresa,
-                prestamo.getFechaInicio() != null ? prestamo.getFechaInicio().toLocalDate() : null,
-                "la anulación del préstamo " + idPrestamo);
+        // En APROBADO (14) no hubo asiento de entrega ni entró a la cartera: no hay nada que reversar ni cierre que validar.
+        boolean aprobadoSinDesembolso = prestamo.getIdEstado() != null
+            && prestamo.getIdEstado() == EstadoPrestamo.APROBADO;
+        if (!aprobadoSinDesembolso) {
+            // C17: la anulación se registra hoy (reverso del asiento de entrega): el mes de hoy tiene que estar
+            // abierto para cartera; y si el desembolso es de un mes ya cerrado para cartera, su contabilidad
+            // también tiene que estar cerrada (si no, reabrir la cartera de ese mes).
+            estadoCierreService.validarMovimientoCartera(idEmpresa, LocalDate.now(), "la anulación del préstamo " + idPrestamo);
+            estadoCierreService.validarAnulacionCartera(idEmpresa,
+                    prestamo.getFechaInicio() != null ? prestamo.getFechaInicio().toLocalDate() : null,
+                    "la anulación del préstamo " + idPrestamo);
+        }
 
         // AN3: la orden de desembolso. Si CXP no deja, su texto sale tal cual y no se toca nada.
         if (prestamo.getIdPagoProgramado() != null
@@ -1178,9 +1311,11 @@ public class PrestamoServiceImpl implements PrestamoService {
 
         // AN4/AN11: reverso del asiento de entrega, fechado hoy. Si el período de hoy no está
         // abierto, contabilidad lanza y la transacción entera se revierte.
-        com.saa.model.cnt.Asiento asientoOriginal = asientoService.reversionAsiento(
-            prestamo.getIdAsientoEntrega(), LocalDate.now());
-        prestamo.setIdAsientoReverso(asientoOriginal != null ? asientoOriginal.getIdReversion() : null);
+        if (!aprobadoSinDesembolso) {
+            com.saa.model.cnt.Asiento asientoOriginal = asientoService.reversionAsiento(
+                prestamo.getIdAsientoEntrega(), LocalDate.now());
+            prestamo.setIdAsientoReverso(asientoOriginal != null ? asientoOriginal.getIdReversion() : null);
+        }
 
         // AN7: cuotas a ANULADA.
         List<DetallePrestamo> cuotas = detallePrestamoDaoService.selectByPrestamo(idPrestamo);

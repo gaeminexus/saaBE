@@ -244,6 +244,43 @@ public class SustitucionPrestamoServiceImpl implements SustitucionPrestamoServic
     }
 
     @Override
+    public ContextoSustitucion prepararDesembolso(Prestamo nuevo) throws Throwable {
+        System.out.println("SustitucionPrestamoService.prepararDesembolso - nuevo: "
+            + (nuevo != null ? nuevo.getCodigo() : null));
+        ContextoSustitucion contexto = new ContextoSustitucion();
+        try {
+            // Las IncomeException de acá no cruzan un EJB (son métodos de este mismo bean): se atrapan sin marcar
+            // la transacción de la confirmación como rollback.
+            Prestamo original = cargarOriginal(nuevo);
+            contexto.setOriginal(original);
+            Producto producto = cargarProductoDe(nuevo);
+            boolean novacion = tipoDeProducto(producto);
+            contexto.setNovacion(novacion);
+            Evaluacion ev = evaluar(original, novacion, LocalDate.now(), producto);
+            if (ev.motivo != null) {
+                contexto.setMotivoNoNovable(ev.motivo);
+                return contexto;
+            }
+            double monto = nuevo.getMontoSolicitado() != null ? nuevo.getMontoSolicitado() : 0.0;
+            double neto = redondear(monto - ev.valorSustitucion);
+            if (novacion && neto <= TOLERANCIA_MONTO) {
+                contexto.setMotivoNoNovable("El monto del préstamo ($" + String.format(java.util.Locale.US, "%.2f", monto)
+                    + ") no supera el saldo actual del original ($"
+                    + String.format(java.util.Locale.US, "%.2f", ev.valorSustitucion) + ").");
+                return contexto;
+            }
+            contexto.setValorSustitucion(ev.valorSustitucion);
+            contexto.setDesglose(ev.desglose);
+            contexto.setConAtraso(ev.conAtraso);
+            contexto.setConLineas(ev.conLineas);
+            contexto.setNeto(neto);
+        } catch (com.saa.basico.util.IncomeException e) {
+            contexto.setMotivoNoNovable(e.getMessage());
+        }
+        return contexto;
+    }
+
+    @Override
     public void cancelarOriginal(Prestamo nuevo, ContextoSustitucion contexto, Long idAsiento, String usuario)
             throws Throwable {
         Prestamo original = contexto.getOriginal();

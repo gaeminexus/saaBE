@@ -61,6 +61,14 @@ public interface SustitucionPrestamoService {
     ContextoSustitucion prepararAprobacion(Prestamo nuevo) throws Throwable;
 
     /**
+     * Al CONFIRMARSE el pago del desembolso de una novación: igual que {@link #prepararAprobacion} (VS real a hoy) pero
+     * NUNCA lanza por una regla de negocio —la confirmación del pago no se puede frenar: el dinero ya salió—; si el
+     * original ya no se puede novar, deja el motivo en {@code motivoNoNovable}. El VS que se descontó del neto al
+     * aprobar está en {@code nuevo.getValorSustitucion()}.
+     */
+    ContextoSustitucion prepararDesembolso(Prestamo nuevo) throws Throwable;
+
+    /**
      * Cancela el original (RN11): cuotas pendientes a CANCELADA_ANTICIPADA (7), un EventoPrestamo
      * REESTRUCTURACION o NOVACION con el VS, y el estado 5 o 13. Escribe en el NUEVO el VS, el
      * enlace y las banderas (RN12). Sin PagoPrestamo: no entra dinero.

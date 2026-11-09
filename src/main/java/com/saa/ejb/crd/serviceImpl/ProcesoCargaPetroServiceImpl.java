@@ -594,7 +594,9 @@ public class ProcesoCargaPetroServiceImpl implements ProcesoCargaPetroService {
         boolean estadoTerminal = estadoActual != null && (
             estadoActual == EstadoPrestamo.CANCELADO ||
             estadoActual == EstadoPrestamo.CANCELADO_ANTICIPADO ||
-            estadoActual == EstadoPrestamo.CANCELADO_POR_NOVACION);
+            estadoActual == EstadoPrestamo.CANCELADO_POR_NOVACION
+            // Sin desembolsar (1, 6, 7, 14): no es un préstamo vivo; la carga no lo reescribe a 2/11.
+            || EstadoPrestamo.esNoDesembolsado(estadoActual));
 
         if (estadoTerminal) {
             System.out.println("Préstamo en estado terminal (" + estadoActual + ") - No se modifica el estado");

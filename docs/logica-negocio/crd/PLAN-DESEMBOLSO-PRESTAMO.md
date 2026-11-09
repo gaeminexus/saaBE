@@ -195,3 +195,7 @@ con contra-movimientos (§8.3 de su plan) y `pagoProgramadoService.anularPago(..
 **No entra en esta entrega** y se anota para no perderlo: hay que decidir si un préstamo cuya orden
 se anuló vuelve a `GENERADO`, se marca de otra forma, o se deja como está con un aviso. **Es una
 pregunta de negocio.**
+
+## Actualización 2026-11-08
+
+El asiento de entrega y el paso a VIGENTE ya no ocurren al aprobar sino al confirmarse el pago de esta orden (estado 14 APROBADO entre medio). Ver `DISENO-ESTADO-APROBADO-VIGENTE-AL-DESEMBOLSO.md` y `API-CICLO-OTORGAMIENTO.md` §14.

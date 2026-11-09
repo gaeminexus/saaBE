@@ -1997,6 +1997,10 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
                             ? "CANCELADO POR REESTRUCTURACIÓN"
                         : estadoPrestamo == com.saa.rubros.EstadoPrestamo.CANCELADO_POR_NOVACION
                             ? "CANCELADO POR NOVACIÓN" : null;
+                    if (nombreEstado == null && com.saa.rubros.EstadoPrestamo.esNoDesembolsado(prestamo.getIdEstado())) {
+                        // Aún sin desembolsar (1 GENERADO, 6, 7, 14 APROBADO): no es deuda, no recibe cobros.
+                        nombreEstado = "SIN DESEMBOLSAR (estado " + estadoPrestamo + ")";
+                    }
                     if (nombreEstado != null) {
                         throw new IncomeException("el préstamo " + linea.getIdPrestamo() + " está " + nombreEstado);
                     }

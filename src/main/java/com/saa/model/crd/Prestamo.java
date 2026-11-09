@@ -257,10 +257,16 @@ public class Prestamo implements Serializable {
     @Column(name = "PRSTFCLG")
     private LocalDateTime fechaLegalizacion;
 
+    /**
+     * Desde 2026-11-08: USUARIO del desembolso (quien confirmó el pago en tesorería). Columna que existía sin escritor; la
+     * escribe {@code PrestamoService.activarPorDesembolso} al pasar el préstamo de APROBADO (14) a VIGENTE.
+     * Ver DISENO-ESTADO-APROBADO-VIGENTE-AL-DESEMBOLSO.md.
+     */
     @Basic
     @Column(name = "PRSTUSAC", length = 200)
     private String usuarioAcreditacion;
 
+    /** Desde 2026-11-08: FECHA del desembolso (PGTRFRSP del pago confirmado). Ver {@link #usuarioAcreditacion}. */
     @Basic
     @Column(name = "PRSTFCAC")
     private LocalDateTime fechaAcreditacion;

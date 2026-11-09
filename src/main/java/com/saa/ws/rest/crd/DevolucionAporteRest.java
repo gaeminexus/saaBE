@@ -912,6 +912,9 @@ public class DevolucionAporteRest {
             case EstadoPrestamo.CANCELADO_POR_REVISAR:   return "CANCELADO POR REVISAR";
             case EstadoPrestamo.VIGENTE_POR_REVISAR:     return "VIGENTE POR REVISAR";
             case EstadoPrestamo.EN_MORA:                 return "EN MORA";
+            case EstadoPrestamo.ANULADO:                 return "ANULADO";
+            case EstadoPrestamo.CANCELADO_POR_REESTRUCTURACION: return "CANCELADO POR REESTRUCTURACION";
+            case EstadoPrestamo.APROBADO:                return "APROBADO (PENDIENTE DE DESEMBOLSO)";
             default: return String.valueOf(idEstado);
         }
     }

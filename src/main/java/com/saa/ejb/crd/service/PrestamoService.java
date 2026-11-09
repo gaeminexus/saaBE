@@ -116,6 +116,28 @@ public interface PrestamoService extends EntityService<Prestamo>{
 	com.saa.ejb.crd.service.dto.ResultadoAprobacionPrestamo aprobarConNiveles(Long idPrestamo, String usuario,
 			String observacion, Long idEmpresa, Long idUsuario, java.time.LocalDate fechaContable) throws Throwable;
 
+	/**
+	 * Hook del desembolso (DISENO-ESTADO-APROBADO-VIGENTE-AL-DESEMBOLSO.md): lo llama tesorería (CXP) al confirmarse el pago
+	 * de origen {@code CRD_DESEMBOLSO_PRESTAMO}, en la MISMA transacción y antes del asiento del pago. Un préstamo en
+	 * APROBADO (14) pasa a VIGENTE (2): asiento de entrega fechado con {@code fechaDesembolso} (o, en novación, asiento de
+	 * sustitución + cancelación del original), y {@code PRSTFCAC}/{@code PRSTUSAC} guardan fecha y usuario del desembolso.
+	 * <b>Idempotente</b>: si el préstamo no está en 14 (ya VIGENTE, aprobado antes del cambio) no hace nada. El dinero ya
+	 * salió, así que NUNCA frena la confirmación por una diferencia de negocio.
+	 *
+	 * @return una advertencia para quien confirma el pago (p. ej. el VS cambió o el original ya no es novable), o
+	 *         {@code null} si no hay nada que avisar
+	 */
+	String activarPorDesembolso(Long idPrestamo, java.time.LocalDate fechaDesembolso, Long idEmpresa, String usuario)
+			throws Throwable;
+
+	/**
+	 * Reverso de un pago de desembolso CONFIRMADO: un préstamo activado por desembolso, sin pagos aplicados y que no es
+	 * novación, revierte su asiento de entrega y vuelve a APROBADO. Novación o con pagos: lanza (caso manual). Un préstamo
+	 * que no fue activado por desembolso (aprobado antes del cambio) no se toca.
+	 */
+	void revertirDesembolso(Long idPrestamo, String motivo, java.time.LocalDate fechaReverso, String usuario)
+			throws Throwable;
+
 	Prestamo aprobar(Long idPrestamo, String usuario, String observacion, Long idEmpresa, Long idUsuario,
 			java.time.LocalDate fechaContable) throws Throwable;
 

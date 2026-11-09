@@ -59,7 +59,7 @@ public final class ModoCorteCartera {
     public static final String PROPIEDAD_CORTE_INCLUSIVO = "saa.cartera.corteInclusivo";
 
     /** Préstamos que nunca formaron cartera: raíz, generado, pendiente, rechazado, anulado. */
-    public static final String ESTADOS_FUERA_DE_CARTERA = "0, 1, 6, 7, 12";
+    public static final String ESTADOS_FUERA_DE_CARTERA = "0, 1, 6, 7, 12, 14";
 
     /**
      * Préstamos cancelados: normal, anticipado, por novación, por revisar y por reestructuración

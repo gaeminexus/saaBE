@@ -94,7 +94,7 @@ public class PrestamoDaoServiceImpl extends EntityDaoImpl<Prestamo> implements P
             String jpql = "SELECT p FROM Prestamo p " +
                          "WHERE p.entidad.codigo = :codigoEntidad " +
                          "AND p.producto.codigo = :codigoProducto " +
-                         "AND p.idEstado IN (1, 2, 8, 10, 11)";
+                         "AND p.idEstado IN (2, 8, 10, 11)";
             
             Query query = em.createQuery(jpql);
             query.setParameter("codigoEntidad", codigoEntidad);
@@ -121,7 +121,7 @@ public class PrestamoDaoServiceImpl extends EntityDaoImpl<Prestamo> implements P
             String jpql = "SELECT p FROM Prestamo p " +
                          "WHERE p.entidad.codigo = :codigoEntidad " +
                          "AND p.producto.codigo = :codigoProducto " +
-                         "AND (p.idEstado IN (1, 2, 8, 10, 11) " +
+                         "AND (p.idEstado IN (2, 8, 10, 11) " +
                          "  OR (p.idEstado IN (3, 4, 5, 9, 13) " +
                          "      AND (p.fechaInicio IS NULL OR p.fechaInicio <= :fechaCorte) " +
                          "      AND EXISTS (SELECT 1 FROM DetallePrestamo d0 WHERE d0.prestamo.codigo = p.codigo " +
@@ -216,23 +216,15 @@ public class PrestamoDaoServiceImpl extends EntityDaoImpl<Prestamo> implements P
         try {
             // idEstado (PRSTIDST) es el estado operativo. NUNCA estadoPrestamo (ESPSCDGO),
             // que es la FK al catálogo CRD.ESPS.
-            // Los tres terminales quedan fuera: 3 CANCELADO, 4 CANCELADO_ANTICIPADO,
-            // 5 CANCELADO_POR_NOVACION. El idEstado nulo entra: no es un estado terminal, y
-            // en un aviso subreportar deuda es peor que sobrereportarla.
+            // Solo los préstamos VIVOS (lista blanca 2, 8, 10, 11): el dinero ya se entregó. Un GENERADO, APROBADO,
+            // pendiente, rechazado o anulado no es deuda (BARRIDO-ESTADO-GENERADO-COMO-VIGENTE.md).
             String jpql = "SELECT p FROM Prestamo p " +
                          "WHERE p.entidad.codigo = :codigoEntidad " +
-                         "AND (p.idEstado IS NULL OR p.idEstado NOT IN " +
-                         "     (:cancelado, :canceladoAnticipado, :canceladoPorNovacion)) " +
+                         "AND p.idEstado IN (2, 8, 10, 11) " +
                          "ORDER BY p.codigo ASC";
 
             Query query = em.createQuery(jpql);
             query.setParameter("codigoEntidad", codigoEntidad);
-            query.setParameter("cancelado",
-                (long) com.saa.rubros.EstadoPrestamo.CANCELADO);
-            query.setParameter("canceladoAnticipado",
-                (long) com.saa.rubros.EstadoPrestamo.CANCELADO_ANTICIPADO);
-            query.setParameter("canceladoPorNovacion",
-                (long) com.saa.rubros.EstadoPrestamo.CANCELADO_POR_NOVACION);
 
             List<Prestamo> resultados = query.getResultList();
             System.out.println("  Préstamos vigentes encontrados: "

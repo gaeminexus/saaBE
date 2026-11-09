@@ -380,3 +380,26 @@ Diseño: `DISENO-PRIMERA-CUOTA-SEGUN-ARCHIVO-PETRO.md`. «Archivo del mes genera
   (la primera cuota pasará a <mes siguiente>)». Regenerar la tabla invalida las aprobaciones por niveles (sección 12), como siempre. Se deja
   aprobar solo si esa cuota aparece en `CXPG` de esa generación (préstamos que el archivo tomó en estado 1 antes del cambio).
 - **El archivo Petro ya no cobra préstamos en estado 1 GENERADO**, solo 2 VIGENTE y 11 EN MORA.
+
+## 14. Estado 14 APROBADO: el préstamo es vigente cuando se desembolsa (NUEVO 2026-11-08)
+
+Diseño: `DISENO-ESTADO-APROBADO-VIGENTE-AL-DESEMBOLSO.md` y `BARRIDO-ESTADO-GENERADO-COMO-VIGENTE.md`. Estados: `6 PENDIENTE → 1 GENERADO → 14 APROBADO → 2 VIGENTE`.
+
+- **`POST /prst/aprobar/{id}`** (último nivel): ahora deja el préstamo en **`idEstado = 14` APROBADO** (texto «Aprobado, pendiente de desembolso»), con número Asoprep y la orden
+  de pago en tesorería. **Ya no genera el asiento de entrega ni cancela el original de una novación.** Excepción: la **reestructuración** (no hay orden de pago) sigue pasando a
+  VIGENTE al aprobar. La respuesta es el mismo `Prestamo` (o `{prestamo, aprobacionCompleta, …}` con `?conDetalle=true`); lo que cambia es que `idEstado` es 14, no 2.
+  El mensaje de `conDetalle` dice «aprobado, pendiente de desembolso». En novación se guarda el **valor de sustitución** (`valorSustitucion`) del momento de aprobar.
+- **Pasa a VIGENTE (2) cuando tesorería CONFIRMA el pago** del desembolso (origen `CRD_DESEMBOLSO_PRESTAMO`), por cualquiera de los cuatro caminos (aprobar con cheque, respuesta del
+  banco, confirmación manual, orden creada ya confirmada), en la misma transacción y **antes** del asiento del pago: asiento de entrega fechado con la fecha de respuesta del pago
+  (`PGTRFRSP`); en novación, asiento de sustitución y cancelación del original en ese momento. Idempotente: un préstamo que no está en 14 (aprobado antes de este cambio) no se toca.
+  **`PRSTFCAC`/`PRSTUSAC` (entidad `fechaAcreditacion`/`usuarioAcreditacion`) son desde ahora la fecha y el usuario del desembolso.** Sin DDL.
+- **Advertencia al confirmar el pago:** las respuestas de tesorería (`aprobar`, `procesarRespuestaBanco`, `confirmar*`, `registrarPagoDeOrigenExterno`) traen `advertencia` (texto) y, cuando son varios
+  pagos, `advertencias` (lista) si el desembolso de una novación encontró el original distinto: VS cambió (diferencia cobrada de más o de menos al partícipe; el original se cancela con el VS real) o
+  el original ya no es novable (el nuevo queda VIGENTE con entrega normal, el original NO se cancela: caso manual). La confirmación del pago nunca se frena; la advertencia queda también en la observación del préstamo y del pago.
+- **`POST /prst/anular/{id}`** (y `GET /prst/{id}/puedeAnular`): **la forma no cambia**; ahora también admite préstamos en **14 APROBADO** (anula la orden de pago si no está confirmada; no hay asiento que reversar;
+  una novación en 14 se anula sin problema porque el original aún no se canceló). El préstamo pasa a 12.
+- **Reverso de un pago de desembolso confirmado** (`revertirPagoConfirmado`): si el préstamo fue activado por ese desembolso, no tiene pagos y no es novación, vuelve a **APROBADO** (revierte su asiento de entrega); si es novación o tiene pagos
+  el reverso del pago se rechaza con el motivo (caso manual). Un pago de un préstamo anterior al cambio se revierte como siempre.
+- **«No cuenta en ningún lado»:** un préstamo en 1, 6, 7 o 14 no entra en el archivo Petro (solo 2 y 11), ni en cartera/cierre (`ESTADOS_FUERA_DE_CARTERA` + 14), mora, pagos, abonos, cobros, precancelación, reestructuración, certificado
+  de no adeudar, deuda de la devolución de aportes (`RPRT_INFR_DVAP`), app móvil, G46 ni totales del dashboard de entidades. Lista blanca de «vivos»: `{2, 8, 10, 11}` (`EstadoPrestamo.esVivo`).
+- **Regenerar la tabla** de un préstamo en 14 se rechaza (como en VIGENTE); `saveSingle` no lo trata como editable.

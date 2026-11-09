@@ -49,6 +49,13 @@ el préstamo no está en 14 (préstamos aprobados antes del EAR, ya VIGENTES), *
 
 - **Anular un préstamo APROBADO** (desembolso no hecho, o pago rechazado por el banco): permitido; anula la orden
   CXP si no está confirmada; no hay asiento que revertir; préstamo → 12. (Hoy anular solo admite 2/11.)
+- **Regla del árbitro (2026-11-08) para cuando entre la aprobación y el desembolso cambió el original (novación):** el
+  préstamo nuevo SIEMPRE pasa a VIGENTE al confirmarse el pago (el dinero ya salió; dejarlo en 14 descuadraría socios por
+  pagar). Si el original sigue novable se cancela con el VS RECALCULADO (el real); si difiere del VS fijado al aprobar (el que
+  se descontó del neto), la diferencia es plata cobrada de más o de menos al partícipe: advertencia en la respuesta de tesorería
+  + observación del préstamo con los dos valores, para regularizar a mano (no se crea devolución automática). Si el original ya
+  no es novable (cuota vencida, cobro en trámite…): el nuevo pasa a VIGENTE con su asiento de entrega normal, el original queda
+  como está, en socios por pagar queda a favor del partícipe el VS descontado, y la advertencia dice que es caso manual.
 - **Pago rechazado por el banco** (PGTR 4): el préstamo queda APROBADO; crédito lo anula y genera otro, o tesorería
   reemite (el ejecutor reporta si existe reemisión; no se crea en este cambio).
 - **Revertir un pago CONFIRMADO de desembolso** (`revertirPagoConfirmado`): si el préstamo no tiene pagos

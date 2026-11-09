@@ -196,6 +196,14 @@ public interface ContabilidadPrestamoService {
             com.saa.ejb.crd.service.dto.DesgloseConceptosPrestamo desglose, boolean esNovacion, double neto,
             boolean conLineas, Long idEmpresa, String usuario) throws Throwable;
 
+    /**
+     * {@link #contabilizarSustitucion} con la fecha contable explícita del asiento (la del desembolso confirmado,
+     * PGTRFRSP); {@code null} = hoy, como siempre. La clasificación de bandas del original se hace a esa fecha.
+     */
+    Long contabilizarSustitucion(Prestamo nuevo, List<DetallePrestamo> cuotasNuevo, Prestamo original,
+            com.saa.ejb.crd.service.dto.DesgloseConceptosPrestamo desglose, boolean esNovacion, double neto,
+            boolean conLineas, Long idEmpresa, String usuario, java.time.LocalDate fechaAsiento) throws Throwable;
+
     Long contabilizarEntrega(Prestamo prestamo, List<DetallePrestamo> cuotas, Long idEmpresa,
             double montoOperacion, String usuario) throws Throwable;
 

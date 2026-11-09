@@ -102,6 +102,10 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	@EJB
 	private PagoProgramadoDaoService pagoProgramadoDaoService;
 
+	/** Hook del desembolso de préstamos (DISENO-ESTADO-APROBADO-VIGENTE-AL-DESEMBOLSO.md). */
+	@EJB
+	private com.saa.ejb.crd.service.PrestamoService prestamoService;
+
 	/** C17: mes cerrado para cartera / contabilidad (CIERRES-BLOQUEANTES.md). */
 	@jakarta.ejb.EJB
 	private com.saa.ejb.cnt.service.EstadoCierreService estadoCierreService;
@@ -1303,6 +1307,7 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		Asiento asiento = contabilizarSegunOrigen(pago, idUsuario);
 		pagoProgramadoDaoService.save(pago, pago.getId());
 		em.flush();
+		agregaAdvertenciaConfirmacion(resultado, pago);
 
 		if (asiento != null) {
 			System.out.println("✓ Pago de origen externo registrado y contabilizado: id=" + pago.getId()
@@ -1568,6 +1573,7 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 
 		List<Long> registrados = new ArrayList<>();
 		List<Long> confirmados = new ArrayList<>();
+		List<String> advertenciasConfirmacion = new ArrayList<>();
 		List<Map<String, Object>> cheques = new ArrayList<>();
 
 		// Cheque agrupado: se toma UNA sola vez para todo el lote (asignarAGrupo),
@@ -1616,6 +1622,9 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 				Asiento asiento = contabilizarSegunOrigen(pago, idUsuario, !agrupar);
 				pagoProgramadoDaoService.save(pago, pago.getId());
 				confirmados.add(pago.getId());
+				if (pago.getAdvertenciaConfirmacion() != null) {
+					advertenciasConfirmacion.add(pago.getAdvertenciaConfirmacion());
+				}
 
 				if (agrupar) {
 					pagosGrupo.add(pago.getId());
@@ -1693,6 +1702,10 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		resultado.put("confirmados", confirmados);
 		if (!cheques.isEmpty()) {
 			resultado.put("cheques", cheques);
+		}
+		if (!advertenciasConfirmacion.isEmpty()) {
+			resultado.put("advertencias", advertenciasConfirmacion);
+			resultado.put("advertencia", String.join(" | ", advertenciasConfirmacion));
 		}
 		resultado.put("mensaje", "Se aprobaron " + idsPagos.size() + " pago(s) por un total de $"
 				+ String.format(Locale.US, "%.2f", total) + ".");
@@ -2069,6 +2082,7 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		int confirmados = 0;
 		int rechazados  = 0;
 		List<String> errores = new ArrayList<>();
+		List<String> advertenciasConfirmacion = new ArrayList<>();
 
 		for (RespuestaPagoBanco respuesta : respuestas) {
 
@@ -2100,6 +2114,9 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 				pago.setEstado(Long.valueOf(EstadoPagoProgramado.CONFIRMADO));
 				pagoProgramadoDaoService.save(pago, pago.getId());
 				confirmados++;
+				if (pago.getAdvertenciaConfirmacion() != null) {
+					advertenciasConfirmacion.add(pago.getAdvertenciaConfirmacion());
+				}
 			} else {
 				pago.setEstado(Long.valueOf(EstadoPagoProgramado.RECHAZADO));
 				pago.setMotivo(respuesta.getMotivo() != null
@@ -2120,6 +2137,10 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		System.out.println("✓ Respuesta procesada | confirmados=" + confirmados
 				+ " | rechazados=" + rechazados + " | errores=" + errores.size());
 
+		if (!advertenciasConfirmacion.isEmpty()) {
+			resultado.put("advertencias", advertenciasConfirmacion);
+			resultado.put("advertencia", String.join(" | ", advertenciasConfirmacion));
+		}
 		resultado.put("exito", true);
 		resultado.put("mensaje", "Respuesta procesada: " + confirmados + " confirmado(s), "
 				+ rechazados + " rechazado(s).");
@@ -2301,6 +2322,8 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 						+ " -no en tesorería-, así que hay que ir a ese módulo y confirmarlo también.");
 			}
 			// ===== FIN aviso "confirmado sin contabilidad" =====
+			// Advertencia del módulo origen (p. ej. desembolso de novación con valor de sustitución distinto).
+			agregaAdvertenciaConfirmacion(r, pago);
 
 			if (pago.getLote() != null) {
 				r.put("idLote", pago.getLote().getId());
@@ -3223,6 +3246,13 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	private Asiento contabilizarPagoOrigenExterno(PagoProgramado pago, Long idUsuario,
 			boolean emitirMovimientoCheque) throws Throwable {
 
+		// Desembolso de un préstamo: el préstamo pasa de APROBADO a VIGENTE en esta misma transacción y ANTES del asiento
+		// del pago (primero entra la cartera —D cartera / H socios por pagar— y después sale el dinero —D socios por pagar /
+		// H banco—), con la misma fecha PGTRFRSP. Idempotente; un préstamo que no está en APROBADO no se toca.
+		if (com.saa.rubros.OrigenPagoExterno.CRD_DESEMBOLSO_PRESTAMO.equals(pago.getOrigenExterno())) {
+			activarPrestamoPorDesembolso(pago, idUsuario);
+		}
+
 		// La caja chica no usa el desglose de PGS.DPGT: el DEBE es siempre la
 		// cuenta contable de la caja, no un producto por línea. Se resuelve
 		// aparte con su propia plantilla de asiento.
@@ -3623,6 +3653,13 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 	private void revertirContabilidadOrigenExterno(PagoProgramado pago, String motivo,
 			Boolean reversarAsiento, LocalDate fechaReverso, String usuarioAnula) throws Throwable {
 
+		// Desembolso de un préstamo ya activado: si no tiene pagos y no es novación vuelve a APROBADO (reversa su asiento de
+		// entrega); si no se puede, lanza y el reverso del pago se rechaza con el motivo. Antes de tocar el asiento del pago.
+		if (com.saa.rubros.OrigenPagoExterno.CRD_DESEMBOLSO_PRESTAMO.equals(pago.getOrigenExterno())
+				&& pago.getIdOrigen() != null) {
+			prestamoService.revertirDesembolso(pago.getIdOrigen(), motivo, fechaReverso, usuarioAnula);
+		}
+
 		Long idAsiento = (pago.getAsiento() != null) ? pago.getAsiento().getCodigo() : null;
 
 		if (idAsiento == null) {
@@ -3654,6 +3691,37 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 
 		System.out.println("✓ Contabilidad del pago de origen externo " + pago.getId()
 				+ " reversada. Motivo: " + motivo);
+	}
+
+	/**
+	 * Activa el préstamo de un pago de desembolso que se está confirmando. La advertencia (si la hay) queda en el pago
+	 * (transitoria, para la respuesta, y en su observación) y en el log: el pago se confirma igual, el dinero ya salió.
+	 */
+	private void activarPrestamoPorDesembolso(PagoProgramado pago, Long idUsuario) throws Throwable {
+		if (pago.getIdOrigen() == null) {
+			return;
+		}
+		Long idEmpresa = (pago.getEmpresa() != null) ? pago.getEmpresa().getCodigo() : null;
+		LocalDate fecha = (pago.getFechaRespuesta() != null) ? pago.getFechaRespuesta() : LocalDate.now();
+		String advertencia = prestamoService.activarPorDesembolso(pago.getIdOrigen(), fecha, idEmpresa,
+				usuarioNombre(idUsuario));
+		if (advertencia != null) {
+			System.err.println("⚠ Desembolso del préstamo " + pago.getIdOrigen() + " (pago " + pago.getId() + "): " + advertencia);
+			pago.setAdvertenciaConfirmacion(advertencia);
+			String previa = pago.getObservacion();
+			String nueva = (previa != null && !previa.trim().isEmpty()) ? previa + " | " + advertencia : advertencia;
+			pago.setObservacion(nueva.length() > 2000 ? nueva.substring(nueva.length() - 2000) : nueva);
+		}
+	}
+
+	/** Suma al resultado la advertencia del módulo origen de un pago confirmado (campos {@code advertencia}/{@code advertencias}). */
+	private void agregaAdvertenciaConfirmacion(Map<String, Object> resultado, PagoProgramado pago) {
+		if (pago == null || pago.getAdvertenciaConfirmacion() == null) {
+			return;
+		}
+		Object previa = resultado.get("advertencia");
+		resultado.put("advertencia", previa != null ? previa + " | " + pago.getAdvertenciaConfirmacion()
+				: pago.getAdvertenciaConfirmacion());
 	}
 
 	/**

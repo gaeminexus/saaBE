@@ -1601,6 +1601,14 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
     public Long contabilizarSustitucion(Prestamo nuevo, List<DetallePrestamo> cuotasNuevo, Prestamo original,
             com.saa.ejb.crd.service.dto.DesgloseConceptosPrestamo desglose, boolean esNovacion, double neto,
             boolean conLineas, Long idEmpresa, String usuario) throws Throwable {
+        return contabilizarSustitucion(nuevo, cuotasNuevo, original, desglose, esNovacion, neto, conLineas, idEmpresa,
+            usuario, null);
+    }
+
+    @Override
+    public Long contabilizarSustitucion(Prestamo nuevo, List<DetallePrestamo> cuotasNuevo, Prestamo original,
+            com.saa.ejb.crd.service.dto.DesgloseConceptosPrestamo desglose, boolean esNovacion, double neto,
+            boolean conLineas, Long idEmpresa, String usuario, LocalDate fechaAsiento) throws Throwable {
         System.out.println("ContabilidadPrestamoService.contabilizarSustitucion - nuevo: "
             + (nuevo != null ? nuevo.getCodigo() : null) + " - original: "
             + (original != null ? original.getCodigo() : null));
@@ -1638,7 +1646,7 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
 
         // HABER: capital del ORIGINAL por banda, con la clasificación de cada cuota pendiente a hoy
         // (por vencer o vencida) — la misma rutina del cobro / la precancelación.
-        LocalDate hoy = LocalDate.now();
+        LocalDate hoy = fechaAsiento != null ? fechaAsiento : LocalDate.now();
         Long idProductoOriginal = original.getProducto() != null ? original.getProducto().getCodigo() : null;
         if (idProductoOriginal == null) {
             throw new IncomeException("El préstamo original " + original.getCodigo() + " no tiene producto.");

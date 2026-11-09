@@ -107,3 +107,9 @@ asentarse. Una reestructuración quirografaria con **seguro de incendio** pendie
 - **H88** — Las líneas de interés y mora acreditan **interés por cobrar (1.4.02)**. Eso supone que el
   cierre de cartera ya lo devengó. El interés de una cuota vencida **en el mes en curso**, antes del
   cierre, podría no estar devengado todavía. Hay que confirmarlo con el contador.
+
+## Actualización 2026-11-08 — momento de cancelar el original en la NOVACIÓN
+
+Con el estado 14 APROBADO (`DISENO-ESTADO-APROBADO-VIGENTE-AL-DESEMBOLSO.md`) la **novación** ya no asienta la sustitución ni cancela el original al aprobar: lo hace al **confirmarse el pago del
+desembolso** en tesorería (`PrestamoService.activarPorDesembolso`), con el VS recalculado a esa fecha. El VS que se descontó del neto se guarda al aprobar (`PRSTVLSS`) y se compara; si difiere o el original ya
+no es novable, la confirmación avisa y crédito regulariza a mano. La **reestructuración** no cambia: sigue sustituyendo y pasando a VIGENTE al aprobar.

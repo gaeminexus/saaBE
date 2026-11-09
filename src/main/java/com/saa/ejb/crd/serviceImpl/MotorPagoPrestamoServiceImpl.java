@@ -865,7 +865,9 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
              || idEstado == EstadoPrestamo.CANCELADO_ANTICIPADO
              || idEstado == EstadoPrestamo.CANCELADO_POR_NOVACION
              || idEstado == EstadoPrestamo.ANULADO
-             || idEstado == EstadoPrestamo.CANCELADO_POR_REESTRUCTURACION);
+             || idEstado == EstadoPrestamo.CANCELADO_POR_REESTRUCTURACION
+             // Sin desembolsar (1, 6, 7, 14): aún no es un préstamo vivo, no admite pagos ni operaciones.
+             || EstadoPrestamo.esNoDesembolsado(idEstado));
     }
 
     /** Texto del estado para el rechazo: el ANULADO y el 13 se nombran, los demás van por su número. */
@@ -875,6 +877,9 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
         }
         if (idEstado != null && idEstado == EstadoPrestamo.CANCELADO_POR_REESTRUCTURACION) {
             return "CANCELADO_POR_REESTRUCTURACION (13)";
+        }
+        if (idEstado != null && idEstado == EstadoPrestamo.APROBADO) {
+            return "APROBADO (14, pendiente de desembolso)";
         }
         return String.valueOf(idEstado);
     }

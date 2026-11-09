@@ -232,10 +232,14 @@ public class SimulacionPrestamoServiceImpl implements SimulacionPrestamoService 
             throw new IncomeException(ProcesoPagoPrestamoService.ERR_PRESTAMO_NO_ENCONTRADO
                 + ": no existe el préstamo " + solicitud.getIdPrestamo());
         }
-        if (esEstadoTerminal(prestamo.getIdEstado())) {
+        // Misma regla que la sustitución real: solo VIGENTE (2) o EN MORA (11). Un GENERADO, APROBADO (14, sin
+        // desembolsar), rechazado, anulado o cancelado no se reestructura.
+        Long estadoPrestamo = prestamo.getIdEstado();
+        if (esEstadoTerminal(estadoPrestamo) || (estadoPrestamo != null && estadoPrestamo != EstadoPrestamo.VIGENTE
+                && estadoPrestamo != EstadoPrestamo.EN_MORA)) {
             throw new IncomeException(ProcesoPagoPrestamoService.ERR_ESTADO_NO_PERMITE
                 + ": el préstamo " + solicitud.getIdPrestamo() + " está en estado " + prestamo.getIdEstado()
-                + " (terminal) y no admite reestructuración");
+                + " y no admite reestructuración (solo VIGENTE o EN MORA)");
         }
         if (prestamo.getTipoAmortizacion() == null) {
             throw new IncomeException(ProcesoPagoPrestamoService.ERR_PARAMETRO_INVALIDO

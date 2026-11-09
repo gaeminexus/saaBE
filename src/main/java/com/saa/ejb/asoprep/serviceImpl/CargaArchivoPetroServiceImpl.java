@@ -6009,7 +6009,9 @@ private void verificarYActualizarEstadoPrestamo(Prestamo prestamo) throws Throwa
 		if (estadoActual != null && (
 			estadoActual == com.saa.rubros.EstadoPrestamo.CANCELADO ||
 			estadoActual == com.saa.rubros.EstadoPrestamo.CANCELADO_ANTICIPADO ||
-			estadoActual == com.saa.rubros.EstadoPrestamo.CANCELADO_POR_NOVACION)) {
+			estadoActual == com.saa.rubros.EstadoPrestamo.CANCELADO_POR_NOVACION
+			|| com.saa.rubros.EstadoPrestamo.esNoDesembolsado(estadoActual))) {
+			// (1, 6, 7, 14: sin desembolsar, no es un préstamo vivo: blindaje, no se cancela ni se cambia de estado)
 			return;
 		}
 
@@ -6628,8 +6630,8 @@ private void validarNovedadesFase2(ParticipeXCargaArchivo participe,
 			if (cuotaDelPrestamo == null) {
 				Long estadoPrestamo = prestamo.getIdEstado();
 				boolean prestamoEnEstadoValido = (estadoPrestamo != null && (
-					estadoPrestamo == com.saa.rubros.EstadoPrestamo.GENERADO ||
 					estadoPrestamo == com.saa.rubros.EstadoPrestamo.VIGENTE ||
+					estadoPrestamo == com.saa.rubros.EstadoPrestamo.VIGENTE_POR_REVISAR ||
 					estadoPrestamo == com.saa.rubros.EstadoPrestamo.DE_PLAZO_VENCIDO ||
 					estadoPrestamo == com.saa.rubros.EstadoPrestamo.EN_MORA
 				));

@@ -36,6 +36,9 @@ public class ResolutorDesembolsoPrestamo implements ResolutorOrigenPago {
 			case EstadoPrestamo.CANCELADO_POR_REVISAR: estadoTexto = "Cancelado por revisar"; break;
 			case EstadoPrestamo.VIGENTE_POR_REVISAR: estadoTexto = "Vigente por revisar"; break;
 			case EstadoPrestamo.EN_MORA: estadoTexto = "En mora"; break;
+			case EstadoPrestamo.ANULADO: estadoTexto = "Anulado"; break;
+			case EstadoPrestamo.CANCELADO_POR_REESTRUCTURACION: estadoTexto = "Cancelado por reestructuración"; break;
+			case EstadoPrestamo.APROBADO: estadoTexto = "Aprobado, pendiente de desembolso"; break;
 			default: estadoTexto = null;
 		}
 		// Sin campo "numero" en Prestamo: se usa el código. "total" = montoSolicitado -- no hay

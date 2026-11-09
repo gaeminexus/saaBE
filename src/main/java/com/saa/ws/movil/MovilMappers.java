@@ -75,7 +75,10 @@ final class MovilMappers {
             return false;
         }
         Long idEstado = prestamo.getIdEstado();
-        return idEstado == null || idEstado.intValue() != EstadoPrestamo.ANULADO;
+        // Tampoco los que aún no se desembolsan (1 GENERADO, 6, 7, 14 APROBADO): el préstamo es vigente desde que se
+        // entrega el dinero (decisión del usuario, 2026-11-08).
+        return idEstado == null
+            || (idEstado.intValue() != EstadoPrestamo.ANULADO && !EstadoPrestamo.esNoDesembolsado(idEstado));
     }
 
     static List<Prestamo> soloVisiblesEnMovil(List<Prestamo> prestamos) {
