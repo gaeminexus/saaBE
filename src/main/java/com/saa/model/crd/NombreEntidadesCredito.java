@@ -125,5 +125,7 @@ public interface NombreEntidadesCredito {
 	String PRESTAMO_SEGURO = "PrestamoSeguro";
 	String CUOTA_SEGURO = "CuotaSeguro";
 	String MOVIMIENTO_INTERES_CUOTA = "MovimientoInteresCuota";
+	String FIRMA_CONTRATO = "FirmaContrato";
+	String FIRMANTE_CONTRATO = "FirmanteContrato";
 
 }
