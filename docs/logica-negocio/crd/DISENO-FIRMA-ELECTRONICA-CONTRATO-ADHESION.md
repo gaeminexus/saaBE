@@ -232,3 +232,11 @@ propiedad. Sin la propiedad: `PROVEEDOR_NO_CONFIGURADO`.
 
 **Propiedades nuevas:** `saa.firma.securitydata.referenciaRepresentante` (obligatoria),
 `saa.firma.securitydata.metodoNotificacion`, `.diasVigencia`, `.horasRenotificacion` (opcionales con default).
+
+**Actualización 2026-11-10 (usuario): «la firma del gerente general la sube y procesa Security Data».** El SAA no
+recibe ni maneja el `referenceCode`: lo **busca** en cada envío con `findSignatureReferences {dni}` usando la cédula
+del gerente (propiedad `saa.firma.securitydata.cedulaRepresentante`). Elige la firma de tipo Representante Legal en
+estado ACTIVO y no vencida; si hay más de una, la de vencimiento más lejano. Sin ninguna → error
+`REPRESENTANTE_SIN_FIRMA` («Security Data todavía no tiene cargada/delegada la firma del representante legal»).
+`referenciaRepresentante` queda como propiedad **opcional** que, si viene, manda sobre la búsqueda. Requisito para
+Security Data: la delegación tiene que quedar **a nombre del usuario API** del SAA (si no, la búsqueda no la ve).
