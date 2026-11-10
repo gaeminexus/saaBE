@@ -194,3 +194,41 @@ frases que no calzan con firma electrónica: «suscriben en unidad de acto en TR
 **Verificación:** `compilar-jasper.bat` + `verificar-fill-jasper.bat` y **PDF de muestra exportado y mirado** con un
 contrato de desarrollo (cuerpo completo, negritas, anexo, saltos de página). El PDF de muestra con datos reales no se
 commitea ni se comparte.
+
+## 10. Fase 2 — integración real con Security Data (2026-11-10)
+Referencia de la API: `crd/REFERENCIA-API-SECURITY-DATA-DATAGREE.md` (bajada y verificada el 2026-11-10).
+
+**Decisión del usuario: flujo A, «enlace al socio»** (`createTask`), no la firma directa (que exige biometría).
+1. `authenticateUser` → token (el `result` llega como **texto**; aceptar también `{token}`), 15 min.
+2. `signersValidation` del socio: `SC_TP_F_AVANZADA_PN`, cédula, **código dactilar**, correo, `+593` + celular,
+   `regulatedSuper=false`, `reuseSignature=false`. STY-0001 → `signatoryId` (3 días, se guarda en `FRFRIDEX`).
+   STY-0002 → error `FIRMANTE_REQUIERE_DATOS` con `listFields`/`listFiles` (sin paso 2 por ahora). STY-0003/0013/0014
+   → error con `errorReason` literal.
+3. `createTask`: el PDF del contrato; participantes: socio `TP_SIGNER_NORMAL` + representante `TP_SIGNER_EMBEDDED`
+   (`referenceCode` de la propiedad `saa.firma.securitydata.referenciaRepresentante`), con sus posiciones;
+   `typeNotification` `TIPO_ORDEN_CADENA_SECU_CONTRATO`; `methodNotification` por propiedad, por defecto
+   `ENVIO_OTPN_CORREO_WSS`; `dateEnd` = ahora + días de propiedad (por defecto 7); renotificación por propiedad (por
+   defecto 24 h); `nickname` «Contrato de adhesión ASOPREP-FCPC»; `showPdf=true`. `result` = `processId` →
+   `FRCNIDEX`, trámite `2 ENVIADO`.
+4. «Actualizar estado» → `taskDetail`: `SC_ESTADO_CONTRATO_COMPLETADO` → `base64?pdfId` → adjunto FIRMADO, trámite
+   `3`; `…RECHAZADO` / `…RECHAZADO_BIOMETRIX` → `4` con `rejectionReason`; `…CADUCADO` → `5`; `…CANCELADO` → `6`;
+   `…PROCESO` / `…PRE_COMPLETADO` → sigue `2`. Firmante: `signatoryStatus` y `evidence` (último estado y fecha); el
+   enlace `signerToken` **no se guarda ni se muestra** (es la llave del socio).
+5. Anular → `cancelTask` (solo en PROCESO). Reactivar (caducado) queda fuera por ahora: se envía un trámite nuevo.
+6. Webhook: no (el servidor está dentro de ASOPREP); consulta manual y, si se pide, programada.
+
+**Código dactilar (verificado 2026-11-10):** el usuario creía que Security Data lo pide en su parte; la prueba en
+desarrollo sin el código respondió `STY-0003 «Los dígitos del código dactilar es incorrecto»`: **lo exige en la
+validación que hace el SAA**. Se pide **en la ventana de «Enviar a firmar»** (6 caracteres alfanuméricos, lo digita
+el funcionario desde la cédula del socio), viaja a Security Data y **no se guarda** en la base ni en el log. Si
+Security Data confirma después que su enlace lo puede pedir al socio, el campo pasa a opcional.
+
+**Firma del representante:** no hay ninguna delegada todavía (`findSignatureReferences` vacío). ASOPREP la carga una
+vez con `storeSignatureWithDelegate` (la clave del P12 la digita ASOPREP, nunca el SAA) y el `referenceCode` va a la
+propiedad. Sin la propiedad: `PROVEEDOR_NO_CONFIGURADO`.
+
+**Posiciones:** del `.jrxml` (A4 595 × 842 pt, origen abajo-izquierda): socio en el bloque «PARTÍCIPE» del contrato y en
+«Firma PARTICIPE» del Anexo I; representante en el bloque del Gerente. Constantes en un solo lugar.
+
+**Propiedades nuevas:** `saa.firma.securitydata.referenciaRepresentante` (obligatoria),
+`saa.firma.securitydata.metodoNotificacion`, `.diasVigencia`, `.horasRenotificacion` (opcionales con default).
