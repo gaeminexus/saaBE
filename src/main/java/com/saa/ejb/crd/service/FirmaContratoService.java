@@ -27,10 +27,10 @@ public interface FirmaContratoService extends EntityService<FirmaContrato> {
      * el PDF (FORMATO_CONTRATO_PENDIENTE mientras no exista el reporte), lo guarda como adjunto con su SHA-256, copia el
      * firmante a CRD.FRFR y llama al proveedor. Si el proveedor falla el trámite queda en PENDIENTE_ENVIO con el error.
      */
-    ResultadoOperacionFirma enviarAFirmar(Long idContrato, String usuario) throws Throwable;
+    ResultadoOperacionFirma enviarAFirmar(Long idContrato, String usuario, String codigoDactilar) throws Throwable;
 
     /** Reenvía al proveedor un trámite en PENDIENTE_ENVIO con el mismo PDF (verifica su SHA-256). */
-    ResultadoOperacionFirma reintentarEnvio(Long idFirma, String usuario) throws Throwable;
+    ResultadoOperacionFirma reintentarEnvio(Long idFirma, String usuario, String codigoDactilar) throws Throwable;
 
     /**
      * Consulta el estado al proveedor. Si quedó firmado descarga el PDF firmado, lo guarda como adjunto y cierra el trámite.

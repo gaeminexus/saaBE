@@ -10,11 +10,13 @@ import com.saa.ejb.crd.dao.FirmaContratoDaoService;
 import com.saa.ejb.crd.service.FirmaContratoService;
 import com.saa.ejb.crd.service.dto.ArchivoFirma;
 import com.saa.ejb.crd.service.dto.ResultadoOperacionFirma;
+import com.saa.ejb.crd.service.dto.SolicitudEnvioFirma;
 import com.saa.ejb.crd.service.dto.TramiteFirma;
 import com.saa.model.crd.FirmaContrato;
 import com.saa.model.crd.NombreEntidadesCredito;
 
 import jakarta.ejb.EJB;
+import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
@@ -64,27 +66,31 @@ public class FirmaContratoRest {
         }
     }
 
-    /** POST /rest/frcn/enviar?idContrato&usuario */
+    /** POST /rest/frcn/enviar?idContrato&usuario — cuerpo JSON {"codigoDactilar":"XXXXXX"} (no va en la URL: quedaría en los logs de acceso). */
     @POST
     @Path("/enviar")
+    @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    public Response enviar(@QueryParam("idContrato") Long idContrato, @QueryParam("usuario") String usuario) {
+    public Response enviar(@QueryParam("idContrato") Long idContrato, @QueryParam("usuario") String usuario,
+            SolicitudEnvioFirma cuerpo) {
         System.out.println("LLEGA AL SERVICIO POST enviar - FRCN - idContrato: " + idContrato);
         try {
-            return respuestaOperacion(firmaContratoService.enviarAFirmar(idContrato, usuario));
+            return respuestaOperacion(firmaContratoService.enviarAFirmar(idContrato, usuario, codigoDactilar(cuerpo)));
         } catch (Throwable e) {
             return respuestaError(e);
         }
     }
 
-    /** POST /rest/frcn/reintentar/{id}?usuario */
+    /** POST /rest/frcn/reintentar/{id}?usuario — cuerpo JSON {"codigoDactilar":"XXXXXX"}. */
     @POST
     @Path("/reintentar/{id}")
+    @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    public Response reintentar(@PathParam("id") Long id, @QueryParam("usuario") String usuario) {
+    public Response reintentar(@PathParam("id") Long id, @QueryParam("usuario") String usuario,
+            SolicitudEnvioFirma cuerpo) {
         System.out.println("LLEGA AL SERVICIO POST reintentar - FRCN - id: " + id);
         try {
-            return respuestaOperacion(firmaContratoService.reintentarEnvio(id, usuario));
+            return respuestaOperacion(firmaContratoService.reintentarEnvio(id, usuario, codigoDactilar(cuerpo)));
         } catch (Throwable e) {
             return respuestaError(e);
         }
@@ -159,6 +165,10 @@ public class FirmaContratoRest {
     }
 
     /** Validación: el código va al inicio del mensaje de IncomeException («CODIGO: texto»). */
+    private static String codigoDactilar(SolicitudEnvioFirma cuerpo) {
+        return cuerpo != null ? cuerpo.getCodigoDactilar() : null;
+    }
+
     private Response respuestaError(Throwable e) {
         int status = Response.Status.INTERNAL_SERVER_ERROR.getStatusCode();
         String codigo = null;
@@ -170,7 +180,7 @@ public class FirmaContratoRest {
             int i = mensaje.indexOf(':');
             if (i > 0 && mensaje.substring(0, i).matches("[A-Z_]+")) {
                 codigo = mensaje.substring(0, i);
-                if (codigo.equals("PARAMETRO_INVALIDO")) {
+                if (codigo.equals("PARAMETRO_INVALIDO") || codigo.equals("CODIGO_DACTILAR_INVALIDO")) {
                     status = Response.Status.BAD_REQUEST.getStatusCode();
                 } else if (codigo.endsWith("_NO_ENCONTRADO")) {
                     status = Response.Status.NOT_FOUND.getStatusCode();

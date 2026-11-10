@@ -30,6 +30,7 @@ import com.saa.ejb.crd.service.dto.ArchivoFirma;
 import com.saa.ejb.crd.service.dto.ResultadoOperacionFirma;
 import com.saa.ejb.crd.service.dto.TramiteFirma;
 import com.saa.ejb.crd.util.ContratoAdhesionParametros;
+import com.saa.ejb.crd.util.PosicionesFirmaContrato;
 import com.saa.ejb.reporte.service.ReporteService;
 import com.saa.model.crd.Adjunto;
 import com.saa.model.crd.Contrato;
@@ -65,6 +66,8 @@ public class FirmaContratoServiceImpl implements FirmaContratoService {
     static final String ERR_CONTRATO_NO_ENCONTRADO = "CONTRATO_NO_ENCONTRADO";
     static final String ERR_CONTRATO_NO_VIGENTE = "CONTRATO_NO_VIGENTE";
     static final String ERR_TRAMITE_NO_ENCONTRADO = "TRAMITE_NO_ENCONTRADO";
+    static final String ERR_CODIGO_DACTILAR_INVALIDO = "CODIGO_DACTILAR_INVALIDO";
+    static final String ERR_POSICION_FIRMA = "POSICION_FIRMA_NO_ENCONTRADA";
     static final String ERR_TRAMITE_VIVO_EXISTENTE = "TRAMITE_VIVO_EXISTENTE";
     static final String ERR_FIRMANTE_SIN_CONTACTO = "FIRMANTE_SIN_CONTACTO";
     static final String ERR_FORMATO_CONTRATO_PENDIENTE = "FORMATO_CONTRATO_PENDIENTE";
@@ -176,9 +179,10 @@ public class FirmaContratoServiceImpl implements FirmaContratoService {
 
     @Override
     @TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
-    public ResultadoOperacionFirma enviarAFirmar(Long idContrato, String usuario) throws Throwable {
+    public ResultadoOperacionFirma enviarAFirmar(Long idContrato, String usuario, String codigoDactilar) throws Throwable {
         System.out.println("enviarAFirmar - FirmaContrato - idContrato: " + idContrato);
         usuario = usuarioValidacionService.validar(usuario);
+        codigoDactilar = validarCodigoDactilar(codigoDactilar);
         if (idContrato == null) {
             throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": idContrato es obligatorio");
         }
@@ -205,7 +209,9 @@ public class FirmaContratoServiceImpl implements FirmaContratoService {
         FirmanteContrato firmante = armarFirmantePartícipe(participe);
 
         // El PDF se genera ANTES de grabar nada: si el formato no existe no queda ningún trámite a medias.
-        byte[] pdf = generarPdfContrato(contrato);
+        Map<String, Object> parametrosPdf = parametrosContrato(contrato);
+        byte[] pdf = generarPdfContrato(parametrosPdf);
+        ProveedorFirmaElectronica.PosicionesFirma posiciones = posicionesFirma(parametrosPdf);
         TipoAdjunto tipoOriginal = resolverTipoAdjunto(TIPO_ADJUNTO_ORIGINAL);
 
         Adjunto subido = null;
@@ -230,7 +236,7 @@ public class FirmaContratoServiceImpl implements FirmaContratoService {
             List<FirmanteContrato> firmantes = new ArrayList<>();
             firmantes.add(firmante);
 
-            return enviarAlProveedor(firma, firmantes, pdf, nombreArchivo(idContrato, firma.getCodigo(), "original"), participe, usuario);
+            return enviarAlProveedor(firma, firmantes, pdf, nombreArchivo(idContrato, firma.getCodigo(), "original"), participe, usuario, codigoDactilar, posiciones);
         } catch (Throwable e) {
             borrarArchivoSilencioso(subido);
             throw e;
@@ -239,9 +245,10 @@ public class FirmaContratoServiceImpl implements FirmaContratoService {
 
     @Override
     @TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
-    public ResultadoOperacionFirma reintentarEnvio(Long idFirma, String usuario) throws Throwable {
+    public ResultadoOperacionFirma reintentarEnvio(Long idFirma, String usuario, String codigoDactilar) throws Throwable {
         System.out.println("reintentarEnvio - FirmaContrato - idFirma: " + idFirma);
         usuario = usuarioValidacionService.validar(usuario);
+        codigoDactilar = validarCodigoDactilar(codigoDactilar);
         FirmaContrato firma = cargar(idFirma);
         if (firma.getEstado() == null || firma.getEstado() != EstadoFirmaContrato.PENDIENTE_ENVIO) {
             throw new IncomeException(ERR_ESTADO_INVALIDO + ": solo se reintenta un trámite pendiente de envío (estado "
@@ -259,8 +266,14 @@ public class FirmaContratoServiceImpl implements FirmaContratoService {
         }
         List<FirmanteContrato> firmantes = firmanteContratoDaoService.selectByFirma(idFirma);
         Contrato contrato = contratoDaoService.find(new Contrato(), firma.getIdContrato());
-        return enviarAlProveedor(firma, firmantes, pdf, original.getNombreArchivo(),
-            contrato != null ? contrato.getEntidad() : null, usuario);
+        if (contrato == null) {
+            throw new IncomeException(ERR_CONTRATO_NO_ENCONTRADO + ": no existe el contrato " + firma.getIdContrato());
+        }
+        // Las posiciones se vuelven a calcular con los datos de hoy: si cambiaron mucho (largo de la cláusula CUARTA) la
+        // página podría diferir del PDF original; en ese caso anule el trámite y envíe uno nuevo.
+        ProveedorFirmaElectronica.PosicionesFirma posiciones = posicionesFirma(parametrosContrato(contrato));
+        return enviarAlProveedor(firma, firmantes, pdf, original.getNombreArchivo(), contrato.getEntidad(), usuario,
+            codigoDactilar, posiciones);
     }
 
     @Override
@@ -302,6 +315,10 @@ public class FirmaContratoServiceImpl implements FirmaContratoService {
                 } else if (nuevo == EstadoFirmaContrato.RECHAZADO || nuevo == EstadoFirmaContrato.VENCIDO
                         || nuevo == EstadoFirmaContrato.ANULADO) {
                     firma.setEstado(Long.valueOf(nuevo));
+                    if (nuevo == EstadoFirmaContrato.RECHAZADO && !vacio(estadoProveedor.getMotivoRechazo())) {
+                        // Sin columna propia: el motivo del rechazo queda en FRCNERRR.
+                        firma.setError(truncar("RECHAZADO: " + estadoProveedor.getMotivoRechazo()));
+                    }
                 }
             } catch (ProveedorFirmaException e) {
                 firma.setFechaUltimaConsulta(LocalDateTime.now());
@@ -404,19 +421,45 @@ public class FirmaContratoServiceImpl implements FirmaContratoService {
      * ({@link ContratoAdhesionParametros}), sin consulta: una sola fila por generarReporteDesdeColeccion (ver CLAUDE.md,
      * reportes sin query). FORMATO_CONTRATO_PENDIENTE solo si falta el .jasper.
      */
-    protected byte[] generarPdfContrato(Contrato contrato) throws Throwable {
-        String jasper = "/rep/" + MODULO_REPORTE + "/" + REPORTE_CONTRATO + ".jasper";
-        if (FirmaContratoServiceImpl.class.getResource(jasper) == null) {
+    protected byte[] generarPdfContrato(Map<String, Object> parametros) throws Throwable {
+        return reporteService.generarReporteDesdeColeccion(MODULO_REPORTE, REPORTE_CONTRATO, parametros,
+            Collections.singletonList(new HashMap<String, Object>()), "PDF");
+    }
+
+    /** Parámetros del impreso del contrato. FORMATO_CONTRATO_PENDIENTE solo si falta el .jasper. */
+    private Map<String, Object> parametrosContrato(Contrato contrato) throws Throwable {
+        if (FirmaContratoServiceImpl.class.getResource(rutaJasper()) == null) {
             throw new IncomeException(ERR_FORMATO_CONTRATO_PENDIENTE
                 + ": el formato del contrato de adhesión (" + REPORTE_CONTRATO + ") todavía no está disponible");
         }
         Long idEntidad = contrato.getEntidad() != null ? contrato.getEntidad().getCodigo() : null;
         List<Participe> participes = idEntidad != null ? participeDaoService.selectByEntidad(idEntidad) : null;
         List<Direccion> direcciones = idEntidad != null ? direccionDaoService.selectByParent(idEntidad) : null;
-        Map<String, Object> parametros = ContratoAdhesionParametros.armar(contrato,
+        return ContratoAdhesionParametros.armar(contrato,
             participes != null && !participes.isEmpty() ? participes.get(0) : null, direcciones, null, LocalDate.now());
-        return reporteService.generarReporteDesdeColeccion(MODULO_REPORTE, REPORTE_CONTRATO, parametros,
-            Collections.singletonList(new HashMap<String, Object>()), "PDF");
+    }
+
+    private static String rutaJasper() {
+        return "/rep/" + MODULO_REPORTE + "/" + REPORTE_CONTRATO + ".jasper";
+    }
+
+    /** Dónde firma cada uno (página real del PDF, no fija): ver {@link PosicionesFirmaContrato}. */
+    private ProveedorFirmaElectronica.PosicionesFirma posicionesFirma(Map<String, Object> parametros) throws Throwable {
+        try {
+            return PosicionesFirmaContrato.calcular(rutaJasper(), parametros);
+        } catch (Exception e) {
+            throw new IncomeException(ERR_POSICION_FIRMA + ": no se pudo ubicar la firma en el contrato: " + e.getMessage());
+        }
+    }
+
+    /** Código dactilar: 6 caracteres alfanuméricos. Se normaliza a mayúsculas; nunca se guarda ni se escribe en un log. */
+    private static String validarCodigoDactilar(String codigo) {
+        String c = codigo == null ? "" : codigo.trim().toUpperCase();
+        if (!c.matches("[A-Z0-9]{6}")) {
+            throw new IncomeException(ERR_CODIGO_DACTILAR_INVALIDO
+                + ": el código dactilar debe tener 6 caracteres alfanuméricos (reverso de la cédula)");
+        }
+        return c;
     }
 
     /** Firmante por defecto: el partícipe. Valida cédula, nombre y al menos un medio de contacto, diciendo qué falta. */
@@ -438,8 +481,12 @@ public class FirmaContratoServiceImpl implements FirmaContratoService {
             correo = !vacio(participe.getCorreoPersonal()) ? participe.getCorreoPersonal().trim()
                 : (!vacio(participe.getCorreoInstitucional()) ? participe.getCorreoInstitucional().trim() : null);
             celular = !vacio(participe.getMovil()) ? participe.getMovil().trim() : null;
-            if (correo == null && celular == null) {
-                faltan.add("correo (personal o institucional) o celular");
+            // Security Data exige correo Y celular del firmante (validación y notificación).
+            if (correo == null) {
+                faltan.add("correo (personal o institucional)");
+            }
+            if (celular == null) {
+                faltan.add("celular");
             }
         }
         if (!faltan.isEmpty()) {
@@ -462,7 +509,8 @@ public class FirmaContratoServiceImpl implements FirmaContratoService {
      * error (no lanza; ver la nota de la clase).
      */
     private ResultadoOperacionFirma enviarAlProveedor(FirmaContrato firma, List<FirmanteContrato> firmantes, byte[] pdf,
-            String nombreDocumento, Entidad entidad, String usuario) throws Throwable {
+            String nombreDocumento, Entidad entidad, String usuario, String codigoDactilar,
+            ProveedorFirmaElectronica.PosicionesFirma posiciones) throws Throwable {
         Adjunto firmado = null;
         try {
             // Datos del partícipe: la foto guardada en FRFR (una fila por trámite).
@@ -472,8 +520,9 @@ public class FirmaContratoServiceImpl implements FirmaContratoService {
             datos.setNombre(f.getNombre());
             datos.setCorreo(f.getCorreo());
             datos.setCelular(f.getCelular());
+            datos.setCodigoDactilar(codigoDactilar); // solo en memoria: no se guarda ni se escribe en un log
 
-            ProveedorFirmaElectronica.ResultadoEnvio r = proveedor().enviar(pdf, nombreDocumento, datos);
+            ProveedorFirmaElectronica.ResultadoEnvio r = proveedor().enviar(pdf, nombreDocumento, datos, posiciones);
             if (r == null || vacio(r.getIdExterno())) {
                 throw new ProveedorFirmaException(ERR_RESPUESTA_PROVEEDOR_INVALIDA,
                     "el proveedor no devolvió el identificador del trámite");

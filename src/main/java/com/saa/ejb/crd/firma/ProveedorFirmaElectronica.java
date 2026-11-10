@@ -18,11 +18,13 @@ public interface ProveedorFirmaElectronica {
     String nombre();
 
     /**
-     * Manda el documento y los datos del partícipe. El proveedor firma por el partícipe (con esos datos) y con el
-     * representante legal de ASOPREP, y devuelve el PDF firmado por los dos: de inmediato ({@link ResultadoEnvio#getPdfFirmado})
-     * o después (se obtiene con {@link #consultar} y {@link #descargarFirmado}).
+     * Manda el documento y los datos del partícipe. El partícipe firma desde el enlace que le llega del proveedor y el
+     * representante legal de ASOPREP firma solo al final (firma embebida). El PDF firmado se obtiene después con
+     * {@link #consultar} y {@link #descargarFirmado}; un proveedor que firme de inmediato lo puede devolver en
+     * {@link ResultadoEnvio#getPdfFirmado}.
      */
-    ResultadoEnvio enviar(byte[] documentoPdf, String nombreDocumento, DatosParticipe participe) throws ProveedorFirmaException;
+    ResultadoEnvio enviar(byte[] documentoPdf, String nombreDocumento, DatosParticipe participe, PosicionesFirma posiciones)
+            throws ProveedorFirmaException;
 
     /** Estado actual del trámite y de cada firmante. */
     EstadoTramite consultar(String idExterno) throws ProveedorFirmaException;
@@ -42,7 +44,11 @@ public interface ProveedorFirmaElectronica {
         private String nombre;
         private String correo;
         private String celular;
+        /** Código dactilar (6 caracteres): solo viaja al proveedor, NUNCA se guarda ni se escribe en un log. */
+        private String codigoDactilar;
 
+        public String getCodigoDactilar() { return codigoDactilar; }
+        public void setCodigoDactilar(String codigoDactilar) { this.codigoDactilar = codigoDactilar; }
         public String getIdentificacion() { return identificacion; }
         public void setIdentificacion(String identificacion) { this.identificacion = identificacion; }
         public String getNombre() { return nombre; }
@@ -51,6 +57,38 @@ public interface ProveedorFirmaElectronica {
         public void setCorreo(String correo) { this.correo = correo; }
         public String getCelular() { return celular; }
         public void setCelular(String celular) { this.celular = celular; }
+    }
+
+    /** Posición de una firma en el PDF: puntos PDF (A4 595 x 842), origen abajo a la izquierda, página desde 1. */
+    class PosicionFirma {
+        private final int numPage;
+        private final double x;
+        private final double y;
+        private final double width;
+        private final double height;
+
+        public PosicionFirma(int numPage, double x, double y, double width, double height) {
+            this.numPage = numPage;
+            this.x = x;
+            this.y = y;
+            this.width = width;
+            this.height = height;
+        }
+
+        public int getNumPage() { return numPage; }
+        public double getX() { return x; }
+        public double getY() { return y; }
+        public double getWidth() { return width; }
+        public double getHeight() { return height; }
+    }
+
+    /** Dónde firma cada uno: el partícipe y el representante legal de ASOPREP (firma embebida). */
+    class PosicionesFirma {
+        private final List<PosicionFirma> participe = new ArrayList<>();
+        private final List<PosicionFirma> representante = new ArrayList<>();
+
+        public List<PosicionFirma> getParticipe() { return participe; }
+        public List<PosicionFirma> getRepresentante() { return representante; }
     }
 
     /**
@@ -76,7 +114,11 @@ public interface ProveedorFirmaElectronica {
         /** Código de {@link com.saa.rubros.EstadoFirmaContrato}. */
         private int estado;
         private List<EstadoFirmante> firmantes = new ArrayList<>();
+        /** Motivo del rechazo (solo si el trámite quedó rechazado). */
+        private String motivoRechazo;
 
+        public String getMotivoRechazo() { return motivoRechazo; }
+        public void setMotivoRechazo(String motivoRechazo) { this.motivoRechazo = motivoRechazo; }
         public int getEstado() { return estado; }
         public void setEstado(int estado) { this.estado = estado; }
         public List<EstadoFirmante> getFirmantes() { return firmantes; }

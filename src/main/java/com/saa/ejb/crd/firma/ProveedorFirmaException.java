@@ -16,6 +16,17 @@ public class ProveedorFirmaException extends Exception {
     /** Falta una propiedad de sistema con la configuración del proveedor. */
     public static final String PROVEEDOR_NO_CONFIGURADO = "PROVEEDOR_NO_CONFIGURADO";
 
+    /** Security Data pide más datos del firmante (STY-0002): el mensaje trae los campos y adjuntos que faltan. */
+    public static final String FIRMANTE_REQUIERE_DATOS = "FIRMANTE_REQUIERE_DATOS";
+    /** Security Data rechazó al firmante (STY-0003, STY-0013, STY-0014): el mensaje trae su errorReason literal. */
+    public static final String FIRMANTE_RECHAZADO = "FIRMANTE_RECHAZADO";
+    /** No hay firma de representante legal activa y vigente delegada en Security Data (la sube y procesa Security Data). */
+    public static final String REPRESENTANTE_SIN_FIRMA = "REPRESENTANTE_SIN_FIRMA";
+    /** El proveedor respondió algo que no se puede interpretar. */
+    public static final String RESPUESTA_INVALIDA = "RESPUESTA_PROVEEDOR_INVALIDA";
+    /** El proveedor respondió con un error (HTTP o status=false); el mensaje trae el suyo. */
+    public static final String ERROR_PROVEEDOR = "ERROR_PROVEEDOR";
+
     private final String codigo;
 
     public ProveedorFirmaException(String codigo, String mensaje) {
