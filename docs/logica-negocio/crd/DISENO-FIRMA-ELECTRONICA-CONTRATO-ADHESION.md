@@ -137,8 +137,12 @@ Semilla: dos tipos en `CRD.TPDJ` («CONTRATO DE ADHESION», «CONTRATO DE ADHESI
   existe, pruebas en su desarrollo.
 
 ## 8. Decisiones del usuario (con valor por defecto para no frenar la fase 1)
-- **D1 — Firmantes:** por defecto **solo el partícipe**; la tabla FRFR ya admite agregar al representante de ASOPREP
-  (rol `REPRESENTANTE_ASOPREP`, datos por parámetro) si el cliente lo pide.
+- **D1 — Firmantes (DECIDIDO 2026-11-10):** «Nosotros mandamos la firma del socio, pero en los servicios de Security
+  Data ellos firman el documento con la firma del representante legal». El SAA envía **solo al partícipe** como
+  firmante; la firma del representante legal de ASOPREP la pone **Security Data** en su plataforma (configurada de su
+  lado), no es un firmante que el SAA arme ni gestione. El PDF firmado que se descarga trae las dos firmas. El rol
+  `REPRESENTANTE_ASOPREP` del CHECK de FRFR queda sin uso (no se borra: el DDL no corrió y no estorba). La fase 2
+  confirma con la documentación si el trámite expone esa firma como un paso (estado intermedio) o solo al final.
 - **D2 — Canal:** por defecto el partícipe recibe el enlace por **correo** (personal, si no institucional) y
   **celular**; lo que permita DatAgree se confirma en la fase 2.
 - **D3 — ¿La aprobación del contrato exige firma?** Por defecto **no** (la firma se registra aparte).
