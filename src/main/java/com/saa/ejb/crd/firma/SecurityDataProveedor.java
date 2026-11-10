@@ -68,7 +68,7 @@ public class SecurityDataProveedor implements ProveedorFirmaElectronica {
     private static final DateTimeFormatter FECHA_PROVEEDOR = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final DateTimeFormatter FECHA_EVIDENCIA = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss[.SSS]");
 
-    private static final ObjectMapper JSON = new ObjectMapper();
+    static final ObjectMapper JSON = new ObjectMapper();
     private static final HttpClient HTTP = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build();
 
     // Caché del token (compartida: el servicio crea un proveedor por operación). Solo en memoria.
@@ -432,12 +432,12 @@ public class SecurityDataProveedor implements ProveedorFirmaElectronica {
         return interpretar(r, ruta);
     }
 
-    private HttpRequest.Builder base(Configuracion cfg, String ruta, String token) {
+    HttpRequest.Builder base(Configuracion cfg, String ruta, String token) {
         return HttpRequest.newBuilder(URI.create(cfg.url + ruta)).timeout(Duration.ofSeconds(60))
             .header("Authorization", "Bearer " + token).header("Accept", "application/json");
     }
 
-    private static HttpResponse<String> enviarHttp(HttpRequest solicitud) throws ProveedorFirmaException {
+    static HttpResponse<String> enviarHttp(HttpRequest solicitud) throws ProveedorFirmaException {
         try {
             return HTTP.send(solicitud, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         } catch (InterruptedException e) {
@@ -474,7 +474,7 @@ public class SecurityDataProveedor implements ProveedorFirmaElectronica {
     }
 
     /** authenticateUser. El {@code result} llega como TEXTO con el JWT (verificado); se acepta también {@code {token}}. */
-    private String token(Configuracion cfg, boolean renovar) throws ProveedorFirmaException {
+    String token(Configuracion cfg, boolean renovar) throws ProveedorFirmaException {
         synchronized (CERROJO_TOKEN) {
             if (!renovar && tokenCache != null && System.currentTimeMillis() < tokenCacheHasta) {
                 return tokenCache;
@@ -552,7 +552,7 @@ public class SecurityDataProveedor implements ProveedorFirmaElectronica {
         return java.net.URLEncoder.encode(s, StandardCharsets.UTF_8);
     }
 
-    private static boolean vacio(String s) {
+    static boolean vacio(String s) {
         return s == null || s.trim().isEmpty();
     }
 
@@ -560,7 +560,7 @@ public class SecurityDataProveedor implements ProveedorFirmaElectronica {
      * Lee la configuración de las propiedades de sistema. Si falta alguna obligatoria lanza {@code PROVEEDOR_NO_CONFIGURADO}
      * nombrando TODAS las que faltan (solo los nombres). La del representante solo es obligatoria al enviar.
      */
-    private Configuracion configuracion(boolean paraEnviar) throws ProveedorFirmaException {
+    Configuracion configuracion(boolean paraEnviar) throws ProveedorFirmaException {
         String url = propiedad(PROP_URL);
         String usuario = propiedad(PROP_USUARIO);
         String clave = propiedad(PROP_CLAVE);
@@ -596,7 +596,7 @@ public class SecurityDataProveedor implements ProveedorFirmaElectronica {
         }
     }
 
-    private static String propiedad(String nombre) {
+    static String propiedad(String nombre) {
         String valor = System.getProperty(nombre);
         return valor == null || valor.trim().isEmpty() ? null : valor.trim();
     }
@@ -611,14 +611,14 @@ public class SecurityDataProveedor implements ProveedorFirmaElectronica {
     }
 
     /** Configuración leída. La clave existe solo en memoria: el toString no la incluye. */
-    private static final class Configuracion {
-        private final String url;
-        private final String usuario;
-        private final String clave;
-        private final String ruc;
-        private final String referenciaRepresentante;
-        private final String cedulaRepresentante;
-        private final String metodoNotificacion;
+    static final class Configuracion {
+        final String url;
+        final String usuario;
+        final String clave;
+        final String ruc;
+        final String referenciaRepresentante;
+        final String cedulaRepresentante;
+        final String metodoNotificacion;
         private final int diasVigencia;
         private final int horasRenotificacion;
 
