@@ -6,8 +6,12 @@ contra el proveedor responde `PROVEEDOR_NO_CONFIGURADO` (faltan propiedades de W
 el formato del contrato todavía no existe: **enviar responde `FORMATO_CONTRATO_PENDIENTE`** hasta que esté `RPRT_CNTR_ADHS`.
 
 ## Reglas
-- Firmante: **solo el partícipe** (rol `PARTICIPE`). La firma del representante legal de ASOPREP la pone Security Data en su
-  plataforma; el PDF firmado que se descarga ya trae las dos firmas.
+- El SAA manda a Security Data el PDF del contrato y los datos del partícipe (cédula, nombres, correo, celular). Security Data firma
+  **por el partícipe** y con el **representante legal de ASOPREP**, y devuelve el PDF firmado por los dos. El SAA no gestiona
+  firmantes ni envía enlaces; `firmantes` trae una sola fila (el partícipe, rol `PARTICIPE`) que guarda lo que se envió.
+- La respuesta puede ser **inmediata** (el envío ya devuelve el firmado: el trámite pasa directo a estado 3 y el mensaje es
+  «Enviado y firmado») o **diferida** (estado 2 y «Actualizar estado» trae el firmado). El FE debe contemplar las dos.
+- El PDF sale del reporte `RPRT_CNTR_ADHS` (contrato + Anexo I). `FORMATO_CONTRATO_PENDIENTE` solo si falta ese reporte en el servidor.
 - Correo del firmante: el personal o, si no hay, el institucional; celular: el móvil. Se copian a `FRFR` al enviar (foto de lo enviado).
 - **Un solo trámite vivo** (estado 1 o 2) por contrato. Para volver a enviar hay que anular o esperar el resultado.
 - La firma no cambia el estado del contrato.

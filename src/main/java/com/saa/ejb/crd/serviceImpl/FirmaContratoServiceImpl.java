@@ -3,6 +3,7 @@ package com.saa.ejb.crd.serviceImpl;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.security.MessageDigest;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -16,8 +17,10 @@ import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.crd.dao.AdjuntoDaoService;
 import com.saa.ejb.crd.dao.ContratoDaoService;
+import com.saa.ejb.crd.dao.DireccionDaoService;
 import com.saa.ejb.crd.dao.FirmaContratoDaoService;
 import com.saa.ejb.crd.dao.FirmanteContratoDaoService;
+import com.saa.ejb.crd.dao.ParticipeDaoService;
 import com.saa.ejb.crd.dao.TipoAdjuntoDaoService;
 import com.saa.ejb.crd.firma.ProveedorFirmaElectronica;
 import com.saa.ejb.crd.firma.ProveedorFirmaException;
@@ -26,13 +29,16 @@ import com.saa.ejb.crd.service.FirmaContratoService;
 import com.saa.ejb.crd.service.dto.ArchivoFirma;
 import com.saa.ejb.crd.service.dto.ResultadoOperacionFirma;
 import com.saa.ejb.crd.service.dto.TramiteFirma;
+import com.saa.ejb.crd.util.ContratoAdhesionParametros;
 import com.saa.ejb.reporte.service.ReporteService;
 import com.saa.model.crd.Adjunto;
 import com.saa.model.crd.Contrato;
+import com.saa.model.crd.Direccion;
 import com.saa.model.crd.Entidad;
 import com.saa.model.crd.FirmaContrato;
 import com.saa.model.crd.FirmanteContrato;
 import com.saa.model.crd.NombreEntidadesCredito;
+import com.saa.model.crd.Participe;
 import com.saa.model.crd.TipoAdjunto;
 import com.saa.rubros.Estado;
 import com.saa.rubros.EstadoContrato;
@@ -100,6 +106,12 @@ public class FirmaContratoServiceImpl implements FirmaContratoService {
 
     @EJB
     private ReporteService reporteService;
+
+    @EJB
+    private ParticipeDaoService participeDaoService;
+
+    @EJB
+    private DireccionDaoService direccionDaoService;
 
     /** U-2: todo proceso que graba valida el usuario PRIMERO (sin usuario válido no se hace nada). */
     @EJB
@@ -218,7 +230,7 @@ public class FirmaContratoServiceImpl implements FirmaContratoService {
             List<FirmanteContrato> firmantes = new ArrayList<>();
             firmantes.add(firmante);
 
-            return enviarAlProveedor(firma, firmantes, pdf, nombreArchivo(idContrato, firma.getCodigo(), "original"));
+            return enviarAlProveedor(firma, firmantes, pdf, nombreArchivo(idContrato, firma.getCodigo(), "original"), participe, usuario);
         } catch (Throwable e) {
             borrarArchivoSilencioso(subido);
             throw e;
@@ -246,7 +258,9 @@ public class FirmaContratoServiceImpl implements FirmaContratoService {
                 + " no coincide con su SHA-256 original; anule el trámite y envíe uno nuevo");
         }
         List<FirmanteContrato> firmantes = firmanteContratoDaoService.selectByFirma(idFirma);
-        return enviarAlProveedor(firma, firmantes, pdf, original.getNombreArchivo());
+        Contrato contrato = contratoDaoService.find(new Contrato(), firma.getIdContrato());
+        return enviarAlProveedor(firma, firmantes, pdf, original.getNombreArchivo(),
+            contrato != null ? contrato.getEntidad() : null, usuario);
     }
 
     @Override
@@ -284,12 +298,7 @@ public class FirmaContratoServiceImpl implements FirmaContratoService {
                             "el proveedor devolvió el PDF firmado vacío");
                     }
                     Contrato contrato = contratoDaoService.find(new Contrato(), firma.getIdContrato());
-                    firmado = guardarAdjunto(pdfFirmado, nombreArchivo(firma.getIdContrato(), firma.getCodigo(), "firmado"),
-                        resolverTipoAdjunto(TIPO_ADJUNTO_FIRMADO), contrato != null ? contrato.getEntidad() : null,
-                        firma.getCodigo(), usuario);
-                    firma.setIdAdjuntoFirmado(firmado.getCodigo());
-                    firma.setFechaFirma(LocalDateTime.now());
-                    firma.setEstado(Long.valueOf(EstadoFirmaContrato.FIRMADO));
+                    firmado = registrarFirmado(firma, firmantes, pdfFirmado, contrato != null ? contrato.getEntidad() : null, usuario);
                 } else if (nuevo == EstadoFirmaContrato.RECHAZADO || nuevo == EstadoFirmaContrato.VENCIDO
                         || nuevo == EstadoFirmaContrato.ANULADO) {
                     firma.setEstado(Long.valueOf(nuevo));
@@ -391,10 +400,9 @@ public class FirmaContratoServiceImpl implements FirmaContratoService {
     }
 
     /**
-     * PUNTO ÚNICO para generar el PDF del contrato de adhesión. Fase 1b: el reporte RPRT_CNTR_ADHS (con el formato del
-     * cliente) todavía no existe; mientras no esté su .jasper lanza FORMATO_CONTRATO_PENDIENTE. Cuando exista, aquí se
-     * definen sus parámetros y se llena (va por parámetros, sin consulta: una sola fila, ver CLAUDE.md sobre reportes
-     * sin query).
+     * PUNTO ÚNICO para generar el PDF del contrato de adhesión (RPRT_CNTR_ADHS: contrato + Anexo I). Todo va por parámetros
+     * ({@link ContratoAdhesionParametros}), sin consulta: una sola fila por generarReporteDesdeColeccion (ver CLAUDE.md,
+     * reportes sin query). FORMATO_CONTRATO_PENDIENTE solo si falta el .jasper.
      */
     protected byte[] generarPdfContrato(Contrato contrato) throws Throwable {
         String jasper = "/rep/" + MODULO_REPORTE + "/" + REPORTE_CONTRATO + ".jasper";
@@ -402,8 +410,11 @@ public class FirmaContratoServiceImpl implements FirmaContratoService {
             throw new IncomeException(ERR_FORMATO_CONTRATO_PENDIENTE
                 + ": el formato del contrato de adhesión (" + REPORTE_CONTRATO + ") todavía no está disponible");
         }
-        Map<String, Object> parametros = new HashMap<>();
-        parametros.put("ID_CONTRATO", contrato.getCodigo());
+        Long idEntidad = contrato.getEntidad() != null ? contrato.getEntidad().getCodigo() : null;
+        List<Participe> participes = idEntidad != null ? participeDaoService.selectByEntidad(idEntidad) : null;
+        List<Direccion> direcciones = idEntidad != null ? direccionDaoService.selectByParent(idEntidad) : null;
+        Map<String, Object> parametros = ContratoAdhesionParametros.armar(contrato,
+            participes != null && !participes.isEmpty() ? participes.get(0) : null, direcciones, null, LocalDate.now());
         return reporteService.generarReporteDesdeColeccion(MODULO_REPORTE, REPORTE_CONTRATO, parametros,
             Collections.singletonList(new HashMap<String, Object>()), "PDF");
     }
@@ -451,20 +462,18 @@ public class FirmaContratoServiceImpl implements FirmaContratoService {
      * error (no lanza; ver la nota de la clase).
      */
     private ResultadoOperacionFirma enviarAlProveedor(FirmaContrato firma, List<FirmanteContrato> firmantes, byte[] pdf,
-            String nombreDocumento) throws Throwable {
+            String nombreDocumento, Entidad entidad, String usuario) throws Throwable {
+        Adjunto firmado = null;
         try {
-            List<ProveedorFirmaElectronica.Firmante> aEnviar = new ArrayList<>();
-            for (FirmanteContrato f : firmantes) {
-                ProveedorFirmaElectronica.Firmante p = new ProveedorFirmaElectronica.Firmante();
-                p.setOrden(f.getOrden().intValue());
-                p.setRol(f.getRol());
-                p.setIdentificacion(f.getIdentificacion());
-                p.setNombre(f.getNombre());
-                p.setCorreo(f.getCorreo());
-                p.setCelular(f.getCelular());
-                aEnviar.add(p);
-            }
-            ProveedorFirmaElectronica.ResultadoEnvio r = proveedor().enviar(pdf, nombreDocumento, aEnviar);
+            // Datos del partícipe: la foto guardada en FRFR (una fila por trámite).
+            ProveedorFirmaElectronica.DatosParticipe datos = new ProveedorFirmaElectronica.DatosParticipe();
+            FirmanteContrato f = firmantes.get(0);
+            datos.setIdentificacion(f.getIdentificacion());
+            datos.setNombre(f.getNombre());
+            datos.setCorreo(f.getCorreo());
+            datos.setCelular(f.getCelular());
+
+            ProveedorFirmaElectronica.ResultadoEnvio r = proveedor().enviar(pdf, nombreDocumento, datos);
             if (r == null || vacio(r.getIdExterno())) {
                 throw new ProveedorFirmaException(ERR_RESPUESTA_PROVEEDOR_INVALIDA,
                     "el proveedor no devolvió el identificador del trámite");
@@ -473,18 +482,50 @@ public class FirmaContratoServiceImpl implements FirmaContratoService {
             firma.setEstado(Long.valueOf(EstadoFirmaContrato.ENVIADO));
             firma.setFechaEnvio(LocalDateTime.now());
             firma.setError(null);
-            List<String> ids = r.getIdsFirmantes();
-            for (int i = 0; i < firmantes.size() && ids != null && i < ids.size(); i++) {
-                firmantes.get(i).setIdExterno(ids.get(i));
-                firmanteContratoDaoService.save(firmantes.get(i), firmantes.get(i).getCodigo());
+            if (r.getIdsFirmantes() != null && !r.getIdsFirmantes().isEmpty()) {
+                f.setIdExterno(r.getIdsFirmantes().get(0));
+            }
+            String mensaje = "Enviado a firmar";
+            if (r.getPdfFirmado() != null && r.getPdfFirmado().length > 0) {
+                // Respuesta inmediata: el proveedor ya devolvió el contrato firmado por los dos.
+                firmado = registrarFirmado(firma, firmantes, r.getPdfFirmado(), entidad, usuario);
+                mensaje = "Enviado y firmado";
+            }
+            for (FirmanteContrato fc : firmantes) {
+                firmanteContratoDaoService.save(fc, fc.getCodigo());
             }
             firmaContratoDaoService.save(firma, firma.getCodigo());
-            return resultado(true, null, "Enviado a firmar", firma, firmantes);
+            return resultado(true, null, mensaje, firma, firmantes);
         } catch (ProveedorFirmaException e) {
             firma.setError(truncar(e.getMessage()));
             firmaContratoDaoService.save(firma, firma.getCodigo());
             return resultado(false, e.getCodigo(), e.getMessage(), firma, firmantes);
+        } catch (Throwable e) {
+            borrarArchivoSilencioso(firmado);
+            throw e;
         }
+    }
+
+    /**
+     * Guarda el PDF firmado como adjunto («CONTRATO DE ADHESION FIRMADO») y cierra el trámite: FIRMADO con su fecha, y el
+     * firmante FIRMADO (con la fecha que ya trajera del proveedor, o la de ahora). Sirve para la respuesta inmediata del
+     * envío y para «Actualizar estado». No graba firma ni firmantes: lo hace el llamador.
+     */
+    private Adjunto registrarFirmado(FirmaContrato firma, List<FirmanteContrato> firmantes, byte[] pdfFirmado, Entidad entidad,
+            String usuario) throws Throwable {
+        Adjunto firmado = guardarAdjunto(pdfFirmado, nombreArchivo(firma.getIdContrato(), firma.getCodigo(), "firmado"),
+            resolverTipoAdjunto(TIPO_ADJUNTO_FIRMADO), entidad, firma.getCodigo(), usuario);
+        LocalDateTime ahora = LocalDateTime.now();
+        firma.setIdAdjuntoFirmado(firmado.getCodigo());
+        firma.setFechaFirma(ahora);
+        firma.setEstado(Long.valueOf(EstadoFirmaContrato.FIRMADO));
+        for (FirmanteContrato f : firmantes) {
+            f.setEstado(Long.valueOf(EstadoFirmanteContrato.FIRMADO));
+            if (f.getFechaFirma() == null) {
+                f.setFechaFirma(ahora);
+            }
+        }
+        return firmado;
     }
 
     private void aplicarEstadoFirmantes(List<FirmanteContrato> firmantes, List<ProveedorFirmaElectronica.EstadoFirmante> estados) {

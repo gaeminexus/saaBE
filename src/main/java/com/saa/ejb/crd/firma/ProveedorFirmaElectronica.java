@@ -17,8 +17,12 @@ public interface ProveedorFirmaElectronica {
     /** Nombre del proveedor tal como se guarda en {@code CRD.FRCN.FRCNPRVD}. */
     String nombre();
 
-    /** Sube el documento y los firmantes; el proveedor avisa a los firmantes. */
-    ResultadoEnvio enviar(byte[] documentoPdf, String nombreDocumento, List<Firmante> firmantes) throws ProveedorFirmaException;
+    /**
+     * Manda el documento y los datos del partícipe. El proveedor firma por el partícipe (con esos datos) y con el
+     * representante legal de ASOPREP, y devuelve el PDF firmado por los dos: de inmediato ({@link ResultadoEnvio#getPdfFirmado})
+     * o después (se obtiene con {@link #consultar} y {@link #descargarFirmado}).
+     */
+    ResultadoEnvio enviar(byte[] documentoPdf, String nombreDocumento, DatosParticipe participe) throws ProveedorFirmaException;
 
     /** Estado actual del trámite y de cada firmante. */
     EstadoTramite consultar(String idExterno) throws ProveedorFirmaException;
@@ -29,19 +33,16 @@ public interface ProveedorFirmaElectronica {
     /** Cancela el trámite en el proveedor. */
     void anular(String idExterno, String motivo) throws ProveedorFirmaException;
 
-    /** Firmante que se manda al proveedor. */
-    class Firmante {
-        private int orden;
-        private String rol;
+    /**
+     * Datos del partícipe que se envían al proveedor, reunidos en UN solo lugar: si el proveedor pide más campos, la fase 2
+     * los agrega aquí.
+     */
+    class DatosParticipe {
         private String identificacion;
         private String nombre;
         private String correo;
         private String celular;
 
-        public int getOrden() { return orden; }
-        public void setOrden(int orden) { this.orden = orden; }
-        public String getRol() { return rol; }
-        public void setRol(String rol) { this.rol = rol; }
         public String getIdentificacion() { return identificacion; }
         public void setIdentificacion(String identificacion) { this.identificacion = identificacion; }
         public String getNombre() { return nombre; }
@@ -52,10 +53,17 @@ public interface ProveedorFirmaElectronica {
         public void setCelular(String celular) { this.celular = celular; }
     }
 
-    /** Respuesta del envío: id del trámite y, por orden de firma, el id de cada firmante (puede venir vacío). */
+    /**
+     * Respuesta del envío: id del trámite, el id del partícipe en el proveedor (puede venir vacío) y, OPCIONALMENTE, el PDF
+     * ya firmado (respuesta inmediata). Sin PDF firmado el trámite queda ENVIADO a la espera de «Actualizar estado».
+     */
     class ResultadoEnvio {
         private String idExterno;
         private List<String> idsFirmantes = new ArrayList<>();
+        private byte[] pdfFirmado;
+
+        public byte[] getPdfFirmado() { return pdfFirmado; }
+        public void setPdfFirmado(byte[] pdfFirmado) { this.pdfFirmado = pdfFirmado; }
 
         public String getIdExterno() { return idExterno; }
         public void setIdExterno(String idExterno) { this.idExterno = idExterno; }

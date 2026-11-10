@@ -2,7 +2,6 @@ package com.saa.ejb.crd.firma;
 
 import java.net.http.HttpClient;
 import java.time.Duration;
-import java.util.List;
 
 /**
  * Proveedor Security Data (DatAgree). FASE 1: la API del proveedor se desconoce (su documentación no está disponible), así
@@ -31,7 +30,7 @@ public class SecurityDataProveedor implements ProveedorFirmaElectronica {
     }
 
     @Override
-    public ResultadoEnvio enviar(byte[] documentoPdf, String nombreDocumento, List<Firmante> firmantes) throws ProveedorFirmaException {
+    public ResultadoEnvio enviar(byte[] documentoPdf, String nombreDocumento, DatosParticipe participe) throws ProveedorFirmaException {
         System.out.println("SecurityDataProveedor.enviar - documento: " + nombreDocumento);
         configuracion();
         throw noDisponible();

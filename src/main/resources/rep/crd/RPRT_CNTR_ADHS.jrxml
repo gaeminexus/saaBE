@@ -1,0 +1,296 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Contrato de adhesion del participe (CRD) — modelo V2 del cliente (2026-11-10). Sintaxis compacta, SIN <query>:
+     se llena por generarReporteDesdeColeccion con UNA fila (todo por parametros, armados por ContratoAdhesionParametros).
+     El texto legal es LITERAL del modelo, errata incluidas (CONTRARO, TERECERA, ASOPREP-FCPCP, EI PARTICIPE, "su el economista"):
+     no se corrigen sin visto bueno del cliente. SIN fontName (Tahoma/Calibri pierden la negrita en el PDF).
+     Sin lineas de firma manuscrita pintadas: el area de firma la usa Security Data.
+     Generado por un script a partir del .txt del modelo; editar el .jrxml a mano si hace falta. -->
+<jasperReport name="RPRT_CNTR_ADHS" language="java" pageWidth="595" pageHeight="842" columnWidth="425" leftMargin="85" rightMargin="85" topMargin="71" bottomMargin="71" whenNoDataType="AllSectionsNoDetail" uuid="c0de0001-0000-0000-0000-000000000000">
+	<property name="com.jaspersoft.studio.report.description" value="Contrato de adhesion del participe"/>
+	<parameter name="P_NOMBRE" class="java.lang.String"></parameter>
+	<parameter name="P_CEDULA" class="java.lang.String"></parameter>
+	<parameter name="P_EMPRESA" class="java.lang.String"></parameter>
+	<parameter name="P_ROL" class="java.lang.String"></parameter>
+	<parameter name="P_OPCION" class="java.lang.Integer"><description><![CDATA[1 jubilacion, 2 cesantia, 3 ambas (se distingue por los datos del contrato)]]></description></parameter>
+	<parameter name="P_JUB_MINIMO" class="java.lang.String"></parameter>
+	<parameter name="P_JUB_ADICIONAL" class="java.lang.String"></parameter>
+	<parameter name="P_CES_MINIMO" class="java.lang.String"></parameter>
+	<parameter name="P_CES_ADICIONAL" class="java.lang.String"></parameter>
+	<parameter name="P_CIUDAD" class="java.lang.String"></parameter>
+	<parameter name="P_DIA" class="java.lang.String"></parameter>
+	<parameter name="P_MES" class="java.lang.String"></parameter>
+	<parameter name="P_ANIO" class="java.lang.String"></parameter>
+	<parameter name="P_GERENTE_NOMBRE" class="java.lang.String"><description><![CDATA[Firma de ASOPREP: nombre y cargo en UN solo lugar]]></description><defaultValueExpression><![CDATA["Eco. Leonardo Ramírez"]]></defaultValueExpression></parameter>
+	<parameter name="P_GERENTE_CARGO" class="java.lang.String"><defaultValueExpression><![CDATA["GERENTE"]]></defaultValueExpression></parameter>
+	<parameter name="P_GERENTE_ENTIDAD" class="java.lang.String"><defaultValueExpression><![CDATA["ASOPREP-FCPC"]]></defaultValueExpression></parameter>
+	<parameter name="P_SEXO_M" class="java.lang.String"></parameter>
+	<parameter name="P_SEXO_F" class="java.lang.String"></parameter>
+	<parameter name="P_EC_SOLTERO" class="java.lang.String"></parameter>
+	<parameter name="P_EC_CASADO" class="java.lang.String"></parameter>
+	<parameter name="P_EC_DIVORCIADO" class="java.lang.String"></parameter>
+	<parameter name="P_EC_VIUDO" class="java.lang.String"></parameter>
+	<parameter name="P_EC_UNION" class="java.lang.String"></parameter>
+	<parameter name="P_VIV_PROPIA" class="java.lang.String"></parameter>
+	<parameter name="P_VIV_ALQUILADA" class="java.lang.String"></parameter>
+	<parameter name="P_VIV_FAMILIAR" class="java.lang.String"></parameter>
+	<parameter name="P_MOD_NOMBRAMIENTO" class="java.lang.String"></parameter>
+	<parameter name="P_MOD_CONTRATO" class="java.lang.String"></parameter>
+	<parameter name="P_NAC_DIA" class="java.lang.String"></parameter>
+	<parameter name="P_NAC_MES" class="java.lang.String"></parameter>
+	<parameter name="P_NAC_ANIO" class="java.lang.String"></parameter>
+	<parameter name="P_CARGAS" class="java.lang.String"></parameter>
+	<parameter name="P_PROVINCIA" class="java.lang.String"></parameter>
+	<parameter name="P_CANTON" class="java.lang.String"></parameter>
+	<parameter name="P_PARROQUIA" class="java.lang.String"></parameter>
+	<parameter name="P_BARRIO" class="java.lang.String"></parameter>
+	<parameter name="P_CALLES" class="java.lang.String"></parameter>
+	<parameter name="P_TEL_CASA" class="java.lang.String"></parameter>
+	<parameter name="P_CELULAR" class="java.lang.String"></parameter>
+	<parameter name="P_CORREO_PERSONAL" class="java.lang.String"></parameter>
+	<parameter name="P_CORREO_INSTITUCIONAL" class="java.lang.String"></parameter>
+	<parameter name="P_REMUNERACION" class="java.lang.String"></parameter>
+	<parameter name="P_FECHA_INGRESO" class="java.lang.String"></parameter>
+	<parameter name="P_LUGAR_TRABAJO" class="java.lang.String"></parameter>
+	<parameter name="P_UNIDAD" class="java.lang.String"></parameter>
+	<parameter name="P_CARGO" class="java.lang.String"></parameter>
+	<parameter name="P_TITULO" class="java.lang.String"></parameter>
+	<parameter name="P_ING_MONTO" class="java.lang.String"></parameter>
+	<parameter name="P_ING_ACTIVIDAD" class="java.lang.String"></parameter>
+	<parameter name="P_FECHA_FIRMA" class="java.lang.String"></parameter>
+	<detail>
+		<band height="28" splitType="Stretch">
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000001" x="0" y="0" width="425" height="18" fontSize="12" bold="true" hTextAlign="Center" vTextAlign="Middle"><text><![CDATA[CONTRARO DE ADHESIÓN]]></text></element>
+		</band>
+		<band height="21" splitType="Stretch">
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000002" x="0" y="0" width="425" height="14" markup="styled" textAdjust="StretchHeight" fontSize="10" hTextAlign="Justified"><expression><![CDATA["<style isBold=\"true\">PRIMERA: COMPARECIENTES</style>" + ".- Comparecen a la celebración del presente Contrato de Adhesión, por una parte, el/la señora/a" + " " + "<style isBold=\"true\">" + $P{P_NOMBRE}.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;") + "</style>" + "  ,con  Cédula de Ciudadanía No" + " " + "<style isBold=\"true\">" + $P{P_CEDULA}.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;") + "</style>" + " " + "Trabajador de" + " " + "<style isBold=\"true\">" + $P{P_EMPRESA}.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;") + "</style>" + " " + "Rol No" + " " + "<style isBold=\"true\">" + $P{P_ROL}.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;") + "</style>" + " " + "por sus propios derechos, libre y voluntariamente, a quien en adelante se le denominará EL PARTICIPE, y por otra parte, la Asociación del Fondo Complementario Previsional Cerrado ASOPREP FCPC, de Jubilación y Cesantía, de las Empresas Públicas del Sector Hidrocarburífero, legalmente representada por su el economista Leonardo David Ramírez Molina, en su calidad de Gerente, conforme se acredita con los documentos que se agregan como habilitantes, a quien en adelante se le denominará el FONDO y/o ASOPREP-FCPC."]]></expression></element>
+		</band>
+		<band height="17" splitType="Stretch">
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000003" x="0" y="0" width="425" height="14" markup="styled" textAdjust="StretchHeight" fontSize="10" hTextAlign="Left"><expression><![CDATA["<style isBold=\"true\">SEGUNDA: ANTECEDENTES. -</style>"]]></expression></element>
+		</band>
+		<band height="21" splitType="Stretch">
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000004" x="0" y="0" width="425" height="14" markup="styled" textAdjust="StretchHeight" fontSize="10" hTextAlign="Justified"><expression><![CDATA["La Asociación del Fondo Complementario Previsional Cerrado ASOPREP FCPC, de Jubilación y Cesantía, de las Empresas Públicas del Sector Hidrocarburífero, se constituyó como Persona Jurídica mediante Estatuto de constitución, emitido mediante Acuerdo Ejecutivo No. 0203 expedido por el Ministerio de Bienestar Social el 07 de abril de 1997;"]]></expression></element>
+		</band>
+		<band height="21" splitType="Stretch">
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000005" x="0" y="0" width="425" height="14" markup="styled" textAdjust="StretchHeight" fontSize="10" hTextAlign="Justified"><expression><![CDATA["Mediante Resolución No. SBS-2011-277 de 31 de marzo de 2011, emitida por la Superintendencia de Bancos y Seguros, se aprobó la reforma del Estatuto y el cambio de denominación de la “Asociación de Fondos Previsionales de los Trabajadores de Petroproducción” y pasó a denominarse “Asociación Del Fondo Complementario Previsional Cerrado ASOPREP-FCPC”;"]]></expression></element>
+		</band>
+		<band height="21" splitType="Stretch">
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000006" x="0" y="0" width="425" height="14" markup="styled" textAdjust="StretchHeight" fontSize="10" hTextAlign="Justified"><expression><![CDATA["Con Resolución No. SB-DTL-2018-223 de 01 de marzo de 2018, la Superintendencia de Bancos aprobó la reforma del Estatuto y el cambio de denominación de “Asociación del Fondo Complementario Previsional Cerrado ASOPREP-FCPC”, a la “Asociación del Fondo Complementario Previsional Cerrado ASOPREP-FCPC, de Jubilación y Cesantía, de las Empresas Públicas del Sector Hidrocarburífero”;"]]></expression></element>
+		</band>
+		<band height="21" splitType="Stretch">
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000007" x="0" y="0" width="425" height="14" markup="styled" textAdjust="StretchHeight" fontSize="10" hTextAlign="Justified"><expression><![CDATA["Mediante Resolución No. SB-DTL-2019-0664 de 19 de junio de 2019, la Superintendencia de Bancos, aprobó la reforma del estatuto de la “Asociación del Fondo Complementario Previsional Cerrado ASOPREP-FCPC, de Jubilación y Cesantía, de las Empresas Públicas del Sector Hidrocarburífero”;"]]></expression></element>
+		</band>
+		<band height="21" splitType="Stretch">
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000008" x="0" y="0" width="425" height="14" markup="styled" textAdjust="StretchHeight" fontSize="10" hTextAlign="Justified"><expression><![CDATA["Que, las disposiciones transitorias séptima y décima de la Sección III - NORMA PARA LA TRANSICIÓN DE LA ADMINISTRACIÓN DE LOS FONDOS COMPLEMENTARIOS PREVISIONALES CERRADOS A SUS PARTÍCIPES – Capítulo XL – Libro I de la CODIFICACIÓN DE RESOLUCIONES MONETARIAS, FINANCIERAS, DE VALORES Y SEGUROS, establece que el retorno de su administración a los partícipes, deberán reformar su estatuto social acorde al nuevo esquema legal y normativo, debiendo solicitar a la Superintendencia de Bancos la aprobación de la reforma estatutaria; y,"]]></expression></element>
+		</band>
+		<band height="21" splitType="Stretch">
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000009" x="0" y="0" width="425" height="14" markup="styled" textAdjust="StretchHeight" fontSize="10" hTextAlign="Justified"><expression><![CDATA["Con Resolución No. SB-INJ-2026-2108 de 02 de julio de 2026, la Superintendencia de Bancos, aprobó la reforma del estatuto de la “ASOCIACIÓN DEL FONDO COMPLEMENTARIO PREVISIONAL CERRADO ASOPREP-FCPC, DE JUBILACIÓN Y CESANTÍA, DE LAS EMPRESAS PÚBLICAS DEL SECTOR HIDROCARBURÍFERO”."]]></expression></element>
+		</band>
+		<band height="17" splitType="Stretch">
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000010" x="0" y="0" width="425" height="14" markup="styled" textAdjust="StretchHeight" fontSize="10" hTextAlign="Left"><expression><![CDATA["<style isBold=\"true\">TERECERA: DEFINICIONES. -</style>"]]></expression></element>
+		</band>
+		<band height="21" splitType="Stretch">
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000011" x="0" y="0" width="425" height="14" markup="styled" textAdjust="StretchHeight" fontSize="10" hTextAlign="Justified"><expression><![CDATA["<style isBold=\"true\">JUBILACIÓN COMPLEMENTARIA (JC):</style> Es el beneficio de orden social, otorgado a los partícipes del Fondo de forma mensual una vez que cumplan los requisitos previstos en la Ley de Seguridad Social para acceder a la Jubilación ordinaria, beneficio que es distinto de las jubilaciones establecidas en la Ley de Seguridad Social y del Código del Trabajo; sometido a lo dispuesto en el presente Estatuto."]]></expression></element>
+		</band>
+		<band height="21" splitType="Stretch">
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000012" x="0" y="0" width="425" height="14" markup="styled" textAdjust="StretchHeight" fontSize="10" hTextAlign="Justified"><expression><![CDATA["<style isBold=\"true\">HABER DE LA JUBILACIÓN COMPLEMENTARIA:</style> Está integrado por la suma de los aportes registrados en las cuentas individuales de jubilación más sus respectivos rendimientos financieros."]]></expression></element>
+		</band>
+		<band height="21" splitType="Stretch">
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000013" x="0" y="0" width="425" height="14" markup="styled" textAdjust="StretchHeight" fontSize="10" hTextAlign="Justified"><expression><![CDATA["<style isBold=\"true\">HABER DE LA CESANTÍA:</style> Es la suma de los aportes registrados en las cuentas individuales de cesantía más sus rendimientos financieros."]]></expression></element>
+		</band>
+		<band height="21" splitType="Stretch">
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000014" x="0" y="0" width="425" height="14" markup="styled" textAdjust="StretchHeight" fontSize="10" hTextAlign="Justified"><expression><![CDATA["<style isBold=\"true\">PARTÍCIPE. - </style>Son partícipes del Fondo los servidores o trabajadores de las empresas públicas del sector hidrocarburífero afiliados al Instituto Ecuatoriano de Seguridad Social, las personas que prestan sus servicios lícitos y personales con las Empresas de dicho sector a través de contrato u otra modalidad y que libremente decidan hacerlo a través de la suscripción de un contrato de adhesión y realicen las aportaciones establecidas en dicho contrato. Mantendrán las prestaciones y servicios del fondo, los partícipes quienes hayan accedido a la prestación de jubilación complementaria. Los datos de índole personal y económica constan en el ANEXO No. 1"]]></expression></element>
+		</band>
+		<band height="21" splitType="Stretch">
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000015" x="0" y="0" width="425" height="14" markup="styled" textAdjust="StretchHeight" fontSize="10" hTextAlign="Justified"><expression><![CDATA["<style isBold=\"true\">JUBILADO.</style> - Es aquella persona que se ha hecho acreedor a la prestación de jubilación al cumplir con los presupuestos establecidos en la Ley de Seguridad Social y el presente Estatuto."]]></expression></element>
+		</band>
+		<band height="21" splitType="Stretch">
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000016" x="0" y="0" width="425" height="14" markup="styled" textAdjust="StretchHeight" fontSize="10" hTextAlign="Justified"><expression><![CDATA["<style isBold=\"true\">APORTACIÓN.- </style>Es el monto numerario que el participe entrega mensualmente al Fondo, de forma voluntaria en mérito de la suscripción del contrato de adhesión."]]></expression></element>
+		</band>
+		<band height="21" splitType="Stretch">
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000017" x="0" y="0" width="425" height="14" markup="styled" textAdjust="StretchHeight" fontSize="10" hTextAlign="Justified"><expression><![CDATA["<style isBold=\"true\">CUARTA: OBJETO.-</style> Con los antecedentes expuestos, el PARTICIPE expresa su voluntad libre y voluntaria de pertenecer a la Asociación del Fondo Complementario Previsional Cerrado ASOPREP-FCPC, de Jubilación y Cesantía, de las Empresas Públicas del Sector Hidrocarburifero, y así también se obliga a cumplir la normativa interna que rige al referido Fondo."]]></expression></element>
+		</band>
+		<band height="21" splitType="Stretch">
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000018" x="0" y="0" width="425" height="14" markup="styled" textAdjust="StretchHeight" fontSize="10" hTextAlign="Justified"><expression><![CDATA["Como consecuencia de lo anotado el participe se obliga a aportar mensualmente los valores que más adelante se detallan y autoriza expresamente a que los mismos sean debitados de forma mensual por la Empresa en donde labora de su rol de pagos conforme el siguiente detalle:"]]></expression></element>
+		</band>
+		<band height="76" splitType="Prevent"><printWhenExpression><![CDATA[$P{P_OPCION} != null && $P{P_OPCION}.intValue() == 1]]></printWhenExpression>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000019" x="0" y="0" width="425" height="14" fontSize="10" hTextAlign="Justified"><text><![CDATA[Opción 1: Prestación de Jubilación]]></text></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000020" x="0" y="18" width="130" height="30" fontSize="10" hTextAlign="Center" vTextAlign="Middle"><box><pen lineWidth="0.5" lineColor="#000000"/></box><text><![CDATA[PRESTACIÓN]]></text></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000021" x="130" y="18" width="160" height="30" fontSize="10" hTextAlign="Center" vTextAlign="Middle"><box><pen lineWidth="0.5" lineColor="#000000"/></box><text><![CDATA[Porcentaje Mínimo Remuneración Básica Unificada]]></text></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000022" x="290" y="18" width="135" height="30" fontSize="10" hTextAlign="Center" vTextAlign="Middle"><box><pen lineWidth="0.5" lineColor="#000000"/></box><text><![CDATA[Porcentaje Adicional]]></text></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000023" x="0" y="48" width="130" height="18" fontSize="10" hTextAlign="Center" vTextAlign="Middle"><box><pen lineWidth="0.5" lineColor="#000000"/></box><text><![CDATA[JUBILACIÓN]]></text></element>
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000024" x="130" y="48" width="160" height="18" fontSize="10" hTextAlign="Center" vTextAlign="Middle"><box><pen lineWidth="0.5" lineColor="#000000"/></box><expression><![CDATA[$P{P_JUB_MINIMO}]]></expression></element>
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000025" x="290" y="48" width="135" height="18" fontSize="10" hTextAlign="Center" vTextAlign="Middle"><box><pen lineWidth="0.5" lineColor="#000000"/></box><expression><![CDATA[$P{P_JUB_ADICIONAL}]]></expression></element>
+		</band>
+		<band height="76" splitType="Prevent"><printWhenExpression><![CDATA[$P{P_OPCION} != null && $P{P_OPCION}.intValue() == 2]]></printWhenExpression>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000026" x="0" y="0" width="425" height="14" fontSize="10" hTextAlign="Justified"><text><![CDATA[Opción 2: Prestación de Cesantía]]></text></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000027" x="0" y="18" width="130" height="30" fontSize="10" hTextAlign="Center" vTextAlign="Middle"><box><pen lineWidth="0.5" lineColor="#000000"/></box><text><![CDATA[PRESTACIÓN]]></text></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000028" x="130" y="18" width="160" height="30" fontSize="10" hTextAlign="Center" vTextAlign="Middle"><box><pen lineWidth="0.5" lineColor="#000000"/></box><text><![CDATA[Porcentaje Mínimo
+Remuneración Básica Unificada]]></text></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000029" x="290" y="18" width="135" height="30" fontSize="10" hTextAlign="Center" vTextAlign="Middle"><box><pen lineWidth="0.5" lineColor="#000000"/></box><text><![CDATA[Porcentaje Adicional]]></text></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000030" x="0" y="48" width="130" height="18" fontSize="10" hTextAlign="Center" vTextAlign="Middle"><box><pen lineWidth="0.5" lineColor="#000000"/></box><text><![CDATA[CESANTÍA]]></text></element>
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000031" x="130" y="48" width="160" height="18" fontSize="10" hTextAlign="Center" vTextAlign="Middle"><box><pen lineWidth="0.5" lineColor="#000000"/></box><expression><![CDATA[$P{P_CES_MINIMO}]]></expression></element>
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000032" x="290" y="48" width="135" height="18" fontSize="10" hTextAlign="Center" vTextAlign="Middle"><box><pen lineWidth="0.5" lineColor="#000000"/></box><expression><![CDATA[$P{P_CES_ADICIONAL}]]></expression></element>
+		</band>
+		<band height="94" splitType="Prevent"><printWhenExpression><![CDATA[$P{P_OPCION} != null && $P{P_OPCION}.intValue() == 3]]></printWhenExpression>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000033" x="0" y="0" width="425" height="14" fontSize="10" hTextAlign="Justified"><text><![CDATA[Opción 3: Prestación de Jubilación y Cesantía]]></text></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000034" x="0" y="18" width="130" height="30" fontSize="10" hTextAlign="Center" vTextAlign="Middle"><box><pen lineWidth="0.5" lineColor="#000000"/></box><text><![CDATA[PRESTACIÓN]]></text></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000035" x="130" y="18" width="160" height="30" fontSize="10" hTextAlign="Center" vTextAlign="Middle"><box><pen lineWidth="0.5" lineColor="#000000"/></box><text><![CDATA[Porcentaje Mínimo
+Remuneración Básica Unificada]]></text></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000036" x="290" y="18" width="135" height="30" fontSize="10" hTextAlign="Center" vTextAlign="Middle"><box><pen lineWidth="0.5" lineColor="#000000"/></box><text><![CDATA[Porcentaje Adicional]]></text></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000037" x="0" y="48" width="130" height="18" fontSize="10" hTextAlign="Center" vTextAlign="Middle"><box><pen lineWidth="0.5" lineColor="#000000"/></box><text><![CDATA[JUBILACION]]></text></element>
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000038" x="130" y="48" width="160" height="18" fontSize="10" hTextAlign="Center" vTextAlign="Middle"><box><pen lineWidth="0.5" lineColor="#000000"/></box><expression><![CDATA[$P{P_JUB_MINIMO}]]></expression></element>
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000039" x="290" y="48" width="135" height="18" fontSize="10" hTextAlign="Center" vTextAlign="Middle"><box><pen lineWidth="0.5" lineColor="#000000"/></box><expression><![CDATA[$P{P_JUB_ADICIONAL}]]></expression></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000040" x="0" y="66" width="130" height="18" fontSize="10" hTextAlign="Center" vTextAlign="Middle"><box><pen lineWidth="0.5" lineColor="#000000"/></box><text><![CDATA[CESANTIA]]></text></element>
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000041" x="130" y="66" width="160" height="18" fontSize="10" hTextAlign="Center" vTextAlign="Middle"><box><pen lineWidth="0.5" lineColor="#000000"/></box><expression><![CDATA[$P{P_CES_MINIMO}]]></expression></element>
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000042" x="290" y="66" width="135" height="18" fontSize="10" hTextAlign="Center" vTextAlign="Middle"><box><pen lineWidth="0.5" lineColor="#000000"/></box><expression><![CDATA[$P{P_CES_ADICIONAL}]]></expression></element>
+		</band>
+		<band height="21" splitType="Stretch">
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000043" x="0" y="0" width="425" height="14" markup="styled" textAdjust="StretchHeight" fontSize="10" hTextAlign="Justified"><expression><![CDATA["Por su parte, el FONDO acepta la adhesión de EL PARTICIPE y se compromete a otorgar las prestaciones contratadas por el mismo, en los términos y condiciones previstos en este contrato, el estatuto y la normativa que rige a los fondos complementarios previsionales cerrados."]]></expression></element>
+		</band>
+		<band height="21" splitType="Stretch">
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000044" x="0" y="0" width="425" height="14" markup="styled" textAdjust="StretchHeight" fontSize="10" hTextAlign="Justified"><expression><![CDATA["<style isBold=\"true\">QUINTA: DERECHOS Y OBLIGACIONES DEL PARTÍCIPE.-</style> El participe gozará de todos los derechos y se obliga a observar y cumplir todas y cada una de las obligaciones previstas en este contrato, el estatuto vigente de ASOPREP-FCPC, la normativa interna del fondo, la expedida por la Superintendencia de Bancos, la Junta Política de Regulación Monetaria y Financiera y la ley."]]></expression></element>
+		</band>
+		<band height="21" splitType="Stretch">
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000045" x="0" y="0" width="425" height="14" markup="styled" textAdjust="StretchHeight" fontSize="10" hTextAlign="Justified"><expression><![CDATA["<style isBold=\"true\">SEXTA: CONFORMACIÓN DE LA CUENTA INDIVIDUAL. -</style> Las cuentas individuales de cada participe están conformadas por el aporte personal de EL PARTÍCIPE más sus rendimientos alcanzados por las inversiones privativas y no privativas del FONDO en su conjunto; así como, cualquier aporte voluntario adicional que realice el participe."]]></expression></element>
+		</band>
+		<band height="21" splitType="Stretch">
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000046" x="0" y="0" width="425" height="14" markup="styled" textAdjust="StretchHeight" fontSize="10" hTextAlign="Justified"><expression><![CDATA["<style isBold=\"true\">SÉPTIMA: RENDIMIENTOS. -</style> Para la capitalización de los rendimientos que correspondan a cada uno de los PARTICIPES, se aplicará las Resoluciones que para el efecto dicte la Junta política de Regulación Monetaria y Financiera o el organismo competente para el efecto y el estatuto vigente del fondo al momento de acreditarse los mismos."]]></expression></element>
+		</band>
+		<band height="21" splitType="Stretch">
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000047" x="0" y="0" width="425" height="14" markup="styled" textAdjust="StretchHeight" fontSize="10" hTextAlign="Justified"><expression><![CDATA["<style isBold=\"true\">OCTAVA: RECONOCIMIENTO DE LAS PRESTACIONES (JUBILACION Y CESANTIA). -</style> Las prestaciones que el FONDO ofrece, serán otorgados conforme lo establecido en las Resoluciones que para el efecto dicte la Junta Política y Regulación Monetaria y Financiera o el organismo competente para el efecto, el estatuto vigente del fondo al momento de concederse la prestación y demás normativa conexa sobre la materia."]]></expression></element>
+		</band>
+		<band height="21" splitType="Stretch">
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000048" x="0" y="0" width="425" height="14" markup="styled" textAdjust="StretchHeight" fontSize="10" hTextAlign="Justified"><expression><![CDATA["Las partes claramente determinan que la prestación de Jubilación Complementaria se otorgará de forma mensual y bajo ninguna consideración podrá entregarse de forma global."]]></expression></element>
+		</band>
+		<band height="21" splitType="Stretch">
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000049" x="0" y="0" width="425" height="14" markup="styled" textAdjust="StretchHeight" fontSize="10" hTextAlign="Justified"><expression><![CDATA["<style isBold=\"true\">NOVENA: CRÉDITOS.</style> Conforme lo previsto en la normativa que rige los fondos complementarios previsionales cerrados y el estatuto vigente de ASOPREP - FCPC, el participe podrá acceder a créditos hipotecarios, prendarios o quirografarios siempre y cuando cumpla con los requisitos legales, estatutarios y la reglamentación interna del fondo."]]></expression></element>
+		</band>
+		<band height="21" splitType="Stretch">
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000050" x="0" y="0" width="425" height="14" markup="styled" textAdjust="StretchHeight" fontSize="10" hTextAlign="Justified"><expression><![CDATA["En caso de separación del partícipe del fondo por cualquier circunstancia, éste expresamente autoriza a la ASOPREP FCPC, a utilizar todos los valores que el mismo mantenga en su cuenta individual por aportes o rendimientos sean utilizados para cancelar cualquier tipo de obligación crediticia que tenga con el fondo, seguros, intereses, gastos de cobranza prejudicial y/o judicial."]]></expression></element>
+		</band>
+		<band height="21" splitType="Stretch">
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000051" x="0" y="0" width="425" height="14" markup="styled" textAdjust="StretchHeight" fontSize="10" hTextAlign="Justified"><expression><![CDATA["<style isBold=\"true\">DÉCIMA:  PROCEDIMIENTO PARA LA   LIQUIDACIÓN DE   LA   CESANTÍA Y JUBILACION.-</style> Será aquel determinado por la autoridad competente a través de las Resoluciones emitidas para el efecto, el Estatuto vigente y demás normativa que regula al Fondo."]]></expression></element>
+		</band>
+		<band height="21" splitType="Stretch">
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000052" x="0" y="0" width="425" height="14" markup="styled" textAdjust="StretchHeight" fontSize="10" hTextAlign="Justified"><expression><![CDATA["En todos los casos de la liquidación de cualquier tipo de prestación, previamente a la entrega de cualquier valor monetario se descontarán todas las obligaciones crediticias que tenga el participe o sus herederos con el fondo, los seguros, intereses, gastos de cobranza prejudicial y/o judicial."]]></expression></element>
+		</band>
+		<band height="21" splitType="Stretch">
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000053" x="0" y="0" width="425" height="14" markup="styled" textAdjust="StretchHeight" fontSize="10" hTextAlign="Justified"><expression><![CDATA["<style isBold=\"true\">DÉCIMO PRIMERA: INFORMACIÓN DE CUENTA INDIVIDUAL. -</style> Toda la información financiera relativa al Fondo y a la situación de cada cuenta individual se encuentra a disposición del participe en la página web institucional y excepcionalmente por escrito."]]></expression></element>
+		</band>
+		<band height="21" splitType="Stretch">
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000054" x="0" y="0" width="425" height="14" markup="styled" textAdjust="StretchHeight" fontSize="10" hTextAlign="Justified"><expression><![CDATA["<style isBold=\"true\">DÉCIMO SEGUNDA: DE LA DESAFILIACIÓN VOLUNTARIA. -</style> El participe única y exclusivamente se desafiliará del fondo en estricto cumplimiento de lo que determine la normativa que regula a los fondos complementarios previsionales cerrados y el Estatuto de ASOPREP-FCPCP."]]></expression></element>
+		</band>
+		<band height="21" splitType="Stretch">
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000055" x="0" y="0" width="425" height="14" markup="styled" textAdjust="StretchHeight" fontSize="10" hTextAlign="Justified"><expression><![CDATA["Para que el participe pueda aplicar a la desafiliación voluntaria del fondo, no podrá tener bajo ninguna circunstancia ningún tipo de obligación crediticia con el fondo o cualquier tipo de obligación pendiente de pago con el mismo. Así como, tampoco podrá figurar como garante."]]></expression></element>
+		</band>
+		<band height="21" splitType="Stretch">
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000056" x="0" y="0" width="425" height="14" markup="styled" textAdjust="StretchHeight" fontSize="10" hTextAlign="Justified"><expression><![CDATA["<style isBold=\"true\">DÉCIMO TERCERA: DECLARACION DE CONOCIMIENTO Y ACEPTACIÓN DEL ESTATUTO DEL FONDO. -</style> EI PARTÍCIPE declara que conoce y entiende las disposiciones establecidas en el Estatuto del Fondo, sus derechos y obligaciones, y por lo tanto las ACEPTA expresa y de forma voluntaria."]]></expression></element>
+		</band>
+		<band height="21" splitType="Stretch">
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000057" x="0" y="0" width="425" height="14" markup="styled" textAdjust="StretchHeight" fontSize="10" hTextAlign="Justified"><expression><![CDATA["<style isBold=\"true\">DÉCIMO CUARTA: DE LA SOLUCIÓN DE CONTROVERSIAS. -</style> Las controversias que se generen entre los partícipes y la administración del Fondo, relacionadas a derechos y obligaciones, se someterán a las resoluciones de los jueces competentes del Distrito Metropolitano de Quito."]]></expression></element>
+		</band>
+		<band height="21" splitType="Stretch">
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000058" x="0" y="0" width="425" height="14" markup="styled" textAdjust="StretchHeight" fontSize="10" hTextAlign="Justified"><expression><![CDATA["<style isBold=\"true\">DÉCIMO QUINTA: NOTIFICACIONES Y CITACIONES. -</style> Para todos los efectos de notificaciones y citaciones inclusive judiciales el participe acepta expresamente ser notificado y/o citado de forma telemática a su correo electrónico personal previsto en el Anexo 1 del presente contrato."]]></expression></element>
+		</band>
+		<band height="18" splitType="Stretch">
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000059" x="0" y="0" width="425" height="14" markup="styled" textAdjust="StretchHeight" fontSize="10" hTextAlign="Justified"><expression><![CDATA["<style isBold=\"true\">DÉCIMO SEXTA: ACEPTACIÓN DE LAS PARTES.-</style>" + " Las partes libre y voluntariamente declaran la aceptación a todo lo convenido en el presente contrato y se someten a las estipulaciones, en la ciudad de" + " " + "<style isBold=\"true\">" + $P{P_CIUDAD}.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;") + "</style>" + " " + "a los" + " " + "<style isBold=\"true\">" + $P{P_DIA}.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;") + "</style>" + " " + "días, del mes de" + " " + "<style isBold=\"true\">" + $P{P_MES}.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;") + "</style>" + " de " + "<style isBold=\"true\">" + $P{P_ANIO}.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;") + "</style>" + ", y suscriben en unidad de acto en TRES ejemplares del mismo tenor y valor."]]></expression></element>
+		</band>
+		<band height="118" splitType="Prevent">
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000060" x="0" y="70" width="200" height="14" fontSize="10" positionType="Float" textAdjust="StretchHeight"><expression><![CDATA[$P{P_GERENTE_NOMBRE}]]></expression></element>
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000061" x="0" y="84" width="200" height="14" fontSize="10" positionType="Float" textAdjust="StretchHeight"><expression><![CDATA[$P{P_GERENTE_CARGO}]]></expression></element>
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000062" x="0" y="98" width="200" height="14" fontSize="10" positionType="Float" textAdjust="StretchHeight"><expression><![CDATA[$P{P_GERENTE_ENTIDAD}]]></expression></element>
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000063" x="225" y="70" width="200" height="14" fontSize="10" positionType="Float" textAdjust="StretchHeight"><expression><![CDATA["PARTICIPE: " + $P{P_NOMBRE}]]></expression></element>
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000064" x="225" y="84" width="200" height="14" fontSize="10" positionType="Float" textAdjust="StretchHeight"><expression><![CDATA["C.C. No: " + $P{P_CEDULA}]]></expression></element>
+		</band>
+		<band height="660" splitType="Prevent">
+			<element kind="break" uuid="c0de0001-0000-0000-0000-000000000065" x="0" y="0" width="425" height="1"/>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000066" x="0" y="12" width="425" height="16" fontSize="9.5" bold="true" hTextAlign="Center" vTextAlign="Middle"><text><![CDATA[ANEXO I]]></text></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000067" x="0" y="30" width="425" height="16" fontSize="9.5" bold="true" hTextAlign="Center" vTextAlign="Middle"><text><![CDATA[FICHA DE INFORMACIÓN DEL PARTÍCIPE]]></text></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000068" x="215" y="50" width="80" height="14" fontSize="9.5" hTextAlign="Left" vTextAlign="Middle"><text><![CDATA[NOMBRAMIENTO]]></text></element>
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000069" x="297" y="50" width="13" height="13" fontSize="9" bold="true" hTextAlign="Center" vTextAlign="Middle"><box><pen lineWidth="0.5" lineColor="#000000"/></box><expression><![CDATA[$P{P_MOD_NOMBRAMIENTO}]]></expression></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000070" x="322" y="50" width="55" height="14" fontSize="9.5" hTextAlign="Left" vTextAlign="Middle"><text><![CDATA[CONTRATO]]></text></element>
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000071" x="380" y="50" width="13" height="13" fontSize="9" bold="true" hTextAlign="Center" vTextAlign="Middle"><box><pen lineWidth="0.5" lineColor="#000000"/></box><expression><![CDATA[$P{P_MOD_CONTRATO}]]></expression></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000072" x="0" y="72" width="425" height="14" fontSize="9.5" bold="true" hTextAlign="Left" vTextAlign="Middle"><text><![CDATA[DATOS PERSONALES DEL PARTÍCIPE:]]></text></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000073" x="0" y="94" width="100" height="14" fontSize="9.5" hTextAlign="Left" vTextAlign="Middle"><text><![CDATA[Nombres y Apellidos:]]></text></element>
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000074" x="100" y="94" width="325" height="14" fontSize="9.5" vTextAlign="Middle" textAdjust="CutText"><box><bottomPen lineWidth="0.5" lineColor="#000000"/></box><expression><![CDATA[$P{P_NOMBRE}]]></expression></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000075" x="0" y="116" width="100" height="14" fontSize="9.5" hTextAlign="Left" vTextAlign="Middle"><text><![CDATA[Cedula de Identidad No]]></text></element>
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000076" x="102" y="116" width="125" height="14" fontSize="9.5" vTextAlign="Middle" textAdjust="CutText"><box><bottomPen lineWidth="0.5" lineColor="#000000"/></box><expression><![CDATA[$P{P_CEDULA}]]></expression></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000077" x="245" y="116" width="30" height="14" fontSize="9.5" hTextAlign="Left" vTextAlign="Middle"><text><![CDATA[Sexo:]]></text></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000078" x="278" y="116" width="12" height="14" fontSize="9.5" hTextAlign="Left" vTextAlign="Middle"><text><![CDATA[M]]></text></element>
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000079" x="292" y="116" width="13" height="13" fontSize="9" bold="true" hTextAlign="Center" vTextAlign="Middle"><box><pen lineWidth="0.5" lineColor="#000000"/></box><expression><![CDATA[$P{P_SEXO_M}]]></expression></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000080" x="314" y="116" width="12" height="14" fontSize="9.5" hTextAlign="Left" vTextAlign="Middle"><text><![CDATA[F]]></text></element>
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000081" x="328" y="116" width="13" height="13" fontSize="9" bold="true" hTextAlign="Center" vTextAlign="Middle"><box><pen lineWidth="0.5" lineColor="#000000"/></box><expression><![CDATA[$P{P_SEXO_F}]]></expression></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000082" x="0" y="138" width="62" height="14" fontSize="9.5" hTextAlign="Left" vTextAlign="Middle"><text><![CDATA[Estado Civil:]]></text></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000083" x="64" y="138" width="38" height="14" fontSize="9.5" hTextAlign="Left" vTextAlign="Middle"><text><![CDATA[Soltero]]></text></element>
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000084" x="104" y="138" width="13" height="13" fontSize="9" bold="true" hTextAlign="Center" vTextAlign="Middle"><box><pen lineWidth="0.5" lineColor="#000000"/></box><expression><![CDATA[$P{P_EC_SOLTERO}]]></expression></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000085" x="124" y="138" width="36" height="14" fontSize="9.5" hTextAlign="Left" vTextAlign="Middle"><text><![CDATA[Casado]]></text></element>
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000086" x="162" y="138" width="13" height="13" fontSize="9" bold="true" hTextAlign="Center" vTextAlign="Middle"><box><pen lineWidth="0.5" lineColor="#000000"/></box><expression><![CDATA[$P{P_EC_CASADO}]]></expression></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000087" x="182" y="138" width="52" height="14" fontSize="9.5" hTextAlign="Left" vTextAlign="Middle"><text><![CDATA[Divorciado]]></text></element>
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000088" x="236" y="138" width="13" height="13" fontSize="9" bold="true" hTextAlign="Center" vTextAlign="Middle"><box><pen lineWidth="0.5" lineColor="#000000"/></box><expression><![CDATA[$P{P_EC_DIVORCIADO}]]></expression></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000089" x="256" y="138" width="28" height="14" fontSize="9.5" hTextAlign="Left" vTextAlign="Middle"><text><![CDATA[Viudo]]></text></element>
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000090" x="286" y="138" width="13" height="13" fontSize="9" bold="true" hTextAlign="Center" vTextAlign="Middle"><box><pen lineWidth="0.5" lineColor="#000000"/></box><expression><![CDATA[$P{P_EC_VIUDO}]]></expression></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000091" x="306" y="138" width="55" height="14" fontSize="9.5" hTextAlign="Left" vTextAlign="Middle"><text><![CDATA[Unión Libre]]></text></element>
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000092" x="363" y="138" width="13" height="13" fontSize="9" bold="true" hTextAlign="Center" vTextAlign="Middle"><box><pen lineWidth="0.5" lineColor="#000000"/></box><expression><![CDATA[$P{P_EC_UNION}]]></expression></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000093" x="0" y="160" width="95" height="14" fontSize="9.5" hTextAlign="Left" vTextAlign="Middle"><text><![CDATA[Fecha de Nacimiento]]></text></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000094" x="98" y="160" width="18" height="14" fontSize="9.5" hTextAlign="Left" vTextAlign="Middle"><text><![CDATA[Día]]></text></element>
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000095" x="118" y="160" width="26" height="14" fontSize="9.5" vTextAlign="Middle" textAdjust="CutText"><box><bottomPen lineWidth="0.5" lineColor="#000000"/></box><expression><![CDATA[$P{P_NAC_DIA}]]></expression></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000096" x="148" y="160" width="20" height="14" fontSize="9.5" hTextAlign="Left" vTextAlign="Middle"><text><![CDATA[Mes]]></text></element>
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000097" x="170" y="160" width="26" height="14" fontSize="9.5" vTextAlign="Middle" textAdjust="CutText"><box><bottomPen lineWidth="0.5" lineColor="#000000"/></box><expression><![CDATA[$P{P_NAC_MES}]]></expression></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000098" x="200" y="160" width="18" height="14" fontSize="9.5" hTextAlign="Left" vTextAlign="Middle"><text><![CDATA[Año]]></text></element>
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000099" x="220" y="160" width="34" height="14" fontSize="9.5" vTextAlign="Middle" textAdjust="CutText"><box><bottomPen lineWidth="0.5" lineColor="#000000"/></box><expression><![CDATA[$P{P_NAC_ANIO}]]></expression></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000100" x="270" y="160" width="75" height="14" fontSize="9.5" hTextAlign="Left" vTextAlign="Middle"><text><![CDATA[ROL ACTUAL No]]></text></element>
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000101" x="347" y="160" width="78" height="14" fontSize="9.5" vTextAlign="Middle" textAdjust="CutText"><box><bottomPen lineWidth="0.5" lineColor="#000000"/></box><expression><![CDATA[$P{P_ROL}]]></expression></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000102" x="0" y="182" width="95" height="14" fontSize="9.5" hTextAlign="Left" vTextAlign="Middle"><text><![CDATA[N° Cargas Familiares]]></text></element>
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000103" x="98" y="182" width="40" height="14" fontSize="9.5" vTextAlign="Middle" textAdjust="CutText"><box><bottomPen lineWidth="0.5" lineColor="#000000"/></box><expression><![CDATA[$P{P_CARGAS}]]></expression></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000104" x="145" y="182" width="162" height="14" fontSize="9.5" hTextAlign="Left" vTextAlign="Middle"><text><![CDATA[EMPRESA HIDROCARBURÍFERA]]></text></element>
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000105" x="309" y="182" width="116" height="14" fontSize="9.5" vTextAlign="Middle" textAdjust="CutText"><box><bottomPen lineWidth="0.5" lineColor="#000000"/></box><expression><![CDATA[$P{P_EMPRESA}]]></expression></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000106" x="0" y="206" width="425" height="14" fontSize="9.5" hTextAlign="Left" vTextAlign="Middle"><text><![CDATA[DIRECCION DOMICILIARIA:]]></text></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000107" x="0" y="226" width="46" height="14" fontSize="9.5" hTextAlign="Left" vTextAlign="Middle"><text><![CDATA[Provincia]]></text></element>
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000108" x="48" y="226" width="90" height="14" fontSize="9.5" vTextAlign="Middle" textAdjust="CutText"><box><bottomPen lineWidth="0.5" lineColor="#000000"/></box><expression><![CDATA[$P{P_PROVINCIA}]]></expression></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000109" x="144" y="226" width="36" height="14" fontSize="9.5" hTextAlign="Left" vTextAlign="Middle"><text><![CDATA[Cantón]]></text></element>
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000110" x="182" y="226" width="96" height="14" fontSize="9.5" vTextAlign="Middle" textAdjust="CutText"><box><bottomPen lineWidth="0.5" lineColor="#000000"/></box><expression><![CDATA[$P{P_CANTON}]]></expression></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000111" x="284" y="226" width="46" height="14" fontSize="9.5" hTextAlign="Left" vTextAlign="Middle"><text><![CDATA[Parroquia]]></text></element>
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000112" x="332" y="226" width="93" height="14" fontSize="9.5" vTextAlign="Middle" textAdjust="CutText"><box><bottomPen lineWidth="0.5" lineColor="#000000"/></box><expression><![CDATA[$P{P_PARROQUIA}]]></expression></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000113" x="0" y="248" width="70" height="14" fontSize="9.5" hTextAlign="Left" vTextAlign="Middle"><text><![CDATA[Barrio/Sector]]></text></element>
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000114" x="72" y="248" width="353" height="14" fontSize="9.5" vTextAlign="Middle" textAdjust="CutText"><box><bottomPen lineWidth="0.5" lineColor="#000000"/></box><expression><![CDATA[$P{P_BARRIO}]]></expression></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000115" x="0" y="270" width="35" height="14" fontSize="9.5" hTextAlign="Left" vTextAlign="Middle"><text><![CDATA[Calles:]]></text></element>
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000116" x="37" y="270" width="388" height="14" fontSize="9.5" vTextAlign="Middle" textAdjust="CutText"><box><bottomPen lineWidth="0.5" lineColor="#000000"/></box><expression><![CDATA[$P{P_CALLES}]]></expression></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000117" x="0" y="294" width="85" height="14" fontSize="9.5" hTextAlign="Left" vTextAlign="Middle"><text><![CDATA[Tipo de vivienda:]]></text></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000118" x="88" y="294" width="34" height="14" fontSize="9.5" hTextAlign="Left" vTextAlign="Middle"><text><![CDATA[Propia]]></text></element>
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000119" x="124" y="294" width="13" height="13" fontSize="9" bold="true" hTextAlign="Center" vTextAlign="Middle"><box><pen lineWidth="0.5" lineColor="#000000"/></box><expression><![CDATA[$P{P_VIV_PROPIA}]]></expression></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000120" x="146" y="294" width="46" height="14" fontSize="9.5" hTextAlign="Left" vTextAlign="Middle"><text><![CDATA[Alquilada]]></text></element>
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000121" x="194" y="294" width="13" height="13" fontSize="9" bold="true" hTextAlign="Center" vTextAlign="Middle"><box><pen lineWidth="0.5" lineColor="#000000"/></box><expression><![CDATA[$P{P_VIV_ALQUILADA}]]></expression></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000122" x="216" y="294" width="40" height="14" fontSize="9.5" hTextAlign="Left" vTextAlign="Middle"><text><![CDATA[Familiar]]></text></element>
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000123" x="258" y="294" width="13" height="13" fontSize="9" bold="true" hTextAlign="Center" vTextAlign="Middle"><box><pen lineWidth="0.5" lineColor="#000000"/></box><expression><![CDATA[$P{P_VIV_FAMILIAR}]]></expression></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000124" x="0" y="316" width="82" height="14" fontSize="9.5" hTextAlign="Left" vTextAlign="Middle"><text><![CDATA[Teléfonos: Casa]]></text></element>
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000125" x="84" y="316" width="110" height="14" fontSize="9.5" vTextAlign="Middle" textAdjust="CutText"><box><bottomPen lineWidth="0.5" lineColor="#000000"/></box><expression><![CDATA[$P{P_TEL_CASA}]]></expression></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000126" x="204" y="316" width="36" height="14" fontSize="9.5" hTextAlign="Left" vTextAlign="Middle"><text><![CDATA[Celular]]></text></element>
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000127" x="242" y="316" width="183" height="14" fontSize="9.5" vTextAlign="Middle" textAdjust="CutText"><box><bottomPen lineWidth="0.5" lineColor="#000000"/></box><expression><![CDATA[$P{P_CELULAR}]]></expression></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000128" x="0" y="338" width="82" height="14" fontSize="9.5" hTextAlign="Left" vTextAlign="Middle"><text><![CDATA[Correo Personal]]></text></element>
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000129" x="84" y="338" width="341" height="14" fontSize="9.5" vTextAlign="Middle" textAdjust="CutText"><box><bottomPen lineWidth="0.5" lineColor="#000000"/></box><expression><![CDATA[$P{P_CORREO_PERSONAL}]]></expression></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000130" x="0" y="360" width="98" height="14" fontSize="9.5" hTextAlign="Left" vTextAlign="Middle"><text><![CDATA[Correo Institucional]]></text></element>
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000131" x="100" y="360" width="325" height="14" fontSize="9.5" vTextAlign="Middle" textAdjust="CutText"><box><bottomPen lineWidth="0.5" lineColor="#000000"/></box><expression><![CDATA[$P{P_CORREO_INSTITUCIONAL}]]></expression></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000132" x="0" y="386" width="425" height="14" fontSize="9.5" bold="true" hTextAlign="Left" vTextAlign="Middle"><text><![CDATA[DATOS PROFESIONALES DEL PARTÍCIPE]]></text></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000133" x="0" y="406" width="112" height="14" fontSize="9.5" hTextAlign="Left" vTextAlign="Middle"><text><![CDATA[Remuneración Unificada:]]></text></element>
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000134" x="114" y="406" width="100" height="14" fontSize="9.5" vTextAlign="Middle" textAdjust="CutText"><box><bottomPen lineWidth="0.5" lineColor="#000000"/></box><expression><![CDATA[$P{P_REMUNERACION}]]></expression></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000135" x="225" y="406" width="125" height="14" fontSize="9.5" hTextAlign="Left" vTextAlign="Middle"><text><![CDATA[Fecha Ingreso al Trabajo:]]></text></element>
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000136" x="352" y="406" width="73" height="14" fontSize="9.5" vTextAlign="Middle" textAdjust="CutText"><box><bottomPen lineWidth="0.5" lineColor="#000000"/></box><expression><![CDATA[$P{P_FECHA_INGRESO}]]></expression></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000137" x="0" y="428" width="78" height="14" fontSize="9.5" hTextAlign="Left" vTextAlign="Middle"><text><![CDATA[Lugar de Trabajo]]></text></element>
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000138" x="80" y="428" width="345" height="14" fontSize="9.5" vTextAlign="Middle" textAdjust="CutText"><box><bottomPen lineWidth="0.5" lineColor="#000000"/></box><expression><![CDATA[$P{P_LUGAR_TRABAJO}]]></expression></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000139" x="0" y="450" width="100" height="14" fontSize="9.5" hTextAlign="Left" vTextAlign="Middle"><text><![CDATA[Unidad Administrativa]]></text></element>
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000140" x="102" y="450" width="323" height="14" fontSize="9.5" vTextAlign="Middle" textAdjust="CutText"><box><bottomPen lineWidth="0.5" lineColor="#000000"/></box><expression><![CDATA[$P{P_UNIDAD}]]></expression></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000141" x="0" y="472" width="62" height="14" fontSize="9.5" hTextAlign="Left" vTextAlign="Middle"><text><![CDATA[Cargo actual:]]></text></element>
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000142" x="64" y="472" width="146" height="14" fontSize="9.5" vTextAlign="Middle" textAdjust="CutText"><box><bottomPen lineWidth="0.5" lineColor="#000000"/></box><expression><![CDATA[$P{P_CARGO}]]></expression></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000143" x="218" y="472" width="90" height="14" fontSize="9.5" hTextAlign="Left" vTextAlign="Middle"><text><![CDATA[Título Profesional:]]></text></element>
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000144" x="310" y="472" width="115" height="14" fontSize="9.5" vTextAlign="Middle" textAdjust="CutText"><box><bottomPen lineWidth="0.5" lineColor="#000000"/></box><expression><![CDATA[$P{P_TITULO}]]></expression></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000145" x="0" y="496" width="425" height="28" fontSize="9.5" hTextAlign="Left" vTextAlign="Middle"><text><![CDATA[Si dispone de ingresos adicionales, especifique el monto y la actividad económica que realiza:]]></text></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000146" x="0" y="532" width="72" height="14" fontSize="9.5" hTextAlign="Left" vTextAlign="Middle"><text><![CDATA[Monto mensual]]></text></element>
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000147" x="74" y="532" width="100" height="14" fontSize="9.5" vTextAlign="Middle" textAdjust="CutText"><box><bottomPen lineWidth="0.5" lineColor="#000000"/></box><expression><![CDATA[$P{P_ING_MONTO}]]></expression></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000148" x="186" y="532" width="92" height="14" fontSize="9.5" hTextAlign="Left" vTextAlign="Middle"><text><![CDATA[Actividad o negocio]]></text></element>
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000149" x="280" y="532" width="145" height="14" fontSize="9.5" vTextAlign="Middle" textAdjust="CutText"><box><bottomPen lineWidth="0.5" lineColor="#000000"/></box><expression><![CDATA[$P{P_ING_ACTIVIDAD}]]></expression></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000150" x="0" y="590" width="200" height="14" fontSize="9.5" hTextAlign="Left" vTextAlign="Middle"><text><![CDATA[Firma  PARTICIPE]]></text></element>
+			<element kind="staticText" uuid="c0de0001-0000-0000-0000-000000000151" x="0" y="616" width="38" height="14" fontSize="9.5" hTextAlign="Left" vTextAlign="Middle"><text><![CDATA[Fecha]]></text></element>
+			<element kind="textField" uuid="c0de0001-0000-0000-0000-000000000152" x="40" y="616" width="110" height="14" fontSize="9.5" vTextAlign="Middle" textAdjust="CutText"><box><bottomPen lineWidth="0.5" lineColor="#000000"/></box><expression><![CDATA[$P{P_FECHA_FIRMA}]]></expression></element>
+		</band>
+	</detail>
+</jasperReport>
