@@ -147,3 +147,37 @@ Semilla: dos tipos en `CRD.TPDJ` («CONTRATO DE ADHESION», «CONTRATO DE ADHESI
   **celular**; lo que permita DatAgree se confirma en la fase 2.
 - **D3 — ¿La aprobación del contrato exige firma?** Por defecto **no** (la firma se registra aparte).
 - **D4 — Alcance:** contratos nuevos y también existentes (el botón está en cualquier contrato vigente).
+
+## 9. Fase 1b — impreso `RPRT_CNTR_ADHS` (modelo del cliente recibido 2026-11-10)
+Modelo: `MODELO_CONTRATO_DE_ADHESION_V2.docx` (+ `.txt` extraído) en `crd/modelos/2026-11-10/` — **local, sin
+commitear** (carpeta de archivos del cliente). Es plantilla en blanco, sin datos de socios. El texto legal se copia
+**literal**; el árbitro no redacta cláusulas.
+
+**Estructura:** título; cláusulas PRIMERA a DÉCIMO SEXTA; bloque de firmas (Gerente ASOPREP-FCPC / PARTÍCIPE con C.C.);
+ANEXO I «Ficha de información del partícipe» con firma del partícipe y fecha. Un solo PDF (el contrato y el anexo).
+Reporte con conexión (`<query>` con columnas explícitas, sin `SELECT *`) por `idContrato`; sin `fontName="Tahoma"`.
+
+**Campos (verificados en el modelo Java; el ejecutor confirma joins y nulos):**
+| Lugar en el modelo | Fuente |
+|---|---|
+| PRIMERA: nombre, cédula | `ENTD.razonSocial`, `ENTD.numeroIdentificacion` |
+| PRIMERA: «Trabajador de», «Rol No» | `ENTD.tipoHidrocarburifica` (nombre) o `filial` — el ejecutor verifica cuál es la empresa; `ENTD.rolPetroComercial` |
+| CUARTA: opción y porcentajes | **solo la opción del contrato** según `CNTR.tipoContrato` (jubilación / cesantía / ambas); mínimo fijo del modelo (Jub 5 %, Ces 5 %; opción 3: Jub 5 %, Ces 2 %); «Porcentaje adicional» desde `CNTRPRAI`/`CNTRPRAJ`/montos del contrato — el ejecutor mide qué columna guarda qué y lo reporta antes de fijarlo |
+| DÉCIMO SEXTA: ciudad y fecha | fecha = día de generación del PDF (fecha larga en español); ciudad = parámetro `ciudad`, por defecto «Quito» |
+| Firmas | Gerente: nombre y cargo **en un solo lugar del `.jrxml`** (parámetro con valor por defecto del modelo), no repetido; Partícipe: nombre y C.C. — sin líneas de firma manuscrita pintadas encima del área que use Security Data (posición a confirmar en fase 2) |
+| ANEXO I datos personales | `razonSocial`, `numeroIdentificacion`, `estadoCivil`, `fechaNacimiento`, `cargasFamiliares`, `rolPetroComercial`, empresa, `tipoVivienda`, `telefono`, `movil`, `correoPersonal`, `correoInstitucional` |
+| ANEXO I dirección | `CRD.Direccion` por defecto no laboral (`porDefecto`, `trabajo`): parroquia → cantón → provincia, `callePrincipal`, `calleSecundaria`, `numero`, `referencia` (barrio/sector) |
+| ANEXO I datos profesionales | `Participe`: `remuneracionUnificada`, `fechaIngresoTrabajo`, `lugarTrabajo`, `unidadAdministrativa`, `cargoActual`, `nivelEstudios` (título), `ingresoAdicionalMensual`, `ingresoAdicionalActividad` |
+| Sin fuente en el sistema | **Sexo** y **Nombramiento/Contrato** (modalidad laboral): se imprimen las casillas vacías; se reporta al usuario |
+
+Casillas (sexo, estado civil, vivienda, modalidad): marcar «X» en la que corresponda; las demás vacías.
+Dato faltante: se deja el espacio en blanco (no puntos suspensivos ni «null»).
+
+**Erratas del modelo a confirmar con el cliente** (no se corrigen sin su visto bueno): «CONTRARO» (título),
+«TERECERA», «ASOPREP-FCPCP» (DÉCIMO SEGUNDA), «EI PARTÍCIPE» (DÉCIMO TERCERA), «su el economista» (PRIMERA). Y dos
+frases que no calzan con firma electrónica: «suscriben en unidad de acto en TRES ejemplares» (DÉCIMO SEXTA) y
+«conforme se acredita con los documentos que se agregan como habilitantes».
+
+**Verificación:** `compilar-jasper.bat` + `verificar-fill-jasper.bat` y **PDF de muestra exportado y mirado** con un
+contrato de desarrollo (cuerpo completo, negritas, anexo, saltos de página). El PDF de muestra con datos reales no se
+commitea ni se comparte.
