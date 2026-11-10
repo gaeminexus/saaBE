@@ -1,4 +1,5 @@
 <!-- Solicitud de crédito (CRD) — formato FOR-CRE-SOL-01 del cliente.
+     AJUSTE-FIRMAS-SOLICITUD-PAGARE.md (A2, 2026-11-10): sin nombres de usuario sobre las firmas del personal de ASOPREP (firma física).
      DISENO-IMPRESOS-OTORGAMIENTO.md (IM1, IM2, IM10–IM15). Sintaxis compacta. Se llena por <query> con P_PRSTCDGO
      (una fila): sin SELECT *, columnas explícitas. SIN fontName (ni Tahoma): el exportador PDF pierde la negrita.
      IM1: el texto fijo es LITERAL del modelo (generado desde el texto del cliente). IM2: un dato sin fuente sale como
@@ -91,21 +92,7 @@
                            WHERE r.RGAPESTD = 1 AND (r.TPPRCDGO IS NULL OR r.TPPRCDGO = pr.TPPRCDGO)
                              AND (r.RGAPTPOP IS NULL OR r.RGAPTPOP = CASE WHEN p.PRSTPROR IS NULL THEN 1 WHEN p.PRSTRSTR = 1 OR UPPER(pr.PRDCNMBR) LIKE '%STRUCTURAD%' THEN 3 ELSE 2 END)
                              AND (r.RGAPMNMN IS NULL OR p.PRSTMNSL >= r.RGAPMNMN) AND (r.RGAPMNMX IS NULL OR p.PRSTMNSL <= r.RGAPMNMX)
-                             AND (r.RGAPPLMN IS NULL OR p.PRSTPLZO >= r.RGAPPLMN) AND (r.RGAPPLMX IS NULL OR p.PRSTPLZO <= r.RGAPPLMX)))) AS NIVEL_APROBACION,
-       (SELECT MAX(a2.APPRUSRO) FROM CRD.APPR a2
-         WHERE a2.PRSTCDGO = p.PRSTCDGO AND a2.APPRESTD = 1 AND a2.APPRDCSN = 1
-           AND a2.APPRORDN = (SELECT MAX(n2.NVAPORDN) FROM CRD.NVAP n2
-                               WHERE n2.RGAPCDGO = COALESCE((SELECT MAX(a3.RGAPCDGO) KEEP (DENSE_RANK FIRST ORDER BY a3.APPRORDN) FROM CRD.APPR a3
-                           WHERE a3.PRSTCDGO = p.PRSTCDGO AND a3.APPRESTD = 1),
-                         (SELECT MIN(r3.RGAPCDGO) KEEP (DENSE_RANK FIRST ORDER BY r3.RGAPPRRD, r3.RGAPCDGO) FROM CRD.RGAP r3
-                           WHERE r3.RGAPESTD = 1 AND (r3.TPPRCDGO IS NULL OR r3.TPPRCDGO = pr.TPPRCDGO)
-                             AND (r3.RGAPTPOP IS NULL OR r3.RGAPTPOP = CASE WHEN p.PRSTPROR IS NULL THEN 1 WHEN p.PRSTRSTR = 1 OR UPPER(pr.PRDCNMBR) LIKE '%STRUCTURAD%' THEN 3 ELSE 2 END)
-                             AND (r3.RGAPMNMN IS NULL OR p.PRSTMNSL >= r3.RGAPMNMN) AND (r3.RGAPMNMX IS NULL OR p.PRSTMNSL <= r3.RGAPMNMX)
-                             AND (r3.RGAPPLMN IS NULL OR p.PRSTPLZO >= r3.RGAPPLMN) AND (r3.RGAPPLMX IS NULL OR p.PRSTPLZO <= r3.RGAPPLMX)))
-                                 AND n2.NVAPESTD = 1
-                                 AND n2.NVAPORDN < (SELECT MAX(n3.NVAPORDN) FROM CRD.NVAP n3 WHERE n3.RGAPCDGO = n2.RGAPCDGO AND n3.NVAPESTD = 1))) AS REVISADO_POR,
-       TRIM(p.PRSTUSRG)                             AS USUARIO_ELABORA,
-       TRIM(p.PRSTUSAP)                             AS APROBADOR
+                             AND (r.RGAPPLMN IS NULL OR p.PRSTPLZO >= r.RGAPPLMN) AND (r.RGAPPLMX IS NULL OR p.PRSTPLZO <= r.RGAPPLMX)))) AS NIVEL_APROBACION
   FROM CRD.PRST p
   JOIN CRD.ENTD e   ON e.ENTDCDGO  = p.ENTDCDGO
   JOIN CRD.PRDC pr  ON pr.PRDCCDGO = p.PRDCCDGO
@@ -163,9 +150,6 @@
 	<field name="TIPO_CUENTA" class="java.lang.String"/>
 	<field name="NRO_CUENTA" class="java.lang.String"/>
 	<field name="NIVEL_APROBACION" class="java.lang.String"/>
-	<field name="REVISADO_POR" class="java.lang.String"/>
-	<field name="USUARIO_ELABORA" class="java.lang.String"/>
-	<field name="APROBADOR" class="java.lang.String"/>
 
 	<background splitType="Stretch"/>
 
@@ -913,28 +897,16 @@
 				<box leftPadding="3" rightPadding="3"><pen lineWidth="0.5" lineColor="#000000"/></box>
 			</element>
 			<element kind="line" uuid="a3000001-0000-0000-0000-000000000186" x="8" y="456" width="162" height="1"/>
-			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000187" x="0" y="458" width="178" height="12" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
-				<expression><![CDATA[($F{USUARIO_ELABORA} != null && !$F{USUARIO_ELABORA}.isEmpty() ? $F{USUARIO_ELABORA} : "")]]></expression>
-				<box leftPadding="3" rightPadding="3"/>
-			</element>
 			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000188" x="0" y="470" width="178" height="22" fontSize="8.0" hTextAlign="Center" vTextAlign="Top">
 				<text><![CDATA[Elaborado por — Asistente de Crédito]]></text>
 				<box leftPadding="3" rightPadding="3"/>
 			</element>
 			<element kind="line" uuid="a3000001-0000-0000-0000-000000000189" x="186" y="456" width="162" height="1"/>
-			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000190" x="178" y="458" width="178" height="12" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
-				<expression><![CDATA[($F{REVISADO_POR} != null && !$F{REVISADO_POR}.isEmpty() ? $F{REVISADO_POR} : "")]]></expression>
-				<box leftPadding="3" rightPadding="3"/>
-			</element>
 			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000191" x="178" y="470" width="178" height="22" fontSize="8.0" hTextAlign="Center" vTextAlign="Top">
 				<text><![CDATA[Revisado por — Jefe de Crédito]]></text>
 				<box leftPadding="3" rightPadding="3"/>
 			</element>
 			<element kind="line" uuid="a3000001-0000-0000-0000-000000000192" x="364" y="456" width="162" height="1"/>
-			<element kind="textField" uuid="a3000001-0000-0000-0000-000000000193" x="356" y="458" width="178" height="12" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
-				<expression><![CDATA[($F{APROBADOR} != null && !$F{APROBADOR}.isEmpty() ? $F{APROBADOR} : "")]]></expression>
-				<box leftPadding="3" rightPadding="3"/>
-			</element>
 			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000194" x="356" y="470" width="178" height="22" fontSize="8.0" hTextAlign="Center" vTextAlign="Top">
 				<text><![CDATA[Aprobado por — Gerencia General / CAD]]></text>
 				<box leftPadding="3" rightPadding="3"/>

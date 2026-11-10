@@ -9,7 +9,8 @@
      llenado y el compilador necesitan sólo esa .class en el classpath.
      B3 (DISENO-SOLICITUD-V1-AUTORIZACION-Y-REGLAS-OTORGAMIENTO.md): con garante ACTIVO (CRD.GRPR, crd/sql/369) se agrega
      un segundo bloque de firma «FIRMA DEL GARANTE». El texto legal NO cambia. Sin garante el pagaré sale como antes: las
-     firmas pasaron de <summary> a una banda de <detail> igual, y el bloque del garante solo se imprime si existe. -->
+     firmas pasaron de <summary> a una banda de <detail> igual, y el bloque del garante solo se imprime si existe.
+     AJUSTE-FIRMAS-SOLICITUD-PAGARE.md (A1, 2026-11-10): producto PQ/PE (quirografario/emergente) = sin firma ni mencion del conyuge (SIN_CONYUGE). -->
 <jasperReport name="RPRT_PRST_PGRE" language="java" pageWidth="595" pageHeight="842" columnWidth="515" leftMargin="40" rightMargin="40" topMargin="30" bottomMargin="30" whenNoDataType="AllSectionsNoDetail" uuid="a2000001-0000-0000-0000-000000000001">
 	<property name="com.jaspersoft.studio.data.defaultdataadapter" value="Oracle"/>
 	<property name="com.jaspersoft.studio.report.description" value="Pagaré a la orden — modelo V2 del cliente"/>
@@ -35,7 +36,8 @@
        TRIM(cb.CNBPNMRO)                       AS NRO_CUENTA,
        CASE cb.CNBPTPCN WHEN 1 THEN 'AHORROS' WHEN 2 THEN 'CORRIENTE' END AS TIPO_CUENTA,
        TRIM(g.GRPRNMBR)                        AS GARANTE_NOMBRES,
-       TRIM(g.GRPRNMID)                        AS GARANTE_CEDULA
+       TRIM(g.GRPRNMID)                        AS GARANTE_CEDULA,
+       CASE WHEN TRIM(pr.PRDCCDPT) IN ('PQ','PE') THEN 1 ELSE 0 END AS SIN_CONYUGE
   FROM CRD.PRST p
   JOIN CRD.ENTD e   ON e.ENTDCDGO  = p.ENTDCDGO
   JOIN CRD.PRDC pr  ON pr.PRDCCDGO = p.PRDCCDGO
@@ -74,6 +76,7 @@
 	<field name="TIPO_CUENTA" class="java.lang.String"/>
 	<field name="GARANTE_NOMBRES" class="java.lang.String"/>
 	<field name="GARANTE_CEDULA" class="java.lang.String"/>
+	<field name="SIN_CONYUGE" class="java.math.BigDecimal"/>
 
 	<!-- Variables: cada una arma un pedazo del modelo; lo vacío sale como línea para llenar a mano (IM2). -->
 	<variable name="V_NUMERO" class="java.lang.String">
@@ -101,7 +104,7 @@
 		<expression><![CDATA[$F{TIPO_CREDITO} != null && !$F{TIPO_CREDITO}.isEmpty() ? $F{TIPO_CREDITO} : "____________"]]></expression>
 	</variable>
 	<variable name="V_HAY_CONYUGE" class="java.lang.Boolean">
-		<expression><![CDATA[$F{CONYUGE_NOMBRES} != null && !$F{CONYUGE_NOMBRES}.isEmpty()]]></expression>
+		<expression><![CDATA[$F{CONYUGE_NOMBRES} != null && !$F{CONYUGE_NOMBRES}.isEmpty() && !($F{SIN_CONYUGE} != null && $F{SIN_CONYUGE}.intValue() == 1)]]></expression>
 	</variable>
 	<variable name="V_HAY_GARANTE" class="java.lang.Boolean">
 		<expression><![CDATA[$F{GARANTE_CEDULA} != null && !$F{GARANTE_CEDULA}.isEmpty()]]></expression>
