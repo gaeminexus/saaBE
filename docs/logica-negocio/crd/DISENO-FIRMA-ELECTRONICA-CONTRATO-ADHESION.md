@@ -31,6 +31,19 @@ Ejecutores: omen-saa-1-be (saaBE) y omen-saa-1-fe (saaFE).
   dependencias nuevas en el `pom.xml`.
 
 ## 2. Flujo
+> **Aclaración del usuario (2026-11-10), manda sobre el resto de esta sección:** «debemos mandar el pdf del contrato
+> y datos del partícipe y ellos nos devuelven firmado por los dos». Security Data **firma por el partícipe** (con los
+> datos que le enviamos, emitiendo su certificado) **y** con la firma del representante legal, y devuelve el PDF ya
+> firmado por los dos. El SAA no gestiona firmantes ni envía enlaces: arma el paquete PDF + datos del partícipe.
+> - La respuesta puede ser **inmediata** (el envío ya devuelve el PDF firmado → el trámite pasa directo a `3 FIRMADO`)
+>   o **diferida** (devuelven un id y el firmado se obtiene después → `2 ENVIADO` y «Actualizar estado»). La interfaz
+>   cubre las dos: `ResultadoEnvio` trae opcionalmente el PDF firmado; la fase 2 dice cuál aplica.
+> - **Datos del partícipe que pide Security Data:** desconocidos hasta la documentación. Hoy se envía cédula, nombres,
+>   correo y celular (foto en FRFR). Si piden más (dirección, fecha de nacimiento, foto de cédula…), la fase 2 los
+>   agrega al DTO de envío y, si hace falta guardar la foto de lo enviado, a FRFR con un DDL aparte.
+> - FRFR sigue siendo una fila por trámite (el partícipe) para guardar qué datos se mandaron; la firma del
+>   representante no tiene fila.
+
 1. **Generar** el PDF del contrato (reporte `RPRT_CNTR_ADHS`, fase 1b, con el formato del cliente).
 2. **Enviar a firmar** (botón en el contrato): crea el trámite `CRD.FRCN` en `1 PENDIENTE_ENVIO`, guarda el PDF
    original como adjunto (TPDJ «CONTRATO DE ADHESION»), arma los firmantes (`CRD.FRFR`) y llama al proveedor →
