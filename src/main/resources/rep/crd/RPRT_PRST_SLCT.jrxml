@@ -1,5 +1,5 @@
 <!-- Solicitud de crédito (CRD) — formato FOR-CRE-SOL-01 del cliente.
-     AJUSTE-FIRMAS-SOLICITUD-PAGARE.md (A2, 2026-11-10): sin nombres de usuario sobre las firmas del personal de ASOPREP (firma física).
+     AJUSTE-FIRMAS-SOLICITUD-PAGARE.md (A2, 2026-11-10): sin nombres de usuario sobre las firmas del personal de ASOPREP (firma física) y sin cargos (pedido del usuario 2026-11-10).
      DISENO-IMPRESOS-OTORGAMIENTO.md (IM1, IM2, IM10–IM15). Sintaxis compacta. Se llena por <query> con P_PRSTCDGO
      (una fila): sin SELECT *, columnas explícitas. SIN fontName (ni Tahoma): el exportador PDF pierde la negrita.
      IM1: el texto fijo es LITERAL del modelo (generado desde el texto del cliente). IM2: un dato sin fuente sale como
@@ -898,17 +898,17 @@
 			</element>
 			<element kind="line" uuid="a3000001-0000-0000-0000-000000000186" x="8" y="456" width="162" height="1"/>
 			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000188" x="0" y="470" width="178" height="22" fontSize="8.0" hTextAlign="Center" vTextAlign="Top">
-				<text><![CDATA[Elaborado por — Asistente de Crédito]]></text>
+				<text><![CDATA[Elaborado por]]></text>
 				<box leftPadding="3" rightPadding="3"/>
 			</element>
 			<element kind="line" uuid="a3000001-0000-0000-0000-000000000189" x="186" y="456" width="162" height="1"/>
 			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000191" x="178" y="470" width="178" height="22" fontSize="8.0" hTextAlign="Center" vTextAlign="Top">
-				<text><![CDATA[Revisado por — Jefe de Crédito]]></text>
+				<text><![CDATA[Revisado por]]></text>
 				<box leftPadding="3" rightPadding="3"/>
 			</element>
 			<element kind="line" uuid="a3000001-0000-0000-0000-000000000192" x="364" y="456" width="162" height="1"/>
 			<element kind="staticText" uuid="a3000001-0000-0000-0000-000000000194" x="356" y="470" width="178" height="22" fontSize="8.0" hTextAlign="Center" vTextAlign="Top">
-				<text><![CDATA[Aprobado por — Gerencia General / CAD]]></text>
+				<text><![CDATA[Aprobado por]]></text>
 				<box leftPadding="3" rightPadding="3"/>
 			</element>
 		</band>

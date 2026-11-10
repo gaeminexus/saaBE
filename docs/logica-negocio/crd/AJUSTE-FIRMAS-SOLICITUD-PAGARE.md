@@ -25,6 +25,8 @@ nada más de su diseño (`DISENO-IMPRESOS-OTORGAMIENTO.md`, `DISENO-SOLICITUD-V1
 - Última banda del `detail` (sección 7): se **quitan** los tres `textField` con `USUARIO_ELABORA`, `REVISADO_POR` y
   `APROBADOR`. Quedan las tres líneas de firma y los textos «Elaborado por — Asistente de Crédito», «Revisado por —
   Jefe de Crédito» y «Aprobado por — Gerencia General / CAD», en la misma posición, para firma física.
+- **Ajuste del usuario (mismo día):** tampoco los cargos. Los tres textos quedan solo «Elaborado por», «Revisado
+  por» y «Aprobado por».
 - Se retiran también los tres `<field>` y sus columnas del `<query>` (la subconsulta de `REVISADO_POR` incluida):
   no se imprimen en ningún otro lugar.
 - No cambian: la firma del partícipe (sección 5, lleva su nombre y cédula, no es personal de ASOPREP), «Nivel de
