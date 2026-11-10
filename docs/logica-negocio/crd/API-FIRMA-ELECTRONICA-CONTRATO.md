@@ -81,3 +81,12 @@ Errores del proveedor (502): `PROVEEDOR_NO_CONFIGURADO` (faltan `saa.firma.secur
 ## Mensajes sugeridos para el usuario
 `FORMATO_CONTRATO_PENDIENTE`: «El formato del contrato aún no está disponible.» · `PROVEEDOR_NO_DISPONIBLE`: «El servicio de firma
 electrónica aún no está habilitado.» · `PROVEEDOR_NO_CONFIGURADO`: «Falta configurar el servicio de firma electrónica en el servidor.»
+
+## Campos nuevos de la ficha del partícipe (Anexo I del contrato) — DDL `sql/377`
+No existe un doc API de la ficha; los campos nuevos viajan en los JSON de siempre (`/rest/entd`, `/rest/prtc`, `/rest/drcc`), todos opcionales:
+| Entidad | Campo JSON | Valores |
+|---|---|---|
+| `Entidad` (ENTD) | `sexo` | `"M"`, `"F"` o null (otro valor: el mensaje de error empieza con `SEXO_INVALIDO`, por el manejo de errores de siempre del REST) |
+| `Participe` (PRTC) | `modalidadLaboral` | `1` Nombramiento, `2` Contrato o null (otro valor: `MODALIDAD_LABORAL_INVALIDA`) |
+| `Participe` (PRTC) | `tituloProfesional` | texto (hasta 300); el impreso usa `nivelEstudios` si está vacío |
+| `Direccion` (DRCC) | `barrio` | texto (hasta 300); el impreso NO usa `referencia` como respaldo |

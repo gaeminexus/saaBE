@@ -8,6 +8,7 @@ import com.saa.ejb.crd.dao.ParticipeDaoService;
 import com.saa.ejb.crd.service.EntidadService;
 import com.saa.ejb.crd.service.ParticipeService;
 import com.saa.model.crd.NombreEntidadesCredito;
+import com.saa.ejb.crd.util.ValidacionFichaParticipe;
 import com.saa.model.crd.Participe;
 import com.saa.rubros.Estado;
 
@@ -51,6 +52,7 @@ public class ParticipeServiceImpl implements ParticipeService {
     public void save(List<Participe> lista) throws Throwable {
         System.out.println("Ingresa al metodo save de ParticipeService");
         for (Participe registro : lista) {
+            ValidacionFichaParticipe.validar(registro);
             participeDaoService.save(registro, registro.getCodigo());
         }
     }
@@ -74,6 +76,7 @@ public class ParticipeServiceImpl implements ParticipeService {
     @Override
     public Participe saveSingle(Participe participe) throws Throwable {
         System.out.println("saveSingle - Participe");
+        ValidacionFichaParticipe.validar(participe);
         if(participe.getCodigo() == null){
         	participe.setIdEstado(Long.valueOf(Estado.ACTIVO)); //Activo
 		}

@@ -10,6 +10,7 @@ import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.crd.dao.EntidadDaoService;
 import com.saa.ejb.crd.service.EntidadService;
+import com.saa.ejb.crd.util.ValidacionFichaParticipe;
 import com.saa.model.crd.Entidad;
 import com.saa.model.crd.NombreEntidadesCredito;
 import com.saa.rubros.EstadoParticipeEntidad;
@@ -62,6 +63,7 @@ public class EntidadServiceImpl implements EntidadService {
     public void save(List<Entidad> lista) throws Throwable {
         System.out.println("Ingresa al metodo save de EntidadService");
         for (Entidad registro : lista) {
+            ValidacionFichaParticipe.validar(registro);
             entidadDaoService.save(registro, registro.getCodigo());
         }
     }
@@ -85,6 +87,7 @@ public class EntidadServiceImpl implements EntidadService {
     @Override
     public Entidad saveSingle(Entidad entidad) throws Throwable {
         System.out.println("saveSingle - Entidad");
+        ValidacionFichaParticipe.validar(entidad);
         if(entidad.getCodigo() == null){
         	// La entidad nace pendiente de ser reportada en el G41.
         	// Antes se usaba el rubro genérico Estado.ACTIVO (1), que no

@@ -337,5 +337,11 @@ public class Entidad implements Serializable {
     public EstadoCivil getEstadoCivil() { return estadoCivil; }
     public void setEstadoCivil(EstadoCivil estadoCivil) { this.estadoCivil = estadoCivil; }
 
-}
+    /** Sexo del partícipe: {@code M} o {@code F} (ver {@link com.saa.rubros.SexoParticipe}); null si no se conoce (sql/377). */
+    @Basic
+    @Column(name = "ENTDSEXO", length = 1)
+    private String sexo;
 
+    public String getSexo() { return sexo; }
+    public void setSexo(String sexo) { this.sexo = sexo; }
+}

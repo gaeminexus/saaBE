@@ -318,5 +318,30 @@ public class Participe implements Serializable {
     public void setTipoAporte(TipoAporte tipoAporte) {
         this.tipoAporte = tipoAporte;
     }
-}
 
+    /** Modalidad laboral: 1 NOMBRAMIENTO, 2 CONTRATO (ver {@link com.saa.rubros.ModalidadLaboral}); null si no se conoce (sql/377). */
+    @Basic
+    @Column(name = "PRTCMDLB")
+    private Long modalidadLaboral;
+
+    /** Título profesional (el nivel de estudios va aparte en {@code nivelEstudios}) (sql/377). */
+    @Basic
+    @Column(name = "PRTCTTPR", length = 300)
+    private String tituloProfesional;
+
+    public Long getModalidadLaboral() {
+        return modalidadLaboral;
+    }
+
+    public void setModalidadLaboral(Long modalidadLaboral) {
+        this.modalidadLaboral = modalidadLaboral;
+    }
+
+    public String getTituloProfesional() {
+        return tituloProfesional;
+    }
+
+    public void setTituloProfesional(String tituloProfesional) {
+        this.tituloProfesional = tituloProfesional;
+    }
+}

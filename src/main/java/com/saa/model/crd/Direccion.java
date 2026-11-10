@@ -238,5 +238,12 @@ public class Direccion implements Serializable {
 
     public String getNumero() { return numero; }
     public void setNumero(String numero) { this.numero = numero; }
-}
 
+    /** Barrio / sector (distinto de la referencia) (sql/377). */
+    @Basic
+    @Column(name = "DRCCBRRO", length = 300)
+    private String barrio;
+
+    public String getBarrio() { return barrio; }
+    public void setBarrio(String barrio) { this.barrio = barrio; }
+}

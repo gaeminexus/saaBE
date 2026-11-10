@@ -14,6 +14,8 @@ import com.saa.model.crd.Direccion;
 import com.saa.model.crd.Entidad;
 import com.saa.model.crd.Participe;
 import com.saa.rubros.Estado;
+import com.saa.rubros.ModalidadLaboral;
+import com.saa.rubros.SexoParticipe;
 
 /**
  * Parámetros del reporte RPRT_CNTR_ADHS (contrato de adhesión + Anexo I) a partir de las entidades ya cargadas. Clase pura
@@ -26,7 +28,8 @@ import com.saa.rubros.Estado;
  *       jubilación si {@code CNTRPRAJ} o {@code CNTRMNAJ} son &gt; 0; cesantía si {@code CNTRPRAI} o {@code CNTRMNAC} son &gt; 0.</li>
  *   <li>Mínimos fijos del modelo del cliente: ver {@link #MIN_JUBILACION}, {@link #MIN_CESANTIA_SOLA},
  *       {@link #MIN_CESANTIA_CON_JUBILACION}.</li>
- *   <li>Sexo y modalidad laboral (Nombramiento/Contrato) no existen en el sistema: casillas vacías.</li>
+ *   <li>Sexo (ENTDSEXO) y modalidad laboral (PRTCMDLB): casilla marcada solo si el dato existe; si no, vacía.</li>
+ *   <li>Barrio solo desde DRCCBRRO (sin respaldo en la referencia); título desde PRTCTTPR con respaldo en nivelEstudios.</li>
  * </ul>
  */
 public final class ContratoAdhesionParametros {
@@ -97,10 +100,12 @@ public final class ContratoAdhesionParametros {
         p.put("P_VIV_PROPIA", marca(viv.contains("PROPI")));
         p.put("P_VIV_ALQUILADA", marca(viv.contains("ALQUIL") || viv.contains("ARRIEND")));
         p.put("P_VIV_FAMILIAR", marca(viv.contains("FAMILIAR")));
-        p.put("P_SEXO_M", "");
-        p.put("P_SEXO_F", "");
-        p.put("P_MOD_NOMBRAMIENTO", "");
-        p.put("P_MOD_CONTRATO", "");
+        String sexo = e != null && e.getSexo() != null ? e.getSexo().trim().toUpperCase() : "";
+        p.put("P_SEXO_M", marca(SexoParticipe.MASCULINO.equals(sexo)));
+        p.put("P_SEXO_F", marca(SexoParticipe.FEMENINO.equals(sexo)));
+        Long modalidad = participe != null ? participe.getModalidadLaboral() : null;
+        p.put("P_MOD_NOMBRAMIENTO", marca(modalidad != null && modalidad == ModalidadLaboral.NOMBRAMIENTO));
+        p.put("P_MOD_CONTRATO", marca(modalidad != null && modalidad == ModalidadLaboral.CONTRATO));
 
         String[] nac = fechaNacimiento(e != null ? e.getFechaNacimiento() : null);
         p.put("P_NAC_DIA", nac[0]);
@@ -126,7 +131,7 @@ public final class ContratoAdhesionParametros {
                     }
                 }
             }
-            barrio = texto(d.getReferencia());
+            barrio = texto(d.getBarrio());
             StringBuilder c = new StringBuilder(texto(d.getCallePrincipal()));
             if (!texto(d.getCalleSecundaria()).isEmpty()) {
                 c.append(c.length() > 0 ? " y " : "").append(texto(d.getCalleSecundaria()));
@@ -149,7 +154,11 @@ public final class ContratoAdhesionParametros {
         p.put("P_LUGAR_TRABAJO", texto(participe != null ? participe.getLugarTrabajo() : null));
         p.put("P_UNIDAD", texto(participe != null ? participe.getUnidadAdministrativa() : null));
         p.put("P_CARGO", texto(participe != null ? participe.getCargoActual() : null));
-        p.put("P_TITULO", texto(participe != null ? participe.getNivelEstudios() : null));
+        String titulo = participe != null ? texto(participe.getTituloProfesional()) : "";
+        if (titulo.isEmpty() && participe != null) {
+            titulo = texto(participe.getNivelEstudios()); // respaldo: el nivel de estudios
+        }
+        p.put("P_TITULO", titulo);
         p.put("P_ING_MONTO", participe != null && participe.getIngresoAdicionalMensual() != null
             && participe.getIngresoAdicionalMensual() > 0 ? "$" + String.format(ES, "%,d", participe.getIngresoAdicionalMensual()) : "");
         p.put("P_ING_ACTIVIDAD", texto(participe != null ? participe.getIngresoAdicionalActividad() : null));
