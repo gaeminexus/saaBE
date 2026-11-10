@@ -240,3 +240,10 @@ estado ACTIVO y no vencida; si hay más de una, la de vencimiento más lejano. S
 `REPRESENTANTE_SIN_FIRMA` («Security Data todavía no tiene cargada/delegada la firma del representante legal»).
 `referenciaRepresentante` queda como propiedad **opcional** que, si viene, manda sobre la búsqueda. Requisito para
 Security Data: la delegación tiene que quedar **a nombre del usuario API** del SAA (si no, la búsqueda no la ve).
+
+**Decisión del usuario 2026-11-10 (manda sobre lo anterior del representante): «La firma la estampan ellos, eso no nos
+debe preocupar».** El SAA **no** incluye al representante en la tarea: `createTask` lleva **solo al socio**
+(`TP_SIGNER_NORMAL`, con sus posiciones). No se busca `referenceCode`, `cedulaRepresentante` deja de ser obligatoria y
+desaparece el error `REPRESENTANTE_SIN_FIRMA` del flujo productivo. `referenciaRepresentante` queda como propiedad
+**opcional**: solo si se configura, se agrega como firmante embebido (por si Security Data lo pide más adelante).
+Se verifica en la primera prueba real que el PDF devuelto traiga las dos firmas.
