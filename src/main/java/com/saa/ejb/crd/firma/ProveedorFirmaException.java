@@ -20,8 +20,6 @@ public class ProveedorFirmaException extends Exception {
     public static final String FIRMANTE_REQUIERE_DATOS = "FIRMANTE_REQUIERE_DATOS";
     /** Security Data rechazó al firmante (STY-0003, STY-0013, STY-0014): el mensaje trae su errorReason literal. */
     public static final String FIRMANTE_RECHAZADO = "FIRMANTE_RECHAZADO";
-    /** No hay firma de representante legal activa y vigente delegada en Security Data (la sube y procesa Security Data). */
-    public static final String REPRESENTANTE_SIN_FIRMA = "REPRESENTANTE_SIN_FIRMA";
     /** El proveedor respondió algo que no se puede interpretar. */
     public static final String RESPUESTA_INVALIDA = "RESPUESTA_PROVEEDOR_INVALIDA";
     /** El proveedor respondió con un error (HTTP o status=false); el mensaje trae el suyo. */

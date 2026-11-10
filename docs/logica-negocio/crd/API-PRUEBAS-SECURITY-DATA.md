@@ -49,7 +49,7 @@ En el log del servidor solo van el nombre de la operación, el HTTP y la duraci�
 `processId` y `pdfId`: solo letras, números, guion y guion bajo (si no, 400 `PARAMETRO_INVALIDO`).
 
 ### 0 · `configuracion` (devuelve esto, no la forma común)
-`{paso:0, habilitadas, url, usuario, claveConfigurada, ruc, cedulaRepresentante, referenciaRepresentanteConfigurada,
+`{paso:0, habilitadas, url, usuario, claveConfigurada, ruc, cedulaRepresentante (solo informativa), referenciaRepresentanteConfigurada,
 metodoNotificacion, propiedadesFaltantes:[…]}`. Nunca trae la clave.
 
 ### 2 · `validar-firmante`

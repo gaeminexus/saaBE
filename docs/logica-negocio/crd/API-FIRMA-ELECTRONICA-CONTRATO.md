@@ -6,15 +6,15 @@ WildFly, todo contra el proveedor responde `PROVEEDOR_NO_CONFIGURADO`.
 
 ## Reglas
 - El SAA manda a Security Data el PDF del contrato y los datos del partícipe (cédula, correo, celular y **código dactilar**).
-  Security Data le envía **al partícipe** un enlace (y el OTP) por correo/WhatsApp; el partícipe firma desde ahí y el
-  **representante legal de ASOPREP** firma solo, al final (firma embebida, delegada en Security Data). El SAA no gestiona
-  enlaces: el enlace del partícipe no se guarda ni se devuelve. `firmantes` trae una sola fila (el partícipe, rol `PARTICIPE`);
+  Security Data le envía **al partícipe** un enlace (y el OTP) por correo/WhatsApp; el partícipe firma desde ahí. La tarea lleva
+  **solo al partícipe**: la firma del representante legal de ASOPREP la estampa Security Data y el SAA no interviene (no la busca
+  ni la exige). El SAA no gestiona enlaces: el enlace del partícipe no se guarda ni se devuelve. `firmantes` trae una sola fila (el partícipe, rol `PARTICIPE`);
   su `idExterno` es el `signatoryId` del proveedor (vale 3 días).
 - Al enviar el trámite queda **ENVIADO** (estado 2) y «Actualizar estado» consulta al proveedor hasta que esté firmado (no hay webhook).
 - **Código dactilar:** 6 caracteres alfanuméricos (reverso de la cédula), lo digita el funcionario. **Va en el CUERPO JSON** de
   `enviar` y de `reintentar`, nunca en la URL, y no se guarda en ninguna tabla ni en el log. Cada reintento lo vuelve a pedir.
 - **Posiciones de firma:** el SAA ubica solo la firma del partícipe (bloque PARTÍCIPE del contrato y «Firma PARTICIPE» del Anexo I)
-  y la del Gerente, en la página real del PDF generado.
+  (y la del Gerente solo si hay `referenciaRepresentante`), en la página real del PDF generado.
 - El PDF sale del reporte `RPRT_CNTR_ADHS` (contrato + Anexo I). `FORMATO_CONTRATO_PENDIENTE` solo si falta ese reporte en el servidor.
 - Correo del firmante: el personal o, si no hay, el institucional; celular: el móvil. Se copian a `FRFR` al enviar (foto de lo enviado).
 - **Un solo trámite vivo** (estado 1 o 2) por contrato. Para volver a enviar hay que anular o esperar el resultado.
@@ -90,21 +90,19 @@ Cuerpo `{ "exito": false, "mensaje": "CODIGO: texto", "error": "CODIGO" }`.
 | 409 | `ARCHIVO_NO_DISPONIBLE` | no hay PDF de ese tipo, no se puede leer, o su SHA-256 no coincide |
 
 Errores del proveedor (502; el trámite NO se pierde, queda en 1 con el error; `mensaje` = «CODIGO: texto»):
-- `PROVEEDOR_NO_CONFIGURADO`: faltan propiedades de WildFly `saa.firma.securitydata.url|usuario|clave|ruc` y, para enviar,
-  `cedulaRepresentante`. Opcionales: `referenciaRepresentante` (si viene, manda sobre la búsqueda), `metodoNotificacion`
-  (`ENVIO_OTPN_CORREO_WSS`), `diasVigencia` (7), `horasRenotificacion` (24).
+- `PROVEEDOR_NO_CONFIGURADO`: faltan propiedades de WildFly `saa.firma.securitydata.url|usuario|clave|ruc`. Opcionales:
+  `referenciaRepresentante` (solo si viene, el representante se agrega como firmante embebido en la posición del Gerente),
+  `metodoNotificacion` (`ENVIO_OTPN_CORREO_WSS`), `diasVigencia` (7), `horasRenotificacion` (24).
 - `PROVEEDOR_NO_DISPONIBLE`: no hay comunicación con Security Data. `ERROR_PROVEEDOR`: Security Data respondió un error (el mensaje trae el suyo).
   `RESPUESTA_PROVEEDOR_INVALIDA`: respuesta que no se puede interpretar.
 - `FIRMANTE_REQUIERE_DATOS`: Security Data pide más datos del firmante (STY-0002; el mensaje lista campos y adjuntos). No hay paso 2 todavía.
 - `FIRMANTE_RECHAZADO`: Security Data no aceptó al firmante (STY-0003, STY-0013 cédula no habilitada, STY-0014 cédula expirada);
   el mensaje trae el `errorReason` literal del proveedor. Reintentar sirve solo si el motivo es el código dactilar o un dato corregible.
-- `REPRESENTANTE_SIN_FIRMA`: no hay en Security Data una firma de Representante Legal ACTIVA y vigente delegada para la cédula
-  `saa.firma.securitydata.cedulaRepresentante` (la sube y procesa Security Data). Se resuelve cuando la carguen; luego «Reintentar».
 
 ## Mensajes sugeridos para el usuario
 `FORMATO_CONTRATO_PENDIENTE`: «El formato del contrato aún no está disponible.» · `PROVEEDOR_NO_DISPONIBLE`: «No hay comunicación con el
 servicio de firma electrónica.» · `PROVEEDOR_NO_CONFIGURADO`: «Falta configurar el servicio de firma electrónica en el servidor.» ·
-`REPRESENTANTE_SIN_FIRMA`: «Aún no está cargada la firma del representante legal en Security Data.» · `FIRMANTE_RECHAZADO` /
+`FIRMANTE_RECHAZADO` /
 `FIRMANTE_REQUIERE_DATOS`: mostrar el mensaje tal cual (trae el motivo del proveedor).
 
 ## Campos nuevos de la ficha del partícipe (Anexo I del contrato) — DDL `sql/377`

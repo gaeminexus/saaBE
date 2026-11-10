@@ -112,7 +112,7 @@ public final class SecurityDataPruebas {
         c.put("metodoNotificacion", metodo != null ? metodo : SecurityDataProveedor.METODO_NOTIFICACION_DEFECTO);
         List<String> faltan = new ArrayList<>();
         for (String p : new String[] {SecurityDataProveedor.PROP_URL, SecurityDataProveedor.PROP_USUARIO,
-            SecurityDataProveedor.PROP_CLAVE, SecurityDataProveedor.PROP_RUC, SecurityDataProveedor.PROP_CEDULA_REPRESENTANTE}) {
+            SecurityDataProveedor.PROP_CLAVE, SecurityDataProveedor.PROP_RUC}) {
             if (SecurityDataProveedor.propiedad(p) == null) {
                 faltan.add(p);
             }

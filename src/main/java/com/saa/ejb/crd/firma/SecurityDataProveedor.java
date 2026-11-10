@@ -28,8 +28,9 @@ import com.saa.rubros.EstadoFirmanteContrato;
  *
  * <p>Configuración: propiedades de sistema de WildFly, sin valores por defecto (nunca en el código ni en el repo):
  * {@code saa.firma.securitydata.url} (la base, hasta {@code /api/dtagree}), {@code .usuario}, {@code .clave}, {@code .ruc},
- * {@code .cedulaRepresentante} (solo para enviar: con ella se busca la firma delegada del representante legal).
- * Opcionales: {@code .referenciaRepresentante} (si viene, manda sobre la búsqueda), {@code .metodoNotificacion}
+ * Opcionales: {@code .referenciaRepresentante} (solo si viene, el representante legal se agrega como firmante embebido; la
+ * firma del representante la estampa Security Data), {@code .cedulaRepresentante} (solo informativa, para la consola de
+ * pruebas), {@code .metodoNotificacion}
  * (ENVIO_OTPN_CORREO_WSS), {@code .diasVigencia} (7), {@code .horasRenotificacion} (24). Si falta una obligatoria:
  * {@code PROVEEDOR_NO_CONFIGURADO} con su nombre (nunca su valor).</p>
  *
@@ -90,9 +91,13 @@ public class SecurityDataProveedor implements ProveedorFirmaElectronica {
             throws ProveedorFirmaException {
         System.out.println("SecurityDataProveedor.enviar - documento: " + nombreDocumento);
         Configuracion cfg = configuracion(true);
-        if (posiciones == null || posiciones.getParticipe().isEmpty() || posiciones.getRepresentante().isEmpty()) {
+        if (posiciones == null || posiciones.getParticipe().isEmpty()) {
             throw new ProveedorFirmaException(ProveedorFirmaException.RESPUESTA_INVALIDA,
-                "faltan las posiciones de firma del partícipe o del representante");
+                "faltan las posiciones de firma del partícipe");
+        }
+        if (cfg.referenciaRepresentante != null && posiciones.getRepresentante().isEmpty()) {
+            throw new ProveedorFirmaException(ProveedorFirmaException.RESPUESTA_INVALIDA,
+                "faltan las posiciones de firma del representante");
         }
 
         String signatoryId = validarFirmante(cfg, participe);
@@ -106,9 +111,10 @@ public class SecurityDataProveedor implements ProveedorFirmaElectronica {
         pdf.put("pdfName", nombreDocumento);
         ArrayNode participantes = pdf.putArray("listparticipants");
         agregarParticipante(participantes, SIGNER_NORMAL, signatoryId, posiciones.getParticipe());
-        // La propiedad manda; si no viene, se busca la firma delegada del representante legal en Security Data.
-        String referencia = cfg.referenciaRepresentante != null ? cfg.referenciaRepresentante : buscarReferenciaRepresentante(cfg);
-        agregarParticipante(participantes, SIGNER_EMBEDDED, referencia, posiciones.getRepresentante());
+        // La firma del representante la estampa Security Data: solo si hay una referencia configurada se agrega como embebida.
+        if (cfg.referenciaRepresentante != null) {
+            agregarParticipante(participantes, SIGNER_EMBEDDED, cfg.referenciaRepresentante, posiciones.getRepresentante());
+        }
 
         ObjectNode notificacion = detalle.putObject("notification");
         notificacion.put("dateEnd", LocalDateTime.now().plusDays(cfg.diasVigencia).format(FECHA_PROVEEDOR));
@@ -198,48 +204,6 @@ public class SecurityDataProveedor implements ProveedorFirmaElectronica {
             (vacio(codigo) ? "" : codigo + ": ") + (vacio(motivo) ? "el proveedor no aceptó al firmante" : motivo));
     }
 
-    /**
-     * findSignatureReferences por la cédula del representante: la firma de tipo Representante Legal, ACTIVA y con
-     * expirationDate futura; si hay varias, la que vence más tarde. Sin ninguna: REPRESENTANTE_SIN_FIRMA.
-     */
-    private String buscarReferenciaRepresentante(Configuracion cfg) throws ProveedorFirmaException {
-        ObjectNode cuerpo = JSON.createObjectNode();
-        cuerpo.put("dni", cfg.cedulaRepresentante);
-        cuerpo.put("names", "");
-        JsonNode lista = llamarJson(cfg, "POST", "/findSignatureReferences", cuerpo.toString()).get("result");
-        String mejor = null;
-        LocalDateTime vence = null;
-        if (lista != null && lista.isArray()) {
-            for (JsonNode f : lista) {
-                String tipo = sinTildes(f.path("tpSignature").asText("")).toUpperCase(Locale.ROOT);
-                if (!tipo.contains("REPRESENTANTE") || !tipo.contains("LEGAL")
-                        || !"ACTIVO".equalsIgnoreCase(f.path("statusSignature").asText())
-                        || vacio(f.path("referenceCode").asText(null))) {
-                    continue;
-                }
-                LocalDateTime exp;
-                try {
-                    exp = LocalDateTime.parse(f.path("expirationDate").asText(), FECHA_EVIDENCIA);
-                } catch (RuntimeException e) {
-                    continue; // sin fecha legible no se puede saber si está vigente
-                }
-                if (exp.isAfter(LocalDateTime.now()) && (vence == null || exp.isAfter(vence))) {
-                    vence = exp;
-                    mejor = f.path("referenceCode").asText();
-                }
-            }
-        }
-        if (mejor == null) {
-            throw new ProveedorFirmaException(ProveedorFirmaException.REPRESENTANTE_SIN_FIRMA,
-                "Security Data no tiene una firma de representante legal activa y vigente delegada para la cédula configurada"
-                + " (saa.firma.securitydata.cedulaRepresentante)");
-        }
-        return mejor;
-    }
-
-    private static String sinTildes(String s) {
-        return java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFD).replaceAll("\\p{M}", "");
-    }
 
     private static void agregarParticipante(ArrayNode participantes, String tipo, String signatoryId,
             java.util.List<PosicionFirma> posiciones) {
@@ -573,9 +537,6 @@ public class SecurityDataProveedor implements ProveedorFirmaElectronica {
         agregarSiFalta(faltan, PROP_USUARIO, usuario);
         agregarSiFalta(faltan, PROP_CLAVE, clave);
         agregarSiFalta(faltan, PROP_RUC, ruc);
-        if (paraEnviar) {
-            agregarSiFalta(faltan, PROP_CEDULA_REPRESENTANTE, cedulaRepresentante);
-        }
         if (faltan.length() > 0) {
             throw new ProveedorFirmaException(ProveedorFirmaException.PROVEEDOR_NO_CONFIGURADO,
                 "faltan propiedades de sistema de WildFly: " + faltan);
