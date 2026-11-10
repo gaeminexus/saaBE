@@ -56,4 +56,13 @@ public interface NombreEntidadesContabilidad {
     
     // Entidades de relación
     String MATCH_CUENTA = "MatchCuenta";
+
+    // C25 — Seguimiento de novedades (CNT.DCSN, NVDD, RQNV, RSNV, ADNV, VNNV, HSNV)
+    String DECISION = "Decision";
+    String NOVEDAD_SEGUIMIENTO = "NovedadSeguimiento";
+    String REQUERIMIENTO_NOVEDAD = "RequerimientoNovedad";
+    String RESPUESTA_NOVEDAD = "RespuestaNovedad";
+    String ADJUNTO_NOVEDAD = "AdjuntoNovedad";
+    String VINCULO_NOVEDAD = "VinculoNovedad";
+    String HISTORIAL_NOVEDAD = "HistorialNovedad";
 }
