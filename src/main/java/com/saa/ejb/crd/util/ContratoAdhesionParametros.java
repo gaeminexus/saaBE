@@ -157,8 +157,8 @@ public final class ContratoAdhesionParametros {
     }
 
     /**
-     * REGLA DEL ADICIONAL — PROVISIONAL, pendiente de confirmar por el usuario si el % del contrato es el TOTAL o solo el
-     * ADICIONAL. Hoy: adicional = % del contrato − mínimo del modelo; en blanco si el % es null o el resultado es ≤ 0.
+     * REGLA DEL ADICIONAL (confirmada por el usuario el 2026-11-10): el % registrado en el contrato es el TOTAL, así que
+     * adicional = % del contrato − mínimo del modelo; en blanco si el % es null o el resultado es ≤ 0.
      * Es el ÚNICO lugar donde está la regla.
      */
     static String adicional(Double porcentajeContrato, double minimo) {
