@@ -1,5 +1,7 @@
 # Despliegue del EAR «firmas de la solicitud y del pagaré + rol detallado» (2026-11-10)
 
+> **Desplegado por el usuario el 2026-11-10.** Pendiente: confirmar que el 374 estaba corrido (consulta en §2) y el humo de §4.
+
 **omen-saa-3-arb.** Se armó sobre `retenida-1109` (`DESPLIEGUE-EAR-RETENIDA-2026-11-09.md`). **Solo cambia `saaBE.war`.**
 
 ## 1. El EAR
@@ -17,6 +19,8 @@
 ## 2. Antes del EAR
 - **Ningún script nuevo.** Pero este EAR **contiene todo lo de `retenida-1109`**: si ese no se desplegó todavía, el
   `crd/sql/374` es obligatorio antes (sin él, cualquier lectura de PGPC da ORA-00904). Ver §2 de su ficha.
+  Para saber si está corrido: `SELECT COLUMN_NAME FROM ALL_TAB_COLUMNS WHERE OWNER = 'CRD' AND TABLE_NAME = 'PGPC'
+  AND COLUMN_NAME IN ('PGPCVLRT', 'PGPCDVRT');` → 2 filas = corrido; 0 filas = falta.
 
 ## 3. Qué trae (además de lo de `retenida-1109`)
 | Cambio | Commit |
