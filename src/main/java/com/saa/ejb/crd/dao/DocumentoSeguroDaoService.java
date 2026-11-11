@@ -24,11 +24,11 @@ public interface DocumentoSeguroDaoService extends EntityDao<DocumentoSeguro> {
 
     /**
      * El documento con esa clave de acceso del SRI, normalizada ({@code UPPER(TRIM(...))}), en
-     * toda la tabla. Para el chequeo {@code CLAVE_ACCESO_DUPLICADA} de {@code PUT
+     * toda la tabla, IGNORANDO los documentos ANULADOS (su clave puede registrarse otra vez). Para el chequeo {@code CLAVE_ACCESO_DUPLICADA} de {@code PUT
      * /posg/{id}/documento} (contrato §4).
      *
      * @param claveAcceso clave tal como la escribió el usuario (se normaliza acá)
-     * @return el documento con esa clave, o null si no existe
+     * @return el documento NO anulado con esa clave, o null si no existe
      * @throws Throwable Si ocurre un error
      */
     DocumentoSeguro selectByClaveAccesoNormalizada(String claveAcceso) throws Throwable;
