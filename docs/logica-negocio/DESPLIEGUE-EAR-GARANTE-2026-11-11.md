@@ -5,7 +5,7 @@
 > `eabd4722`: el seguro de incendio incluye los hipotecarios DE PLAZO VENCIDO; **sin SQL ni DDL**, ver
 > `crd/DISENO-SEGURO-INCENDIO-PLAZO-VENCIDO.md`). Contra `garante2-1111` cambia solo `DocumentoSeguroServiceImpl` (y sus
 > clases internas). SaaFE.war idéntico (`3365CE04…D8920173`, saaFE `903edbc`, sin commits nuevos).
-> - `F:\earssoprep\seguro-garante-1111\SaaEAR.ear` — SHA-256 `7A9399D044DBE174FBE304D7222B244A60381F04795B634F504D94BF5968E139`
+> - `F:\earsasoprep\seguro-garante-1111\SaaEAR.ear` — SHA-256 `7A9399D044DBE174FBE304D7222B244A60381F04795B634F504D94BF5968E139`
 >   (3 partes en `seguro-garante-1111\partes`). `saaBE.war` `74A072FA38436DB43167EC8883BE8C33CF8BB2CA8F60DEEE3106DF42BBA43898`.
 > - `garante-1111` y `garante2-1111` quedan descartados. El resto de esta ficha (scripts, qué trae, humo) sigue valiendo.
 >
