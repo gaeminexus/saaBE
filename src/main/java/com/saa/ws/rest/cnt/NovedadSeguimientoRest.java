@@ -36,6 +36,9 @@ public class NovedadSeguimientoRest {
 	@EJB
 	private SeguimientoNovedadService servicio;
 
+	@EJB
+	private com.saa.ejb.cnt.service.FichaReferenciaService fichaReferenciaService;
+
 	@GET
 	@Path("/getAll")
 	@Produces(MediaType.APPLICATION_JSON)
@@ -316,6 +319,24 @@ public class NovedadSeguimientoRest {
 			return RespuestasC25.ok(servicio.vincular(id, accion));
 		} catch (Throwable e) {
 			return RespuestasC25.error(e, "Error al vincular: ");
+		}
+	}
+
+	/**
+	 * GET /nvdd/referencia?idEmpresa&tipo&valor&anio&mes — C25b: ficha de solo lectura de un elemento citado en la
+	 * pantalla (ASIENTO, PRESTAMO, OPERACION, PAGO, ENTIDAD, COBRO, FILA, CARGA, CORRIDA, CUENTA, CXP, CXC, EMPLEADO,
+	 * EJECUCION, DECISION, NOVEDAD). Trae la ruta de la pantalla del módulo cuando existe una que abra el registro.
+	 */
+	@GET
+	@Path("/referencia")
+	@Produces(MediaType.APPLICATION_JSON)
+	public Response referencia(@QueryParam("idEmpresa") Long idEmpresa, @QueryParam("tipo") String tipo, @QueryParam("valor") String valor,
+			@QueryParam("anio") Long anio, @QueryParam("mes") Long mes) {
+		System.out.println("LLEGA AL SERVICIO GET nvdd/referencia " + tipo + " " + valor);
+		try {
+			return RespuestasC25.ok(fichaReferenciaService.ficha(idEmpresa, tipo, valor, anio, mes));
+		} catch (Throwable e) {
+			return RespuestasC25.error(e, "Error al consultar la referencia: ");
 		}
 	}
 }
