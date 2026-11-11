@@ -298,7 +298,7 @@ no esté sujeto (`aplicaReglas = false` y `motivoNoAplica`).
 ## 11. Garante del préstamo (NUEVO 2026-11-07)
 
 Tabla `CRD.GRPR` (`crd/sql/369`, **antes del EAR**). Es **opcional**, uno solo **activo** por préstamo, y solo se agrega, cambia o
-anula con el préstamo en **6 o 1** (después, 422). La cédula del garante no puede ser la del deudor. Si viene `idEntidad`
+anula con el préstamo en **6 o 1** (en 2, 8, 10 y 11 solo con autorización firmada o anulando: ver más abajo; en otro estado, 422). La cédula del garante no puede ser la del deudor. Si viene `idEntidad`
 (garante partícipe), nombre y cédula salen de `CRD.ENTD`, no de la pantalla.
 
 | Endpoint | Qué hace |
@@ -313,6 +313,34 @@ anula con el préstamo en **6 o 1** (después, 422). La cédula del garante no p
 fechaRegistro, usuarioModificacion, fechaModificacion }`. Errores de regla: 422 `{ exito:false, etapa:"VALIDACION", mensaje }`;
 usuario inválido: 400. **Pagaré (`RPRT_PRST_PGRE`):** con garante activo agrega «FIRMA DEL GARANTE» (nombre y C.C.); el texto legal no
 cambia. La solicitud no cambia.
+
+**Garante siempre partícipe (2026-11-11):** `idEntidad` es obligatorio en alta y edición (sin él, 422 «El garante debe ser partícipe del
+fondo…»); los históricos sin él no se tocan. Con el garante activo se puede **pagar el préstamo con sus aportes**
+(`POST /prst/pagarConAportes` con `idGarante`, ver `ESPECIFICACION-SERVICIOS-PAGO-PRESTAMOS.md` §7.4).
+
+**Garante en un préstamo ya otorgado (2026-11-11, DISENO-PAGO-CON-APORTES-DEL-GARANTE.md §G4).** En **2, 8, 10 y 11** el
+`POST`/`PUT` genéricos de `/grpr` responden 422 remitiendo a este endpoint; el alta exige la **autorización firmada** del garante:
+
+`POST /grpr/conAutorizacion` — `multipart/form-data`, campos exactos (los numéricos van como texto):
+
+| Campo | Qué es |
+|---|---|
+| `archivo` | PDF o imagen (`.pdf`, `.jpg`, `.jpeg`, `.png`), hasta 10 MB: la autorización firmada |
+| `archivoNombre` | nombre original con `encodeURIComponent()` (el BE lo decodifica en UTF-8) |
+| `idPrestamo` | `CRD.PRST` del préstamo (estado 6, 1, 2, 8, 10 u 11) |
+| `idEntidad` | `CRD.ENTD` del partícipe garante |
+| `usuario` | quien registra; tiene que existir en el sistema |
+
+Crea en **una sola transacción** el `GRPR` (mismas reglas que el alta normal: partícipe, no el deudor, uno activo por préstamo) y su
+adjunto en `CRD.ADJN` (`PRSTCDGO` = préstamo, `ENTDCDGO` = el deudor, `ADJNIDRF` = `GRPRCDGO`, tipo `CRD.TPDJ` «AUTORIZACION DEL
+GARANTE»); si algo falla no queda GRPR, ADJN ni archivo. Respuesta **201** `{ garante: GarantePrestamo, autorizacion: Adjunto }`.
+Errores (422 `{ exito:false, etapa:"VALIDACION", mensaje, codigo }`; faltantes de parámetro: 400): `EXTENSION_NO_PERMITIDA`,
+`ARCHIVO_VACIO`, `ARCHIVO_MUY_GRANDE`, `PRESTAMO_NO_ENCONTRADO`, préstamo en otro estado, garante ya activo o igual al deudor, y
+`TIPO_ADJUNTO_AUTORIZACION_NO_CONFIGURADO` («Falta el tipo de adjunto AUTORIZACION DEL GARANTE (correr crd/sql/e3-17)»).
+
+`GET /grpr/{id}/autorizacion` — el `Adjunto` activo de la autorización (`{ codigo, nombreArchivo, urlArchivo, mimeType,
+fechaRegistro, … }`): 200, o **204** si el garante no la tiene (los anteriores a G4). `DELETE /grpr/{id}?usuario=` **anula** también
+con el préstamo en 2, 8, 10 y 11. En 6 y 1 todo sigue como antes (`POST`/`PUT` JSON, sin autorización obligatoria).
 
 ## 12. Niveles de aprobación configurables (NUEVO 2026-11-07)
 
