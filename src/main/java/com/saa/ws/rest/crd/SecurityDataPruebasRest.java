@@ -77,11 +77,16 @@ public class SecurityDataPruebasRest {
      * cancelar-tarea (9). completar-datos y crear-tarea son multipart (métodos aparte).
      */
     @POST
-    @Path("/{ruta}")
+    // La plantilla se limita con una expresión regular a los pasos JSON: con «/{ruta}» a secas, un POST con cuerpo JSON a
+    // «configuracion» o «posiciones-contrato» (que no declaran @Consumes) caía acá y respondía «ruta desconocida».
+    @Path("/{ruta: autenticar|validar-firmante|firma-representante|detalle-tarea|descargar-firmado|certificado-trazabilidad|cancelar-tarea}")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     public Response pasoJson(@PathParam("ruta") String ruta, @QueryParam("usuario") String usuario, String cuerpo) {
         System.out.println("LLEGA AL SERVICIO POST sdpr/" + ruta);
+        if ("configuracion".equals(ruta)) {
+            return configuracion(usuario);
+        }
         try {
             usuarioValidacionService.validar(usuario);
             int paso = paso(ruta);

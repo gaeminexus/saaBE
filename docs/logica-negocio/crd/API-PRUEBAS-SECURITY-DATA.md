@@ -46,6 +46,11 @@ En el log del servidor solo van el nombre de la operación, el HTTP y la duraci�
 | 8 | `certificado-trazabilidad` | `{processId}` | `GET /traceabilityCertificate/{processId}` |
 | 9 | `cancelar-tarea` | `{processId}` | `GET /cancelTask/{processId}` |
 
+**Enrutamiento (2026-11-11):** la ruta genérica de los pasos JSON solo cubre `autenticar`, `validar-firmante`, `firma-representante`,
+`detalle-tarea`, `descargar-firmado`, `certificado-trazabilidad` y `cancelar-tarea` (expresión regular en `@Path`). Motivo: un
+`POST configuracion` con cuerpo `{}` caía en la ruta genérica y respondía 400 «ruta desconocida 'configuracion'». `configuracion` y
+`posiciones-contrato` aceptan POST con o sin cuerpo JSON; `completar-datos` y `crear-tarea` solo multipart.
+
 `processId` y `pdfId`: solo letras, números, guion y guion bajo (si no, 400 `PARAMETRO_INVALIDO`).
 
 ### 0 · `configuracion` (devuelve esto, no la forma común)
