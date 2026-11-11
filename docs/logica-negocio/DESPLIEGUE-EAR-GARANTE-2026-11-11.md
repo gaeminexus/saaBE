@@ -1,6 +1,14 @@
 # Despliegue del EAR «pago de préstamo con aportes del garante» (2026-11-11)
 
-> **Último: `garante-cobros-1111`** = todo `main` (saaBE `6b5cbed8`, saaFE `a133e12`) sobre `adhesion-1110`. Suma a
+> **Último: `cruce-1111`** = `garante-cobros-1111` con **solo `SaaFE.war` cambiado** (saaFE `a0b2f05`): la proyección y
+> los atajos 1/3/6 cuotas de Cruce de valores usan el pendiente real de cada cuota en vez de `DTPRSLDO` (en los migrados
+> traía el saldo capital y pintaba todo como «parcial» en la cuota 1). Solo vista; el pago no cambia. `saaBE.war`
+> idéntico (`036401B9…E9C66481`, saaBE `6b5cbed8`).
+> - `F:\ears\asoprep\cruce-1111\SaaEAR.ear` — SHA-256 `7B8B54FC78B4857021D21A515117E6AE2266C8B9618484C3BE2F59ED6DF783F0`
+>   (3 partes en `cruce-1111\partes`). `SaaFE.war` `CC9BA7FFF248223D5C96E13D293AF4EF6D43EDC29C2835E2FB4518C637E56B35`.
+> - Vuelta atrás: `garante-cobros-1111`. Sin SQL.
+>
+> Anterior: **`garante-cobros-1111`** = todo `main` (saaBE `6b5cbed8`, saaFE `a133e12`) sobre `adhesion-1110`. Suma a
 > `garante-final-1111` el garante en **Cobros personales** (G6): «Pagar cuotas» → «Saldo de aportes» y «Cancelar el
 > crédito» (100 % aportes) con aportes del garante (`idGarante` en `POST prst/precancelar`). Contra `garante-final-1111`
 > cambian solo `SolicitudPrecancelacion`, `ProcesoPagoPrestamoServiceImpl` y `ContabilidadPrestamoServiceImpl`. Sin SQL
