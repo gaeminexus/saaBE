@@ -7,7 +7,7 @@
 `firmas-1110` y `retenida-1109`. Cambian los dos WAR. Es **todo `main`** de los dos repos al 2026-11-11.
 
 ## 1. El EAR
-- `F:\ears\asoprep\garante-1111\SaaEAR.ear` — SHA-256 `16D49D922CD64948DA7F446C9B5FD38089BD3F60BE5CCC978E029CBA0BAA8485`
+- `F:\ears\asoprep\garante2-1111\SaaEAR.ear` — SHA-256 `59FE01DAB8C71F9842804F74AFD09A8C7558D7FC996135BFBAEB575EA7E5486F`
   (partido en `garante2-1111\partes`, 3 partes; unir con
   `copy /b SaaEAR.ear.part00+SaaEAR.ear.part01+SaaEAR.ear.part02 SaaEAR.ear`).
   - `saaBE.war` `3790FE8880F6B907E7F1EF0739133670D5DAE9CB008A5815D3C535D6877D7957` — saaBE `main` en `015ae1da`
