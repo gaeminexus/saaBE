@@ -1,6 +1,18 @@
 # Despliegue del EAR «pago de préstamo con aportes del garante» (2026-11-11)
 
-> **Último: `garante-final-1111`** = todo `main` (saaBE `14084155`, saaFE `c623255`) sobre `adhesion-1110`. Suma a
+> **Último: `garante-cobros-1111`** = todo `main` (saaBE `6b5cbed8`, saaFE `a133e12`) sobre `adhesion-1110`. Suma a
+> `garante-final-1111` el garante en **Cobros personales** (G6): «Pagar cuotas» → «Saldo de aportes» y «Cancelar el
+> crédito» (100 % aportes) con aportes del garante (`idGarante` en `POST prst/precancelar`). Contra `garante-final-1111`
+> cambian solo `SolicitudPrecancelacion`, `ProcesoPagoPrestamoServiceImpl` y `ContabilidadPrestamoServiceImpl`. Sin SQL
+> nuevo (el `e3-17` sigue siendo necesario si no se corrió).
+> - `F:\ears\asoprep\garante-cobros-1111\SaaEAR.ear` — SHA-256 `F59D666C257B57302F114B92593E26B5832DE6913AC95F1A35A1974120AF2C45`
+>   (3 partes en `garante-cobros-1111\partes`). `saaBE.war` `036401B9DD5385EAA1F47F3E36CD9AC08FDCF22B41F0511328E9C8A9E9C66481`,
+>   `SaaFE.war` `4D6603D43BB8847C80D534070F5BFE140DBD052362351F7CEE3841C11295D47C`.
+> - Vuelta atrás: `seguro-garante-1111` (`7A9399D0…5968E139`), el desplegado.
+> - Humo extra: Cobros personales → préstamo con garante → «Pagar cuotas» → «Saldo de aportes» muestra «Aportes del
+>   deudor / Aportes del garante»; «Cancelar el crédito» igual. No pagar de prueba.
+>
+> Anterior: **`garante-final-1111`** = todo `main` (saaBE `14084155`, saaFE `c623255`) sobre `adhesion-1110`. Suma a
 > `seguro-garante-1111` (ya desplegado por el usuario) solo el aviso de comprometido del garante (G5: `GET
 > prst/compromisoGarante` + aviso en la confirmación del cruce). Contra `seguro-garante-1111` cambian solo
 > `ProcesoPagoPrestamoService(Impl)`, `PrestamoRest` y entra `ResultadoCompromisoGarante`. Sin SQL nuevo.
