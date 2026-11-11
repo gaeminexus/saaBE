@@ -100,7 +100,12 @@ public class GarantePrestamoServiceImpl implements GarantePrestamoService {
 
         Prestamo prestamo = cargarPrestamoEditable(garante.getIdPrestamo());
 
-        // Si el garante es partícipe, nombre y cédula salen de CRD.ENTD, no de la pantalla.
+        // El garante es SIEMPRE partícipe del fondo (decisión del usuario 2026-11-11, DISENO-PAGO-CON-APORTES-DEL-GARANTE.md G1):
+        // sin ENTDCDGO no hay aportes con qué responder. Rige en alta y en edición; los históricos sin él no se tocan.
+        if (garante.getIdEntidad() == null) {
+            throw new IncomeException("El garante debe ser partícipe del fondo: indique el partícipe (idEntidad)");
+        }
+        // Nombre y cédula salen de CRD.ENTD, no de la pantalla.
         if (garante.getIdEntidad() != null) {
             Entidad entidad = entidadDaoService.find(new Entidad(), garante.getIdEntidad());
             if (entidad == null) {

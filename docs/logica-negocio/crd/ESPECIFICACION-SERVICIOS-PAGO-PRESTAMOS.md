@@ -692,6 +692,27 @@ Secuencia (una transacción):
 
 Respuesta: `ResultadoAplicacionPago` + `movimientosAporte: List<MovimientoAporte>`.
 
+**Pago con los aportes del garante (`idGarante`, opcional)** — 2026-11-11, diseño en
+`DISENO-PAGO-CON-APORTES-DEL-GARANTE.md`. `SolicitudPagoConAportes.idGarante` (`Long`, PK de `CRD.GRPR`).
+Sin él, todo igual que arriba (aportes del deudor). Con él:
+- El GRPR debe existir, estar activo (`GRPRESTD = 1`), ser de este préstamo (`PRSTCDGO = idPrestamo`) y tener
+  partícipe (`ENTDCDGO`). Errores, todos `IncomeException` con prefijo `PARAMETRO_INVALIDO` (los traduce `respuestaErrorNegocio`
+  como el resto de los errores de negocio del endpoint): «no existe el garante X», «el garante X no está
+  activo», «el garante X no es del préstamo Y», «el garante X no es partícipe del fondo: no tiene aportes con qué
+  pagar», «no existe el partícipe Z del garante X».
+- **`rutaDocumentoRespaldo` es obligatoria** (la autorización firmada del garante): sin ella,
+  `PARAMETRO_INVALIDO: el pago con aportes del garante exige rutaDocumentoRespaldo…`.
+- La entidad dueña de los aportes es la del garante: el desglose se valida (`saldoPorEntidadYTipo`) y se consume
+  (filas negativas APRT + PGAP, bloqueo por partícipe) contra **el garante**. El préstamo y sus cuotas siguen siendo
+  del deudor (`aplicarPago` igual). Mismos tipos de aporte vigentes, mismas reglas de deuda y de mes abierto.
+- Trazabilidad: glosa de APRT/PGAP `PAGO PRESTAMO {id} DEL DEUDOR {CI deudor} CON APORTES DEL GARANTE - Evento {e}`;
+  la observación del evento y la huella agregan `con aportes del garante {nombre} (CI …)`; la glosa del asiento de
+  cruce agrega `- aportes del garante {nombre} (CI …)` (tope de 140 caracteres: si no cabe se acorta el nombre del
+  deudor, no el del garante). Las cuentas contables no cambian.
+- El reverso (`anularOperacion`) devuelve el aporte al garante: el contra-movimiento usa la entidad de la fila APRT
+  original.
+- Las llamadas internas (pensión complementaria, jubilación) no mandan `idGarante`.
+
 **Por qué así** (resumen del análisis): los reportes (G42/G43/G44/CJBM/CPRM/CCPM/dashboard/padrón)
 suman `APRTVLRR` neto y esperan pagos como filas negativas; los campos `valorPagado`/`saldo` de
 las filas POSITIVAS no se tocan porque pertenecen al FIFO petro (otra semántica). El saldo

@@ -47,7 +47,24 @@ public class SolicitudPagoConAportes {
      */
     private Long idCobroCredito;
 
+    /**
+     * Opcional: PK de CRD.GRPR del garante activo del préstamo. Con él, los aportes que se
+     * validan y consumen son los del PARTÍCIPE GARANTE y no los del deudor (el préstamo y sus
+     * cuotas siguen siendo del deudor); exige {@code rutaDocumentoRespaldo} (la autorización
+     * firmada del garante). Sin él, todo igual que siempre. Ver
+     * DISENO-PAGO-CON-APORTES-DEL-GARANTE.md §G2.
+     */
+    private Long idGarante;
+
     public SolicitudPagoConAportes() {
+    }
+
+    public Long getIdGarante() {
+        return idGarante;
+    }
+
+    public void setIdGarante(Long idGarante) {
+        this.idGarante = idGarante;
     }
 
     public Long getIdPrestamo() {

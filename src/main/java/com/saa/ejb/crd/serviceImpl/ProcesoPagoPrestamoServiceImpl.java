@@ -62,6 +62,7 @@ import com.saa.model.crd.DetalleCobroCredito;
 import com.saa.model.crd.DetallePrestamo;
 import com.saa.model.crd.Entidad;
 import com.saa.model.crd.EventoPrestamo;
+import com.saa.model.crd.GarantePrestamo;
 import com.saa.model.crd.HistDetallePrestamo;
 import com.saa.model.crd.PagoAporte;
 import com.saa.model.crd.PagoPrestamo;
@@ -166,6 +167,13 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
 
     @EJB
     private DetalleAportePrecancelacionDaoService detalleAportePrecancelacionDaoService;
+
+    /** Pago con aportes del garante (DISENO-PAGO-CON-APORTES-DEL-GARANTE.md §G2): el GRPR y su partícipe. */
+    @EJB
+    private com.saa.ejb.crd.dao.GarantePrestamoDaoService garantePrestamoDaoService;
+
+    @EJB
+    private com.saa.ejb.crd.dao.EntidadDaoService entidadDaoService;
 
     /** Bug corregido 2026-08-28: la fórmula pura de mora, para que la precancelación la recalcule
      *  a la fecha elegida en vez de leer el DTPRMRAA/DTPRSLMR ya guardado. */
@@ -606,7 +614,16 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
                 + " no tiene partícipe asociado; no se puede pagar con aportes");
         }
 
-        double valorTotal = validarDesgloseAportes(solicitud.getAportes(), entidad);
+        // Con idGarante los aportes son del PARTÍCIPE GARANTE (DISENO-PAGO-CON-APORTES-DEL-GARANTE.md §G2);
+        // el préstamo y sus cuotas siguen siendo del deudor. Sin idGarante: la entidad del deudor, como siempre.
+        Entidad entidadAportes = entidad;
+        Entidad garanteEntidad = null;
+        if (solicitud.getIdGarante() != null) {
+            garanteEntidad = validarGarantePagoConAportes(solicitud, prestamo);
+            entidadAportes = garanteEntidad;
+        }
+
+        double valorTotal = validarDesgloseAportes(solicitud.getAportes(), entidadAportes);
         LocalDateTime fechaPagoHora = validarFechaNoFutura(solicitud.getFechaPago());
 
         double deudaTotal = motorPagoPrestamoService.calcularTotalPendientePrestamo(prestamo.getCodigo());
@@ -624,13 +641,23 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
         estadoCierreService.validarMovimientoCartera(solicitud.getIdEmpresa(), fechaPagoHora.toLocalDate(),
                 "pagos con aportes");
 
+        // Trazabilidad del garante: la observación del evento y la huella lo mencionan.
+        String observacion = solicitud.getObservacion();
+        if (garanteEntidad != null) {
+            observacion = (observacion != null && !observacion.trim().isEmpty() ? observacion + " " : "")
+                + "con aportes del garante " + textoParticipe(garanteEntidad);
+        }
+
         // 1. Evento
         EventoPrestamo evento = crearEvento(prestamo, TIPO_PAGO_APORTES, valorTotal, fechaPagoHora,
-            solicitud.getUsuario(), solicitud.getObservacion());
+            solicitud.getUsuario(), observacion);
 
         ContextoPago ctx = crearContexto(TIPO_PAGO_APORTES, solicitud.getUsuario(),
             solicitud.getObservacion(), fechaPagoHora, evento.getCodigo(),
             solicitud.getRutaDocumentoRespaldo(), solicitud.getIdEmpresa());
+        if (garanteEntidad != null) {
+            ctx.setIdEntidadAportes(garanteEntidad.getCodigo());
+        }
 
         // 2. Aplicación a cuotas
         ResultadoAplicacionPago resultado = motorPagoPrestamoService.aplicarPago(
@@ -644,12 +671,17 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
         // 3. Consumo de los aportes
         PagoPrestamo primerPago = primerPagoDelResultado(resultado);
         String glosa = "PAGO PRESTAMO " + prestamo.getCodigo() + " - Evento " + evento.getCodigo();
-        List<MovimientoAporte> movimientos = consumirAportes(entidad, solicitud.getAportes(),
+        if (garanteEntidad != null) {
+            glosa = "PAGO PRESTAMO " + prestamo.getCodigo() + " DEL DEUDOR "
+                + (entidad.getNumeroIdentificacion() != null ? entidad.getNumeroIdentificacion() : "S/N")
+                + " CON APORTES DEL GARANTE - Evento " + evento.getCodigo();
+        }
+        List<MovimientoAporte> movimientos = consumirAportes(entidadAportes, solicitud.getAportes(),
             fechaPagoHora, solicitud.getUsuario(), glosa, primerPago,
             solicitud.getRutaDocumentoRespaldo());
 
         // 4. Huella y hook
-        registrarHuellaPrestamo(prestamo, TIPO_PAGO_APORTES, valorTotal, solicitud.getObservacion(),
+        registrarHuellaPrestamo(prestamo, TIPO_PAGO_APORTES, valorTotal, observacion,
             fechaPagoHora, solicitud.getUsuario());
 
         Long numeroAsiento = contabilidadPrestamoService.contabilizarPagoConAportes(resultado, movimientos, ctx);
@@ -664,6 +696,48 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
             + " - Movimientos de aporte: " + movimientos.size());
 
         return respuesta;
+    }
+
+    /**
+     * Pago con aportes del garante (DISENO-PAGO-CON-APORTES-DEL-GARANTE.md §G2.1 y §G2.3): el GRPR
+     * tiene que existir, estar activo, ser de ESTE préstamo y tener partícipe (ENTDCDGO), y el pago
+     * exige el respaldo (la autorización firmada del garante). Devuelve la entidad del garante.
+     */
+    private Entidad validarGarantePagoConAportes(SolicitudPagoConAportes solicitud, Prestamo prestamo)
+            throws Throwable {
+        GarantePrestamo garante = garantePrestamoDaoService.find(new GarantePrestamo(), solicitud.getIdGarante());
+        if (garante == null) {
+            throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": no existe el garante " + solicitud.getIdGarante());
+        }
+        if (garante.getEstado() == null || garante.getEstado().longValue() != 1L) {
+            throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": el garante " + garante.getCodigo()
+                + " no está activo");
+        }
+        if (garante.getIdPrestamo() == null || !garante.getIdPrestamo().equals(prestamo.getCodigo())) {
+            throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": el garante " + garante.getCodigo()
+                + " no es del préstamo " + prestamo.getCodigo());
+        }
+        if (garante.getIdEntidad() == null) {
+            throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": el garante " + garante.getCodigo()
+                + " no es partícipe del fondo: no tiene aportes con qué pagar");
+        }
+        Entidad entidadGarante = entidadDaoService.find(new Entidad(), garante.getIdEntidad());
+        if (entidadGarante == null || entidadGarante.getCodigo() == null) {
+            throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": no existe el partícipe "
+                + garante.getIdEntidad() + " del garante " + garante.getCodigo());
+        }
+        String ruta = solicitud.getRutaDocumentoRespaldo();
+        if (ruta == null || ruta.trim().isEmpty()) {
+            throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": el pago con aportes del garante exige"
+                + " rutaDocumentoRespaldo (la autorización firmada del garante)");
+        }
+        return entidadGarante;
+    }
+
+    /** "NOMBRE (CI 123...)" del partícipe, para la observación, la huella y la glosa del garante. */
+    private String textoParticipe(Entidad e) {
+        return (e.getRazonSocial() != null ? e.getRazonSocial().trim() : "")
+            + " (CI " + (e.getNumeroIdentificacion() != null ? e.getNumeroIdentificacion() : "S/N") + ")";
     }
 
     /**
