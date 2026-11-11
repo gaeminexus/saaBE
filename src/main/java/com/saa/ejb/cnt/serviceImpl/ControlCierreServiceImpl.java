@@ -76,8 +76,14 @@ public class ControlCierreServiceImpl implements ControlCierreService {
         controlesBancos(controles, idEmpresa, anio, mes, corte, corteSig);
         controlesAsientos(controles, idEmpresa, inicio, corteSig);
         controlesB17G(controles, idEmpresa, anio, mes, corte, corteSig);
+        // C25: novedades en BORRADOR y asientos a cuentas por regularizar sin novedad (solo advertencias).
+        controles.addAll(seguimientoNovedadService.controlesCierre(idEmpresa, anio, mes));
         return controles;
     }
+
+    /** C25 — seguimiento de novedades (grupo NOVEDADES del semáforo). */
+    @EJB
+    private com.saa.ejb.cnt.service.SeguimientoNovedadService seguimientoNovedadService;
 
     // =====================================================================
     // (a) Cuentas puente (D-024)
