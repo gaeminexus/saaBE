@@ -1,6 +1,15 @@
 # Despliegue del EAR «pago de préstamo con aportes del garante» (2026-11-11)
 
-> **Último: `cuenta-viva-1111`** = `cruce-1111` con **solo `saaBE.war` cambiado** (saaBE `ed2ee07c`): la orden de
+> **Último: `seguro-clave-1111`** = `cuenta-viva-1111` con **solo `saaBE.war` cambiado** (saaBE `15781fba`): la clave de
+> acceso de un documento de seguro ANULADO se puede volver a registrar (K2, `crd/DISENO-SEGURO-CLAVE-ACCESO-TRAS-ANULAR.md`).
+> Trae además omen1 `779b6c25` (consola de pruebas de Security Data: la ruta genérica `sdpr/{ruta}` solo para pasos JSON;
+> un REST, sin SQL). **Requiere `crd/sql/e3-20`** (índice único sin anulados) para que el registro pase; sin él el EAR
+> arranca igual y el caso sigue dando duplicado (ORA-00001 en vez del 422).
+> - `F:\ears\asoprep\seguro-clave-1111\SaaEAR.ear` — SHA-256 `15E1720C34D8CBB92379EA743A45FE7F2555266109915EEB384C5C6A45CA6F62`
+>   (3 partes). `saaBE.war` `563ACF2FFE6C3D43A1D0532758C3D70D43803989DB6EA41A06FAAAC00C89C4FC`. `SaaFE.war` idéntico (`CC9BA7FF…`).
+> - Vuelta atrás: `cuenta-viva-1111`.
+>
+> Anterior: **`cuenta-viva-1111`** = `cruce-1111` con **solo `saaBE.war` cambiado** (saaBE `ed2ee07c`): la orden de
 > desembolso del préstamo sigue a la cuenta del socio (`crd/DISENO-DESEMBOLSO-CUENTA-DESTINO-VIVA.md`): al aprobar se
 > exige cuenta activa completa, y al guardar/borrar la cuenta del socio se actualizan sus órdenes de desembolso
 > POR_APROBAR. Contra `cruce-1111` cambian solo `CuentaBancariaParticipeServiceImpl`, `PrestamoDaoService(Impl)` y
