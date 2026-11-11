@@ -107,3 +107,28 @@ solo el alta de garante en préstamos vivos responde el error de arriba.
   reimprime».
 - Con garante existente: enlace «Ver autorización» (`GET /grpr/{id}/autorizacion`) si la tiene.
 - Revisar que `prestamo-edit` muestre la sección «Garante» también en esos estados (hoy puede estar oculta fuera de 6/1).
+
+## G5 — Decisiones del usuario sobre los «decidibles» (2026-11-11)
+
+| # | Tema | Decisión |
+|---|---|---|
+| 1 | Cuándo se puede pagar con aportes del garante | **Libre**: en cualquier momento con cuotas pendientes (no se exige mora). |
+| 2 | Primero los aportes del deudor | **Como hoy**: no se obliga; lo decide el operador. |
+| 3 | Autorización firmada | **Como hoy**: obligatoria en **cada** pago con aportes del garante (y al registrar el garante en un préstamo otorgado). |
+| 4 | Garante por debajo de su comprometido | **Aviso, sin detener** (ver abajo). |
+| 5 | Diálogo «Pagar con aportes» por fila (`pago-prestamo-dialog`) | **Se deja como está** (solo aportes del deudor); el garante va solo por Cruce de valores. |
+| 6 | Aviso a omen-saa-1-arb | **Sí** (enviado el 2026-11-11). |
+
+### Aviso de comprometido del garante (decisión 4)
+**BE — `GET /rest/prst/compromisoGarante/{idGarante}?monto={valor}`** (solo lectura). Devuelve:
+`saldoAportes` (Σ del saldo disponible de los tipos de aporte del garante, misma fuente que `saldosPorEntidad`),
+`capitalComprometido` (capital pendiente de los préstamos **vigentes PQ/PE del garante** — **el mismo cálculo que
+`saldoCapitalCupo` de `EvaluacionOtorgamientoServiceImpl`**, reutilizado, no reescrito), `saldoDespues` = saldoAportes −
+monto, `quedaDescubierto` = saldoDespues < capitalComprometido, y `mensaje` listo para mostrar
+(«Después de este pago {garante} quedaría con $X en aportes y tiene $Y comprometidos en sus propios préstamos») o null.
+Errores: garante inexistente/inactivo/sin partícipe → 422 con el mismo texto que `pagarConAportes`.
+**`pagarConAportes` no cambia**: el aviso no detiene nada.
+
+**FE — Cruce de valores**: con «aportes del garante», al abrir la confirmación se consulta el endpoint con el monto a
+cruzar; si `quedaDescubierto`, el diálogo de confirmación muestra el `mensaje` en ámbar **además** del texto de §G3. El
+botón sigue habilitado. Si el endpoint falla, se confirma igual (sin aviso).
