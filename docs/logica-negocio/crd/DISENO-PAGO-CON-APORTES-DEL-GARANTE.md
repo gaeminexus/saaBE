@@ -74,3 +74,36 @@ Con `idGarante`:
 - BE: `mvn -q compile`. FE: `npx ng build`.
 - Sin pruebas en producción (ni pagos de prueba para anular). La primera operación real la revisa el árbitro:
   APRT negativa en el garante, cuotas del deudor pagadas, asiento con la glosa del garante.
+
+## G4 — Garante para préstamos ya otorgados (decisión del usuario 2026-11-11, «opción 1», antes de subir el EAR)
+
+Hasta ahora el garante solo se agrega/cambia/anula con el préstamo en **6 o 1** (`cargarPrestamoEditable`). Los
+préstamos antiguos no tienen garante y no pueden usar G2. Se habilita en los **vivos: 2, 8, 10, 11** (misma lista que
+«vigentes» del resto del sistema), con la **autorización firmada del garante obligatoria**.
+
+### BE
+- **Endpoint nuevo `POST /rest/grpr/conAutorizacion`** (multipart, mismo patrón que
+  `POST /rest/cnbp/conCertificado` / `CuentaBancariaParticipeService.crearConCertificado`): `archivo`, `archivoNombre`,
+  `idPrestamo`, `idEntidad` (partícipe garante), `usuario`. En **una sola transacción** crea el `GRPR` (mismas reglas de
+  `guardarGarante`: partícipe obligatorio, no el deudor, uno activo por préstamo) **y** su adjunto en `CRD.ADJN`:
+  `PRSTCDGO` = préstamo, `ENTDCDGO` = el **deudor** (es documento del préstamo), `ADJNIDRF` = `GRPRCDGO`,
+  tipo `CRD.TPDJ` **«AUTORIZACION DEL GARANTE»** resuelto por nombre exacto y activo (como «CERTIFICADO BANCARIO»).
+  Archivo PDF o imagen; si algo falla no queda ni GRPR ni archivo. Sin el tipo en el catálogo: error claro
+  «Falta el tipo de adjunto AUTORIZACION DEL GARANTE (correr crd/sql/e3-17)».
+- Estados: el endpoint acepta **6, 1, 2, 8, 10, 11**. En 2/8/10/11 el `POST`/`PUT` genéricos de `grpr` siguen
+  rechazando (alta solo con autorización; para cambiar de garante: anular y agregar otro). **Anular**
+  (`DELETE /grpr/{id}?usuario=`) se permite también en 2/8/10/11. En 6/1 todo queda como hoy.
+- `GET /rest/grpr/{id}/autorizacion` → el `Adjunto` activo de la autorización (o 204), para verlo desde la pantalla.
+- Nada de pagaré: un préstamo ya otorgado no reimprime el pagaré.
+
+### Catálogo — `crd/sql/e3-17-tipo-adjunto-autorizacion-garante.sql` (lo corre el usuario ANTES del EAR)
+`INSERT` idempotente en `CRD.TPDJ` de «AUTORIZACION DEL GARANTE» (activo), con su control. Sin él el EAR arranca igual;
+solo el alta de garante en préstamos vivos responde el error de arriba.
+
+### FE (`forms/prestamo/garante-prestamo`, embebido en `prestamo-edit`)
+- `editable` pasa a: 6/1 como hoy; **2/8/10/11 → modo «préstamo otorgado»**: elegir partícipe + **adjuntar la
+  autorización firmada (obligatoria)** → `POST /grpr/conAutorizacion`. Sin edición: «Anular» y agregar otro.
+- Aviso en ese modo: «El préstamo ya está otorgado: el garante se registra con su autorización firmada; el pagaré no se
+  reimprime».
+- Con garante existente: enlace «Ver autorización» (`GET /grpr/{id}/autorizacion`) si la tiene.
+- Revisar que `prestamo-edit` muestre la sección «Garante» también en esos estados (hoy puede estar oculta fuera de 6/1).
