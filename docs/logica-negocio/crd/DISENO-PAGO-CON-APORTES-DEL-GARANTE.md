@@ -132,3 +132,36 @@ Errores: garante inexistente/inactivo/sin partícipe → 422 con el mismo texto 
 **FE — Cruce de valores**: con «aportes del garante», al abrir la confirmación se consulta el endpoint con el monto a
 cruzar; si `quedaDescubierto`, el diálogo de confirmación muestra el `mensaje` en ámbar **además** del texto de §G3. El
 botón sigue habilitado. Si el endpoint falla, se confirma igual (sin aviso).
+
+## G6 — Garante también en Cobros personales: pagar cuotas y precancelar (pedido del usuario 2026-11-11)
+
+Revierte la decisión 5 de G5: el usuario opera desde **Cobros personales** (`pago-prestamo-dialog` «Pagar cuotas» →
+«Saldo de aportes», y «Cancelar el crédito» → `precancelacion-dialog`) y ahí no aparecía el garante.
+
+### Alcance
+| Operación | Camino | Con garante |
+|---|---|---|
+| Pagar cuotas con aportes | `pago-prestamo-dialog` → `POST /prst/pagarConAportes` | **Sí** — el BE ya acepta `idGarante` (G2); solo FE. |
+| Precancelar 100 % con aportes | `precancelacion-dialog` → `POST /prst/precancelar` | **Sí** — BE nuevo: `idGarante` en `SolicitudPrecancelacion`. |
+| Precancelar mixto (depósito + aportes) | `precancelacion-dialog` → CBCR (aprobación de contabilidad, los aportes se consumen al procesar) | **No** en esta entrega: con «aportes del garante» el reparto es **100 % aportes del garante**, sin depósito. Si el usuario lo necesita, va aparte (toca el ciclo CBCR). |
+
+### BE — `ProcesoPagoPrestamoServiceImpl.precancelar`
+Mismo patrón que G2: `SolicitudPrecancelacion.idGarante` opcional. Con él: `validarGarantePagoConAportes` (activo, del
+préstamo, partícipe, **respaldo obligatorio**), y `validarDesgloseAportes` / `consumirAportes` con la **entidad del
+garante**; la precancelación del préstamo del deudor no cambia. Si con `idGarante` llega un componente de depósito/
+efectivo, rechazar: «con aportes del garante la precancelación es 100 % aportes». Trazabilidad igual que G2 (glosa
+APRT/PGAP, observación del evento, huella; `ContextoPago.idEntidadAportes` y la glosa del asiento de la precancelación
+nombran al garante si ese asiento usa una glosa por partícipe). Sin `idGarante`: idéntico a hoy. Anulación: el reverso ya
+devuelve el aporte a la entidad de la fila APRT (verificar que la anulación de la precancelación use el mismo camino).
+
+### FE
+- **`pago-prestamo-dialog`** (modo «Saldo de aportes»): si el préstamo tiene garante activo partícipe
+  (`GarantePrestamoService.porPrestamo`), selector «Aportes del deudor | Aportes del garante {nombre}». Con garante:
+  saldos de `saldosPorEntidad(idEntidad del garante)`, respaldo **obligatorio** (el diálogo hoy dice «NO APLICA» para
+  aportes: con garante pasa a obligatorio, la autorización firmada), confirmación con el texto de §G3 + aviso de
+  `compromisoGarante` (G5) sin detener, y `idGarante` en el POST. Con deudor: igual que hoy.
+- **`precancelacion-dialog`**: el mismo selector. Con garante: los fondos del reparto son solo los tipos de aporte del
+  garante (sin fila de efectivo/depósito), deben cubrir el total; respaldo obligatorio; confirmación + aviso de
+  compromiso; `POST /prst/precancelar` con `idGarante`. Con deudor: igual que hoy.
+- Reutilizar lo hecho en `cruce-de-valores` (consulta del garante, confirmación, aviso) en vez de copiarlo si se puede
+  extraer limpio; si no, copiar mínimo.
