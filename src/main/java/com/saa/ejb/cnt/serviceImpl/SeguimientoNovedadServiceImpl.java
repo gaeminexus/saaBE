@@ -27,6 +27,7 @@ import com.saa.model.cnt.HistorialNovedad;
 import com.saa.model.cnt.NovedadSeguimiento;
 import com.saa.model.cnt.RequerimientoNovedad;
 import com.saa.model.cnt.RespuestaNovedad;
+import com.saa.model.cnt.RevisionMesNovedad;
 import com.saa.model.cnt.VinculoNovedad;
 
 import jakarta.annotation.Resource;
@@ -64,6 +65,9 @@ public class SeguimientoNovedadServiceImpl implements SeguimientoNovedadService 
 	static final List<String> TIPOS_REQ = Arrays.asList("DOCUMENTO", "DECISION", "CONFIRMACION", "ELECCION", "APROBACION");
 	static final List<String> AREAS = Arrays.asList("CREDITO", "TESORERIA", "CONTABILIDAD", "TALENTO_HUMANO", "GERENCIA", "SISTEMAS");
 	static final List<String> TIPOS_REF = Arrays.asList("PRESTAMO", "OPERACION", "ENTIDAD", "FILA_EXTRACTO", "ORDEN", "CHEQUE", "FACTURA", "EMPLEADO", "CARGA", "OTRO");
+	static final List<String> ORIGENES_REQ = Arrays.asList("TXT", "REVISION", "AJUSTE", "PANTALLA");
+	static final List<String> ESTADOS_REVISION = Arrays.asList("RESUELTO", "PENDIENTE_DOCUMENTO", "PENDIENTE_DECISION");
+	static final com.fasterxml.jackson.databind.ObjectMapper JSON = new com.fasterxml.jackson.databind.ObjectMapper();
 	static final List<String> CANALES = Arrays.asList("SAA", "CORREO", "ACTA", "REUNION");
 	static final List<String> TIPOS_DECIDE = Arrays.asList("CONTABILIDAD_ASOPREP", "RESPONSABLE_ASOPREP", "GERENCIA", "LIDER_PROYECTO", "GAEMII");
 	static final List<String> TIPOS_VINCULO = Arrays.asList("ASIENTO_ORIGEN", "ASIENTO_AJUSTE", "PARTIDA_C22", "DECISION", "NOVEDAD", "DOCUMENTO_MODULO");
@@ -480,7 +484,7 @@ public class SeguimientoNovedadServiceImpl implements SeguimientoNovedadService 
 		Long idPeriodo = periodos.isEmpty() ? null : aLong(periodos.get(0));
 
 		List<String> avisos = new ArrayList<String>();
-		int nuevas = 0, actualizadas = 0, omitidas = 0, reqs = 0, vincAs = 0, vincDec = 0, vincNov = 0;
+		int nuevas = 0, actualizadas = 0, omitidas = 0, reqs = 0, vincAs = 0, vincDec = 0, vincNov = 0, reemplazadas = 0, revisadas = 0;
 		Map<String, NovedadSeguimiento> procesadas = new LinkedHashMap<String, NovedadSeguimiento>();
 		Set<String> claves = new HashSet<String>();
 		for (LoteNovedades.Novedad ln : lote.getNovedades()) {
@@ -505,10 +509,34 @@ public class SeguimientoNovedadServiceImpl implements SeguimientoNovedadService 
 					+ " and n.mes = :m and n.modulo = :mo and n.codigoNovedad = :c order by n.version desc", NovedadSeguimiento.class)
 					.setParameter("e", idEmpresa).setParameter("a", anio).setParameter("m", mes).setParameter("mo", modulo)
 					.setParameter("c", codigo).getResultList();
-			NovedadSeguimiento n;
+			NovedadSeguimiento n = null;
 			boolean esNueva = existentes.isEmpty();
+			if (!esNueva && existentes.get(0).getVersion() < version) {
+				// Versión nueva del mes (re-proceso): las anteriores quedan REEMPLAZADAS (históricas), no se duplican.
+				for (NovedadSeguimiento vieja : existentes) {
+					if (vieja.getEstado() != NOV_REEMPLAZADA) {
+						long antes = vieja.getEstado();
+						vieja.setEstado(NOV_REEMPLAZADA);
+						historial(vieja.getCodigo(), null, "REEMPLAZO", antes, NOV_REEMPLAZADA, "Reemplazada por la versión " + version + " del lote " + idLote, usuario);
+					}
+				}
+				reemplazadas++;
+				esNueva = true;
+			}
 			if (!esNueva) {
 				n = existentes.get(0);
+				if (n.getEstado() != NOV_BORRADOR && n.getVersion() == version) {
+					// Ya enviada: el caso comunicado no cambia, pero los textos de la revisión con el cliente sí se actualizan.
+					if (aplicarRevision(n, ln)) {
+						revisadas++;
+						historial(n.getCodigo(), null, "EDICION", n.getEstado(), n.getEstado(), "Textos de la revisión actualizados por el lote " + idLote, usuario);
+					}
+					omitidas++;
+					avisos.add(clave + ": ya existe en estado " + nombreNov(n.getEstado()) + " (versión " + n.getVersion()
+							+ "); solo se actualizan los textos de la revisión. Para cambiar el caso use 'nueva versión'.");
+					procesadas.put(clave, n);
+					continue;
+				}
 				if (n.getEstado() != NOV_BORRADOR || n.getVersion() != version) {
 					omitidas++;
 					avisos.add(clave + ": ya existe en estado " + nombreNov(n.getEstado()) + " (versión " + n.getVersion()
@@ -539,6 +567,7 @@ public class SeguimientoNovedadServiceImpl implements SeguimientoNovedadService 
 			n.setFuentes(ln.getFuentes() == null ? null : recortar(String.join("; ", ln.getFuentes()), 2000));
 			n.setArchivo(recortar(vacio(ln.getArchivo()), 100));
 			n.setLote(idLote);
+			aplicarRevision(n, ln);
 			if (esNueva) {
 				em.persist(n);
 				em.flush();
@@ -588,6 +617,7 @@ public class SeguimientoNovedadServiceImpl implements SeguimientoNovedadService 
 						throw new IncomeException(clave + " requerimiento " + s + ": una ELECCION necesita sus opciones (A|B).");
 					}
 					r.setSupuesto(recortar(vacio(lr.getSupuesto()), 1000));
+					r.setOrigen(catalogo(vacio(lr.getOrigen()) == null ? "TXT" : lr.getOrigen(), ORIGENES_REQ, clave + " requerimiento " + s + ": el origen", true));
 					r.setEstado(REQ_PENDIENTE);
 					if (nuevoReq) {
 						em.persist(r);
@@ -686,6 +716,9 @@ public class SeguimientoNovedadServiceImpl implements SeguimientoNovedadService 
 		m.put("vinculosAsiento", vincAs);
 		m.put("vinculosDecision", vincDec);
 		m.put("vinculosNovedad", vincNov);
+		m.put("versionesReemplazadas", reemplazadas);
+		m.put("textosRevisionActualizados", revisadas);
+		m.put("revisionMes", guardarRevisionMes(idEmpresa, idPeriodo, anio, mes, version, idLote, lote.getRevisionMes(), usuario, avisos));
 		m.put("avisos", avisos);
 		if (simular) {
 			contexto.setRollbackOnly();
@@ -695,6 +728,176 @@ public class SeguimientoNovedadServiceImpl implements SeguimientoNovedadService 
 		}
 		return m;
 	}
+
+	/** Texto JSON de un valor del lote (lista u objeto); null si viene vacío. */
+	static String aJson(Object o) {
+		if (o == null) {
+			return null;
+		}
+		if (o instanceof java.util.Collection && ((java.util.Collection<?>) o).isEmpty()) {
+			return null;
+		}
+		if (o instanceof Map && ((Map<?, ?>) o).isEmpty()) {
+			return null;
+		}
+		try {
+			return JSON.writeValueAsString(o);
+		} catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+			throw new IncomeException("No se pudo convertir a JSON: " + e.getOriginalMessage());
+		}
+	}
+
+	/** JSON guardado como texto -> lista o mapa para la respuesta REST (null si no hay o no es JSON). */
+	static Object deJson(String s) {
+		if (s == null || s.trim().isEmpty()) {
+			return null;
+		}
+		try {
+			return JSON.readValue(s, Object.class);
+		} catch (java.io.IOException e) {
+			return null;
+		}
+	}
+
+	private static boolean igual(Object a, Object b) {
+		return a == null ? b == null : a.equals(b);
+	}
+
+	/**
+	 * C25-02: textos curados de la revisión con el cliente (porQue, registro, monto, nota, estado, cifras, reparto de
+	 * cuentas por regularizar). Devuelve true si algo cambió.
+	 */
+	private boolean aplicarRevision(NovedadSeguimiento n, LoteNovedades.Novedad ln) {
+		String estadoRev = vacio(ln.getEstadoRevision()) == null ? null
+				: catalogo(ln.getEstadoRevision().toUpperCase(Locale.ROOT).replace('-', '_'), ESTADOS_REVISION, "El estado de revisión de " + ln.getCodigo(), false);
+		Object[][] nuevos = {
+				{ n.getPorQue(), vacio(ln.getPorQue()) },
+				{ n.getRegistro(), vacio(ln.getRegistro()) },
+				{ n.getMonto(), ln.getMonto() },
+				{ n.getMontoNota(), recortar(vacio(ln.getMontoNota()), 2000) },
+				{ n.getNotaRevision(), recortar(vacio(ln.getNota()), 4000) },
+				{ n.getEstadoRevision(), estadoRev },
+				{ n.getPedidoGeneral(), recortar(vacio(ln.getPedidoGeneral()), 2000) },
+				{ n.getCifras(), aJson(ln.getCifras()) },
+				{ n.getRegularizar(), aJson(ln.getRegularizar()) } };
+		boolean cambio = false;
+		for (Object[] par : nuevos) {
+			cambio |= !igual(par[0], par[1]);
+		}
+		n.setPorQue((String) nuevos[0][1]);
+		n.setRegistro((String) nuevos[1][1]);
+		n.setMonto((Double) nuevos[2][1]);
+		n.setMontoNota((String) nuevos[3][1]);
+		n.setNotaRevision((String) nuevos[4][1]);
+		n.setEstadoRevision((String) nuevos[5][1]);
+		n.setPedidoGeneral((String) nuevos[6][1]);
+		n.setCifras((String) nuevos[7][1]);
+		n.setRegularizar((String) nuevos[8][1]);
+		return cambio;
+	}
+
+	private static void copiarRevision(NovedadSeguimiento de, NovedadSeguimiento a) {
+		a.setPorQue(de.getPorQue());
+		a.setRegistro(de.getRegistro());
+		a.setMonto(de.getMonto());
+		a.setMontoNota(de.getMontoNota());
+		a.setNotaRevision(de.getNotaRevision());
+		a.setEstadoRevision(de.getEstadoRevision());
+		a.setPedidoGeneral(de.getPedidoGeneral());
+		a.setCifras(de.getCifras());
+		a.setRegularizar(de.getRegularizar());
+	}
+
+	/** C25-02: título, resumen y razones de la decisión (decisiones-resumen.json). True si cambió algo. */
+	private static boolean fichaDecision(Decision d, LoteNovedades.DecisionCarga dc) {
+		String t = recortar(vacio(dc.getTitulo()), 300), r = recortar(vacio(dc.getResumen()), 2000), z = recortar(vacio(dc.getRazones()), 2000);
+		if (t == null && r == null && z == null) {
+			return false;
+		}
+		boolean cambio = !igual(d.getTitulo(), t) || !igual(d.getResumen(), r) || !igual(d.getRazones(), z);
+		d.setTitulo(t);
+		d.setResumen(r);
+		d.setRazones(z);
+		return cambio;
+	}
+
+	/**
+	 * C25-02: cabecera de la revisión del mes (CNT.RVNM). Misma versión: se actualiza; versión mayor: la vigente pasa a
+	 * HISTORICA y se crea la nueva; versión menor: no se toca. Devuelve lo hecho o null si el lote no la trae.
+	 */
+	private String guardarRevisionMes(Long idEmpresa, Long idPeriodo, Long anio, Long mes, long version, String idLote,
+			Map<String, Object> rv, String usuario, List<String> avisos) {
+		if (rv == null || rv.isEmpty()) {
+			return null;
+		}
+		List<RevisionMesNovedad> previas = em.createQuery("select r from RevisionMesNovedad r where r.idEmpresa = :e and r.anio = :a and r.mes = :m"
+				+ " order by r.version desc", RevisionMesNovedad.class).setParameter("e", idEmpresa).setParameter("a", anio).setParameter("m", mes)
+				.getResultList();
+		RevisionMesNovedad r;
+		String hecho;
+		if (!previas.isEmpty() && previas.get(0).getVersion() > version) {
+			avisos.add("Revisión del mes: ya existe la versión " + previas.get(0).getVersion() + "; la del lote (" + version + ") no se carga.");
+			return "omitida";
+		}
+		if (!previas.isEmpty() && previas.get(0).getVersion() == version) {
+			r = previas.get(0);
+			r.setFechaModificacion(LocalDateTime.now());
+			r.setUsuarioModificacion(usuario);
+			hecho = "actualizada";
+		} else {
+			for (RevisionMesNovedad p : previas) {
+				if (p.getEstado() != null && p.getEstado() == 1L) {
+					p.setEstado(2L);
+				}
+			}
+			em.flush();
+			r = new RevisionMesNovedad();
+			r.setIdEmpresa(idEmpresa);
+			r.setAnio(anio);
+			r.setMes(mes);
+			r.setVersion(version);
+			r.setFechaRegistro(LocalDateTime.now());
+			r.setUsuarioRegistro(usuario);
+			hecho = previas.isEmpty() ? "nueva" : "nueva (la anterior queda HISTORICA)";
+		}
+		r.setEstado(1L);
+		r.setIdPeriodo(idPeriodo);
+		r.setLote(idLote);
+		r.setNombreMes(recortar(vacio(texto(rv.get("mesNombre"))), 50));
+		r.setCorte(recortar(vacio(texto(rv.get("corte"))), 30));
+		r.setEstadoMes(recortar(vacio(texto(rv.get("estadoMes"))), 100));
+		r.setFechaCierre(recortar(vacio(texto(rv.get("fechaCierre"))), 30));
+		r.setVersionCierre(recortar(vacio(texto(rv.get("versionCierre"))), 300));
+		String ej = vacio(texto(rv.get("ejecucionG")));
+		r.setEjecucionG(ej != null && ej.matches("\\d+") ? Long.valueOf(ej) : null);
+		r.setFlujo(aJson(rv.get("flujo")));
+		r.setCuadratura(aJson(rv.get("cuadratura")));
+		r.setBancos(aJson(rv.get("bancos")));
+		r.setObservaciones(aJson(rv.get("observaciones")));
+		r.setCuentas(aJson(rv.get("cuentas")));
+		r.setRegularizar(aJson(rv.get("regularizar")));
+		Object fu = rv.get("fuentes");
+		String fuentes;
+		if (fu instanceof java.util.Collection) {
+			List<String> l = new ArrayList<String>();
+			for (Object x : (java.util.Collection<?>) fu) {
+				l.add(String.valueOf(x));
+			}
+			fuentes = String.join("; ", l);
+		} else {
+			fuentes = texto(fu);
+		}
+		r.setFuentes(recortar(vacio(fuentes), 2000));
+		if (r.getCodigo() == null) {
+			em.persist(r);
+		}
+		return hecho;
+	}
+
+	private static String texto(Object o) {
+		return o == null ? null : String.valueOf(o);
+	}
+
 
 	/** Asiento de la carga: por código (debe ser de la empresa) o por alterno. Null si no existe. */
 	private Map<String, Object> validarAsientoCarga(Long idEmpresa, LoteNovedades.Asiento la) {
@@ -728,16 +931,23 @@ public class SeguimientoNovedadServiceImpl implements SeguimientoNovedadService 
 		if (lote == null || lote.getDecisiones() == null || lote.getDecisiones().isEmpty()) {
 			throw new IncomeException("El archivo no trae decisiones.");
 		}
-		int nuevas = 0, existentes = 0;
+		int nuevas = 0, existentes = 0, fichas = 0;
 		for (LoteNovedades.DecisionCarga dc : lote.getDecisiones()) {
 			String numero = obligatorio(dc.getNumero(), "El número de la decisión");
 			Long ya = em.createQuery("select count(d) from Decision d where d.idEmpresa = :e and d.numero = :n", Long.class)
 					.setParameter("e", idEmpresa).setParameter("n", numero).getSingleResult();
 			if (ya > 0) {
 				existentes++;
+				// C25-02: la ficha (título, resumen, razones) se completa o actualiza en cada recarga.
+				Decision d = em.createQuery("select d from Decision d where d.idEmpresa = :e and d.numero = :n", Decision.class)
+						.setParameter("e", idEmpresa).setParameter("n", numero).getSingleResult();
+				if (fichaDecision(d, dc)) {
+					fichas++;
+				}
 				continue;
 			}
 			Decision d = new Decision();
+			fichaDecision(d, dc);
 			d.setIdEmpresa(idEmpresa);
 			d.setNumero(recortar(numero, 10));
 			LocalDate f = fecha(dc.getFecha(), "La fecha de " + numero);
@@ -763,6 +973,7 @@ public class SeguimientoNovedadServiceImpl implements SeguimientoNovedadService 
 		m.put("simulado", simular);
 		m.put("nuevas", nuevas);
 		m.put("yaExistentes", existentes);
+		m.put("fichasActualizadas", fichas);
 		if (simular) {
 			contexto.setRollbackOnly();
 			m.put("mensaje", "SIMULACIÓN: no se grabó nada.");
@@ -1027,6 +1238,9 @@ public class SeguimientoNovedadServiceImpl implements SeguimientoNovedadService 
 		m.put("adjuntos", an);
 		m.put("vinculos", vinculos(idNovedad));
 		m.put("cuentasPorRegularizar", cuentasDeNovedad(idNovedad));
+		// C25-02: cifras y reparto de cuentas por regularizar de la revisión con el cliente, ya interpretados.
+		m.put("cifras", deJson(n.getCifras()));
+		m.put("regularizarRevision", deJson(n.getRegularizar()));
 		m.put("historial", historial(idNovedad));
 		m.put("c22", estadoC22());
 		return m;
@@ -1243,7 +1457,121 @@ public class SeguimientoNovedadServiceImpl implements SeguimientoNovedadService 
 		semaforo.put("vencidos", vencidos);
 		m.put("antiguedadPendientes", semaforo);
 		m.put("cuentasPorRegularizar", cuentasPorRegularizar(idEmpresa, anio, mes));
+		m.put("revision", revisionMes(idEmpresa, anio, mes));
 		return m;
+	}
+
+	/** C25-02: la revisión vigente del mes (CNT.RVNM) con sus JSON interpretados; null si el mes no la tiene. */
+	private Map<String, Object> revisionMes(Long idEmpresa, Long anio, Long mes) {
+		List<RevisionMesNovedad> rs = em.createQuery("select r from RevisionMesNovedad r where r.idEmpresa = :e and r.anio = :a and r.mes = :m"
+				+ " order by r.estado, r.version desc", RevisionMesNovedad.class).setParameter("e", idEmpresa).setParameter("a", anio)
+				.setParameter("m", mes).getResultList();
+		if (rs.isEmpty()) {
+			return null;
+		}
+		RevisionMesNovedad r = rs.get(0);
+		Map<String, Object> m = new LinkedHashMap<String, Object>();
+		m.put("codigo", r.getCodigo());
+		m.put("version", r.getVersion());
+		m.put("estado", r.getEstado() != null && r.getEstado() == 1L ? "VIGENTE" : "HISTORICA");
+		m.put("versionesHistoricas", rs.size() - 1);
+		m.put("nombreMes", r.getNombreMes());
+		m.put("corte", r.getCorte());
+		m.put("estadoMes", r.getEstadoMes());
+		m.put("fechaCierre", r.getFechaCierre());
+		m.put("versionCierre", r.getVersionCierre());
+		m.put("ejecucionG", r.getEjecucionG());
+		m.put("flujo", deJson(r.getFlujo()));
+		m.put("cuadratura", deJson(r.getCuadratura()));
+		m.put("bancos", deJson(r.getBancos()));
+		m.put("observaciones", deJson(r.getObservaciones()));
+		m.put("cuentas", deJson(r.getCuentas()));
+		Object reparto = deJson(r.getRegularizar());
+		// El reparto trae el código de la novedad (B-07); se agrega su id para que la pantalla la abra.
+		if (reparto instanceof List) {
+			Map<String, Long> ids = new HashMap<String, Long>();
+			for (Object o : em.createNativeQuery("SELECT NVDDCDNV, NVDDCDGO FROM CNT.NVDD WHERE PJRQCDGO = :e AND NVDDANNN = :a AND NVDDMSSS = :m"
+					+ " AND NVDDESTD <> 9").setParameter("e", idEmpresa).setParameter("a", anio).setParameter("m", mes).getResultList()) {
+				Object[] x = (Object[]) o;
+				ids.putIfAbsent(aStr(x[0]), aLong(x[1]));
+			}
+			for (Object o : (List<?>) reparto) {
+				if (o instanceof Map) {
+					@SuppressWarnings("unchecked")
+					Map<String, Object> fila = (Map<String, Object>) o;
+					fila.put("idNovedad", ids.get(String.valueOf(fila.get("codigo"))));
+				}
+			}
+		}
+		m.put("regularizar", reparto);
+		m.put("fuentes", r.getFuentes());
+		m.put("lote", r.getLote());
+		return m;
+	}
+
+	@Override
+	public List<Map<String, Object>> decisiones(Long idEmpresa, String texto) throws Throwable {
+		if (idEmpresa == null) {
+			throw new IncomeException("idEmpresa es obligatorio.");
+		}
+		List<Decision> ds = em.createQuery("select d from Decision d where d.idEmpresa = :e order by d.fecha desc, d.numero desc", Decision.class)
+				.setParameter("e", idEmpresa).getResultList();
+		Map<Long, List<Map<String, Object>>> porDecision = new HashMap<Long, List<Map<String, Object>>>();
+		for (Object o : em.createNativeQuery("SELECT v.DCSNCDGO, n.NVDDCDGO, n.NVDDANNN, n.NVDDMSSS, n.NVDDMDLO, n.NVDDCDNV, n.NVDDTTLO, n.NVDDESTD, n.NVDDTPRS"
+				+ " FROM CNT.VNNV v JOIN CNT.NVDD n ON n.NVDDCDGO = v.NVDDCDGO WHERE n.PJRQCDGO = :e AND v.VNNVTPVN = 'DECISION' AND v.VNNVESTD = 1"
+				+ " AND n.NVDDESTD <> 9 ORDER BY n.NVDDANNN, n.NVDDMSSS, n.NVDDMDLO, n.NVDDCDNV").setParameter("e", idEmpresa).getResultList()) {
+			Object[] x = (Object[]) o;
+			Map<String, Object> nv = new LinkedHashMap<String, Object>();
+			nv.put("idNovedad", aLong(x[1]));
+			nv.put("mes", mesTexto(aLong(x[2]), aLong(x[3])));
+			nv.put("modulo", x[4]);
+			nv.put("codigo", x[5]);
+			nv.put("titulo", x[6]);
+			nv.put("estado", nombreNov(aLong(x[7])));
+			nv.put("tipo", x[8]);
+			porDecision.computeIfAbsent(aLong(x[0]), k -> new ArrayList<Map<String, Object>>()).add(nv);
+		}
+		// Decisiones que respondieron un requerimiento (RSNV.DCSNCDGO) también vinculan su novedad.
+		for (Object o : em.createNativeQuery("SELECT DISTINCT s.DCSNCDGO, n.NVDDCDGO, n.NVDDANNN, n.NVDDMSSS, n.NVDDMDLO, n.NVDDCDNV, n.NVDDTTLO, n.NVDDESTD, n.NVDDTPRS"
+				+ " FROM CNT.RSNV s JOIN CNT.RQNV r ON r.RQNVCDGO = s.RQNVCDGO JOIN CNT.NVDD n ON n.NVDDCDGO = r.NVDDCDGO WHERE n.PJRQCDGO = :e"
+				+ " AND s.DCSNCDGO IS NOT NULL").setParameter("e", idEmpresa).getResultList()) {
+			Object[] x = (Object[]) o;
+			List<Map<String, Object>> l = porDecision.computeIfAbsent(aLong(x[0]), k -> new ArrayList<Map<String, Object>>());
+			boolean ya = false;
+			for (Map<String, Object> y : l) {
+				ya |= aLong(x[1]).equals(y.get("idNovedad"));
+			}
+			if (!ya) {
+				Map<String, Object> nv = new LinkedHashMap<String, Object>();
+				nv.put("idNovedad", aLong(x[1]));
+				nv.put("mes", mesTexto(aLong(x[2]), aLong(x[3])));
+				nv.put("modulo", x[4]);
+				nv.put("codigo", x[5]);
+				nv.put("titulo", x[6]);
+				nv.put("estado", nombreNov(aLong(x[7])));
+				nv.put("tipo", x[8]);
+				nv.put("porRespuesta", true);
+				l.add(nv);
+			}
+		}
+		String t = vacio(texto) == null ? null : texto.trim().toLowerCase(Locale.ROOT);
+		List<Map<String, Object>> out = new ArrayList<Map<String, Object>>();
+		for (Decision d : ds) {
+			if (t != null) {
+				String todo = (d.getNumero() + " " + d.getTema() + " " + d.getDetalle() + " " + d.getTitulo() + " " + d.getResumen() + " " + d.getRazones()
+						+ " " + d.getCargo() + " " + d.getEvidencia()).toLowerCase(Locale.ROOT);
+				if (!todo.contains(t)) {
+					continue;
+				}
+			}
+			Map<String, Object> m = new LinkedHashMap<String, Object>();
+			m.put("decision", d);
+			List<Map<String, Object>> nvs = porDecision.getOrDefault(d.getCodigo(), new ArrayList<Map<String, Object>>());
+			m.put("novedades", nvs);
+			m.put("totalNovedades", nvs.size());
+			out.add(m);
+		}
+		return out;
 	}
 
 	// =====================================================================================
@@ -1942,6 +2270,7 @@ public class SeguimientoNovedadServiceImpl implements SeguimientoNovedadService 
 		c.setCriterios(n.getCriterios());
 		c.setFuentes(n.getFuentes());
 		c.setArchivo(n.getArchivo());
+		copiarRevision(n, c);
 		c.setVersion(n.getVersion() + 1);
 		c.setLote(n.getLote());
 		c.setEstado(NOV_BORRADOR);
@@ -1965,6 +2294,7 @@ public class SeguimientoNovedadServiceImpl implements SeguimientoNovedadService 
 			x.setFechaReferencia(r.getFechaReferencia());
 			x.setOpciones(r.getOpciones());
 			x.setSupuesto(r.getSupuesto());
+			x.setOrigen(r.getOrigen());
 			x.setEstado(REQ_PENDIENTE);
 			x.setFechaRegistro(LocalDateTime.now());
 			x.setUsuarioRegistro(usuario);

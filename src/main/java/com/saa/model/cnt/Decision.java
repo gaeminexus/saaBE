@@ -137,4 +137,24 @@ public class Decision implements Serializable {
 	public void setUsuarioRegistro(String usuarioRegistro) { this.usuarioRegistro = usuarioRegistro; }
 	public Long getEstado() { return estado; }
 	public void setEstado(Long estado) { this.estado = estado; }
+
+	// C25-02 — revisión con el cliente
+	/** Título corto. */
+	@Basic
+	@Column(name = "DCSNTTLO", length = 300)
+	private String titulo;
+	/** Resumen en una frase. */
+	@Basic
+	@Column(name = "DCSNRSMN", length = 2000)
+	private String resumen;
+	/** Razones (por qué se decidió así). */
+	@Basic
+	@Column(name = "DCSNRZNS", length = 2000)
+	private String razones;
+	public String getTitulo() { return titulo; }
+	public void setTitulo(String titulo) { this.titulo = titulo; }
+	public String getResumen() { return resumen; }
+	public void setResumen(String resumen) { this.resumen = resumen; }
+	public String getRazones() { return razones; }
+	public void setRazones(String razones) { this.razones = razones; }
 }

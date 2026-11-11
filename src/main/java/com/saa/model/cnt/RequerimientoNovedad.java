@@ -136,4 +136,12 @@ public class RequerimientoNovedad implements Serializable {
 	public void setFechaRegistro(LocalDateTime fechaRegistro) { this.fechaRegistro = fechaRegistro; }
 	public String getUsuarioRegistro() { return usuarioRegistro; }
 	public void setUsuarioRegistro(String usuarioRegistro) { this.usuarioRegistro = usuarioRegistro; }
+
+	// C25-02 — revisión con el cliente
+	/** Origen: TXT, REVISION, AJUSTE, PANTALLA. */
+	@Basic
+	@Column(name = "RQNVORGN", length = 20)
+	private String origen = "TXT";
+	public String getOrigen() { return origen; }
+	public void setOrigen(String origen) { this.origen = origen; }
 }

@@ -52,6 +52,13 @@ public interface SeguimientoNovedadService {
 
 	List<HistorialNovedad> historial(Long idNovedad) throws Throwable;
 
+	/**
+	 * C25b — Listado de decisiones tomadas (CNT.DCSN) con su ficha completa y las novedades vinculadas (vínculo DECISION
+	 * o decisión originada al responder un requerimiento). {@code texto} filtra por número, tema, texto, razones, quién
+	 * decide o evidencia.
+	 */
+	List<Map<String, Object>> decisiones(Long idEmpresa, String texto) throws Throwable;
+
 	// ---------------------------------------------------------------- F3 acciones
 
 	/** BORRADOR -> ENVIADA de las novedades {@code ids} (o de todo el mes si {@code ids} viene vacío y se dan año y mes). */

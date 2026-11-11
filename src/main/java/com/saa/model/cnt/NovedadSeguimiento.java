@@ -221,4 +221,60 @@ public class NovedadSeguimiento implements Serializable {
 	public void setFechaRegistro(LocalDateTime fechaRegistro) { this.fechaRegistro = fechaRegistro; }
 	public String getUsuarioRegistro() { return usuarioRegistro; }
 	public void setUsuarioRegistro(String usuarioRegistro) { this.usuarioRegistro = usuarioRegistro; }
+
+	// C25-02 — revisión con el cliente
+	/** Por qué importa (texto curado de la revisión con el cliente). */
+	@Lob
+	@Column(name = "NVDDPRQE")
+	private String porQue;
+	/** Qué se registró en el SAA (texto curado). */
+	@Lob
+	@Column(name = "NVDDRGST")
+	private String registro;
+	/** Monto según la revisión (NVDDVLOR es el del parser). */
+	@Basic
+	@Column(name = "NVDDMNTO")
+	private Double monto;
+	/** Nota que explica el monto. */
+	@Basic
+	@Column(name = "NVDDMNNT", length = 2000)
+	private String montoNota;
+	/** Nota de la revisión. */
+	@Basic
+	@Column(name = "NVDDNTRV", length = 4000)
+	private String notaRevision;
+	/** Estado según la revisión: RESUELTO, PENDIENTE_DOCUMENTO, PENDIENTE_DECISION. */
+	@Basic
+	@Column(name = "NVDDESRV", length = 25)
+	private String estadoRevision;
+	/** Pedido general de la novedad (TABLAS-59). */
+	@Basic
+	@Column(name = "NVDDPDGN", length = 2000)
+	private String pedidoGeneral;
+	/** Cifras, JSON [[concepto, valor, detalle]]. */
+	@Lob
+	@Column(name = "NVDDCFRS")
+	private String cifras;
+	/** Asientos a cuentas por regularizar repartidos a la novedad, JSON. */
+	@Lob
+	@Column(name = "NVDDRGLR")
+	private String regularizar;
+	public String getPorQue() { return porQue; }
+	public void setPorQue(String porQue) { this.porQue = porQue; }
+	public String getRegistro() { return registro; }
+	public void setRegistro(String registro) { this.registro = registro; }
+	public Double getMonto() { return monto; }
+	public void setMonto(Double monto) { this.monto = monto; }
+	public String getMontoNota() { return montoNota; }
+	public void setMontoNota(String montoNota) { this.montoNota = montoNota; }
+	public String getNotaRevision() { return notaRevision; }
+	public void setNotaRevision(String notaRevision) { this.notaRevision = notaRevision; }
+	public String getEstadoRevision() { return estadoRevision; }
+	public void setEstadoRevision(String estadoRevision) { this.estadoRevision = estadoRevision; }
+	public String getPedidoGeneral() { return pedidoGeneral; }
+	public void setPedidoGeneral(String pedidoGeneral) { this.pedidoGeneral = pedidoGeneral; }
+	public String getCifras() { return cifras; }
+	public void setCifras(String cifras) { this.cifras = cifras; }
+	public String getRegularizar() { return regularizar; }
+	public void setRegularizar(String regularizar) { this.regularizar = regularizar; }
 }
