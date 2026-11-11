@@ -1,6 +1,15 @@
 # Despliegue del EAR «pago de préstamo con aportes del garante» (2026-11-11)
 
-> ⛔ **Se despliega `garante2-1111`, NO `garante-1111`** (decisión del usuario: subir junto con el garante en préstamos ya
+> ⛔ **Se despliega `seguro-garante-1111`** (pedido del usuario: incluir el cambio de omen1 del seguro de incendio).
+> Es `garante2-1111` con **solo `saaBE.war` reemplazado** por saaBE `main` en `eabd4722` (agrega omen1 `ab49c8f5`,
+> `eabd4722`: el seguro de incendio incluye los hipotecarios DE PLAZO VENCIDO; **sin SQL ni DDL**, ver
+> `crd/DISENO-SEGURO-INCENDIO-PLAZO-VENCIDO.md`). Contra `garante2-1111` cambia solo `DocumentoSeguroServiceImpl` (y sus
+> clases internas). SaaFE.war idéntico (`3365CE04…D8920173`, saaFE `903edbc`, sin commits nuevos).
+> - `F:\earssoprep\seguro-garante-1111\SaaEAR.ear` — SHA-256 `7A9399D044DBE174FBE304D7222B244A60381F04795B634F504D94BF5968E139`
+>   (3 partes en `seguro-garante-1111\partes`). `saaBE.war` `74A072FA38436DB43167EC8883BE8C33CF8BB2CA8F60DEEE3106DF42BBA43898`.
+> - `garante-1111` y `garante2-1111` quedan descartados. El resto de esta ficha (scripts, qué trae, humo) sigue valiendo.
+>
+> Histórico: se iba a desplegar `garante2-1111`, NO `garante-1111` (decisión del usuario: subir junto con el garante en préstamos ya
 > otorgados, G4). `garante-1111` queda descartado.
 
 **omen-saa-3-arb.** Se armó sobre `adhesion-1110` (omen1, `DESPLIEGUE-EAR-ADHESION-2026-11-10.md`), que contiene
