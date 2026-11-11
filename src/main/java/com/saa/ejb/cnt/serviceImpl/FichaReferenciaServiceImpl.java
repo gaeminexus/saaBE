@@ -121,12 +121,24 @@ public class FichaReferenciaServiceImpl implements FichaReferenciaService {
 		f.put("ruta", r);
 	}
 
+	/** Valor apto para JSON: números como número; fechas como texto ISO (sin la hora si es medianoche); CLOB como texto. */
 	private static Object valorJson(Object v) {
 		if (v instanceof java.math.BigDecimal) {
 			java.math.BigDecimal b = (java.math.BigDecimal) v;
-			return b.scale() <= 0 ? (Object) b.longValue() : (Object) b.doubleValue();
+			return b.scale() <= 0 || b.stripTrailingZeros().scale() <= 0 ? (Object) b.longValue() : (Object) b.doubleValue();
 		}
-		return SeguimientoNovedadServiceImpl.aFecha(v);
+		if (v instanceof java.sql.Clob) {
+			return clob((java.sql.Clob) v);
+		}
+		Object f = SeguimientoNovedadServiceImpl.aFecha(v);
+		if (f instanceof java.time.LocalDateTime) {
+			java.time.LocalDateTime t = (java.time.LocalDateTime) f;
+			return t.toLocalTime().equals(java.time.LocalTime.MIDNIGHT) ? t.toLocalDate().toString() : t.toString().replace('T', ' ').substring(0, 16);
+		}
+		if (f instanceof java.time.LocalDate) {
+			return f.toString();
+		}
+		return f;
 	}
 
 	private Object[] uno(String sql, Object... p) {
@@ -158,6 +170,18 @@ public class FichaReferenciaServiceImpl implements FichaReferenciaService {
 	private static Long num(String valor) {
 		String v = valor == null ? "" : valor.trim().replaceAll("[.\\s]", "");
 		return v.matches("\\d{1,15}") ? Long.valueOf(v) : null;
+	}
+
+	/** Une valores con " / " sin escribir "null"; null si todos faltan. */
+	private static String par(Object... xs) {
+		List<String> l = new ArrayList<String>();
+		boolean alguno = false;
+		for (Object x : xs) {
+			Object y = valorJson(x);
+			alguno |= y != null && !"".equals(y);
+			l.add(y == null ? "—" : String.valueOf(y));
+		}
+		return alguno ? String.join(" / ", l) : null;
 	}
 
 	private static Object v(Object[] f, int i) {
@@ -262,14 +286,14 @@ public class FichaReferenciaServiceImpl implements FichaReferenciaService {
 		campo(f, "Partícipe (entidad)", v(p, 2), "ENTIDAD", v(p, 2));
 		campo(f, "Producto", p[3]);
 		campo(f, "Fecha", v(p, 4));
-		campo(f, "Inicio / fin", v(p, 5) + " / " + v(p, 6));
+		campo(f, "Inicio / fin", par(v(p, 5), v(p, 6)));
 		campo(f, "Monto", v(p, 7));
 		campo(f, "Plazo", v(p, 8));
 		campo(f, "Cuota", v(p, 9));
 		campo(f, "Tasa nominal", v(p, 10));
 		campo(f, "Estado (PRSTIDST)", est == null ? null : est + " " + ESTADO_PRESTAMO.getOrDefault(est, ""));
 		campo(f, "Saldo de capital", v(p, 12));
-		campo(f, "Por vencer / vencido / total", v(p, 13) + " / " + v(p, 14) + " / " + v(p, 15));
+		campo(f, "Por vencer / vencido / total", par(v(p, 13), v(p, 14), v(p, 15)));
 		campo(f, "Días vencido", v(p, 16));
 		campo(f, "Es novación", v(p, 18));
 		campo(f, "Observación", p[17]);
@@ -301,9 +325,9 @@ public class FichaReferenciaServiceImpl implements FichaReferenciaService {
 		campo(f, "Fecha", v(p, 3));
 		campo(f, "Cuota", v(p, 4));
 		campo(f, "Valor", v(p, 5));
-		campo(f, "Capital / interés / mora", v(p, 6) + " / " + v(p, 7) + " / " + v(p, 8));
-		campo(f, "Interés vencido / desgravamen / otros", v(p, 9) + " / " + v(p, 10) + " / " + v(p, 11));
-		campo(f, "Tipo / estado", v(p, 12) + " / " + v(p, 13));
+		campo(f, "Capital / interés / mora", par(v(p, 6), v(p, 7), v(p, 8)));
+		campo(f, "Interés vencido / desgravamen / otros", par(v(p, 9), v(p, 10), v(p, 11)));
+		campo(f, "Tipo / estado", par(v(p, 12), v(p, 13)));
 		campo(f, "Asiento", v(p, 14), "ASIENTO", v(p, 14));
 		campo(f, "Anulado", v(p, 15));
 		campo(f, "Motivo de anulación", p[16]);
@@ -359,12 +383,12 @@ public class FichaReferenciaServiceImpl implements FichaReferenciaService {
 		f.put("titulo", "Cobro " + cod);
 		f.put("subtitulo", "Valor " + v(c, 7) + " · fecha " + v(c, 8));
 		campo(f, "Entidad", v(c, 1), "ENTIDAD", v(c, 1));
-		campo(f, "Tipo de operación / estado", v(c, 2) + " / " + v(c, 3));
+		campo(f, "Tipo de operación / estado", par(v(c, 2), v(c, 3)));
 		campo(f, "Cuenta bancaria", c[4] == null ? null : "terminada en " + String.valueOf(c[4]).replaceAll(".*(\\d{4})$", "$1"));
 		campo(f, "Cuenta contable del banco", c[5], "CUENTA", c[5]);
 		campo(f, "Referencia", c[6]);
 		campo(f, "Valor", v(c, 7));
-		campo(f, "Fecha / fecha de afectación", v(c, 8) + " / " + v(c, 9));
+		campo(f, "Fecha / fecha de afectación", par(v(c, 8), v(c, 9)));
 		campo(f, "Observación", c[10]);
 		campo(f, "Usuario", c[11]);
 		campo(f, "Motivo de anulación", c[12]);
@@ -392,14 +416,14 @@ public class FichaReferenciaServiceImpl implements FichaReferenciaService {
 		campo(f, "Extracto", v(d, 1));
 		campo(f, "Cuenta bancaria", d[2] == null ? null : "terminada en " + String.valueOf(d[2]).replaceAll(".*(\\d{4})$", "$1"));
 		campo(f, "Cuenta contable", d[3], "CUENTA", d[3]);
-		campo(f, "Fecha de la transacción / contable", v(d, 4) + " / " + v(d, 5));
+		campo(f, "Fecha de la transacción / contable", par(v(d, 4), v(d, 5)));
 		campo(f, "Descripción", d[6]);
 		campo(f, "Referencia", d[7]);
 		campo(f, "Código de movimiento", d[8]);
-		campo(f, "Débito / crédito / saldo", v(d, 9) + " / " + v(d, 10) + " / " + v(d, 11));
+		campo(f, "Débito / crédito / saldo", par(v(d, 9), v(d, 10), v(d, 11)));
 		campo(f, "Fila en el archivo", v(d, 12));
 		campo(f, "Conciliación", v(d, 13));
-		campo(f, "Estado de revisión / estado", v(d, 14) + " / " + v(d, 15));
+		campo(f, "Estado de revisión / estado", par(v(d, 14), v(d, 15)));
 		if (d[1] != null) {
 			Map<String, Object> qp = new LinkedHashMap<String, Object>();
 			qp.put("idExtracto", v(d, 1));
@@ -423,9 +447,9 @@ public class FichaReferenciaServiceImpl implements FichaReferenciaService {
 		f.put("subtitulo", "Afecta " + v(c, 3) + "/" + v(c, 4));
 		campo(f, "Archivo", c[1]);
 		campo(f, "Fecha de carga", v(c, 2));
-		campo(f, "Mes / año de afectación", v(c, 3) + " / " + v(c, 4));
-		campo(f, "Total a descontar / descontado", v(c, 5) + " / " + v(c, 6));
-		campo(f, "Capital / interés descontado", v(c, 7) + " / " + v(c, 8));
+		campo(f, "Mes / año de afectación", par(v(c, 3), v(c, 4)));
+		campo(f, "Total a descontar / descontado", par(v(c, 5), v(c, 6)));
+		campo(f, "Capital / interés descontado", par(v(c, 7), v(c, 8)));
 		campo(f, "Estado", v(c, 9));
 		campo(f, "Número de transferencia", c[10]);
 		campo(f, "Autorización de contabilidad", v(c, 11));
@@ -449,9 +473,9 @@ public class FichaReferenciaServiceImpl implements FichaReferenciaService {
 		f.put("encontrado", true);
 		f.put("titulo", "Corrida " + cod + " del cierre de cartera");
 		f.put("subtitulo", v(c, 2) + "/" + v(c, 1) + " · corte " + v(c, 3));
-		campo(f, "Año / mes", v(c, 1) + " / " + v(c, 2));
-		campo(f, "Fecha de corte / de proceso", v(c, 3) + " / " + v(c, 4));
-		campo(f, "Estado (idEstado / estado)", v(c, 5) + " / " + v(c, 8));
+		campo(f, "Año / mes", par(v(c, 1), v(c, 2)));
+		campo(f, "Fecha de corte / de proceso", par(v(c, 3), v(c, 4)));
+		campo(f, "Estado (idEstado / estado)", par(v(c, 5), v(c, 8)));
 		campo(f, "Observación", c[6]);
 		campo(f, "Usuario", c[7]);
 		filasTabla(tabla(f, "Asientos de la corrida (CRD.ANCC)", Arrays.asList("Paso", "Asiento", "Número", "Fecha", "Valor", "Cantidad", "Estado"), "Asiento", "ASIENTO"),
@@ -470,7 +494,7 @@ public class FichaReferenciaServiceImpl implements FichaReferenciaService {
 		f.put("titulo", "Cuenta " + c[1]);
 		f.put("subtitulo", String.valueOf(c[2]));
 		campo(f, "Nombre", c[2]);
-		campo(f, "Tipo / nivel / estado", v(c, 3) + " / " + v(c, 4) + " / " + v(c, 5));
+		campo(f, "Tipo / nivel / estado", par(v(c, 3), v(c, 4), v(c, 5)));
 		if (anio == null || mes == null) {
 			f.put("mensaje", "Sin mes de contexto: se muestra solo la cuenta.");
 			return;
@@ -514,10 +538,10 @@ public class FichaReferenciaServiceImpl implements FichaReferenciaService {
 		f.put("subtitulo", "Total " + v(c, 8) + " · fecha " + v(c, 5));
 		campo(f, "Id", v(c, 0));
 		campo(f, "Número", c[1]);
-		campo(f, "Establecimiento / punto / secuencial", c[2] + " / " + c[3] + " / " + c[4]);
+		campo(f, "Establecimiento / punto / secuencial", par(c[2], c[3], c[4]));
 		campo(f, "Fecha", v(c, 5));
-		campo(f, "Subtotal / IVA / total", v(c, 6) + " / " + v(c, 7) + " / " + v(c, 8));
-		campo(f, "Estado / estado de pago", v(c, 9) + " / " + v(c, 10));
+		campo(f, "Subtotal / IVA / total", par(v(c, 6), v(c, 7), v(c, 8)));
+		campo(f, "Estado / estado de pago", par(v(c, 9), v(c, 10)));
 		campo(f, "Asiento", v(c, 11), "ASIENTO", v(c, 11));
 		campo(f, "Observación", c[12]);
 		campo(f, "Motivo de anulación", c[13]);
@@ -536,10 +560,10 @@ public class FichaReferenciaServiceImpl implements FichaReferenciaService {
 		f.put("subtitulo", "Total " + v(c, 7) + " · fecha " + v(c, 4));
 		campo(f, "Id", v(c, 0));
 		campo(f, "Número", c[1]);
-		campo(f, "Establecimiento / secuencial", c[2] + " / " + c[3]);
+		campo(f, "Establecimiento / secuencial", par(c[2], c[3]));
 		campo(f, "Fecha", v(c, 4));
-		campo(f, "Subtotal / IVA / total", v(c, 5) + " / " + v(c, 6) + " / " + v(c, 7));
-		campo(f, "Estado / estado de pago", v(c, 8) + " / " + v(c, 9));
+		campo(f, "Subtotal / IVA / total", par(v(c, 5), v(c, 6), v(c, 7)));
+		campo(f, "Estado / estado de pago", par(v(c, 8), v(c, 9)));
 		campo(f, "Asiento", v(c, 10), "ASIENTO", v(c, 10));
 		campo(f, "Observación", c[11]);
 		campo(f, "Motivo de anulación", c[12]);
@@ -589,10 +613,10 @@ public class FichaReferenciaServiceImpl implements FichaReferenciaService {
 		f.put("encontrado", true);
 		f.put("titulo", "Ejecución " + cod + " de las estructuras G");
 		f.put("subtitulo", v(e, 1) + "/" + v(e, 2));
-		campo(f, "Mes / año", v(e, 1) + " / " + v(e, 2));
+		campo(f, "Mes / año", par(v(e, 1), v(e, 2)));
 		campo(f, "Usuario", e[3]);
 		campo(f, "Fecha de generación", v(e, 4));
-		campo(f, "Tipo / estado", v(e, 5) + " / " + v(e, 6));
+		campo(f, "Tipo / estado", par(v(e, 5), v(e, 6)));
 		campo(f, "Observaciones", e[7]);
 		filasTabla(tabla(f, "Estructuras generadas (RPR.EJRD)", Arrays.asList("Estructura", "Estado", "Fecha", "Registros", "Novedad")),
 				varios("SELECT EJRDTPRP, EJRDESTD, EJRDFCGN, EJRDCNRG, EJRDNVDD FROM RPR.EJRD WHERE EJRCCDGO = ?1 ORDER BY EJRDTPRP", cod),
