@@ -115,4 +115,17 @@ public class DecisionRest {
 			return RespuestasC25.error(e, "Error al armar el texto: ");
 		}
 	}
+
+	/** GET /dcsn/listado?idEmpresa&texto — C25b: decisiones tomadas con su ficha (tema, texto, quién decide, evidencia, razones) y las novedades vinculadas. */
+	@GET
+	@Path("/listado")
+	@Produces(MediaType.APPLICATION_JSON)
+	public Response listado(@QueryParam("idEmpresa") Long idEmpresa, @QueryParam("texto") String texto) {
+		System.out.println("LLEGA AL SERVICIO GET dcsn/listado");
+		try {
+			return RespuestasC25.ok(servicio.decisiones(idEmpresa, texto));
+		} catch (Throwable e) {
+			return RespuestasC25.error(e, "Error al consultar las decisiones: ");
+		}
+	}
 }

@@ -65,4 +65,5 @@ public interface NombreEntidadesContabilidad {
     String ADJUNTO_NOVEDAD = "AdjuntoNovedad";
     String VINCULO_NOVEDAD = "VinculoNovedad";
     String HISTORIAL_NOVEDAD = "HistorialNovedad";
+    String REVISION_MES_NOVEDAD = "RevisionMesNovedad";
 }
