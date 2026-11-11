@@ -166,6 +166,18 @@ public interface ProcesoPagoPrestamoService {
     ResultadoPagoConAportes pagarConAportes(SolicitudPagoConAportes solicitud) throws Throwable;
 
     /**
+     * Aviso (solo lectura, no detiene nada) del pago con los aportes del garante: su saldo de aportes, el capital
+     * pendiente de sus propios préstamos vigentes PQ/PE (el {@code saldoCapitalCupo} del otorgamiento) y si pagar
+     * {@code monto} lo deja por debajo. DISENO-PAGO-CON-APORTES-DEL-GARANTE.md §G5.
+     *
+     * @param idGarante PK de CRD.GRPR; debe existir, estar activo y ser partícipe (mismos mensajes que
+     *                  {@link #pagarConAportes})
+     * @param monto     valor a cruzar; {@code null} = 0
+     */
+    com.saa.ejb.crd.service.dto.ResultadoCompromisoGarante consultarCompromisoGarante(Long idGarante, Double monto)
+            throws Throwable;
+
+    /**
      * Valida un desglose de aportes (§7.4): no vacío, cada valor &gt; 0, sin tipos repetidos,
      * cada tipo vigente ({@code TipoAporte.estado = 1}) y con saldo suficiente en la entidad.
      * Promovido de privado a público el 2026-08-30 para que

@@ -713,6 +713,20 @@ Sin él, todo igual que arriba (aportes del deudor). Con él:
   original.
 - Las llamadas internas (pensión complementaria, jubilación) no mandan `idGarante`.
 
+**Aviso de comprometido del garante — `GET /rest/prst/compromisoGarante/{idGarante}?monto={valor}`** (solo lectura, no
+detiene nada; `monto` opcional, sin él 0; DISENO-PAGO-CON-APORTES-DEL-GARANTE.md §G5). Lo consulta el cruce de valores antes
+de confirmar un pago con aportes del garante. Respuesta 200:
+```json
+{ "saldoAportes": 1500.00, "capitalComprometido": 2000.00, "saldoDespues": 900.00, "quedaDescubierto": true,
+  "mensaje": "Después de este pago NOMBRE DEL GARANTE quedaría con $900.00 en aportes y tiene $2000.00 comprometidos en sus propios préstamos" }
+```
+- `saldoAportes`: Σ del saldo disponible de los tipos de aporte del garante (misma fuente que `saldosPorEntidad`).
+- `capitalComprometido`: capital pendiente de los préstamos vigentes (2, 8, 10, 11) PQ/PE **del garante** (el `saldoCapitalCupo` de
+  `EvaluacionOtorgamientoService.evaluar`, calculado sobre la entidad del garante).
+- `saldoDespues = saldoAportes − monto`; `quedaDescubierto = saldoDespues < capitalComprometido`; `mensaje` es `null` cuando no queda descubierto.
+- Errores: garante inexistente, inactivo o sin partícipe → `PARAMETRO_INVALIDO` con el mismo texto que `pagarConAportes`
+  (el endpoint lo traduce igual: **400**); `monto` negativo → `PARAMETRO_INVALIDO`.
+
 **Por qué así** (resumen del análisis): los reportes (G42/G43/G44/CJBM/CPRM/CCPM/dashboard/padrón)
 suman `APRTVLRR` neto y esperan pagos como filas negativas; los campos `valorPagado`/`saldo` de
 las filas POSITIVAS no se tocan porque pertenecen al FIFO petro (otra semántica). El saldo

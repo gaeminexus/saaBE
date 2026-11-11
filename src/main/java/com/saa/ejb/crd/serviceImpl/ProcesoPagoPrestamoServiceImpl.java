@@ -40,6 +40,8 @@ import com.saa.ejb.crd.service.dto.CuotaExigible;
 import com.saa.ejb.crd.service.dto.DesgloseAporte;
 import com.saa.ejb.crd.service.dto.DesgloseConceptosPrestamo;
 import com.saa.ejb.crd.service.dto.DetalleAplicacionCuota;
+import com.saa.ejb.crd.service.dto.EvaluacionOtorgamiento;
+import com.saa.ejb.crd.service.dto.ResultadoCompromisoGarante;
 import com.saa.ejb.crd.service.dto.MovimientoAporte;
 import com.saa.ejb.crd.service.dto.ComprobantePagoMultipleDatos;
 import com.saa.ejb.crd.service.dto.LineaComprobantePagoMultiple;
@@ -174,6 +176,10 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
 
     @EJB
     private com.saa.ejb.crd.dao.EntidadDaoService entidadDaoService;
+
+    /** Aviso de comprometido del garante: reutiliza el cálculo del cupo del otorgamiento (saldoCapitalCupo). */
+    @EJB
+    private com.saa.ejb.crd.service.EvaluacionOtorgamientoService evaluacionOtorgamientoService;
 
     /** Bug corregido 2026-08-28: la fórmula pura de mora, para que la precancelación la recalcule
      *  a la fecha elegida en vez de leer el DTPRMRAA/DTPRSLMR ya guardado. */
@@ -705,17 +711,33 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
      */
     private Entidad validarGarantePagoConAportes(SolicitudPagoConAportes solicitud, Prestamo prestamo)
             throws Throwable {
-        GarantePrestamo garante = garantePrestamoDaoService.find(new GarantePrestamo(), solicitud.getIdGarante());
+        Entidad entidadGarante = cargarEntidadGarante(solicitud.getIdGarante(), prestamo.getCodigo());
+        String ruta = solicitud.getRutaDocumentoRespaldo();
+        if (ruta == null || ruta.trim().isEmpty()) {
+            throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": el pago con aportes del garante exige"
+                + " rutaDocumentoRespaldo (la autorización firmada del garante)");
+        }
+        return entidadGarante;
+    }
+
+    /**
+     * El GRPR existe, está activo, (si {@code idPrestamoEsperado} no es null) es de ESE préstamo y tiene partícipe;
+     * devuelve la entidad del partícipe garante. Compartido por el pago con aportes del garante y por su aviso de
+     * comprometido ({@link #consultarCompromisoGarante}), para que los dos rechacen con el mismo texto.
+     */
+    private Entidad cargarEntidadGarante(Long idGarante, Long idPrestamoEsperado) throws Throwable {
+        GarantePrestamo garante = garantePrestamoDaoService.find(new GarantePrestamo(), idGarante);
         if (garante == null) {
-            throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": no existe el garante " + solicitud.getIdGarante());
+            throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": no existe el garante " + idGarante);
         }
         if (garante.getEstado() == null || garante.getEstado().longValue() != 1L) {
             throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": el garante " + garante.getCodigo()
                 + " no está activo");
         }
-        if (garante.getIdPrestamo() == null || !garante.getIdPrestamo().equals(prestamo.getCodigo())) {
+        if (idPrestamoEsperado != null
+                && (garante.getIdPrestamo() == null || !garante.getIdPrestamo().equals(idPrestamoEsperado))) {
             throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": el garante " + garante.getCodigo()
-                + " no es del préstamo " + prestamo.getCodigo());
+                + " no es del préstamo " + idPrestamoEsperado);
         }
         if (garante.getIdEntidad() == null) {
             throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": el garante " + garante.getCodigo()
@@ -726,12 +748,47 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
             throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": no existe el partícipe "
                 + garante.getIdEntidad() + " del garante " + garante.getCodigo());
         }
-        String ruta = solicitud.getRutaDocumentoRespaldo();
-        if (ruta == null || ruta.trim().isEmpty()) {
-            throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": el pago con aportes del garante exige"
-                + " rutaDocumentoRespaldo (la autorización firmada del garante)");
-        }
         return entidadGarante;
+    }
+
+    /**
+     * Aviso de comprometido del garante (DISENO-PAGO-CON-APORTES-DEL-GARANTE.md §G5, decisión 4): SOLO LECTURA, no
+     * detiene nada. El saldo de aportes y el capital comprometido salen de {@code EvaluacionOtorgamientoService.evaluar}
+     * sobre la ENTIDAD DEL GARANTE (no la del deudor): {@code saldoCuentaIndividual} (Σ de saldosPorEntidad) y
+     * {@code saldoCapitalCupo} (capital pendiente de sus préstamos vigentes PQ/PE) — el mismo cálculo del cupo del
+     * otorgamiento, reutilizado y no reescrito.
+     */
+    @Override
+    public ResultadoCompromisoGarante consultarCompromisoGarante(Long idGarante, Double monto) throws Throwable {
+        System.out.println("ProcesoPagoPrestamoService.consultarCompromisoGarante - Garante: " + idGarante
+            + " - monto: " + monto);
+        if (idGarante == null) {
+            throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": idGarante es obligatorio");
+        }
+        double valor = monto != null ? monto : 0.0;
+        if (valor < 0.0) {
+            throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": el monto no puede ser negativo");
+        }
+        Entidad entidadGarante = cargarEntidadGarante(idGarante, null);
+
+        EvaluacionOtorgamiento ev = evaluacionOtorgamientoService.evaluar(entidadGarante.getCodigo(), null, null,
+            null, null);
+        double saldoAportes = redondear(ev.getSaldoCuentaIndividual() != null ? ev.getSaldoCuentaIndividual() : 0.0);
+        double comprometido = redondear(ev.getSaldoCapitalCupo() != null ? ev.getSaldoCapitalCupo() : 0.0);
+        double saldoDespues = redondear(saldoAportes - valor);
+        boolean descubierto = saldoDespues < comprometido;
+
+        ResultadoCompromisoGarante r = new ResultadoCompromisoGarante();
+        r.setSaldoAportes(saldoAportes);
+        r.setCapitalComprometido(comprometido);
+        r.setSaldoDespues(saldoDespues);
+        r.setQuedaDescubierto(descubierto);
+        r.setMensaje(descubierto
+            ? "Después de este pago " + (entidadGarante.getRazonSocial() != null ? entidadGarante.getRazonSocial().trim() : "el garante")
+                + " quedaría con $" + formatoMonto(saldoDespues) + " en aportes y tiene $" + formatoMonto(comprometido)
+                + " comprometidos en sus propios préstamos"
+            : null);
+        return r;
     }
 
     /** "NOMBRE (CI 123...)" del partícipe, para la observación, la huella y la glosa del garante. */
