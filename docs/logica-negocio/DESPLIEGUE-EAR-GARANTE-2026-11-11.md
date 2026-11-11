@@ -1,6 +1,17 @@
 # Despliegue del EAR «pago de préstamo con aportes del garante» (2026-11-11)
 
-> **Último: `cruce-1111`** = `garante-cobros-1111` con **solo `SaaFE.war` cambiado** (saaFE `a0b2f05`): la proyección y
+> **Último: `cuenta-viva-1111`** = `cruce-1111` con **solo `saaBE.war` cambiado** (saaBE `ed2ee07c`): la orden de
+> desembolso del préstamo sigue a la cuenta del socio (`crd/DISENO-DESEMBOLSO-CUENTA-DESTINO-VIVA.md`): al aprobar se
+> exige cuenta activa completa, y al guardar/borrar la cuenta del socio se actualizan sus órdenes de desembolso
+> POR_APROBAR. Contra `cruce-1111` cambian solo `CuentaBancariaParticipeServiceImpl`, `PrestamoDaoService(Impl)` y
+> `PagoProgramadoService(Impl)`. `SaaFE.war` idéntico (`CC9BA7FF…`). Sin SQL nuevo (el `e3-18` paso 3 era la reparación
+> puntual del préstamo 8530).
+> - `F:\ears\asoprep\cuenta-viva-1111\SaaEAR.ear` — SHA-256 `6AC29FBEA201C00305FD236843C74CEA87C55506E37A735F56AE3E20D15D96DF`
+>   (3 partes en `cuenta-viva-1111\partes`). `saaBE.war` `3842322C727029D0F83D2D41D9C133851AE18C60EA3DED20B25212AF9A1F41F8`.
+> - Vuelta atrás: `cruce-1111`. Humo (lectura): editar/guardar la cuenta de un socio con préstamo APROBADO pendiente de
+>   desembolso → la bandeja de Aprobación de pagos muestra su cuenta; log `sincronizarOrdenesDesembolso`.
+>
+> Anterior: **`cruce-1111`** = `garante-cobros-1111` con **solo `SaaFE.war` cambiado** (saaFE `a0b2f05`): la proyección y
 > los atajos 1/3/6 cuotas de Cruce de valores usan el pendiente real de cada cuota en vez de `DTPRSLDO` (en los migrados
 > traía el saldo capital y pintaba todo como «parcial» en la cuota 1). Solo vista; el pago no cambia. `saaBE.war`
 > idéntico (`036401B9…E9C66481`, saaBE `6b5cbed8`).
