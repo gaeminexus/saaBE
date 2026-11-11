@@ -1,6 +1,15 @@
 # Despliegue del EAR «pago de préstamo con aportes del garante» (2026-11-11)
 
-> ⛔ **Se despliega `seguro-garante-1111`** (pedido del usuario: incluir el cambio de omen1 del seguro de incendio).
+> **Último: `garante-final-1111`** = todo `main` (saaBE `14084155`, saaFE `c623255`) sobre `adhesion-1110`. Suma a
+> `seguro-garante-1111` (ya desplegado por el usuario) solo el aviso de comprometido del garante (G5: `GET
+> prst/compromisoGarante` + aviso en la confirmación del cruce). Contra `seguro-garante-1111` cambian solo
+> `ProcesoPagoPrestamoService(Impl)`, `PrestamoRest` y entra `ResultadoCompromisoGarante`. Sin SQL nuevo.
+> - `F:\ears\asoprep\garante-final-1111\SaaEAR.ear` — SHA-256 `58A0574E1057925200A3A878EE8C18ABB4B5596FEA047518F0ABA0E56A1BB58D`
+>   (3 partes en `garante-final-1111\partes`). `saaBE.war` `C05294A2F91D9F2FC3361EC23B7A0F69877D5F61900AAB2736075B6195029FDF`,
+>   `SaaFE.war` `405261F515F4920B805510857772E863542292425FADD0037B4C72857549183B`.
+> - Vuelta atrás: `seguro-garante-1111` (`7A9399D0…5968E139`).
+>
+> Anterior: **`seguro-garante-1111`** (pedido del usuario: incluir el cambio de omen1 del seguro de incendio).
 > Es `garante2-1111` con **solo `saaBE.war` reemplazado** por saaBE `main` en `eabd4722` (agrega omen1 `ab49c8f5`,
 > `eabd4722`: el seguro de incendio incluye los hipotecarios DE PLAZO VENCIDO; **sin SQL ni DDL**, ver
 > `crd/DISENO-SEGURO-INCENDIO-PLAZO-VENCIDO.md`). Contra `garante2-1111` cambia solo `DocumentoSeguroServiceImpl` (y sus
