@@ -198,5 +198,11 @@ public interface PrestamoDaoService extends EntityDao<Prestamo> {
      * @throws Throwable Si ocurre algún error
      */
     Long selectMaxIdAsoprep() throws Throwable;
+
+    /**
+     * Préstamos de un socio en el estado dado (PRSTIDST) que ya tienen orden de desembolso (PRSTIDPG no nulo).
+     * Sirve para sincronizar la cuenta de destino de las órdenes pendientes.
+     */
+    List<Prestamo> selectByEntidadEstadoConOrdenPago(Long idEntidad, Long idEstado) throws Throwable;
 }
 

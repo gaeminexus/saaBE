@@ -610,4 +610,19 @@ public interface PagoProgramadoService extends EntityService<PagoProgramado> {
 	 * @throws Throwable : Excepcion
 	 */
 	Map<String, Object> obtenerSeguimiento(Long idPago) throws Throwable;
+
+	/**
+	 * Actualiza el banco, tipo y número de cuenta del beneficiario ocasional de un pago de ORIGEN
+	 * EXTERNO que todavía está POR_APROBAR (p. ej. la orden de desembolso de un préstamo cuando el
+	 * socio registra o corrige su cuenta). Nombre e identificación del beneficiario no cambian.
+	 * Con los tres datos en null se vacía la cuenta de destino.
+	 * @param idPago          : Id del pago (PGTRCDGO)
+	 * @param idBancoExterno  : Id del banco (TSR.BEXT) o null para vaciar
+	 * @param tipoCuenta      : Tipo de cuenta o null para vaciar
+	 * @param numeroCuenta    : Número de cuenta o null para vaciar
+	 * @throws Throwable      : IncomeException si el pago no existe, no está POR_APROBAR, no es de
+	 *                          origen externo o tiene titular / cuenta destino de tesorería
+	 */
+	void actualizarBeneficiarioOcasional(Long idPago, Long idBancoExterno, Long tipoCuenta,
+			String numeroCuenta) throws Throwable;
 }

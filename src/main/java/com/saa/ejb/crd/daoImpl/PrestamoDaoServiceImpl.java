@@ -374,4 +374,15 @@ public class PrestamoDaoServiceImpl extends EntityDaoImpl<Prestamo> implements P
         return existentes;
     }
 
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public List<Prestamo> selectByEntidadEstadoConOrdenPago(Long idEntidad, Long idEstado) throws Throwable {
+        Query query = em.createQuery(
+            "select p from Prestamo p where p.entidad.codigo = :idEntidad and p.idEstado = :estado "
+            + "and p.idPagoProgramado is not null");
+        query.setParameter("idEntidad", idEntidad);
+        query.setParameter("estado", idEstado);
+        return query.getResultList();
+    }
 }
