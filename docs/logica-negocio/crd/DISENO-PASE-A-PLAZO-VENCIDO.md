@@ -139,7 +139,7 @@ plata cobrada al partícipe. **Ver §6, pregunta A.**
 | D10 (A) | Mora de los que **ya estaban** en 8 | **Les cae toda desde su vencimiento.** La primera corrida de las 02:00 después del WAR les carga la mora histórica completa, a sabiendas. ⇒ **El `sql/77` (limpieza de mora de los 8) queda OBSOLETO y NO se corre** |
 | D11 (B) | Aceleración | **Se acelera toda la deuda:** el saldo de capital incluye las cuotas no vencidas, **y el interés de esas cuotas también entra** |
 | D12 (C) | Tabla `CRD.PLVN` | **Autorizada** por el usuario |
-| D13 (C) | Seguro | **Un préstamo de plazo vencido ya no debe tener seguro.** El seguro de esas deudas se reporta a la aseguradora para que emita una **nota de crédito** |
+| D13 (C) | Seguro | **Un préstamo de plazo vencido ya no debe tener seguro.** El seguro de esas deudas se reporta a la aseguradora para que emita una **nota de crédito**. **Revocado para el seguro de INCENDIO el 2026-11-11** (decisión del usuario): los hipotecarios en estado 8 vuelven a entrar al listado y a las inclusiones de novedades, y la declaración ya no genera exclusión `PLAZO_VENCIDO` en incendio; ver `DISENO-SEGURO-INCENDIO-PLAZO-VENCIDO.md`. Desgravamen y prendario siguen con D13 |
 | D14 (D) | Reverso | Vuelve **siempre a `EN_MORA` (11)**. Lo hace el **Jefe de Crédito**. Si Contabilidad ya liquidó, **se reversan los asientos generados** |
 | D15 (E) | Firmantes | **Líneas de firma en el reporte** (firman después el PDF). Nada quemado |
 | D16 (F) | Memorando | **Uno por préstamo.** El sistema **valida que el número no se repita** |
