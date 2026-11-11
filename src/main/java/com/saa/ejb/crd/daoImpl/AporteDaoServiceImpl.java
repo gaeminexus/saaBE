@@ -844,6 +844,9 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 			" from     Aporte a " +
 			" where    a.tipoAporte.estado = 1 " +
 			"   and    (a.tipoAporte.codigoSBS <> 'RE' or a.tipoAporte.codigoSBS is null) " +
+			// C26 (2026-11-11): los tipos sin código SBS ('0', p. ej. 27 VALOR DE SEGURO POR ENTREGAR A BENEFICIARIOS)
+			// no son cuenta individual: su pasivo está fuera de la cuenta 21 (2.3.90.90.11) y la G42 debe cuadrar con 21.
+			"   and    (a.tipoAporte.codigoSBS <> '0' or a.tipoAporte.codigoSBS is null) " +
 			"   and    a.tipoAporte.codigo not in :codigos " +
 			"   and    " + VIGENTE_JPQL +
 			"   and    a.fechaTransaccion <= :fechaCorte " +
