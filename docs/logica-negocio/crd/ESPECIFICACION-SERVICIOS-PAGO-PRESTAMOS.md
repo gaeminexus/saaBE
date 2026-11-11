@@ -783,6 +783,20 @@ Secuencia (una transacción):
 8. Hook contabilizarPrecancelacion(evento).
 ```
 
+**Precancelación con los aportes del garante (`idGarante`, opcional)** — 2026-11-11, DISENO-PAGO-CON-APORTES-DEL-GARANTE.md §G6.
+`SolicitudPrecancelacion.idGarante` (`Long`, PK de `CRD.GRPR`) en `POST /prst/precancelar`. Sin él, todo igual que arriba. Con él:
+- Es **100 % aportes del garante**: el desglose `aportes[]` es obligatorio y no se admite `valorEfectivo` > 0 ni depósito
+  (`idCobroCredito`, que el endpoint directo ya limpia); si no, `PARAMETRO_INVALIDO: con aportes del garante la precancelación es 100 % aportes…`.
+  La precancelación mixta (depósito + aportes, camino CBCR) **no** admite garante en esta entrega.
+- Misma validación del garante que el §7.4 (activo, de este préstamo, partícipe; **`rutaDocumentoRespaldo` obligatoria**) y mismos errores.
+- `validarDesgloseAportes` y `consumirAportes` trabajan con la **entidad del garante**; el préstamo, sus cuotas y su estado final son del deudor.
+  `valorEnviado = Σ aportes` debe coincidir con `valorTotalPrecancelacion` (igual que siempre).
+- Trazabilidad como en §7.4: glosa de APRT/PGAP `PAGO PRESTAMO {id} DEL DEUDOR {CI} CON APORTES DEL GARANTE - Evento {e}`;
+  la observación del evento y la huella agregan `con aportes del garante {nombre} (CI …)`; la observación del asiento de
+  precancelación agrega `| Aportes del garante: {nombre} (Cédula: …)`. Las cuentas contables no cambian.
+- El reverso (`anularOperacion` de una PRECANCELACION) devuelve el aporte a la entidad de la fila APRT original, o sea al garante.
+- `CobroCreditoServiceImpl.procesarCobro` (precancelación por CBCR) llama a `precancelar` sin `idGarante`: sin cambio.
+
 ### 7.6 Reverso — `anularOperacion(SolicitudAnulacion)`
 
 Anula un `EventoPrestamo` completo (los 4 tipos). Validaciones comunes: evento existe y

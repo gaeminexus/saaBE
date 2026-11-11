@@ -711,8 +711,14 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
      */
     private Entidad validarGarantePagoConAportes(SolicitudPagoConAportes solicitud, Prestamo prestamo)
             throws Throwable {
-        Entidad entidadGarante = cargarEntidadGarante(solicitud.getIdGarante(), prestamo.getCodigo());
-        String ruta = solicitud.getRutaDocumentoRespaldo();
+        return validarGarantePagoConAportes(solicitud.getIdGarante(), solicitud.getRutaDocumentoRespaldo(), prestamo);
+    }
+
+    /** Misma validación, con los datos sueltos: la usan el pago con aportes y la precancelación con aportes del garante. */
+    private Entidad validarGarantePagoConAportes(Long idGarante, String rutaDocumentoRespaldo, Prestamo prestamo)
+            throws Throwable {
+        Entidad entidadGarante = cargarEntidadGarante(idGarante, prestamo.getCodigo());
+        String ruta = rutaDocumentoRespaldo;
         if (ruta == null || ruta.trim().isEmpty()) {
             throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": el pago con aportes del garante exige"
                 + " rutaDocumentoRespaldo (la autorización firmada del garante)");
@@ -1280,12 +1286,31 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
         Entidad entidad = prestamo.getEntidad();
         double valorAportes = 0.0;
         boolean conAportes = solicitud.getAportes() != null && !solicitud.getAportes().isEmpty();
+
+        // Con aportes del garante (DISENO-PAGO-CON-APORTES-DEL-GARANTE.md §G6): 100 % aportes del garante, sin depósito ni
+        // efectivo. Los aportes que se validan y consumen son los de SU entidad; el préstamo sigue siendo del deudor.
+        Entidad entidadAportes = entidad;
+        Entidad garanteEntidad = null;
+        String observacion = solicitud.getObservacion();
+        if (solicitud.getIdGarante() != null) {
+            if (solicitud.getIdCobroCredito() != null
+                    || (solicitud.getValorEfectivo() != null && solicitud.getValorEfectivo() > 0.0)
+                    || !conAportes) {
+                throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": con aportes del garante la precancelación es"
+                    + " 100 % aportes: indique solo el desglose de aportes, sin valorEfectivo ni depósito");
+            }
+            garanteEntidad = validarGarantePagoConAportes(solicitud.getIdGarante(),
+                solicitud.getRutaDocumentoRespaldo(), prestamo);
+            entidadAportes = garanteEntidad;
+            observacion = (observacion != null && !observacion.trim().isEmpty() ? observacion + " " : "")
+                + "con aportes del garante " + textoParticipe(garanteEntidad);
+        }
         if (conAportes) {
-            if (entidad == null || entidad.getCodigo() == null) {
+            if (entidadAportes == null || entidadAportes.getCodigo() == null) {
                 throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": el préstamo " + prestamo.getCodigo()
                     + " no tiene partícipe asociado; no se puede precancelar con aportes");
             }
-            valorAportes = validarDesgloseAportes(solicitud.getAportes(), entidad);
+            valorAportes = validarDesgloseAportes(solicitud.getAportes(), entidadAportes);
         }
 
         double valorEfectivo = redondear(solicitud.getValorEfectivo() != null ? solicitud.getValorEfectivo() : 0.0);
@@ -1304,13 +1329,16 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
 
         // 1. Evento
         EventoPrestamo evento = crearEvento(prestamo, TIPO_PRECANCELACION, valorTotal, fechaHora,
-            solicitud.getUsuario(), solicitud.getObservacion());
+            solicitud.getUsuario(), observacion);
 
         ContextoPago ctx = crearContexto(TIPO_PRECANCELACION, solicitud.getUsuario(),
             solicitud.getObservacion(), fechaHora, evento.getCodigo(),
             solicitud.getRutaDocumentoRespaldo(), solicitud.getIdEmpresa(),
             solicitud.getIdCobroCredito());
         ctx.setFechaAfectacion(fechaAfectacionEfectiva);
+        if (garanteEntidad != null) {
+            ctx.setIdEntidadAportes(garanteEntidad.getCodigo());
+        }
 
         // 2. Pagar la deuda exigible cuota por cuota (sin cascada)
         double valorExigiblePagado = 0.0;
@@ -1407,12 +1435,17 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
         List<MovimientoAporte> movimientos = new ArrayList<>();
         if (conAportes) {
             String glosa = "PAGO PRESTAMO " + prestamo.getCodigo() + " - Evento " + evento.getCodigo();
+            if (garanteEntidad != null) {
+                glosa = "PAGO PRESTAMO " + prestamo.getCodigo() + " DEL DEUDOR "
+                    + (entidad != null && entidad.getNumeroIdentificacion() != null ? entidad.getNumeroIdentificacion() : "S/N")
+                    + " CON APORTES DEL GARANTE - Evento " + evento.getCodigo();
+            }
             // Los PagoAporte se enlazan al primer PGPR de la deuda exigible; si no hubo cuotas
             // exigibles, al PGPR del capital futuro. Los demás se recuperan por el evento.
             PagoPrestamo referencia = primerPagoExigible != null
                 ? pagoPrestamoDaoService.find(new PagoPrestamo(), primerPagoExigible)
                 : pagoCapitalFuturo;
-            movimientos = consumirAportes(entidad, solicitud.getAportes(), fechaHora,
+            movimientos = consumirAportes(entidadAportes, solicitud.getAportes(), fechaHora,
                 solicitud.getUsuario(), glosa, referencia,
                 solicitud.getRutaDocumentoRespaldo());
         }
@@ -1422,7 +1455,7 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
         prestamo.setFechaModificacion(LocalDateTime.now());
         prestamoDaoService.save(prestamo, prestamo.getCodigo());
 
-        registrarHuellaPrestamo(prestamo, TIPO_PRECANCELACION, valorTotal, solicitud.getObservacion(),
+        registrarHuellaPrestamo(prestamo, TIPO_PRECANCELACION, valorTotal, observacion,
             fechaHora, solicitud.getUsuario());
 
         // 8. Hook contable
