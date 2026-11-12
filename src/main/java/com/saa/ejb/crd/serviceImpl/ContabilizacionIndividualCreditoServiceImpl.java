@@ -70,6 +70,13 @@ public class ContabilizacionIndividualCreditoServiceImpl implements Contabilizac
     /** CRD.TPAP.TPAPCDGO 21, CESANTIA RETIRO VOLUNTARIO. Pasivo {@code 2.1.01.20.05}, aux1 55 de la
      * plantilla 21 (decisión del usuario 2026-10-19, {@code sql/331}). */
     private static final long TIPO_APORTE_CESANTIA_RETIRO_VOLUNTARIO = 21L;
+    /** CRD.TPAP.TPAPCDGO 13, JUBILACION PATRONAL. Pasivo {@code 2.1.02.10.01}, aux1 58 de la plantilla 21
+     * ({@code sql/378}). Solo el cruce con préstamos: el registro/cobro de aportes 13 sigue rechazado en
+     * {@code CobroCreditoServiceImpl#esTipoAporteContabilizable}. C29, 11-nov-2026. */
+    private static final long TIPO_APORTE_JUBILACION_PATRONAL = 13L;
+    /** CRD.TPAP.TPAPCDGO 14, CESANTIA PATRONAL. Pasivo {@code 2.1.01.10.01}, aux1 59 de la plantilla 21
+     * ({@code sql/378}). Solo el cruce. C29, 11-nov-2026. */
+    private static final long TIPO_APORTE_CESANTIA_PATRONAL = 14L;
 
     private static final double TOLERANCIA = 0.01;
 
@@ -1084,9 +1091,16 @@ public class ContabilizacionIndividualCreditoServiceImpl implements Contabilizac
         if (idTipoAporte != null && idTipoAporte == TIPO_APORTE_CESANTIA_RETIRO_VOLUNTARIO) {
             return CrdLineaAsiento.APORTES_CESANTIA_RETIRO_VOLUNTARIO;
         }
+        if (idTipoAporte != null && idTipoAporte == TIPO_APORTE_JUBILACION_PATRONAL) {
+            return CrdLineaAsiento.APORTES_PATRONALES_JUBILACION;
+        }
+        if (idTipoAporte != null && idTipoAporte == TIPO_APORTE_CESANTIA_PATRONAL) {
+            return CrdLineaAsiento.APORTES_PATRONALES_CESANTIA;
+        }
         throw new IncomeException("El tipo de aporte " + idTipoAporte + " no tiene cuenta contable"
                 + " parametrizada (hoy solo 9 jubilación, 11 cesantía, 2 adicional, 23 pensión"
-                + " complementaria, 22 jubilación retiro voluntario, 21 cesantía retiro voluntario); no se puede contabilizar.");
+                + " complementaria, 22 jubilación retiro voluntario, 21 cesantía retiro voluntario,"
+                + " 13 jubilación patronal, 14 cesantía patronal); no se puede contabilizar.");
     }
 
     private DetalleAsiento lineaHaberDesdePlantilla(DetallePlantilla plantilla, double valor, String descripcion) {
