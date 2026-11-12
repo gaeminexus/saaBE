@@ -10,19 +10,27 @@ import com.saa.basico.util.IncomeException;
 import com.saa.ejb.crd.dao.AdjuntoDaoService;
 import com.saa.ejb.crd.dao.CuentaBancariaParticipeDaoService;
 import com.saa.ejb.crd.dao.EntidadDaoService;
+import com.saa.ejb.crd.dao.PrestamoDaoService;
 import com.saa.ejb.crd.dao.TipoAdjuntoDaoService;
 import com.saa.ejb.crd.service.CuentaBancariaParticipeService;
 import com.saa.ejb.crd.service.EntidadService;
 import com.saa.ejb.crd.service.dto.ResultadoCuentaBancariaConCertificado;
 import com.saa.ejb.crd.service.dto.SolicitudCuentaBancariaConCertificado;
+import com.saa.ejb.cxp.dao.PagoProgramadoDaoService;
+import com.saa.ejb.cxp.service.PagoProgramadoService;
 import com.saa.ejb.tsr.dao.BancoExternoDaoService;
 import com.saa.model.crd.Adjunto;
 import com.saa.model.crd.CuentaBancariaParticipe;
 import com.saa.model.crd.Entidad;
 import com.saa.model.crd.NombreEntidadesCredito;
+import com.saa.model.crd.Prestamo;
 import com.saa.model.crd.TipoAdjunto;
+import com.saa.model.cxp.PagoProgramado;
 import com.saa.model.tsr.BancoExterno;
 import com.saa.rubros.Estado;
+import com.saa.rubros.EstadoPagoProgramado;
+import com.saa.rubros.EstadoPrestamo;
+import com.saa.rubros.OrigenPagoExterno;
 
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
@@ -53,6 +61,16 @@ public class CuentaBancariaParticipeServiceImpl implements CuentaBancariaPartici
     @EJB
     private FileService fileService;
 
+    // Sin PrestamoService a proposito: PrestamoServiceImpl ya inyecta este servicio (dependencia circular).
+    @EJB
+    private PrestamoDaoService prestamoDaoService;
+
+    @EJB
+    private PagoProgramadoDaoService pagoProgramadoDaoService;
+
+    @EJB
+    private PagoProgramadoService pagoProgramadoService;
+
     /** Subcarpeta bajo el directorio de uploads (ver FileService.uploadFileToPath). */
     private static final String CARPETA_CERTIFICADOS = "crd/certificados-bancarios";
 
@@ -67,7 +85,12 @@ public class CuentaBancariaParticipeServiceImpl implements CuentaBancariaPartici
         System.out.println("remove[] - CuentaBancariaParticipe");
         CuentaBancariaParticipe entidad = new CuentaBancariaParticipe();
         for (Long registro : id) {
+            // El idEntidad se lee ANTES de borrar: despues la fila ya no existe.
+            CuentaBancariaParticipe existente = cuentaBancariaParticipeDaoService.find(new CuentaBancariaParticipe(), registro);
+            Long idEntidad = existente != null && existente.getEntidad() != null
+                ? existente.getEntidad().getCodigo() : null;
             cuentaBancariaParticipeDaoService.remove(entidad, registro);
+            sincronizarOrdenesDesembolso(idEntidad);
         }
     }
 
@@ -76,6 +99,7 @@ public class CuentaBancariaParticipeServiceImpl implements CuentaBancariaPartici
         System.out.println("save list - CuentaBancariaParticipe");
         for (CuentaBancariaParticipe registro : lista) {
             cuentaBancariaParticipeDaoService.save(registro, registro.getCodigo());
+            sincronizarOrdenesDesembolso(registro.getEntidad() != null ? registro.getEntidad().getCodigo() : null);
         }
     }
 
@@ -95,7 +119,10 @@ public class CuentaBancariaParticipeServiceImpl implements CuentaBancariaPartici
         if (cuenta.getCodigo() == null) {
             cuenta.setEstado(Long.valueOf(Estado.ACTIVO));
         }
-        return cuentaBancariaParticipeDaoService.save(cuenta, cuenta.getCodigo());
+        CuentaBancariaParticipe guardada = cuentaBancariaParticipeDaoService.save(cuenta, cuenta.getCodigo());
+        sincronizarOrdenesDesembolso(guardada != null && guardada.getEntidad() != null
+            ? guardada.getEntidad().getCodigo() : null);
+        return guardada;
     }
 
     @Override
@@ -196,6 +223,7 @@ public class CuentaBancariaParticipeServiceImpl implements CuentaBancariaPartici
             cuenta.setEstado(Long.valueOf(Estado.ACTIVO));
             cuenta = cuentaBancariaParticipeDaoService.save(cuenta, null);
             System.out.println("  💾 CuentaBancariaParticipe creada: " + cuenta.getCodigo());
+            sincronizarOrdenesDesembolso(entidad.getCodigo());
 
             Adjunto certificado = new Adjunto();
             certificado.setEntidad(entidad);
@@ -306,12 +334,89 @@ public class CuentaBancariaParticipeServiceImpl implements CuentaBancariaPartici
 
     @Override
     public String motivoSinCuentaActivaUnica(Long idEntidad) throws Throwable {
-        int activas = cuentasActivas(idEntidad).size();
+        List<CuentaBancariaParticipe> lista = cuentasActivas(idEntidad);
+        int activas = lista.size();
         if (activas == 1) {
-            return null;
+            // D1: una sola activa no basta, tiene que estar completa (si no, la orden nace sin cuenta de destino).
+            CuentaBancariaParticipe unica = lista.get(0);
+            List<String> faltan = new java.util.ArrayList<>();
+            if (unica.getBancoExterno() == null) {
+                faltan.add("banco");
+            }
+            if (unica.getTipoCuenta() == null) {
+                faltan.add("tipo de cuenta");
+            }
+            if (unica.getNumeroCuenta() == null || unica.getNumeroCuenta().trim().isEmpty()) {
+                faltan.add("número");
+            }
+            return faltan.isEmpty() ? null
+                : "La cuenta bancaria activa del socio no tiene " + String.join(" / ", faltan)
+                    + "; complétela antes de aprobar";
         }
         return activas == 0
             ? "El socio no tiene una cuenta bancaria activa registrada; registre una (y deje una sola activa) antes de aprobar"
             : "El socio tiene " + activas + " cuentas bancarias activas; deje una sola activa antes de aprobar";
+    }
+
+    // ========================================================================
+    // D2: mantener al dia la cuenta de destino de las ordenes de desembolso pendientes
+    // ========================================================================
+
+    /**
+     * Tras escribir CRD.CNBP de un socio, copia (o vacia) banco/tipo/numero de la cuenta activa unica y completa en
+     * las ordenes PGS.PGTR de desembolso de sus prestamos APROBADOS que siguen POR_APROBAR. Misma transaccion que la
+     * escritura de la cuenta: si falla aca, falla el guardado. Nunca toca una orden que ya salio de POR_APROBAR.
+     */
+    private void sincronizarOrdenesDesembolso(Long idEntidad) throws Throwable {
+        if (idEntidad == null) {
+            return;
+        }
+        System.out.println("sincronizarOrdenesDesembolso - entidad: " + idEntidad);
+        List<Prestamo> prestamos = prestamoDaoService.selectByEntidadEstadoConOrdenPago(
+            idEntidad, Long.valueOf(EstadoPrestamo.APROBADO));
+        if (prestamos == null || prestamos.isEmpty()) {
+            return;
+        }
+        Long idBanco = null;
+        Long tipo = null;
+        String numero = null;
+        List<CuentaBancariaParticipe> activas = cuentasActivas(idEntidad);
+        if (activas.size() == 1) {
+            CuentaBancariaParticipe unica = activas.get(0);
+            if (unica.getBancoExterno() != null && unica.getTipoCuenta() != null
+                    && unica.getNumeroCuenta() != null && !unica.getNumeroCuenta().trim().isEmpty()) {
+                idBanco = unica.getBancoExterno().getCodigo();
+                tipo = unica.getTipoCuenta();
+                numero = unica.getNumeroCuenta().trim();
+            }
+        }
+        for (Prestamo prestamo : prestamos) {
+            PagoProgramado pago = pagoProgramadoDaoService.find(new PagoProgramado(), prestamo.getIdPagoProgramado());
+            if (pago == null
+                    || pago.getEstado() == null || pago.getEstado() != EstadoPagoProgramado.POR_APROBAR
+                    || !OrigenPagoExterno.CRD_DESEMBOLSO_PRESTAMO.equals(pago.getOrigenExterno())
+                    || pago.getIdOrigen() == null || !pago.getIdOrigen().equals(prestamo.getCodigo())) {
+                continue;
+            }
+            Long bancoAntes = pago.getBeneficiarioBanco() != null ? pago.getBeneficiarioBanco().getCodigo() : null;
+            String numeroAntes = pago.getBeneficiarioCuenta() != null ? pago.getBeneficiarioCuenta().trim() : null;
+            boolean igual = java.util.Objects.equals(bancoAntes, idBanco)
+                && java.util.Objects.equals(pago.getBeneficiarioTipoCuenta(), tipo)
+                && java.util.Objects.equals(numeroAntes, numero);
+            if (igual) {
+                continue;
+            }
+            pagoProgramadoService.actualizarBeneficiarioOcasional(pago.getId(), idBanco, tipo, numero);
+            System.out.println("  Orden " + pago.getId() + " (prestamo " + prestamo.getCodigo() + "): cuenta destino "
+                + ultimos4(numeroAntes) + " -> " + ultimos4(numero));
+        }
+    }
+
+    /** Solo los ultimos 4 digitos: el numero completo no va al log. */
+    private String ultimos4(String numero) {
+        if (numero == null || numero.isEmpty()) {
+            return "(vacia)";
+        }
+        return "****" + (numero.length() > 4 ? numero.substring(numero.length() - 4) : numero);
     }
 }

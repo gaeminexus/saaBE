@@ -92,8 +92,10 @@ public class DocumentoSeguroDaoServiceImpl extends EntityDaoImpl<DocumentoSeguro
             return null;
         }
         Query query = em.createQuery(
-            "select d from DocumentoSeguro d where upper(trim(d.claveAcceso)) = :clave");
+            "select d from DocumentoSeguro d where upper(trim(d.claveAcceso)) = :clave "
+            + "and (d.estado is null or d.estado <> :anulado)");
         query.setParameter("clave", claveAcceso.trim().toUpperCase());
+        query.setParameter("anulado", Long.valueOf(com.saa.rubros.EstadoDocumentoSeguro.ANULADO));
         List<DocumentoSeguro> resultado = query.getResultList();
         return resultado.isEmpty() ? null : resultado.get(0);
     }

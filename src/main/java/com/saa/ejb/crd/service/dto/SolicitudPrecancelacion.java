@@ -61,7 +61,23 @@ public class SolicitudPrecancelacion {
      */
     private LocalDate fechaAfectacion;
 
+    /**
+     * Opcional: PK de CRD.GRPR del garante activo del préstamo. Con él, la precancelación es 100 % aportes DEL GARANTE
+     * (se validan y consumen sus aportes; el préstamo es del deudor): no admite {@code valorEfectivo} ni depósito, exige
+     * {@code rutaDocumentoRespaldo} y no se combina con {@code idCobroCredito}. Sin él, todo igual que siempre.
+     * DISENO-PAGO-CON-APORTES-DEL-GARANTE.md §G6.
+     */
+    private Long idGarante;
+
     public SolicitudPrecancelacion() {
+    }
+
+    public Long getIdGarante() {
+        return idGarante;
+    }
+
+    public void setIdGarante(Long idGarante) {
+        this.idGarante = idGarante;
     }
 
     public Long getIdPrestamo() {

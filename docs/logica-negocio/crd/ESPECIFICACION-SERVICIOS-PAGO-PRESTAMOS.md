@@ -692,6 +692,41 @@ Secuencia (una transacción):
 
 Respuesta: `ResultadoAplicacionPago` + `movimientosAporte: List<MovimientoAporte>`.
 
+**Pago con los aportes del garante (`idGarante`, opcional)** — 2026-11-11, diseño en
+`DISENO-PAGO-CON-APORTES-DEL-GARANTE.md`. `SolicitudPagoConAportes.idGarante` (`Long`, PK de `CRD.GRPR`).
+Sin él, todo igual que arriba (aportes del deudor). Con él:
+- El GRPR debe existir, estar activo (`GRPRESTD = 1`), ser de este préstamo (`PRSTCDGO = idPrestamo`) y tener
+  partícipe (`ENTDCDGO`). Errores, todos `IncomeException` con prefijo `PARAMETRO_INVALIDO` (los traduce `respuestaErrorNegocio`
+  como el resto de los errores de negocio del endpoint): «no existe el garante X», «el garante X no está
+  activo», «el garante X no es del préstamo Y», «el garante X no es partícipe del fondo: no tiene aportes con qué
+  pagar», «no existe el partícipe Z del garante X».
+- **`rutaDocumentoRespaldo` es obligatoria** (la autorización firmada del garante): sin ella,
+  `PARAMETRO_INVALIDO: el pago con aportes del garante exige rutaDocumentoRespaldo…`.
+- La entidad dueña de los aportes es la del garante: el desglose se valida (`saldoPorEntidadYTipo`) y se consume
+  (filas negativas APRT + PGAP, bloqueo por partícipe) contra **el garante**. El préstamo y sus cuotas siguen siendo
+  del deudor (`aplicarPago` igual). Mismos tipos de aporte vigentes, mismas reglas de deuda y de mes abierto.
+- Trazabilidad: glosa de APRT/PGAP `PAGO PRESTAMO {id} DEL DEUDOR {CI deudor} CON APORTES DEL GARANTE - Evento {e}`;
+  la observación del evento y la huella agregan `con aportes del garante {nombre} (CI …)`; la glosa del asiento de
+  cruce agrega `- aportes del garante {nombre} (CI …)` (tope de 140 caracteres: si no cabe se acorta el nombre del
+  deudor, no el del garante). Las cuentas contables no cambian.
+- El reverso (`anularOperacion`) devuelve el aporte al garante: el contra-movimiento usa la entidad de la fila APRT
+  original.
+- Las llamadas internas (pensión complementaria, jubilación) no mandan `idGarante`.
+
+**Aviso de comprometido del garante — `GET /rest/prst/compromisoGarante/{idGarante}?monto={valor}`** (solo lectura, no
+detiene nada; `monto` opcional, sin él 0; DISENO-PAGO-CON-APORTES-DEL-GARANTE.md §G5). Lo consulta el cruce de valores antes
+de confirmar un pago con aportes del garante. Respuesta 200:
+```json
+{ "saldoAportes": 1500.00, "capitalComprometido": 2000.00, "saldoDespues": 900.00, "quedaDescubierto": true,
+  "mensaje": "Después de este pago NOMBRE DEL GARANTE quedaría con $900.00 en aportes y tiene $2000.00 comprometidos en sus propios préstamos" }
+```
+- `saldoAportes`: Σ del saldo disponible de los tipos de aporte del garante (misma fuente que `saldosPorEntidad`).
+- `capitalComprometido`: capital pendiente de los préstamos vigentes (2, 8, 10, 11) PQ/PE **del garante** (el `saldoCapitalCupo` de
+  `EvaluacionOtorgamientoService.evaluar`, calculado sobre la entidad del garante).
+- `saldoDespues = saldoAportes − monto`; `quedaDescubierto = saldoDespues < capitalComprometido`; `mensaje` es `null` cuando no queda descubierto.
+- Errores: garante inexistente, inactivo o sin partícipe → `PARAMETRO_INVALIDO` con el mismo texto que `pagarConAportes`
+  (el endpoint lo traduce igual: **400**); `monto` negativo → `PARAMETRO_INVALIDO`.
+
 **Por qué así** (resumen del análisis): los reportes (G42/G43/G44/CJBM/CPRM/CCPM/dashboard/padrón)
 suman `APRTVLRR` neto y esperan pagos como filas negativas; los campos `valorPagado`/`saldo` de
 las filas POSITIVAS no se tocan porque pertenecen al FIFO petro (otra semántica). El saldo
@@ -747,6 +782,20 @@ Secuencia (una transacción):
    NUNCA fechaFin. Huella en observacion.
 8. Hook contabilizarPrecancelacion(evento).
 ```
+
+**Precancelación con los aportes del garante (`idGarante`, opcional)** — 2026-11-11, DISENO-PAGO-CON-APORTES-DEL-GARANTE.md §G6.
+`SolicitudPrecancelacion.idGarante` (`Long`, PK de `CRD.GRPR`) en `POST /prst/precancelar`. Sin él, todo igual que arriba. Con él:
+- Es **100 % aportes del garante**: el desglose `aportes[]` es obligatorio y no se admite `valorEfectivo` > 0 ni depósito
+  (`idCobroCredito`, que el endpoint directo ya limpia); si no, `PARAMETRO_INVALIDO: con aportes del garante la precancelación es 100 % aportes…`.
+  La precancelación mixta (depósito + aportes, camino CBCR) **no** admite garante en esta entrega.
+- Misma validación del garante que el §7.4 (activo, de este préstamo, partícipe; **`rutaDocumentoRespaldo` obligatoria**) y mismos errores.
+- `validarDesgloseAportes` y `consumirAportes` trabajan con la **entidad del garante**; el préstamo, sus cuotas y su estado final son del deudor.
+  `valorEnviado = Σ aportes` debe coincidir con `valorTotalPrecancelacion` (igual que siempre).
+- Trazabilidad como en §7.4: glosa de APRT/PGAP `PAGO PRESTAMO {id} DEL DEUDOR {CI} CON APORTES DEL GARANTE - Evento {e}`;
+  la observación del evento y la huella agregan `con aportes del garante {nombre} (CI …)`; la observación del asiento de
+  precancelación agrega `| Aportes del garante: {nombre} (Cédula: …)`. Las cuentas contables no cambian.
+- El reverso (`anularOperacion` de una PRECANCELACION) devuelve el aporte a la entidad de la fila APRT original, o sea al garante.
+- `CobroCreditoServiceImpl.procesarCobro` (precancelación por CBCR) llama a `precancelar` sin `idGarante`: sin cambio.
 
 ### 7.6 Reverso — `anularOperacion(SolicitudAnulacion)`
 

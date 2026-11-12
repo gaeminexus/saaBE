@@ -65,7 +65,23 @@ public class ContextoPago {
      */
     private LocalDate fechaAfectacion;
 
+    /**
+     * Código de la entidad (CRD.ENTD) dueña de los aportes que se consumen cuando NO es el
+     * deudor del préstamo (pago con aportes del garante, DISENO-PAGO-CON-APORTES-DEL-GARANTE.md
+     * §G2). {@code null} = los aportes son del deudor, como siempre; el motor de pagos no lo lee,
+     * solo la glosa del asiento de cruce.
+     */
+    private Long idEntidadAportes;
+
     public ContextoPago() {
+    }
+
+    public Long getIdEntidadAportes() {
+        return idEntidadAportes;
+    }
+
+    public void setIdEntidadAportes(Long idEntidadAportes) {
+        this.idEntidadAportes = idEntidadAportes;
     }
 
     public String getTipoPago() {

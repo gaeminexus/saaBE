@@ -1063,6 +1063,28 @@ public class PrestamoRest {
     }
 
     /**
+     * Aviso (solo lectura, no detiene nada) de si pagar {@code monto} con los aportes del garante lo deja por debajo de
+     * lo que tiene comprometido en sus propios préstamos PQ/PE. DISENO-PAGO-CON-APORTES-DEL-GARANTE.md §G5.
+     *
+     * @param idGarante PK de CRD.GRPR (garante activo y partícipe; si no, error de negocio con el mismo texto de pagarConAportes)
+     * @param monto     valor a cruzar (opcional; sin él, 0)
+     * @return 200 con {@code { saldoAportes, capitalComprometido, saldoDespues, quedaDescubierto, mensaje }}
+     */
+    @GET
+    @Path("/compromisoGarante/{idGarante}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response compromisoGarante(@PathParam("idGarante") Long idGarante, @QueryParam("monto") Double monto) {
+        System.out.println("LLEGA AL SERVICIO GET compromisoGarante - Garante: " + idGarante + " - monto: " + monto);
+        try {
+            return Response.status(Response.Status.OK)
+                    .entity(procesoPagoPrestamoService.consultarCompromisoGarante(idGarante, monto))
+                    .type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return respuestaErrorNegocio(e);
+        }
+    }
+
+    /**
      * Pago de cuota(s) consumiendo el saldo de aportes del partícipe.
      *
      * @param solicitud { idPrestamo, aportes[{idTipoAporte, valor}], usuario, observacion, fechaPago }

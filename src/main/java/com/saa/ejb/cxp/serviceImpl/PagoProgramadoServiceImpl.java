@@ -4535,4 +4535,33 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 				? c.getBanco().getNombre() : "Banco";
 		return banco + " " + nvl(c.getNumeroCuenta(), "");
 	}
+
+	@Override
+	@TransactionAttribute(TransactionAttributeType.REQUIRED)
+	public void actualizarBeneficiarioOcasional(Long idPago, Long idBancoExterno, Long tipoCuenta,
+			String numeroCuenta) throws Throwable {
+		System.out.println("actualizarBeneficiarioOcasional - PagoProgramado: " + idPago);
+		if (idPago == null) {
+			throw new IncomeException("PARAMETRO_INVALIDO: idPago es obligatorio");
+		}
+		PagoProgramado pago = em.find(PagoProgramado.class, idPago);
+		if (pago == null) {
+			throw new IncomeException("No existe el pago " + idPago);
+		}
+		if (pago.getEstado() == null || pago.getEstado() != EstadoPagoProgramado.POR_APROBAR) {
+			throw new IncomeException("El pago " + idPago + " no está POR_APROBAR; no se puede cambiar su cuenta de destino");
+		}
+		if (pago.getOrigenExterno() == null || pago.getOrigenExterno().trim().isEmpty()) {
+			throw new IncomeException("El pago " + idPago + " no es de origen externo");
+		}
+		if (pago.getTitular() != null || pago.getCuentaDestino() != null) {
+			throw new IncomeException("El pago " + idPago + " tiene titular / cuenta de tesorería; no es beneficiario ocasional");
+		}
+		pago.setBeneficiarioBanco(idBancoExterno != null
+				? em.find(com.saa.model.tsr.BancoExterno.class, idBancoExterno) : null);
+		pago.setBeneficiarioTipoCuenta(tipoCuenta);
+		pago.setBeneficiarioCuenta(numeroCuenta != null && !numeroCuenta.trim().isEmpty()
+				? numeroCuenta.trim() : null);
+		em.merge(pago);
+	}
 }

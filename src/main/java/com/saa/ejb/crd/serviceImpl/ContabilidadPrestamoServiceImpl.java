@@ -102,6 +102,10 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
     @EJB
     private PrestamoDaoService prestamoDaoService;
 
+    /** Glosa del cruce con aportes del garante: nombre y cédula del partícipe dueño de los aportes. */
+    @EJB
+    private com.saa.ejb.crd.dao.EntidadDaoService entidadDaoService;
+
     @EJB
     private HistDetallePrestamoDaoService histDetallePrestamoDaoService;
 
@@ -163,7 +167,7 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
 
         Long idPlantillaAplicacion = contabilizacionIndividualCreditoService.resolverPlantillaAplicacion(idEmpresa);
         String prefijo = construirGlosaCrucePorParticipe(resultado != null ? resultado.getIdPrestamo() : null,
-                ctx.getIdEvento());
+                ctx.getIdEvento(), ctx.getIdEntidadAportes());
 
         // DEBE: cuentas de aporte del socio, diferenciadas por tipo — lo CONSUMIDO.
         // MovimientoAporte.valor viaja NEGATIVO al consumir (ver su javadoc);
@@ -252,7 +256,8 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
      * se cae por una glosa incompleta) — pero NO a la ausencia del préstamo: sin él no hay de
      * quién hablar, y eso es un fallo real, no un dato ausente legítimo.
      */
-    private String construirGlosaCrucePorParticipe(Long idPrestamo, Long idEvento) throws Throwable {
+    private String construirGlosaCrucePorParticipe(Long idPrestamo, Long idEvento, Long idEntidadAportes)
+            throws Throwable {
         if (idPrestamo == null) {
             throw new IncomeException("No se puede generar la glosa del cruce de valores: falta"
                     + " el préstamo de la operación (evento " + idEvento + ").");
@@ -271,19 +276,42 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
             datos.add("asoprep " + entidad.getRolPetroComercial());
         }
 
+        // Aportes del garante (DISENO-PAGO-CON-APORTES-DEL-GARANTE.md §G2.5): el asiento nombra de quién
+        // salieron los aportes. Solo si la entidad de los aportes no es la del deudor.
+        String sufijoGarante = "";
+        if (idEntidadAportes != null && (entidad == null || !idEntidadAportes.equals(entidad.getCodigo()))) {
+            Entidad garante = entidadDaoService.find(new Entidad(), idEntidadAportes);
+            sufijoGarante = " - aportes del garante "
+                    + (garante != null && garante.getRazonSocial() != null ? garante.getRazonSocial().trim() : "")
+                    + " (CI " + (garante != null && garante.getNumeroIdentificacion() != null
+                            ? garante.getNumeroIdentificacion() : "S/N") + ")";
+        }
+
+        String nombreDeudor = entidad != null ? entidad.getRazonSocial() : null;
+        String resultado = armarGlosaCruce(nombreDeudor, datos, idPrestamo, idEvento) + sufijoGarante;
+        // El tope de la glosa recortaría justo el nombre del garante (va al final): si no cabe, se acorta el nombre
+        // del deudor, que ya sale en el préstamo, antes de perder al garante.
+        if (!sufijoGarante.isEmpty() && nombreDeudor != null && resultado.length() > MAX_LARGO_GLOSA_CRUCE) {
+            int exceso = resultado.length() - MAX_LARGO_GLOSA_CRUCE;
+            nombreDeudor = nombreDeudor.substring(0, Math.min(nombreDeudor.length(), Math.max(10, nombreDeudor.length() - exceso)));
+            resultado = armarGlosaCruce(nombreDeudor, datos, idPrestamo, idEvento) + sufijoGarante;
+        }
+        return resultado.length() > MAX_LARGO_GLOSA_CRUCE
+                ? resultado.substring(0, MAX_LARGO_GLOSA_CRUCE)
+                : resultado;
+    }
+
+    /** "Cruce de valores - NOMBRE (CI.., asoprep ..) - préstamo P - evento E" (sin tope; lo aplica el llamador). */
+    private String armarGlosaCruce(String nombre, List<String> datos, Long idPrestamo, Long idEvento) {
         StringBuilder glosa = new StringBuilder("Cruce de valores");
-        if (entidad != null && entidad.getRazonSocial() != null) {
-            glosa.append(" - ").append(entidad.getRazonSocial());
+        if (nombre != null) {
+            glosa.append(" - ").append(nombre);
         }
         if (!datos.isEmpty()) {
             glosa.append(" (").append(String.join(", ", datos)).append(")");
         }
         glosa.append(" - préstamo ").append(idPrestamo).append(" - evento ").append(idEvento);
-
-        String resultado = glosa.toString();
-        return resultado.length() > MAX_LARGO_GLOSA_CRUCE
-                ? resultado.substring(0, MAX_LARGO_GLOSA_CRUCE)
-                : resultado;
+        return glosa.toString();
     }
 
     // =====================================================================
@@ -835,7 +863,8 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
                 "precancelación evento " + ctx.getIdEvento());
 
         String observacionBase = prefijo + (ctx.getObservacion() != null ? ": " + ctx.getObservacion() : "");
-        String observacion = observacionConParticipeYPrestamos(evento.getPrestamo(), pagos, observacionBase);
+        String observacion = observacionConParticipeYPrestamos(evento.getPrestamo(), pagos, observacionBase,
+                ctx.getIdEntidadAportes());
 
         // API-FECHA-AFECTACION-COBRO.md §2bis: el asiento (y el reverso de provisión, más
         // abajo) se fechan con la fecha de AFECTACIÓN — fechaCorte (arriba) sigue siendo la de
@@ -1014,6 +1043,15 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
      */
     private String observacionConParticipeYPrestamos(Prestamo prestamoEvento, List<PagoPrestamo> pagos,
             String base) {
+        return observacionConParticipeYPrestamos(prestamoEvento, pagos, base, null);
+    }
+
+    /**
+     * Igual, y si {@code idEntidadAportes} es una entidad distinta del deudor (aportes del garante,
+     * DISENO-PAGO-CON-APORTES-DEL-GARANTE.md §G6) agrega «| Aportes del garante: nombre (Cédula)».
+     */
+    private String observacionConParticipeYPrestamos(Prestamo prestamoEvento, List<PagoPrestamo> pagos,
+            String base, Long idEntidadAportes) {
         StringBuilder obs = new StringBuilder(base);
         Entidad entidad = prestamoEvento != null ? prestamoEvento.getEntidad() : null;
         if (entidad != null) {
@@ -1021,6 +1059,23 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
                     ? entidad.getNumeroIdentificacion() : "-");
             obs.append(" | Nombre: ").append(entidad.getRazonSocial() != null
                     ? entidad.getRazonSocial() : "-");
+        }
+        if (idEntidadAportes != null && (entidad == null || !idEntidadAportes.equals(entidad.getCodigo()))) {
+            Entidad garante = null;
+            try {
+                garante = entidadDaoService.find(new Entidad(), idEntidadAportes);
+            } catch (Throwable e) {
+                // la observación no tumba el asiento: sin el garante solo se omite su fragmento
+                System.err.println("  ⚠️ No se pudo leer el garante " + idEntidadAportes + " para la observación: "
+                        + e.getMessage());
+            }
+            if (garante != null) {
+                obs.append(" | Aportes del garante: ")
+                   .append(garante.getRazonSocial() != null ? garante.getRazonSocial().trim() : "-")
+                   .append(" (Cédula: ")
+                   .append(garante.getNumeroIdentificacion() != null ? garante.getNumeroIdentificacion() : "-")
+                   .append(")");
+            }
         }
         if (pagos != null) {
             List<Long> prestamosListados = new ArrayList<>();

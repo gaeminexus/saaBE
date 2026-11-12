@@ -204,9 +204,13 @@ public class DocumentoSeguroServiceImpl implements DocumentoSeguroService {
             return calcularCandidatosDesgravamen(fechaCorte);
         }
 
-        // Elegibles: PRSTIDST IN (2 VIGENTE, 11 EN_MORA). El 8 (DE PLAZO VENCIDO) queda fuera
-        // porque ni siquiera se incluye en la lista de estados (D13 del diseño de plazo vencido).
-        List<Long> estados = Arrays.asList((long) EstadoPrestamo.VIGENTE, (long) EstadoPrestamo.EN_MORA);
+        // Elegibles: PRSTIDST IN (2 VIGENTE, 11 EN_MORA). Para INCENDIO también el 8 (DE PLAZO VENCIDO): D13 del diseño
+        // de plazo vencido quedó revocado para incendio el 2026-11-11 (DISENO-SEGURO-INCENDIO-PLAZO-VENCIDO.md).
+        // El prendario sigue sin el 8.
+        List<Long> estados = tipoSeguro == TipoSeguro.INCENDIO
+            ? Arrays.asList((long) EstadoPrestamo.VIGENTE, (long) EstadoPrestamo.EN_MORA,
+                (long) EstadoPrestamo.DE_PLAZO_VENCIDO)
+            : Arrays.asList((long) EstadoPrestamo.VIGENTE, (long) EstadoPrestamo.EN_MORA);
         List<Prestamo> prestamos = prestamoDaoService.selectByEstados(estados);
 
         List<Prestamo> filtrados = new ArrayList<>();
@@ -1013,7 +1017,9 @@ public class DocumentoSeguroServiceImpl implements DocumentoSeguroService {
             resultado.getExclusiones().add(ex);
         }
 
-        List<DeclaracionPlazoVencido> declaraciones = declaracionPlazoVencidoDaoService
+        // INCENDIO: el plazo vencido ya no excluye (DISENO-SEGURO-INCENDIO-PLAZO-VENCIDO.md); desgravamen y prendario sí.
+        boolean esIncendio = factura.getTipoSeguro() != null && factura.getTipoSeguro() == TipoSeguro.INCENDIO;
+        List<DeclaracionPlazoVencido> declaraciones = esIncendio ? new ArrayList<>() : declaracionPlazoVencidoDaoService
             .selectVivasByPrestamosYRango(idsFamiliaPrestamosList, desdeHora, hastaHora);
         for (DeclaracionPlazoVencido declaracion : declaraciones) {
             ExclusionSeguro ex = new ExclusionSeguro();
