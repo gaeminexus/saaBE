@@ -137,18 +137,27 @@ public class CierreCarteraDaoServiceImpl implements CierreCarteraDaoService {
      * o sin regenerar en C16b, donde {@code Σ DTPRCPTL + Σ DTPRSLOT = monto}), no capital de la
      * cuota donde quedó registrado; de esa cuota solo se descuenta su {@code PGPRCPPG} (0 en el abono).
      * Ver {@link ModoCorteCartera}.
+     *
+     * <p><b>C27-B (2026-11-11):</b> al corte se suman además, con capital NEGATIVO, los abonos a capital
+     * con fecha POSTERIOR al corte ({@link ModoCorteCartera#abonosPosterioresSql()}), en la última cuota
+     * pendiente del préstamo: el capital que la tabla de hoy ya descontó por el abono todavía se debía
+     * al corte. Al hacerlo aquí lo heredan todas las consultas al corte (G48, CCPM, bandas del cierre,
+     * apertura del neteo), que no pueden divergir.</p>
      */
     private static String pagos(LocalDate corte) {
         if (corte == null) {
             return PAGOS_VIGENTES;
         }
-        return " (SELECT DTPRCDGO, "
-                + "         SUM(" + ModoCorteCartera.CAPITAL_PAGADO_CUOTA_SQL + ") cap, "
-                + "         SUM(NVL(PGPRINPG,0)) intr, SUM(NVL(PGPRINVP,0)) intv, "
-                + "         SUM(NVL(PGPRMRPG,0)) mora, SUM(NVL(PGPRDSGR,0)) dsgr, "
-                + "         SUM(NVL(PGPRVLSI,0)) segi "
-                + "  FROM CRD.PGPR WHERE (PGPRANUL IS NULL OR PGPRANUL = 0) AND PGPRFCHA < :corteSig "
-                + "  GROUP BY DTPRCDGO) g ";
+        return " (SELECT DTPRCDGO, SUM(cap) cap, SUM(intr) intr, SUM(intv) intv, "
+                + "         SUM(mora) mora, SUM(dsgr) dsgr, SUM(segi) segi "
+                + "  FROM ( "
+                + "   SELECT DTPRCDGO, " + ModoCorteCartera.CAPITAL_PAGADO_CUOTA_SQL + " cap, "
+                + "          NVL(PGPRINPG,0) intr, NVL(PGPRINVP,0) intv, NVL(PGPRMRPG,0) mora, "
+                + "          NVL(PGPRDSGR,0) dsgr, NVL(PGPRVLSI,0) segi "
+                + "   FROM CRD.PGPR WHERE (PGPRANUL IS NULL OR PGPRANUL = 0) AND PGPRFCHA < :corteSig "
+                + "   UNION ALL "
+                + "   SELECT ap.DTPRCDGO, ap.cap, 0, 0, 0, 0, 0 FROM (" + ModoCorteCartera.abonosPosterioresSql() + ") ap "
+                + "  ) GROUP BY DTPRCDGO) g ";
     }
 
     /** Mora bruta de la cuota: la persistida HOY, o la fórmula del proceso diario al corte. */
