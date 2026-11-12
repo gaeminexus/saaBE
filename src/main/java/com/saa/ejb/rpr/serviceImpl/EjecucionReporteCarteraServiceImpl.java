@@ -30,6 +30,10 @@ public class EjecucionReporteCarteraServiceImpl implements EjecucionReporteCarte
     @EJB
     private CreditoParticipesMensualDaoService cprmDaoService;
 
+    /** C27-D: detalle del CCPM por rubro y banda (RPR.CCPB). */
+    @EJB
+    private com.saa.ejb.rpr.dao.CreditoCuotasPrestamosBandaDaoService ccpbDaoService;
+
     @Override
     public EjecucionReporteCartera selectById(Long id) throws Throwable {
         System.out.println("Ingresa al selectById EjecucionReporteCartera con id: " + id);
@@ -42,6 +46,8 @@ public class EjecucionReporteCarteraServiceImpl implements EjecucionReporteCarte
         EjecucionReporteCartera entidad = new EjecucionReporteCartera();
         for (Long registro : id) {
             // Eliminar registros hijos primero para evitar violación FK
+            int ccpb = ccpbDaoService.deleteByEjecucion(registro); // C27-D
+            System.out.println("Eliminado detalle CCPB de EjecucionReporteCartera " + registro + ": " + ccpb);
             int cprm = cprmDaoService.deleteByEjecucion(registro);
             int ccpm = ccpmDaoService.deleteByEjecucion(registro);
             int cjbm = cjbmDaoService.deleteByEjecucion(registro);

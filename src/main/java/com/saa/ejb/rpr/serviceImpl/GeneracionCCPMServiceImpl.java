@@ -27,6 +27,7 @@ import com.saa.model.crd.ConfiguracionBandaProducto;
 import com.saa.model.crd.DetallePrestamo;
 import com.saa.model.crd.NombreEntidadesCredito;
 import com.saa.model.crd.Prestamo;
+import com.saa.model.rpr.CreditoCuotasPrestamosBanda;
 import com.saa.model.rpr.CreditoCuotasPrestamosMensual;
 import com.saa.model.rpr.CreditoParticipesMensual;
 import com.saa.model.rpr.EjecucionReporteCartera;
@@ -73,6 +74,38 @@ public class GeneracionCCPMServiceImpl implements GeneracionCCPMService {
     @EJB private ClasificadorBandaService                  clasificadorBandaService;
     @EJB private ContabilizacionIndividualCreditoService    contabilizacionIndividualCreditoService;
     @EJB private ConfiguracionBandaProductoDaoService       configuracionBandaProductoDaoService;
+    /** C27-D: detalle del CCPM por rubro y banda. */
+    @EJB private com.saa.ejb.rpr.dao.CreditoCuotasPrestamosBandaDaoService ccpbDaoService;
+
+    /**
+     * C27-D — suma el capital de una cuota en el detalle del préstamo, por rubro y banda.
+     * Valor: {rubro, numeroBanda, etiqueta, cuentaContable, valor}.
+     */
+    private static void acumularDetalle(Map<Long, Map<String, Object[]>> detalle, Long idPrestamo, String rubro,
+            BandaProductoDetalle banda, double valor) {
+        Map<String, Object[]> porClave = detalle.computeIfAbsent(idPrestamo, k -> new java.util.LinkedHashMap<>());
+        Long numero = banda != null ? banda.getNumero() : null;
+        String clave = rubro + "|" + numero;
+        Object[] fila = porClave.get(clave);
+        if (fila == null) {
+            fila = new Object[]{ rubro, numero, banda != null ? banda.getEtiqueta() : null,
+                    banda != null ? banda.getCuentaContable() : null, Double.valueOf(0.0) };
+            porClave.put(clave, fila);
+        }
+        fila[4] = Double.valueOf(((Double) fila[4]).doubleValue() + valor);
+    }
+
+    /** C27-D — fila de detalle con el valor redondeado a 2 decimales (cada línea se redondea antes de sumar). */
+    private static CreditoCuotasPrestamosBanda detalle(String rubro, Long numeroBanda, String etiqueta, String cuenta,
+            double valor) {
+        CreditoCuotasPrestamosBanda d = new CreditoCuotasPrestamosBanda();
+        d.setRubro(rubro);
+        d.setNumeroBanda(numeroBanda);
+        d.setEtiquetaBanda(etiqueta);
+        d.setCuentaContable(cuenta);
+        d.setValor(java.math.BigDecimal.valueOf(valor).setScale(2, java.math.RoundingMode.HALF_UP).doubleValue());
+        return d;
+    }
 
     @Override
     public long generar(EjecucionReporteCartera ejecucion, Long idEmpresaParametro) throws Throwable {
@@ -172,6 +205,8 @@ public class GeneracionCCPMServiceImpl implements GeneracionCCPMService {
         Map<Long, Long>     diasMorosidadPorPrestamo   = new HashMap<>();
         Map<Long, Long>     anclaCuotaPorPrestamo      = new HashMap<>();
         Map<Long, Boolean>  hasVencidaPorPrestamo      = new HashMap<>();
+        // C27-D: detalle de capital por rubro y banda de cada préstamo (RPR.CCPB).
+        Map<Long, Map<String, Object[]>> detallePorPrestamo = new HashMap<>();
 
         for (Map.Entry<Long, List<Object[]>> entrada : cuotasPorPrestamo.entrySet()) {
             Long idPrestamo = entrada.getKey();
@@ -213,12 +248,20 @@ public class GeneracionCCPMServiceImpl implements GeneracionCCPMService {
                     if (idx >= 0 && idx < bandasPV.length) {
                         bandasPV[idx] += capitalPendiente;
                     }
+                    acumularDetalle(detallePorPrestamo, idPrestamo,
+                            CreditoCuotasPrestamosBanda.RUBRO_CAPITAL_POR_VENCER, banda, capitalPendiente);
                     if (anclaPorVencerFecha == null || vencimiento.isBefore(anclaPorVencerFecha)) {
                         anclaPorVencerFecha = vencimiento;
                         anclaPorVencerId = idCuota;
                     }
                 } else {
                     valorVencido += capitalPendiente;
+                    // C27-D: el vencido de CADA cuota en la banda de SUS días (como el cierre y la
+                    // contabilidad), no todo el vencido del préstamo en la banda de sus días máximos.
+                    List<BandaProductoDetalle> bandasV = bandasDe(idProducto, idEmpresa,
+                            (long) TipoCarteraBanda.VENCIDO, corte, cacheBandas);
+                    acumularDetalle(detallePorPrestamo, idPrestamo, CreditoCuotasPrestamosBanda.RUBRO_CAPITAL_VENCIDO,
+                            clasificadorBandaService.clasificarEnBandas(bandasV, dias), capitalPendiente);
                     if (dias > diasMorosidadMax) {
                         diasMorosidadMax = dias;
                     }
@@ -325,7 +368,15 @@ public class GeneracionCCPMServiceImpl implements GeneracionCCPMService {
         // 6. Una fila CCPM por préstamo del universo (sin duplicados: cada préstamo aparece
         //    una sola vez en cuotasPorPrestamo).
         // -------------------------------------------------------
+        // C27-E: desgravamen y seguro de incendio pendientes de las cuotas vencidas al corte, por
+        // préstamo (las mismas expresiones que el cobrable del ③ del cierre), para RPR.CCPB.
+        Map<Long, Object[]> segurosPorPrestamo = new HashMap<>();
+        for (Object[] f : cierreCarteraDaoService.selectSegurosPendientesPorPrestamo(corte, alCorte ? corte : null)) {
+            segurosPorPrestamo.put((Long) f[0], f);
+        }
+
         long contador = 0L;
+        long detalles = 0L;
         Set<String> entidadesConValorAsignado = new HashSet<>();
         List<String> detalleAnclas = new ArrayList<>();
 
@@ -505,6 +556,45 @@ public class GeneracionCCPMServiceImpl implements GeneracionCCPMService {
                 ccpm.setEjecucionReporte(ejecucion);
 
                 ccpmDaoService.save(ccpm, null);
+
+                // C27-D/E: detalle por rubro y banda (RPR.CCPB) de esta operación.
+                Long idProducto = prestamo.getProducto() != null ? prestamo.getProducto().getCodigo() : null;
+                Long idTipoPrestamo = opCorte != null ? opCorte.getIdTipoPrestamo()
+                        : (prestamo.getProducto() != null && prestamo.getProducto().getTipoPrestamo() != null
+                                ? prestamo.getProducto().getTipoPrestamo().getCodigo() : null);
+                Object[] seguros = segurosPorPrestamo.get(idPrestamo);
+                List<CreditoCuotasPrestamosBanda> filasDetalle = new ArrayList<>();
+                Map<String, Object[]> capital = detallePorPrestamo.get(idPrestamo);
+                if (capital != null) {
+                    for (Object[] d : capital.values()) {
+                        filasDetalle.add(detalle((String) d[0], (Long) d[1], (String) d[2], (String) d[3], (Double) d[4]));
+                    }
+                }
+                // Interés vencido y mora: los de la G48 al corte (opCorte); fuera del modo al corte, los
+                // del CCPM de siempre solo si el préstamo tiene vencido.
+                double interesVencido = opCorte != null ? opCorte.getInteresVencido()
+                        : (hasVencida ? (interesOrdinario != null ? interesOrdinario : 0.0) : 0.0);
+                filasDetalle.add(detalle(CreditoCuotasPrestamosBanda.RUBRO_INTERES_VENCIDO, null, null, null, interesVencido));
+                filasDetalle.add(detalle(CreditoCuotasPrestamosBanda.RUBRO_MORA, null, null, null,
+                        interesMora != null ? interesMora : 0.0));
+                filasDetalle.add(detalle(CreditoCuotasPrestamosBanda.RUBRO_DESGRAVAMEN, null, null, null,
+                        seguros != null && seguros[1] != null ? (Double) seguros[1] : 0.0));
+                filasDetalle.add(detalle(CreditoCuotasPrestamosBanda.RUBRO_SEGURO_INCENDIO, null, null, null,
+                        seguros != null && seguros[2] != null ? (Double) seguros[2] : 0.0));
+                filasDetalle.add(detalle(CreditoCuotasPrestamosBanda.RUBRO_PROVISION, null, null, null,
+                        provisionRequeridaOriginal != null ? provisionRequeridaOriginal : 0.0));
+                for (CreditoCuotasPrestamosBanda fila : filasDetalle) {
+                    if (fila.getValor() == null || Math.abs(fila.getValor()) < 0.000001) {
+                        continue;
+                    }
+                    fila.setIdEjecucion(ejecucion.getCodigo());
+                    fila.setNumeroOperacion(numeroOperacion);
+                    fila.setIdPrestamo(idPrestamo);
+                    fila.setIdProducto(idProducto);
+                    fila.setIdTipoPrestamo(idTipoPrestamo);
+                    ccpbDaoService.insertar(fila);
+                    detalles++;
+                }
                 System.out.println("CCPM INSERT prestamo: " + prestamo.getIdAsoprep()
                     + " ancla: " + idAncla
                     + " grupo: " + (hasVencida ? "vencido" : "por vencer")
@@ -521,6 +611,7 @@ public class GeneracionCCPMServiceImpl implements GeneracionCCPMService {
         }
 
         System.out.println("CCPM generado con " + contador + " registros");
+        System.out.println("CCPM - detalle por rubro y banda (RPR.CCPB): " + detalles + " filas");
         System.out.println("CCPM - detalle de anclas (item 8, para verificacion del arbitro):");
         for (String linea : detalleAnclas) {
             System.out.println("CCPM ANCLA " + linea);

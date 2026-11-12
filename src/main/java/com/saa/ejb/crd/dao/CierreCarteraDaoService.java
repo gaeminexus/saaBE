@@ -309,6 +309,18 @@ public interface CierreCarteraDaoService {
     List<Object[]> selectAperturaPorPrestamo(LocalDate hasta, LocalDate corte) throws Throwable;
 
     /**
+     * C27-E — desgravamen y seguro de incendio PENDIENTES de las cuotas con vencimiento
+     * {@code <= hasta}, por préstamo: las mismas expresiones de
+     * {@link #selectCobrablePrestamosHasta(LocalDate, LocalDate)}, agrupadas por préstamo. Lo usa el
+     * CCPM para el detalle por rubro (RPR.CCPB).
+     *
+     * @param hasta : Último vencimiento incluido (el corte del mes)
+     * @param corte : Corte para el modo al corte; null = estado de hoy
+     * @return Filas {@code [idPrestamo (Long), desgravamen (Double), seguroIncendio (Double)]}
+     */
+    List<Object[]> selectSegurosPendientesPorPrestamo(LocalDate hasta, LocalDate corte) throws Throwable;
+
+    /**
      * Lo que los cobros con asiento en {@code [desde, hasta]} acreditaron en {@code cuenta} (y sus
      * hijas) POR PRÉSTAMO, sin contar las líneas de complemento de apertura:
      * <ul>

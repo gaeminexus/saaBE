@@ -412,6 +412,32 @@ public class CierreCarteraDaoServiceImpl implements CierreCarteraDaoService {
         return resultado;
     }
 
+    @Override
+    public List<Object[]> selectSegurosPendientesPorPrestamo(LocalDate hasta, LocalDate corte) throws Throwable {
+        System.out.println("Ingresa al metodo selectSegurosPendientesPorPrestamo - hasta: " + hasta + " - corte: " + corte);
+        // C27-E: MISMAS expresiones de desgravamen y seguro que selectCobrablePrestamosHasta, por préstamo.
+        Query query = em.createNativeQuery(
+                " SELECT p.PRSTCDGO, "
+                + "        SUM(GREATEST(NVL(d.DTPRDSGR,0) - NVL(g.dsgr,0), 0)), "
+                + "        SUM(GREATEST(NVL(d.DTPRVLSI,0) - NVL(g.segi,0), 0)) "
+                + " FROM   CRD.DTPR d "
+                + " JOIN   CRD.PRST p ON p.PRSTCDGO = d.PRSTCDGO "
+                + " LEFT JOIN " + pagos(corte) + " ON g.DTPRCDGO = d.DTPRCDGO "
+                + " WHERE  " + universo(corte)
+                + " AND    " + pendiente(corte)
+                + " AND    TRUNC(d.DTPRFCVN) <= :hasta "
+                + " AND    p.PRDCCDGO IS NOT NULL "
+                + " GROUP BY p.PRSTCDGO");
+        query.setParameter("hasta", Date.valueOf(hasta));
+        parametroCorteSig(query, corte);
+        List<Object[]> filas = query.getResultList();
+        List<Object[]> resultado = new ArrayList<Object[]>();
+        for (Object[] f : filas) {
+            resultado.add(new Object[]{ aLong(f[0]), aDouble(f[1]), aDouble(f[2]) });
+        }
+        return resultado;
+    }
+
     /** Asientos vigentes de la empresa en el rango y su haber neto en la cuenta (sin líneas de complemento). */
     private static final String HABER_PUENTE_MES =
             " av AS (SELECT a.ASNTCDGO FROM CNT.ASNT a WHERE a.PJRQCDGO = :empresa AND a.ASNTESTD IN (1, 3) "

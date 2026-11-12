@@ -16,12 +16,17 @@ public class LimpiezaReportesServiceImpl implements LimpiezaReportesService {
     @EJB private CreditoCuotasPrestamosMensualDaoService   ccpmDaoService;
     @EJB private CreditoJubiladosMensualDaoService        cjbmDaoService;
     @EJB private CreditoParticipesMensualDaoService        cprmDaoService;
+    @EJB private com.saa.ejb.rpr.dao.CreditoCuotasPrestamosBandaDaoService ccpbDaoService;
 
     @Override
     @TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
     public void limpiarDatosReportes(Long codigoEjecucion) {
         System.out.println("Limpiando datos de reportes para ejecución: " + codigoEjecucion);
         try {
+            // C27-D: el detalle por banda primero (referencia a la ejecución).
+            int borradosCCPB = ccpbDaoService.deleteByEjecucion(codigoEjecucion);
+            System.out.println("Registros CCPB eliminados: " + borradosCCPB);
+
             int borradosCCPM = ccpmDaoService.deleteByEjecucion(codigoEjecucion);
             System.out.println("Registros CCPM eliminados: " + borradosCCPM);
 
