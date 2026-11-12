@@ -30,9 +30,30 @@ public class EjecucionReporteCarteraRest {
     @EJB private EjecucionReporteCarteraDaoService ejecucionReporteCarteraDaoService;
     @EJB private EjecucionReporteCarteraService ejecucionReporteCarteraService;
     @EJB private GeneracionReportesCarteraService generacionReportesCarteraService;
+    @EJB private com.saa.ejb.rpr.service.ResumenFinancieroCarteraService resumenFinancieroCarteraService;
     @Context private UriInfo context;
 
     public EjecucionReporteCarteraRest() {}
+
+    /**
+     * C27-E — Resumen Financiero de una ejecución comparado con el balance al corte: cada línea con
+     * su cuenta contable, el saldo contable y la diferencia, y el aviso de ejecución desactualizada.
+     * URL: GET /ejcc/resumenFinanciero/{codigo}?empresa={idEmpresa} (empresa opcional)
+     */
+    @GET @Path("/resumenFinanciero/{codigo}") @Produces(MediaType.APPLICATION_JSON)
+    public Response resumenFinanciero(@PathParam("codigo") Long codigo,
+            @jakarta.ws.rs.QueryParam("empresa") Long idEmpresa) {
+        System.out.println("LLEGA AL SERVICIO GET ejcc/resumenFinanciero - codigo: " + codigo + ", empresa: " + idEmpresa);
+        try {
+            return Response.status(Response.Status.OK)
+                    .entity(resumenFinancieroCarteraService.armar(codigo, idEmpresa))
+                    .type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al armar el resumen financiero: " + e.getMessage())
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
 
     @GET @Path("/getAll") @Produces(MediaType.APPLICATION_JSON)
     public Response getAll() {

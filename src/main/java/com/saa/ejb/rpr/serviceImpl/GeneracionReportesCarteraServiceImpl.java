@@ -62,7 +62,7 @@ public class GeneracionReportesCarteraServiceImpl implements GeneracionReportesC
         ejcc.setMes(mes);
         ejcc.setAnio(anio);
         ejcc.setUsuario(usuario);
-        ejcc.setFechaGeneracion(LocalDate.now());
+        ejcc.setFechaGeneracion(java.time.LocalDateTime.now());
         ejcc.setObservaciones("Generación automática de reportes CPRM, CJBM y CCPM");
         
         ejcc = ejccService.saveSingle(ejcc);
