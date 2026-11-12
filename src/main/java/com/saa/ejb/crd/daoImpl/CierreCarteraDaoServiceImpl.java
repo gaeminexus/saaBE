@@ -138,10 +138,10 @@ public class CierreCarteraDaoServiceImpl implements CierreCarteraDaoService {
      * cuota donde quedó registrado; de esa cuota solo se descuenta su {@code PGPRCPPG} (0 en el abono).
      * Ver {@link ModoCorteCartera}.
      *
-     * <p><b>C27-B (2026-11-11):</b> al corte se suman además, con capital NEGATIVO, los abonos a capital
-     * con fecha POSTERIOR al corte ({@link ModoCorteCartera#abonosPosterioresSql()}), en la última cuota
-     * pendiente del préstamo: el capital que la tabla de hoy ya descontó por el abono todavía se debía
-     * al corte. Al hacerlo aquí lo heredan todas las consultas al corte (G48, CCPM, bandas del cierre,
+     * <p><b>C27-B (2026-11-11):</b> al corte se suman además los ajustes de los abonos a capital con
+     * fecha POSTERIOR al corte ({@link ModoCorteCartera#abonosPosterioresSql()}): cada cuota vuelve al
+     * capital de la tabla de antes del abono (CRD.HDTP), porque el capital que la tabla de hoy ya
+     * descontó por el abono todavía se debía al corte. Al hacerlo aquí lo heredan todas las consultas al corte (G48, CCPM, bandas del cierre,
      * apertura del neteo), que no pueden divergir.</p>
      */
     private static String pagos(LocalDate corte) {

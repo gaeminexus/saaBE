@@ -258,10 +258,19 @@ public class GeneracionCCPMServiceImpl implements GeneracionCCPMService {
                     valorVencido += capitalPendiente;
                     // C27-D: el vencido de CADA cuota en la banda de SUS días (como el cierre y la
                     // contabilidad), no todo el vencido del préstamo en la banda de sus días máximos.
-                    List<BandaProductoDetalle> bandasV = bandasDe(idProducto, idEmpresa,
-                            (long) TipoCarteraBanda.VENCIDO, corte, cacheBandas);
+                    // Sin configuración de bandas VENCIDO del producto la fila queda sin banda ni cuenta
+                    // (el Resumen Financiero la muestra "sin cuenta"): no se aborta el CCPM entero.
+                    BandaProductoDetalle bandaV = null;
+                    try {
+                        List<BandaProductoDetalle> bandasV = bandasDe(idProducto, idEmpresa,
+                                (long) TipoCarteraBanda.VENCIDO, corte, cacheBandas);
+                        bandaV = clasificadorBandaService.clasificarEnBandas(bandasV, Math.max(1L, dias));
+                    } catch (Throwable e) {
+                        System.out.println("CCPM - prestamo " + idPrestamo + ": sin banda VENCIDO para el producto "
+                                + idProducto + " (" + e.getMessage() + ")");
+                    }
                     acumularDetalle(detallePorPrestamo, idPrestamo, CreditoCuotasPrestamosBanda.RUBRO_CAPITAL_VENCIDO,
-                            clasificadorBandaService.clasificarEnBandas(bandasV, dias), capitalPendiente);
+                            bandaV, capitalPendiente);
                     if (dias > diasMorosidadMax) {
                         diasMorosidadMax = dias;
                     }

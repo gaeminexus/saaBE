@@ -155,40 +155,66 @@ public final class ModoCorteCartera {
     }
 
     /**
-     * C27-B (2026-11-11) — capital de los abonos a capital POSTERIORES al corte, como filas
-     * {@code (DTPRCDGO, cap)} con {@code cap} NEGATIVO, para unirlas ({@code UNION ALL}) a los pagos
-     * al corte de cada cuota: así {@code GREATEST(DTPRCPTL - cap, 0)} devuelve el capital que el
-     * préstamo debía al corte sin tocar ninguna otra consulta.
+     * C27-B (2026-11-11) — ajuste de capital por los abonos a capital POSTERIORES al corte, como filas
+     * {@code (DTPRCDGO, cap)} para unirlas ({@code UNION ALL}) a los pagos al corte de cada cuota: así
+     * {@code GREATEST(DTPRCPTL - cap, 0)} devuelve el capital que cada cuota debía al corte sin tocar
+     * ninguna otra consulta. Un {@code cap} negativo SUMA capital.
      *
      * <p>Por qué: la tabla de hoy ya refleja el abono (re-amortizada, o sin regenerar en C16b, donde
      * {@code Σ DTPRCPTL + Σ DTPRSLOT = monto}). Al corte anterior al abono ese capital todavía se
      * debía. Casos de la base del 9-nov-2026: operación 66940 (11.300,00 del 29-sep-2025) y 70473
      * (32.170,90 del 31-jul-2025) faltaban en el cálculo de jun–ago 2025 frente a su G48 y su balance.</p>
      *
-     * <p>Dónde se suma: en la ÚLTIMA cuota pendiente al corte del préstamo (la cola de la tabla), no en
-     * la cuota donde quedó registrado el abono (que puede estar pagada al corte: 66940 en agosto 2025).
-     * <b>Limitación:</b> la distribución por banda de antes del abono no se puede reconstruir si la tabla
-     * se re-amortizó (no hay histórico de la tabla anterior); el total por préstamo, el por vencer y el
-     * vencido sí son exactos.</p>
+     * <p>Cómo: el abono guarda la tabla de antes en {@code CRD.HDTP} (motivo ABONO_CAPITAL, mismo
+     * {@code EVPRCDGO} que el pago). Para el PRIMER abono posterior al corte de cada préstamo:</p>
+     * <ol>
+     * <li>cada cuota viva al corte que existe en esa tabla anterior (mismo {@code DTPRNMCT}) toma su
+     *     capital de antes: {@code cap = DTPRCPTL de hoy - DTPRCPTL de antes};</li>
+     * <li>las cuotas de la tabla anterior que ya no existen (el abono acortó el plazo) van a la última
+     *     cuota viva del préstamo (la cola);</li>
+     * <li>si el abono no guardó tabla anterior (abonos sin {@code HDTP}), el {@code PGPRSLOT} de todos
+     *     los abonos posteriores va a la cola (el total es exacto; la banda, aproximada).</li>
+     * </ol>
+     * <p>Con la tabla anterior las bandas también se reproducen: jun–sep 2025, cada cuenta 1.3 (menos
+     * 1.3.99) al centavo con el balance. Las cuotas vivas al corte no pueden estar pagadas antes del
+     * corte, así que la tabla guardada (posterior al corte) las contiene a todas.</p>
      *
      * <p>Solo abonos con fecha anterior a {@link #limiteAbonosPosteriores()} (ver su defecto).
      * Parámetro {@code :corteSig}; la fecha límite va como literal (viene de un {@link LocalDate}).</p>
      */
     public static String abonosPosterioresSql() {
         String limite = "DATE '" + limiteAbonosPosteriores() + "'";
-        return " SELECT t.DTPRCDGO, -ab.SLOT cap "
-                + " FROM (SELECT PRSTCDGO, SUM(PGPRSLOT) SLOT FROM CRD.PGPR "
-                + "       WHERE PGPRTPOO = '" + ProcesoPagoPrestamoService.TIPO_ABONO_CAPITAL + "'"
-                + "       AND NVL(PGPRANUL,0) = 0 AND NVL(PGPRSLOT,0) > 0"
-                + "       AND PGPRFCHA >= :corteSig AND PGPRFCHA < " + limite
-                + "       GROUP BY PRSTCDGO) ab "
-                + " JOIN (SELECT x.PRSTCDGO,"
-                + "       MAX(x.DTPRCDGO) KEEP (DENSE_RANK LAST ORDER BY TRUNC(x.DTPRFCVN), x.DTPRCDGO) DTPRCDGO"
-                + "       FROM CRD.DTPR x WHERE x.DTPRFCVN IS NOT NULL"
-                + "       AND NVL(x.DTPRESTD,0) <> " + EstadoCuotaPrestamo.ANULADA
-                + "       AND NOT (NVL(x.DTPRESTD,0) IN (" + EstadoCuotaPrestamo.PAGADA + ", "
-                + EstadoCuotaPrestamo.CANCELADA_ANTICIPADA + ") AND NVL(x.DTPRFCPG, :corteSig) < :corteSig)"
-                + "       GROUP BY x.PRSTCDGO) t ON t.PRSTCDGO = ab.PRSTCDGO ";
+        String viva = " v.DTPRFCVN IS NOT NULL AND NVL(v.DTPRESTD,0) <> " + EstadoCuotaPrestamo.ANULADA
+                + " AND NOT (NVL(v.DTPRESTD,0) IN (" + EstadoCuotaPrestamo.PAGADA + ", "
+                + EstadoCuotaPrestamo.CANCELADA_ANTICIPADA + ") AND NVL(v.DTPRFCPG, :corteSig) < :corteSig) ";
+        // Abonos posteriores al corte por préstamo y el evento del primero.
+        String ab = " (SELECT PRSTCDGO, SUM(PGPRSLOT) SLOT,"
+                + "         MIN(EVPRCDGO) KEEP (DENSE_RANK FIRST ORDER BY PGPRFCHA, PGPRCDGO) EV"
+                + "  FROM CRD.PGPR WHERE PGPRTPOO = '" + ProcesoPagoPrestamoService.TIPO_ABONO_CAPITAL + "'"
+                + "  AND NVL(PGPRANUL,0) = 0 AND NVL(PGPRSLOT,0) > 0"
+                + "  AND PGPRFCHA >= :corteSig AND PGPRFCHA < " + limite
+                + "  GROUP BY PRSTCDGO) ";
+        // Tabla anterior al primer abono posterior (CRD.HDTP), por número de cuota.
+        String sn = " (SELECT h.PRSTCDGO, h.DTPRNMCT, SUM(NVL(h.DTPRCPTL,0)) CPTL FROM CRD.HDTP h"
+                + "  JOIN " + ab + " a1 ON a1.EV = h.EVPRCDGO AND a1.PRSTCDGO = h.PRSTCDGO"
+                + "  GROUP BY h.PRSTCDGO, h.DTPRNMCT) ";
+        // Última cuota viva al corte de los préstamos con abono posterior.
+        String cola = " (SELECT v.PRSTCDGO,"
+                + "         MAX(v.DTPRCDGO) KEEP (DENSE_RANK LAST ORDER BY TRUNC(v.DTPRFCVN), v.DTPRCDGO) DTPRCDGO"
+                + "  FROM CRD.DTPR v WHERE " + viva
+                + "  AND v.PRSTCDGO IN (SELECT a2.PRSTCDGO FROM " + ab + " a2)"
+                + "  GROUP BY v.PRSTCDGO) ";
+        return " SELECT v.DTPRCDGO, NVL(v.DTPRCPTL,0) - s.CPTL cap"
+                + " FROM CRD.DTPR v JOIN " + sn + " s ON s.PRSTCDGO = v.PRSTCDGO AND s.DTPRNMCT = v.DTPRNMCT"
+                + " WHERE " + viva
+                + " UNION ALL"
+                + " SELECT c.DTPRCDGO, -SUM(s.CPTL) FROM " + sn + " s JOIN " + cola + " c ON c.PRSTCDGO = s.PRSTCDGO"
+                + " WHERE NOT EXISTS (SELECT 1 FROM CRD.DTPR v WHERE v.PRSTCDGO = s.PRSTCDGO"
+                + "                   AND v.DTPRNMCT = s.DTPRNMCT AND " + viva + ")"
+                + " GROUP BY c.DTPRCDGO"
+                + " UNION ALL"
+                + " SELECT c.DTPRCDGO, -a3.SLOT FROM " + ab + " a3 JOIN " + cola + " c ON c.PRSTCDGO = a3.PRSTCDGO"
+                + " WHERE NOT EXISTS (SELECT 1 FROM CRD.HDTP h WHERE h.EVPRCDGO = a3.EV AND h.PRSTCDGO = a3.PRSTCDGO) ";
     }
 
     /**
