@@ -137,18 +137,27 @@ public class CierreCarteraDaoServiceImpl implements CierreCarteraDaoService {
      * o sin regenerar en C16b, donde {@code Σ DTPRCPTL + Σ DTPRSLOT = monto}), no capital de la
      * cuota donde quedó registrado; de esa cuota solo se descuenta su {@code PGPRCPPG} (0 en el abono).
      * Ver {@link ModoCorteCartera}.
+     *
+     * <p><b>C27-B (2026-11-11):</b> al corte se suman además los ajustes de los abonos a capital con
+     * fecha POSTERIOR al corte ({@link ModoCorteCartera#abonosPosterioresSql()}): cada cuota vuelve al
+     * capital de la tabla de antes del abono (CRD.HDTP), porque el capital que la tabla de hoy ya
+     * descontó por el abono todavía se debía al corte. Al hacerlo aquí lo heredan todas las consultas al corte (G48, CCPM, bandas del cierre,
+     * apertura del neteo), que no pueden divergir.</p>
      */
     private static String pagos(LocalDate corte) {
         if (corte == null) {
             return PAGOS_VIGENTES;
         }
-        return " (SELECT DTPRCDGO, "
-                + "         SUM(" + ModoCorteCartera.CAPITAL_PAGADO_CUOTA_SQL + ") cap, "
-                + "         SUM(NVL(PGPRINPG,0)) intr, SUM(NVL(PGPRINVP,0)) intv, "
-                + "         SUM(NVL(PGPRMRPG,0)) mora, SUM(NVL(PGPRDSGR,0)) dsgr, "
-                + "         SUM(NVL(PGPRVLSI,0)) segi "
-                + "  FROM CRD.PGPR WHERE (PGPRANUL IS NULL OR PGPRANUL = 0) AND PGPRFCHA < :corteSig "
-                + "  GROUP BY DTPRCDGO) g ";
+        return " (SELECT DTPRCDGO, SUM(cap) cap, SUM(intr) intr, SUM(intv) intv, "
+                + "         SUM(mora) mora, SUM(dsgr) dsgr, SUM(segi) segi "
+                + "  FROM ( "
+                + "   SELECT DTPRCDGO, " + ModoCorteCartera.CAPITAL_PAGADO_CUOTA_SQL + " cap, "
+                + "          NVL(PGPRINPG,0) intr, NVL(PGPRINVP,0) intv, NVL(PGPRMRPG,0) mora, "
+                + "          NVL(PGPRDSGR,0) dsgr, NVL(PGPRVLSI,0) segi "
+                + "   FROM CRD.PGPR WHERE (PGPRANUL IS NULL OR PGPRANUL = 0) AND PGPRFCHA < :corteSig "
+                + "   UNION ALL "
+                + "   SELECT ap.DTPRCDGO, ap.cap, 0, 0, 0, 0, 0 FROM (" + ModoCorteCartera.abonosPosterioresSql() + ") ap "
+                + "  ) GROUP BY DTPRCDGO) g ";
     }
 
     /** Mora bruta de la cuota: la persistida HOY, o la fórmula del proceso diario al corte. */
@@ -399,6 +408,32 @@ public class CierreCarteraDaoServiceImpl implements CierreCarteraDaoService {
         List<Object[]> resultado = new ArrayList<Object[]>();
         for (Object[] f : filas) {
             resultado.add(new Object[]{ aLong(f[0]), aDouble(f[1]) });
+        }
+        return resultado;
+    }
+
+    @Override
+    public List<Object[]> selectSegurosPendientesPorPrestamo(LocalDate hasta, LocalDate corte) throws Throwable {
+        System.out.println("Ingresa al metodo selectSegurosPendientesPorPrestamo - hasta: " + hasta + " - corte: " + corte);
+        // C27-E: MISMAS expresiones de desgravamen y seguro que selectCobrablePrestamosHasta, por préstamo.
+        Query query = em.createNativeQuery(
+                " SELECT p.PRSTCDGO, "
+                + "        SUM(GREATEST(NVL(d.DTPRDSGR,0) - NVL(g.dsgr,0), 0)), "
+                + "        SUM(GREATEST(NVL(d.DTPRVLSI,0) - NVL(g.segi,0), 0)) "
+                + " FROM   CRD.DTPR d "
+                + " JOIN   CRD.PRST p ON p.PRSTCDGO = d.PRSTCDGO "
+                + " LEFT JOIN " + pagos(corte) + " ON g.DTPRCDGO = d.DTPRCDGO "
+                + " WHERE  " + universo(corte)
+                + " AND    " + pendiente(corte)
+                + " AND    TRUNC(d.DTPRFCVN) <= :hasta "
+                + " AND    p.PRDCCDGO IS NOT NULL "
+                + " GROUP BY p.PRSTCDGO");
+        query.setParameter("hasta", Date.valueOf(hasta));
+        parametroCorteSig(query, corte);
+        List<Object[]> filas = query.getResultList();
+        List<Object[]> resultado = new ArrayList<Object[]>();
+        for (Object[] f : filas) {
+            resultado.add(new Object[]{ aLong(f[0]), aDouble(f[1]), aDouble(f[2]) });
         }
         return resultado;
     }

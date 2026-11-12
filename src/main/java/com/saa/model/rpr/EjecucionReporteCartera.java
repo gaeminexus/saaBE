@@ -1,7 +1,7 @@
 package com.saa.model.rpr;
 
 import java.io.Serializable;
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
@@ -48,10 +48,10 @@ public class EjecucionReporteCartera implements Serializable {
     @Column(name = "EJCCUSRO", length = 50)
     private String usuario;
 
-    /** Fecha en que se generó la ejecución. */
+    /** Fecha y hora en que se generó la ejecución (C27-E: con hora, para avisar si es anterior al cierre del mes). */
     @Basic
     @Column(name = "EJCCFCGN")
-    private LocalDate fechaGeneracion;
+    private LocalDateTime fechaGeneracion;
 
     /** Observaciones generales de la ejecución. */
     @Basic
@@ -74,8 +74,8 @@ public class EjecucionReporteCartera implements Serializable {
     public String getUsuario() { return usuario; }
     public void setUsuario(String usuario) { this.usuario = usuario; }
 
-    public LocalDate getFechaGeneracion() { return fechaGeneracion; }
-    public void setFechaGeneracion(LocalDate fechaGeneracion) { this.fechaGeneracion = fechaGeneracion; }
+    public LocalDateTime getFechaGeneracion() { return fechaGeneracion; }
+    public void setFechaGeneracion(LocalDateTime fechaGeneracion) { this.fechaGeneracion = fechaGeneracion; }
 
     public String getObservaciones() { return observaciones; }
     public void setObservaciones(String observaciones) { this.observaciones = observaciones; }

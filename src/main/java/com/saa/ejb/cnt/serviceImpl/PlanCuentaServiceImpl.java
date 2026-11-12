@@ -628,17 +628,41 @@ public class PlanCuentaServiceImpl implements PlanCuentaService{
 			}
 		}else{
 			detalleMayorizacionAnterior = detalleMayorizacionService.selectByCuentaMayorizacion(idCuenta, periodoAnteriorMayorizado.getIdMayorizacion());
-			if(detalleMayorizacionAnterior == null){
+			if(detalleMayorizacionAnterior == null || detalleMayorizacionAnterior.getSaldoActual() == null){
 				saldoAnteriorCuenta = 0D;
 			}else{
-				saldoAnteriorCuenta = detalleMayorizacionAnterior.getSaldoActual();	
-			}			
+				saldoAnteriorCuenta = saldoEnSignoDeNaturaleza(idCuenta, detalleMayorizacionAnterior.getSaldoActual());
+			}
 			diaInicio = fechaService.sumaRestaDiasLocal(periodoAnteriorMayorizado.getUltimoDia(), 1);
 		}	
 		saldoAnteriorCuenta += detalleAsientoService.recuperaSaldoCuentaEmpresaFechas(idEmpresa,
 					idCuenta, diaInicio, fechaInicio);
-								
+
 		return saldoAnteriorCuenta;
+	}
+
+	/**
+	 * C28 (cuadre Superintendencia, 2026-11-11) — convierte el saldo de la mayorización al signo de
+	 * la naturaleza de la cuenta.
+	 *
+	 * <p>{@code CNT.DTMY.DTMYSLAC} se guarda SIEMPRE como saldo deudor ({@code saldoAnterior + debe -
+	 * haber}, {@code DetalleMayorizacionServiceImpl}), para todas las cuentas; el movimiento que se le
+	 * suma en {@link #saldoCuentaFechaEmpresa} viene con el signo de la naturaleza
+	 * ({@code DetalleAsientoServiceImpl#recuperaSaldoCuentaEmpresaFechas}: haber - debe en las
+	 * acreedoras). Sumados tal cual, en pasivo, patrimonio e ingresos el saldo anterior entraba con el
+	 * signo invertido: el balance de junio 2025 daba pasivo -55.669.568,63 en vez de 56.061.644,29.</p>
+	 *
+	 * @param idCuenta    : Cuenta (CNT.PLNN)
+	 * @param saldoDeudor : Saldo de la mayorización (debe - haber)
+	 * @return            : El saldo en el signo de la naturaleza (haber - debe en las acreedoras)
+	 */
+	private Double saldoEnSignoDeNaturaleza(Long idCuenta, Double saldoDeudor) throws Throwable {
+		PlanCuenta cuenta = planCuentaDaoService.selectById(idCuenta, NombreEntidadesContabilidad.PLAN_CUENTA);
+		if (cuenta != null && cuenta.getNaturalezaCuenta() != null && cuenta.getNaturalezaCuenta().getTipo() != null
+				&& cuenta.getNaturalezaCuenta().getTipo().longValue() == 2L) {
+			return -saldoDeudor;
+		}
+		return saldoDeudor;
 	}
 
 	/* (non-Javadoc)

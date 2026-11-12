@@ -61,6 +61,7 @@ public class GeneracionCJBMServiceImpl implements GeneracionCJBMService {
         // "casi" en vez de exacto.
         LocalDateTime fechaCorte = LocalDate.of((int) anio, (int) mes, ultimoDia).atTime(LocalTime.MAX);
         System.out.println("CJBM - fechaCorte: " + fechaCorte);
+        LocalDate corte = fechaCorte.toLocalDate();
 
         // -------------------------------------------------------
         // 1. Obtener todas las entidades en estado JUBILADO COMPLEMENTARIO
@@ -206,6 +207,14 @@ public class GeneracionCJBMServiceImpl implements GeneracionCJBMService {
                     + entidad.getNumeroIdentificacion());
             }
 
+            // C27-F: jubilados AL CORTE. Quien se jubiló después del corte no era jubilado en el mes
+            // del informe (el universo de arriba es el estado de HOY de la entidad).
+            if (fechaJubilacion.isAfter(corte)) {
+                System.out.println("CJBM SKIP jubilado con fecha de jubilacion posterior al corte " + corte
+                    + " (entidad " + codigoEntidad + ")");
+                continue;
+            }
+
             // Aplicar 4 casos de valoresCompensados y valorNetoRecibir
             Double sumaCuotas = mapaCuotasPagadas.getOrDefault(codigoEntidad, 0.0);
             Double valoresCompensados;
@@ -326,6 +335,13 @@ public class GeneracionCJBMServiceImpl implements GeneracionCJBMService {
                         continue;
                     }
                     fechaJubilacion = fechaLimite2026;
+                }
+
+                // C27-F: un ex-jubilado cuya jubilación es posterior al corte no era jubilado al corte.
+                if (fechaJubilacion.isAfter(corte)) {
+                    System.out.println("CJBM SKIP ex-jubilado con fecha de jubilacion posterior al corte " + corte
+                        + " (entidad " + codigoEntidad + ")");
+                    continue;
                 }
 
                 CreditoJubiladosMensual exJubilado = new CreditoJubiladosMensual();

@@ -80,6 +80,13 @@ public final class ModoCorteCartera {
      * y 61578) y el cierre lo avisa ({@link #CANCELADO_CON_CUOTAS_PENDIENTES_SQL}) para que se
      * depure con su documento.</p>
      *
+     * <p><b>C27-C (2026-11-11):</b> tampoco sale si tiene algún pago vigente ({@code CRD.PGPR}) con
+     * fecha posterior al corte. Caso de la operación 70882: el acuerdo de condonación del 26-sep-2025
+     * dejó sus últimas cuotas canceladas anticipadas sin fecha de pago y el préstamo cancelado; con la
+     * regla de C23 sola quedaba terminado al 31-may-2025 (su última cuota PAGADA) y salía del universo
+     * de junio a agosto 2025, cuando la G48 y la contabilidad de esos meses lo tienen vivo. En la base
+     * del 9-nov-2026 los únicos pagos que activan esta condición son acuerdos de condonación.</p>
+     *
      * <p>SQL nativo: alias {@code p} = {@code CRD.PRST}, parámetro {@code :corteSig} = corte + 1 día.</p>
      */
     public static final String CANCELADO_TERMINADO_AL_CORTE_SQL =
@@ -88,7 +95,11 @@ public final class ModoCorteCartera {
             + "      AND NVL(cx.DTPRESTD,0) NOT IN (" + EstadoCuotaPrestamo.PAGADA + ", "
             + EstadoCuotaPrestamo.CANCELADA_ANTICIPADA + ", " + EstadoCuotaPrestamo.ANULADA + "))"
             + " AND NOT EXISTS (SELECT 1 FROM CRD.DTPR cy WHERE cy.PRSTCDGO = p.PRSTCDGO"
-            + "      AND cy.DTPRESTD = " + EstadoCuotaPrestamo.PAGADA + " AND cy.DTPRFCPG >= :corteSig - 1)) ";
+            + "      AND cy.DTPRESTD = " + EstadoCuotaPrestamo.PAGADA + " AND cy.DTPRFCPG >= :corteSig - 1)"
+            // C27-C: un pago vigente posterior al corte (acuerdo de condonación, precancelación, …)
+            // prueba que el préstamo seguía vivo al corte, aunque su última cuota PAGADA sea anterior.
+            + " AND NOT EXISTS (SELECT 1 FROM CRD.PGPR cz WHERE cz.PRSTCDGO = p.PRSTCDGO"
+            + "      AND NVL(cz.PGPRANUL,0) = 0 AND cz.PGPRFCHA >= :corteSig)) ";
 
     /**
      * C23: préstamo cancelado que sigue en el universo al corte porque le quedan cuotas en mora,
@@ -116,6 +127,95 @@ public final class ModoCorteCartera {
     public static final String CAPITAL_PAGADO_CUOTA_SQL =
             " CASE WHEN PGPRTPOO = '" + ProcesoPagoPrestamoService.TIPO_ABONO_CAPITAL + "' THEN NVL(PGPRCPPG,0)"
             + " WHEN NVL(PGPRSLOT,0) > 0 THEN PGPRSLOT ELSE NVL(PGPRCPPG,0) END ";
+
+    /**
+     * C27-B (2026-11-11): propiedad con la fecha (AAAA-MM-DD, EXCLUSIVA) hasta la que los abonos a
+     * capital posteriores al corte se suman de vuelta al capital pendiente al corte. Defecto
+     * {@link #LIMITE_ABONOS_POSTERIORES_DEFECTO}. Ver {@link #abonosPosterioresSql()}.
+     */
+    public static final String PROPIEDAD_LIMITE_ABONOS_POSTERIORES = "saa.cartera.abonosPosterioresHasta";
+
+    /**
+     * Defecto de {@link #PROPIEDAD_LIMITE_ABONOS_POSTERIORES}: 1-ago-2026, desde cuando toda la
+     * operación corre en el SAA. Los abonos a capital que registró la operación del SAA desde esa
+     * fecha (9 en la base del 9-nov-2026, 54.628,76) ya estaban descontados en la G48 de mayo 2025
+     * aceptada (el ancla) y en las G48 y balances de jun–sep 2025 cerrados: sumarlos de vuelta rompería
+     * esos cierres. Los abonos con fecha anterior (los que se cargan al re-procesar 2025-2026 desde los
+     * soportes del cliente) sí son posteriores reales al corte.
+     */
+    public static final LocalDate LIMITE_ABONOS_POSTERIORES_DEFECTO = LocalDate.of(2026, 8, 1);
+
+    /** Fecha límite (exclusiva) de los abonos posteriores que se suman de vuelta (C27-B). */
+    public static LocalDate limiteAbonosPosteriores() {
+        String valor = System.getProperty(PROPIEDAD_LIMITE_ABONOS_POSTERIORES, "").trim();
+        if (valor.isEmpty()) {
+            return LIMITE_ABONOS_POSTERIORES_DEFECTO;
+        }
+        return LocalDate.parse(valor);
+    }
+
+    /**
+     * C27-B (2026-11-11) — ajuste de capital por los abonos a capital POSTERIORES al corte, como filas
+     * {@code (DTPRCDGO, cap)} para unirlas ({@code UNION ALL}) a los pagos al corte de cada cuota: así
+     * {@code GREATEST(DTPRCPTL - cap, 0)} devuelve el capital que cada cuota debía al corte sin tocar
+     * ninguna otra consulta. Un {@code cap} negativo SUMA capital.
+     *
+     * <p>Por qué: la tabla de hoy ya refleja el abono (re-amortizada, o sin regenerar en C16b, donde
+     * {@code Σ DTPRCPTL + Σ DTPRSLOT = monto}). Al corte anterior al abono ese capital todavía se
+     * debía. Casos de la base del 9-nov-2026: operación 66940 (11.300,00 del 29-sep-2025) y 70473
+     * (32.170,90 del 31-jul-2025) faltaban en el cálculo de jun–ago 2025 frente a su G48 y su balance.</p>
+     *
+     * <p>Cómo: el abono guarda la tabla de antes en {@code CRD.HDTP} (motivo ABONO_CAPITAL, mismo
+     * {@code EVPRCDGO} que el pago). Para el PRIMER abono posterior al corte de cada préstamo:</p>
+     * <ol>
+     * <li>cada cuota viva al corte que existe en esa tabla anterior (mismo {@code DTPRNMCT}) toma su
+     *     capital de antes: {@code cap = DTPRCPTL de hoy - DTPRCPTL de antes};</li>
+     * <li>las cuotas de la tabla anterior que ya no existen (el abono acortó el plazo) van a la última
+     *     cuota viva del préstamo (la cola);</li>
+     * <li>si el abono no guardó tabla anterior (abonos sin {@code HDTP}), el {@code PGPRSLOT} de todos
+     *     los abonos posteriores va a la cola (el total es exacto; la banda, aproximada).</li>
+     * </ol>
+     * <p>Con la tabla anterior las bandas también se reproducen: jun–sep 2025, cada cuenta 1.3 (menos
+     * 1.3.99) al centavo con el balance. Las cuotas vivas al corte no pueden estar pagadas antes del
+     * corte, así que la tabla guardada (posterior al corte) las contiene a todas.</p>
+     *
+     * <p>Solo abonos con fecha anterior a {@link #limiteAbonosPosteriores()} (ver su defecto).
+     * Parámetro {@code :corteSig}; la fecha límite va como literal (viene de un {@link LocalDate}).</p>
+     */
+    public static String abonosPosterioresSql() {
+        String limite = "DATE '" + limiteAbonosPosteriores() + "'";
+        String viva = " v.DTPRFCVN IS NOT NULL AND NVL(v.DTPRESTD,0) <> " + EstadoCuotaPrestamo.ANULADA
+                + " AND NOT (NVL(v.DTPRESTD,0) IN (" + EstadoCuotaPrestamo.PAGADA + ", "
+                + EstadoCuotaPrestamo.CANCELADA_ANTICIPADA + ") AND NVL(v.DTPRFCPG, :corteSig) < :corteSig) ";
+        // Abonos posteriores al corte por préstamo y el evento del primero.
+        String ab = " (SELECT PRSTCDGO, SUM(PGPRSLOT) SLOT,"
+                + "         MIN(EVPRCDGO) KEEP (DENSE_RANK FIRST ORDER BY PGPRFCHA, PGPRCDGO) EV"
+                + "  FROM CRD.PGPR WHERE PGPRTPOO = '" + ProcesoPagoPrestamoService.TIPO_ABONO_CAPITAL + "'"
+                + "  AND NVL(PGPRANUL,0) = 0 AND NVL(PGPRSLOT,0) > 0"
+                + "  AND PGPRFCHA >= :corteSig AND PGPRFCHA < " + limite
+                + "  GROUP BY PRSTCDGO) ";
+        // Tabla anterior al primer abono posterior (CRD.HDTP), por número de cuota.
+        String sn = " (SELECT h.PRSTCDGO, h.DTPRNMCT, SUM(NVL(h.DTPRCPTL,0)) CPTL FROM CRD.HDTP h"
+                + "  JOIN " + ab + " a1 ON a1.EV = h.EVPRCDGO AND a1.PRSTCDGO = h.PRSTCDGO"
+                + "  GROUP BY h.PRSTCDGO, h.DTPRNMCT) ";
+        // Última cuota viva al corte de los préstamos con abono posterior.
+        String cola = " (SELECT v.PRSTCDGO,"
+                + "         MAX(v.DTPRCDGO) KEEP (DENSE_RANK LAST ORDER BY TRUNC(v.DTPRFCVN), v.DTPRCDGO) DTPRCDGO"
+                + "  FROM CRD.DTPR v WHERE " + viva
+                + "  AND v.PRSTCDGO IN (SELECT a2.PRSTCDGO FROM " + ab + " a2)"
+                + "  GROUP BY v.PRSTCDGO) ";
+        return " SELECT v.DTPRCDGO, NVL(v.DTPRCPTL,0) - s.CPTL cap"
+                + " FROM CRD.DTPR v JOIN " + sn + " s ON s.PRSTCDGO = v.PRSTCDGO AND s.DTPRNMCT = v.DTPRNMCT"
+                + " WHERE " + viva
+                + " UNION ALL"
+                + " SELECT c.DTPRCDGO, -SUM(s.CPTL) FROM " + sn + " s JOIN " + cola + " c ON c.PRSTCDGO = s.PRSTCDGO"
+                + " WHERE NOT EXISTS (SELECT 1 FROM CRD.DTPR v WHERE v.PRSTCDGO = s.PRSTCDGO"
+                + "                   AND v.DTPRNMCT = s.DTPRNMCT AND " + viva + ")"
+                + " GROUP BY c.DTPRCDGO"
+                + " UNION ALL"
+                + " SELECT c.DTPRCDGO, -a3.SLOT FROM " + ab + " a3 JOIN " + cola + " c ON c.PRSTCDGO = a3.PRSTCDGO"
+                + " WHERE NOT EXISTS (SELECT 1 FROM CRD.HDTP h WHERE h.EVPRCDGO = a3.EV AND h.PRSTCDGO = a3.PRSTCDGO) ";
+    }
 
     /**
      * D-032 (29-oct-2026): propiedad que activa el neteo ⑥ y el complemento de apertura de cuotas

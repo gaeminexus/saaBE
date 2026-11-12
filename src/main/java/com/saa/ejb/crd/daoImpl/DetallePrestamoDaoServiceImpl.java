@@ -1189,7 +1189,10 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 				+ com.saa.rubros.EstadoCuotaPrestamo.ANULADA + ")) " +
 			"            and not exists (select cy from DetallePrestamo cy where cy.prestamo = d.prestamo " +
 			"                            and cy.estado = " + com.saa.rubros.EstadoCuotaPrestamo.PAGADA +
-			"                            and cy.fechaPagado >= :corte)) "
+			"                            and cy.fechaPagado >= :corte) " +
+			// C27-C: ni si tiene un pago vigente posterior al corte (acuerdo de condonación, …).
+			"            and not exists (select cz from PagoPrestamo cz where cz.prestamo = d.prestamo " +
+			"                            and coalesce(cz.anulado, 0) = 0 and cz.fecha >= :corteSig)) "
 		);
 		query.setParameter("corteSig", corteSig);
 		query.setParameter("corte", corte.atStartOfDay());
