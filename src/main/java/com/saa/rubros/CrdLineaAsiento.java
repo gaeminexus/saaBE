@@ -173,6 +173,23 @@ public interface CrdLineaAsiento {
 	public static final int RENDIMIENTOS_JUBILACION_PERSONAL = 57;
 
 	/**
+	 * Aporte tipo 13 (JUBILACION PATRONAL), plantilla 21, solo para el CRUCE contra préstamo
+	 * (consumo de saldo en acuerdos, precancelaciones y abonos con aportes). Pasivo
+	 * {@code 2.1.02.10.01 APORTES PATRONALES JUBILACION}, la misma cuenta que {@code CRD.CTAP} del
+	 * tipo 13. C29 (11-nov-2026, D-069 del expediente cuadreSuper); la línea la crea
+	 * {@code docs/logica-negocio/crd/sql/378_LINEAS_APORTES_PATRONALES_PLANTILLA_21.sql}. No entra en
+	 * {@link #aux1ParaTipoAporte} (la aplicación Petro/ARCH no crea aportes patronales).
+	 */
+	public static final int APORTES_PATRONALES_JUBILACION = 58;
+
+	/**
+	 * Aporte tipo 14 (CESANTIA PATRONAL), plantilla 21, solo para el CRUCE. Pasivo
+	 * {@code 2.1.01.10.01 APORTES PATRONALES CESANTIA} ({@code CRD.CTAP} del tipo 14). Ver
+	 * {@link #APORTES_PATRONALES_JUBILACION}.
+	 */
+	public static final int APORTES_PATRONALES_CESANTIA = 59;
+
+	/**
 	 * Seguro de préstamo HIPOTECARIO. Activo, {@code 1.4.90.15.02}. Sin dimensión de tipo de
 	 * préstamo propia (a diferencia de intereses): cada tipo con seguro de incendio tiene su
 	 * propio código de línea, no un aux2.
