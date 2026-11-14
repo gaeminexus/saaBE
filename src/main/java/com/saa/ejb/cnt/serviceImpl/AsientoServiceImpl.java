@@ -995,4 +995,194 @@ public class AsientoServiceImpl implements AsientoService {
 		return asientoCopia;
 	}
 
+
+	@Override
+	public byte[] generarExcel(Long idEmpresa, LocalDate desde, LocalDate hasta, Long idTipo, Long estado,
+			String categoria) throws Throwable {
+		System.out.println("generarExcel - Asiento - empresa: " + idEmpresa + " desde: " + desde + " hasta: " + hasta
+				+ " tipo: " + idTipo + " estado: " + estado + " categoria: " + categoria);
+		if (idEmpresa == null || desde == null || hasta == null) {
+			throw new IncomeException("idEmpresa, desde y hasta son obligatorios");
+		}
+		if (desde.isAfter(hasta)) {
+			throw new IncomeException("La fecha desde no puede ser posterior a la fecha hasta");
+		}
+		java.util.List<Object[]> filas = asientoDaoService.selectResumenParaExcel(idEmpresa, desde, hasta, idTipo,
+				estado, categoria);
+
+		java.time.format.DateTimeFormatter fmt = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy");
+		String titulo = "Asientos del " + desde.format(fmt) + " al " + hasta.format(fmt);
+		if (idTipo != null) {
+			String nombreTipo = filas.isEmpty() ? null : (String) filas.get(0)[1];
+			if (nombreTipo == null) {
+				try {
+					TipoAsiento tipo = tipoAsientoService.selectById(idTipo);
+					nombreTipo = tipo != null ? tipo.getNombre() : null;
+				} catch (Throwable e) {
+					nombreTipo = null;
+				}
+			}
+			titulo += " — tipo " + (nombreTipo != null ? nombreTipo : idTipo);
+		}
+
+		boolean hayDescuadre = false;
+		for (Object[] f : filas) {
+			if (Math.abs(numeroExcel(f[10]) - numeroExcel(f[11])) > 0.005) {
+				hayDescuadre = true;
+				break;
+			}
+		}
+		String[] titulos = {"Tipo", "Número", "Número por módulo", "Fecha asiento", "Fecha registro", "Estado",
+				"Módulo origen", "Glosa", "Usuario", "Valor"};
+		int columnas = hayDescuadre ? titulos.length + 1 : titulos.length;
+
+		try (org.apache.poi.xssf.usermodel.XSSFWorkbook libro = new org.apache.poi.xssf.usermodel.XSSFWorkbook()) {
+			org.apache.poi.ss.usermodel.Sheet hoja = libro.createSheet("Asientos");
+			org.apache.poi.ss.usermodel.DataFormat formato = libro.createDataFormat();
+
+			org.apache.poi.ss.usermodel.Font negrita = libro.createFont();
+			negrita.setBold(true);
+			org.apache.poi.ss.usermodel.CellStyle estiloNegrita = libro.createCellStyle();
+			estiloNegrita.setFont(negrita);
+			org.apache.poi.ss.usermodel.CellStyle estiloFecha = libro.createCellStyle();
+			estiloFecha.setDataFormat(formato.getFormat("dd/MM/yyyy"));
+			org.apache.poi.ss.usermodel.CellStyle estiloFechaHora = libro.createCellStyle();
+			estiloFechaHora.setDataFormat(formato.getFormat("dd/MM/yyyy HH:mm"));
+			org.apache.poi.ss.usermodel.CellStyle estiloValor = libro.createCellStyle();
+			estiloValor.setDataFormat(formato.getFormat("#,##0.00"));
+			org.apache.poi.ss.usermodel.CellStyle estiloValorNegrita = libro.createCellStyle();
+			estiloValorNegrita.setDataFormat(formato.getFormat("#,##0.00"));
+			estiloValorNegrita.setFont(negrita);
+			org.apache.poi.ss.usermodel.CellStyle estiloGlosa = libro.createCellStyle();
+			estiloGlosa.setWrapText(true);
+			estiloGlosa.setVerticalAlignment(org.apache.poi.ss.usermodel.VerticalAlignment.TOP);
+
+			org.apache.poi.ss.usermodel.Cell celdaTitulo = hoja.createRow(0).createCell(0);
+			celdaTitulo.setCellValue(titulo);
+			celdaTitulo.setCellStyle(estiloNegrita);
+
+			org.apache.poi.ss.usermodel.Row encabezado = hoja.createRow(1);
+			for (int i = 0; i < titulos.length; i++) {
+				org.apache.poi.ss.usermodel.Cell c = encabezado.createCell(i);
+				c.setCellValue(titulos[i]);
+				c.setCellStyle(estiloNegrita);
+			}
+			if (hayDescuadre) {
+				org.apache.poi.ss.usermodel.Cell c = encabezado.createCell(titulos.length);
+				c.setCellValue("Aviso");
+				c.setCellStyle(estiloNegrita);
+			}
+
+			int numFila = 2;
+			if (filas.isEmpty()) {
+				hoja.createRow(numFila++).createCell(0).setCellValue("Sin asientos en el rango");
+			} else {
+				String tipoActual = null;
+				int cantidadTipo = 0;
+				double subtotalTipo = 0;
+				double totalGeneral = 0;
+				int cantidadGeneral = 0;
+				for (Object[] f : filas) {
+					String tipo = (String) f[1];
+					if (cantidadTipo > 0 && !java.util.Objects.equals(tipo, tipoActual)) {
+						numFila = filaSubtotalExcel(hoja, numFila, textoSubtotalExcel("Total " + tipoActual, cantidadTipo),
+								subtotalTipo, estiloNegrita, estiloValorNegrita);
+						cantidadTipo = 0;
+						subtotalTipo = 0;
+					}
+					tipoActual = tipo;
+					double debe = numeroExcel(f[10]);
+					double haber = numeroExcel(f[11]);
+					org.apache.poi.ss.usermodel.Row r = hoja.createRow(numFila++);
+					r.createCell(0).setCellValue(tipo != null ? tipo : "");
+					r.createCell(1).setCellValue(f[2] != null ? (String) f[2] : "");
+					r.createCell(2).setCellValue(f[3] != null ? (String) f[3] : "");
+					if (f[4] != null) {
+						org.apache.poi.ss.usermodel.Cell c = r.createCell(3);
+						c.setCellValue((LocalDate) f[4]);
+						c.setCellStyle(estiloFecha);
+					}
+					if (f[5] != null) {
+						org.apache.poi.ss.usermodel.Cell c = r.createCell(4);
+						c.setCellValue((LocalDateTime) f[5]);
+						c.setCellStyle(estiloFechaHora);
+					}
+					r.createCell(5).setCellValue(nombreEstadoExcel(f[6]));
+					r.createCell(6).setCellValue(f[7] != null ? (String) f[7] : "");
+					org.apache.poi.ss.usermodel.Cell glosa = r.createCell(7);
+					glosa.setCellValue(f[8] != null ? (String) f[8] : "");
+					glosa.setCellStyle(estiloGlosa);
+					r.createCell(8).setCellValue(f[9] != null ? (String) f[9] : "");
+					org.apache.poi.ss.usermodel.Cell valor = r.createCell(9);
+					valor.setCellValue(debe);
+					valor.setCellStyle(estiloValor);
+					if (hayDescuadre && Math.abs(debe - haber) > 0.005) {
+						r.createCell(titulos.length).setCellValue("Descuadrado: haber "
+								+ String.format(java.util.Locale.US, "%,.2f", haber));
+					}
+					cantidadTipo++;
+					subtotalTipo += debe;
+					cantidadGeneral++;
+					totalGeneral += debe;
+				}
+				numFila = filaSubtotalExcel(hoja, numFila, textoSubtotalExcel("Total " + tipoActual, cantidadTipo),
+						subtotalTipo, estiloNegrita, estiloValorNegrita);
+				numFila = filaSubtotalExcel(hoja, numFila, textoSubtotalExcel("TOTAL GENERAL", cantidadGeneral),
+						totalGeneral, estiloNegrita, estiloValorNegrita);
+			}
+
+			hoja.createFreezePane(0, 2);
+			hoja.setAutoFilter(new org.apache.poi.ss.util.CellRangeAddress(1, Math.max(1, numFila - 1), 0, columnas - 1));
+			for (int i = 0; i < columnas; i++) {
+				if (i == 7) {
+					hoja.setColumnWidth(i, 60 * 256);
+				} else {
+					hoja.autoSizeColumn(i);
+				}
+			}
+			// El titulo y las filas de subtotal no deben ensanchar de mas la columna A
+			hoja.setColumnWidth(0, Math.min(Math.max(hoja.getColumnWidth(0), 28 * 256), 45 * 256));
+
+			java.io.ByteArrayOutputStream salida = new java.io.ByteArrayOutputStream();
+			libro.write(salida);
+			return salida.toByteArray();
+		}
+	}
+
+	private String textoSubtotalExcel(String prefijo, int cantidad) {
+		return prefijo + ": " + cantidad + (cantidad == 1 ? " asiento" : " asientos");
+	}
+
+	private int filaSubtotalExcel(org.apache.poi.ss.usermodel.Sheet hoja, int numFila, String texto, double valor,
+			org.apache.poi.ss.usermodel.CellStyle estiloTexto, org.apache.poi.ss.usermodel.CellStyle estiloValor) {
+		org.apache.poi.ss.usermodel.Row r = hoja.createRow(numFila);
+		org.apache.poi.ss.usermodel.Cell t = r.createCell(0);
+		t.setCellValue(texto);
+		t.setCellStyle(estiloTexto);
+		org.apache.poi.ss.usermodel.Cell v = r.createCell(9);
+		v.setCellValue(valor);
+		v.setCellStyle(estiloValor);
+		return numFila + 1;
+	}
+
+	private double numeroExcel(Object valor) {
+		return valor instanceof Number ? ((Number) valor).doubleValue() : 0d;
+	}
+
+	private String nombreEstadoExcel(Object estado) {
+		if (estado == null) {
+			return "";
+		}
+		long e = ((Number) estado).longValue();
+		if (e == EstadoAsiento.ACTIVO) {
+			return "Activo";
+		} else if (e == EstadoAsiento.ANULADO) {
+			return "Anulado";
+		} else if (e == EstadoAsiento.REVERSADO) {
+			return "Reversado";
+		} else if (e == EstadoAsiento.INCOMPLETO) {
+			return "Incompleto";
+		}
+		return String.valueOf(e);
+	}
 }

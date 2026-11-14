@@ -322,4 +322,55 @@ public class AsientoRest {
         }
     }
 
+
+    /**
+     * Excel de asientos por tipo y rango de fechas (DISENO-EXCEL-ASIENTOS-POR-TIPO.md, E1).
+     * GET /rest/asnt/excel?idEmpresa=&desde=yyyy-MM-dd&hasta=yyyy-MM-dd[&idTipo=][&estado=][&categoria=general|sistema]
+     */
+    @GET
+    @Path("/excel")
+    @Produces("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    public Response excelAsientos(@jakarta.ws.rs.QueryParam("idEmpresa") Long idEmpresa,
+            @jakarta.ws.rs.QueryParam("desde") String desde,
+            @jakarta.ws.rs.QueryParam("hasta") String hasta,
+            @jakarta.ws.rs.QueryParam("idTipo") Long idTipo,
+            @jakarta.ws.rs.QueryParam("estado") Long estado,
+            @jakarta.ws.rs.QueryParam("categoria") String categoria) {
+        System.out.println("LLEGA AL SERVICIO EXCEL - ASIENTO - empresa: " + idEmpresa + " desde: " + desde
+                + " hasta: " + hasta + " tipo: " + idTipo + " estado: " + estado + " categoria: " + categoria);
+        try {
+            if (idEmpresa == null || desde == null || desde.trim().isEmpty() || hasta == null || hasta.trim().isEmpty()) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity("idEmpresa, desde y hasta son obligatorios").type(MediaType.TEXT_PLAIN).build();
+            }
+            java.time.LocalDate fechaDesde;
+            java.time.LocalDate fechaHasta;
+            try {
+                fechaDesde = java.time.LocalDate.parse(desde.trim());
+                fechaHasta = java.time.LocalDate.parse(hasta.trim());
+            } catch (java.time.format.DateTimeParseException e) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity("desde y hasta deben tener formato yyyy-MM-dd").type(MediaType.TEXT_PLAIN).build();
+            }
+            if (fechaDesde.isAfter(fechaHasta)) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity("La fecha desde no puede ser posterior a la fecha hasta")
+                        .type(MediaType.TEXT_PLAIN).build();
+            }
+            String cat = categoria != null && !categoria.trim().isEmpty() ? categoria.trim().toLowerCase() : null;
+            if (cat != null && !"general".equals(cat) && !"sistema".equals(cat)) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity("categoria debe ser general o sistema").type(MediaType.TEXT_PLAIN).build();
+            }
+            byte[] bytes = asientoService.generarExcel(idEmpresa, fechaDesde, fechaHasta, idTipo, estado, cat);
+            return Response.ok(new java.io.ByteArrayInputStream(bytes))
+                    .header("Content-Disposition", "attachment; filename=\"asientos_" + fechaDesde + "_" + fechaHasta + ".xlsx\"")
+                    .header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                    .build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al generar Excel de asientos: " + e.getMessage()).type(MediaType.TEXT_PLAIN).build();
+        }
+    }
+
 }

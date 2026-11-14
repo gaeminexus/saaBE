@@ -349,4 +349,20 @@ public interface AsientoService extends EntityService<Asiento> {
 	boolean validacionAsiento(Asiento asiento) throws Throwable;
 	
 	
+
+	/**
+	 * Excel (.xlsx) de asientos por tipo y rango de fechas: una hoja "Asientos" con tipo, numero, fechas, estado,
+	 * glosa, usuario y valor (total del debe), subtotal por tipo y total general. Solo lectura.
+	 * DISENO-EXCEL-ASIENTOS-POR-TIPO.md, E1.
+	 * @param idEmpresa	: Empresa (obligatorio)
+	 * @param desde		: Fecha del asiento desde, inclusive (obligatorio)
+	 * @param hasta		: Fecha del asiento hasta, inclusive (obligatorio)
+	 * @param idTipo	: Tipo de asiento; null = todos
+	 * @param estado	: Estado (rubro 21); null = todos
+	 * @param categoria	: "general", "sistema" o null
+	 * @return			: Contenido del .xlsx
+	 * @throws Throwable	: IncomeException si falta un obligatorio o desde > hasta
+	 */
+	byte[] generarExcel(Long idEmpresa, java.time.LocalDate desde, java.time.LocalDate hasta, Long idTipo,
+			Long estado, String categoria) throws Throwable;
 }

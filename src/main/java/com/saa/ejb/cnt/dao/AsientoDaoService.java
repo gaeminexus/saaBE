@@ -166,4 +166,23 @@ public interface AsientoDaoService extends EntityDao<Asiento> {
 	 */
 	List<AsientoResumen> selectResumenPorEmpresaPeriodo(Long idEmpresa, Long idPeriodo) throws Throwable;
 
+
+	/**
+	 * Asientos de una empresa en un rango de fechas con el total del debe y del haber (LEFT JOIN al detalle:
+	 * un asiento sin detalle sale con 0), para el Excel de asientos por tipo. Solo lectura.
+	 * Columnas de cada fila: 0 codigo, 1 nombre del tipo, 2 numeroAlterno, 3 numeroAlternoModulo, 4 fechaAsiento,
+	 * 5 fechaIngreso, 6 estado, 7 moduloOrigen, 8 observaciones, 9 nombreUsuario, 10 sum(debe), 11 sum(haber).
+	 * Orden: nombre del tipo, los sin numeroAlterno al final de su tipo, anio, mes, numeroMesTipo, codigo.
+	 * @param idEmpresa	: Empresa (obligatorio)
+	 * @param desde		: Fecha del asiento desde, inclusive (obligatorio)
+	 * @param hasta		: Fecha del asiento hasta, inclusive (obligatorio)
+	 * @param idTipo	: Tipo de asiento; null = todos
+	 * @param estado	: Estado (rubro 21); null = todos
+	 * @param categoria	: "general" (sistema 0 o 2), "sistema" (1); null = todas
+	 * @return			: Filas Object[] segun el orden descrito
+	 * @throws Throwable	: Excepcion
+	 */
+	List<Object[]> selectResumenParaExcel(Long idEmpresa, java.time.LocalDate desde, java.time.LocalDate hasta,
+			Long idTipo, Long estado, String categoria) throws Throwable;
+
 }

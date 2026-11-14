@@ -379,4 +379,44 @@ public class AsientoDaoServiceImpl extends EntityDaoImpl<Asiento> implements Asi
 			query.setParameter("idPeriodo", idPeriodo);
 			return query.getResultList();
 		}
+
+	@Override
+	@SuppressWarnings("unchecked")
+	public List<Object[]> selectResumenParaExcel(Long idEmpresa, java.time.LocalDate desde, java.time.LocalDate hasta,
+			Long idTipo, Long estado, String categoria) throws Throwable {
+		System.out.println("AsientoDaoServiceImpl.selectResumenParaExcel - empresa: " + idEmpresa + " desde: " + desde
+				+ " hasta: " + hasta + " tipo: " + idTipo + " estado: " + estado + " categoria: " + categoria);
+		StringBuilder jpql = new StringBuilder(
+				"select a.codigo, t.nombre, a.numeroAlterno, a.numeroAlternoModulo, a.fechaAsiento, a.fechaIngreso, "
+				+ "a.estado, a.moduloOrigen, a.observaciones, a.nombreUsuario, sum(d.valorDebe), sum(d.valorHaber) "
+				+ "from Asiento a join a.tipoAsiento t left join DetalleAsiento d on d.asiento.codigo = a.codigo "
+				+ "where a.empresa.codigo = :idEmpresa and a.fechaAsiento >= :desde and a.fechaAsiento <= :hasta ");
+		if (idTipo != null) {
+			jpql.append("and t.codigo = :idTipo ");
+		}
+		if (estado != null) {
+			jpql.append("and a.estado = :estado ");
+		}
+		if ("general".equals(categoria)) {
+			jpql.append("and t.sistema in (0, 2) ");
+		} else if ("sistema".equals(categoria)) {
+			jpql.append("and t.sistema = 1 ");
+		}
+		jpql.append("group by a.codigo, t.nombre, a.numeroAlterno, a.numeroAlternoModulo, a.fechaAsiento, "
+				+ "a.fechaIngreso, a.estado, a.moduloOrigen, a.observaciones, a.nombreUsuario, "
+				+ "a.numeroAnio, a.numeroMes, a.numeroMesTipo "
+				+ "order by t.nombre, case when a.numeroAlterno is null then 1 else 0 end, "
+				+ "a.numeroAnio, a.numeroMes, a.numeroMesTipo, a.codigo");
+		Query query = em.createQuery(jpql.toString());
+		query.setParameter("idEmpresa", idEmpresa);
+		query.setParameter("desde", desde);
+		query.setParameter("hasta", hasta);
+		if (idTipo != null) {
+			query.setParameter("idTipo", idTipo);
+		}
+		if (estado != null) {
+			query.setParameter("estado", estado);
+		}
+		return query.getResultList();
+	}
 }
