@@ -1,6 +1,17 @@
 # Despliegue del EAR «pago de préstamo con aportes del garante» (2026-11-11)
 
-> **Último: `seguro-clave-1111`** = `cuenta-viva-1111` con **solo `saaBE.war` cambiado** (saaBE `15781fba`): la clave de
+> **Último: `excel-asientos-1114`** = **todo `main`** de los dos repos (saaBE `496ca67c`, saaFE `96a075b`), los dos WAR
+> cambiados: Excel de asientos por tipo y rango de fechas (`GET asnt/excel` + botón «Exportar Excel» en Reportes > Listado
+> de Asientos, `cnt/DISENO-EXCEL-ASIENTOS-POR-TIPO.md`) **y** el cuadre C25–C29 fusionado en main (seguimiento de
+> novedades, informes mensuales/cartera al corte, signo del saldo anterior, cruce de aportes patronales 13/14). Lo del
+> cuadre requiere `cnt/sql/C25-01`, `C25-02`, `C25-FE-01`, `rpr/sql/C27-01` y `crd/sql/378`: **ya corridos en
+> producción** según el usuario (2026-11-14). El Excel no requiere SQL.
+> - `F:\ears\asoprep\excel-asientos-1114\SaaEAR.ear` — SHA-256 `A49B7F5D1AD0274EC2A6D55F3FEF14D1EB392FA85E4C1AC3493092E1182D1B60`
+>   (3 partes). `saaBE.war` `4DA3759218A3165E268ED80DCACD716F6AD2635D866F78D981DB09E190F13A15`.
+>   `SaaFE.war` `44BE1E5A0AC250136E76C771343663467945C34B567AC8C83574FF3F4272462A`.
+> - Vuelta atrás: `seguro-clave-1111` (sin el cuadre).
+>
+> Anterior: **`seguro-clave-1111`** = `cuenta-viva-1111` con **solo `saaBE.war` cambiado** (saaBE `15781fba`): la clave de
 > acceso de un documento de seguro ANULADO se puede volver a registrar (K2, `crd/DISENO-SEGURO-CLAVE-ACCESO-TRAS-ANULAR.md`).
 > Trae además omen1 `779b6c25` (consola de pruebas de Security Data: la ruta genérica `sdpr/{ruta}` solo para pasos JSON;
 > un REST, sin SQL). **Requiere `crd/sql/e3-20`** (índice único sin anulados) para que el registro pase; sin él el EAR
