@@ -1579,25 +1579,33 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
      *       sin línea de seguro de incendio.</li>
      *   <li><b>11</b> (prendario) y <b>15</b> (hipotecario): HABER interés aux 11, mora aux 12,
      *       desgravamen aux 13, seguro aux 14.</li>
-     *   <li><b>2, 3</b> (novación): aux 11 HABER y aux 12 DEBE por el CAPITAL del original (sale su
-     *       pagaré); aux 13 DEBE y aux 14 HABER por el MONTO del nuevo (entra el pagaré nuevo);
-     *       aux 15 HABER (SOCIOS POR PAGAR) por el NETO.</li>
+     *   <li><b>2, 3</b> (novación): aux 11 HABER y aux 12 DEBE por el MONTO ENTREGADO ORIGINAL del
+     *       préstamo anterior (sale su pagaré con el mismo valor con que entró en la entrega,
+     *       {@code PRSTMNSL}; antes del 15-nov-2026 salía por el saldo de capital y la garantía quedaba
+     *       con residuo en cuentas de orden); aux 13 DEBE y aux 14 HABER por el MONTO del nuevo (entra
+     *       el pagaré nuevo); aux 15 HABER (SOCIOS POR PAGAR) por el NETO.</li>
      * </ul>
      * Las líneas en 0 se omiten. Un componente &gt; 0,005 sin línea en la plantilla lanza con el
      * concepto. Un alterno que NO esté en esta tabla sigue lanzando «falta el mapeo» (no se adivina).
      */
     private List<DetalleAsiento> lineasNoBandaSustitucion(Long idPlantilla, int alterno,
             com.saa.ejb.crd.service.dto.DesgloseConceptosPrestamo desglose, boolean esNovacion, double neto,
-            double montoNuevo, String prefijo) throws Throwable {
+            double montoNuevo, double montoOriginal, String prefijo) throws Throwable {
         List<DetalleAsiento> lineas = new ArrayList<>();
 
         if (alterno == PlantillasCredito.NOVACION_QUIROGRAFARIO
                 || alterno == PlantillasCredito.NOVACION_QUIROGRAFARIO_REESTRUCTURADO) {
-            double capital = redondear(desglose.getCapitalPendiente());
-            lineas.add(lineaEntrega(idPlantilla, 11, capital, false, alterno,
-                prefijo + " - orden: sale el pagaré del original"));
-            lineas.add(lineaEntrega(idPlantilla, 12, capital, true, alterno,
-                prefijo + " - garantía: sale el pagaré del original"));
+            // La garantía (pagaré) del préstamo anterior se da de baja por el valor con que se registró al
+            // entregarlo: el monto original del crédito, no el saldo de capital (pedido de ASOPREP, 15-nov-2026).
+            double pagareOriginal = redondear(montoOriginal);
+            if (pagareOriginal <= TOLERANCIA_CUADRE) {
+                throw new IncomeException("El préstamo original de la novación no tiene monto entregado (PRSTMNSL):"
+                    + " no se puede dar de baja su garantía en cuentas de orden.");
+            }
+            lineas.add(lineaEntrega(idPlantilla, 11, pagareOriginal, false, alterno,
+                prefijo + " - orden: sale el pagaré del original (monto entregado)"));
+            lineas.add(lineaEntrega(idPlantilla, 12, pagareOriginal, true, alterno,
+                prefijo + " - garantía: sale el pagaré del original (monto entregado)"));
             lineas.add(lineaEntrega(idPlantilla, 13, montoNuevo, true, alterno,
                 prefijo + " - orden: entra el pagaré del nuevo"));
             lineas.add(lineaEntrega(idPlantilla, 14, montoNuevo, false, alterno,
@@ -1690,7 +1698,7 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
             + " → " + nuevo.getCodigo();
         double montoNuevo = nvl(nuevo.getMontoSolicitado());
         List<DetalleAsiento> lineasNoBanda = lineasNoBandaSustitucion(idPlantilla, alterno, desglose,
-            esNovacion, neto, montoNuevo, prefijo);
+            esNovacion, neto, montoNuevo, nvl(original.getMontoSolicitado()), prefijo);
 
         // DEBE: capital del NUEVO por banda (la rutina de la entrega).
         LineasBandas bandasNuevo = lineasBandasEntrega(nuevo, cuotasNuevo, idEmpresa, prefijo);
