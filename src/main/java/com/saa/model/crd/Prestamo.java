@@ -292,6 +292,20 @@ public class Prestamo implements Serializable {
     @Column(name = "PRSTVLAS")
     private Double valorAsegurado;
 
+    /**
+     * Valor de la garantía: avalúo del bien (hipotecarios). C31b / D-083 (16-nov-2026): la baja de la
+     * garantía del bien en cuentas de orden sale por este valor; si es nulo o 0, por {@code PRSTVLAS}.
+     * Se carga desde el archivo de Cartera de ASOPREP (ExpGarantiaHIP), no lo escribe ningún flujo.
+     *
+     * ⛔ Requiere {@code ALTER TABLE CRD.PRST ADD (PRSTVLGR NUMBER(15,2))} (expediente cuadreSuper,
+     * 03-trabajo/cambios-saa/c31-baja-garantia/sql/02-ddl-prstvlgr.sql) ANTES de desplegar este WAR:
+     * Hibernate incluye toda columna {@code @Column} en el SELECT y, sin el DDL, toda lectura de
+     * CRD.PRST revienta con ORA-00904 (la cartera entera, no solo la baja de garantía).
+     */
+    @Basic
+    @Column(name = "PRSTVLGR")
+    private Double valorGarantia;
+
     /** Tasa de seguro de incendio del préstamo */
     @Basic
     @Column(name = "PRSTTSIN")
@@ -572,6 +586,9 @@ public class Prestamo implements Serializable {
 
     public Double getValorAsegurado() { return valorAsegurado; }
     public void setValorAsegurado(Double valorAsegurado) { this.valorAsegurado = valorAsegurado; }
+
+    public Double getValorGarantia() { return valorGarantia; }
+    public void setValorGarantia(Double valorGarantia) { this.valorGarantia = valorGarantia; }
 
     public Double getTasaSeguroIncendio() { return tasaSeguroIncendio; }
     public void setTasaSeguroIncendio(Double tasaSeguroIncendio) { this.tasaSeguroIncendio = tasaSeguroIncendio; }

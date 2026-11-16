@@ -39,8 +39,9 @@ import jakarta.ejb.Stateless;
  * sin consumidor.</p>
  *
  * <p><b>Criterio exacto.</b> Al terminar el préstamo se da de baja todo lo registrado: el pagaré por el
- * monto otorgado ({@code PRSTMNSL}) y, si es prendario o hipotecario con suma asegurada ({@code PRSTVLAS}
- * &gt; 0), el bien por ese valor; la contrapartida (7.3.01.05) por la suma. Como ninguna cuota reduce la
+ * monto otorgado ({@code PRSTMNSL}) y, si es prendario o hipotecario, el bien por el valor de la garantía
+ * ({@code PRSTVLGR}, avalúo del bien cargado del archivo de Cartera — C31b / D-083) o, si no está cargado o
+ * es 0, por la suma asegurada ({@code PRSTVLAS} &gt; 0); la contrapartida (7.3.01.05) por la suma. Como ninguna cuota reduce la
  * orden, «lo que queda del monto otorgado» es el monto otorgado entero y el saldo del préstamo en orden
  * queda en 0. Si el préstamo no tiene monto otorgado, falla con mensaje (igual que C30).</p>
  *
@@ -154,7 +155,11 @@ public class GarantiaOrdenPrestamoServiceImpl implements GarantiaOrdenPrestamoSe
                 + " no se puede dar de baja su garantía en cuentas de orden.");
         }
         String familia = familia(prestamo);
-        double bien = redondear(prestamo.getValorAsegurado() != null ? prestamo.getValorAsegurado() : 0.0);
+        // C31b / D-083: el bien sale por el valor de la garantía (avalúo, PRSTVLGR) si está cargado;
+        // si no, por la suma asegurada (PRSTVLAS), como en C31.
+        double avaluo = prestamo.getValorGarantia() != null ? prestamo.getValorGarantia() : 0.0;
+        double bien = redondear(avaluo > TOLERANCIA ? avaluo
+            : (prestamo.getValorAsegurado() != null ? prestamo.getValorAsegurado() : 0.0));
         Integer auxBien = null;
         if (bien > TOLERANCIA) {
             if ("HIPOTECARIO".equals(familia)) {
