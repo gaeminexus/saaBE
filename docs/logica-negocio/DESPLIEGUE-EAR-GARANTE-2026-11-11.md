@@ -1,6 +1,17 @@
 # Despliegue del EAR «pago de préstamo con aportes del garante» (2026-11-11)
 
-> **Último: `excel-asientos-1114`** = **todo `main`** de los dos repos (saaBE `496ca67c`, saaFE `96a075b`), los dos WAR
+> **Último: `decimo-anticipado-1116`** = **todo `main`** (saaBE `19647185`, saaFE `a42b63a`), sobre `direccion-1116`
+> de omen1 (`DESPLIEGUE-EAR-DIRECCION-2026-11-16.md`): décimo tercero pagado por anticipado
+> (`rhh/DISENO-DECIMO-TERCERO-ANTICIPADO.md`), más lo de omen1 (dirección única, requiere `crd/sql/379`, ya corrido) y
+> el cuadre C30/C31 (baja de garantía, sin SQL).
+> - ⛔ **REQUIERE `rhh/sql/e3-21` ANTES DEL EAR**: la entidad `LiquidacionBeneficioSocial` mapea 4 columnas nuevas de
+>   `RHH.LQBS`; sin ellas, toda lectura de liquidaciones de beneficios da ORA-00904.
+> - `F:\ears\asoprep\decimo-anticipado-1116\SaaEAR.ear` — SHA-256 `88E4069BD47FEBE003CB082A7BC5ACC519D457533D2902CF733F55C67B065A2F`
+>   (3 partes). `saaBE.war` `9EF384FDFD53804B14C15412ADD5175247CA9B016B9726C6FA830D7E96043273`.
+>   `SaaFE.war` `9A223E35AF4B37D47F05C7F5EAF70E57784CF03B7C3D97471F5D3FCB9B7C2566`.
+> - Vuelta atrás: `direccion-1116` (las columnas nuevas de LQBS no le estorban).
+>
+> Anterior: **`excel-asientos-1114`** = **todo `main`** de los dos repos (saaBE `496ca67c`, saaFE `96a075b`), los dos WAR
 > cambiados: Excel de asientos por tipo y rango de fechas (`GET asnt/excel` + botón «Exportar Excel» en Reportes > Listado
 > de Asientos, `cnt/DISENO-EXCEL-ASIENTOS-POR-TIPO.md`) **y** el cuadre C25–C29 fusionado en main (seguimiento de
 > novedades, informes mensuales/cartera al corte, signo del saldo anterior, cruce de aportes patronales 13/14). Lo del
