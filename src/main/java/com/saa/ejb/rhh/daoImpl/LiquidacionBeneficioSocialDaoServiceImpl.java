@@ -118,4 +118,19 @@ public class LiquidacionBeneficioSocialDaoServiceImpl extends EntityDaoImpl<Liqu
 		query.setParameter("idOrden", idOrden);
 		return query.getResultList();
 	}
+
+	/* (non-Javadoc)
+	 * @see com.saa.ejb.rhh.dao.LiquidacionBeneficioSocialDaoService#selectByPeriodoAjuste(java.lang.Long)
+	 */
+	@SuppressWarnings("unchecked")
+	@Override
+	public List<LiquidacionBeneficioSocial> selectByPeriodoAjuste(Long idPeriodo) throws Throwable {
+		System.out.println("Ingresa al metodo selectByPeriodoAjuste de LiquidacionBeneficioSocial, periodo: "
+				+ idPeriodo);
+		jakarta.persistence.Query query = em.createQuery(" select   t "
+				+ " from     LiquidacionBeneficioSocial t "
+				+ " where    t.periodoAjuste.codigo = :idPeriodo ");
+		query.setParameter("idPeriodo", idPeriodo);
+		return query.getResultList();
+	}
 }

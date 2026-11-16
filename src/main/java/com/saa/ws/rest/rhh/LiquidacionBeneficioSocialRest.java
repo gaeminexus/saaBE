@@ -152,11 +152,15 @@ public class LiquidacionBeneficioSocialRest {
     @Produces(MediaType.APPLICATION_JSON)
     public Response generarDecimoTercero(@PathParam("anio") Integer anio,
             @QueryParam("idEmpresa") Long idEmpresa,
-            @QueryParam("usuarioRegistro") String usuario) {
-        System.out.println("LLEGA AL SERVICIO GENERAR DECIMO TERCERO - LIQUIDACIONBENEFICIOSOCIAL, anio: " + anio);
+            @QueryParam("usuarioRegistro") String usuario,
+            @QueryParam("anticipado") Boolean anticipado) {
+        System.out.println("LLEGA AL SERVICIO GENERAR DECIMO TERCERO - LIQUIDACIONBENEFICIOSOCIAL, anio: " + anio
+                + ", anticipado: " + anticipado);
         try {
-            int generados = beneficioSocialService.generarDecimoTercero(idEmpresa, anio, usuario);
-            return Response.status(Response.Status.OK).entity(generados).type(MediaType.APPLICATION_JSON).build();
+            // Respuesta: {"generados": n, "omitidosPagados": m} (A0: las ya pagadas o en orden no se recalculan).
+            com.saa.model.rhh.ResultadoGeneracionBeneficio resultado = beneficioSocialService
+                    .generarDecimoTercero(idEmpresa, anio, Boolean.TRUE.equals(anticipado), usuario);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
         } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
         	// U-4: usuario faltante o inexistente -> 400; no se procesó nada.
         	return Response.status(Response.Status.BAD_REQUEST)
@@ -181,8 +185,9 @@ public class LiquidacionBeneficioSocialRest {
         System.out.println("LLEGA AL SERVICIO GENERAR DECIMO CUARTO - LIQUIDACIONBENEFICIOSOCIAL, anio: "
                 + anio + ", region: " + region);
         try {
-            int generados = beneficioSocialService.generarDecimoCuarto(idEmpresa, anio, region, usuario);
-            return Response.status(Response.Status.OK).entity(generados).type(MediaType.APPLICATION_JSON).build();
+            com.saa.model.rhh.ResultadoGeneracionBeneficio resultado = beneficioSocialService
+                    .generarDecimoCuarto(idEmpresa, anio, region, usuario);
+            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
         } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
         	// U-4: usuario faltante o inexistente -> 400; no se procesó nada.
         	return Response.status(Response.Status.BAD_REQUEST)

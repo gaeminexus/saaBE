@@ -176,4 +176,32 @@ public class AcumuladoNominaDaoServiceImpl extends EntityDaoImpl<AcumuladoNomina
 		return query.getResultList();
 	}
 
+
+	/* (non-Javadoc)
+	 * @see com.saa.ejb.rhh.dao.AcumuladoNominaDaoService#sumaValorRangoExcluyendo(java.lang.Long, java.lang.Long, java.lang.Integer, java.lang.Integer, java.lang.Integer, java.lang.Integer, java.util.List)
+	 */
+	@Override
+	public Double sumaValorRangoExcluyendo(Long idEmpleado, Long tipoAcumulado, Integer anioDesde,
+			Integer mesDesde, Integer anioHasta, Integer mesHasta, List<Integer> clavesExcluidas)
+			throws Throwable {
+		System.out.println("Ingresa al metodo sumaValorRangoExcluyendo de AcumuladoNomina, empleado: " + idEmpleado
+				+ ", excluidas: " + clavesExcluidas);
+		// Lista vacia en un NOT IN no es portable: se usa una clave imposible.
+		List<Integer> excluidas = (clavesExcluidas == null || clavesExcluidas.isEmpty())
+				? List.of(Integer.valueOf(-1)) : clavesExcluidas;
+		Query query = em.createQuery(" select   sum(t.valor) "
+				+ " from     AcumuladoNomina t "
+				+ " where    t.empleado.codigo = :idEmpleado "
+				+ "          and t.tipoAcumulado = :tipoAcumulado "
+				+ "          and ((t.anio * 100) + t.mes) between :claveDesde and :claveHasta "
+				+ "          and ((t.anio * 100) + t.mes) not in :excluidas "
+				+ "          and t.estado = 1 ");
+		query.setParameter("idEmpleado", idEmpleado);
+		query.setParameter("tipoAcumulado", tipoAcumulado);
+		query.setParameter("claveDesde", Integer.valueOf(anioDesde.intValue() * 100 + mesDesde.intValue()));
+		query.setParameter("claveHasta", Integer.valueOf(anioHasta.intValue() * 100 + mesHasta.intValue()));
+		query.setParameter("excluidas", excluidas);
+		Object resultado = query.getSingleResult();
+		return resultado == null ? Double.valueOf(0D) : Double.valueOf(resultado.toString());
+	}
 }

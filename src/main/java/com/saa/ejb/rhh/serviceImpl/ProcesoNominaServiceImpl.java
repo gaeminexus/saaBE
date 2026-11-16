@@ -60,6 +60,7 @@ import com.saa.rubros.RhhOrigenRenglon;
 import com.saa.rubros.RhhRolConceptoMotor;
 import com.saa.rubros.RhhTipoAcumulado;
 import com.saa.rubros.RhhTipoAusencia;
+import com.saa.rubros.RhhTipoBeneficioSocial;
 import com.saa.rubros.RhhTipoCalculoConcepto;
 import com.saa.rubros.RhhTipoConceptoNomina;
 import com.saa.rubros.RhhTipoHoraExtra;
@@ -206,6 +207,13 @@ public class ProcesoNominaServiceImpl implements ProcesoNominaService {
 	// Ver docs/logica-negocio/rhh/PLAN-VALORES-NO-PAGADOS.md §7.1.
 	@EJB
 	private ValorNoPagadoDaoService valorNoPagadoDaoService;
+
+	// e3-21: decimo tercero pagado por anticipado (A2).
+	@EJB
+	private com.saa.ejb.rhh.service.BeneficioSocialService beneficioSocialService;
+
+	@EJB
+	private com.saa.ejb.rhh.dao.LiquidacionBeneficioSocialDaoService liquidacionBeneficioSocialDaoService;
 	// ===== FIN enganche valores no pagados =====
 
 	// =====================================================================
@@ -601,6 +609,16 @@ public class ProcesoNominaServiceImpl implements ProcesoNominaService {
 		// El cierre escribio acumulados: hay que retirarlos o el recalculo los duplica.
 		int borrados = acumuladoNominaDaoService.eliminaByPeriodo(idPeriodoNomina);
 		System.out.println("reabrirPeriodo retiro " + borrados + " acumulado(s) del periodo.");
+		// e3-21: si este era el cierre de diciembre, el ajuste del decimo tercero anticipado que grabo se
+		// retira: al recalcular, el rol lo vuelve a generar (la liquidacion queda pendiente de ajuste).
+		if (periodo.getMes() != null && periodo.getMes().intValue() == MES_DICIEMBRE) {
+			for (com.saa.model.rhh.LiquidacionBeneficioSocial lqbs
+					: liquidacionBeneficioSocialDaoService.selectByPeriodoAjuste(idPeriodoNomina)) {
+				lqbs.setValorAjuste(null);
+				lqbs.setPeriodoAjuste(null);
+				liquidacionBeneficioSocialDaoService.save(lqbs, lqbs.getCodigo());
+			}
+		}
 
 		periodo.setEstado(Long.valueOf(RhhEstadoPeriodoNomina.CALCULADO));
 		periodo.setFechaCierre(null);
@@ -782,6 +800,9 @@ public class ProcesoNominaServiceImpl implements ProcesoNominaService {
 					nomina.getRetencionImpuestoRenta(), null, usuario);
 			escribeAcumulado(periodo, idEmpleado, anio, mes, RhhTipoAcumulado.DIAS_TRABAJADOS,
 					Double.valueOf(0D), nomina.getDiasTrabajados(), usuario);
+			if (periodo.getMes() != null && periodo.getMes().intValue() == MES_DICIEMBRE) {
+				grabaAjusteDecimoAnticipado(periodo, nomina);
+			}
 		}
 
 		periodo.setEstado(Long.valueOf(RhhEstadoPeriodoNomina.CERRADO));
@@ -1122,6 +1143,30 @@ public class ProcesoNominaServiceImpl implements ProcesoNominaService {
 				renglones.add(nuevoRenglon(nomina, conceptoRet, null, retencionIr, sueldoPeriodo,
 						contrato.getPorcentajeRetencionFuente(),
 						RhhOrigenRenglon.CALCULO_AUTOMATICO, null, null));
+			}
+		}
+
+		// --- Paso 11b: ajuste del decimo tercero pagado por anticipado (e3-21, A2) ----
+		// Solo en diciembre: el decimo real (con noviembre ya cerrado) contra lo pagado por anticipado.
+		// Los conceptos 37/38 no son base de nada (IESS, IR, fondos, decimos, vacaciones, utilidades).
+		if (periodo.getMes() != null && periodo.getMes().intValue() == MES_DICIEMBRE) {
+			Double ajuste = calculaAjusteDecimoAnticipado(periodo, idEmpleado);
+			if (ajuste != null && Math.abs(ajuste.doubleValue()) >= AJUSTE_MINIMO_DECIMO_ANTICIPADO) {
+				int rolAjuste = ajuste.doubleValue() > 0D
+						? RhhRolConceptoMotor.AJUSTE_DECIMO_TERCERO_ANTICIPADO_A_FAVOR
+						: RhhRolConceptoMotor.AJUSTE_DECIMO_TERCERO_ANTICIPADO_EN_CONTRA;
+				ConceptoNomina conceptoAjuste = conceptoPorRol(conceptos, rolAjuste);
+				if (conceptoAjuste == null) {
+					throw new IncomeException("El empleado tiene decimo tercero pagado por anticipado por ajustar"
+							+ " (" + ajuste + ") y la empresa no tiene un concepto con rol de motor " + rolAjuste
+							+ ". Ejecute el script rhh/sql/e3-21 antes de calcular diciembre.");
+				}
+				ReglonNomina renglonAjuste = nuevoRenglon(nomina, conceptoAjuste, null,
+						Double.valueOf(Math.abs(ajuste.doubleValue())), null, null,
+						RhhOrigenRenglon.CALCULO_AUTOMATICO, null, null);
+				renglonAjuste.setDescripcion("Ajuste décimo tercero " + periodo.getAnio()
+						+ " pagado por anticipado");
+				renglones.add(renglonAjuste);
 			}
 		}
 
@@ -2159,5 +2204,105 @@ public class ProcesoNominaServiceImpl implements ProcesoNominaService {
 		}
 		resultado.setRenglones(detalle);
 		return resultado;
+	}
+
+	// =====================================================================
+	// Decimo tercero pagado por anticipado (e3-21, DISENO-DECIMO-TERCERO-ANTICIPADO.md §A2)
+	// =====================================================================
+
+	/** Diciembre: el mes en que se concilia el decimo tercero pagado por anticipado. */
+	private static final int MES_DICIEMBRE = 12;
+
+	/** Mes de noviembre: debe estar cerrado para calcular el ajuste de diciembre. */
+	private static final int MES_NOVIEMBRE = 11;
+
+	/** Diferencia minima (en valor absoluto) para generar el renglon de ajuste. */
+	private static final double AJUSTE_MINIMO_DECIMO_ANTICIPADO = 0.01D;
+
+	/** Estado PAGADA de una liquidacion de beneficio social (LQBSESTD). */
+	private static final long LQBS_PAGADA = 2L;
+
+	/**
+	 * Liquidacion del decimo tercero del anio del periodo si esta pendiente de ajuste: anticipada
+	 * ('S'), PAGADA y sin ajuste aplicado todavia (LQBSVLAJ nulo). Null si no aplica.
+	 */
+	private com.saa.model.rhh.LiquidacionBeneficioSocial liquidacionAnticipadaPendiente(PeriodoNomina periodo,
+			Long idEmpleado) throws Throwable {
+		com.saa.model.rhh.LiquidacionBeneficioSocial lqbs = liquidacionBeneficioSocialDaoService
+				.selectByEmpleadoTipoAnio(idEmpleado, Long.valueOf(RhhTipoBeneficioSocial.DECIMO_TERCERO),
+						periodo.getAnio());
+		if (lqbs == null || !"S".equals(lqbs.getAnticipado())
+				|| !Long.valueOf(LQBS_PAGADA).equals(lqbs.getEstado()) || lqbs.getValorAjuste() != null) {
+			return null;
+		}
+		return lqbs;
+	}
+
+	/**
+	 * A2: diferencia entre el decimo tercero real (noviembre ya cerrado, base exacta por ACMN) y lo
+	 * pagado por anticipado. Falla si noviembre no esta cerrado. Null si el empleado no tiene un
+	 * anticipo pendiente de ajuste.
+	 *
+	 * @param periodo		: Periodo de diciembre que se calcula
+	 * @param idEmpleado	: Id del empleado
+	 * @return				: real - pagado, redondeado; null si no aplica
+	 * @throws Throwable	: IncomeException si noviembre no esta cerrado
+	 */
+	private Double calculaAjusteDecimoAnticipado(PeriodoNomina periodo, Long idEmpleado) throws Throwable {
+		com.saa.model.rhh.LiquidacionBeneficioSocial lqbs = liquidacionAnticipadaPendiente(periodo, idEmpleado);
+		if (lqbs == null) {
+			return null;
+		}
+		if (!noviembreCerrado(periodo)) {
+			throw new IncomeException("Cierre el rol de noviembre antes de calcular diciembre: hay décimo"
+					+ " tercero pagado por anticipado por conciliar");
+		}
+		Double real = beneficioSocialService.valorDecimoTerceroReal(idEmpleado, periodo.getAnio());
+		double pagado = lqbs.getValorPagado() != null ? lqbs.getValorPagado().doubleValue() : 0D;
+		return RedondeoNomina.redondea(Double.valueOf(real.doubleValue() - pagado));
+	}
+
+	/** Noviembre del anio del periodo (mensual, de la misma empresa) esta CERRADO. */
+	private boolean noviembreCerrado(PeriodoNomina periodo) throws Throwable {
+		Integer clave = Integer.valueOf(periodo.getAnio().intValue() * 100 + MES_NOVIEMBRE);
+		List<PeriodoNomina> noviembre = periodoNominaDaoService.selectMensualesEntre(
+				periodo.getEmpresa().getCodigo(), clave, clave);
+		for (PeriodoNomina p : noviembre) {
+			if (Long.valueOf(RhhEstadoPeriodoNomina.CERRADO).equals(p.getEstado())) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * A2, al cerrar diciembre: graba en la liquidacion anticipada el ajuste que llevo el rol
+	 * (renglones 37 menos 38 de la nomina; 0 si no hubo diferencia) y el periodo donde se aplico.
+	 */
+	private void grabaAjusteDecimoAnticipado(PeriodoNomina periodo, Nomina nomina) throws Throwable {
+		Long idEmpleado = nomina.getEmpleado().getCodigo();
+		com.saa.model.rhh.LiquidacionBeneficioSocial lqbs = liquidacionAnticipadaPendiente(periodo, idEmpleado);
+		if (lqbs == null) {
+			return;
+		}
+		double ajuste = 0D;
+		List<ReglonNomina> renglones = reglonNominaDaoService.selectByNomina(nomina.getCodigo());
+		if (renglones != null) {
+			for (ReglonNomina renglon : renglones) {
+				Long rol = renglon.getConceptoNomina() != null ? renglon.getConceptoNomina().getRolMotor() : null;
+				double valor = renglon.getValor() != null ? renglon.getValor().doubleValue() : 0D;
+				if (rol != null && rol.intValue() == RhhRolConceptoMotor.AJUSTE_DECIMO_TERCERO_ANTICIPADO_A_FAVOR) {
+					ajuste += valor;
+				} else if (rol != null
+						&& rol.intValue() == RhhRolConceptoMotor.AJUSTE_DECIMO_TERCERO_ANTICIPADO_EN_CONTRA) {
+					ajuste -= valor;
+				}
+			}
+		}
+		lqbs.setValorAjuste(RedondeoNomina.redondea(Double.valueOf(ajuste)));
+		lqbs.setPeriodoAjuste(periodo);
+		liquidacionBeneficioSocialDaoService.save(lqbs, lqbs.getCodigo());
+		System.out.println("Ajuste del decimo tercero anticipado grabado, empleado: " + idEmpleado + ", ajuste: "
+				+ lqbs.getValorAjuste());
 	}
 }

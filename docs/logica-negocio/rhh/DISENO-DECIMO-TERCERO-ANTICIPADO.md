@@ -79,6 +79,27 @@ En `calculaFiniquito`, después de la línea rol 23:
 5. Contabilidad del rol 39: misma línea de plantilla que el rol 23, al haber de la provisión (inverso del 23):
    la provisión, que el anticipo debitó por el año completo, vuelve a su saldo devengado.
 
+### Contabilidad — cómo quedó (2026-11-16, tras medir el código)
+«La misma vía que el rol 23» no cabía tal cual: en el finiquito el lado lo fija la plantilla por línea y todo EGRESO
+va a cuentas por cobrar empleados; en el rol mensual la provisión de décimo está en la plantilla de PROVISIÓN, no en
+la del rol. Se resuelve así:
+- **Finiquito (`contabilizarLiquidacion`):** el rol 39 va a `PROVISION_DECIMO_TERCERO_POR_PAGAR` con **valor
+  negativo**, y `armaLineas`/`construyeLinea` pasan un valor negativo al **lado contrario** con `abs(valor)`
+  (hoy no admiten negativos). Resultado: el haber de la provisión por lo pagado por anticipado.
+- **Rol de diciembre (`importesDelRol` y los tres consumidores de la línea «fuera de plantilla del rol»:
+  `contabilizarRol`, previsualizar, `validarCuentasContables`):** se generaliza el patrón de la baja de vacaciones
+  gozadas (rol 36) a un valor **con signo**: neto = Σ37 − Σ38 contra la línea de provisión de décimo tercero de la
+  plantilla de provisión; DEBE si es positivo, HABER si es negativo. El rol 36 sigue igual (siempre DEBE).
+- En los dos casos el asiento cuadra por el neto/remuneraciones por pagar como hoy. Ninguna cuenta en el código.
+
+### Precisiones de la implementación
+- Precondición A1: noviembre es obligatorio (existir y ≥ CALCULADO); un mes ABIERTO/EN_CÁLCULO bloquea; un mes
+  **sin periodo** en `RHH.PRDN` no bloquea (la apertura de dic-2025 se cargó por ACMN, sin periodo).
+- «real» en A2/A3 se calcula con `valorDecimoTerceroReal` (lectura de ACMN), no con `calcularDecimoTercero`, que
+  modifica la LQBS gestionada y pisaría `LQBSVLRR` de la ya pagada.
+- Reabrir un periodo de diciembre limpia `LQBSVLAJ`/`LQBSPRAJ` de las LQBS ajustadas en él.
+- A3: lo recibido por el empleado es `LQBSVLPG + LQBSVLAJ` (VLAJ con signo, nulo = 0).
+
 Fuera de alcance, **para medir aparte**: el finiquito no mira la modalidad, y `cerrarPeriodo` escribe ACMN tipo 3
 también para mensualizados, así que un mensualizado que sale podría cobrar el proporcional por segunda vez. Se
 verifica con datos antes de tocarlo.

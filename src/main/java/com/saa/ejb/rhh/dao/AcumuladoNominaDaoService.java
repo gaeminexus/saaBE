@@ -101,4 +101,22 @@ public interface AcumuladoNominaDaoService extends EntityDao<AcumuladoNomina> {
 	 */
 	Double sumaValor(Long idEmpleado, Integer anio, Long tipoAcumulado, Integer mesDesde,
 			Integer mesHasta) throws Throwable;
+
+	/**
+	 * Igual que {@link #sumaValorRango} pero dejando fuera los meses indicados (claves anio*100+mes).
+	 * El decimo tercero anticipado lo usa para sumar por ACMN SOLO los meses cerrados y que ningun
+	 * mes cuente a la vez por ACMN y por provision (PVNM).
+	 *
+	 * @param idEmpleado		: Id del empleado
+	 * @param tipoAcumulado		: Codigo alterno del detalle del rubro RHH_TIPO_ACUMULADO
+	 * @param anioDesde			: Anio inicial
+	 * @param mesDesde			: Mes inicial
+	 * @param anioHasta			: Anio final
+	 * @param mesHasta			: Mes final
+	 * @param clavesExcluidas	: Claves anio*100+mes que no se suman; null o vacia = ninguna
+	 * @return					: La suma, o cero si no hay filas
+	 * @throws Throwable		: Excepcion
+	 */
+	Double sumaValorRangoExcluyendo(Long idEmpleado, Long tipoAcumulado, Integer anioDesde, Integer mesDesde,
+			Integer anioHasta, Integer mesHasta, java.util.List<Integer> clavesExcluidas) throws Throwable;
 }

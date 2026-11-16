@@ -62,4 +62,18 @@ public interface ProvisionNominaDaoService extends EntityDao<ProvisionNomina> {
 	 * @throws Throwable		: Excepcion
 	 */
 	Double sumaValorByEmpleadoYTipo(Long idEmpleado, Long tipoProvision) throws Throwable;
+
+	/**
+	 * Suma la BASE de calculo (PVNMBSCL) de las provisiones VIGENTES de un empleado, de un tipo y de
+	 * los periodos indicados. Es lo que aporta, al decimo tercero anticipado, cada mes de la ventana
+	 * que aun no esta cerrado: el rol calculado ya dejo en PVNM la base del mes.
+	 *
+	 * @param idEmpleado	: Id del empleado
+	 * @param tipoProvision	: Codigo alterno del detalle del rubro RHH_TIPO_PROVISION
+	 * @param idsPeriodos	: Ids de los periodos de nomina a sumar; vacia = cero
+	 * @return				: La suma, o cero si no hay filas
+	 * @throws Throwable	: Excepcion
+	 */
+	Double sumaBaseByEmpleadoTipoPeriodos(Long idEmpleado, Long tipoProvision, java.util.List<Long> idsPeriodos)
+			throws Throwable;
 }

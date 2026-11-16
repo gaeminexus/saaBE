@@ -152,6 +152,37 @@ public class LiquidacionBeneficioSocial implements Serializable, EntidadAuditabl
     @Column(name = "LQBSUSRR", length = 60)
     private String usuarioRegistro;
 
+    /**
+     * 'S' = decimo tercero calculado por anticipado (hasta el 30-nov con los roles calculados, no
+     * cerrados); 'N' = calculo normal. e3-21, DISENO-DECIMO-TERCERO-ANTICIPADO.md.
+     */
+    @Basic
+    @Column(name = "LQBSANTC", length = 1)
+    private String anticipado;
+
+    /**
+     * Fecha en que se hizo el calculo anticipado. Nulo si no es anticipado.
+     */
+    @Basic
+    @Column(name = "LQBSFCCR")
+    private LocalDate fechaCalculoAnticipado;
+
+    /**
+     * Ajuste del anticipo aplicado en el rol de diciembre o en el finiquito, con signo
+     * (diferencia = decimo real - lo pagado por anticipado: positivo = se le debia mas al empleado,
+     * negativo = se le pago de mas; 0 = sin diferencia). Nulo mientras no se aplico ajuste.
+     */
+    @Basic
+    @Column(name = "LQBSVLAJ")
+    private Double valorAjuste;
+
+    /**
+     * Periodo de nomina (RHH.PRDN) donde se aplico el ajuste.
+     */
+    @ManyToOne
+    @JoinColumn(name = "LQBSPRAJ", referencedColumnName = "PRDNCDGO")
+    private PeriodoNomina periodoAjuste;
+
     public Long getCodigo() {
         return codigo;
     }
@@ -286,5 +317,37 @@ public class LiquidacionBeneficioSocial implements Serializable, EntidadAuditabl
 
     public void setUsuarioRegistro(String usuarioRegistro) {
         this.usuarioRegistro = usuarioRegistro;
+    }
+
+    public String getAnticipado() {
+        return anticipado;
+    }
+
+    public void setAnticipado(String anticipado) {
+        this.anticipado = anticipado;
+    }
+
+    public LocalDate getFechaCalculoAnticipado() {
+        return fechaCalculoAnticipado;
+    }
+
+    public void setFechaCalculoAnticipado(LocalDate fechaCalculoAnticipado) {
+        this.fechaCalculoAnticipado = fechaCalculoAnticipado;
+    }
+
+    public Double getValorAjuste() {
+        return valorAjuste;
+    }
+
+    public void setValorAjuste(Double valorAjuste) {
+        this.valorAjuste = valorAjuste;
+    }
+
+    public PeriodoNomina getPeriodoAjuste() {
+        return periodoAjuste;
+    }
+
+    public void setPeriodoAjuste(PeriodoNomina periodoAjuste) {
+        this.periodoAjuste = periodoAjuste;
     }
 }

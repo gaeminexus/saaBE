@@ -112,4 +112,29 @@ public interface RhhRolConceptoMotor {
 	 */
 	public static final int VACACIONES_GOZADAS = 36;
 
+	/**
+	 * Ajuste A FAVOR del decimo tercero pagado por anticipado, en el rol de diciembre (o en el
+	 * finiquito de una salida en diciembre): el decimo real, ya con noviembre cerrado, supera lo
+	 * pagado por anticipado. Concepto INGRESO sin ninguna base (no es aportable). Contabilidad:
+	 * linea de provision de decimo tercero por pagar, mismo lado que FINIQUITO_DECIMO_TERCERO (23).
+	 * Ver docs/logica-negocio/rhh/DISENO-DECIMO-TERCERO-ANTICIPADO.md §A2. Script e3-21.
+	 */
+	public static final int AJUSTE_DECIMO_TERCERO_ANTICIPADO_A_FAVOR = 37;
+
+	/**
+	 * Ajuste EN CONTRA del decimo tercero pagado por anticipado: lo pagado supera al decimo real.
+	 * Concepto EGRESO (el valor va en positivo, es un descuento), sin ninguna base. Contabilidad:
+	 * la misma linea que el 37 pero del lado contrario. Ver §A2 del diseno. Script e3-21.
+	 */
+	public static final int AJUSTE_DECIMO_TERCERO_ANTICIPADO_EN_CONTRA = 38;
+
+	/**
+	 * Decimo tercero pagado por anticipado, descontado en el finiquito (EGRESO) por todo lo pagado
+	 * (LQBSVLPG, menos el ajuste si ya se aplico). Se aplica aunque la causal no pague proporcionales.
+	 * Contabilidad: la linea de provision de decimo tercero por pagar, del lado contrario al 23:
+	 * la provision, que el anticipo debito por el ano completo, vuelve a su saldo devengado.
+	 * Ver §A3 del diseno. Script e3-21.
+	 */
+	public static final int FINIQUITO_DECIMO_TERCERO_ANTICIPADO = 39;
+
 }

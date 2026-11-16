@@ -51,4 +51,14 @@ public interface LiquidacionBeneficioSocialDaoService extends EntityDao<Liquidac
 	 * @throws Throwable		: Excepcion
 	 */
 	List<LiquidacionBeneficioSocial> selectByOrden(Long idOrden) throws Throwable;
+
+	/**
+	 * Liquidaciones cuyo ajuste del decimo tercero anticipado se aplico en un periodo (LQBSPRAJ).
+	 * Al reabrir diciembre se les limpia el ajuste para que el recalculo lo vuelva a generar.
+	 *
+	 * @param idPeriodo		: Id del periodo de nomina (RHH.PRDN)
+	 * @return				: Liquidaciones con ese periodo de ajuste; vacio si no hay
+	 * @throws Throwable	: Excepcion
+	 */
+	List<LiquidacionBeneficioSocial> selectByPeriodoAjuste(Long idPeriodo) throws Throwable;
 }

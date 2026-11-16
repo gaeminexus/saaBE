@@ -44,4 +44,18 @@ public interface PeriodoNominaDaoService  extends EntityDao<PeriodoNomina>  {
 	 */
 	PeriodoNomina selectUltimoMensualCerrado(Long idEmpresa) throws Throwable;
 
+
+	/**
+	 * Periodos MENSUALES de una empresa, sin los anulados, entre dos claves anio-mes (anio*100+mes,
+	 * ambas inclusive). Es la base de la precondicion del decimo tercero anticipado: que meses de
+	 * la ventana estan cerrados y cuales solo calculados. Ordenados por anio y mes.
+	 *
+	 * @param idEmpresa		: Id de la empresa
+	 * @param claveDesde	: Clave anio*100+mes inicial
+	 * @param claveHasta	: Clave anio*100+mes final
+	 * @return				: Los periodos; vacio si no hay
+	 * @throws Throwable	: Excepcion
+	 */
+	java.util.List<PeriodoNomina> selectMensualesEntre(Long idEmpresa, Integer claveDesde, Integer claveHasta)
+			throws Throwable;
 }

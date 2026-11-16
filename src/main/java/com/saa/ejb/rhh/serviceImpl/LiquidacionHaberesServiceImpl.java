@@ -32,6 +32,10 @@ import com.saa.model.rhh.Empleado;
 import com.saa.model.rhh.Liquidacion;
 import com.saa.model.rhh.NombreEntidadesRhh;
 import com.saa.model.rhh.ParametroNomina;
+import com.saa.model.rhh.LiquidacionBeneficioSocial;
+import com.saa.model.rhh.PeriodoNomina;
+import com.saa.rubros.RhhEstadoPeriodoNomina;
+import com.saa.rubros.RhhTipoBeneficioSocial;
 import com.saa.model.rhh.RenglonCalculado;
 import com.saa.model.rhh.ResultadoLiquidacion;
 import com.saa.model.rhh.SaldoVacaciones;
@@ -167,6 +171,16 @@ public class LiquidacionHaberesServiceImpl implements LiquidacionHaberesService 
     @EJB
     private NovedadIessService novedadIessService;
 
+    // e3-21: decimo tercero pagado por anticipado (A3).
+    @EJB
+    private com.saa.ejb.rhh.service.BeneficioSocialService beneficioSocialService;
+
+    @EJB
+    private com.saa.ejb.rhh.dao.LiquidacionBeneficioSocialDaoService liquidacionBeneficioSocialDaoService;
+
+    @EJB
+    private com.saa.ejb.rhh.dao.PeriodoNominaDaoService periodoNominaDaoService;
+
     // ===== INICIO enganche valores no pagados (script e2-26, equipo omen-saa-2) =====
     // Ver docs/logica-negocio/rhh/PLAN-VALORES-NO-PAGADOS.md §7.5.
     @EJB
@@ -287,6 +301,33 @@ public class LiquidacionHaberesServiceImpl implements LiquidacionHaberesService 
 
         // 6. Los acumulados del finiquito.
         int acumulados = escribeAcumuladosDelFiniquito(liquidacion, usuario);
+
+        // 7. e3-21 (A3.4): salida en diciembre con decimo anticipado sin ajuste: el ajuste que llevo el finiquito
+        //    (rol 37 menos rol 38) se graba en la LQBS, y deja de estar pendiente.
+        if (liquidacion.getFechaSalida() != null && liquidacion.getFechaSalida().getMonthValue() == MES_DICIEMBRE_FINIQUITO) {
+            LiquidacionBeneficioSocial pendiente = liquidacionAnticipadaPendiente(empleado.getCodigo(),
+                    liquidacion.getFechaSalida().getYear());
+            if (pendiente != null) {
+                double ajuste = 0D;
+                for (DetalleLiquidacion detalle : detalleLiquidacionDaoService.selectByLiquidacion(idLiquidacion)) {
+                    Long rol = detalle.getConceptoNomina() != null ? detalle.getConceptoNomina().getRolMotor() : null;
+                    double valor = detalle.getValor() != null ? detalle.getValor().doubleValue() : 0D;
+                    if (rol != null && rol.intValue() == RhhRolConceptoMotor.AJUSTE_DECIMO_TERCERO_ANTICIPADO_A_FAVOR) {
+                        ajuste += valor;
+                    } else if (rol != null
+                            && rol.intValue() == RhhRolConceptoMotor.AJUSTE_DECIMO_TERCERO_ANTICIPADO_EN_CONTRA) {
+                        ajuste -= valor;
+                    }
+                }
+                pendiente.setValorAjuste(RedondeoNomina.redondea(Double.valueOf(ajuste)));
+                pendiente.setPeriodoAjuste(periodoNominaDaoService.selectByFechaEmpresa(
+                        empleado.getEmpresa() != null ? empleado.getEmpresa().getCodigo() : null,
+                        liquidacion.getFechaSalida()));
+                liquidacionBeneficioSocialDaoService.save(pendiente, pendiente.getCodigo());
+                System.out.println("Ajuste del decimo tercero anticipado grabado en la salida, empleado: "
+                        + empleado.getCodigo() + ", ajuste: " + pendiente.getValorAjuste());
+            }
+        }
 
         System.out.println("Salida ejecutada para " + empleado.getIdentificacion() + ": contrato"
                 + " cerrado, empleado CESANTE, " + cancelados + " descuento(s) cancelado(s), "
@@ -491,6 +532,64 @@ public class LiquidacionHaberesServiceImpl implements LiquidacionHaberesService 
             agrega(rubros, conceptos, RhhRolConceptoMotor.FINIQUITO_DECIMO_CUARTO, sbu,
                     RedondeoNomina.redondeaCantidad(Double.valueOf(dias14)).doubleValue(),
                     decimoCuarto);
+        }
+
+        // --- Decimo tercero pagado por anticipado (e3-21, DISENO-DECIMO-TERCERO-ANTICIPADO.md §A3) ----
+        // Se aplica AUNQUE la causal no pague proporcionales: lo ya pagado se descuenta igual.
+        // La LQBS se identifica por el anio del 30 de noviembre: el del periodo que se liquida + 1.
+        {
+            int anioVentana13 = fechaSalida.getMonthValue() >= MES_INICIO_DECIMO_TERCERO
+                    ? fechaSalida.getYear() : fechaSalida.getYear() - 1;
+            LiquidacionBeneficioSocial pagadoAnticipado = liquidacionBeneficioSocialDaoService
+                    .selectByEmpleadoTipoAnio(empleado.getCodigo(),
+                            Long.valueOf(RhhTipoBeneficioSocial.DECIMO_TERCERO),
+                            Integer.valueOf(anioVentana13 + 1));
+            if (pagadoAnticipado != null && Long.valueOf(LQBS_PAGADA).equals(pagadoAnticipado.getEstado())
+                    && pagadoAnticipado.getValorPagado() != null && pagadoAnticipado.getValorPagado().doubleValue() > 0D) {
+                if (conceptoPorRol(conceptos, RhhRolConceptoMotor.FINIQUITO_DECIMO_TERCERO_ANTICIPADO) == null) {
+                    // Sin el concepto, agrega() lo etiquetaria INGRESO y SUMARIA al finiquito en vez de restar.
+                    throw new IncomeException("El empleado " + empleado.getIdentificacion() + " tiene décimo tercero"
+                            + " pagado por anticipado (" + pagadoAnticipado.getValorPagado() + ") y la empresa no tiene"
+                            + " un concepto de nomina con rol de motor "
+                            + RhhRolConceptoMotor.FINIQUITO_DECIMO_TERCERO_ANTICIPADO
+                            + ". Ejecute el script rhh/sql/e3-21 antes de liquidar.");
+                }
+                double ajusteAplicado = pagadoAnticipado.getValorAjuste() != null
+                        ? pagadoAnticipado.getValorAjuste().doubleValue() : 0D;
+                Double descuentoAnticipo = RedondeoNomina.redondea(Double.valueOf(
+                        pagadoAnticipado.getValorPagado().doubleValue() + ajusteAplicado));
+                agrega(rubros, conceptos, RhhRolConceptoMotor.FINIQUITO_DECIMO_TERCERO_ANTICIPADO,
+                        pagadoAnticipado.getValorPagado(), null, descuentoAnticipo);
+            }
+
+            // A3.4: salida en DICIEMBRE (despues del 30-nov). La LQBS anterior (anio de la salida) no se toca
+            // por A3, pero si esta anticipada y sin ajuste, el finiquito lleva el ajuste de A2.
+            if (fechaSalida.getMonthValue() == MES_DICIEMBRE_FINIQUITO) {
+                LiquidacionBeneficioSocial pendiente = liquidacionAnticipadaPendiente(empleado.getCodigo(),
+                        fechaSalida.getYear());
+                if (pendiente != null) {
+                    if (!noviembreCerradoFiniquito(idEmpresa, fechaSalida.getYear())) {
+                        throw new IncomeException("Cierre el rol de noviembre antes de liquidar: hay décimo"
+                                + " tercero pagado por anticipado por conciliar");
+                    }
+                    Double real = beneficioSocialService.valorDecimoTerceroReal(empleado.getCodigo(),
+                            Integer.valueOf(fechaSalida.getYear()));
+                    double pagado = pendiente.getValorPagado() != null ? pendiente.getValorPagado().doubleValue() : 0D;
+                    Double dif = RedondeoNomina.redondea(Double.valueOf(real.doubleValue() - pagado));
+                    if (Math.abs(dif.doubleValue()) >= 0.01D) {
+                        int rolAjuste = dif.doubleValue() > 0D
+                                ? RhhRolConceptoMotor.AJUSTE_DECIMO_TERCERO_ANTICIPADO_A_FAVOR
+                                : RhhRolConceptoMotor.AJUSTE_DECIMO_TERCERO_ANTICIPADO_EN_CONTRA;
+                        if (conceptoPorRol(conceptos, rolAjuste) == null) {
+                            throw new IncomeException("El empleado " + empleado.getIdentificacion() + " tiene décimo"
+                                    + " tercero anticipado por ajustar (" + dif + ") y la empresa no tiene un concepto"
+                                    + " con rol de motor " + rolAjuste + ". Ejecute el script rhh/sql/e3-21.");
+                        }
+                        agrega(rubros, conceptos, rolAjuste, null, null,
+                                Double.valueOf(Math.abs(dif.doubleValue())));
+                    }
+                }
+            }
         }
 
         // --- Vacaciones no gozadas -------------------------------------------------
@@ -1087,5 +1186,41 @@ public class LiquidacionHaberesServiceImpl implements LiquidacionHaberesService 
             }
         }
         return null;
+    }
+
+    // =====================================================================
+    // Decimo tercero pagado por anticipado (e3-21, §A3)
+    // =====================================================================
+
+    /** Estado PAGADA de una liquidacion de beneficio social (LQBSESTD). */
+    private static final long LQBS_PAGADA = 2L;
+
+    /** Diciembre: salida despues del 30-nov, donde se concilia el anticipo (A3.4). */
+    private static final int MES_DICIEMBRE_FINIQUITO = 12;
+
+    /**
+     * LQBS del decimo tercero del anio dado, anticipada ('S'), PAGADA y sin ajuste aplicado
+     * (LQBSVLAJ nulo). Null si no aplica.
+     */
+    private LiquidacionBeneficioSocial liquidacionAnticipadaPendiente(Long idEmpleado, int anio)
+            throws Throwable {
+        LiquidacionBeneficioSocial lqbs = liquidacionBeneficioSocialDaoService.selectByEmpleadoTipoAnio(
+                idEmpleado, Long.valueOf(RhhTipoBeneficioSocial.DECIMO_TERCERO), Integer.valueOf(anio));
+        if (lqbs == null || !SI.equals(lqbs.getAnticipado())
+                || !Long.valueOf(LQBS_PAGADA).equals(lqbs.getEstado()) || lqbs.getValorAjuste() != null) {
+            return null;
+        }
+        return lqbs;
+    }
+
+    /** Noviembre del anio (periodo mensual de la empresa) esta CERRADO. */
+    private boolean noviembreCerradoFiniquito(Long idEmpresa, int anio) throws Throwable {
+        Integer clave = Integer.valueOf(anio * 100 + 11);
+        for (PeriodoNomina p : periodoNominaDaoService.selectMensualesEntre(idEmpresa, clave, clave)) {
+            if (Long.valueOf(RhhEstadoPeriodoNomina.CERRADO).equals(p.getEstado())) {
+                return true;
+            }
+        }
+        return false;
     }
 }

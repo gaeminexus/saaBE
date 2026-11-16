@@ -101,4 +101,28 @@ public class PeriodoNominaDaoServiceImpl extends EntityDaoImpl<PeriodoNomina>  i
 		return (encontrados == null || encontrados.isEmpty()) ? null : encontrados.get(0);
 	}
 
+
+	/* (non-Javadoc)
+	 * @see com.saa.ejb.rhh.dao.PeriodoNominaDaoService#selectMensualesEntre(java.lang.Long, java.lang.Integer, java.lang.Integer)
+	 */
+	@SuppressWarnings("unchecked")
+	@Override
+	public List<PeriodoNomina> selectMensualesEntre(Long idEmpresa, Integer claveDesde, Integer claveHasta)
+			throws Throwable {
+		System.out.println("Ingresa al metodo selectMensualesEntre de PeriodoNomina, empresa: " + idEmpresa
+				+ ", desde: " + claveDesde + ", hasta: " + claveHasta);
+		Query query = em.createQuery(" select   t "
+				+ " from     PeriodoNomina t "
+				+ " where    t.empresa.codigo = :idEmpresa "
+				+ "          and t.tipoPeriodo = :mensual "
+				+ "          and t.estado <> :anulado "
+				+ "          and ((t.anio * 100) + t.mes) between :claveDesde and :claveHasta "
+				+ " order by t.anio, t.mes, t.codigo ");
+		query.setParameter("idEmpresa", idEmpresa);
+		query.setParameter("mensual", Long.valueOf(RhhTipoPeriodoNomina.MENSUAL));
+		query.setParameter("anulado", Long.valueOf(RhhEstadoPeriodoNomina.ANULADO));
+		query.setParameter("claveDesde", claveDesde);
+		query.setParameter("claveHasta", claveHasta);
+		return query.getResultList();
+	}
 }

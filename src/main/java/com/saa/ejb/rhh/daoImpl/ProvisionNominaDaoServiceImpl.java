@@ -108,4 +108,29 @@ public class ProvisionNominaDaoServiceImpl extends EntityDaoImpl<ProvisionNomina
 		Object resultado = query.getSingleResult();
 		return resultado == null ? Double.valueOf(0D) : Double.valueOf(resultado.toString());
 	}
+
+	/* (non-Javadoc)
+	 * @see com.saa.ejb.rhh.dao.ProvisionNominaDaoService#sumaBaseByEmpleadoTipoPeriodos(java.lang.Long, java.lang.Long, java.util.List)
+	 */
+	@Override
+	public Double sumaBaseByEmpleadoTipoPeriodos(Long idEmpleado, Long tipoProvision, List<Long> idsPeriodos)
+			throws Throwable {
+		System.out.println("Ingresa al metodo sumaBaseByEmpleadoTipoPeriodos de ProvisionNomina, empleado: "
+				+ idEmpleado + ", tipo: " + tipoProvision + ", periodos: " + idsPeriodos);
+		if (idsPeriodos == null || idsPeriodos.isEmpty()) {
+			return Double.valueOf(0D);
+		}
+		// Estado 1 = vigente (generaProvision graba 1; calcularPeriodo borra y regenera).
+		Query query = em.createQuery(" select   sum(t.baseCalculo) "
+				+ " from     ProvisionNomina t "
+				+ " where    t.empleado.codigo = :idEmpleado "
+				+ "          and t.tipoProvision = :tipoProvision "
+				+ "          and t.estado = 1 "
+				+ "          and t.periodoNomina.codigo in :periodos ");
+		query.setParameter("idEmpleado", idEmpleado);
+		query.setParameter("tipoProvision", tipoProvision);
+		query.setParameter("periodos", idsPeriodos);
+		Object resultado = query.getSingleResult();
+		return resultado == null ? Double.valueOf(0D) : Double.valueOf(resultado.toString());
+	}
 }

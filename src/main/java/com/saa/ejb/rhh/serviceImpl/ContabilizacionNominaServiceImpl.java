@@ -195,7 +195,15 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
         // no traerla: un periodo sin devengo de vacaciones ese mes, pero con gozadas por
         // saldos de meses anteriores, no tendria con que validarla si no se hace aparte).
         Double totalProvisionVacaciones = extraeLineaFueraDePlantillaRol(importesRol);
+        // e3-21: ajuste del decimo tercero anticipado, linea de plantillaProvision (ver LINEA_AJUSTE_DECIMO_ANTICIPADO).
+        Double totalAjusteDecimo = extraeLineaAjusteDecimoAnticipado(importesRol);
         // ===== FIN baja de provision de vacaciones gozadas =====
+        if (totalAjusteDecimo != null && totalAjusteDecimo.doubleValue() != 0D) {
+            Map<Integer, Double> importesAjuste = new LinkedHashMap<Integer, Double>();
+            importesAjuste.put(Integer.valueOf(LINEA_AJUSTE_DECIMO_ANTICIPADO), totalAjusteDecimo);
+            revisaLineas(faltantes, configuracion.getPlantillaProvision(), marcadora,
+                    importesAjuste, "ajuste del decimo tercero anticipado (rol de pagos)");
+        }
         revisaLineas(faltantes, configuracion.getPlantillaRol(), marcadora,
                 importesRol, "rol de pagos");
         if (totalProvisionVacaciones != null && totalProvisionVacaciones.doubleValue() != 0D) {
@@ -262,6 +270,24 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
             lineas.add(construyeLinea(lineaProvisionVacaciones, totalProvisionVacaciones, true));
         }
         // ===== FIN baja de provision de vacaciones gozadas =====
+
+        // ===== INICIO ajuste del decimo tercero anticipado (e3-21, roles 37/38) =====
+        // Valor con signo (37 menos 38) sobre la linea de provision de decimo tercero por pagar, que vive en
+        // plantillaProvision y no en plantillaRol. El lado se IMPONE por el signo: DEBE si es positivo (se paga
+        // contra la provision), HABER si es negativo (se devuelve a la provision). Nunca hereda el de la plantilla.
+        Double totalAjusteDecimo = extraeLineaAjusteDecimoAnticipado(importes);
+        if (totalAjusteDecimo != null && totalAjusteDecimo.doubleValue() != 0D) {
+            Long idPlantillaProvisionAjuste = resuelvePlantilla(configuracion.getPlantillaProvision(),
+                    "rol de pagos", periodo.getEmpresa().getCodigo());
+            Long marcadoraAjuste = exigeCuentaMarcadora(configuracion);
+            DetallePlantilla lineaAjusteDecimo = exigeLinea(idPlantillaProvisionAjuste,
+                    LINEA_AJUSTE_DECIMO_ANTICIPADO, "rol de pagos");
+            exigeCuentaReal(lineaAjusteDecimo, marcadoraAjuste, "rol de pagos");
+            lineas.add(construyeLinea(lineaAjusteDecimo,
+                    RedondeoNomina.redondea(Double.valueOf(Math.abs(totalAjusteDecimo.doubleValue()))),
+                    totalAjusteDecimo.doubleValue() > 0D));
+        }
+        // ===== FIN ajuste del decimo tercero anticipado =====
 
         lineas.addAll(armaLineas(configuracion.getPlantillaRol(), importes, configuracion, "rol de pagos"));
         comprobarCuadre(lineas, configuracion, RhhLineaAsiento.SUELDOS_POR_PAGAR,
@@ -678,6 +704,18 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
             if (valor == null || valor.doubleValue() == 0D) {
                 continue;
             }
+            // e3-21: roles 37/38/39 van a la linea de provision de decimo tercero por pagar, con signo:
+            // 37 (como el 23) positivo; 38 y 39 negativos (al lado contrario). No pasan por «descuentos».
+            Long rolAnticipo = rubro.getConceptoNomina() != null ? rubro.getConceptoNomina().getRolMotor() : null;
+            if (esRol(rolAnticipo, RhhRolConceptoMotor.AJUSTE_DECIMO_TERCERO_ANTICIPADO_A_FAVOR)) {
+                suma(importes, LINEA_AJUSTE_DECIMO_ANTICIPADO, valor);
+                continue;
+            }
+            if (esRol(rolAnticipo, RhhRolConceptoMotor.AJUSTE_DECIMO_TERCERO_ANTICIPADO_EN_CONTRA)
+                    || esRol(rolAnticipo, RhhRolConceptoMotor.FINIQUITO_DECIMO_TERCERO_ANTICIPADO)) {
+                suma(importes, LINEA_AJUSTE_DECIMO_ANTICIPADO, Double.valueOf(-valor.doubleValue()));
+                continue;
+            }
             if (Long.valueOf(RhhTipoConceptoNomina.EGRESO).equals(rubro.getTipoConcepto())) {
                 descuentos = RedondeoNomina.suma(descuentos, valor);
                 continue;
@@ -860,6 +898,8 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
         Long codigoAlternoPlantilla;
         // ===== INICIO baja de provision de vacaciones gozadas (equipo omen-saa-2, script e2-29) =====
         Double totalProvisionVacaciones = null;
+        // e3-21: ajuste del decimo tercero anticipado, fuera de plantillaRol (igual que vacaciones).
+        Double totalAjusteDecimo = null;
         // ===== FIN baja de provision de vacaciones gozadas =====
         if (Long.valueOf(PREVISUALIZA_PROVISIONES).equals(tipoAsiento)) {
             importes = importesDeProvisiones(periodo);
@@ -870,6 +910,7 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
             // ahi (ver LINEA_ROL_FUERA_DE_PLANTILLA_ROL), y dejarla adentro la mostraria con
             // "la plantilla no define esta linea" en un asiento que en realidad cuadra bien.
             totalProvisionVacaciones = extraeLineaFueraDePlantillaRol(importes);
+            totalAjusteDecimo = extraeLineaAjusteDecimoAnticipado(importes);
             codigoAlternoPlantilla = configuracion.getPlantillaRol();
         } else {
             throw new IncomeException("Tipo de asiento a previsualizar no reconocido: " + tipoAsiento
@@ -885,6 +926,9 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
         if (totalProvisionVacaciones != null && totalProvisionVacaciones.doubleValue() != 0D) {
             resultado.add(lineaPrevisualizacionProvisionVacaciones(configuracion, marcadora,
                     totalProvisionVacaciones));
+        if (totalAjusteDecimo != null && totalAjusteDecimo.doubleValue() != 0D) {
+            resultado.add(lineaPrevisualizacionAjusteDecimo(configuracion, marcadora, totalAjusteDecimo));
+        }
         }
         // ===== FIN baja de provision de vacaciones gozadas =====
         for (Map.Entry<Integer, Double> entrada : importes.entrySet()) {
@@ -1146,6 +1190,12 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
             for (ReglonNomina renglon : renglones) {
                 if (esVacacionesGozadas(renglon)) {
                     valorVacacionesGozadas = RedondeoNomina.suma(valorVacacionesGozadas, renglon.getValor());
+                } else if (esAjusteDecimoAnticipado(renglon)) {
+                    // e3-21: 37 suma y 38 resta sobre la linea de provision de decimo tercero (valor con signo).
+                    boolean aFavor = esRol(renglon.getConceptoNomina().getRolMotor(),
+                            RhhRolConceptoMotor.AJUSTE_DECIMO_TERCERO_ANTICIPADO_A_FAVOR);
+                    suma(importes, LINEA_AJUSTE_DECIMO_ANTICIPADO,
+                            aFavor ? renglon.getValor() : Double.valueOf(-renglon.getValor().doubleValue()));
                 } else {
                     avisaSiConceptoVacacionesSinRol(renglon);
                     acumulaRenglon(importes, renglon);
@@ -1446,6 +1496,16 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
         for (Map.Entry<Integer, Double> entrada : importes.entrySet()) {
             DetallePlantilla plantilla = exigeLinea(idPlantilla, entrada.getKey().intValue(), etiqueta);
             exigeCuentaReal(plantilla, marcadora, etiqueta);
+            // e3-21: solo la linea de provision de decimo tercero admite valor con signo (roles 37/38/39):
+            // un valor negativo va al lado contrario de la plantilla, con su valor absoluto. Las demas lineas
+            // siguen igual que siempre (p. ej. un neto de liquidacion negativo no cambia de lado).
+            if (entrada.getKey().intValue() == LINEA_AJUSTE_DECIMO_ANTICIPADO && entrada.getValue() != null
+                    && entrada.getValue().doubleValue() < 0D) {
+                lineas.add(construyeLinea(plantilla,
+                        RedondeoNomina.redondea(Double.valueOf(Math.abs(entrada.getValue().doubleValue()))),
+                        !esDebe(plantilla)));
+                continue;
+            }
             lineas.add(construyeLinea(plantilla, RedondeoNomina.redondea(entrada.getValue())));
         }
         return lineas;
@@ -1905,4 +1965,59 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
         }
         return periodo;
     }
+
+    // ===== INICIO ajuste del decimo tercero anticipado (e3-21, roles 37/38/39) =====
+    /**
+     * Linea que lleva el ajuste del decimo tercero anticipado: la provision de decimo tercero por pagar.
+     * En el rol mensual vive en plantillaProvision (no en plantillaRol) y se trata como
+     * {@link #LINEA_ROL_FUERA_DE_PLANTILLA_ROL}, pero con valor CON SIGNO (37 menos 38) y el lado impuesto
+     * por ese signo. El rol 36 (vacaciones gozadas) no pasa por aqui y sigue siempre al DEBE.
+     */
+    private static final int LINEA_AJUSTE_DECIMO_ANTICIPADO = RhhLineaAsiento.PROVISION_DECIMO_TERCERO_POR_PAGAR;
+
+    /** Saca de {@code importes} el ajuste con signo del decimo anticipado; null si el periodo no lo tuvo. */
+    private Double extraeLineaAjusteDecimoAnticipado(Map<Integer, Double> importes) {
+        return importes.remove(Integer.valueOf(LINEA_AJUSTE_DECIMO_ANTICIPADO));
+    }
+
+    /** Renglon de rol 37 o 38 (ajuste del decimo tercero anticipado). */
+    private boolean esAjusteDecimoAnticipado(ReglonNomina renglon) {
+        ConceptoNomina concepto = renglon.getConceptoNomina();
+        return concepto != null
+                && (esRol(concepto.getRolMotor(), RhhRolConceptoMotor.AJUSTE_DECIMO_TERCERO_ANTICIPADO_A_FAVOR)
+                        || esRol(concepto.getRolMotor(),
+                                RhhRolConceptoMotor.AJUSTE_DECIMO_TERCERO_ANTICIPADO_EN_CONTRA))
+                && renglon.getValor() != null && renglon.getValor().doubleValue() != 0D;
+    }
+
+    /** Previsualiza la linea del ajuste (valor con signo) contra plantillaProvision, con el lado por el signo. */
+    private LineaAsientoNomina lineaPrevisualizacionAjusteDecimo(ConfiguracionNomina configuracion,
+            Long marcadora, Double valorConSigno) throws Throwable {
+        Double abs = RedondeoNomina.redondea(Double.valueOf(Math.abs(valorConSigno.doubleValue())));
+        boolean alDebe = valorConSigno.doubleValue() > 0D;
+        LineaAsientoNomina linea = new LineaAsientoNomina();
+        linea.setCodigoLinea(Long.valueOf(LINEA_AJUSTE_DECIMO_ANTICIPADO));
+        linea.setDebe(alDebe ? abs : Double.valueOf(0D));
+        linea.setHaber(alDebe ? Double.valueOf(0D) : abs);
+
+        Long idPlantillaProvision = resuelvePlantilla(configuracion.getPlantillaProvision(),
+                "previsualizacion", configuracion.getEmpresa() != null
+                        ? configuracion.getEmpresa().getCodigo() : null);
+        DetallePlantilla plantilla = detallePlantillaDaoService.selectByPlantillaYAuxiliar(
+                idPlantillaProvision, LINEA_AJUSTE_DECIMO_ANTICIPADO);
+        if (plantilla == null) {
+            linea.setDescripcion("(la plantilla de provisiones no define esta linea)");
+            return linea;
+        }
+        PlanCuenta cuenta = plantilla.getPlanCuenta();
+        if (cuenta != null) {
+            linea.setCuenta(cuenta.getCuentaContable());
+            linea.setNombreCuenta(esMarcadora(cuenta, marcadora)
+                    ? cuenta.getNombre() + "  (SIN CONFIGURAR: cuenta marcadora)"
+                    : cuenta.getNombre());
+        }
+        linea.setDescripcion(plantilla.getDescripcion());
+        return linea;
+    }
+    // ===== FIN ajuste del decimo tercero anticipado =====
 }

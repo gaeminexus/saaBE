@@ -39,7 +39,45 @@ public interface BeneficioSocialService {
 	 * @throws Throwable	: Excepcion
 	 */
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
-	int generarDecimoTercero(Long idEmpresa, Integer anio, String usuario) throws Throwable;
+	com.saa.model.rhh.ResultadoGeneracionBeneficio generarDecimoTercero(Long idEmpresa, Integer anio,
+			String usuario) throws Throwable;
+
+	/**
+	 * Igual que {@link #generarDecimoTercero(Long, Integer, String)}, con la opcion de calcularlo
+	 * <b>por anticipado</b> (DISENO-DECIMO-TERCERO-ANTICIPADO.md, A1): hasta el 30 de noviembre con
+	 * los roles de la ventana al menos CALCULADOS. La base de cada empleado es la suma de ACMN de los
+	 * meses CERRADOS mas la base de provision (PVNM) de los meses no cerrados, nunca los dos del mismo
+	 * mes. Si algun mes de la ventana (noviembre es obligatorio) no esta calculado, no se genera nada
+	 * y se lanza IncomeException. Las liquidaciones quedan marcadas anticipado = 'S'.
+	 *
+	 * <p>En ambos modos (A0): una liquidacion ya PAGADA o con orden no se recalcula; se cuenta en
+	 * {@code omitidosPagados}.</p>
+	 *
+	 * @param idEmpresa		: Id de la empresa
+	 * @param anio			: Anio del beneficio (el del 30 de noviembre)
+	 * @param anticipado	: true para el calculo anticipado
+	 * @param usuario		: Usuario que ejecuta
+	 * @return				: Generadas y omitidas por pagadas
+	 * @throws Throwable	: Excepcion
+	 */
+	@TransactionAttribute(TransactionAttributeType.REQUIRED)
+	com.saa.model.rhh.ResultadoGeneracionBeneficio generarDecimoTercero(Long idEmpresa, Integer anio,
+			boolean anticipado, String usuario) throws Throwable;
+
+	/**
+	 * Decimo tercero REAL de un empleado para el anio, calculado solo con los acumulados cerrados
+	 * (Σ ACMN dic anio-1 .. nov anio, entre 12, menos lo ya cobrado mensualizado). <b>No toca
+	 * ninguna liquidacion</b>, a diferencia de {@link #calcularDecimoTercero}, que devuelve la
+	 * entidad gestionada y la modifica. Lo usa el ajuste del anticipo en el rol de diciembre y en
+	 * el finiquito (A2/A3).
+	 *
+	 * @param idEmpleado	: Id del empleado
+	 * @param anio			: Anio del beneficio (el del 30 de noviembre)
+	 * @return				: El valor, redondeado
+	 * @throws Throwable	: Excepcion
+	 */
+	@TransactionAttribute(TransactionAttributeType.SUPPORTS)
+	Double valorDecimoTerceroReal(Long idEmpleado, Integer anio) throws Throwable;
 
 	/**
 	 * Genera el decimo cuarto de los empleados de una region, con derecho a decimo
@@ -59,7 +97,8 @@ public interface BeneficioSocialService {
 	 * @throws Throwable	: Excepcion
 	 */
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
-	int generarDecimoCuarto(Long idEmpresa, Integer anio, Integer region, String usuario) throws Throwable;
+	com.saa.model.rhh.ResultadoGeneracionBeneficio generarDecimoCuarto(Long idEmpresa, Integer anio,
+			Integer region, String usuario) throws Throwable;
 
 	/**
 	 * Genera los fondos de reserva acumulados del anio, solo para los contratos en

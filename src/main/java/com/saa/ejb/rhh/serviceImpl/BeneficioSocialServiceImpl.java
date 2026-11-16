@@ -9,12 +9,18 @@ import com.saa.ejb.rhh.dao.AcumuladoNominaDaoService;
 import com.saa.ejb.rhh.dao.ContratoEmpleadoDaoService;
 import com.saa.ejb.rhh.dao.LiquidacionBeneficioSocialDaoService;
 import com.saa.ejb.rhh.dao.ParametroNominaDaoService;
+import com.saa.ejb.rhh.dao.PeriodoNominaDaoService;
+import com.saa.ejb.rhh.dao.ProvisionNominaDaoService;
 import com.saa.ejb.rhh.service.BeneficioSocialService;
 import com.saa.ejb.rhh.util.RedondeoNomina;
 import com.saa.model.rhh.ContratoEmpleado;
 import com.saa.model.rhh.Empleado;
 import com.saa.model.rhh.LiquidacionBeneficioSocial;
 import com.saa.model.rhh.ParametroNomina;
+import com.saa.model.rhh.PeriodoNomina;
+import com.saa.model.rhh.ResultadoGeneracionBeneficio;
+import com.saa.rubros.RhhEstadoPeriodoNomina;
+import com.saa.rubros.RhhTipoProvision;
 import com.saa.rubros.RhhModalidadDecimoCuarto;
 import com.saa.rubros.RhhModalidadDecimoTercero;
 import com.saa.rubros.RhhModalidadFondosReserva;
@@ -99,18 +105,36 @@ public class BeneficioSocialServiceImpl implements BeneficioSocialService {
 	@EJB
 	private ContratoEmpleadoDaoService contratoEmpleadoDaoService;
 
+	@EJB
+	private PeriodoNominaDaoService periodoNominaDaoService;
+
+	@EJB
+	private ProvisionNominaDaoService provisionNominaDaoService;
+
 	/* (non-Javadoc)
 	 * @see com.saa.ejb.rhh.service.BeneficioSocialService#generarDecimoTercero(java.lang.Long, java.lang.Integer, java.lang.String)
 	 */
 	@Override
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
-	public int generarDecimoTercero(Long idEmpresa, Integer anio, String usuario) throws Throwable {
+	public ResultadoGeneracionBeneficio generarDecimoTercero(Long idEmpresa, Integer anio, String usuario)
+			throws Throwable {
+		return generarDecimoTercero(idEmpresa, anio, false, usuario);
+	}
+
+	@Override
+	@TransactionAttribute(TransactionAttributeType.REQUIRED)
+	public ResultadoGeneracionBeneficio generarDecimoTercero(Long idEmpresa, Integer anio, boolean anticipado,
+			String usuario) throws Throwable {
 		// U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
 		usuario = usuarioValidacionService.validar(usuario);
 		System.out.println("Ingresa al metodo generarDecimoTercero de beneficioSocial service, empresa: "
-				+ idEmpresa + ", anio: " + anio);
+				+ idEmpresa + ", anio: " + anio + ", anticipado: " + anticipado);
+
+		// A1: la precondicion de periodos va ANTES de tocar nada; si falla, no se genera ni una.
+		VentanaAnticipada ventana = anticipado ? preparaVentanaAnticipada(idEmpresa, anio) : null;
 
 		int generados = 0;
+		int omitidosPagados = 0;
 		for (ContratoEmpleado contrato : contratosDelAnio(idEmpresa, anio)) {
 			// Solo los acumulados: los mensualizados ya cobraron el decimo tercero en cada
 			// rol (ProcesoNominaServiceImpl, paso 9). Un contrato sin modalidad informada
@@ -123,12 +147,30 @@ public class BeneficioSocialServiceImpl implements BeneficioSocialService {
 				continue;
 			}
 			Long idEmpleado = contrato.getEmpleado().getCodigo();
-			LiquidacionBeneficioSocial beneficio = calcularDecimoTercero(idEmpleado, anio);
+			// A0: una liquidacion ya pagada o dentro de una orden NO se recalcula.
+			if (yaPagadaOEnOrden(liquidacionBeneficioSocialDaoService.selectByEmpleadoTipoAnio(idEmpleado,
+					Long.valueOf(RhhTipoBeneficioSocial.DECIMO_TERCERO), anio))) {
+				omitidosPagados++;
+				continue;
+			}
+			LiquidacionBeneficioSocial beneficio;
+			if (anticipado) {
+				Double base = baseAnticipada(idEmpleado, anio, ventana);
+				beneficio = armaDecimoTercero(idEmpleado, anio, base);
+				beneficio.setAnticipado(SI_ANTICIPADO);
+				beneficio.setFechaCalculoAnticipado(LocalDate.now());
+			} else {
+				beneficio = calcularDecimoTercero(idEmpleado, anio);
+				// Un calculo normal sobre una liquidacion anticipada aun sin pagar la deja de ser.
+				beneficio.setAnticipado(NO_ANTICIPADO);
+				beneficio.setFechaCalculoAnticipado(null);
+			}
 			persiste(beneficio, usuario);
 			generados++;
 		}
-		System.out.println("generarDecimoTercero termino: " + generados + " beneficio(s).");
-		return generados;
+		System.out.println("generarDecimoTercero termino: " + generados + " beneficio(s), "
+				+ omitidosPagados + " omitido(s) por estar pagados o en orden.");
+		return new ResultadoGeneracionBeneficio(generados, omitidosPagados);
 	}
 
 	/* (non-Javadoc)
@@ -136,7 +178,7 @@ public class BeneficioSocialServiceImpl implements BeneficioSocialService {
 	 */
 	@Override
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
-	public int generarDecimoCuarto(Long idEmpresa, Integer anio, Integer region,
+	public ResultadoGeneracionBeneficio generarDecimoCuarto(Long idEmpresa, Integer anio, Integer region,
 			String usuario) throws Throwable {
 		// U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
 		usuario = usuarioValidacionService.validar(usuario);
@@ -149,6 +191,7 @@ public class BeneficioSocialServiceImpl implements BeneficioSocialService {
 		}
 
 		int generados = 0;
+		int omitidosPagados = 0;
 		for (ContratoEmpleado contrato : contratosDelAnio(idEmpresa, anio)) {
 			Empleado empleado = contrato.getEmpleado();
 			// Solo los empleados de la region pedida. Los que no la tienen asignada se
@@ -167,12 +210,19 @@ public class BeneficioSocialServiceImpl implements BeneficioSocialService {
 					.equals(contrato.getModalidadDecimoCuarto())) {
 				continue;
 			}
+			// A0: una liquidacion ya pagada o dentro de una orden NO se recalcula.
+			if (yaPagadaOEnOrden(liquidacionBeneficioSocialDaoService.selectByEmpleadoTipoAnio(
+					empleado.getCodigo(), Long.valueOf(RhhTipoBeneficioSocial.DECIMO_CUARTO), anio))) {
+				omitidosPagados++;
+				continue;
+			}
 			LiquidacionBeneficioSocial beneficio = calcularDecimoCuarto(empleado.getCodigo(), anio);
 			persiste(beneficio, usuario);
 			generados++;
 		}
-		System.out.println("generarDecimoCuarto termino: " + generados + " beneficio(s).");
-		return generados;
+		System.out.println("generarDecimoCuarto termino: " + generados + " beneficio(s), "
+				+ omitidosPagados + " omitido(s) por estar pagados o en orden.");
+		return new ResultadoGeneracionBeneficio(generados, omitidosPagados);
 	}
 
 	/* (non-Javadoc)
@@ -238,6 +288,23 @@ public class BeneficioSocialServiceImpl implements BeneficioSocialService {
 				Integer.valueOf(anioAnterior), Integer.valueOf(MES_INICIO_DECIMO_TERCERO),
 				anio, Integer.valueOf(MES_FIN_DECIMO_TERCERO));
 
+		return armaDecimoTercero(idEmpleado, anio, base);
+	}
+
+	/**
+	 * Arma la liquidacion del decimo tercero a partir de una base ya calculada. La comparten el
+	 * calculo normal (base = Σ ACMN) y el anticipado (base = ACMN de los meses cerrados + PVNM de
+	 * los demas).
+	 *
+	 * @param idEmpleado	: Id del empleado
+	 * @param anio			: Anio del beneficio (el del 30 de noviembre)
+	 * @param base			: Base acumulada de la ventana
+	 * @return				: La liquidacion, sin persistir
+	 * @throws Throwable	: Excepcion
+	 */
+	private LiquidacionBeneficioSocial armaDecimoTercero(Long idEmpleado, Integer anio, Double base)
+			throws Throwable {
+		int anioAnterior = anio.intValue() - 1;
 		Double calculado = RedondeoNomina.divide(base, Double.valueOf(MESES_ANIO));
 
 		LiquidacionBeneficioSocial beneficio = nuevoBeneficio(idEmpleado,
@@ -343,6 +410,132 @@ public class BeneficioSocialServiceImpl implements BeneficioSocialService {
 	/** Marca de "si" de la bandera de derecho a decimo cuarto del contrato. */
 	private static final String SI_DECIMO_CUARTO = "S";
 
+	/** Marca de liquidacion calculada por anticipado (LQBSANTC). */
+	private static final String SI_ANTICIPADO = "S";
+
+	/** Marca de liquidacion de calculo normal (LQBSANTC). */
+	private static final String NO_ANTICIPADO = "N";
+
+	/** Estado PAGADA de una liquidacion (LQBSESTD), lo asigna OrdenBeneficioSocialServiceImpl.confirmarPago. */
+	private static final long LQBS_PAGADA = 2L;
+
+	/**
+	 * Lo que el calculo anticipado necesita saber de los meses de la ventana: cuales NO estan
+	 * cerrados (pero si calculados) y por tanto aportan su base por provision (PVNM) y no por ACMN.
+	 */
+	private static final class VentanaAnticipada {
+		/** Ids de los periodos mensuales calculados pero no cerrados de la ventana. */
+		private final List<Long> idsSinCerrar = new java.util.ArrayList<Long>();
+		/** Claves anio*100+mes de esos mismos meses, para excluirlos de la suma por ACMN. */
+		private final List<Integer> clavesSinCerrar = new java.util.ArrayList<Integer>();
+	}
+
+	/**
+	 * A0: una liquidacion PAGADA (estado 2) o agrupada en una orden (LQBSODBS no nulo) no se
+	 * recalcula. Hasta el anticipo era un defecto silencioso: regenerar sobrescribia LQBSVLRR.
+	 *
+	 * @param liquidacion	: La liquidacion existente, o null
+	 * @return				: true si no debe tocarse
+	 */
+	private boolean yaPagadaOEnOrden(LiquidacionBeneficioSocial liquidacion) {
+		return liquidacion != null
+				&& (Long.valueOf(LQBS_PAGADA).equals(liquidacion.getEstado())
+						|| liquidacion.getOrdenBeneficioSocial() != null);
+	}
+
+	/**
+	 * A1, precondicion de periodos. Para cada mes de la ventana dic(anio-1)..nov(anio): el periodo
+	 * mensual debe estar CERRADO o al menos CALCULADO (3 a 6). Noviembre es obligatorio: tiene que
+	 * existir y estar calculado. Un mes SIN periodo que no sea noviembre no bloquea: los meses de
+	 * apertura de la migracion traen su acumulado cargado sin periodo en RHH.PRDN.
+	 *
+	 * @param idEmpresa		: Id de la empresa
+	 * @param anio			: Anio del 30 de noviembre
+	 * @return				: Los meses sin cerrar, para armar la base
+	 * @throws Throwable	: IncomeException con los meses que faltan por calcular
+	 */
+	private VentanaAnticipada preparaVentanaAnticipada(Long idEmpresa, Integer anio) throws Throwable {
+		int anioAnterior = anio.intValue() - 1;
+		List<PeriodoNomina> periodos = periodoNominaDaoService.selectMensualesEntre(idEmpresa,
+				Integer.valueOf(anioAnterior * 100 + MES_INICIO_DECIMO_TERCERO),
+				Integer.valueOf(anio.intValue() * 100 + MES_FIN_DECIMO_TERCERO));
+		java.util.Map<Integer, PeriodoNomina> porClave = new java.util.HashMap<Integer, PeriodoNomina>();
+		for (PeriodoNomina periodo : periodos) {
+			Integer clave = Integer.valueOf(periodo.getAnio().intValue() * 100 + periodo.getMes().intValue());
+			PeriodoNomina actual = porClave.get(clave);
+			if (actual == null || Long.valueOf(RhhEstadoPeriodoNomina.CERRADO).equals(periodo.getEstado())) {
+				porClave.put(clave, periodo);
+			}
+		}
+
+		VentanaAnticipada ventana = new VentanaAnticipada();
+		List<String> faltantes = new java.util.ArrayList<String>();
+		for (int i = 0; i < 12; i++) {
+			int anioMes = i == 0 ? anioAnterior : anio.intValue();
+			int mes = i == 0 ? MES_INICIO_DECIMO_TERCERO : i;
+			Integer clave = Integer.valueOf(anioMes * 100 + mes);
+			String etiqueta = String.format("%02d/%d", Integer.valueOf(mes), Integer.valueOf(anioMes));
+			PeriodoNomina periodo = porClave.get(clave);
+			if (periodo == null) {
+				if (anioMes == anio.intValue() && mes == MES_FIN_DECIMO_TERCERO) {
+					faltantes.add(etiqueta);
+				}
+				continue;
+			}
+			long estado = periodo.getEstado() != null ? periodo.getEstado().longValue() : 0L;
+			if (estado == RhhEstadoPeriodoNomina.CERRADO) {
+				continue;
+			}
+			if (estado >= RhhEstadoPeriodoNomina.CALCULADO && estado <= RhhEstadoPeriodoNomina.PAGADO) {
+				ventana.idsSinCerrar.add(periodo.getCodigo());
+				ventana.clavesSinCerrar.add(clave);
+				continue;
+			}
+			faltantes.add(etiqueta);
+		}
+		if (!faltantes.isEmpty()) {
+			throw new IncomeException("Para pagar el décimo por anticipado los roles de "
+					+ String.join(", ", faltantes) + " deben estar calculados");
+		}
+		return ventana;
+	}
+
+	/**
+	 * A1, base por empleado: Σ ACMN tipo BASE_DECIMO_TERCERO de los meses CERRADOS + Σ PVNMBSCL
+	 * (provision de decimo tercero vigente) de los meses calculados sin cerrar. Un mes nunca
+	 * entra por las dos vias: la suma por ACMN deja fuera los meses de {@code ventana}.
+	 */
+	private Double baseAnticipada(Long idEmpleado, Integer anio, VentanaAnticipada ventana) throws Throwable {
+		Double porAcumulado = acumuladoNominaDaoService.sumaValorRangoExcluyendo(idEmpleado,
+				Long.valueOf(RhhTipoAcumulado.BASE_DECIMO_TERCERO),
+				Integer.valueOf(anio.intValue() - 1), Integer.valueOf(MES_INICIO_DECIMO_TERCERO),
+				anio, Integer.valueOf(MES_FIN_DECIMO_TERCERO), ventana.clavesSinCerrar);
+		Double porProvision = provisionNominaDaoService.sumaBaseByEmpleadoTipoPeriodos(idEmpleado,
+				Long.valueOf(RhhTipoProvision.DECIMO_TERCERO), ventana.idsSinCerrar);
+		return RedondeoNomina.suma(porAcumulado, porProvision);
+	}
+
+	/* (non-Javadoc)
+	 * @see com.saa.ejb.rhh.service.BeneficioSocialService#valorDecimoTerceroReal(java.lang.Long, java.lang.Integer)
+	 */
+	@Override
+	@TransactionAttribute(TransactionAttributeType.SUPPORTS)
+	public Double valorDecimoTerceroReal(Long idEmpleado, Integer anio) throws Throwable {
+		System.out.println("Ingresa al metodo valorDecimoTerceroReal, empleado: " + idEmpleado + ", anio: " + anio);
+		// Solo lectura: NO pasa por nuevoBeneficio, que devuelve la liquidacion gestionada y la
+		// dejaria modificada (y la pagada es justo la que no se puede tocar).
+		Double base = acumuladoNominaDaoService.sumaValorRango(idEmpleado,
+				Long.valueOf(RhhTipoAcumulado.BASE_DECIMO_TERCERO),
+				Integer.valueOf(anio.intValue() - 1), Integer.valueOf(MES_INICIO_DECIMO_TERCERO),
+				anio, Integer.valueOf(MES_FIN_DECIMO_TERCERO));
+		Double calculado = RedondeoNomina.divide(base, Double.valueOf(MESES_ANIO));
+		LiquidacionBeneficioSocial existente = liquidacionBeneficioSocialDaoService.selectByEmpleadoTipoAnio(
+				idEmpleado, Long.valueOf(RhhTipoBeneficioSocial.DECIMO_TERCERO), anio);
+		double mensualizado = existente != null && existente.getValorMensualizado() != null
+				? existente.getValorMensualizado().doubleValue() : 0D;
+		return RedondeoNomina.redondea(Double.valueOf(calculado.doubleValue() - mensualizado));
+	}
+
 	/**
 	 * Recupera el beneficio del anio si ya existe, o crea uno nuevo. Es lo que hace
 	 * idempotentes a los generadores.
@@ -367,6 +560,7 @@ public class BeneficioSocialServiceImpl implements BeneficioSocialService {
 		beneficio.setValorMensualizado(Double.valueOf(0D));
 		beneficio.setValorPagado(Double.valueOf(0D));
 		beneficio.setEstado(Long.valueOf(1L));
+		beneficio.setAnticipado(NO_ANTICIPADO);
 		beneficio.setFechaRegistro(LocalDateTime.now());
 		return beneficio;
 	}
