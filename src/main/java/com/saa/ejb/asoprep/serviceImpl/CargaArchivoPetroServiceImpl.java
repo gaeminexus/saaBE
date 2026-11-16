@@ -180,6 +180,10 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
     @EJB
     private com.saa.ejb.crd.service.ProcesoMoraPrestamoService procesoMoraPrestamoService;
 
+    /** C31: baja (o reingreso) de la garantía en cuentas de orden cuando el préstamo termina (o se reabre). */
+    @EJB
+    private com.saa.ejb.crd.service.GarantiaOrdenPrestamoService garantiaOrdenPrestamoService;
+
     /** B1 (PLAN-CORRECCIONES-CARGA-2026-11-01.md): reversos contables de la mora de una carga tardia. */
     @EJB
     private com.saa.ejb.crd.service.ConfiguracionContabilidadService configuracionContabilidadService;
@@ -334,6 +338,13 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
      * no los preparen dos veces. Reset al entrar a {@code aplicarPagosArchivoPetro}.
      */
     private Set<Long> prestamosPreparadosReproceso = new HashSet<>();
+
+    /**
+     * C31: carga que se está aplicando, para fechar (último día del mes de afectación) y atribuir la baja de
+     * garantía de un préstamo que la red de seguridad {@link #verificarYActualizarEstadoPrestamo} cancela.
+     * Campo de instancia por la misma razón que los de arriba (bean {@code @Stateful}).
+     */
+    private CargaArchivo cargaEnCursoC31 = null;
 
     /**
      * Rendimiento del reproceso (REPROCESO-CARGA-PETRO.md §11): total de cuotas por préstamo,
@@ -2080,6 +2091,8 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 			if (cargaArchivo == null) {
 				throw new RuntimeException("No se encontró la carga con ID: " + codigoCargaArchivo);
 			}
+			// C31: la red de seguridad de verificarYActualizarEstadoPrestamo no recibe la carga; la toma de acá.
+			cargaEnCursoC31 = cargaArchivo;
 
 			// ==========================================
 			// VALIDACIÓN: la carga no puede reprocesarse. validarOrdenProcesamiento excluye
@@ -6065,6 +6078,31 @@ private void verificarYActualizarEstadoPrestamo(Prestamo prestamo) throws Throwa
 		prestamoDaoService.save(prestamo, prestamo.getCodigo());
 
 		System.out.println("     ✅ Préstamo actualizado a estado CANCELADO");
+
+		// C31: la garantía sale de cuentas de orden por el monto otorgado, al último día del mes de la carga.
+		// C31c: solo por la transición (estadoActual es el de antes de este cambio, y no es terminal por la
+		// guarda de arriba) y con el control cronológico: los PGPR de la carga van fechados al último día del
+		// mes (crearContextoPagoCarga), así que un pago vigente posterior a ese día significa que el préstamo
+		// «termina» por cobros posteriores, no por esta carga.
+		java.time.LocalDate fechaBaja = null;
+		Long idEmpresaBaja = null;
+		String usuarioBaja = null;
+		if (cargaEnCursoC31 != null) {
+			if (cargaEnCursoC31.getMesAfectacion() != null && cargaEnCursoC31.getAnioAfectacion() != null) {
+				fechaBaja = fechaService.ultimoDiaMesAnioLocal(cargaEnCursoC31.getMesAfectacion(),
+					cargaEnCursoC31.getAnioAfectacion());
+			}
+			try {
+				idEmpresaBaja = transferenciaCargaPetroDaoService.resolverEmpresaByCarga(cargaEnCursoC31.getCodigo());
+			} catch (Throwable sinEmpresa) {
+				// Sin transferencias no hay empresa por la carga: el servicio la resuelve por el préstamo.
+				idEmpresaBaja = null;
+			}
+			usuarioBaja = usuarioDeLaCarga(cargaEnCursoC31);
+		}
+		garantiaOrdenPrestamoService.sincronizar(prestamo, estadoActual, idEmpresaBaja, fechaBaja,
+			fechaBaja != null ? fechaBaja.atTime(23, 59, 59) : java.time.LocalDateTime.now(), usuarioBaja,
+			"cancelado por carga Petro" + (cargaEnCursoC31 != null ? " " + cargaEnCursoC31.getCodigo() : ""));
 
 	} catch (Throwable e) {
 		throw new RuntimeException("Falló al verificar/actualizar el estado del préstamo "

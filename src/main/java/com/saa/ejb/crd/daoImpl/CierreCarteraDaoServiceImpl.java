@@ -956,4 +956,51 @@ public class CierreCarteraDaoServiceImpl implements CierreCarteraDaoService {
         }
         return Long.valueOf(((Number) valor).longValue());
     }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public List<Object[]> selectLineasBajaGarantia(Long idPrestamo, Long idPlanCuenta, String marca) throws Throwable {
+        System.out.println("Ingresa al metodo selectLineasBajaGarantia - prestamo: " + idPrestamo
+                + " - cuenta: " + idPlanCuenta);
+        Query query = em.createNativeQuery(
+                " SELECT a.ASNTCDGO, a.ASNTESTD, SUM(NVL(d.DTASDBEE,0) - NVL(d.DTASHBRR,0)) "
+                + " FROM   CNT.DTAS d JOIN CNT.ASNT a ON a.ASNTCDGO = d.ASNTCDGO "
+                + " WHERE  d.PLNNCDGO = :cuenta AND a.ASNTESTD IN (1, 3) AND d.DTASDSCR LIKE :marca "
+                + " GROUP BY a.ASNTCDGO, a.ASNTESTD ORDER BY a.ASNTCDGO");
+        query.setParameter("cuenta", idPlanCuenta);
+        query.setParameter("marca", "%" + marca + "%");
+        List<Object[]> filas = query.getResultList();
+        List<Object[]> resultado = new ArrayList<Object[]>();
+        for (Object[] f : filas) {
+            resultado.add(new Object[]{ aLong(f[0]), aLong(f[1]), aDouble(f[2]) });
+        }
+        return resultado;
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public List<Long> selectEmpresasConPlantilla(int alterno) throws Throwable {
+        Query query = em.createNativeQuery(
+                " SELECT DISTINCT p.PJRQCDGO FROM CNT.PLNS p WHERE p.PLNSCDAL = :alterno AND p.PLNSESTD = 1 ");
+        query.setParameter("alterno", alterno);
+        List<Object> filas = query.getResultList();
+        List<Long> resultado = new ArrayList<Long>();
+        for (Object f : filas) {
+            if (f != null) {
+                resultado.add(aLong(f));
+            }
+        }
+        return resultado;
+    }
+
+    @Override
+    public long contarPagosVigentesDesde(Long idPrestamo, LocalDate desde) throws Throwable {
+        Query query = em.createNativeQuery(
+                " SELECT COUNT(*) FROM CRD.PGPR g JOIN CRD.DTPR d ON d.DTPRCDGO = g.DTPRCDGO "
+                + " WHERE  d.PRSTCDGO = :prestamo AND NVL(g.PGPRANUL, 0) = 0 AND g.PGPRVLRR > 0.005 "
+                + "   AND  g.PGPRFCHA >= :desde ");
+        query.setParameter("prestamo", idPrestamo);
+        query.setParameter("desde", Date.valueOf(desde));
+        return aLong(query.getSingleResult()).longValue();
+    }
 }

@@ -112,6 +112,10 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
     @EJB
     private ProcesoPagoPrestamoService procesoPagoPrestamoService;
 
+    /** C31: baja (o reingreso) de la garantía en cuentas de orden cuando el préstamo termina (o se reabre). */
+    @EJB
+    private com.saa.ejb.crd.service.GarantiaOrdenPrestamoService garantiaOrdenPrestamoService;
+
     @EJB
     private DetallePrestamoDaoService detallePrestamoDaoService;
 
@@ -639,12 +643,20 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
 
         // 4. Préstamo → CANCELADO(3), K6. NUNCA CANCELADO_ANTICIPADO(4): ese es el terminal
         // de precancelar, este es otro camino con otra causa.
+        // C31c: estado antes del acuerdo; solo la transición vivo → terminado da de baja la garantía.
+        Long estadoAnteriorC31 = prestamo.getIdEstado();
         prestamo.setIdEstado(Long.valueOf(EstadoPrestamo.CANCELADO));
         prestamo.setFechaModificacion(LocalDateTime.now());
         prestamoDaoService.save(prestamo, prestamo.getCodigo());
 
         procesoPagoPrestamoService.registrarHuellaPrestamo(prestamo, CrdTipoOperacionCobro.ACUERDO_CONDONACION,
                 nvl(acuerdo.getValorPagar()), acuerdo.getObservacion(), fechaHora, usuario);
+
+        // C31: el acuerdo termina el préstamo: su garantía sale de cuentas de orden por el monto otorgado.
+        // El acuerdo cierra él mismo las cuotas pendientes: sin control cronológico (pagosHasta null).
+        garantiaOrdenPrestamoService.sincronizar(prestamo, estadoAnteriorC31,
+                acuerdo.getEmpresa() != null ? acuerdo.getEmpresa().getCodigo() : null, fechaAsiento, null, usuario,
+                "acuerdo de pago " + idAcuerdo);
 
         // 5. Enlazar el acuerdo con el evento aplicado (K8) y pasarlo a APLICADO.
         acuerdo.setEventoPrestamo(evento);

@@ -140,6 +140,10 @@ public class ReprocesoCargaPetroServiceImpl implements ReprocesoCargaPetroServic
     @EJB
     private com.saa.ejb.crd.service.ProcesoMoraPrestamoService procesoMoraPrestamoService;
 
+    /** C31: baja (o reingreso) de la garantía en cuentas de orden cuando el préstamo termina (o se reabre). */
+    @EJB
+    private com.saa.ejb.crd.service.GarantiaOrdenPrestamoService garantiaOrdenPrestamoService;
+
     /** Rendimiento (REPROCESO-CARGA-PETRO.md §11): tamaño del contexto y desprendido en bordes de fase. */
     @EJB
     private com.saa.basico.ejb.ContextoPersistenciaService contextoPersistenciaService;
@@ -571,6 +575,11 @@ public class ReprocesoCargaPetroServiceImpl implements ReprocesoCargaPetroServic
                 prestamo.setIdEstado(Long.valueOf(EstadoPrestamo.VIGENTE));
                 prestamo.setFechaModificacion(ahora);
                 prestamoDaoService.save(prestamo, prestamo.getCodigo());
+                // C31: la cancelación por esta carga se deshace: se anula la baja de su garantía (la re-aplicación
+                // de la carga la vuelve a generar si el préstamo vuelve a cancelarse).
+                // C31c: el estado anterior era CANCELADO (3): esta llamada solo puede anular, nunca dar de baja.
+                garantiaOrdenPrestamoService.sincronizar(prestamo, Long.valueOf(EstadoPrestamo.CANCELADO), idEmpresa,
+                    fechaContable, null, usuario, "reproceso de la carga " + idCarga);
                 reabiertos++;
             }
         }

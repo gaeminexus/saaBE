@@ -90,6 +90,10 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
     @EJB
     private ProcesoMoraPrestamoService procesoMoraPrestamoService;
 
+    /** C31: baja (o reingreso) de la garantía en cuentas de orden cuando el préstamo termina (o se reabre). */
+    @EJB
+    private com.saa.ejb.crd.service.GarantiaOrdenPrestamoService garantiaOrdenPrestamoService;
+
     // ========================================================================
     // §6.2 — Saldos reales de una cuota (con autocorrección)
     // ========================================================================
@@ -298,6 +302,8 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
             throw new IncomeException("El préstamo " + idPrestamo + " está en un estado terminal ("
                 + textoEstadoTerminal(prestamo.getIdEstado()) + ") y no admite pagos");
         }
+        // C31c: estado antes de esta operación; solo la transición vivo → terminado da de baja la garantía.
+        Long estadoAnteriorC31 = prestamo.getIdEstado();
 
         ResultadoAplicacionPago resultado = new ResultadoAplicacionPago();
         resultado.setIdPrestamo(idPrestamo);
@@ -337,6 +343,19 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
         resultado.setValorAplicado(redondear(resultado.getValorRecibido() - resultado.getExcedenteNoAplicado()));
 
         boolean cancelado = verificarYActualizarEstadoPrestamo(prestamo);
+        if (cancelado) {
+            // C31: el pago de la última cuota (ventanilla, CBCR, pago con aportes, Petro/Arch) termina el
+            // préstamo: su garantía sale de cuentas de orden por el monto otorgado, a la fecha de afectación.
+            // C31c: con el estado anterior y el control cronológico (la fecha de los PGPR de esta operación es
+            // ctx.fechaPago, o ahora si no viene — la misma regla de aplicarPagoACuota).
+            java.time.LocalDate fechaBaja = ctx == null ? null
+                : ctx.getFechaAfectacion() != null ? ctx.getFechaAfectacion()
+                : ctx.getFechaPago() != null ? ctx.getFechaPago().toLocalDate() : null;
+            LocalDateTime fechaPagos = ctx != null && ctx.getFechaPago() != null ? ctx.getFechaPago() : LocalDateTime.now();
+            garantiaOrdenPrestamoService.sincronizar(prestamo, estadoAnteriorC31, ctx != null ? ctx.getIdEmpresa() : null,
+                fechaBaja, fechaPagos, ctx != null ? ctx.getUsuario() : null,
+                "cancelado por pago" + (ctx != null && ctx.getTipoPago() != null ? " " + ctx.getTipoPago() : ""));
+        }
         resultado.setPrestamoCancelado(cancelado);
         resultado.setEstadoFinalPrestamo(prestamo.getIdEstado());
 

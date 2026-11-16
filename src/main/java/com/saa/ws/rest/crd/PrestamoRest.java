@@ -116,6 +116,10 @@ public class PrestamoRest {
     @EJB
     private DetalleCobroCreditoDaoService detalleCobroCreditoDaoService;
 
+    /** C31c: sincronización explícita de la garantía en cuentas de orden ({@code /sincronizarGarantia}). */
+    @EJB
+    private com.saa.ejb.crd.service.GarantiaOrdenPrestamoService garantiaOrdenPrestamoService;
+
     @Context
     private UriInfo context;
     
@@ -1851,6 +1855,45 @@ public class PrestamoRest {
 
         } catch (Throwable e) {
             System.err.println("ERROR al anular la operación: " + e.getMessage());
+            e.printStackTrace();
+            return respuestaErrorNegocio(e);
+        }
+    }
+
+    /**
+     * C31c: sincroniza a mano la garantía de un préstamo en cuentas de orden a una fecha. Para los
+     * préstamos terminados (3/4) que no tienen baja — terminados antes de C31, los de junio 2025 en el pase a
+     * producción, los que la vía automática dejó sin baja por el control cronológico — genera el asiento de
+     * baja (plantilla 26, monto otorgado + bien) a {@code fecha}; si el préstamo está vivo y tiene una baja
+     * vigente, la anula. Idempotente por la marca {@code [C31 PRST id]}: repetir la llamada no duplica.
+     *
+     * @param solicitud { idPrestamo, fecha (yyyy-MM-dd), usuario, idEmpresa (opcional), motivo (opcional) }
+     * @return 200 con el ResultadoSincronizacionGarantia (accion BAJA / ANULACION / SIN_CAMBIO)
+     */
+    @POST
+    @Path("/sincronizarGarantia")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response sincronizarGarantia(com.saa.ejb.crd.service.dto.SolicitudSincronizacionGarantia solicitud) {
+        System.out.println("LLEGA AL SERVICIO SINCRONIZAR GARANTIA - Préstamo: "
+            + (solicitud != null ? solicitud.getIdPrestamo() : null));
+        if (solicitud == null) {
+            return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
+                "Debe enviar el cuerpo de la solicitud", null);
+        }
+        try {
+            com.saa.ejb.crd.service.dto.ResultadoSincronizacionGarantia resultado =
+                garantiaOrdenPrestamoService.sincronizarExplicito(solicitud.getIdPrestamo(), solicitud.getIdEmpresa(),
+                    solicitud.getFecha(), solicitud.getUsuario(), solicitud.getMotivo());
+            Map<String, Object> cuerpo = new LinkedHashMap<>();
+            cuerpo.put("exito", Boolean.TRUE);
+            cuerpo.put("etapa", ETAPA_APLICACION);
+            cuerpo.put("mensaje", resultado.getMensaje());
+            cuerpo.put("resultado", resultado);
+            return Response.status(Response.Status.OK)
+                    .entity(cuerpo).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            System.err.println("ERROR al sincronizar la garantía: " + e.getMessage());
             e.printStackTrace();
             return respuestaErrorNegocio(e);
         }
