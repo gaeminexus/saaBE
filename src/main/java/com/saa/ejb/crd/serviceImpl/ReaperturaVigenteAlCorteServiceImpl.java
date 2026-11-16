@@ -48,6 +48,10 @@ public class ReaperturaVigenteAlCorteServiceImpl implements ReaperturaVigenteAlC
     @EJB
     private ProcesoMoraPrestamoService procesoMoraPrestamoService;
 
+    /** C31: baja (o reingreso) de la garantía en cuentas de orden cuando el préstamo termina (o se reabre). */
+    @EJB
+    private com.saa.ejb.crd.service.GarantiaOrdenPrestamoService garantiaOrdenPrestamoService;
+
     /** Último instante del día de corte (inclusive). */
     private static LocalDateTime instanteCorte(LocalDate fechaCorte) {
         return fechaCorte.atTime(23, 59, 59);
@@ -155,6 +159,13 @@ public class ReaperturaVigenteAlCorteServiceImpl implements ReaperturaVigenteAlC
         prestamo.setObservacion(truncarTexto(prestamo.getObservacion() == null || prestamo.getObservacion().trim().isEmpty()
             ? marca : prestamo.getObservacion() + " | " + marca, 2000));
         prestamoDaoService.save(prestamo, prestamo.getCodigo());
+
+        // C31: si su cancelación posterior al corte ya había dado de baja la garantía, la baja se anula (se
+        // vuelve a generar cuando se re-aplique la cancelación en su propio mes). Este servicio no recibe
+        // usuario: la anulación queda a nombre de quien modificó o registró el préstamo.
+        garantiaOrdenPrestamoService.sincronizar(prestamo, null, fechaCorte,
+            prestamo.getUsuarioModificacion() != null ? prestamo.getUsuarioModificacion() : prestamo.getUsuarioRegistro(),
+            "reapertura al corte " + fechaCorte);
 
         int eventosMarcados = 0;
         List<EventoPrestamo> eventos = eventoPrestamoDaoService.selectByPrestamo(prestamo.getCodigo());

@@ -186,6 +186,21 @@ public interface PlantillasCredito {
 	public static final int ENTREGA_QUIROGRAFARIO = 34;
 
 	/**
+	 * «CRD LEVANTAMIENTO DE HIPOTECA Y ENTREGA DE PAGARE». C31 (16-nov-2026): baja de la garantía en
+	 * cuentas de orden cuando el préstamo termina ({@code GarantiaOrdenPrestamoServiceImpl}). Es la contra de
+	 * las líneas 6/7/8 de la entrega (9, 13, 34). Verificado contra {@code CNT.DTPL} de la empresa 1236 el
+	 * 16-nov-2026:
+	 * <pre>
+	 * aux1 = 1   HABER  7.3.01.05  CARTERA DE CREDITOS (orden)
+	 * aux1 = 2   DEBE   7.4.01.05  DOCUMENTOS EN GARANTIA (orden) — el pagaré
+	 * aux1 = 3   DEBE   7.4.01.15  BIENES INMUEBLES EN GARANTIA (orden) — hipotecario
+	 * aux1 = 4   DEBE   7.4.01.10  VEHICULOS EN GARANTIA (orden) — prendario
+	 * </pre>
+	 * POSICIONAL: aux1 1-4 son de esta plantilla y de ninguna otra.
+	 */
+	public static final int LEVANTAMIENTO_GARANTIA = 26;
+
+	/**
 	 * "CRD PAGO MENSUAL DE PENSION COMPLEMENTARIA". Devengo mensual de la pensión y su seguro
 	 * de salud (PLAN-PAGO-JUBILADOS.md §4, DDL en {@code sql/173}). NO es la 29 (JUBILACION):
 	 * esa es el traslado único al jubilarse, esta es el pago recurrente de cada mes.

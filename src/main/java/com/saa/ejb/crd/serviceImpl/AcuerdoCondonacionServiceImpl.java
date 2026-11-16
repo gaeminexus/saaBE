@@ -112,6 +112,10 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
     @EJB
     private ProcesoPagoPrestamoService procesoPagoPrestamoService;
 
+    /** C31: baja (o reingreso) de la garantía en cuentas de orden cuando el préstamo termina (o se reabre). */
+    @EJB
+    private com.saa.ejb.crd.service.GarantiaOrdenPrestamoService garantiaOrdenPrestamoService;
+
     @EJB
     private DetallePrestamoDaoService detallePrestamoDaoService;
 
@@ -645,6 +649,11 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
 
         procesoPagoPrestamoService.registrarHuellaPrestamo(prestamo, CrdTipoOperacionCobro.ACUERDO_CONDONACION,
                 nvl(acuerdo.getValorPagar()), acuerdo.getObservacion(), fechaHora, usuario);
+
+        // C31: el acuerdo termina el préstamo: su garantía sale de cuentas de orden por el monto otorgado.
+        garantiaOrdenPrestamoService.sincronizar(prestamo,
+                acuerdo.getEmpresa() != null ? acuerdo.getEmpresa().getCodigo() : null, fechaAsiento, usuario,
+                "acuerdo de pago " + idAcuerdo);
 
         // 5. Enlazar el acuerdo con el evento aplicado (K8) y pasarlo a APLICADO.
         acuerdo.setEventoPrestamo(evento);

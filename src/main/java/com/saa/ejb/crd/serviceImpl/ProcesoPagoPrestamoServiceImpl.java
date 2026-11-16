@@ -186,6 +186,10 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
     @EJB
     private ProcesoMoraPrestamoService procesoMoraPrestamoService;
 
+    /** C31: baja (o reingreso) de la garantía en cuentas de orden cuando el préstamo termina (o se reabre). */
+    @EJB
+    private com.saa.ejb.crd.service.GarantiaOrdenPrestamoService garantiaOrdenPrestamoService;
+
     // ========================================================================
     // §7.1 — Pago de cuota
     // ========================================================================
@@ -1460,6 +1464,10 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
 
         // 8. Hook contable
         Long numeroAsiento = contabilidadPrestamoService.contabilizarPrecancelacion(evento, movimientos, ctx);
+        // C31: la precancelación (ventanilla/CBCR, /prst/precancelar con o sin aportes) termina el préstamo:
+        // su garantía sale de cuentas de orden por el monto otorgado, a la fecha de afectación.
+        garantiaOrdenPrestamoService.sincronizar(prestamo, solicitud.getIdEmpresa(), fechaAfectacionEfectiva,
+            solicitud.getUsuario(), "precancelación" + (conAportes ? " con aportes" : ""));
         if (numeroAsiento != null) {
             evento.setNumeroAsiento(numeroAsiento);
             eventoPrestamoService.saveSingle(evento);
@@ -1914,6 +1922,10 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
 
         // 6. Asiento (DEBE socios por pagar del préstamo nuevo) y reverso de la provisión de intereses.
         Long numeroAsiento = contabilidadPrestamoService.contabilizarPrecancelacionConPrestamo(evento, ctx, nuevo, total);
+        // C31: el préstamo anterior termina pagado con el nuevo: su garantía sale de cuentas de orden por su
+        // monto otorgado (la del nuevo la registra su propia entrega).
+        garantiaOrdenPrestamoService.sincronizar(anterior, idEmpresa, fecha, usuario,
+            "precancelado con el préstamo " + idPrestamoNuevo);
         if (numeroAsiento != null) {
             evento.setNumeroAsiento(numeroAsiento);
             eventoPrestamoService.saveSingle(evento);
@@ -2288,6 +2300,9 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
             solicitud.getMotivo(), ahora, solicitud.getUsuario());
 
         contabilidadPrestamoService.contabilizarReverso(evento);
+        // C31: si el reverso reabrió el préstamo, se anula la baja de su garantía en cuentas de orden.
+        garantiaOrdenPrestamoService.sincronizar(prestamo, solicitud.getIdEmpresa(), LocalDate.now(),
+            solicitud.getUsuario(), "reverso " + tipo);
 
         resultado.setCuotasRecalculadas(cuotasRecalculadas);
         resultado.setCuotasRestauradas(cuotasRestauradas);

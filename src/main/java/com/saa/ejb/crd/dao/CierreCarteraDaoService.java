@@ -348,4 +348,17 @@ public interface CierreCarteraDaoService {
     /** Débito neto de {@code cuenta} en las líneas de complemento de apertura de los asientos vigentes del rango. */
     double selectComplementoRegistrado(Long idEmpresa, String cuenta, LocalDate desde, LocalDate hasta)
             throws Throwable;
+
+    /**
+     * C31: líneas de un préstamo con la marca de baja de garantía ({@code [C31 PRST id]}) en la cuenta de
+     * orden {@code idPlanCuenta} (documentos en garantía), en asientos activos (1) o reversados (3). El
+     * reverso de un período cerrado copia la glosa con el sentido invertido, así que la suma de la columna 3
+     * es el neto vigente de la baja: &gt; 0 la garantía está dada de baja; 0, registrada.
+     *
+     * @return Filas {@code [idAsiento (Long), estadoAsiento (Long), debeMenosHaber (Double)]} por asiento
+     */
+    List<Object[]> selectLineasBajaGarantia(Long idPrestamo, Long idPlanCuenta, String marca) throws Throwable;
+
+    /** C31: empresas con una plantilla contable activa de ese código alterno ({@code CNT.PLNS.PLNSCDAL}). */
+    List<Long> selectEmpresasConPlantilla(int alterno) throws Throwable;
 }
