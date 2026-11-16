@@ -1455,6 +1455,8 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
         }
 
         // 7. Préstamo → CANCELADO_ANTICIPADO (4). NUNCA se toca ESPSCDGO ni fechaFin.
+        // C31c: estado antes de la precancelación (validarPrestamoOperable ya exige que esté vivo).
+        Long estadoAnteriorC31 = prestamo.getIdEstado();
         prestamo.setIdEstado(Long.valueOf(EstadoPrestamo.CANCELADO_ANTICIPADO));
         prestamo.setFechaModificacion(LocalDateTime.now());
         prestamoDaoService.save(prestamo, prestamo.getCodigo());
@@ -1466,8 +1468,9 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
         Long numeroAsiento = contabilidadPrestamoService.contabilizarPrecancelacion(evento, movimientos, ctx);
         // C31: la precancelación (ventanilla/CBCR, /prst/precancelar con o sin aportes) termina el préstamo:
         // su garantía sale de cuentas de orden por el monto otorgado, a la fecha de afectación.
-        garantiaOrdenPrestamoService.sincronizar(prestamo, solicitud.getIdEmpresa(), fechaAfectacionEfectiva,
-            solicitud.getUsuario(), "precancelación" + (conAportes ? " con aportes" : ""));
+        // C31c: la precancelación cierra ella misma las cuotas futuras: sin control cronológico (pagosHasta null).
+        garantiaOrdenPrestamoService.sincronizar(prestamo, estadoAnteriorC31, solicitud.getIdEmpresa(),
+            fechaAfectacionEfectiva, null, solicitud.getUsuario(), "precancelación" + (conAportes ? " con aportes" : ""));
         if (numeroAsiento != null) {
             evento.setNumeroAsiento(numeroAsiento);
             eventoPrestamoService.saveSingle(evento);
@@ -1912,6 +1915,8 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
         }
 
         // 5. Préstamo → CANCELADO_ANTICIPADO (4) y huella (en los dos préstamos).
+        // C31c: estado antes de esta operación (si ya estaba terminado, no se le da de baja la garantía).
+        Long estadoAnteriorC31 = anterior.getIdEstado();
         anterior.setIdEstado(Long.valueOf(EstadoPrestamo.CANCELADO_ANTICIPADO));
         anterior.setFechaModificacion(LocalDateTime.now());
         prestamoDaoService.save(anterior, anterior.getCodigo());
@@ -1924,7 +1929,7 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
         Long numeroAsiento = contabilidadPrestamoService.contabilizarPrecancelacionConPrestamo(evento, ctx, nuevo, total);
         // C31: el préstamo anterior termina pagado con el nuevo: su garantía sale de cuentas de orden por su
         // monto otorgado (la del nuevo la registra su propia entrega).
-        garantiaOrdenPrestamoService.sincronizar(anterior, idEmpresa, fecha, usuario,
+        garantiaOrdenPrestamoService.sincronizar(anterior, estadoAnteriorC31, idEmpresa, fecha, null, usuario,
             "precancelado con el préstamo " + idPrestamoNuevo);
         if (numeroAsiento != null) {
             evento.setNumeroAsiento(numeroAsiento);
@@ -2301,8 +2306,9 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
 
         contabilidadPrestamoService.contabilizarReverso(evento);
         // C31: si el reverso reabrió el préstamo, se anula la baja de su garantía en cuentas de orden.
-        garantiaOrdenPrestamoService.sincronizar(prestamo, solicitud.getIdEmpresa(), LocalDate.now(),
-            solicitud.getUsuario(), "reverso " + tipo);
+        // C31c: estadoPrevio es el de antes del reverso; el reverso solo puede reabrir (anular la baja), nunca darla.
+        garantiaOrdenPrestamoService.sincronizar(prestamo, estadoPrevio, solicitud.getIdEmpresa(), LocalDate.now(),
+            null, solicitud.getUsuario(), "reverso " + tipo);
 
         resultado.setCuotasRecalculadas(cuotasRecalculadas);
         resultado.setCuotasRestauradas(cuotasRestauradas);

@@ -577,8 +577,9 @@ public class ReprocesoCargaPetroServiceImpl implements ReprocesoCargaPetroServic
                 prestamoDaoService.save(prestamo, prestamo.getCodigo());
                 // C31: la cancelación por esta carga se deshace: se anula la baja de su garantía (la re-aplicación
                 // de la carga la vuelve a generar si el préstamo vuelve a cancelarse).
-                garantiaOrdenPrestamoService.sincronizar(prestamo, idEmpresa, fechaContable, usuario,
-                    "reproceso de la carga " + idCarga);
+                // C31c: el estado anterior era CANCELADO (3): esta llamada solo puede anular, nunca dar de baja.
+                garantiaOrdenPrestamoService.sincronizar(prestamo, Long.valueOf(EstadoPrestamo.CANCELADO), idEmpresa,
+                    fechaContable, null, usuario, "reproceso de la carga " + idCarga);
                 reabiertos++;
             }
         }

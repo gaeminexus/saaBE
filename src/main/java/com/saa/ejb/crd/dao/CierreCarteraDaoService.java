@@ -361,4 +361,12 @@ public interface CierreCarteraDaoService {
 
     /** C31: empresas con una plantilla contable activa de ese código alterno ({@code CNT.PLNS.PLNSCDAL}). */
     List<Long> selectEmpresasConPlantilla(int alterno) throws Throwable;
+
+    /**
+     * C31c: cuántos pagos vigentes ({@code PGPRANUL} nulo o 0, valor &gt; 0,005) tienen las cuotas del préstamo
+     * con fecha de pago ({@code PGPRFCHA}) desde el día {@code desde} inclusive. Se cruza por la cuota
+     * ({@code CRD.DTPR}) y no por {@code PGPR.PRSTCDGO}, que viene nulo en buena parte de los pagos de
+     * producción (más de 20.000 filas en la copia del 15-nov-2026).
+     */
+    long contarPagosVigentesDesde(Long idPrestamo, LocalDate desde) throws Throwable;
 }

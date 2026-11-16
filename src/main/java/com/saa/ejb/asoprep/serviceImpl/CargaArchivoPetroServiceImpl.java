@@ -6080,6 +6080,10 @@ private void verificarYActualizarEstadoPrestamo(Prestamo prestamo) throws Throwa
 		System.out.println("     ✅ Préstamo actualizado a estado CANCELADO");
 
 		// C31: la garantía sale de cuentas de orden por el monto otorgado, al último día del mes de la carga.
+		// C31c: solo por la transición (estadoActual es el de antes de este cambio, y no es terminal por la
+		// guarda de arriba) y con el control cronológico: los PGPR de la carga van fechados al último día del
+		// mes (crearContextoPagoCarga), así que un pago vigente posterior a ese día significa que el préstamo
+		// «termina» por cobros posteriores, no por esta carga.
 		java.time.LocalDate fechaBaja = null;
 		Long idEmpresaBaja = null;
 		String usuarioBaja = null;
@@ -6096,7 +6100,8 @@ private void verificarYActualizarEstadoPrestamo(Prestamo prestamo) throws Throwa
 			}
 			usuarioBaja = usuarioDeLaCarga(cargaEnCursoC31);
 		}
-		garantiaOrdenPrestamoService.sincronizar(prestamo, idEmpresaBaja, fechaBaja, usuarioBaja,
+		garantiaOrdenPrestamoService.sincronizar(prestamo, estadoActual, idEmpresaBaja, fechaBaja,
+			fechaBaja != null ? fechaBaja.atTime(23, 59, 59) : java.time.LocalDateTime.now(), usuarioBaja,
 			"cancelado por carga Petro" + (cargaEnCursoC31 != null ? " " + cargaEnCursoC31.getCodigo() : ""));
 
 	} catch (Throwable e) {

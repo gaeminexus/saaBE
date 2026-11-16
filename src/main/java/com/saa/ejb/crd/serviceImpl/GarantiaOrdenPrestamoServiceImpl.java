@@ -1,17 +1,21 @@
 package com.saa.ejb.crd.serviceImpl;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.saa.basico.ejb.UsuarioValidacionService;
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.cnt.dao.DetallePlantillaDaoService;
 import com.saa.ejb.cnt.service.AsientoContableService;
 import com.saa.ejb.cnt.service.AsientoService;
 import com.saa.ejb.cnt.service.PlantillaService;
 import com.saa.ejb.crd.dao.CierreCarteraDaoService;
+import com.saa.ejb.crd.dao.PrestamoDaoService;
 import com.saa.ejb.crd.service.ConfiguracionContabilidadService;
 import com.saa.ejb.crd.service.GarantiaOrdenPrestamoService;
+import com.saa.ejb.crd.service.dto.ResultadoSincronizacionGarantia;
 import com.saa.model.cnt.Asiento;
 import com.saa.model.cnt.DetalleAsiento;
 import com.saa.model.cnt.DetallePlantilla;
@@ -50,6 +54,18 @@ import jakarta.ejb.Stateless;
  * terminación se revierte (reverso de la operación, reproceso de la carga Petro, reapertura al corte), el
  * asiento de baja se anula con la regla estándar de CNT (anula en período abierto, reversa en el primer
  * período abierto si el suyo está cerrado).</p>
+ *
+ * <p><b>C31c (16-nov-2026) — la baja es de la operación que termina el préstamo.</b> En el re-proceso de
+ * julio 2025 la vía automática dio de baja ~110 préstamos que no terminaron en julio: la copia de
+ * producción los traía cancelados (producción los canceló entre nov-2025 y nov-2026), el re-proceso de la
+ * carga los reabrió al anular el cobro del mes (3 → 2), la re-aplicación pagó la cuota del mes y, como las
+ * cuotas siguientes ya figuraban pagadas por cobros de 2026, el préstamo volvió a 3 y se le dio de baja la
+ * garantía al 31-jul. Ahora: (1) cada proceso pasa el estado capturado antes de su operación y solo la
+ * transición vivo → 3/4 genera baja; (2) en la cancelación por pago de cuotas (motor y red de seguridad de
+ * la carga Petro), además, ningún pago vigente puede tener fecha posterior al día de la operación — sin
+ * esto, el caso de arriba seguía pasando, porque el re-proceso lo reabre dentro de la misma corrida y el
+ * estado «antes del pago» es 2; (3) la anulación al reabrir no cambia; (4) los terminados sin baja se
+ * sincronizan a mano con {@link #sincronizarExplicito}.</p>
  */
 @Stateless
 public class GarantiaOrdenPrestamoServiceImpl implements GarantiaOrdenPrestamoService {
@@ -80,15 +96,44 @@ public class GarantiaOrdenPrestamoServiceImpl implements GarantiaOrdenPrestamoSe
     @EJB
     private CierreCarteraDaoService cierreCarteraDaoService;
 
+    @EJB
+    private PrestamoDaoService prestamoDaoService;
+
+    @EJB
+    private UsuarioValidacionService usuarioValidacionService;
+
     /** Marca de las líneas del préstamo (ASCII, sin tildes, para que el LIKE no dependa del juego de caracteres). */
     static String marca(Long idPrestamo) {
         return "[C31 PRST " + idPrestamo + "]";
     }
 
+    /** ¿CANCELADO (3) o CANCELADO_ANTICIPADO (4)? Los únicos terminales que dan de baja la garantía (C31). */
+    static boolean esTerminado(Long idEstado) {
+        return idEstado != null && (idEstado.longValue() == EstadoPrestamo.CANCELADO
+            || idEstado.longValue() == EstadoPrestamo.CANCELADO_ANTICIPADO);
+    }
+
     @Override
-    public Long sincronizar(Prestamo prestamo, Long idEmpresa, LocalDate fecha, String usuario, String causa)
-            throws Throwable {
+    public Long sincronizar(Prestamo prestamo, Long estadoAnterior, Long idEmpresa, LocalDate fecha,
+            LocalDateTime pagosHasta, String usuario, String causa) throws Throwable {
         if (prestamo == null || prestamo.getCodigo() == null || prestamo.getIdEstado() == null) {
+            return null;
+        }
+        boolean terminado = esTerminado(prestamo.getIdEstado());
+        boolean vivo = EstadoPrestamo.esVivo(prestamo.getIdEstado());
+        if (terminado) {
+            // C31c: la baja la genera solo la operación que hace pasar el préstamo de vivo a terminado. Un
+            // préstamo que ya estaba terminado antes de la operación no se da de baja por la vía automática
+            // aunque no tenga baja (para esos está sincronizarExplicito / POST /prst/sincronizarGarantia).
+            if (estadoAnterior == null || !EstadoPrestamo.esVivo(estadoAnterior)) {
+                System.out.println("  ℹ️ C31c sin baja de garantía - préstamo " + prestamo.getCodigo()
+                    + ": estado antes de la operación " + estadoAnterior + " (no estaba vivo)");
+                return null;
+            }
+            if (pagosHasta != null && terminaPorPagosPosteriores(prestamo, fecha, pagosHasta)) {
+                return null;
+            }
+        } else if (!vivo) {
             return null;
         }
         if (!configuracionContabilidadService.contabilidadActiva()) {
@@ -96,55 +141,151 @@ public class GarantiaOrdenPrestamoServiceImpl implements GarantiaOrdenPrestamoSe
                 + prestamo.getCodigo() + " sin movimiento de garantía en cuentas de orden.");
             return null;
         }
-        long estado = prestamo.getIdEstado().longValue();
-        boolean terminado = estado == EstadoPrestamo.CANCELADO || estado == EstadoPrestamo.CANCELADO_ANTICIPADO;
+        Contexto ctx = contexto(prestamo, idEmpresa);
+        if (terminado && !ctx.bajaVigente) {
+            return darDeBaja(prestamo, ctx.empresa, ctx.idPlantilla, ctx.lineaDocumentos, fecha, usuario, causa);
+        }
+        if (vivo && ctx.bajaVigente) {
+            return anularBaja(prestamo, ctx, usuario, causa);
+        }
+        return null;
+    }
+
+    @Override
+    public ResultadoSincronizacionGarantia sincronizarExplicito(Long idPrestamo, Long idEmpresa, LocalDate fecha,
+            String usuario, String motivo) throws Throwable {
+        if (idPrestamo == null) {
+            throw new IncomeException("PARAMETRO_INVALIDO: idPrestamo es obligatorio");
+        }
+        if (fecha == null) {
+            throw new IncomeException("PARAMETRO_INVALIDO: la fecha contable de la baja es obligatoria (yyyy-MM-dd)");
+        }
+        if (fecha.isAfter(LocalDate.now())) {
+            throw new IncomeException("PARAMETRO_INVALIDO: la fecha " + fecha + " es futura");
+        }
+        // U-2: el usuario se valida lo primero (existe en el sistema).
+        String usuarioValido = usuarioValidacionService.validar(usuario);
+        Prestamo prestamo = prestamoDaoService.find(new Prestamo(), idPrestamo);
+        if (prestamo == null) {
+            throw new IncomeException("PRESTAMO_NO_ENCONTRADO: no existe el préstamo " + idPrestamo);
+        }
+        if (!configuracionContabilidadService.contabilidadActiva()) {
+            throw new IncomeException("La contabilidad de CRD está inactiva: no se mueve la garantía del préstamo "
+                + idPrestamo + " en cuentas de orden.");
+        }
+
+        ResultadoSincronizacionGarantia resultado = new ResultadoSincronizacionGarantia();
+        resultado.setIdPrestamo(idPrestamo);
+        resultado.setEstadoPrestamo(prestamo.getIdEstado());
+        resultado.setFecha(fecha);
+        resultado.setAccion(ResultadoSincronizacionGarantia.ACCION_SIN_CAMBIO);
+
+        boolean terminado = esTerminado(prestamo.getIdEstado());
         boolean vivo = EstadoPrestamo.esVivo(prestamo.getIdEstado());
         if (!terminado && !vivo) {
-            return null;
+            resultado.setMensaje("El préstamo " + idPrestamo + " está en estado " + prestamo.getIdEstado()
+                + ": C31 solo da de baja los CANCELADO (3) / CANCELADO_ANTICIPADO (4); la novación (5) va por C30.");
+            return resultado;
         }
+        Contexto ctx = contexto(prestamo, idEmpresa);
+        String causa = "sincronización explícita" + (motivo != null && !motivo.trim().isEmpty() ? " - " + motivo.trim() : "");
+        if (terminado && !ctx.bajaVigente) {
+            resultado.setIdAsiento(darDeBaja(prestamo, ctx.empresa, ctx.idPlantilla, ctx.lineaDocumentos, fecha,
+                usuarioValido, causa));
+            resultado.setAccion(ResultadoSincronizacionGarantia.ACCION_BAJA);
+            resultado.setBajaVigente(true);
+            resultado.setMensaje("Garantía del préstamo " + idPrestamo + " dada de baja al " + fecha
+                + " (asiento " + resultado.getIdAsiento() + ").");
+        } else if (vivo && ctx.bajaVigente) {
+            resultado.setIdAsiento(anularBaja(prestamo, ctx, usuarioValido, causa));
+            resultado.setAccion(ResultadoSincronizacionGarantia.ACCION_ANULACION);
+            resultado.setBajaVigente(false);
+            resultado.setMensaje("El préstamo " + idPrestamo + " está vivo: se anuló la baja de su garantía (asiento "
+                + resultado.getIdAsiento() + ").");
+        } else {
+            resultado.setBajaVigente(ctx.bajaVigente);
+            resultado.setIdAsiento(ctx.ultimaBajaActiva);
+            resultado.setMensaje(terminado
+                ? "La garantía del préstamo " + idPrestamo + " ya está dada de baja"
+                    + (ctx.ultimaBajaActiva != null ? " (asiento " + ctx.ultimaBajaActiva + ")" : "") + ": nada que hacer."
+                : "El préstamo " + idPrestamo + " está vivo y su garantía registrada: nada que hacer.");
+        }
+        return resultado;
+    }
 
-        Long empresa = resolverEmpresa(prestamo, idEmpresa);
-        Long idPlantilla = plantillaService.codigoByAlterno(PlantillasCredito.LEVANTAMIENTO_GARANTIA, empresa);
-        if (idPlantilla == null) {
+    /**
+     * C31c, control cronológico de la cancelación por cuotas: ¿hay pagos vigentes del préstamo con fecha
+     * posterior al día de la operación? Si los hay, el préstamo quedó sin cuotas pendientes porque las
+     * siguientes ya figuran pagadas por cobros posteriores (el re-proceso de un mes pasado sobre la copia
+     * de producción reabre el préstamo, le re-aplica el cobro del mes y lo encuentra «terminado»). La
+     * terminación no es de esta operación: no se da de baja (queda para su mes o para la vía explícita).
+     */
+    private boolean terminaPorPagosPosteriores(Prestamo prestamo, LocalDate fecha, LocalDateTime pagosHasta)
+            throws Throwable {
+        LocalDate dia = fecha != null ? fecha : LocalDate.now();
+        if (pagosHasta.toLocalDate().isAfter(dia)) {
+            dia = pagosHasta.toLocalDate();
+        }
+        long posteriores = cierreCarteraDaoService.contarPagosVigentesDesde(prestamo.getCodigo(), dia.plusDays(1));
+        if (posteriores > 0) {
+            System.out.println("  ℹ️ C31c sin baja de garantía - préstamo " + prestamo.getCodigo()
+                + ": quedó sin cuotas pendientes al " + dia + " pero " + posteriores
+                + " pago(s) vigente(s) tienen fecha posterior; la terminación no es de esta operación"
+                + " (si corresponde, POST /prst/sincronizarGarantia)");
+            return true;
+        }
+        return false;
+    }
+
+    /** Lo que hace falta para decidir y contabilizar: empresa, plantilla 26, línea del pagaré y neto de las bajas. */
+    private static final class Contexto {
+        Long empresa;
+        Long idPlantilla;
+        DetallePlantilla lineaDocumentos;
+        boolean bajaVigente;
+        Long ultimaBajaActiva;
+    }
+
+    private Contexto contexto(Prestamo prestamo, Long idEmpresa) throws Throwable {
+        Contexto ctx = new Contexto();
+        ctx.empresa = resolverEmpresa(prestamo, idEmpresa);
+        ctx.idPlantilla = plantillaService.codigoByAlterno(PlantillasCredito.LEVANTAMIENTO_GARANTIA, ctx.empresa);
+        if (ctx.idPlantilla == null) {
             throw new IncomeException("No existe la plantilla contable alterno " + PlantillasCredito.LEVANTAMIENTO_GARANTIA
-                + " (levantamiento de garantía) para la empresa " + empresa
+                + " (levantamiento de garantía) para la empresa " + ctx.empresa
                 + ": no se puede mover la garantía del préstamo " + prestamo.getCodigo() + " en cuentas de orden.");
         }
-        DetallePlantilla lineaDocumentos = lineaPlantilla(idPlantilla, AUX_DOCUMENTOS_GARANTIA);
+        ctx.lineaDocumentos = lineaPlantilla(ctx.idPlantilla, AUX_DOCUMENTOS_GARANTIA);
 
         List<Object[]> lineas = cierreCarteraDaoService.selectLineasBajaGarantia(prestamo.getCodigo(),
-            lineaDocumentos.getPlanCuenta().getCodigo(), marca(prestamo.getCodigo()));
+            ctx.lineaDocumentos.getPlanCuenta().getCodigo(), marca(prestamo.getCodigo()));
         double neto = 0.0;
-        Long ultimaBajaActiva = null;
         for (Object[] fila : lineas) {
             double valor = fila[2] != null ? ((Number) fila[2]).doubleValue() : 0.0;
             neto += valor;
             Long estadoAsiento = (Long) fila[1];
             if (valor > TOLERANCIA && estadoAsiento != null && estadoAsiento.intValue() == EstadoAsiento.ACTIVO) {
-                ultimaBajaActiva = (Long) fila[0];
+                ctx.ultimaBajaActiva = (Long) fila[0];
             }
         }
-        boolean bajaVigente = redondear(neto) > TOLERANCIA;
+        ctx.bajaVigente = redondear(neto) > TOLERANCIA;
+        return ctx;
+    }
 
-        if (terminado && !bajaVigente) {
-            return darDeBaja(prestamo, empresa, idPlantilla, lineaDocumentos, fecha, usuario, causa);
+    private Long anularBaja(Prestamo prestamo, Contexto ctx, String usuario, String causa) throws Throwable {
+        if (ctx.ultimaBajaActiva == null) {
+            throw new IncomeException("El préstamo " + prestamo.getCodigo() + " volvió a estar vivo y su garantía"
+                + " figura dada de baja en cuentas de orden, pero no se encontró el asiento de baja activo que anular.");
         }
-        if (vivo && bajaVigente) {
-            if (ultimaBajaActiva == null) {
-                throw new IncomeException("El préstamo " + prestamo.getCodigo() + " volvió a estar vivo y su garantía"
-                    + " figura dada de baja en cuentas de orden, pero no se encontró el asiento de baja activo que anular.");
-            }
-            if (usuario == null || usuario.trim().isEmpty()) {
-                throw new IncomeException("Falta el usuario para anular la baja de garantía del préstamo "
-                    + prestamo.getCodigo() + ".");
-            }
-            asientoService.anulaAsiento(ultimaBajaActiva, usuario, "C31: el préstamo " + prestamo.getCodigo()
-                + " volvió a estar vigente (" + (causa != null ? causa : "reapertura") + "): se anula la baja de su garantía");
-            System.out.println("  ↩️ C31 baja de garantía anulada - préstamo " + prestamo.getCodigo()
-                + " - asiento " + ultimaBajaActiva);
-            return ultimaBajaActiva;
+        if (usuario == null || usuario.trim().isEmpty()) {
+            throw new IncomeException("Falta el usuario para anular la baja de garantía del préstamo "
+                + prestamo.getCodigo() + ".");
         }
-        return null;
+        asientoService.anulaAsiento(ctx.ultimaBajaActiva, usuario, "C31: el préstamo " + prestamo.getCodigo()
+            + " volvió a estar vigente (" + (causa != null ? causa : "reapertura") + "): se anula la baja de su garantía");
+        System.out.println("  ↩️ C31 baja de garantía anulada - préstamo " + prestamo.getCodigo()
+            + " - asiento " + ctx.ultimaBajaActiva);
+        return ctx.ultimaBajaActiva;
     }
 
     private Long darDeBaja(Prestamo prestamo, Long empresa, Long idPlantilla, DetallePlantilla lineaDocumentos,

@@ -163,7 +163,8 @@ public class ReaperturaVigenteAlCorteServiceImpl implements ReaperturaVigenteAlC
         // C31: si su cancelación posterior al corte ya había dado de baja la garantía, la baja se anula (se
         // vuelve a generar cuando se re-aplique la cancelación en su propio mes). Este servicio no recibe
         // usuario: la anulación queda a nombre de quien modificó o registró el préstamo.
-        garantiaOrdenPrestamoService.sincronizar(prestamo, null, fechaCorte,
+        // C31c: estadoAnterior es el terminal de hoy: esta llamada solo puede anular, nunca dar de baja.
+        garantiaOrdenPrestamoService.sincronizar(prestamo, estadoAnterior, null, fechaCorte, null,
             prestamo.getUsuarioModificacion() != null ? prestamo.getUsuarioModificacion() : prestamo.getUsuarioRegistro(),
             "reapertura al corte " + fechaCorte);
 

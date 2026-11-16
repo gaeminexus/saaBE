@@ -992,4 +992,15 @@ public class CierreCarteraDaoServiceImpl implements CierreCarteraDaoService {
         }
         return resultado;
     }
+
+    @Override
+    public long contarPagosVigentesDesde(Long idPrestamo, LocalDate desde) throws Throwable {
+        Query query = em.createNativeQuery(
+                " SELECT COUNT(*) FROM CRD.PGPR g JOIN CRD.DTPR d ON d.DTPRCDGO = g.DTPRCDGO "
+                + " WHERE  d.PRSTCDGO = :prestamo AND NVL(g.PGPRANUL, 0) = 0 AND g.PGPRVLRR > 0.005 "
+                + "   AND  g.PGPRFCHA >= :desde ");
+        query.setParameter("prestamo", idPrestamo);
+        query.setParameter("desde", Date.valueOf(desde));
+        return aLong(query.getSingleResult()).longValue();
+    }
 }
