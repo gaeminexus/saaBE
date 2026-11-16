@@ -64,7 +64,32 @@ public class DireccionServiceImpl implements DireccionService {
         if (dir.getCodigo() == null) {
             dir.setEstado(Long.valueOf(Estado.ACTIVO));
         }
-        return direccionDaoService.save(dir, dir.getCodigo());
+        Direccion guardada = direccionDaoService.save(dir, dir.getCodigo());
+        desmarcarOtrosDomicilios(guardada);
+        return guardada;
+    }
+
+    /**
+     * Una sola dirección de domicilio por defecto por entidad (DISENO-DIRECCION-DOMICILIO-UNICA-Y-CIUDAD.md §2): si la
+     * guardada es un domicilio activo con porDefecto = 1, las demás domiciliarias activas de la entidad quedan en 0, en la
+     * misma transacción. Las de trabajo no se tocan.
+     */
+    private void desmarcarOtrosDomicilios(Direccion guardada) throws Throwable {
+        if (guardada == null || guardada.getEntidad() == null || guardada.getEntidad().getCodigo() == null) {
+            return;
+        }
+        boolean porDefecto = guardada.getPorDefecto() != null && guardada.getPorDefecto() == 1L;
+        boolean trabajo = guardada.getTrabajo() != null && guardada.getTrabajo() == 1L;
+        boolean activa = guardada.getEstado() == null || guardada.getEstado() == Estado.ACTIVO;
+        if (!porDefecto || trabajo || !activa) {
+            return;
+        }
+        for (Direccion otra : direccionDaoService.selectDomiciliosPorDefecto(guardada.getEntidad().getCodigo())) {
+            if (!otra.getCodigo().equals(guardada.getCodigo())) {
+                otra.setPorDefecto(0L);
+                direccionDaoService.save(otra, otra.getCodigo());
+            }
+        }
     }
 
     @Override

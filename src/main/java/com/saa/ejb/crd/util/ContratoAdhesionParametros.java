@@ -123,12 +123,15 @@ public final class ContratoAdhesionParametros {
         if (d != null) {
             if (d.getParroquia() != null) {
                 parroquia = texto(d.getParroquia().getNombre());
-                if (d.getParroquia().getCiudad() != null) {
-                    // En el modelo la parroquia cuelga de CRD.Ciudad (no de Cantón): la ciudad hace de cantón.
-                    canton = texto(d.getParroquia().getCiudad().getNombre());
-                    if (d.getParroquia().getCiudad().getProvincia() != null) {
-                        provincia = texto(d.getParroquia().getCiudad().getProvincia().getNombre());
-                    }
+            }
+            // Ciudad efectiva (DISENO-DIRECCION-DOMICILIO-UNICA-Y-CIUDAD.md §4): la de la dirección (combo) y, si no tiene,
+            // la de la parroquia. En el modelo la ciudad hace de cantón.
+            com.saa.model.crd.Ciudad ciudadEfectiva = d.getCiudad() != null ? d.getCiudad()
+                : (d.getParroquia() != null ? d.getParroquia().getCiudad() : null);
+            if (ciudadEfectiva != null) {
+                canton = texto(ciudadEfectiva.getNombre());
+                if (ciudadEfectiva.getProvincia() != null) {
+                    provincia = texto(ciudadEfectiva.getProvincia().getNombre());
                 }
             }
             barrio = texto(d.getBarrio());
@@ -231,7 +234,10 @@ public final class ContratoAdhesionParametros {
         }
     }
 
-    /** Domiciliaria: activa y no de trabajo; la marcada por defecto si hay, si no la primera. */
+    /**
+     * Domiciliaria: activa y no de trabajo; la marcada por defecto si hay, si no la primera. El servicio ya pasa solo el
+     * domicilio vigente ({@code DireccionDaoService.selectDomicilioVigente}); esto es defensa si llega una lista.
+     */
     private static Direccion direccionDomiciliaria(List<Direccion> direcciones) {
         Direccion primera = null;
         if (direcciones != null) {

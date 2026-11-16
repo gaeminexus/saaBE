@@ -246,4 +246,12 @@ public class Direccion implements Serializable {
 
     public String getBarrio() { return barrio; }
     public void setBarrio(String barrio) { this.barrio = barrio; }
+
+    /** Ciudad de la dirección, elegida por combo (CRD.CDDD) (sql/379). Respaldo en reportes: la de la parroquia. */
+    @ManyToOne
+    @JoinColumn(name = "CDDDCDGO", referencedColumnName = "CDDDCDGO")
+    private Ciudad ciudad;
+
+    public Ciudad getCiudad() { return ciudad; }
+    public void setCiudad(Ciudad ciudad) { this.ciudad = ciudad; }
 }

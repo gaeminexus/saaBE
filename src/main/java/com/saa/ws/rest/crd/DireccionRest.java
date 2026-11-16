@@ -76,6 +76,22 @@ public class DireccionRest {
         }
     }
 
+    /** Domicilio vigente de la entidad (regla única de DISENO-DIRECCION-DOMICILIO-UNICA-Y-CIUDAD.md §2). 204 si no tiene. */
+    @GET
+    @Path("/domicilioVigente/{idEntidad}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response domicilioVigente(@PathParam("idEntidad") Long idEntidad) {
+        try {
+            Direccion d = direccionDaoService.selectDomicilioVigente(idEntidad);
+            if (d == null) {
+                return Response.status(Response.Status.NO_CONTENT).build();
+            }
+            return Response.status(Response.Status.OK).entity(d).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al obtener el domicilio vigente: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
+    }
+
     @PUT
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)

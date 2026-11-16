@@ -434,7 +434,8 @@ public class FirmaContratoServiceImpl implements FirmaContratoService {
         }
         Long idEntidad = contrato.getEntidad() != null ? contrato.getEntidad().getCodigo() : null;
         List<Participe> participes = idEntidad != null ? participeDaoService.selectByEntidad(idEntidad) : null;
-        List<Direccion> direcciones = idEntidad != null ? direccionDaoService.selectByParent(idEntidad) : null;
+        Direccion domicilio = idEntidad != null ? direccionDaoService.selectDomicilioVigente(idEntidad) : null;
+        List<Direccion> direcciones = domicilio != null ? Collections.singletonList(domicilio) : null;
         return ContratoAdhesionParametros.armar(contrato,
             participes != null && !participes.isEmpty() ? participes.get(0) : null, direcciones, null, LocalDate.now());
     }
