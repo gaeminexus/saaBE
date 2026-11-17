@@ -9,6 +9,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import com.saa.ejb.crd.dao.PagoPensionComplementariaDaoService;
 import com.saa.ejb.crd.service.AporteService;
 import com.saa.ejb.crd.service.DetallePrestamoService;
 import com.saa.ejb.crd.service.EntidadService;
@@ -40,6 +41,7 @@ public class GeneracionG44ServiceImpl implements GeneracionG44Service {
     @EJB private ValorPagoPensionComplementariaService vppcService;
     @EJB private ParticipeJubiladoG44DaoService       cg44DaoService;
     @EJB private HistoricoG44Service                  historicoG44Service;
+    @EJB private PagoPensionComplementariaDaoService  pagoPensionDaoService;
 
     @Override
     public long generar(DetalleEjecucionReporte detalle) throws Throwable {
@@ -101,13 +103,27 @@ public class GeneracionG44ServiceImpl implements GeneracionG44Service {
         // Calcular fechaInicio del mes (necesario para cuotas y aportes del mes)
         LocalDateTime fechaInicio = LocalDateTime.of((int) anio, (int) mes, 1, 0, 0, 0);
 
-        // SUM aportes tipo 23 en el mes (para valorPension de ex-jubilados y cuotas)
-        List<Object[]> sumaAportesMesList = aporteService.selectSumaAportesTipo23EnRango(fechaInicio, fechaCorte);
+        // SUM aportes tipo 23 en el mes (para valorPension de ex-jubilados y cuotas).
+        // C32b: sin los negativos «PAGO PENSION RETENIDA …»: son la pensión de otro período, que se cuenta en su mes
+        // por PGPCVLRT (mapaRetenidoMes); si se sumaran aquí, ese mes de pensión saldría dos veces.
+        List<Object[]> sumaAportesMesList = aporteService.selectSumaAportesTipo23EnRangoSinPagoRetenido(fechaInicio, fechaCorte);
         Map<Long, Double> mapaAportesMes = new HashMap<>();
         for (Object[] fila : sumaAportesMesList) {
             Long cod = toLong(fila[0]); Double suma = toDouble(fila[1]);
             if (cod != null && suma != null) mapaAportesMes.put(cod, suma);
         }
+
+        // C32b (D-113): pensión retenida en origen del período (PGPC del mes con PGPCVLRT > 0 y PGPCDVRT = 0). Un
+        // retenido no tiene el débito tipo 23 de su pensión neta en el mes (C32: sin cuenta certificada no hay débito,
+        // devengo ni orden), pero sigue siendo jubilado con pensión: se suma su neto retenido a lo debitado en el mes
+        // (seguro y cruces, si los hay), que es exactamente lo que se habría debitado si se le hubiera pagado.
+        List<Object[]> retenidoMesList = pagoPensionDaoService.selectSumaRetenidoEnOrigenPorPeriodo(anio, mes);
+        Map<Long, Double> mapaRetenidoMes = new HashMap<>();
+        for (Object[] fila : retenidoMesList) {
+            Long cod = toLong(fila[0]); Double suma = toDouble(fila[1]);
+            if (cod != null && suma != null) mapaRetenidoMes.put(cod, suma);
+        }
+        System.out.println("G44 - Pensiones retenidas del periodo (C32b): " + mapaRetenidoMes.size() + " entidades");
 
         // SUM cuotas pagadas (estado=4) con fechaVencimiento en el mes
         List<Object[]> sumaCuotasList = detallePrestamoService.selectSumaCuotasPagadasPorEntidad(fechaInicio, fechaCorte);
@@ -259,7 +275,10 @@ public class GeneracionG44ServiceImpl implements GeneracionG44Service {
                 if (entidad == null) continue;
 
                 Long codigoEntidad = entidad.getCodigo();
-                Double valorPension    = Math.abs(mapaAportesMes.getOrDefault(codigoEntidad, 0.0));
+                // C32b: lo debitado en el mes + la pensión retenida del período (0 si no es retenido). Quien tiene el
+                // débito de su pensión no tiene PGPCVLRT en origen (C32 retiene solo cuando NO debita), así que no se duplica.
+                Double retenidoMes     = mapaRetenidoMes.getOrDefault(codigoEntidad, 0.0);
+                Double valorPension    = Math.abs(mapaAportesMes.getOrDefault(codigoEntidad, 0.0)) + retenidoMes;
                 Double saldoTotal      = mapaSaldo.getOrDefault(codigoEntidad, 0.0);
                 Double sumaCuotas      = mapaCuotasPagadas.getOrDefault(codigoEntidad, 0.0);
 
@@ -345,7 +364,7 @@ public class GeneracionG44ServiceImpl implements GeneracionG44Service {
 
                 cg44DaoService.save(exJubilado, null);
                 System.out.println("G44 INSERT ex-jubilado: " + identificacion
-                    + " (valorPension=" + valorPension + ", sumaCuotas=" + sumaCuotas
+                    + " (valorPension=" + valorPension + ", retenidoMes=" + retenidoMes + ", sumaCuotas=" + sumaCuotas
                     + ", valoresCompensados=" + valoresCompensados + ", valorNetoRecibir=" + valorNetoRecibir
                     + ", saldoCuenta=" + saldoTotal + ")");
                 contador++;

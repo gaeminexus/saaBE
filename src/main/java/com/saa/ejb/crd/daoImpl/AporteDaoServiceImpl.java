@@ -915,6 +915,28 @@ public class AporteDaoServiceImpl extends EntityDaoImpl<Aporte> implements Aport
 	}
 
 	@Override
+	@SuppressWarnings("unchecked")
+	public List<Object[]> selectSumaAportesTipo23EnRangoSinPagoRetenido(java.time.LocalDateTime fechaInicio, java.time.LocalDateTime fechaFin) throws Throwable {
+		System.out.println("AporteDaoServiceImpl.selectSumaAportesTipo23EnRangoSinPagoRetenido desde: " + fechaInicio + " hasta: " + fechaFin);
+		// C32b: misma exclusión por GLOSA que el ancla (selectFechaUltimoMovimientoNegativo): el pago de un retenido es
+		// la pensión de otro período; la G44 la cuenta en su mes con PGPCVLRT.
+		Query query = em.createQuery(
+			" select   a.entidad.codigo, sum(a.valor) " +
+			" from     Aporte a " +
+			" where    a.tipoAporte.codigo = :codigo " +
+			"   and    " + VIGENTE_JPQL +
+			"   and    a.fechaTransaccion >= :fechaInicio " +
+			"   and    a.fechaTransaccion <= :fechaFin " +
+			"   and    (a.glosa is null or a.glosa not like 'PAGO PENSION RETENIDA %') " +
+			" group by a.entidad.codigo "
+		);
+		query.setParameter("codigo", 23L);
+		query.setParameter("fechaInicio", fechaInicio);
+		query.setParameter("fechaFin", fechaFin);
+		return query.getResultList();
+	}
+
+	@Override
 	public Double selectSumaTotalPorTipoAporte(java.time.LocalDateTime fechaCorte, Long tipoAporte) throws Throwable {
 		System.out.println("AporteDaoServiceImpl.selectSumaTotalPorTipoAporte tipoAporte: " + tipoAporte + " fechaCorte: " + fechaCorte);
 		Query query = em.createQuery(
