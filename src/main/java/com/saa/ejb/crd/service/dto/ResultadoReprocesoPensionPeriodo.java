@@ -24,6 +24,10 @@ public class ResultadoReprocesoPensionPeriodo {
     private double totalExcedenteNoCruzado;
     /** Seguro de salud devengado del período sin orden al proveedor (este proceso no la genera). */
     private double seguroSinOrdenProveedor;
+    /** C32 (D-113): jubilados cuya pensión neta quedó retenida (sin cuenta certificada ni fecha de pago del banco). */
+    private int retenidos;
+    /** C32: total de pensión neta retenida (PGPCVLRT): no debitada, no devengada, sin orden. No suma en totalNeto. */
+    private double totalRetenido;
     private List<DetalleReprocesoPension> detalle = new ArrayList<>();
     private List<String> errores = new ArrayList<>();
 
@@ -153,6 +157,22 @@ public class ResultadoReprocesoPensionPeriodo {
 
     public void setSeguroSinOrdenProveedor(double seguroSinOrdenProveedor) {
         this.seguroSinOrdenProveedor = seguroSinOrdenProveedor;
+    }
+
+    public int getRetenidos() {
+        return retenidos;
+    }
+
+    public void setRetenidos(int retenidos) {
+        this.retenidos = retenidos;
+    }
+
+    public double getTotalRetenido() {
+        return totalRetenido;
+    }
+
+    public void setTotalRetenido(double totalRetenido) {
+        this.totalRetenido = totalRetenido;
     }
 
     public List<DetalleReprocesoPension> getDetalle() {

@@ -79,6 +79,39 @@ Por cada PGPC `REGISTRADA` con `PGPCVLRT > 0` y sin orden, en orden de período,
   motivo) para mostrar el botón «Pagar pendientes» en cada fila sin una consulta por jubilado. El botón por fila usa el
   `POST pgpc/pagarRetenidos` individual que ya existe.
 
+### 3.5 C32 — el re-proceso C20 y la aprobación en tesorería siguen la misma regla (D-113, 2026-11-16)
+
+> D-113 (líder del proyecto de cuadre): «si el jubilado no tiene cuenta bancaria certificada, no se genera pago ni
+> contabilidad de su pensión neta». La corrida ya lo hacía (§3.1, `d935f6b3`); el re-proceso de períodos pasados
+> (C20) y `aprobar` de CXP no. Rama `cuadre/c32-reproceso-pension-retenida`.
+
+- **`reprocesarDevengoJubilado`:** si la fila **no** trae `fechaPagoBanco` y `resolverCuentaSalida(idEntidad) == null`,
+  la pensión neta se retiene exactamente como en `registrarPgpcDelMes`: sin negativo de pensión del aporte 23,
+  `generarAsientoDevengoPension(…, 0)` (solo el seguro; sin líneas no hay asiento, D-034), PGPC REGISTRADA sin orden,
+  `PGPCVLRT` = neto, `PGPCDVRT = 0`, `PGPCIDAP` en el negativo del seguro (o nulo). Seguro y cruces, igual. Con
+  `fechaPagoBanco` (pago real del banco) no cambia nada. El detalle informa `neto = 0`, `retenido`, `estadoPago =
+  RETENIDO` y la novedad `PENSION_RETENIDA_SIN_CUENTA`; `reprocesarPeriodo` no llama al paso de pago y suma
+  `retenidos`/`totalRetenido`.
+- **Ancla:** igual que un mes retenido de la corrida: cuenta el negativo del seguro (y el del cruce); sin seguro ni
+  cruce el mes no deja negativo, y lo que evita regenerarlo es su PGPC completo (idempotencia por mes). El pago
+  posterior del retenido no mueve el ancla (glosa «PAGO PENSION RETENIDA», §3.2bis).
+- **`reprocesarPagoJubilado`:** la orden pendiente (sin fecha del banco) sale con `resolverCuentaSalida`, no con
+  `cuentaActivaSinValidar` (que queda solo para los datos del beneficiario de la orden confirmada con fecha del banco).
+  Sin salida no se crea la orden: un PGPC retenido responde `RETENIDO`; uno anterior a C32 (ya debitado y devengado)
+  responde `SIN_CUENTA_CERTIFICADA` y se regulariza aparte (contra-movimiento, reverso del devengo y `PGPCVLRT`, como
+  el procedimiento manual del re-proceso; no se automatiza porque el contra-movimiento se fecha con `now()`).
+- **`PagoProgramadoServiceImpl.aprobar`:** para las órdenes de origen `CRD_PAGO_PENSION_COMPLEMENTARIA` llama a
+  `PagoPensionComplementariaService.motivoSinSalidaParaAprobar(idPgpc, cuenta)` (misma `resolverCuentaSalida`): sin
+  cuenta activa única con certificado no se aprueba, en ninguna forma de pago; por transferencia, además, el número
+  de cuenta de la orden tiene que ser el de la cuenta certificada. Rechaza el lote entero con la lista (como el
+  control de POR_APROBAR). Para una orden vieja con otra cuenta: anularla (al sincronizar vuelve a pendiente, §3.4) y
+  pagarla con `pagarRetenidos`.
+- **No cambia (propuesta, requiere decisión):** el rechazo o reverso de un pago (`dejarPendientePorPagoNoRecibido`)
+  sigue dejando el devengo y `PGPCDVRT = 1` (§3.4, decisión del usuario 2026-11-09). Con D-113 lo coherente sería
+  reversar el devengo (D 2.3.01.10.03 / H 2.1.02.25.01) en el mes del rechazo y dejar `PGPCDVRT = 0`, para que el
+  «por pagar» no quede en el mayor; es un cambio de comportamiento en producción y de la decisión §3.4, así que C32
+  no lo hace. Lo mismo los históricos D3-B (§3.3).
+
 ### 3.3 Históricos (los que ya se devengaron) — `crd/sql/373` los mide
 - Backfill de `PGPCVLRT` = HABER 2.3.01.10.03 de su asiento de devengo y **`PGPCDVRT = 1`** (columna nueva
   `NUMBER(1)`, «el retenido ya está devengado»), en el DDL 374, con control.

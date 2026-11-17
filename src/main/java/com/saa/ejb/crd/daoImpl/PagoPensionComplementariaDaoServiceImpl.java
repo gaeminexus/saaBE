@@ -114,4 +114,23 @@ public class PagoPensionComplementariaDaoServiceImpl extends EntityDaoImpl<PagoP
         query.setParameter("mes", mes);
         return query.getResultList();
     }
+
+    @Override
+    public List<Object[]> selectSumaRetenidoEnOrigenPorPeriodo(Long anio, Long mes) throws Throwable {
+        System.out.println("Ingresa al metodo selectSumaRetenidoEnOrigenPorPeriodo de PagoPensionComplementaria"
+                + " - anio: " + anio + " mes: " + mes);
+        Query query = em.createQuery(
+                " select p.entidad.codigo, sum(p.valorRetenido) " +
+                " from   PagoPensionComplementaria p " +
+                " where  p.anio = :anio " +
+                " and    p.mes  = :mes " +
+                " and    p.valorRetenido > 0 " +
+                " and    p.devengadoRetenido = 0 " +
+                " and    p.estado <> :anulada " +
+                " group by p.entidad.codigo");
+        query.setParameter("anio", anio);
+        query.setParameter("mes", mes);
+        query.setParameter("anulada", Long.valueOf(EstadoPagoPensionComplementaria.ANULADA));
+        return query.getResultList();
+    }
 }

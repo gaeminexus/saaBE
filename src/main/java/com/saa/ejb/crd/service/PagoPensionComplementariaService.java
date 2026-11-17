@@ -300,6 +300,9 @@ public interface PagoPensionComplementariaService extends EntityService<PagoPens
      * orden de CxP confirmada con su egreso (D 2.3.01.10.03 / H banco) en la fecha del banco; sin
      * fecha, orden pendiente de aprobación.</li>
      * </ol>
+     * C32 (D-113): sin fecha de pago del banco y sin cuenta certificada ({@code resolverCuentaSalida}) la
+     * pensión neta queda RETENIDA como en la corrida normal: sin negativo, sin devengo de pensión y sin
+     * orden; PGPC REGISTRADA con PGPCVLRT = neto y PGPCDVRT = 0 (la paga {@link #pagarRetenidos}).
      * Idempotente: un jubilado con el PGPC del período completo no se vuelve a devengar, y un PGPC
      * con orden de pago vigente no genera otra. No toca meses posteriores.
      */
@@ -322,4 +325,16 @@ public interface PagoPensionComplementariaService extends EntityService<PagoPens
     com.saa.ejb.crd.service.dto.DetalleReprocesoPension reprocesarPagoJubilado(Long idPgpc, Long idEmpresa,
             Long idUsuario, Long idCuentaBancaria, java.time.LocalDate fechaPagoBanco, String referencia)
             throws Throwable;
+
+    /**
+     * C32 (D-113): control de tesorería antes de aprobar una orden de pensión complementaria (origen
+     * {@code CRD_PAGO_PENSION_COMPLEMENTARIA}, idOrigen = PGPC). Usa la misma regla que la corrida
+     * ({@code resolverCuentaSalida}: una sola cuenta activa con certificado bancario cargado).
+     *
+     * @param idPgpc                 PGPC de la orden
+     * @param cuentaBeneficiarioOrden número de cuenta del beneficiario de la orden; si no es null, debe ser el de
+     *                               la cuenta certificada (se pasa en transferencias)
+     * @return {@code null} si se puede aprobar; si no, el motivo
+     */
+    String motivoSinSalidaParaAprobar(Long idPgpc, String cuentaBeneficiarioOrden) throws Throwable;
 }

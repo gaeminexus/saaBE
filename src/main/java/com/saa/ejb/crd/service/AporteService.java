@@ -100,6 +100,9 @@ public interface AporteService extends EntityService<Aporte> {
     /** G44 ex-jubilados — SUM de aportes tipo 23 en el rango del mes (BETWEEN fechaInicio AND fechaFin) */
     List<Object[]> selectSumaAportesTipo23EnRango(LocalDateTime fechaInicio, LocalDateTime fechaFin) throws Throwable;
 
+    /** G44 ex-jubilados (C32b) — igual que el anterior sin los negativos «PAGO PENSION RETENIDA …» (pensión de otro período) */
+    List<Object[]> selectSumaAportesTipo23EnRangoSinPagoRetenido(LocalDateTime fechaInicio, LocalDateTime fechaFin) throws Throwable;
+
     /** G42 — Tipo de prestación (D-038): saldo al corte por entidad y grupo de prestación (TPAPTPPR J/C): {entidad, grupo, suma} */
     List<Object[]> selectSumaPorGrupoPrestacionPorEntidad(LocalDateTime fechaCorte) throws Throwable;
 

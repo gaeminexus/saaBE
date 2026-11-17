@@ -62,6 +62,17 @@ el modo padrón es un respaldo, el rol es lo que hay que usar.
 - sin fecha: orden **pendiente de aprobación** (sin cuenta, como la corrida normal) y PGPC EN_PAGO. Se confirma
   después en tesorería con `/pgtr/aprobar` + `/pgtr/confirmarManual` y su `fechaPago` (FECHA-CONTABLE-REPROCESO 3.6);
   el reconciliador (`/pgpc/sincronizarPagos`) pasa el PGPC a PAGADA.
+  **Desde C32 (D-113)** la orden pendiente solo se crea si el jubilado tiene salida (`resolverCuentaSalida`: una
+  sola cuenta activa con certificado) y lleva esa cuenta; sin salida, el paso 1 ya dejó la pensión **retenida** (ver
+  abajo) y no hay orden. Un PGPC anterior a C32 (ya debitado y devengado) sin salida responde
+  `estadoPago = SIN_CUENTA_CERTIFICADA` y tampoco genera orden.
+
+**Pensión retenida (C32, D-113; `DISENO-PENSION-RETENIDA-SIN-CUENTA.md` §3.5).** Si la fila no trae
+`fechaPagoBanco` y el jubilado no tiene salida, el paso 1 hace solo el seguro y los cruces: sin negativo de la
+pensión neta, sin línea de pensión en el devengo (si no queda ninguna línea, no hay asiento) y PGPC REGISTRADA con
+`PGPCVLRT` = neto y `PGPCDVRT = 0`. El detalle sale con `neto = 0`, `retenido` = neto, `estadoPago = RETENIDO` y la
+novedad `PENSION_RETENIDA_SIN_CUENTA`; el paso 2 no corre. El resumen suma `retenidos` y `totalRetenido` (que no
+entra en `totalNeto`). Lo paga `pagarRetenidos`/`procesarPendientes` cuando registre la cuenta.
 
 **Idempotente.** Un PGPC del período ya completo no se vuelve a devengar (`YA_EXISTIA`); un PGPC con orden vigente
 no genera otra. Mandar el mismo lote dos veces no duplica nada; si el paso 2 falló, volver a mandarlo solo crea el
@@ -114,9 +125,9 @@ así que el lote se manda tal cual. `idCuotaJunio` (alias de `idCuota`) es infor
 Respuesta 200 `{exito, mensaje, resultado}`; `resultado` (`ResultadoReprocesoPensionPeriodo`): `origenUniverso`
 (ROL/PADRON), `evaluados`, `generados`, `yaExistian`, `conError`, `pagosConfirmados`, `ordenesPendientes`,
 `totalPension`, `totalSeguro`, `totalCruzado`, `totalNeto`, `totalPagadoBanco`, `totalExcedenteNoCruzado`,
-`seguroSinOrdenProveedor`, `errores[]` y `detalle[]` por jubilado (`idPago` = PGPC, `estado`
-GENERADO/YA_EXISTIA/ERROR, `pension`, `seguro`, `cruzado`, `neto`, `excedenteNoCruzado`, `idAsientoDevengo`,
-`idPagoProgramado`, `estadoPago` CONFIRMADO/PENDIENTE/SIN_PAGO/ERROR, `fechaPago`, `idAsientoPago`, `novedades[]`,
+`seguroSinOrdenProveedor`, `retenidos`, `totalRetenido` (C32), `errores[]` y `detalle[]` por jubilado (`idPago` = PGPC, `estado`
+GENERADO/YA_EXISTIA/ERROR, `pension`, `seguro`, `cruzado`, `neto`, `retenido` (C32), `excedenteNoCruzado`, `idAsientoDevengo`,
+`idPagoProgramado`, `estadoPago` CONFIRMADO/PENDIENTE/SIN_PAGO/RETENIDO/SIN_CUENTA_CERTIFICADA/ERROR, `fechaPago`, `idAsientoPago`, `novedades[]`,
 `reaperturaAlCorte[]`). Un error de un jubilado no detiene a los demás. 4xx/422 solo por la prevalidación
 (`PARAMETRO_INVALIDO`, `USUARIO_NO_ENCONTRADO`, `PERIODO_CERRADO`, plantillas).
 

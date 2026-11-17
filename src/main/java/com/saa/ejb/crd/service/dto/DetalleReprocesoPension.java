@@ -15,13 +15,22 @@ public class DetalleReprocesoPension {
     private double pension;
     private double seguro;
     private double cruzado;
-    /** Neto devengado a pagar al jubilado (lo que sale al banco). */
+    /** Neto devengado a pagar al jubilado (lo que sale al banco). 0 si quedó retenido (C32). */
     private double neto;
+    /**
+     * C32 (D-113): pensión neta retenida (PGPCVLRT) por no tener cuenta bancaria activa única con certificado ni fecha
+     * de pago del banco. No se debita, no se devenga ni se ordena; la paga pagarRetenidos al registrar la cuenta.
+     */
+    private double retenido;
     /** Descuento del rol que no se pudo cruzar (sin préstamo, excede la cuota o la pensión). Queda en su aporte 23. */
     private double excedenteNoCruzado;
     private Long idAsientoDevengo;
     private Long idPagoProgramado;
-    /** CONFIRMADO (egreso con la fecha del banco), PENDIENTE (orden por aprobar), SIN_PAGO (neto 0) o ERROR. */
+    /**
+     * CONFIRMADO (egreso con la fecha del banco), PENDIENTE (orden por aprobar), SIN_PAGO (neto 0), RETENIDO (C32: sin
+     * cuenta certificada, sin orden), SIN_CUENTA_CERTIFICADA (C32: PGPC anterior ya devengado, sin salida: no se ordena)
+     * o ERROR.
+     */
     private String estadoPago;
     private LocalDate fechaPago;
     private Long idAsientoPago;
@@ -83,6 +92,14 @@ public class DetalleReprocesoPension {
 
     public void setNeto(double neto) {
         this.neto = neto;
+    }
+
+    public double getRetenido() {
+        return retenido;
+    }
+
+    public void setRetenido(double retenido) {
+        this.retenido = retenido;
     }
 
     public double getExcedenteNoCruzado() {

@@ -270,6 +270,11 @@ public class AporteServiceImpl implements AporteService {
     }
 
     @Override
+    public List<Object[]> selectSumaAportesTipo23EnRangoSinPagoRetenido(java.time.LocalDateTime fechaInicio, java.time.LocalDateTime fechaFin) throws Throwable {
+        return aporteDaoService.selectSumaAportesTipo23EnRangoSinPagoRetenido(fechaInicio, fechaFin);
+    }
+
+    @Override
     public List<Object[]> selectSumaPorGrupoPrestacionPorEntidad(java.time.LocalDateTime fechaCorte) throws Throwable {
         return aporteDaoService.selectSumaPorGrupoPrestacionPorEntidad(fechaCorte);
     }

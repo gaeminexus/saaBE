@@ -66,6 +66,14 @@ public interface AporteDaoService extends EntityDao<Aporte>{
 	List<Object[]> selectSumaAportesTipo23EnRango(LocalDateTime fechaInicio, LocalDateTime fechaFin) throws Throwable;
 
 	/**
+	 * C32b (G44, D-113): igual que {@link #selectSumaAportesTipo23EnRango} pero sin los negativos del pago de una
+	 * pensión retenida (glosa «PAGO PENSION RETENIDA …»). Ese débito se fecha el día del pago y es la pensión de OTRO
+	 * período (el del PGPC retenido), que la G44 ya cuenta en su propio mes por PGPCVLRT.
+	 * Retorna Object[]{Long codigoEntidad, Double suma}.
+	 */
+	List<Object[]> selectSumaAportesTipo23EnRangoSinPagoRetenido(LocalDateTime fechaInicio, LocalDateTime fechaFin) throws Throwable;
+
+	/**
 	 * Para G42 — Tipo de prestación (D-038): saldo vigente al corte por entidad y GRUPO de prestación
 	 * del tipo de aporte ({@code CRD.TPAP.TPAPTPPR}: J jubilación, C cesantía; los tipos sin grupo no
 	 * cuentan). Retorna Object[]{Long codigoEntidad, String grupo, Double suma}.

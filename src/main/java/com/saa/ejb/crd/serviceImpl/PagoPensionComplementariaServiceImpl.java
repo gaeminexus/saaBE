@@ -3121,6 +3121,12 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
     /** Sufijo de la glosa del movimiento negativo del seguro (mismo que registrarPgpcDelMes). */
     private static final String SUFIJO_GLOSA_SEGURO = " - SEGURO MEDICO";
 
+    /** C32: estado del pago en el detalle del re-proceso cuando la pensión neta queda retenida (D-113). */
+    private static final String ESTADO_PAGO_RETENIDO = "RETENIDO";
+
+    /** C32: PGPC ya debitado y devengado (anterior a C32) sin cuenta certificada: no se genera la orden. */
+    private static final String ESTADO_PAGO_SIN_CUENTA_CERTIFICADA = "SIN_CUENTA_CERTIFICADA";
+
     @Override
     @TransactionAttribute(TransactionAttributeType.NOT_SUPPORTED)
     public com.saa.ejb.crd.service.dto.ResultadoReprocesoPensionPeriodo reprocesarPeriodo(
@@ -3231,6 +3237,16 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
                 resumen.setTotalExcedenteNoCruzado(redondear(resumen.getTotalExcedenteNoCruzado()
                     + detalle.getExcedenteNoCruzado()));
             }
+            // C32 (D-113): pensión neta retenida sin cuenta certificada — sin débito, devengo ni orden. Los totales
+            // cuentan solo lo retenido en esta corrida (un YA_EXISTIA retenido tampoco se ordena).
+            if (ESTADO_PAGO_RETENIDO.equals(detalle.getEstadoPago())) {
+                if (!"YA_EXISTIA".equals(detalle.getEstado())) {
+                    resumen.setRetenidos(resumen.getRetenidos() + 1);
+                    resumen.setTotalRetenido(redondear(resumen.getTotalRetenido() + detalle.getRetenido()));
+                }
+                resumen.getDetalle().add(detalle);
+                continue;
+            }
 
             // El PAGO es un movimiento aparte, en su propia transacción: si falla, el devengo queda.
             if (detalle.getIdPago() != null) {
@@ -3272,7 +3288,8 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
             + " - Seguro $" + resumen.getTotalSeguro() + " - Cruzado $" + resumen.getTotalCruzado()
             + " - Neto $" + resumen.getTotalNeto() + " - Pagado banco $" + resumen.getTotalPagadoBanco()
             + " (" + resumen.getPagosConfirmados() + " confirmados, " + resumen.getOrdenesPendientes()
-            + " pendientes) - Excedente no cruzado $" + resumen.getTotalExcedenteNoCruzado());
+            + " pendientes) - Retenido sin cuenta certificada $" + resumen.getTotalRetenido() + " ("
+            + resumen.getRetenidos() + ") - Excedente no cruzado $" + resumen.getTotalExcedenteNoCruzado());
         return resumen;
     }
 
@@ -3326,6 +3343,10 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
             detalle.setPension(redondear(nvl(existente.getValor())));
             detalle.setSeguro(redondear(nvl(existente.getValorSeguro())));
             detalle.setNeto(netoDelPgpc(existente));
+            if (esRetenidoPendiente(existente)) {
+                detalle.setRetenido(redondear(nvl(existente.getValorRetenido())));
+                detalle.setEstadoPago(ESTADO_PAGO_RETENIDO);
+            }
             detalle.setIdAsientoDevengo(existente.getNumeroAsientoDevengo());
             detalle.setIdPagoProgramado(existente.getIdPagoProgramado());
             detalle.setMensaje("El PGPC " + existente.getCodigo() + " de " + periodo + " ya estaba completo: no se"
@@ -3457,21 +3478,42 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         double neto = fila.getNetoRol() != null
             ? Math.min(netoCalculado, Math.max(0.0, redondear(fila.getNetoRol()))) : netoCalculado;
         neto = redondear(Math.max(0.0, neto));
-        double retenido = redondear(netoCalculado - neto);
-        if (Math.abs(retenido - excedente) > TOLERANCIA) {
+        double diferenciaRol = redondear(netoCalculado - neto);
+        if (Math.abs(diferenciaRol - excedente) > TOLERANCIA) {
             detalle.getNovedades().add("NETO_ROL_DIFIERE: neto calculado $" + netoCalculado + ", neto del rol $"
                 + fila.getNetoRol() + ", sin cruzar $" + excedente + " — revisar el rol de esta entidad");
         }
 
+        // C32 (D-113, DISENO-PENSION-RETENIDA-SIN-CUENTA.md §3.5): misma regla que la corrida normal
+        // (registrarPgpcDelMes). Si la fila NO trae la fecha de pago del banco (no hay prueba de que el
+        // pago salió) y el jubilado no tiene salida (resolverCuentaSalida: una sola cuenta activa con
+        // certificado), la pensión neta se RETIENE: sin negativo del aporte 23, sin línea de pensión en el
+        // devengo y sin orden; el PGPC queda REGISTRADA con PGPCVLRT = neto y PGPCDVRT = 0, y la paga
+        // pagarRetenidos/procesarPendientes cuando registre la cuenta. Con fecha del banco el pago fue real
+        // (lista de Delta/banco) y se respeta como siempre. Seguro y cruces no cambian.
+        boolean retiene = false;
+        if (neto > TOLERANCIA && fila.getFechaPagoBanco() == null) {
+            retiene = resolverCuentaSalida(idEntidad) == null;
+        }
+        double netoRetenido = retiene ? neto : 0.0;
+        double netoAPagar = retiene ? 0.0 : neto;
+        if (retiene) {
+            detalle.getNovedades().add("PENSION_RETENIDA_SIN_CUENTA: neto $" + neto + " sin cuenta bancaria activa única"
+                + " con certificado y sin fecha de pago del banco; no se debita, no se devenga ni se ordena: queda"
+                + " pendiente en el aporte 23 (pagarRetenidos)");
+        }
+
         // 3. Movimientos negativos del aporte 23 (fecha del período): seguro y neto. El cruce ya
-        // generó el suyo dentro de pagarConAportes.
+        // generó el suyo dentro de pagarConAportes. Retenido: solo el seguro (el ancla avanza con él, igual
+        // que el seguro de un mes retenido en la corrida normal; sin seguro ni cruce el mes no deja negativo
+        // y su PGPC completo es lo que evita que se vuelva a generar).
         String glosa = "PAGO PENSION COMPLEMENTARIA " + mes + "/" + anio + " - Entidad " + idEntidad + " (REPROCESO C20)";
         double seguroPorDebitar = redondear(valorSeguro - seguroDebitado);
         Aporte aporteSeguro = seguroPorDebitar > TOLERANCIA
             ? crearMovimientoNegativo(entidad, seguroPorDebitar, glosa + SUFIJO_GLOSA_SEGURO, fechaHecho, usuario)
             : aporteSeguroPrevio;
-        Aporte aportePension = neto > TOLERANCIA
-            ? crearMovimientoNegativo(entidad, neto, glosa, fechaHecho, usuario) : null;
+        Aporte aportePension = netoAPagar > TOLERANCIA
+            ? crearMovimientoNegativo(entidad, netoAPagar, glosa, fechaHecho, usuario) : null;
 
         // 4. PGPC del período (completa el stub del seguro si existiera) y asiento de devengo.
         PagoPensionComplementaria pago = existente != null ? existente : new PagoPensionComplementaria();
@@ -3485,10 +3527,13 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         pago.setFecha(fecha);
         Aporte aporteReferencia = aportePension != null ? aportePension : aporteSeguro;
         pago.setIdAporte(aporteReferencia != null ? aporteReferencia.getCodigo() : null);
+        pago.setValorRetenido(netoRetenido);
+        pago.setDevengadoRetenido(0L);
         pago.setUsuarioRegistro(usuario);
         pago.setFechaRegistro(LocalDateTime.now());
         if (neto > TOLERANCIA) {
-            // El pago es otro paso (reprocesarPagoJubilado): queda REGISTRADA hasta tener su orden.
+            // El pago es otro paso (reprocesarPagoJubilado): queda REGISTRADA hasta tener su orden. Retenido:
+            // REGISTRADA sin orden hasta que pagarRetenidos lo pague.
             pago.setEstado(Long.valueOf(EstadoPagoPensionComplementaria.REGISTRADA));
         } else {
             pago.setEstado(Long.valueOf(EstadoPagoPensionComplementaria.PAGADA));
@@ -3496,7 +3541,8 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         }
         pago = pagoPensionDaoService.save(pago, pago.getCodigo());
 
-        Long idAsientoDevengo = generarAsientoDevengoPension(pago, entidad, idEmpresa, neto);
+        // Retenido: la pensión no se devenga hasta pagarse (0; si no queda línea, no hay asiento, D-034).
+        Long idAsientoDevengo = generarAsientoDevengoPension(pago, entidad, idEmpresa, netoAPagar);
         pago.setNumeroAsientoDevengo(idAsientoDevengo);
         pago = pagoPensionDaoService.save(pago, pago.getCodigo());
 
@@ -3508,11 +3554,16 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         detalle.setPension(valorTotal);
         detalle.setSeguro(valorSeguro);
         detalle.setCruzado(cruzado);
-        detalle.setNeto(neto);
+        detalle.setNeto(netoAPagar);
+        detalle.setRetenido(netoRetenido);
+        if (retiene) {
+            detalle.setEstadoPago(ESTADO_PAGO_RETENIDO);
+        }
         detalle.setExcedenteNoCruzado(excedente);
         detalle.setIdAsientoDevengo(idAsientoDevengo);
         System.out.println("  ✅ Re-proceso " + periodo + " - Entidad " + idEntidad + " - PGPC " + pago.getCodigo()
-            + " - pensión $" + valorTotal + " - seguro $" + valorSeguro + " - cruzado $" + cruzado + " - neto $" + neto
+            + " - pensión $" + valorTotal + " - seguro $" + valorSeguro + " - cruzado $" + cruzado + " - neto $" + netoAPagar
+            + (retiene ? " - RETENIDO sin cuenta certificada $" + netoRetenido : "")
             + (excedente > TOLERANCIA ? " - sin cruzar $" + excedente : "") + " - devengo " + idAsientoDevengo);
         return detalle;
     }
@@ -3528,6 +3579,14 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         com.saa.ejb.crd.service.dto.DetalleReprocesoPension detalle = new com.saa.ejb.crd.service.dto.DetalleReprocesoPension();
         detalle.setIdPago(idPgpc);
         detalle.setIdEntidad(pago.getEntidad() != null ? pago.getEntidad().getCodigo() : null);
+        // C32 (D-113): una pensión retenida no se paga por aquí; la paga pagarRetenidos cuando haya cuenta certificada.
+        if (esRetenidoPendiente(pago)) {
+            detalle.setRetenido(redondear(nvl(pago.getValorRetenido())));
+            detalle.setEstadoPago(ESTADO_PAGO_RETENIDO);
+            detalle.setMensaje("PGPC " + idPgpc + " con pensión retenida $" + detalle.getRetenido()
+                + ": sin orden; se paga con pagarRetenidos al registrar la cuenta certificada.");
+            return detalle;
+        }
         double neto = netoDelPgpc(pago);
         detalle.setNeto(neto);
         if (neto <= TOLERANCIA) {
@@ -3564,10 +3623,31 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         }
 
         Entidad entidad = pago.getEntidad();
+        // Con fecha y cuenta del banco: la orden nace CONFIRMADA y CxP contabiliza el egreso
+        // (D 2.3.01.10.03 / H banco) y su movimiento bancario en ESA fecha — mismo camino que el
+        // desembolso histórico (C15/C16). Sin fecha: orden pendiente de aprobación en tesorería.
+        boolean confirmar = fechaPagoBanco != null && idCuentaBancaria != null;
+        // C32 (D-113): la orden pendiente solo sale a una cuenta certificada (resolverCuentaSalida, la regla de la
+        // corrida normal), nunca a cuentaActivaSinValidar. Sin salida no se ordena: este PGPC ya se debitó y devengó
+        // antes de C32 (el devengo nuevo lo retiene), así que no se vuelve pendiente aquí — lo resuelve el
+        // procedimiento de AUDITORIA-PENSIONES-RETENIDAS §7 (contra-movimiento, reverso del devengo, PGPCVLRT).
+        CuentaBancariaParticipe cuentaJubilado;
+        if (confirmar) {
+            // El pago real ya ocurrió: los datos de la cuenta solo informan al beneficiario.
+            cuentaJubilado = cuentaActivaSinValidar(entidad.getCodigo());
+        } else {
+            cuentaJubilado = resolverCuentaSalida(entidad.getCodigo());
+            if (cuentaJubilado == null) {
+                detalle.setEstadoPago(ESTADO_PAGO_SIN_CUENTA_CERTIFICADA);
+                detalle.setMensaje("PGPC " + idPgpc + " (neto $" + neto + ", ya debitado y devengado) sin cuenta bancaria"
+                    + " activa única con certificado: no se genera la orden (D-113). Regularizar como pensión retenida.");
+                System.out.println("  ⚠ PGPC " + idPgpc + " sin cuenta certificada: no se genera la orden de $" + neto);
+                return detalle;
+            }
+        }
         BeneficiarioOcasional beneficiario = new BeneficiarioOcasional();
         beneficiario.setNombre(entidad.getRazonSocial());
         beneficiario.setIdentificacion(entidad.getNumeroIdentificacion());
-        CuentaBancariaParticipe cuentaJubilado = cuentaActivaSinValidar(entidad.getCodigo());
         if (cuentaJubilado != null) {
             beneficiario.setIdBancoExterno(cuentaJubilado.getBancoExterno() != null
                 ? cuentaJubilado.getBancoExterno().getCodigo() : null);
@@ -3583,10 +3663,6 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         List<com.saa.ejb.cxp.service.dto.LineaContablePago> desglose = new ArrayList<>();
         desglose.add(lineaPension);
 
-        // Con fecha y cuenta del banco: la orden nace CONFIRMADA y CxP contabiliza el egreso
-        // (D 2.3.01.10.03 / H banco) y su movimiento bancario en ESA fecha — mismo camino que el
-        // desembolso histórico (C15/C16). Sin fecha: orden pendiente de aprobación en tesorería.
-        boolean confirmar = fechaPagoBanco != null && idCuentaBancaria != null;
         LocalDate fechaOrden = confirmar ? fechaPagoBanco : (pago.getFecha() != null ? pago.getFecha() : LocalDate.now());
         Map<String, Object> respuesta = pagoProgramadoService.registrarPagoDeOrigenExterno(
             OrigenPagoExterno.CRD_PAGO_PENSION_COMPLEMENTARIA, pago.getCodigo(), idEmpresa,
@@ -3638,8 +3714,8 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
 
     /**
      * La única cuenta bancaria activa del jubilado, o {@code null} (cero o varias). Sin validar el
-     * certificado: solo completa los datos del beneficiario de una orden PENDIENTE (tesorería la
-     * revisa al aprobar); la orden confirmada con la fecha del banco no la necesita.
+     * certificado: desde C32 solo completa los datos del beneficiario de la orden CONFIRMADA con la
+     * fecha del banco (el pago ya ocurrió). La orden pendiente usa {@link #resolverCuentaSalida}.
      */
     private CuentaBancariaParticipe cuentaActivaSinValidar(Long idEntidad) throws Throwable {
         List<CuentaBancariaParticipe> cuentas = cuentaBancariaParticipeDaoService.selectByParent(idEntidad);
@@ -3834,9 +3910,7 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         List<PagoPensionComplementaria> pendientes = new ArrayList<>();
         if (todos != null) {
             for (PagoPensionComplementaria fila : todos) {
-                if (fila.getEstado() != null && fila.getEstado().longValue() == EstadoPagoPensionComplementaria.REGISTRADA
-                        && fila.getIdPagoProgramado() == null && nvl(fila.getValorRetenido()) > TOLERANCIA
-                        && fila.getAnio() != null && fila.getMes() != null) {
+                if (esRetenidoPendiente(fila) && fila.getAnio() != null && fila.getMes() != null) {
                     pendientes.add(fila);
                 }
             }
@@ -3844,6 +3918,13 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         pendientes.sort((a, b) -> a.getAnio().equals(b.getAnio())
             ? Long.compare(a.getMes(), b.getMes()) : Long.compare(a.getAnio(), b.getAnio()));
         return pendientes;
+    }
+
+    /** PGPC con pensión retenida por pagar: REGISTRADA, sin orden y con PGPCVLRT &gt; 0 (lo que paga pagarRetenidos). */
+    private boolean esRetenidoPendiente(PagoPensionComplementaria fila) {
+        return fila != null && fila.getEstado() != null
+            && fila.getEstado().longValue() == EstadoPagoPensionComplementaria.REGISTRADA
+            && fila.getIdPagoProgramado() == null && nvl(fila.getValorRetenido()) > TOLERANCIA;
     }
 
     private ResultadoPagoRetenidos.Linea lineaRetenido(PagoPensionComplementaria pago) {
@@ -4156,6 +4237,29 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         dejarPendientePorPagoNoRecibido(pago, "REVERSADO en CXP");
         pagoPensionDaoService.save(pago, pago.getCodigo());
         return true;
+    }
+
+    @Override
+    @TransactionAttribute(TransactionAttributeType.SUPPORTS)
+    public String motivoSinSalidaParaAprobar(Long idPgpc, String cuentaBeneficiarioOrden) throws Throwable {
+        PagoPensionComplementaria pago = idPgpc != null
+            ? pagoPensionDaoService.find(new PagoPensionComplementaria(), idPgpc) : null;
+        if (pago == null || pago.getEntidad() == null) {
+            return "la orden no apunta a un PGPC existente (" + idPgpc + "); no se puede verificar la cuenta del jubilado";
+        }
+        Long idEntidad = pago.getEntidad().getCodigo();
+        // Misma regla que la corrida y pagarRetenidos. ERR_CERTIFICADO_NO_VERIFICABLE (catálogo) se propaga: aborta.
+        CuentaBancariaParticipe cuenta = resolverCuentaSalida(idEntidad);
+        if (cuenta == null) {
+            return "el jubilado (entidad " + idEntidad + ", PGPC " + idPgpc + ") no tiene una cuenta bancaria activa"
+                + " única con certificado bancario cargado";
+        }
+        if (cuentaBeneficiarioOrden != null && cuenta.getNumeroCuenta() != null
+                && !cuentaBeneficiarioOrden.trim().equals(cuenta.getNumeroCuenta().trim())) {
+            return "la cuenta de destino de la orden no es la cuenta certificada del jubilado (entidad " + idEntidad
+                + ", PGPC " + idPgpc + "); anule la orden (al sincronizar vuelve a pendiente) y páguela con pagarRetenidos";
+        }
+        return null;
     }
 
     // ========================================================================

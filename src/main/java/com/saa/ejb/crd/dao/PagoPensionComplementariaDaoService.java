@@ -66,4 +66,13 @@ public interface PagoPensionComplementariaDaoService extends EntityDao<PagoPensi
      * @throws Throwable : Excepcion
      */
     List<PagoPensionComplementaria> selectByPeriodo(Long anio, Long mes) throws Throwable;
+
+    /**
+     * C32b (G44, D-113): pensión retenida EN ORIGEN de un período, por jubilado: PGPC del período con PGPCVLRT &gt; 0 y
+     * PGPCDVRT = 0 (no se debitó ni devengó en su mes por no tener cuenta certificada), no anulado. Cuenta aunque después
+     * lo haya pagado {@code pagarRetenidos} (ese débito se fecha el día del pago y la G44 no lo suma en ese mes).
+     * Los PGPCDVRT = 1 (rechazo de un pago ya debitado en su mes) no van: su débito original sigue en el mes.
+     * Una fila {@code {idEntidad, suma de PGPCVLRT}} por jubilado.
+     */
+    List<Object[]> selectSumaRetenidoEnOrigenPorPeriodo(Long anio, Long mes) throws Throwable;
 }
