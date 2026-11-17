@@ -84,3 +84,14 @@ Paga, a todo jubilado con pendientes y salida válida, sus meses pendientes (una
                  "errores": [] } }
 ```
 Un jubilado con error no detiene al resto: va en `errores` y `conError`.
+
+## C32 — re-proceso y aprobación en tesorería (D-113)
+
+- `POST /pgpc/reprocesarPeriodo` (C20): una fila sin `fechaPagoBanco` de un jubilado sin cuenta certificada deja la
+  pensión **retenida** igual que la corrida (PGPC REGISTRADA, `PGPCVLRT` = neto, `PGPCDVRT = 0`, sin débito, devengo
+  ni orden). El detalle trae `retenido` y `estadoPago = RETENIDO`; el resumen `retenidos` y `totalRetenido`. Aparece en
+  `GET /retenidos` y se paga con `pagarRetenidos`/`procesarPendientes`.
+- `POST /pgtr/aprobar`: una orden de pensión complementaria no se aprueba si el jubilado no tiene una cuenta activa
+  única con certificado (cualquier forma de pago) o, por transferencia, si la cuenta de la orden no es esa. Mensaje:
+  «No se puede aprobar: N pago(s) de pensión complementaria sin cuenta bancaria certificada del jubilado (D-113) …».
+- Detalle en `DISENO-PENSION-RETENIDA-SIN-CUENTA.md` §3.5.

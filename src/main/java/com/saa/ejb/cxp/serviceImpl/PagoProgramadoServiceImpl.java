@@ -1534,6 +1534,26 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 			}
 		}
 
+		// C32 (D-113, DISENO-PENSION-RETENIDA-SIN-CUENTA.md §3.5): la pensión de un jubilado solo sale a su cuenta
+		// bancaria activa única CON certificado, en cualquier forma de pago (la misma regla que la corrida usa para
+		// generar la orden). Por transferencia, además, la cuenta de la orden tiene que ser esa. Sin eso no se aprueba:
+		// la pensión queda retenida y se paga con pagarRetenidos al registrar la cuenta.
+		List<String> pensionesSinSalida = new ArrayList<>();
+		for (PagoProgramado pago : pagos) {
+			if (com.saa.rubros.OrigenPagoExterno.CRD_PAGO_PENSION_COMPLEMENTARIA.equals(pago.getOrigenExterno())) {
+				String motivo = pagoPensionComplementariaService.motivoSinSalidaParaAprobar(pago.getIdOrigen(),
+						fp == FormaPagoProgramado.TRANSFERENCIA ? pago.getBeneficiarioCuenta() : null);
+				if (motivo != null) {
+					pensionesSinSalida.add("Pago " + pago.getId() + ": " + motivo);
+				}
+			}
+		}
+		if (!pensionesSinSalida.isEmpty()) {
+			throw new IncomeException("No se puede aprobar: " + pensionesSinSalida.size()
+					+ " pago(s) de pensión complementaria sin cuenta bancaria certificada del jubilado (D-113). "
+					+ pensionesSinSalida);
+		}
+
 		// "agruparEnUnCheque" sólo aplica con formaPago=CHEQUE; el frontend lo manda
 		// sólo cuando de verdad aplica y omite la clave en el resto de los casos, así
 		// que acá se trata ausente y false igual (Boolean.TRUE.equals, no unboxing).
