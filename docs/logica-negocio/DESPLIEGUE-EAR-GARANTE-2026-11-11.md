@@ -1,6 +1,20 @@
 # Despliegue del EAR «pago de préstamo con aportes del garante» (2026-11-11)
 
-> **Último: `decimo-anticipado-1116`** = **todo `main`** (saaBE `19647185`, saaFE `a42b63a`), sobre `direccion-1116`
+> **Último: `precancelar-vencido-1118`** (URGENTE) = **todo `main`** de saaBE en `d022ca9b`, solo `saaBE.war` cambiado
+> sobre `decimo-anticipado-1116` (`SaaFE.war` idéntico, `9A223E35…7C2566`; no trae el FE `5f6cf08` de laptop1).
+> «Cancelar el crédito» de un préstamo con **todas** las cuotas vencidas ya no falla con `SIN_CUOTAS_FUTURAS` al
+> procesarse: paga lo exigible y deja el préstamo CANCELADO (3) (`crd/CORRECCION-PRECANCELAR-SIN-CUOTAS-FUTURAS.md`).
+> Trae también C32/C32b del cuadre (re-proceso de pensión con retenida, G44 con retenidos; sin SQL ni columnas nuevas).
+> - ⛔ Contiene `decimo-anticipado-1116`: si ese no se desplegó, **`rhh/sql/e3-21` antes** (ORA-00904 en `RHH.LQBS`).
+> - `F:\ears\asoprep\precancelar-vencido-1118\SaaEAR.ear` — SHA-256 `685F6C545CCEF710856CC7137CC9535F54D5B35769EC348B97DF49EE0F68748F`
+>   (3 partes). `saaBE.war` `C3CB19BE67B2ED738E7232284F6B2093A1040AFBCFE14BBEA96BF84465DC0A0E` (`mvn -o package` sobre
+>   `git archive` de `d022ca9b`).
+> - Humo: reprocesar el cobro **286** (sigue aprobado; el error hizo rollback) → préstamo CANCELADO (3), cuotas
+>   pagadas, sin PGPR de capital futuro. Una precancelación con cuotas futuras sigue en CANCELADO_ANTICIPADO (4).
+> - Vuelta atrás: `decimo-anticipado-1116`. Ojo con el reverso: anular esa precancelación deja el préstamo VIGENTE (2),
+>   no DE_PLAZO_VENCIDO (8) — igual que hoy con cualquier precancelación.
+>
+> Anterior: **`decimo-anticipado-1116`** = **todo `main`** (saaBE `19647185`, saaFE `a42b63a`), sobre `direccion-1116`
 > de omen1 (`DESPLIEGUE-EAR-DIRECCION-2026-11-16.md`): décimo tercero pagado por anticipado
 > (`rhh/DISENO-DECIMO-TERCERO-ANTICIPADO.md`), más lo de omen1 (dirección única, requiere `crd/sql/379`, ya corrido) y
 > el cuadre C30/C31 (baja de garantía, sin SQL).
