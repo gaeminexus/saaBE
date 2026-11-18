@@ -526,6 +526,42 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 			}
 			out.put(g, c);
 		}
+		// Saldo real de cada cuenta por regularizar (todos los asientos activos a hoy) frente a lo que explican las novedades.
+		List<?> filas = em.createNativeQuery("SELECT p.PLNNCNTA, p.PLNNNMBR,"
+				+ " (SELECT NVL(SUM(NVL(d.DTASDBEE, 0) - NVL(d.DTASHBRR, 0)), 0) FROM CNT.DTAS d JOIN CNT.ASNT a ON a.ASNTCDGO = d.ASNTCDGO AND a.ASNTESTD IN (1, 3)"
+				+ "   WHERE d.PLNNCDGO = p.PLNNCDGO),"
+				+ " (SELECT NVL(SUM(CASE l.LNNVSNTD WHEN 'D' THEN l.LNNVSLDO ELSE -l.LNNVSLDO END), 0) FROM CNT.LNNV l JOIN CNT.NVDD n ON n.NVDDCDGO = l.NVDDCDGO"
+				+ "   WHERE l.PLNNCDGO = p.PLNNCDGO AND l.LNNVESTD <> 4 AND n.NVDDESTD BETWEEN 2 AND 6),"
+				+ " (SELECT COUNT(*) FROM CNT.LNNV l JOIN CNT.NVDD n ON n.NVDDCDGO = l.NVDDCDGO WHERE l.PLNNCDGO = p.PLNNCDGO AND l.LNNVESTD IN (1, 2)"
+				+ "   AND n.NVDDESTD BETWEEN 2 AND 6),"
+				+ " (SELECT NVL(SUM(CASE l.LNNVSNTD WHEN 'D' THEN l.LNNVVLOR ELSE -l.LNNVVLOR END), 0) FROM CNT.LNNV l JOIN CNT.NVDD n ON n.NVDDCDGO = l.NVDDCDGO"
+				+ "   WHERE l.PLNNCDGO = p.PLNNCDGO AND l.LNNVESTD <> 4 AND n.NVDDESTD BETWEEN 2 AND 7)"
+				+ " FROM CNT.PLNN p WHERE p.PJRQCDGO = :e AND p.PLNNCNTA IN " + IN_CUENTAS + " ORDER BY p.PLNNCNTA").setParameter("e", idEmpresa).getResultList();
+		List<Map<String, Object>> cuentas = new ArrayList<Map<String, Object>>();
+		long movimientos = 0;
+		for (Object o : filas) {
+			Object[] f = (Object[]) o;
+			double libros = r2(d0(f[2])), pendiente = r2(d0(f[3])), enNovedades = r2(d0(f[5]));
+			long n = aLong(f[4]);
+			if (Math.abs(libros) < 0.005 && Math.abs(pendiente) < 0.005 && n == 0) {
+				continue;
+			}
+			movimientos += n;
+			Map<String, Object> c = new LinkedHashMap<String, Object>();
+			c.put("cuenta", f[0]);
+			c.put("nombre", f[1]);
+			c.put("saldoLibros", libros);
+			c.put("naturaleza", libros >= 0 ? "deudor" : "acreedor");
+			c.put("pendienteNovedades", pendiente);
+			c.put("resueltoEnNovedades", r2(enNovedades - pendiente));
+			c.put("sinNovedad", r2(libros - enNovedades));
+			c.put("movimientosPendientes", n);
+			cuentas.add(c);
+		}
+		@SuppressWarnings("unchecked")
+		Map<String, Object> pr = (Map<String, Object>) out.get(GRUPO_REGULARIZAR);
+		pr.put("movimientosPendientes", movimientos);
+		pr.put("cuentas", cuentas);
 		return out;
 	}
 
