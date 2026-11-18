@@ -1,0 +1,77 @@
+package com.saa.ejb.cnt.service;
+
+import java.util.List;
+import java.util.Map;
+
+import com.saa.ejb.cnt.service.dto.AccionNovedadV2;
+
+import jakarta.ejb.Local;
+
+/**
+ * C34 — Seguimiento de Novedades v2 (Contabilidad > Procesos > Seguimiento Novedades v2).
+ *
+ * <p>Pantalla pensada para que el usuario de ASOPREP siga cada novedad por sí mismo. Tres grupos calculados: POR_REGULARIZAR
+ * (la novedad tiene líneas en CNT.LNNV: se justifican hasta saldo 0, con reparto a cuentas), PEDIDO (requerimientos
+ * vigentes: se responden) e INFORMATIVA (se da por conocida). Sin control de cuatro ojos (aprobación del líder,
+ * 18-nov-2026): lo registrado cuenta de inmediato y se anula con motivo. Cerrar = la resolución está completa y
+ * estructurada para la pasada v8 del re-proceso; no genera asientos. Diseño: cuadreSuper
+ * 03-trabajo/cambios-saa/c34-novedades-v2/C34-NOVEDADES-V2-DISENO.md.</p>
+ */
+@Local
+public interface SeguimientoNovedadV2Service {
+
+	/** Contadores por grupo y estado visible (mes opcional: null = todos). */
+	Map<String, Object> resumen(Long idEmpresa, Long anio, Long mes) throws Throwable;
+
+	/** Bandeja: una fila por novedad en seguimiento (sin BORRADOR, ANULADA ni REEMPLAZADA). */
+	List<Map<String, Object>> bandeja(Long idEmpresa, Long anio, Long mes, String grupo, String area, String estado,
+			String texto) throws Throwable;
+
+	/** Fila de la bandeja de una novedad (para refrescar el grid después de una acción). */
+	Map<String, Object> fila(Long idNovedad) throws Throwable;
+
+	/** Detalle completo: textos, cifras, líneas con justificaciones y reparto, pedidos, detalle de origen, decisiones. */
+	Map<String, Object> detalle(Long idNovedad) throws Throwable;
+
+	/** Decisiones por descripción; primero las sugeridas para la novedad (las que ya cita y las más usadas en su módulo). */
+	List<Map<String, Object>> buscarDecisiones(Long idEmpresa, Long idNovedad, String texto) throws Throwable;
+
+	/** Cuentas contables de movimiento (no por regularizar) por código o nombre. */
+	List<Map<String, Object>> buscarCuentas(Long idEmpresa, String texto) throws Throwable;
+
+	/** Préstamos por idAsoprep, cédula o nombre del partícipe. */
+	List<Map<String, Object>> buscarPrestamos(String texto) throws Throwable;
+
+	/** Partícipes por cédula o nombre. */
+	List<Map<String, Object>> buscarParticipes(String texto) throws Throwable;
+
+	/** Cuotas de un préstamo (para el reparto a una cuota). */
+	List<Map<String, Object>> cuotasPrestamo(Long idPrestamo) throws Throwable;
+
+	/** Justifica una o varias líneas de una misma novedad (total o parcial) con su reparto a cuentas. */
+	Map<String, Object> justificar(AccionNovedadV2 a) throws Throwable;
+
+	/** Anula una justificación (con motivo); el saldo de la línea vuelve. Un cruce anula sus dos mitades. */
+	Map<String, Object> anularJustificacion(Long idJustificacion, AccionNovedadV2 a) throws Throwable;
+
+	/** Responde un pedido; queda atendido de inmediato (sin revisión de otro usuario). */
+	Map<String, Object> responder(Long idRequerimiento, AccionNovedadV2 a) throws Throwable;
+
+	/** Anula una respuesta (con motivo); el pedido vuelve a pendiente. */
+	Map<String, Object> anularRespuesta(Long idRespuesta, AccionNovedadV2 a) throws Throwable;
+
+	/** Cierra la novedad si cumple la regla de su grupo. Devuelve la fila actualizada. */
+	Map<String, Object> cerrar(Long idNovedad, AccionNovedadV2 a) throws Throwable;
+
+	/** Da por conocidas una o varias informativas. Devuelve las filas actualizadas. */
+	Map<String, Object> darPorConocidas(AccionNovedadV2 a) throws Throwable;
+
+	/** Reabre una novedad cerrada (motivo obligatorio). Devuelve la fila actualizada. */
+	Map<String, Object> reabrir(Long idNovedad, AccionNovedadV2 a) throws Throwable;
+
+	/**
+	 * Respuestas estructuradas para exportar: una fila por cuenta destino de cada justificación vigente o respuesta.
+	 * {@code formato} = "reproceso" (solo números internos) o "asoprep" (con idAsoprep, cédula y nombre).
+	 */
+	List<Map<String, Object>> exportar(Long idEmpresa, Long anio, Long mes, String formato) throws Throwable;
+}

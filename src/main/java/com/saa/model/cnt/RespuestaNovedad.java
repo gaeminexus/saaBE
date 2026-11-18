@@ -128,4 +128,34 @@ public class RespuestaNovedad implements Serializable {
 	public void setFechaRegistro(LocalDateTime fechaRegistro) { this.fechaRegistro = fechaRegistro; }
 	public String getUsuarioRegistro() { return usuarioRegistro; }
 	public void setUsuarioRegistro(String usuarioRegistro) { this.usuarioRegistro = usuarioRegistro; }
+	/** C34: monto que mueve la respuesta (reparto en CNT.RPNV). */
+	@Basic
+	@Column(name = "RSNVMNTO")
+	private Double monto;
+	public Double getMonto() { return monto; }
+	public void setMonto(Double monto) { this.monto = monto; }
+	/** C34: fecha del hecho. */
+	@Basic
+	@Column(name = "RSNVFCHH")
+	private java.time.LocalDate fechaHecho;
+	public java.time.LocalDate getFechaHecho() { return fechaHecho; }
+	public void setFechaHecho(java.time.LocalDate fechaHecho) { this.fechaHecho = fechaHecho; }
+	/** C34: tipo de documento de respaldo. */
+	@Basic
+	@Column(name = "RSNVTPDC", length = 30)
+	private String tipoDocumento;
+	public String getTipoDocumento() { return tipoDocumento; }
+	public void setTipoDocumento(String tipoDocumento) { this.tipoDocumento = tipoDocumento; }
+	/** C34: número del documento. */
+	@Basic
+	@Column(name = "RSNVNMDC", length = 100)
+	private String numeroDocumento;
+	public String getNumeroDocumento() { return numeroDocumento; }
+	public void setNumeroDocumento(String numeroDocumento) { this.numeroDocumento = numeroDocumento; }
+	/** C34: códigos de CNT.DONV marcados en la respuesta, separados por coma. */
+	@Basic
+	@Column(name = "RSNVDONV", length = 4000)
+	private String filasDetalle;
+	public String getFilasDetalle() { return filasDetalle; }
+	public void setFilasDetalle(String filasDetalle) { this.filasDetalle = filasDetalle; }
 }
