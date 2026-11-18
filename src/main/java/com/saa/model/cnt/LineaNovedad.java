@@ -176,4 +176,10 @@ public class LineaNovedad implements Serializable {
 	public void setFechaRegistro(LocalDateTime fechaRegistro) { this.fechaRegistro = fechaRegistro; }
 	public String getUsuarioRegistro() { return usuarioRegistro; }
 	public void setUsuarioRegistro(String usuarioRegistro) { this.usuarioRegistro = usuarioRegistro; }
+	/** C34: descripción del movimiento para el usuario (LNNVDSUS). */
+	@Basic
+	@Column(name = "LNNVDSUS", length = 500)
+	private String descripcionUsuario;
+	public String getDescripcionUsuario() { return descripcionUsuario; }
+	public void setDescripcionUsuario(String descripcionUsuario) { this.descripcionUsuario = descripcionUsuario; }
 }

@@ -164,6 +164,64 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 		return q;
 	}
 
+	static final java.util.regex.Pattern MARCA_PERSONA = java.util.regex.Pattern.compile("\\{(entidad|prestamo):(\\d+)\\}");
+
+	/**
+	 * Resuelve en vivo las marcas de persona de los textos para el usuario: {entidad:N} → nombre (cédula, código del
+	 * partícipe) y {prestamo:N} (idAsoprep) → «N de nombre (cédula)». Los textos guardados (y el expediente) solo llevan el
+	 * número interno; el nombre y la cédula salen de CRD.ENTD al mostrar (pedido del líder, 18-nov-2026).
+	 */
+	private String personas(String texto) {
+		if (texto == null || texto.indexOf('{') < 0) {
+			return texto;
+		}
+		java.util.regex.Matcher m = MARCA_PERSONA.matcher(texto);
+		StringBuffer sb = new StringBuffer();
+		while (m.find()) {
+			Long n = Long.valueOf(m.group(2));
+			String r;
+			if ("entidad".equals(m.group(1))) {
+				List<?> f = em.createNativeQuery("SELECT e.ENTDRZNS, e.ENTDNMID, (SELECT MAX(pt.PRTCCDAL) FROM CRD.PRTC pt WHERE pt.ENTDCDGO = e.ENTDCDGO)"
+						+ " FROM CRD.ENTD e WHERE e.ENTDCDGO = :n").setParameter("n", n).getResultList();
+				if (f.isEmpty()) {
+					r = "entidad " + n;
+				} else {
+					Object[] x = (Object[]) f.get(0);
+					r = aStr(x[0]) + " (cédula " + aStr(x[1]) + (x[2] == null ? "" : ", partícipe " + x[2]) + ")";
+				}
+			} else {
+				List<?> f = em.createNativeQuery("SELECT e.ENTDRZNS, e.ENTDNMID FROM CRD.PRST p JOIN CRD.ENTD e ON e.ENTDCDGO = p.ENTDCDGO WHERE p.PRSTIDAS = :n")
+						.setParameter("n", n).getResultList();
+				if (f.isEmpty()) {
+					r = String.valueOf(n);
+				} else {
+					Object[] x = (Object[]) f.get(0);
+					r = n + " de " + aStr(x[0]) + " (cédula " + aStr(x[1]) + ")";
+				}
+			}
+			m.appendReplacement(sb, java.util.regex.Matcher.quoteReplacement(r));
+		}
+		m.appendTail(sb);
+		return sb.toString();
+	}
+
+	/**
+	 * Glosa de asiento sin rutas ni códigos del re-proceso (sql/…, scripts/…, bloque NN, DEXB n, CBCR/APRT n): lo que queda
+	 * se muestra; si no queda nada útil, el nombre de la cuenta del movimiento.
+	 */
+	static String glosaUsuario(String glosa, String cuentaMovimiento) {
+		String g = glosa == null ? "" : glosa;
+		g = g.replaceAll("\\b(sql|scripts|lotes|resultados)/[^\\s,;)]*", "")
+				.replaceAll("(?i)\\bbloque \\d+", "")
+				.replaceAll("\\(?\\b(TSR\\.)?DEXB \\d+[^)]*\\)?", "")
+				.replaceAll("(?i)\\b(insertad[oa]|re-fechad[oa]|generad[oa]) por\\b", "")
+				.replaceAll("\\(\\s*\\)", "").replaceAll("\\s{2,}", " ").replaceAll("^[\\s,;:·-]+|[\\s,;:·-]+$", "");
+		if (g.length() < 12 && cuentaMovimiento != null) {
+			return "Movimiento en " + cuentaMovimiento.toLowerCase(Locale.ROOT) + (g.isEmpty() ? "" : " (" + g + ")");
+		}
+		return g;
+	}
+
 	private String usuario(AccionNovedadV2 a) {
 		return usuarioValidacionService.validar(a == null ? null : a.getUsuario());
 	}
@@ -305,7 +363,7 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 		m.put("periodo", mesTexto(aLong(f[1]), aLong(f[2])));
 		m.put("modulo", f[3]);
 		m.put("codigoNovedad", f[4]);
-		m.put("titulo", vacio(aStr(f[6])) != null ? f[6] : f[5]);
+		m.put("titulo", personas(vacio(aStr(f[6])) != null ? aStr(f[6]) : aStr(f[5])));
 		m.put("tituloTecnico", f[5]);
 		m.put("tipoRespuesta", f[7]);
 		m.put("area", f[8]);
@@ -483,11 +541,11 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 		m.put("fila", fila);
 		Map<String, Object> t = new LinkedHashMap<String, Object>();
 		t.put("titulo", fila.get("titulo"));
-		t.put("quePaso", vacio(n.getQuePaso()) != null ? n.getQuePaso() : n.getHallazgo());
+		t.put("quePaso", personas(vacio(n.getQuePaso()) != null ? n.getQuePaso() : n.getHallazgo()));
 		t.put("quePasoEsTecnico", vacio(n.getQuePaso()) == null);
-		t.put("porQue", n.getPorQue());
-		t.put("registro", n.getRegistro());
-		t.put("queHacer", vacio(n.getQueHacer()) != null ? n.getQueHacer() : queHacerGenerico(fila));
+		t.put("porQue", personas(n.getPorQue()));
+		t.put("registro", personas(n.getRegistro()));
+		t.put("queHacer", vacio(n.getQueHacer()) != null ? personas(n.getQueHacer()) : queHacerGenerico(fila));
 		t.put("textoTecnico", n.getHallazgo());
 		t.put("resolucionTecnica", n.getResolucion());
 		t.put("criterios", n.getCriterios());
@@ -540,7 +598,8 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 	private List<Map<String, Object>> lineas(Long idNovedad) {
 		List<?> filas = em.createNativeQuery("SELECT l.LNNVCDGO, l.LNNVSCNC, l.LNNVORGN, l.ASNTCDGO, a.ASNTNMAL, l.LNNVFCHA, l.LNNVDSCR,"
 				+ " l.LNNVVLOR, l.LNNVSNTD, l.LNNVSLDO, l.LNNVESTD, p.PLNNCNTA, p.PLNNNMBR, l.DEXBCDGO, x.DEXBFTRN, x.DEXBDSCR, x.DEXBREFR,"
-				+ " b.BNCONMBR, c.CNBCNMRO, pm.PLNNCNTA, pm.PLNNNMBR, l.PRSTCDGO, pr.PRSTIDAS, e.ENTDNMID, e.ENTDRZNS, l.PLNNCDGO"
+				+ " b.BNCONMBR, c.CNBCNMRO, pm.PLNNCNTA, pm.PLNNNMBR, l.PRSTCDGO, pr.PRSTIDAS, e.ENTDNMID, e.ENTDRZNS, l.PLNNCDGO, l.LNNVDSUS,"
+				+ " (SELECT MAX(pt.PRTCCDAL) FROM CRD.PRTC pt WHERE pt.ENTDCDGO = e.ENTDCDGO)"
 				+ " FROM CNT.LNNV l JOIN CNT.PLNN p ON p.PLNNCDGO = l.PLNNCDGO"
 				+ " LEFT JOIN CNT.ASNT a ON a.ASNTCDGO = l.ASNTCDGO"
 				+ " LEFT JOIN CNT.DTAS dm ON dm.DTASCDGO = l.DTASCDGO LEFT JOIN CNT.PLNN pm ON pm.PLNNCDGO = dm.PLNNCDGO"
@@ -578,17 +637,20 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 			l.put("cuentaMovimiento", f[19]);
 			l.put("nombreCuentaMovimiento", f[20]);
 			String desc;
-			if (f[13] != null) {
+			if (vacio(aStr(f[26])) != null) {
+				desc = personas(aStr(f[26]));
+			} else if (f[13] != null) {
 				desc = (f[17] == null ? "" : f[17] + (f[18] == null ? "" : " cta. " + f[18]) + " · ") + (f[15] == null ? "" : f[15])
 						+ (f[16] == null ? "" : " · ref. " + f[16]);
 			} else {
-				desc = aStr(f[6]);
+				desc = glosaUsuario(aStr(f[6]), aStr(f[20]));
 			}
 			l.put("descripcion", desc);
 			l.put("idPrestamo", aLong(f[21]));
 			l.put("idAsoprep", aLong(f[22]));
 			l.put("cedula", f[23]);
 			l.put("nombre", f[24]);
+			l.put("codigoParticipe", aStr(f[27]));
 			l.put("justificaciones", justif.getOrDefault(id, new ArrayList<Map<String, Object>>()));
 			out.add(l);
 		}
@@ -727,12 +789,12 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 			m.put("tipoNombre", tipoPedido(r.getTipo()));
 			m.put("area", r.getArea());
 			m.put("areaNombre", area(r.getArea()));
-			m.put("descripcion", r.getDescripcion());
+			m.put("descripcion", personas(r.getDescripcion()));
 			m.put("valor", r.getValor());
 			m.put("opciones", r.getOpciones());
-			m.put("supuesto", r.getSupuesto());
-			m.put("efectoSi", r.getEfectoSi());
-			m.put("efectoNo", r.getEfectoNo());
+			m.put("supuesto", personas(r.getSupuesto()));
+			m.put("efectoSi", personas(r.getEfectoSi()));
+			m.put("efectoNo", personas(r.getEfectoNo()));
 			m.put("estado", e);
 			m.put("atendido", atendido);
 			m.put("estadoNombre", atendido ? "Respondido" : e == REQ_NO_EXISTE ? "Falta la decisión" : "Pendiente");
