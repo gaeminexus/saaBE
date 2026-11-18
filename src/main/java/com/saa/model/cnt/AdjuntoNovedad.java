@@ -142,4 +142,10 @@ public class AdjuntoNovedad implements Serializable {
 	public void setUsuarioRegistro(String usuarioRegistro) { this.usuarioRegistro = usuarioRegistro; }
 	public Long getEstado() { return estado; }
 	public void setEstado(Long estado) { this.estado = estado; }
+	/** C34: justificación de línea dueña del adjunto. */
+	@Basic
+	@Column(name = "JSNVCDGO")
+	private Long idJustificacion;
+	public Long getIdJustificacion() { return idJustificacion; }
+	public void setIdJustificacion(Long idJustificacion) { this.idJustificacion = idJustificacion; }
 }

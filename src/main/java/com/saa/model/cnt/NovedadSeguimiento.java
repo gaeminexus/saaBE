@@ -277,4 +277,22 @@ public class NovedadSeguimiento implements Serializable {
 	public void setCifras(String cifras) { this.cifras = cifras; }
 	public String getRegularizar() { return regularizar; }
 	public void setRegularizar(String regularizar) { this.regularizar = regularizar; }
+	/** C34: título en lenguaje del usuario. */
+	@Basic
+	@Column(name = "NVDDTTUS", length = 300)
+	private String tituloUsuario;
+	public String getTituloUsuario() { return tituloUsuario; }
+	public void setTituloUsuario(String tituloUsuario) { this.tituloUsuario = tituloUsuario; }
+	/** C34: qué pasó, en lenguaje del usuario (CLOB). */
+	@jakarta.persistence.Lob
+	@Column(name = "NVDDQPSO")
+	private String quePaso;
+	public String getQuePaso() { return quePaso; }
+	public void setQuePaso(String quePaso) { this.quePaso = quePaso; }
+	/** C34: lo que necesitamos de usted (CLOB). */
+	@jakarta.persistence.Lob
+	@Column(name = "NVDDQHCR")
+	private String queHacer;
+	public String getQueHacer() { return queHacer; }
+	public void setQueHacer(String queHacer) { this.queHacer = queHacer; }
 }

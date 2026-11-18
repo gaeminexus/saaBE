@@ -144,4 +144,16 @@ public class RequerimientoNovedad implements Serializable {
 	private String origen = "TXT";
 	public String getOrigen() { return origen; }
 	public void setOrigen(String origen) { this.origen = origen; }
+	/** C34: qué hace el re-proceso si se responde SI. */
+	@Basic
+	@Column(name = "RQNVEFSI", length = 2000)
+	private String efectoSi;
+	public String getEfectoSi() { return efectoSi; }
+	public void setEfectoSi(String efectoSi) { this.efectoSi = efectoSi; }
+	/** C34: qué hace el re-proceso si se responde NO. */
+	@Basic
+	@Column(name = "RQNVEFNO", length = 2000)
+	private String efectoNo;
+	public String getEfectoNo() { return efectoNo; }
+	public void setEfectoNo(String efectoNo) { this.efectoNo = efectoNo; }
 }
