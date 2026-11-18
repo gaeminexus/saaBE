@@ -1281,10 +1281,14 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
         CalculoPrecancelacion calculo = calcularPrecancelacion(prestamo, fecha, false);
         SimulacionPrecancelacion simulacion = calculo.simulacion;
 
-        if (calculo.futuras.isEmpty()) {
+        // Sin deuda de ninguna clase no hay nada que cancelar. Con exigibles pero sin cuotas futuras (préstamo con
+        // todas sus cuotas vencidas) la precancelación es un pago total de lo exigible: ver
+        // docs/logica-negocio/crd/CORRECCION-PRECANCELAR-SIN-CUOTAS-FUTURAS.md.
+        if (calculo.futuras.isEmpty() && calculo.exigibles.isEmpty()) {
             throw new IncomeException(ERR_SIN_CUOTAS_FUTURAS
-                + ": No hay cuotas futuras que precancelar; use pagarCuota");
+                + ": No hay deuda pendiente que cancelar");
         }
+        boolean sinFuturas = calculo.futuras.isEmpty();
 
         // Componente de aportes (opcional)
         Entidad entidad = prestamo.getEntidad();
@@ -1365,75 +1369,81 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
         // (2026-08-30): el SLOT SIEMPRE debe quedar en una cuota en estado PAGADA(4) — nunca
         // en un fallback que el paso 3 (más abajo) termine sobrescribiendo a
         // CANCELADA_ANTICIPADA(7).
+        // Con sinFuturas (todas las cuotas vencidas) no hay capital futuro: ni ancla/DTPRSLOT, ni PGPR de capital
+        // futuro, ni cuotas que cerrar a CANCELADA_ANTICIPADA.
         double capitalFuturo = simulacion.getCapitalFuturo();
-        DetallePrestamo ancla = detallePrestamoDaoService.selectUltimaCuotaPagada(prestamo.getCodigo());
-        boolean anclaEsFutura = ancla == null;
-        if (anclaEsFutura) {
-            // Caso extremo: precancelar un préstamo sin ninguna cuota pagada. La cuota elegida
-            // es una de calculo.futuras — el paso 3 la excluye explícitamente del cierre a
-            // CANCELADA_ANTICIPADA y la deja PAGADA (ver más abajo), porque es la que carga el
-            // registro del capital futuro; dejarla CANCELADA_ANTICIPADA contradiría el
-            // requisito de que el SLOT viva en una cuota PAGADA.
-            ancla = calculo.futuras.get(0);
-        }
-        ancla.setSaldoOtros(redondear(nvl(ancla.getSaldoOtros()) + capitalFuturo));
-        ancla = detallePrestamoService.saveSingle(ancla);
-        System.out.println("  ⚓ Capital futuro registrado en DTPRSLOT de la cuota #"
-            + ancla.getNumeroCuota() + " (" + ancla.getCodigo() + "): $" + ancla.getSaldoOtros());
-
-        // 5. PagoPrestamo del capital futuro (en saldoOtros, NO en capitalPagado)
-        PagoPrestamo pagoCapitalFuturo = new PagoPrestamo();
-        pagoCapitalFuturo.setPrestamo(prestamo);
-        pagoCapitalFuturo.setDetallePrestamo(ancla);
-        pagoCapitalFuturo.setNumeroCuota(ancla.getNumeroCuota());
-        pagoCapitalFuturo.setFecha(fechaHora);
-        pagoCapitalFuturo.setValor(capitalFuturo);
-        pagoCapitalFuturo.setSaldoOtros(capitalFuturo);
-        pagoCapitalFuturo.setCapitalPagado(0.0);
-        pagoCapitalFuturo.setInteresPagado(0.0);
-        pagoCapitalFuturo.setMoraPagada(0.0);
-        pagoCapitalFuturo.setInteresVencidoPagado(0.0);
-        pagoCapitalFuturo.setDesgravamen(0.0);
-        pagoCapitalFuturo.setValorSeguroIncendio(0.0);
-        pagoCapitalFuturo.setTipo(TIPO_PRECANCELACION);
-        pagoCapitalFuturo.setObservacion((solicitud.getObservacion() != null ? solicitud.getObservacion() : "")
-            + " [Evento: " + evento.getCodigo() + "]");
-        pagoCapitalFuturo.setUsuarioRegistro(solicitud.getUsuario());
-        pagoCapitalFuturo.setFechaRegistro(LocalDateTime.now());
-        pagoCapitalFuturo.setEstado(1L);
-        pagoCapitalFuturo.setIdEstado(1L);
-        pagoCapitalFuturo.setAnulado(0L);
-        pagoCapitalFuturo.setEventoPrestamo(evento);
-        pagoCapitalFuturo.setRutaDocumentoRespaldo(solicitud.getRutaDocumentoRespaldo());
-        pagoCapitalFuturo = pagoPrestamoService.saveSingle(pagoCapitalFuturo);
-
-        // 3. Cuotas futuras → CANCELADA_ANTICIPADA (7). NO se borran ni se historizan.
-        // EXCEPTO la ancla, cuando salió del fallback (anclaEsFutura): esa se deja PAGADA(4)
-        // más abajo — ver el comentario del paso 3-4.
+        DetallePrestamo ancla = null;
+        PagoPrestamo pagoCapitalFuturo = null;
         int canceladas = 0;
-        for (DetallePrestamo cuota : calculo.futuras) {
-            if (anclaEsFutura && cuota.getCodigo().equals(ancla.getCodigo())) {
-                continue;
+        if (!sinFuturas) {
+            ancla = detallePrestamoDaoService.selectUltimaCuotaPagada(prestamo.getCodigo());
+            boolean anclaEsFutura = ancla == null;
+            if (anclaEsFutura) {
+                // Caso extremo: precancelar un préstamo sin ninguna cuota pagada. La cuota elegida
+                // es una de calculo.futuras — el paso 3 la excluye explícitamente del cierre a
+                // CANCELADA_ANTICIPADA y la deja PAGADA (ver más abajo), porque es la que carga el
+                // registro del capital futuro; dejarla CANCELADA_ANTICIPADA contradiría el
+                // requisito de que el SLOT viva en una cuota PAGADA.
+                ancla = calculo.futuras.get(0);
             }
-            cuota.setEstado((long) EstadoCuotaPrestamo.CANCELADA_ANTICIPADA);
-            cuota.setIdEstado((long) EstadoCuotaPrestamo.CANCELADA_ANTICIPADA);
-            cuota.setFechaPagado(null);
-            detallePrestamoService.saveSingle(cuota);
-            canceladas++;
-        }
-        if (anclaEsFutura) {
-            // La ancla del fallback nunca fue una cuota exigible que se "pagó" en el sentido
-            // normal — pero es la que carga el registro del capital futuro (§3-4), y el
-            // requisito del usuario es que esa cuota quede PAGADA, no CANCELADA_ANTICIPADA.
-            ancla.setEstado((long) EstadoCuotaPrestamo.PAGADA);
-            ancla.setIdEstado((long) EstadoCuotaPrestamo.PAGADA);
-            ancla.setFechaPagado(fechaHora);
+            ancla.setSaldoOtros(redondear(nvl(ancla.getSaldoOtros()) + capitalFuturo));
             ancla = detallePrestamoService.saveSingle(ancla);
-            System.out.println("  ⚓ Cuota #" + ancla.getNumeroCuota() + " (" + ancla.getCodigo()
-                + ") marcada PAGADA: es la ancla del capital futuro y no tenía ninguna cuota"
-                + " previa PAGADA de dónde salir (préstamo sin pagos previos)");
+            System.out.println("  ⚓ Capital futuro registrado en DTPRSLOT de la cuota #"
+                + ancla.getNumeroCuota() + " (" + ancla.getCodigo() + "): $" + ancla.getSaldoOtros());
+
+            // 5. PagoPrestamo del capital futuro (en saldoOtros, NO en capitalPagado)
+            pagoCapitalFuturo = new PagoPrestamo();
+            pagoCapitalFuturo.setPrestamo(prestamo);
+            pagoCapitalFuturo.setDetallePrestamo(ancla);
+            pagoCapitalFuturo.setNumeroCuota(ancla.getNumeroCuota());
+            pagoCapitalFuturo.setFecha(fechaHora);
+            pagoCapitalFuturo.setValor(capitalFuturo);
+            pagoCapitalFuturo.setSaldoOtros(capitalFuturo);
+            pagoCapitalFuturo.setCapitalPagado(0.0);
+            pagoCapitalFuturo.setInteresPagado(0.0);
+            pagoCapitalFuturo.setMoraPagada(0.0);
+            pagoCapitalFuturo.setInteresVencidoPagado(0.0);
+            pagoCapitalFuturo.setDesgravamen(0.0);
+            pagoCapitalFuturo.setValorSeguroIncendio(0.0);
+            pagoCapitalFuturo.setTipo(TIPO_PRECANCELACION);
+            pagoCapitalFuturo.setObservacion((solicitud.getObservacion() != null ? solicitud.getObservacion() : "")
+                + " [Evento: " + evento.getCodigo() + "]");
+            pagoCapitalFuturo.setUsuarioRegistro(solicitud.getUsuario());
+            pagoCapitalFuturo.setFechaRegistro(LocalDateTime.now());
+            pagoCapitalFuturo.setEstado(1L);
+            pagoCapitalFuturo.setIdEstado(1L);
+            pagoCapitalFuturo.setAnulado(0L);
+            pagoCapitalFuturo.setEventoPrestamo(evento);
+            pagoCapitalFuturo.setRutaDocumentoRespaldo(solicitud.getRutaDocumentoRespaldo());
+            pagoCapitalFuturo = pagoPrestamoService.saveSingle(pagoCapitalFuturo);
+
+            // 3. Cuotas futuras → CANCELADA_ANTICIPADA (7). NO se borran ni se historizan.
+            // EXCEPTO la ancla, cuando salió del fallback (anclaEsFutura): esa se deja PAGADA(4)
+            // más abajo — ver el comentario del paso 3-4.
+            for (DetallePrestamo cuota : calculo.futuras) {
+                if (anclaEsFutura && cuota.getCodigo().equals(ancla.getCodigo())) {
+                    continue;
+                }
+                cuota.setEstado((long) EstadoCuotaPrestamo.CANCELADA_ANTICIPADA);
+                cuota.setIdEstado((long) EstadoCuotaPrestamo.CANCELADA_ANTICIPADA);
+                cuota.setFechaPagado(null);
+                detallePrestamoService.saveSingle(cuota);
+                canceladas++;
+            }
+            if (anclaEsFutura) {
+                // La ancla del fallback nunca fue una cuota exigible que se "pagó" en el sentido
+                // normal — pero es la que carga el registro del capital futuro (§3-4), y el
+                // requisito del usuario es que esa cuota quede PAGADA, no CANCELADA_ANTICIPADA.
+                ancla.setEstado((long) EstadoCuotaPrestamo.PAGADA);
+                ancla.setIdEstado((long) EstadoCuotaPrestamo.PAGADA);
+                ancla.setFechaPagado(fechaHora);
+                ancla = detallePrestamoService.saveSingle(ancla);
+                System.out.println("  ⚓ Cuota #" + ancla.getNumeroCuota() + " (" + ancla.getCodigo()
+                    + ") marcada PAGADA: es la ancla del capital futuro y no tenía ninguna cuota"
+                    + " previa PAGADA de dónde salir (préstamo sin pagos previos)");
+            }
+            System.out.println("  🚫 Cuotas futuras canceladas anticipadamente: " + canceladas);
         }
-        System.out.println("  🚫 Cuotas futuras canceladas anticipadamente: " + canceladas);
 
         // 6. Componente de aportes
         List<MovimientoAporte> movimientos = new ArrayList<>();
@@ -1446,6 +1456,10 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
             }
             // Los PagoAporte se enlazan al primer PGPR de la deuda exigible; si no hubo cuotas
             // exigibles, al PGPR del capital futuro. Los demás se recuperan por el evento.
+            if (primerPagoExigible == null && pagoCapitalFuturo == null) {
+                throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": la precancelación del préstamo "
+                    + prestamo.getCodigo() + " no generó ningún pago exigible al que enlazar los aportes");
+            }
             PagoPrestamo referencia = primerPagoExigible != null
                 ? pagoPrestamoDaoService.find(new PagoPrestamo(), primerPagoExigible)
                 : pagoCapitalFuturo;
@@ -1457,7 +1471,8 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
         // 7. Préstamo → CANCELADO_ANTICIPADO (4). NUNCA se toca ESPSCDGO ni fechaFin.
         // C31c: estado antes de la precancelación (validarPrestamoOperable ya exige que esté vivo).
         Long estadoAnteriorC31 = prestamo.getIdEstado();
-        prestamo.setIdEstado(Long.valueOf(EstadoPrestamo.CANCELADO_ANTICIPADO));
+        // Sin cuotas futuras no se anticipó nada: queda CANCELADO (3), igual que cuando el motor paga la última cuota.
+        prestamo.setIdEstado(Long.valueOf(sinFuturas ? EstadoPrestamo.CANCELADO : EstadoPrestamo.CANCELADO_ANTICIPADO));
         prestamo.setFechaModificacion(LocalDateTime.now());
         prestamoDaoService.save(prestamo, prestamo.getCodigo());
 
@@ -1474,20 +1489,22 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
         if (numeroAsiento != null) {
             evento.setNumeroAsiento(numeroAsiento);
             eventoPrestamoService.saveSingle(evento);
-            pagoCapitalFuturo.setAsiento(numeroAsiento);
-            pagoPrestamoService.saveSingle(pagoCapitalFuturo);
+            if (pagoCapitalFuturo != null) {
+                pagoCapitalFuturo.setAsiento(numeroAsiento);
+                pagoPrestamoService.saveSingle(pagoCapitalFuturo);
+            }
         }
 
         ResultadoPrecancelacion resultado = new ResultadoPrecancelacion();
         resultado.setIdPrestamo(prestamo.getCodigo());
         resultado.setIdEvento(evento.getCodigo());
         resultado.setValorExigiblePagado(valorExigiblePagado);
-        resultado.setCapitalPrecancelado(capitalFuturo);
+        resultado.setCapitalPrecancelado(sinFuturas ? 0.0 : capitalFuturo);
         resultado.setValorTotalPrecancelacion(valorTotal);
         resultado.setCuotasCanceladasAnticipadas(canceladas);
         resultado.setEstadoFinalPrestamo(prestamo.getIdEstado());
-        resultado.setIdCuotaConSaldoOtros(ancla.getCodigo());
-        resultado.setIdPagoPrestamoCapitalFuturo(pagoCapitalFuturo.getCodigo());
+        resultado.setIdCuotaConSaldoOtros(ancla != null ? ancla.getCodigo() : null);
+        resultado.setIdPagoPrestamoCapitalFuturo(pagoCapitalFuturo != null ? pagoCapitalFuturo.getCodigo() : null);
         resultado.setMovimientosAporte(movimientos);
 
         System.out.println("  ✅ Precancelación OK - Evento: " + evento.getCodigo()
