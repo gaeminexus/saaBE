@@ -21,8 +21,14 @@ el 18-nov-2026: expediente `cuadreSuper/03-trabajo/cambios-saa/c34-novedades-v2/
 - **Sin cuatro ojos** (aprobación del líder): lo registrado vale de inmediato; se corrige anulando con motivo.
 - **Cerrar** = resolución completa y estructurada para la pasada v8 del re-proceso; no genera asientos ni toca saldos. Al cerrar,
   los requerimientos abiertos quedan APLICADO (la v1 la ve cerrada).
-- **Reparto:** cuentas de movimiento activas de la empresa, nunca por regularizar; Σ = monto al centavo; sentido por defecto el
-  del valor en la cuenta por regularizar. Varias líneas con un reparto = proporcional por línea (la última fila absorbe el redondeo).
+- **Reparto:** cuentas de movimiento activas de la empresa, nunca por regularizar; cada fila con valor > 0 y sentido `D`/`H`.
+  - **Al justificar líneas (C34b) es el asiento de regularización:** la línea de la cuenta por regularizar (cuenta de la línea,
+    monto justificado, sentido contrario al movimiento) la agrega el sistema; las filas del reparto pueden ir al debe o al haber
+    y el asiento completo cuadra al centavo (salida `D`: Σ D − Σ H del reparto = monto; entrada `H`: Σ H − Σ D = monto).
+    Si no cuadra → 400 «El asiento no cuadra: el debe suma … y el haber …». El monto puede ser una parte del saldo.
+  - Varias líneas con un asiento = proporcional por línea; el centavo de redondeo va a la última fila del sentido del movimiento,
+    así el asiento de cada justificación cuadra con su monto.
+  - **Al responder un pedido** no hay línea implícita: Σ reparto = monto al centavo (sin cambios).
 - **Cruce:** dos líneas de sentido contrario (una salida y una entrada, en cualquiera de las cuentas por regularizar: p. ej. una transferencia y su devolución); justifica ambas; anular una anula las dos.
 - **Confirmación/aprobación:** SÍ o NO; NO exige texto y además reparto, decisión o documento. Aprobación y decisión exigen la
   decisión (`DCSNCDGO`). Documento: adjunto, número o texto; «NO_EXISTE» exige texto y decisión.
@@ -48,3 +54,10 @@ Script `cuadreSuper/03-trabajo/cambios-saa/c34-novedades-v2/scripts/prueba-rest-
 29 comprobaciones OK (parcial con reparto a dos cuentas, resto con decisión por el mismo usuario, anulación, errores de
 reparto/monto/decisión, cruce y su anulación, confirmación NO/SÍ, cierre y reapertura, informativa conocida visible en la v1,
 exportaciones). Datos de prueba limpiados con `sql/C34-90-limpieza-pruebas-18112026.sql`.
+
+## C34b (18-nov-2026): asiento de regularización con debe y haber
+
+Pedido de ASOPREP: al justificar, ingresar cómo debe quedar el asiento (debe y haber), también cuando solo se justifica una
+parte del movimiento. `validarReparto` recibe el sentido de la línea y valida el cuadre con la línea implícita de la cuenta por
+regularizar; `persistirReparto` ajusta el redondeo para que cada justificación cuadre. Sin DDL. Prueba en la base de trabajo:
+`cuadreSuper/03-trabajo/cambios-saa/c34-novedades-v2/scripts/prueba-rest-c34b.js` (7/7 OK).

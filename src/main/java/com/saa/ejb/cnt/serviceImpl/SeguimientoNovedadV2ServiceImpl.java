@@ -1100,12 +1100,23 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 	// Justificar líneas
 	// =====================================================================================
 
-	/** Valida y normaliza el reparto (cuentas de movimiento, activas, de la empresa, no por regularizar). */
-	private List<AccionNovedadV2.Reparto> validarReparto(Long idEmpresa, List<AccionNovedadV2.Reparto> reparto, double total, String sentidoDefecto) {
+	/**
+	 * Valida y normaliza el reparto (cuentas de movimiento, activas, de la empresa, no por regularizar).
+	 *
+	 * Con {@code sentidoLinea} (justificación de movimientos) el reparto son las demás líneas del asiento de regularización:
+	 * el asiento lleva además, puesta por el sistema, la cuenta por regularizar por {@code total} en el sentido contrario al
+	 * movimiento, y tiene que cuadrar (debe = haber). Las filas pueden ir al debe o al haber.
+	 * Sin {@code sentidoLinea} (respuesta a un pedido) el reparto es una distribución del valor: todas las filas suman {@code total}.
+	 */
+	private List<AccionNovedadV2.Reparto> validarReparto(Long idEmpresa, List<AccionNovedadV2.Reparto> reparto, double total, String sentidoDefecto,
+			String sentidoLinea) {
 		if (reparto == null || reparto.isEmpty()) {
-			throw new IncomeException("Indique a qué cuenta(s) contable(s) va el valor (" + dinero(total) + ").");
+			throw new IncomeException(sentidoLinea == null ? "Indique a qué cuenta(s) contable(s) va el valor (" + dinero(total) + ")."
+					: "Ingrese el detalle del asiento: a qué cuenta(s) contable(s) va el valor (" + dinero(total) + "), al debe o al haber.");
 		}
 		double suma = 0;
+		double debe = 0;
+		double haber = 0;
 		List<AccionNovedadV2.Reparto> out = new ArrayList<AccionNovedadV2.Reparto>();
 		for (AccionNovedadV2.Reparto r : reparto) {
 			if (r.getIdCuenta() == null) {
@@ -1166,6 +1177,26 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 			x.setGlosa(recortar(vacio(r.getGlosa()), 500));
 			out.add(x);
 			suma += v;
+			if ("D".equals(s)) {
+				debe += v;
+			} else {
+				haber += v;
+			}
+		}
+		if (sentidoLinea != null) {
+			// Línea de la cuenta por regularizar: sale por el sentido contrario al movimiento.
+			if ("D".equals(sentidoLinea)) {
+				haber += total;
+			} else {
+				debe += total;
+			}
+			debe = r2(debe);
+			haber = r2(haber);
+			if (Math.abs(debe - haber) > 0.004) {
+				throw new IncomeException("El asiento no cuadra: el debe suma " + dinero(debe) + " y el haber " + dinero(haber) + " (diferencia "
+						+ dinero(Math.abs(r2(debe - haber))) + "). Incluida la cuenta por regularizar por " + dinero(total) + ".");
+			}
+			return out;
 		}
 		if (Math.abs(r2(suma) - r2(total)) > 0.004) {
 			throw new IncomeException("El reparto suma " + dinero(suma) + " y tiene que sumar " + dinero(total) + " (falta repartir "
@@ -1174,13 +1205,33 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 		return out;
 	}
 
+	/**
+	 * Graba el reparto de una justificación o respuesta. Con varias líneas justificadas a la vez ({@code factor} &lt; 1) cada
+	 * justificación lleva su parte proporcional del asiento; el centavo de redondeo se ajusta en la última fila del mismo sentido
+	 * del movimiento ({@code sentidoLinea}), para que el asiento de cada justificación cuadre con su monto. Sin
+	 * {@code sentidoLinea} (pedidos) el ajuste va a la última fila.
+	 */
 	private void persistirReparto(List<AccionNovedadV2.Reparto> reparto, double factor, double total, Long idJustificacion,
-			Long idRespuesta, String usuario) {
-		double acumulado = 0;
+			Long idRespuesta, String usuario, String sentidoLinea) {
+		double[] valores = new double[reparto.size()];
+		double neto = 0;
+		int ajuste = -1;
 		for (int i = 0; i < reparto.size(); i++) {
 			AccionNovedadV2.Reparto r = reparto.get(i);
-			double v = i == reparto.size() - 1 ? r2(total - acumulado) : r2(r.getValor() * factor);
-			acumulado = r2(acumulado + v);
+			valores[i] = factor == 1D ? r2(r.getValor()) : r2(r.getValor() * factor);
+			boolean mismoSentido = sentidoLinea == null || sentidoLinea.equals(r.getSentido());
+			neto += mismoSentido ? valores[i] : -valores[i];
+			if (mismoSentido) {
+				ajuste = i;
+			}
+		}
+		double diferencia = r2(total - neto);
+		if (ajuste >= 0 && Math.abs(diferencia) > 0.0001) {
+			valores[ajuste] = r2(valores[ajuste] + diferencia);
+		}
+		for (int i = 0; i < reparto.size(); i++) {
+			AccionNovedadV2.Reparto r = reparto.get(i);
+			double v = valores[i];
 			if (v <= 0) {
 				continue;
 			}
@@ -1310,16 +1361,16 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 			String sentido = lineas.get(0).getSentido();
 			for (LineaNovedad l : lineas) {
 				if (!l.getSentido().equals(sentido)) {
-					throw new IncomeException("Eligió salidas y entradas a la vez: justifíquelas por separado (el reparto va al débito o al crédito).");
+					throw new IncomeException("Eligió salidas y entradas a la vez: justifíquelas por separado (cada asiento de regularización sale de un solo lado de la cuenta por regularizar).");
 				}
 			}
-			List<AccionNovedadV2.Reparto> reparto = validarReparto(n.getIdEmpresa(), a.getReparto(), total, sentido);
+			List<AccionNovedadV2.Reparto> reparto = validarReparto(n.getIdEmpresa(), a.getReparto(), total, sentido, sentido);
 			for (int i = 0; i < lineas.size(); i++) {
 				LineaNovedad l = lineas.get(i);
 				double monto = montos.get(i);
 				JustificacionLinea j = nuevaJustificacion(l, n, monto, tipo, null, fechaHecho, a, decision, usuario);
 				creadas.add(j.getCodigo());
-				persistirReparto(reparto, monto / total, monto, j.getCodigo(), null, usuario);
+				persistirReparto(reparto, monto / total, monto, j.getCodigo(), null, usuario, sentido);
 				adjuntar(a, n, j, usuario);
 				recalcularLinea(l);
 			}
@@ -1494,7 +1545,7 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 			if (monto == null) {
 				monto = r2(suma);
 			}
-			reparto = validarReparto(n.getIdEmpresa(), a.getReparto(), monto, "D");
+			reparto = validarReparto(n.getIdEmpresa(), a.getReparto(), monto, "D", null);
 		}
 		String filas = null;
 		if (a.getFilasDetalle() != null && !a.getFilasDetalle().isEmpty()) {
@@ -1532,7 +1583,7 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 		em.persist(s);
 		em.flush();
 		if (reparto != null) {
-			persistirReparto(reparto, 1D, monto, null, s.getCodigo(), usuario);
+			persistirReparto(reparto, 1D, monto, null, s.getCodigo(), usuario, null);
 		}
 		if (conAdjuntos) {
 			for (AccionNovedad.Adjunto ad : a.getAdjuntos()) {
