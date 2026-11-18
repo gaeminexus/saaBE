@@ -23,7 +23,7 @@ el 18-nov-2026: expediente `cuadreSuper/03-trabajo/cambios-saa/c34-novedades-v2/
   los requerimientos abiertos quedan APLICADO (la v1 la ve cerrada).
 - **Reparto:** cuentas de movimiento activas de la empresa, nunca por regularizar; Σ = monto al centavo; sentido por defecto el
   del valor en la cuenta por regularizar. Varias líneas con un reparto = proporcional por línea (la última fila absorbe el redondeo).
-- **Cruce:** dos líneas de la misma cuenta por regularizar y sentido contrario; justifica ambas; anular una anula las dos.
+- **Cruce:** dos líneas de sentido contrario (una salida y una entrada, en cualquiera de las cuentas por regularizar: p. ej. una transferencia y su devolución); justifica ambas; anular una anula las dos.
 - **Confirmación/aprobación:** SÍ o NO; NO exige texto y además reparto, decisión o documento. Aprobación y decisión exigen la
   decisión (`DCSNCDGO`). Documento: adjunto, número o texto; «NO_EXISTE» exige texto y decisión.
 - Errores de negocio: 400 con mensaje para el usuario final.

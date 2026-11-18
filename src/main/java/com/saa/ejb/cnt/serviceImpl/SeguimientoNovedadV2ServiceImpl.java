@@ -1187,8 +1187,8 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 			if (c == null || c.getEstado() == LIN_ANULADA || c.getCodigo().equals(l.getCodigo())) {
 				throw new IncomeException("Elija el otro movimiento con el que se cruza.");
 			}
-			if (!c.getIdCuenta().equals(l.getIdCuenta()) || c.getSentido().equals(l.getSentido())) {
-				throw new IncomeException("Solo se cruzan movimientos de la misma cuenta por regularizar y de sentido contrario (una salida con una entrada).");
+			if (c.getSentido().equals(l.getSentido())) {
+				throw new IncomeException("Solo se compensan movimientos de sentido contrario: una salida con una entrada (por ejemplo, una transferencia y su devolución).");
 			}
 			if (c.getSaldo() < monto - 0.004) {
 				throw new IncomeException("Al otro movimiento solo le falta justificar " + dinero(c.getSaldo()) + ".");
