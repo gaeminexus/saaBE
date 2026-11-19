@@ -29,6 +29,14 @@ public class HechoCreditoDto implements Serializable {
 	private String texto;
 	private String tipoDocumento;
 	private String numeroDocumento;
+	/** Mes desde (yyyy-MM-dd) de un hecho en serie o de las cuotas pendientes de una precancelación. */
+	private String desde;
+	/** Qué pasa con la diferencia orígenes - valor: NO_SE_DEBITA, SE_DEVUELVE o PARTICIPE_DEBE. */
+	private String tratamientoDiferencia;
+	/** Pedidos que el hecho atiende solo para esta operación (el pedido sigue pendiente). */
+	private List<Long> pedidosParciales = new ArrayList<Long>();
+	/** Nota de ASOPREP que se convierte en este hecho. */
+	private Long idNota;
 	private List<Origen> origenes = new ArrayList<Origen>();
 	/** Movimientos por regularizar que resuelve (además de los orígenes PENDIENTE, que se resuelven solos). */
 	private List<Long> lineas = new ArrayList<Long>();
@@ -94,4 +102,12 @@ public class HechoCreditoDto implements Serializable {
 	public void setPedidos(List<Long> pedidos) { this.pedidos = pedidos; }
 	public List<AccionNovedad.Adjunto> getAdjuntos() { return adjuntos; }
 	public void setAdjuntos(List<AccionNovedad.Adjunto> adjuntos) { this.adjuntos = adjuntos; }
+	public String getDesde() { return desde; }
+	public void setDesde(String desde) { this.desde = desde; }
+	public String getTratamientoDiferencia() { return tratamientoDiferencia; }
+	public void setTratamientoDiferencia(String tratamientoDiferencia) { this.tratamientoDiferencia = tratamientoDiferencia; }
+	public List<Long> getPedidosParciales() { return pedidosParciales; }
+	public void setPedidosParciales(List<Long> pedidosParciales) { this.pedidosParciales = pedidosParciales; }
+	public Long getIdNota() { return idNota; }
+	public void setIdNota(Long idNota) { this.idNota = idNota; }
 }

@@ -26,6 +26,7 @@ import com.saa.model.cnt.HechoCredito;
 import com.saa.model.cnt.HistorialNovedad;
 import com.saa.model.cnt.JustificacionLinea;
 import com.saa.model.cnt.LineaNovedad;
+import com.saa.model.cnt.NotaNovedad;
 import com.saa.model.cnt.NovedadSeguimiento;
 import com.saa.model.cnt.OrigenHecho;
 import com.saa.model.cnt.RepartoNovedad;
@@ -596,6 +597,7 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 		m.put("pedidos", pedidos(n));
 		m.put("detalleOrigen", detalleOrigen(idNovedad));
 		m.put("decisiones", decisionesCitadas(idNovedad));
+		m.put("notas", notas(idNovedad));
 		m.put("historial", em.createQuery("select h from HistorialNovedad h where h.idNovedad = :n order by h.fecha desc, h.codigo desc", HistorialNovedad.class)
 				.setParameter("n", idNovedad).getResultList());
 		return m;
@@ -803,7 +805,7 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 		List<AdjuntoNovedad> lista = em.createQuery("select a from AdjuntoNovedad a where a.estado = 1 and a." + campo + " in :ids order by a.codigo",
 				AdjuntoNovedad.class).setParameter("ids", ids).getResultList();
 		for (AdjuntoNovedad a : lista) {
-			Long k = "idJustificacion".equals(campo) ? a.getIdJustificacion() : a.getIdRespuesta();
+			Long k = "idJustificacion".equals(campo) ? a.getIdJustificacion() : "idNota".equals(campo) ? a.getIdNota() : a.getIdRespuesta();
 			out.computeIfAbsent(k, x -> new ArrayList<AdjuntoNovedad>()).add(a);
 		}
 		return out;
@@ -1836,7 +1838,17 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 	// C34d — Hechos de crédito y orígenes del dinero
 	// =====================================================================================
 
-	static final List<String> TIPOS_HECHO = Arrays.asList("ABONO_CAPITAL", "PAGO_CUOTAS", "PRECANCELACION", "REAPERTURA_CUOTAS", "PARTICIPE_DEBE");
+	static final List<String> TIPOS_HECHO = Arrays.asList("ABONO_CAPITAL", "PAGO_CUOTAS", "PRECANCELACION", "REAPERTURA_CUOTAS", "PARTICIPE_DEBE",
+			"SERIE_PRECANCELACION");
+	/** Tipos cuyo valor calcula el SAA con su tabla (D-123). */
+	static final List<String> CALCULADOS = Arrays.asList("PRECANCELACION", "SERIE_PRECANCELACION");
+
+	static String tratamientoNombre(String t) {
+		if ("NO_SE_DEBITA".equals(t)) return "no se debita (queda en la cuenta individual)";
+		if ("SE_DEVUELVE".equals(t)) return "se devuelve al partícipe";
+		if ("PARTICIPE_DEBE".equals(t)) return "el partícipe lo debe";
+		return t;
+	}
 	static final List<String> TIPOS_ORIGEN = Arrays.asList("EXTRACTO", "APORTE", "PENDIENTE", "SIN_DINERO");
 
 	static String tipoHechoNombre(String t) {
@@ -1845,6 +1857,7 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 		if ("PRECANCELACION".equals(t)) return "Precancelación";
 		if ("REAPERTURA_CUOTAS".equals(t)) return "Reapertura de cuotas";
 		if ("PARTICIPE_DEBE".equals(t)) return "El partícipe debe";
+		if ("SERIE_PRECANCELACION".equals(t)) return "Cruce mensual de cuotas y precancelación";
 		return t;
 	}
 
@@ -2283,11 +2296,14 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 			if (vRef != null && m.get("valor") != null) {
 				puntaje += Math.abs((Double) m.get("valor") - vRef) / tol;
 			}
+			// Lo de la misma operación, el mismo partícipe o sus relacionados va antes que lo de otros con valor parecido.
+			Object rel = m.get("relacion");
+			m.put("grupoOrden", rel == null || "Valor parecido".equals(rel) ? 1 : 0);
 			m.put("puntaje", r2(puntaje));
 			m.put("fecha", f);
 		}
 		if (fRef != null || vRef != null) {
-			lista.sort((a, b) -> Double.compare((Double) a.get("puntaje"), (Double) b.get("puntaje")));
+			lista.sort((a, b) -> ((Integer) a.get("grupoOrden")).equals(b.get("grupoOrden")) ? Double.compare((Double) a.get("puntaje"), (Double) b.get("puntaje")) : Integer.compare((Integer) a.get("grupoOrden"), (Integer) b.get("grupoOrden")));
 		}
 		return lista;
 	}
@@ -2356,7 +2372,15 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 		if (fecha == null) {
 			throw new IncomeException("Indique la fecha real del hecho.");
 		}
+		LocalDate desde = fecha(h.getDesde(), "Mes desde");
 		double valor = h.getValor() == null ? 0 : r2(h.getValor());
+		String detalleCalculado = null;
+		if (CALCULADOS.contains(tipo)) {
+			// D-123: el valor de una precancelación o de un hecho en serie lo calcula el SAA con su tabla; Crédito solo confirma.
+			Map<String, Object> calc = calcular(h.getIdPrestamo(), tipo, h.getDesde(), h.getFecha(), false);
+			valor = (Double) calc.get("valor");
+			detalleCalculado = aJson(calc);
+		}
 		if (valor <= 0) {
 			throw new IncomeException("El valor del hecho tiene que ser mayor que cero.");
 		}
@@ -2446,9 +2470,21 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 			origenes.add(x);
 			suma = r2(suma + v);
 		}
-		if (Math.abs(suma - valor) > 0.004) {
-			throw new IncomeException("Los orígenes suman " + dinero(suma) + " y el hecho es de " + dinero(valor) + " (diferencia " + dinero(Math.abs(r2(valor - suma)))
-					+ "). Complete o corrija los orígenes; si falta dinero, agregue «sin dinero» con su explicación.");
+		// Diferencia orígenes - valor: se explica con su tratamiento (D-123), nunca queda sin decir qué pasa.
+		double diferencia = r2(suma - valor);
+		String tratamiento = vacio(h.getTratamientoDiferencia()) == null ? null : h.getTratamientoDiferencia().trim().toUpperCase(Locale.ROOT);
+		if (Math.abs(diferencia) > 0.004) {
+			if (diferencia > 0 && !"NO_SE_DEBITA".equals(tratamiento) && !"SE_DEVUELVE".equals(tratamiento)) {
+				throw new IncomeException("Los orígenes suman " + dinero(suma) + " y el hecho es de " + dinero(valor) + ": sobran " + dinero(diferencia)
+						+ ". Indique qué pasa con lo que sobra: «no se debita» (queda en la cuenta individual) o «se devuelve».");
+			}
+			if (diferencia < 0 && !"PARTICIPE_DEBE".equals(tratamiento)) {
+				throw new IncomeException("Los orígenes suman " + dinero(suma) + " y el hecho es de " + dinero(valor) + ": faltan " + dinero(-diferencia)
+						+ ". Complete los orígenes o indique «el partícipe lo debe».");
+			}
+		} else {
+			tratamiento = null;
+			diferencia = 0;
 		}
 		// Qué resuelve
 		Set<Long> idsLineas = new LinkedHashSet<Long>();
@@ -2457,6 +2493,9 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 			idsLineas.addAll(h.getLineas());
 		}
 		List<Long> idsPedidos = h.getPedidos() == null ? new ArrayList<Long>() : new ArrayList<Long>(new LinkedHashSet<Long>(h.getPedidos()));
+		Set<Long> parciales = new LinkedHashSet<Long>(h.getPedidosParciales() == null ? new ArrayList<Long>() : h.getPedidosParciales());
+		parciales.removeAll(idsPedidos);
+		idsPedidos.addAll(parciales);
 		if (idsLineas.isEmpty() && idsPedidos.isEmpty()) {
 			throw new IncomeException("Marque qué resuelve el hecho: al menos un movimiento por regularizar o un pedido.");
 		}
@@ -2484,7 +2523,7 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 				throw new IncomeException("Uno de los pedidos marcados no existe.");
 			}
 			long e = r.getEstado();
-			if (e != REQ_PENDIENTE && e != REQ_OBSERVADO && e != REQ_NO_EXISTE) {
+			if (e != REQ_PENDIENTE && e != REQ_OBSERVADO && e != REQ_NO_EXISTE && !parciales.contains(id)) {
 				throw new IncomeException("El pedido " + r.getSecuencia() + " ya tiene respuesta: anúlela antes de resolverlo con el hecho.");
 			}
 			NovedadSeguimiento n = novedades.computeIfAbsent(r.getIdNovedad(), k -> novedad(k));
@@ -2503,6 +2542,10 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 		hc.setTexto(recortar(vacio(h.getTexto()), 4000));
 		hc.setTipoDocumento(recortar(vacio(h.getTipoDocumento()), 30));
 		hc.setNumeroDocumento(recortar(vacio(h.getNumeroDocumento()), 100));
+		hc.setMesDesde(desde == null ? null : desde.withDayOfMonth(1));
+		hc.setTratamientoDiferencia(tratamiento);
+		hc.setValorDiferencia(tratamiento == null ? null : diferencia);
+		hc.setDetalle(detalleCalculado);
 		hc.setEstado(1L);
 		hc.setFechaRegistro(ahora);
 		hc.setUsuarioRegistro(usuario);
@@ -2561,10 +2604,26 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 			s.setTipoDocumento(hc.getTipoDocumento());
 			s.setNumeroDocumento(hc.getNumeroDocumento());
 			s.setIdHecho(hc.getCodigo());
+			boolean parcial = parciales.contains(r.getCodigo());
+			if (parcial) {
+				// Solo para esta operación: queda como respuesta del pedido, que sigue pendiente para las demás.
+				s.setOpcion("PARCIAL");
+				s.setTexto(recortar("Atendido solo para la operación " + idAsoprep + " por el " + resumen + (hc.getTexto() == null ? "" : ". " + hc.getTexto()), 4000));
+			}
 			em.persist(s);
 			long antes = r.getEstado();
-			r.setEstado(REQ_ACEPTADO);
-			historial(r.getIdNovedad(), r.getCodigo(), "RESPUESTA", antes, REQ_ACEPTADO, "Atendido por el " + resumen, usuario);
+			if (parcial) {
+				historial(r.getIdNovedad(), r.getCodigo(), "RESPUESTA", antes, antes, "Atendido solo para la operación " + idAsoprep + " por el " + resumen, usuario);
+			} else {
+				r.setEstado(REQ_ACEPTADO);
+				historial(r.getIdNovedad(), r.getCodigo(), "RESPUESTA", antes, REQ_ACEPTADO, "Atendido por el " + resumen, usuario);
+			}
+		}
+		if (h.getIdNota() != null) {
+			NotaNovedad nota = em.find(NotaNovedad.class, h.getIdNota());
+			if (nota != null && nota.getEstado() == 1L) {
+				nota.setIdHecho(hc.getCodigo());
+			}
 		}
 		em.flush();
 		List<Map<String, Object>> filas = new ArrayList<Map<String, Object>>();
@@ -2584,7 +2643,9 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 		}
 		Map<String, Object> m = new LinkedHashMap<String, Object>();
 		m.put("mensaje", "Hecho de crédito N.º " + hc.getCodigo() + " registrado: resuelve " + lineas.size() + " movimiento(s)" + (pedidos.isEmpty() ? "" : " y "
-				+ pedidos.size() + " pedido(s)") + "." + (cerradas.isEmpty() ? "" : " Novedades cerradas: " + String.join(", ", cerradas) + "."));
+				+ pedidos.size() + " pedido(s)" + (parciales.isEmpty() ? "" : " (" + parciales.size() + " solo para esta operación)")) + "."
+				+ (tratamiento == null ? "" : " Diferencia de " + dinero(Math.abs(diferencia)) + ": " + tratamientoNombre(tratamiento) + ".")
+				+ (cerradas.isEmpty() ? "" : " Novedades cerradas: " + String.join(", ", cerradas) + "."));
 		m.put("idHecho", hc.getCodigo());
 		m.put("filas", filas);
 		return m;
@@ -2641,9 +2702,12 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 			s.setEstado(4L);
 			RequerimientoNovedad r = reqs.get(s.getCodigo());
 			long antes = r.getEstado();
-			r.setEstado(REQ_PENDIENTE);
-			historial(r.getIdNovedad(), r.getCodigo(), "ANULA_RESPUESTA", antes, REQ_PENDIENTE, "Hecho de crédito N.º " + idHecho + " anulado: " + motivo, usuario);
+			if (!"PARCIAL".equals(s.getOpcion())) {
+				r.setEstado(REQ_PENDIENTE);
+			}
+			historial(r.getIdNovedad(), r.getCodigo(), "ANULA_RESPUESTA", antes, r.getEstado(), "Hecho de crédito N.º " + idHecho + " anulado: " + motivo, usuario);
 		}
+		em.createNativeQuery("UPDATE CNT.NTNV SET HCNVCDGO = NULL WHERE HCNVCDGO = :h").setParameter("h", idHecho).executeUpdate();
 		List<Map<String, Object>> filas = new ArrayList<Map<String, Object>>();
 		for (NovedadSeguimiento n : novedades.values()) {
 			historial(n.getCodigo(), null, "ANULA_HECHO", null, null, "Hecho de crédito N.º " + idHecho + " anulado: " + motivo, usuario);
@@ -2688,6 +2752,11 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 		m.put("fechaRegistro", hc.getFechaRegistro());
 		m.put("usuarioAnulacion", hc.getUsuarioAnulacion());
 		m.put("motivoAnulacion", hc.getMotivoAnulacion());
+		m.put("mesDesde", hc.getMesDesde());
+		m.put("tratamientoDiferencia", hc.getTratamientoDiferencia());
+		m.put("tratamientoNombre", hc.getTratamientoDiferencia() == null ? null : tratamientoNombre(hc.getTratamientoDiferencia()));
+		m.put("valorDiferencia", hc.getValorDiferencia());
+		m.put("detalleCalculado", hc.getDetalle());
 		List<Map<String, Object>> os = new ArrayList<Map<String, Object>>();
 		for (OrigenHecho o : em.createQuery("select o from OrigenHecho o where o.idHecho = :h order by o.codigo", OrigenHecho.class)
 				.setParameter("h", idHecho).getResultList()) {
@@ -2722,7 +2791,7 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 			res.add(x);
 		}
 		m.put("resuelve", res);
-		List<?> ps = em.createNativeQuery("SELECT s.RQNVCDGO, n.NVDDCDNV, q.RQNVSCNC FROM CNT.RSNV s JOIN CNT.RQNV q ON q.RQNVCDGO = s.RQNVCDGO"
+		List<?> ps = em.createNativeQuery("SELECT s.RQNVCDGO, n.NVDDCDNV, q.RQNVSCNC, s.RSNVOPCN FROM CNT.RSNV s JOIN CNT.RQNV q ON q.RQNVCDGO = s.RQNVCDGO"
 				+ " JOIN CNT.NVDD n ON n.NVDDCDGO = q.NVDDCDGO WHERE s.HCNVCDGO = :h ORDER BY n.NVDDCDNV, q.RQNVSCNC").setParameter("h", idHecho).getResultList();
 		List<Map<String, Object>> pe = new ArrayList<Map<String, Object>>();
 		for (Object o : ps) {
@@ -2731,6 +2800,7 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 			x.put("idPedido", aLong(f[0]));
 			x.put("novedad", f[1]);
 			x.put("pedido", aLong(f[2]));
+			x.put("soloEstaOperacion", "PARCIAL".equals(aStr(f[3])));
 			pe.add(x);
 		}
 		m.put("atiende", pe);
@@ -2749,6 +2819,198 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 				.setParameter("e", idEmpresa).getResultList()) {
 			Map<String, Object> m = resumenHecho(aLong(o), false);
 			m.remove("adjuntos");
+			out.add(m);
+		}
+		return out;
+	}
+
+	// =====================================================================================
+	// C34d (D-123) — valor calculado con la tabla del SAA; notas de ASOPREP
+	// =====================================================================================
+
+	@EJB
+	private com.saa.ejb.crd.service.ProcesoPagoPrestamoService procesoPagoPrestamoService;
+
+	private static String aJson(Object o) {
+		try {
+			return new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(o);
+		} catch (Exception e) {
+			return null;
+		}
+	}
+
+	@Override
+	public Map<String, Object> calcularHecho(Long idPrestamo, String tipo, String desde, String fecha) throws Throwable {
+		return calcular(idPrestamo, tipo, desde, fecha, true);
+	}
+
+	/**
+	 * Reparto por mes desde la tabla del SAA (CRD.DTPR, sin cuotas anuladas): el total de cada cuota con vencimiento entre el
+	 * primer día del mes desde y la fecha, y el capital de las cuotas que vencen después de la fecha (saldo que se precancela).
+	 * {@code conSimulador}: agrega, como referencia, el simulador de precancelación (parte del estado de hoy de las cuotas).
+	 */
+	private Map<String, Object> calcular(Long idPrestamo, String tipo, String desde, String fecha, boolean conSimulador) throws Throwable {
+		Object[] pr = prestamo(idPrestamo);
+		String t = vacio(tipo) == null ? null : tipo.trim().toUpperCase(Locale.ROOT);
+		if (!CALCULADOS.contains(t)) {
+			throw new IncomeException("El valor solo lo calcula el sistema para una precancelación o un cruce mensual de cuotas con precancelación.");
+		}
+		LocalDate f = fecha(fecha, "Fecha de la precancelación");
+		if (f == null) {
+			throw new IncomeException("Indique la fecha real de la precancelación.");
+		}
+		LocalDate d = fecha(desde, "Mes desde");
+		if ("SERIE_PRECANCELACION".equals(t) && d == null) {
+			throw new IncomeException("Indique desde qué mes se cruzaron las cuotas con la cuenta individual.");
+		}
+		if (d != null) {
+			d = d.withDayOfMonth(1);
+			if (d.isAfter(f)) {
+				throw new IncomeException("El mes desde no puede ser posterior a la fecha de la precancelación.");
+			}
+		}
+		boolean serie = "SERIE_PRECANCELACION".equals(t);
+		List<Map<String, Object>> filas = new ArrayList<Map<String, Object>>();
+		double totalCuotas = 0;
+		if (d != null) {
+			List<?> cs = em.createNativeQuery("SELECT DTPRCDGO, DTPRNMCT, DTPRFCVN, NVL(DTPRCPTL, 0), NVL(DTPRINTR, 0),"
+					+ " NVL(DTPRTTLL, NVL(DTPRCPTL, 0) + NVL(DTPRINTR, 0)) FROM CRD.DTPR"
+					+ " WHERE PRSTCDGO = :p AND DTPRESTD <> 9 AND DTPRFCVN >= :d AND DTPRFCVN < :f + 1 ORDER BY DTPRNMCT")
+					.setParameter("p", idPrestamo).setParameter("d", sqlFecha(d)).setParameter("f", sqlFecha(f)).getResultList();
+			for (Object o : cs) {
+				Object[] c = (Object[]) o;
+				LocalDate v = aLocalDate(c[2]);
+				Map<String, Object> x = new LinkedHashMap<String, Object>();
+				x.put("mes", v == null ? null : v.toString().substring(0, 7));
+				x.put("idCuota", aLong(c[0]));
+				x.put("numeroCuota", aLong(c[1]));
+				x.put("vencimiento", v == null ? null : v.toString());
+				x.put("capital", r2(d0(c[3])));
+				x.put("interes", r2(d0(c[4])));
+				x.put("valor", r2(d0(c[5])));
+				x.put("concepto", serie ? "Cruce de la cuota " + aLong(c[1]) + " con la cuenta individual" : "Cuota " + aLong(c[1]) + " pendiente, pagada en la precancelación");
+				filas.add(x);
+				totalCuotas = r2(totalCuotas + d0(c[5]));
+			}
+		}
+		Object[] sal = (Object[]) em.createNativeQuery("SELECT NVL(SUM(NVL(DTPRCPTL, 0)), 0), MIN(DTPRNMCT), MAX(DTPRNMCT), COUNT(*) FROM CRD.DTPR"
+				+ " WHERE PRSTCDGO = :p AND DTPRESTD <> 9 AND DTPRFCVN >= :f + 1").setParameter("p", idPrestamo).setParameter("f", sqlFecha(f)).getSingleResult();
+		double saldo = r2(d0(sal[0]));
+		if (saldo > 0.004) {
+			Map<String, Object> x = new LinkedHashMap<String, Object>();
+			x.put("mes", f.toString().substring(0, 7));
+			x.put("idCuota", null);
+			x.put("numeroCuota", null);
+			x.put("vencimiento", f.toString());
+			x.put("capital", saldo);
+			x.put("interes", 0D);
+			x.put("valor", saldo);
+			x.put("concepto", "Precancelación: capital pendiente de las cuotas " + aLong(sal[1]) + " a " + aLong(sal[2]));
+			filas.add(x);
+		}
+		Map<String, Object> m = new LinkedHashMap<String, Object>();
+		m.put("idPrestamo", idPrestamo);
+		m.put("idAsoprep", aLong(pr[1]));
+		m.put("tipo", t);
+		m.put("desde", d == null ? null : d.toString());
+		m.put("fecha", f.toString());
+		m.put("filas", filas);
+		m.put("numeroCuotas", filas.size() - (saldo > 0.004 ? 1 : 0));
+		m.put("totalCuotas", totalCuotas);
+		m.put("saldoCapital", saldo);
+		m.put("valor", r2(totalCuotas + saldo));
+		m.put("fuente", "Tabla del SAA: total de cada cuota del rango y capital de las cuotas que vencen después de la fecha");
+		if (conSimulador) {
+			try {
+				com.saa.ejb.crd.service.dto.SimulacionPrecancelacion s = procesoPagoPrestamoService.simularPrecancelacion(idPrestamo, f);
+				if (s != null && s.getValorTotalPrecancelacion() != null && s.getValorTotalPrecancelacion() > 0.004) {
+					m.put("simulador", r2(s.getValorTotalPrecancelacion()));
+				}
+			} catch (Throwable e) {
+				System.out.println("C34d calcular: el simulador de precancelación no respondió (" + e.getMessage() + ")");
+			}
+		}
+		return m;
+	}
+
+	@Override
+	public Map<String, Object> registrarNota(Long idNovedad, AccionNovedadV2 a) throws Throwable {
+		String usuario = usuario(a);
+		NovedadSeguimiento n = novedad(idNovedad);
+		if (n.getEstado() < NOV_ENVIADA || n.getEstado() > NOV_CERRADA) {
+			throw new IncomeException("La novedad " + etiqueta(n) + " no está en seguimiento (fue anulada o reemplazada).");
+		}
+		String texto = vacio(a.getTexto());
+		if (texto == null) {
+			throw new IncomeException("Escriba la respuesta de ASOPREP.");
+		}
+		NotaNovedad x = new NotaNovedad();
+		x.setIdNovedad(idNovedad);
+		x.setTexto(recortar(texto, 4000));
+		x.setEstado(1L);
+		x.setFechaRegistro(LocalDateTime.now());
+		x.setUsuarioRegistro(usuario);
+		em.persist(x);
+		em.flush();
+		int adj = 0;
+		if (a.getAdjuntos() != null) {
+			for (AccionNovedad.Adjunto ad : a.getAdjuntos()) {
+				AdjuntoNovedad z = nuevoAdjunto(ad, usuario);
+				z.setIdNota(x.getCodigo());
+				em.persist(z);
+				adj++;
+			}
+		}
+		historial(idNovedad, null, "NOTA", null, null, "Nota de ASOPREP" + (adj > 0 ? " con " + adj + " adjunto(s)" : "") + ": " + recortar(texto, 300), usuario);
+		Map<String, Object> m = new LinkedHashMap<String, Object>();
+		m.put("mensaje", "Respuesta registrada en la novedad. No cambia saldos ni estados: queda para convertirla en hecho o justificación.");
+		m.put("fila", fila(idNovedad));
+		return m;
+	}
+
+	@Override
+	public Map<String, Object> anularNota(Long idNota, AccionNovedadV2 a) throws Throwable {
+		String usuario = usuario(a);
+		String motivo = vacio(a.getMotivo());
+		if (motivo == null) {
+			throw new IncomeException("Indique por qué anula la respuesta.");
+		}
+		NotaNovedad x = idNota == null ? null : em.find(NotaNovedad.class, idNota);
+		if (x == null || x.getEstado() != 1L) {
+			throw new IncomeException("La respuesta indicada no existe o ya estaba anulada.");
+		}
+		x.setEstado(2L);
+		x.setFechaAnulacion(LocalDateTime.now());
+		x.setUsuarioAnulacion(usuario);
+		x.setMotivoAnulacion(recortar(motivo, 1000));
+		historial(x.getIdNovedad(), null, "ANULA_NOTA", null, null, "Nota de ASOPREP anulada: " + motivo, usuario);
+		Map<String, Object> m = new LinkedHashMap<String, Object>();
+		m.put("mensaje", "Respuesta anulada.");
+		m.put("fila", fila(x.getIdNovedad()));
+		return m;
+	}
+
+	/** Notas de ASOPREP de la novedad (vigentes y anuladas), con sus adjuntos. */
+	private List<Map<String, Object>> notas(Long idNovedad) {
+		List<NotaNovedad> ns = em.createQuery("select x from NotaNovedad x where x.idNovedad = :n order by x.estado, x.codigo desc", NotaNovedad.class)
+				.setParameter("n", idNovedad).getResultList();
+		List<Long> ids = new ArrayList<Long>();
+		for (NotaNovedad x : ns) {
+			ids.add(x.getCodigo());
+		}
+		Map<Long, List<AdjuntoNovedad>> adj = ids.isEmpty() ? new HashMap<Long, List<AdjuntoNovedad>>() : adjuntos("idNota", ids);
+		List<Map<String, Object>> out = new ArrayList<Map<String, Object>>();
+		for (NotaNovedad x : ns) {
+			Map<String, Object> m = new LinkedHashMap<String, Object>();
+			m.put("codigo", x.getCodigo());
+			m.put("texto", personas(x.getTexto()));
+			m.put("vigente", x.getEstado() == 1L);
+			m.put("usuarioRegistro", x.getUsuarioRegistro());
+			m.put("fechaRegistro", x.getFechaRegistro());
+			m.put("idHecho", x.getIdHecho());
+			m.put("usuarioAnulacion", x.getUsuarioAnulacion());
+			m.put("motivoAnulacion", x.getMotivoAnulacion());
+			m.put("adjuntos", adj.getOrDefault(x.getCodigo(), new ArrayList<AdjuntoNovedad>()));
 			out.add(m);
 		}
 		return out;

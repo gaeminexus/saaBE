@@ -6,6 +6,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
 import java.io.Serializable;
 import java.time.LocalDate;
@@ -108,4 +109,28 @@ public class HechoCredito implements Serializable {
 	public void setUsuarioAnulacion(String usuarioAnulacion) { this.usuarioAnulacion = usuarioAnulacion; }
 	public String getMotivoAnulacion() { return motivoAnulacion; }
 	public void setMotivoAnulacion(String motivoAnulacion) { this.motivoAnulacion = motivoAnulacion; }
+
+	/** C34-07b: mes desde (primer día) de un hecho en serie o de las cuotas pendientes de una precancelación. */
+	@Basic
+	@Column(name = "HCNVMSDS")
+	private LocalDate mesDesde;
+	/** C34-07b: NO_SE_DEBITA, SE_DEVUELVE o PARTICIPE_DEBE. */
+	@Basic
+	@Column(name = "HCNVTRDF", length = 20)
+	private String tratamientoDiferencia;
+	@Basic
+	@Column(name = "HCNVVLDF")
+	private Double valorDiferencia;
+	/** C34-07b: reparto calculado por mes (JSON). */
+	@Lob
+	@Column(name = "HCNVDTLL")
+	private String detalle;
+	public LocalDate getMesDesde() { return mesDesde; }
+	public void setMesDesde(LocalDate mesDesde) { this.mesDesde = mesDesde; }
+	public String getTratamientoDiferencia() { return tratamientoDiferencia; }
+	public void setTratamientoDiferencia(String tratamientoDiferencia) { this.tratamientoDiferencia = tratamientoDiferencia; }
+	public Double getValorDiferencia() { return valorDiferencia; }
+	public void setValorDiferencia(Double valorDiferencia) { this.valorDiferencia = valorDiferencia; }
+	public String getDetalle() { return detalle; }
+	public void setDetalle(String detalle) { this.detalle = detalle; }
 }

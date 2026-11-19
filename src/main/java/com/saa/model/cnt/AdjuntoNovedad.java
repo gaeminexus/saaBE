@@ -154,4 +154,10 @@ public class AdjuntoNovedad implements Serializable {
 	private Long idHecho;
 	public Long getIdHecho() { return idHecho; }
 	public void setIdHecho(Long idHecho) { this.idHecho = idHecho; }
+	/** C34d: nota de ASOPREP (CNT.NTNV) a la que pertenece. */
+	@Basic
+	@Column(name = "NTNVCDGO")
+	private Long idNota;
+	public Long getIdNota() { return idNota; }
+	public void setIdNota(Long idNota) { this.idNota = idNota; }
 }

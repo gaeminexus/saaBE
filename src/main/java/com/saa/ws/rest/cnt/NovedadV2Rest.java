@@ -306,4 +306,43 @@ public class NovedadV2Rest {
 			return RespuestasC25.error(e, "No se pudieron exportar los hechos: ");
 		}
 	}
+
+	@GET
+	@Path("/hechos/calcular")
+	@Produces(MediaType.APPLICATION_JSON)
+	public Response calcularHecho(@QueryParam("idPrestamo") Long idPrestamo, @QueryParam("tipo") String tipo, @QueryParam("desde") String desde,
+			@QueryParam("fecha") String fecha) {
+		System.out.println("LLEGA AL SERVICIO GET nvdd2/hechos/calcular");
+		try {
+			return RespuestasC25.ok(servicio.calcularHecho(idPrestamo, tipo, desde, fecha));
+		} catch (Throwable e) {
+			return RespuestasC25.error(e, "No se pudo calcular el valor: ");
+		}
+	}
+
+	@POST
+	@Path("/{id}/notas")
+	@Consumes(MediaType.APPLICATION_JSON)
+	@Produces(MediaType.APPLICATION_JSON)
+	public Response registrarNota(@PathParam("id") Long id, AccionNovedadV2 a) {
+		System.out.println("LLEGA AL SERVICIO POST nvdd2/{id}/notas");
+		try {
+			return RespuestasC25.ok(servicio.registrarNota(id, a));
+		} catch (Throwable e) {
+			return RespuestasC25.error(e, "No se pudo registrar la respuesta: ");
+		}
+	}
+
+	@POST
+	@Path("/notas/{id}/anular")
+	@Consumes(MediaType.APPLICATION_JSON)
+	@Produces(MediaType.APPLICATION_JSON)
+	public Response anularNota(@PathParam("id") Long id, AccionNovedadV2 a) {
+		System.out.println("LLEGA AL SERVICIO POST nvdd2/notas/{id}/anular");
+		try {
+			return RespuestasC25.ok(servicio.anularNota(id, a));
+		} catch (Throwable e) {
+			return RespuestasC25.error(e, "No se pudo anular la respuesta: ");
+		}
+	}
 }

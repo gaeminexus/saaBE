@@ -97,4 +97,13 @@ public interface SeguimientoNovedadV2Service {
 
 	/** Hechos vigentes de la empresa, estructurados para la pasada v8 (operación, tipo, fecha, valor, orígenes y qué resuelven). */
 	List<Map<String, Object>> exportarHechos(Long idEmpresa) throws Throwable;
+
+	/** C34d (D-123): valor de una precancelación o de un hecho en serie calculado con la tabla del SAA, repartido por mes. */
+	Map<String, Object> calcularHecho(Long idPrestamo, String tipo, String desde, String fecha) throws Throwable;
+
+	/** C34d: nota de ASOPREP en la novedad (texto y adjuntos, sin cuentas; no cambia saldos ni estados). */
+	Map<String, Object> registrarNota(Long idNovedad, AccionNovedadV2 a) throws Throwable;
+
+	/** C34d: anula una nota (con motivo). */
+	Map<String, Object> anularNota(Long idNota, AccionNovedadV2 a) throws Throwable;
 }

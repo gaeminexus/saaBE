@@ -79,3 +79,13 @@ justificación `HECHO` y acciones de historial `HECHO_CREDITO`/`ANULA_HECHO`. Di
 Además: el detalle muestra el hecho en cada justificación o respuesta que lo usa; cada movimiento trae `idPrestamoSugerido`
 (la operación de su texto); en `POST /nvdd2/justificar` el reparto (asiento) ahora es opcional: la pantalla solo lo pide con el
 permiso 1569 REGISTRAR AJUSTE. Prueba: `cuadreSuper/03-trabajo/cambios-saa/c34-novedades-v2/scripts/prueba-rest-c34d.js` (25/25).
+
+### C34d ampliado por D-123 (C34-07b)
+
+| Ruta | Qué hace |
+|---|---|
+| `GET /nvdd2/hechos/calcular?idPrestamo&tipo&desde&fecha` | Para `PRECANCELACION` y `SERIE_PRECANCELACION`: reparto por mes desde `CRD.DTPR` (sin cuotas anuladas): total de cada cuota con vencimiento entre el primer día del mes `desde` y `fecha`, más el capital de las cuotas que vencen después de `fecha`. Devuelve `filas`, `numeroCuotas`, `totalCuotas`, `saldoCapital`, `valor` y, como referencia, `simulador` (`simularPrecancelacion`, que parte del estado de hoy de las cuotas) cuando da un valor. |
+| `POST /nvdd2/hechos` (campos nuevos) | `desde` (mes desde); `tratamientoDiferencia` (`NO_SE_DEBITA` / `SE_DEVUELVE` si sobra, `PARTICIPE_DEBE` si falta; obligatorio cuando Σ orígenes ≠ valor); `pedidosParciales` (el hecho queda como respuesta `RSNVOPCN = PARCIAL` y el pedido sigue pendiente); `idNota` (nota que se convierte). En los tipos calculados el valor lo pone el SAA y se guarda el reparto en `HCNVDTLL`. |
+| `POST /nvdd2/{id}/notas` · `POST /nvdd2/notas/{id}/anular` | Nota de ASOPREP (`CNT.NTNV`): texto y adjuntos, sin cuentas; no cambia saldos ni estados. El detalle la trae en `notas`. |
+
+Prueba: `cuadreSuper/03-trabajo/cambios-saa/c34-novedades-v2/scripts/prueba-rest-c34d-d123.js` (18/18).
