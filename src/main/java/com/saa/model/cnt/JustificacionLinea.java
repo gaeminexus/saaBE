@@ -148,4 +148,10 @@ public class JustificacionLinea implements Serializable {
 	public void setUsuarioAnulacion(String usuarioAnulacion) { this.usuarioAnulacion = usuarioAnulacion; }
 	public String getMotivoAnulacion() { return motivoAnulacion; }
 	public void setMotivoAnulacion(String motivoAnulacion) { this.motivoAnulacion = motivoAnulacion; }
+	/** C34d: hecho de crédito (CNT.HCNV) al que pertenece. */
+	@Basic
+	@Column(name = "HCNVCDGO")
+	private Long idHecho;
+	public Long getIdHecho() { return idHecho; }
+	public void setIdHecho(Long idHecho) { this.idHecho = idHecho; }
 }

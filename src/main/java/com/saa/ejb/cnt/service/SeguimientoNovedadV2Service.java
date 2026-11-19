@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Map;
 
 import com.saa.ejb.cnt.service.dto.AccionNovedadV2;
+import com.saa.ejb.cnt.service.dto.HechoCreditoDto;
 
 import jakarta.ejb.Local;
 
@@ -74,4 +75,35 @@ public interface SeguimientoNovedadV2Service {
 	 * {@code formato} = "reproceso" (solo números internos) o "asoprep" (con idAsoprep, cédula y nombre).
 	 */
 	List<Map<String, Object>> exportar(Long idEmpresa, Long anio, Long mes, String formato) throws Throwable;
+
+	// ---- C34d: hechos de crédito
+
+	/**
+	 * Buscador de orígenes del dinero. {@code fuente}: SUGERIDOS (necesita idPrestamo: mismo partícipe, relacionados por
+	 * cónyuge o referencia familiar y valor ± una cuota), EXTRACTO, APORTE o PENDIENTE. Incluye movimientos ya procesados,
+	 * con «aplicado hoy» y lo disponible (descontado lo usado en otros hechos vigentes).
+	 */
+	List<Map<String, Object>> buscarOrigenes(Long idEmpresa, String fuente, Long idPrestamo, Long idEntidad, String texto, String desde,
+			String hasta, Double valor, String fecha) throws Throwable;
+
+	/** Movimientos por regularizar y pedidos abiertos de la operación o de su partícipe (para marcar qué resuelve el hecho). */
+	Map<String, Object> candidatosHecho(Long idEmpresa, Long idPrestamo) throws Throwable;
+
+	/** Registra un hecho con sus orígenes; resuelve los movimientos y pedidos indicados y cierra las novedades que quedan sin nada. */
+	Map<String, Object> registrarHecho(HechoCreditoDto h) throws Throwable;
+
+	/** Anula un hecho (con motivo): anula sus justificaciones y respuestas; las novedades cerradas deben reabrirse antes. */
+	Map<String, Object> anularHecho(Long idHecho, HechoCreditoDto h) throws Throwable;
+
+	/** Hechos vigentes de la empresa, estructurados para la pasada v8 (operación, tipo, fecha, valor, orígenes y qué resuelven). */
+	List<Map<String, Object>> exportarHechos(Long idEmpresa) throws Throwable;
+
+	/** C34d (D-123): valor de una precancelación o de un hecho en serie calculado con la tabla del SAA, repartido por mes. */
+	Map<String, Object> calcularHecho(Long idPrestamo, String tipo, String desde, String fecha) throws Throwable;
+
+	/** C34d: nota de ASOPREP en la novedad (texto y adjuntos, sin cuentas; no cambia saldos ni estados). */
+	Map<String, Object> registrarNota(Long idNovedad, AccionNovedadV2 a) throws Throwable;
+
+	/** C34d: anula una nota (con motivo). */
+	Map<String, Object> anularNota(Long idNota, AccionNovedadV2 a) throws Throwable;
 }

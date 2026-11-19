@@ -61,3 +61,31 @@ Pedido de ASOPREP: al justificar, ingresar cómo debe quedar el asiento (debe y 
 parte del movimiento. `validarReparto` recibe el sentido de la línea y valida el cuadre con la línea implícita de la cuenta por
 regularizar; `persistirReparto` ajusta el redondeo para que cada justificación cuadre. Sin DDL. Prueba en la base de trabajo:
 `cuadreSuper/03-trabajo/cambios-saa/c34-novedades-v2/scripts/prueba-rest-c34b.js` (7/7 OK).
+
+## C34d (18-nov-2026): responder con un hecho de crédito y elegir el origen del dinero
+
+DDL `sql/C34-07-hechos-credito.sql`: `CNT.HCNV` (hecho), `CNT.OHNV` (orígenes), `HCNVCDGO` en `JSNV`/`RSNV`/`ADNV`, tipo de
+justificación `HECHO` y acciones de historial `HECHO_CREDITO`/`ANULA_HECHO`. Diseño:
+`cuadreSuper/03-trabajo/cambios-saa/c34-novedades-v2/C34D-HECHOS-DE-CREDITO-DISENO.md`.
+
+| Ruta | Qué hace |
+|---|---|
+| `GET /nvdd2/origenes?idEmpresa&fuente&idPrestamo&idEntidad&texto&desde&hasta&valor&fecha` | Buscador de orígenes. `fuente`: `SUGERIDOS` (necesita `idPrestamo`: mismo partícipe, cónyuge `CRD.CNYG` y referencias familiares `CRD.RRFF` por cédula, y valor ± una cuota), `EXTRACTO`, `APORTE` o `PENDIENTE`. Incluye lo ya procesado o conciliado con «aplicado hoy» (asiento de la conciliación, partida pendiente y posible aporte del mismo día y valor) y lo disponible (descontado lo usado en hechos vigentes). Ordena por días/30 + diferencia de valor / cuota. |
+| `GET /nvdd2/hechos/candidatos?idEmpresa&idPrestamo` | Movimientos por regularizar y pedidos abiertos de la operación o de su titular (marcas `{prestamo:N}` / `{entidad:N}`, glosa con la operación, detalle de origen). |
+| `POST /nvdd2/hechos` | `{usuario, idEmpresa, idPrestamo, tipo, fecha, valor, idCuota?, texto?, tipoDocumento?, numeroDocumento?, origenes:[{tipo, idFilaExtracto?, idAporte?, idLinea?, valor, conceptoReal?, texto?}], lineas:[id], pedidos:[id], adjuntos?}`. Reglas: Σ orígenes = valor; un movimiento no se usa por encima de su valor; `SIN_DINERO` exige texto; los orígenes `PENDIENTE` quedan resueltos solos; una justificación `HECHO` por movimiento y una respuesta por pedido; las novedades que quedan sin nada pendiente se cierran («Resuelta por el hecho de crédito N.º …»). |
+| `POST /nvdd2/hechos/{id}/anular` | `{usuario, motivo}`: anula el hecho, sus justificaciones y respuestas (los pedidos vuelven a pendiente). Si una novedad quedó cerrada, hay que reabrirla antes. Una justificación `HECHO` no se anula sola. |
+| `GET /nvdd2/exportar/hechos?idEmpresa` | Hechos vigentes para la pasada v8: operación (`idPrestamo`, `idAsoprep`), tipo, fecha, valor, cuota, orígenes («estaba como» con marcas `{entidad:N}`, «en realidad es», entidad anterior) y movimientos/pedidos que resuelve. Sin nombres ni cédulas. |
+
+Además: el detalle muestra el hecho en cada justificación o respuesta que lo usa; cada movimiento trae `idPrestamoSugerido`
+(la operación de su texto); en `POST /nvdd2/justificar` el reparto (asiento) ahora es opcional: la pantalla solo lo pide con el
+permiso 1569 REGISTRAR AJUSTE. Prueba: `cuadreSuper/03-trabajo/cambios-saa/c34-novedades-v2/scripts/prueba-rest-c34d.js` (25/25).
+
+### C34d ampliado por D-123 (C34-07b)
+
+| Ruta | Qué hace |
+|---|---|
+| `GET /nvdd2/hechos/calcular?idPrestamo&tipo&desde&fecha` | Para `PRECANCELACION` y `SERIE_PRECANCELACION`: reparto por mes desde `CRD.DTPR` (sin cuotas anuladas): total de cada cuota con vencimiento entre el primer día del mes `desde` y `fecha`, más el capital de las cuotas que vencen después de `fecha`. Devuelve `filas`, `numeroCuotas`, `totalCuotas`, `saldoCapital`, `valor` y, como referencia, `simulador` (`simularPrecancelacion`, que parte del estado de hoy de las cuotas) cuando da un valor. |
+| `POST /nvdd2/hechos` (campos nuevos) | `desde` (mes desde); `tratamientoDiferencia` (`NO_SE_DEBITA` / `SE_DEVUELVE` si sobra, `PARTICIPE_DEBE` si falta; obligatorio cuando Σ orígenes ≠ valor); `pedidosParciales` (el hecho queda como respuesta `RSNVOPCN = PARCIAL` y el pedido sigue pendiente); `idNota` (nota que se convierte). En los tipos calculados el valor lo pone el SAA y se guarda el reparto en `HCNVDTLL`. |
+| `POST /nvdd2/{id}/notas` · `POST /nvdd2/notas/{id}/anular` | Nota de ASOPREP (`CNT.NTNV`): texto y adjuntos, sin cuentas; no cambia saldos ni estados. El detalle la trae en `notas`. |
+
+Prueba: `cuadreSuper/03-trabajo/cambios-saa/c34-novedades-v2/scripts/prueba-rest-c34d-d123.js` (18/18).

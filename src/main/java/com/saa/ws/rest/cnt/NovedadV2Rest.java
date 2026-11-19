@@ -2,6 +2,7 @@ package com.saa.ws.rest.cnt;
 
 import com.saa.ejb.cnt.service.SeguimientoNovedadV2Service;
 import com.saa.ejb.cnt.service.dto.AccionNovedadV2;
+import com.saa.ejb.cnt.service.dto.HechoCreditoDto;
 
 import jakarta.ejb.EJB;
 import jakarta.ws.rs.Consumes;
@@ -237,6 +238,111 @@ public class NovedadV2Rest {
 			return RespuestasC25.ok(servicio.exportar(idEmpresa, anio, mes, formato));
 		} catch (Throwable e) {
 			return RespuestasC25.error(e, "No se pudo exportar: ");
+		}
+	}
+
+	// ---- C34d: hechos de crédito
+
+	@GET
+	@Path("/origenes")
+	@Produces(MediaType.APPLICATION_JSON)
+	public Response origenes(@QueryParam("idEmpresa") Long idEmpresa, @QueryParam("fuente") String fuente, @QueryParam("idPrestamo") Long idPrestamo,
+			@QueryParam("idEntidad") Long idEntidad, @QueryParam("texto") String texto, @QueryParam("desde") String desde,
+			@QueryParam("hasta") String hasta, @QueryParam("valor") Double valor, @QueryParam("fecha") String fecha) {
+		System.out.println("LLEGA AL SERVICIO GET nvdd2/origenes");
+		try {
+			return RespuestasC25.ok(servicio.buscarOrigenes(idEmpresa, fuente, idPrestamo, idEntidad, texto, desde, hasta, valor, fecha));
+		} catch (Throwable e) {
+			return RespuestasC25.error(e, "No se pudieron buscar los orígenes: ");
+		}
+	}
+
+	@GET
+	@Path("/hechos/candidatos")
+	@Produces(MediaType.APPLICATION_JSON)
+	public Response candidatosHecho(@QueryParam("idEmpresa") Long idEmpresa, @QueryParam("idPrestamo") Long idPrestamo) {
+		System.out.println("LLEGA AL SERVICIO GET nvdd2/hechos/candidatos");
+		try {
+			return RespuestasC25.ok(servicio.candidatosHecho(idEmpresa, idPrestamo));
+		} catch (Throwable e) {
+			return RespuestasC25.error(e, "No se pudieron leer los movimientos de la operación: ");
+		}
+	}
+
+	@POST
+	@Path("/hechos")
+	@Consumes(MediaType.APPLICATION_JSON)
+	@Produces(MediaType.APPLICATION_JSON)
+	public Response registrarHecho(HechoCreditoDto h) {
+		System.out.println("LLEGA AL SERVICIO POST nvdd2/hechos");
+		try {
+			return RespuestasC25.ok(servicio.registrarHecho(h));
+		} catch (Throwable e) {
+			return RespuestasC25.error(e, "No se pudo registrar el hecho de crédito: ");
+		}
+	}
+
+	@POST
+	@Path("/hechos/{id}/anular")
+	@Consumes(MediaType.APPLICATION_JSON)
+	@Produces(MediaType.APPLICATION_JSON)
+	public Response anularHecho(@PathParam("id") Long id, HechoCreditoDto h) {
+		System.out.println("LLEGA AL SERVICIO POST nvdd2/hechos/{id}/anular");
+		try {
+			return RespuestasC25.ok(servicio.anularHecho(id, h));
+		} catch (Throwable e) {
+			return RespuestasC25.error(e, "No se pudo anular el hecho de crédito: ");
+		}
+	}
+
+	@GET
+	@Path("/exportar/hechos")
+	@Produces(MediaType.APPLICATION_JSON)
+	public Response exportarHechos(@QueryParam("idEmpresa") Long idEmpresa) {
+		System.out.println("LLEGA AL SERVICIO GET nvdd2/exportar/hechos");
+		try {
+			return RespuestasC25.ok(servicio.exportarHechos(idEmpresa));
+		} catch (Throwable e) {
+			return RespuestasC25.error(e, "No se pudieron exportar los hechos: ");
+		}
+	}
+
+	@GET
+	@Path("/hechos/calcular")
+	@Produces(MediaType.APPLICATION_JSON)
+	public Response calcularHecho(@QueryParam("idPrestamo") Long idPrestamo, @QueryParam("tipo") String tipo, @QueryParam("desde") String desde,
+			@QueryParam("fecha") String fecha) {
+		System.out.println("LLEGA AL SERVICIO GET nvdd2/hechos/calcular");
+		try {
+			return RespuestasC25.ok(servicio.calcularHecho(idPrestamo, tipo, desde, fecha));
+		} catch (Throwable e) {
+			return RespuestasC25.error(e, "No se pudo calcular el valor: ");
+		}
+	}
+
+	@POST
+	@Path("/{id}/notas")
+	@Consumes(MediaType.APPLICATION_JSON)
+	@Produces(MediaType.APPLICATION_JSON)
+	public Response registrarNota(@PathParam("id") Long id, AccionNovedadV2 a) {
+		System.out.println("LLEGA AL SERVICIO POST nvdd2/{id}/notas");
+		try {
+			return RespuestasC25.ok(servicio.registrarNota(id, a));
+		} catch (Throwable e) {
+			return RespuestasC25.error(e, "No se pudo registrar la respuesta: ");
+		}
+	}
+
+	@POST
+	@Path("/notas/{id}/anular")
+	@Consumes(MediaType.APPLICATION_JSON)
+	@Produces(MediaType.APPLICATION_JSON)
+	public Response anularNota(@PathParam("id") Long id, AccionNovedadV2 a) {
+		System.out.println("LLEGA AL SERVICIO POST nvdd2/notas/{id}/anular");
+		try {
+			return RespuestasC25.ok(servicio.anularNota(id, a));
+		} catch (Throwable e) {
+			return RespuestasC25.error(e, "No se pudo anular la respuesta: ");
 		}
 	}
 }
