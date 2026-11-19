@@ -1,5 +1,5 @@
 -- =====================================================================================
--- 379 — CRD.HDTP.EVPRCDGO pasa a admitir NULL (cambio C35, DTPRSLOT = lo respaldado por los pagos)
+-- 380 — CRD.HDTP.EVPRCDGO pasa a admitir NULL (cambio C35, DTPRSLOT = lo respaldado por los pagos)
 -- 2026-11-18 · expediente cuadreSuper, C35-ABONO-CRUCE-CUOTAS-EN-MORA.md
 --
 -- Por que: C35 deja en CRD.HDTP la cuota tal como estaba cuando le quita a DTPRSLOT el valor sin pagos
