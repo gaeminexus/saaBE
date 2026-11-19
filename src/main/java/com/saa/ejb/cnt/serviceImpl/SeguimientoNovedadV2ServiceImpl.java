@@ -8,6 +8,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -18,12 +19,15 @@ import com.saa.ejb.cnt.service.SeguimientoNovedadService;
 import com.saa.ejb.cnt.service.SeguimientoNovedadV2Service;
 import com.saa.ejb.cnt.service.dto.AccionNovedad;
 import com.saa.ejb.cnt.service.dto.AccionNovedadV2;
+import com.saa.ejb.cnt.service.dto.HechoCreditoDto;
 import com.saa.model.cnt.AdjuntoNovedad;
 import com.saa.model.cnt.Decision;
+import com.saa.model.cnt.HechoCredito;
 import com.saa.model.cnt.HistorialNovedad;
 import com.saa.model.cnt.JustificacionLinea;
 import com.saa.model.cnt.LineaNovedad;
 import com.saa.model.cnt.NovedadSeguimiento;
+import com.saa.model.cnt.OrigenHecho;
 import com.saa.model.cnt.RepartoNovedad;
 import com.saa.model.cnt.RequerimientoNovedad;
 import com.saa.model.cnt.RespuestaNovedad;
@@ -684,6 +688,19 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 			l.put("descripcion", desc);
 			l.put("idPrestamo", aLong(f[21]));
 			l.put("idAsoprep", aLong(f[22]));
+			// C34d: operación que menciona el texto del movimiento ({prestamo:N}), para abrir el hecho de crédito con ella puesta
+			Long sug = aLong(f[21]);
+			Long sugAs = aLong(f[22]);
+			if (sug == null && f[26] != null) {
+				java.util.regex.Matcher mp = java.util.regex.Pattern.compile("\\{prestamo:(\\d+)\\}").matcher(aStr(f[26]));
+				if (mp.find()) {
+					sugAs = Long.valueOf(mp.group(1));
+					List<?> x = em.createNativeQuery("SELECT MAX(PRSTCDGO) FROM CRD.PRST WHERE PRSTIDAS = :a").setParameter("a", sugAs).getResultList();
+					sug = x.isEmpty() ? null : aLong(x.get(0));
+				}
+			}
+			l.put("idPrestamoSugerido", sug);
+			l.put("idAsoprepSugerido", sug == null ? null : sugAs);
 			l.put("cedula", f[23]);
 			l.put("nombre", f[24]);
 			l.put("codigoParticipe", aStr(f[27]));
@@ -697,7 +714,7 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 	private Map<Long, List<Map<String, Object>>> justificaciones(Long idNovedad) {
 		List<?> filas = em.createNativeQuery("SELECT j.JSNVCDGO, j.LNNVCDGO, j.JSNVMNTO, j.JSNVTPJS, j.LNNVCRUC, j.JSNVFCHH, j.JSNVTPDC,"
 				+ " j.JSNVNMDC, j.DCSNCDGO, d.DCSNNMRO, d.DCSNTTLO, j.JSNVTXTO, j.JSNVESTD, j.JSNVFCRG, j.JSNVUSAR, j.JSNVFCAN, j.JSNVUSAN,"
-				+ " j.JSNVMTAN, lc.LNNVSCNC, nc.NVDDCDNV"
+				+ " j.JSNVMTAN, lc.LNNVSCNC, nc.NVDDCDNV, j.HCNVCDGO"
 				+ " FROM CNT.JSNV j LEFT JOIN CNT.DCSN d ON d.DCSNCDGO = j.DCSNCDGO"
 				+ " LEFT JOIN CNT.LNNV lc ON lc.LNNVCDGO = j.LNNVCRUC LEFT JOIN CNT.NVDD nc ON nc.NVDDCDGO = lc.NVDDCDGO"
 				+ " WHERE j.NVDDCDGO = :n ORDER BY j.JSNVESTD, j.JSNVCDGO").setParameter("n", idNovedad).getResultList();
@@ -715,7 +732,11 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 			j.put("codigo", id);
 			j.put("monto", aDouble(f[2]));
 			j.put("tipo", f[3]);
-			j.put("tipoNombre", "RESPALDO".equals(aStr(f[3])) ? "Con respaldo" : "DECISION".equals(aStr(f[3])) ? "Decisión de ASOPREP" : "Cruce con otro movimiento");
+			j.put("tipoNombre", "RESPALDO".equals(aStr(f[3])) ? "Con respaldo" : "DECISION".equals(aStr(f[3])) ? "Decisión de ASOPREP"
+					: "HECHO".equals(aStr(f[3])) ? "Hecho de crédito" : "Cruce con otro movimiento");
+			if (f[20] != null) {
+				j.put("hecho", resumenHecho(aLong(f[20]), true));
+			}
 			j.put("idLineaCruce", aLong(f[4]));
 			if (f[4] != null) {
 				j.put("cruceCon", "movimiento " + f[18] + " de la novedad " + f[19]);
@@ -846,6 +867,9 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 				if (d != null) {
 					ms.put("numeroDecision", d.getNumero());
 					ms.put("tituloDecision", vacio(d.getTitulo()) != null ? d.getTitulo() : d.getTema());
+				}
+				if (s.getIdHecho() != null) {
+					ms.put("hecho", resumenHecho(s.getIdHecho(), true));
 				}
 				ms.put("reparto", rep.getOrDefault(s.getCodigo(), new ArrayList<Map<String, Object>>()));
 				ms.put("adjuntos", adj.getOrDefault(s.getCodigo(), new ArrayList<AdjuntoNovedad>()));
@@ -1364,13 +1388,16 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 					throw new IncomeException("Eligió salidas y entradas a la vez: justifíquelas por separado (cada asiento de regularización sale de un solo lado de la cuenta por regularizar).");
 				}
 			}
-			List<AccionNovedadV2.Reparto> reparto = validarReparto(n.getIdEmpresa(), a.getReparto(), total, sentido, sentido);
+			List<AccionNovedadV2.Reparto> reparto = a.getReparto() == null || a.getReparto().isEmpty() ? new ArrayList<AccionNovedadV2.Reparto>()
+					: validarReparto(n.getIdEmpresa(), a.getReparto(), total, sentido, sentido);
 			for (int i = 0; i < lineas.size(); i++) {
 				LineaNovedad l = lineas.get(i);
 				double monto = montos.get(i);
 				JustificacionLinea j = nuevaJustificacion(l, n, monto, tipo, null, fechaHecho, a, decision, usuario);
 				creadas.add(j.getCodigo());
-				persistirReparto(reparto, monto / total, monto, j.getCodigo(), null, usuario, sentido);
+				if (!reparto.isEmpty()) {
+					persistirReparto(reparto, monto / total, monto, j.getCodigo(), null, usuario, sentido);
+				}
 				adjuntar(a, n, j, usuario);
 				recalcularLinea(l);
 			}
@@ -1430,6 +1457,9 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 		}
 		if (j.getEstado() != 1L) {
 			throw new IncomeException("Esa justificación ya estaba anulada.");
+		}
+		if ("HECHO".equals(j.getTipo())) {
+			throw new IncomeException("Este movimiento está resuelto por el hecho de crédito N.º " + j.getIdHecho() + ": anule el hecho (todo junto), no una parte.");
 		}
 		NovedadSeguimiento n = novedad(j.getIdNovedad());
 		exigeAbierta(n);
@@ -1797,6 +1827,928 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 			m.put("opcion", f[36]);
 			m.put("filasDetalle", f[37]);
 			m.put("adjuntos", f[38]);
+			out.add(m);
+		}
+		return out;
+	}
+
+	// =====================================================================================
+	// C34d — Hechos de crédito y orígenes del dinero
+	// =====================================================================================
+
+	static final List<String> TIPOS_HECHO = Arrays.asList("ABONO_CAPITAL", "PAGO_CUOTAS", "PRECANCELACION", "REAPERTURA_CUOTAS", "PARTICIPE_DEBE");
+	static final List<String> TIPOS_ORIGEN = Arrays.asList("EXTRACTO", "APORTE", "PENDIENTE", "SIN_DINERO");
+
+	static String tipoHechoNombre(String t) {
+		if ("ABONO_CAPITAL".equals(t)) return "Abono a capital";
+		if ("PAGO_CUOTAS".equals(t)) return "Pago de cuotas";
+		if ("PRECANCELACION".equals(t)) return "Precancelación";
+		if ("REAPERTURA_CUOTAS".equals(t)) return "Reapertura de cuotas";
+		if ("PARTICIPE_DEBE".equals(t)) return "El partícipe debe";
+		return t;
+	}
+
+	static String tipoOrigenNombre(String t) {
+		if ("EXTRACTO".equals(t)) return "Extracto del banco";
+		if ("APORTE".equals(t)) return "Cuenta individual";
+		if ("PENDIENTE".equals(t)) return "Pendiente por regularizar";
+		if ("SIN_DINERO".equals(t)) return "Sin dinero (el partícipe lo debe)";
+		return t;
+	}
+
+	private static java.sql.Date sqlFecha(LocalDate f) {
+		return f == null ? null : java.sql.Date.valueOf(f);
+	}
+
+	private static LocalDate aLocalDate(Object o) {
+		if (o == null) return null;
+		if (o instanceof LocalDate) return (LocalDate) o;
+		if (o instanceof LocalDateTime) return ((LocalDateTime) o).toLocalDate();
+		if (o instanceof java.sql.Timestamp) return ((java.sql.Timestamp) o).toLocalDateTime().toLocalDate();
+		if (o instanceof java.sql.Date) return ((java.sql.Date) o).toLocalDate();
+		if (o instanceof java.util.Date) return new java.sql.Date(((java.util.Date) o).getTime()).toLocalDate();
+		Object f = aFecha(o);
+		return f instanceof LocalDate ? (LocalDate) f : f instanceof LocalDateTime ? ((LocalDateTime) f).toLocalDate() : null;
+	}
+
+	private static String fechaTexto(Object o) {
+		LocalDate f = aLocalDate(o);
+		return f == null ? "" : f.format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy"));
+	}
+
+	/** Préstamo: [PRSTCDGO, PRSTIDAS, ENTDCDGO, PRSTVLCT]. */
+	private Object[] prestamo(Long idPrestamo) {
+		if (idPrestamo == null) {
+			throw new IncomeException("Elija la operación (préstamo).");
+		}
+		List<?> f = em.createNativeQuery("SELECT PRSTCDGO, PRSTIDAS, ENTDCDGO, PRSTVLCT FROM CRD.PRST WHERE PRSTCDGO = :p")
+				.setParameter("p", idPrestamo).getResultList();
+		if (f.isEmpty()) {
+			throw new IncomeException("La operación elegida no existe.");
+		}
+		return (Object[]) f.get(0);
+	}
+
+	/** Entidades relacionadas con el titular: cónyuge (CRD.CNYG) y referencias familiares (CRD.RRFF), por cédula, en los dos sentidos. */
+	private Map<Long, String> relacionados(Long idEntidad) {
+		Map<Long, String> out = new LinkedHashMap<Long, String>();
+		if (idEntidad == null) {
+			return out;
+		}
+		List<?> f = em.createNativeQuery("SELECT e2.ENTDCDGO, 'CONYUGE' FROM CRD.CNYG c JOIN CRD.ENTD e2 ON e2.ENTDNMID = c.CNYGCDLA WHERE c.ENTDCDGO = :t"
+				+ " UNION SELECT c.ENTDCDGO, 'CONYUGE' FROM CRD.CNYG c JOIN CRD.ENTD e ON e.ENTDCDGO = :t AND c.CNYGCDLA = e.ENTDNMID"
+				+ " UNION SELECT e2.ENTDCDGO, 'FAMILIAR' FROM CRD.RRFF r JOIN CRD.ENTD e2 ON e2.ENTDNMID = r.RRFFCDLA WHERE r.ENTDCDGO = :t"
+				+ " UNION SELECT r.ENTDCDGO, 'FAMILIAR' FROM CRD.RRFF r JOIN CRD.ENTD e ON e.ENTDCDGO = :t AND r.RRFFCDLA = e.ENTDNMID")
+				.setParameter("t", idEntidad).getResultList();
+		for (Object o : f) {
+			Object[] x = (Object[]) o;
+			Long e = aLong(x[0]);
+			if (e != null && !e.equals(idEntidad) && !out.containsKey(e)) {
+				out.put(e, aStr(x[1]));
+			}
+		}
+		return out;
+	}
+
+	/** Lo ya usado de un movimiento como origen en hechos vigentes (sin contar el hecho {@code excepto}). */
+	private double usado(String columna, Long id, Long excepto) {
+		Number n = (Number) em.createNativeQuery("SELECT NVL(SUM(o.OHNVVLOR), 0) FROM CNT.OHNV o JOIN CNT.HCNV h ON h.HCNVCDGO = o.HCNVCDGO"
+				+ " WHERE h.HCNVESTD = 1 AND o.OHNVESTD = 1 AND o." + columna + " = :id AND h.HCNVCDGO <> :x")
+				.setParameter("id", id).setParameter("x", excepto == null ? -1L : excepto).getSingleResult();
+		return r2(n.doubleValue());
+	}
+
+	private static final String SQL_DEXB = "SELECT x.DEXBCDGO, x.DEXBFTRN, NVL(x.DEXBCRDT, 0), NVL(x.DEXBDBTO, 0), x.DEXBDSCR, x.DEXBREFR, x.DEXBNFIL,"
+			+ " b.BNCONMBR, c.CNBCNMRO FROM TSR.DEXB x JOIN TSR.EXBC eb ON eb.EXBCCDGO = x.EXBCCDGO"
+			+ " LEFT JOIN TSR.CNBC c ON c.CNBCCDGO = NVL(x.CNBCCDGO, eb.CNBCCDGO) LEFT JOIN TSR.BNCO b ON b.BNCOCDGO = c.BNCOCDGO"
+			+ " WHERE eb.PJRQCDGO = :e AND x.DEXBESTD = 1";
+	private static final String SQL_APRT = "SELECT a.APRTCDGO, a.APRTFCTR, a.APRTVLRR, a.ENTDCDGO, t.TPAPNMBR, a.APRTGLSA FROM CRD.APRT a"
+			+ " LEFT JOIN CRD.TPAP t ON t.TPAPCDGO = a.TPAPCDGO WHERE a.APRTIDST IN (1, 4) AND a.APRTVLRR <> 0";
+	private static final String SQL_LNNV = "SELECT l.LNNVCDGO, NVL(x.DEXBFTRN, l.LNNVFCHA), l.LNNVSLDO, l.LNNVSNTD, p.PLNNCNTA, p.PLNNNMBR, n.NVDDCDNV,"
+			+ " l.LNNVSCNC, l.LNNVDSUS, l.LNNVDSCR, l.ENTDCDGO FROM CNT.LNNV l JOIN CNT.NVDD n ON n.NVDDCDGO = l.NVDDCDGO"
+			+ " JOIN CNT.PLNN p ON p.PLNNCDGO = l.PLNNCDGO LEFT JOIN TSR.DEXB x ON x.DEXBCDGO = l.DEXBCDGO"
+			+ " WHERE n.PJRQCDGO = :e AND n.NVDDESTD BETWEEN 2 AND 6 AND l.LNNVESTD IN (1, 2) AND l.LNNVSLDO > 0";
+
+	/** «Aplicado hoy» de una línea del extracto, con marcas {entidad:N} (sin nombres). Devuelve [texto, idEntidad del aporte o null]. */
+	private Object[] aplicadoExtracto(Long idDexb, Object fecha, double valor) {
+		StringBuilder sb = new StringBuilder();
+		Long entidad = null;
+		List<?> asientos = em.createNativeQuery("SELECT DISTINCT a.ASNTNMAL, a.ASNTFCHA, p.PLNNCNTA, p.PLNNNMBR FROM TSR.GCEX g"
+				+ " JOIN TSR.GRCC gr ON gr.GRCCCDGO = g.GRCCCDGO AND gr.GRCCESTD = 1 JOIN TSR.GCAS ga ON ga.GRCCCDGO = g.GRCCCDGO"
+				+ " JOIN CNT.DTAS d ON d.DTASCDGO = ga.DTASCDGO JOIN CNT.ASNT a ON a.ASNTCDGO = d.ASNTCDGO"
+				+ " JOIN CNT.DTAS d2 ON d2.ASNTCDGO = a.ASNTCDGO AND d2.DTASCDGO <> d.DTASCDGO AND d2.PLNNCDGO <> d.PLNNCDGO"
+				+ " JOIN CNT.PLNN p ON p.PLNNCDGO = d2.PLNNCDGO WHERE g.DEXBCDGO = :x ORDER BY 1, 3").setParameter("x", idDexb).getResultList();
+		if (asientos.isEmpty()) {
+			sb.append("Sin conciliar");
+		} else {
+			String actual = null;
+			int cuentas = 0;
+			for (Object o : asientos) {
+				Object[] a = (Object[]) o;
+				String asiento = aStr(a[0]);
+				if (!java.util.Objects.equals(asiento, actual)) {
+					if (cuentas > 6) {
+						break;
+					}
+					sb.append(actual == null ? "Conciliada con " : "; ").append(asiento == null ? "un asiento" : asiento)
+							.append(" (").append(fechaTexto(a[1])).append("): ");
+					actual = asiento;
+				} else {
+					sb.append(", ");
+				}
+				sb.append(a[2]).append(' ').append(a[3]);
+				cuentas++;
+			}
+		}
+		List<?> pend = em.createNativeQuery("SELECT n.NVDDCDNV, l.LNNVSCNC FROM CNT.LNNV l JOIN CNT.NVDD n ON n.NVDDCDGO = l.NVDDCDGO"
+				+ " WHERE l.DEXBCDGO = :x AND l.LNNVESTD IN (1, 2) AND n.NVDDESTD BETWEEN 2 AND 6").setParameter("x", idDexb).getResultList();
+		for (Object o : pend) {
+			Object[] p = (Object[]) o;
+			sb.append(" · pendiente en la novedad ").append(p[0]).append(", movimiento ").append(p[1]);
+		}
+		if (fecha != null && valor > 0) {
+			List<?> ap = em.createNativeQuery("SELECT a.APRTCDGO, a.ENTDCDGO, t.TPAPNMBR FROM CRD.APRT a LEFT JOIN CRD.TPAP t ON t.TPAPCDGO = a.TPAPCDGO"
+					+ " WHERE a.APRTIDST IN (1, 4) AND ABS(a.APRTVLRR) = :v AND TRUNC(a.APRTFCTR) = TRUNC(CAST(:f AS DATE)) ORDER BY a.APRTCDGO FETCH FIRST 3 ROWS ONLY")
+					.setParameter("v", valor).setParameter("f", fecha).getResultList();
+			for (Object o : ap) {
+				Object[] a = (Object[]) o;
+				sb.append(" · posible aporte ").append(a[2] == null ? "" : a[2] + " ").append("de {entidad:").append(aLong(a[1])).append("} (APRT ")
+						.append(aLong(a[0])).append(')');
+				if (entidad == null) {
+					entidad = aLong(a[1]);
+				}
+			}
+		}
+		return new Object[] { sb.toString(), entidad };
+	}
+
+	private Map<String, Object> filaOrigenExtracto(Object[] f, String relacion, Long excepto) {
+		Long id = aLong(f[0]);
+		double cr = d0(f[2]), db = d0(f[3]);
+		double valor = r2(cr > 0 ? cr : db);
+		Object[] ap = aplicadoExtracto(id, f[1], valor);
+		Map<String, Object> m = new LinkedHashMap<String, Object>();
+		m.put("fuente", "EXTRACTO");
+		m.put("fuenteNombre", tipoOrigenNombre("EXTRACTO"));
+		m.put("id", id);
+		m.put("clave", "EXTRACTO:" + id);
+		m.put("fecha", aFecha(f[1]));
+		m.put("valor", valor);
+		m.put("sentido", cr > 0 ? "Entrada" : "Salida");
+		m.put("descripcion", (f[7] == null ? "" : f[7] + (f[8] == null ? "" : " cta. " + f[8]) + " · ") + (f[6] == null ? "" : "fila " + f[6] + " · ")
+				+ (f[4] == null ? "" : f[4]) + (f[5] == null ? "" : " · ref. " + f[5]));
+		m.put("aplicadoHoyMarcas", ap[0]);
+		m.put("aplicadoHoy", personas((String) ap[0]));
+		m.put("idEntidad", ap[1]);
+		m.put("relacion", relacion);
+		double u = usado("DEXBCDGO", id, excepto);
+		m.put("usado", u);
+		m.put("disponible", r2(Math.max(0, valor - u)));
+		return m;
+	}
+
+	private Map<String, Object> filaOrigenAporte(Object[] f, String relacion, Long excepto) {
+		Long id = aLong(f[0]);
+		double v = d0(f[2]);
+		double valor = r2(Math.abs(v));
+		Long ent = aLong(f[3]);
+		String aplicado = (v > 0 ? "Aporte " : "Débito ") + (f[4] == null ? "" : aStr(f[4]) + " ") + "de {entidad:" + ent + "} del " + fechaTexto(f[1])
+				+ " (APRT " + id + ")";
+		Map<String, Object> m = new LinkedHashMap<String, Object>();
+		m.put("fuente", "APORTE");
+		m.put("fuenteNombre", tipoOrigenNombre("APORTE"));
+		m.put("id", id);
+		m.put("clave", "APORTE:" + id);
+		m.put("fecha", aFecha(f[1]));
+		m.put("valor", valor);
+		m.put("sentido", v > 0 ? "Entrada" : "Salida");
+		m.put("descripcion", glosaUsuario(aStr(f[5]), null));
+		m.put("aplicadoHoyMarcas", aplicado);
+		m.put("aplicadoHoy", personas(aplicado));
+		m.put("idEntidad", ent);
+		m.put("relacion", relacion);
+		double u = usado("APRTCDGO", id, excepto);
+		m.put("usado", u);
+		m.put("disponible", r2(Math.max(0, valor - u)));
+		return m;
+	}
+
+	private Map<String, Object> filaOrigenPendiente(Object[] f, String relacion) {
+		Long id = aLong(f[0]);
+		String aplicado = "Pendiente en " + f[4] + " " + f[5] + " · novedad " + f[6] + ", movimiento " + f[7];
+		Map<String, Object> m = new LinkedHashMap<String, Object>();
+		m.put("fuente", "PENDIENTE");
+		m.put("fuenteNombre", tipoOrigenNombre("PENDIENTE"));
+		m.put("id", id);
+		m.put("clave", "PENDIENTE:" + id);
+		m.put("fecha", aFecha(f[1]));
+		m.put("valor", aDouble(f[2]));
+		m.put("sentido", "D".equals(aStr(f[3])) ? "Salida" : "Entrada");
+		m.put("descripcion", vacio(aStr(f[8])) != null ? personas(aStr(f[8])) : glosaUsuario(aStr(f[9]), null));
+		m.put("aplicadoHoyMarcas", aplicado);
+		m.put("aplicadoHoy", aplicado);
+		m.put("idEntidad", aLong(f[10]));
+		m.put("relacion", relacion);
+		m.put("usado", 0D);
+		m.put("disponible", aDouble(f[2]));
+		m.put("novedad", f[6]);
+		m.put("secuencia", aLong(f[7]));
+		return m;
+	}
+
+	/** Orden por cercanía: días/30 + diferencia de valor / tolerancia (si hay fecha o valor de referencia). */
+	private static String orden(String colFecha, String colValor, LocalDate fecha, Double valor) {
+		List<String> t = new ArrayList<String>();
+		if (fecha != null) {
+			t.add("ABS(CAST(" + colFecha + " AS DATE) - :rf) / 30");
+		}
+		if (valor != null) {
+			t.add("ABS(ABS(" + colValor + ") - :rv) / :rt");
+		}
+		return t.isEmpty() ? " ORDER BY " + colFecha + " DESC" : " ORDER BY " + String.join(" + ", t) + ", " + colFecha + " DESC";
+	}
+
+	private static Query refs(Query q, LocalDate fecha, Double valor, double tol) {
+		if (fecha != null) {
+			q.setParameter("rf", sqlFecha(fecha));
+		}
+		if (valor != null) {
+			q.setParameter("rv", valor).setParameter("rt", tol);
+		}
+		return q;
+	}
+
+	/** Condición de líneas por regularizar del préstamo o de las entidades (marcas en el texto, glosa con la operación, columnas). */
+	private static String condicionLineas(Long idAsoprep, java.util.Collection<Long> entidades) {
+		List<String> c = new ArrayList<String>();
+		if (idAsoprep != null) {
+			c.add("l.LNNVDSUS LIKE '%{prestamo:" + idAsoprep + "}%'");
+			c.add("REGEXP_LIKE(l.LNNVDSCR, '(^|[^0-9])" + idAsoprep + "([^0-9]|$)')");
+			c.add("EXISTS (SELECT 1 FROM CRD.PRST pp WHERE pp.PRSTCDGO = l.PRSTCDGO AND pp.PRSTIDAS = " + idAsoprep + ")");
+		}
+		for (Long e : entidades) {
+			c.add("l.LNNVDSUS LIKE '%{entidad:" + e + "}%'");
+			c.add("l.ENTDCDGO = " + e);
+		}
+		return c.isEmpty() ? "1 = 0" : "(" + String.join(" OR ", c) + ")";
+	}
+
+	@Override
+	public List<Map<String, Object>> buscarOrigenes(Long idEmpresa, String fuente, Long idPrestamo, Long idEntidad, String texto, String desde,
+			String hasta, Double valor, String fecha) throws Throwable {
+		if (idEmpresa == null) {
+			throw new IncomeException("Falta la empresa.");
+		}
+		String fu = vacio(fuente) == null ? "SUGERIDOS" : fuente.trim().toUpperCase(Locale.ROOT);
+		LocalDate fRef = fecha(fecha, "Fecha del hecho");
+		LocalDate fDesde = fecha(desde, "Desde");
+		LocalDate fHasta = fecha(hasta, "Hasta");
+		Double vRef = valor == null || valor <= 0 ? null : r2(valor);
+		String txt = vacio(texto) == null ? null : "%" + texto.trim().toUpperCase(Locale.ROOT) + "%";
+		Object[] pr = idPrestamo == null ? null : prestamo(idPrestamo);
+		double cuota = pr == null ? 0 : d0(pr[3]);
+		double tol = Math.max(1D, cuota > 0 ? cuota : vRef == null ? 1D : vRef * 0.01);
+		Map<String, Map<String, Object>> out = new LinkedHashMap<String, Map<String, Object>>();
+
+		if ("SUGERIDOS".equals(fu)) {
+			if (pr == null) {
+				throw new IncomeException("Para ver los sugeridos, elija primero la operación.");
+			}
+			Long titular = aLong(pr[2]);
+			Long idAsoprep = aLong(pr[1]);
+			Map<Long, String> ents = new LinkedHashMap<Long, String>();
+			ents.put(titular, "Mismo partícipe");
+			for (Map.Entry<Long, String> r : relacionados(titular).entrySet()) {
+				ents.put(r.getKey(), "CONYUGE".equals(r.getValue()) ? "Cónyuge" : "Familiar");
+			}
+			// Pendientes por regularizar de la operación o de las entidades
+			for (Object o : em.createNativeQuery(SQL_LNNV + " AND " + condicionLineas(idAsoprep, ents.keySet()) + " ORDER BY 2")
+					.setParameter("e", idEmpresa).getResultList()) {
+				Object[] f = (Object[]) o;
+				Long ent = aLong(f[10]);
+				out.putIfAbsent("PENDIENTE:" + aLong(f[0]), filaOrigenPendiente(f, ent != null && ents.containsKey(ent) ? ents.get(ent) : "Misma operación"));
+			}
+			// Cuenta individual de las entidades
+			for (Map.Entry<Long, String> en : ents.entrySet()) {
+				Query q = em.createNativeQuery(SQL_APRT + " AND a.ENTDCDGO = :ent" + orden("a.APRTFCTR", "a.APRTVLRR", fRef, vRef) + " FETCH FIRST 12 ROWS ONLY")
+						.setParameter("ent", en.getKey());
+				for (Object o : refs(q, fRef, vRef, tol).getResultList()) {
+					Object[] f = (Object[]) o;
+					out.putIfAbsent("APORTE:" + aLong(f[0]), filaOrigenAporte(f, en.getValue(), null));
+				}
+				// Extracto con el nombre de la entidad en el texto (apellidos) o su cédula
+				List<?> nom = em.createNativeQuery("SELECT ENTDRZNS, ENTDNMID FROM CRD.ENTD WHERE ENTDCDGO = :ent").setParameter("ent", en.getKey()).getResultList();
+				if (!nom.isEmpty()) {
+					Object[] x = (Object[]) nom.get(0);
+					String[] pal = (aStr(x[0]) == null ? "" : aStr(x[0]).toUpperCase(Locale.ROOT)).trim().split("\\s+");
+					List<String> conds = new ArrayList<String>();
+					Map<String, Object> ps = new HashMap<String, Object>();
+					if (pal.length >= 2 && pal[0].length() >= 3 && pal[1].length() >= 3) {
+						conds.add("(UPPER(x.DEXBDSCR) LIKE :w1 AND UPPER(x.DEXBDSCR) LIKE :w2)");
+						ps.put("w1", "%" + pal[0] + "%");
+						ps.put("w2", "%" + pal[1] + "%");
+					}
+					if (vacio(aStr(x[1])) != null) {
+						conds.add("(x.DEXBDSCR LIKE :ced OR x.DEXBREFR LIKE :ced)");
+						ps.put("ced", "%" + aStr(x[1]).trim() + "%");
+					}
+					if (!conds.isEmpty()) {
+						Query q2 = em.createNativeQuery(SQL_DEXB + " AND (" + String.join(" OR ", conds) + ")"
+								+ orden("x.DEXBFTRN", "NVL(x.DEXBCRDT, 0) + NVL(x.DEXBDBTO, 0)", fRef, vRef) + " FETCH FIRST 12 ROWS ONLY").setParameter("e", idEmpresa);
+						parametros(q2, ps);
+						for (Object o : refs(q2, fRef, vRef, tol).getResultList()) {
+							Object[] f = (Object[]) o;
+							out.putIfAbsent("EXTRACTO:" + aLong(f[0]), filaOrigenExtracto(f, en.getValue(), null));
+						}
+					}
+				}
+			}
+			// Valor igual al del hecho ± una cuota
+			if (vRef != null) {
+				Query q = em.createNativeQuery(SQL_DEXB + " AND NVL(x.DEXBCRDT, 0) + NVL(x.DEXBDBTO, 0) BETWEEN :vmin AND :vmax"
+						+ orden("x.DEXBFTRN", "NVL(x.DEXBCRDT, 0) + NVL(x.DEXBDBTO, 0)", fRef, vRef) + " FETCH FIRST 15 ROWS ONLY")
+						.setParameter("e", idEmpresa).setParameter("vmin", vRef - tol).setParameter("vmax", vRef + tol);
+				for (Object o : refs(q, fRef, vRef, tol).getResultList()) {
+					Object[] f = (Object[]) o;
+					out.putIfAbsent("EXTRACTO:" + aLong(f[0]), filaOrigenExtracto(f, "Valor parecido", null));
+				}
+				Query q3 = em.createNativeQuery(SQL_APRT + " AND ABS(a.APRTVLRR) BETWEEN :vmin AND :vmax"
+						+ orden("a.APRTFCTR", "a.APRTVLRR", fRef, vRef) + " FETCH FIRST 10 ROWS ONLY")
+						.setParameter("vmin", vRef - tol).setParameter("vmax", vRef + tol);
+				for (Object o : refs(q3, fRef, vRef, tol).getResultList()) {
+					Object[] f = (Object[]) o;
+					out.putIfAbsent("APORTE:" + aLong(f[0]), filaOrigenAporte(f, "Valor parecido", null));
+				}
+			}
+		} else if ("EXTRACTO".equals(fu)) {
+			StringBuilder w = new StringBuilder(SQL_DEXB);
+			Map<String, Object> ps = new HashMap<String, Object>();
+			if (txt != null) {
+				w.append(" AND (UPPER(x.DEXBDSCR) LIKE :t OR UPPER(x.DEXBREFR) LIKE :t OR UPPER(b.BNCONMBR) LIKE :t)");
+				ps.put("t", txt);
+			}
+			if (fDesde != null) {
+				w.append(" AND x.DEXBFTRN >= :d");
+				ps.put("d", sqlFecha(fDesde));
+			}
+			if (fHasta != null) {
+				w.append(" AND x.DEXBFTRN < :h + 1");
+				ps.put("h", sqlFecha(fHasta));
+			}
+			if (vRef != null) {
+				w.append(" AND NVL(x.DEXBCRDT, 0) + NVL(x.DEXBDBTO, 0) BETWEEN :vmin AND :vmax");
+				ps.put("vmin", vRef - tol);
+				ps.put("vmax", vRef + tol);
+			}
+			if (txt == null && fDesde == null && fHasta == null && vRef == null) {
+				throw new IncomeException("Indique al menos un filtro: texto del extracto, fechas o valor.");
+			}
+			w.append(orden("x.DEXBFTRN", "NVL(x.DEXBCRDT, 0) + NVL(x.DEXBDBTO, 0)", fRef, vRef)).append(" FETCH FIRST 60 ROWS ONLY");
+			Query q = parametros(em.createNativeQuery(w.toString()).setParameter("e", idEmpresa), ps);
+			for (Object o : refs(q, fRef, vRef, tol).getResultList()) {
+				Object[] f = (Object[]) o;
+				out.putIfAbsent("EXTRACTO:" + aLong(f[0]), filaOrigenExtracto(f, null, null));
+			}
+		} else if ("APORTE".equals(fu)) {
+			StringBuilder w = new StringBuilder(SQL_APRT);
+			Map<String, Object> ps = new HashMap<String, Object>();
+			if (idEntidad != null) {
+				w.append(" AND a.ENTDCDGO = :ent");
+				ps.put("ent", idEntidad);
+			}
+			if (txt != null) {
+				w.append(" AND (UPPER(a.APRTGLSA) LIKE :t OR EXISTS (SELECT 1 FROM CRD.ENTD e WHERE e.ENTDCDGO = a.ENTDCDGO AND (UPPER(e.ENTDRZNS) LIKE :t OR e.ENTDNMID LIKE :t)))");
+				ps.put("t", txt);
+			}
+			if (fDesde != null) {
+				w.append(" AND a.APRTFCTR >= :d");
+				ps.put("d", sqlFecha(fDesde));
+			}
+			if (fHasta != null) {
+				w.append(" AND a.APRTFCTR < :h + 1");
+				ps.put("h", sqlFecha(fHasta));
+			}
+			if (vRef != null) {
+				w.append(" AND ABS(a.APRTVLRR) BETWEEN :vmin AND :vmax");
+				ps.put("vmin", vRef - tol);
+				ps.put("vmax", vRef + tol);
+			}
+			if (idEntidad == null && txt == null && vRef == null) {
+				throw new IncomeException("Indique el partícipe, un texto o el valor.");
+			}
+			w.append(orden("a.APRTFCTR", "a.APRTVLRR", fRef, vRef)).append(" FETCH FIRST 60 ROWS ONLY");
+			Query q = parametros(em.createNativeQuery(w.toString()), ps);
+			for (Object o : refs(q, fRef, vRef, tol).getResultList()) {
+				Object[] f = (Object[]) o;
+				out.putIfAbsent("APORTE:" + aLong(f[0]), filaOrigenAporte(f, null, null));
+			}
+		} else if ("PENDIENTE".equals(fu)) {
+			StringBuilder w = new StringBuilder(SQL_LNNV);
+			w.append(" AND p.PLNNCNTA IN (:prs)");
+			Map<String, Object> ps = new HashMap<String, Object>();
+			ps.put("prs", new ArrayList<String>(SeguimientoNovedadServiceImpl.CUENTAS_POR_REGULARIZAR));
+			if (txt != null) {
+				w.append(" AND (UPPER(l.LNNVDSUS) LIKE :t OR UPPER(l.LNNVDSCR) LIKE :t OR UPPER(x.DEXBDSCR) LIKE :t OR n.NVDDCDNV LIKE :t)");
+				ps.put("t", txt);
+			}
+			if (idEntidad != null || pr != null) {
+				List<Long> es = new ArrayList<Long>();
+				if (idEntidad != null) {
+					es.add(idEntidad);
+				}
+				w.append(" AND ").append(condicionLineas(pr == null ? null : aLong(pr[1]), es));
+			}
+			if (vRef != null) {
+				w.append(" AND l.LNNVSLDO BETWEEN :vmin AND :vmax");
+				ps.put("vmin", vRef - tol);
+				ps.put("vmax", vRef + tol);
+			}
+			w.append(" ORDER BY n.NVDDANNN, n.NVDDMSSS, n.NVDDCDNV, l.LNNVSCNC FETCH FIRST 100 ROWS ONLY");
+			for (Object o : parametros(em.createNativeQuery(w.toString()).setParameter("e", idEmpresa), ps).getResultList()) {
+				Object[] f = (Object[]) o;
+				out.putIfAbsent("PENDIENTE:" + aLong(f[0]), filaOrigenPendiente(f, null));
+			}
+		} else {
+			throw new IncomeException("Fuente de origen desconocida: " + fuente + ".");
+		}
+		List<Map<String, Object>> lista = new ArrayList<Map<String, Object>>(out.values());
+		for (Map<String, Object> m : lista) {
+			Long e = (Long) m.get("idEntidad");
+			m.put("entidad", e == null ? null : personas("{entidad:" + e + "}"));
+			double puntaje = 0;
+			LocalDate f = aLocalDate(m.get("fecha"));
+			if (fRef != null && f != null) {
+				puntaje += Math.abs(java.time.temporal.ChronoUnit.DAYS.between(fRef, f)) / 30D;
+			}
+			if (vRef != null && m.get("valor") != null) {
+				puntaje += Math.abs((Double) m.get("valor") - vRef) / tol;
+			}
+			m.put("puntaje", r2(puntaje));
+			m.put("fecha", f);
+		}
+		if (fRef != null || vRef != null) {
+			lista.sort((a, b) -> Double.compare((Double) a.get("puntaje"), (Double) b.get("puntaje")));
+		}
+		return lista;
+	}
+
+	@Override
+	public Map<String, Object> candidatosHecho(Long idEmpresa, Long idPrestamo) throws Throwable {
+		if (idEmpresa == null) {
+			throw new IncomeException("Falta la empresa.");
+		}
+		Object[] pr = prestamo(idPrestamo);
+		Long titular = aLong(pr[2]);
+		Long idAsoprep = aLong(pr[1]);
+		List<Long> ents = new ArrayList<Long>();
+		ents.add(titular);
+		List<Map<String, Object>> lineas = new ArrayList<Map<String, Object>>();
+		for (Object o : em.createNativeQuery(SQL_LNNV + " AND " + condicionLineas(idAsoprep, ents) + " ORDER BY n.NVDDANNN, n.NVDDMSSS, l.LNNVSCNC")
+				.setParameter("e", idEmpresa).getResultList()) {
+			Object[] f = (Object[]) o;
+			Map<String, Object> m = filaOrigenPendiente(f, null);
+			m.put("idNovedad", aLong(em.createNativeQuery("SELECT NVDDCDGO FROM CNT.LNNV WHERE LNNVCDGO = :l").setParameter("l", m.get("id")).getSingleResult()));
+			lineas.add(m);
+		}
+		List<Map<String, Object>> pedidos = new ArrayList<Map<String, Object>>();
+		List<?> ps = em.createNativeQuery("SELECT q.RQNVCDGO, n.NVDDCDGO, n.NVDDCDNV, q.RQNVSCNC, q.RQNVTPRQ, q.RQNVDSCR FROM CNT.RQNV q"
+				+ " JOIN CNT.NVDD n ON n.NVDDCDGO = q.NVDDCDGO WHERE n.PJRQCDGO = :e AND n.NVDDESTD BETWEEN 2 AND 6 AND q.RQNVESTD IN (1, 4, 5)"
+				+ " AND (EXISTS (SELECT 1 FROM CNT.DONV d WHERE d.NVDDCDGO = n.NVDDCDGO AND (d.PRSTCDGO = :p OR d.ENTDCDGO = :t))"
+				+ " OR q.RQNVDSCR LIKE :mp OR n.NVDDQPSO LIKE :mp OR n.NVDDQPSO LIKE :me)"
+				+ " ORDER BY n.NVDDANNN, n.NVDDMSSS, n.NVDDCDNV, q.RQNVSCNC")
+				.setParameter("e", idEmpresa).setParameter("p", idPrestamo).setParameter("t", titular)
+				.setParameter("mp", "%{prestamo:" + idAsoprep + "}%").setParameter("me", "%{entidad:" + titular + "}%").getResultList();
+		for (Object o : ps) {
+			Object[] f = (Object[]) o;
+			Map<String, Object> m = new LinkedHashMap<String, Object>();
+			m.put("codigo", aLong(f[0]));
+			m.put("idNovedad", aLong(f[1]));
+			m.put("novedad", f[2]);
+			m.put("secuencia", aLong(f[3]));
+			m.put("tipoNombre", tipoPedido(aStr(f[4])));
+			m.put("descripcion", personas(aStr(f[5])));
+			pedidos.add(m);
+		}
+		Map<String, Object> m = new LinkedHashMap<String, Object>();
+		m.put("idPrestamo", idPrestamo);
+		m.put("idAsoprep", idAsoprep);
+		m.put("titular", personas("{entidad:" + titular + "}"));
+		m.put("valorCuota", aDouble(pr[3]));
+		m.put("lineas", lineas);
+		m.put("pedidos", pedidos);
+		return m;
+	}
+
+	@Override
+	public Map<String, Object> registrarHecho(HechoCreditoDto h) throws Throwable {
+		String usuario = usuarioValidacionService.validar(h == null ? null : h.getUsuario());
+		if (h.getIdEmpresa() == null) {
+			throw new IncomeException("Falta la empresa.");
+		}
+		Object[] pr = prestamo(h.getIdPrestamo());
+		Long titular = aLong(pr[2]);
+		Long idAsoprep = aLong(pr[1]);
+		String tipo = vacio(h.getTipo()) == null ? null : h.getTipo().trim().toUpperCase(Locale.ROOT);
+		if (!TIPOS_HECHO.contains(tipo)) {
+			throw new IncomeException("Elija qué pasó: abono a capital, pago de cuotas, precancelación, reapertura de cuotas o «el partícipe debe».");
+		}
+		LocalDate fecha = fecha(h.getFecha(), "Fecha del hecho");
+		if (fecha == null) {
+			throw new IncomeException("Indique la fecha real del hecho.");
+		}
+		double valor = h.getValor() == null ? 0 : r2(h.getValor());
+		if (valor <= 0) {
+			throw new IncomeException("El valor del hecho tiene que ser mayor que cero.");
+		}
+		if (h.getIdCuota() != null) {
+			Number c = (Number) em.createNativeQuery("SELECT COUNT(*) FROM CRD.DTPR WHERE DTPRCDGO = :c AND PRSTCDGO = :p")
+					.setParameter("c", h.getIdCuota()).setParameter("p", h.getIdPrestamo()).getSingleResult();
+			if (c.longValue() == 0) {
+				throw new IncomeException("La cuota elegida no es de esa operación.");
+			}
+		}
+		if (h.getOrigenes() == null || h.getOrigenes().isEmpty()) {
+			throw new IncomeException("Indique de dónde salió el dinero (uno o varios orígenes). Si no hubo dinero, use «sin dinero» con la explicación.");
+		}
+		String conceptoDefecto = tipoHechoNombre(tipo) + " de la operación " + idAsoprep;
+		// Validar orígenes
+		double suma = 0;
+		Set<String> vistos = new HashSet<String>();
+		List<OrigenHecho> origenes = new ArrayList<OrigenHecho>();
+		Map<Long, Double> lineasOrigen = new LinkedHashMap<Long, Double>();
+		for (HechoCreditoDto.Origen o : h.getOrigenes()) {
+			String t = vacio(o.getTipo()) == null ? null : o.getTipo().trim().toUpperCase(Locale.ROOT);
+			if (!TIPOS_ORIGEN.contains(t)) {
+				throw new IncomeException("Tipo de origen desconocido: " + o.getTipo() + ".");
+			}
+			double v = o.getValor() == null ? 0 : r2(o.getValor());
+			if (v <= 0) {
+				throw new IncomeException("Cada origen necesita un valor mayor que cero.");
+			}
+			OrigenHecho x = new OrigenHecho();
+			x.setTipo(t);
+			x.setValor(v);
+			x.setConceptoReal(recortar(vacio(o.getConceptoReal()) == null ? conceptoDefecto : o.getConceptoReal().trim(), 1000));
+			x.setTexto(recortar(vacio(o.getTexto()), 1000));
+			if ("EXTRACTO".equals(t)) {
+				List<?> f = o.getIdFilaExtracto() == null ? new ArrayList<Object>()
+						: em.createNativeQuery(SQL_DEXB + " AND x.DEXBCDGO = :x").setParameter("e", h.getIdEmpresa()).setParameter("x", o.getIdFilaExtracto()).getResultList();
+				if (f.isEmpty()) {
+					throw new IncomeException("La línea del extracto elegida no existe.");
+				}
+				Map<String, Object> m = filaOrigenExtracto((Object[]) f.get(0), null, null);
+				if (v > (Double) m.get("disponible") + 0.004) {
+					throw new IncomeException("De la línea del extracto del " + fechaTexto(m.get("fecha")) + " por " + dinero((Double) m.get("valor")) + " solo quedan "
+							+ dinero((Double) m.get("disponible")) + " sin usar en otros hechos.");
+				}
+				x.setIdFilaExtracto(o.getIdFilaExtracto());
+				x.setConceptoAnterior(recortar((String) m.get("aplicadoHoyMarcas"), 1000));
+				Long e = (Long) m.get("idEntidad");
+				x.setIdEntidadAnterior(e != null && !e.equals(titular) ? e : null);
+			} else if ("APORTE".equals(t)) {
+				List<?> f = o.getIdAporte() == null ? new ArrayList<Object>()
+						: em.createNativeQuery(SQL_APRT + " AND a.APRTCDGO = :a").setParameter("a", o.getIdAporte()).getResultList();
+				if (f.isEmpty()) {
+					throw new IncomeException("El aporte o débito elegido no existe (o está anulado).");
+				}
+				Map<String, Object> m = filaOrigenAporte((Object[]) f.get(0), null, null);
+				if (v > (Double) m.get("disponible") + 0.004) {
+					throw new IncomeException("Del movimiento de cuenta individual del " + fechaTexto(m.get("fecha")) + " por " + dinero((Double) m.get("valor"))
+							+ " solo quedan " + dinero((Double) m.get("disponible")) + " sin usar en otros hechos.");
+				}
+				x.setIdAporte(o.getIdAporte());
+				x.setConceptoAnterior(recortar((String) m.get("aplicadoHoyMarcas"), 1000));
+				Long e = (Long) m.get("idEntidad");
+				x.setIdEntidadAnterior(e != null && !e.equals(titular) ? e : null);
+			} else if ("PENDIENTE".equals(t)) {
+				LineaNovedad l = o.getIdLinea() == null ? null : em.find(LineaNovedad.class, o.getIdLinea());
+				if (l == null || l.getEstado() == LIN_ANULADA) {
+					throw new IncomeException("La partida pendiente elegida no existe.");
+				}
+				if (v > r2(l.getSaldo()) + 0.004) {
+					throw new IncomeException("De la partida pendiente (movimiento " + l.getSecuencia() + ") solo quedan " + dinero(l.getSaldo()) + " por justificar.");
+				}
+				x.setIdLinea(l.getCodigo());
+				List<?> f = em.createNativeQuery(SQL_LNNV + " AND l.LNNVCDGO = :l").setParameter("e", h.getIdEmpresa()).setParameter("l", l.getCodigo()).getResultList();
+				if (f.isEmpty()) {
+					throw new IncomeException("La partida pendiente elegida no está abierta.");
+				}
+				x.setConceptoAnterior(recortar((String) filaOrigenPendiente((Object[]) f.get(0), null).get("aplicadoHoyMarcas"), 1000));
+				x.setIdEntidadAnterior(l.getIdEntidad() != null && !l.getIdEntidad().equals(titular) ? l.getIdEntidad() : null);
+				lineasOrigen.merge(l.getCodigo(), v, Double::sum);
+			} else if (x.getTexto() == null) {
+				throw new IncomeException("Un origen «sin dinero» necesita la explicación de lo que el partícipe queda debiendo.");
+			}
+			String clave = t + ":" + (x.getIdFilaExtracto() != null ? x.getIdFilaExtracto() : x.getIdAporte() != null ? x.getIdAporte() : x.getIdLinea());
+			if (!"SIN_DINERO".equals(t) && !vistos.add(clave)) {
+				throw new IncomeException("Eligió dos veces el mismo movimiento como origen: póngalo una sola vez con el valor total.");
+			}
+			origenes.add(x);
+			suma = r2(suma + v);
+		}
+		if (Math.abs(suma - valor) > 0.004) {
+			throw new IncomeException("Los orígenes suman " + dinero(suma) + " y el hecho es de " + dinero(valor) + " (diferencia " + dinero(Math.abs(r2(valor - suma)))
+					+ "). Complete o corrija los orígenes; si falta dinero, agregue «sin dinero» con su explicación.");
+		}
+		// Qué resuelve
+		Set<Long> idsLineas = new LinkedHashSet<Long>();
+		idsLineas.addAll(lineasOrigen.keySet());
+		if (h.getLineas() != null) {
+			idsLineas.addAll(h.getLineas());
+		}
+		List<Long> idsPedidos = h.getPedidos() == null ? new ArrayList<Long>() : new ArrayList<Long>(new LinkedHashSet<Long>(h.getPedidos()));
+		if (idsLineas.isEmpty() && idsPedidos.isEmpty()) {
+			throw new IncomeException("Marque qué resuelve el hecho: al menos un movimiento por regularizar o un pedido.");
+		}
+		Map<Long, NovedadSeguimiento> novedades = new LinkedHashMap<Long, NovedadSeguimiento>();
+		List<LineaNovedad> lineas = new ArrayList<LineaNovedad>();
+		for (Long id : idsLineas) {
+			LineaNovedad l = id == null ? null : em.find(LineaNovedad.class, id);
+			if (l == null || l.getEstado() == LIN_ANULADA) {
+				throw new IncomeException("Uno de los movimientos marcados no existe.");
+			}
+			if (r2(l.getSaldo()) <= 0.004) {
+				throw new IncomeException("El movimiento " + l.getSecuencia() + " ya está justificado por completo.");
+			}
+			NovedadSeguimiento n = novedades.computeIfAbsent(l.getIdNovedad(), k -> novedad(k));
+			exigeAbierta(n);
+			if (!h.getIdEmpresa().equals(n.getIdEmpresa())) {
+				throw new IncomeException("La novedad " + etiqueta(n) + " es de otra empresa.");
+			}
+			lineas.add(l);
+		}
+		List<RequerimientoNovedad> pedidos = new ArrayList<RequerimientoNovedad>();
+		for (Long id : idsPedidos) {
+			RequerimientoNovedad r = id == null ? null : em.find(RequerimientoNovedad.class, id);
+			if (r == null || r.getEstado() == REQ_ANULADO) {
+				throw new IncomeException("Uno de los pedidos marcados no existe.");
+			}
+			long e = r.getEstado();
+			if (e != REQ_PENDIENTE && e != REQ_OBSERVADO && e != REQ_NO_EXISTE) {
+				throw new IncomeException("El pedido " + r.getSecuencia() + " ya tiene respuesta: anúlela antes de resolverlo con el hecho.");
+			}
+			NovedadSeguimiento n = novedades.computeIfAbsent(r.getIdNovedad(), k -> novedad(k));
+			exigeAbierta(n);
+			pedidos.add(r);
+		}
+		// Grabar el hecho
+		LocalDateTime ahora = LocalDateTime.now();
+		HechoCredito hc = new HechoCredito();
+		hc.setIdEmpresa(h.getIdEmpresa());
+		hc.setIdPrestamo(h.getIdPrestamo());
+		hc.setTipo(tipo);
+		hc.setFecha(fecha);
+		hc.setValor(valor);
+		hc.setIdCuota(h.getIdCuota());
+		hc.setTexto(recortar(vacio(h.getTexto()), 4000));
+		hc.setTipoDocumento(recortar(vacio(h.getTipoDocumento()), 30));
+		hc.setNumeroDocumento(recortar(vacio(h.getNumeroDocumento()), 100));
+		hc.setEstado(1L);
+		hc.setFechaRegistro(ahora);
+		hc.setUsuarioRegistro(usuario);
+		em.persist(hc);
+		em.flush();
+		for (OrigenHecho x : origenes) {
+			x.setIdHecho(hc.getCodigo());
+			x.setEstado(1L);
+			x.setFechaRegistro(ahora);
+			x.setUsuarioRegistro(usuario);
+			em.persist(x);
+		}
+		if (h.getAdjuntos() != null) {
+			for (AccionNovedad.Adjunto ad : h.getAdjuntos()) {
+				AdjuntoNovedad a = nuevoAdjunto(ad, usuario);
+				a.setIdHecho(hc.getCodigo());
+				em.persist(a);
+			}
+		}
+		String resumen = "hecho de crédito N.º " + hc.getCodigo() + ": " + tipoHechoNombre(tipo).toLowerCase(Locale.ROOT) + " de " + dinero(valor) + " del "
+				+ fecha + " a la operación " + idAsoprep;
+		for (LineaNovedad l : lineas) {
+			double monto = lineasOrigen.containsKey(l.getCodigo()) ? Math.min(r2(lineasOrigen.get(l.getCodigo())), r2(l.getSaldo())) : r2(l.getSaldo());
+			JustificacionLinea j = new JustificacionLinea();
+			j.setIdLinea(l.getCodigo());
+			j.setIdNovedad(l.getIdNovedad());
+			j.setMonto(monto);
+			j.setTipo("HECHO");
+			j.setIdHecho(hc.getCodigo());
+			j.setFechaHecho(fecha);
+			j.setTipoDocumento(hc.getTipoDocumento());
+			j.setNumeroDocumento(hc.getNumeroDocumento());
+			j.setTexto(recortar("Resuelto por el " + resumen + (hc.getTexto() == null ? "" : ". " + hc.getTexto()), 4000));
+			j.setEstado(1L);
+			j.setFechaRegistro(ahora);
+			j.setUsuarioRegistro(usuario);
+			em.persist(j);
+			em.flush();
+			recalcularLinea(l);
+		}
+		for (RequerimientoNovedad r : pedidos) {
+			RespuestaNovedad s = new RespuestaNovedad();
+			s.setIdRequerimiento(r.getCodigo());
+			s.setFecha(ahora);
+			s.setCanal("SAA");
+			s.setArea(r.getArea());
+			s.setTexto(recortar("Atendido por el " + resumen + (hc.getTexto() == null ? "" : ". " + hc.getTexto()), 4000));
+			s.setEstado(2L);
+			s.setFechaRevision(ahora);
+			s.setUsuarioRevision(usuario);
+			s.setObservacionRevision("Seguimiento v2: hecho de crédito (sin revisión de otro usuario).");
+			s.setFechaRegistro(ahora);
+			s.setUsuarioRegistro(usuario);
+			s.setMonto(valor);
+			s.setFechaHecho(fecha);
+			s.setTipoDocumento(hc.getTipoDocumento());
+			s.setNumeroDocumento(hc.getNumeroDocumento());
+			s.setIdHecho(hc.getCodigo());
+			em.persist(s);
+			long antes = r.getEstado();
+			r.setEstado(REQ_ACEPTADO);
+			historial(r.getIdNovedad(), r.getCodigo(), "RESPUESTA", antes, REQ_ACEPTADO, "Atendido por el " + resumen, usuario);
+		}
+		em.flush();
+		List<Map<String, Object>> filas = new ArrayList<Map<String, Object>>();
+		List<String> cerradas = new ArrayList<String>();
+		for (NovedadSeguimiento n : novedades.values()) {
+			historial(n.getCodigo(), null, "HECHO_CREDITO", null, null, "Registrado el " + resumen, usuario);
+			recalcularV1(n, usuario, "HECHO_CREDITO");
+			em.flush();
+			Map<String, Object> f = fila(n.getCodigo());
+			if (Boolean.TRUE.equals(f.get("puedeCerrar")) && !GRUPO_INFORMATIVA.equals(f.get("grupo"))) {
+				cerrarNovedad(n, "Resuelta por el " + resumen, "CIERRE", usuario);
+				em.flush();
+				cerradas.add(n.getCodigoNovedad());
+				f = fila(n.getCodigo());
+			}
+			filas.add(f);
+		}
+		Map<String, Object> m = new LinkedHashMap<String, Object>();
+		m.put("mensaje", "Hecho de crédito N.º " + hc.getCodigo() + " registrado: resuelve " + lineas.size() + " movimiento(s)" + (pedidos.isEmpty() ? "" : " y "
+				+ pedidos.size() + " pedido(s)") + "." + (cerradas.isEmpty() ? "" : " Novedades cerradas: " + String.join(", ", cerradas) + "."));
+		m.put("idHecho", hc.getCodigo());
+		m.put("filas", filas);
+		return m;
+	}
+
+	@Override
+	public Map<String, Object> anularHecho(Long idHecho, HechoCreditoDto h) throws Throwable {
+		String usuario = usuarioValidacionService.validar(h == null ? null : h.getUsuario());
+		String motivo = vacio(h.getMotivo());
+		if (motivo == null) {
+			throw new IncomeException("Indique por qué anula el hecho de crédito.");
+		}
+		HechoCredito hc = idHecho == null ? null : em.find(HechoCredito.class, idHecho);
+		if (hc == null) {
+			throw new IncomeException("El hecho de crédito indicado no existe.");
+		}
+		if (hc.getEstado() != 1L) {
+			throw new IncomeException("Ese hecho de crédito ya estaba anulado.");
+		}
+		List<JustificacionLinea> js = em.createQuery("select j from JustificacionLinea j where j.idHecho = :h and j.estado = 1", JustificacionLinea.class)
+				.setParameter("h", idHecho).getResultList();
+		List<RespuestaNovedad> rs = em.createQuery("select s from RespuestaNovedad s where s.idHecho = :h and s.estado <> 4", RespuestaNovedad.class)
+				.setParameter("h", idHecho).getResultList();
+		Map<Long, NovedadSeguimiento> novedades = new LinkedHashMap<Long, NovedadSeguimiento>();
+		for (JustificacionLinea j : js) {
+			novedades.computeIfAbsent(j.getIdNovedad(), k -> novedad(k));
+		}
+		Map<Long, RequerimientoNovedad> reqs = new HashMap<Long, RequerimientoNovedad>();
+		for (RespuestaNovedad s : rs) {
+			RequerimientoNovedad r = em.find(RequerimientoNovedad.class, s.getIdRequerimiento());
+			reqs.put(s.getCodigo(), r);
+			novedades.computeIfAbsent(r.getIdNovedad(), k -> novedad(k));
+		}
+		for (NovedadSeguimiento n : novedades.values()) {
+			if (n.getEstado() == NOV_CERRADA) {
+				throw new IncomeException("La novedad " + etiqueta(n) + " quedó cerrada con este hecho: reábrala (indicando el motivo) antes de anularlo.");
+			}
+			exigeAbierta(n);
+		}
+		LocalDateTime ahora = LocalDateTime.now();
+		hc.setEstado(2L);
+		hc.setFechaAnulacion(ahora);
+		hc.setUsuarioAnulacion(usuario);
+		hc.setMotivoAnulacion(recortar(motivo, 1000));
+		em.createNativeQuery("UPDATE CNT.OHNV SET OHNVESTD = 2 WHERE HCNVCDGO = :h").setParameter("h", idHecho).executeUpdate();
+		for (JustificacionLinea j : js) {
+			j.setEstado(2L);
+			j.setFechaAnulacion(ahora);
+			j.setUsuarioAnulacion(usuario);
+			j.setMotivoAnulacion(recortar("Hecho de crédito N.º " + idHecho + " anulado: " + motivo, 1000));
+			recalcularLinea(em.find(LineaNovedad.class, j.getIdLinea()));
+		}
+		for (RespuestaNovedad s : rs) {
+			s.setEstado(4L);
+			RequerimientoNovedad r = reqs.get(s.getCodigo());
+			long antes = r.getEstado();
+			r.setEstado(REQ_PENDIENTE);
+			historial(r.getIdNovedad(), r.getCodigo(), "ANULA_RESPUESTA", antes, REQ_PENDIENTE, "Hecho de crédito N.º " + idHecho + " anulado: " + motivo, usuario);
+		}
+		List<Map<String, Object>> filas = new ArrayList<Map<String, Object>>();
+		for (NovedadSeguimiento n : novedades.values()) {
+			historial(n.getCodigo(), null, "ANULA_HECHO", null, null, "Hecho de crédito N.º " + idHecho + " anulado: " + motivo, usuario);
+			recalcularV1(n, usuario, "ANULA_HECHO");
+			em.flush();
+			filas.add(fila(n.getCodigo()));
+		}
+		Map<String, Object> m = new LinkedHashMap<String, Object>();
+		m.put("mensaje", "Hecho de crédito N.º " + idHecho + " anulado: sus movimientos y pedidos vuelven a estar pendientes.");
+		m.put("filas", filas);
+		return m;
+	}
+
+	/** Resumen de un hecho para el detalle y la exportación. {@code conNombres}: resuelve las marcas de persona (pantalla). */
+	private Map<String, Object> resumenHecho(Long idHecho, boolean conNombres) {
+		HechoCredito hc = em.find(HechoCredito.class, idHecho);
+		if (hc == null) {
+			return null;
+		}
+		Object[] pr = prestamo(hc.getIdPrestamo());
+		Map<String, Object> m = new LinkedHashMap<String, Object>();
+		m.put("codigo", hc.getCodigo());
+		m.put("idPrestamo", hc.getIdPrestamo());
+		m.put("idAsoprep", aLong(pr[1]));
+		m.put("idEntidad", aLong(pr[2]));
+		if (conNombres) {
+			m.put("titular", personas("{entidad:" + aLong(pr[2]) + "}"));
+		}
+		m.put("tipo", hc.getTipo());
+		m.put("tipoNombre", tipoHechoNombre(hc.getTipo()));
+		m.put("fecha", hc.getFecha());
+		m.put("valor", hc.getValor());
+		m.put("idCuota", hc.getIdCuota());
+		if (hc.getIdCuota() != null) {
+			m.put("numeroCuota", aLong(em.createNativeQuery("SELECT DTPRNMCT FROM CRD.DTPR WHERE DTPRCDGO = :c").setParameter("c", hc.getIdCuota()).getSingleResult()));
+		}
+		m.put("texto", hc.getTexto());
+		m.put("tipoDocumento", hc.getTipoDocumento());
+		m.put("numeroDocumento", hc.getNumeroDocumento());
+		m.put("vigente", hc.getEstado() == 1L);
+		m.put("usuarioRegistro", hc.getUsuarioRegistro());
+		m.put("fechaRegistro", hc.getFechaRegistro());
+		m.put("usuarioAnulacion", hc.getUsuarioAnulacion());
+		m.put("motivoAnulacion", hc.getMotivoAnulacion());
+		List<Map<String, Object>> os = new ArrayList<Map<String, Object>>();
+		for (OrigenHecho o : em.createQuery("select o from OrigenHecho o where o.idHecho = :h order by o.codigo", OrigenHecho.class)
+				.setParameter("h", idHecho).getResultList()) {
+			Map<String, Object> x = new LinkedHashMap<String, Object>();
+			x.put("tipo", o.getTipo());
+			x.put("tipoNombre", tipoOrigenNombre(o.getTipo()));
+			x.put("idFilaExtracto", o.getIdFilaExtracto());
+			x.put("idAporte", o.getIdAporte());
+			x.put("idLinea", o.getIdLinea());
+			x.put("valor", o.getValor());
+			x.put("estabaComo", conNombres ? personas(o.getConceptoAnterior()) : o.getConceptoAnterior());
+			x.put("enRealidadEs", o.getConceptoReal());
+			x.put("idEntidadAnterior", o.getIdEntidadAnterior());
+			x.put("texto", o.getTexto());
+			os.add(x);
+		}
+		m.put("origenes", os);
+		List<?> ls = em.createNativeQuery("SELECT j.LNNVCDGO, n.NVDDCDNV, l.LNNVSCNC, j.JSNVMNTO, l.ASNTCDGO, a.ASNTNMAL FROM CNT.JSNV j"
+				+ " JOIN CNT.LNNV l ON l.LNNVCDGO = j.LNNVCDGO JOIN CNT.NVDD n ON n.NVDDCDGO = j.NVDDCDGO LEFT JOIN CNT.ASNT a ON a.ASNTCDGO = l.ASNTCDGO"
+				+ " WHERE j.HCNVCDGO = :h AND j.JSNVESTD = :e ORDER BY n.NVDDCDNV, l.LNNVSCNC")
+				.setParameter("h", idHecho).setParameter("e", hc.getEstado() == 1L ? 1L : 2L).getResultList();
+		List<Map<String, Object>> res = new ArrayList<Map<String, Object>>();
+		for (Object o : ls) {
+			Object[] f = (Object[]) o;
+			Map<String, Object> x = new LinkedHashMap<String, Object>();
+			x.put("idLinea", aLong(f[0]));
+			x.put("novedad", f[1]);
+			x.put("movimiento", aLong(f[2]));
+			x.put("monto", aDouble(f[3]));
+			x.put("idAsiento", aLong(f[4]));
+			x.put("asiento", f[5]);
+			res.add(x);
+		}
+		m.put("resuelve", res);
+		List<?> ps = em.createNativeQuery("SELECT s.RQNVCDGO, n.NVDDCDNV, q.RQNVSCNC FROM CNT.RSNV s JOIN CNT.RQNV q ON q.RQNVCDGO = s.RQNVCDGO"
+				+ " JOIN CNT.NVDD n ON n.NVDDCDGO = q.NVDDCDGO WHERE s.HCNVCDGO = :h ORDER BY n.NVDDCDNV, q.RQNVSCNC").setParameter("h", idHecho).getResultList();
+		List<Map<String, Object>> pe = new ArrayList<Map<String, Object>>();
+		for (Object o : ps) {
+			Object[] f = (Object[]) o;
+			Map<String, Object> x = new LinkedHashMap<String, Object>();
+			x.put("idPedido", aLong(f[0]));
+			x.put("novedad", f[1]);
+			x.put("pedido", aLong(f[2]));
+			pe.add(x);
+		}
+		m.put("atiende", pe);
+		m.put("adjuntos", em.createQuery("select a from AdjuntoNovedad a where a.idHecho = :h and a.estado = 1", AdjuntoNovedad.class)
+				.setParameter("h", idHecho).getResultList());
+		return m;
+	}
+
+	@Override
+	public List<Map<String, Object>> exportarHechos(Long idEmpresa) throws Throwable {
+		if (idEmpresa == null) {
+			throw new IncomeException("Falta la empresa.");
+		}
+		List<Map<String, Object>> out = new ArrayList<Map<String, Object>>();
+		for (Object o : em.createNativeQuery("SELECT HCNVCDGO FROM CNT.HCNV WHERE PJRQCDGO = :e AND HCNVESTD = 1 ORDER BY HCNVFCHA, HCNVCDGO")
+				.setParameter("e", idEmpresa).getResultList()) {
+			Map<String, Object> m = resumenHecho(aLong(o), false);
+			m.remove("adjuntos");
 			out.add(m);
 		}
 		return out;

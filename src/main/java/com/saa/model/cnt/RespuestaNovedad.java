@@ -158,4 +158,10 @@ public class RespuestaNovedad implements Serializable {
 	private String filasDetalle;
 	public String getFilasDetalle() { return filasDetalle; }
 	public void setFilasDetalle(String filasDetalle) { this.filasDetalle = filasDetalle; }
+	/** C34d: hecho de crédito (CNT.HCNV) al que pertenece. */
+	@Basic
+	@Column(name = "HCNVCDGO")
+	private Long idHecho;
+	public Long getIdHecho() { return idHecho; }
+	public void setIdHecho(Long idHecho) { this.idHecho = idHecho; }
 }

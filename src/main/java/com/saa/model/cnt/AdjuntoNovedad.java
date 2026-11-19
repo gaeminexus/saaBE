@@ -148,4 +148,10 @@ public class AdjuntoNovedad implements Serializable {
 	private Long idJustificacion;
 	public Long getIdJustificacion() { return idJustificacion; }
 	public void setIdJustificacion(Long idJustificacion) { this.idJustificacion = idJustificacion; }
+	/** C34d: hecho de crédito (CNT.HCNV) al que pertenece. */
+	@Basic
+	@Column(name = "HCNVCDGO")
+	private Long idHecho;
+	public Long getIdHecho() { return idHecho; }
+	public void setIdHecho(Long idHecho) { this.idHecho = idHecho; }
 }
