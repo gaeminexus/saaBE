@@ -39,6 +39,10 @@ public class ReporteCuadreSriServiceImpl implements ReporteCuadreSriService {
     @PersistenceContext
     private EntityManager em;
 
+    /** C37 / D-126: clasificar con la regla las compras gravadas que no tienen sustento guardado. */
+    @jakarta.ejb.EJB
+    private com.saa.ejb.cxp.service.SustentoTributarioService sustentoTributarioService;
+
     /** Casillas del 103 (§2.1) cuyo código de retención coincide literalmente con el número
      *  de casilla, sin sufijo ni ambigüedad — únicos que se sugieren automáticamente. */
     private static final Set<String> CASILLAS_103_SIN_AMBIGUEDAD = new HashSet<String>(Arrays.asList(
@@ -74,7 +78,7 @@ public class ReporteCuadreSriServiceImpl implements ReporteCuadreSriService {
                 vSubtotal + vSubtotal5 + vSubcero, vSubtotal + vSubtotal5 + vSubcero, vIva + vIva5);
 
         // ── Compras: split por codSustento ya resuelto (crédito IVA vs costo/gasto) ──────────
-        double[] compras = sumarCompras(idEmpresa, desde, hasta);
+        double[] compras = sumarCompras(idEmpresa, desde, hasta, avisos);
         double cConCredito = compras[0], cSinCredito = compras[1], cCero = compras[2],
                 cIvaConCredito = compras[3];
         // BE-7 (2026-09-21): buckets por tarifa que ahora existen en las cuatro entidades de compra.
@@ -321,8 +325,9 @@ public class ReporteCuadreSriServiceImpl implements ReporteCuadreSriService {
      * FCTC+LQCC+NTCC+NTDC. Las tres primeras y la cuarta son las de siempre (base = SUBTOTAL completo,
      * por codSustento); las tres últimas (BE-7) son los buckets SUBNOOBJ, SUBEXENT y SUBTOTAL5.
      */
-    private double[] sumarCompras(Long idEmpresa, LocalDateTime desde, LocalDateTime hasta) {
+    private double[] sumarCompras(Long idEmpresa, LocalDateTime desde, LocalDateTime hasta, List<String> avisos) {
         double[] totales = new double[7];
+        SinSustento sinSustento = new SinSustento();
         List<String> codigosConCredito = Arrays.asList(
                 SustentoTributarioSri.CREDITO_TRIBUTARIO_IVA,
                 SustentoTributarioSri.ACTIVO_FIJO_CREDITO_IVA,
@@ -342,7 +347,9 @@ public class ReporteCuadreSriServiceImpl implements ReporteCuadreSriService {
         qf.setParameter("desde", desde);
         qf.setParameter("hasta", hasta);
         for (FacturaCompra f : qf.getResultList()) {
-            acumularCompra(totales, codigosConCredito, f.getSustentoTributario(), nvl(f.getSubtotal()),
+            String sus = sustentoPara(com.saa.ejb.cxp.service.SustentoTributarioService.FACTURA, f.getId(),
+                    f.getSustentoTributario(), nvl(f.getvIVA()), sinSustento);
+            acumularCompra(totales, codigosConCredito, sus, nvl(f.getSubtotal()),
                     nvl(f.getSubcero()), nvl(f.getvIVA()), nvl(f.getSubnoobj()), nvl(f.getSubexent()),
                     nvl(f.getSubtotal5()));
         }
@@ -355,7 +362,9 @@ public class ReporteCuadreSriServiceImpl implements ReporteCuadreSriService {
         ql.setParameter("desde", desde);
         ql.setParameter("hasta", hasta);
         for (LiquidacionCompraCompra l : ql.getResultList()) {
-            acumularCompra(totales, codigosConCredito, l.getSustentoTributario(), nvl(l.getSubtotal()),
+            String sus = sustentoPara(com.saa.ejb.cxp.service.SustentoTributarioService.LIQUIDACION, l.getId(),
+                    l.getSustentoTributario(), nvl(l.getvIVA()), sinSustento);
+            acumularCompra(totales, codigosConCredito, sus, nvl(l.getSubtotal()),
                     nvl(l.getSubcero()), nvl(l.getvIVA()), nvl(l.getSubnoobj()), nvl(l.getSubexent()),
                     nvl(l.getSubtotal5()));
         }
@@ -369,7 +378,9 @@ public class ReporteCuadreSriServiceImpl implements ReporteCuadreSriService {
         qnc.setParameter("hasta", hasta);
         for (NotaCreditoCompra n : qnc.getResultList()) {
             // Nota de crédito de compra: resta (se recibió a favor).
-            acumularCompra(totales, codigosConCredito, n.getSustentoTributario(), -nvl(n.getSubtotal()),
+            String sus = sustentoPara(com.saa.ejb.cxp.service.SustentoTributarioService.NOTA_CREDITO, n.getId(),
+                    n.getSustentoTributario(), nvl(n.getvIVA()), sinSustento);
+            acumularCompra(totales, codigosConCredito, sus, -nvl(n.getSubtotal()),
                     -nvl(n.getSubcero()), -nvl(n.getvIVA()), -nvl(n.getSubnoobj()), -nvl(n.getSubexent()),
                     -nvl(n.getSubtotal5()));
         }
@@ -382,12 +393,61 @@ public class ReporteCuadreSriServiceImpl implements ReporteCuadreSriService {
         qnd.setParameter("desde", desde);
         qnd.setParameter("hasta", hasta);
         for (NotaDebitoCompra n : qnd.getResultList()) {
-            acumularCompra(totales, codigosConCredito, n.getSustentoTributario(), nvl(n.getSubtotal()),
+            String sus = sustentoPara(com.saa.ejb.cxp.service.SustentoTributarioService.NOTA_DEBITO, n.getId(),
+                    n.getSustentoTributario(), nvl(n.getvIVA()), sinSustento);
+            acumularCompra(totales, codigosConCredito, sus, nvl(n.getSubtotal()),
                     nvl(n.getSubcero()), nvl(n.getvIVA()), nvl(n.getSubnoobj()), nvl(n.getSubexent()),
                     nvl(n.getSubtotal5()));
         }
 
+        // C37 (2026-11-19): antes una compra gravada sin sustento caía en silencio a «sin derecho a
+        // crédito» (500/501 vs 502). Ahora se clasifica con la regla D-126 -igual que el ATS, para que
+        // los dos cuadren- y se avisa cuáles fueron; si ni la regla la resuelve, va a «sin derecho» y se
+        // avisa aparte.
+        if (!sinSustento.calculados.isEmpty()) {
+            avisos.add(sinSustento.calculados.size() + " compra(s) gravada(s) sin codSustento guardado: se"
+                    + " clasificaron con la regla D-126 (calculado, no guardado), igual que en el ATS. Guardar el"
+                    + " sustento con PUT /rest/{fctc|lqcc|ntcc|ntdc}/sustento/{id} o con el SQL de C37: "
+                    + String.join(", ", sinSustento.calculados));
+        }
+        if (!sinSustento.sinResolver.isEmpty()) {
+            avisos.add("⛔ " + sinSustento.sinResolver.size() + " compra(s) gravada(s) sin codSustento y sin poder"
+                    + " resolverlo con la regla D-126: quedaron en 502 («sin derecho a crédito») solo por falta"
+                    + " del dato. Corregirlas antes de declarar: " + String.join(", ", sinSustento.sinResolver));
+        }
         return totales;
+    }
+
+    /** C37: compras gravadas sin sustento guardado, para los avisos de {@link #sumarCompras}. */
+    private static final class SinSustento {
+        final List<String> calculados = new ArrayList<String>();
+        final List<String> sinResolver = new ArrayList<String>();
+    }
+
+    /**
+     * C37 / D-126: el sustento guardado; si falta, el de la regla (sin guardarlo). Solo se anota para
+     * aviso la compra con IVA: sin IVA el sustento no mueve 500/502 (la base va a 507 por SUBCERO).
+     */
+    private String sustentoPara(String tipo, Long id, String guardado, double iva, SinSustento sinSustento) {
+        if (guardado != null && !guardado.trim().isEmpty()) {
+            return guardado;
+        }
+        String calculado = null;
+        try {
+            com.saa.model.cxp.ResultadoSustento r = sustentoTributarioService.evaluarSustento(tipo, id);
+            calculado = r != null ? r.getSustento() : null;
+        } catch (Throwable e) {
+            System.out.println("ATENCION: cuadre 104, no se pudo calcular el codSustento de " + tipo + " " + id
+                    + ": " + e.getMessage());
+        }
+        if (iva != 0D) {
+            if (calculado != null) {
+                sinSustento.calculados.add(tipo + " " + id + " → " + calculado);
+            } else {
+                sinSustento.sinResolver.add(tipo + " " + id);
+            }
+        }
+        return calculado;
     }
 
     private void acumularCompra(double[] totales, List<String> codigosConCredito, String sustento,

@@ -173,6 +173,48 @@ public class FacturaCompraRest {
 		}
 	}
 
+	// ── C37 / D-126 (2026-11-19): regla del sustento con el centro de costo, de solo lectura ──
+
+	/**
+	 * Lo que da hoy la regla del sustento para un documento de compra, sin guardar nada: código,
+	 * regla que decidió, centro de costo usado y aviso. {@code tipo}: FACTURA (por defecto),
+	 * LIQUIDACION, NOTA_CREDITO o NOTA_DEBITO.
+	 */
+	@GET @Path("/sustentoEvaluar/{id}") @Produces(MediaType.APPLICATION_JSON)
+	public Response evaluarSustento(@PathParam("id") Long id, @QueryParam("tipo") String tipo) {
+		try {
+			com.saa.model.cxp.ResultadoSustento r = sustentoTributarioService.evaluarSustento(
+					tipo == null || tipo.trim().isEmpty() ? SustentoTributarioService.FACTURA : tipo.trim().toUpperCase(), id);
+			if (r == null) return Response.status(Response.Status.NOT_FOUND).entity("No existe el documento " + id + ".").type(MediaType.APPLICATION_JSON).build();
+			return Response.status(Response.Status.OK).entity(r).type(MediaType.APPLICATION_JSON).build();
+		} catch (com.saa.basico.util.IncomeException e) {
+			return Response.status(Response.Status.BAD_REQUEST).entity(e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+		} catch (Throwable e) {
+			return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al evaluar el sustento: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+		}
+	}
+
+	/**
+	 * Control de un rango (fechas yyyy-MM-dd, mismo criterio de fecha que el ATS): aplica la regla a
+	 * todas las compras activas y compara con lo guardado. No cambia nada.
+	 */
+	@GET @Path("/sustentoVerificar") @Produces(MediaType.APPLICATION_JSON)
+	public Response verificarSustento(@QueryParam("idEmpresa") Long idEmpresa, @QueryParam("desde") String desde,
+			@QueryParam("hasta") String hasta) {
+		try {
+			if (idEmpresa == null || desde == null || hasta == null) {
+				return Response.status(Response.Status.BAD_REQUEST).entity("Faltan idEmpresa, desde o hasta (yyyy-MM-dd).").type(MediaType.APPLICATION_JSON).build();
+			}
+			Map<String, Object> r = sustentoTributarioService.verificarPeriodo(idEmpresa,
+					java.time.LocalDate.parse(desde.trim()), java.time.LocalDate.parse(hasta.trim()));
+			return Response.status(Response.Status.OK).entity(r).type(MediaType.APPLICATION_JSON).build();
+		} catch (java.time.format.DateTimeParseException e) {
+			return Response.status(Response.Status.BAD_REQUEST).entity("Fecha ilegible (yyyy-MM-dd): " + e.getParsedString()).type(MediaType.APPLICATION_JSON).build();
+		} catch (Throwable e) {
+			return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al verificar el sustento: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+		}
+	}
+
 	/**
 	 * Registra a mano una nota de venta de compra: comprobante que nunca llega por
 	 * XML. Contrato congelado: docs/logica-negocio/cxp/API-NOTA-VENTA-COMPRA-MANUAL.md.

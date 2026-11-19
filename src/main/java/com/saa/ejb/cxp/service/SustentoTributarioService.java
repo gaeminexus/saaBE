@@ -45,6 +45,56 @@ import jakarta.ejb.Local;
 @Local
 public interface SustentoTributarioService {
 
+    // ========================================================================
+    // C37 / D-126 (2026-11-19): el centro de costo entra en la regla base.
+    //
+    //   1. Excepcion por grupo de producto (03/04/06/07/08): igual que antes, gana.
+    //   2. Sin IVA                                   -> 02, sea cual sea el centro.
+    //   3. Con IVA y centro de costo en el asiento   -> 01 si el centro esta en el rubro
+    //      Rubros.CXP_CENTROS_COSTO_CREDITO_TRIBUTARIO (251; hoy 02 ASOPREP ARRIENDOS), si no 02
+    //      (01 ASOPREP ADMINISTRACION y cualquier otro).
+    //   4. Con IVA y sin centro, o sin el rubro      -> 01 (la regla del IVA de antes) + aviso.
+    //
+    // El centro sale de las lineas del asiento del documento (CNT.DTAS.CNCSCDGO): es el unico
+    // lugar donde el SAA lo guarda (la cabecera FCTC/LQCC/NTCC/NTDC no tiene centro). Si hay mas
+    // de uno, decide el de mayor valor y se avisa. Por eso el sustento se resuelve DESPUES de que
+    // el asiento tiene su centro (carga historica C11) o, si todavia no lo tiene, cae al paso 4.
+    // El parrafo "La regla" de arriba describe la version del 2026-08-27 (pasos 1, 2 y 4).
+    // ========================================================================
+
+    /** Tipos de documento de {@link #evaluarSustento(String, Long)}: los de &lt;compras&gt; del ATS. */
+    String FACTURA = "FACTURA";
+    String LIQUIDACION = "LIQUIDACION";
+    String NOTA_CREDITO = "NOTA_CREDITO";
+    String NOTA_DEBITO = "NOTA_DEBITO";
+
+    /**
+     * Aplica la regla completa (de arriba) a un documento de compra, SIN guardar nada, y dice que
+     * parte de la regla decidio, el centro de costo que se uso y el aviso si hay que revisar.
+     *
+     * @param tipoDocumento	: {@link #FACTURA}, {@link #LIQUIDACION}, {@link #NOTA_CREDITO} o {@link #NOTA_DEBITO}
+     * @param idDocumento	: Id del documento
+     * @return				: El resultado; null si el documento no existe
+     * @throws Throwable	: IncomeException si el tipo no es uno de los cuatro
+     */
+    com.saa.model.cxp.ResultadoSustento evaluarSustento(String tipoDocumento, Long idDocumento) throws Throwable;
+
+    /**
+     * Control de solo lectura: aplica la regla a todos los documentos de compra activos de un
+     * rango (mismo criterio de fecha que el ATS: fecha de registro contable, o la de emision) y
+     * compara con lo guardado. No cambia nada: para corregir, un SQL revisable (regla 8) o
+     * {@code PUT /fctc/sustento/{id}}.
+     *
+     * @param idEmpresa		: Empresa
+     * @param desde			: Primer dia del rango
+     * @param hasta			: Ultimo dia del rango
+     * @return				: documentos, coinciden, sinSustento, resumen (tipo | regla | guardado -> regla),
+     *						  diferencias y avisos (listas de {@link com.saa.model.cxp.ResultadoSustento})
+     * @throws Throwable	: Excepcion
+     */
+    Map<String, Object> verificarPeriodo(Long idEmpresa, java.time.LocalDate desde, java.time.LocalDate hasta)
+            throws Throwable;
+
     /**
      * Calcula, sin guardar nada, el sustento que le correspondería hoy a una factura de compra
      * ya registrada, aplicando la regla de arriba: excepción por grupo de producto si aplica,

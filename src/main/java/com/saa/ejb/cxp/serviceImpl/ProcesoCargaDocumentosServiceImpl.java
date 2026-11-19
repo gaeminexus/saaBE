@@ -717,6 +717,25 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
     }
 
     /**
+     * C37 / D-126 (2026-11-19): deja en el resultado ({@code avisoSustentoTributario}) el aviso de la
+     * regla del sustento, si lo hay. En esta carga el sustento se resuelve antes de generar el asiento,
+     * así que el documento todavía no tiene centro de costo: con IVA cae a la regla del IVA (01) y lo
+     * dice, para que contabilidad lo revise (D-126 da 02 si la compra es del centro de Administración).
+     * No bloquea nada.
+     */
+    private void anotarAvisoSustento(Map<String, Object> r, String tipoDocumento, Long idDocumento) {
+        try {
+            com.saa.model.cxp.ResultadoSustento rs = sustentoTributarioService.evaluarSustento(tipoDocumento, idDocumento);
+            if (rs != null && rs.getAviso() != null) {
+                r.put("avisoSustentoTributario", rs.getAviso());
+            }
+        } catch (Throwable e) {
+            System.out.println("ATENCION: no se pudo evaluar el aviso de codSustento de " + tipoDocumento + " "
+                    + idDocumento + ": " + e.getMessage());
+        }
+    }
+
+    /**
      * Obtiene el grupo "PENDIENTE DE CLASIFICAR" de la empresa.
      * Si no existe, lo crea automáticamente.
      */
@@ -2105,6 +2124,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         r.put("productosPendientes", new ArrayList<>());
         r.put("pendienteClasificacion", false);
         if (observacionTerceros != null) r.put("valoresTerceros", observacionTerceros);
+        anotarAvisoSustento(r, com.saa.ejb.cxp.service.SustentoTributarioService.FACTURA, factura.getId());
         if (sustentoPendiente) {
             r.put("sustentoTributarioPendiente", true);
             r.put("advertenciaSustentoTributario", "La factura " + factura.getId() + " quedo sin"
@@ -3159,6 +3179,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         r.put("idDocumentoBD", nc.getId());
         r.put("tipoTablaDestino", "NOTA_CREDITO_COMPRA");
         r.put("mensaje", "NotaCreditoCompra registrada con id=" + nc.getId());
+        anotarAvisoSustento(r, com.saa.ejb.cxp.service.SustentoTributarioService.NOTA_CREDITO, nc.getId());
         if (sustentoPendienteNc) {
             r.put("sustentoTributarioPendiente", true);
             r.put("advertenciaSustentoTributario", "La nota de credito " + nc.getId() + " quedo sin"
@@ -3298,6 +3319,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         r.put("idDocumentoBD", nd.getId());
         r.put("tipoTablaDestino", "NOTA_DEBITO_COMPRA");
         r.put("mensaje", "NotaDebitoCompra registrada con id=" + nd.getId());
+        anotarAvisoSustento(r, com.saa.ejb.cxp.service.SustentoTributarioService.NOTA_DEBITO, nd.getId());
         if (sustentoPendienteNd) {
             r.put("sustentoTributarioPendiente", true);
             r.put("advertenciaSustentoTributario", "La nota de debito " + nd.getId() + " quedo sin"
@@ -3425,6 +3447,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         r.put("idDocumentoBD", lq.getId());
         r.put("tipoTablaDestino", "LIQUIDACION_COMPRA_COMPRA");
         r.put("mensaje", "LiquidacionCompraCompra registrada con id=" + lq.getId());
+        anotarAvisoSustento(r, com.saa.ejb.cxp.service.SustentoTributarioService.LIQUIDACION, lq.getId());
         if (sustentoPendienteLq) {
             r.put("sustentoTributarioPendiente", true);
             r.put("advertenciaSustentoTributario", "La liquidacion " + lq.getId() + " quedo sin"

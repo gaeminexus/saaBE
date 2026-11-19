@@ -320,6 +320,15 @@ public interface Rubros {
 	 * Sin el rubro todo tiene un valor por defecto (nombre de la empresa, sin RUC, firmas en blanco).
 	 */
 	int CNT_PARAMETROS_ESTADOS_FINANCIEROS = 250;
+	/**
+	 * C37 / D-126 (2026-11-19): centros de costo cuyas compras CON IVA dan derecho a credito tributario
+	 * (sustento 01 del ATS). Un detalle por centro: CNT.CNCS.CNCSCDGO en PDTRVLRN, su nombre en PDTRDSCR,
+	 * PDTRESTD = 1 vigente. Con IVA y un centro que no esta aqui -> 02. Sin el rubro rige la regla del IVA
+	 * de antes (con aviso). Lo lee SustentoTributarioServiceImpl por el alterno, no por PRBRCDGO.
+	 * Semilla: docs/logica-negocio/sri/sql/C37-01-rubro-centros-credito-tributario.sql. 251 es el primer
+	 * alterno libre en SCP.PRBR y en el codigo el 2026-11-19 (249/250 cnt, 310/311 y 330-349 rhh).
+	 */
+	int CXP_CENTROS_COSTO_CREDITO_TRIBUTARIO = 251;
 
 	// ================= RUBROS SRI / ATS =================
 	/** Sustento tributario del comprobante, Tabla 5 del ATS (GRPPCSUS/FCTCCSUS/...) -> ver {@link SustentoTributarioSri}. El catalogo real vive en PGS.LSRI/PGS.TSRI (LSRI.TABLA='703'), no en Java; los codigos son strings de dos digitos, no este rubro int -> ver el javadoc de la interfaz. */
