@@ -157,4 +157,54 @@ public interface MotorPagoPrestamoService {
      * @throws Throwable Si ocurre un error
      */
     void recalcularCuotaDesdePagos(DetallePrestamo cuota) throws Throwable;
+
+    // ========================================================================
+    // C35 — DTPRSLOT = lo que respaldan los pagos (ver SaldoOtrosRespaldo)
+    // ========================================================================
+
+    /**
+     * C35: {@code Σ PGPRSLOT} de los {@code PagoPrestamo} vigentes (no anulados) de la cuota, de cualquier tipo.
+     *
+     * @param cuota Cuota
+     * @return Lo respaldado, redondeado a centavos (0 si la cuota no tiene código o pagos)
+     * @throws Throwable Si ocurre un error
+     */
+    double saldoOtrosRespaldado(DetallePrestamo cuota) throws Throwable;
+
+    /**
+     * C35: cuotas del préstamo con {@code DTPRSLOT - respaldado > 0,01}. SOLO LECTURA.
+     *
+     * @param idPrestamo Préstamo
+     * @return Lista (vacía si no hay residuo)
+     * @throws Throwable Si ocurre un error
+     */
+    java.util.List<com.saa.ejb.crd.service.dto.ResiduoSaldoOtros> residuosSaldoOtros(Long idPrestamo) throws Throwable;
+
+    /**
+     * C35: si la cuota tiene residuo, la copia como estaba a {@code CRD.HDTP} (motivo dado, sin evento) y deja
+     * {@code DTPRSLOT} = lo respaldado; graba la cuota. Sin residuo no hace nada (ni graba).
+     *
+     * @param cuota   Cuota (se modifica en el lugar)
+     * @param motivo  Uno de los {@code SaldoOtrosRespaldo.MOTIVO_*}
+     * @param usuario Usuario del rastro (nulo = {@code SaldoOtrosRespaldo.USUARIO_MOTOR})
+     * @return El residuo quitado (0 si no había)
+     * @throws Throwable Si ocurre un error
+     */
+    double normalizarSaldoOtros(DetallePrestamo cuota, String motivo, String usuario) throws Throwable;
+
+    /**
+     * C35: control previo de precancelación y abono a capital sobre TODO el préstamo. Sin residuo devuelve
+     * {@code null}. Con residuo: si {@code normalizar} (re-proceso) normaliza cada cuota y devuelve el texto para la
+     * observación del evento; si no, lanza {@code SALDO_OTROS_SIN_RESPALDO} sin tocar nada.
+     *
+     * @param idPrestamo Préstamo
+     * @param normalizar {@code true} en re-proceso
+     * @param motivo     Motivo de HDTP
+     * @param usuario    Usuario de la operación
+     * @param operacion  "la precancelación", "el abono a capital"... para el mensaje
+     * @return Texto del ajuste o {@code null}
+     * @throws Throwable {@code IncomeException SALDO_OTROS_SIN_RESPALDO} fuera de re-proceso
+     */
+    String controlarSaldoOtrosSinRespaldo(Long idPrestamo, boolean normalizar, String motivo, String usuario,
+            String operacion) throws Throwable;
 }

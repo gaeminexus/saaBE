@@ -35,6 +35,7 @@ import com.saa.ejb.crd.service.PrestamoService;
 import com.saa.ejb.crd.service.ProcesoMoraPrestamoService;
 import com.saa.ejb.crd.service.ProcesoPagoPrestamoService;
 import com.saa.ejb.crd.service.SaldoAporteService;
+import com.saa.ejb.crd.service.SaldoOtrosRespaldo;
 import com.saa.ejb.crd.service.dto.ContextoPago;
 import com.saa.ejb.crd.service.dto.CuotaExigible;
 import com.saa.ejb.crd.service.dto.DesgloseAporte;
@@ -645,6 +646,18 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
             throw new IncomeException(ERR_VALOR_EXCEDE_DEUDA + ": El valor $" + formatoMonto(valorTotal)
                 + " excede la deuda total $" + formatoMonto(deudaTotal)
                 + " del préstamo; use la precancelación");
+        }
+        // C35 (opcional, con bandera explícita): sin cobrar cuotas que vencen después de la fecha del pago. La
+        // cascada paga de la más antigua a la más nueva, así que basta con que el valor no pase de lo vencido.
+        if (solicitud.esSoloCuotasVencidas()) {
+            double vencido = deudaVencidaALaFecha(prestamo.getCodigo(), fechaPagoHora.toLocalDate());
+            if (valorTotal > vencido + TOLERANCIA) {
+                throw new IncomeException("PAGO_CUBRE_CUOTAS_FUTURAS: el valor $" + formatoMonto(valorTotal)
+                    + " pasa de lo vencido al " + fechaPagoHora.toLocalDate() + " ($" + formatoMonto(vencido)
+                    + ") en el préstamo " + prestamo.getCodigo() + ": pagaría cuotas que vencen después, con su"
+                    + " interés completo por adelantado. Pague cada cuota en su vencimiento (fechaPago = vencimiento)"
+                    + " o envíe soloCuotasVencidas = false si se decidió cobrarlas por adelantado.");
+            }
         }
 
         // C17: el pago con aportes se fecha con fechaPago (evento, APRT, PGAP, asiento): mes abierto.
@@ -1335,6 +1348,17 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
                 + formatoMonto(valorTotal));
         }
 
+        // C35: DTPRSLOT sin respaldo en el préstamo (p. ej. el script de producción del 12-ago-2026 en un préstamo que
+        // el re-proceso reabrió). Fuera de re-proceso rechaza antes de grabar nada; en re-proceso lo normaliza (rastro
+        // en CRD.HDTP) y lo anota en el evento.
+        String ajusteSaldoOtros = motorPagoPrestamoService.controlarSaldoOtrosSinRespaldo(prestamo.getCodigo(),
+            solicitud.esReproceso(), SaldoOtrosRespaldo.MOTIVO_PRECANCELACION, solicitud.getUsuario(),
+            "la precancelación");
+        if (ajusteSaldoOtros != null) {
+            observacion = truncarObservacion((observacion != null && !observacion.trim().isEmpty()
+                ? observacion + " " : "") + ajusteSaldoOtros);
+        }
+
         // 1. Evento
         EventoPrestamo evento = crearEvento(prestamo, TIPO_PRECANCELACION, valorTotal, fechaHora,
             solicitud.getUsuario(), observacion);
@@ -1386,7 +1410,12 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
                 // requisito de que el SLOT viva en una cuota PAGADA.
                 ancla = calculo.futuras.get(0);
             }
-            ancla.setSaldoOtros(redondear(nvl(ancla.getSaldoOtros()) + capitalFuturo));
+            // C35: lo respaldado por los pagos de la ancla + el capital futuro, no "lo que tenga DTPRSLOT + capital
+            // futuro" (eso duplicaba el residuo de producción: 61.498,46 en la cuota 52 del préstamo 4818). El
+            // mínimo protege los DEP de la migración, cuyo PGPRSLOT no es capital: el campo nunca sube por ellos.
+            double slotBase = Math.min(nvl(ancla.getSaldoOtros()),
+                motorPagoPrestamoService.saldoOtrosRespaldado(ancla));
+            ancla.setSaldoOtros(redondear(slotBase + capitalFuturo));
             ancla = detallePrestamoService.saveSingle(ancla);
             System.out.println("  ⚓ Capital futuro registrado en DTPRSLOT de la cuota #"
                 + ancla.getNumeroCuota() + " (" + ancla.getCodigo() + "): $" + ancla.getSaldoOtros());
@@ -2592,6 +2621,32 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
             desde++;
         }
         return texto.substring(desde);
+    }
+
+    /** C35: lo pendiente de las cuotas con vencimiento hasta {@code fecha} (inclusive), con sus saldos reales. */
+    private double deudaVencidaALaFecha(Long idPrestamo, LocalDate fecha) throws Throwable {
+        double total = 0.0;
+        List<DetallePrestamo> pendientes = detallePrestamoDaoService.selectCuotasPendientesByPrestamoOrdenadas(idPrestamo);
+        if (pendientes != null) {
+            for (DetallePrestamo cuota : pendientes) {
+                if (cuota.getFechaVencimiento() != null && !cuota.getFechaVencimiento().toLocalDate().isAfter(fecha)) {
+                    total += motorPagoPrestamoService.calcularSaldosRealesCuota(cuota).getTotalPendiente();
+                }
+            }
+        }
+        return redondear(total);
+    }
+
+    /** C35: recorta por la DERECHA a 2000 bytes UTF-8 (EVPROBSR, semántica BYTE), conservando el comienzo. */
+    private String truncarObservacion(String texto) {
+        if (texto == null || texto.getBytes(StandardCharsets.UTF_8).length <= 2000) {
+            return texto;
+        }
+        int hasta = Math.min(texto.length(), 2000);
+        while (hasta > 0 && texto.substring(0, hasta).getBytes(StandardCharsets.UTF_8).length > 2000) {
+            hasta--;
+        }
+        return texto.substring(0, hasta);
     }
 
     /** Estados terminales del préstamo: 3, 4 y 5. */

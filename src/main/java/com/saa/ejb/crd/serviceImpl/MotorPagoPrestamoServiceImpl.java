@@ -3,11 +3,13 @@ package com.saa.ejb.crd.serviceImpl;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.crd.dao.DetallePrestamoDaoService;
 import com.saa.ejb.crd.dao.EventoPrestamoDaoService;
+import com.saa.ejb.crd.dao.HistDetallePrestamoDaoService;
 import com.saa.ejb.crd.dao.PagoPrestamoDaoService;
 import com.saa.ejb.crd.dao.PrestamoDaoService;
 import com.saa.ejb.crd.service.CargaArchivoService;
@@ -15,8 +17,10 @@ import com.saa.ejb.crd.service.DetallePrestamoService;
 import com.saa.ejb.crd.service.MotorPagoPrestamoService;
 import com.saa.ejb.crd.service.PagoPrestamoService;
 import com.saa.ejb.crd.service.ProcesoMoraPrestamoService;
+import com.saa.ejb.crd.service.SaldoOtrosRespaldo;
 import com.saa.ejb.crd.service.dto.ContextoPago;
 import com.saa.ejb.crd.service.dto.DetalleAplicacionCuota;
+import com.saa.ejb.crd.service.dto.ResiduoSaldoOtros;
 import com.saa.ejb.crd.service.dto.ResultadoAplicacionPago;
 import com.saa.ejb.crd.service.dto.SaldosCuota;
 import com.saa.model.crd.CargaArchivo;
@@ -81,6 +85,10 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
 
     @EJB
     private EventoPrestamoDaoService eventoPrestamoDaoService;
+
+    /** C35: rastro en CRD.HDTP del DTPRSLOT sin respaldo que se normaliza. */
+    @EJB
+    private HistDetallePrestamoDaoService histDetallePrestamoDaoService;
 
     /** Solo para resolver ctx.getIdCargaArchivo() cuando viene no-null (carga Petro). */
     @EJB
@@ -759,6 +767,13 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
 
         List<PagoPrestamo> pagos = pagoPrestamoDaoService.selectVigentesByIdDetallePrestamo(cuota.getCodigo());
 
+        // C35: DTPRSLOT = lo que respaldan los pagos vigentes (Σ PGPRSLOT). Solo se baja, nunca se sube (los
+        // DEP de la migración usan PGPRSLOT para otra cosa); la cuota como estaba queda en CRD.HDTP.
+        double slotRespaldado = sumaSaldoOtros(pagos);
+        if (SaldoOtrosRespaldo.tieneResiduo(cuota.getSaldoOtros(), slotRespaldado)) {
+            historizarResiduo(cuota, slotRespaldado, SaldoOtrosRespaldo.MOTIVO_RECALCULO, null);
+        }
+
         double desgravamenPagado = 0.0;
         double moraPagada        = 0.0;
         double ivPagado          = 0.0;
@@ -834,6 +849,114 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
         }
 
         detallePrestamoService.saveSingle(cuota);
+    }
+
+    // ========================================================================
+    // C35 — DTPRSLOT = lo que respaldan los pagos
+    // ========================================================================
+
+    /** Σ PGPRSLOT de los pagos dados, redondeada. */
+    private double sumaSaldoOtros(List<PagoPrestamo> pagos) {
+        double suma = 0.0;
+        if (pagos != null) {
+            for (PagoPrestamo pago : pagos) {
+                suma += nullSafe(pago.getSaldoOtros());
+            }
+        }
+        return redondear(suma);
+    }
+
+    /**
+     * Copia la cuota como está a CRD.HDTP (sin evento) y deja DTPRSLOT = respaldado, SIN grabar la cuota (lo
+     * hace el llamador). Devuelve el residuo quitado.
+     */
+    private double historizarResiduo(DetallePrestamo cuota, double respaldado, String motivo, String usuario)
+            throws Throwable {
+        double residuo = SaldoOtrosRespaldo.residuo(cuota.getSaldoOtros(), respaldado);
+        histDetallePrestamoDaoService.save(SaldoOtrosRespaldo.copiarAHistorico(cuota, null, motivo,
+            SaldoOtrosRespaldo.usuarioHistorico(usuario)), null);
+        System.out.println("  C35: cuota #" + cuota.getNumeroCuota() + " (" + cuota.getCodigo() + ") DTPRSLOT "
+            + cuota.getSaldoOtros() + " -> " + respaldado + " (sin respaldo " + residuo + ", " + motivo + ")");
+        cuota.setSaldoOtros(respaldado);
+        return residuo;
+    }
+
+    @Override
+    public double saldoOtrosRespaldado(DetallePrestamo cuota) throws Throwable {
+        if (cuota == null || cuota.getCodigo() == null) {
+            return 0.0;
+        }
+        return sumaSaldoOtros(pagoPrestamoDaoService.selectVigentesByIdDetallePrestamo(cuota.getCodigo()));
+    }
+
+    @Override
+    public List<ResiduoSaldoOtros> residuosSaldoOtros(Long idPrestamo) throws Throwable {
+        List<ResiduoSaldoOtros> residuos = new ArrayList<>();
+        List<DetallePrestamo> cuotas = detallePrestamoDaoService.selectByPrestamo(idPrestamo);
+        if (cuotas == null) {
+            return residuos;
+        }
+        for (DetallePrestamo cuota : cuotas) {
+            if (nullSafe(cuota.getSaldoOtros()) <= SaldoOtrosRespaldo.TOLERANCIA) {
+                continue;
+            }
+            double respaldado = saldoOtrosRespaldado(cuota);
+            if (SaldoOtrosRespaldo.tieneResiduo(cuota.getSaldoOtros(), respaldado)) {
+                residuos.add(new ResiduoSaldoOtros(idPrestamo, cuota.getCodigo(),
+                    cuota.getNumeroCuota() != null ? Math.round(cuota.getNumeroCuota()) : null,
+                    redondear(nullSafe(cuota.getSaldoOtros())), respaldado,
+                    SaldoOtrosRespaldo.residuo(cuota.getSaldoOtros(), respaldado)));
+            }
+        }
+        return residuos;
+    }
+
+    @Override
+    public double normalizarSaldoOtros(DetallePrestamo cuota, String motivo, String usuario) throws Throwable {
+        if (cuota == null || nullSafe(cuota.getSaldoOtros()) <= SaldoOtrosRespaldo.TOLERANCIA) {
+            return 0.0;
+        }
+        double respaldado = saldoOtrosRespaldado(cuota);
+        if (!SaldoOtrosRespaldo.tieneResiduo(cuota.getSaldoOtros(), respaldado)) {
+            return 0.0;
+        }
+        double residuo = historizarResiduo(cuota, respaldado, motivo, usuario);
+        detallePrestamoService.saveSingle(cuota);
+        return residuo;
+    }
+
+    @Override
+    public String controlarSaldoOtrosSinRespaldo(Long idPrestamo, boolean normalizar, String motivo, String usuario,
+            String operacion) throws Throwable {
+        List<ResiduoSaldoOtros> residuos = residuosSaldoOtros(idPrestamo);
+        if (residuos.isEmpty()) {
+            return null;
+        }
+        StringBuilder detalle = new StringBuilder();
+        double total = 0.0;
+        for (int i = 0; i < residuos.size(); i++) {
+            ResiduoSaldoOtros r = residuos.get(i);
+            if (i < 10) {
+                detalle.append(i == 0 ? "" : "; ").append(r.texto());
+            } else if (i == 10) {
+                detalle.append("; y ").append(residuos.size() - 10).append(" cuota(s) más");
+            }
+            total += r.getResiduo();
+        }
+        total = redondear(total);
+        if (!normalizar) {
+            throw new IncomeException(SaldoOtrosRespaldo.ERR_SALDO_OTROS_SIN_RESPALDO + ": el préstamo " + idPrestamo
+                + " tiene $" + total + " en DTPRSLOT (abono/capital precancelado) sin ningún pago que lo respalde ("
+                + detalle + "). Si " + operacion + " se registra así, la tabla mostraría el abono dos veces."
+                + " Revise el préstamo con crédito: el valor sin respaldo se quita con el script revisable C35-02"
+                + " o, en un re-proceso, enviando reproceso = true (se normaliza y queda en CRD.HDTP).");
+        }
+        for (ResiduoSaldoOtros r : residuos) {
+            DetallePrestamo cuota = detallePrestamoDaoService.find(new DetallePrestamo(), r.getIdCuota());
+            normalizarSaldoOtros(cuota, motivo, usuario);
+        }
+        return "[C35: DTPRSLOT sin respaldo normalizado antes de " + operacion + ", $" + total + " (" + detalle
+            + "); valor anterior en CRD.HDTP " + motivo + "]";
     }
 
     // ========================================================================

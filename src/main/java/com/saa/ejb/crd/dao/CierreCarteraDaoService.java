@@ -98,6 +98,22 @@ public interface CierreCarteraDaoService {
     List<Object[]> selectCanceladosConCuotasPendientesAlCorte(LocalDate corte) throws Throwable;
 
     /**
+     * C35 — Cuotas con {@code DTPRSLOT} mayor que lo que respaldan sus pagos vigentes ({@code Σ PGPRSLOT} de los PGPR
+     * no anulados, cualquier tipo) en más de un centavo, de los préstamos VIVOS (1, 2, 8, 10, 11) o con una
+     * precancelación o abono a capital vigente fechado en el mes ({@code PGPRFCHA} en {@code [inicioMes, corte]}).
+     * Estado de HOY de la tabla (el campo no tiene foto al corte). Los cancelados sin operación en el mes no entran:
+     * son la representación de producción del 12-ago-2026 y el re-proceso no los toca.
+     *
+     * @param inicioMes  : Primer día del mes que se cierra
+     * @param corte      : Último día del mes que se cierra
+     * @return           : Filas {@code [PRSTCDGO, operacion (PRSTIDAS), estado (PRSTIDST), numeroCuota, DTPRSLOT,
+     *                     respaldado, residuo]} (Long, Long, Long, Long, Double, Double, Double), de mayor a menor
+     *                     residuo
+     * @throws Throwable : Excepcion
+     */
+    List<Object[]> selectSaldoOtrosSinRespaldo(LocalDate inicioMes, LocalDate corte) throws Throwable;
+
+    /**
      * Interés ordinario y mora pendientes de las cuotas con vencimiento EN EL RANGO
      * {@code [desde, hasta]} (ambos inclusive), agrupados por TIPO DE PRÉSTAMO (quirografario /
      * hipotecario / prendario), que es la dimensión por la que cambia la cuenta contable del
