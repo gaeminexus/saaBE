@@ -23,9 +23,9 @@ Convención de nombres: estructura + periodicidad + código de entidad **3968** 
 | G50 | Mensual | Stub (0 registros) | Coincide con mayo 2025 (vacío) | — |
 | G51 | Mensual | Sí, con `A21` fijo | Sí | — |
 | Q01 Quejas | Mensual | No | Presentado vacío | Definir si se incorpora |
-| Flujo de caja (formato BIESS) | Mensual | Estructura FLC desde C19 (provisional) | Filas y fórmulas del formato; solo las 9 reglas de su columna O | Falta el mapeo de cuentas (flujo de efectivo ene-2026); la columna O lleva las provisiones (47) a egresos; salida Excel |
-| Flujo de efectivo NIIF | Mensual | No | — | Mismo motor, cuando llegue el formato |
-| Comparativo dic vs mes | Mensual | Sí desde C19: `/esfo` con `comparativo=CIERRE_ANIO_ANTERIOR` | Por confirmar con el formato | Ajustar al formato |
+| Flujo de caja (formato BIESS) | Mensual | Sí desde C38: `/flef/excel` `reporte: DIRECTO` (estructura FCD, método directo por la caja con cuentas puente); el FLC de C19 queda provisional | Filas, textos y fórmulas del formato, una columna por mes | Historia laboral (filas 37–39) y tipo de fondo no son contables; ver [FLUJO-EFECTIVO-Y-COMPARATIVO.md](FLUJO-EFECTIVO-Y-COMPARATIVO.md) |
+| Flujo de efectivo NIIF (indirecto) | Mensual y acumulado | Sí desde C38: `/flef/generar` y `/flef/excel` (estructura FLE sobre el B17) | Formatos de ene-2026 (mes) y dic-2025 (acumulado) | Correr la semilla C38-01 |
+| Comparativo dic vs mes | Mensual | Sí: `/flef/comparativoExcel` con el formato de ASOPREP (estructura CMP, códigos del B17, C38); `/esfo` con `comparativo=CIERRE_ANIO_ANTERIOR` por plan de cuentas | Sí (C38) | Correr la semilla C38-01 |
 | Estado de situación financiera / Estado de resultados | Mensual | Sí, y oficiales desde C19 | Encabezado, logo, nombre propio, resultado del ejercicio, PRELIMINAR/DEFINITIVO | — |
 | Cambios en el patrimonio y notas | Juego completo | No (las notas son texto libre) | — | Pendiente |
 | Ecuación contable y cuadres B17↔G | Control | El estado oficial imprime la línea de descuadre; los cuadres B17↔G están en `10-cuadratura-b17-g.js` del expediente | — | Llevar C9 al SAA |

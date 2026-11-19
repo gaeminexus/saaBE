@@ -243,6 +243,21 @@ public final class CalculadorEstructura {
 		return mejores;
 	}
 
+	/**
+	 * Renglon de la estructura al que va una cuenta del plan (C38, clasificacion del flujo de caja por codigo del B17):
+	 * el destino de la regla mas especifica que lo tenga y, si no, el mapeo automatico (prefijo mas largo). A
+	 * diferencia del calculo, una cuenta excluida por regla tambien recibe su renglon (sirve para clasificarla).
+	 */
+	public static String renglonDeCuenta(DefinicionEstructura def, Set<String> codigos, List<ReglaCuentaRenglon> reglas,
+			String cuenta) {
+		for (ReglaCuentaRenglon regla : reglasMasEspecificas(reglas, cuenta)) {
+			if (regla.getDestino() != null) {
+				return regla.getDestino();
+			}
+		}
+		return automatico(codigos, cuenta);
+	}
+
 	/** Renglon cuyo codigo es el prefijo mas largo de la cuenta sin separadores; null si ninguno. */
 	static String automatico(Set<String> codigos, String cuenta) {
 		String p = cuenta.replaceAll("[^0-9A-Za-z]", "");
