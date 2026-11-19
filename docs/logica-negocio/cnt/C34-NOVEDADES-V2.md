@@ -89,3 +89,37 @@ permiso 1569 REGISTRAR AJUSTE. Prueba: `cuadreSuper/03-trabajo/cambios-saa/c34-n
 | `POST /nvdd2/{id}/notas` · `POST /nvdd2/notas/{id}/anular` | Nota de ASOPREP (`CNT.NTNV`): texto y adjuntos, sin cuentas; no cambia saldos ni estados. El detalle la trae en `notas`. |
 
 Prueba: `cuadreSuper/03-trabajo/cambios-saa/c34-novedades-v2/scripts/prueba-rest-c34d-d123.js` (18/18).
+
+### C34e (C34-07c): lo que falta se cruza con los aportes
+
+`tratamientoDiferencia = CRUCE_APORTES` con `tipoAporteDiferencia` (tipo de aporte de la cuenta individual del partícipe,
+`HCNVTPAP`). Los candidatos traen `saldosAportes` (`SaldoAporteService.saldosPorEntidad`). La v8 lo aplica con el motor de
+crédito en la fecha del hecho.
+
+### C34f (C34-07d, diseño C34D §10): lo que falta se condona
+
+| Ruta | Qué hace |
+|---|---|
+| `GET /nvdd2/hechos/componentes?idPrestamo&tipo&cuotas=csv&desde&fecha` | Lo adeudado por cuota y concepto a la fecha del hecho. **`PAGO_CUOTAS`** con `cuotas` (DTPRCDGO): `SEGURO`, `DESGRAVAMEN`, `MORA` (fórmula de `ProcesoMoraPrestamoService.calcularMoraCuota` con la tasa diaria del préstamo), `INTERES` (interés + interés vencido) y `CAPITAL`, desde los valores de la tabla (`MotorPagoPrestamoService.calcularSaldosCuota`), como si la cuota estuviera impaga. **`PRECANCELACION` / `SERIE_PRECANCELACION`**: el mismo cálculo de `/hechos/calcular`. Devuelve `filas`, `totales`, `total`, `fecha` y `fuente`. |
+| `POST /nvdd2/hechos` (campos nuevos) | `cuotas` (pago de cuotas: el SAA calcula su valor y guarda los componentes en `HCNVDTLL`). Con `tratamientoDiferencia = CONDONACION` (solo si falta) también van `conceptosCondonados` (subconjunto de `MORA`, `INTERES`, `CAPITAL`) e `idDecision` (decisión de ASOPREP, `CNT.DCSN`), más al menos un adjunto. Sin alguno de los tres responde 400. |
+
+Reparto (`repartoCondonacion`):
+1. El dinero de los orígenes paga primero lo no condonable, cuota por cuota en el orden de pago del SAA (seguro, desgravamen,
+   mora, interés, capital). Si no alcanza, responde 400 con lo que falta.
+2. Con lo que queda paga los conceptos marcados.
+3. Lo que queda sin pagar de los conceptos marcados es lo condonado. Tiene que ser igual a lo que falta (± 0,02).
+
+Se guarda en `HCNVCNDN` (JSON):
+- `conceptos` y `fecha`;
+- `filas`: por cuota, `adeudado`, `pagado` y `condonado`;
+- `condonadoPorConcepto` y `totalCondonado`;
+- `referenciaCuenta {plantillaAlterno: 25, lineaAuxiliar: 70}`;
+- `cuentaAlRegistrar`: informativa. La v8 resuelve la cuenta al registrar.
+
+El detalle y la exportación de hechos traen `condonacion`, `idDecision`, `numeroDecision` y `tituloDecision`. La pantalla
+muestra la opción solo con el permiso `CRD_CONDONACION_DE_VALORES` (1488).
+
+Este cambio no crea asientos ni cambia cuotas. El motor «condonar conceptos de una cuota» es un pendiente de la v8: se hará
+después de fusionar C35, porque toca `MotorPagoPrestamoService` y `ProcesoPagoPrestamoServiceImpl`.
+
+Prueba: `cuadreSuper/03-trabajo/cambios-saa/c34-novedades-v2/scripts/prueba-rest-c34f.js` (12/12).

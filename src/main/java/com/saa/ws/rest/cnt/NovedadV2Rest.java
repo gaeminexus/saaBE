@@ -320,6 +320,19 @@ public class NovedadV2Rest {
 		}
 	}
 
+	@GET
+	@Path("/hechos/componentes")
+	@Produces(MediaType.APPLICATION_JSON)
+	public Response componentesHecho(@QueryParam("idPrestamo") Long idPrestamo, @QueryParam("tipo") String tipo, @QueryParam("cuotas") String cuotas,
+			@QueryParam("desde") String desde, @QueryParam("fecha") String fecha) {
+		System.out.println("LLEGA AL SERVICIO GET nvdd2/hechos/componentes");
+		try {
+			return RespuestasC25.ok(servicio.componentesHecho(idPrestamo, tipo, cuotas, desde, fecha));
+		} catch (Throwable e) {
+			return RespuestasC25.error(e, "No se pudieron calcular los conceptos: ");
+		}
+	}
+
 	@POST
 	@Path("/{id}/notas")
 	@Consumes(MediaType.APPLICATION_JSON)
