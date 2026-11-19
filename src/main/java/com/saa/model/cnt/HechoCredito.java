@@ -125,6 +125,12 @@ public class HechoCredito implements Serializable {
 	@Lob
 	@Column(name = "HCNVDTLL")
 	private String detalle;
+	/** C34-07c: tipo de aporte con que se cruza la diferencia que falta (CRUCE_APORTES). */
+	@Basic
+	@Column(name = "HCNVTPAP")
+	private Long tipoAporteDiferencia;
+	public Long getTipoAporteDiferencia() { return tipoAporteDiferencia; }
+	public void setTipoAporteDiferencia(Long tipoAporteDiferencia) { this.tipoAporteDiferencia = tipoAporteDiferencia; }
 	public LocalDate getMesDesde() { return mesDesde; }
 	public void setMesDesde(LocalDate mesDesde) { this.mesDesde = mesDesde; }
 	public String getTratamientoDiferencia() { return tratamientoDiferencia; }

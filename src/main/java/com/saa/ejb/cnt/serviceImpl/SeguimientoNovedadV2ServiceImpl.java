@@ -1847,6 +1847,7 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 		if ("NO_SE_DEBITA".equals(t)) return "no se debita (queda en la cuenta individual)";
 		if ("SE_DEVUELVE".equals(t)) return "se devuelve al partícipe";
 		if ("PARTICIPE_DEBE".equals(t)) return "el partícipe lo debe";
+		if ("CRUCE_APORTES".equals(t)) return "se cruza con los aportes del partícipe";
 		return t;
 	}
 	static final List<String> TIPOS_ORIGEN = Arrays.asList("EXTRACTO", "APORTE", "PENDIENTE", "SIN_DINERO");
@@ -2350,6 +2351,20 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 		m.put("idAsoprep", idAsoprep);
 		m.put("titular", personas("{entidad:" + titular + "}"));
 		m.put("valorCuota", aDouble(pr[3]));
+		// C34-07c: saldos de la cuenta individual del titular por tipo de aporte (hoy), para cruzar con ellos la diferencia que falte
+		List<Map<String, Object>> saldos = new ArrayList<Map<String, Object>>();
+		try {
+			for (com.saa.ejb.crd.service.dto.SaldoTipoAporte s : saldoAporteService.saldosPorEntidad(titular)) {
+				Map<String, Object> x = new LinkedHashMap<String, Object>();
+				x.put("idTipoAporte", s.getIdTipoAporte());
+				x.put("nombre", s.getNombre());
+				x.put("saldo", s.getSaldo() == null ? 0D : r2(s.getSaldo()));
+				saldos.add(x);
+			}
+		} catch (Throwable e) {
+			System.out.println("C34-07c: no se pudieron leer los saldos de aportes (" + e.getMessage() + ")");
+		}
+		m.put("saldosAportes", saldos);
 		m.put("lineas", lineas);
 		m.put("pedidos", pedidos);
 		return m;
@@ -2478,9 +2493,18 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 				throw new IncomeException("Los orígenes suman " + dinero(suma) + " y el hecho es de " + dinero(valor) + ": sobran " + dinero(diferencia)
 						+ ". Indique qué pasa con lo que sobra: «no se debita» (queda en la cuenta individual) o «se devuelve».");
 			}
-			if (diferencia < 0 && !"PARTICIPE_DEBE".equals(tratamiento)) {
+			if (diferencia < 0 && !"PARTICIPE_DEBE".equals(tratamiento) && !"CRUCE_APORTES".equals(tratamiento)) {
 				throw new IncomeException("Los orígenes suman " + dinero(suma) + " y el hecho es de " + dinero(valor) + ": faltan " + dinero(-diferencia)
-						+ ". Complete los orígenes o indique «el partícipe lo debe».");
+						+ ". Complete los orígenes, indique «el partícipe lo debe» o que se cruza con sus aportes (con el tipo de aporte).");
+			}
+			if ("CRUCE_APORTES".equals(tratamiento)) {
+				if (h.getTipoAporteDiferencia() == null) {
+					throw new IncomeException("Indique con qué tipo de aporte del partícipe se cruzan los " + dinero(-diferencia) + " que faltan.");
+				}
+				Number tp = (Number) em.createNativeQuery("SELECT COUNT(*) FROM CRD.TPAP WHERE TPAPCDGO = :t").setParameter("t", h.getTipoAporteDiferencia()).getSingleResult();
+				if (tp.longValue() == 0) {
+					throw new IncomeException("El tipo de aporte elegido no existe.");
+				}
 			}
 		} else {
 			tratamiento = null;
@@ -2545,6 +2569,7 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 		hc.setMesDesde(desde == null ? null : desde.withDayOfMonth(1));
 		hc.setTratamientoDiferencia(tratamiento);
 		hc.setValorDiferencia(tratamiento == null ? null : diferencia);
+		hc.setTipoAporteDiferencia("CRUCE_APORTES".equals(tratamiento) ? h.getTipoAporteDiferencia() : null);
 		hc.setDetalle(detalleCalculado);
 		hc.setEstado(1L);
 		hc.setFechaRegistro(ahora);
@@ -2756,6 +2781,11 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 		m.put("tratamientoDiferencia", hc.getTratamientoDiferencia());
 		m.put("tratamientoNombre", hc.getTratamientoDiferencia() == null ? null : tratamientoNombre(hc.getTratamientoDiferencia()));
 		m.put("valorDiferencia", hc.getValorDiferencia());
+		m.put("tipoAporteDiferencia", hc.getTipoAporteDiferencia());
+		if (hc.getTipoAporteDiferencia() != null) {
+			List<?> tn = em.createNativeQuery("SELECT TPAPNMBR FROM CRD.TPAP WHERE TPAPCDGO = :t").setParameter("t", hc.getTipoAporteDiferencia()).getResultList();
+			m.put("nombreTipoAporteDiferencia", tn.isEmpty() ? null : tn.get(0));
+		}
 		m.put("detalleCalculado", hc.getDetalle());
 		List<Map<String, Object>> os = new ArrayList<Map<String, Object>>();
 		for (OrigenHecho o : em.createQuery("select o from OrigenHecho o where o.idHecho = :h order by o.codigo", OrigenHecho.class)
@@ -2830,6 +2860,9 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 
 	@EJB
 	private com.saa.ejb.crd.service.ProcesoPagoPrestamoService procesoPagoPrestamoService;
+
+	@EJB
+	private com.saa.ejb.crd.service.SaldoAporteService saldoAporteService;
 
 	private static String aJson(Object o) {
 		try {

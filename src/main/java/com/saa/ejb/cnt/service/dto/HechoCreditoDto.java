@@ -33,6 +33,8 @@ public class HechoCreditoDto implements Serializable {
 	private String desde;
 	/** Qué pasa con la diferencia orígenes - valor: NO_SE_DEBITA, SE_DEVUELVE o PARTICIPE_DEBE. */
 	private String tratamientoDiferencia;
+	/** Tipo de aporte (CRD.TPAP) con que se cruza la diferencia que falta (CRUCE_APORTES). */
+	private Long tipoAporteDiferencia;
 	/** Pedidos que el hecho atiende solo para esta operación (el pedido sigue pendiente). */
 	private List<Long> pedidosParciales = new ArrayList<Long>();
 	/** Nota de ASOPREP que se convierte en este hecho. */
@@ -104,6 +106,8 @@ public class HechoCreditoDto implements Serializable {
 	public void setAdjuntos(List<AccionNovedad.Adjunto> adjuntos) { this.adjuntos = adjuntos; }
 	public String getDesde() { return desde; }
 	public void setDesde(String desde) { this.desde = desde; }
+	public Long getTipoAporteDiferencia() { return tipoAporteDiferencia; }
+	public void setTipoAporteDiferencia(Long tipoAporteDiferencia) { this.tipoAporteDiferencia = tipoAporteDiferencia; }
 	public String getTratamientoDiferencia() { return tratamientoDiferencia; }
 	public void setTratamientoDiferencia(String tratamientoDiferencia) { this.tratamientoDiferencia = tratamientoDiferencia; }
 	public List<Long> getPedidosParciales() { return pedidosParciales; }
