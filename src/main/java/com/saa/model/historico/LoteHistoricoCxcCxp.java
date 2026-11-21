@@ -146,6 +146,24 @@ public class LoteHistoricoCxcCxp {
         public String fechaPagoSugerida;
         public Boolean quedaPorPagar;
         public Boolean anuladaConNc;
+        /**
+         * C39: valores que la planilla eléctrica (CNEL, EEQ) cobra por cuenta de terceros (contribución a bomberos,
+         * tasa de recolección de basura) y que NO están en el {@code importeTotal} del comprobante. {@link #total} y
+         * {@link #lineas} siguen siendo los del comprobante; el cargador agrega cada concepto como una línea más,
+         * no objeto de IVA (código 6), con el producto de la primera línea, y lo suma a SUBTOTAL, SUBNOOBJ y TOTAL,
+         * igual que {@code ProcesoCargaDocumentosServiceImpl} con el XML (bloque «Valores recaudados por cuenta de
+         * terceros»). Vacío = la factura no tiene terceros.
+         */
+        public List<ValorTerceroLote> valoresTerceros = new ArrayList<>();
+    }
+
+    /** C39: un concepto cobrado por cuenta de terceros en la planilla eléctrica. */
+    public static class ValorTerceroLote {
+        /** Nombre del concepto: el {@code nombre} del {@code campoAdicional} del XML ("CONTRIBUCION BOMBEROS") o el de la fuente. */
+        public String nombre;
+        public Double valor;
+        /** De dónde sale el valor: "XML campoAdicional", "REVISION FACTURAS CNEL.xlsx fila 5"... (va a la observación). */
+        public String origen;
     }
 
     public static class LineaRetencionLote {
