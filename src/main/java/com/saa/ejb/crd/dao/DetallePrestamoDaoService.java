@@ -98,7 +98,8 @@ public interface DetallePrestamoDaoService extends EntityDao<DetallePrestamo> {
 	List<DetallePrestamo> selectCuotasNoPagadasByPrestamo(Long codigoPrestamo) throws Throwable;
 
 	/**
-	 * Obtiene la mínima cuota NO pagada (por número de cuota) de un préstamo.
+	 * Obtiene la mínima cuota NO pagada (por número de cuota) de un préstamo. C33: mismo criterio que
+	 * {@link #selectCuotasPendientesByPrestamoOrdenadas(Long)} (incluye la 4 sin respaldo desde el arranque).
 	 * ✅ OPTIMIZACIÓN: Usa subconsulta con MIN() para traer solo la primera cuota pendiente.
 	 * @param codigoPrestamo Código del préstamo
 	 * @return Lista con la cuota pendiente más antigua (por número de cuota), o lista vacía si no hay pendientes
@@ -117,7 +118,9 @@ public interface DetallePrestamoDaoService extends EntityDao<DetallePrestamo> {
 	Long contarCuotasByPrestamo(Long codigoPrestamo) throws Throwable;
 
 	/**
-	 * Cuenta las cuotas de un préstamo que NO están PAGADAS ni CANCELADAS ANTICIPADAMENTE.
+	 * Cuenta las cuotas de un préstamo que NO están PAGADAS ni CANCELADAS ANTICIPADAMENTE. C33: más las PAGADAS sin
+	 * respaldo desde el arranque (mismo criterio que {@link #selectCuotasPendientesByPrestamoOrdenadas(Long)}): un
+	 * préstamo con una marca sin pagos no se cancela.
 	 * Incluye explícitamente las cuotas con estado NULL (en SQL, NULL NOT IN (...) es NULL
 	 * y quedarían fuera del conteo, lo que haría creer que el préstamo está totalmente pagado).
 	 * @param codigoPrestamo Código del préstamo
@@ -230,14 +233,50 @@ public interface DetallePrestamoDaoService extends EntityDao<DetallePrestamo> {
 
 	/**
 	 * Cuotas pendientes de un préstamo, ordenadas por numeroCuota ASC.
-	 * Pendiente = estado IS NULL OR estado NOT IN (4 PAGADA, 7 CANCELADA_ANTICIPADA).
-	 * A diferencia de selectCuotasNoPagadasByPrestamo, incluye explícitamente las cuotas
+	 * Pendiente = estado IS NULL OR estado NOT IN (4 PAGADA, 7 CANCELADA_ANTICIPADA), <b>más</b> (C33, punto 1) las
+	 * PAGADAS con vencimiento desde {@code PrelacionCuotas.desde()} cuyo capital + interés no cubren sus pagos
+	 * vigentes (marca sin pagos). A diferencia de selectCuotasNoPagadasByPrestamo, incluye explícitamente las cuotas
 	 * con estado NULL (en JPQL "NULL NOT IN (...)" descarta la fila).
 	 * @param codigoPrestamo Código del préstamo
 	 * @return Lista de cuotas pendientes ordenadas; vacía si no hay o si falla la consulta
 	 * @throws Throwable Si ocurre algún error
 	 */
 	List<DetallePrestamo> selectCuotasPendientesByPrestamoOrdenadas(Long codigoPrestamo) throws Throwable;
+
+	/**
+	 * C33 (puntos 1 y 2): cuotas con saldo POSIBLE de un préstamo, ordenadas por numeroCuota ASC — las pendientes por
+	 * estado (nulo o distinto de 4/7) <b>y</b> las PAGADAS (4) con vencimiento {@code >= desde} cuyo capital + interés
+	 * no cubren sus pagos vigentes con fecha {@code <= corte} (marca sin pagos de Delta 21, o saldada por un pago con
+	 * fecha posterior al corte). Las 7 nunca entran (ver {@code PrelacionCuotas}). El saldo exacto lo calcula el motor.
+	 *
+	 * @param codigoPrestamo Código del préstamo
+	 * @param desde          Primer vencimiento de la regla de las 4 ({@code null} = ninguno: solo por estado)
+	 * @param corte          Fecha de corte de los pagos ({@code null} = todos los pagos vigentes)
+	 * @return Cuotas ordenadas; vacía si no hay. A diferencia de las consultas de arriba, un error de base se propaga.
+	 * @throws Throwable Si ocurre algún error
+	 */
+	List<DetallePrestamo> selectCuotasConSaldoPosibleOrdenadas(Long codigoPrestamo, java.time.LocalDate desde,
+		LocalDateTime corte) throws Throwable;
+
+	/**
+	 * C33 (punto 6): control de prelación AL CORTE de toda la cartera, solo lectura. Una fila por préstamo vivo al
+	 * corte que tenga una cuota con capital + interés sin cubrir al corte (pendiente por estado, o 4 con vencimiento
+	 * desde {@code desde}) y una cuota POSTERIOR con capital o interés pagado al corte por pagos vigentes no exentos
+	 * (ni PRECANCELACION, ni ABONO_CAPITAL, ni ACUERDO_CONDONACION, ni PGPRSLOT &gt; 0). Pagos al corte =
+	 * {@code PGPRFCHA <= corte} (o sin fecha). El seguro de incendio, el desgravamen y la mora no cuentan: la carga
+	 * Petro aplica el HS por cuota y la mora la recalcula el proceso diario después del pago. Además (tipo
+	 * {@code SOBREIMPUTADA}) las cuotas con vencimiento desde {@code desde} cuyos pagos al corte pagan más capital o
+	 * más interés que la cuota, con algún pago no exento (el efecto de un pago anterior aplicado a una cuota que un pago
+	 * de fecha posterior ya saldaba, regla del punto 2).
+	 *
+	 * @param desde Primer vencimiento de la regla de las 4
+	 * @param corte Fecha de corte (inclusive)
+	 * @return Filas {@code [PRSTCDGO, PRSTIDAS, PRSTIDST, cuota, capital + interés pendiente (PRELACION) o pagado de
+	 *         más (SOBREIMPUTADA), primera cuota posterior con pagos (o nulo), cuotas, valor, tipo]} (Long, Long, Long,
+	 *         Long, Double, Long, Long, Double, String), ordenadas por préstamo; un préstamo puede salir dos veces
+	 * @throws Throwable Si ocurre algún error
+	 */
+	List<Object[]> selectControlPrelacionAlCorte(java.time.LocalDate desde, java.time.LocalDate corte) throws Throwable;
 
 	/**
 	 * Datos escalares (SIN instanciar entidades) de las cuotas pendientes de VARIOS préstamos,

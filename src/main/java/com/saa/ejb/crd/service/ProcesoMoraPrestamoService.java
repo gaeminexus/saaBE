@@ -141,6 +141,10 @@ public interface ProcesoMoraPrestamoService {
      * fecha que elija el usuario, en vez de leer el {@code DTPRMRAA}/{@code DTPRSLMR} que dejó
      * el último proceso de las 02:00.
      *
+     * <p>C33 (punto 5): con {@code saa.cartera.moraSobreCapitalPendiente=true} (por defecto no) la base es el capital
+     * pendiente de cada tramo — lee los pagos vigentes de la cuota (solo lectura) y cada pago de capital detiene la
+     * mora sobre lo pagado desde su fecha ({@code PrelacionCuotas.moraSobreCapitalPendiente}).</p>
+     *
      * @param cuota      Cuota a evaluar (usa {@code capital} y {@code fechaVencimiento})
      * @param tasaDiaria Tasa diaria ya resuelta — ver {@link #tasaDiariaDelPrestamo}
      * @param fecha      Fecha de corte

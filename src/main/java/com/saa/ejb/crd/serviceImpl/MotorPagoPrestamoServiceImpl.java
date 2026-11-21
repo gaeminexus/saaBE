@@ -16,6 +16,7 @@ import com.saa.ejb.crd.service.CargaArchivoService;
 import com.saa.ejb.crd.service.DetallePrestamoService;
 import com.saa.ejb.crd.service.MotorPagoPrestamoService;
 import com.saa.ejb.crd.service.PagoPrestamoService;
+import com.saa.ejb.crd.service.PrelacionCuotas;
 import com.saa.ejb.crd.service.ProcesoMoraPrestamoService;
 import com.saa.ejb.crd.service.SaldoOtrosRespaldo;
 import com.saa.ejb.crd.service.dto.ContextoPago;
@@ -121,6 +122,19 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
     }
 
     @Override
+    public SaldosCuota calcularSaldosCuota(DetallePrestamo cuota, LocalDateTime corte) throws Throwable {
+        if (cuota == null) {
+            return new SaldosCuota();
+        }
+        if (corte == null) {
+            return calcularSaldosCuota(cuota);
+        }
+        // C33 (punto 2): solo los pagos con fecha <= corte (o sin fecha).
+        return calcularSaldosCuota(cuota,
+            PrelacionCuotas.alCorte(pagoPrestamoDaoService.selectVigentesByIdDetallePrestamo(cuota.getCodigo()), corte));
+    }
+
+    @Override
     public SaldosCuota calcularSaldosCuota(DetallePrestamo cuota, List<PagoPrestamo> pagosVigentes) throws Throwable {
         System.out.println("MotorPagoPrestamoService.calcularSaldosCuota (solo lectura, pagos en lote) - Cuota: "
             + (cuota != null ? cuota.getCodigo() : null));
@@ -201,13 +215,22 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
 
     @Override
     public SaldosCuota calcularSaldosRealesCuota(DetallePrestamo cuota) throws Throwable {
-        System.out.println("MotorPagoPrestamoService.calcularSaldosRealesCuota - Cuota: "
-            + (cuota != null ? cuota.getCodigo() : null));
+        return calcularSaldosRealesCuota(cuota, (LocalDateTime) null);
+    }
 
-        SaldosCuota saldos = calcularSaldosCuota(cuota);
+    @Override
+    public SaldosCuota calcularSaldosRealesCuota(DetallePrestamo cuota, LocalDateTime corte) throws Throwable {
+        System.out.println("MotorPagoPrestamoService.calcularSaldosRealesCuota - Cuota: "
+            + (cuota != null ? cuota.getCodigo() : null) + (corte != null ? " - al " + corte : ""));
+
         if (cuota == null) {
-            return saldos;
+            return new SaldosCuota();
         }
+        // C33 (punto 2): con corte, solo los pagos con fecha <= corte. Saldada al corte => saldada hoy (más pagos
+        // solo cubren más), así que la autocorrección de abajo sigue siendo correcta.
+        List<PagoPrestamo> pagosAlCorte = PrelacionCuotas.alCorte(
+            pagoPrestamoDaoService.selectVigentesByIdDetallePrestamo(cuota.getCodigo()), corte);
+        SaldosCuota saldos = calcularSaldosCuota(cuota, pagosAlCorte);
 
         // ✅ AUTOCORRECCIÓN: la cuota está liquidada según PGPR pero su estado dice otra cosa
         if (saldos.getTotalPendiente() <= TOLERANCIA_CUOTA && !esEstadoLiquidado(cuota.getEstado())) {
@@ -222,7 +245,8 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
             double interesPagado     = 0.0;
             double capitalPagado     = 0.0;
             double seguroPagado      = 0.0;
-            List<PagoPrestamo> pagos = pagoPrestamoDaoService.selectVigentesByIdDetallePrestamo(cuota.getCodigo());
+            List<PagoPrestamo> pagos = corte == null ? pagosAlCorte
+                : pagoPrestamoDaoService.selectVigentesByIdDetallePrestamo(cuota.getCodigo());
             if (pagos != null) {
                 for (PagoPrestamo pago : pagos) {
                     desgravamenPagado += nullSafe(pago.getDesgravamen());
@@ -320,17 +344,20 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
 
         double valorRestante = redondear(valor);
         int iteraciones = 0;
+        // C33 (punto 2): los saldos se miden con los pagos hasta el fin del día del pago.
+        LocalDateTime corte = corteDelPago(ctx);
 
         while (valorRestante > MEDIO_CENTAVO && iteraciones < MAX_ITERACIONES) {
             iteraciones++;
 
-            DetallePrestamo cuota = buscarSiguienteCuotaConSaldo(idPrestamo);
+            DetallePrestamo cuota = buscarSiguienteCuotaConSaldo(idPrestamo, corte);
             if (cuota == null) {
                 System.out.println("  ℹ️ No hay más cuotas pendientes - Excedente no aplicado: $" + valorRestante);
                 break;
             }
 
-            DetalleAplicacionCuota detalle = aplicarPagoACuota(cuota, valorRestante, ctx);
+            // La cascada ya eligió la cuota más antigua con saldo: el invariante C33 se cumple por construcción.
+            DetalleAplicacionCuota detalle = aplicarPagoACuotaInterno(cuota, valorRestante, ctx, corte);
             resultado.getCuotasAfectadas().add(detalle);
 
             if (detalle.getTotalAplicado() <= MEDIO_CENTAVO) {
@@ -376,22 +403,57 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
     }
 
     /**
-     * Primera cuota pendiente (menor numeroCuota) con saldo real &gt; 0.01.
+     * Primera cuota con saldo real al corte &gt; 0.01, en orden de número (C33: incluye la PAGADA sin pagos que la
+     * cubran al corte desde el arranque; ver {@code DetallePrestamoDaoService#selectCuotasConSaldoPosibleOrdenadas}).
      * Las cuotas de saldo insignificante se van autocorrigiendo a PAGADA dentro de
      * {@code calcularSaldosRealesCuota}, así que dejan de aparecer en la siguiente consulta.
      */
-    private DetallePrestamo buscarSiguienteCuotaConSaldo(Long idPrestamo) throws Throwable {
-        List<DetallePrestamo> pendientes =
-            detallePrestamoDaoService.selectCuotasPendientesByPrestamoOrdenadas(idPrestamo);
+    private DetallePrestamo buscarSiguienteCuotaConSaldo(Long idPrestamo, LocalDateTime corte) throws Throwable {
+        List<DetallePrestamo> pendientes = detallePrestamoDaoService.selectCuotasConSaldoPosibleOrdenadas(idPrestamo,
+            PrelacionCuotas.desde(), corte);
 
         if (pendientes == null || pendientes.isEmpty()) {
             return null;
         }
 
         for (DetallePrestamo cuota : pendientes) {
-            SaldosCuota saldos = calcularSaldosRealesCuota(cuota);
+            SaldosCuota saldos = calcularSaldosRealesCuota(cuota, corte);
             if (saldos.getTotalPendiente() > TOLERANCIA_CUOTA) {
                 return cuota;
+            }
+        }
+        return null;
+    }
+
+    /** C33: fin del día de {@code ctx.fechaPago} (sin fecha, ahora): los pagos de ese día cuentan, los posteriores no. */
+    private static LocalDateTime corteDelPago(ContextoPago ctx) {
+        LocalDateTime fecha = ctx != null && ctx.getFechaPago() != null ? ctx.getFechaPago() : LocalDateTime.now();
+        return fecha.toLocalDate().atTime(java.time.LocalTime.MAX);
+    }
+
+    /**
+     * C33 (punto 3): primera cuota de número menor que {@code cuota} con saldo real al corte, o {@code null}. Puro (no
+     * autocorrige estados).
+     */
+    private DetallePrestamo cuotaAnteriorConSaldo(DetallePrestamo cuota, LocalDateTime corte, double[] saldoEncontrado)
+            throws Throwable {
+        if (cuota == null || cuota.getPrestamo() == null || cuota.getPrestamo().getCodigo() == null
+                || cuota.getNumeroCuota() == null) {
+            return null;
+        }
+        List<DetallePrestamo> candidatas = detallePrestamoDaoService.selectCuotasConSaldoPosibleOrdenadas(
+            cuota.getPrestamo().getCodigo(), PrelacionCuotas.desde(), corte);
+        if (candidatas == null) {
+            return null;
+        }
+        for (DetallePrestamo previa : candidatas) {
+            if (previa.getNumeroCuota() == null || previa.getNumeroCuota() >= cuota.getNumeroCuota()) {
+                break;
+            }
+            SaldosCuota s = calcularSaldosCuota(previa, corte);
+            if (s.getTotalPendiente() > TOLERANCIA_CUOTA) {
+                saldoEncontrado[0] = s.getTotalPendiente();
+                return previa;
             }
         }
         return null;
@@ -400,6 +462,28 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
     @Override
     public DetalleAplicacionCuota aplicarPagoACuota(DetallePrestamo cuota, double valorDisponible, ContextoPago ctx)
             throws Throwable {
+        LocalDateTime corte = corteDelPago(ctx);
+        // C33 (punto 3): no se aplica dinero a una cuota si una anterior tiene saldo — salvo el abono a capital, la
+        // precancelación y el acuerdo con condonación, que tienen su propia regla.
+        if (cuota != null && !(ctx != null && PrelacionCuotas.esTipoExento(ctx.getTipoPago()))) {
+            double[] saldo = new double[1];
+            DetallePrestamo previa = cuotaAnteriorConSaldo(cuota, corte, saldo);
+            if (previa != null) {
+                String mensaje = PrelacionCuotas.mensajeInvariante(cuota.getPrestamo().getCodigo(),
+                    previa.getNumeroCuota(), saldo[0], cuota.getNumeroCuota(), corte,
+                    ctx != null ? ctx.getTipoPago() : null);
+                if (PrelacionCuotas.esBloqueante()) {
+                    throw new IncomeException(mensaje);
+                }
+                System.out.println("  ⚠️ C33 (" + PrelacionCuotas.PROPIEDAD_MODO + "=avisar) " + mensaje);
+            }
+        }
+        return aplicarPagoACuotaInterno(cuota, valorDisponible, ctx, corte);
+    }
+
+    /** Cuerpo de {@link #aplicarPagoACuota}: sin el invariante (la cascada ya eligió la cuota más antigua con saldo). */
+    private DetalleAplicacionCuota aplicarPagoACuotaInterno(DetallePrestamo cuota, double valorDisponible,
+            ContextoPago ctx, LocalDateTime corte) throws Throwable {
         System.out.println("MotorPagoPrestamoService.aplicarPagoACuota - Cuota #"
             + (cuota != null ? cuota.getNumeroCuota() : null) + " - Disponible: $" + valorDisponible);
 
@@ -412,7 +496,8 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
         detalle.setNumeroCuota(cuota.getNumeroCuota());
         detalle.setEstadoAnterior(cuota.getEstado());
 
-        SaldosCuota saldos = calcularSaldosRealesCuota(cuota);
+        // C33 (punto 2): saldos al corte del pago.
+        SaldosCuota saldos = calcularSaldosRealesCuota(cuota, corte);
         // calcularSaldosRealesCuota pudo autocorregir el estado: se relee para el resultado
         detalle.setEstadoNuevo(cuota.getEstado());
 

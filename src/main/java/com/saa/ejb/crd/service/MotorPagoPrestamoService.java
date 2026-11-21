@@ -100,6 +100,29 @@ public interface MotorPagoPrestamoService {
             throws Throwable;
 
     /**
+     * C33 (punto 2): {@link #calcularSaldosCuota(DetallePrestamo)} contando solo los pagos vigentes con
+     * {@code PGPRFCHA <= corte} (o sin fecha). Así, en el re-proceso de un mes de 2025, un pago de 2026 no salda la
+     * cuota. Puro: no persiste.
+     *
+     * @param cuota Cuota a evaluar
+     * @param corte Fecha de corte de los pagos ({@code null} = todos, igual que la variante sin corte)
+     * @return Saldos por componente y total pendiente al corte
+     * @throws Throwable Si ocurre un error
+     */
+    SaldosCuota calcularSaldosCuota(DetallePrestamo cuota, java.time.LocalDateTime corte) throws Throwable;
+
+    /**
+     * C33 (punto 2): {@link #calcularSaldosRealesCuota(DetallePrestamo)} con los pagos al corte. La autocorrección a
+     * PAGADA solo ocurre si la cuota está saldada al corte (entonces también lo está hoy).
+     *
+     * @param cuota Cuota a evaluar
+     * @param corte Fecha de corte de los pagos ({@code null} = todos)
+     * @return Saldos por componente y total pendiente al corte
+     * @throws Throwable Si ocurre un error
+     */
+    SaldosCuota calcularSaldosRealesCuota(DetallePrestamo cuota, java.time.LocalDateTime corte) throws Throwable;
+
+    /**
      * Deuda total pendiente del préstamo: suma del totalPendiente de todas sus cuotas
      * pendientes. Es el tope que valida {@code pagarCuota} antes de aplicar (§7.1).
      *
@@ -112,6 +135,10 @@ public interface MotorPagoPrestamoService {
     /**
      * Aplica un valor al préstamo EN CASCADA: imputa a la mínima cuota pendiente y, si
      * sobra, sigue con la siguiente, hasta agotar el valor o quedarse sin cuotas.
+     *
+     * <p>C33 (puntos 1 y 2): "pendiente" es el saldo real al corte ({@code ctx.fechaPago}, fin del día; sin fecha,
+     * ahora): entran también la PAGADA sin pagos que la cubran desde el arranque y la saldada por un pago posterior al
+     * corte. La CANCELADA_ANTICIPADA nunca.</p>
      *
      * @param idPrestamo Código del préstamo
      * @param valor      Valor a aplicar
@@ -126,6 +153,11 @@ public interface MotorPagoPrestamoService {
      * Aplica hasta {@code valorDisponible} sobre UNA cuota, respetando la prelación de 6
      * componentes, y crea su PagoPrestamo. No hay cascada: lo que no cabe en la cuota no
      * se aplica (el llamador decide qué hacer con el resto).
+     *
+     * <p><b>C33 (punto 3), invariante:</b> si una cuota de número menor tiene saldo al corte ({@code ctx.fechaPago},
+     * fin del día), lanza {@code PRELACION_CUOTAS: cuota #n con saldo} sin grabar nada — salvo
+     * {@code ctx.tipoPago} PRECANCELACION, ABONO_CAPITAL o ACUERDO_CONDONACION, y salvo
+     * {@code saa.cartera.prelacionCuotas=avisar} (solo log). Los saldos de la cuota también se miden al corte.</p>
      *
      * @param cuota           Cuota destino
      * @param valorDisponible Valor máximo a imputar

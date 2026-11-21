@@ -95,6 +95,10 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
     @jakarta.ejb.EJB
     private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
 
+    /** C33: re-imputación en orden después de una anulación. */
+    @jakarta.ejb.EJB
+    private com.saa.ejb.crd.service.PrelacionCuotasService prelacionCuotasService;
+
     /** Tolerancia de UN CENTAVO (§6.1) */
     private static final double TOLERANCIA = 0.01;
 
@@ -2319,6 +2323,16 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
                     }
                 }
             }
+        }
+
+        // C33 (punto 4): si la anulación dejó una cuota con saldo detrás de cuotas con pagos (que no son de eventos:
+        // el reverso es LIFO), se re-imputan en orden al fin del mes de la operación anulada (los pagos posteriores
+        // a ese corte no se tocan). Nunca corta la anulación; el control de cierre lo vuelve a ver.
+        if (!TIPO_ABONO_CAPITAL.equals(tipo)) {
+            LocalDate corteC33 = evento.getFecha() != null
+                ? java.time.YearMonth.from(evento.getFecha()).atEndOfMonth() : LocalDate.now();
+            prelacionCuotasService.asegurarPrelacion(prestamo.getCodigo(), corteC33, solicitud.getUsuario(),
+                solicitud.getIdEmpresa(), "anulación del evento " + evento.getCodigo());
         }
 
         // 4. Contra-movimientos de aportes (si el evento consumió aportes)
