@@ -749,7 +749,7 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 			j.put("idDecision", aLong(f[8]));
 			j.put("numeroDecision", f[9]);
 			j.put("tituloDecision", f[10]);
-			j.put("texto", f[11]);
+			j.put("texto", personas(aStr(f[11])));
 			j.put("estado", aLong(f[12]));
 			j.put("vigente", aLong(f[12]) == 1L);
 			j.put("fechaRegistro", aFecha(f[13]));
@@ -1939,10 +1939,15 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 			+ " WHERE eb.PJRQCDGO = :e AND x.DEXBESTD = 1";
 	private static final String SQL_APRT = "SELECT a.APRTCDGO, a.APRTFCTR, a.APRTVLRR, a.ENTDCDGO, t.TPAPNMBR, a.APRTGLSA FROM CRD.APRT a"
 			+ " LEFT JOIN CRD.TPAP t ON t.TPAPCDGO = a.TPAPCDGO WHERE a.APRTIDST IN (1, 4) AND a.APRTVLRR <> 0";
-	private static final String SQL_LNNV = "SELECT l.LNNVCDGO, NVL(x.DEXBFTRN, l.LNNVFCHA), l.LNNVSLDO, l.LNNVSNTD, p.PLNNCNTA, p.PLNNNMBR, n.NVDDCDNV,"
-			+ " l.LNNVSCNC, l.LNNVDSUS, l.LNNVDSCR, l.ENTDCDGO FROM CNT.LNNV l JOIN CNT.NVDD n ON n.NVDDCDGO = l.NVDDCDGO"
+	/** D-125: la línea está resuelta solo por una regla general (justificación DECISION de una decisión de REGLAS); un hecho la reemplaza. */
+	static final String SQL_SOLO_REGLA = "EXISTS (SELECT 1 FROM CNT.JSNV jr JOIN CNT.DCSN dr ON dr.DCSNCDGO = jr.DCSNCDGO WHERE jr.LNNVCDGO = l.LNNVCDGO AND jr.JSNVESTD = 1 AND jr.JSNVTPJS = 'DECISION' AND dr.DCSNNMRO IN ('D-125')) AND NOT EXISTS (SELECT 1 FROM CNT.JSNV jo LEFT JOIN CNT.DCSN do2 ON do2.DCSNCDGO = jo.DCSNCDGO WHERE jo.LNNVCDGO = l.LNNVCDGO AND jo.JSNVESTD = 1 AND NOT (jo.JSNVTPJS = 'DECISION' AND NVL(do2.DCSNNMRO, '-') IN ('D-125')))";
+
+	private static final String SQL_LNNV = "SELECT l.LNNVCDGO, NVL(x.DEXBFTRN, l.LNNVFCHA), CASE WHEN l.LNNVSLDO > 0 THEN l.LNNVSLDO ELSE l.LNNVVLOR END,"
+			+ " l.LNNVSNTD, p.PLNNCNTA, p.PLNNNMBR, n.NVDDCDNV,"
+			+ " l.LNNVSCNC, l.LNNVDSUS, l.LNNVDSCR, l.ENTDCDGO, CASE WHEN l.LNNVSLDO > 0 THEN NULL ELSE 'D-125' END FROM CNT.LNNV l JOIN CNT.NVDD n ON n.NVDDCDGO = l.NVDDCDGO"
 			+ " JOIN CNT.PLNN p ON p.PLNNCDGO = l.PLNNCDGO LEFT JOIN TSR.DEXB x ON x.DEXBCDGO = l.DEXBCDGO"
-			+ " WHERE n.PJRQCDGO = :e AND n.NVDDESTD BETWEEN 2 AND 6 AND l.LNNVESTD IN (1, 2) AND l.LNNVSLDO > 0";
+			+ " WHERE n.PJRQCDGO = :e AND n.NVDDESTD BETWEEN 2 AND 6"
+			+ " AND (l.LNNVESTD IN (1, 2) AND l.LNNVSLDO > 0 OR l.LNNVESTD = 3 AND " + SQL_SOLO_REGLA + ")";
 
 	/** «Aplicado hoy» de una línea del extracto, con marcas {entidad:N} (sin nombres). Devuelve [texto, idEntidad del aporte o null]. */
 	private Object[] aplicadoExtracto(Long idDexb, Object fecha, double valor) {
@@ -2050,7 +2055,8 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 
 	private Map<String, Object> filaOrigenPendiente(Object[] f, String relacion) {
 		Long id = aLong(f[0]);
-		String aplicado = "Pendiente en " + f[4] + " " + f[5] + " · novedad " + f[6] + ", movimiento " + f[7];
+		String aplicado = "Pendiente en " + f[4] + " " + f[5] + " · novedad " + f[6] + ", movimiento " + f[7]
+				+ (f.length > 11 && f[11] != null ? " · hoy resuelto por la regla " + f[11] + " (el hecho la reemplaza)" : "");
 		Map<String, Object> m = new LinkedHashMap<String, Object>();
 		m.put("fuente", "PENDIENTE");
 		m.put("fuenteNombre", tipoOrigenNombre("PENDIENTE"));
@@ -2472,6 +2478,7 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 				if (l == null || l.getEstado() == LIN_ANULADA) {
 					throw new IncomeException("La partida pendiente elegida no existe.");
 				}
+				liberarRegla(l, usuario);
 				if (v > r2(l.getSaldo()) + 0.004) {
 					throw new IncomeException("De la partida pendiente (movimiento " + l.getSecuencia() + ") solo quedan " + dinero(l.getSaldo()) + " por justificar.");
 				}
@@ -2573,6 +2580,7 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 			if (l == null || l.getEstado() == LIN_ANULADA) {
 				throw new IncomeException("Uno de los movimientos marcados no existe.");
 			}
+			liberarRegla(l, usuario);
 			if (r2(l.getSaldo()) <= 0.004) {
 				throw new IncomeException("El movimiento " + l.getSecuencia() + " ya está justificado por completo.");
 			}
@@ -3109,6 +3117,33 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 
 	/** Conceptos que el SAA permite condonar (desgravamen y seguro de incendio no: regla K3 de la condonación). */
 	static final List<String> CONCEPTOS_CONDONABLES = Arrays.asList("MORA", "INTERES", "CAPITAL");
+
+	/**
+	 * D-125: si el movimiento está resuelto solo por una regla general (decisión D-125 marcada por el script C34-09b), un hecho de
+	 * crédito manda: se anulan las justificaciones de la regla y el movimiento vuelve a tener saldo. Si el hecho no se registra,
+	 * la transacción se revierte y la regla queda como estaba.
+	 */
+	private void liberarRegla(LineaNovedad l, String usuario) {
+		if (r2(l.getSaldo()) > 0.004) {
+			return;
+		}
+		Number solo = (Number) em.createNativeQuery("SELECT COUNT(*) FROM CNT.LNNV l WHERE l.LNNVCDGO = :l AND " + SQL_SOLO_REGLA)
+				.setParameter("l", l.getCodigo()).getSingleResult();
+		if (solo.intValue() == 0) {
+			return;
+		}
+		List<JustificacionLinea> js = em.createQuery("select x from JustificacionLinea x where x.idLinea = :l and x.estado = 1", JustificacionLinea.class)
+				.setParameter("l", l.getCodigo()).getResultList();
+		for (JustificacionLinea x : js) {
+			x.setEstado(2L);
+			x.setFechaAnulacion(LocalDateTime.now());
+			x.setUsuarioAnulacion(usuario);
+			x.setMotivoAnulacion("Excepción a la regla D-125: la reemplaza un hecho de crédito.");
+		}
+		recalcularLinea(l);
+		historial(l.getIdNovedad(), null, "ANULA_JUSTIFICACION", null, null, "Movimiento " + l.getSecuencia()
+				+ ": la regla D-125 se reemplaza por un hecho de crédito (excepción).", usuario);
+	}
 	/** Orden de pago del motor del SAA (MotorPagoPrestamoServiceImpl: seguro, desgravamen, mora, interés vencido, interés, capital). */
 	static final String[] ORDEN_PAGO = { "SEGURO", "DESGRAVAMEN", "MORA", "INTERES", "CAPITAL" };
 

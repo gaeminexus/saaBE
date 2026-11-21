@@ -123,3 +123,20 @@ Este cambio no crea asientos ni cambia cuotas. El motor «condonar conceptos de 
 después de fusionar C35, porque toca `MotorPagoPrestamoService` y `ProcesoPagoPrestamoServiceImpl`.
 
 Prueba: `cuadreSuper/03-trabajo/cambios-saa/c34-novedades-v2/scripts/prueba-rest-c34f.js` (12/12).
+
+### C34g (D-125): movimientos resueltos por una regla general y el hecho que manda
+
+D-125: los depósitos de partícipes con préstamo vigente se aplican a sus cuotas con la prelación de la carga Petro. El script
+`cuadreSuper/03-trabajo/cambios-saa/c34-novedades-v2/sql/C34-09b-D125-resueltos-por-regla.sql` los marca con una
+justificación `DECISION` de D-125 por todo su saldo. Un movimiento así está «resuelto solo por la regla»
+(`SQL_SOLO_REGLA`: todas sus justificaciones vigentes son DECISION de D-125).
+
+- `SQL_LNNV` (orígenes pendientes y «qué resuelve») también trae esos movimientos, con su valor disponible y el aviso «hoy
+  resuelto por la regla D-125 (el hecho la reemplaza)».
+- `registrarHecho`: si un movimiento elegido como origen o en «qué resuelve» está resuelto solo por la regla, `liberarRegla`
+  anula sus justificaciones D-125 con el motivo «Excepción a la regla D-125: la reemplaza un hecho de crédito» y deja historial.
+  Si el hecho falla, la transacción se revierte. Si después se anula el hecho, el movimiento queda pendiente; para volver a la
+  regla se corre otra vez C34-09b.
+- El texto de las justificaciones resuelve las marcas `{entidad:N}` / `{prestamo:N}`, como los demás textos.
+
+Prueba: `cuadreSuper/03-trabajo/cambios-saa/c34-novedades-v2/scripts/prueba-rest-c34g.js` (7/7).
