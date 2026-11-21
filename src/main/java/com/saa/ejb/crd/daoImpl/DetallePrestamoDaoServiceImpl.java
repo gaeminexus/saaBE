@@ -271,24 +271,15 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 		System.out.println("Buscando la mínima cuota NO pagada del préstamo: " + codigoPrestamo);
 		
 		try {
-			// ✅ OPTIMIZACIÓN: Buscar solo la mínima cuota pendiente (por número de cuota)
-			String jpql = "SELECT d FROM DetallePrestamo d " +
-						 "WHERE d.prestamo.codigo = :codigoPrestamo " +
-						 "AND d.estado NOT IN (:estadoPagada, :estadoCanceladaAnticipada) " +
-						 "AND d.numeroCuota = (" +
-						 "    SELECT MIN(d2.numeroCuota) FROM DetallePrestamo d2 " +
-						 "    WHERE d2.prestamo.codigo = :codigoPrestamo " +
-						 "    AND d2.estado NOT IN (:estadoPagada, :estadoCanceladaAnticipada)" +
-						 ")";
-			
-			Query query = em.createQuery(jpql);
-			query.setParameter("codigoPrestamo", codigoPrestamo);
-			// ✅ Convertir explícitamente a Long para que coincida con el tipo del campo
-			query.setParameter("estadoPagada", (long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
-			query.setParameter("estadoCanceladaAnticipada", (long) com.saa.rubros.EstadoCuotaPrestamo.CANCELADA_ANTICIPADA);
-			
-			List<DetallePrestamo> resultados = query.getResultList();
-			System.out.println("Mínima cuota pendiente encontrada: " + (resultados != null && !resultados.isEmpty() ? 
+			// C33 (punto 1): la primera de las cuotas con saldo posible (incluye la 4 sin respaldo desde el
+			// arranque). Antes: estado NOT IN (4, 7) sin la guarda de nulos, que dejaba fuera las de estado nulo.
+			List<DetallePrestamo> todas = selectCuotasConSaldoPosibleOrdenadas(codigoPrestamo,
+				com.saa.ejb.crd.service.PrelacionCuotas.desde(), null);
+			List<DetallePrestamo> resultados = new ArrayList<>();
+			if (todas != null && !todas.isEmpty()) {
+				resultados.add(todas.get(0));
+			}
+			System.out.println("Mínima cuota pendiente encontrada: " + (!resultados.isEmpty() ?
 				"Cuota #" + resultados.get(0).getNumeroCuota() : "Ninguna"));
 			return resultados;
 			
@@ -322,16 +313,17 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 		// ✅ IMPORTANTE: incluir explícitamente las cuotas con estado NULL.
 		// En SQL, "NULL NOT IN (4, 7)" evalúa a NULL y la fila quedaría fuera del conteo,
 		// haciendo creer que el préstamo ya está totalmente pagado.
-		String jpql = "SELECT COUNT(d) FROM DetallePrestamo d " +
-					 "WHERE d.prestamo.codigo = :codigoPrestamo " +
-					 "AND (d.estado IS NULL OR d.estado NOT IN (:estadoPagada, :estadoCanceladaAnticipada))";
-
-		Query query = em.createQuery(jpql);
+		// C33 (punto 1): más las PAGADAS sin respaldo desde el arranque (mismo fragmento que las cuotas con saldo
+		// posible), para que un préstamo con una marca de Delta sin pagos no se cancele.
+		java.time.LocalDate desde = com.saa.ejb.crd.service.PrelacionCuotas.desde();
+		Query query = em.createNativeQuery("SELECT COUNT(*) FROM CRD.DTPR d WHERE d.PRSTCDGO = :codigoPrestamo AND "
+			+ saldoPosibleSql(desde != null, false));
 		query.setParameter("codigoPrestamo", codigoPrestamo);
-		query.setParameter("estadoPagada", (long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
-		query.setParameter("estadoCanceladaAnticipada", (long) com.saa.rubros.EstadoCuotaPrestamo.CANCELADA_ANTICIPADA);
+		if (desde != null) {
+			query.setParameter("desde", java.sql.Timestamp.valueOf(desde.atStartOfDay()));
+		}
 
-		Long pendientes = (Long) query.getSingleResult();
+		Long pendientes = ((Number) query.getSingleResult()).longValue();
 		System.out.println("Cuotas pendientes del préstamo " + codigoPrestamo + ": " + pendientes);
 		return pendientes;
 	}
@@ -704,28 +696,140 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 		System.out.println("DetallePrestamoDaoServiceImpl.selectCuotasPendientesByPrestamoOrdenadas - Préstamo: " + codigoPrestamo);
 
 		try {
-			// ✅ Incluir explícitamente las cuotas con estado NULL: en JPQL
-			// "NULL NOT IN (4, 7)" evalúa a NULL y la fila quedaría fuera del resultado.
-			String jpql = "SELECT d FROM DetallePrestamo d " +
-						 "WHERE d.prestamo.codigo = :codigoPrestamo " +
-						 "AND (d.estado IS NULL OR d.estado NOT IN (:estadoPagada, :estadoCanceladaAnticipada)) " +
-						 "ORDER BY d.numeroCuota ASC";
-
-			Query query = em.createQuery(jpql);
-			query.setParameter("codigoPrestamo", codigoPrestamo);
-			query.setParameter("estadoPagada", (long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
-			query.setParameter("estadoCanceladaAnticipada", (long) com.saa.rubros.EstadoCuotaPrestamo.CANCELADA_ANTICIPADA);
-
-			List<DetallePrestamo> resultados = query.getResultList();
+			// ✅ Incluir explícitamente las cuotas con estado NULL ("NULL NOT IN (4, 7)" descarta la fila).
+			// C33 (punto 1): más las PAGADAS (4) sin respaldo desde el arranque (marca de Delta sin pagos), con
+			// todos los pagos vigentes (sin corte). El motor usa la variante con corte.
+			List<DetallePrestamo> resultados = selectCuotasConSaldoPosibleOrdenadas(codigoPrestamo,
+				com.saa.ejb.crd.service.PrelacionCuotas.desde(), null);
 			System.out.println("  Cuotas pendientes encontradas: " + (resultados != null ? resultados.size() : 0));
 			return resultados;
 
-		} catch (Exception e) {
+		} catch (Throwable e) {
 			System.err.println("Error en selectCuotasPendientesByPrestamoOrdenadas: " + e.getMessage());
 			e.printStackTrace();
 			// NO lanzar excepción - retornar lista vacía para no detener el proceso
 			return new ArrayList<>();
 		}
+	}
+
+	/**
+	 * C33: condición SQL (alias {@code d} = CRD.DTPR) de "cuota con saldo posible": pendiente por estado, o PAGADA (4)
+	 * con vencimiento {@code >= :desde} y capital + interés sin cubrir por sus pagos vigentes (con {@code conCorte},
+	 * solo los de fecha {@code <= :corte} o sin fecha). Sin {@code conDesde}, solo por estado (como antes de C33).
+	 */
+	static String saldoPosibleSql(boolean conDesde, boolean conCorte) {
+		String porEstado = "(d.DTPRESTD IS NULL OR d.DTPRESTD NOT IN (" + com.saa.rubros.EstadoCuotaPrestamo.PAGADA + ", "
+			+ com.saa.rubros.EstadoCuotaPrestamo.CANCELADA_ANTICIPADA + "))";
+		if (!conDesde) {
+			return porEstado;
+		}
+		return "(" + porEstado + " OR (d.DTPRESTD = " + com.saa.rubros.EstadoCuotaPrestamo.PAGADA
+			+ " AND d.DTPRFCVN >= :desde"
+			+ " AND NVL(d.DTPRCPTL,0) + NVL(d.DTPRINTR,0) - NVL((SELECT SUM(NVL(g.PGPRCPPG,0) + NVL(g.PGPRINPG,0))"
+			+ "     FROM CRD.PGPR g WHERE g.DTPRCDGO = d.DTPRCDGO AND NVL(g.PGPRANUL,0) = 0"
+			+ (conCorte ? " AND (g.PGPRFCHA IS NULL OR g.PGPRFCHA <= :corte)" : "")
+			+ "), 0) > " + com.saa.ejb.crd.service.PrelacionCuotas.TOLERANCIA + "))";
+	}
+
+	@SuppressWarnings("unchecked")
+	@Override
+	public List<DetallePrestamo> selectCuotasConSaldoPosibleOrdenadas(Long codigoPrestamo, java.time.LocalDate desde,
+			LocalDateTime corte) throws Throwable {
+		// Dos pasos: los códigos por SQL nativo (la subconsulta de pagos) y las entidades por JPQL, sin mapear una
+		// entidad desde una consulta nativa.
+		Query nativa = em.createNativeQuery("SELECT d.DTPRCDGO FROM CRD.DTPR d WHERE d.PRSTCDGO = :codigoPrestamo AND "
+			+ saldoPosibleSql(desde != null, desde != null && corte != null) + " ORDER BY d.DTPRNMCT");
+		nativa.setParameter("codigoPrestamo", codigoPrestamo);
+		if (desde != null) {
+			nativa.setParameter("desde", java.sql.Timestamp.valueOf(desde.atStartOfDay()));
+			if (corte != null) {
+				nativa.setParameter("corte", java.sql.Timestamp.valueOf(corte));
+			}
+		}
+		List<Object> codigos = nativa.getResultList();
+		List<DetallePrestamo> resultado = new ArrayList<>();
+		if (codigos == null || codigos.isEmpty()) {
+			return resultado;
+		}
+		List<Long> ids = new ArrayList<>();
+		for (Object c : codigos) {
+			ids.add(((Number) c).longValue());
+		}
+		final int bloque = 900;
+		for (int i = 0; i < ids.size(); i += bloque) {
+			Query query = em.createQuery("SELECT d FROM DetallePrestamo d WHERE d.codigo IN :ids ORDER BY d.numeroCuota ASC");
+			query.setParameter("ids", ids.subList(i, Math.min(i + bloque, ids.size())));
+			resultado.addAll(query.getResultList());
+		}
+		resultado.sort(java.util.Comparator.comparing(DetallePrestamo::getNumeroCuota,
+			java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder())));
+		return resultado;
+	}
+
+	@SuppressWarnings("unchecked")
+	@Override
+	public List<Object[]> selectControlPrelacionAlCorte(java.time.LocalDate desde, java.time.LocalDate corte)
+			throws Throwable {
+		System.out.println("DetallePrestamoDaoServiceImpl.selectControlPrelacionAlCorte - desde " + desde + " corte " + corte);
+		// Misma definición que cuadreSuper/03-trabajo/cambios-saa/c33-cuota-parcial/sql/12-control-al-corte.sql.
+		String exento = "(NVL(g.PGPRTPOO,'-') IN (" + com.saa.ejb.crd.service.PrelacionCuotas.TIPOS_EXENTOS_SQL + ")"
+			+ " OR NVL(g.PGPRSLOT,0) > " + com.saa.ejb.crd.service.PrelacionCuotas.TOLERANCIA + ")";
+		Query query = em.createNativeQuery(
+			" WITH pg AS ("
+			+ "   SELECT g.DTPRCDGO, SUM(NVL(g.PGPRCPPG,0) + NVL(g.PGPRINPG,0)) nuc,"
+			+ "          SUM(NVL(g.PGPRCPPG,0)) cap, SUM(NVL(g.PGPRINPG,0)) intr,"
+			+ "          SUM(CASE WHEN " + exento + " THEN 0 ELSE NVL(g.PGPRCPPG,0) + NVL(g.PGPRINPG,0) END) nne,"
+			+ "          SUM(CASE WHEN " + exento + " THEN 1 ELSE 0 END) nex"
+			+ "   FROM CRD.PGPR g WHERE NVL(g.PGPRANUL,0) = 0 AND (g.PGPRFCHA IS NULL OR g.PGPRFCHA < :corteSig)"
+			+ "   GROUP BY g.DTPRCDGO),"
+			+ " c AS ("
+			+ "   SELECT d.PRSTCDGO, p.PRSTIDAS, p.PRSTIDST, d.DTPRNMCT, d.DTPRESTD, d.DTPRFCVN,"
+			+ "          NVL(d.DTPRCPTL,0) + NVL(d.DTPRINTR,0) - NVL(pg.nuc,0) nucleo, NVL(pg.nne,0) nne, NVL(pg.nex,0) nex,"
+			+ "          GREATEST(ROUND(NVL(pg.cap,0) - NVL(d.DTPRCPTL,0),2),0)"
+			+ "            + GREATEST(ROUND(NVL(pg.intr,0) - NVL(d.DTPRINTR,0),2),0) exceso"
+			+ "   FROM CRD.DTPR d JOIN CRD.PRST p ON p.PRSTCDGO = d.PRSTCDGO LEFT JOIN pg ON pg.DTPRCDGO = d.DTPRCDGO"
+			+ "   WHERE p.PRSTFCHA < :corteSig AND NVL(p.PRSTIDST,0) NOT IN ("
+			+ com.saa.ejb.crd.service.ModoCorteCartera.ESTADOS_FUERA_DE_CARTERA + ", "
+			+ com.saa.ejb.crd.service.ModoCorteCartera.ESTADOS_CANCELADOS + ")),"
+			+ " a AS ("
+			+ "   SELECT PRSTCDGO, MIN(DTPRNMCT) n0 FROM c"
+			+ "   WHERE nucleo > " + com.saa.ejb.crd.service.PrelacionCuotas.TOLERANCIA
+			+ "     AND ((DTPRESTD IS NULL OR DTPRESTD NOT IN (" + com.saa.rubros.EstadoCuotaPrestamo.PAGADA + ", "
+			+ com.saa.rubros.EstadoCuotaPrestamo.CANCELADA_ANTICIPADA + "))"
+			+ "          OR (DTPRESTD = " + com.saa.rubros.EstadoCuotaPrestamo.PAGADA + " AND DTPRFCVN >= :desde))"
+			+ "   GROUP BY PRSTCDGO)"
+			+ " SELECT a.PRSTCDGO, MAX(c0.PRSTIDAS), MAX(c0.PRSTIDST), a.n0, ROUND(MAX(c0.nucleo),2),"
+			+ "        MIN(c.DTPRNMCT), COUNT(*), ROUND(SUM(c.nne),2), '" + com.saa.ejb.crd.service.PrelacionCuotas.Rotura.PRELACION + "'"
+			+ " FROM a JOIN c c0 ON c0.PRSTCDGO = a.PRSTCDGO AND c0.DTPRNMCT = a.n0"
+			+ "        JOIN c ON c.PRSTCDGO = a.PRSTCDGO AND c.DTPRNMCT > a.n0"
+			+ "              AND c.nne > " + com.saa.ejb.crd.service.PrelacionCuotas.TOLERANCIA
+			+ " GROUP BY a.PRSTCDGO, a.n0"
+			// (b) cuota pagada de más al corte (capital o interés), con algún pago no exento que se pueda mover.
+			+ " UNION ALL"
+			+ " SELECT c.PRSTCDGO, MAX(c.PRSTIDAS), MAX(c.PRSTIDST), MIN(c.DTPRNMCT), ROUND(SUM(c.exceso),2),"
+			+ "        NULL, COUNT(*), ROUND(SUM(c.exceso),2), '" + com.saa.ejb.crd.service.PrelacionCuotas.Rotura.SOBREIMPUTADA + "'"
+			+ " FROM c WHERE c.DTPRFCVN >= :desde AND c.exceso > " + com.saa.ejb.crd.service.PrelacionCuotas.TOLERANCIA
+			+ "   AND c.nne > " + com.saa.ejb.crd.service.PrelacionCuotas.TOLERANCIA + " AND c.nex = 0"
+			+ " GROUP BY c.PRSTCDGO"
+			+ " ORDER BY 1, 9");
+		query.setParameter("corteSig", java.sql.Timestamp.valueOf(corte.plusDays(1).atStartOfDay()));
+		query.setParameter("desde", java.sql.Timestamp.valueOf((desde != null ? desde : corte.plusDays(1)).atStartOfDay()));
+		List<Object[]> filas = query.getResultList();
+		List<Object[]> resultado = new ArrayList<>();
+		for (Object[] f : filas) {
+			resultado.add(new Object[] { aLongC33(f[0]), aLongC33(f[1]), aLongC33(f[2]), aLongC33(f[3]), aDoubleC33(f[4]),
+				aLongC33(f[5]), aLongC33(f[6]), aDoubleC33(f[7]), f[8] != null ? f[8].toString().trim() : null });
+		}
+		System.out.println("  Préstamos con la prelación rota al " + corte + ": " + resultado.size());
+		return resultado;
+	}
+
+	private static Long aLongC33(Object o) {
+		return o == null ? null : ((Number) o).longValue();
+	}
+
+	private static Double aDoubleC33(Object o) {
+		return o == null ? null : ((Number) o).doubleValue();
 	}
 
 	@SuppressWarnings("unchecked")

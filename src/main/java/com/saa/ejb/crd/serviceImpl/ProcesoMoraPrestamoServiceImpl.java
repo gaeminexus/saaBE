@@ -437,6 +437,21 @@ public class ProcesoMoraPrestamoServiceImpl implements ProcesoMoraPrestamoServic
             return 0.0;
         }
         double capital = nvl(cuota.getCapital());
+        if (capital > 0.0 && com.saa.ejb.crd.service.PrelacionCuotas.moraSobreCapitalPendienteActiva()
+                && cuota.getCodigo() != null) {
+            // C33 (punto 5, saa.cartera.moraSobreCapitalPendiente=true): sobre el capital pendiente de cada tramo;
+            // los pagos de capital (vigentes, con fecha <= la del cálculo) la detienen desde su fecha.
+            List<Object[]> pagosCapital = new ArrayList<>();
+            List<PagoPrestamo> pagos = pagoPrestamoDaoService.selectVigentesByIdDetallePrestamo(cuota.getCodigo());
+            if (pagos != null) {
+                for (PagoPrestamo pago : pagos) {
+                    pagosCapital.add(new Object[] { pago.getFecha() != null ? pago.getFecha().toLocalDate() : null,
+                        nvl(pago.getCapitalPagado()) });
+                }
+            }
+            return com.saa.ejb.crd.service.PrelacionCuotas.moraSobreCapitalPendiente(capital,
+                cuota.getFechaVencimiento().toLocalDate(), pagosCapital, tasaDiaria, fecha);
+        }
         return capital > 0.0 ? redondear(capital * tasaDiaria * diasMora) : 0.0;
     }
 

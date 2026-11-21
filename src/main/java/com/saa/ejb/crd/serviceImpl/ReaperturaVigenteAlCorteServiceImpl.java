@@ -53,6 +53,10 @@ public class ReaperturaVigenteAlCorteServiceImpl implements ReaperturaVigenteAlC
     @EJB
     private com.saa.ejb.crd.service.GarantiaOrdenPrestamoService garantiaOrdenPrestamoService;
 
+    /** C33: re-imputación en orden después de reabrir cuotas. */
+    @EJB
+    private com.saa.ejb.crd.service.PrelacionCuotasService prelacionCuotasService;
+
     /** Último instante del día de corte (inclusive). */
     private static LocalDateTime instanteCorte(LocalDate fechaCorte) {
         return fechaCorte.atTime(23, 59, 59);
@@ -90,6 +94,30 @@ public class ReaperturaVigenteAlCorteServiceImpl implements ReaperturaVigenteAlC
     @Override
     public int reabrirCuotasSaldadasSinPagoDelMes(Prestamo prestamo, LocalDate fechaCorte, List<DetallePrestamo> cuotas,
             List<String> bitacora) throws Throwable {
+        int reabiertas = reabrirCuotasSaldadasSinPagoDelMesInterno(prestamo, fechaCorte, cuotas, bitacora);
+        if (reabiertas > 0) {
+            asegurarPrelacion(prestamo, fechaCorte, null, bitacora);
+        }
+        return reabiertas;
+    }
+
+    /**
+     * C33 (punto 4): la cuota reabierta puede quedar detrás de cuotas posteriores ya pagadas (excedentes de meses
+     * anteriores, pagos de producción conservados): se re-imputan en orden al corte (o solo se avisa, según
+     * {@code saa.cartera.reimputarEnOrden}). Nunca corta la reapertura.
+     */
+    private void asegurarPrelacion(Prestamo prestamo, LocalDate fechaCorte, String etiqueta, List<String> bitacora) {
+        String usuario = prestamo.getUsuarioModificacion() != null ? prestamo.getUsuarioModificacion()
+            : prestamo.getUsuarioRegistro();
+        String texto = prelacionCuotasService.asegurarPrelacion(prestamo.getCodigo(), fechaCorte, usuario, null,
+            "reapertura al corte " + fechaCorte + (etiqueta != null ? " (" + etiqueta + ")" : ""));
+        if (texto != null && bitacora != null) {
+            bitacora.add(texto);
+        }
+    }
+
+    private int reabrirCuotasSaldadasSinPagoDelMesInterno(Prestamo prestamo, LocalDate fechaCorte,
+            List<DetallePrestamo> cuotas, List<String> bitacora) throws Throwable {
         if (cuotas == null) {
             return 0;
         }
@@ -162,7 +190,7 @@ public class ReaperturaVigenteAlCorteServiceImpl implements ReaperturaVigenteAlC
 
         // Primero la regla común (cuota del mes saldada sin pago vigente); después el resto de las
         // cuotas saldadas sin fecha o con fecha posterior al corte (la cancelación posterior).
-        int cuotasReabiertas = reabrirCuotasSaldadasSinPagoDelMes(prestamo, fechaCorte, cuotas, bitacoraCuotas);
+        int cuotasReabiertas = reabrirCuotasSaldadasSinPagoDelMesInterno(prestamo, fechaCorte, cuotas, bitacoraCuotas);
         if (cuotas != null) {
             for (DetallePrestamo cuota : cuotas) {
                 Long estado = cuota.getEstado();
@@ -184,6 +212,11 @@ public class ReaperturaVigenteAlCorteServiceImpl implements ReaperturaVigenteAlC
         prestamo.setObservacion(truncarTexto(prestamo.getObservacion() == null || prestamo.getObservacion().trim().isEmpty()
             ? marca : prestamo.getObservacion() + " | " + marca, 2000));
         prestamoDaoService.save(prestamo, prestamo.getCodigo());
+
+        // C33 (punto 4): las cuotas reabiertas no pueden quedar detrás de cuotas con pagos al corte.
+        if (cuotasReabiertas > 0) {
+            asegurarPrelacion(prestamo, fechaCorte, etiqueta, bitacoraCuotas);
+        }
 
         // C31: si su cancelación posterior al corte ya había dado de baja la garantía, la baja se anula (se
         // vuelve a generar cuando se re-aplique la cancelación en su propio mes). Este servicio no recibe

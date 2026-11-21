@@ -97,6 +97,10 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
     @EJB
     private CierreCarteraDaoService cierreCarteraDaoService;
 
+    /** C33: control de prelación de cuotas al corte. */
+    @EJB
+    private com.saa.ejb.crd.service.PrelacionCuotasService prelacionCuotasService;
+
     /** C17: estado de cierre y reglas de orden / bitácora de cierres (CIERRES-BLOQUEANTES.md). */
     @EJB
     private com.saa.ejb.cnt.service.EstadoCierreService estadoCierreService;
@@ -256,6 +260,8 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
         // C35: tampoco con cuotas de DTPRSLOT sin respaldo (salvo omisión explícita con motivo).
         if (!Boolean.TRUE.equals(solicitud.getArranque())) {
             exigeSaldoOtrosRespaldado(solicitud, corteC17);
+            // C33 (punto 6): ni con la prelación de cuotas rota al corte (salvo omisión explícita con motivo).
+            exigePrelacionCuotas(solicitud, corteC17);
         }
 
         LocalDateTime ahora = LocalDateTime.now();
@@ -279,6 +285,10 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
         if (Boolean.TRUE.equals(solicitud.getOmitirControlSaldoOtros())) {
             corrida.setObservacion(concatena(corrida.getObservacion(), "CONTROL C35 DTPRSLOT SIN RESPALDO OMITIDO por "
                     + solicitud.getUsuario() + ": " + solicitud.getMotivoOmisionSaldoOtros()));
+        }
+        if (Boolean.TRUE.equals(solicitud.getOmitirControlPrelacion())) {
+            corrida.setObservacion(concatena(corrida.getObservacion(), "CONTROL C33 PRELACION DE CUOTAS OMITIDO por "
+                    + solicitud.getUsuario() + ": " + solicitud.getMotivoOmisionPrelacion()));
         }
         corrida.setEstado(Long.valueOf(Estado.ACTIVO));
         corrida.setUsuarioRegistro(solicitud.getUsuario());
@@ -517,6 +527,8 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
         // C35: DTPRSLOT sin respaldo. Aquí solo avisa; ejecutar lo vuelve a leer y rechaza (exigeSaldoOtrosRespaldado).
         if (!arranque) {
             avisaSaldoOtrosSinRespaldo(solicitud, fechaCorte, resultado.getAdvertencias());
+            // C33: prelación de cuotas al corte. Aquí solo avisa; ejecutar rechaza (exigePrelacionCuotas).
+            avisaPrelacionCuotas(solicitud, fechaCorte, resultado.getAdvertencias());
         }
 
         Map<Long, Producto> productos = indexaProductos();
@@ -1649,6 +1661,39 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
             throw new IncomeException(SaldoOtrosRespaldo.ERR_SALDO_OTROS_SIN_RESPALDO + ": no se puede cerrar "
                     + periodo(solicitud) + ". " + texto + " Si se decide cerrar igual, repita con"
                     + " omitirControlSaldoOtros = true y motivoOmisionSaldoOtros.");
+        }
+    }
+
+    /** C33 — Aviso de previsualizar (nunca corta). */
+    private void avisaPrelacionCuotas(SolicitudCierreCartera solicitud, LocalDate corte, List<String> advertencias)
+            throws Throwable {
+        String texto = prelacionCuotasService.textoControlAlCorte(corte);
+        if (texto == null) {
+            return;
+        }
+        advertencias.add(Boolean.TRUE.equals(solicitud.getOmitirControlPrelacion())
+                ? "CONTROL C33 OMITIDO por decision del usuario. Motivo: " + solicitud.getMotivoOmisionPrelacion()
+                        + ". " + texto
+                : texto + " La ejecucion va a rechazar el cierre.");
+    }
+
+    /**
+     * C33 (punto 6) — Bloqueo de ejecutar: con la prelación de cuotas rota al corte el cierre no se graba (y sin
+     * cartera cerrada no hay {@code /prdo/cerrar}), salvo {@code omitirControlPrelacion = true} con motivo.
+     */
+    private void exigePrelacionCuotas(SolicitudCierreCartera solicitud, LocalDate corte) throws Throwable {
+        if (Boolean.TRUE.equals(solicitud.getOmitirControlPrelacion())) {
+            if (solicitud.getMotivoOmisionPrelacion() == null || solicitud.getMotivoOmisionPrelacion().trim().isEmpty()) {
+                throw new IncomeException("Para omitir el control C33 de prelación de cuotas hace falta"
+                        + " motivoOmisionPrelacion.");
+            }
+            return;
+        }
+        String texto = prelacionCuotasService.textoControlAlCorte(corte);
+        if (texto != null) {
+            throw new IncomeException(com.saa.ejb.crd.service.PrelacionCuotas.ERR_PRELACION_CUOTAS + ": no se puede"
+                    + " cerrar " + periodo(solicitud) + ". " + texto + " Si se decide cerrar igual, repita con"
+                    + " omitirControlPrelacion = true y motivoOmisionPrelacion.");
         }
     }
 

@@ -91,6 +91,21 @@ public class SolicitudCierreCartera {
     /** Por qué se omite el control C35. Obligatorio si {@link #omitirControlSaldoOtros} es {@code true}. */
     private String motivoOmisionSaldoOtros;
 
+    /**
+     * C33 — salta el control de prelación de cuotas al corte (préstamos con una cuota con saldo antes de otra con
+     * pagos, o con una cuota pagada de más; {@code PrelacionCuotasService#controlAlCorte}). Solo en {@code ejecutar};
+     * exige {@link #motivoOmisionPrelacion}, queda en la observación de la corrida y en las advertencias.
+     */
+    private Boolean omitirControlPrelacion;
+
+    /** Por qué se omite el control C33. Obligatorio si {@link #omitirControlPrelacion} es {@code true}. */
+    private String motivoOmisionPrelacion;
+
+    public Boolean getOmitirControlPrelacion() { return omitirControlPrelacion; }
+    public void setOmitirControlPrelacion(Boolean omitirControlPrelacion) { this.omitirControlPrelacion = omitirControlPrelacion; }
+    public String getMotivoOmisionPrelacion() { return motivoOmisionPrelacion; }
+    public void setMotivoOmisionPrelacion(String motivoOmisionPrelacion) { this.motivoOmisionPrelacion = motivoOmisionPrelacion; }
+
     public SolicitudCierreCartera() {
     }
 
