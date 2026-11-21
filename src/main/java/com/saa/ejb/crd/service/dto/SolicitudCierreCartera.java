@@ -81,8 +81,23 @@ public class SolicitudCierreCartera {
     /** Omite el ⑨ aunque el modo sea al corte. */
     private Boolean omitirAjusteBandas;
 
+    /**
+     * C35 — salta el control de {@code DTPRSLOT} sin respaldo (cuotas de préstamos vivos o con precancelación/abono en
+     * el mes cuyo {@code DTPRSLOT} supera lo que respaldan sus pagos). Solo en {@code ejecutar}; exige
+     * {@link #motivoOmisionSaldoOtros}, queda en la observación de la corrida y en las advertencias.
+     */
+    private Boolean omitirControlSaldoOtros;
+
+    /** Por qué se omite el control C35. Obligatorio si {@link #omitirControlSaldoOtros} es {@code true}. */
+    private String motivoOmisionSaldoOtros;
+
     public SolicitudCierreCartera() {
     }
+
+    public Boolean getOmitirControlSaldoOtros() { return omitirControlSaldoOtros; }
+    public void setOmitirControlSaldoOtros(Boolean omitirControlSaldoOtros) { this.omitirControlSaldoOtros = omitirControlSaldoOtros; }
+    public String getMotivoOmisionSaldoOtros() { return motivoOmisionSaldoOtros; }
+    public void setMotivoOmisionSaldoOtros(String motivoOmisionSaldoOtros) { this.motivoOmisionSaldoOtros = motivoOmisionSaldoOtros; }
 
     public Boolean getEstadoAlCorte() { return estadoAlCorte; }
     public void setEstadoAlCorte(Boolean estadoAlCorte) { this.estadoAlCorte = estadoAlCorte; }

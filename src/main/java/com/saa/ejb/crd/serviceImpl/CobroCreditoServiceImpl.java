@@ -1182,6 +1182,8 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
             // validarFechaAfectacionPrecancelacion reventaba con PERIODO_CERRADO sobre un
             // período ya cerrado — justo el caso que este frente existe para resolver.
             solicitud.setFechaAfectacion(cobro.getFechaAfectacion());
+            // C35: en reproceso, el DTPRSLOT sin respaldo del préstamo se normaliza en vez de rechazar.
+            solicitud.setReproceso(reproceso);
             // precancelar() no se toca: ya sabía sumar valorEfectivo + aportes y consumirlos
             // con consumirAportes desde antes de este cambio.
             ResultadoPrecancelacion resultado = procesoPagoPrestamoService.precancelar(solicitud);

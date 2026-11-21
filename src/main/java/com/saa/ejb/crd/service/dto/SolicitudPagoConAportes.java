@@ -56,7 +56,28 @@ public class SolicitudPagoConAportes {
      */
     private Long idGarante;
 
+    /**
+     * C35 (opcional, 18-nov-2026; D-07 de DEFECTOS-SAA-REPROCESO-2.md). {@code true} = el pago solo puede cubrir
+     * cuotas con vencimiento hasta {@code fechaPago}: si el valor alcanza para cuotas que vencen después, se rechaza
+     * con {@code PAGO_CUBRE_CUOTAS_FUTURAS} en vez de cobrar por adelantado su interés completo. Pensado para el
+     * re-proceso (cruces D-079 fechados antes que el real). {@code null}/{@code false} = como siempre.
+     */
+    private Boolean soloCuotasVencidas;
+
     public SolicitudPagoConAportes() {
+    }
+
+    public Boolean getSoloCuotasVencidas() {
+        return soloCuotasVencidas;
+    }
+
+    public void setSoloCuotasVencidas(Boolean soloCuotasVencidas) {
+        this.soloCuotasVencidas = soloCuotasVencidas;
+    }
+
+    /** {@code true} solo si viene explícitamente {@code soloCuotasVencidas = true}. */
+    public boolean esSoloCuotasVencidas() {
+        return Boolean.TRUE.equals(soloCuotasVencidas);
     }
 
     public Long getIdGarante() {

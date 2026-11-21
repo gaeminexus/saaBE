@@ -256,6 +256,37 @@ public class CierreCarteraDaoServiceImpl implements CierreCarteraDaoService {
     }
 
     @Override
+    public List<Object[]> selectSaldoOtrosSinRespaldo(LocalDate inicioMes, LocalDate corte) throws Throwable {
+        System.out.println("Ingresa al metodo selectSaldoOtrosSinRespaldo - " + inicioMes + " a " + corte);
+        // C35: misma definición que sql/06 del diagnóstico (Σ PGPRSLOT de los PGPR vigentes de la cuota).
+        Query query = em.createNativeQuery(
+                " WITH PG AS (SELECT DTPRCDGO, ROUND(SUM(NVL(PGPRSLOT,0)),2) S FROM CRD.PGPR"
+                + "             WHERE NVL(PGPRANUL,0) = 0 GROUP BY DTPRCDGO) "
+                + " SELECT p.PRSTCDGO, p.PRSTIDAS, p.PRSTIDST, d.DTPRNMCT, ROUND(d.DTPRSLOT,2), NVL(pg.S,0), "
+                + "        ROUND(d.DTPRSLOT - NVL(pg.S,0),2) "
+                + " FROM   CRD.DTPR d "
+                + " JOIN   CRD.PRST p ON p.PRSTCDGO = d.PRSTCDGO "
+                + " LEFT JOIN PG pg ON pg.DTPRCDGO = d.DTPRCDGO "
+                + " WHERE  NVL(d.DTPRSLOT,0) > 0 AND d.DTPRSLOT - NVL(pg.S,0) > 0.01 "
+                + " AND   (p.PRSTIDST IN (" + EstadoPrestamo.GENERADO + ", " + EstadoPrestamo.VIGENTE + ", "
+                + EstadoPrestamo.DE_PLAZO_VENCIDO + ", " + EstadoPrestamo.VIGENTE_POR_REVISAR + ", "
+                + EstadoPrestamo.EN_MORA + ")"
+                + "        OR EXISTS (SELECT 1 FROM CRD.PGPR x WHERE x.PRSTCDGO = p.PRSTCDGO AND NVL(x.PGPRANUL,0) = 0"
+                + "                   AND x.PGPRTPOO IN ('PRECANCELACION', 'ABONO_CAPITAL')"
+                + "                   AND x.PGPRFCHA >= :inicio AND x.PGPRFCHA < :corteSig)) "
+                + " ORDER BY 7 DESC, 1, 4");
+        query.setParameter("inicio", Date.valueOf(inicioMes));
+        query.setParameter("corteSig", Date.valueOf(corte.plusDays(1)));
+        List<Object[]> filas = query.getResultList();
+        List<Object[]> resultado = new ArrayList<Object[]>();
+        for (Object[] f : filas) {
+            resultado.add(new Object[]{ aLong(f[0]), aLong(f[1]), aLong(f[2]), aLong(f[3]), aDouble(f[4]),
+                aDouble(f[5]), aDouble(f[6]) });
+        }
+        return resultado;
+    }
+
+    @Override
     public List<Object[]> selectCuotasPendientesPorPrestamo(Long idEmpresa, LocalDate corte) throws Throwable {
         System.out.println("Ingresa al metodo selectCuotasPendientesPorPrestamo"
                 + " - empresa: " + idEmpresa + " - corte: " + corte);

@@ -69,7 +69,28 @@ public class SolicitudPrecancelacion {
      */
     private Long idGarante;
 
+    /**
+     * C35 (cuadre Superintendencia, 18-nov-2026). {@code true} = re-proceso de un mes pasado: si una cuota del
+     * préstamo tiene {@code DTPRSLOT} sin pagos que lo respalden, se normaliza (rastro en {@code CRD.HDTP}) antes de
+     * registrar el capital futuro. Sin la bandera, ese residuo rechaza la precancelación con
+     * {@code SALDO_OTROS_SIN_RESPALDO}. Con cobro CBCR lo pone {@code procesarCobro} desde su bandera {@code reproceso}.
+     */
+    private Boolean reproceso;
+
     public SolicitudPrecancelacion() {
+    }
+
+    public Boolean getReproceso() {
+        return reproceso;
+    }
+
+    public void setReproceso(Boolean reproceso) {
+        this.reproceso = reproceso;
+    }
+
+    /** {@code true} solo si viene explícitamente {@code reproceso = true}. */
+    public boolean esReproceso() {
+        return Boolean.TRUE.equals(reproceso);
     }
 
     public Long getIdGarante() {

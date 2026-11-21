@@ -23,6 +23,7 @@ import com.saa.ejb.crd.service.PagoPrestamoService;
 import com.saa.ejb.crd.service.PrestamoService;
 import com.saa.ejb.crd.service.ProcesoMoraPrestamoService;
 import com.saa.ejb.crd.service.ProcesoPagoPrestamoService;
+import com.saa.ejb.crd.service.SaldoOtrosRespaldo;
 import com.saa.ejb.crd.service.dto.CuotaProyectada;
 import com.saa.ejb.crd.service.dto.DesgloseAporte;
 import com.saa.ejb.crd.service.dto.MovimientoAporte;
@@ -320,9 +321,15 @@ public class AbonoCapitalPrestamoServiceImpl implements AbonoCapitalPrestamoServ
             }
         }
 
+        // C35: DTPRSLOT sin respaldo en el préstamo (p. ej. el script de producción del 12-ago-2026). Fuera de
+        // re-proceso rechaza antes de grabar nada; en re-proceso lo normaliza (rastro en CRD.HDTP) y lo anota en el
+        // evento. Va antes de los dos caminos: el cuadre del abono sin regenerar (C16b) suma DTPRSLOT.
+        String ajusteSaldoOtros = motorPagoPrestamoService.controlarSaldoOtrosSinRespaldo(solicitud.getIdPrestamo(),
+            solicitud.esReproceso(), SaldoOtrosRespaldo.MOTIVO_ABONO, solicitud.getUsuario(), "el abono a capital");
+
         // C16b (D-030): la tabla ya refleja el abono — se registra sin re-amortizar.
         if (solicitud.esSinRegenerarTabla()) {
-            return aplicarSinRegenerarTabla(solicitud, valor, fecha, fechaHora, aportes, conAportes);
+            return aplicarSinRegenerarTabla(solicitud, valor, fecha, fechaHora, aportes, conAportes, ajusteSaldoOtros);
         }
 
         // D-048: en re-proceso "al día" se evalúa a la fecha del abono (la de pago; si no viene, la de
@@ -359,7 +366,7 @@ public class AbonoCapitalPrestamoServiceImpl implements AbonoCapitalPrestamoServ
         evento.setPlazoAnterior(prestamo.getPlazo());
         evento.setCuotaAnterior(calculo.cuotaVigente);
         evento.setFecha(fechaHora);
-        evento.setObservacion(solicitud.getObservacion());
+        evento.setObservacion(conAjusteSaldoOtros(solicitud.getObservacion(), ajusteSaldoOtros));
         evento.setUsuario(solicitud.getUsuario());
         evento.setFechaRegistro(LocalDateTime.now());
         evento.setEstado(1L);
@@ -455,8 +462,10 @@ public class AbonoCapitalPrestamoServiceImpl implements AbonoCapitalPrestamoServ
             throw new IncomeException(ERR_SIN_CUOTAS_PENDIENTES
                 + ": no hay ninguna cuota donde registrar el abono");
         }
-        // ACUMULATIVO: nunca se pisa un pago extra previo
-        ancla.setSaldoOtros(redondear(nvl(ancla.getSaldoOtros()) + valor));
+        // ACUMULATIVO sobre lo RESPALDADO (C35): nunca se pisa un pago extra previo con PGPR, pero tampoco se suma
+        // encima de un DTPRSLOT sin pago (el residuo del 12-ago-2026 duplicaba el abono en 6133, 6104 y 7616). El
+        // mínimo protege los DEP de la migración, cuyo PGPRSLOT no es capital: el campo nunca sube por ellos.
+        ancla.setSaldoOtros(redondear(slotRespaldadoBase(ancla) + valor));
         ancla = detallePrestamoService.saveSingle(ancla);
         System.out.println("  ⚓ Abono acumulado en DTPRSLOT de la cuota #" + ancla.getNumeroCuota()
             + " (" + ancla.getCodigo() + "): $" + ancla.getSaldoOtros());
@@ -641,7 +650,8 @@ public class AbonoCapitalPrestamoServiceImpl implements AbonoCapitalPrestamoServ
         DetallePrestamo primera = null;
         for (DetallePrestamo cuota : cuotas) {
             cuadre.capitalTabla += nvl(cuota.getCapital());
-            cuadre.abonosPrevios += nvl(cuota.getSaldoOtros());
+            // C35: solo los abonos con pago detrás; un DTPRSLOT sin respaldo no es un abono previo.
+            cuadre.abonosPrevios += nvl(cuota.getSaldoOtros()) > TOLERANCIA ? slotRespaldadoBase(cuota) : 0.0;
             if (cuota.getNumeroCuota() == null) {
                 continue;
             }
@@ -689,12 +699,14 @@ public class AbonoCapitalPrestamoServiceImpl implements AbonoCapitalPrestamoServ
      * tabla no cambia. Camino directo con aportes: asiento único sin re-bandeo.
      */
     private AplicacionAbono aplicarSinRegenerarTabla(SolicitudAbonoCapital solicitud, double valor, LocalDate fecha,
-            LocalDateTime fechaHora, List<DesgloseAporte> aportes, boolean conAportes) throws Throwable {
+            LocalDateTime fechaHora, List<DesgloseAporte> aportes, boolean conAportes, String ajusteSaldoOtros)
+            throws Throwable {
         CuadreSinRegenerar cuadre = cuadreSinRegenerar(solicitud.getIdPrestamo(), valor, solicitud.getNumeroCuota(), fecha);
         Prestamo prestamo = cuadre.prestamo;
         DetallePrestamo ancla = cuadre.cuota;
         String marca = "[C16b abono sin regenerar tabla, cuota #" + Math.round(nvl(ancla.getNumeroCuota())) + "]";
         String observacion = (solicitud.getObservacion() != null ? solicitud.getObservacion() + " " : "") + marca;
+        String observacionEvento = conAjusteSaldoOtros(observacion, ajusteSaldoOtros);
 
         EventoPrestamo evento = new EventoPrestamo();
         evento.setPrestamo(prestamo);
@@ -706,13 +718,14 @@ public class AbonoCapitalPrestamoServiceImpl implements AbonoCapitalPrestamoServ
         evento.setPlazoNuevo(prestamo.getPlazo());
         evento.setCuotaNueva(prestamo.getValorCuota());
         evento.setFecha(fechaHora);
-        evento.setObservacion(observacion);
+        evento.setObservacion(observacionEvento);
         evento.setUsuario(solicitud.getUsuario());
         evento.setFechaRegistro(LocalDateTime.now());
         evento.setEstado(1L);
         evento = eventoPrestamoService.saveSingle(evento);
 
-        ancla.setSaldoOtros(redondear(nvl(ancla.getSaldoOtros()) + valor));
+        // C35: lo respaldado por los pagos de la cuota + el abono (ver el abono con re-amortización).
+        ancla.setSaldoOtros(redondear(slotRespaldadoBase(ancla) + valor));
         ancla = detallePrestamoService.saveSingle(ancla);
 
         PagoPrestamo pago = new PagoPrestamo();
@@ -1697,56 +1710,31 @@ public class AbonoCapitalPrestamoServiceImpl implements AbonoCapitalPrestamoServ
         return cuota;
     }
 
-    /** Copia campo a campo una cuota de DTPR a su espejo en HDTP. */
+    /**
+     * C35: {@code min(DTPRSLOT, Σ PGPRSLOT vigentes)} de la cuota — lo que de verdad es abono previo. El mínimo: un
+     * residuo sin pago no cuenta, y un PGPRSLOT de los DEP de la migración (que no es capital) tampoco sube el campo.
+     */
+    private double slotRespaldadoBase(DetallePrestamo cuota) throws Throwable {
+        return Math.min(nvl(cuota.getSaldoOtros()), motorPagoPrestamoService.saldoOtrosRespaldado(cuota));
+    }
+
+    /** C35: la observación del evento con la nota del ajuste de DTPRSLOT, a lo sumo 2000 bytes (EVPROBSR). */
+    private static String conAjusteSaldoOtros(String observacion, String ajuste) {
+        if (ajuste == null) {
+            return observacion;
+        }
+        String texto = (observacion != null && !observacion.trim().isEmpty() ? observacion + " " : "") + ajuste;
+        int hasta = Math.min(texto.length(), 2000);
+        while (hasta > 0 && texto.substring(0, hasta).getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 2000) {
+            hasta--;
+        }
+        return texto.substring(0, hasta);
+    }
+
+    /** Copia campo a campo una cuota de DTPR a su espejo en HDTP (misma copia que el rastro de C35). */
     private HistDetallePrestamo copiarAHistorico(DetallePrestamo cuota, EventoPrestamo evento,
             String motivo, String usuario) {
-
-        HistDetallePrestamo h = new HistDetallePrestamo();
-        h.setCodigoOriginal(cuota.getCodigo());
-        h.setEventoPrestamo(evento);
-        h.setMotivo(motivo);
-        h.setFechaRegistroHist(LocalDateTime.now());
-        h.setUsuarioHist(usuario);
-
-        h.setPrestamo(cuota.getPrestamo());
-        h.setNumeroCuota(cuota.getNumeroCuota());
-        h.setFechaVencimiento(cuota.getFechaVencimiento());
-        h.setCapital(cuota.getCapital());
-        h.setInteres(cuota.getInteres());
-        h.setMora(cuota.getMora());
-        h.setInteresVencido(cuota.getInteresVencido());
-        h.setSaldoCapital(cuota.getSaldoCapital());
-        h.setSaldoInteres(cuota.getSaldoInteres());
-        h.setSaldoMora(cuota.getSaldoMora());
-        h.setSaldoInteresVencido(cuota.getSaldoInteresVencido());
-        h.setFechaPagado(cuota.getFechaPagado());
-        h.setAbono(cuota.getAbono());
-        h.setCapitalPagado(cuota.getCapitalPagado());
-        h.setInteresPagado(cuota.getInteresPagado());
-        h.setDesgravamen(cuota.getDesgravamen());
-        h.setCuota(cuota.getCuota());
-        h.setSaldo(cuota.getSaldo());
-        h.setSaldoOtros(cuota.getSaldoOtros());
-        h.setDesgravamenFirmado(cuota.getDesgravamenFirmado());
-        h.setDesgravamenDiferido(cuota.getDesgravamenDiferido());
-        h.setDesgravamenOriginal(cuota.getDesgravamenOriginal());
-        h.setValorDiferido(cuota.getValorDiferido());
-        h.setTotal(cuota.getTotal());
-        h.setMoraPagado(cuota.getMoraPagado());
-        h.setDesgravamenPagado(cuota.getDesgravamenPagado());
-        h.setInteresVendidoPagado(cuota.getInteresVendidoPagado());
-        h.setMoraCalculada(cuota.getMoraCalculada());
-        h.setDiasMora(cuota.getDiasMora());
-        h.setEstado(cuota.getEstado());
-        h.setFechaRegistro(cuota.getFechaRegistro());
-        h.setUsuarioRegistro(cuota.getUsuarioRegistro());
-        h.setIdEstado(cuota.getIdEstado());
-        h.setCodigoExterno(cuota.getCodigoExterno());
-        h.setOtrosSeguros(cuota.getOtrosSeguros());
-        h.setTotalConSeguro(cuota.getTotalConSeguro());
-        h.setValorSeguroIncendio(cuota.getValorSeguroIncendio());
-        h.setSaldoInicialCapital(cuota.getSaldoInicialCapital());
-        return h;
+        return SaldoOtrosRespaldo.copiarAHistorico(cuota, evento, motivo, usuario);
     }
 
     // ========================================================================

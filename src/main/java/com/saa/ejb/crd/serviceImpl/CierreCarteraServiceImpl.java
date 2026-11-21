@@ -27,6 +27,7 @@ import com.saa.ejb.crd.dao.CorridaCierreCarteraDaoService;
 import com.saa.ejb.crd.dao.ProductoDaoService;
 import com.saa.ejb.crd.service.CierreCarteraService;
 import com.saa.ejb.crd.service.ClasificadorBandaService;
+import com.saa.ejb.crd.service.SaldoOtrosRespaldo;
 import com.saa.ejb.crd.service.dto.BandaProductoDetalle;
 import com.saa.ejb.crd.service.dto.BandaSnapshotCierre;
 import com.saa.ejb.crd.service.dto.CierreCartera;
@@ -252,6 +253,10 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
         // ejecutar no deja contabilizar un neteo con el lado aportes incompleto.
         exigeArchivoPetro(calculo.getControlArchivoPetro(), solicitud,
                 calculo.getDesgloseAportes());
+        // C35: tampoco con cuotas de DTPRSLOT sin respaldo (salvo omisión explícita con motivo).
+        if (!Boolean.TRUE.equals(solicitud.getArranque())) {
+            exigeSaldoOtrosRespaldado(solicitud, corteC17);
+        }
 
         LocalDateTime ahora = LocalDateTime.now();
 
@@ -271,6 +276,10 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
                         + solicitud.getUsuario()
                         + ": " + solicitud.getMotivoOmisionControl())
                 : solicitud.getObservacion());
+        if (Boolean.TRUE.equals(solicitud.getOmitirControlSaldoOtros())) {
+            corrida.setObservacion(concatena(corrida.getObservacion(), "CONTROL C35 DTPRSLOT SIN RESPALDO OMITIDO por "
+                    + solicitud.getUsuario() + ": " + solicitud.getMotivoOmisionSaldoOtros()));
+        }
         corrida.setEstado(Long.valueOf(Estado.ACTIVO));
         corrida.setUsuarioRegistro(solicitud.getUsuario());
         corrida.setIpRegistro(solicitud.getIp());
@@ -504,6 +513,10 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
                     + (inclusivo ? "inclusiva (vto <= corte = vencida)" : "del SAA (vto = corte aun por vencer)")
                     + (arranque ? "; corrida de ARRANQUE (H5)" : "") + ".");
             avisaCanceladosConCuotasPendientes(fechaCorte, resultado.getAdvertencias());
+        }
+        // C35: DTPRSLOT sin respaldo. Aquí solo avisa; ejecutar lo vuelve a leer y rechaza (exigeSaldoOtrosRespaldado).
+        if (!arranque) {
+            avisaSaldoOtrosSinRespaldo(solicitud, fechaCorte, resultado.getAdvertencias());
         }
 
         Map<Long, Producto> productos = indexaProductos();
@@ -1573,6 +1586,70 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
                 + String.format(java.util.Locale.US, "%,.2f", capital) + "): operaciones " + operaciones
                 + (filas.size() > 10 ? " y " + (filas.size() - 10) + " mas" : "")
                 + ". Revisar su liquidacion y depurar las cuotas; no se sacan solos de la cartera.");
+    }
+
+    /**
+     * C35 — Texto del control de {@code DTPRSLOT} sin respaldo del mes, o {@code null} si no hay cuotas. Ver
+     * {@code CierreCarteraDaoService#selectSaldoOtrosSinRespaldo}.
+     */
+    private String textoSaldoOtrosSinRespaldo(SolicitudCierreCartera solicitud, LocalDate corte) throws Throwable {
+        List<Object[]> filas = cierreCarteraDaoService.selectSaldoOtrosSinRespaldo(corte.withDayOfMonth(1), corte);
+        if (filas == null || filas.isEmpty()) {
+            return null;
+        }
+        double residuo = 0.0;
+        java.util.Set<Long> prestamos = new java.util.LinkedHashSet<Long>();
+        StringBuilder detalle = new StringBuilder();
+        for (int i = 0; i < filas.size(); i++) {
+            Object[] f = filas.get(i);
+            residuo += f[6] != null ? ((Number) f[6]).doubleValue() : 0.0;
+            prestamos.add((Long) f[0]);
+            if (i < 10) {
+                detalle.append(i == 0 ? "" : ", ").append("prestamo ").append(f[0]).append(" (op. ").append(f[1])
+                        .append(") cuota ").append(f[3]).append(": ")
+                        .append(String.format(java.util.Locale.US, "%,.2f", ((Number) f[6]).doubleValue()));
+            }
+        }
+        return filas.size() + " cuota(s) de " + prestamos.size() + " prestamo(s) con DTPRSLOT (abono/capital"
+                + " precancelado) sin pagos que lo respalden en " + periodo(solicitud) + ": "
+                + String.format(java.util.Locale.US, "%,.2f", residuo) + " (" + detalle
+                + (filas.size() > 10 ? " y " + (filas.size() - 10) + " mas" : "") + "). No cambia 1.3 ni la G48"
+                + " (leen los pagos), pero la tabla y la pantalla muestran un abono que no existe y la proxima"
+                + " precancelacion o abono lo rechaza. Normalizar con el script C35-02 (DTPRSLOT = lo respaldado,"
+                + " rastro en CRD.HDTP) antes de ejecutar el cierre.";
+    }
+
+    /** C35 — Aviso de previsualizar (nunca corta). */
+    private void avisaSaldoOtrosSinRespaldo(SolicitudCierreCartera solicitud, LocalDate corte,
+            List<String> advertencias) throws Throwable {
+        String texto = textoSaldoOtrosSinRespaldo(solicitud, corte);
+        if (texto == null) {
+            return;
+        }
+        advertencias.add(Boolean.TRUE.equals(solicitud.getOmitirControlSaldoOtros())
+                ? "CONTROL C35 OMITIDO por decision del usuario. Motivo: " + solicitud.getMotivoOmisionSaldoOtros()
+                        + ". " + texto
+                : texto + " La ejecucion va a rechazar el cierre.");
+    }
+
+    /**
+     * C35 — Bloqueo de ejecutar: con cuotas de {@code DTPRSLOT} sin respaldo el cierre no se graba, salvo
+     * {@code omitirControlSaldoOtros = true} con motivo (queda en la observación de la corrida).
+     */
+    private void exigeSaldoOtrosRespaldado(SolicitudCierreCartera solicitud, LocalDate corte) throws Throwable {
+        if (Boolean.TRUE.equals(solicitud.getOmitirControlSaldoOtros())) {
+            if (solicitud.getMotivoOmisionSaldoOtros() == null || solicitud.getMotivoOmisionSaldoOtros().trim().isEmpty()) {
+                throw new IncomeException("Para omitir el control C35 de DTPRSLOT sin respaldo hace falta"
+                        + " motivoOmisionSaldoOtros.");
+            }
+            return;
+        }
+        String texto = textoSaldoOtrosSinRespaldo(solicitud, corte);
+        if (texto != null) {
+            throw new IncomeException(SaldoOtrosRespaldo.ERR_SALDO_OTROS_SIN_RESPALDO + ": no se puede cerrar "
+                    + periodo(solicitud) + ". " + texto + " Si se decide cerrar igual, repita con"
+                    + " omitirControlSaldoOtros = true y motivoOmisionSaldoOtros.");
+        }
     }
 
     /** Fecha de la propiedad {@link #PROPIEDAD_INICIO_DEVENGO_MORA}, o null. */

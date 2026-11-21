@@ -12,6 +12,7 @@ import com.saa.ejb.crd.dao.PrestamoDaoService;
 import com.saa.ejb.crd.service.MotorPagoPrestamoService;
 import com.saa.ejb.crd.service.ProcesoMoraPrestamoService;
 import com.saa.ejb.crd.service.ReaperturaVigenteAlCorteService;
+import com.saa.ejb.crd.service.SaldoOtrosRespaldo;
 import com.saa.model.crd.DetallePrestamo;
 import com.saa.model.crd.EventoPrestamo;
 import com.saa.model.crd.PagoPrestamo;
@@ -135,6 +136,30 @@ public class ReaperturaVigenteAlCorteServiceImpl implements ReaperturaVigenteAlC
         Long estadoAnterior = prestamo.getIdEstado();
         String marca = etiqueta + ": " + MARCA_CANCELACION_POSTERIOR + " (estado anterior " + estadoAnterior + ")";
 
+        // C35: el préstamo terminal que vuelve a VIGENTE no se queda con el capital "precancelado" que no tiene pago
+        // detrás (el script de producción del 12-ago-2026 copió DTPRSLCP a DTPRSLOT en la última cuota pagada de 611
+        // cancelados anticipados, sin PGPR). Cada cuota queda en lo respaldado por sus pagos vigentes; la cuota como
+        // estaba, en CRD.HDTP con motivo SLOT_SIN_RESPALDO_REAPERTURA. Antes de recalcular cuotas: así el motivo es este.
+        double slotQuitado = 0.0;
+        int cuotasSlot = 0;
+        if (cuotas != null) {
+            for (DetallePrestamo cuota : cuotas) {
+                double quitado = motorPagoPrestamoService.normalizarSaldoOtros(cuota,
+                    SaldoOtrosRespaldo.MOTIVO_REAPERTURA, etiqueta);
+                if (quitado > 0.0) {
+                    slotQuitado += quitado;
+                    cuotasSlot++;
+                    String linea = "Préstamo " + prestamo.getCodigo() + " cuota " + numeroCuotaTexto(cuota)
+                        + ": DTPRSLOT sin respaldo " + String.format(java.util.Locale.US, "%.2f", quitado)
+                        + " quitado al reabrir (C35, valor anterior en CRD.HDTP)";
+                    if (bitacoraCuotas != null) {
+                        bitacoraCuotas.add(linea);
+                    }
+                    System.out.println("   C35: " + linea);
+                }
+            }
+        }
+
         // Primero la regla común (cuota del mes saldada sin pago vigente); después el resto de las
         // cuotas saldadas sin fecha o con fecha posterior al corte (la cancelación posterior).
         int cuotasReabiertas = reabrirCuotasSaldadasSinPagoDelMes(prestamo, fechaCorte, cuotas, bitacoraCuotas);
@@ -188,7 +213,9 @@ public class ReaperturaVigenteAlCorteServiceImpl implements ReaperturaVigenteAlC
         System.out.println("   D-019: préstamo " + prestamo.getCodigo() + " vigente al " + fechaCorte + " (hoy estado "
             + estadoAnterior + ") reabierto - " + cuotasReabiertas + " cuotas, " + eventosMarcados + " eventos marcados");
         return "Préstamo " + prestamo.getCodigo() + " (estado anterior " + estadoAnterior + "): " + cuotasReabiertas
-            + " cuota(s) reabiertas, " + eventosMarcados + " evento(s) posteriores marcados";
+            + " cuota(s) reabiertas, " + eventosMarcados + " evento(s) posteriores marcados"
+            + (cuotasSlot > 0 ? ", DTPRSLOT sin respaldo quitado en " + cuotasSlot + " cuota(s) por "
+                + String.format(java.util.Locale.US, "%.2f", Math.round(slotQuitado * 100.0) / 100.0) + " (C35)" : "");
     }
 
     @Override
