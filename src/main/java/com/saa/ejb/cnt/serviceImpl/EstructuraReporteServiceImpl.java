@@ -51,6 +51,11 @@ public class EstructuraReporteServiceImpl implements EstructuraReporteService {
 			throw new IncomeException("La empresa y la fecha de corte son obligatorias");
 		}
 		DefinicionEstructura def = definicion(s.getEmpresa(), s.getCodigoEstructura(), s.getCodigoAlterno());
+		if (def.getFormatoArchivo() != null && def.getFormatoArchivo() == DefinicionEstructura.FORMATO_DERIVADO_B17) {
+			// C38: FLE, FCD y CMP son formulas sobre el B17 y reglas de caja, no renglones de este motor
+			throw new IncomeException("El reporte " + def.getNombre() + " es un formato derivado del B17: se genera con"
+					+ " /flef/generar, /flef/excel o /flef/comparativo");
+		}
 		LocalDate corte = s.getFechaCorte();
 		LocalDate inicio = s.getFechaInicio() != null ? s.getFechaInicio() : corte.withDayOfMonth(1);
 		if (inicio.isAfter(corte)) {
@@ -123,6 +128,21 @@ public class EstructuraReporteServiceImpl implements EstructuraReporteService {
 			}
 		}
 		return m;
+	}
+
+	@Override
+	public DefinicionEstructura definicionEstructura(Long empresa, String codigoEstructura) throws Throwable {
+		return definicion(empresa, codigoEstructura, null);
+	}
+
+	@Override
+	public List<RenglonEstructura> renglonesVigentes(Long codigoReporte, LocalDate corte) {
+		return renglones(codigoReporte, corte);
+	}
+
+	@Override
+	public List<ReglaCuentaRenglon> reglasVigentes(Long codigoReporte, LocalDate corte) {
+		return reglas(codigoReporte, corte);
 	}
 
 	@Override

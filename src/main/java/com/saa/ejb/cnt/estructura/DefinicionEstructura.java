@@ -20,6 +20,12 @@ public class DefinicionEstructura implements Serializable {
 
 	/** Formato de archivo: estructura de la Superintendencia (.txt TAB, CRLF, latin1). */
 	public static final int FORMATO_SUPERINTENDENCIA = 1;
+	/**
+	 * Formato de archivo: formato de ASOPREP derivado del B17 (C38: estado de flujos de efectivo FLE, flujo de caja
+	 * FCD, comparativo CMP). Sus renglones son formulas sobre codigos del B17 o reglas de caja: no se calculan con
+	 * /esrp sino con /flef (GeneradorFlujoEfectivo).
+	 */
+	public static final int FORMATO_DERIVADO_B17 = 2;
 
 	private Long codigoReporte;
 	private Long codigoAlterno;
