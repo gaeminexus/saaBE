@@ -370,6 +370,20 @@ public class CargaHistoricaDocumentoServiceImpl implements CargaHistoricaDocumen
             for (LineaLote l : c.lineas) { sumaBases += nz(l.base); sumaIva += nz(l.iva); }
             double dif = redondea(nz(c.total) - sumaBases - sumaIva);
             if (Math.abs(dif) > 0.50) return item.rechazado("bases + IVA difieren del total en " + dif + " (el motor tolera 0,50)");
+            // C39: valores recaudados por cuenta de terceros (planillas eléctricas). total/lineas son los del comprobante;
+            // los terceros se suman aparte, como hace la carga desde el XML.
+            double totalTerceros = 0;
+            StringBuilder detalleTerceros = new StringBuilder();
+            if (c.valoresTerceros != null) {
+                for (LoteHistoricoCxcCxp.ValorTerceroLote t : c.valoresTerceros) {
+                    if (t == null || t.nombre == null || t.nombre.trim().isEmpty()) return item.rechazado("valor de terceros sin nombre de concepto");
+                    if (t.valor == null || redondea(t.valor) <= 0) return item.rechazado("valor de terceros '" + t.nombre.trim() + "' en cero o negativo");
+                    totalTerceros += redondea(t.valor);
+                    if (detalleTerceros.length() > 0) detalleTerceros.append(", ");
+                    detalleTerceros.append(t.nombre.trim()).append(": ").append(String.format(java.util.Locale.US, "%.2f", redondea(t.valor)));
+                }
+                totalTerceros = redondea(totalTerceros);
+            }
             Set<String> cuentasGasto = new LinkedHashSet<>();
             CentroCosto centro = null;
             for (LineaLote l : c.lineas) {
@@ -382,7 +396,13 @@ public class CargaHistoricaDocumentoServiceImpl implements CargaHistoricaDocumen
                 if (centro != null && !centro.getCodigo().equals(cco.getCodigo())) return item.rechazado("mas de un centro de costo en la misma factura: no soportado");
                 centro = cco;
             }
-            if (ctx.soloValidar) return item.validado("se crearia la factura de compra por " + c.total + " a " + String.join(",", cuentasGasto) + " centro " + centro.getNumero());
+            String notaTerceros = totalTerceros > 0
+                    ? "Se agregaron valores recaudados por terceros no incluidos en el importe total del comprobante (" + detalleTerceros + "). Total factura: "
+                      + String.format(java.util.Locale.US, "%.2f", redondea(nz(c.total))) + " -> " + String.format(java.util.Locale.US, "%.2f", redondea(nz(c.total) + totalTerceros))
+                      + ". Origen: " + origenesTerceros(c) + "."
+                    : null;
+            if (ctx.soloValidar) return item.validado("se crearia la factura de compra por " + redondea(nz(c.total) + totalTerceros) + " a " + String.join(",", cuentasGasto) + " centro " + centro.getNumero()
+                    + (notaTerceros != null ? "; " + notaTerceros : ""));
 
             Usuario usuario = em.find(Usuario.class, ctx.idUsuario);
             FacturaCompra fc = new FacturaCompra();
@@ -398,7 +418,7 @@ public class CargaHistoricaDocumentoServiceImpl implements CargaHistoricaDocumen
             fc.setAmbiente(ambienteDeClave(c.claveAcceso));
             fc.setClave(c.claveAcceso);
             fc.setFecha(fe.atStartOfDay());
-            fc.setObservacion(recortar(observacionDocumento(ctx, c.ref, "Factura de compra " + c.numero, c.tipoGasto, c.observacionExcel, c.cuentaInferida ? "cuenta " + c.cuenta + " por " + c.origenCuenta : null), 2000));
+            fc.setObservacion(recortar(observacionDocumento(ctx, c.ref, "Factura de compra " + c.numero, c.tipoGasto, c.observacionExcel, c.cuentaInferida ? "cuenta " + c.cuenta + " por " + c.origenCuenta : null, notaTerceros), 2000));
             double base0 = 0, base5 = 0, base15 = 0, base8 = 0, baseNoObj = 0, baseExenta = 0, iva5 = 0, iva8 = 0, iva15 = 0;
             for (LineaLote l : c.lineas) {
                 int tarifa = l.tarifa == null ? 0 : l.tarifa;
@@ -410,9 +430,10 @@ public class CargaHistoricaDocumentoServiceImpl implements CargaHistoricaDocumen
                 else if (tarifa == 8) { base8 += nz(l.base); iva8 += nz(l.iva); }
                 else base0 += nz(l.base);
             }
-            fc.setSubtotal(redondea(sumaBases));
+            // C39: los terceros son no objeto de IVA -> suman a SUBTOTAL, SUBNOOBJ y TOTAL (no a SUBCERO), como la carga del XML.
+            fc.setSubtotal(redondea(sumaBases + totalTerceros));
             fc.setSubcero(redondea(base0));
-            fc.setSubnoobj(redondea(baseNoObj));
+            fc.setSubnoobj(redondea(baseNoObj + totalTerceros));
             fc.setSubexent(redondea(baseExenta));
             fc.setSubtotal5(redondea(base5));
             fc.setSubtotal8(redondea(base8));
@@ -425,7 +446,7 @@ public class CargaHistoricaDocumentoServiceImpl implements CargaHistoricaDocumen
             fc.setDescuento(0d);
             fc.setPorDescuento(0d);
             fc.setPropina(0d);
-            fc.setTotal(redondea(nz(c.total)));
+            fc.setTotal(redondea(nz(c.total) + totalTerceros));
             fc.setUsuario(usuario);
             fc.setAutorizacion(c.claveAcceso);
             fc.setFechaAutorizacion(fecha(nvl(c.fechaAutorizacion, c.fechaEmision), "fechaAutorizacion").atStartOfDay());
@@ -439,8 +460,10 @@ public class CargaHistoricaDocumentoServiceImpl implements CargaHistoricaDocumen
             em.persist(fc);
 
             int n = 0;
+            Long idProductoPrimeraLinea = null;
             for (LineaLote l : c.lineas) {
                 ProductoPago producto = productoCompraParaCuenta(ctx, l.cuenta);
+                if (idProductoPrimeraLinea == null) idProductoPrimeraLinea = producto.getId();
                 DetalleFacturaCompra d = new DetalleFacturaCompra();
                 d.setFactura(fc);
                 d.setDescripcion(recortar(nvl(l.descripcion, "Linea " + (++n)), 500));
@@ -458,6 +481,31 @@ public class CargaHistoricaDocumentoServiceImpl implements CargaHistoricaDocumen
                 d.setCodigoIVASRI(l.codigoIvaSri == null ? null : l.codigoIvaSri.longValue());
                 d.setEstado((long) Estado.ACTIVO);
                 em.persist(d);
+            }
+            // C39: una línea por concepto de terceros con el MISMO producto de la primera línea (hereda su grupo y su
+            // cuenta: generarAsientoFacturaCompra agrupa el DEBE por grupo y el HABER va por fc.total, que ya los incluye),
+            // no objeto de IVA (codigoPorcentaje 6, criterio del auditor, PLAN-SRI-URGENTE-2026-09-21.md §2quater).
+            if (totalTerceros > 0) {
+                for (LoteHistoricoCxcCxp.ValorTerceroLote t : c.valoresTerceros) {
+                    double valor = redondea(t.valor);
+                    DetalleFacturaCompra dt = new DetalleFacturaCompra();
+                    dt.setFactura(fc);
+                    dt.setDescripcion(recortar(t.nombre.trim(), 500));
+                    dt.setCantidad(1d);
+                    dt.setValor(valor);
+                    dt.setSubTotal(valor);
+                    dt.setDescuento(0d);
+                    dt.setBaseImponible(valor);
+                    dt.setCodigoIVASRI(6L);
+                    dt.setPorcentajeIVA(0L);
+                    dt.setValorIVA(0d);
+                    dt.setPorcentajeICE(0L);
+                    dt.setValorICE(0d);
+                    dt.setTotal(valor);
+                    dt.setProducto(idProductoPrimeraLinea);
+                    dt.setEstado((long) Estado.ACTIVO);
+                    em.persist(dt);
+                }
             }
             em.flush();
 
@@ -478,7 +526,7 @@ public class CargaHistoricaDocumentoServiceImpl implements CargaHistoricaDocumen
             }
             em.flush();
             return item.creado(fc.getId(), asiento.getCodigo(), asiento.getNumeroAlterno(), "factura de compra creada; " + marcadas + " linea(s) de gasto con centro " + centro.getNumero()
-                    + "; sustento " + sustento);
+                    + "; sustento " + sustento + (totalTerceros > 0 ? "; terceros " + String.format(java.util.Locale.US, "%.2f", totalTerceros) + " (total " + fc.getTotal() + ")" : ""));
         } catch (Throwable e) {
             sessionContext.setRollbackOnly();
             throw e;
@@ -1714,6 +1762,14 @@ public class CargaHistoricaDocumentoServiceImpl implements CargaHistoricaDocumen
     static String recortar(String s, int largo) {
         if (s == null) return null;
         return s.length() <= largo ? s : s.substring(0, largo);
+    }
+
+    /** C39: los orígenes distintos de los valores de terceros de una compra, para la observación. */
+    private static String origenesTerceros(CompraLote c) {
+        Set<String> o = new LinkedHashSet<>();
+        if (c.valoresTerceros != null) for (LoteHistoricoCxcCxp.ValorTerceroLote t : c.valoresTerceros)
+            if (t != null && t.origen != null && !t.origen.trim().isEmpty()) o.add(t.origen.trim());
+        return o.isEmpty() ? "lote" : String.join("; ", o);
     }
 
     private static String nvl(String a, String b) {
