@@ -101,6 +101,9 @@ public interface SeguimientoNovedadV2Service {
 	/** C34d (D-123): valor de una precancelación o de un hecho en serie calculado con la tabla del SAA, repartido por mes. */
 	Map<String, Object> calcularHecho(Long idPrestamo, String tipo, String desde, String fecha) throws Throwable;
 
+	/** C34d §10: lo adeudado por cuota y concepto de un hecho, a su fecha, con el cálculo del SAA (para condonar el faltante). */
+	Map<String, Object> componentesHecho(Long idPrestamo, String tipo, String cuotas, String desde, String fecha) throws Throwable;
+
 	/** C34d: nota de ASOPREP en la novedad (texto y adjuntos, sin cuentas; no cambia saldos ni estados). */
 	Map<String, Object> registrarNota(Long idNovedad, AccionNovedadV2 a) throws Throwable;
 

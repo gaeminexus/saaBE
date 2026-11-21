@@ -749,7 +749,7 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 			j.put("idDecision", aLong(f[8]));
 			j.put("numeroDecision", f[9]);
 			j.put("tituloDecision", f[10]);
-			j.put("texto", f[11]);
+			j.put("texto", personas(aStr(f[11])));
 			j.put("estado", aLong(f[12]));
 			j.put("vigente", aLong(f[12]) == 1L);
 			j.put("fechaRegistro", aFecha(f[13]));
@@ -1848,6 +1848,7 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 		if ("SE_DEVUELVE".equals(t)) return "se devuelve al partícipe";
 		if ("PARTICIPE_DEBE".equals(t)) return "el partícipe lo debe";
 		if ("CRUCE_APORTES".equals(t)) return "se cruza con los aportes del partícipe";
+		if ("CONDONACION".equals(t)) return "se condona";
 		return t;
 	}
 	static final List<String> TIPOS_ORIGEN = Arrays.asList("EXTRACTO", "APORTE", "PENDIENTE", "SIN_DINERO");
@@ -1938,10 +1939,15 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 			+ " WHERE eb.PJRQCDGO = :e AND x.DEXBESTD = 1";
 	private static final String SQL_APRT = "SELECT a.APRTCDGO, a.APRTFCTR, a.APRTVLRR, a.ENTDCDGO, t.TPAPNMBR, a.APRTGLSA FROM CRD.APRT a"
 			+ " LEFT JOIN CRD.TPAP t ON t.TPAPCDGO = a.TPAPCDGO WHERE a.APRTIDST IN (1, 4) AND a.APRTVLRR <> 0";
-	private static final String SQL_LNNV = "SELECT l.LNNVCDGO, NVL(x.DEXBFTRN, l.LNNVFCHA), l.LNNVSLDO, l.LNNVSNTD, p.PLNNCNTA, p.PLNNNMBR, n.NVDDCDNV,"
-			+ " l.LNNVSCNC, l.LNNVDSUS, l.LNNVDSCR, l.ENTDCDGO FROM CNT.LNNV l JOIN CNT.NVDD n ON n.NVDDCDGO = l.NVDDCDGO"
+	/** D-125: la línea está resuelta solo por una regla general (justificación DECISION de una decisión de REGLAS); un hecho la reemplaza. */
+	static final String SQL_SOLO_REGLA = "EXISTS (SELECT 1 FROM CNT.JSNV jr JOIN CNT.DCSN dr ON dr.DCSNCDGO = jr.DCSNCDGO WHERE jr.LNNVCDGO = l.LNNVCDGO AND jr.JSNVESTD = 1 AND jr.JSNVTPJS = 'DECISION' AND dr.DCSNNMRO IN ('D-125')) AND NOT EXISTS (SELECT 1 FROM CNT.JSNV jo LEFT JOIN CNT.DCSN do2 ON do2.DCSNCDGO = jo.DCSNCDGO WHERE jo.LNNVCDGO = l.LNNVCDGO AND jo.JSNVESTD = 1 AND NOT (jo.JSNVTPJS = 'DECISION' AND NVL(do2.DCSNNMRO, '-') IN ('D-125')))";
+
+	private static final String SQL_LNNV = "SELECT l.LNNVCDGO, NVL(x.DEXBFTRN, l.LNNVFCHA), CASE WHEN l.LNNVSLDO > 0 THEN l.LNNVSLDO ELSE l.LNNVVLOR END,"
+			+ " l.LNNVSNTD, p.PLNNCNTA, p.PLNNNMBR, n.NVDDCDNV,"
+			+ " l.LNNVSCNC, l.LNNVDSUS, l.LNNVDSCR, l.ENTDCDGO, CASE WHEN l.LNNVSLDO > 0 THEN NULL ELSE 'D-125' END FROM CNT.LNNV l JOIN CNT.NVDD n ON n.NVDDCDGO = l.NVDDCDGO"
 			+ " JOIN CNT.PLNN p ON p.PLNNCDGO = l.PLNNCDGO LEFT JOIN TSR.DEXB x ON x.DEXBCDGO = l.DEXBCDGO"
-			+ " WHERE n.PJRQCDGO = :e AND n.NVDDESTD BETWEEN 2 AND 6 AND l.LNNVESTD IN (1, 2) AND l.LNNVSLDO > 0";
+			+ " WHERE n.PJRQCDGO = :e AND n.NVDDESTD BETWEEN 2 AND 6"
+			+ " AND (l.LNNVESTD IN (1, 2) AND l.LNNVSLDO > 0 OR l.LNNVESTD = 3 AND " + SQL_SOLO_REGLA + ")";
 
 	/** «Aplicado hoy» de una línea del extracto, con marcas {entidad:N} (sin nombres). Devuelve [texto, idEntidad del aporte o null]. */
 	private Object[] aplicadoExtracto(Long idDexb, Object fecha, double valor) {
@@ -2049,7 +2055,8 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 
 	private Map<String, Object> filaOrigenPendiente(Object[] f, String relacion) {
 		Long id = aLong(f[0]);
-		String aplicado = "Pendiente en " + f[4] + " " + f[5] + " · novedad " + f[6] + ", movimiento " + f[7];
+		String aplicado = "Pendiente en " + f[4] + " " + f[5] + " · novedad " + f[6] + ", movimiento " + f[7]
+				+ (f.length > 11 && f[11] != null ? " · hoy resuelto por la regla " + f[11] + " (el hecho la reemplaza)" : "");
 		Map<String, Object> m = new LinkedHashMap<String, Object>();
 		m.put("fuente", "PENDIENTE");
 		m.put("fuenteNombre", tipoOrigenNombre("PENDIENTE"));
@@ -2396,6 +2403,13 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 			valor = (Double) calc.get("valor");
 			detalleCalculado = aJson(calc);
 		}
+		Map<String, Object> comp = null;
+		if ("PAGO_CUOTAS".equals(tipo) && h.getCuotas() != null && !h.getCuotas().isEmpty()) {
+			// C34d §10: el pago de cuotas con cuotas elegidas también lo calcula el SAA (tabla y mora a la fecha).
+			comp = componentes(h.getIdPrestamo(), tipo, h.getCuotas(), h.getDesde(), h.getFecha());
+			valor = (Double) comp.get("total");
+			detalleCalculado = aJson(comp);
+		}
 		if (valor <= 0) {
 			throw new IncomeException("El valor del hecho tiene que ser mayor que cero.");
 		}
@@ -2464,6 +2478,7 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 				if (l == null || l.getEstado() == LIN_ANULADA) {
 					throw new IncomeException("La partida pendiente elegida no existe.");
 				}
+				liberarRegla(l, usuario);
 				if (v > r2(l.getSaldo()) + 0.004) {
 					throw new IncomeException("De la partida pendiente (movimiento " + l.getSecuencia() + ") solo quedan " + dinero(l.getSaldo()) + " por justificar.");
 				}
@@ -2487,15 +2502,17 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 		}
 		// Diferencia orígenes - valor: se explica con su tratamiento (D-123), nunca queda sin decir qué pasa.
 		double diferencia = r2(suma - valor);
+		String condonacionJson = null;
+		Long idDecisionCondonacion = null;
 		String tratamiento = vacio(h.getTratamientoDiferencia()) == null ? null : h.getTratamientoDiferencia().trim().toUpperCase(Locale.ROOT);
 		if (Math.abs(diferencia) > 0.004) {
 			if (diferencia > 0 && !"NO_SE_DEBITA".equals(tratamiento) && !"SE_DEVUELVE".equals(tratamiento)) {
 				throw new IncomeException("Los orígenes suman " + dinero(suma) + " y el hecho es de " + dinero(valor) + ": sobran " + dinero(diferencia)
 						+ ". Indique qué pasa con lo que sobra: «no se debita» (queda en la cuenta individual) o «se devuelve».");
 			}
-			if (diferencia < 0 && !"PARTICIPE_DEBE".equals(tratamiento) && !"CRUCE_APORTES".equals(tratamiento)) {
+			if (diferencia < 0 && !"PARTICIPE_DEBE".equals(tratamiento) && !"CRUCE_APORTES".equals(tratamiento) && !"CONDONACION".equals(tratamiento)) {
 				throw new IncomeException("Los orígenes suman " + dinero(suma) + " y el hecho es de " + dinero(valor) + ": faltan " + dinero(-diferencia)
-						+ ". Complete los orígenes, indique «el partícipe lo debe» o que se cruza con sus aportes (con el tipo de aporte).");
+						+ ". Complete los orígenes o indique qué pasa con lo que falta: se cruza con los aportes, se condona o el partícipe lo debe.");
 			}
 			if ("CRUCE_APORTES".equals(tratamiento)) {
 				if (h.getTipoAporteDiferencia() == null) {
@@ -2505,6 +2522,39 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 				if (tp.longValue() == 0) {
 					throw new IncomeException("El tipo de aporte elegido no existe.");
 				}
+			}
+			if ("CONDONACION".equals(tratamiento)) {
+				// C34d §10: constancia escrita (regla 4), conceptos que permite el SAA y valores calculados por el SAA.
+				if (h.getIdDecision() == null || em.find(Decision.class, h.getIdDecision()) == null) {
+					throw new IncomeException("Una condonación necesita la decisión de ASOPREP que la autoriza: búsquela por su descripción o regístrela con su constancia.");
+				}
+				if (h.getAdjuntos() == null || h.getAdjuntos().isEmpty()) {
+					throw new IncomeException("Adjunte el acta o la autorización de la condonación.");
+				}
+				List<String> marcados = new ArrayList<String>();
+				for (String c : h.getConceptosCondonados() == null ? new ArrayList<String>() : h.getConceptosCondonados()) {
+					String u = vacio(c) == null ? null : c.trim().toUpperCase(Locale.ROOT);
+					if (!CONCEPTOS_CONDONABLES.contains(u)) {
+						throw new IncomeException("Solo se pueden condonar mora, interés y capital: desgravamen y seguro no se condonan.");
+					}
+					if (!marcados.contains(u)) {
+						marcados.add(u);
+					}
+				}
+				if (marcados.isEmpty()) {
+					throw new IncomeException("Elija qué se condona: mora, interés o capital.");
+				}
+				Map<String, Object> base = comp != null ? comp : CALCULADOS.contains(tipo) ? componentes(h.getIdPrestamo(), tipo, null, h.getDesde(), h.getFecha()) : null;
+				if (base == null) {
+					throw new IncomeException("Para condonar, el hecho tiene que indicar qué cuotas paga (pago de cuotas) o ser una precancelación o un cruce mensual con precancelación: el SAA calcula los conceptos de esas cuotas.");
+				}
+				Map<String, Object> rep = repartoCondonacion(base, marcados, suma, h.getIdEmpresa());
+				double totalCond = (Double) rep.get("totalCondonado");
+				if (Math.abs(totalCond + diferencia) > 0.02) {
+					throw new IncomeException("Lo condonado (" + dinero(totalCond) + ") no coincide con lo que falta (" + dinero(-diferencia) + "): revise las cuotas del hecho.");
+				}
+				condonacionJson = aJson(rep);
+				idDecisionCondonacion = h.getIdDecision();
 			}
 		} else {
 			tratamiento = null;
@@ -2530,6 +2580,7 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 			if (l == null || l.getEstado() == LIN_ANULADA) {
 				throw new IncomeException("Uno de los movimientos marcados no existe.");
 			}
+			liberarRegla(l, usuario);
 			if (r2(l.getSaldo()) <= 0.004) {
 				throw new IncomeException("El movimiento " + l.getSecuencia() + " ya está justificado por completo.");
 			}
@@ -2570,6 +2621,8 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 		hc.setTratamientoDiferencia(tratamiento);
 		hc.setValorDiferencia(tratamiento == null ? null : diferencia);
 		hc.setTipoAporteDiferencia("CRUCE_APORTES".equals(tratamiento) ? h.getTipoAporteDiferencia() : null);
+		hc.setCondonacion(condonacionJson);
+		hc.setIdDecision(idDecisionCondonacion);
 		hc.setDetalle(detalleCalculado);
 		hc.setEstado(1L);
 		hc.setFechaRegistro(ahora);
@@ -2782,6 +2835,15 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 		m.put("tratamientoNombre", hc.getTratamientoDiferencia() == null ? null : tratamientoNombre(hc.getTratamientoDiferencia()));
 		m.put("valorDiferencia", hc.getValorDiferencia());
 		m.put("tipoAporteDiferencia", hc.getTipoAporteDiferencia());
+		m.put("condonacion", hc.getCondonacion());
+		m.put("idDecision", hc.getIdDecision());
+		if (hc.getIdDecision() != null) {
+			Decision dc = em.find(Decision.class, hc.getIdDecision());
+			if (dc != null) {
+				m.put("numeroDecision", dc.getNumero());
+				m.put("tituloDecision", vacio(dc.getTitulo()) != null ? dc.getTitulo() : dc.getTema());
+			}
+		}
 		if (hc.getTipoAporteDiferencia() != null) {
 			List<?> tn = em.createNativeQuery("SELECT TPAPNMBR FROM CRD.TPAP WHERE TPAPCDGO = :t").setParameter("t", hc.getTipoAporteDiferencia()).getResultList();
 			m.put("nombreTipoAporteDiferencia", tn.isEmpty() ? null : tn.get(0));
@@ -3047,5 +3109,253 @@ public class SeguimientoNovedadV2ServiceImpl implements SeguimientoNovedadV2Serv
 			out.add(m);
 		}
 		return out;
+	}
+
+	// =====================================================================================
+	// C34d §10 (C34-07d) — el faltante se condona: conceptos por cuota calculados por el SAA
+	// =====================================================================================
+
+	/** Conceptos que el SAA permite condonar (desgravamen y seguro de incendio no: regla K3 de la condonación). */
+	static final List<String> CONCEPTOS_CONDONABLES = Arrays.asList("MORA", "INTERES", "CAPITAL");
+
+	/**
+	 * D-125: si el movimiento está resuelto solo por una regla general (decisión D-125 marcada por el script C34-09b), un hecho de
+	 * crédito manda: se anulan las justificaciones de la regla y el movimiento vuelve a tener saldo. Si el hecho no se registra,
+	 * la transacción se revierte y la regla queda como estaba.
+	 */
+	private void liberarRegla(LineaNovedad l, String usuario) {
+		if (r2(l.getSaldo()) > 0.004) {
+			return;
+		}
+		Number solo = (Number) em.createNativeQuery("SELECT COUNT(*) FROM CNT.LNNV l WHERE l.LNNVCDGO = :l AND " + SQL_SOLO_REGLA)
+				.setParameter("l", l.getCodigo()).getSingleResult();
+		if (solo.intValue() == 0) {
+			return;
+		}
+		List<JustificacionLinea> js = em.createQuery("select x from JustificacionLinea x where x.idLinea = :l and x.estado = 1", JustificacionLinea.class)
+				.setParameter("l", l.getCodigo()).getResultList();
+		for (JustificacionLinea x : js) {
+			x.setEstado(2L);
+			x.setFechaAnulacion(LocalDateTime.now());
+			x.setUsuarioAnulacion(usuario);
+			x.setMotivoAnulacion("Excepción a la regla D-125: la reemplaza un hecho de crédito.");
+		}
+		recalcularLinea(l);
+		historial(l.getIdNovedad(), null, "ANULA_JUSTIFICACION", null, null, "Movimiento " + l.getSecuencia()
+				+ ": la regla D-125 se reemplaza por un hecho de crédito (excepción).", usuario);
+	}
+	/** Orden de pago del motor del SAA (MotorPagoPrestamoServiceImpl: seguro, desgravamen, mora, interés vencido, interés, capital). */
+	static final String[] ORDEN_PAGO = { "SEGURO", "DESGRAVAMEN", "MORA", "INTERES", "CAPITAL" };
+
+	@EJB
+	private com.saa.ejb.crd.service.MotorPagoPrestamoService motorPagoPrestamoService;
+
+	@EJB
+	private com.saa.ejb.crd.service.ProcesoMoraPrestamoService procesoMoraPrestamoService;
+
+	private static List<Long> aIds(String csv) {
+		List<Long> out = new ArrayList<Long>();
+		if (vacio(csv) == null) {
+			return out;
+		}
+		for (String p : csv.split(",")) {
+			if (vacio(p) != null) {
+				out.add(Long.valueOf(p.trim()));
+			}
+		}
+		return out;
+	}
+
+	@Override
+	public Map<String, Object> componentesHecho(Long idPrestamo, String tipo, String cuotas, String desde, String fecha) throws Throwable {
+		return componentes(idPrestamo, tipo, aIds(cuotas), desde, fecha);
+	}
+
+	/**
+	 * Lo adeudado por concepto de un hecho, a la fecha del hecho, con el cálculo del SAA:
+	 * <ul>
+	 * <li>Pago de cuotas: por cada cuota elegida, los valores de la tabla como si estuviera impaga
+	 * ({@code MotorPagoPrestamoService.calcularSaldosCuota} sin pagos) y la mora a la fecha
+	 * ({@code ProcesoMoraPrestamoService.calcularMoraCuota}, la fórmula que usa la condonación).</li>
+	 * <li>Precancelación y cruce mensual con precancelación: las filas del cálculo de la tabla (interés y capital; lo demás del
+	 * total de la cuota es desgravamen y seguro).</li>
+	 * </ul>
+	 */
+	private Map<String, Object> componentes(Long idPrestamo, String tipo, List<Long> cuotas, String desde, String fecha) throws Throwable {
+		Object[] pr = prestamo(idPrestamo);
+		String t = vacio(tipo) == null ? null : tipo.trim().toUpperCase(Locale.ROOT);
+		LocalDate f = fecha(fecha, "Fecha del hecho");
+		if (f == null) {
+			throw new IncomeException("Indique la fecha real del hecho.");
+		}
+		List<Map<String, Object>> filas = new ArrayList<Map<String, Object>>();
+		if ("PAGO_CUOTAS".equals(t)) {
+			if (cuotas == null || cuotas.isEmpty()) {
+				throw new IncomeException("Elija qué cuotas paga el hecho.");
+			}
+			com.saa.model.crd.Prestamo prestamo = em.find(com.saa.model.crd.Prestamo.class, idPrestamo);
+			double tasa = procesoMoraPrestamoService.tasaDiariaDelPrestamo(prestamo, false);
+			List<com.saa.model.crd.DetallePrestamo> lista = new ArrayList<com.saa.model.crd.DetallePrestamo>();
+			for (Long id : new LinkedHashSet<Long>(cuotas)) {
+				com.saa.model.crd.DetallePrestamo c = id == null ? null : em.find(com.saa.model.crd.DetallePrestamo.class, id);
+				if (c == null || c.getPrestamo() == null || !idPrestamo.equals(c.getPrestamo().getCodigo())) {
+					throw new IncomeException("Una de las cuotas elegidas no es de esa operación.");
+				}
+				lista.add(c);
+			}
+			lista.sort((x, y) -> Double.compare(x.getNumeroCuota() == null ? 0 : x.getNumeroCuota(), y.getNumeroCuota() == null ? 0 : y.getNumeroCuota()));
+			for (com.saa.model.crd.DetallePrestamo c : lista) {
+				com.saa.ejb.crd.service.dto.SaldosCuota s = motorPagoPrestamoService.calcularSaldosCuota(c, new ArrayList<com.saa.model.crd.PagoPrestamo>());
+				Map<String, Object> x = new LinkedHashMap<String, Object>();
+				x.put("idCuota", c.getCodigo());
+				x.put("numeroCuota", c.getNumeroCuota() == null ? null : c.getNumeroCuota().longValue());
+				x.put("vencimiento", c.getFechaVencimiento() == null ? null : c.getFechaVencimiento().toLocalDate().toString());
+				x.put("SEGURO", r2(s.getSaldoSeguroIncendio()));
+				x.put("DESGRAVAMEN", r2(s.getSaldoDesgravamen()));
+				x.put("MORA", r2(procesoMoraPrestamoService.calcularMoraCuota(c, tasa, f)));
+				x.put("INTERES", r2(s.getSaldoInteres() + s.getSaldoInteresVencido()));
+				x.put("CAPITAL", r2(s.getSaldoCapital()));
+				filas.add(x);
+			}
+		} else if (CALCULADOS.contains(t)) {
+			Map<String, Object> calc = calcular(idPrestamo, t, desde, fecha, false);
+			@SuppressWarnings("unchecked")
+			List<Map<String, Object>> cf = (List<Map<String, Object>>) calc.get("filas");
+			for (Map<String, Object> c : cf) {
+				double valor = (Double) c.get("valor"), capital = (Double) c.get("capital"), interes = (Double) c.get("interes");
+				Map<String, Object> x = new LinkedHashMap<String, Object>();
+				x.put("idCuota", c.get("idCuota"));
+				x.put("numeroCuota", c.get("numeroCuota"));
+				x.put("vencimiento", c.get("vencimiento"));
+				x.put("concepto", c.get("concepto"));
+				x.put("SEGURO", 0D);
+				x.put("DESGRAVAMEN", r2(Math.max(0, valor - capital - interes)));
+				x.put("MORA", 0D);
+				x.put("INTERES", r2(interes));
+				x.put("CAPITAL", r2(capital));
+				filas.add(x);
+			}
+		} else {
+			throw new IncomeException("Los conceptos se calculan para un pago de cuotas, una precancelación o un cruce mensual con precancelación.");
+		}
+		Map<String, Object> totales = new LinkedHashMap<String, Object>();
+		double total = 0;
+		for (String k : ORDEN_PAGO) {
+			double s = 0;
+			for (Map<String, Object> x : filas) {
+				s += (Double) x.get(k);
+			}
+			totales.put(k, r2(s));
+			total += s;
+		}
+		for (Map<String, Object> x : filas) {
+			double s = 0;
+			for (String k : ORDEN_PAGO) {
+				s += (Double) x.get(k);
+			}
+			x.put("total", r2(s));
+		}
+		Map<String, Object> m = new LinkedHashMap<String, Object>();
+		m.put("idPrestamo", idPrestamo);
+		m.put("idAsoprep", aLong(pr[1]));
+		m.put("tipo", t);
+		m.put("fecha", f.toString());
+		m.put("filas", filas);
+		m.put("totales", totales);
+		m.put("total", r2(total));
+		m.put("fuente", "Cálculo del SAA: valores de la tabla de cada cuota y mora a la fecha del hecho con la fórmula del motor");
+		return m;
+	}
+
+	/**
+	 * Reparte el dinero del hecho por cuota y concepto en el orden de pago del SAA, primero en lo que no se condona y después en
+	 * los conceptos marcados; lo que queda de estos es lo condonado. Si el dinero no cubre lo que no se condona, avisa.
+	 */
+	@SuppressWarnings("unchecked")
+	private Map<String, Object> repartoCondonacion(Map<String, Object> comp, List<String> marcados, double dinero, Long idEmpresa) {
+		List<Map<String, Object>> filas = (List<Map<String, Object>>) comp.get("filas");
+		Map<String, double[]> estado = new LinkedHashMap<String, double[]>();
+		double resto = r2(dinero);
+		for (int pasada = 0; pasada < 2; pasada++) {
+			for (int i = 0; i < filas.size(); i++) {
+				for (String k : ORDEN_PAGO) {
+					boolean marcado = marcados.contains(k);
+					if ((pasada == 0) == marcado) {
+						continue;
+					}
+					String clave = i + ":" + k;
+					double[] e = estado.computeIfAbsent(clave, z -> new double[] { (Double) filas.get(Integer.parseInt(z.split(":")[0])).get(k), 0D });
+					double pago = r2(Math.min(resto, e[0] - e[1]));
+					e[1] = r2(e[1] + pago);
+					resto = r2(resto - pago);
+				}
+			}
+			if (pasada == 0) {
+				double faltaNoCondonable = 0;
+				for (Map.Entry<String, double[]> e : estado.entrySet()) {
+					faltaNoCondonable += e.getValue()[0] - e.getValue()[1];
+				}
+				if (faltaNoCondonable > 0.004) {
+					throw new IncomeException("El dinero no alcanza para lo que no se condona (desgravamen, seguro y los conceptos no marcados): faltan "
+							+ dinero(r2(faltaNoCondonable)) + ". Marque más conceptos para condonar o use «se cruza con los aportes» o «el partícipe lo debe».");
+				}
+			}
+		}
+		List<Map<String, Object>> out = new ArrayList<Map<String, Object>>();
+		double totalCondonado = 0;
+		Map<String, Double> porConcepto = new LinkedHashMap<String, Double>();
+		for (int i = 0; i < filas.size(); i++) {
+			Map<String, Object> f = filas.get(i);
+			Map<String, Object> x = new LinkedHashMap<String, Object>();
+			x.put("idCuota", f.get("idCuota"));
+			x.put("numeroCuota", f.get("numeroCuota"));
+			x.put("vencimiento", f.get("vencimiento"));
+			Map<String, Object> adeudado = new LinkedHashMap<String, Object>(), pagado = new LinkedHashMap<String, Object>(), condonado = new LinkedHashMap<String, Object>();
+			for (String k : ORDEN_PAGO) {
+				double[] e = estado.getOrDefault(i + ":" + k, new double[] { (Double) f.get(k), 0D });
+				double cond = marcados.contains(k) ? r2(e[0] - e[1]) : 0D;
+				adeudado.put(k, r2(e[0]));
+				pagado.put(k, r2(e[1]));
+				condonado.put(k, cond);
+				totalCondonado += cond;
+				porConcepto.merge(k, cond, Double::sum);
+			}
+			x.put("adeudado", adeudado);
+			x.put("pagado", pagado);
+			x.put("condonado", condonado);
+			out.add(x);
+		}
+		Map<String, Object> m = new LinkedHashMap<String, Object>();
+		m.put("conceptos", marcados);
+		m.put("fecha", comp.get("fecha"));
+		m.put("filas", out);
+		Map<String, Object> pc = new LinkedHashMap<String, Object>();
+		for (Map.Entry<String, Double> e : porConcepto.entrySet()) {
+			pc.put(e.getKey(), r2(e.getValue()));
+		}
+		m.put("condonadoPorConcepto", pc);
+		m.put("totalCondonado", r2(totalCondonado));
+		Map<String, Object> ref = new LinkedHashMap<String, Object>();
+		ref.put("plantillaAlterno", com.saa.rubros.PlantillasCredito.COBRO_INDIVIDUAL_PRESTAMO);
+		ref.put("lineaAuxiliar", com.saa.rubros.CrdLineaAsiento.GASTO_CONDONACION_PRESTAMOS);
+		m.put("referenciaCuenta", ref);
+		m.put("cuentaAlRegistrar", cuentaCondonacion(idEmpresa));
+		return m;
+	}
+
+	/** Cuenta vigente del gasto por condonación (plantilla 25, línea 70), solo informativa: la v8 la resuelve al registrar. */
+	private Map<String, Object> cuentaCondonacion(Long idEmpresa) {
+		List<?> f = em.createNativeQuery("SELECT p.PLNNCDGO, p.PLNNCNTA, p.PLNNNMBR FROM CNT.PLNS s JOIN CNT.DTPL t ON t.PLNSCDGO = s.PLNSCDGO"
+				+ " JOIN CNT.PLNN p ON p.PLNNCDGO = t.PLNNCDGO WHERE s.PLNSCDAL = :pl AND s.PJRQCDGO = :e AND t.DTPLAXL1 = :ln AND t.DTPLESTD = 1"
+				+ " ORDER BY t.DTPLCDGO").setParameter("pl", com.saa.rubros.PlantillasCredito.COBRO_INDIVIDUAL_PRESTAMO).setParameter("e", idEmpresa)
+				.setParameter("ln", com.saa.rubros.CrdLineaAsiento.GASTO_CONDONACION_PRESTAMOS).getResultList();
+		Map<String, Object> m = new LinkedHashMap<String, Object>();
+		if (!f.isEmpty()) {
+			Object[] x = (Object[]) f.get(0);
+			m.put("idCuenta", aLong(x[0]));
+			m.put("cuenta", x[1]);
+			m.put("nombre", x[2]);
+		}
+		return m;
 	}
 }

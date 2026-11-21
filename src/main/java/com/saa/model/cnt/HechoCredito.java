@@ -129,6 +129,18 @@ public class HechoCredito implements Serializable {
 	@Basic
 	@Column(name = "HCNVTPAP")
 	private Long tipoAporteDiferencia;
+	/** C34-07d: condonación del faltante (JSON por cuota y concepto). */
+	@Lob
+	@Column(name = "HCNVCNDN")
+	private String condonacion;
+	/** C34-07d: decisión de ASOPREP que respalda la condonación. */
+	@Basic
+	@Column(name = "HCNVDCSN")
+	private Long idDecision;
+	public String getCondonacion() { return condonacion; }
+	public void setCondonacion(String condonacion) { this.condonacion = condonacion; }
+	public Long getIdDecision() { return idDecision; }
+	public void setIdDecision(Long idDecision) { this.idDecision = idDecision; }
 	public Long getTipoAporteDiferencia() { return tipoAporteDiferencia; }
 	public void setTipoAporteDiferencia(Long tipoAporteDiferencia) { this.tipoAporteDiferencia = tipoAporteDiferencia; }
 	public LocalDate getMesDesde() { return mesDesde; }

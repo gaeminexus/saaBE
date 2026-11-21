@@ -35,6 +35,12 @@ public class HechoCreditoDto implements Serializable {
 	private String tratamientoDiferencia;
 	/** Tipo de aporte (CRD.TPAP) con que se cruza la diferencia que falta (CRUCE_APORTES). */
 	private Long tipoAporteDiferencia;
+	/** Cuotas que paga el hecho (pago de cuotas): su valor y sus conceptos los calcula el SAA a la fecha. */
+	private List<Long> cuotas = new ArrayList<Long>();
+	/** Conceptos que se condonan del faltante: MORA, INTERES, CAPITAL. */
+	private List<String> conceptosCondonados = new ArrayList<String>();
+	/** Decisión de ASOPREP que respalda la condonación (obligatoria con CONDONACION). */
+	private Long idDecision;
 	/** Pedidos que el hecho atiende solo para esta operación (el pedido sigue pendiente). */
 	private List<Long> pedidosParciales = new ArrayList<Long>();
 	/** Nota de ASOPREP que se convierte en este hecho. */
@@ -106,6 +112,12 @@ public class HechoCreditoDto implements Serializable {
 	public void setAdjuntos(List<AccionNovedad.Adjunto> adjuntos) { this.adjuntos = adjuntos; }
 	public String getDesde() { return desde; }
 	public void setDesde(String desde) { this.desde = desde; }
+	public List<Long> getCuotas() { return cuotas; }
+	public void setCuotas(List<Long> cuotas) { this.cuotas = cuotas; }
+	public List<String> getConceptosCondonados() { return conceptosCondonados; }
+	public void setConceptosCondonados(List<String> conceptosCondonados) { this.conceptosCondonados = conceptosCondonados; }
+	public Long getIdDecision() { return idDecision; }
+	public void setIdDecision(Long idDecision) { this.idDecision = idDecision; }
 	public Long getTipoAporteDiferencia() { return tipoAporteDiferencia; }
 	public void setTipoAporteDiferencia(Long tipoAporteDiferencia) { this.tipoAporteDiferencia = tipoAporteDiferencia; }
 	public String getTratamientoDiferencia() { return tratamientoDiferencia; }
