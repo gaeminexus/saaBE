@@ -76,6 +76,11 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
     @EJB
     private com.saa.basico.ejb.DetalleRubroService detalleRubroService;
 
+    // C37 / D-126 (2026-11-19): un documento de compra sin codSustento guardado se declara con lo que da
+    // la regla (sin guardarlo); si ni la regla lo resuelve, el ATS no se genera -ver sustentoParaAts-.
+    @EJB
+    private com.saa.ejb.cxp.service.SustentoTributarioService sustentoTributarioService;
+
     private static final int MAX_BYTES_ZIP = 8 * 1024 * 1024;
 
     /**
@@ -102,7 +107,7 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
 
     @Override
     public ResultadoGeneracionAts generarAts(Long idFacturador, int anio, int mes) throws Throwable {
-        ArmadoAts a = armar(idFacturador, anio, mes);
+        ArmadoAts a = armar(idFacturador, anio, mes, true);
 
         String nombreArchivoXml = String.format("AT%02d%04d.xml", mes, anio);
         String nombreArchivoZip = String.format("AT%02d%04d.zip", mes, anio);
@@ -135,8 +140,11 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
      * arma compras, ventas, anulados, retenciones y el XML del ATS, sin empaquetar el ZIP. La usan
      * tanto {@link #generarAts} como {@link #detalleAts} — así los avisos y los enlaces de retención
      * de la pantalla de detalle son exactamente los mismos que los del archivo.
+     *
+     * @param estricto	C37: true (archivo) detiene la generación si queda alguna compra sin codSustento;
+     *					false (pantalla de detalle) la deja en avisos para que se pueda ver y corregir.
      */
-    private ArmadoAts armar(Long idFacturador, int anio, int mes) throws Throwable {
+    private ArmadoAts armar(Long idFacturador, int anio, int mes, boolean estricto) throws Throwable {
         System.out.println("=== generarAts | facturador=" + idFacturador + " | periodo=" + mes + "/" + anio + " ===");
 
         if (idFacturador == null) {
@@ -180,6 +188,27 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         compras.addAll(comprasLiquidacion(idEmpresa, desde, hasta, desdeDT, hastaDT, avisos));
         compras.addAll(comprasNotaCredito(idEmpresa, desde, hasta, desdeDT, hastaDT, avisos));
         compras.addAll(comprasNotaDebito(idEmpresa, desde, hasta, desdeDT, hastaDT, avisos));
+
+        // C37 (2026-11-19): el ATS de junio 2025 lo rechazó el SRI («codSustento contiene un valor
+        // incorrecto») porque writeDetalleCompra escribía codSustento vacío. Cada compras* ya intentó
+        // la regla (sustentoParaAts); lo que siga vacío detiene la generación con la lista.
+        List<String> sinSustento = new ArrayList<String>();
+        for (LineaCompra c : compras) {
+            if (c.codSustento == null || c.codSustento.trim().isEmpty()) {
+                sinSustento.add(c.origen + " " + c.idDocumento + " (" + nvl(c.establecimiento, "") + "-"
+                        + nvl(c.puntoEmision, "") + "-" + nvl(c.secuencial, "") + ")");
+            }
+        }
+        if (!sinSustento.isEmpty()) {
+            String mensaje = sinSustento.size() + " documento(s) de compra de " + String.format("%02d/%04d", mes, anio)
+                    + " sin codSustento (Tabla 5) y sin poder resolverlo con la regla D-126: "
+                    + String.join(", ", sinSustento) + ". Corregirlos con PUT /rest/{fctc|lqcc|ntcc|ntdc}/sustento/{id}"
+                    + " antes de generar el ATS: el SRI rechaza un codSustento vacío.";
+            if (estricto) {
+                throw new IncomeException("No se generó el ATS: " + mensaje);
+            }
+            avisos.add(0, "⛔ " + mensaje);
+        }
 
         // ÍTEM 13 (docs/logica-negocio/sri/PLAN-ATS-AJUSTES-2026-09-15.md §3): las facturas de
         // intermediario ya están excluidas de `compras` (comprasFacturaCompra), pero hacen falta
@@ -272,7 +301,7 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
     @Override
     public DetalleAts detalleAts(Long idFacturador, int anio, int mes) throws Throwable {
         System.out.println("=== detalleAts | facturador=" + idFacturador + " | periodo=" + mes + "/" + anio + " ===");
-        ArmadoAts a = armar(idFacturador, anio, mes);
+        ArmadoAts a = armar(idFacturador, anio, mes, false);
 
         DetalleAts detalle = new DetalleAts();
         detalle.setNombreArchivo(String.format("AT%02d%04d.xml", mes, anio));
@@ -564,6 +593,34 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         return base;
     }
 
+    /**
+     * C37 / D-126 (2026-11-19): el codSustento que se declara. El guardado manda; si está vacío se
+     * calcula con la regla (SustentoTributarioService.evaluarSustento: excepción de grupo, IVA y centro
+     * de costo) SIN guardarlo -generar el ATS no cambia datos- y se avisa. Devuelve null solo si ni la
+     * regla lo resuelve; entonces {@link #armar} detiene la generación con la lista.
+     */
+    private String sustentoParaAts(String tipoDocumento, Long idDocumento, String guardado, String etiqueta,
+            String recursoRest, List<String> avisos) {
+        if (guardado != null && !guardado.trim().isEmpty()) {
+            return guardado;
+        }
+        try {
+            com.saa.model.cxp.ResultadoSustento r = sustentoTributarioService.evaluarSustento(tipoDocumento, idDocumento);
+            if (r != null && r.getSustento() != null) {
+                avisos.add(etiqueta + " " + idDocumento + " sin codSustento guardado: se declaró " + r.getSustento()
+                        + " con la regla D-126 (" + r.getRegla() + (r.getCentroCosto() != null ? ", centro "
+                        + r.getCentroCosto() : "") + "), calculado al generar y no guardado. Guardarlo con PUT /rest/"
+                        + recursoRest + "/sustento/" + idDocumento + " o con el SQL de C37."
+                        + (r.getAviso() != null ? " " + r.getAviso() : ""));
+                return r.getSustento();
+            }
+        } catch (Throwable e) {
+            avisos.add(etiqueta + " " + idDocumento + ": falló el cálculo del codSustento con la regla D-126: "
+                    + e.getMessage());
+        }
+        return null;
+    }
+
     private List<LineaCompra> comprasFacturaCompra(Long idEmpresa, LocalDate desde, LocalDate hasta,
             LocalDateTime desdeDT, LocalDateTime hastaDT, List<String> avisos) {
         // ÍTEM 13 (docs/logica-negocio/sri/PLAN-ATS-AJUSTES-2026-09-15.md §3), pedido textual del
@@ -588,22 +645,20 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         for (FacturaCompra f : q.getResultList()) {
             double subtotal = nvl(f.getSubtotal(), 0.0), subcero = nvl(f.getSubcero(), 0.0);
             double noObjeto = nvl(f.getSubnoobj(), 0.0), exento = nvl(f.getSubexent(), 0.0);
+            String sustento = sustentoParaAts(com.saa.ejb.cxp.service.SustentoTributarioService.FACTURA, f.getId(),
+                    f.getSustentoTributario(), "Factura de compra", "fctc", avisos);
             resultado.add(new LineaCompra(f.getTipoComprobante(), f.getNumEstablecimiento(),
                     f.getNumPtoEmision(), f.getSecuencial(), f.getFecha() != null ? f.getFecha().toLocalDate() : null,
-                    f.getAutorizacion(), f.getTitular(), f.getSustentoTributario(), f.getFechaRegistroContable(),
+                    f.getAutorizacion(), f.getTitular(), sustento, f.getFechaRegistroContable(),
                     baseGravadaCompra(subtotal, subcero, noObjeto, exento, "Factura de compra", f.getId(), avisos), subcero,
                     noObjeto, exento,
                     nvl(f.getvIVA(), 0.0), nvl(f.getvICE(), 0.0),
                     formasPagoFacturaCompra(f.getId()), "FACTURA", f.getId()));
-            if (f.getSustentoTributario() == null) {
-                avisos.add("Factura de compra " + f.getId() + " sin codSustento resuelto — no debería "
-                        + "pasar (fase 2/6 lo resuelve siempre), revisar.");
-            }
             if (f.getFechaRegistroContable() == null) {
                 avisos.add("Factura de compra " + f.getId() + " sin fechaRegistro contable capturada: "
                         + "se usó la fecha de emisión como aproximación.");
             }
-            validarSustentoContraComprobante(f.getTipoComprobante(), f.getSustentoTributario(),
+            validarSustentoContraComprobante(f.getTipoComprobante(), sustento,
                     f.getId(), "Factura de compra", avisos);
         }
         return resultado;
@@ -673,9 +728,11 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
             double gravada = emitida ? subtotal
                     : baseGravadaCompra(subtotal, subcero, nvl(l.getSubnoobj(), 0.0), nvl(l.getSubexent(), 0.0),
                             "Liquidación de compra", l.getId(), avisos);
+            String sustento = sustentoParaAts(com.saa.ejb.cxp.service.SustentoTributarioService.LIQUIDACION, l.getId(),
+                    l.getSustentoTributario(), "Liquidación de compra", "lqcc", avisos);
             resultado.add(new LineaCompra(l.getTipoComprobante(), l.getNumEstablecimiento(),
                     l.getNumPtoEmision(), l.getSecuencial(), l.getFecha() != null ? l.getFecha().toLocalDate() : null,
-                    l.getAutorizacion(), l.getTitular(), l.getSustentoTributario(), l.getFechaRegistroContable(),
+                    l.getAutorizacion(), l.getTitular(), sustento, l.getFechaRegistroContable(),
                     gravada, subcero, nvl(l.getSubnoobj(), 0.0), nvl(l.getSubexent(), 0.0),
                     nvl(l.getvIVA(), 0.0), nvl(l.getvICE(), 0.0),
                     formasPagoLiquidacionCompra(l.getId()), "LIQUIDACION", l.getId()));
@@ -683,7 +740,7 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
                 avisos.add("Liquidación de compra " + l.getId() + " sin fechaRegistro contable capturada: "
                         + "se usó la fecha de emisión como aproximación.");
             }
-            validarSustentoContraComprobante(l.getTipoComprobante(), l.getSustentoTributario(),
+            validarSustentoContraComprobante(l.getTipoComprobante(), sustento,
                     l.getId(), "Liquidación de compra", avisos);
         }
         return resultado;
@@ -709,9 +766,11 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
             // (verificado: no existe FormaPagoNotaCreditoCompra en com.saa.model.cxp) -- lista
             // vacía, cae al respaldo de DRC2 en writeDetalleCompra.
             double subtotal = nvl(n.getSubtotal(), 0.0), subcero = nvl(n.getSubcero(), 0.0);
+            String sustento = sustentoParaAts(com.saa.ejb.cxp.service.SustentoTributarioService.NOTA_CREDITO, n.getId(),
+                    n.getSustentoTributario(), "Nota de crédito de compra", "ntcc", avisos);
             resultado.add(new LineaCompra(n.getTipoComprobante(), n.getNumEstablecimiento(),
                     n.getNumPtoEmision(), n.getSecuencial(), n.getFecha() != null ? n.getFecha().toLocalDate() : null,
-                    n.getAutorizacion(), n.getTitular(), n.getSustentoTributario(), n.getFechaRegistroContable(),
+                    n.getAutorizacion(), n.getTitular(), sustento, n.getFechaRegistroContable(),
                     baseGravadaCompra(subtotal, subcero, nvl(n.getSubnoobj(), 0.0), nvl(n.getSubexent(), 0.0),
                             "Nota de crédito de compra", n.getId(), avisos), subcero,
                     nvl(n.getSubnoobj(), 0.0), nvl(n.getSubexent(), 0.0),
@@ -721,7 +780,7 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
                 avisos.add("Nota de crédito de compra " + n.getId() + " sin fechaRegistro contable "
                         + "capturada: se usó la fecha de emisión como aproximación.");
             }
-            validarSustentoContraComprobante(n.getTipoComprobante(), n.getSustentoTributario(),
+            validarSustentoContraComprobante(n.getTipoComprobante(), sustento,
                     n.getId(), "Nota de crédito de compra", avisos);
         }
         return resultado;
@@ -747,9 +806,11 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
             // (verificado: no existe FormaPagoNotaDebitoCompra) -- lista vacía, cae al respaldo
             // de DRC2 en writeDetalleCompra.
             double subtotal = nvl(n.getSubtotal(), 0.0), subcero = nvl(n.getSubcero(), 0.0);
+            String sustento = sustentoParaAts(com.saa.ejb.cxp.service.SustentoTributarioService.NOTA_DEBITO, n.getId(),
+                    n.getSustentoTributario(), "Nota de débito de compra", "ntdc", avisos);
             resultado.add(new LineaCompra(n.getTipoComprobante(), n.getNumEstablecimiento(),
                     n.getNumPtoEmision(), n.getSecuencial(), n.getFecha() != null ? n.getFecha().toLocalDate() : null,
-                    n.getAutorizacion(), n.getTitular(), n.getSustentoTributario(), n.getFechaRegistroContable(),
+                    n.getAutorizacion(), n.getTitular(), sustento, n.getFechaRegistroContable(),
                     baseGravadaCompra(subtotal, subcero, nvl(n.getSubnoobj(), 0.0), nvl(n.getSubexent(), 0.0),
                             "Nota de débito de compra", n.getId(), avisos), subcero,
                     nvl(n.getSubnoobj(), 0.0), nvl(n.getSubexent(), 0.0),
@@ -759,7 +820,7 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
                 avisos.add("Nota de débito de compra " + n.getId() + " sin fechaRegistro contable "
                         + "capturada: se usó la fecha de emisión como aproximación.");
             }
-            validarSustentoContraComprobante(n.getTipoComprobante(), n.getSustentoTributario(),
+            validarSustentoContraComprobante(n.getTipoComprobante(), sustento,
                     n.getId(), "Nota de débito de compra", avisos);
         }
         return resultado;
@@ -1059,6 +1120,8 @@ public class GeneradorAtsServiceImpl implements GeneradorAtsService {
         w.writeCharacters("    ");
         w.writeStartElement("detalleCompras");
         w.writeCharacters("\n");
+        // C37: en el archivo nunca llega vacío -armar(estricto) detiene la generación antes-. El nvl
+        // queda solo para la pantalla de detalle (armar no estricto), que no entrega este XML.
         writeElement(w, "codSustento", nvl(c.codSustento, ""), 6);
         String tpIdProv = tipoIdentificacionCompra(c.titular);
         writeElement(w, "tpIdProv", tpIdProv, 6);

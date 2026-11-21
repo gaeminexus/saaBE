@@ -140,6 +140,10 @@ public class CargaHistoricaDocumentoServiceImpl implements CargaHistoricaDocumen
     @EJB
     private PagoProgramadoService pagoProgramadoService;
 
+    /** C37 / D-126: el sustento tributario se resuelve al crear el documento, ya con el centro en el asiento. */
+    @EJB
+    private com.saa.ejb.cxp.service.SustentoTributarioService sustentoTributarioService;
+
     // =====================================================================================================
     // Validación del lote
     // =====================================================================================================
@@ -464,7 +468,17 @@ public class CargaHistoricaDocumentoServiceImpl implements CargaHistoricaDocumen
             em.merge(fc);
             int marcadas = imponerCentroCosto(asiento.getCodigo(), cuentasGasto, centro);
             em.flush();
-            return item.creado(fc.getId(), asiento.getCodigo(), asiento.getNumeroAlterno(), "factura de compra creada; " + marcadas + " linea(s) de gasto con centro " + centro.getNumero());
+            // C37 / D-126 (2026-11-19): hasta aqui la factura quedaba con FCTCCSUS NULL -la carga nunca llamaba a
+            // resolverSiFalta, aunque el comentario de productoCompraParaCuenta lo daba por hecho- y por eso las 902
+            // facturas del re-proceso salieron sin sustento. Se resuelve ahora, cuando el asiento ya tiene el centro.
+            String sustento = sustentoTributarioService.resolverSiFalta(fc);
+            if (sustento == null) {
+                sessionContext.setRollbackOnly();
+                return item.rechazado("no se pudo resolver el sustento tributario (codSustento) de la factura");
+            }
+            em.flush();
+            return item.creado(fc.getId(), asiento.getCodigo(), asiento.getNumeroAlterno(), "factura de compra creada; " + marcadas + " linea(s) de gasto con centro " + centro.getNumero()
+                    + "; sustento " + sustento);
         } catch (Throwable e) {
             sessionContext.setRollbackOnly();
             throw e;
@@ -1111,11 +1125,19 @@ public class CargaHistoricaDocumentoServiceImpl implements CargaHistoricaDocumen
             // (la de la factura afectada o la sugerida por el contador) y su centro de costo en esa línea.
             int corregidas = imponerCuentaHaberGastoNc(asiento.getCodigo(), cuentaGasto, centro);
             em.flush();
+            // C37 / D-126: igual que la factura, la NC quedaba con NTCCCSUS NULL (26 en la base de trabajo).
+            String sustentoNc = sustentoTributarioService.resolverSiFaltaNotaCredito(nc);
+            if (sustentoNc == null) {
+                sessionContext.setRollbackOnly();
+                return item.rechazado("no se pudo resolver el sustento tributario (codSustento) de la NC");
+            }
+            em.flush();
             java.util.Map<String, Object> resultadoAplicacion = new java.util.HashMap<>();
             AplicacionPagoCxp apl = aplicacionPagoCxpService.aplicarNotaCredito(nc, nc.getAsiento(), ctx.idEmpresa, ctx.usuario, resultadoAplicacion);
             em.flush();
             String aviso = resultadoAplicacion.get("advertenciaAplicacion") != null ? " | " + resultadoAplicacion.get("advertenciaAplicacion") : "";
             return item.creado(nc.getId(), asiento.getCodigo(), asiento.getNumeroAlterno(), "NC de compra creada; " + corregidas + " linea(s) de gasto a " + n.cuenta
+                    + "; sustento " + sustentoNc
                     + (apl != null ? "; aplicada a la factura (aplicacion " + apl.getId() + ")" : "; factura sin saldo: la NC queda con saldo a favor") + aviso);
         } catch (Throwable e) {
             sessionContext.setRollbackOnly();
