@@ -109,10 +109,14 @@ public final class PrelacionCuotas {
         return v == null || !"avisar".equalsIgnoreCase(v.trim());
     }
 
-    /** {@code true} salvo {@code saa.cartera.reimputarEnOrden=no}. */
+    /**
+     * {@code true} solo con {@code saa.cartera.reimputarEnOrden=si}. Por defecto NO re-imputa sola (decisión del líder,
+     * 21-nov-2026, D-130): la re-imputación mueve pagos sin asiento de reclasificación, así que en la corrida se simula,
+     * se revisa y se aplica por mes con {@code POST /prelacioncuotas/reimputarAlCorte}.
+     */
     public static boolean reimputaAutomaticamente() {
         String v = System.getProperty(PROPIEDAD_REIMPUTAR);
-        return v == null || !("no".equalsIgnoreCase(v.trim()) || "false".equalsIgnoreCase(v.trim()));
+        return v != null && ("si".equalsIgnoreCase(v.trim()) || "true".equalsIgnoreCase(v.trim()));
     }
 
     /** {@code true} solo con {@code saa.cartera.moraSobreCapitalPendiente=true}. */
