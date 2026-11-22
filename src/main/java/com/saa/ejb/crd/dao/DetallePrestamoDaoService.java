@@ -360,7 +360,9 @@ public interface DetallePrestamoDaoService extends EntityDao<DetallePrestamo> {
 
 	/**
 	 * Cuotas pendientes con fechaVencimiento &lt;= :fechaCorte (deuda exigible),
-	 * ordenadas por numeroCuota ASC. Pendiente = estado IS NULL OR estado NOT IN (4, 7).
+	 * ordenadas por numeroCuota ASC. C33c: pendiente por SALDO REAL, la regla C33 de
+	 * {@link #selectCuotasPendientesByPrestamoOrdenadas}: estado IS NULL OR estado NOT IN (4, 7), más la PAGADA (4)
+	 * con vencimiento desde el arranque y capital + interés sin cubrir por sus pagos vigentes (marca sin respaldo).
 	 * @param codigoPrestamo Código del préstamo
 	 * @param fechaCorte     Fin del día de la fecha de precancelación
 	 * @return Lista de cuotas exigibles ordenadas; vacía si no hay o si falla la consulta

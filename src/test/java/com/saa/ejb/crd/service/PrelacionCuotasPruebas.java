@@ -8,6 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import com.saa.ejb.crd.service.dto.SaldosCuota;
 import com.saa.model.crd.DetallePrestamo;
 import com.saa.model.crd.PagoPrestamo;
 
@@ -44,6 +45,11 @@ public final class PrelacionCuotasPruebas {
         c33bPrimeraConSaldo();
         c33bSaldoInsignificante();
         c33bPagoPosteriorAlCorte();
+        c33cExigiblesPorSaldoReal();
+        c33cMontoDeLaMarca();
+        c33cMoraPagadaReal();
+        c33cFijarMora();
+        c33cAncla();
         System.out.println("PrelacionCuotasPruebas: " + ok + " comprobaciones correctas, " + fallas.size() + " fallas");
         for (String f : fallas) {
             System.out.println("  FALLA: " + f);
@@ -393,6 +399,224 @@ public final class PrelacionCuotasPruebas {
         igual("al corte: la saldada en 2026 (cuota 5)", 5.0, alCorte != null ? alCorte.getNumeroCuota() : null);
         DetallePrestamo sinCorte = p.buscar(null);
         igual("sin corte: la siguiente (cuota 6)", 6.0, sinCorte != null ? sinCorte.getNumeroCuota() : null);
+    }
+
+    // ------------------------------------------------------------------ C33c (D-141 (5))
+
+    private static final LocalDateTime CORTE_SEPTIEMBRE = LocalDateTime.of(2025, 9, 30, 23, 59, 59);
+
+    /** Préstamo de prueba de C33c: cuotas y pagos, y las listas que arman selectCuotasExigibles y la precancelación. */
+    private static final class Prestamo33c {
+        final List<DetallePrestamo> cuotas = new ArrayList<>();
+        final Map<Long, List<PagoPrestamo>> pagos = new LinkedHashMap<>();
+
+        Prestamo33c cuota(DetallePrestamo c, PagoPrestamo... p) {
+            cuotas.add(c);
+            pagos.put(c.getCodigo(), lista(p));
+            return this;
+        }
+
+        /** selectCuotasConSaldoPosibleOrdenadas(préstamo, desde, null): la regla C33 sin corte (saldoPosibleSql). */
+        List<DetallePrestamo> conSaldoPosible() {
+            List<DetallePrestamo> r = new ArrayList<>();
+            for (DetallePrestamo c : cuotas) {
+                if (PrelacionCuotas.tieneSaldoPosible(c, pagos.get(c.getCodigo()), DESDE)) {
+                    r.add(c);
+                }
+            }
+            return r;
+        }
+
+        /** selectCuotasExigibles con C33c. */
+        List<DetallePrestamo> exigibles(LocalDateTime corte) {
+            return PrelacionCuotas.vencidasAlCorte(conSaldoPosible(), corte);
+        }
+
+        /** selectCuotasExigibles hasta a12cb0b6: por estado. */
+        List<DetallePrestamo> exigiblesComoAntes(LocalDateTime corte) {
+            List<DetallePrestamo> r = new ArrayList<>();
+            for (DetallePrestamo c : cuotas) {
+                if (PrelacionCuotas.pendientePorEstado(c) && !c.getFechaVencimiento().isAfter(corte)) {
+                    r.add(c);
+                }
+            }
+            return r;
+        }
+
+        /** Futuras de calcularPrecancelacion: pendientes (C33 sin corte) que no son exigibles. */
+        List<Double> futuras(List<DetallePrestamo> exigibles) {
+            List<Double> r = new ArrayList<>();
+            for (DetallePrestamo c : conSaldoPosible()) {
+                if (!exigibles.contains(c)) {
+                    r.add(c.getNumeroCuota());
+                }
+            }
+            return r;
+        }
+    }
+
+    private static List<Double> numeros(List<DetallePrestamo> cuotas) {
+        List<Double> r = new ArrayList<>();
+        for (DetallePrestamo c : cuotas) {
+            r.add(c.getNumeroCuota());
+        }
+        return r;
+    }
+
+    /** El préstamo del caso: marca vencida, protecciones (arranque, 7, D-040 exento, pago posterior) y marca futura. */
+    private static Prestamo33c prestamo33c() {
+        DetallePrestamo c1 = cuota(1L, 1, 4, "2025-05-31", 100, 10);                // historia del ancla de mayo
+        DetallePrestamo c2 = cuota(2L, 2, 4, "2025-06-30", 100, 10);                // pagada con PGPR
+        DetallePrestamo c3 = conTotal(cuota(3L, 3, 4, "2025-07-31", 100, 10), 113); // marca de Delta, vencida
+        c3.setDesgravamen(2.0);
+        c3.setValorSeguroIncendio(1.0);
+        DetallePrestamo c4 = cuota(4L, 4, 5, "2025-08-31", 100, 10);                // en mora
+        DetallePrestamo c5 = cuota(5L, 5, 7, "2025-09-30", 100, 10);                // 7 de cierre
+        DetallePrestamo c6 = cuota(6L, 6, 4, "2025-09-30", 100, 10);                // ancla del abono D-040 (exento)
+        DetallePrestamo c7 = cuota(7L, 7, 4, "2025-09-30", 100, 10);                // saldada por un pago de 2026
+        DetallePrestamo c8 = cuota(8L, 8, 1, "2025-10-31", 100, 10);                // futura
+        DetallePrestamo c9 = cuota(9L, 9, 4, "2025-11-30", 100, 10);                // marca futura
+        return new Prestamo33c()
+            .cuota(c1)
+            .cuota(c2, pago(20L, c2, "2025-06-30", 100, 10, null))
+            .cuota(c3)
+            .cuota(c4)
+            .cuota(c5)
+            .cuota(c6, pago(60L, c6, "2025-06-01", 450, 10, PrelacionCuotas.TIPO_ABONO_CAPITAL))
+            .cuota(c7, pago(70L, c7, "2026-02-27", 100, 10, null))
+            .cuota(c8)
+            .cuota(c9);
+    }
+
+    /** selectCuotasExigibles por saldo real: entra la marca vencida y nada de lo protegido. */
+    private static void c33cExigiblesPorSaldoReal() {
+        Prestamo33c p = prestamo33c();
+        List<DetallePrestamo> antes = p.exigiblesComoAntes(CORTE_SEPTIEMBRE);
+        List<DetallePrestamo> ahora = p.exigibles(CORTE_SEPTIEMBRE);
+        igual("antes: solo la 5 (#4)", Arrays.asList(4.0), numeros(antes));
+        igual("antes: la marca #3 era futura", Arrays.asList(3.0, 8.0, 9.0), p.futuras(antes));
+        igual("C33c: exigibles #3 (marca) y #4", Arrays.asList(3.0, 4.0), numeros(ahora));
+        igual("C33c: futuras #8 y la marca futura #9", Arrays.asList(8.0, 9.0), p.futuras(ahora));
+        verdad("la 4 anterior al arranque no es exigible", !numeros(ahora).contains(1.0));
+        verdad("la 7 de cierre no es exigible", !numeros(ahora).contains(5.0));
+        verdad("el ancla del abono D-040 (exento) no es exigible", !numeros(ahora).contains(6.0));
+        verdad("la 4 saldada por un pago de 2026 no se cobra otra vez", !numeros(ahora).contains(7.0));
+        // Modo al corte (C33 punto 2): al corte de septiembre 2025 la #7 está abierta (su pago es de 2026); la
+        // precancelación mide sus saldos con todos los pagos (como calcularPrecancelacion), así que no la cobra.
+        verdad("al corte la #7 tiene saldo", PrelacionCuotas.esMarcaSinRespaldo(p.cuotas.get(6),
+            PrelacionCuotas.alCorte(p.pagos.get(7L), CORTE_SEPTIEMBRE), DESDE));
+        igual("un día antes del vencimiento de la #4: solo la #3", Arrays.asList(3.0),
+            numeros(p.exigibles(LocalDateTime.of(2025, 8, 30, 23, 59, 59))));
+        igual("sin corte: ninguna", 0, PrelacionCuotas.vencidasAlCorte(p.conSaldoPosible(), null).size());
+        DetallePrestamo sinVto = cuota(99L, 99, 1, "2025-06-30", 1, 0);
+        sinVto.setFechaVencimiento(null);
+        igual("sin vencimiento: no es exigible", 0,
+            PrelacionCuotas.vencidasAlCorte(Arrays.asList(sinVto), CORTE_SEPTIEMBRE).size());
+        igual("vence el mismo día del corte: exigible", 1, PrelacionCuotas.vencidasAlCorte(
+            Arrays.asList(cuota(98L, 98, 1, "2025-09-30", 1, 0)), CORTE_SEPTIEMBRE).size());
+    }
+
+    /** Lo que se cobra de la marca: antes solo su capital; ahora los cinco conceptos con la mora a la fecha. */
+    private static void c33cMontoDeLaMarca() {
+        DetallePrestamo marca = prestamo33c().cuotas.get(2);
+        // Saldos como calcularSaldosCuota sin pagos: componentes originales y total = DTPRTTLL.
+        SaldosCuota s = saldosSinPagos(marca);
+        double antes = s.getSaldoCapital();                                     // futura: solo capital
+        // Mora a la fecha (calcularMoraCuota): 100 × 9 % / 360 × 61 días = 1,525 → 1,53.
+        PrelacionCuotas.ajustarMoraALaFecha(s, 1.53, PrelacionCuotas.moraPagadaReal(marca, null), true);
+        igualD("antes: solo el capital", 100.0, antes);
+        igualD("C33c: capital + interés + desgravamen + seguro + mora", 114.53, s.getTotalPendiente());
+        igualD("C33c: aumento de la precancelación (lo que se condonaba)", 14.53, s.getTotalPendiente() - antes);
+        // DTPRTTLL de Delta en 0 (§7.6 de C33): el saldo real son los componentes.
+        DetallePrestamo enCero = conTotal(prestamo33c().cuotas.get(2), 0.0);
+        SaldosCuota s0 = saldosSinPagos(enCero);
+        PrelacionCuotas.ajustarMoraALaFecha(s0, 1.53, 0.0, true);
+        igualD("marca con DTPRTTLL en 0: por componentes", 114.53, s0.getTotalPendiente());
+        // Una cuota que no es marca conserva la fórmula de siempre (total - mora anterior + mora a la fecha).
+        SaldosCuota n = new SaldosCuota();
+        n.setSaldoCapital(40.0);
+        n.setSaldoInteres(8.0);
+        n.setSaldoMora(2.0);
+        n.setTotalPendiente(50.0);
+        PrelacionCuotas.ajustarMoraALaFecha(n, 3.5, 1.0, false);
+        igualD("no marca: mora a la fecha menos la pagada", 2.5, n.getSaldoMora());
+        igualD("no marca: total como antes", 50.5, n.getTotalPendiente());
+        SaldosCuota neg = new SaldosCuota();
+        neg.setSaldoMora(0.0);
+        neg.setTotalPendiente(10.0);
+        PrelacionCuotas.ajustarMoraALaFecha(neg, 1.0, 4.0, false);
+        igualD("mora pagada mayor que la mora a la fecha: 0", 0.0, neg.getSaldoMora());
+    }
+
+    /** En la marca, DTPRMRPG (Delta) no es saldo real: cuenta la mora de sus pagos vigentes. */
+    private static void c33cMoraPagadaReal() {
+        DetallePrestamo marca = cuota(1L, 3, 4, "2025-07-31", 100, 10);
+        marca.setMoraPagado(5.0);
+        PagoPrestamo p = pago(1L, marca, "2025-08-15", 20, 0, null);
+        p.setMoraPagada(1.25);
+        igualD("marca: la mora de sus PGPR", 1.25, PrelacionCuotas.moraPagadaReal(marca, lista(p)));
+        igualD("marca sin PGPR: 0 aunque DTPRMRPG diga 5", 0.0, PrelacionCuotas.moraPagadaReal(marca, null));
+        DetallePrestamo enMora = cuota(2L, 4, 5, "2025-08-31", 100, 10);
+        enMora.setMoraPagado(5.0);
+        igualD("cuota en mora: DTPRMRPG, como siempre", 5.0, PrelacionCuotas.moraPagadaReal(enMora, lista(p)));
+    }
+
+    /** Lo que graba la precancelación en la marca antes de que el motor la cobre. */
+    private static void c33cFijarMora() {
+        DetallePrestamo marca = conTotal(prestamo33c().cuotas.get(2), 0.0);
+        PrelacionCuotas.fijarMoraALaFecha(marca, 1.53, 61, 0.0);
+        igualD("mora a la fecha", 1.53, marca.getMora());
+        igualD("total = componentes + mora (lo que cobra el motor sin pagos)", 114.53, marca.getTotal());
+        igualD("total con seguro", 114.53, marca.getTotalConSeguro());
+        igual("días de mora", 61L, marca.getDiasMora());
+        igualD("saldo de mora", 1.53, marca.getSaldoMora());
+        igual("sigue en 4: el estado lo decide el motor al pagar", 4L, marca.getEstado());
+        // Lo que el motor ve después (calcularSaldosCuota sin pagos) = lo que mostró la simulación.
+        SaldosCuota motor = saldosSinPagos(marca);
+        SaldosCuota simulacion = saldosSinPagos(conTotal(prestamo33c().cuotas.get(2), 0.0));
+        PrelacionCuotas.ajustarMoraALaFecha(simulacion, 1.53, 0.0, true);
+        igualD("motor = simulación", simulacion.getTotalPendiente(), motor.getTotalPendiente());
+        DetallePrestamo negativa = cuota(5L, 3, 4, "2025-07-31", 10, 1);
+        PrelacionCuotas.fijarMoraALaFecha(negativa, -3.0, -2, 0.0);
+        igualD("mora negativa: 0", 0.0, negativa.getMora());
+        igual("días negativos: 0", 0L, negativa.getDiasMora());
+    }
+
+    /** Ancla del capital futuro: nunca una futura (el paso 3 la cierra en 7). */
+    private static void c33cAncla() {
+        Prestamo33c p = prestamo33c();
+        List<DetallePrestamo> exigibles = p.exigibles(CORTE_SEPTIEMBRE);
+        java.util.Set<Long> futuras = new java.util.HashSet<>();
+        for (DetallePrestamo c : p.conSaldoPosible()) {
+            if (!exigibles.contains(c)) {
+                futuras.add(c.getCodigo());
+            }
+        }
+        DetallePrestamo ultima = PrelacionCuotas.ultimaPagadaFuera(p.cuotas, null);
+        igual("selectUltimaCuotaPagada da la marca futura #9", 9.0, ultima != null ? ultima.getNumeroCuota() : null);
+        DetallePrestamo ancla = PrelacionCuotas.ultimaPagadaFuera(p.cuotas, futuras);
+        igual("C33c: ancla = la última 4 que no es futura (#7)", 7.0, ancla != null ? ancla.getNumeroCuota() : null);
+        Prestamo33c soloFuturas = new Prestamo33c()
+            .cuota(cuota(1L, 1, 1, "2025-10-31", 100, 10))
+            .cuota(cuota(2L, 2, 4, "2025-11-30", 100, 10));
+        java.util.Set<Long> todas = new java.util.HashSet<>(Arrays.asList(1L, 2L));
+        igual("solo marcas futuras: null (fallback de la primera futura)", null,
+            PrelacionCuotas.ultimaPagadaFuera(soloFuturas.cuotas, todas));
+        igual("lista nula: null", null, PrelacionCuotas.ultimaPagadaFuera(null, todas));
+    }
+
+    /** Réplica de MotorPagoPrestamoServiceImpl.calcularSaldosCuota sin pagos: originales y total = DTPRTTLL + IV. */
+    private static SaldosCuota saldosSinPagos(DetallePrestamo c) {
+        SaldosCuota s = new SaldosCuota();
+        s.setSaldoCapital(PrelacionCuotas.nvl(c.getCapital()));
+        s.setSaldoInteres(PrelacionCuotas.nvl(c.getInteres()));
+        s.setSaldoDesgravamen(PrelacionCuotas.nvl(c.getDesgravamen()));
+        s.setSaldoSeguroIncendio(PrelacionCuotas.nvl(c.getValorSeguroIncendio()));
+        s.setSaldoMora(PrelacionCuotas.nvl(c.getMora()));
+        s.setSaldoInteresVencido(PrelacionCuotas.nvl(c.getInteresVencido()));
+        s.setTotalPendiente(PrelacionCuotas.redondear(PrelacionCuotas.nvl(c.getTotal())
+            + PrelacionCuotas.nvl(c.getInteresVencido())));
+        return s;
     }
 
     private static DetallePrestamo safeBuscar(Prestamo33b p) {

@@ -978,30 +978,26 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 		}
 	}
 
-	@SuppressWarnings("unchecked")
 	@Override
 	public List<DetallePrestamo> selectCuotasExigibles(Long codigoPrestamo, LocalDateTime fechaCorte) throws Throwable {
 		System.out.println("DetallePrestamoDaoServiceImpl.selectCuotasExigibles - Préstamo: " + codigoPrestamo
 			+ " - corte: " + fechaCorte);
 
 		try {
-			String jpql = "SELECT d FROM DetallePrestamo d " +
-						 "WHERE d.prestamo.codigo = :codigoPrestamo " +
-						 "AND (d.estado IS NULL OR d.estado NOT IN (:estadoPagada, :estadoCanceladaAnticipada)) " +
-						 "AND d.fechaVencimiento <= :fechaCorte " +
-						 "ORDER BY d.numeroCuota ASC";
-
-			Query query = em.createQuery(jpql);
-			query.setParameter("codigoPrestamo", codigoPrestamo);
-			query.setParameter("estadoPagada", (long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
-			query.setParameter("estadoCanceladaAnticipada", (long) com.saa.rubros.EstadoCuotaPrestamo.CANCELADA_ANTICIPADA);
-			query.setParameter("fechaCorte", fechaCorte);
-
-			List<DetallePrestamo> resultados = query.getResultList();
-			System.out.println("  Cuotas exigibles encontradas: " + (resultados != null ? resultados.size() : 0));
+			// C33c (D-141 (5), 22-nov-2026): exigible por SALDO REAL, no por estado. Son las cuotas con saldo posible de C33
+			// (punto 1: pendientes por estado, más las PAGADAS (4) desde el arranque cuyo capital + interés no cubren sus
+			// pagos vigentes), las mismas de selectCuotasPendientesByPrestamoOrdenadas, con vencimiento <= fechaCorte.
+			// Antes (JPQL con DTPRESTD NOT IN (4, 7)) una marca 4 vencida con saldo quedaba entre las futuras de la
+			// precancelación: se cobraba solo su capital y se condonaba el resto. La 7 y la 4 anterior al arranque siguen
+			// fuera. Los pagos se miden sin corte, como los mide calcularPrecancelacion: exigibles y futuras salen de la
+			// misma lista y no se solapan.
+			List<DetallePrestamo> conSaldo = selectCuotasConSaldoPosibleOrdenadas(codigoPrestamo,
+				com.saa.ejb.crd.service.PrelacionCuotas.desde(), null);
+			List<DetallePrestamo> resultados = com.saa.ejb.crd.service.PrelacionCuotas.vencidasAlCorte(conSaldo, fechaCorte);
+			System.out.println("  Cuotas exigibles encontradas: " + resultados.size());
 			return resultados;
 
-		} catch (Exception e) {
+		} catch (Throwable e) {
 			System.err.println("Error en selectCuotasExigibles: " + e.getMessage());
 			e.printStackTrace();
 			// NO lanzar excepción - retornar lista vacía para no detener el proceso
