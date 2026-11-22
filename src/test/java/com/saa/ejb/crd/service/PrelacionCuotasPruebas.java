@@ -40,6 +40,10 @@ public final class PrelacionCuotasPruebas {
         planCronologico();
         planSinDestinoYCerradas();
         moraCapitalPendiente();
+        c33bBucleAnterior();
+        c33bPrimeraConSaldo();
+        c33bSaldoInsignificante();
+        c33bPagoPosteriorAlCorte();
         System.out.println("PrelacionCuotasPruebas: " + ok + " comprobaciones correctas, " + fallas.size() + " fallas");
         for (String f : fallas) {
             System.out.println("  FALLA: " + f);
@@ -238,6 +242,161 @@ public final class PrelacionCuotasPruebas {
         igualD("pago futuro no cuenta", PrelacionCuotas.moraSobreCapitalPendiente(100.0, vencA, null, tasa, vencA.plusDays(20)),
             PrelacionCuotas.moraSobreCapitalPendiente(100.0, vencA, completo, tasa, vencA.plusDays(20)));
         igualD("no vencida = 0", 0.0, PrelacionCuotas.moraSobreCapitalPendiente(100.0, vencA, null, tasa, vencA));
+    }
+
+    // ------------------------------------------------------------------ C33b (búsqueda de la carga Petro)
+
+    private static final LocalDateTime CORTE_JUNIO = LocalDateTime.of(2025, 6, 30, 23, 59, 59, 999_999_999);
+
+    /** Modelo de la base: cuotas ordenadas y sus pagos vigentes. */
+    private static final class Prestamo33b {
+        final List<DetallePrestamo> cuotas = new ArrayList<>();
+        final Map<Long, List<PagoPrestamo>> pagos = new LinkedHashMap<>();
+        int llamadasSaldo;
+        int marcadas;
+
+        Prestamo33b cuota(DetallePrestamo d, PagoPrestamo... p) {
+            cuotas.add(d);
+            pagos.put(d.getCodigo(), lista(p));
+            return this;
+        }
+
+        /** Como {@code saldoPosibleSql}: por estado, o 4 desde el arranque con capital + interés sin cubrir al corte. */
+        List<DetallePrestamo> conSaldoPosible(LocalDateTime corte) {
+            List<DetallePrestamo> r = new ArrayList<>();
+            for (DetallePrestamo d : cuotas) {
+                long e = d.getEstado() == null ? -1 : d.getEstado();
+                if (e != 4 && e != 7) {
+                    r.add(d);
+                } else if (PrelacionCuotas.esMarcaSinRespaldo(d, PrelacionCuotas.alCorte(pagos.get(d.getCodigo()), corte), DESDE)) {
+                    r.add(d);
+                }
+            }
+            return r;
+        }
+
+        /** Saldo real al corte (capital + interés; sin pagos al corte, DTPRTTLL). */
+        double saldo(DetallePrestamo d, LocalDateTime corte) {
+            llamadasSaldo++;
+            List<PagoPrestamo> alCorte = PrelacionCuotas.alCorte(pagos.get(d.getCodigo()), corte);
+            if (alCorte.isEmpty()) {
+                return PrelacionCuotas.nvl(d.getTotal());
+            }
+            return PrelacionCuotas.pendienteNucleo(d, alCorte);
+        }
+
+        DetallePrestamo buscar(LocalDateTime corte) {
+            try {
+                return PrelacionCuotas.primeraConSaldo(conSaldoPosible(corte), c -> saldo(c, corte), c -> {
+                    marcadas++;
+                    c.setEstado(4L);
+                });
+            } catch (Throwable t) {
+                throw new RuntimeException(t);
+            }
+        }
+
+        /** Réplica de buscarCuotaAPagar de saaBE 384cd97a: pide la mínima hasta 100 veces y salta toda 4. */
+        Object[] buscarComoAntes() {
+            int intentos = 0;
+            while (intentos < 100) {
+                intentos++;
+                List<DetallePrestamo> posibles = conSaldoPosible(null);
+                if (posibles.isEmpty()) {
+                    break;
+                }
+                DetallePrestamo c = posibles.get(0);
+                double s = saldo(c, null);
+                if (c.getEstado() != null && c.getEstado() == 4L) {
+                    continue;
+                }
+                if (s > 0.01) {
+                    return new Object[] { c, intentos };
+                }
+                c.setEstado(4L);
+            }
+            return new Object[] { null, intentos };
+        }
+    }
+
+    private static DetallePrestamo conTotal(DetallePrestamo d, double total) {
+        d.setTotal(total);
+        return d;
+    }
+
+    /** El defecto: 2945 c11 (def8-06), una 4 cuyo único pago es un SAA_HIST de capital 0 posterior al corte. */
+    private static void c33bBucleAnterior() {
+        DetallePrestamo c11 = conTotal(cuota(260746L, 11, 4, "2025-06-30", 105.21, 6.77), 115.54);
+        DetallePrestamo c12 = conTotal(cuota(260750L, 12, 1, "2025-07-31", 105.80, 6.18), 115.54);
+        Prestamo33b p = new Prestamo33b()
+            .cuota(c11, pago(265233L, c11, "2025-12-30", 0, 0, null))
+            .cuota(c12);
+        Object[] antes = p.buscarComoAntes();
+        igual("antes: sin cuota (la fila quedaba «sin cuota pendiente»)", null, antes[0]);
+        igual("antes: 100 intentos con la misma cuota", 100, antes[1]);
+        Prestamo33b q = new Prestamo33b()
+            .cuota(conTotal(cuota(260746L, 11, 4, "2025-06-30", 105.21, 6.77), 115.54),
+                pago(265233L, null, "2025-12-30", 0, 0, null))
+            .cuota(conTotal(cuota(260750L, 12, 1, "2025-07-31", 105.80, 6.18), 115.54));
+        DetallePrestamo ahora = q.buscar(CORTE_JUNIO);
+        igual("C33b: paga la 4 con saldo (cuota 11)", 11.0, ahora != null ? ahora.getNumeroCuota() : null);
+        igual("C33b: una sola consulta de saldo", 1, q.llamadasSaldo);
+        igual("C33b: no marca nada", 0, q.marcadas);
+        igual("C33b: la 4 sigue en 4 (el motor decide el estado al pagar)", 4L, ahora != null ? ahora.getEstado() : null);
+    }
+
+    /** Marca de Delta sin PGPR (los casos de julio 2025): es la cuota a pagar; la prelación la pone antes que la 1. */
+    private static void c33bPrimeraConSaldo() {
+        Prestamo33b p = new Prestamo33b()
+            .cuota(conTotal(cuota(1L, 2, 4, "2025-06-30", 100, 5), 0), pago(10L, null, "2025-06-30", 100, 5, null))
+            .cuota(conTotal(cuota(2L, 3, 4, "2025-07-31", 257.0, 5.35), 264.84))
+            .cuota(conTotal(cuota(3L, 4, 1, "2025-08-31", 257.5, 4.85), 264.84));
+        DetallePrestamo c = p.buscar(LocalDateTime.of(2025, 7, 31, 23, 59, 59));
+        igual("marca sin PGPR: cuota 3", 3.0, c != null ? c.getNumeroCuota() : null);
+        igual("la 4 cubierta no es candidata", 1, p.llamadasSaldo);
+        igual("nada que marcar", 0, p.marcadas);
+        igual("sin cuotas: null", null, safeBuscar(new Prestamo33b()));
+        try {
+            igual("lista nula: null", null, PrelacionCuotas.primeraConSaldo(null, x -> 1.0, null));
+        } catch (Throwable t) {
+            fallas.add("lista nula lanzó " + t);
+        }
+    }
+
+    /** Saldo insignificante: la 4 se salta sin marcar (DTPRTTLL en 0), la pendiente por estado se marca; una pasada. */
+    private static void c33bSaldoInsignificante() {
+        DetallePrestamo c1 = conTotal(cuota(1L, 1, 4, "2025-06-30", 50, 2), 0.0);   // marca con DTPRTTLL 0
+        DetallePrestamo c2 = conTotal(cuota(2L, 2, 1, "2025-07-31", 50, 2), 0.0);   // sin pagos y total 0
+        DetallePrestamo c3 = cuota(3L, 3, 1, "2025-08-31", 50, 2);
+        c3.setEstado(null);                                                         // estado nulo cubierto
+        DetallePrestamo c4 = conTotal(cuota(4L, 4, 1, "2025-09-30", 50, 2), 52.0);
+        Prestamo33b p = new Prestamo33b().cuota(c1).cuota(c2).cuota(c3, pago(30L, null, "2025-06-01", 50, 2, null)).cuota(c4);
+        DetallePrestamo c = p.buscar(null);
+        igual("salta las de saldo 0: cuota 4", 4.0, c != null ? c.getNumeroCuota() : null);
+        igual("una consulta de saldo por cuota", 4, p.llamadasSaldo);
+        igual("marca la 1 y la nula, no la 4", 2, p.marcadas);
+        igual("la nula queda PAGADA", 4L, c3.getEstado());
+        Prestamo33b todas = new Prestamo33b()
+            .cuota(conTotal(cuota(1L, 1, 4, "2025-06-30", 50, 2), 0.0))
+            .cuota(conTotal(cuota(2L, 2, 1, "2025-07-31", 50, 2), 0.0));
+        igual("todas en 0: null", null, safeBuscar(todas));
+        igual("todas en 0: una pasada", 2, todas.llamadasSaldo);
+    }
+
+    /** C33 punto 2 en la carga: una cuota saldada por un pago de 2026 está abierta al corte de junio 2025. */
+    private static void c33bPagoPosteriorAlCorte() {
+        DetallePrestamo c1 = conTotal(cuota(1L, 5, 4, "2025-06-30", 80, 4), 84.0);
+        Prestamo33b p = new Prestamo33b()
+            .cuota(c1, pago(11L, null, "2026-02-27", 80, 4, null))
+            .cuota(conTotal(cuota(2L, 6, 1, "2025-07-31", 80, 4), 84.0));
+        DetallePrestamo alCorte = p.buscar(CORTE_JUNIO);
+        igual("al corte: la saldada en 2026 (cuota 5)", 5.0, alCorte != null ? alCorte.getNumeroCuota() : null);
+        DetallePrestamo sinCorte = p.buscar(null);
+        igual("sin corte: la siguiente (cuota 6)", 6.0, sinCorte != null ? sinCorte.getNumeroCuota() : null);
+    }
+
+    private static DetallePrestamo safeBuscar(Prestamo33b p) {
+        return p.buscar(CORTE_JUNIO);
     }
 
     // ------------------------------------------------------------------ fábricas
