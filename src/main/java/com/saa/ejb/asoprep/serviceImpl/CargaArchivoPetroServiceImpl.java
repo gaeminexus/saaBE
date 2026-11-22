@@ -25,6 +25,7 @@ import com.saa.ejb.crd.service.CargaArchivoService;
 import com.saa.ejb.crd.service.DetalleCargaArchivoService;
 import com.saa.ejb.crd.service.MotorPagoPrestamoService;
 import com.saa.ejb.crd.service.ParticipeXCargaArchivoService;
+import com.saa.ejb.crd.service.PrelacionCuotas;
 import com.saa.ejb.crd.service.dto.ContextoPago;
 import com.saa.ejb.crd.service.dto.DiferenciaParticipeDistribucionBanda;
 import com.saa.ejb.crd.service.dto.ResultadoAplicacionPago;
@@ -5464,85 +5465,65 @@ private void validarSeguroIncendioHuerfanoFase2(ParticipeXCargaArchivo participe
 }
 
 /**
- * Si un préstamo tiene una cuota pendiente real donde aplicar un pago — mismo criterio
- * simple que usa {@link #buscarCuotaAPagar} (mínima cuota no pagada, saldo real > 0.01), pero
- * sin aplicar nada: {@link #procesarSeguroIncendioHuerfano} necesita CONTAR candidatos antes
+ * Si un préstamo tiene una cuota pendiente real donde aplicar un pago — el mismo criterio
+ * de {@link #buscarCuotaAPagar} (primera cuota con saldo real al corte > 0.01; C33b), sin
+ * aplicar dinero: {@link #procesarSeguroIncendioHuerfano} necesita CONTAR candidatos antes
  * de decidir a cuál aplicar.
  */
 private boolean tieneCuotaPendiente(Prestamo prestamo, CargaArchivo cargaArchivo) throws Throwable {
-	List<DetallePrestamo> resultado = detallePrestamoDaoService.selectMinCuotaNoPagadaByPrestamo(prestamo.getCodigo());
-	if (resultado == null || resultado.isEmpty()) {
-		return false;
-	}
-	SaldosRealesCuota saldos = calcularSaldosRealesCuota(resultado.get(0), cargaArchivo);
-	return saldos.totalPendiente > 0.01;
+	// C33b: la misma búsqueda que buscarCuotaAPagar (antes solo miraba la mínima: si era de saldo insignificante,
+	// el préstamo no contaba como candidato aunque una cuota posterior tuviera saldo).
+	return buscarCuotaAPagar(java.util.Collections.singletonList(prestamo), cargaArchivo) != null;
 }
 
 /**
- * Busca la cuota pendiente a pagar para un préstamo ACTIVO (no de plazo vencido)
- * ✅ CORRECCIÓN CRÍTICA: Usa calcularSaldosRealesCuota para validar saldos desde PagoPrestamo
- * Si una cuota ya está pagada según PagoPrestamo, se actualiza su estado y se busca la siguiente
+ * C33b: corte de los saldos de la carga — el mismo que usa el motor para su cascada
+ * ({@code MotorPagoPrestamoServiceImpl.corteDelPago} sobre la {@code fechaPago} de {@link #crearContextoPagoCarga}: fin
+ * del último día del mes de afectación). Sin mes o año de afectación, {@code null} (todos los pagos vigentes).
  */
-private DetallePrestamo buscarCuotaAPagar(List<Prestamo> prestamos, 
-                                          CargaArchivo cargaArchivo) throws Throwable {
-	for (Prestamo prestamo : prestamos) {
-		// ✅ MEGA OPTIMIZACIÓN: Buscar iterativamente la mínima cuota pendiente
-		// hasta encontrar una con saldo real > 0, en lugar de traer todas las cuotas a memoria
-		
-		int intentos = 0;
-		int maxIntentos = 100; // Límite de seguridad para evitar ciclo infinito
-		
-		while (intentos < maxIntentos) {
-			intentos++;
-			
-			// Buscar la mínima cuota NO pagada (por número de cuota)
-			List<DetallePrestamo> resultado = 
-				detallePrestamoDaoService.selectMinCuotaNoPagadaByPrestamo(prestamo.getCodigo());
-			
-			// Si no hay más cuotas pendientes en este préstamo, pasar al siguiente
-			if (resultado == null || resultado.isEmpty()) {
-				System.out.println("  ℹ️ No hay más cuotas pendientes en préstamo #" + prestamo.getCodigo());
-				break;
-			}
-			
-			DetallePrestamo cuota = resultado.get(0);
-			
-			// ✅ CORRECCIÓN CRÍTICA: Calcular saldos reales consultando tabla PagoPrestamo
-			SaldosRealesCuota saldos = calcularSaldosRealesCuota(cuota, cargaArchivo);
-			
-			// ✅ Si calcularSaldosRealesCuota actualizó la cuota a PAGADA, 
-			// volver a buscar la mínima cuota (ahora será la siguiente)
-			if (cuota.getEstado() != null && 
-			    cuota.getEstado() == com.saa.rubros.EstadoCuotaPrestamo.PAGADA) {
-				System.out.println("  ℹ️ Cuota #" + cuota.getNumeroCuota() + 
-				                   " actualizada a PAGADA según PagoPrestamo - Buscando siguiente cuota (intento " + intentos + ")");
-				continue; // Volver a ejecutar el ciclo para buscar la siguiente mínima cuota
-			}
-			
-			// ✅ SIN TOLERANCIA: Si tiene saldo pendiente real, retornarla
-			if (saldos.totalPendiente > 0.01) {
-				System.out.println("  ✅ Cuota pendiente encontrada: #" + cuota.getNumeroCuota() + 
-				                   " - Saldo pendiente real: $" + saldos.totalPendiente + 
-				                   " (encontrada en intento " + intentos + ")");
-				return cuota;
-			}
-			
-			// Si llegamos aquí, la cuota tiene saldo <= 0.01 pero no fue marcada como PAGADA
-			// Marcarla explícitamente y buscar la siguiente
-			System.out.println("  ⚠️ Cuota #" + cuota.getNumeroCuota() + 
-			                   " tiene saldo insignificante ($" + saldos.totalPendiente + 
-			                   ") - Marcando como PAGADA y continuando");
-			cuota.setEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
-			cuota.setIdEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
-			detallePrestamoDaoService.save(cuota, cuota.getCodigo());
-		}
-		
-		if (intentos >= maxIntentos) {
-			System.err.println("  ⚠️ Se alcanzó el límite de intentos (" + maxIntentos + 
-			                   ") buscando cuota pendiente en préstamo #" + prestamo.getCodigo());
-		}
+private java.time.LocalDateTime corteSaldosCarga(CargaArchivo cargaArchivo) throws Throwable {
+	if (cargaArchivo == null || cargaArchivo.getMesAfectacion() == null || cargaArchivo.getAnioAfectacion() == null) {
+		return null;
 	}
-	
+	return finMesCarga(cargaArchivo).toLocalDate().atTime(java.time.LocalTime.MAX);
+}
+
+/**
+ * Busca la cuota pendiente a pagar para un préstamo ACTIVO (no de plazo vencido): la primera, por número, con saldo
+ * real al corte de la carga &gt; 0.01. Solo elige el préstamo y la cuota para validar el HS: el dinero lo reparte la
+ * cascada del motor ({@link #aplicarPagoNormalConMotor}).
+ *
+ * <p><b>C33b (22-nov-2026).</b> Antes pedía {@code selectMinCuotaNoPagadaByPrestamo} hasta 100 veces y, si la mínima
+ * estaba en PAGADA (4), la daba por «recién marcada» y volvía a pedir. Desde C33 (punto 1) la mínima puede ser una 4
+ * con saldo real (marca sin pagos): volvía la misma cuota las 100 veces y la fila quedaba «sin cuota pendiente»
+ * (corrida v8, Petro 352 de junio 2025: HTTP 409; rodeo {@code def8-06}). Ahora recorre <b>una vez</b> las cuotas con
+ * saldo posible <b>al mismo corte que el motor</b> ({@code selectCuotasConSaldoPosibleOrdenadas}) y decide por saldo,
+ * no por estado ({@link PrelacionCuotas#primeraConSaldo}): así la carga elige la misma cuota que la cascada (C33,
+ * prelación) y no puede quedar en bucle.</p>
+ */
+private DetallePrestamo buscarCuotaAPagar(List<Prestamo> prestamos,
+                                          CargaArchivo cargaArchivo) throws Throwable {
+	final java.time.LocalDateTime corte = corteSaldosCarga(cargaArchivo);
+	for (Prestamo prestamo : prestamos) {
+		List<DetallePrestamo> candidatas = detallePrestamoDaoService.selectCuotasConSaldoPosibleOrdenadas(
+			prestamo.getCodigo(), PrelacionCuotas.desde(), corte);
+		DetallePrestamo cuota = PrelacionCuotas.primeraConSaldo(candidatas,
+			c -> calcularSaldosRealesCuota(c, cargaArchivo, corte).totalPendiente,
+			c -> {
+				// Saldo <= 0.01 y su estado no es PAGADA (sin pagos y DTPRTTLL en 0): se marca y se sigue.
+				System.out.println("  ⚠️ Cuota #" + c.getNumeroCuota() + " tiene saldo insignificante - Marcando como PAGADA y continuando");
+				c.setEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
+				c.setIdEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
+				detallePrestamoDaoService.save(c, c.getCodigo());
+			});
+		if (cuota != null) {
+			System.out.println("  ✅ Cuota pendiente encontrada: #" + cuota.getNumeroCuota() + " (estado " + cuota.getEstado()
+				+ ") del préstamo #" + prestamo.getCodigo() + (corte != null ? " - saldo al " + corte.toLocalDate() : ""));
+			return cuota;
+		}
+		System.out.println("  ℹ️ No hay más cuotas pendientes en préstamo #" + prestamo.getCodigo());
+	}
+
 	return null;
 }
 
@@ -6995,7 +6976,8 @@ private static class SaldosRealesCuota {
  * ✅ OPTIMIZACIÓN: Usa método específico en lugar de selectAll()
  * ✅ ACUMULA pagos de múltiples registros en PagoPrestamo
  */
-private SaldosRealesCuota calcularSaldosRealesCuota(DetallePrestamo cuota, CargaArchivo cargaArchivo) throws Throwable {
+private SaldosRealesCuota calcularSaldosRealesCuota(DetallePrestamo cuota, CargaArchivo cargaArchivo,
+		java.time.LocalDateTime corte) throws Throwable {
 	SaldosRealesCuota saldos = new SaldosRealesCuota();
 
 	// TODO O NADA (2026-08-29): antes, cualquier falla acá (típicamente en el
@@ -7019,8 +7001,11 @@ private SaldosRealesCuota calcularSaldosRealesCuota(DetallePrestamo cuota, Carga
 		if (pagos == null) {
 			pagos = new ArrayList<>();
 		}
-		
-		if (pagos.isEmpty()) {
+		// C33b (C33 punto 2): el saldo se mide al corte de la carga, como la cascada del motor: un pago con fecha
+		// posterior (p. ej. de 2026 en el re-proceso de un mes de 2025) no salda la cuota. Sin corte, todos.
+		List<PagoPrestamo> pagosAlCorte = PrelacionCuotas.alCorte(pagos, corte);
+
+		if (pagosAlCorte.isEmpty()) {
 			// No hay pagos previos, los saldos son los valores originales de la cuota
 			saldos.saldoDesgravamen = nullSafe(cuota.getDesgravamen());
 			saldos.saldoInteres = nullSafe(cuota.getInteres());
@@ -7046,7 +7031,7 @@ private SaldosRealesCuota calcularSaldosRealesCuota(DetallePrestamo cuota, Carga
 		double moraPagadaTotal = 0.0;  // CORRECCIONES-2026-09-02.md §2
 		double interesVencidoPagadoTotal = 0.0;  // CORRECCIONES-2026-09-02.md §2
 
-		for (PagoPrestamo pago : pagos) {
+		for (PagoPrestamo pago : pagosAlCorte) {
 			desgravamenPagadoTotal += nullSafe(pago.getDesgravamen());
 			interesPagadoTotal += nullSafe(pago.getInteresPagado());
 			capitalPagadoTotal += nullSafe(pago.getCapitalPagado());
@@ -7068,8 +7053,24 @@ private SaldosRealesCuota calcularSaldosRealesCuota(DetallePrestamo cuota, Carga
 			+ saldos.saldoSeguroIncendio + saldos.saldoMora + saldos.saldoInteresVencido;
 		
 		// ✅ Si el saldo total es 0 pero el estado no es PAGADA, actualizarlo
-		if (saldos.totalPendiente <= 0.01 && cuota.getEstado() != com.saa.rubros.EstadoCuotaPrestamo.PAGADA) {
+		// C33b: con estado nulo (C33 también las trae como candidatas) la comparación con unboxing lanzaba NPE.
+		if (saldos.totalPendiente <= 0.01 && (cuota.getEstado() == null
+				|| cuota.getEstado().longValue() != com.saa.rubros.EstadoCuotaPrestamo.PAGADA)) {
 			System.out.println("    ⚠️ Cuota #" + cuota.getNumeroCuota() + " completada según PagoPrestamo - Actualizando estado a PAGADA");
+			if (pagosAlCorte.size() != pagos.size()) {
+				// C33b: saldada al corte => saldada con todos sus pagos; los acumulados de la cuota se graban con todos
+				// los pagos vigentes (como el motor y recalcularCuotaDesdePagos), no solo con los del corte.
+				desgravamenPagadoTotal = 0.0; interesPagadoTotal = 0.0; capitalPagadoTotal = 0.0;
+				seguroIncendioPagadoTotal = 0.0; moraPagadaTotal = 0.0; interesVencidoPagadoTotal = 0.0;
+				for (PagoPrestamo pago : pagos) {
+					desgravamenPagadoTotal += nullSafe(pago.getDesgravamen());
+					interesPagadoTotal += nullSafe(pago.getInteresPagado());
+					capitalPagadoTotal += nullSafe(pago.getCapitalPagado());
+					seguroIncendioPagadoTotal += nullSafe(pago.getValorSeguroIncendio());
+					moraPagadaTotal += nullSafe(pago.getMoraPagada());
+					interesVencidoPagadoTotal += nullSafe(pago.getInteresVencidoPagado());
+				}
+			}
 			cuota.setEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA);
 			cuota.setIdEstado((long) com.saa.rubros.EstadoCuotaPrestamo.PAGADA); // ✅ CRÍTICO: Actualizar también idEstado
 			
@@ -7086,9 +7087,9 @@ private SaldosRealesCuota calcularSaldosRealesCuota(DetallePrestamo cuota, Carga
 				// D-044 (29-oct-2026): si la saldó un pago con fecha posterior al mes de la carga
 				// (re-proceso de un mes pasado), queda saldada en la fecha de ese pago y no en el mes
 				// de la carga: al corte del mes sigue pendiente con lo que le faltaba. Mismo criterio
-				// que MotorPagoPrestamoServiceImpl.aplicarPagoACuota.
+				// que MotorPagoPrestamoServiceImpl.aplicarPagoACuota. C33b: entre los pagos al corte (los que la saldaron).
 				java.time.LocalDateTime ultimoPago = null;
-				for (PagoPrestamo pago : pagos) {
+				for (PagoPrestamo pago : pagosAlCorte) {
 					if (pago.getFecha() != null && (ultimoPago == null || pago.getFecha().isAfter(ultimoPago))) {
 						ultimoPago = pago.getFecha();
 					}

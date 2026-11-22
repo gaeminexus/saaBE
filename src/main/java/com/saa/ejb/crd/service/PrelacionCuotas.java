@@ -218,6 +218,54 @@ public final class PrelacionCuotas {
             && (cuota.getFechaVencimiento() == null || cuota.getFechaVencimiento().toLocalDate().isBefore(desde));
     }
 
+    // ========================================================================
+    // C33b — primera cuota con saldo real (búsqueda de la carga Petro)
+    // ========================================================================
+
+    /** C33b: saldo real pendiente de una cuota (puede autocorregir su estado, como {@code calcularSaldosRealesCuota}). */
+    @FunctionalInterface
+    public interface SaldoDeCuota {
+        double pendiente(DetallePrestamo cuota) throws Throwable;
+    }
+
+    /** C33b: marca como PAGADA una cuota de saldo insignificante que su estado todavía da por pendiente. */
+    @FunctionalInterface
+    public interface MarcaDePagada {
+        void marcar(DetallePrestamo cuota) throws Throwable;
+    }
+
+    /**
+     * C33b (22-nov-2026): la primera cuota de {@code candidatas} (ordenadas por número; las cuotas con saldo posible
+     * del préstamo) con saldo real &gt; {@link #TOLERANCIA}, en <b>una sola pasada</b>, o {@code null}.
+     * <ul>
+     * <li>La decisión es por <b>saldo, no por estado</b>: una PAGADA (4) con saldo (marca sin pagos, punto 1) es la
+     * cuota a pagar, igual que en la cascada del motor.</li>
+     * <li>Una cuota de saldo insignificante se salta; si su estado no es PAGADA se entrega a {@code marcar} (puede ser
+     * {@code null}). La 4 sin saldo (p. ej. marca de Delta con {@code DTPRTTLL} en 0) solo se salta.</li>
+     * </ul>
+     * Antes (saaBE 384cd97a), {@code CargaArchivoPetroServiceImpl.buscarCuotaAPagar} volvía a pedir la mínima cuota
+     * cada vez que veía una 4 («recién marcada PAGADA»); desde C33 la mínima puede ser una 4 con saldo, así que recibía
+     * la misma cuota 100 veces y la fila quedaba «sin cuota pendiente» (corrida v8, Petro 352: HTTP 409).
+     */
+    public static DetallePrestamo primeraConSaldo(List<DetallePrestamo> candidatas, SaldoDeCuota saldo,
+            MarcaDePagada marcar) throws Throwable {
+        if (candidatas == null) {
+            return null;
+        }
+        for (DetallePrestamo cuota : candidatas) {
+            if (cuota == null) {
+                continue;
+            }
+            if (saldo.pendiente(cuota) > TOLERANCIA) {
+                return cuota;
+            }
+            if (marcar != null && (cuota.getEstado() == null || cuota.getEstado().longValue() != EstadoCuotaPrestamo.PAGADA)) {
+                marcar.marcar(cuota);
+            }
+        }
+        return null;
+    }
+
     /** Texto del invariante (punto 3). */
     public static String mensajeInvariante(Long idPrestamo, Number numeroPrevia, double saldoPrevia, Number numeroDestino,
             LocalDateTime corte, String tipoPago) {
