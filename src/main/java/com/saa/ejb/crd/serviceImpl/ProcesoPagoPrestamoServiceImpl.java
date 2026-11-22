@@ -31,6 +31,7 @@ import com.saa.ejb.crd.service.DetallePrestamoService;
 import com.saa.ejb.crd.service.EventoPrestamoService;
 import com.saa.ejb.crd.service.MotorPagoPrestamoService;
 import com.saa.ejb.crd.service.PagoPrestamoService;
+import com.saa.ejb.crd.service.PrelacionCuotas;
 import com.saa.ejb.crd.service.PrestamoService;
 import com.saa.ejb.crd.service.ProcesoMoraPrestamoService;
 import com.saa.ejb.crd.service.ProcesoPagoPrestamoService;
@@ -1030,7 +1031,8 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
             SaldosCuota saldos = soloLectura
                 ? motorPagoPrestamoService.calcularSaldosCuota(cuota)
                 : motorPagoPrestamoService.calcularSaldosRealesCuota(cuota);
-            recalcularMoraALaFecha(saldos, cuota, tasaDiaria, fecha);
+            // C33c: una marca 4 vencida con saldo es exigible y se cobra completa, por su saldo real.
+            recalcularMoraExigible(saldos, cuota, tasaDiaria, fecha);
             if (saldos.getTotalPendiente() <= TOLERANCIA) {
                 // La autocorrección la dejó PAGADA: ya no forma parte de la deuda exigible
                 continue;
@@ -1123,10 +1125,43 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
     public void recalcularMoraALaFecha(SaldosCuota saldos, DetallePrestamo cuota, double tasaDiaria,
             LocalDate fecha) {
         double moraALaFecha = procesoMoraPrestamoService.calcularMoraCuota(cuota, tasaDiaria, fecha);
-        double saldoMoraALaFecha = Math.max(0, redondear(moraALaFecha - nvl(cuota.getMoraPagado())));
-        double totalAjustado = redondear(saldos.getTotalPendiente() - saldos.getSaldoMora() + saldoMoraALaFecha);
-        saldos.setSaldoMora(saldoMoraALaFecha);
-        saldos.setTotalPendiente(totalAjustado);
+        PrelacionCuotas.ajustarMoraALaFecha(saldos, moraALaFecha, nvl(cuota.getMoraPagado()), false);
+    }
+
+    /**
+     * C33c (D-141 (5), 22-nov-2026): mora a la fecha de una cuota EXIGIBLE. Si es una marca (PAGADA con saldo real, C33
+     * punto 1), la mora pagada sale de sus pagos vigentes y el total de la suma de sus saldos por componente
+     * ({@link PrelacionCuotas#ajustarMoraALaFecha}): {@code DTPRMRPG} y {@code DTPRTTLL} de una marca de Delta no son
+     * saldo real. Las demás, como siempre ({@link #recalcularMoraALaFecha}).
+     */
+    private void recalcularMoraExigible(SaldosCuota saldos, DetallePrestamo cuota, double tasaDiaria, LocalDate fecha)
+            throws Throwable {
+        if (!PrelacionCuotas.esPagada(cuota)) {
+            recalcularMoraALaFecha(saldos, cuota, tasaDiaria, fecha);
+            return;
+        }
+        double moraALaFecha = procesoMoraPrestamoService.calcularMoraCuota(cuota, tasaDiaria, fecha);
+        double moraPagada = PrelacionCuotas.moraPagadaReal(cuota,
+            pagoPrestamoDaoService.selectVigentesByIdDetallePrestamo(cuota.getCodigo()));
+        PrelacionCuotas.ajustarMoraALaFecha(saldos, moraALaFecha, moraPagada, true);
+    }
+
+    /**
+     * C33c: antes de que el motor cobre una marca exigible en la precancelación, se graba en ella la mora a la fecha
+     * (el proceso diario no calcula mora a las PAGADAS) y su total por componentes
+     * ({@link PrelacionCuotas#fijarMoraALaFecha}). Así el motor cobra exactamente lo que mostró la simulación.
+     */
+    private DetallePrestamo fijarMoraMarcaExigible(DetallePrestamo cuota, double tasaDiaria, LocalDate fecha)
+            throws Throwable {
+        double moraALaFecha = procesoMoraPrestamoService.calcularMoraCuota(cuota, tasaDiaria, fecha);
+        long dias = cuota.getFechaVencimiento() != null
+            ? java.time.temporal.ChronoUnit.DAYS.between(cuota.getFechaVencimiento().toLocalDate(), fecha) : 0L;
+        double moraPagada = PrelacionCuotas.moraPagadaReal(cuota,
+            pagoPrestamoDaoService.selectVigentesByIdDetallePrestamo(cuota.getCodigo()));
+        PrelacionCuotas.fijarMoraALaFecha(cuota, moraALaFecha, dias, moraPagada);
+        System.out.println("  C33c: marca #" + cuota.getNumeroCuota() + " (" + cuota.getCodigo()
+            + ") exigible: mora al " + fecha + " $" + cuota.getMora() + ", total $" + cuota.getTotal());
+        return detallePrestamoService.saveSingle(cuota);
     }
 
     /**
@@ -1189,7 +1224,8 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
                 // Solo lectura: calcularSaldosCuota (la variante PURA), nunca
                 // calcularSaldosRealesCuota, que autocorrige y persiste.
                 SaldosCuota saldos = motorPagoPrestamoService.calcularSaldosCuota(cuota);
-                recalcularMoraALaFecha(saldos, cuota, tasaDiaria, fechaCorte);
+                // C33c: la marca 4 vencida con saldo entra con sus 5 conceptos, por su saldo real.
+                recalcularMoraExigible(saldos, cuota, tasaDiaria, fechaCorte);
 
                 capital += saldos.getSaldoCapital();
                 // Interés = ordinario + vencido, una sola línea (ver el javadoc de
@@ -1379,7 +1415,14 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
         // 2. Pagar la deuda exigible cuota por cuota (sin cascada)
         double valorExigiblePagado = 0.0;
         Long primerPagoExigible = null;
-        for (DetallePrestamo cuota : calculo.exigibles) {
+        double tasaDiariaMarcas = procesoMoraPrestamoService.tasaDiariaDelPrestamo(prestamo, false);
+        for (DetallePrestamo exigible : calculo.exigibles) {
+            DetallePrestamo cuota = exigible;
+            if (PrelacionCuotas.esPagada(cuota)) {
+                // C33c: marca 4 vencida con saldo real. Se cobra completa, como las demás vencidas: su mora a la fecha
+                // queda grabada para que el motor la cobre (la simulación ya la sumó en valorExigible).
+                cuota = fijarMoraMarcaExigible(cuota, tasaDiariaMarcas, fecha);
+            }
             SaldosCuota saldos = motorPagoPrestamoService.calcularSaldosRealesCuota(cuota);
             if (saldos.getTotalPendiente() <= TOLERANCIA) {
                 continue;
@@ -1405,6 +1448,18 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
         int canceladas = 0;
         if (!sinFuturas) {
             ancla = detallePrestamoDaoService.selectUltimaCuotaPagada(prestamo.getCodigo());
+            // C33c: la última PAGADA puede ser una marca futura con saldo (C33 punto 1), que el paso 3 cierra en 7. El
+            // capital futuro va a la última PAGADA que no es futura.
+            Set<Long> codigosFuturas = new HashSet<>();
+            for (DetallePrestamo futura : calculo.futuras) {
+                codigosFuturas.add(futura.getCodigo());
+            }
+            if (ancla != null && codigosFuturas.contains(ancla.getCodigo())) {
+                System.out.println("  C33c: la última PAGADA (#" + ancla.getNumeroCuota() + ") es una marca futura con"
+                    + " saldo; el capital futuro va a la última PAGADA que no es futura");
+                ancla = PrelacionCuotas.ultimaPagadaFuera(
+                    detallePrestamoDaoService.selectByPrestamo(prestamo.getCodigo()), codigosFuturas);
+            }
             boolean anclaEsFutura = ancla == null;
             if (anclaEsFutura) {
                 // Caso extremo: precancelar un préstamo sin ninguna cuota pagada. La cuota elegida

@@ -266,6 +266,144 @@ public final class PrelacionCuotas {
         return null;
     }
 
+    // ========================================================================
+    // C33c — cuotas exigibles por saldo real (precancelación y desglose del acuerdo)
+    // ========================================================================
+
+    /**
+     * C33c: pendiente solo por estado (nulo o distinto de PAGADA/CANCELADA_ANTICIPADA). Es el criterio de
+     * {@code selectCuotasExigibles} hasta saaBE {@code a12cb0b6}: una marca 4 vencida con saldo no contaba.
+     */
+    public static boolean pendientePorEstado(DetallePrestamo cuota) {
+        if (cuota == null) {
+            return false;
+        }
+        Long e = cuota.getEstado();
+        return e == null || (e.longValue() != EstadoCuotaPrestamo.PAGADA
+            && e.longValue() != EstadoCuotaPrestamo.CANCELADA_ANTICIPADA);
+    }
+
+    /**
+     * C33c: misma regla que {@code DetallePrestamoDaoServiceImpl.saldoPosibleSql} (con {@code desde}): pendiente por
+     * estado, o marca sin respaldo (punto 1) con los pagos dados. La 7 nunca; la 4 anterior al arranque tampoco.
+     */
+    public static boolean tieneSaldoPosible(DetallePrestamo cuota, List<PagoPrestamo> pagos, LocalDate desde) {
+        return pendientePorEstado(cuota) || esMarcaSinRespaldo(cuota, pagos, desde);
+    }
+
+    /** C33c: {@code true} si la cuota está en PAGADA (4). Entre las exigibles, es una marca sin respaldo. */
+    public static boolean esPagada(DetallePrestamo cuota) {
+        return cuota != null && cuota.getEstado() != null && cuota.getEstado().longValue() == EstadoCuotaPrestamo.PAGADA;
+    }
+
+    /**
+     * C33c: de las cuotas con saldo posible (la lista de C33, ordenada por número), las vencidas al corte
+     * ({@code DTPRFCVN <= corte}): la deuda exigible. Sin corte o sin vencimiento, ninguna (como el JPQL anterior, que
+     * comparaba {@code fechaVencimiento <= :fechaCorte}).
+     */
+    public static List<DetallePrestamo> vencidasAlCorte(List<DetallePrestamo> conSaldoPosible, LocalDateTime corte) {
+        List<DetallePrestamo> r = new ArrayList<>();
+        if (conSaldoPosible == null || corte == null) {
+            return r;
+        }
+        for (DetallePrestamo c : conSaldoPosible) {
+            if (c != null && c.getFechaVencimiento() != null && !c.getFechaVencimiento().isAfter(corte)) {
+                r.add(c);
+            }
+        }
+        return r;
+    }
+
+    /**
+     * C33c: mora ya pagada de una cuota. En una PAGADA (marca de Delta) {@code DTPRMRPG} no es saldo real: cuenta la
+     * mora de sus pagos vigentes. En las demás, {@code DTPRMRPG} (lo mantiene el motor), como siempre.
+     */
+    public static double moraPagadaReal(DetallePrestamo cuota, List<PagoPrestamo> pagosVigentes) {
+        if (cuota == null) {
+            return 0.0;
+        }
+        if (!esPagada(cuota)) {
+            return nvl(cuota.getMoraPagado());
+        }
+        double mora = 0.0;
+        if (pagosVigentes != null) {
+            for (PagoPrestamo p : pagosVigentes) {
+                if (p != null) {
+                    mora += nvl(p.getMoraPagada());
+                }
+            }
+        }
+        return redondear(mora);
+    }
+
+    /**
+     * Mora a la fecha en {@code saldos} (in place): {@code saldoMora = max(0, moraALaFecha - moraPagada)}.
+     * <ul>
+     * <li>{@code porComponentes = false}: el total se recompone quitando la mora anterior (lo que hacía y sigue haciendo
+     * {@code ProcesoPagoPrestamoService.recalcularMoraALaFecha}).</li>
+     * <li>{@code porComponentes = true} (C33c, marcas): el total es la suma de los seis saldos. Una marca sin pagos
+     * trae {@code DTPRTTLL} de Delta, que puede no cuadrar con sus componentes (en 0, o sin seguro): el saldo real son
+     * los componentes.</li>
+     * </ul>
+     */
+    public static void ajustarMoraALaFecha(com.saa.ejb.crd.service.dto.SaldosCuota saldos, double moraALaFecha,
+            double moraPagada, boolean porComponentes) {
+        if (saldos == null) {
+            return;
+        }
+        double saldoMora = Math.max(0, redondear(moraALaFecha - moraPagada));
+        double total = porComponentes
+            ? redondear(saldos.getSaldoSeguroIncendio() + saldos.getSaldoDesgravamen() + saldoMora
+                + saldos.getSaldoInteresVencido() + saldos.getSaldoInteres() + saldos.getSaldoCapital())
+            : redondear(saldos.getTotalPendiente() - saldos.getSaldoMora() + saldoMora);
+        saldos.setSaldoMora(saldoMora);
+        saldos.setTotalPendiente(total);
+    }
+
+    /**
+     * C33c: deja en la marca (in place, sin grabar) la mora a la fecha de la precancelación, para que el motor la cobre
+     * igual que en las demás vencidas (el proceso diario no calcula mora a las 4). El total ({@code DTPRTTLL}, sin el
+     * interés vencido, que el motor suma aparte) queda en la suma de sus componentes: así el motor, que usa
+     * {@code DTPRTTLL} cuando la cuota no tiene pagos, cobra lo mismo que la simulación. No cambia el estado: lo decide
+     * el motor al pagar.
+     */
+    public static void fijarMoraALaFecha(DetallePrestamo cuota, double moraNueva, long diasMora, double moraPagada) {
+        if (cuota == null) {
+            return;
+        }
+        double mora = redondear(Math.max(0, moraNueva));
+        double total = redondear(nvl(cuota.getCapital()) + nvl(cuota.getInteres()) + nvl(cuota.getDesgravamen())
+            + nvl(cuota.getValorSeguroIncendio()) + mora);
+        cuota.setMora(mora);
+        cuota.setMoraCalculada(mora);
+        cuota.setDiasMora(Math.max(0L, diasMora));
+        cuota.setTotal(total);
+        cuota.setTotalConSeguro(total);
+        cuota.setSaldoMora(Math.max(0, redondear(mora - moraPagada)));
+    }
+
+    /**
+     * C33c: ancla de la precancelación. La PAGADA (4) de mayor número que no está entre {@code excluidas} (las futuras
+     * que el paso 3 cierra en 7), o {@code null}. {@code selectUltimaCuotaPagada} puede devolver una marca futura con
+     * saldo: recibía {@code DTPRSLOT} y el paso 3 la cerraba en 7, contra la regla de que el capital futuro vive en una
+     * cuota PAGADA (C35).
+     */
+    public static DetallePrestamo ultimaPagadaFuera(List<DetallePrestamo> cuotas, java.util.Set<Long> excluidas) {
+        DetallePrestamo r = null;
+        if (cuotas == null) {
+            return null;
+        }
+        for (DetallePrestamo c : cuotas) {
+            if (!esPagada(c) || c.getNumeroCuota() == null || (excluidas != null && excluidas.contains(c.getCodigo()))) {
+                continue;
+            }
+            if (r == null || c.getNumeroCuota() > r.getNumeroCuota()) {
+                r = c;
+            }
+        }
+        return r;
+    }
+
     /** Texto del invariante (punto 3). */
     public static String mensajeInvariante(Long idPrestamo, Number numeroPrevia, double saldoPrevia, Number numeroDestino,
             LocalDateTime corte, String tipoPago) {
