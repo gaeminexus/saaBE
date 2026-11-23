@@ -145,6 +145,16 @@ public class CierreCarteraDaoServiceImpl implements CierreCarteraDaoService {
      * apertura del neteo), que no pueden divergir.</p>
      */
     private static String pagos(LocalDate corte) {
+        return pagos(corte, true);
+    }
+
+    /**
+     * C27-B2: {@link #pagos(LocalDate)} con {@code eliminadasALaCola = false} para las consultas que
+     * reparten por banda: las cuotas que un abono posterior al corte eliminó no se suman a la cola; las
+     * agrega {@link #cuotasEliminadas(LocalDate)} con su propia fecha (ver
+     * {@link ModoCorteCartera#abonosPosterioresSql(boolean)}). Mismo total por préstamo.
+     */
+    private static String pagos(LocalDate corte, boolean eliminadasALaCola) {
         if (corte == null) {
             return PAGOS_VIGENTES;
         }
@@ -156,8 +166,20 @@ public class CierreCarteraDaoServiceImpl implements CierreCarteraDaoService {
                 + "          NVL(PGPRDSGR,0) dsgr, NVL(PGPRVLSI,0) segi "
                 + "   FROM CRD.PGPR WHERE (PGPRANUL IS NULL OR PGPRANUL = 0) AND PGPRFCHA < :corteSig "
                 + "   UNION ALL "
-                + "   SELECT ap.DTPRCDGO, ap.cap, 0, 0, 0, 0, 0 FROM (" + ModoCorteCartera.abonosPosterioresSql() + ") ap "
+                + "   SELECT ap.DTPRCDGO, ap.cap, 0, 0, 0, 0, 0 FROM ("
+                + ModoCorteCartera.abonosPosterioresSql(eliminadasALaCola) + ") ap "
                 + "  ) GROUP BY DTPRCDGO) g ";
+    }
+
+    /**
+     * C27-B2: FROM/WHERE de las cuotas que un abono posterior al corte eliminó de la tabla (alias
+     * {@code x}: PRSTCDGO, DTPRNMCT, FCVN, CPTL y el DTPRCDGO de la cola; alias {@code p}: el préstamo),
+     * con el mismo universo al corte. Ver {@link ModoCorteCartera#cuotasEliminadasPorAbonoSql()}.
+     */
+    private static String cuotasEliminadas(LocalDate corte) {
+        return " FROM (" + ModoCorteCartera.cuotasEliminadasPorAbonoSql() + ") x "
+                + " JOIN CRD.PRST p ON p.PRSTCDGO = x.PRSTCDGO "
+                + " WHERE " + universo(corte) + " AND p.PRDCCDGO IS NOT NULL ";
     }
 
     /** Mora bruta de la cuota: la persistida HOY, o la fórmula del proceso diario al corte. */
@@ -209,20 +231,22 @@ public class CierreCarteraDaoServiceImpl implements CierreCarteraDaoService {
     public List<Object[]> selectCapitalPorProductoYVencimiento(Long idEmpresa, LocalDate corte) throws Throwable {
         System.out.println("Ingresa al metodo selectCapitalPorProductoYVencimiento"
                 + " - empresa: " + idEmpresa + " - corte: " + corte);
-        Query query = em.createNativeQuery(
-                " SELECT p.PRDCCDGO, TRUNC(d.DTPRFCVN), "
-                + "        SUM(GREATEST(NVL(d.DTPRCPTL,0) - NVL(g.cap,0), 0)), "
-                + "        COUNT(*) "
+        // C27-B2: al corte, las cuotas que un abono posterior eliminó entran con su propia fecha.
+        String cuotas = " SELECT p.PRDCCDGO PRDC, TRUNC(d.DTPRFCVN) FCVN, "
+                + "        GREATEST(NVL(d.DTPRCPTL,0) - NVL(g.cap,0), 0) CPTL "
                 + " FROM   CRD.DTPR d "
                 + " JOIN   CRD.PRST p ON p.PRSTCDGO = d.PRSTCDGO "
-                + " LEFT JOIN " + pagos(corte) + " ON g.DTPRCDGO = d.DTPRCDGO "
+                + " LEFT JOIN " + pagos(corte, corte == null) + " ON g.DTPRCDGO = d.DTPRCDGO "
                 + " WHERE  " + universo(corte)
                 + " AND    " + pendiente(corte)
                 + " AND    d.DTPRFCVN IS NOT NULL "
                 + " AND    p.PRDCCDGO IS NOT NULL "
-                + " GROUP BY p.PRDCCDGO, TRUNC(d.DTPRFCVN) "
-                + " HAVING SUM(GREATEST(NVL(d.DTPRCPTL,0) - NVL(g.cap,0), 0)) > 0 "
-                + " ORDER BY p.PRDCCDGO, TRUNC(d.DTPRFCVN)");
+                + (corte != null ? " UNION ALL SELECT p.PRDCCDGO, x.FCVN, x.CPTL " + cuotasEliminadas(corte) : "");
+        Query query = em.createNativeQuery(
+                " SELECT PRDC, FCVN, SUM(CPTL), COUNT(*) FROM (" + cuotas + ") "
+                + " GROUP BY PRDC, FCVN "
+                + " HAVING SUM(CPTL) > 0 "
+                + " ORDER BY PRDC, FCVN");
         parametroCorteSig(query, corte);
         return normalizaVencimientos(query.getResultList());
     }
@@ -290,18 +314,23 @@ public class CierreCarteraDaoServiceImpl implements CierreCarteraDaoService {
     public List<Object[]> selectCuotasPendientesPorPrestamo(Long idEmpresa, LocalDate corte) throws Throwable {
         System.out.println("Ingresa al metodo selectCuotasPendientesPorPrestamo"
                 + " - empresa: " + idEmpresa + " - corte: " + corte);
-        Query query = em.createNativeQuery(
-                " SELECT p.PRSTCDGO, p.PRDCCDGO, d.DTPRCDGO, d.DTPRNMCT, TRUNC(d.DTPRFCVN), "
-                + "        GREATEST(NVL(d.DTPRCPTL,0) - NVL(g.cap,0), 0) "
+        // C27-B2: al corte, las cuotas que un abono posterior eliminó entran con su propia fecha (con el
+        // código de cuota de la cola, que es real).
+        String cuotas = " SELECT p.PRSTCDGO PRST, p.PRDCCDGO PRDC, d.DTPRCDGO DTPR, d.DTPRNMCT NMCT, "
+                + "        TRUNC(d.DTPRFCVN) FCVN, GREATEST(NVL(d.DTPRCPTL,0) - NVL(g.cap,0), 0) CPTL "
                 + " FROM   CRD.DTPR d "
                 + " JOIN   CRD.PRST p ON p.PRSTCDGO = d.PRSTCDGO "
-                + " LEFT JOIN " + pagos(corte) + " ON g.DTPRCDGO = d.DTPRCDGO "
+                + " LEFT JOIN " + pagos(corte, corte == null) + " ON g.DTPRCDGO = d.DTPRCDGO "
                 + " WHERE  " + universo(corte)
                 + " AND    " + pendiente(corte)
                 + " AND    d.DTPRFCVN IS NOT NULL "
                 + " AND    p.PRDCCDGO IS NOT NULL "
-                + (corte != null ? " AND GREATEST(NVL(d.DTPRCPTL,0) - NVL(g.cap,0), 0) > 0.004 " : "")
-                + " ORDER BY p.PRSTCDGO, TRUNC(d.DTPRFCVN)");
+                + (corte != null ? " UNION ALL SELECT p.PRSTCDGO, p.PRDCCDGO, x.DTPRCDGO, x.DTPRNMCT, x.FCVN, x.CPTL "
+                        + cuotasEliminadas(corte) : "");
+        Query query = em.createNativeQuery(
+                " SELECT PRST, PRDC, DTPR, NMCT, FCVN, CPTL FROM (" + cuotas + ") "
+                + (corte != null ? " WHERE CPTL > 0.004 " : "")
+                + " ORDER BY PRST, FCVN, NMCT");
         parametroCorteSig(query, corte);
         return normalizaCuotasPorPrestamo(query.getResultList());
     }
