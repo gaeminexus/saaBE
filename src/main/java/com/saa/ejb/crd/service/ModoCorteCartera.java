@@ -183,6 +183,22 @@ public final class ModoCorteCartera {
      * Parámetro {@code :corteSig}; la fecha límite va como literal (viene de un {@link LocalDate}).</p>
      */
     public static String abonosPosterioresSql() {
+        return abonosPosterioresSql(true);
+    }
+
+    /**
+     * C27-B2 (2026-11-23): igual que {@link #abonosPosterioresSql()}, pero con
+     * {@code eliminadasALaCola = false} omite la regla 2 (las cuotas de la tabla anterior que el abono
+     * eliminó NO se suman a la cola). Lo usan solo las consultas que reparten por BANDA
+     * ({@code CierreCarteraDaoServiceImpl#selectCuotasPendientesPorPrestamo} y
+     * {@code #selectCapitalPorProductoYVencimiento}), que en su lugar agregan esas cuotas con su propia
+     * fecha de vencimiento ({@link #cuotasEliminadasPorAbonoSql()}): el total por préstamo es el mismo y
+     * cada cuota cae en la banda que tenía al corte. Caso: préstamo 3126 (abonos del 14-ago-2025, la
+     * tabla pasó de 186 a 93 cuotas): al corte de jun y jul 2025 las cuotas 94–186 (85.401,39 en junio)
+     * iban a la cuota 93 (91–180 días) en vez de 181–360 y más de 360, y el Resumen Financiero no
+     * cuadraba por banda con el balance ni con el cierre de cartera de esos meses.
+     */
+    public static String abonosPosterioresSql(boolean eliminadasALaCola) {
         String limite = "DATE '" + limiteAbonosPosteriores() + "'";
         String viva = " v.DTPRFCVN IS NOT NULL AND NVL(v.DTPRESTD,0) <> " + EstadoCuotaPrestamo.ANULADA
                 + " AND NOT (NVL(v.DTPRESTD,0) IN (" + EstadoCuotaPrestamo.PAGADA + ", "
@@ -195,7 +211,7 @@ public final class ModoCorteCartera {
                 + "  AND PGPRFCHA >= :corteSig AND PGPRFCHA < " + limite
                 + "  GROUP BY PRSTCDGO) ";
         // Tabla anterior al primer abono posterior (CRD.HDTP), por número de cuota.
-        String sn = " (SELECT h.PRSTCDGO, h.DTPRNMCT, SUM(NVL(h.DTPRCPTL,0)) CPTL FROM CRD.HDTP h"
+        String sn = " (SELECT h.PRSTCDGO, h.DTPRNMCT, SUM(NVL(h.DTPRCPTL,0)) CPTL, MIN(TRUNC(h.DTPRFCVN)) FCVN FROM CRD.HDTP h"
                 + "  JOIN " + ab + " a1 ON a1.EV = h.EVPRCDGO AND a1.PRSTCDGO = h.PRSTCDGO"
                 + "  GROUP BY h.PRSTCDGO, h.DTPRNMCT) ";
         // Última cuota viva al corte de los préstamos con abono posterior.
@@ -204,6 +220,14 @@ public final class ModoCorteCartera {
                 + "  FROM CRD.DTPR v WHERE " + viva
                 + "  AND v.PRSTCDGO IN (SELECT a2.PRSTCDGO FROM " + ab + " a2)"
                 + "  GROUP BY v.PRSTCDGO) ";
+        if (!eliminadasALaCola) {
+            return " SELECT v.DTPRCDGO, NVL(v.DTPRCPTL,0) - s.CPTL cap"
+                    + " FROM CRD.DTPR v JOIN " + sn + " s ON s.PRSTCDGO = v.PRSTCDGO AND s.DTPRNMCT = v.DTPRNMCT"
+                    + " WHERE " + viva
+                    + " UNION ALL"
+                    + " SELECT c.DTPRCDGO, -a3.SLOT FROM " + ab + " a3 JOIN " + cola + " c ON c.PRSTCDGO = a3.PRSTCDGO"
+                    + " WHERE NOT EXISTS (SELECT 1 FROM CRD.HDTP h WHERE h.EVPRCDGO = a3.EV AND h.PRSTCDGO = a3.PRSTCDGO) ";
+        }
         return " SELECT v.DTPRCDGO, NVL(v.DTPRCPTL,0) - s.CPTL cap"
                 + " FROM CRD.DTPR v JOIN " + sn + " s ON s.PRSTCDGO = v.PRSTCDGO AND s.DTPRNMCT = v.DTPRNMCT"
                 + " WHERE " + viva
@@ -215,6 +239,38 @@ public final class ModoCorteCartera {
                 + " UNION ALL"
                 + " SELECT c.DTPRCDGO, -a3.SLOT FROM " + ab + " a3 JOIN " + cola + " c ON c.PRSTCDGO = a3.PRSTCDGO"
                 + " WHERE NOT EXISTS (SELECT 1 FROM CRD.HDTP h WHERE h.EVPRCDGO = a3.EV AND h.PRSTCDGO = a3.PRSTCDGO) ";
+    }
+
+    /**
+     * C27-B2 (2026-11-23): cuotas de la tabla anterior al primer abono posterior al corte
+     * ({@code CRD.HDTP}) que el abono eliminó (hoy no existe una cuota viva con ese número), con su fecha
+     * de vencimiento y su capital de antes: exactamente lo que la regla 2 de
+     * {@link #abonosPosterioresSql()} suma a la cola. Columnas {@code PRSTCDGO, DTPRNMCT, FCVN, CPTL,
+     * DTPRCDGO} (este último es el de la cola, para quien necesite un código de cuota real). Mismo
+     * parámetro {@code :corteSig}.
+     */
+    public static String cuotasEliminadasPorAbonoSql() {
+        String limite = "DATE '" + limiteAbonosPosteriores() + "'";
+        String viva = " v.DTPRFCVN IS NOT NULL AND NVL(v.DTPRESTD,0) <> " + EstadoCuotaPrestamo.ANULADA
+                + " AND NOT (NVL(v.DTPRESTD,0) IN (" + EstadoCuotaPrestamo.PAGADA + ", "
+                + EstadoCuotaPrestamo.CANCELADA_ANTICIPADA + ") AND NVL(v.DTPRFCPG, :corteSig) < :corteSig) ";
+        String ab = " (SELECT PRSTCDGO, MIN(EVPRCDGO) KEEP (DENSE_RANK FIRST ORDER BY PGPRFCHA, PGPRCDGO) EV"
+                + "  FROM CRD.PGPR WHERE PGPRTPOO = '" + ProcesoPagoPrestamoService.TIPO_ABONO_CAPITAL + "'"
+                + "  AND NVL(PGPRANUL,0) = 0 AND NVL(PGPRSLOT,0) > 0"
+                + "  AND PGPRFCHA >= :corteSig AND PGPRFCHA < " + limite
+                + "  GROUP BY PRSTCDGO) ";
+        String sn = " (SELECT h.PRSTCDGO, h.DTPRNMCT, SUM(NVL(h.DTPRCPTL,0)) CPTL, MIN(TRUNC(h.DTPRFCVN)) FCVN FROM CRD.HDTP h"
+                + "  JOIN " + ab + " a1 ON a1.EV = h.EVPRCDGO AND a1.PRSTCDGO = h.PRSTCDGO"
+                + "  GROUP BY h.PRSTCDGO, h.DTPRNMCT) ";
+        String cola = " (SELECT v.PRSTCDGO,"
+                + "         MAX(v.DTPRCDGO) KEEP (DENSE_RANK LAST ORDER BY TRUNC(v.DTPRFCVN), v.DTPRCDGO) DTPRCDGO"
+                + "  FROM CRD.DTPR v WHERE " + viva
+                + "  AND v.PRSTCDGO IN (SELECT a2.PRSTCDGO FROM " + ab + " a2)"
+                + "  GROUP BY v.PRSTCDGO) ";
+        return " SELECT s.PRSTCDGO, s.DTPRNMCT, s.FCVN, s.CPTL, c.DTPRCDGO"
+                + " FROM " + sn + " s JOIN " + cola + " c ON c.PRSTCDGO = s.PRSTCDGO"
+                + " WHERE NOT EXISTS (SELECT 1 FROM CRD.DTPR v WHERE v.PRSTCDGO = s.PRSTCDGO"
+                + "                   AND v.DTPRNMCT = s.DTPRNMCT AND " + viva + ") ";
     }
 
     /**
