@@ -86,6 +86,17 @@ public class EstructuraReporteServiceImpl implements EstructuraReporteService {
 				fechaComparacion);
 		r.setPreliminar(preliminar);
 		if (presentable) {
+			// C39 (23-nov-2026, D-150): la Superintendencia rechaza el B17 si una cuenta tiene saldo negativo
+			// («El saldo de la cuenta no puede ser negativo»); solo pueden serlo las correctoras (provisiones y
+			// depreciaciones: códigos 1x99… y 1xxx99…), como en el B17 de mayo 2025 aceptado. Las cuentas de orden (7)
+			// se reportan en valor absoluto. Se avisa aquí para no presentar un archivo que va a ser rechazado.
+			for (com.saa.ejb.cnt.estructura.LineaEstructura l : r.getLineas()) {
+				String c = l.getCodigo() != null ? l.getCodigo().trim() : "";
+				if (l.isVaEnArchivo() && l.getValor() != null && l.getValor().signum() < 0 && !c.startsWith("7")
+						&& !c.matches("1[0-9]99.*") && !c.matches("1[0-9]{3}99.*")) {
+					r.getAdvertencias().add("SALDO NEGATIVO (la Superintendencia lo rechaza): cuenta " + c + " = " + l.getValor());
+				}
+			}
 			String nombre = ArchivoEstructura.nombre(def, corte);
 			// preliminar: el contenido es el mismo, el nombre lo delata (B17M396830062025_PRELIMINAR.txt)
 			r.setNombreArchivo(preliminar ? nombre.replace(".txt", "_PRELIMINAR.txt") : nombre);

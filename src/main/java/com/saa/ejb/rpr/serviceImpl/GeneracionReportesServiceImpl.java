@@ -37,6 +37,8 @@ public class GeneracionReportesServiceImpl implements GeneracionReportesService 
     @EJB private GeneracionUnReporteService     unReporteService;
     /** C17: solo se generan reportes de meses cerrados para cartera. */
     @EJB private com.saa.ejb.cnt.service.EstadoCierreService estadoCierreService;
+    /** C39: validación previa de las G (lo que la Super rechazaría) al terminar la generación. */
+    @EJB private com.saa.ejb.rpr.service.ValidacionEstructurasGService validacionService;
 
     @Override
     public EjecucionReporte ejecutarGeneracion(Long mes, Long anio, String usuario) throws Throwable {
@@ -166,7 +168,16 @@ public class GeneracionReportesServiceImpl implements GeneracionReportesService 
         // OK antes de esta llamada y sigue igual.
         if (reportesConNovedades.isEmpty()) {
             ejrc.setEstado(EJRC_COMPLETO);
-            ejrc.setObservaciones("Todos los reportes G40-G51 generados correctamente");
+            // C39 (23-nov-2026): la validación previa no cambia el estado (los archivos se generaron), pero su resumen
+            // queda en las observaciones para que nadie descargue y presente sin verlo. Si la validación falla, no se
+            // pierde la generación.
+            String validacion;
+            try {
+                validacion = validacionService.resumen(validacionService.validar(ejrc.getCodigo()));
+            } catch (Throwable e) {
+                validacion = "no se pudo correr la validación previa: " + (e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
+            }
+            ejrc.setObservaciones(truncar("Todos los reportes G40-G51 generados correctamente; " + validacion, LIMITE_OBSERVACIONES_EJRC));
         } else {
             ejrc.setEstado(EJRC_CON_NOVEDADES);
             // Con nombre y mensaje — antes decía "N reporte(s) con novedades: ver detalle en

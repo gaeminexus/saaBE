@@ -30,6 +30,21 @@ public class EjecucionReporteRest {
     @EJB private EjecucionReporteDaoService ejecucionReporteDaoService;
     @EJB private EjecucionReporteService ejecucionReporteService;
     @EJB private GeneracionReportesService generacionReportesService;
+    @EJB private com.saa.ejb.rpr.service.ValidacionEstructurasGService validacionService;
+
+    /**
+     * C39 (23-nov-2026): validación previa de las G40–G51 de una ejecución (lo que la Superintendencia rechazaría).
+     * URL: GET /ejrc/validar/{codigo}. Lista vacía = sin observaciones.
+     */
+    @GET @Path("/validar/{codigo}") @Produces(MediaType.APPLICATION_JSON)
+    public Response validar(@PathParam("codigo") Long codigo) {
+        try {
+            return Response.ok(validacionService.validar(codigo), MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("Error al validar la ejecucion " + codigo + ": " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
+        }
+    }
     @Context private UriInfo context;
 
     public EjecucionReporteRest() {}
