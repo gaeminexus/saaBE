@@ -5,6 +5,39 @@
 
 ---
 
+# ⏱ VIGENTE AL 2026-11-24 (sesión nueva del árbitro; alcance crd y cnt) — léase primero
+
+**Este tablero estuvo congelado del 2026-09-30 al 2026-11-24.** Lo más nuevo antes de esta fecha está en
+`docs/equipos/saa-1.md` (traspaso del 01-11) y en los commits `crd(omen1)` del 05-11 al 16-11, que **no quedaron
+registrados en ningún tablero**. Desde aquí se registra cada frente.
+
+**Comparten crd/cnt con nosotros:** el cuadre (merges C30–C35, C33, C34 Novedades v2, c27-b2) y `omen-saa-3` (alcance
+total autorizado por el usuario el 27-10). `git log -3` sobre cada archivo antes de tocarlo.
+
+## Frentes abiertos
+
+| # | Frente | Estado | Documentos |
+|---|---|---|---|
+| R1 | **Reporte de préstamos cancelados** por rango (pantalla, PDF y CSV en columnas), pedido del usuario 2026-11-24 | contrato congelado; BE y FE por despachar | `crd/API-REPORTE-PRESTAMOS-CANCELADOS.md` (espejo `saaFE/docs/crd/`), `crd/sql/381` (medición, solo lectura) |
+
+## Hallazgos del 2026-11-24 (relevamiento)
+
+- **`/prdo/mayorizar/{id}` sigue sin existir**: el FE lo llama (`periodo.service.ts:144`) y `PeriodoRest` no lo tiene;
+  lo real es `MayorizacionRest /mayorizacion/...`. Sin corregir.
+- **Main va por delante del último EAR registrado** (`d022ca9b`, 18-11) con entidades nuevas de cnt (C34) y los
+  scripts `cnt/sql/C34-01..07d`, `crd/sql/380`, `rpr/C38-01`, `sri/C37-01`: si no corrieron en producción, el próximo
+  EAR de main da ORA-00904. Preguntado al usuario.
+- **Cerrados aunque el traspaso los diera abiertos:** estados 12/13 en el motor de saldos (lista blanca 2, 8, 10, 11)
+  y el relleno «SISTEMA» de los asientos (U-5b).
+- **Sin commitear en el árbol, ajeno:** el cambio de `desactivar` de USAP (equipo `app1`, orden `121cf8fa` del 19-11)
+  y `docs/logica-negocio/crd/modelos/` (sin seguimiento, dueño sin confirmar).
+- **R1 — la cancelación no tiene fecha ni forma grabadas**: se derivan de EVPR/PGPR/DTPR. Seis escritores de los
+  estados 3/4/5/13; la precancelación con préstamo nuevo solo deja la marca `[D-021 …]` en la observación (sin
+  `PRSTPROR`); el reverso deja `PGPRESTD = 1` (filtrar por `PGPRANUL`); Petro graba los pagos al fin de mes; el
+  `ExportService` del FE escribe los montos con punto decimal aunque el separador sea `;`. Detalle en el contrato §1.
+
+---
+
 # ⛔ FRENTE DE JUBILADOS: CERRADO Y PAGADO — 2026-09-07
 
 **Lo confirmó el usuario: «listo, todo ok».** La corrida de agosto 2026 corrió contra produccion,
