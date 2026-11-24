@@ -78,6 +78,18 @@ public class GeneracionG46ServiceImpl implements GeneracionG46Service {
                 continue;
             }
 
+            NuevoPrestamoG46 g46 = mapear(prestamo, detalle);
+            cg46DaoService.save(g46, null);
+            System.out.println("G46 INSERT prestamo idAsoprep: " + prestamo.getIdAsoprep());
+            contador++;
+        }
+
+        System.out.println("G46 generado con " + contador + " registros");
+        return contador;
+    }
+
+    @Override
+    public NuevoPrestamoG46 mapear(Prestamo prestamo, DetalleEjecucionReporte detalle) throws Throwable {
             NuevoPrestamoG46 g46 = new NuevoPrestamoG46();
 
             // Identificación del partícipe
@@ -153,13 +165,6 @@ public class GeneracionG46ServiceImpl implements GeneracionG46Service {
             g46.setTasaInteresNominal(prestamo.getInteresNominal() != null ? prestamo.getInteresNominal() : 0.0);
 
             g46.setDetalleEjecucion(detalle);
-
-            cg46DaoService.save(g46, null);
-            System.out.println("G46 INSERT prestamo idAsoprep: " + prestamo.getIdAsoprep());
-            contador++;
-        }
-
-        System.out.println("G46 generado con " + contador + " registros");
-        return contador;
+            return g46;
     }
 }
