@@ -136,6 +136,25 @@ public class PrestamoCanceladoDaoServiceImpl implements PrestamoCanceladoDaoServ
         return ids == null ? 0 : ids.size();
     }
 
+    private String primerTexto(String sql, Long id) {
+        Query q = em.createNativeQuery(sql);
+        q.setParameter("id", id);
+        List<Object> r = q.getResultList();
+        return r.isEmpty() || r.get(0) == null ? null : r.get(0).toString();
+    }
+
+    @Override
+    public String nombreProducto(Long idProducto) {
+        System.out.println("PrestamoCanceladoDaoService.nombreProducto - " + idProducto);
+        return primerTexto("SELECT pd.PRDCNMBR FROM CRD.PRDC pd WHERE pd.PRDCCDGO = :id", idProducto);
+    }
+
+    @Override
+    public String nombreFilial(Long idFilial) {
+        System.out.println("PrestamoCanceladoDaoService.nombreFilial - " + idFilial);
+        return primerTexto("SELECT f.FLLLNMBR FROM CRD.FLLL f WHERE f.FLLLCDGO = :id", idFilial);
+    }
+
     @Override
     public List<Object[]> datosPrestamos(List<Long> ids) {
         System.out.println("PrestamoCanceladoDaoService.datosPrestamos - " + tam(ids));

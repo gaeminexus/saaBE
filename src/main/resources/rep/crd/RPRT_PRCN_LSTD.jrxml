@@ -1,0 +1,315 @@
+<!-- Listado de préstamos cancelados en un rango (pantalla/PDF/CSV). Contrato: docs/logica-negocio/crd/API-REPORTE-PRESTAMOS-CANCELADOS.md §7.
+     SIN <query> a propósito: se llena por colección (ReporteService.generarReporteDesdeColeccion) con las filas de PrestamoCanceladoFila,
+     cuyos getters son los <field>. NO llenarlo con generarReporte (conexión JDBC): daría cero filas y saldría solo el título.
+     Sin fontName="Tahoma" (el PDF pierde la negrita). Compilar con compilar-jasper.bat y commitear el .jrxml y el .jasper juntos. -->
+<jasperReport name="RPRT_PRCN_LSTD" language="java" pageWidth="842" pageHeight="595" orientation="Landscape" columnWidth="802" leftMargin="20" rightMargin="20" topMargin="20" bottomMargin="20" whenNoDataType="AllSectionsNoDetail" uuid="c7000000-0000-0000-0000-000000000001">
+	<style name="Cab" mode="Opaque" backcolor="#E4E4E4" fontSize="6.5" bold="true" hTextAlign="Center" vTextAlign="Middle">
+		<box><pen lineWidth="0.25"/></box>
+	</style>
+	<style name="Det" fontSize="6.5" vTextAlign="Middle">
+		<box leftPadding="2" rightPadding="2"><pen lineWidth="0.25" lineColor="#999999"/></box>
+	</style>
+	<style name="GrupoCab" mode="Opaque" backcolor="#CFD8E8" fontSize="8.0" bold="true" hTextAlign="Left" vTextAlign="Middle"/>
+	<style name="Total" mode="Opaque" backcolor="#F1F1F1" fontSize="6.5" bold="true" vTextAlign="Middle">
+		<box leftPadding="2" rightPadding="2"><pen lineWidth="0.25"/></box>
+	</style>
+	<style name="Texto" fontSize="7.5" vTextAlign="Middle"/>
+	<parameter name="P_IMAGEN" class="java.awt.Image"/>
+	<parameter name="FECHA_DESDE" class="java.lang.String"/>
+	<parameter name="FECHA_HASTA" class="java.lang.String"/>
+	<parameter name="GENERADO" class="java.lang.String"/>
+	<parameter name="USUARIO" class="java.lang.String"/>
+	<parameter name="FILTROS" class="java.lang.String"/>
+	<parameter name="CANTIDAD" class="java.lang.Long"/>
+	<parameter name="CANCELADOS_SIN_FECHA" class="java.lang.Long"/>
+	<field name="fechaCancelacion" class="java.lang.String"/>
+	<field name="numeroOperacion" class="java.lang.Long"/>
+	<field name="cedula" class="java.lang.String"/>
+	<field name="nombreSocio" class="java.lang.String"/>
+	<field name="producto" class="java.lang.String"/>
+	<field name="estado" class="java.lang.String"/>
+	<field name="canal" class="java.lang.String"/>
+	<field name="montoSolicitado" class="java.lang.Double"/>
+	<field name="plazo" class="java.lang.Long"/>
+	<field name="totalCapitalPagado" class="java.lang.Double"/>
+	<field name="totalInteresPagado" class="java.lang.Double"/>
+	<field name="totalMoraPagada" class="java.lang.Double"/>
+	<field name="totalInteresVencidoPagado" class="java.lang.Double"/>
+	<field name="totalDesgravamenPagado" class="java.lang.Double"/>
+	<field name="totalSeguroIncendioPagado" class="java.lang.Double"/>
+	<field name="totalSaldoOtrosPagado" class="java.lang.Double"/>
+	<field name="totalPagado" class="java.lang.Double"/>
+	<field name="totalAportesUsados" class="java.lang.Double"/>
+	<field name="valorCondonado" class="java.lang.Double"/>
+	<field name="numeroOperacionNuevo" class="java.lang.Long"/>
+	<field name="forma" class="java.lang.String"/>
+	<field name="formaDescripcion" class="java.lang.String"/>
+	<variable name="V_G_MONTO" calculation="Sum" class="java.lang.Double" resetType="Group" resetGroup="G_FORMA">
+		<expression><![CDATA[$F{montoSolicitado}]]></expression>
+	</variable>
+	<variable name="V_G_CAPITAL" calculation="Sum" class="java.lang.Double" resetType="Group" resetGroup="G_FORMA">
+		<expression><![CDATA[$F{totalCapitalPagado}]]></expression>
+	</variable>
+	<variable name="V_G_INTERES" calculation="Sum" class="java.lang.Double" resetType="Group" resetGroup="G_FORMA">
+		<expression><![CDATA[$F{totalInteresPagado}]]></expression>
+	</variable>
+	<variable name="V_G_MORA" calculation="Sum" class="java.lang.Double" resetType="Group" resetGroup="G_FORMA">
+		<expression><![CDATA[$F{totalMoraPagada}]]></expression>
+	</variable>
+	<variable name="V_G_OTROS" calculation="Sum" class="java.lang.Double" resetType="Group" resetGroup="G_FORMA">
+		<expression><![CDATA[($F{totalInteresVencidoPagado} != null ? $F{totalInteresVencidoPagado} : 0.0)+($F{totalDesgravamenPagado} != null ? $F{totalDesgravamenPagado} : 0.0)+($F{totalSeguroIncendioPagado} != null ? $F{totalSeguroIncendioPagado} : 0.0)+($F{totalSaldoOtrosPagado} != null ? $F{totalSaldoOtrosPagado} : 0.0)]]></expression>
+	</variable>
+	<variable name="V_G_PAGADO" calculation="Sum" class="java.lang.Double" resetType="Group" resetGroup="G_FORMA">
+		<expression><![CDATA[$F{totalPagado}]]></expression>
+	</variable>
+	<variable name="V_G_APORTES" calculation="Sum" class="java.lang.Double" resetType="Group" resetGroup="G_FORMA">
+		<expression><![CDATA[$F{totalAportesUsados}]]></expression>
+	</variable>
+	<variable name="V_G_COND" calculation="Sum" class="java.lang.Double" resetType="Group" resetGroup="G_FORMA">
+		<expression><![CDATA[$F{valorCondonado}]]></expression>
+	</variable>
+	<variable name="V_T_MONTO" calculation="Sum" class="java.lang.Double">
+		<expression><![CDATA[$F{montoSolicitado}]]></expression>
+	</variable>
+	<variable name="V_T_CAPITAL" calculation="Sum" class="java.lang.Double">
+		<expression><![CDATA[$F{totalCapitalPagado}]]></expression>
+	</variable>
+	<variable name="V_T_INTERES" calculation="Sum" class="java.lang.Double">
+		<expression><![CDATA[$F{totalInteresPagado}]]></expression>
+	</variable>
+	<variable name="V_T_MORA" calculation="Sum" class="java.lang.Double">
+		<expression><![CDATA[$F{totalMoraPagada}]]></expression>
+	</variable>
+	<variable name="V_T_OTROS" calculation="Sum" class="java.lang.Double">
+		<expression><![CDATA[($F{totalInteresVencidoPagado} != null ? $F{totalInteresVencidoPagado} : 0.0)+($F{totalDesgravamenPagado} != null ? $F{totalDesgravamenPagado} : 0.0)+($F{totalSeguroIncendioPagado} != null ? $F{totalSeguroIncendioPagado} : 0.0)+($F{totalSaldoOtrosPagado} != null ? $F{totalSaldoOtrosPagado} : 0.0)]]></expression>
+	</variable>
+	<variable name="V_T_PAGADO" calculation="Sum" class="java.lang.Double">
+		<expression><![CDATA[$F{totalPagado}]]></expression>
+	</variable>
+	<variable name="V_T_APORTES" calculation="Sum" class="java.lang.Double">
+		<expression><![CDATA[$F{totalAportesUsados}]]></expression>
+	</variable>
+	<variable name="V_T_COND" calculation="Sum" class="java.lang.Double">
+		<expression><![CDATA[$F{valorCondonado}]]></expression>
+	</variable>
+	<variable name="V_G_CANT" calculation="Count" class="java.lang.Long" resetType="Group" resetGroup="G_FORMA">
+		<expression><![CDATA[$F{forma}]]></expression>
+	</variable>
+	<variable name="V_T_CANT" calculation="Count" class="java.lang.Long">
+		<expression><![CDATA[$F{forma}]]></expression>
+	</variable>
+	<group name="G_FORMA">
+		<expression><![CDATA[$F{forma}]]></expression>
+		<groupHeader>
+			<band height="16" splitType="Prevent">
+				<element kind="textField" uuid="c7000000-0000-0000-0000-000000000002" style="GrupoCab" x="0" y="1" width="802" height="14" printWhenExpression="$P{CANTIDAD} != null &amp;&amp; $P{CANTIDAD}.longValue() &gt; 0L">
+					<expression><![CDATA[$F{formaDescripcion}]]></expression>
+					<box leftPadding="4"/>
+				</element>
+			</band>
+		</groupHeader>
+		<groupFooter>
+			<band height="18" splitType="Prevent">
+			<element kind="textField" uuid="c7000000-0000-0000-0000-000000000003" style="Total" x="0" y="2" width="420" height="14" hTextAlign="Left" printWhenExpression="$P{CANTIDAD} != null &amp;&amp; $P{CANTIDAD}.longValue() &gt; 0L">
+				<expression><![CDATA["Subtotal " + $F{formaDescripcion} + ": " + $V{V_G_CANT} + (($V{V_G_CANT} != null && $V{V_G_CANT}.longValue() == 1L) ? " préstamo" : " préstamos")]]></expression>
+			</element>
+			<element kind="textField" uuid="c7000000-0000-0000-0000-000000000004" style="Total" x="420" y="2" width="46" height="14" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right" printWhenExpression="$P{CANTIDAD} != null &amp;&amp; $P{CANTIDAD}.longValue() &gt; 0L">
+				<expression><![CDATA[$V{V_G_MONTO}]]></expression>
+			</element>
+			<element kind="textField" uuid="c7000000-0000-0000-0000-000000000005" style="Total" x="488" y="2" width="46" height="14" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right" printWhenExpression="$P{CANTIDAD} != null &amp;&amp; $P{CANTIDAD}.longValue() &gt; 0L">
+				<expression><![CDATA[$V{V_G_CAPITAL}]]></expression>
+			</element>
+			<element kind="textField" uuid="c7000000-0000-0000-0000-000000000006" style="Total" x="534" y="2" width="40" height="14" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right" printWhenExpression="$P{CANTIDAD} != null &amp;&amp; $P{CANTIDAD}.longValue() &gt; 0L">
+				<expression><![CDATA[$V{V_G_INTERES}]]></expression>
+			</element>
+			<element kind="textField" uuid="c7000000-0000-0000-0000-000000000007" style="Total" x="574" y="2" width="32" height="14" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right" printWhenExpression="$P{CANTIDAD} != null &amp;&amp; $P{CANTIDAD}.longValue() &gt; 0L">
+				<expression><![CDATA[$V{V_G_MORA}]]></expression>
+			</element>
+			<element kind="textField" uuid="c7000000-0000-0000-0000-000000000008" style="Total" x="606" y="2" width="38" height="14" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right" printWhenExpression="$P{CANTIDAD} != null &amp;&amp; $P{CANTIDAD}.longValue() &gt; 0L">
+				<expression><![CDATA[$V{V_G_OTROS}]]></expression>
+			</element>
+			<element kind="textField" uuid="c7000000-0000-0000-0000-000000000009" style="Total" x="644" y="2" width="46" height="14" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right" printWhenExpression="$P{CANTIDAD} != null &amp;&amp; $P{CANTIDAD}.longValue() &gt; 0L">
+				<expression><![CDATA[$V{V_G_PAGADO}]]></expression>
+			</element>
+			<element kind="textField" uuid="c7000000-0000-0000-0000-000000000010" style="Total" x="690" y="2" width="38" height="14" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right" printWhenExpression="$P{CANTIDAD} != null &amp;&amp; $P{CANTIDAD}.longValue() &gt; 0L">
+				<expression><![CDATA[$V{V_G_APORTES}]]></expression>
+			</element>
+			<element kind="textField" uuid="c7000000-0000-0000-0000-000000000011" style="Total" x="728" y="2" width="36" height="14" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right" printWhenExpression="$P{CANTIDAD} != null &amp;&amp; $P{CANTIDAD}.longValue() &gt; 0L">
+				<expression><![CDATA[$V{V_G_COND}]]></expression>
+			</element>
+			</band>
+		</groupFooter>
+	</group>
+	<background splitType="Stretch"/>
+	<title height="96" splitType="Stretch">
+		<element kind="image" uuid="c7000000-0000-0000-0000-000000000012" x="0" y="0" width="80" height="45" scaleImage="RetainShape" onErrorType="Blank" hImageAlign="Center" vImageAlign="Middle">
+			<expression><![CDATA[$P{P_IMAGEN}]]></expression>
+		</element>
+		<element kind="staticText" uuid="c7000000-0000-0000-0000-000000000013" x="90" y="0" width="712" height="20" fontSize="14.0" bold="true" hTextAlign="Left" vTextAlign="Middle">
+			<text><![CDATA[PRÉSTAMOS CANCELADOS]]></text>
+		</element>
+		<element kind="textField" uuid="c7000000-0000-0000-0000-000000000014" style="Texto" x="90" y="21" width="712" height="12" bold="true">
+			<expression><![CDATA["Rango de fecha de cancelación: " + $P{FECHA_DESDE} + " al " + $P{FECHA_HASTA}]]></expression>
+		</element>
+		<element kind="textField" uuid="c7000000-0000-0000-0000-000000000015" style="Texto" x="90" y="33" width="712" height="12" fontSize="6.5">
+			<expression><![CDATA[$P{FILTROS}]]></expression>
+		</element>
+		<element kind="textField" uuid="c7000000-0000-0000-0000-000000000016" style="Texto" x="0" y="48" width="802" height="12" fontSize="6.5" hTextAlign="Right">
+			<expression><![CDATA["Generado: " + $P{GENERADO} + (($P{USUARIO} != null && !$P{USUARIO}.isEmpty()) ? "   Usuario: " + $P{USUARIO} : "")]]></expression>
+		</element>
+		<element kind="staticText" uuid="c7000000-0000-0000-0000-000000000017" style="Texto" x="0" y="62" width="802" height="12" fontSize="6.0" italic="true">
+			<text><![CDATA[La fecha de cancelación en las cargas Petro/ARCH es el último día del mes de afectación; en la migración, el vencimiento de la cuota. Otros pag. = interés vencido + desgravamen + seguro de incendio + saldo otros (en una precancelación incluye el capital futuro).]]></text>
+		</element>
+		<element kind="textField" uuid="c7000000-0000-0000-0000-000000000018" style="Texto" x="0" y="78" width="802" height="16" fontSize="9.0" bold="true" hTextAlign="Center" printWhenExpression="$P{CANTIDAD} == null || $P{CANTIDAD}.longValue() == 0L">
+			<expression><![CDATA["Sin préstamos cancelados en el rango"]]></expression>
+		</element>
+	</title>
+	<columnHeader height="22" splitType="Stretch">
+		<element kind="staticText" uuid="c7000000-0000-0000-0000-000000000019" style="Cab" x="0" y="0" width="44" height="22" printWhenExpression="$P{CANTIDAD} != null &amp;&amp; $P{CANTIDAD}.longValue() &gt; 0L">
+			<text><![CDATA[FECHA CANC.]]></text>
+		</element>
+		<element kind="staticText" uuid="c7000000-0000-0000-0000-000000000020" style="Cab" x="44" y="0" width="38" height="22" printWhenExpression="$P{CANTIDAD} != null &amp;&amp; $P{CANTIDAD}.longValue() &gt; 0L">
+			<text><![CDATA[N° OPER.]]></text>
+		</element>
+		<element kind="staticText" uuid="c7000000-0000-0000-0000-000000000021" style="Cab" x="82" y="0" width="52" height="22" printWhenExpression="$P{CANTIDAD} != null &amp;&amp; $P{CANTIDAD}.longValue() &gt; 0L">
+			<text><![CDATA[CÉDULA]]></text>
+		</element>
+		<element kind="staticText" uuid="c7000000-0000-0000-0000-000000000022" style="Cab" x="134" y="0" width="114" height="22" printWhenExpression="$P{CANTIDAD} != null &amp;&amp; $P{CANTIDAD}.longValue() &gt; 0L">
+			<text><![CDATA[SOCIO]]></text>
+		</element>
+		<element kind="staticText" uuid="c7000000-0000-0000-0000-000000000023" style="Cab" x="248" y="0" width="62" height="22" printWhenExpression="$P{CANTIDAD} != null &amp;&amp; $P{CANTIDAD}.longValue() &gt; 0L">
+			<text><![CDATA[PRODUCTO]]></text>
+		</element>
+		<element kind="staticText" uuid="c7000000-0000-0000-0000-000000000024" style="Cab" x="310" y="0" width="52" height="22" printWhenExpression="$P{CANTIDAD} != null &amp;&amp; $P{CANTIDAD}.longValue() &gt; 0L">
+			<text><![CDATA[ESTADO]]></text>
+		</element>
+		<element kind="staticText" uuid="c7000000-0000-0000-0000-000000000025" style="Cab" x="362" y="0" width="58" height="22" printWhenExpression="$P{CANTIDAD} != null &amp;&amp; $P{CANTIDAD}.longValue() &gt; 0L">
+			<text><![CDATA[ORIGEN DEL DINERO]]></text>
+		</element>
+		<element kind="staticText" uuid="c7000000-0000-0000-0000-000000000026" style="Cab" x="420" y="0" width="46" height="22" printWhenExpression="$P{CANTIDAD} != null &amp;&amp; $P{CANTIDAD}.longValue() &gt; 0L">
+			<text><![CDATA[MONTO]]></text>
+		</element>
+		<element kind="staticText" uuid="c7000000-0000-0000-0000-000000000027" style="Cab" x="466" y="0" width="22" height="22" printWhenExpression="$P{CANTIDAD} != null &amp;&amp; $P{CANTIDAD}.longValue() &gt; 0L">
+			<text><![CDATA[PLZ.]]></text>
+		</element>
+		<element kind="staticText" uuid="c7000000-0000-0000-0000-000000000028" style="Cab" x="488" y="0" width="46" height="22" printWhenExpression="$P{CANTIDAD} != null &amp;&amp; $P{CANTIDAD}.longValue() &gt; 0L">
+			<text><![CDATA[CAPITAL PAG.]]></text>
+		</element>
+		<element kind="staticText" uuid="c7000000-0000-0000-0000-000000000029" style="Cab" x="534" y="0" width="40" height="22" printWhenExpression="$P{CANTIDAD} != null &amp;&amp; $P{CANTIDAD}.longValue() &gt; 0L">
+			<text><![CDATA[INTERÉS PAG.]]></text>
+		</element>
+		<element kind="staticText" uuid="c7000000-0000-0000-0000-000000000030" style="Cab" x="574" y="0" width="32" height="22" printWhenExpression="$P{CANTIDAD} != null &amp;&amp; $P{CANTIDAD}.longValue() &gt; 0L">
+			<text><![CDATA[MORA PAG.]]></text>
+		</element>
+		<element kind="staticText" uuid="c7000000-0000-0000-0000-000000000031" style="Cab" x="606" y="0" width="38" height="22" printWhenExpression="$P{CANTIDAD} != null &amp;&amp; $P{CANTIDAD}.longValue() &gt; 0L">
+			<text><![CDATA[OTROS PAG.]]></text>
+		</element>
+		<element kind="staticText" uuid="c7000000-0000-0000-0000-000000000032" style="Cab" x="644" y="0" width="46" height="22" printWhenExpression="$P{CANTIDAD} != null &amp;&amp; $P{CANTIDAD}.longValue() &gt; 0L">
+			<text><![CDATA[TOTAL PAGADO]]></text>
+		</element>
+		<element kind="staticText" uuid="c7000000-0000-0000-0000-000000000033" style="Cab" x="690" y="0" width="38" height="22" printWhenExpression="$P{CANTIDAD} != null &amp;&amp; $P{CANTIDAD}.longValue() &gt; 0L">
+			<text><![CDATA[APORTES]]></text>
+		</element>
+		<element kind="staticText" uuid="c7000000-0000-0000-0000-000000000034" style="Cab" x="728" y="0" width="36" height="22" printWhenExpression="$P{CANTIDAD} != null &amp;&amp; $P{CANTIDAD}.longValue() &gt; 0L">
+			<text><![CDATA[COND.]]></text>
+		</element>
+		<element kind="staticText" uuid="c7000000-0000-0000-0000-000000000035" style="Cab" x="764" y="0" width="38" height="22" printWhenExpression="$P{CANTIDAD} != null &amp;&amp; $P{CANTIDAD}.longValue() &gt; 0L">
+			<text><![CDATA[PRÉSTAMO NUEVO]]></text>
+		</element>
+	</columnHeader>
+	<detail>
+		<band height="14" splitType="Stretch">
+			<element kind="textField" uuid="c7000000-0000-0000-0000-000000000036" style="Det" x="0" y="0" width="44" height="14" textAdjust="ScaleFont" blankWhenNull="true" hTextAlign="Center">
+				<expression><![CDATA[$F{fechaCancelacion}]]></expression>
+			</element>
+			<element kind="textField" uuid="c7000000-0000-0000-0000-000000000037" style="Det" x="44" y="0" width="38" height="14" pattern="#0" blankWhenNull="true" hTextAlign="Center">
+				<expression><![CDATA[$F{numeroOperacion}]]></expression>
+			</element>
+			<element kind="textField" uuid="c7000000-0000-0000-0000-000000000038" style="Det" x="82" y="0" width="52" height="14" textAdjust="ScaleFont" blankWhenNull="true" hTextAlign="Center">
+				<expression><![CDATA[$F{cedula}]]></expression>
+			</element>
+			<element kind="textField" uuid="c7000000-0000-0000-0000-000000000039" style="Det" x="134" y="0" width="114" height="14" textAdjust="ScaleFont" blankWhenNull="true" hTextAlign="Left">
+				<expression><![CDATA[$F{nombreSocio}]]></expression>
+			</element>
+			<element kind="textField" uuid="c7000000-0000-0000-0000-000000000040" style="Det" x="248" y="0" width="62" height="14" textAdjust="ScaleFont" blankWhenNull="true" hTextAlign="Left">
+				<expression><![CDATA[$F{producto}]]></expression>
+			</element>
+			<element kind="textField" uuid="c7000000-0000-0000-0000-000000000041" style="Det" x="310" y="0" width="52" height="14" textAdjust="ScaleFont" blankWhenNull="true" hTextAlign="Center">
+				<expression><![CDATA[$F{estado}]]></expression>
+			</element>
+			<element kind="textField" uuid="c7000000-0000-0000-0000-000000000042" style="Det" x="362" y="0" width="58" height="14" textAdjust="ScaleFont" blankWhenNull="true" hTextAlign="Center">
+				<expression><![CDATA[$F{canal}]]></expression>
+			</element>
+			<element kind="textField" uuid="c7000000-0000-0000-0000-000000000043" style="Det" x="420" y="0" width="46" height="14" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right">
+				<expression><![CDATA[$F{montoSolicitado}]]></expression>
+			</element>
+			<element kind="textField" uuid="c7000000-0000-0000-0000-000000000044" style="Det" x="466" y="0" width="22" height="14" pattern="#0" blankWhenNull="true" hTextAlign="Center">
+				<expression><![CDATA[$F{plazo}]]></expression>
+			</element>
+			<element kind="textField" uuid="c7000000-0000-0000-0000-000000000045" style="Det" x="488" y="0" width="46" height="14" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right">
+				<expression><![CDATA[$F{totalCapitalPagado}]]></expression>
+			</element>
+			<element kind="textField" uuid="c7000000-0000-0000-0000-000000000046" style="Det" x="534" y="0" width="40" height="14" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right">
+				<expression><![CDATA[$F{totalInteresPagado}]]></expression>
+			</element>
+			<element kind="textField" uuid="c7000000-0000-0000-0000-000000000047" style="Det" x="574" y="0" width="32" height="14" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right">
+				<expression><![CDATA[$F{totalMoraPagada}]]></expression>
+			</element>
+			<element kind="textField" uuid="c7000000-0000-0000-0000-000000000048" style="Det" x="606" y="0" width="38" height="14" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right">
+				<expression><![CDATA[(($F{totalInteresVencidoPagado} != null ? $F{totalInteresVencidoPagado} : 0.0)+($F{totalDesgravamenPagado} != null ? $F{totalDesgravamenPagado} : 0.0)+($F{totalSeguroIncendioPagado} != null ? $F{totalSeguroIncendioPagado} : 0.0)+($F{totalSaldoOtrosPagado} != null ? $F{totalSaldoOtrosPagado} : 0.0))]]></expression>
+			</element>
+			<element kind="textField" uuid="c7000000-0000-0000-0000-000000000049" style="Det" x="644" y="0" width="46" height="14" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right">
+				<expression><![CDATA[$F{totalPagado}]]></expression>
+			</element>
+			<element kind="textField" uuid="c7000000-0000-0000-0000-000000000050" style="Det" x="690" y="0" width="38" height="14" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right">
+				<expression><![CDATA[$F{totalAportesUsados}]]></expression>
+			</element>
+			<element kind="textField" uuid="c7000000-0000-0000-0000-000000000051" style="Det" x="728" y="0" width="36" height="14" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right">
+				<expression><![CDATA[$F{valorCondonado}]]></expression>
+			</element>
+			<element kind="textField" uuid="c7000000-0000-0000-0000-000000000052" style="Det" x="764" y="0" width="38" height="14" pattern="#0" blankWhenNull="true" hTextAlign="Center">
+				<expression><![CDATA[$F{numeroOperacionNuevo}]]></expression>
+			</element>
+		</band>
+	</detail>
+	<pageFooter height="16" splitType="Stretch">
+		<element kind="textField" uuid="c7000000-0000-0000-0000-000000000053" style="Texto" x="702" y="2" width="50" height="12" fontSize="6.5" hTextAlign="Right">
+			<expression><![CDATA["Página " + $V{PAGE_NUMBER}]]></expression>
+		</element>
+		<element kind="textField" uuid="c7000000-0000-0000-0000-000000000054" style="Texto" x="752" y="2" width="50" height="12" fontSize="6.5" evaluationTime="Report" hTextAlign="Left">
+			<expression><![CDATA[" de " + $V{PAGE_NUMBER}]]></expression>
+		</element>
+	</pageFooter>
+	<summary height="46" splitType="Prevent">
+			<element kind="textField" uuid="c7000000-0000-0000-0000-000000000055" style="Total" x="0" y="2" width="420" height="14" hTextAlign="Left" printWhenExpression="$P{CANTIDAD} != null &amp;&amp; $P{CANTIDAD}.longValue() &gt; 0L">
+				<expression><![CDATA["TOTAL GENERAL: " + $V{V_T_CANT} + (($V{V_T_CANT} != null && $V{V_T_CANT}.longValue() == 1L) ? " préstamo" : " préstamos")]]></expression>
+			</element>
+			<element kind="textField" uuid="c7000000-0000-0000-0000-000000000056" style="Total" x="420" y="2" width="46" height="14" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right" printWhenExpression="$P{CANTIDAD} != null &amp;&amp; $P{CANTIDAD}.longValue() &gt; 0L">
+				<expression><![CDATA[$V{V_T_MONTO}]]></expression>
+			</element>
+			<element kind="textField" uuid="c7000000-0000-0000-0000-000000000057" style="Total" x="488" y="2" width="46" height="14" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right" printWhenExpression="$P{CANTIDAD} != null &amp;&amp; $P{CANTIDAD}.longValue() &gt; 0L">
+				<expression><![CDATA[$V{V_T_CAPITAL}]]></expression>
+			</element>
+			<element kind="textField" uuid="c7000000-0000-0000-0000-000000000058" style="Total" x="534" y="2" width="40" height="14" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right" printWhenExpression="$P{CANTIDAD} != null &amp;&amp; $P{CANTIDAD}.longValue() &gt; 0L">
+				<expression><![CDATA[$V{V_T_INTERES}]]></expression>
+			</element>
+			<element kind="textField" uuid="c7000000-0000-0000-0000-000000000059" style="Total" x="574" y="2" width="32" height="14" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right" printWhenExpression="$P{CANTIDAD} != null &amp;&amp; $P{CANTIDAD}.longValue() &gt; 0L">
+				<expression><![CDATA[$V{V_T_MORA}]]></expression>
+			</element>
+			<element kind="textField" uuid="c7000000-0000-0000-0000-000000000060" style="Total" x="606" y="2" width="38" height="14" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right" printWhenExpression="$P{CANTIDAD} != null &amp;&amp; $P{CANTIDAD}.longValue() &gt; 0L">
+				<expression><![CDATA[$V{V_T_OTROS}]]></expression>
+			</element>
+			<element kind="textField" uuid="c7000000-0000-0000-0000-000000000061" style="Total" x="644" y="2" width="46" height="14" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right" printWhenExpression="$P{CANTIDAD} != null &amp;&amp; $P{CANTIDAD}.longValue() &gt; 0L">
+				<expression><![CDATA[$V{V_T_PAGADO}]]></expression>
+			</element>
+			<element kind="textField" uuid="c7000000-0000-0000-0000-000000000062" style="Total" x="690" y="2" width="38" height="14" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right" printWhenExpression="$P{CANTIDAD} != null &amp;&amp; $P{CANTIDAD}.longValue() &gt; 0L">
+				<expression><![CDATA[$V{V_T_APORTES}]]></expression>
+			</element>
+			<element kind="textField" uuid="c7000000-0000-0000-0000-000000000063" style="Total" x="728" y="2" width="36" height="14" pattern="#,##0.00" blankWhenNull="true" hTextAlign="Right" printWhenExpression="$P{CANTIDAD} != null &amp;&amp; $P{CANTIDAD}.longValue() &gt; 0L">
+				<expression><![CDATA[$V{V_T_COND}]]></expression>
+			</element>
+			<element kind="textField" uuid="c7000000-0000-0000-0000-000000000064" style="Texto" x="0" y="24" width="802" height="14" bold="true" printWhenExpression="$P{CANCELADOS_SIN_FECHA} != null &amp;&amp; $P{CANCELADOS_SIN_FECHA}.longValue() &gt; 0L">
+				<expression><![CDATA[$P{CANCELADOS_SIN_FECHA} + ($P{CANCELADOS_SIN_FECHA}.longValue() == 1L ? " préstamo cancelado no tiene fecha registrada y no se incluye" : " préstamos cancelados no tienen fecha registrada y no se incluyen")]]></expression>
+			</element>
+	</summary>
+</jasperReport>

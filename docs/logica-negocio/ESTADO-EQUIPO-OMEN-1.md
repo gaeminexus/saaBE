@@ -18,7 +18,7 @@ total autorizado por el usuario el 27-10). `git log -3` sobre cada archivo antes
 
 | # | Frente | Estado | Documentos |
 |---|---|---|---|
-| R1 | **Reporte de préstamos cancelados** por rango (pantalla, PDF y CSV en columnas), pedido del usuario 2026-11-24 | contrato congelado; BE y FE por despachar | `crd/API-REPORTE-PRESTAMOS-CANCELADOS.md` (espejo `saaFE/docs/crd/`), `crd/sql/381` (medición, solo lectura) |
+| R1 | **Reporte de préstamos cancelados** por rango (pantalla, PDF y CSV en columnas), pedido del usuario 2026-11-24 | **código completo BE+FE, commiteado (saaBE 38c2536c + PDF, saaFE d3f2b15), SIN probar contra Oracle ni desplegar**. Contraste FE↔BE OK. Falta: prueba del usuario en un ambiente con el `381` como control | `crd/API-REPORTE-PRESTAMOS-CANCELADOS.md` (espejo `saaFE/docs/crd/`), `crd/sql/381` (medición, solo lectura) |
 
 ## Hallazgos del 2026-11-24 (relevamiento)
 

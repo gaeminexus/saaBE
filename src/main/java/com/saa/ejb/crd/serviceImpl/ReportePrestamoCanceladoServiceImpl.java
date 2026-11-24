@@ -217,13 +217,24 @@ public class ReportePrestamoCanceladoServiceImpl implements ReportePrestamoCance
         }
     }
 
-    private static String textoFiltros(FiltroValido f) {
+    /** Texto de filtros del encabezado del PDF: con los NOMBRES de producto y filial; «Producto #id» si no existe. */
+    private String textoFiltros(FiltroValido f) {
+        String producto = "todos";
+        if (f.idProducto != null) {
+            String nombre = dao.nombreProducto(f.idProducto);
+            producto = nombre != null ? nombre : "Producto #" + f.idProducto;
+        }
+        String filial = "todas";
+        if (f.idFilial != null) {
+            String nombre = dao.nombreFilial(f.idFilial);
+            filial = nombre != null ? nombre : "Filial #" + f.idFilial;
+        }
         StringBuilder sb = new StringBuilder();
-        sb.append("Producto (cód.): ").append(f.idProducto != null ? f.idProducto : "todos");
-        sb.append("  |  Filial (cód.): ").append(f.idFilial != null ? f.idFilial : "todas");
+        sb.append("Producto: ").append(producto);
+        sb.append("  |  Filial: ").append(filial);
         sb.append("  |  Estados: ");
         for (int i = 0; i < f.estados.size(); i++) {
-            sb.append(i > 0 ? ", " : "").append(f.estados.get(i));
+            sb.append(i > 0 ? ", " : "").append(textoEstado(f.estados.get(i)));
         }
         sb.append("  |  Formas: ");
         if (f.formas.isEmpty()) {

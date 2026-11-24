@@ -48,6 +48,22 @@ public interface PrestamoCanceladoDaoService {
     long contarSinFecha(Long idProducto, Long idFilial, List<Long> estados);
 
     /**
+     * Nombre de un producto, para el encabezado del PDF.
+     *
+     * @param idProducto {@code PRDC.PRDCCDGO}
+     * @return {@code PRDCNMBR}, o null si no existe el producto
+     */
+    String nombreProducto(Long idProducto);
+
+    /**
+     * Nombre de una filial, para el encabezado del PDF.
+     *
+     * @param idFilial {@code FLLL.FLLLCDGO}
+     * @return {@code FLLLNMBR}, o null si no existe la filial
+     */
+    String nombreFilial(Long idFilial);
+
+    /**
      * Datos del préstamo con su entidad, filial y producto.
      *
      * @param ids códigos de préstamo
