@@ -31,5 +31,12 @@ public interface TipoMovimientoInteresCuota {
 	 * Sin corrida: se anula por asiento, no por {@code anularByCorrida}.
 	 */
 	public static final long AJUSTE_TOPE_PROVISION = 10L;
+	/**
+	 * Lote 19 (nivel 1.4): devengo de INTERÉS por cuota (componente 1), con el asiento que lo contabiliza en la 1.4.02. Los tipos 5 y 6 siguen
+	 * siendo solo de mora. Requiere {@code sql/406} (CK_MVIC_TIPO hasta 12).
+	 */
+	public static final long DEVENGO_INTERES = 11L;
+	/** Lote 19: reverso del devengo de interés (abono, precancelación, acuerdo), por cuota y con el asiento que acredita la 1.4.02. */
+	public static final long REVERSO_DEVENGO_INTERES = 12L;
 
 }
