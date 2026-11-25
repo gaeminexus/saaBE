@@ -71,6 +71,11 @@ public class GeneracionG49ServiceImpl implements GeneracionG49Service {
         // G48 (CarteraAlCorteService), una operación con saldo al corte no se canceló en el mes: no
         // entra a la G49 por los grupos 1/2 y, por tanto, no se borra de la G48.
         Set<Long> prestamosConSaldoAlCorte = prestamosConSaldoAlCorte(fechaCancelacion);
+        // Cuadre D-207 (25-nov-2026): una operación solo se cancela si estaba en la G48 del mes anterior o se concedió en el mes (la
+        // regla que valida la Super). Los grupos 1 y 2 miran el vencimiento de la última cuota, no cuándo se pagó: un préstamo que pagó su
+        // última cuota por adelantado (67057: cuota 84 del 31-dic pagada el 30-nov) se cancelaba otra vez en el mes de ese vencimiento.
+        // Sin G48 anterior (o en junio 2025, que la toma del histórico) no se filtra.
+        Set<String> g48MesAnterior = operacionesG48MesAnterior(mes, anio);
 
         // D-038: fecha real de cancelación (y forma O si hubo novación) de cada operación con eventos en el mes.
         cancelacionesReales.clear();
@@ -94,6 +99,7 @@ public class GeneracionG49ServiceImpl implements GeneracionG49Service {
                 String numOp = prestamo.getIdAsoprep() != null ? String.valueOf(prestamo.getIdAsoprep()) : null;
                 if (numOp == null || operacionesInsertadas.contains(numOp)) continue;
                 if (conSaldoAlCorte(prestamo, prestamosConSaldoAlCorte, "grupo 1")) continue;
+                if (yaNoEstabaEnLaG48(prestamo, numOp, g48MesAnterior, fechaInicio, fechaFin, "grupo 1")) continue;
 
                 insertarG49(prestamo, numOp, fechaCancelacion, detalle);
                 operacionesInsertadas.add(numOp);
@@ -119,6 +125,7 @@ public class GeneracionG49ServiceImpl implements GeneracionG49Service {
                 String numOp = prestamo.getIdAsoprep() != null ? String.valueOf(prestamo.getIdAsoprep()) : null;
                 if (numOp == null || operacionesInsertadas.contains(numOp)) continue;
                 if (conSaldoAlCorte(prestamo, prestamosConSaldoAlCorte, "grupo 2")) continue;
+                if (yaNoEstabaEnLaG48(prestamo, numOp, g48MesAnterior, fechaInicio, fechaFin, "grupo 2")) continue;
 
                 insertarG49(prestamo, numOp, fechaCancelacion, detalle);
                 operacionesInsertadas.add(numOp);
@@ -281,6 +288,37 @@ public class GeneracionG49ServiceImpl implements GeneracionG49Service {
         }
         System.out.println("G49 Grupo 3 insertados: " + contador);
         return contador;
+    }
+
+    /** Cuadre D-207: operaciones de la G48 del mes anterior (la última ejecución de ese mes); null si no hay o en junio 2025. */
+    private Set<String> operacionesG48MesAnterior(long mes, long anio) {
+        if (mes == 6L && anio == 2025L) return null;
+        try {
+            long mesPrevio  = mes == 1 ? 12 : mes - 1;
+            long anioPrevio = mes == 1 ? anio - 1 : anio;
+            List<EjecucionReporte> listaPrev = ejrcService.selectByMesAnio(mesPrevio, anioPrevio);
+            if (listaPrev == null || listaPrev.isEmpty()) return null;
+            DetalleEjecucionReporte ejrdG48Prev = ejrdService.selectByEjecucionYTipo(listaPrev.get(0).getCodigo(), "G48");
+            if (ejrdG48Prev == null) return null;
+            Set<String> ops = new HashSet<>();
+            for (SaldoOperacionG48 r : saldoG48Service.selectByDetalle(ejrdG48Prev.getCodigo())) {
+                if (r.getNumeroOperacion() != null) ops.add(r.getNumeroOperacion().trim());
+            }
+            return ops.isEmpty() ? null : ops;
+        } catch (Throwable e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    /** Cuadre D-207: true si la operación no estaba en la G48 del mes anterior y no se concedió en el mes (no se cancela otra vez). */
+    private boolean yaNoEstabaEnLaG48(Prestamo prestamo, String numOp, Set<String> g48MesAnterior, LocalDateTime inicio, LocalDateTime fin,
+            String grupo) {
+        if (g48MesAnterior == null || g48MesAnterior.contains(numOp.trim())) return false;
+        LocalDateTime concedido = prestamo.getFechaInicio() != null ? prestamo.getFechaInicio() : prestamo.getFecha();
+        if (concedido != null && !concedido.isBefore(inicio) && !concedido.isAfter(fin)) return false;
+        System.out.println("G49 " + grupo + ": operación " + numOp + " omitida: no estaba en la G48 del mes anterior (ya cancelada)");
+        return true;
     }
 
     /**
