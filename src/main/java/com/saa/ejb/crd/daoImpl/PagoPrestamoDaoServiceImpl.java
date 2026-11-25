@@ -81,7 +81,7 @@ public class PagoPrestamoDaoServiceImpl extends EntityDaoImpl<PagoPrestamo> impl
 		// try/catch a propósito: un error no puede convertirse en "sin pagos".
 		Query query = em.createQuery(
 			"SELECT p FROM PagoPrestamo p " +
-			"WHERE p.prestamo.codigo = :idPrestamo " +
+			"WHERE p.detallePrestamo.prestamo.codigo = :idPrestamo " +
 			"AND (p.anulado IS NULL OR p.anulado = 0) " +
 			"ORDER BY p.codigo ASC");
 		query.setParameter("idPrestamo", idPrestamo);

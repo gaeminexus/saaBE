@@ -770,7 +770,17 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 	@Override
 	public List<Object[]> selectControlPrelacionAlCorte(java.time.LocalDate desde, java.time.LocalDate corte)
 			throws Throwable {
-		System.out.println("DetallePrestamoDaoServiceImpl.selectControlPrelacionAlCorte - desde " + desde + " corte " + corte);
+		return selectControlPrelacionAlCorte(desde, corte, null);
+	}
+
+	@SuppressWarnings("unchecked")
+	@Override
+	public List<Object[]> selectControlPrelacionAlCorte(java.time.LocalDate desde, java.time.LocalDate corte, Long idPrestamo)
+			throws Throwable {
+		if (idPrestamo != null) {
+			em.flush();
+		}
+		System.out.println("DetallePrestamoDaoServiceImpl.selectControlPrelacionAlCorte - desde " + desde + " corte " + corte + (idPrestamo != null ? " préstamo " + idPrestamo : ""));
 		// Misma definición que cuadreSuper/03-trabajo/cambios-saa/c33-cuota-parcial/sql/12-control-al-corte.sql.
 		String exento = "(NVL(g.PGPRTPOO,'-') IN (" + com.saa.ejb.crd.service.PrelacionCuotas.TIPOS_EXENTOS_SQL + ")"
 			+ " OR NVL(g.PGPRSLOT,0) > " + com.saa.ejb.crd.service.PrelacionCuotas.TOLERANCIA + ")";
@@ -781,6 +791,7 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 			+ "          SUM(CASE WHEN " + exento + " THEN 0 ELSE NVL(g.PGPRCPPG,0) + NVL(g.PGPRINPG,0) END) nne,"
 			+ "          SUM(CASE WHEN " + exento + " THEN 1 ELSE 0 END) nex"
 			+ "   FROM CRD.PGPR g WHERE NVL(g.PGPRANUL,0) = 0 AND (g.PGPRFCHA IS NULL OR g.PGPRFCHA < :corteSig)"
+			+ (idPrestamo != null ? " AND g.DTPRCDGO IN (SELECT x.DTPRCDGO FROM CRD.DTPR x WHERE x.PRSTCDGO = :idPrestamo)" : "")
 			+ "   GROUP BY g.DTPRCDGO),"
 			+ " c AS ("
 			+ "   SELECT d.PRSTCDGO, p.PRSTIDAS, p.PRSTIDST, d.DTPRNMCT, d.DTPRESTD, d.DTPRFCVN,"
@@ -790,7 +801,7 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 			+ "   FROM CRD.DTPR d JOIN CRD.PRST p ON p.PRSTCDGO = d.PRSTCDGO LEFT JOIN pg ON pg.DTPRCDGO = d.DTPRCDGO"
 			+ "   WHERE p.PRSTFCHA < :corteSig AND NVL(p.PRSTIDST,0) NOT IN ("
 			+ com.saa.ejb.crd.service.ModoCorteCartera.ESTADOS_FUERA_DE_CARTERA + ", "
-			+ com.saa.ejb.crd.service.ModoCorteCartera.ESTADOS_CANCELADOS + ")),"
+			+ com.saa.ejb.crd.service.ModoCorteCartera.ESTADOS_CANCELADOS + ")" + (idPrestamo != null ? " AND p.PRSTCDGO = :idPrestamo" : "") + "),"
 			+ " a AS ("
 			+ "   SELECT PRSTCDGO, MIN(DTPRNMCT) n0 FROM c"
 			+ "   WHERE nucleo > " + com.saa.ejb.crd.service.PrelacionCuotas.TOLERANCIA
@@ -814,6 +825,9 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 			+ " ORDER BY 1, 9");
 		query.setParameter("corteSig", java.sql.Timestamp.valueOf(corte.plusDays(1).atStartOfDay()));
 		query.setParameter("desde", java.sql.Timestamp.valueOf((desde != null ? desde : corte.plusDays(1)).atStartOfDay()));
+		if (idPrestamo != null) {
+			query.setParameter("idPrestamo", idPrestamo);
+		}
 		List<Object[]> filas = query.getResultList();
 		List<Object[]> resultado = new ArrayList<>();
 		for (Object[] f : filas) {

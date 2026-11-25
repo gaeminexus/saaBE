@@ -1,6 +1,6 @@
 # Diseño — corrección de `reimputarAlCorte` (C33), solo diseño, sin código
 
-*2026-11-25 · omen-saa-1 · incidente de la re-imputación del 2026-11-25. Esto NO está programado; no se vuelve a correr en producción hasta probarlo.*
+*2026-11-25 · omen-saa-1 · incidente de la re-imputación del 2026-11-25. PROGRAMADO en el lote 10 (compila; sin probar en WildFly ni contra Oracle): no se vuelve a correr en producción hasta probarlo sobre una copia.*
 
 ## Causa (ver `sql/394` y `sql/396`)
 La herramienta lee los pagos por `PGPR.PRSTCDGO` (`PagoPrestamoDaoService.selectVigentesByPrestamo`); el control del cierre los lee por `PGPR.DTPRCDGO`
