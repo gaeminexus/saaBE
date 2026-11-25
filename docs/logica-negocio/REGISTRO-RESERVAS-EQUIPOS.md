@@ -416,7 +416,13 @@ Alternos 1–33 ocupados. **Reservar acá antes de crear una nueva.**
 |---|---|---|---|
 | 34 | `ENTREGA DE PRESTAMO QUIROGRAFARIO` | **CRD · EQUIPO B** | reservado 2026-08-31, aprobado por el árbitro del equipo A (verificó que él solo consulta las plantillas 21, 25, 27, 28 y 29, sin crear ninguna) |
 | 36 | `CRD PROVISION INTERESES` (provision de intereses no cobrados y sus reversos; la 35 ya existe: pago de pensiones) | **CRD · EQUIPO B** (`omen-saa-1`) | reservado 2026-10-05 |
+| 37 | `CRD PROVISION CARTERA` (provisión ⑧ y ajuste de bandas ⑨ del cierre de cartera) | **CRD · EQUIPO B** (`omen-saa-1`) | **anotado tarde (2026-11-24)**: ya estaba en uso desde `crd/sql/346` (C15) sin registrarse aquí |
 | 38 | `CXP COMPRAS - CUENTAS DE AJUSTE` (cuentas de ajuste del asiento de compra cxp; aux1 1 = redondeo SRI) | **CRD · EQUIPO B** (`omen-saa-1`), a pedido del usuario (cuentas por plantilla) | reservado 2026-11-01, semilla `crd/sql/356` |
+| 39 | `CRD INTERES ANTICIPADO` (paso ⑪ del cierre de cartera, C27b: D 1.4.02.xx / H 2.9.01.05) | **CRD · EQUIPO B** (`omen-saa-1`) | reservado 2026-11-24, semilla `crd/sql/383`. **Reemplaza al 38, que se usó por error**: el 383 original metió sus líneas en la plantilla de compras de CxP en la base del cuadre, y el cuadre las retiró (respaldo `CNT.BKP_DTPL_383_REVERTIDO`). Verificado libre en el código y en este registro. En producción, lo verifica el bloque 0b del 383, que ahora **se detiene** si el alterno ya existe |
+
+⚠️ **Lección del 38 (2026-11-24):** antes de tomar un alterno, buscar la constante en **todas** las
+`src/main/java/com/saa/rubros/Plantillas*.java` (no solo `PlantillasCredito`), y además en esta tabla. Un
+script de semilla nunca «sigue» si encuentra la cabecera: se detiene.
 
 ⚠️ **Trampa al escribir los `DTPLAXL1` de una plantilla nueva** (avisada por el equipo A, ya les costó
 un bug en la condonación): de las plantillas de CRD **solo la 21 está renumerada al catálogo
