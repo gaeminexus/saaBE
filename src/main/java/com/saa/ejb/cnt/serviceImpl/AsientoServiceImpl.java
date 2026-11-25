@@ -795,13 +795,9 @@ public class AsientoServiceImpl implements AsientoService {
 	 */
 	public void eliminaIdMayorizacion(Long idMayorizacion) throws Throwable {
 		System.out.println("Ingresa al metodo eliminaIdMayorizacion con idMayorizacion: " + idMayorizacion);
-		List<Asiento> asientos = asientoDaoService.selectByMayorizacion(idMayorizacion);
-		if(!asientos.isEmpty()){
-			for(Asiento asiento : asientos){
-				asiento.setMayorizacion(null);
-				asientoDaoService.save(asiento, asiento.getCodigo());
-			}			
-		}		
+		// VCN #2: desvincular en bloque (un solo UPDATE), como la desmayorizacion del lote 5; antes se guardaba asiento por asiento.
+		int desvinculados = asientoDaoService.desvincularMayorizacion(idMayorizacion);
+		System.out.println("  Asientos desvinculados de la mayorizacion " + idMayorizacion + ": " + desvinculados);
 	}
 
 	@Override

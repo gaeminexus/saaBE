@@ -139,6 +139,9 @@ public class CentroCostoRest {
             centroCostoDaoService.remove(elimina, id);
             return Response.status(Response.Status.NO_CONTENT).build();
         } catch (Throwable e) {
+            if (com.saa.basico.util.ErrorIntegridad.esRegistroConHijos(e)) {
+                return Response.status(Response.Status.CONFLICT).entity(com.saa.basico.util.ErrorIntegridad.mensajeConDependientes("el centro de costo")).type(MediaType.APPLICATION_JSON).build();
+            }
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar centro de costo: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
     }

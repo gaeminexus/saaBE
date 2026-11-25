@@ -348,7 +348,7 @@ public class FacturaServiceImpl implements FacturaService {
 		// ── PASO 0: Validar configuración contable ANTES de grabar ─────────────
 		// Solo si el facturador tiene generaConta = 1
 		if (factura.getFacturador() != null
-				&& Long.valueOf(1L).equals(factura.getFacturador().getGeneraConta())) {
+				&& com.saa.ejb.cxc.util.GeneraConta.asienta(factura.getFacturador())) {
 
 			if (factura.getFacturador().getEmpresa() == null) {
 				resultado.put("etapa", "VALIDACION_CONTABLE");
@@ -873,7 +873,7 @@ public class FacturaServiceImpl implements FacturaService {
 		}
 		if (factura.getFacturador() == null
 				|| factura.getFacturador().getEmpresa() == null
-				|| !Long.valueOf(1L).equals(factura.getFacturador().getGeneraConta())) {
+				|| !com.saa.ejb.cxc.util.GeneraConta.asienta(factura.getFacturador())) {
 			System.out.println("ℹ El facturador no genera contabilidad: se omite el asiento.");
 			return resultado;
 		}

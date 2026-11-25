@@ -193,6 +193,14 @@ public class AsientoDaoServiceImpl extends EntityDaoImpl<Asiento> implements Asi
 			return  query.getResultList();
 		}
 
+		@Override
+		public int desvincularMayorizacion(Long idMayorizacion) throws Throwable {
+			System.out.println("Ingresa al metodo desvincularMayorizacion con mayorizacion: " + idMayorizacion);
+			int n = em.createQuery(" update Asiento b set b.mayorizacion = null where b.mayorizacion.codigo = :idMayorizacion")
+				.setParameter("idMayorizacion", idMayorizacion).executeUpdate();
+			return n;
+		}
+
 		/* (non-Javadoc)
 		 * @see com.compuseg.income.contabilidad.ejb.dao.AsientoDaoService#selectByConsultaCamposAsiento(java.lang.Long, java.lang.Long, java.lang.Long, java.lang.Long, java.lang.String, java.lang.Long, java.lang.Long, java.lang.Long, java.lang.Long, java.util.Date, java.util.Date, java.util.Date, java.util.Date)
 		 */

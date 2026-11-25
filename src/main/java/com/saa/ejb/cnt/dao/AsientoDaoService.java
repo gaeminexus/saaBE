@@ -92,6 +92,9 @@ public interface AsientoDaoService extends EntityDao<Asiento> {
 	 * @throws Throwable		: Excepcion
 	 */
 	List<Asiento> selectByMayorizacion(Long idMayorizacion) throws Throwable;
+
+	/** VCN #2: desvincula EN BLOQUE (un solo UPDATE) los asientos de una mayorizacion; devuelve cuantos. */
+	int desvincularMayorizacion(Long idMayorizacion) throws Throwable;
 	
 	/**
 	 * Recupera Datos de Consulta de Asientos

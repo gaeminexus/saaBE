@@ -238,7 +238,7 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 		// no descubrir una cuenta faltante después de que el SRI ya autorizó
 		// el comprobante, momento en el que ya no se puede revertir.
 		if (liquidacion.getFacturador() != null
-				&& Long.valueOf(1L).equals(liquidacion.getFacturador().getGeneraConta())) {
+				&& com.saa.ejb.cxc.util.GeneraConta.asienta(liquidacion.getFacturador())) {
 			if (liquidacion.getFacturador().getEmpresa() == null) {
 				java.util.Map<String, Object> resultado = new java.util.HashMap<>();
 				resultado.put("exito", false);
@@ -902,7 +902,7 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 						+ lqcc.getId() + ": " + e.getMessage());
 			}
 
-			if (Long.valueOf(1L).equals(liquidacion.getFacturador().getGeneraConta())) {
+			if (com.saa.ejb.cxc.util.GeneraConta.asienta(liquidacion.getFacturador())) {
 				java.time.LocalDate fechaAsiento = liquidacion.getFecha() != null
 						? liquidacion.getFecha().toLocalDate() : java.time.LocalDate.now();
 				String obsAsiento = "Liquidación de Compra N° " + nvl(liquidacion.getNumero(), liquidacion.getClave())

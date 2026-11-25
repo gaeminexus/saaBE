@@ -728,7 +728,7 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 		// El facturador manda: sin generación contable configurada no hay asiento.
 		if (retencion.getFacturador() == null
 				|| retencion.getFacturador().getEmpresa() == null
-				|| !Long.valueOf(1L).equals(retencion.getFacturador().getGeneraConta())) {
+				|| !com.saa.ejb.cxc.util.GeneraConta.asienta(retencion.getFacturador())) {
 			System.out.println("ℹ El facturador no genera contabilidad: se omite el asiento.");
 			return resultado;
 		}
@@ -1836,7 +1836,7 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 
 		// ── PASO 0: Validar configuración contable ANTES de grabar ─────────────
 		if (retencion.getFacturador() != null
-				&& Long.valueOf(1L).equals(retencion.getFacturador().getGeneraConta())) {
+				&& com.saa.ejb.cxc.util.GeneraConta.asienta(retencion.getFacturador())) {
 
 			if (retencion.getFacturador().getEmpresa() == null) {
 				resultado.put("etapa", "VALIDACION_CONTABLE");
@@ -1887,7 +1887,7 @@ public class RetencionV2ServiceImpl implements RetencionV2Service {
 		// factura no se puede emitir la retención: se valida ANTES de firmar y
 		// enviar al SRI, cuando todavía se puede abortar sin consecuencias.
 		if (retencion.getFacturador() != null
-				&& Long.valueOf(1L).equals(retencion.getFacturador().getGeneraConta())
+				&& com.saa.ejb.cxc.util.GeneraConta.asienta(retencion.getFacturador())
 				&& retencion.getFacturador().getEmpresa() != null) {
 			try {
 				Long idEmpresaValida = retencion.getFacturador().getEmpresa().getCodigo();

@@ -932,7 +932,7 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 
 			// ── PASO 0: Validar configuración contable ANTES de grabar ─────────
 			if (notaDebito.getFacturador() != null
-					&& Long.valueOf(1L).equals(notaDebito.getFacturador().getGeneraConta())) {
+					&& com.saa.ejb.cxc.util.GeneraConta.asienta(notaDebito.getFacturador())) {
 
 				if (notaDebito.getFacturador().getEmpresa() == null) {
 					resultado.put("exito", false);
@@ -1311,7 +1311,7 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 		}
 		if (notaDebito.getFacturador() == null
 				|| notaDebito.getFacturador().getEmpresa() == null
-				|| !Long.valueOf(1L).equals(notaDebito.getFacturador().getGeneraConta())) {
+				|| !com.saa.ejb.cxc.util.GeneraConta.asienta(notaDebito.getFacturador())) {
 			System.out.println("ℹ El facturador no genera contabilidad: se omite el asiento.");
 			return resultado;
 		}

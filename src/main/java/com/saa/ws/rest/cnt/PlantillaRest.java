@@ -179,6 +179,9 @@ public class PlantillaRest {
             plantillaDaoService.remove(elimina, id);
             return Response.status(Response.Status.NO_CONTENT).build();
         } catch (Throwable e) {
+            if (com.saa.basico.util.ErrorIntegridad.esRegistroConHijos(e)) {
+                return Response.status(Response.Status.CONFLICT).entity(com.saa.basico.util.ErrorIntegridad.mensajeConDependientes("la plantilla")).type(MediaType.APPLICATION_JSON).build();
+            }
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar plantilla: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
     }
