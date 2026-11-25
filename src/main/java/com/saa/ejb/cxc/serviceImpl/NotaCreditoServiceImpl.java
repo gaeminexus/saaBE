@@ -295,7 +295,7 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 			System.err.println("⚠ Error al obtener tipoIdentificación NC, usando default 05: " + e.getMessage());
 		}
 		writeElement(writer, "tipoIdentificacionComprador", tipoIdNc, 4);
-		writeElement(writer, "razonSocialComprador", nvl(notaCredito.getTitular().getNombre(), ""), 4);
+		writeElement(writer, "razonSocialComprador", com.saa.ejb.cxc.util.NombreTitular.requerido(notaCredito.getTitular(), "cliente"), 4);
 		writeElement(writer, "identificacionComprador", nvl(notaCredito.getTitular().getIdentificacion(), ""), 4);
 		
 		if (notaCredito.getFacturador().getContribuyenteEspecial() != null && 
@@ -654,7 +654,7 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 						System.out.println(">>> WS2 Autorización URL: " + urlWS2);
 						
 						try {
-							ResultadoAutorizacion resultado = llamarAutorizacionSRI(urlWS2, clave);
+							ResultadoAutorizacion resultado = llamarAutorizacionConReintentos(urlWS2, clave);
 							
 							System.out.println(">>> Respuesta WS2 Autorización:");
 							System.out.println("    estado              = [" + resultado.estado + "]");
@@ -778,8 +778,11 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 									pathNotaCreditoDaoService.save(pathN, null);
 								}
 								
-								notaCredito.setEstado(6L);
-								notaCredito.setEstadoEmision(2L);
+								if (!com.saa.ejb.cxc.util.EstadoSri.esPendiente(resultado.estado)) { // Lote 12 (VCN #8): una respuesta intermedia no es un rechazo; queda en 4 y se completa con la consulta
+
+									notaCredito.setEstado(6L);
+									notaCredito.setEstadoEmision(2L);
+								}
 								notaCreditoDaoService.save(notaCredito, notaCredito.getId());
 								
 								respuesta = "NO_AUTORIZADO"
@@ -815,12 +818,9 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 						respuesta = "Estado WS1: " + estadoRecepcion;
 						
 						if (estadoRecepcion != null && estadoRecepcion.contains("CLAVE ACCESO REGISTRADA")) {
-							System.out.println(">>> Clave ya registrada en SRI — marcando como autorizada");
-							respuesta = "Comprobante Autorizado";
-							notaCredito.setAutorizacion(clave);
-							notaCredito.setFechaAutorizacion(notaCredito.getFecha().plusMinutes(1).plusSeconds(15));
-							notaCredito.setEstado(5L);
-							notaCreditoDaoService.save(notaCredito, notaCredito.getId());
+							// Lote 12 (VCN #8): no se marca autorizada con una fecha inventada; la autorizacion real se obtiene consultando el estado.
+							System.out.println(">>> Clave ya registrada en el SRI: se completa la autorizacion con la consulta de estado.");
+							respuesta = "Clave de acceso ya registrada en el SRI: consulte el estado para completar la autorizacion.";
 						}
 					}
 					
@@ -1161,16 +1161,7 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 				System.err.println("⚠ Error registrando paths (no crítico): " + e.getMessage());
 			}
 
-			// ── PASO 4c: Si era CLAVE ACCESO REGISTRADA ─────────────────────────
-			if (estadoRecepcion != null && estadoRecepcion.contains("CLAVE ACCESO REGISTRADA")) {
-				notaCredito.setAutorizacion(clave);
-				notaCredito.setFechaAutorizacion(notaCredito.getFecha().plusMinutes(1).plusSeconds(15));
-				notaCredito.setEstado(5L);
-				notaCreditoDaoService.save(notaCredito, notaCredito.getId());
-				resultado.put("estado", "AUTORIZADO"); resultado.put("exito", true);
-				resultado.put("etapa", "COMPLETADO"); resultado.put("mensaje", "Nota de crédito ya registrada en el SRI. Autorizada.");
-				return resultado;
-			}
+			// Lote 12 (VCN #8): CLAVE ACCESO REGISTRADA ya no se marca autorizada con una fecha inventada; sigue al WS2 normal y toma la autorizacion y la fecha reales.
 
 			// ── PASO 4d: WS2 - Autorización ─────────────────────────────────────
 			System.out.println("PASO 4d: Consultando autorización al SRI (WS2)...");
@@ -1184,7 +1175,7 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 					String urlWS2 = ambiente == 1
 							? "https://celcer.sri.gob.ec/comprobantes-electronicos-ws/AutorizacionComprobantesOffline?wsdl"
 							: "https://cel.sri.gob.ec/comprobantes-electronicos-ws/AutorizacionComprobantesOffline?wsdl";
-					ResultadoAutorizacion ra = llamarAutorizacionSRI(urlWS2, clave);
+					ResultadoAutorizacion ra = llamarAutorizacionConReintentos(urlWS2, clave);
 					System.out.println(">>> Estado WS2: [" + ra.estado + "]");
 
 					if ("AUTORIZADO".equals(ra.estado)) {
@@ -1245,10 +1236,12 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 							pathN.setAlterno(6L);
 							pathNotaCreditoDaoService.save(pathN, null);
 						}
-						notaCredito.setEstado(6L);
-						notaCredito.setEstadoEmision(2L);
+						if (!com.saa.ejb.cxc.util.EstadoSri.esPendiente(ra.estado)) { // Lote 12 (VCN #8): una respuesta intermedia no es un rechazo; queda en 4 y se completa con la consulta
+							notaCredito.setEstado(6L);
+							notaCredito.setEstadoEmision(2L);
+						}
 						notaCreditoDaoService.save(notaCredito, notaCredito.getId());
-						resultadoAutorizacion = "Estado: " + ra.estado
+						resultadoAutorizacion = (com.saa.ejb.cxc.util.EstadoSri.esPendiente(ra.estado) ? "PENDIENTE - " : "") + "Estado: " + ra.estado
 								+ " Id: " + nvl(ra.mensajeId, "")
 								+ " Mensaje: " + nvl(ra.mensaje, "")
 								+ " / " + nvl(ra.informacionAdicional, "");
@@ -1272,7 +1265,7 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 				System.err.println("✗ NC no fue autorizada por el SRI.");
 				resultado.put("exito", false);
 				resultado.put("etapa", "WS2_AUTORIZACION");
-				resultado.put("estado", "NO_AUTORIZADO");
+				resultado.put("estado", resultadoAutorizacion != null && resultadoAutorizacion.startsWith("PENDIENTE") ? "PENDIENTE" : "NO_AUTORIZADO");
 				resultado.put("mensaje", "La nota de crédito fue recibida por el SRI pero no fue autorizada. "
 						+ "Respuesta del SRI: " + resultadoAutorizacion);
 				return resultado;
@@ -1346,7 +1339,7 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 					? notaCredito.getFecha().toLocalDate() : java.time.LocalDate.now();
 			String obsAsiento = "Nota de Crédito N° " + nvl(notaCredito.getNumero(), notaCredito.getClave())
 					+ observacionDocumentoOrigen(notaCredito)
-					+ " | Cliente: " + (notaCredito.getTitular() != null ? notaCredito.getTitular().getNombre() : "")
+					+ " | Cliente: " + (notaCredito.getTitular() != null ? com.saa.ejb.cxc.util.NombreTitular.de(notaCredito.getTitular()) : "")
 					+ " | " + nvl(notaCredito.getObservacion(), "");
 			String usuarioAsiento = usuarioValidacionService.validar(notaCredito.getUsuario());
 
@@ -1700,35 +1693,12 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 	/**
 	 * Obtiene y actualiza el secuencial para un punto de emisión y tipo de documento
 	 */
+	/** Lote 12 (VCN #6): el secuencial lo da el servicio compartido, que bloquea la fila (antes: leer, sumar 1 y escribir sin bloqueo). */
+	@jakarta.ejb.EJB
+	private com.saa.ejb.cxc.service.SecuencialComprobanteService secuencialComprobanteService;
+
 	private String obtenerSecuencial(Long idPtoEmision, String tipoDoc) throws Exception {
-		String sql = "SELECT n FROM NumeracionPuntoEmision n WHERE n.ptoEmision.id = :ptoEmision AND n.tipoDoc = :tipoDoc";
-		Query query = em.createQuery(sql);
-		query.setParameter("ptoEmision", idPtoEmision);
-		query.setParameter("tipoDoc", tipoDoc);
-		
-		@SuppressWarnings("unchecked")
-		List<Object> resultados = query.getResultList();
-		
-		if (resultados.isEmpty()) {
-			throw new IncomeException("No existe numeración para el punto de emisión " + idPtoEmision + " y tipo de documento " + tipoDoc);
-		}
-		
-		com.saa.model.cxc.NumeracionPuntoEmision numeracion = (com.saa.model.cxc.NumeracionPuntoEmision) resultados.get(0);
-		Long numeroActual = numeracion.getNumActual();
-		Long nuevoNumero = numeroActual + 1;
-		
-		String sqlUpdate = "UPDATE NumeracionPuntoEmision n SET n.numActual = :nuevoNumero " +
-				"WHERE n.ptoEmision.id = :ptoEmision AND n.tipoDoc = :tipoDoc";
-		Query updateQuery = em.createQuery(sqlUpdate);
-		updateQuery.setParameter("nuevoNumero", nuevoNumero);
-		updateQuery.setParameter("ptoEmision", idPtoEmision);
-		updateQuery.setParameter("tipoDoc", tipoDoc);
-		updateQuery.executeUpdate();
-		
-		String secuencial = String.format("%09d", numeroActual);
-		System.out.println("Secuencial generado: " + secuencial);
-		
-		return secuencial;
+		return secuencialComprobanteService.siguienteSecuencial(idPtoEmision, tipoDoc);
 	}
 	
 	/**
@@ -2092,6 +2062,21 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 			e.printStackTrace(log);
 			throw e;
 		}
+	}
+
+	/**
+	 * Lote 12 (VCN #8): WS2 con hasta 3 reintentos (2, 4 y 8 s) mientras el SRI conteste algo intermedio (sin autorizacion todavia). Un AUTORIZADO o
+	 * un NO AUTORIZADO expreso cortan los reintentos.
+	 */
+	private ResultadoAutorizacion llamarAutorizacionConReintentos(String url, String claveAcceso) throws Exception {
+		ResultadoAutorizacion ra = llamarAutorizacionSRI(url, claveAcceso);
+		long[] esperas = { 2000L, 4000L, 8000L };
+		for (int i = 0; i < esperas.length && com.saa.ejb.cxc.util.EstadoSri.esPendiente(ra.estado); i++) {
+			System.out.println(">>> WS2 sin autorizacion todavia (estado [" + ra.estado + "]); reintento " + (i + 1) + " en " + esperas[i] + " ms");
+			try { Thread.sleep(esperas[i]); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); break; }
+			ra = llamarAutorizacionSRI(url, claveAcceso);
+		}
+		return ra;
 	}
 
 	private ResultadoAutorizacion llamarAutorizacionSRI(String url, String claveAcceso) throws Exception {

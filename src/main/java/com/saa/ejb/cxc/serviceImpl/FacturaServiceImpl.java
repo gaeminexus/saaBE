@@ -618,24 +618,7 @@ public class FacturaServiceImpl implements FacturaService {
 				System.err.println("⚠ Error registrando paths (no crítico): " + e.getMessage());
 			}
 
-			// ── PASO 4d: Si era CLAVE ACCESO REGISTRADA, marcar como autorizada directamente
-			if (estadoRecepcion != null && estadoRecepcion.contains("CLAVE ACCESO REGISTRADA")) {
-				factura.setAutorizacion(clave);
-				factura.setFechaAutorizacion(factura.getFecha().atStartOfDay().plusMinutes(1).plusSeconds(15));
-				factura.setEstado(5L);
-				facturaDaoService.save(factura, factura.getId());
-				em.flush();
-				resultado.put("estado", "AUTORIZADO");
-				resultado.put("autorizacion", "AUTORIZADO");
-				resultado.put("mensaje", "Factura ya registrada en el SRI. Autorizada.");
-				// La factura queda autorizada: el orquestador debe generar el
-				// asiento igual que en el flujo normal.
-				resultado.put("emitida",      true);
-				resultado.put("idFacturador", idFacturador);
-				resultado.put("destinatario", destinatario);
-				resultado.put("pdfBytes",     pdfBytesParaEmail);
-				return resultado;
-			}
+			// Lote 12 (VCN #8): CLAVE ACCESO REGISTRADA ya no se marca autorizada con una fecha inventada; sigue al WS2 normal y toma la autorizacion y la fecha reales.
 
 			// ── PASO 4e: WS2 - Autorización ─────────────────────────────────────
 			System.out.println("PASO 4e: Consultando autorización al SRI (WS2)...");
@@ -649,7 +632,7 @@ public class FacturaServiceImpl implements FacturaService {
 					String urlWS2 = ambiente == 1
 							? "https://celcer.sri.gob.ec/comprobantes-electronicos-ws/AutorizacionComprobantesOffline?wsdl"
 							: "https://cel.sri.gob.ec/comprobantes-electronicos-ws/AutorizacionComprobantesOffline?wsdl";
-					ResultadoAutorizacion ra = llamarAutorizacionSRI(urlWS2, clave);
+					ResultadoAutorizacion ra = llamarAutorizacionConReintentos(urlWS2, clave);
 					System.out.println(">>> Estado WS2: [" + ra.estado + "]");
 
 					if ("AUTORIZADO".equals(ra.estado)) {
@@ -718,10 +701,12 @@ public class FacturaServiceImpl implements FacturaService {
 							pathN.setAlterno(6L);
 							pathFacturaDaoService.save(pathN, null);
 						}
-						factura.setEstado(6L);
-						factura.setEstadoEmision(2L);
+						if (!com.saa.ejb.cxc.util.EstadoSri.esPendiente(ra.estado)) { // Lote 12 (VCN #8): una respuesta intermedia no es un rechazo; queda en 4 y se completa con la consulta
+							factura.setEstado(6L);
+							factura.setEstadoEmision(2L);
+						}
 						facturaDaoService.save(factura, factura.getId());
-						resultadoAutorizacion = "Estado: " + ra.estado
+						resultadoAutorizacion = (com.saa.ejb.cxc.util.EstadoSri.esPendiente(ra.estado) ? "PENDIENTE - " : "") + "Estado: " + ra.estado
 								+ " Id: " + nvl(ra.mensajeId, "")
 								+ " Mensaje: " + nvl(ra.mensaje, "")
 								+ " / " + nvl(ra.informacionAdicional, "");
@@ -770,7 +755,7 @@ public class FacturaServiceImpl implements FacturaService {
 			if (!autorizada) {
 				resultado.put("etapa", "WS2_AUTORIZACION");
 				resultado.put("exito", false);
-				resultado.put("estado", "NO_AUTORIZADO");
+				resultado.put("estado", resultadoAutorizacion != null && resultadoAutorizacion.startsWith("PENDIENTE") ? "PENDIENTE" : "NO_AUTORIZADO");
 				resultado.put("mensaje", "La factura fue recibida por el SRI pero no fue autorizada. "
 						+ "Respuesta del SRI: " + resultadoAutorizacion);
 				return resultado;
@@ -903,7 +888,7 @@ public class FacturaServiceImpl implements FacturaService {
 		try {
 			Long idEmpresa = factura.getFacturador().getEmpresa().getCodigo();
 			String obsAsiento = "Factura N° " + nvl(factura.getNumero(), factura.getClave())
-					+ " | Cliente: " + (factura.getTitular() != null ? factura.getTitular().getNombre() : "")
+					+ " | Cliente: " + (factura.getTitular() != null ? com.saa.ejb.cxc.util.NombreTitular.de(factura.getTitular()) : "")
 					+ " | " + nvl(factura.getObservacion(), "");
 			// U-5b: quien ejecuta (recepción del SRI) si viene; si no, el usuario del documento. Siempre validado.
 			String usuarioAsiento = (usuario != null)
@@ -1167,7 +1152,7 @@ public class FacturaServiceImpl implements FacturaService {
 		}
 		writeElement(writer, "tipoIdentificacionComprador", tipoIdentificacionComprador, 2);
 		
-		writeElement(writer, "razonSocialComprador", nvl(titular.getNombre(), ""), 2);
+		writeElement(writer, "razonSocialComprador", com.saa.ejb.cxc.util.NombreTitular.requerido(titular, "cliente"), 2);
 		writeElement(writer, "identificacionComprador", nvl(titular.getIdentificacion(), ""), 2);
 		writeElement(writer, "direccionComprador", nvl(titular.getDireccion(), ""), 2);
 		
@@ -1576,7 +1561,7 @@ public class FacturaServiceImpl implements FacturaService {
 								: "https://cel.sri.gob.ec/comprobantes-electronicos-ws/AutorizacionComprobantesOffline?wsdl";
 						
 						try {
-							ResultadoAutorizacion resultado = llamarAutorizacionSRI(urlWS2, clave);
+							ResultadoAutorizacion resultado = llamarAutorizacionConReintentos(urlWS2, clave);
 							
 							if ("AUTORIZADO".equals(resultado.estado)) {
 								// 1. Guardar TXT de log WS2 (autorizado) - igual que el PHP
@@ -1662,8 +1647,10 @@ public class FacturaServiceImpl implements FacturaService {
 								}
 								
 								// Actualizar estado a NO AUTORIZADA (estado=6, estadoEmision=2)
-								factura.setEstado(6L);
-								factura.setEstadoEmision(2L); // 2 = PENDIENTE
+								if (!com.saa.ejb.cxc.util.EstadoSri.esPendiente(resultado.estado)) { // Lote 12 (VCN #8): una respuesta intermedia no es un rechazo; queda en 4 y se completa con la consulta
+									factura.setEstado(6L);
+									factura.setEstadoEmision(2L);
+								}
 								facturaDaoService.save(factura, factura.getId());
 								
 								respuesta = "Estado: " + resultado.estado + 
@@ -1698,12 +1685,9 @@ public class FacturaServiceImpl implements FacturaService {
 						
 						// Verificar si es clave ya registrada
 						if (estadoRecepcion != null && estadoRecepcion.contains("CLAVE ACCESO REGISTRADA")) {
-							respuesta = "Comprobante Autorizado";
-							factura.setAutorizacion(clave);
-							// Convertir LocalDate a LocalDateTime y agregar tiempo
-							factura.setFechaAutorizacion(factura.getFecha().atStartOfDay().plusMinutes(1).plusSeconds(15));
-							factura.setEstado(5L);
-							facturaDaoService.save(factura, factura.getId());
+							// Lote 12 (VCN #8): no se marca autorizada con una fecha inventada; la autorizacion real se obtiene consultando el estado.
+							System.out.println(">>> Clave ya registrada en el SRI: se completa la autorizacion con la consulta de estado.");
+							respuesta = "Clave de acceso ya registrada en el SRI: consulte el estado para completar la autorizacion.";
 						}
 					}
 					
@@ -1787,6 +1771,21 @@ public class FacturaServiceImpl implements FacturaService {
 	/**
 	 * Llama al servicio de autorización del SRI (WS2)
 	 */
+	/**
+	 * Lote 12 (VCN #8): WS2 con hasta 3 reintentos (2, 4 y 8 s) mientras el SRI conteste algo intermedio (sin autorizacion todavia). Un AUTORIZADO o
+	 * un NO AUTORIZADO expreso cortan los reintentos.
+	 */
+	private ResultadoAutorizacion llamarAutorizacionConReintentos(String url, String claveAcceso) throws Exception {
+		ResultadoAutorizacion ra = llamarAutorizacionSRI(url, claveAcceso);
+		long[] esperas = { 2000L, 4000L, 8000L };
+		for (int i = 0; i < esperas.length && com.saa.ejb.cxc.util.EstadoSri.esPendiente(ra.estado); i++) {
+			System.out.println(">>> WS2 sin autorizacion todavia (estado [" + ra.estado + "]); reintento " + (i + 1) + " en " + esperas[i] + " ms");
+			try { Thread.sleep(esperas[i]); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); break; }
+			ra = llamarAutorizacionSRI(url, claveAcceso);
+		}
+		return ra;
+	}
+
 	private ResultadoAutorizacion llamarAutorizacionSRI(String url, String claveAcceso) throws Exception {
 		System.out.println(">>> Llamando al WS2 de AUTORIZACIÓN del SRI: " + url);
 		try {
@@ -1883,37 +1882,12 @@ public class FacturaServiceImpl implements FacturaService {
 	/**
 	 * Obtiene y actualiza el secuencial para un punto de emisión y tipo de documento
 	 */
+	/** Lote 12 (VCN #6): el secuencial lo da el servicio compartido, que bloquea la fila (antes: leer, sumar 1 y escribir sin bloqueo). */
+	@jakarta.ejb.EJB
+	private com.saa.ejb.cxc.service.SecuencialComprobanteService secuencialComprobanteService;
+
 	private String obtenerSecuencial(Long idPtoEmision, String tipoDoc) throws Exception {
-		String sql = "SELECT n FROM NumeracionPuntoEmision n WHERE n.ptoEmision.id = :ptoEmision AND n.tipoDoc = :tipoDoc";
-		Query query = em.createQuery(sql);
-		query.setParameter("ptoEmision", idPtoEmision);
-		query.setParameter("tipoDoc", tipoDoc);
-		
-		@SuppressWarnings("unchecked")
-		List<Object> resultados = query.getResultList();
-		
-		if (resultados.isEmpty()) {
-			throw new IncomeException("No existe numeración para el punto de emisión " + idPtoEmision + " y tipo de documento " + tipoDoc);
-		}
-		
-		com.saa.model.cxc.NumeracionPuntoEmision numeracion = (com.saa.model.cxc.NumeracionPuntoEmision) resultados.get(0);
-		Long numeroActual = numeracion.getNumActual();
-		Long nuevoNumero = numeroActual + 1;
-		
-		// Actualizar numeración
-		String sqlUpdate = "UPDATE NumeracionPuntoEmision n SET n.numActual = :nuevoNumero " +
-				"WHERE n.ptoEmision.id = :ptoEmision AND n.tipoDoc = :tipoDoc";
-		Query updateQuery = em.createQuery(sqlUpdate);
-		updateQuery.setParameter("nuevoNumero", nuevoNumero);
-		updateQuery.setParameter("ptoEmision", idPtoEmision);
-		updateQuery.setParameter("tipoDoc", tipoDoc);
-		updateQuery.executeUpdate();
-		
-		// Formatear secuencial a 9 dígitos
-		String secuencial = String.format("%09d", numeroActual);
-		System.out.println("Secuencial generado: " + secuencial);
-		
-		return secuencial;
+		return secuencialComprobanteService.siguienteSecuencial(idPtoEmision, tipoDoc);
 	}
 	
 	/**
@@ -2461,7 +2435,7 @@ public class FacturaServiceImpl implements FacturaService {
 		System.out.println(">>> URL WS2: " + urlWS2);
 
 		try {
-			ResultadoAutorizacion ra = llamarAutorizacionSRI(urlWS2, clave);
+			ResultadoAutorizacion ra = llamarAutorizacionConReintentos(urlWS2, clave);
 
 			if ("AUTORIZADO".equals(ra.estado)) {
 				// U-5b (#10): mismo patrón que consultarYActualizarEstadoFactura. El estado autorizado se confirma en su propia

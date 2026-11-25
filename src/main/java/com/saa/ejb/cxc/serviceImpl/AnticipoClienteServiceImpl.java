@@ -403,7 +403,7 @@ public class AnticipoClienteServiceImpl implements AnticipoClienteService {
                 .selectByTitularRolTipoCuenta(idEmpresa, idTitular, RolPersona.CLIENTE, 2L);
         if (cuentasAnticipo.isEmpty()) {
             throw new com.saa.basico.util.IncomeException(
-                    "El cliente '" + titular.getNombre() + "' (ID: " + idTitular + ") "
+                    "El cliente '" + com.saa.ejb.cxc.util.NombreTitular.de(titular) + "' (ID: " + idTitular + ") "
                     + "no tiene cuenta contable de anticipos (Tipo 2, Rol: Cliente) configurada "
                     + "para la empresa " + idEmpresa + ". "
                     + "Configure la cuenta en Tesorería → Persona → Cuentas Contables "
@@ -997,7 +997,7 @@ public class AnticipoClienteServiceImpl implements AnticipoClienteService {
 
         if (lista.isEmpty()) {
             com.saa.model.tsr.Titular titular = em.find(com.saa.model.tsr.Titular.class, idTitular);
-            String nombre = (titular != null) ? titular.getNombre() : String.valueOf(idTitular);
+            String nombre = (titular != null) ? com.saa.ejb.cxc.util.NombreTitular.de(titular) : String.valueOf(idTitular);
             String accion = (valor != null && valor < 0) ? "anular" : "confirmar";
             throw new com.saa.basico.util.IncomeException("El cliente '" + nombre + "' no tiene "
                     + "cuenta contable de anticipos (Tipo 2, Rol: Cliente) configurada para la "
@@ -1065,7 +1065,7 @@ public class AnticipoClienteServiceImpl implements AnticipoClienteService {
 
         BeneficiarioOcasional beneficiario = new BeneficiarioOcasional();
         beneficiario.setNombre(titular.getRazonSocial() != null && !titular.getRazonSocial().trim().isEmpty()
-                ? titular.getRazonSocial() : titular.getNombre());
+                ? titular.getRazonSocial() : com.saa.ejb.cxc.util.NombreTitular.de(titular));
         beneficiario.setIdentificacion(titular.getIdentificacion());
 
         // Cuenta de origen nula (punto 14): la solicitud nace POR_APROBAR, sin cuenta ni

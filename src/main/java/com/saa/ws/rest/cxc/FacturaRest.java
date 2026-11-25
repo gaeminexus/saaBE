@@ -506,7 +506,7 @@ public class FacturaRest {
 			// Si ya estaba autorizada o se autorizó ahora → 200
 			// Si el SRI no autorizó → 200 con exito=false (no es error del servidor)
 			// Si hay error técnico → 500
-			if (exito || "YA_AUTORIZADA".equals(estado) || "NO_AUTORIZADO".equals(estado)) {
+			if (exito || "YA_AUTORIZADA".equals(estado) || "NO_AUTORIZADO".equals(estado) || "PENDIENTE".equals(estado)) {
 				return Response.status(Response.Status.OK)
 						.entity(resultado).type(MediaType.APPLICATION_JSON).build();
 			} else {

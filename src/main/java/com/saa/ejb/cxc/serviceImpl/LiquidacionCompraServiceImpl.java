@@ -593,23 +593,7 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 				System.err.println("⚠ Error registrando paths (no crítico): " + e.getMessage());
 			}
 
-			// ── PASO 4c: Si era CLAVE ACCESO REGISTRADA ─────────────────────────
-			if (estadoRecepcion != null && estadoRecepcion.contains("CLAVE ACCESO REGISTRADA")) {
-				liquidacion.setAutorizacion(clave);
-				liquidacion.setFechaAutorizacion(liquidacion.getFecha().plusMinutes(1).plusSeconds(15));
-				liquidacion.setEstado(5L);
-				liquidacion.setEstadoEmision(1L);
-				liquidacionCompraDaoService.save(liquidacion, liquidacion.getId());
-				try { em.flush(); } catch (Exception flushEx) { /* no crítico */ }
-				pdfBytesParaEmail = generarPDFLiquidacion(liquidacion, idFacturador, clave, pathLogo, ambiente);
-				resultado.put("estado", "AUTORIZADO"); resultado.put("autorizacion", "AUTORIZADO");
-				resultado.put("etapa", "COMPLETADO"); resultado.put("mensaje", "Liquidación ya registrada en el SRI. Autorizada.");
-				resultado.put("emitida",      true);
-				resultado.put("idFacturador", idFacturador);
-				resultado.put("destinatario", destinatario);
-				resultado.put("pdfBytes",     pdfBytesParaEmail);
-				return resultado;
-			}
+			// Lote 12 (VCN #8): CLAVE ACCESO REGISTRADA ya no se marca autorizada con una fecha inventada; sigue al WS2 normal y toma la autorizacion y la fecha reales.
 
 			// ── PASO 4d: WS2 - Autorización ─────────────────────────────────────
 			System.out.println("PASO 4d: Consultando autorización al SRI (WS2)...");
@@ -623,7 +607,7 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 					String urlWS2 = ambiente == 1
 							? "https://celcer.sri.gob.ec/comprobantes-electronicos-ws/AutorizacionComprobantesOffline?wsdl"
 							: "https://cel.sri.gob.ec/comprobantes-electronicos-ws/AutorizacionComprobantesOffline?wsdl";
-					ResultadoAutorizacion ra = llamarAutorizacionSRI(urlWS2, clave);
+					ResultadoAutorizacion ra = llamarAutorizacionConReintentos(urlWS2, clave);
 					System.out.println(">>> Estado WS2: [" + ra.estado + "]");
 
 					if ("AUTORIZADO".equals(ra.estado)) {
@@ -687,10 +671,12 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 							pathN.setAlterno(6L);
 							pathLiquidacionCompraDaoService.save(pathN, null);
 						}
-						liquidacion.setEstado(6L);
-						liquidacion.setEstadoEmision(2L);
+						if (!com.saa.ejb.cxc.util.EstadoSri.esPendiente(ra.estado)) { // Lote 12 (VCN #8): una respuesta intermedia no es un rechazo; queda en 4 y se completa con la consulta
+							liquidacion.setEstado(6L);
+							liquidacion.setEstadoEmision(2L);
+						}
 						liquidacionCompraDaoService.save(liquidacion, liquidacion.getId());
-						resultadoAutorizacion = "Estado: " + ra.estado
+						resultadoAutorizacion = (com.saa.ejb.cxc.util.EstadoSri.esPendiente(ra.estado) ? "PENDIENTE - " : "") + "Estado: " + ra.estado
 								+ " Id: " + nvl(ra.mensajeId, "")
 								+ " Mensaje: " + nvl(ra.mensaje, "")
 								+ " / " + nvl(ra.informacionAdicional, "");
@@ -733,7 +719,7 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 
 			if (!autorizada) {
 				resultado.put("exito", false);
-				resultado.put("estado", "NO_AUTORIZADO");
+				resultado.put("estado", resultadoAutorizacion != null && resultadoAutorizacion.startsWith("PENDIENTE") ? "PENDIENTE" : "NO_AUTORIZADO");
 				resultado.put("mensaje", "La liquidación fue recibida por el SRI pero no fue autorizada. "
 						+ "Respuesta del SRI: " + resultadoAutorizacion);
 				return resultado;
@@ -916,7 +902,7 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 				java.time.LocalDate fechaAsiento = liquidacion.getFecha() != null
 						? liquidacion.getFecha().toLocalDate() : java.time.LocalDate.now();
 				String obsAsiento = "Liquidación de Compra N° " + nvl(liquidacion.getNumero(), liquidacion.getClave())
-						+ " | Proveedor: " + (liquidacion.getTitular() != null ? liquidacion.getTitular().getNombre() : "")
+						+ " | Proveedor: " + (liquidacion.getTitular() != null ? com.saa.ejb.cxc.util.NombreTitular.de(liquidacion.getTitular()) : "")
 						+ " | Aut: " + nvl(liquidacion.getAutorizacion(), liquidacion.getClave());
 				String usuarioAsiento = usuarioValidacionService.validar(liquidacion.getUsuario());
 
@@ -1044,7 +1030,7 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 				liquidacion.getFacturador().getContabilidad() == 1) ? "SI" : "NO";
 		writeElement(writer, "obligadoContabilidad", obligado, 4);
 		writeElement(writer, "tipoIdentificacionProveedor", resolverTipoIdentificacionSRI(liquidacion.getTitular()), 4);
-		writeElement(writer, "razonSocialProveedor", nvl(liquidacion.getTitular().getNombre(), ""), 4);
+		writeElement(writer, "razonSocialProveedor", com.saa.ejb.cxc.util.NombreTitular.requerido(liquidacion.getTitular(), "proveedor"), 4);
 		writeElement(writer, "identificacionProveedor", nvl(liquidacion.getTitular().getIdentificacion(), ""), 4);
 		writeElement(writer, "direccionProveedor", nvl(liquidacion.getTitular().getDireccion(), ""), 4);
 		
@@ -1452,7 +1438,7 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 								: "https://cel.sri.gob.ec/comprobantes-electronicos-ws/AutorizacionComprobantesOffline?wsdl";
 						
 						try {
-							ResultadoAutorizacion resultado = llamarAutorizacionSRI(urlWS2, clave);
+							ResultadoAutorizacion resultado = llamarAutorizacionConReintentos(urlWS2, clave);
 							
 							if ("AUTORIZADO".equals(resultado.estado)) {
 								// Crear archivo de log WS2 autorizado
@@ -1512,8 +1498,11 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 								}
 								
 								// Actualizar estado a NO AUTORIZADA (estado=6, estadoEmision=2)
-								liquidacion.setEstado(6L);
-								liquidacion.setEstadoEmision(2L);
+								if (!com.saa.ejb.cxc.util.EstadoSri.esPendiente(resultado.estado)) { // Lote 12 (VCN #8): una respuesta intermedia no es un rechazo; queda en 4 y se completa con la consulta
+
+									liquidacion.setEstado(6L);
+									liquidacion.setEstadoEmision(2L);
+								}
 								liquidacionCompraDaoService.save(liquidacion, liquidacion.getId());
 								
 								respuesta = "Estado: " + resultado.estado + 
@@ -1548,11 +1537,9 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 						
 						// Verificar si es clave ya registrada
 						if (estadoRecepcion != null && estadoRecepcion.contains("CLAVE ACCESO REGISTRADA")) {
-							respuesta = "Comprobante Autorizado";
-							liquidacion.setAutorizacion(clave);
-							liquidacion.setFechaAutorizacion(liquidacion.getFecha().plusMinutes(1).plusSeconds(15));
-							liquidacion.setEstado(5L);
-							liquidacionCompraDaoService.save(liquidacion, liquidacion.getId());
+							// Lote 12 (VCN #8): no se marca autorizada con una fecha inventada; la autorizacion real se obtiene consultando el estado.
+							System.out.println(">>> Clave ya registrada en el SRI: se completa la autorizacion con la consulta de estado.");
+							respuesta = "Clave de acceso ya registrada en el SRI: consulte el estado para completar la autorizacion.";
 						}
 					}
 					
@@ -1661,6 +1648,21 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 	/**
 	 * Llama al servicio de autorización del SRI
 	 */
+	/**
+	 * Lote 12 (VCN #8): WS2 con hasta 3 reintentos (2, 4 y 8 s) mientras el SRI conteste algo intermedio (sin autorizacion todavia). Un AUTORIZADO o
+	 * un NO AUTORIZADO expreso cortan los reintentos.
+	 */
+	private ResultadoAutorizacion llamarAutorizacionConReintentos(String url, String claveAcceso) throws Exception {
+		ResultadoAutorizacion ra = llamarAutorizacionSRI(url, claveAcceso);
+		long[] esperas = { 2000L, 4000L, 8000L };
+		for (int i = 0; i < esperas.length && com.saa.ejb.cxc.util.EstadoSri.esPendiente(ra.estado); i++) {
+			System.out.println(">>> WS2 sin autorizacion todavia (estado [" + ra.estado + "]); reintento " + (i + 1) + " en " + esperas[i] + " ms");
+			try { Thread.sleep(esperas[i]); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); break; }
+			ra = llamarAutorizacionSRI(url, claveAcceso);
+		}
+		return ra;
+	}
+
 	private ResultadoAutorizacion llamarAutorizacionSRI(String url, String claveAcceso) throws Exception {
 		try {
 			String soapEnvelope =
@@ -1791,7 +1793,7 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 		if (titular == null) {
 			throw new IncomeException("La liquidación no tiene proveedor asignado.");
 		}
-		String nombre = nvl(titular.getNombre(), "(sin nombre)");
+		String nombre = nvl(com.saa.ejb.cxc.util.NombreTitular.de(titular), "(sin nombre)");
 		if (titular.getRubroTipoIdentificacionP() == null || titular.getRubroTipoIdentificacionH() == null) {
 			throw new IncomeException("El proveedor " + nombre + " no tiene configurado el tipo de "
 					+ "identificación. El SRI lo exige para emitir la liquidación de compra.");
@@ -1829,25 +1831,12 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 		return codigo;
 	}
 
+	/** Lote 12 (VCN #6): el secuencial lo da el servicio compartido, que bloquea la fila (antes: leer, sumar 1 y escribir sin bloqueo). */
+	@jakarta.ejb.EJB
+	private com.saa.ejb.cxc.service.SecuencialComprobanteService secuencialComprobanteService;
+
 	private String obtenerSecuencial(Long idPtoEmision, String tipoDoc) throws Exception {
-		String sql = "SELECT n FROM NumeracionPuntoEmision n WHERE n.ptoEmision.id = :ptoEmision AND n.tipoDoc = :tipoDoc";
-		Query query = em.createQuery(sql);
-		query.setParameter("ptoEmision", idPtoEmision);
-		query.setParameter("tipoDoc", tipoDoc);
-		@SuppressWarnings("unchecked")
-		List<Object> resultados = query.getResultList();
-		if (resultados.isEmpty()) {
-			throw new IncomeException("No existe numeración para el punto de emisión " + idPtoEmision + " y tipo " + tipoDoc);
-		}
-		com.saa.model.cxc.NumeracionPuntoEmision numeracion = (com.saa.model.cxc.NumeracionPuntoEmision) resultados.get(0);
-		Long numeroActual = numeracion.getNumActual();
-		String sqlUpdate = "UPDATE NumeracionPuntoEmision n SET n.numActual = :nuevo WHERE n.ptoEmision.id = :ptoEmision AND n.tipoDoc = :tipoDoc";
-		Query updateQuery = em.createQuery(sqlUpdate);
-		updateQuery.setParameter("nuevo", numeroActual + 1);
-		updateQuery.setParameter("ptoEmision", idPtoEmision);
-		updateQuery.setParameter("tipoDoc", tipoDoc);
-		updateQuery.executeUpdate();
-		return String.format("%09d", numeroActual);
+		return secuencialComprobanteService.siguienteSecuencial(idPtoEmision, tipoDoc);
 	}
 	
 	private String generarClaveAcceso(LiquidacionCompra lc, String tipoComprobante, Long ambiente,
@@ -1998,7 +1987,7 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 
 		System.out.println(">>> Reintentando autorización con clave: " + clave);
 		try {
-			ResultadoAutorizacion ra = llamarAutorizacionSRI(urlWS2, clave);
+			ResultadoAutorizacion ra = llamarAutorizacionConReintentos(urlWS2, clave);
 
 			if ("AUTORIZADO".equals(ra.estado)) {
 				boolean actualizada = self().marcarLiquidacionAutorizada(

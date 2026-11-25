@@ -1817,7 +1817,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         if (!titularTieneCuenta) {
             Map<String, Object> b = new HashMap<>();
             b.put("tipo", "PROVEEDOR_SIN_CUENTA");
-            b.put("detalle", "El proveedor '" + titular.getNombre() + "' (RUC: " + titular.getIdentificacion()
+            b.put("detalle", "El proveedor '" + com.saa.ejb.cxc.util.NombreTitular.de(titular) + "' (RUC: " + titular.getIdentificacion()
                     + ") no tiene cuenta contable CxP asignada. Configúrela en Contabilidad → Cuentas por Titular.");
             bloqueantes.add(b);
         }
@@ -2444,7 +2444,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         // Generar asiento
         java.time.LocalDate fechaDoc = fc.getFecha() != null ? fc.getFecha().toLocalDate() : java.time.LocalDate.now();
         String obs = conObservacionAdicional("Factura reembolso: " + (fc.getNumero() != null ? fc.getNumero() : fc.getClave())
-                + " | Proveedor: " + (fc.getTitular() != null ? fc.getTitular().getNombre() : ""), doc);
+                + " | Proveedor: " + (fc.getTitular() != null ? com.saa.ejb.cxc.util.NombreTitular.de(fc.getTitular()) : ""), doc);
         com.saa.model.cnt.Asiento asiento = asientoContableService.generarAsientoFacturaCompra(
                 idFacturaCompra, idEmpresa, com.saa.rubros.TipoAsientos.FACTURAS_COMPRA,
                 fechaDoc, obs, usuario);
@@ -2806,7 +2806,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
         if (titular == null || !verificarCuentaContableProveedor(titular.getCodigo(), idEmpresa)) {
             Map<String, Object> b = new HashMap<>();
             b.put("tipo", "PROVEEDOR_SIN_CUENTA");
-            b.put("detalle", "El proveedor '" + (titular != null ? titular.getNombre() : "?")
+            b.put("detalle", "El proveedor '" + (titular != null ? com.saa.ejb.cxc.util.NombreTitular.de(titular) : "?")
                     + "' (RUC: " + (titular != null ? titular.getIdentificacion() : "?")
                     + ") no tiene cuenta contable CxP asignada."
                     + " Configúrela en Contabilidad → Cuentas por Titular.");
@@ -2896,7 +2896,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
             Map<String, Object> b = new HashMap<>();
             b.put("tipo", "FACTURA_COMPRA_NO_ENCONTRADA");
             b.put("detalle", "No existe en el sistema la factura de compra N° " + numDocModificado
-                    + " del proveedor '" + (titular != null ? titular.getNombre() : "?")
+                    + " del proveedor '" + (titular != null ? com.saa.ejb.cxc.util.NombreTitular.de(titular) : "?")
                     + "', que es la que esta " + etiquetaDoc + " modifica.");
             b.put("solucion", solucion);
             bloqueantes.add(b);
@@ -4312,7 +4312,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                 }
             } else {
                 System.out.println("ℹ Titular ya tiene rol de Proveedor: " + ruc + " | id=" + titular.getCodigo()
-                        + " | nombre=" + titular.getNombre());
+                        + " | nombre=" + com.saa.ejb.cxc.util.NombreTitular.de(titular));
             }
             return titular;
         }
@@ -4412,7 +4412,7 @@ public class ProcesoCargaDocumentosServiceImpl implements ProcesoCargaDocumentos
                 }
             } else {
                 System.out.println("ℹ Titular ya tiene rol de Cliente: " + ruc + " | id=" + titular.getCodigo()
-                        + " | nombre=" + titular.getNombre());
+                        + " | nombre=" + com.saa.ejb.cxc.util.NombreTitular.de(titular));
             }
             return titular;
         }

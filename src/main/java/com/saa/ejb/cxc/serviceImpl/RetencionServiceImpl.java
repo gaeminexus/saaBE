@@ -241,7 +241,7 @@ public class RetencionServiceImpl implements RetencionService {
 				retencion.getFacturador().getContabilidad() == 1) ? "SI" : "NO";
 		writeElement(writer, "obligadoContabilidad", obligado, 4);
 		writeElement(writer, "tipoIdentificacionSujetoRetenido", resolverTipoIdentificacionSRI(retencion.getProveedor()), 4);
-		writeElement(writer, "razonSocialSujetoRetenido", nvl(retencion.getProveedor().getNombre(), ""), 4);
+		writeElement(writer, "razonSocialSujetoRetenido", com.saa.ejb.cxc.util.NombreTitular.requerido(retencion.getProveedor(), "sujeto retenido"), 4);
 		writeElement(writer, "identificacionSujetoRetenido", nvl(retencion.getProveedor().getIdentificacion(), ""), 4);
 		writeElement(writer, "periodoFiscal", nvl(retencion.getPeriodoFiscal(), ""), 4);
 		
@@ -405,7 +405,7 @@ public class RetencionServiceImpl implements RetencionService {
 		if (titular == null) {
 			throw new IncomeException("La retención no tiene sujeto retenido asignado.");
 		}
-		String nombre = nvl(titular.getNombre(), "(sin nombre)");
+		String nombre = nvl(com.saa.ejb.cxc.util.NombreTitular.de(titular), "(sin nombre)");
 		if (titular.getRubroTipoIdentificacionP() == null || titular.getRubroTipoIdentificacionH() == null) {
 			throw new IncomeException("El sujeto retenido " + nombre + " no tiene configurado el "
 					+ "tipo de identificación. El SRI lo exige para emitir la retención.");
@@ -570,7 +570,7 @@ public class RetencionServiceImpl implements RetencionService {
 								? "https://celcer.sri.gob.ec/comprobantes-electronicos-ws/AutorizacionComprobantesOffline?wsdl"
 								: "https://cel.sri.gob.ec/comprobantes-electronicos-ws/AutorizacionComprobantesOffline?wsdl";
 						try {
-							ResultadoAutorizacion resultado = llamarAutorizacionSRI(urlWS2, clave);
+							ResultadoAutorizacion resultado = llamarAutorizacionConReintentos(urlWS2, clave);
 							if ("AUTORIZADO".equals(resultado.estado)) {
 								Path logWS2A = Paths.get(resourcesPath + "/rtnc/a/" + clave + ".txt");
 								Files.createDirectories(logWS2A.getParent());
@@ -615,8 +615,11 @@ public class RetencionServiceImpl implements RetencionService {
 									pathN.setAlterno(6L);
 									pathRetencionDaoService.save(pathN, null);
 								}
-								retencion.setEstado(6L);
-								retencion.setEstadoEmision(2L);
+								if (!com.saa.ejb.cxc.util.EstadoSri.esPendiente(resultado.estado)) { // Lote 12 (VCN #8): una respuesta intermedia no es un rechazo; queda en 4 y se completa con la consulta
+
+									retencion.setEstado(6L);
+									retencion.setEstadoEmision(2L);
+								}
 								retencionDaoService.save(retencion, retencion.getId());
 								respuesta = "Estado: " + resultado.estado + " Id: " + nvl(resultado.mensajeId, "") +
 										" Mensaje: " + nvl(resultado.mensaje, "") + " / " + nvl(resultado.informacionAdicional, "");
@@ -637,11 +640,9 @@ public class RetencionServiceImpl implements RetencionService {
 					} else {
 						respuesta = "Estado: " + estadoRecepcion;
 						if (estadoRecepcion != null && estadoRecepcion.contains("CLAVE ACCESO REGISTRADA")) {
-							respuesta = "Comprobante Autorizado";
-							retencion.setAutorizacion(clave);
-							retencion.setFechaAutorizacion(retencion.getFecha().plusMinutes(1).plusSeconds(15));
-							retencion.setEstado(5L);
-							retencionDaoService.save(retencion, retencion.getId());
+							// Lote 12 (VCN #8): no se marca autorizada con una fecha inventada; la autorizacion real se obtiene consultando el estado.
+							System.out.println(">>> Clave ya registrada en el SRI: se completa la autorizacion con la consulta de estado.");
+							respuesta = "Clave de acceso ya registrada en el SRI: consulte el estado para completar la autorizacion.";
 						}
 					}
 				} catch (Exception e) {
@@ -953,18 +954,7 @@ public class RetencionServiceImpl implements RetencionService {
 				System.err.println("⚠ Error registrando paths (no crítico): " + e.getMessage());
 			}
 
-			// ── PASO 4c: Si era CLAVE ACCESO REGISTRADA, marcar directamente ────
-			if (estadoRecepcion != null && estadoRecepcion.contains("CLAVE ACCESO REGISTRADA")) {
-				retencion.setAutorizacion(clave);
-				retencion.setFechaAutorizacion(retencion.getFecha().plusMinutes(1).plusSeconds(15));
-				retencion.setEstado(5L);
-				retencionDaoService.save(retencion, retencion.getId());
-				resultado.put("estado", "AUTORIZADO");
-				resultado.put("exito", true);
-				resultado.put("etapa", "COMPLETADO");
-				resultado.put("mensaje", "Retención ya registrada en el SRI. Autorizada.");
-				return resultado;
-			}
+			// Lote 12 (VCN #8): CLAVE ACCESO REGISTRADA ya no se marca autorizada con una fecha inventada; sigue al WS2 normal y toma la autorizacion y la fecha reales.
 
 			// ── PASO 4d: WS2 - Autorización ─────────────────────────────────────
 			System.out.println("PASO 4d: Consultando autorización al SRI (WS2)...");
@@ -978,7 +968,7 @@ public class RetencionServiceImpl implements RetencionService {
 					String urlWS2 = ambiente == 1
 							? "https://celcer.sri.gob.ec/comprobantes-electronicos-ws/AutorizacionComprobantesOffline?wsdl"
 							: "https://cel.sri.gob.ec/comprobantes-electronicos-ws/AutorizacionComprobantesOffline?wsdl";
-					ResultadoAutorizacion ra = llamarAutorizacionSRI(urlWS2, clave);
+					ResultadoAutorizacion ra = llamarAutorizacionConReintentos(urlWS2, clave);
 					System.out.println(">>> Estado WS2: [" + ra.estado + "]");
 
 					if ("AUTORIZADO".equals(ra.estado)) {
@@ -1019,10 +1009,13 @@ public class RetencionServiceImpl implements RetencionService {
 							pathN.setAlterno(6L);
 							pathRetencionDaoService.save(pathN, null);
 						}
-						retencion.setEstado(6L);
-						retencion.setEstadoEmision(2L);
+						if (!com.saa.ejb.cxc.util.EstadoSri.esPendiente(ra.estado)) { // Lote 12 (VCN #8): una respuesta intermedia no es un rechazo; queda en 4 y se completa con la consulta
+
+							retencion.setEstado(6L);
+							retencion.setEstadoEmision(2L);
+						}
 						retencionDaoService.save(retencion, retencion.getId());
-						resultadoAutorizacion = "Estado: " + ra.estado
+						resultadoAutorizacion = (com.saa.ejb.cxc.util.EstadoSri.esPendiente(ra.estado) ? "PENDIENTE - " : "") + "Estado: " + ra.estado
 								+ " Id: " + nvl(ra.mensajeId, "")
 								+ " Mensaje: " + nvl(ra.mensaje, "")
 								+ " / " + nvl(ra.informacionAdicional, "");
@@ -1045,7 +1038,7 @@ public class RetencionServiceImpl implements RetencionService {
 			if (!autorizada) {
 				resultado.put("etapa", "WS2_AUTORIZACION");
 				resultado.put("exito", false);
-				resultado.put("estado", "NO_AUTORIZADO");
+				resultado.put("estado", resultadoAutorizacion != null && resultadoAutorizacion.startsWith("PENDIENTE") ? "PENDIENTE" : "NO_AUTORIZADO");
 				resultado.put("mensaje", "La retención fue recibida por el SRI pero no fue autorizada. "
 						+ "Respuesta del SRI: " + resultadoAutorizacion);
 				return resultado;
@@ -1205,7 +1198,7 @@ public class RetencionServiceImpl implements RetencionService {
 			java.time.LocalDate fechaAsiento = retencion.getFecha() != null
 					? retencion.getFecha().toLocalDate() : java.time.LocalDate.now();
 			String obsAsiento = "Retención N° " + nvl(retencion.getNumero(), retencion.getClave())
-					+ " | Proveedor: " + (retencion.getProveedor() != null ? retencion.getProveedor().getNombre() : "")
+					+ " | Proveedor: " + (retencion.getProveedor() != null ? com.saa.ejb.cxc.util.NombreTitular.de(retencion.getProveedor()) : "")
 					+ " | " + nvl(retencion.getObservacion(), "");
 			String usuarioAsiento = usuarioValidacionService.validar(retencion.getUsuario());
 
@@ -1276,6 +1269,21 @@ public class RetencionServiceImpl implements RetencionService {
 		}
 	}
 	
+	/**
+	 * Lote 12 (VCN #8): WS2 con hasta 3 reintentos (2, 4 y 8 s) mientras el SRI conteste algo intermedio (sin autorizacion todavia). Un AUTORIZADO o
+	 * un NO AUTORIZADO expreso cortan los reintentos.
+	 */
+	private ResultadoAutorizacion llamarAutorizacionConReintentos(String url, String claveAcceso) throws Exception {
+		ResultadoAutorizacion ra = llamarAutorizacionSRI(url, claveAcceso);
+		long[] esperas = { 2000L, 4000L, 8000L };
+		for (int i = 0; i < esperas.length && com.saa.ejb.cxc.util.EstadoSri.esPendiente(ra.estado); i++) {
+			System.out.println(">>> WS2 sin autorizacion todavia (estado [" + ra.estado + "]); reintento " + (i + 1) + " en " + esperas[i] + " ms");
+			try { Thread.sleep(esperas[i]); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); break; }
+			ra = llamarAutorizacionSRI(url, claveAcceso);
+		}
+		return ra;
+	}
+
 	private ResultadoAutorizacion llamarAutorizacionSRI(String url, String claveAcceso) throws Exception {
 		try {
 			String soapEnvelope =
@@ -1410,34 +1418,12 @@ public class RetencionServiceImpl implements RetencionService {
 	/**
 	 * Obtiene y actualiza el secuencial para un punto de emisión y tipo de documento
 	 */
+	/** Lote 12 (VCN #6): el secuencial lo da el servicio compartido, que bloquea la fila (antes: leer, sumar 1 y escribir sin bloqueo). */
+	@jakarta.ejb.EJB
+	private com.saa.ejb.cxc.service.SecuencialComprobanteService secuencialComprobanteService;
+
 	private String obtenerSecuencial(Long idPtoEmision, String tipoDoc) throws Exception {
-		System.out.println(">>> OBTENER SECUENCIAL PtoEmision[" + idPtoEmision + "] TipoComprobante[" + tipoDoc + "]");
-		
-		String sql = "SELECT n FROM NumeracionPuntoEmision n WHERE n.ptoEmision.id = :ptoEmision AND n.tipoDoc = :tipoDoc";
-		Query query = em.createQuery(sql);
-		query.setParameter("ptoEmision", idPtoEmision);
-		query.setParameter("tipoDoc", tipoDoc);
-		
-		@SuppressWarnings("unchecked")
-		List<Object> resultados = query.getResultList();
-		
-		if (resultados.isEmpty()) {
-			throw new IncomeException("No existe numeración para el punto de emisión " + idPtoEmision + " y tipo de documento " + tipoDoc);
-		}
-		
-		com.saa.model.cxc.NumeracionPuntoEmision numeracion = (com.saa.model.cxc.NumeracionPuntoEmision) resultados.get(0);
-		Long numeroActual = numeracion.getNumActual();
-		Long nuevoNumero = numeroActual + 1;
-		
-		String sqlUpdate = "UPDATE NumeracionPuntoEmision n SET n.numActual = :nuevoNumero " +
-				"WHERE n.ptoEmision.id = :ptoEmision AND n.tipoDoc = :tipoDoc";
-		Query updateQuery = em.createQuery(sqlUpdate);
-		updateQuery.setParameter("nuevoNumero", nuevoNumero);
-		updateQuery.setParameter("ptoEmision", idPtoEmision);
-		updateQuery.setParameter("tipoDoc", tipoDoc);
-		updateQuery.executeUpdate();
-		
-		return String.format("%09d", numeroActual);
+		return secuencialComprobanteService.siguienteSecuencial(idPtoEmision, tipoDoc);
 	}
 	
 	/**

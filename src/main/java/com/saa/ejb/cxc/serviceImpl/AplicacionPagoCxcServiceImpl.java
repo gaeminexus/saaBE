@@ -304,7 +304,7 @@ public class AplicacionPagoCxcServiceImpl implements AplicacionPagoCxcService {
 				.selectDisponiblesByTitular(idCliente, idEmpresa);
 
 		List<Object[]> reparto = repartoFifo(disponibles, valor,
-				factura.getTitular().getNombre());
+				com.saa.ejb.cxc.util.NombreTitular.de(factura.getTitular()));
 
 		return aplicaCruces(factura, reparto, fechaAplicacion, idEmpresa, idUsuario, observacion);
 	}
@@ -500,7 +500,7 @@ public class AplicacionPagoCxcServiceImpl implements AplicacionPagoCxcService {
 				? cuentaAnticipos.getSaldoInicial() : 0.0;
 		if (saldoAnticipos + TOLERANCIA < total) {
 			throw new IncomeException("El saldo de anticipos del cliente '"
-					+ factura.getTitular().getNombre() + "' es de $"
+					+ com.saa.ejb.cxc.util.NombreTitular.de(factura.getTitular()) + "' es de $"
 					+ String.format(java.util.Locale.US, "%.2f", saldoAnticipos)
 					+ " y no alcanza para cruzar $"
 					+ String.format(java.util.Locale.US, "%.2f", total)
@@ -515,7 +515,7 @@ public class AplicacionPagoCxcServiceImpl implements AplicacionPagoCxcService {
 			Double monto = (Double) linea[1];
 
 			String observacionAsiento = "Cruce de anticipo | Cliente: "
-					+ factura.getTitular().getNombre()
+					+ com.saa.ejb.cxc.util.NombreTitular.de(factura.getTitular())
 					+ " | Factura: " + factura.getNumero()
 					+ " | Anticipo: " + nvl(anticipo.getNumeroDoc(), "#" + anticipo.getId())
 					+ " | Valor: $" + String.format(java.util.Locale.US, "%.2f", monto);
@@ -653,7 +653,7 @@ public class AplicacionPagoCxcServiceImpl implements AplicacionPagoCxcService {
 
 		LocalDate fecha = parseFecha(fechaCobro);
 		String observacionAsiento = "Cobro por transferencia | Cliente: "
-				+ factura.getTitular().getNombre()
+				+ com.saa.ejb.cxc.util.NombreTitular.de(factura.getTitular())
 				+ " | Factura: " + factura.getNumero()
 				+ " | Ref: " + numeroTransferencia.trim()
 				+ " | Valor: $" + String.format(java.util.Locale.US, "%.2f", valor);
@@ -679,7 +679,7 @@ public class AplicacionPagoCxcServiceImpl implements AplicacionPagoCxcService {
 
 		// 3. Movimiento bancario de ingreso
 		movimientoBancoService.creaMovimientoPorTransferencia(idEmpresa,
-				"Cobro cliente: " + factura.getTitular().getNombre()
+				"Cobro cliente: " + com.saa.ejb.cxc.util.NombreTitular.de(factura.getTitular())
 				+ " | Factura: " + factura.getNumero()
 				+ " | Ref: " + numeroTransferencia.trim(),
 				asiento, cuentaBancaria, valor,
@@ -1412,14 +1412,14 @@ public class AplicacionPagoCxcServiceImpl implements AplicacionPagoCxcService {
 			docNumero = nvl(factura.getNumero(), "");
 			if (factura.getTitular() != null) {
 				clienteIdent = nvl(factura.getTitular().getIdentificacion(), "");
-				clienteNombre = nvl(factura.getTitular().getNombre(), "");
+				clienteNombre = nvl(com.saa.ejb.cxc.util.NombreTitular.de(factura.getTitular()), "");
 			}
 		} else if (liquidacion != null) {
 			docTipo = "Liquidación de compra";
 			docNumero = nvl(liquidacion.getNumero(), "");
 			if (liquidacion.getTitular() != null) {
 				clienteIdent = nvl(liquidacion.getTitular().getIdentificacion(), "");
-				clienteNombre = nvl(liquidacion.getTitular().getNombre(), "");
+				clienteNombre = nvl(com.saa.ejb.cxc.util.NombreTitular.de(liquidacion.getTitular()), "");
 			}
 		}
 

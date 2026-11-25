@@ -75,3 +75,35 @@ En ambiente de pruebas del SRI (`celcer`): una emisión de cada tipo; dos emisio
 1. OK a las propuestas, y la decisión del **#7**: opción A (tarifa activa, sin vigencia) o B (DDL de vigencia), y si la retención v1 entra.
 2. **#9:** si va con la válvula `saa.sri.tlsPermisivo` y quién corre la lista de control en producción antes del despliegue.
 3. Quién corre el SQL `omen1-01` en producción antes de programar (6a, 6b, 7b y 8b pueden mostrar casos que cambien el orden o el alcance).
+
+---
+
+## ESTADO (2026-11-25): #18, #6 y #8 PROGRAMADOS; #7 en pausa; #9 al final
+
+### Medición en producción (omen1-01) y decisiones
+- 6a duplicados: 0. **6b: contador de notas de crédito (punto 1, tipo 04) atrasado** (contador 3, máximo emitido 200): script `sql/omen1-02-corrige-contador-nota-credito.sql` (respaldo de la fila, UPDATE a máximo + 1, controles, sin COMMIT). **Correrlo antes de emitir otra NC.** Cómo pudo quedar atrás (hipótesis, no verificada): el contador es UNA fila por punto y tipo, sin ambiente; si al pasar a producción se reinició a un valor bajo mientras las NC de pruebas (ambiente 1) llegaron a 200, o si hubo NC cargadas por migración/otro camino sin pasar por `obtenerSecuencial`, el contador quedó por debajo del máximo. La consulta 0 del script muestra el máximo por ambiente para distinguirlo; el script usa el máximo de cualquier ambiente (un hueco es inofensivo, un repetido no).
+- 8b: 0 no autorizadas en 90 días. 8c: 1 comprobante (retención V2, autorizada a las 05:01:15 sobre su fecha) con fecha de autorización inventada: **consultarlo en el SRI; no se toca.**
+- #18: 0 titulares afectados hoy; corrección preventiva.
+- **#7 EN PAUSA.** La tabla 20 (IVA) no tiene tarifas en TSRI y el cruce del bloque de recálculo toma los códigos de la tabla 608 (renta): con la opción A tal cual, el servidor rechazaría las retenciones de IVA. Opciones: (1) sembrar la tabla 20 con los porcentajes de retención de IVA vigentes del SRI y su código de anexo, en script aparte validado por el contador; (2) validar SOLO renta (608) y dejar el IVA como hoy. Preferencia del árbitro: (2) ahora, (1) cuando exista la semilla.
+
+### Programado
+- **#18** `cxc/util/NombreTitular` (`de` = nombre, si vacío razón social; `requerido` falla antes de armar el XML si no hay ninguno). Usado en el XML (razón social del comprador/proveedor/sujeto retenido) de los seis generadores y en RIDE/correo/mensajes de ellos, `AnticipoClienteServiceImpl`, `AplicacionPagoCxcServiceImpl` y `ProcesoCargaDocumentosServiceImpl`.
+- **#6** `SecuencialComprobanteService.siguienteSecuencial(punto, tipo)`: `SELECT … FOR UPDATE` (espera 30 s) de la fila de CBR.NXPE, relee con el bloqueo, suma 1 y devuelve el previo, con el mismo contrato de antes. Las seis copias privadas de `obtenerSecuencial` ahora delegan. REQUIRED: se une a la transacción de la emisión; si la emisión falla el número no se consume.
+- **#8** `cxc/util/EstadoSri` (AUTORIZADO / RECHAZADO = «NO AUTORIZADO» expreso / PENDIENTE = vacío, sin `<autorizacion>` o desconocido). En los seis servicios: WS2 con hasta 3 reintentos (2, 4 y 8 s) en las rutas de emisión y reenvío (`llamarAutorizacionConReintentos`); PENDIENTE ya no pasa a ESTADO 6/EstadoEmision 2: queda en 4, devuelve `estado = PENDIENTE` y se completa con la consulta `consultarYActualizar…` que ya existía; «CLAVE ACCESO REGISTRADA» ya no se marca autorizada con fecha inventada: en la emisión sigue al WS2 normal y en el reenvío pide consultar el estado. `FacturaRest` trata PENDIENTE como NO_AUTORIZADO en el código HTTP (200, exito=false).
+  - **No cubierto a propósito:** los `catch` que ante una excepción de red al llamar al WS2 dejan ESTADO 6 (siguen igual); en la RetencionV2 y la retención v1 solo se cubrió el flujo con `ra`/`resultado` (ver pruebas).
+
+### Pruebas en COPIA (obligatorias antes de producción)
+**#6 (secuencial)**
+1. Dos emisiones simultáneas del mismo punto y tipo (dos hilos/pestañas, factura): números distintos y consecutivos, contador = último + 1, ningún error 500.
+2. Una emisión que falla después de pedir el secuencial (forzar error al firmar): el contador NO avanza (rollback) y la siguiente emisión usa el mismo número.
+3. Punto/tipo sin fila en NXPE: error claro «No existe numeración…». Repetir para NC, ND, liquidación, retención v1 y V2.
+4. Emisión con la fila bloqueada por otra sesión > 30 s: falla con tiempo de espera, sin dejar comprobante a medias.
+
+**#8 (estados)** contra el ambiente de pruebas del SRI (celcer) con un comprobante real
+1. Emisión normal: AUTORIZADO, estado 5, fecha y número de autorización reales.
+2. Comprobante ya enviado (clave repetida): no queda autorizado al instante con fecha inventada; toma la autorización y fecha reales del WS2 (emisión) o pide consultar el estado (reenvío).
+3. Simular respuesta sin `<autorizacion>` (apuntar a un doble que devuelva vacío): 3 reintentos, queda en estado 4 con `estado = PENDIENTE`, no 6; luego `consultarYActualizar…` lo pasa a autorizado cuando el SRI responde.
+4. Respuesta «NO AUTORIZADO» expresa: estado 6 como antes, con el mensaje del SRI.
+5. Repetir 1–4 en factura, NC, ND, liquidación, retención v1 y V2 (los seis tienen su copia).
+
+**#18** cliente solo con razón social: el XML y el RIDE salen con ella; titular sin nombre ni razón social: falla con mensaje claro antes de firmar.
