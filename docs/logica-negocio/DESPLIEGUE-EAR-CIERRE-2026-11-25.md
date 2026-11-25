@@ -138,6 +138,28 @@ porque escribe en `CNT.RNRP`.
 6. **⑥:** con Petro cargado, si el «sin explicar» baja a menos de unos 1.000, `neteoPorPrestamo` sigue en `auto`. Si
    sigue en cientos de miles, `neteoPorPrestamo = nunca` para noviembre y se manda el detalle por préstamo del ⑥.
 
+## 5d. ⛔ INCIDENTE 25-11 (madrugada): la re-imputación C33 empeoró la prelación
+
+- **Qué se corrió:** `reimputarAlCorte` con `simular=false` al 2026-11-30, por recomendación del árbitro. La simulación
+  salía limpia (sin pagos creados ni anulados, sin dinero sin destino, deltas en cero).
+- **Resultado:** 95 préstamos re-imputados. La previsualización siguiente marcaba 59 rotos, 39 de ellos con una cuota
+  **pagada de más** (2904, cuota 5: 950,21). El ① subió de 52.796 a 73.162.
+- **Causa** (diagnóstico del BE, a confirmar con el `394`):
+  - la herramienta lee los pagos por `PGPR.PRSTCDGO` (`selectVigentesByPrestamo`) y el control del cierre los lee por
+    cuota (`PGPR.DTPRCDGO`);
+  - los PGPR con `PRSTCDGO` nulo son invisibles para la herramienta, que imputó de nuevo encima de cuotas ya cubiertas;
+  - su chequeo de residuo usa la misma lectura, así que no lo detectó.
+- **Qué escribió:** PGPR, DTPR (mora recalculada AL 2026-11-30, cinco días en el futuro), MVIC (anuló devengos de
+  cobro e insertó tipos 2 y 4), ASNT y DTAS (asientos de provisión por préstamo, fechados el 30-11) y HDTP.
+- **Salida:** RESTAURACIÓN COMPLETA de la base desde el respaldo del usuario.
+  - Es de después del C35-02 y antes de la re-imputación, y nadie más trabajaba (03:42).
+  - No hay que volver a correr ningún script.
+- **Lección:** antes de ejecutar una herramienta que reescribe pagos, comprobar que mide lo mismo que el control que
+  se quiere destrabar: simular y **previsualizar con el resultado simulado**, no solo leer el resumen de la
+  herramienta.
+- **`reimputarAlCorte` NO se vuelve a correr en producción** hasta corregirlo (lote aparte: leer por cuota, el mismo
+  criterio que el control y la mora a la fecha real).
+
 ## 6. Riesgos
 - **Lo nuevo nunca corrió contra Oracle en producción:** C27b, el lote 7 y su reparto por préstamo, y el ⑧, ⑨ y ⑩ con
   `siempre`. La previsualización es su primera ejecución, y no graba nada.
