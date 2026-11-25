@@ -568,7 +568,7 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
      * HDTP/DTPR y la misma reclasificación, nunca dos copias.
      */
     private List<DetalleAsiento> lineasReBandeoAbono(EventoPrestamo evento, Long idEmpresa, LocalDate fechaCorte,
-            String prefijo) throws Throwable {
+            String prefijo, List<com.saa.ejb.crd.service.dto.ResultadoReversoDevengo> reversosDevengo) throws Throwable {
         Prestamo prestamo = evento.getPrestamo();
         if (prestamo == null || prestamo.getProducto() == null) {
             throw new IncomeException("El evento " + evento.getCodigo()
@@ -609,7 +609,10 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
         // C27b: el abono baja el interés de cuotas cuyo mes ya devengó el cierre: D ingreso / H interés por cobrar, en
         // el mismo asiento del evento (anular el abono lo reversa). Vacío si el devengo completo no está activo.
         List<DetalleAsiento> conReverso = new ArrayList<>(lineas);
-        conReverso.addAll(devengoCompletoService.lineasReversoAbono(idEmpresa, prestamo, historizadas, nuevas, fechaCorte, prefijo));
+        com.saa.ejb.crd.service.dto.ResultadoReversoDevengo reversoDevengo = devengoCompletoService.calcularReversoAbono(idEmpresa, prestamo, historizadas, nuevas,
+                fechaCorte, prefijo, evento.getCodigo());
+        conReverso.addAll(reversoDevengo.getLineas());
+        reversosDevengo.add(reversoDevengo);
         return conReverso;
     }
 
@@ -633,7 +636,8 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
         LocalDate fechaCorte = evento.getFecha() != null ? evento.getFecha().toLocalDate() : LocalDate.now();
         String prefijo = "Re-bandeo abono a capital - evento " + evento.getCodigo();
 
-        List<DetalleAsiento> lineas = lineasReBandeoAbono(evento, idEmpresa, fechaCorte, prefijo);
+        List<com.saa.ejb.crd.service.dto.ResultadoReversoDevengo> reversosDevengo = new ArrayList<>();
+        List<DetalleAsiento> lineas = lineasReBandeoAbono(evento, idEmpresa, fechaCorte, prefijo, reversosDevengo);
 
         if (lineas.isEmpty()) {
             System.out.println("  ContabilidadPrestamoService.contabilizarAbonoCapital - evento "
@@ -645,6 +649,9 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
         Asiento asiento = asientoContableService.generarAsiento(idEmpresa, TipoAsientos.CREDITOS, fechaCorte,
                 prefijo, evento.getUsuario(), lineas, Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR));
 
+        for (com.saa.ejb.crd.service.dto.ResultadoReversoDevengo reversoDevengo : reversosDevengo) {
+            devengoCompletoService.registrarReverso(reversoDevengo, asiento.getCodigo(), fechaCorte, evento.getUsuario());
+        }
         System.out.println("  ✅ contabilizarAbonoCapital OK (re-bandeo) - Asiento: " + asiento.getCodigo()
                 + " - Evento: " + evento.getCodigo());
 
@@ -736,12 +743,13 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
         agregaCierreAperturaCaminoDirecto(lineas, idEmpresa, totalHaber, pagos, fechaCorte,
                 "abono con aportes evento " + evento.getCodigo());
 
+        List<com.saa.ejb.crd.service.dto.ResultadoReversoDevengo> reversosDevengoAbono = new ArrayList<>();
         // (3) Re-bandeo del capital que sigue vivo. C16b: un abono registrado sin regenerar tabla
         // (modalidad 0) no cambió la tabla — no hay re-bandeo que hacer.
         boolean sinRegenerarTabla = evento.getModalidad() != null && evento.getModalidad().longValue()
                 == com.saa.ejb.crd.service.AbonoCapitalPrestamoService.MODALIDAD_SIN_REGENERAR_TABLA;
         if (!sinRegenerarTabla) {
-            lineas.addAll(lineasReBandeoAbono(evento, idEmpresa, fechaCorte, prefijo));
+            lineas.addAll(lineasReBandeoAbono(evento, idEmpresa, fechaCorte, prefijo, reversosDevengoAbono));
         }
 
         double sumaDebe = 0.0;
@@ -766,6 +774,9 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
         Asiento asiento = asientoContableService.generarAsiento(idEmpresa, TipoAsientos.CREDITOS, fechaAsiento,
                 observacion, evento.getUsuario(), lineas, Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR));
 
+        for (com.saa.ejb.crd.service.dto.ResultadoReversoDevengo reversoDevengo : reversosDevengoAbono) {
+            devengoCompletoService.registrarReverso(reversoDevengo, asiento.getCodigo(), fechaAsiento, evento.getUsuario());
+        }
         System.out.println("  ✅ contabilizarAbonoCapitalConAportes OK - Asiento: " + asiento.getCodigo()
                 + " - Evento: " + evento.getCodigo() + " - Monto: $" + totalDebe);
         return asiento.getCodigo();
@@ -878,8 +889,9 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
 
         // C27b: las cuotas que la precancelación pasó a 7 sin cobrar y cuyo mes ya devengó el cierre: D ingreso /
         // H interés por cobrar, en este mismo asiento (el del evento: anular la precancelación lo reversa).
-        lineas.addAll(devengoCompletoService.lineasReversoCuotasCanceladas(idEmpresa, evento.getPrestamo(), fechaCorte,
-                prefijo));
+        com.saa.ejb.crd.service.dto.ResultadoReversoDevengo reversoDevengo = devengoCompletoService.calcularReversoCuotasCanceladas(idEmpresa,
+                evento.getPrestamo(), fechaCorte, prefijo, ctx.getIdEvento());
+        lineas.addAll(reversoDevengo.getLineas());
 
         // Lote 15 (D-195): la mora devengada y no cobrada del préstamo que esta precancelación cancela (después de lo que el evento cobró: sus pagos ya están grabados).
         com.saa.ejb.crd.service.dto.ResultadoReversoMora reversoMora = reversoMoraCancelacionService.calcular(idEmpresa,
@@ -904,6 +916,8 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
         System.out.println("  ✅ contabilizarPrecancelacion OK - Asiento: " + asiento.getCodigo()
                 + " - Evento: " + ctx.getIdEvento() + " - Monto: $" + totalDebe);
         reversoMoraCancelacionService.registrar(reversoMora, asiento.getCodigo(), fechaAsiento, ctx.getUsuario());
+        // Lote 20: el libro por cuota del reverso del devengo de interés (MVIC 12), con el mismo asiento.
+        devengoCompletoService.registrarReverso(reversoDevengo, asiento.getCodigo(), fechaAsiento, ctx.getUsuario());
 
         // ÍTEM 4 (gap cerrado 2026-10-05): reverso de la provisión de intereses por lo que esta
         // precancelación liquidó — CASO A únicamente (verificado en el guard de arriba): en
@@ -978,8 +992,9 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
                 "precancelación evento " + ctx.getIdEvento());
 
         // C27b: reverso del devengo de las cuotas canceladas sin cobrar (ver contabilizarPrecancelacion).
-        lineas.addAll(devengoCompletoService.lineasReversoCuotasCanceladas(idEmpresa, evento != null
-                ? evento.getPrestamo() : null, fechaCorte, prefijo));
+        com.saa.ejb.crd.service.dto.ResultadoReversoDevengo reversoDevengo = devengoCompletoService.calcularReversoCuotasCanceladas(idEmpresa,
+                evento != null ? evento.getPrestamo() : null, fechaCorte, prefijo, ctx.getIdEvento());
+        lineas.addAll(reversoDevengo.getLineas());
 
         // Lote 15 (D-195): reverso de la mora devengada y no cobrada del préstamo cancelado.
         com.saa.ejb.crd.service.dto.ResultadoReversoMora reversoMora = reversoMoraCancelacionService.calcular(idEmpresa,
@@ -1007,6 +1022,7 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
         System.out.println("  ✅ contabilizarPrecancelacionConPrestamo OK - Asiento: " + asiento.getCodigo()
                 + " - Evento: " + ctx.getIdEvento() + " - Monto: $" + totalHaber);
         reversoMoraCancelacionService.registrar(reversoMora, asiento.getCodigo(), fechaAsiento, ctx.getUsuario());
+        devengoCompletoService.registrarReverso(reversoDevengo, asiento.getCodigo(), fechaAsiento, ctx.getUsuario());
 
         // Reverso de la provisión de intereses (MVIC) por lo liquidado: mismo que CASO A.
         provisionInteresService.reversarPorPagos(pagos, idEmpresa, fechaAsiento, "PRECANCELACION",
@@ -1202,6 +1218,7 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
                                 ? ": " + eventoAnulado.getMotivoAnulacion() : ""));
         // Lote 15 (D-195): el reverso de mora que este evento registró en el libro se anula con él.
         reversoMoraCancelacionService.anularPorEvento(eventoAnulado.getCodigo());
+        devengoCompletoService.anularPorEvento(eventoAnulado.getCodigo());
         System.out.println("  ↩️ Asiento " + eventoAnulado.getNumeroAsiento() + " reversado"
                 + " (evento " + eventoAnulado.getCodigo() + ")");
 

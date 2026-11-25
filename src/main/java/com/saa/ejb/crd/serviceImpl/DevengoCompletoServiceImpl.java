@@ -9,6 +9,8 @@ import com.saa.ejb.cnt.dao.DetallePlantillaDaoService;
 import com.saa.ejb.cnt.service.PlantillaService;
 import com.saa.ejb.crd.dao.CorridaCierreCarteraDaoService;
 import com.saa.ejb.crd.dao.DetallePrestamoDaoService;
+import com.saa.ejb.crd.dao.MovimientoInteresCuotaDaoService;
+import com.saa.ejb.crd.service.dto.ResultadoReversoDevengo;
 import com.saa.ejb.crd.dao.PagoPrestamoDaoService;
 import com.saa.ejb.crd.service.DevengoCompletoService;
 import com.saa.ejb.crd.service.ModoCorteCartera;
@@ -36,6 +38,10 @@ public class DevengoCompletoServiceImpl implements DevengoCompletoService {
 
     private static final double MINIMO = 0.005;
 
+    /** Lote 20: origen de los MVIC 12 de las cuotas canceladas por precancelación o acuerdo (idOrigen = evento) y de los del abono. */
+    private static final String ORIGEN_CANCELACION = "CANCELACION_DEVENGO_INTERES";
+    private static final String ORIGEN_ABONO = "ABONO_DEVENGO_INTERES";
+
     @EJB
     private CorridaCierreCarteraDaoService corridaCierreCarteraDaoService;
 
@@ -44,6 +50,9 @@ public class DevengoCompletoServiceImpl implements DevengoCompletoService {
 
     @EJB
     private PagoPrestamoDaoService pagoPrestamoDaoService;
+
+    @EJB
+    private MovimientoInteresCuotaDaoService movimientoInteresCuotaDaoService;
 
     @EJB
     private PlantillaService plantillaService;
@@ -82,10 +91,18 @@ public class DevengoCompletoServiceImpl implements DevengoCompletoService {
     public List<DetalleAsiento> lineasReversoAbono(Long idEmpresa, Prestamo prestamo,
             List<HistDetallePrestamo> historizadas, List<DetallePrestamo> nuevas, LocalDate fechaOperacion, String prefijo)
             throws Throwable {
-        System.out.println("Ingresa al metodo (lineasReversoAbono) DevengoCompletoService - empresa: " + idEmpresa);
+        return calcularReversoAbono(idEmpresa, prestamo, historizadas, nuevas, fechaOperacion, prefijo, null).getLineas();
+    }
+
+    @Override
+    public ResultadoReversoDevengo calcularReversoAbono(Long idEmpresa, Prestamo prestamo,
+            List<HistDetallePrestamo> historizadas, List<DetallePrestamo> nuevas, LocalDate fechaOperacion, String prefijo,
+            Long idEvento) throws Throwable {
+        System.out.println("Ingresa al metodo (calcularReversoAbono) DevengoCompletoService - empresa: " + idEmpresa);
+        ResultadoReversoDevengo resultado = new ResultadoReversoDevengo(prestamo, ORIGEN_ABONO, idEvento);
         LocalDate limite = limiteDevengado(idEmpresa, fechaOperacion);
         if (limite == null) {
-            return new ArrayList<DetalleAsiento>();
+            return resultado;
         }
         LocalDate primerMes = primerMesDevengado();
         double antes = 0.0;
@@ -107,18 +124,119 @@ public class DevengoCompletoServiceImpl implements DevengoCompletoService {
             }
         }
         double reverso = redondear(antes - despues);
-        return lineasReverso(idEmpresa, prestamo, reverso, prefijo + " - reverso del devengo del interés que el abono"
-                + " eliminó (cuotas de meses ya devengados)");
+        resultado.getLineas().addAll(lineasReverso(idEmpresa, prestamo, reverso, prefijo
+                + " - reverso del devengo del interés que el abono eliminó (cuotas de meses ya devengados)"));
+        if (resultado.getLineas().isEmpty()) {
+            return resultado;
+        }
+        repartirReversoAbono(resultado, reverso, historizadas, nuevas, primerMes, limite);
+        return resultado;
+    }
+
+    /**
+     * Lote 20: reparte el reverso del abono por cuota. Regla: por cada número de cuota, interés historizado − interés nuevo cuando da
+     * positivo (sobre las cuotas de meses ya devengados); lo de las cuotas que desaparecen va a la de número mayor que queda dentro del
+     * límite. El total del libro se fuerza a ser el reverso del asiento, al centavo, ajustando la de número mayor.
+     */
+    private void repartirReversoAbono(ResultadoReversoDevengo resultado, double reverso, List<HistDetallePrestamo> historizadas,
+            List<DetallePrestamo> nuevas, LocalDate primerMes, LocalDate limite) {
+        java.util.TreeMap<Double, DetallePrestamo> nuevaPorNumero = new java.util.TreeMap<Double, DetallePrestamo>();
+        java.util.TreeMap<Double, DetallePrestamo> nuevaDentroPorNumero = new java.util.TreeMap<Double, DetallePrestamo>();
+        if (nuevas != null) {
+            for (DetallePrestamo n : nuevas) {
+                if (n.getNumeroCuota() == null) {
+                    continue;
+                }
+                nuevaPorNumero.put(n.getNumeroCuota(), n);
+                if (dentro(n.getFechaVencimiento(), primerMes, limite)) {
+                    nuevaDentroPorNumero.put(n.getNumeroCuota(), n);
+                }
+            }
+        }
+        java.util.TreeMap<Double, Double> porNumero = new java.util.TreeMap<Double, Double>();
+        double residuo = 0.0;
+        if (historizadas != null) {
+            for (HistDetallePrestamo h : historizadas) {
+                if (h.getNumeroCuota() == null || !dentro(h.getFechaVencimiento(), primerMes, limite)) {
+                    continue;
+                }
+                double interesH = h.getInteres() != null ? h.getInteres().doubleValue() : 0.0;
+                DetallePrestamo nueva = nuevaPorNumero.get(h.getNumeroCuota());
+                if (nueva == null) {
+                    residuo += interesH;
+                    continue;
+                }
+                double interesN = nuevaDentroPorNumero.containsKey(h.getNumeroCuota()) && nueva.getInteres() != null
+                        ? nueva.getInteres().doubleValue() : 0.0;
+                double diferencia = redondear(interesH - interesN);
+                if (diferencia > 0.0) {
+                    porNumero.merge(h.getNumeroCuota(), diferencia, Double::sum);
+                }
+            }
+        }
+        // Destino del residuo y de los ajustes: la cuota de número mayor que queda dentro del límite (si no hay, la de número mayor).
+        Double numeroDestino = !nuevaDentroPorNumero.isEmpty() ? nuevaDentroPorNumero.lastKey()
+                : (!nuevaPorNumero.isEmpty() ? nuevaPorNumero.lastKey() : null);
+        if (numeroDestino == null) {
+            System.out.println("  ⚠ DevengoCompletoService: el abono reversó $" + reverso + " del devengo pero no hay cuota nueva donde"
+                    + " asentar el libro por cuota (MVIC 12).");
+            return;
+        }
+        if (residuo > 0.0) {
+            porNumero.merge(numeroDestino, redondear(residuo), Double::sum);
+        }
+        double total = 0.0;
+        for (double v : porNumero.values()) {
+            total += v;
+        }
+        double ajuste = redondear(reverso - total);
+        if (ajuste > 0.0) {
+            porNumero.merge(numeroDestino, ajuste, Double::sum);
+        } else if (ajuste < 0.0) {
+            double porQuitar = -ajuste;
+            for (Double numero : new ArrayList<Double>(porNumero.descendingKeySet())) {
+                double quita = Math.min(porNumero.get(numero), porQuitar);
+                porNumero.put(numero, redondear(porNumero.get(numero) - quita));
+                porQuitar = redondear(porQuitar - quita);
+                if (porQuitar <= 0.0) {
+                    break;
+                }
+            }
+        }
+        for (java.util.Map.Entry<Double, Double> e : porNumero.entrySet()) {
+            DetallePrestamo cuota = nuevaPorNumero.get(e.getKey());
+            if (cuota == null) {
+                cuota = nuevaPorNumero.get(numeroDestino);
+            }
+            if (cuota != null && e.getValue() >= MINIMO) {
+                resultado.getCuotas().add(new ResultadoReversoDevengo.Cuota(cuota.getCodigo(), redondear(e.getValue())));
+            }
+        }
+    }
+
+    private boolean dentro(java.time.LocalDateTime vencimiento, LocalDate primerMes, LocalDate limite) {
+        if (vencimiento == null) {
+            return false;
+        }
+        LocalDate v = vencimiento.toLocalDate();
+        return !v.isAfter(limite) && !v.isBefore(primerMes);
     }
 
     @Override
     public List<DetalleAsiento> lineasReversoCuotasCanceladas(Long idEmpresa, Prestamo prestamo, LocalDate fechaEvento,
             String prefijo) throws Throwable {
-        System.out.println("Ingresa al metodo (lineasReversoCuotasCanceladas) DevengoCompletoService - empresa: "
+        return calcularReversoCuotasCanceladas(idEmpresa, prestamo, fechaEvento, prefijo, null).getLineas();
+    }
+
+    @Override
+    public ResultadoReversoDevengo calcularReversoCuotasCanceladas(Long idEmpresa, Prestamo prestamo, LocalDate fechaEvento,
+            String prefijo, Long idEvento) throws Throwable {
+        System.out.println("Ingresa al metodo (calcularReversoCuotasCanceladas) DevengoCompletoService - empresa: "
                 + idEmpresa);
+        ResultadoReversoDevengo resultado = new ResultadoReversoDevengo(prestamo, ORIGEN_CANCELACION, idEvento);
         LocalDate limite = limiteDevengado(idEmpresa, fechaEvento);
         if (limite == null || prestamo == null || fechaEvento == null) {
-            return new ArrayList<DetalleAsiento>();
+            return resultado;
         }
         LocalDate primerMes = primerMesDevengado();
         double noCobrado = 0.0;
@@ -141,10 +259,54 @@ public class DevengoCompletoServiceImpl implements DevengoCompletoService {
                 }
             }
             double interes = cuota.getInteres() != null ? cuota.getInteres().doubleValue() : 0.0;
-            noCobrado += Math.max(interes - cobrado, 0.0);
+            // Lote 20: por cuota y redondeado por cuota; el asiento es la suma de lo que se graba en el libro (MVIC 12).
+            double aReversar = redondear(Math.max(interes - cobrado, 0.0));
+            if (aReversar >= MINIMO) {
+                resultado.getCuotas().add(new ResultadoReversoDevengo.Cuota(cuota.getCodigo(), aReversar));
+                noCobrado += aReversar;
+            }
         }
-        return lineasReverso(idEmpresa, prestamo, redondear(noCobrado), prefijo + " - reverso del devengo del interés"
-                + " de cuotas canceladas sin cobrar (meses ya devengados)");
+        resultado.getLineas().addAll(lineasReverso(idEmpresa, prestamo, redondear(noCobrado), prefijo
+                + " - reverso del devengo del interés de cuotas canceladas sin cobrar (meses ya devengados)"));
+        if (resultado.getLineas().isEmpty()) {
+            resultado.getCuotas().clear();
+        }
+        return resultado;
+    }
+
+    @Override
+    public void registrarReverso(ResultadoReversoDevengo resultado, Long idAsiento, LocalDate fechaContable, String usuario)
+            throws Throwable {
+        if (resultado == null || resultado.getCuotas().isEmpty() || resultado.getLineas().isEmpty()) {
+            return;
+        }
+        // Requiere sql/406 (CK_MVIC_TIPO hasta 12). Solo hay cuotas si el devengo completo está activo.
+        java.time.LocalDateTime ahora = java.time.LocalDateTime.now();
+        for (ResultadoReversoDevengo.Cuota cuota : resultado.getCuotas()) {
+            com.saa.model.crd.MovimientoInteresCuota mov = new com.saa.model.crd.MovimientoInteresCuota();
+            mov.setPrestamo(resultado.getPrestamo());
+            mov.setIdCuota(cuota.getIdCuota());
+            mov.setTipoMovimiento(com.saa.rubros.TipoMovimientoInteresCuota.REVERSO_DEVENGO_INTERES);
+            mov.setComponente(com.saa.rubros.ComponenteMovimientoInteresCuota.INTERES);
+            mov.setValor(cuota.getValor());
+            mov.setFechaContable(fechaContable);
+            mov.setOrigen(resultado.getOrigen());
+            mov.setIdOrigen(resultado.getIdOrigen());
+            mov.setAsiento(idAsiento);
+            mov.setAnulado(0L);
+            mov.setUsuarioRegistro(usuario);
+            mov.setFechaRegistro(ahora);
+            movimientoInteresCuotaDaoService.save(mov, null);
+        }
+    }
+
+    @Override
+    public int anularPorEvento(Long idEvento) throws Throwable {
+        if (idEvento == null) {
+            return 0;
+        }
+        return movimientoInteresCuotaDaoService.anularByOrigenYIdOrigen(ORIGEN_CANCELACION, idEvento)
+                + movimientoInteresCuotaDaoService.anularByOrigenYIdOrigen(ORIGEN_ABONO, idEvento);
     }
 
     /**

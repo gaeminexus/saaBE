@@ -57,7 +57,21 @@ public class SubProcesoCierre {
      */
     private transient java.util.List<ProvisionCuotaCalculada> provisionPorCuotaCalculada;
 
+    /**
+     * Lote 20 (solo ④ y ④b con el devengo completo): el interés devengado por cuota, del que sale la línea del asiento y del que
+     * {@code generaAsiento} graba el libro (MVIC tipo 11). Sin getter/setter de bean: no viaja en el JSON.
+     */
+    private transient java.util.List<DevengoInteresCuota> devengoInteresPorCuotaCalculado;
+
     public SubProcesoCierre() {
+    }
+
+    public java.util.List<DevengoInteresCuota> devengoInteresPorCuota() {
+        return devengoInteresPorCuotaCalculado;
+    }
+
+    public void devengoInteresPorCuota(java.util.List<DevengoInteresCuota> lista) {
+        this.devengoInteresPorCuotaCalculado = lista;
     }
 
     public java.util.List<ProvisionCuotaCalculada> provisionPorCuota() {

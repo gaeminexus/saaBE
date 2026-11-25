@@ -122,7 +122,7 @@ public class MovimientoInteresCuotaDaoServiceImpl extends EntityDaoImpl<Movimien
         Query query = em.createQuery(
             "update MovimientoInteresCuota m set m.anulado = 1"
             + " where m.corrida.codigo = :idCorrida and m.anulado = 0"
-            + " and m.tipoMovimiento in (1, 5, 7)");
+            + " and m.tipoMovimiento in (1, 5, 7, 11)");
         query.setParameter("idCorrida", idCorrida);
         return query.executeUpdate();
     }

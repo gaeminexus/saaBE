@@ -708,11 +708,13 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
             if (lineasCruce != null) {
                 lineasAdicionales.addAll(lineasCruce);
             }
-            List<DetalleAsiento> lineasReversoDevengo = acuerdo.getEmpresa() != null
-                    ? devengoCompletoService.lineasReversoCuotasCanceladas(acuerdo.getEmpresa().getCodigo(), prestamo,
-                            fecha, "Acuerdo " + idAcuerdo)
-                    : new ArrayList<DetalleAsiento>();
-            lineasAdicionales.addAll(lineasReversoDevengo);
+            com.saa.ejb.crd.service.dto.ResultadoReversoDevengo reversoDevengo = acuerdo.getEmpresa() != null
+                    ? devengoCompletoService.calcularReversoCuotasCanceladas(acuerdo.getEmpresa().getCodigo(), prestamo,
+                            fecha, "Acuerdo " + idAcuerdo, evento.getCodigo())
+                    : null;
+            if (reversoDevengo != null) {
+                lineasAdicionales.addAll(reversoDevengo.getLineas());
+            }
             // Lote 15 (D-195): la mora devengada y no cobrada, DESPUÉS de lo que el acuerdo cobró (su PagoPrestamo ya está grabado) y condonó (el acuerdo ya
             // está APLICADO: su DACC cuenta como condonado). Va en el asiento del evento.
             com.saa.ejb.crd.service.dto.ResultadoReversoMora reversoMora = acuerdo.getEmpresa() != null
@@ -734,6 +736,10 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
             }
             if (idAsientoOperacion != null && reversoMora != null) {
                 reversoMoraCancelacionService.registrar(reversoMora, idAsientoOperacion, fechaAsiento, acuerdo.getUsuarioRegistro());
+            }
+            if (idAsientoOperacion != null && reversoDevengo != null) {
+                // Lote 20: el libro por cuota del reverso del devengo de interés (MVIC 12), con el mismo asiento.
+                devengoCompletoService.registrarReverso(reversoDevengo, idAsientoOperacion, fechaAsiento, acuerdo.getUsuarioRegistro());
             }
             if (idAsientoOperacion != null) {
                 // Lote 1c: el asiento queda en el evento (EVPR.numeroAsiento) para que anularOperacion →

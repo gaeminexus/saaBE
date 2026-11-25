@@ -620,6 +620,8 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
             for (DetalleCobroCredito detalle : detalleCobroCreditoDaoService.selectByCobro(idCobro)) {
                 if (detalle.getEventoPrestamo() != null) {
                     reversoMoraCancelacionService.anularPorEvento(detalle.getEventoPrestamo().getCodigo());
+                devengoCompletoService.anularPorEvento(detalle.getEventoPrestamo().getCodigo());
+                    devengoCompletoService.anularPorEvento(detalle.getEventoPrestamo().getCodigo());
                 }
             }
         }
@@ -2993,11 +2995,14 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
         // tocan el cuadre de arriba. Vacío si el devengo completo no está activo.
         List<DetalleAsiento> lineasReversoDevengo = new ArrayList<>();
         List<com.saa.ejb.crd.service.dto.ResultadoReversoMora> reversosMora = new ArrayList<>();
+        List<com.saa.ejb.crd.service.dto.ResultadoReversoDevengo> reversosDevengoInteres = new ArrayList<>();
         for (DetalleCobroCredito detalle : detalles) {
             if (detalle.getPrestamo() != null && detalle.getEventoPrestamo() != null
                     && ProcesoPagoPrestamoService.TIPO_PRECANCELACION.equals(detalle.getEventoPrestamo().getTipoOperacion())) {
-                lineasReversoDevengo.addAll(devengoCompletoService.lineasReversoCuotasCanceladas(idEmpresa,
-                        detalle.getPrestamo(), cobro.getFecha(), "Cobro " + cobro.getCodigo()));
+                com.saa.ejb.crd.service.dto.ResultadoReversoDevengo reversoDevengoDelPrestamo = devengoCompletoService.calcularReversoCuotasCanceladas(idEmpresa,
+                        detalle.getPrestamo(), cobro.getFecha(), "Cobro " + cobro.getCodigo(), detalle.getEventoPrestamo().getCodigo());
+                lineasReversoDevengo.addAll(reversoDevengoDelPrestamo.getLineas());
+                reversosDevengoInteres.add(reversoDevengoDelPrestamo);
                 // Lote 15 (D-195): reverso de la mora devengada y no cobrada del préstamo cancelado (sus pagos ya están grabados).
                 com.saa.ejb.crd.service.dto.ResultadoReversoMora reversoMoraDelPrestamo = reversoMoraCancelacionService.calcular(
                         idEmpresa, detalle.getPrestamo(), cobro.getFecha(), pagoPrestamoDaoService.selectByEvento(
@@ -3045,6 +3050,11 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
                 cobro.getUsuarioProceso(), lineas, Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR));
         for (com.saa.ejb.crd.service.dto.ResultadoReversoMora reversoMora : reversosMora) {
             reversoMoraCancelacionService.registrar(reversoMora, asientoDefinitivo.getCodigo(), cobro.getFechaAfectacion(),
+                    cobro.getUsuarioProceso());
+        }
+        for (com.saa.ejb.crd.service.dto.ResultadoReversoDevengo reversoDevengoInteres : reversosDevengoInteres) {
+            // Lote 20: el libro por cuota del reverso del devengo de interés (MVIC 12), con el mismo asiento.
+            devengoCompletoService.registrarReverso(reversoDevengoInteres, asientoDefinitivo.getCodigo(), cobro.getFechaAfectacion(),
                     cobro.getUsuarioProceso());
         }
         return asientoDefinitivo;

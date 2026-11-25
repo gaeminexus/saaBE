@@ -60,4 +60,33 @@ public interface DevengoCompletoService {
     List<DetalleAsiento> lineasReversoCuotasCanceladas(Long idEmpresa, Prestamo prestamo, LocalDate fechaEvento,
             String prefijo)
             throws Throwable;
+    /**
+     * Lote 20: el reverso del abono con su detalle por cuota (para el libro, MVIC tipo 12). Reparto: por número de cuota, interés
+     * historizado − interés nuevo cuando da positivo; el residuo de las cuotas que desaparecen y los ajustes van a la cuota de número mayor
+     * que queda dentro del límite, de modo que la suma del libro sea el reverso del asiento, al centavo.
+     *
+     * @param idEvento código del evento del abono (idOrigen de los MVIC)
+     */
+    com.saa.ejb.crd.service.dto.ResultadoReversoDevengo calcularReversoAbono(Long idEmpresa, Prestamo prestamo,
+            List<HistDetallePrestamo> historizadas, List<DetallePrestamo> nuevas, LocalDate fechaOperacion, String prefijo,
+            Long idEvento) throws Throwable;
+
+    /**
+     * Lote 20: el reverso de las cuotas canceladas sin cobrar con su detalle por cuota. Cada cuota se redondea y el asiento es la suma de
+     * lo que se graba en el libro.
+     *
+     * @param idEvento código del evento (precancelación o acuerdo) que será el idOrigen de los MVIC; puede ser null
+     */
+    com.saa.ejb.crd.service.dto.ResultadoReversoDevengo calcularReversoCuotasCanceladas(Long idEmpresa, Prestamo prestamo,
+            LocalDate fechaEvento, String prefijo, Long idEvento) throws Throwable;
+
+    /**
+     * Lote 20: graba el libro del reverso (MVIC tipo 12, componente interés, un movimiento por cuota) con el asiento de la operación. Va
+     * DESPUÉS de generar el asiento. Requiere {@code sql/406} (CK_MVIC_TIPO hasta 12): sin él, el INSERT falla.
+     */
+    void registrarReverso(com.saa.ejb.crd.service.dto.ResultadoReversoDevengo resultado, Long idAsiento, LocalDate fechaContable,
+            String usuario) throws Throwable;
+
+    /** Lote 20: anula los MVIC 12 de una operación (precancelación, acuerdo o abono) al anular su evento. */
+    int anularPorEvento(Long idEvento) throws Throwable;
 }
