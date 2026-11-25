@@ -118,6 +118,41 @@ public class ValidacionEstructurasGServiceImpl implements ValidacionEstructurasG
                 }
             }
         }
+        // ---- G48: reglas de los acuses de junio y julio 2025 (C41, 24-nov-2026) ----
+        if (d.containsKey("G48")) {
+            regla(obs, d, "G48", "CG48", ObservacionValidacionG.ERROR,
+                    "Cuenta individual mayor a cero de un sujeto que la Super tiene como jubilado («J») en su base G45 (error 12092)",
+                    "x.CG48VTCI > 0 and exists (select 1 from RPR.SG45 s where s.SG45IDSJ = x.CG48IDSJ and s.SG45TPPR = 'J')",
+                    "x.CG48NMOP");
+            regla(obs, d, "G48", "CG48", ObservacionValidacionG.ERROR,
+                    "Valor por vencer en cero con saldo vencido y mora de hasta 30 días (60 en hipotecario) (error 12093)",
+                    "nvl(x.CG48VPVN, 0) = 0 and nvl(x.CG48VLVN, 0) > 0 and nvl(x.CG48DDMR, 0) <= case when x.CG48TPCR = 'H' then 60 else 30 end",
+                    "x.CG48NMOP");
+            // La Super reparte el por vencer en original (1301/1305/1309) o reestructurado (1303/1307/1311) por el estado con
+            // que se reportó la operación en la G46. Si el producto del SAA no coincide, el B17 descuadra (70632, D-155).
+            regla(obs, d, "G48", "CG48", ObservacionValidacionG.ERROR,
+                    "Estado reportado en la G46 (original / reestructurada) distinto del producto del SAA: descuadra la 1301-1311 del B17",
+                    "exists (select 1 from (select CG46NMOP op, CG46EDLO e from RPR.CG46 union all select HM46NMOP, HM46EDLO from RPR.HM46) h"
+                    + " where h.op = x.CG48NMOP and ((h.e = 'E' and not " + PRODUCTO_REESTR + ") or (h.e = 'N' and " + PRODUCTO_REESTR + ")))",
+                    "x.CG48NMOP");
+            // C44 (D-156 d, 24-nov-2026): el «cuadre contable» de la Super (error 12087), cuenta por cuenta.
+            regla(obs, d, "G48", "CG48", ObservacionValidacionG.ERROR,
+                    "Operación sin estado en la G46 (ni en el histórico HM46) ni préstamo en el SAA: no se sabe en qué cuenta 13xx va su saldo",
+                    "not exists (select 1 from RPR.CG46 n where n.CG46NMOP = x.CG48NMOP)"
+                    + " and not exists (select 1 from RPR.HM46 h where h.HM46NMOP = x.CG48NMOP)"
+                    + " and not exists (select 1 from CRD.PRST p where to_char(p.PRSTIDAS) = x.CG48NMOP)",
+                    "x.CG48NMOP");
+            regla(obs, d, "G48", "CG48", ObservacionValidacionG.ERROR,
+                    "Tipo de crédito distinto de Q, P o H: su saldo no entra en el cuadre de la 1301-1312",
+                    "nvl(x.CG48TPCR, '?') not in ('Q', 'P', 'H')", "x.CG48NMOP");
+            cuadreContableG48(obs, d.get("G48"), anio, mes);
+            // D-156 (4), umbral de 20 USD desde el 24-nov: un préstamo al que le quedan menos de 20 USD seguramente se dio por pagado (cobrando de la cuenta
+            // individual o condonando): se avisa para que lo decida el responsable.
+            regla(obs, d, "G48", "CG48", ObservacionValidacionG.ADVERTENCIA,
+                    "Préstamo con saldo menor a 20 USD: confirmar si se dio por pagado (cuenta individual o condonación)",
+                    "nvl(x.CG48VPVN, 0) + nvl(x.CG48VLVN, 0) > 0.004 and nvl(x.CG48VPVN, 0) + nvl(x.CG48VLVN, 0) < 20",
+                    "x.CG48NMOP");
+        }
         // ---- G49 ----
         if (d.containsKey("G49") && dAnt.containsKey("G48")) {
             regla(obs, d, "G49", "CG49", ObservacionValidacionG.ERROR, "Cancelación de una operación que no estaba en la G48 del mes anterior",
@@ -164,6 +199,9 @@ public class ValidacionEstructurasGServiceImpl implements ValidacionEstructurasG
 
     private static final String ENTIDAD_41 = "(select min(e.ENTDCDGO) from CRD.ENTD e where e.ENTDNMID = x.CG41IDPR)";
     private static final String ENTIDAD_45 = "(select min(e.ENTDCDGO) from CRD.ENTD e where e.ENTDNMID = x.CG45IDSJ)";
+    /** C41: la operación de la fila x de la G48 es de un producto reestructurado del SAA. */
+    private static final String PRODUCTO_REESTR = "exists (select 1 from CRD.PRST p join CRD.PRDC r on r.PRDCCDGO = p.PRDCCDGO"
+            + " where to_char(p.PRSTIDAS) = x.CG48NMOP and upper(r.PRDCNMBR) like '%RESTRUCTURADO%')";
 
     @SuppressWarnings("unchecked")
     private Map<String, Long> detalles(Long codigoEjrc) {
@@ -182,6 +220,96 @@ public class ValidacionEstructurasGServiceImpl implements ValidacionEstructurasG
 
     private long contar(String sql) {
         return ((Number) em.createNativeQuery(sql).getSingleResult()).longValue();
+    }
+
+    /** C44: nombres de los códigos B17 de cartera bruta. */
+    private static final String[][] CODIGOS_13 = {
+        {"1301", "quirografarios por vencer"}, {"1302", "quirografarios refinanciados por vencer"},
+        {"1303", "quirografarios reestructurados por vencer"}, {"1304", "quirografarios vencidos"},
+        {"1305", "prendarios por vencer"}, {"1306", "prendarios refinanciados por vencer"},
+        {"1307", "prendarios reestructurados por vencer"}, {"1308", "prendarios vencidos"},
+        {"1309", "hipotecarios por vencer"}, {"1310", "hipotecarios refinanciados por vencer"},
+        {"1311", "hipotecarios reestructurados por vencer"}, {"1312", "hipotecarios vencidos"}};
+
+    /**
+     * C44 (D-156 d, 24-nov-2026): réplica del «cuadre contable» de la Super (error 12087) sobre la G48 de la ejecución.
+     * El por vencer de cada operación va a la cuenta de su tipo de crédito (Q 1301, P 1305, H 1309) según el estado con
+     * que se reportó en la G46 (N original +0, V/F refinanciado +1, E reestructurado +2); el vencido va a 1304 / 1308 /
+     * 1312 sin importar el estado. Cada cuenta tiene que ser igual, al centavo, al saldo contable al corte (lo que sale
+     * en el B17). Rechazos que la motivaron: G48 de junio 2025 (1309 contra 1311, la 70632) y de julio 2025 (1301 contra
+     * 1304, 58,97 de cuotas que vencían el 31/07). SQL directo sobre CNT.DTAS (como el generador del B17): llamar al
+     * generador desde aquí marcaría la transacción para rollback si fallara.
+     */
+    @SuppressWarnings("unchecked")
+    private void cuadreContableG48(List<ObservacionValidacionG> obs, Long g48, long anio, long mes) {
+        try {
+            Map<String, java.math.BigDecimal> g = new HashMap<>();
+            List<Object[]> filasG = em.createNativeQuery(
+                    "with est as ("
+                    + " select n.CG46NMOP op, max(trim(n.CG46EDLO)) keep (dense_rank last order by n.CG46EJRD) e"
+                    + "   from RPR.CG46 n join RPR.EJRD j on j.EJRDCDGO = n.CG46EJRD and j.EJRDESTD = 1 group by n.CG46NMOP"
+                    + " union all"
+                    + " select h.HM46NMOP, trim(h.HM46EDLO) from RPR.HM46 h"
+                    + "  where not exists (select 1 from RPR.CG46 n join RPR.EJRD j on j.EJRDCDGO = n.CG46EJRD and j.EJRDESTD = 1"
+                    + "                     where n.CG46NMOP = h.HM46NMOP)"
+                    + "), gg as ("
+                    + " select case x.CG48TPCR when 'Q' then 1300 when 'P' then 1304 when 'H' then 1308 end base,"
+                    // Sin G46 propia (la base G46 de la Super viene de años atrás): el estado sale del producto del SAA, que
+                    // desde D-155 coincide con la Super (RESTRUCTURADO = E; el resto, incluida la novación, N).
+                    + "        coalesce(est.e, (select case when upper(r.PRDCNMBR) like '%RESTRUCTURADO%' then 'E' else 'N' end"
+                    + "          from CRD.PRST p join CRD.PRDC r on r.PRDCCDGO = p.PRDCCDGO where to_char(p.PRSTIDAS) = x.CG48NMOP"
+                    + "          fetch first 1 rows only)) e,"
+                    + "        nvl(x.CG48VPVN, 0) vpvn, nvl(x.CG48VLVN, 0) vlvn"
+                    + "   from RPR.CG48 x left join est on est.op = x.CG48NMOP where x.CG48EJRD = :g48)"
+                    + " select to_char(base + case e when 'N' then 1 when 'V' then 2 when 'F' then 2 when 'E' then 3 end), sum(vpvn)"
+                    + "   from gg where base is not null and e in ('N', 'V', 'F', 'E') group by base, e"
+                    + " union all"
+                    + " select to_char(base + 4), sum(vlvn) from gg where base is not null group by base")
+                    .setParameter("g48", g48).getResultList();
+            for (Object[] f : filasG) {
+                g.merge(String.valueOf(f[0]), redondea2(f[1]), java.math.BigDecimal::add);
+            }
+            Object emp = em.createNativeQuery("select min(PJRQCDGO) from CNT.RPRT where RPRTCDES = 'B17'").getSingleResult();
+            if (emp == null) {
+                obs.add(new ObservacionValidacionG("G48", ObservacionValidacionG.ADVERTENCIA,
+                        "No se pudo medir el cuadre contable: no está definido el reporte B17 (CNT.RPRT)", 1L, null));
+                return;
+            }
+            java.time.LocalDate corteSig = java.time.LocalDate.of((int) anio, (int) mes, 1).plusMonths(1);
+            Map<String, java.math.BigDecimal> c = new HashMap<>();
+            List<Object[]> filasC = em.createNativeQuery(
+                    "select substr(regexp_replace(p.PLNNCNTA, '[^0-9A-Za-z]', ''), 1, 4) cod,"
+                    + "       sum(nvl(d.DTASDBEE, 0)) - sum(nvl(d.DTASHBRR, 0))"
+                    + "  from CNT.DTAS d join CNT.ASNT a on a.ASNTCDGO = d.ASNTCDGO join CNT.PLNN p on p.PLNNCDGO = d.PLNNCDGO"
+                    + " where a.PJRQCDGO = :emp and a.ASNTESTD in (1, 3) and a.ASNTFCHA < :corteSig"
+                    + "   and substr(regexp_replace(p.PLNNCNTA, '[^0-9A-Za-z]', ''), 1, 4) between '1301' and '1312'"
+                    + " group by substr(regexp_replace(p.PLNNCNTA, '[^0-9A-Za-z]', ''), 1, 4)")
+                    .setParameter("emp", ((Number) emp).longValue())
+                    .setParameter("corteSig", java.sql.Date.valueOf(corteSig)).getResultList();
+            for (Object[] f : filasC) {
+                c.put(String.valueOf(f[0]), redondea2(f[1]));
+            }
+            for (String[] cod : CODIGOS_13) {
+                java.math.BigDecimal vg = g.getOrDefault(cod[0], java.math.BigDecimal.ZERO.setScale(2));
+                java.math.BigDecimal vc = c.getOrDefault(cod[0], java.math.BigDecimal.ZERO.setScale(2));
+                if (vg.compareTo(vc) != 0) {
+                    obs.add(new ObservacionValidacionG("G48", ObservacionValidacionG.ERROR,
+                            "Cuadre contable de la Super (12087): " + cod[0] + " " + cod[1] + " — G48 " + vg.toPlainString()
+                            + " ≠ contabilidad (B17) " + vc.toPlainString() + " (diferencia " + vg.subtract(vc).toPlainString()
+                            + ")", 1L, null));
+                }
+            }
+        } catch (RuntimeException e) {
+            obs.add(new ObservacionValidacionG("G48", ObservacionValidacionG.ADVERTENCIA,
+                    "No se pudo medir el cuadre contable de la G48 contra la 1301-1312: " + e.getMessage(), 1L, null));
+        }
+    }
+
+    private static java.math.BigDecimal redondea2(Object valor) {
+        if (valor == null) {
+            return java.math.BigDecimal.ZERO.setScale(2);
+        }
+        return new java.math.BigDecimal(valor.toString()).setScale(2, java.math.RoundingMode.HALF_UP);
     }
 
     @SuppressWarnings("unchecked")

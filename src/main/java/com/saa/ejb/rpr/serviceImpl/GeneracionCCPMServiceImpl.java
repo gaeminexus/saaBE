@@ -169,7 +169,7 @@ public class GeneracionCCPMServiceImpl implements GeneracionCCPMService {
         // calificación, provisión, interés y mora salen del MISMO cálculo que la G48 y el ⑧ del
         // cierre (CarteraAlCorteService). Mes en curso / mes anterior: como siempre.
         boolean alCorte = com.saa.ejb.crd.service.ModoCorteCartera.esAlCorte(corte, null);
-        boolean inclusivo = alCorte && com.saa.ejb.crd.service.ModoCorteCartera.corteInclusivo(null);
+        boolean inclusivo = alCorte && com.saa.ejb.crd.service.ModoCorteCartera.corteInclusivo(null, corte);
         Map<Long, com.saa.ejb.crd.service.dto.OperacionCarteraCorte> operacionesAlCorte = alCorte
                 ? carteraAlCorteService.calcularPorPrestamo(corte, inclusivo) : new HashMap<>();
         List<Object[]> cuotasPendientes = cierreCarteraDaoService.selectCuotasPendientesPorPrestamo(idEmpresa,
@@ -581,7 +581,9 @@ public class GeneracionCCPMServiceImpl implements GeneracionCCPMService {
                 }
                 // Interés vencido y mora: los de la G48 al corte (opCorte); fuera del modo al corte, los
                 // del CCPM de siempre solo si el préstamo tiene vencido.
-                double interesVencido = opCorte != null ? opCorte.getInteresVencido()
+                // C42 (D-156): el interés por cobrar de las cuotas exigibles al corte (incluida la que vence ese día, que ahora
+                // es por vencer): es lo que tiene la 1.4.02 y lo que el Resumen Financiero compara con ella.
+                double interesVencido = opCorte != null ? opCorte.getInteresExigible()
                         : (hasVencida ? (interesOrdinario != null ? interesOrdinario : 0.0) : 0.0);
                 filasDetalle.add(detalle(CreditoCuotasPrestamosBanda.RUBRO_INTERES_VENCIDO, null, null, null, interesVencido));
                 filasDetalle.add(detalle(CreditoCuotasPrestamosBanda.RUBRO_MORA, null, null, null,

@@ -257,7 +257,7 @@ public class GeneracionG45ServiceImpl implements GeneracionG45Service {
             g45.setDetalleEjecucion(detalle);
 
             cg45DaoService.save(g45, null);
-            registrar(previo, g45.getTipoIdentificacion(), identificacion, periodo, detalle.getCodigo());
+            registrar(previo, g45.getTipoIdentificacion(), identificacion, periodo, detalle.getCodigo(), g45.getTipoParticipe());
             System.out.println("G45 INSERT participe: " + identificacion + " patrimonio=" + patrimonio);
             contador++;
         }
@@ -272,9 +272,15 @@ public class GeneracionG45ServiceImpl implements GeneracionG45Service {
      * (se generó antes un mes siguiente), el registro pasa a este período: ese mes siguiente lo traía como nuevo
      * y hay que regenerarlo.
      */
-    private void registrar(SujetoReportadoG45 previo, String tipo, String identificacion, long periodo, Long idEjrd)
-            throws Throwable {
+    private void registrar(SujetoReportadoG45 previo, String tipo, String identificacion, long periodo, Long idEjrd,
+            String tipoParticipe) throws Throwable {
+        // C41: el tipo de partícipe reportado (la G48 pone la cuenta individual en cero a los «J»).
+        String tipoReportado = tipoParticipe != null && !tipoParticipe.trim().isEmpty() ? tipoParticipe.trim().substring(0, 1) : null;
         if (previo != null) {
+            if (tipoReportado != null && !tipoReportado.equals(previo.getTipoParticipe())) {
+                previo.setTipoParticipe(tipoReportado);
+                sujetoReportadoDao.actualizar(previo);
+            }
             if (SujetoReportadoG45.ORIGEN_PENDIENTE.equals(previo.getOrigen())) {
                 return; // C39: el pendiente se queda como tal (su período es este); regenerar lo vuelve a incluir
             }
@@ -298,6 +304,7 @@ public class GeneracionG45ServiceImpl implements GeneracionG45Service {
         nuevo.setOrigen(SujetoReportadoG45.ORIGEN_EJECUCION);
         nuevo.setDetalleEjecucion(idEjrd);
         nuevo.setFechaRegistro(LocalDate.now());
+        nuevo.setTipoParticipe(tipoReportado);
         sujetoReportadoDao.insertar(nuevo);
     }
 }

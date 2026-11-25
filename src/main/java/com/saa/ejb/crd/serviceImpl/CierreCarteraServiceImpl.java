@@ -511,7 +511,7 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
         boolean alCorte = arranque || com.saa.ejb.crd.service.ModoCorteCartera.esAlCorte(fechaCorte,
                 solicitud.getEstadoAlCorte());
         boolean inclusivo = alCorte
-                && com.saa.ejb.crd.service.ModoCorteCartera.corteInclusivo(solicitud.getCorteInclusivo());
+                && com.saa.ejb.crd.service.ModoCorteCartera.corteInclusivo(solicitud.getCorteInclusivo(), fechaCorte);
         solicitud.setEstadoAlCorte(Boolean.valueOf(alCorte));
         solicitud.setCorteInclusivo(Boolean.valueOf(inclusivo));
         this.convencionInclusiva = inclusivo;
@@ -538,13 +538,23 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
         List<Object[]> capitalPorVencimiento = cierreCarteraDaoService
                 .selectCapitalPorProductoYVencimiento(solicitud.getIdEmpresa(), corteDatos);
 
+        // C42 (D-156 b, 24-nov-2026): con la convención del SAA (vence el día del corte = por vencer), un préstamo sin
+        // nada por vencer y con mora hasta el umbral de la Super (30 días; 60 en hipotecario) va todo POR VENCER, igual
+        // que en la G48 (regla 12093). Se mide préstamo por préstamo en cada fecha, sobre el mismo universo de cuotas.
+        List<Object[]> cuotasPorPrestamo = convencionInclusiva ? null
+                : cierreCarteraDaoService.selectCuotasPendientesPorPrestamo(solicitud.getIdEmpresa(), corteDatos);
+        Map<String, Double> sinPorVencerAnterior = capitalSinPorVencer(cuotasPorPrestamo, fechaCorteAnterior,
+                productos, null);
+        Map<String, Double> sinPorVencerNueva = capitalSinPorVencer(cuotasPorPrestamo, fechaCorte, productos,
+                resultado.getAdvertencias());
+
         // A CARTERA CONSTANTE: el mismo juego de cuotas, medido en dos fechas. Es lo que
         // hace que los asientos de reclasificacion cuadren por construccion.
         Map<String, BandaSnapshotCierre> distAnterior = distribuye(capitalPorVencimiento,
-                fechaCorteAnterior, bandas, productos, null);
+                fechaCorteAnterior, bandas, productos, null, sinPorVencerAnterior);
         List<String> avisosDistribucion = new ArrayList<String>();
         Map<String, BandaSnapshotCierre> distNueva = distribuye(capitalPorVencimiento,
-                fechaCorte, bandas, productos, avisosDistribucion);
+                fechaCorte, bandas, productos, avisosDistribucion, sinPorVencerNueva);
         resultado.getAdvertencias().addAll(avisosDistribucion);
 
         if (arranque) {
@@ -562,8 +572,10 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
         // sigue siendo el snapshot de fechaCorte que usan el asiento ①.1 (VENCIDO), el
         // snapshot guardado en el resultado y calculaVencidosDelMes — los tres SIN CAMBIOS.
         List<String> avisosApertura = new ArrayList<String>();
+        Map<String, Double> sinPorVencerApertura = capitalSinPorVencer(cuotasPorPrestamo, fechaCorteApertura,
+                productos, null);
         Map<String, BandaSnapshotCierre> distApertura = distribuye(capitalPorVencimiento,
-                fechaCorteApertura, bandas, productos, avisosApertura);
+                fechaCorteApertura, bandas, productos, avisosApertura, sinPorVencerApertura);
         resultado.getAdvertencias().addAll(avisosApertura);
 
         // Capital que cruzo la frontera durante el mes: por vencer al corte anterior y
@@ -582,6 +594,11 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
         // siguen usando ① y ①.1, que no cambiaron de fechas.
         Map<Long, Double> vencidosDelMesApertura = calculaVencidosDelMes(capitalPorVencimiento,
                 fechaCorte, fechaCorteApertura);
+        // C42 (D-156 b): lo que va POR VENCER por la regla de la Super no cruzó a vencido. El paso de por vencer a
+        // vencido de cada producto es el cruce natural menos lo retenido al final del par más lo retenido al inicio
+        // (puede quedar negativo: armaVencidos invierte el asiento). Así ①, ② y ①.1 siguen cuadrando por producto.
+        ajustaVencidosSinPorVencer(vencidosDelMes, sinPorVencerNueva, sinPorVencerAnterior);
+        ajustaVencidosSinPorVencer(vencidosDelMesApertura, sinPorVencerApertura, sinPorVencerNueva);
 
         resultado.setSnapshot(ordenaSnapshot(distNueva));
         resultado.setCapitalTotal(sumaCapital(distNueva));
@@ -701,11 +718,13 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
      * @param bandas     : Bandas por (producto, tipo de cartera)
      * @param productos  : Productos indexados por código
      * @param avisos     : Lista donde anotar el capital que no se pudo clasificar; puede ser nula
+     * @param sinPorVencer : C42 (D-156 b): capital por {@link #claveVencimiento} que va POR VENCER banda 1 en vez de
+     *                     su clasificación natural ({@link #capitalSinPorVencer}); puede ser nulo
      * @return           : Distribución indexada por producto-tipoCartera-banda
      */
     private Map<String, BandaSnapshotCierre> distribuye(List<Object[]> filas, LocalDate fecha,
             Map<String, List<BandaProductoDetalle>> bandas, Map<Long, Producto> productos,
-            List<String> avisos) throws Throwable {
+            List<String> avisos, Map<String, Double> sinPorVencer) throws Throwable {
 
         Map<String, BandaSnapshotCierre> distribucion =
                 new TreeMap<String, BandaSnapshotCierre>();
@@ -720,6 +739,24 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
                 continue;
             }
 
+            // C42 (D-156 b): la parte de este (producto, vencimiento) que es de préstamos sin nada por vencer y con
+            // mora hasta el umbral de la Super va a POR VENCER banda 1 (1 día, como tipoCarteraYDias).
+            double retenido = 0D;
+            if (sinPorVencer != null) {
+                Double r = sinPorVencer.get(claveVencimiento(idProducto, vencimiento));
+                if (r != null) {
+                    retenido = Math.min(r.doubleValue(), capital.doubleValue());
+                }
+            }
+            if (retenido > 0.004D) {
+                acumulaEnBanda(distribucion, sinClasificar, bandas, productos, idProducto,
+                        Long.valueOf(TipoCarteraBanda.POR_VENCER), 1L, retenido, 0L);
+            }
+            double natural = capital.doubleValue() - retenido;
+            if (natural <= 0.004D) {
+                continue;
+            }
+
             // Delegado (2026-09-05) — ver el javadoc de este método y el de
             // ContabilizacionIndividualCreditoService#tipoCarteraYDias, la definición de
             // referencia. NO reimplementar acá: es exactamente cómo se llegó a tener dos
@@ -727,27 +764,9 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
             long[] tipoYDias = convencionInclusiva
                     ? com.saa.ejb.crd.service.ModoCorteCartera.tipoYDiasInclusivo(vencimiento, fecha)
                     : contabilizacionIndividualCreditoService.tipoCarteraYDias(vencimiento, fecha);
-            Long tipoCartera = Long.valueOf(tipoYDias[0]);
-            long dias = tipoYDias[1];
-
-            List<BandaProductoDetalle> bandasProducto =
-                    bandas.get(claveConfiguracion(idProducto, tipoCartera));
-            if (bandasProducto == null || bandasProducto.isEmpty()) {
-                acumulaSinClasificar(sinClasificar, idProducto, tipoCartera, capital, productos);
-                continue;
-            }
-
-            BandaProductoDetalle banda = clasificadorBandaService
-                    .clasificarEnBandas(bandasProducto, Long.valueOf(dias));
-            String clave = claveBanda(idProducto, tipoCartera, banda.getNumero());
-            BandaSnapshotCierre acumulado = distribucion.get(clave);
-            if (acumulado == null) {
-                acumulado = nuevaFilaSnapshot(idProducto, tipoCartera, banda, productos);
-                distribucion.put(clave, acumulado);
-            }
-            acumulado.setCapital(suma(acumulado.getCapital(), capital));
-            acumulado.setCantidad(Long.valueOf(acumulado.getCantidad().longValue()
-                    + (cantidad != null ? cantidad.longValue() : 0L)));
+            acumulaEnBanda(distribucion, sinClasificar, bandas, productos, idProducto,
+                    Long.valueOf(tipoYDias[0]), tipoYDias[1], natural,
+                    cantidad != null ? cantidad.longValue() : 0L);
         }
 
         // Las bandas sin capital tambien van al snapshot, en cero: sin ellas la corrida
@@ -762,6 +781,119 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
             }
         }
         return distribucion;
+    }
+
+    /** C42: acumula capital en la banda que le toca a (producto, tipo de cartera, días). */
+    private void acumulaEnBanda(Map<String, BandaSnapshotCierre> distribucion, Map<String, Double> sinClasificar,
+            Map<String, List<BandaProductoDetalle>> bandas, Map<Long, Producto> productos, Long idProducto,
+            Long tipoCartera, long dias, double capital, long cantidad) throws Throwable {
+        List<BandaProductoDetalle> bandasProducto = bandas.get(claveConfiguracion(idProducto, tipoCartera));
+        if (bandasProducto == null || bandasProducto.isEmpty()) {
+            acumulaSinClasificar(sinClasificar, idProducto, tipoCartera, Double.valueOf(capital), productos);
+            return;
+        }
+        BandaProductoDetalle banda = clasificadorBandaService.clasificarEnBandas(bandasProducto, Long.valueOf(dias));
+        String clave = claveBanda(idProducto, tipoCartera, banda.getNumero());
+        BandaSnapshotCierre acumulado = distribucion.get(clave);
+        if (acumulado == null) {
+            acumulado = nuevaFilaSnapshot(idProducto, tipoCartera, banda, productos);
+            distribucion.put(clave, acumulado);
+        }
+        acumulado.setCapital(suma(acumulado.getCapital(), Double.valueOf(capital)));
+        acumulado.setCantidad(Long.valueOf(acumulado.getCantidad().longValue() + cantidad));
+    }
+
+    /** C42: clave (producto, vencimiento) de {@link #capitalSinPorVencer}. */
+    private static String claveVencimiento(Long idProducto, LocalDate vencimiento) {
+        return idProducto + "|" + vencimiento;
+    }
+
+    /**
+     * C42 (D-156 b, 24-nov-2026): capital de los préstamos que, medidos a {@code fecha} con la convención del SAA,
+     * no tienen nada por vencer y tienen saldo vencido con mora hasta el umbral de la Super (30 días; 60 en
+     * hipotecario, {@link com.saa.ejb.crd.service.ModoCorteCartera#todoPorVencer}). Ese saldo va POR VENCER, como en la
+     * G48 (regla 12093), para que el B17 y la G48 coincidan.
+     *
+     * @param cuotasPorPrestamo : {@code selectCuotasPendientesPorPrestamo} al corte; nulo = la regla no aplica
+     *                            (convención inclusiva de lo ya presentado)
+     * @param fecha             : Fecha a la que se mide
+     * @param productos         : Productos indexados
+     * @param avisos            : Donde anotar cada préstamo retenido; puede ser nula
+     * @return                  : Capital por {@link #claveVencimiento}
+     */
+    private Map<String, Double> capitalSinPorVencer(List<Object[]> cuotasPorPrestamo, LocalDate fecha,
+            Map<Long, Producto> productos, List<String> avisos) {
+        Map<String, Double> resultado = new LinkedHashMap<String, Double>();
+        if (cuotasPorPrestamo == null || fecha == null) {
+            return resultado;
+        }
+        Map<Long, List<Object[]>> porPrestamo = new LinkedHashMap<Long, List<Object[]>>();
+        for (Object[] f : cuotasPorPrestamo) {
+            List<Object[]> lista = porPrestamo.get((Long) f[0]);
+            if (lista == null) {
+                lista = new ArrayList<Object[]>();
+                porPrestamo.put((Long) f[0], lista);
+            }
+            lista.add(f);
+        }
+        for (Map.Entry<Long, List<Object[]>> e : porPrestamo.entrySet()) {
+            double porVencer = 0D;
+            double vencido = 0D;
+            long dias = 0L;
+            Long idProducto = null;
+            for (Object[] f : e.getValue()) {
+                idProducto = (Long) f[1];
+                LocalDate vto = (LocalDate) f[4];
+                Double cap = (Double) f[5];
+                if (vto == null || cap == null || cap.doubleValue() <= 0D) {
+                    continue;
+                }
+                if (vto.isBefore(fecha)) {
+                    vencido += cap.doubleValue();
+                    dias = Math.max(dias, java.time.temporal.ChronoUnit.DAYS.between(vto, fecha));
+                } else {
+                    porVencer += cap.doubleValue();
+                }
+            }
+            Producto producto = idProducto != null ? productos.get(idProducto) : null;
+            String tipo = com.saa.ejb.crd.service.ModoCorteCartera.tipoCreditoSuper(
+                    producto != null ? producto.getNombre() : null);
+            if (!com.saa.ejb.crd.service.ModoCorteCartera.todoPorVencer(porVencer, vencido, dias, tipo)) {
+                continue;
+            }
+            for (Object[] f : e.getValue()) {
+                LocalDate vto = (LocalDate) f[4];
+                Double cap = (Double) f[5];
+                if (vto == null || cap == null || cap.doubleValue() <= 0D) {
+                    continue;
+                }
+                String clave = claveVencimiento((Long) f[1], vto);
+                Double actual = resultado.get(clave);
+                resultado.put(clave, Double.valueOf((actual != null ? actual.doubleValue() : 0D) + cap.doubleValue()));
+            }
+            if (avisos != null) {
+                avisos.add("C42 (D-156): préstamo " + e.getKey() + " sin nada por vencer al " + fecha + ", vencido "
+                        + redondea(Double.valueOf(vencido)) + " con " + dias + " días de mora (tipo " + tipo
+                        + "): se clasifica POR VENCER, como en la G48 (regla 12093 de la Super).");
+            }
+        }
+        return resultado;
+    }
+
+    /**
+     * C42: corrige el paso de por vencer a vencido de cada producto por lo que {@link #capitalSinPorVencer} retuvo
+     * por vencer al final del par ({@code alFinal}, se resta) y al inicio ({@code alInicio}, se suma).
+     */
+    private void ajustaVencidosSinPorVencer(Map<Long, Double> vencidos, Map<String, Double> alFinal,
+            Map<String, Double> alInicio) {
+        for (Map.Entry<String, Double> r : alFinal.entrySet()) {
+            Long idProducto = Long.valueOf(r.getKey().substring(0, r.getKey().indexOf('|')));
+            vencidos.put(idProducto, suma(vencidos.get(idProducto), Double.valueOf(-r.getValue().doubleValue())));
+        }
+        for (Map.Entry<String, Double> r : alInicio.entrySet()) {
+            Long idProducto = Long.valueOf(r.getKey().substring(0, r.getKey().indexOf('|')));
+            vencidos.put(idProducto, suma(vencidos.get(idProducto), r.getValue()));
+        }
     }
 
     /**
@@ -830,9 +962,13 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
         for (Map.Entry<Long, Double> entrada : vencidos.entrySet()) {
             Long idProducto = entrada.getKey();
             double valor = redondeaDouble(entrada.getValue());
-            if (valor < MINIMO_LINEA) {
+            // C42 (D-156 b): con la regla de la Super el paso neto puede ser negativo (vuelve de vencido a por vencer):
+            // el asiento se invierte en vez de omitirse, o ② y ①.1 dejan de cuadrar por producto.
+            if (Math.abs(valor) < MINIMO_LINEA) {
                 continue;
             }
+            double debeVencido = valor > 0 ? valor : 0D;
+            double haberVencido = valor < 0 ? -valor : 0D;
             BandaProductoDetalle bandaVencido = primeraBanda(bandas, idProducto,
                     Long.valueOf(TipoCarteraBanda.VENCIDO));
             BandaProductoDetalle bandaPorVencer = primeraBanda(bandas, idProducto,
@@ -843,10 +979,10 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
                 continue;
             }
             String nombre = nombreProducto(productos, idProducto);
-            sub.getLineas().add(lineaBanda(bandaVencido, valor, 0D,
+            sub.getLineas().add(lineaBanda(bandaVencido, debeVencido, haberVencido,
                     "Vencidos " + periodo(solicitud) + " - " + nombre,
                     idProducto, nombre, Long.valueOf(TipoCarteraBanda.VENCIDO)));
-            sub.getLineas().add(lineaBanda(bandaPorVencer, 0D, valor,
+            sub.getLineas().add(lineaBanda(bandaPorVencer, haberVencido, debeVencido,
                     "Vencidos " + periodo(solicitud) + " - " + nombre,
                     idProducto, nombre, Long.valueOf(TipoCarteraBanda.POR_VENCER)));
         }

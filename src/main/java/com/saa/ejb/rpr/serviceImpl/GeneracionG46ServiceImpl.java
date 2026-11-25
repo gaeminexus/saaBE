@@ -111,7 +111,11 @@ public class GeneracionG46ServiceImpl implements GeneracionG46Service {
             }
 
             // Valores fijos
-            g46.setEstadoOperacion("N");
+            // C41 (24-nov-2026): reestructurada («E») si el producto es reestructurado. La Super reparte con este estado el
+            // por vencer entre la 1301/1305/1309 y la 1303/1307/1311; con «N» fijo descuadraría el B17 (caso 70632, D-155).
+            boolean reestructurado = prestamo.getProducto() != null && prestamo.getProducto().getNombre() != null
+                    && prestamo.getProducto().getNombre().toUpperCase().contains("RESTRUCTURADO");
+            g46.setEstadoOperacion(reestructurado ? "E" : "N");
             g46.setSituacionOperacion("N");
             g46.setPeriodicidadPago("ME");
             g46.setFrecuenciaRevision("365");

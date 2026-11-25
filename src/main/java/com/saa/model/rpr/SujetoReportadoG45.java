@@ -87,6 +87,18 @@ public class SujetoReportadoG45 implements Serializable {
     @Column(name = "SG45FCRG")
     private LocalDate fechaRegistro;
 
+    /**
+     * C41 (24-nov-2026): tipo de partícipe con que la Super tiene al sujeto en su base G45 (C cesante, J jubilado,
+     * P partícipe; manual §3.1 campo 3). Con «J» la G48 lleva la cuenta individual en cero (manual §5.4); la Super
+     * rechazó así la G48 de junio y julio 2025 para tres sujetos que el SAA tiene como partícipes. Vacío = no se sabe.
+     */
+    @Basic
+    @Column(name = "SG45TPPR", length = 1)
+    private String tipoParticipe;
+
+    public String getTipoParticipe() { return tipoParticipe; }
+    public void setTipoParticipe(String tipoParticipe) { this.tipoParticipe = tipoParticipe; }
+
     public Long getCodigo() { return codigo; }
     public void setCodigo(Long codigo) { this.codigo = codigo; }
     public String getTipoIdentificacion() { return tipoIdentificacion; }

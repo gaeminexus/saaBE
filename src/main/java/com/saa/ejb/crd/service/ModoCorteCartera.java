@@ -48,7 +48,9 @@ import com.saa.rubros.TipoCarteraBanda;
  * corte e impaga es VENCIDA con {@code corte - vto + 1} días; por vencer con
  * {@code vto - corte} días. Con {@code false}: la regla del SAA del 2026-09-04
  * ({@code ContabilizacionIndividualCreditoService#tipoCarteraYDias}: el día del vencimiento aún es
- * POR VENCER). Solo aplica en modo al corte; el modo normal usa siempre la regla del SAA.</p>
+ * POR VENCER). Solo aplica en modo al corte; el modo normal usa siempre la regla del SAA.
+ * <b>C42 (D-156, 24-nov-2026):</b> sin la propiedad, la convención depende del corte: inclusiva antes de
+ * {@code saa.cartera.corteExclusivoDesde} (defecto 2025-08-01, lo ya presentado a la Super) y del SAA desde ahí.</p>
  */
 public final class ModoCorteCartera {
 
@@ -336,10 +338,117 @@ public final class ModoCorteCartera {
      * @return          : true si la cuota que vence el día del corte ya cuenta como vencida
      */
     public static boolean corteInclusivo(Boolean explicito) {
+        return corteInclusivo(explicito, null);
+    }
+
+    /**
+     * C42 (D-156, 24-nov-2026): propiedad con el primer corte en que rige la convención del SAA (la cuota que vence
+     * el día del corte es POR VENCER). Defecto {@link #CORTE_EXCLUSIVO_DESDE_DEFECTO}.
+     */
+    public static final String PROPIEDAD_CORTE_EXCLUSIVO_DESDE = "saa.cartera.corteExclusivoDesde";
+
+    /**
+     * C42 (D-156): desde el cierre de agosto 2025. Junio y julio 2025 se presentaron a la Super con la convención
+     * inclusiva y tienen que poder regenerarse igual.
+     */
+    public static final LocalDate CORTE_EXCLUSIVO_DESDE_DEFECTO = LocalDate.of(2025, 8, 1);
+
+    /**
+     * Convención de vencimiento en modo al corte, por fecha de corte.
+     *
+     * <p>C42 (D-156): «si vence el mismo día no está vencido sino por vencer». Rige desde
+     * {@code saa.cartera.corteExclusivoDesde} (defecto 2025-08-01). Los cortes anteriores conservan la convención
+     * inclusiva con la que se presentaron a la Super. {@code saa.cartera.corteInclusivo}, si está definida, manda sobre
+     * la fecha (para ensayos).</p>
+     *
+     * @param explicito : Valor pedido por quien llama; null = propiedad o fecha
+     * @param corte     : Fecha de corte; null = solo la propiedad (defecto true, como antes de C42)
+     * @return          : true si la cuota que vence el día del corte ya cuenta como vencida
+     */
+    public static boolean corteInclusivo(Boolean explicito, LocalDate corte) {
         if (explicito != null) {
             return explicito.booleanValue();
         }
-        return !"false".equalsIgnoreCase(System.getProperty(PROPIEDAD_CORTE_INCLUSIVO, "true").trim());
+        String propiedad = System.getProperty(PROPIEDAD_CORTE_INCLUSIVO);
+        if (propiedad != null && !propiedad.trim().isEmpty()) {
+            return !"false".equalsIgnoreCase(propiedad.trim());
+        }
+        if (corte == null) {
+            return true;
+        }
+        return corte.isBefore(corteExclusivoDesde());
+    }
+
+    /**
+     * C43 (D-156 3 y a, 24-nov-2026): propiedad con la fecha (exclusiva) hasta la que ASOPREP NO cobró interés de mora en
+     * los pagos. Sin la propiedad, la mora se cobra como siempre. En el reproceso: {@code 2026-05-01}, fecha aproximada
+     * (ASOPREP empezó a cobrar la mora en mayo o junio de 2026; no hay fecha exacta).
+     */
+    public static final String PROPIEDAD_MORA_NO_COBRADA_HASTA = "saa.cartera.moraNoCobradaHasta";
+
+    /** C43: fecha hasta la que no se cobró mora (exclusiva), o null si la propiedad no está. */
+    public static LocalDate moraNoCobradaHasta() {
+        String valor = System.getProperty(PROPIEDAD_MORA_NO_COBRADA_HASTA);
+        if (valor == null || valor.trim().isEmpty()) {
+            return null;
+        }
+        try {
+            return LocalDate.parse(valor.trim());
+        } catch (RuntimeException e) {
+            System.out.println("ModoCorteCartera WARN - " + PROPIEDAD_MORA_NO_COBRADA_HASTA + " inválida: " + valor);
+            return null;
+        }
+    }
+
+    /**
+     * C43 (D-156): un pago con esta fecha NO cobra mora. Quien se puso al día o precanceló antes de que ASOPREP empezara
+     * a cobrarla pagó sus cuotas sin mora; a quien no se puso al día se le cobró después la mora retroactiva, así que
+     * la mora de una cuota que sigue impaga no se pierde: solo se retira cuando la cuota queda pagada sin ella.
+     */
+    public static boolean moraNoCobrable(java.time.LocalDateTime fechaPago) {
+        LocalDate hasta = moraNoCobradaHasta();
+        return hasta != null && fechaPago != null && fechaPago.toLocalDate().isBefore(hasta);
+    }
+
+    /** C42: primer corte con la convención del SAA (vence el día del corte = por vencer). */
+    public static LocalDate corteExclusivoDesde() {
+        String valor = System.getProperty(PROPIEDAD_CORTE_EXCLUSIVO_DESDE);
+        if (valor != null && !valor.trim().isEmpty()) {
+            try {
+                return LocalDate.parse(valor.trim());
+            } catch (RuntimeException e) {
+                System.out.println("ModoCorteCartera WARN - " + PROPIEDAD_CORTE_EXCLUSIVO_DESDE + " inválida: " + valor);
+            }
+        }
+        return CORTE_EXCLUSIVO_DESDE_DEFECTO;
+    }
+
+    /**
+     * C41/C42 (D-156): tipo de crédito de la Super a partir del nombre del producto: su inicial, con E (emergente) → Q.
+     * Es el mismo criterio de la G48 (campo tipo de crédito).
+     */
+    public static String tipoCreditoSuper(String nombreProducto) {
+        if (nombreProducto == null || nombreProducto.trim().isEmpty()) {
+            return null;
+        }
+        char inicial = Character.toUpperCase(nombreProducto.trim().charAt(0));
+        return String.valueOf(inicial == 'E' ? 'Q' : inicial);
+    }
+
+    /**
+     * C41/C42 (D-156): días de mora hasta los que la Super exige «valor por vencer» mayor a cero cuando el préstamo no
+     * tiene nada por vencer (error 12093): 60 en hipotecario, 30 en los demás.
+     */
+    public static int umbralMoraSinPorVencer(String tipoCreditoSuper) {
+        return "H".equals(tipoCreditoSuper) ? 60 : 30;
+    }
+
+    /**
+     * C42 (D-156 b): un préstamo sin nada por vencer, con saldo vencido y mora hasta el umbral de la Super, va todo
+     * POR VENCER, en la contabilidad igual que en la G48.
+     */
+    public static boolean todoPorVencer(double porVencer, double vencido, long diasMora, String tipoCreditoSuper) {
+        return porVencer <= 0.004 && vencido > 0.004 && diasMora <= umbralMoraSinPorVencer(tipoCreditoSuper);
     }
 
     /**

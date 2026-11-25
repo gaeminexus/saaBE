@@ -72,6 +72,16 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
     @EJB
     private DetallePrestamoDaoService detallePrestamoDaoService;
 
+    // C43 (D-156): reversos de la mora no cobrada.
+    @EJB
+    private com.saa.ejb.crd.service.ProvisionInteresService provisionInteresService;
+
+    @EJB
+    private com.saa.ejb.crd.service.ConfiguracionContabilidadService configuracionContabilidadService;
+
+    @EJB
+    private com.saa.ejb.crd.dao.TransferenciaCargaPetroDaoService transferenciaCargaPetroDaoService;
+
     @EJB
     private DetallePrestamoService detallePrestamoService;
 
@@ -360,7 +370,9 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
             DetalleAplicacionCuota detalle = aplicarPagoACuotaInterno(cuota, valorRestante, ctx, corte);
             resultado.getCuotasAfectadas().add(detalle);
 
-            if (detalle.getTotalAplicado() <= MEDIO_CENTAVO) {
+            if (detalle.getTotalAplicado() <= MEDIO_CENTAVO && detalle.getMoraNoCobrada() <= MEDIO_CENTAVO) {
+                // C43: una cuota a la que solo le quedaba mora no cobrable queda pagada sin absorber valor; la cascada
+                // sigue con la siguiente.
                 // Blindaje: si una cuota no absorbió nada, no tiene sentido reintentar sobre ella
                 System.out.println("  ⚠️ La cuota #" + cuota.getNumeroCuota()
                     + " no absorbió valor; se detiene la cascada");
@@ -506,7 +518,29 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
             return detalle;
         }
 
-        double montoAplicar = redondear(Math.min(valorDisponible, saldos.getTotalPendiente()));
+        // C43 (D-156 3 y a, 24-nov-2026): antes de la fecha en que ASOPREP empezó a cobrar la mora, el pago no la cobra.
+        // Se aplica a la cuota sin la mora; si con eso la cuota queda cubierta, la mora se retira de la cuota y se
+        // reversan su devengo y su provisión. Si no la cubre, la mora sigue en la cuota (se cobró después, retroactiva).
+        LocalDateTime fechaPagoMora = ctx != null && ctx.getFechaPago() != null ? ctx.getFechaPago() : LocalDateTime.now();
+        double moraApartada = com.saa.ejb.crd.service.ModoCorteCartera.moraNoCobrable(fechaPagoMora)
+            ? redondear(saldos.getSaldoMora()) : 0.0;
+        double pendienteCobrable = redondear(saldos.getTotalPendiente() - moraApartada);
+        if (moraApartada > MEDIO_CENTAVO && pendienteCobrable <= TOLERANCIA_CUOTA) {
+            // Solo le quedaba la mora: queda pagada sin absorber valor.
+            retirarMoraNoCobrada(cuota, moraApartada);
+            aplicarEstadoCuota(cuota, (long) EstadoCuotaPrestamo.PAGADA);
+            cuota.setFechaPagado(fechaPagoMora);
+            cuota.setSaldo(0.0);
+            detallePrestamoService.saveSingle(cuota);
+            detalle.setEstadoNuevo(cuota.getEstado());
+            detalle.setMoraNoCobrada(moraApartada);
+            reversarMoraNoCobrada(cuota, moraApartada, ctx, fechaPagoMora);
+            System.out.println("      ✅ C43 Cuota #" + cuota.getNumeroCuota() + " PAGADA sin cobrar mora ($"
+                + moraApartada + " retirada, D-156)");
+            return detalle;
+        }
+
+        double montoAplicar = redondear(Math.min(valorDisponible, pendienteCobrable));
 
         // ------------------------------------------------------------------
         // PRELACIÓN (imputación secuencial; cada componente toma min(restante, saldo))
@@ -532,7 +566,7 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
         double aplicadoDesgravamen = Math.min(restante, saldos.getSaldoDesgravamen());
         restante = redondear(restante - aplicadoDesgravamen);
 
-        double aplicadoMora = Math.min(restante, saldos.getSaldoMora());
+        double aplicadoMora = moraApartada > MEDIO_CENTAVO ? 0.0 : Math.min(restante, saldos.getSaldoMora());
         restante = redondear(restante - aplicadoMora);
 
         double aplicadoIV = Math.min(restante, saldos.getSaldoInteresVencido());
@@ -561,6 +595,21 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
         if (totalAplicado <= MEDIO_CENTAVO) {
             System.out.println("      ℹ️ No se pudo imputar valor a ningún componente");
             return detalle;
+        }
+
+        // D-044 (29-oct-2026): lo que queda por componente después de esta aplicación. El total
+        // pendiente de una cuota sin pagos es DTPRTTLL, que en datos migrados puede ser MENOR que la
+        // suma de sus componentes; entonces "aplicado = total pendiente" no significa que el capital
+        // quedó cubierto (préstamos 6557 y 7140 en junio 2025: 3,45 y 7,19 de capital sin cubrir).
+        // C43: sin la mora apartada (no se cobra).
+        double pendienteComponentes = redondear(saldos.getSaldoSeguroIncendio() + saldos.getSaldoDesgravamen()
+            + saldos.getSaldoMora() + saldos.getSaldoInteresVencido() + saldos.getSaldoInteres()
+            + saldos.getSaldoCapital() - totalAplicado - moraApartada);
+        boolean cubierta = Math.abs(montoAplicar - pendienteCobrable) <= TOLERANCIA_CUOTA;
+        // C43 (D-156): la cuota quedó cubierta sin la mora: la mora se retira de la cuota (no se cobró).
+        boolean retiraMora = moraApartada > MEDIO_CENTAVO && cubierta && pendienteComponentes <= TOLERANCIA_CUOTA;
+        if (retiraMora) {
+            retirarMoraNoCobrada(cuota, moraApartada);
         }
 
         // ------------------------------------------------------------------
@@ -596,16 +645,7 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
         // ------------------------------------------------------------------
         LocalDateTime fechaPago = ctx != null && ctx.getFechaPago() != null ? ctx.getFechaPago() : LocalDateTime.now();
 
-        // D-044 (29-oct-2026): lo que queda por componente después de esta aplicación. El total
-        // pendiente de una cuota sin pagos es DTPRTTLL, que en datos migrados puede ser MENOR que la
-        // suma de sus componentes; entonces "aplicado = total pendiente" no significa que el capital
-        // quedó cubierto (préstamos 6557 y 7140 en junio 2025: 3,45 y 7,19 de capital sin cubrir).
-        double pendienteComponentes = redondear(saldos.getSaldoSeguroIncendio() + saldos.getSaldoDesgravamen()
-            + saldos.getSaldoMora() + saldos.getSaldoInteresVencido() + saldos.getSaldoInteres()
-            + saldos.getSaldoCapital() - totalAplicado);
-
-        if (Math.abs(montoAplicar - saldos.getTotalPendiente()) <= TOLERANCIA_CUOTA
-                && pendienteComponentes > TOLERANCIA_CUOTA) {
+        if (cubierta && pendienteComponentes > TOLERANCIA_CUOTA) {
             // D-044: la cuota no quedó saldada: PARCIAL con lo que falta (capital incluido). El
             // reparto del dinero y el pago registrado no cambian; solo el estado.
             aplicarEstadoCuota(cuota, (long) EstadoCuotaPrestamo.PARCIAL);
@@ -613,7 +653,7 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
             System.out.println("      ⚠️ Cuota #" + cuota.getNumeroCuota() + " PARCIAL (D-044) - Aplicado $"
                 + totalAplicado + " = total pendiente, pero quedan $" + pendienteComponentes
                 + " por componentes (capital pendiente $" + redondear(saldos.getSaldoCapital() - aplicadoCapital) + ")");
-        } else if (Math.abs(montoAplicar - saldos.getTotalPendiente()) <= TOLERANCIA_CUOTA) {
+        } else if (cubierta) {
             aplicarEstadoCuota(cuota, (long) EstadoCuotaPrestamo.PAGADA);
             // D-044 (29-oct-2026): la cuota queda saldada en la fecha del ÚLTIMO de sus pagos. En
             // un re-proceso de un mes pasado la cuota puede tener pagos vigentes con fecha
@@ -635,7 +675,8 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
         } else {
             aplicarEstadoCuota(cuota, (long) EstadoCuotaPrestamo.PARCIAL);
             System.out.println("      ⚠️ Cuota #" + cuota.getNumeroCuota() + " PARCIAL - Aplicado $"
-                + totalAplicado + " de $" + saldos.getTotalPendiente() + " pendiente");
+                + totalAplicado + " de $" + pendienteCobrable + " pendiente"
+                + (moraApartada > MEDIO_CENTAVO ? " (sin la mora de $" + moraApartada + ", C43)" : ""));
         }
 
         detallePrestamoService.saveSingle(cuota);
@@ -655,9 +696,67 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
         detalle.setAplicadoSeguro(aplicadoSeguro);
         detalle.setTotalAplicado(totalAplicado);
         detalle.setIdPagoPrestamo(pago != null ? pago.getCodigo() : null);
+        if (retiraMora) {
+            detalle.setMoraNoCobrada(moraApartada);
+            reversarMoraNoCobrada(cuota, moraApartada, ctx, fechaPago);
+            System.out.println("      ℹ️ C43 Cuota #" + cuota.getNumeroCuota() + " pagada sin mora: $" + moraApartada
+                + " retirada (D-156)");
+        }
 
         return detalle;
     }
+
+    /**
+     * C43 (D-156): retira de la cuota la mora que no se cobró. Queda solo la mora ya pagada (normalmente 0); el total
+     * de la cuota baja en lo mismo. DTPRMRCL (mora calculada) queda como rastro.
+     */
+    private void retirarMoraNoCobrada(DetallePrestamo cuota, double moraApartada) {
+        cuota.setMora(Math.max(0, redondear(nullSafe(cuota.getMora()) - moraApartada)));
+        if (cuota.getTotal() != null) {
+            cuota.setTotal(Math.max(0, redondear(cuota.getTotal() - moraApartada)));
+        }
+        if (cuota.getTotalConSeguro() != null) {
+            cuota.setTotalConSeguro(Math.max(0, redondear(cuota.getTotalConSeguro() - moraApartada)));
+        }
+        cuota.setSaldoMora(Math.max(0, redondear(nullSafe(cuota.getMora()) - nullSafe(cuota.getMoraPagado()))));
+    }
+
+    /**
+     * C43 (D-156): reversa el devengo (D 5.1.02 / H 1.4.02, libro tipo 6) y la provisión (D 1.4.99.05 / H 4.7.05.10,
+     * libro tipo 3) de la mora que se retiró de la cuota, con los mismos reversos del cobro tardío. La mora que queda
+     * es la ya pagada.
+     */
+    private void reversarMoraNoCobrada(DetallePrestamo cuota, double moraApartada, ContextoPago ctx,
+            LocalDateTime fechaPago) throws Throwable {
+        if (!configuracionContabilidadService.contabilidadActiva()) {
+            return;
+        }
+        Long idPrestamo = cuota.getPrestamo() != null ? cuota.getPrestamo().getCodigo() : null;
+        Long idEmpresa = ctx != null ? ctx.getIdEmpresa() : null;
+        if (idEmpresa == null && ctx != null && ctx.getIdCargaArchivo() != null) {
+            idEmpresa = transferenciaCargaPetroDaoService.resolverEmpresaByCarga(ctx.getIdCargaArchivo());
+        }
+        if (idEmpresa == null) {
+            throw new IncomeException("C43: no se pudo determinar la empresa para reversar la mora no cobrada de la"
+                + " cuota " + cuota.getCodigo() + " del préstamo " + idPrestamo + " (el contexto del pago no la trae).");
+        }
+        java.time.LocalDate fecha = ctx != null && ctx.getFechaAfectacion() != null ? ctx.getFechaAfectacion()
+            : fechaPago.toLocalDate();
+        double moraQueda = redondear(nullSafe(cuota.getMoraPagado()));
+        List<Object[]> detalleMora = new ArrayList<Object[]>();
+        detalleMora.add(new Object[]{ cuota.getCodigo(), Double.valueOf(redondear(moraQueda + moraApartada)),
+            Double.valueOf(moraQueda) });
+        Long idOrigen = ctx != null ? (ctx.getIdCargaArchivo() != null ? ctx.getIdCargaArchivo() : ctx.getIdEvento())
+            : null;
+        String usuario = ctx != null ? ctx.getUsuario() : null;
+        provisionInteresService.reversarExcesoProvisionPorCobroTardio(idPrestamo, detalleMora, idEmpresa, fecha,
+            ORIGEN_MORA_NO_COBRADA, idOrigen, usuario);
+        provisionInteresService.reversarExcesoDevengoPorCobroTardio(idPrestamo, detalleMora, idEmpresa, fecha,
+            ORIGEN_MORA_NO_COBRADA, idOrigen, usuario);
+    }
+
+    /** C43: origen de los reversos de mora no cobrada en el libro de intereses (CRD.MVIC). */
+    private static final String ORIGEN_MORA_NO_COBRADA = "MORA_NO_COBRADA";
 
     /**
      * Crea el PagoPrestamo de una aplicación. PGPRIDST es NOT NULL: idEstado SIEMPRE en 1.

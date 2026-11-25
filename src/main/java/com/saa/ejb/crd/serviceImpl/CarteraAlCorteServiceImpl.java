@@ -55,6 +55,8 @@ public class CarteraAlCorteServiceImpl implements CarteraAlCorteService {
             op.setInteresCuotasDelMes(redondear((Double) f[10]));
             op.setCuentaIndividual(redondear((Double) f[11]));
             op.setCapitalCuotasDelMes(f.length > 12 && f[12] != null ? redondear((Double) f[12]) : 0.0);
+            // C42 (D-156): interés pendiente de las cuotas exigibles al corte (vto <= corte).
+            op.setInteresExigible(f.length > 13 && f[13] != null ? redondear((Double) f[13]) : op.getInteresVencido());
 
             List<EscalaCalificacionRiesgo> escala = escalas.get(op.getIdProducto());
             if (escala == null) {

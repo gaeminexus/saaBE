@@ -30,7 +30,18 @@ public class DetalleAplicacionCuota {
     /** PGPR creado para esta cuota (null si no se aplicó nada) */
     private Long idPagoPrestamo;
 
+    /** C43 (D-156): mora retirada de la cuota porque el pago la cubrió sin ella (no se cobró) */
+    private double moraNoCobrada;
+
     public DetalleAplicacionCuota() {
+    }
+
+    public double getMoraNoCobrada() {
+        return moraNoCobrada;
+    }
+
+    public void setMoraNoCobrada(double moraNoCobrada) {
+        this.moraNoCobrada = moraNoCobrada;
     }
 
     public Long getIdCuota() {
