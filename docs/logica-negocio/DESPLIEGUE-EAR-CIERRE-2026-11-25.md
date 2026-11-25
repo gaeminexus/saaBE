@@ -1,110 +1,92 @@
-# Despliegue del EAR «cierre-1125»: todo `main` para el cierre de noviembre 2026 en producción
+# Despliegue del EAR «cierre-1125-d187» para el cierre de noviembre 2026 en producción
 
-**omen-saa-1-arb, 2026-11-25.** Lo eligió el usuario: la opción (b), con todo `main`.
-- Reemplaza a `c27b-1125c`, `c27b-1125b`, `c27b-1125`, `c42-1124` y `cancelados-1124`. **Ninguno se desplegó.**
-- Lo de adentro está descrito en `DESPLIEGUE-EAR-C27B-2026-11-24.md` §4 y en `PLAN-CONTABILIDAD-PRODUCCION-2026-11-24.md`.
-- **Agrega:** el lote 7 (tope de la provisión de mora, D-186) y la C19b (B17 y flujo de caja en el motor de balances).
+**omen-saa-1-arb, 2026-11-25.** El EAR sigue la decisión D-187 del líder del cuadre, confirmada por el usuario.
+- Lleva el mismo código que el WAR del 8080 del reproceso: `5a40b3ac` + lote 7 + lote 7b, **sin la C19b**.
+- La C19b sigue en `main` y va en el EAR siguiente. Antes se prueba en el reproceso: el B17 de mayo y el de septiembre
+  2025 tienen que salir idénticos byte a byte.
+- **Es la única excepción a «una sola versión».**
+- Reemplaza a `cierre-1125` (todo main con C19b), `c27b-1125c`, `c27b-1125b`, `c27b-1125`, `c42-1124` y
+  `cancelados-1124`. Ninguno se desplegó.
 
 ## 1. El EAR
-- `F:\ears\asoprep\cierre-1125\SaaEAR.ear`, SHA-256 `72D42219FD19BAEC69FEACE0516A401FAEAFC319D73B0D0279F90CC4D3E76B34`
-  (62.500.908 bytes).
+- `F:\ears\asoprep\cierre-1125-d187\SaaEAR.ear`, SHA-256
+  `563599A49830476A200D105A5F15D4D8D0A4BC9CBCFA40BBC8D822AAAA5A701A` (62.494.036 bytes).
   - 3 partes en `partes\`. Se unen con `copy /b SaaEAR.ear.part00+SaaEAR.ear.part01+SaaEAR.ear.part02 SaaEAR.ear`.
   - `testzip` sin errores.
-- `saaBE.war` `6738F8526ADECE21C7FC110EAD0209DF929B71E373F41E6E0A1D84B56F2FF996`.
-  - saaBE `main` `37c540f3`, empaquetado con `mvn -o package` sobre un `git archive` limpio.
-  - No lleva el USAP de app1.
-- `SaaFE.war` `69B9403C…84276410`: saaFE `63a225d`. Desde ahí el FE solo cambió documentos.
+- `saaBE.war` `EF3BC844C2867E5571806074109F57DEE3F284DA393514D3F9BAF7759D6AD336`.
+  - Es un `git archive` de `5a40b3ac` con los commits `37c540f3` (lote 7) y `c728ba3a` (lote 7b) aplicados con
+    `git apply`.
+  - Los dos parches están junto al EAR (`lote7.patch`, `lote7b.patch`), para que se pueda reproducir.
+  - Empaquetado con `mvn -o package`. No lleva la C19b ni el USAP de app1.
+- `SaaFE.war` `69B9403C…84276410`: saaFE `63a225d`.
 - **Vuelta atrás:** `precancelar-vencido-1118`.
 
-## 2. Lo que dijo el `crd/sql/382` en producción (25-11)
+## 2. Lo que dijo el `crd/sql/382` en producción (25-11) y lo que decidió el líder
 
-| Bloque | Resultado | Consecuencia |
+| Tema | Producción | Consecuencia |
 |---|---|---|
-| 1-2 | Plantilla 25, línea 70 → **4.1.01.30** (inversiones) | Falta **def9-07** |
-| 3 | No existe la cuenta 4.8.90.90.45 | Lo mismo: **def9-07** |
-| 4 | `CK_ANCC_TPOO` 1..10 | El 383 lo amplía a 1..12 |
-| 5 | `CK_SG45_ORGN` sin CONFIRMADO/PENDIENTE; no hay SSTG ni SG45TPPR | Faltan **C39-01, C40-01 y C41-01** (esperado) |
-| 6 | **LNNV, HCNV, NTNV, HCNVTPAP, HCNVCNDN y HDTP.EVPRCDGO nulo: todos en 0** | ⛔ **Faltan los 9 scripts del cuadre (C34…, 380, C37-01, C38-01).** Sin ellos, Seguimiento Novedades da ORA-00904 y el ⑦ y la historización de cuotas fallan |
-| 7 | Corridas EJECUTADAS 1 (2026-07-31), 2 (08-31), 4 (09-30) y 24 (10-31) | `anclaArranque = 2026-07-31`, **si la corrida 1 fue la de arranque** (confirmar). El próximo cierre es **noviembre 2026** |
-| 8 | Tipos 1 Q (823 vivos), 2 H (393), 3 P (2), 4 y 5 (0) | Base `1:0;2:0;3:0;4:0;5:0` |
-| 9 | Plantilla 17 con papeles 10 y 30 para los tipos 1, 2 y 3 | OK: los tipos 4 y 5 no tienen préstamos |
-| props | Leídas en la consola de WildFly (25-11). `saa.cartera.alCorte = nunca`, `saa.cartera.neteoPorPrestamo = nunca`, `saa.cartera.inicioDevengoMora = 2025-05-31`. **No están** `devengoMoraCierre`, `corteInclusivo`, `corteExclusivoDesde` ni `moraNoCobradaHasta` | ⚠️ Con `alCorte = nunca`, producción **nunca** corrió ⑧, ⑨ ni ⑩: la 1399 nunca se ajustó a la G48 por el cierre. Pasar a `siempre` (bloque 7 del encargo) cambia el cierre de noviembre. Ver §4 |
-| firma | `saa.firma.securitydata.pruebas = true` y la URL apunta a `portal-bpmdesarrollo…` | ⚠️ **Hallazgo:** la firma electrónica de producción usa el ambiente de PRUEBAS de Security Data |
+| Plantilla 25, línea 70 | → 4.1.01.30. No existe la 4.8.90.90.45 | Falta **def9-07** |
+| `CK_ANCC_TPOO` | 1..10 | El 383 lo amplía a 1..12 |
+| C39–C41 | No corridos | Faltan **C39-01, C40-01 y C41-01** |
+| C34, 380, C37-01, C38-01 | **No corridos** (todo en 0) | ⛔ Van antes del EAR. U1–U9 sí corrieron el 12-nov |
+| Corridas | 1 (2026-07-31) es la primera de producción | `anclaArranque = 2026-07-31` (confirmado por el líder) |
+| Tipos de préstamo | 1, 2 y 3 con préstamos vivos; 4 y 5 en 0 | Base `1:0;2:0;3:0;4:0;5:0` |
+| Plantilla 17 | Papeles 10 y 30 para los tipos 1, 2 y 3 | OK |
+| Alterno 39 | Libre | El 383 puede correr |
+| Propiedades | `alCorte = nunca`, `neteoPorPrestamo = nunca`, `inicioDevengoMora = 2025-05-31` | Ver §4 |
+| Firma electrónica | `saa.firma.securitydata.pruebas = true`, URL de desarrollo | ⚠️ Hallazgo: producción firma contra el ambiente de PRUEBAS |
 
 ## 3. ⛔ Scripts ANTES del WAR, en este orden (bloque por bloque, cada uno con sus controles)
-
-1. **Los 9 del cuadre, en el orden de `DESPLIEGUE-EAR-CANCELADOS-2026-11-24.md` §2:** `cnt/sql/C34-01`, `C34-01b`,
-   `C34-07`, `C34-07b`, `C34-07c`, `C34-07d`, `crd/sql/380`, `sri/sql/C37-01` y `rpr/sql/C38-01`.
-   - ⚠ El `C38-01` escribe en `CNT.CRRP`: va antes de la C19 (punto 6).
+1. **Los 9 del cuadre:** `cnt/sql/C34-01-novedades-v2.sql`, `C34-01b`, `C34-07`, `C34-07b`, `C34-07c`, `C34-07d`,
+   `crd/sql/380_C35_HDTP_EVENTO_OPCIONAL.sql`, `sri/sql/C37-01-…` y `rpr/sql/C38-01-…`.
 2. `reportes/sql/C39-01`, luego `C40-01` (revisar el bloque 3 y hacer COMMIT), luego `C41-01`.
-3. **`crd/sql/C45-03` (OBLIGATORIO)** y después `crd/sql/C45-02`.
-4. `cuadre/def9-07` (cuenta 4.8.90.90.45 y línea 70 de la 25) y `cuadre/def9-09` (4.8.99.9, con su fila CRRP 489090).
-   El def9-09 escribe en CRRP, así que va antes de la C19.
-5. **U1–U7 del pase del cuadre (`cuadre/README.md` §3), si no corrieron el 1-nov.** El U6 y el 4.15 escriben en CRRP:
-   van antes de la C19. **Confirmar con el cuadre cuáles ya están en producción.**
-6. **C19b.** Depende de lo que dé el SELECT de §3.1:
-   - **Si existe `CNT.CRRP`** (lo más probable): `rpr/sql/C19-05-migrar-crrp-a-dtrp.sql`, que migra a `CNT.DTRP`
-     todas las reglas activas, incluidas las de los puntos 1, 4 y 5. No van ni C19-01 ni C19-07.
-     - Antes del WAR, generar y anotar los balances del mes con el WAR viejo (`C19-06`, paso 1), para compararlos
-       después.
-   - **Si NO existe `CNT.CRRP`:** C19-01 → C19-02 → C19-03 → C19-04 → C38-01 sin sus bloques 5 y 7 → C19-07. Es el
-     orden de la cabecera del C19-07. En ese caso, el C38-01 del punto 1 se corre así recortado.
-7. `crd/sql/383_C27B_INTERES_ANTICIPADO_PLANTILLA_39_Y_SUBPROCESOS_11_12.sql`: plantilla 39 con 2.9.01.05, más
-   `CK_ANCC_TPOO` 1..12. El alterno 39 ya se verificó libre en producción.
-8. `crd/sql/392_MVIC_TIPO_10_AJUSTE_TOPE_PROVISION.sql` (`CK_MVIC_TIPO` 1..10).
-9. `cnt/sql/omen1-02-hcpr-accion-desmayorizar.sql`.
+3. **`crd/sql/C45-03-D053-lineas-redondeo-4.8.99.08.sql` (OBLIGATORIO)** y después `crd/sql/C45-02-…`.
+4. `cuadre/def9-07-cuenta-4.8.90.90.45-perdidas-condonaciones.sql` y `cuadre/def9-09-cuenta-4.8.99.9-gnd-multas.sql`.
+5. `crd/sql/383_C27B_INTERES_ANTICIPADO_PLANTILLA_39_Y_SUBPROCESOS_11_12.sql`.
+6. `crd/sql/392_MVIC_TIPO_10_AJUSTE_TOPE_PROVISION.sql`.
+7. `cnt/sql/omen1-02-hcpr-accion-desmayorizar.sql`.
 
-### 3.1 SELECT para decidir el camino de la C19 (solo lectura)
-```sql
-SELECT table_name FROM all_tables WHERE owner = 'CNT' AND table_name IN ('CRRP', 'DTRP', 'RNRP') ORDER BY 1;
-SELECT column_name FROM all_tab_columns WHERE owner = 'CNT' AND table_name = 'RPRT'
-   AND column_name IN ('RPRTTPRP', 'RPRTCDES', 'RPRTFRAR', 'RPRTTTLO') ORDER BY 1;
-SELECT COUNT(*) reglas_crrp FROM CNT.CRRP;   -- solo si CRRP existe
-```
+**No van:** los `rpr/sql/C19-*` (la C19b no está en este EAR).
 
-## 4. Propiedades del servidor
+## 4. Propiedades (consola de WildFly → System Properties → Add; el código las lee en cada cierre)
 
-**Para leerlas,** desde la carpeta `bin` del WildFly de producción (el `jboss-cli` no está en el PATH):
-```powershell
-cd "<WILDFLY_HOME>\bin"
-.\jboss-cli.bat -c --command="/core-service=platform-mbean/type=runtime:read-attribute(name=system-properties)" > $env:TEMP\props.txt
-Select-String -Path $env:TEMP\props.txt -Pattern "saa\.cartera"
-```
-- Si no sabes dónde está WildFly:
-  `Get-ChildItem C:\,D:\ -Filter jboss-cli.bat -Recurse -ErrorAction SilentlyContinue | Select-Object -First 3 FullName`.
-- Sin cli, en la configuración:
-  `Select-String -Path "<WILDFLY_HOME>\standalone\configuration\standalone*.xml","<WILDFLY_HOME>\bin\standalone.conf.bat" -Pattern "saa\.cartera"`.
+| Propiedad | Valor | Cuándo |
+|---|---|---|
+| `saa.cartera.devengoCompletoDesde` | `2026-11-30` | Antes de previsualizar noviembre |
+| `saa.cartera.topeProvisionMoraDesde` | `2026-11-30` | Antes de previsualizar noviembre |
+| `saa.cartera.anclaArranque` | `2026-07-31` | Antes de previsualizar noviembre |
+| `saa.cartera.anticipadoBaseTransicion` | `1:0;2:0;3:0;4:0;5:0` | Antes de previsualizar noviembre |
+| `saa.cartera.alCorte` | `nunca` → **`siempre`**, con la condición del §5 | Para la previsualización |
+| `saa.cartera.neteoPorPrestamo` | **quitar** el `nunca` (queda `auto`) | Junto con `alCorte = siempre` |
+| `saa.cartera.inicioDevengoMora` | `2025-05-31` (ya está) | — |
+| `saa.cartera.corteInclusivo`, `saa.cierres.permitirFueraDeOrden`, `saa.cartera.moraNoCobradaHasta`, `saa.cartera.timerMoraSuspendido` | **NO** se definen | — |
 
-**Valores a fijar:**
+## 5. Cierre de noviembre 2026 (condición del líder sobre `alCorte`)
+1. Desplegar y revisar que el log no tenga `ERROR` ni `ORA-`. Ojo con las inyecciones circulares (acuerdo ↔ pagos;
+   cierre del período ↔ mayorización).
+2. Humo de solo lectura:
+   - Seguimiento Novedades v1 y v2;
+   - Préstamos Cancelados del mes anterior contra el bloque 1 del `381`;
+   - `GET /ejrc/validar` de un mes presentado.
+3. Con las propiedades del §4, `alCorte = siempre` y sin `neteoPorPrestamo`, **PREVISUALIZAR** noviembre (no graba).
+   Revisar:
+   - **⑧** provisión requerida contra constituida, **⑨** ajuste de bandas y **⑥** el «abierto» del neteo;
+   - **④** con el interés completo, que aparezca **④b**, la línea del **⑪** (objetivo, asentado y base) y que el **⑦**
+     venga topado.
+4. **Si ⑧, ⑨ o ⑥ salen en millones,** como en octubre:
+   - volver `alCorte = nunca` y `neteoPorPrestamo = nunca`;
+   - previsualizar de nuevo;
+   - mandar la previsualización al cuadre.
 
-| Propiedad | Valor en producción |
-|---|---|
-| `saa.cartera.devengoCompletoDesde` | `2026-11-30` |
-| `saa.cartera.topeProvisionMoraDesde` | `2026-11-30` |
-| `saa.cartera.anclaArranque` | `2026-07-31` (corrida 1), si fue la de arranque |
-| `saa.cartera.anticipadoBaseTransicion` | `1:0;2:0;3:0;4:0;5:0` |
-| `saa.cartera.alCorte` | **Hoy `nunca`.** El encargo pide `siempre`, para que corran ⑧ (provisión de cartera contra la G48), ⑨ (ajuste de bandas a saldo) y ⑩ (devengo de mora al corte). ⚠️ Sería la **primera vez** que esos tres pasos corren en producción: el primer ⑧/⑨ ajusta a saldo todo lo acumulado y puede dar asientos grandes. **Decisión del líder, con una previsualización antes.** C27b y el lote 7 no dependen de esta propiedad |
-| `saa.cartera.neteoPorPrestamo` | Hoy `nunca`. Confirmar con el cuadre si D-032 (neteo por préstamo) debe activarse en producción |
-| Cómo se agregan | En la consola de WildFly, System Properties → Add (la misma pantalla de la captura). El código las lee en cada cierre, sin reiniciar |
-| `saa.cartera.corteInclusivo`, `saa.cartera.moraNoCobradaHasta`, `saa.cartera.timerMoraSuspendido` | **NO** se definen |
-
-## 5. Humo (solo lectura) y cierre
-1. Verificar el hash y desplegar. Log del arranque sin `ERROR` ni `ORA-`. Ojo con dos cosas:
-   - las inyecciones circulares (acuerdo ↔ pagos; cierre del período ↔ mayorización);
-   - las entidades nuevas de la C19b (`RNRP`).
-2. Seguimiento Novedades v1 y v2.
-3. **Balances:** con la C19b, generar el B17 y el balance general del mes y compararlos con lo anotado antes (`C19-06`).
-4. Préstamos Cancelados del mes anterior contra el bloque 1 del `381`.
-5. **Cierre de noviembre 2026:**
-   - **previsualizar** primero;
-   - en las advertencias, ⑪ (objetivo, asentado y base), que aparezca ④b y que el ⑦ ya venga topado;
-   - recién entonces ejecutar, y correr el `384` y el `391` sobre el 2026-11-30.
+   Si salen del orden de un mes del reproceso, ejecutar con `siempre`.
+5. Después de ejecutar, correr el `384` y el `391` al 2026-11-30.
 6. Sin cobros ni asientos de prueba.
 
 ## 6. Riesgos
-- **Nada de lo nuevo corrió contra Oracle** (C27b, lote 7, C19b). La previsualización del cierre es la primera
-  ejecución real de ④, ④b, ⑪ y del ⑦ topado.
-- **Con la C19b cambia el motor del B17 y del flujo de caja.** `/esrp` y `/esfo` quedan como alias.
-- **El lote 3 cambia la mora diaria desde el primer disparo del timer.**
-- **El exceso de mora ya provisionado en producción no se corrige con esta versión.** El ⑦ topado no provisiona de
-  más, pero no reversa lo que ya está. El líder dice que eso se reemplaza con la base re-procesada.
+- **Lo nuevo nunca corrió contra Oracle en producción:** C27b, el lote 7 y su reparto por préstamo, y el ⑧, ⑨ y ⑩ con
+  `siempre`. La previsualización es su primera ejecución, y no graba nada.
+- **El exceso de mora ya provisionado en producción no se corrige con este EAR.** El ⑦ topado deja de provisionar de
+  más. La corrección la trae la base re-procesada (decisión del líder).
+- **El lote 3 cambia el cálculo diario de la mora** desde el primer disparo del timer.
+- **Restricción de C27b:** volver a ejecutar un cierre ya ejecutado después de cancelaciones del mes siguiente se revisa
+  antes con el `384`.
