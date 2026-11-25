@@ -43,7 +43,7 @@ public class MovimientoInteresCuotaDaoServiceImpl extends EntityDaoImpl<Movimien
         }
         String jpql = "select m.idCuota, m.componente, "
             + " sum(case when m.tipoMovimiento in (1, 4) then m.valor"
-            + "          when m.tipoMovimiento in (2, 3, 9) then -m.valor"
+            + "          when m.tipoMovimiento in (2, 3, 9, 10) then -m.valor"
             + "          else 0.0 end)"
             + " from MovimientoInteresCuota m"
             + " where m.idCuota in :idsCuota and m.anulado = 0"
@@ -74,7 +74,7 @@ public class MovimientoInteresCuotaDaoServiceImpl extends EntityDaoImpl<Movimien
         }
         String jpql = "select m.idCuota, m.componente, "
             + " sum(case when m.tipoMovimiento in (1, 4) then m.valor"
-            + "          when m.tipoMovimiento in (2, 3, 9) then -m.valor"
+            + "          when m.tipoMovimiento in (2, 3, 9, 10) then -m.valor"
             + "          else 0.0 end)"
             + " from MovimientoInteresCuota m"
             + " where m.idCuota in :idsCuota and m.anulado = 0 and m.fechaContable <= :corte"
@@ -188,5 +188,107 @@ public class MovimientoInteresCuotaDaoServiceImpl extends EntityDaoImpl<Movimien
         query.setParameter("idCorrida", idCorrida);
         Long cantidad = (Long) query.getSingleResult();
         return cantidad != null && cantidad > 0L;
+    }
+
+    @Override
+    public java.util.Map<Long, Double> selectMoraContabilizadaPendientePorCuota(java.time.LocalDate corte)
+            throws Throwable {
+        System.out.println("MovimientoInteresCuotaDaoServiceImpl.selectMoraContabilizadaPendientePorCuota - corte: " + corte);
+        java.sql.Date limite = corte != null ? java.sql.Date.valueOf(corte) : java.sql.Date.valueOf("9999-12-31");
+        java.sql.Date limiteSig = corte != null ? java.sql.Date.valueOf(corte.plusDays(1))
+            : java.sql.Date.valueOf("9999-12-31");
+        // Una fila por cuota con devengo de mora (5 − 6) > 0. pend = devengo − mora cobrada (piso 0); la mora condonada del
+        // préstamo (acuerdos APLICADOS, concepto 3 = mora) se asigna a las cuotas de la más vieja a la más nueva con una
+        // suma acumulada: asignado_i = min(pend_i, max(0, condonada − (acumulado_i − pend_i))).
+        Query query = em.createNativeQuery(
+            " WITH dev AS ( "
+            + "   SELECT m.DTPRCDGO, m.PRSTCDGO, "
+            + "          SUM(CASE WHEN m.MVICTPMV = 5 THEN m.MVICVLOR WHEN m.MVICTPMV = 6 THEN -m.MVICVLOR ELSE 0 END) AS devengo "
+            + "     FROM CRD.MVIC m "
+            + "    WHERE m.MVICANUL = 0 AND m.MVICCMPN = 2 AND m.MVICTPMV IN (5, 6) AND m.MVICFCCT <= :limite "
+            + "    GROUP BY m.DTPRCDGO, m.PRSTCDGO "
+            + "   HAVING SUM(CASE WHEN m.MVICTPMV = 5 THEN m.MVICVLOR WHEN m.MVICTPMV = 6 THEN -m.MVICVLOR ELSE 0 END) > 0 ), "
+            + " pag AS ( "
+            + "   SELECT g.DTPRCDGO, SUM(NVL(g.PGPRMRPG, 0)) AS mora_pagada "
+            + "     FROM CRD.PGPR g "
+            + "    WHERE NVL(g.PGPRANUL, 0) = 0 AND g.PGPRFCHA < :limiteSig "
+            + "    GROUP BY g.DTPRCDGO ), "
+            + " cond AS ( "
+            + "   SELECT a.PRSTCDGO, SUM(NVL(c.DACCVLCN, 0)) AS condonada "
+            + "     FROM CRD.DACC c JOIN CRD.ACCN a ON a.ACCNCDGO = c.ACCNCDGO "
+            + "    WHERE a.ACCNESTD = 2 AND c.DACCCPTO = 3 AND a.ACCNFCHA < :limiteSig "
+            + "    GROUP BY a.PRSTCDGO ), "
+            + " base AS ( "
+            + "   SELECT dv.DTPRCDGO, dv.PRSTCDGO, d.DTPRFCVN, "
+            + "          GREATEST(0, ROUND(dv.devengo - NVL(pg.mora_pagada, 0), 2)) AS pend, NVL(cd.condonada, 0) AS condonada "
+            + "     FROM dev dv JOIN CRD.DTPR d ON d.DTPRCDGO = dv.DTPRCDGO "
+            + "     LEFT JOIN pag pg ON pg.DTPRCDGO = dv.DTPRCDGO "
+            + "     LEFT JOIN cond cd ON cd.PRSTCDGO = dv.PRSTCDGO ), "
+            + " acum AS ( "
+            + "   SELECT b.*, SUM(b.pend) OVER (PARTITION BY b.PRSTCDGO ORDER BY b.DTPRFCVN, b.DTPRCDGO) AS acumulado FROM base b ) "
+            + " SELECT a.DTPRCDGO, "
+            + "        GREATEST(0, ROUND(a.pend - LEAST(a.pend, GREATEST(0, a.condonada - (a.acumulado - a.pend))), 2)) "
+            + "   FROM acum a");
+        query.setParameter("limite", limite);
+        query.setParameter("limiteSig", limiteSig);
+        java.util.Map<Long, Double> resultado = new java.util.HashMap<>();
+        for (Object[] fila : (List<Object[]>) query.getResultList()) {
+            double valor = fila[1] != null ? ((Number) fila[1]).doubleValue() : 0.0;
+            if (valor > 0.0) {
+                resultado.put(((Number) fila[0]).longValue(), valor);
+            }
+        }
+        return resultado;
+    }
+
+    @Override
+    public List<Object[]> selectCuotasConProvisionMora(java.time.LocalDate corte) throws Throwable {
+        System.out.println("MovimientoInteresCuotaDaoServiceImpl.selectCuotasConProvisionMora - corte: " + corte);
+        String expresion = "sum(case when m.tipoMovimiento in (1, 4) then m.valor"
+            + "                when m.tipoMovimiento in (2, 3, 9, 10) then -m.valor else 0.0 end)";
+        Query query = em.createQuery(
+            "select m.idCuota, m.prestamo.codigo, " + expresion
+            + " from MovimientoInteresCuota m"
+            + " where m.anulado = 0 and m.componente = " + ComponenteMovimientoInteresCuota.MORA
+            + (corte != null ? " and m.fechaContable <= :corte" : "")
+            + " group by m.idCuota, m.prestamo.codigo"
+            + " having " + expresion + " > 0.009");
+        if (corte != null) {
+            query.setParameter("corte", corte);
+        }
+        List<Object[]> resultado = new ArrayList<>();
+        for (Object[] fila : (List<Object[]>) query.getResultList()) {
+            resultado.add(new Object[]{ fila[0], fila[1], fila[2] != null ? ((Number) fila[2]).doubleValue() : 0.0 });
+        }
+        return resultado;
+    }
+
+    @Override
+    public List<MovimientoInteresCuota> selectVigentesPorAsientoYTipo(Long idAsiento, long tipoMovimiento)
+            throws Throwable {
+        System.out.println("MovimientoInteresCuotaDaoServiceImpl.selectVigentesPorAsientoYTipo - asiento: " + idAsiento
+            + " - tipo: " + tipoMovimiento);
+        if (idAsiento == null) {
+            return new ArrayList<>();
+        }
+        Query query = em.createQuery("select m from MovimientoInteresCuota m"
+            + " where m.asiento = :asiento and m.tipoMovimiento = :tipo and m.anulado = 0 order by m.codigo");
+        query.setParameter("asiento", idAsiento);
+        query.setParameter("tipo", tipoMovimiento);
+        return query.getResultList();
+    }
+
+    @Override
+    public int anularByAsientoYTipo(Long idAsiento, long tipoMovimiento) throws Throwable {
+        System.out.println("MovimientoInteresCuotaDaoServiceImpl.anularByAsientoYTipo - asiento: " + idAsiento
+            + " - tipo: " + tipoMovimiento);
+        if (idAsiento == null) {
+            return 0;
+        }
+        Query query = em.createQuery("update MovimientoInteresCuota m set m.anulado = 1"
+            + " where m.asiento = :asiento and m.tipoMovimiento = :tipo and m.anulado = 0");
+        query.setParameter("asiento", idAsiento);
+        query.setParameter("tipo", tipoMovimiento);
+        return query.executeUpdate();
     }
 }

@@ -18,6 +18,7 @@ import com.saa.ejb.crd.dao.CierreCarteraDaoService;
 import com.saa.ejb.crd.dao.DetallePrestamoDaoService;
 import com.saa.ejb.crd.dao.MovimientoInteresCuotaDaoService;
 import com.saa.ejb.crd.dao.PagoPrestamoDaoService;
+import com.saa.ejb.crd.service.ModoCorteCartera;
 import com.saa.ejb.crd.service.ProcesoMoraPrestamoService;
 import com.saa.ejb.crd.service.ProvisionInteresService;
 import com.saa.ejb.crd.service.dto.BandaProductoDetalle;
@@ -1055,6 +1056,14 @@ public class ProvisionInteresServiceImpl implements ProvisionInteresService {
             }
         }
 
+        // Lote 7 (D-186): tope de la provisión de MORA. Solo con saa.cartera.topeProvisionMoraDesde y un corte que la alcanza,
+        // y nunca en la semilla del arranque (sinLibro): ahí el libro de devengo está vacío y el tope daría 0.
+        // El interés NO se topa. Sin la propiedad el cálculo es el de siempre, byte a byte.
+        boolean conTope = !sinLibro && ModoCorteCartera.topeProvisionMoraActivo(fechaCorte);
+        Map<Long, Double> moraContabilizadaPendiente = conTope
+            ? movimientoInteresCuotaDaoService.selectMoraContabilizadaPendientePorCuota(alCorte ? fechaCorte : null)
+            : null;
+
         // D25/D27 (2026-10-05): un préstamo DE_PLAZO_VENCIDO (8) ya tiene condonado el interés
         // de sus cuotas con vencimiento posterior al corte de su declaración PLVN — la MISMA
         // regla que CierreCarteraDaoServiceImpl#CONDONADO_INTERES_PLAZO_VENCIDO aplica en ④, acá
@@ -1094,6 +1103,11 @@ public class ProvisionInteresServiceImpl implements ProvisionInteresService {
             double tasaDiaria = procesoMoraPrestamoService.tasaDiariaDelPrestamo(prestamo, false);
             double moraCalculada = procesoMoraPrestamoService.calcularMoraCuota(cuota, tasaDiaria, fechaCorte);
             double pendienteMora = Math.max(0.0, redondear(moraCalculada - moraPagada));
+            if (conTope) {
+                // provisión de mora a constituir = max(0, min(mora calculada pendiente, mora contabilizada pendiente) − saldo)
+                Double contabilizada = moraContabilizadaPendiente.get(cuota.getCodigo());
+                pendienteMora = Math.min(pendienteMora, contabilizada != null ? contabilizada.doubleValue() : 0.0);
+            }
 
             double[] provisionado = saldoProvisionado.get(cuota.getCodigo());
             double saldoInteres = provisionado != null ? provisionado[0] : 0.0;

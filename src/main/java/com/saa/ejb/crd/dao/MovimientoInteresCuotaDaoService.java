@@ -109,4 +109,34 @@ public interface MovimientoInteresCuotaDaoService extends EntityDao<MovimientoIn
      * @throws Throwable Si ocurre un error
      */
     boolean existeAlgunoByCorrida(Long idCorrida) throws Throwable;
+
+    // =====================================================================
+    // Lote 7 (D-186) — tope de la provisión de mora
+    // =====================================================================
+
+    /**
+     * Mora contabilizada pendiente por cuota (lo que hay en 1.4.02 por mora de esa cuota), como mapa {@code idCuota → valor}
+     * (las cuotas sin devengo no aparecen: valen 0):
+     * <pre>max(0, devengo(5 − 6, MORA, fecha contable ≤ corte) − mora cobrada vigente (≤ corte) − mora condonada asignada)</pre>
+     * La mora condonada es la de los acuerdos APLICADOS con fecha ≤ corte (DACC, concepto mora, {@code DACCVLCN}) por préstamo,
+     * asignada a las cuotas del préstamo de la más vieja a la más nueva (vencimiento y código) contra su mora contabilizada, como
+     * hace {@code condonarProvision} al repartir. Con {@code corte == null} no hay límite de fecha (modo normal).
+     *
+     * @param corte fecha de corte, o null
+     */
+    java.util.Map<Long, Double> selectMoraContabilizadaPendientePorCuota(java.time.LocalDate corte) throws Throwable;
+
+    /**
+     * Cuotas con saldo de provisión de MORA mayor a un centavo al corte (Σ tipo 1, 4 − Σ tipo 2, 3, 9, 10, vigentes, fecha
+     * contable ≤ corte).
+     *
+     * @return filas {@code [idCuota (Long), idPrestamo (Long), saldoMora (Double)]}
+     */
+    List<Object[]> selectCuotasConProvisionMora(java.time.LocalDate corte) throws Throwable;
+
+    /** Movimientos VIGENTES de un tipo ligados a un asiento ({@code ASNTCDGO}). */
+    List<MovimientoInteresCuota> selectVigentesPorAsientoYTipo(Long idAsiento, long tipoMovimiento) throws Throwable;
+
+    /** Anula (MVICANUL = 1, nunca borra) los movimientos vigentes de un tipo ligados a un asiento. @return cuántos */
+    int anularByAsientoYTipo(Long idAsiento, long tipoMovimiento) throws Throwable;
 }

@@ -24,5 +24,12 @@ public interface TipoMovimientoInteresCuota {
 	public static final long RECLASIFICACION_POR_COBRO_TARDIO = 8L;
 	/** Condonación: reversa la provisión de lo condonado (R2). */
 	public static final long REVERSO_POR_CONDONACION = 9L;
+	/**
+	 * Ajuste del tope de la provisión de mora (D-186, lote 7): reversa lo provisionado de más que el tope del ⑦ no deja
+	 * provisionar (la mora provisionada no puede pasar de la mora contabilizada pendiente). Lo graba
+	 * {@code AjusteTopeProvisionService} contra el asiento que el cuadre contabilizó; resta del saldo provisionado igual que el 2, el 3 y el 9.
+	 * Sin corrida: se anula por asiento, no por {@code anularByCorrida}.
+	 */
+	public static final long AJUSTE_TOPE_PROVISION = 10L;
 
 }
