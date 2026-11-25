@@ -10,20 +10,25 @@ El paso ⑦ del cierre provisionaba el 100 % del interés pendiente y el 100 % d
 está la mora contabilizada (la devengada en MVIC por ④/⑩). Al 30-sep-2025 el cuadre midió la mora provisionada en 637.176,12 contra 42.566,11
 en 1.4.02, y 456.172 de ese exceso son de cuotas vencidas antes de 2020.
 
-## La regla (por cuota)
+## La regla (POR PRÉSTAMO, lote 7b)
 
 ```
-mora contabilizada pendiente = max(0, devengo (MVIC tipo 5 − 6, mora, fecha contable ≤ corte)
-                                      − mora cobrada vigente (≤ corte)
-                                      − mora condonada asignada)
-mora calculada pendiente     = max(0, mora calculada − mora cobrada)
-tope                         = min(mora calculada pendiente, mora contabilizada pendiente)
-provisión de mora a constituir = max(0, tope − saldo provisionado de mora de la cuota)
+tope del préstamo = max(0, Σ cuotas del préstamo de (devengo MVIC tipo 5 − 6, mora, fecha contable ≤ corte)
+                           − Σ mora cobrada vigente (≤ corte)
+                           − mora condonada)                    ← SIN piso por cuota
+reparto           = el tope del préstamo se reparte entre sus cuotas con mora calculada pendiente,
+                    de la más vieja a la más nueva, sin pasar de la mora calculada pendiente de cada una
+tope de la cuota  = lo repartido a esa cuota           (Σ tope repartido del préstamo ≤ tope del préstamo)
+provisión de mora a constituir = max(0, tope de la cuota − saldo provisionado de mora de la cuota)
+ajuste tipo 10 por cuota       = max(0, saldo provisionado de mora − tope de la cuota)
 ```
 
-- **Mora condonada:** `CRD.DACC` (concepto 3 = mora) `.DACCVLCN` de los acuerdos APLICADOS (`ACCNESTD = 2`) con fecha ≤ corte, **por préstamo**, asignada
-  a las cuotas del préstamo de la más vieja a la más nueva (vencimiento y código) contra su mora contabilizada. Un acuerdo reabierto
-  (lote 1c) deja de restar solo, porque deja de estar APLICADO.
+Por qué por préstamo: en 1.4.02 el negativo de una cuota (mora cobrada o condonada por encima de lo devengado) sí rebaja la cuenta y
+compensa la mora pendiente de las otras cuotas del mismo préstamo (control 3 del cuadre al 30-sep-2025: 42.566,11 por préstamo contra
+43.680,62 con piso por cuota). El paso ⑦ y la herramienta usan la misma función (`TopeProvisionMora.repartir`).
+
+- **Mora condonada:** `CRD.DACC` (concepto 3 = mora) `.DACCVLCN` de los acuerdos APLICADOS (`ACCNESTD = 2`) con fecha ≤ corte, por préstamo. Un acuerdo reabierto
+  (lote 1c) deja de restar solo, porque deja de estar APLICADO. El bloque 5 del SQL 391 compara con la variante del MVIC tipo 9.
 - **El interés NO cambia:** sigue al 100 % del interés pendiente.
 - **Saldo provisionado de mora** = Σ tipo 1 y 4 − Σ tipo 2, 3, 9 y **10** (vigentes). El tipo 10 es nuevo (abajo).
 - No se borra nada del préstamo: la mora sigue en `DTPR`, en la G48 y se cobra. Cuando ④/⑩ la devenguen, el ⑦ siguiente la provisiona.

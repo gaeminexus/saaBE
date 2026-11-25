@@ -191,44 +191,35 @@ public class MovimientoInteresCuotaDaoServiceImpl extends EntityDaoImpl<Movimien
     }
 
     @Override
-    public java.util.Map<Long, Double> selectMoraContabilizadaPendientePorCuota(java.time.LocalDate corte)
+    public java.util.Map<Long, Double> selectMoraContabilizadaPendientePorPrestamo(java.time.LocalDate corte)
             throws Throwable {
-        System.out.println("MovimientoInteresCuotaDaoServiceImpl.selectMoraContabilizadaPendientePorCuota - corte: " + corte);
+        System.out.println("MovimientoInteresCuotaDaoServiceImpl.selectMoraContabilizadaPendientePorPrestamo - corte: " + corte);
         java.sql.Date limite = corte != null ? java.sql.Date.valueOf(corte) : java.sql.Date.valueOf("9999-12-31");
         java.sql.Date limiteSig = corte != null ? java.sql.Date.valueOf(corte.plusDays(1))
             : java.sql.Date.valueOf("9999-12-31");
-        // Una fila por cuota con devengo de mora (5 − 6) > 0. pend = devengo − mora cobrada (piso 0); la mora condonada del
-        // préstamo (acuerdos APLICADOS, concepto 3 = mora) se asigna a las cuotas de la más vieja a la más nueva con una
-        // suma acumulada: asignado_i = min(pend_i, max(0, condonada − (acumulado_i − pend_i))).
+        // Lote 7b: por PRÉSTAMO, sin piso por cuota. En 1.4.02 el negativo de una cuota (mora cobrada o condonada por encima de
+        // lo devengado) sí rebaja la cuenta y compensa la mora pendiente de las otras cuotas del préstamo.
+        //   pendiente(préstamo) = max(0, Σ cuotas (devengo 5 − 6) − Σ mora cobrada vigente − mora condonada de los acuerdos)
+        // La mora cobrada se toma de las cuotas del préstamo por DTPR.PRSTCDGO (PGPR.PRSTCDGO viene nulo en muchos pagos).
         Query query = em.createNativeQuery(
             " WITH dev AS ( "
-            + "   SELECT m.DTPRCDGO, m.PRSTCDGO, "
-            + "          SUM(CASE WHEN m.MVICTPMV = 5 THEN m.MVICVLOR WHEN m.MVICTPMV = 6 THEN -m.MVICVLOR ELSE 0 END) AS devengo "
+            + "   SELECT m.PRSTCDGO, SUM(CASE WHEN m.MVICTPMV = 5 THEN m.MVICVLOR WHEN m.MVICTPMV = 6 THEN -m.MVICVLOR ELSE 0 END) AS devengo "
             + "     FROM CRD.MVIC m "
             + "    WHERE m.MVICANUL = 0 AND m.MVICCMPN = 2 AND m.MVICTPMV IN (5, 6) AND m.MVICFCCT <= :limite "
-            + "    GROUP BY m.DTPRCDGO, m.PRSTCDGO "
-            + "   HAVING SUM(CASE WHEN m.MVICTPMV = 5 THEN m.MVICVLOR WHEN m.MVICTPMV = 6 THEN -m.MVICVLOR ELSE 0 END) > 0 ), "
+            + "    GROUP BY m.PRSTCDGO ), "
             + " pag AS ( "
-            + "   SELECT g.DTPRCDGO, SUM(NVL(g.PGPRMRPG, 0)) AS mora_pagada "
-            + "     FROM CRD.PGPR g "
-            + "    WHERE NVL(g.PGPRANUL, 0) = 0 AND g.PGPRFCHA < :limiteSig "
-            + "    GROUP BY g.DTPRCDGO ), "
+            + "   SELECT d.PRSTCDGO, SUM(NVL(g.PGPRMRPG, 0)) AS mora_pagada "
+            + "     FROM CRD.PGPR g JOIN CRD.DTPR d ON d.DTPRCDGO = g.DTPRCDGO "
+            + "    WHERE NVL(g.PGPRANUL, 0) = 0 AND g.PGPRFCHA < :limiteSig AND d.PRSTCDGO IN (SELECT PRSTCDGO FROM dev) "
+            + "    GROUP BY d.PRSTCDGO ), "
             + " cond AS ( "
             + "   SELECT a.PRSTCDGO, SUM(NVL(c.DACCVLCN, 0)) AS condonada "
             + "     FROM CRD.DACC c JOIN CRD.ACCN a ON a.ACCNCDGO = c.ACCNCDGO "
             + "    WHERE a.ACCNESTD = 2 AND c.DACCCPTO = 3 AND a.ACCNFCHA < :limiteSig "
-            + "    GROUP BY a.PRSTCDGO ), "
-            + " base AS ( "
-            + "   SELECT dv.DTPRCDGO, dv.PRSTCDGO, d.DTPRFCVN, "
-            + "          GREATEST(0, ROUND(dv.devengo - NVL(pg.mora_pagada, 0), 2)) AS pend, NVL(cd.condonada, 0) AS condonada "
-            + "     FROM dev dv JOIN CRD.DTPR d ON d.DTPRCDGO = dv.DTPRCDGO "
-            + "     LEFT JOIN pag pg ON pg.DTPRCDGO = dv.DTPRCDGO "
-            + "     LEFT JOIN cond cd ON cd.PRSTCDGO = dv.PRSTCDGO ), "
-            + " acum AS ( "
-            + "   SELECT b.*, SUM(b.pend) OVER (PARTITION BY b.PRSTCDGO ORDER BY b.DTPRFCVN, b.DTPRCDGO) AS acumulado FROM base b ) "
-            + " SELECT a.DTPRCDGO, "
-            + "        GREATEST(0, ROUND(a.pend - LEAST(a.pend, GREATEST(0, a.condonada - (a.acumulado - a.pend))), 2)) "
-            + "   FROM acum a");
+            + "    GROUP BY a.PRSTCDGO ) "
+            + " SELECT dv.PRSTCDGO, "
+            + "        GREATEST(0, ROUND(dv.devengo - NVL(pg.mora_pagada, 0) - NVL(cd.condonada, 0), 2)) "
+            + "   FROM dev dv LEFT JOIN pag pg ON pg.PRSTCDGO = dv.PRSTCDGO LEFT JOIN cond cd ON cd.PRSTCDGO = dv.PRSTCDGO");
         query.setParameter("limite", limite);
         query.setParameter("limiteSig", limiteSig);
         java.util.Map<Long, Double> resultado = new java.util.HashMap<>();
