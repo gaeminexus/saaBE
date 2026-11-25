@@ -39,6 +39,32 @@ dueño, con la autorización del usuario.
 | 6.7 texto `sql/332` | trivial | omen1-be | Va con el lote 2 |
 | 7 configuración de producción | SQL listo: `crd/sql/382_BLOQUE7_VERIFICACION_PRODUCCION.sql` + jboss-cli | usuario | Correrlo y pasarme la salida |
 
+## Decisiones del líder del cuadre (24-nov-2026, noche)
+
+- **D3:** C27b se activa en producción en el **próximo cierre mensual** que haga producción.
+  - `devengoCompletoDesde` = último día de ese mes (2026-11-30 si es noviembre).
+  - `anclaArranque` = la corrida de arranque EJECUTADA de producción (`crd/sql/382`, bloque 7).
+  - `anticipadoBaseTransicion` = 0 en todos los tipos: producción nunca cargó el asiento manual C27b. Los TPPRCDGO se
+    confirman con el bloque 8 del 382.
+  - No hay regularización de lo acumulado en producción: esos meses los reemplaza la base re-procesada, con sus propias
+    propiedades.
+- **D1 y D5:** aprobados.
+- **D2:** sigue pendiente del líder con el contador. El cuadre recomienda 2.9.01.05 compartida, que el diseño del ⑪
+  soporta.
+- **C45 (reversos con la fecha del aporte o de C17):** aprobado. Cambia lo que decía C17.
+- **Orden de activación:**
+  1. merge de c45 (la parte rhh/CxP la revisa su árbitro);
+  2. lote 1b (precancelación por ventanilla y condonación);
+  3. scripts 383 (con D2), C45-03 (obligatorio), C45-02, def9-07 y def9-09;
+  4. 382 en producción, con `saa.cartera.alCorte=siempre`;
+  5. propiedades y EAR;
+  6. previsualizar el cierre (advertencias del ⑪, que aparezca ④b), ejecutar, y correr el 384.
+- **Aparte:**
+  - anular el asiento 8527 por REST y cargar el traslado de condonaciones (D-181);
+  - revisar con Crédito el préstamo 8051 (evento 1 aplicado otra vez como evento 371, 204,44) y el 3425 (precancelación
+    225 sin asiento).
+- **Merge `cd539cf1`:** entró la rama `cuadre-docs-arbitro-1124`, que trae los documentos en `docs/logica-negocio/cuadre/`.
+
 ## C27b — decisiones del árbitro sobre la respuesta del cuadre
 
 1. **Activación por propiedad `saa.cartera.devengoCompletoDesde` (AAAA-MM-DD, primer corte que se cierra con el código
