@@ -48,6 +48,9 @@ public class LibroInteresArranqueServiceImpl implements LibroInteresArranqueServ
 
     private static final double TOLERANCIA = 0.005;
     public static final String ORIGEN_SEMILLA = "SEMILLA_DEVENGO_INTERES";
+    public static final String ORIGEN_DIFERENCIA_DEVENGO = "AJUSTE_LIBRO_DEVENGO_INTERES";
+    public static final String MODO_SEMILLA = "SEMILLA";
+    public static final String MODO_DIFERENCIA = "DIFERENCIA";
     public static final String ORIGEN_AJUSTE_LIBRO = "AJUSTE_LIBRO_PROVISION";
 
     @EJB
@@ -94,6 +97,13 @@ public class LibroInteresArranqueServiceImpl implements LibroInteresArranqueServ
             + (solicitud != null ? solicitud.getIdAsientoReferencia() : null) + " - corte: "
             + (solicitud != null ? solicitud.getCorte() : null) + " - grabar: " + (solicitud != null ? solicitud.getGrabar() : null));
         LocalDate corte = validaSolicitud(solicitud);
+        String modo = solicitud.getModo() == null || solicitud.getModo().trim().isEmpty() ? MODO_SEMILLA : solicitud.getModo().trim().toUpperCase();
+        if (!MODO_SEMILLA.equals(modo) && !MODO_DIFERENCIA.equals(modo)) {
+            throw new IncomeException("El modo '" + solicitud.getModo() + "' no existe: use SEMILLA (por defecto) o DIFERENCIA.");
+        }
+        if (MODO_DIFERENCIA.equals(modo)) {
+            return diferenciaDevengoInteres(solicitud);
+        }
         String usuario = usuarioValidacionService.validar(solicitud.getUsuario());
         boolean grabar = Boolean.TRUE.equals(solicitud.getGrabar());
         Long referencia = solicitud.getIdAsientoReferencia();
@@ -187,6 +197,93 @@ public class LibroInteresArranqueServiceImpl implements LibroInteresArranqueServ
         return resultado;
     }
 
+    /**
+     * A2 en modo DIFERENCIA (lote 24): graba solo la diferencia por cuota entre el interés devengado y no cobrado al corte (objetivo) y el libro de devengo
+     * (Σ MVIC 11 - 12): un MVIC 11 si falta y un 12 si sobra, con origen {@code AJUSTE_LIBRO_DEVENGO_INTERES}, idOrigen = MVICASNT = la referencia y sin
+     * asiento propio. Usa el MISMO cálculo que el ajuste de último recurso ({@link #deltasLibroDevengoInteresAlCorte}). Idempotente por referencia.
+     */
+    private ResultadoSemillaDevengoInteres diferenciaDevengoInteres(SolicitudLibroInteresArranque solicitud) throws Throwable {
+        LocalDate corte = validaSolicitud(solicitud);
+        String usuario = usuarioValidacionService.validar(solicitud.getUsuario());
+        boolean grabar = Boolean.TRUE.equals(solicitud.getGrabar());
+        Long referencia = solicitud.getIdAsientoReferencia();
+        ResultadoSemillaDevengoInteres resultado = new ResultadoSemillaDevengoInteres();
+        resultado.setModo(MODO_DIFERENCIA);
+        resultado.setCorte(corte.toString());
+        resultado.setIdAsientoReferencia(referencia);
+
+        List<MovimientoInteresCuota> existentes = movimientoInteresCuotaDaoService.selectVigentesPorOrigen(ORIGEN_DIFERENCIA_DEVENGO, referencia,
+            java.util.Arrays.asList(TipoMovimientoInteresCuota.DEVENGO_INTERES, TipoMovimientoInteresCuota.REVERSO_DEVENGO_INTERES));
+        List<Object[]> filas = new ArrayList<>(); // {idCuota, idPrestamo, componente, baja(Boolean), valor, idTipo}
+        if (!existentes.isEmpty()) {
+            for (MovimientoInteresCuota m : existentes) {
+                filas.add(new Object[]{ m.getIdCuota(), null, null, Boolean.valueOf(m.getTipoMovimiento() != null
+                    && m.getTipoMovimiento().longValue() == TipoMovimientoInteresCuota.REVERSO_DEVENGO_INTERES),
+                    m.getValor() != null ? m.getValor().doubleValue() : 0.0, claveTipo(idTipoDe(m.getPrestamo())) });
+            }
+            resultado.setYaGrabado(true);
+            resultado.getAdvertencias().add("La referencia " + referencia + " ya tiene " + existentes.size()
+                + " movimiento(s) de diferencia del devengo vigentes: no se repite.");
+        } else {
+            validaAsientoReferencia(referencia);
+            filas = deltasLibroDevengoInteresAlCorte(corte);
+        }
+        Map<Long, double[]> porTipo = new TreeMap<>(); // {cuotas, alta, baja}
+        double alta = 0.0;
+        double baja = 0.0;
+        for (Object[] f : filas) {
+            double[] a = porTipo.computeIfAbsent((Long) f[5], k -> new double[3]);
+            double valor = (Double) f[4];
+            a[0] += 1;
+            if ((Boolean) f[3]) {
+                a[2] += valor;
+                baja += valor;
+            } else {
+                a[1] += valor;
+                alta += valor;
+            }
+        }
+        for (Map.Entry<Long, double[]> e : porTipo.entrySet()) {
+            ResultadoSemillaDevengoInteres.Tipo t = new ResultadoSemillaDevengoInteres.Tipo();
+            t.setIdTipoPrestamo(e.getKey());
+            t.setCuotas((int) e.getValue()[0]);
+            t.setValorAlta(redondear(e.getValue()[1]));
+            t.setValorBaja(redondear(e.getValue()[2]));
+            t.setValor(redondear(e.getValue()[1] - e.getValue()[2]));
+            resultado.getPorTipo().add(t);
+        }
+        resultado.setCuotasSembradas(filas.size());
+        resultado.setTotalAlta(redondear(alta));
+        resultado.setTotalBaja(redondear(baja));
+        resultado.setTotal(redondear(alta - baja));
+        if (filas.isEmpty()) {
+            resultado.getAdvertencias().add("El libro de devengo de interés ya está al día al " + corte + ": no hay diferencia que grabar.");
+        }
+        if (grabar && existentes.isEmpty() && !filas.isEmpty()) {
+            LocalDateTime ahora = LocalDateTime.now();
+            for (Object[] f : filas) {
+                MovimientoInteresCuota mov = new MovimientoInteresCuota();
+                Prestamo p = new Prestamo();
+                p.setCodigo((Long) f[1]);
+                mov.setPrestamo(p);
+                mov.setIdCuota((Long) f[0]);
+                mov.setTipoMovimiento((Boolean) f[3] ? TipoMovimientoInteresCuota.REVERSO_DEVENGO_INTERES : TipoMovimientoInteresCuota.DEVENGO_INTERES);
+                mov.setComponente(ComponenteMovimientoInteresCuota.INTERES);
+                mov.setValor(redondear((Double) f[4]));
+                mov.setFechaContable(corte);
+                mov.setOrigen(ORIGEN_DIFERENCIA_DEVENGO);
+                mov.setIdOrigen(referencia);
+                mov.setAsiento(referencia);
+                mov.setAnulado(0L);
+                mov.setUsuarioRegistro(usuario);
+                mov.setFechaRegistro(ahora);
+                movimientoInteresCuotaDaoService.save(mov, null);
+            }
+            resultado.setGrabado(true);
+        }
+        return resultado;
+    }
+
     @Override
     @TransactionAttribute(TransactionAttributeType.REQUIRED)
     public int anularSemilla(Long idAsientoReferencia, String usuario) throws Throwable {
@@ -195,7 +292,8 @@ public class LibroInteresArranqueServiceImpl implements LibroInteresArranqueServ
             throw new IncomeException("idAsientoReferencia es obligatorio.");
         }
         usuarioValidacionService.validar(usuario);
-        return movimientoInteresCuotaDaoService.anularByOrigenYIdOrigen(ORIGEN_SEMILLA, idAsientoReferencia);
+        return movimientoInteresCuotaDaoService.anularByOrigenYIdOrigen(ORIGEN_SEMILLA, idAsientoReferencia)
+            + movimientoInteresCuotaDaoService.anularByOrigenYIdOrigen(ORIGEN_DIFERENCIA_DEVENGO, idAsientoReferencia);
     }
 
     // =====================================================================
