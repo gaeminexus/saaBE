@@ -38,5 +38,13 @@ public interface TipoMovimientoInteresCuota {
 	public static final long DEVENGO_INTERES = 11L;
 	/** Lote 19: reverso del devengo de interés (abono, precancelación, acuerdo), por cuota y con el asiento que acredita la 1.4.02. */
 	public static final long REVERSO_DEVENGO_INTERES = 12L;
+	/**
+	 * Lote 21 (A1): ajuste del libro de provisión por cuota que BAJA el saldo provisionado (resta, igual que el 2, 3, 9 y 10). Sin asiento propio: queda
+	 * ligado al asiento manual del cuadre (origen AJUSTE_LIBRO_PROVISION, idOrigen = ese asiento). El valor es siempre positivo; el signo lo da el tipo.
+	 * Requiere {@code sql/409} (CK_MVIC_TIPO hasta 14).
+	 */
+	public static final long AJUSTE_LIBRO_PROVISION_BAJA = 13L;
+	/** Lote 21 (A1): como el 13 pero SUBE el saldo provisionado (suma, igual que el 1 y el 4): provisiones negativas o por debajo de lo devengado y no cobrado. */
+	public static final long AJUSTE_LIBRO_PROVISION_ALTA = 14L;
 
 }

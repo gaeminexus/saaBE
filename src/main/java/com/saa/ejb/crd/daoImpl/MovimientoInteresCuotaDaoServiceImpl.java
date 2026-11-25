@@ -42,8 +42,8 @@ public class MovimientoInteresCuotaDaoServiceImpl extends EntityDaoImpl<Movimien
             return new ArrayList<>();
         }
         String jpql = "select m.idCuota, m.componente, "
-            + " sum(case when m.tipoMovimiento in (1, 4) then m.valor"
-            + "          when m.tipoMovimiento in (2, 3, 9, 10) then -m.valor"
+            + " sum(case when m.tipoMovimiento in (1, 4, 14) then m.valor"
+            + "          when m.tipoMovimiento in (2, 3, 9, 10, 13) then -m.valor"
             + "          else 0.0 end)"
             + " from MovimientoInteresCuota m"
             + " where m.idCuota in :idsCuota and m.anulado = 0"
@@ -73,8 +73,8 @@ public class MovimientoInteresCuotaDaoServiceImpl extends EntityDaoImpl<Movimien
             return new ArrayList<>();
         }
         String jpql = "select m.idCuota, m.componente, "
-            + " sum(case when m.tipoMovimiento in (1, 4) then m.valor"
-            + "          when m.tipoMovimiento in (2, 3, 9, 10) then -m.valor"
+            + " sum(case when m.tipoMovimiento in (1, 4, 14) then m.valor"
+            + "          when m.tipoMovimiento in (2, 3, 9, 10, 13) then -m.valor"
             + "          else 0.0 end)"
             + " from MovimientoInteresCuota m"
             + " where m.idCuota in :idsCuota and m.anulado = 0 and m.fechaContable <= :corte"
@@ -210,7 +210,7 @@ public class MovimientoInteresCuotaDaoServiceImpl extends EntityDaoImpl<Movimien
             + "  NVL((SELECT SUM(CASE WHEN m.MVICTPMV = 5 THEN m.MVICVLOR WHEN m.MVICTPMV = 6 THEN -m.MVICVLOR ELSE 0 END) FROM CRD.MVIC m "
             + "        WHERE m.DTPRCDGO = d.DTPRCDGO AND m.MVICCMPN = 2 AND m.MVICTPMV IN (5, 6) AND NVL(m.MVICANUL, 0) = 0 AND m.MVICFCCT < :limiteSig), 0), "
             + "  NVL((SELECT SUM(NVL(g.PGPRMRPG, 0)) FROM CRD.PGPR g WHERE g.DTPRCDGO = d.DTPRCDGO AND NVL(g.PGPRANUL, 0) = 0 AND g.PGPRFCHA < :limiteSig), 0), "
-            + "  NVL((SELECT SUM(CASE WHEN m.MVICTPMV IN (1, 4) THEN m.MVICVLOR WHEN m.MVICTPMV IN (2, 3, 9, 10) THEN -m.MVICVLOR ELSE 0 END) FROM CRD.MVIC m "
+            + "  NVL((SELECT SUM(CASE WHEN m.MVICTPMV IN (1, 4, 14) THEN m.MVICVLOR WHEN m.MVICTPMV IN (2, 3, 9, 10, 13) THEN -m.MVICVLOR ELSE 0 END) FROM CRD.MVIC m "
             + "        WHERE m.DTPRCDGO = d.DTPRCDGO AND m.MVICCMPN = 2 AND NVL(m.MVICANUL, 0) = 0 AND m.MVICFCCT < :limiteSig), 0) "
             + " FROM CRD.DTPR d WHERE d.PRSTCDGO = :prestamo ORDER BY d.DTPRFCVN, d.DTPRCDGO");
         query.setParameter("prestamo", idPrestamo);
@@ -336,6 +336,48 @@ public class MovimientoInteresCuotaDaoServiceImpl extends EntityDaoImpl<Movimien
     }
 
     @Override
+    public List<Object[]> selectSaldosProvisionNoCeroAlCorte(java.time.LocalDate corte) throws Throwable {
+        System.out.println("MovimientoInteresCuotaDaoServiceImpl.selectSaldosProvisionNoCeroAlCorte - corte: " + corte);
+        String expresion = "sum(case when m.tipoMovimiento in (1, 4, 14) then m.valor"
+            + "                when m.tipoMovimiento in (2, 3, 9, 10, 13) then -m.valor else 0.0 end)";
+        Query query = em.createQuery(
+            "select m.idCuota, m.prestamo.codigo, m.componente, " + expresion
+            + " from MovimientoInteresCuota m"
+            + " where m.anulado = 0 and m.componente in (" + ComponenteMovimientoInteresCuota.INTERES + ", "
+            + ComponenteMovimientoInteresCuota.MORA + ") and m.fechaContable <= :corte"
+            + " group by m.idCuota, m.prestamo.codigo, m.componente"
+            + " having abs(" + expresion + ") > 0.004");
+        query.setParameter("corte", corte);
+        List<Object[]> resultado = new ArrayList<>();
+        for (Object[] fila : (List<Object[]>) query.getResultList()) {
+            resultado.add(new Object[]{ fila[0], fila[1], fila[2], fila[3] != null ? ((Number) fila[3]).doubleValue() : 0.0 });
+        }
+        return resultado;
+    }
+
+    @Override
+    public java.util.Set<Long> selectCuotasConMovimientoHasta(List<Long> idsCuota, List<Long> tipos, java.time.LocalDate corte)
+            throws Throwable {
+        java.util.Set<Long> resultado = new java.util.HashSet<>();
+        if (idsCuota == null || idsCuota.isEmpty() || tipos == null || tipos.isEmpty()) {
+            return resultado;
+        }
+        for (int inicio = 0; inicio < idsCuota.size(); inicio += TAMANIO_BLOQUE) {
+            List<Long> bloque = idsCuota.subList(inicio, Math.min(inicio + TAMANIO_BLOQUE, idsCuota.size()));
+            Query query = em.createQuery(
+                "select distinct m.idCuota from MovimientoInteresCuota m"
+                + " where m.idCuota in :ids and m.tipoMovimiento in :tipos and m.anulado = 0 and m.fechaContable <= :corte");
+            query.setParameter("ids", bloque);
+            query.setParameter("tipos", tipos);
+            query.setParameter("corte", corte);
+            for (Object id : (List<Object>) query.getResultList()) {
+                resultado.add(((Number) id).longValue());
+            }
+        }
+        return resultado;
+    }
+
+    @Override
     public List<MovimientoInteresCuota> selectVigentesPorOrigen(String origen, Long idOrigen, List<Long> tipos)
             throws Throwable {
         System.out.println("MovimientoInteresCuotaDaoServiceImpl.selectVigentesPorOrigen - origen: " + origen + " - idOrigen: " + idOrigen);
@@ -423,8 +465,8 @@ public class MovimientoInteresCuotaDaoServiceImpl extends EntityDaoImpl<Movimien
     @Override
     public List<Object[]> selectCuotasConProvisionMora(java.time.LocalDate corte) throws Throwable {
         System.out.println("MovimientoInteresCuotaDaoServiceImpl.selectCuotasConProvisionMora - corte: " + corte);
-        String expresion = "sum(case when m.tipoMovimiento in (1, 4) then m.valor"
-            + "                when m.tipoMovimiento in (2, 3, 9, 10) then -m.valor else 0.0 end)";
+        String expresion = "sum(case when m.tipoMovimiento in (1, 4, 14) then m.valor"
+            + "                when m.tipoMovimiento in (2, 3, 9, 10, 13) then -m.valor else 0.0 end)";
         Query query = em.createQuery(
             "select m.idCuota, m.prestamo.codigo, " + expresion
             + " from MovimientoInteresCuota m"

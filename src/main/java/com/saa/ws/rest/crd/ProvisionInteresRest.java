@@ -5,6 +5,8 @@ import java.util.Map;
 
 import com.saa.basico.util.IncomeException;
 import com.saa.ejb.crd.service.AjusteTopeProvisionService;
+import com.saa.ejb.crd.service.LibroInteresArranqueService;
+import com.saa.ejb.crd.service.dto.SolicitudLibroInteresArranque;
 import com.saa.ejb.crd.service.dto.ResultadoAjusteTopeMora;
 import com.saa.ejb.crd.service.dto.SolicitudAjusteTopeMora;
 
@@ -28,6 +30,9 @@ public class ProvisionInteresRest {
 
     @EJB
     private AjusteTopeProvisionService ajusteTopeProvisionService;
+
+    @EJB
+    private LibroInteresArranqueService libroInteresArranqueService;
 
     /** POST /rest/prov/ajusteTopeMora — previsualiza (grabar=false) o graba el ajuste tipo 10 contra un asiento del cuadre. */
     @POST
@@ -60,6 +65,79 @@ public class ProvisionInteresRest {
             return Response.ok(cuerpo, MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return error(e, "Error al anular el ajuste del tope de la provisión de mora: ");
+        }
+    }
+
+    /**
+     * POST /rest/prov/semillaDevengoInteres — A2 (lote 21): previsualiza (grabar=false) o graba el interés devengado y no cobrado al corte, por cuota,
+     * como saldo inicial del libro de devengo (MVIC 11). Sin asiento contable propio; idempotente por idAsientoReferencia.
+     */
+    @POST
+    @Path("/semillaDevengoInteres")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response semillaDevengoInteres(SolicitudLibroInteresArranque solicitud) {
+        System.out.println("ProvisionInteresRest.semillaDevengoInteres");
+        try {
+            return Response.ok(libroInteresArranqueService.sembrarDevengoInteres(solicitud), MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return error(e, "Error al sembrar el libro de devengo de interés: ");
+        }
+    }
+
+    /** POST /rest/prov/semillaDevengoInteres/anular — anula la semilla de una referencia. */
+    @POST
+    @Path("/semillaDevengoInteres/anular")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response anularSemillaDevengoInteres(SolicitudLibroInteresArranque solicitud) {
+        System.out.println("ProvisionInteresRest.semillaDevengoInteres/anular");
+        try {
+            int anulados = libroInteresArranqueService.anularSemilla(
+                solicitud != null ? solicitud.getIdAsientoReferencia() : null, solicitud != null ? solicitud.getUsuario() : null);
+            Map<String, Object> cuerpo = new HashMap<>();
+            cuerpo.put("idAsientoReferencia", solicitud != null ? solicitud.getIdAsientoReferencia() : null);
+            cuerpo.put("movimientosAnulados", anulados);
+            return Response.ok(cuerpo, MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return error(e, "Error al anular la semilla del libro de devengo de interés: ");
+        }
+    }
+
+    /**
+     * POST /rest/prov/ajusteLibroProvision — A1 (lote 21): previsualiza (grabar=false) o graba el ajuste del libro de provisión por cuota (MVIC 13 y 14)
+     * que deja el saldo provisionado de cada cuota igual a su interés y mora devengados y no cobrados al corte. Sin asiento contable propio;
+     * idempotente por idAsientoReferencia.
+     */
+    @POST
+    @Path("/ajusteLibroProvision")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response ajusteLibroProvision(SolicitudLibroInteresArranque solicitud) {
+        System.out.println("ProvisionInteresRest.ajusteLibroProvision");
+        try {
+            return Response.ok(libroInteresArranqueService.ajustarLibroProvision(solicitud), MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return error(e, "Error al ajustar el libro de provisión: ");
+        }
+    }
+
+    /** POST /rest/prov/ajusteLibroProvision/anular — anula el ajuste del libro de una referencia. */
+    @POST
+    @Path("/ajusteLibroProvision/anular")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response anularAjusteLibroProvision(SolicitudLibroInteresArranque solicitud) {
+        System.out.println("ProvisionInteresRest.ajusteLibroProvision/anular");
+        try {
+            int anulados = libroInteresArranqueService.anularAjusteLibro(
+                solicitud != null ? solicitud.getIdAsientoReferencia() : null, solicitud != null ? solicitud.getUsuario() : null);
+            Map<String, Object> cuerpo = new HashMap<>();
+            cuerpo.put("idAsientoReferencia", solicitud != null ? solicitud.getIdAsientoReferencia() : null);
+            cuerpo.put("movimientosAnulados", anulados);
+            return Response.ok(cuerpo, MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return error(e, "Error al anular el ajuste del libro de provisión: ");
         }
     }
 
