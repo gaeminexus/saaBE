@@ -61,3 +61,9 @@ Un pago existe al corte si su fecha O su registro caen hasta el corte. Para clas
 - `simular=true` no graba y devuelve las líneas (`detalle`). **Simular primero y pasarlo al contador.** No es idempotente: no repetirlo con la misma corrida.
 - Si el reverso del 3492 (402) se corre ANTES, sus pagos reactivados/anulados ya no aparecen en la corrida y quedan fuera solos; si se corre DESPUÉS de reclasificar, habría que ajustar a mano ese préstamo.
 - Los pagos con capital en `saldoOtros` (abono, precancelación) no son movibles por la re-imputación, así que no entran.
+
+### Notas del árbitro (2026-11-25), sin cambio de código
+- **Mora de ①** (`ProcesoMoraPrestamoServiceImpl` ~471/517, `moraSobreCapitalPendiente` ~577) se queda como está: un pago de migración lleva fecha = vencimiento de su cuota; si la cuota ya venció al corte su fecha es <= corte y la mora se detiene bien; si no venció, no corre mora. Supuesto no medido: que ningún pago de migración tenga fecha distinta de su vencimiento (el 403-B lista los pagos con fecha > corte y registro anterior; compararlos con `DTPRFCVN` de su cuota lo confirma).
+- **`topeTransicionDevengo`** (solo cierres previos a sep-2026): sin cambio.
+- **Cortes anteriores al 22-04-2026** (fecha de registro de la migración): esos pagos no existen en la base de ese momento ni por fecha ni por registro. Es correcto para esa fecha, pero un reproceso de esos meses daría las mismas roturas falsas del C33. Hoy los reprocesos parten del ancla 2026-07-31.
+- La reclasificación se corre primero en simulación, cuando el contador dé el OK.
