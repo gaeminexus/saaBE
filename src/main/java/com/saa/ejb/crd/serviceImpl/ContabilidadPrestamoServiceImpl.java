@@ -1125,6 +1125,24 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
     // reversa CobroCreditoServiceImpl#anularCobro, no este hook.
     // =====================================================================
 
+    /**
+     * C45 — fecha contable con la que quedó deshecho un asiento: la de su asiento de reverso
+     * (cuando el período estaba mayorizado o cerrado y {@code anulaAsiento} lo reversó), o la del
+     * propio asiento (cuando se anuló en su período abierto). Hoy solo si no hay ninguna.
+     */
+    private LocalDate fechaContableDelReverso(Asiento asientoDeshecho) throws Throwable {
+        if (asientoDeshecho == null) {
+            return LocalDate.now();
+        }
+        if (asientoDeshecho.getIdReversion() != null) {
+            Asiento reverso = asientoService.selectById(asientoDeshecho.getIdReversion());
+            if (reverso != null && reverso.getFechaAsiento() != null) {
+                return reverso.getFechaAsiento();
+            }
+        }
+        return asientoDeshecho.getFechaAsiento() != null ? asientoDeshecho.getFechaAsiento() : LocalDate.now();
+    }
+
     @Override
     public Long contabilizarReverso(EventoPrestamo eventoAnulado) throws Throwable {
         System.out.println("ContabilidadPrestamoService.contabilizarReverso - Evento: "
@@ -1158,7 +1176,13 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
         Long idEmpresaReverso = asientoAnulado != null && asientoAnulado.getEmpresa() != null
                 ? asientoAnulado.getEmpresa().getCodigo() : null;
         if (idEmpresaReverso != null) {
-            provisionInteresService.reProvisionarPorAnulacion(pagosAnulados, idEmpresaReverso, LocalDate.now(),
+            // C45 (auditoría §2.6): la re-provisión iba con la fecha de HOY aunque el asiento se
+            // anulara en su propio período o se reversara en el primer período abierto. Ahora va
+            // con la misma fecha contable que el reverso del asiento que acaba de deshacer: la del
+            // asiento de reverso si lo hubo (período mayorizado o cerrado), o la del asiento
+            // original si se anuló en su período abierto.
+            LocalDate fechaReProvision = fechaContableDelReverso(asientoAnulado);
+            provisionInteresService.reProvisionarPorAnulacion(pagosAnulados, idEmpresaReverso, fechaReProvision,
                     "REVERSO_" + eventoAnulado.getTipoOperacion(), eventoAnulado.getCodigo(), usuario);
         }
 

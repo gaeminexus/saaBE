@@ -3688,7 +3688,8 @@ public class PagoProgramadoServiceImpl implements PagoProgramadoService {
 		// PGPCDVRT = 1). Solo toca el PGPC; el devengo (el «por pagar») queda en el mayor y el asiento del pago se reversa abajo.
 		if (com.saa.rubros.OrigenPagoExterno.CRD_PAGO_PENSION_COMPLEMENTARIA.equals(pago.getOrigenExterno())
 				&& pago.getIdOrigen() != null) {
-			pagoPensionComplementariaService.volverAPendienteSiReversada(pago.getIdOrigen(), pago.getId());
+			// C45: con la fecha del reverso, para que el contra-movimiento del aporte no quede con la de hoy.
+			pagoPensionComplementariaService.volverAPendienteSiReversada(pago.getIdOrigen(), pago.getId(), fechaReverso);
 		}
 
 		Long idAsiento = (pago.getAsiento() != null) ? pago.getAsiento().getCodigo() : null;

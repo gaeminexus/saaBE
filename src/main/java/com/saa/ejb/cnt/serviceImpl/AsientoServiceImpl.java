@@ -667,9 +667,16 @@ public class AsientoServiceImpl implements AsientoService {
 		if(Long.valueOf(EstadoPeriodos.MAYORIZADO).equals(asiento.getPeriodo().getEstado())){
 			// El periodo esta mayorizado: no se anula, se reversa. El rastro se deja igual
 			// en el asiento original, que es el que queda marcado como REVERSADO.
+			// C45 (auditoria §2.6, DS-16): el reverso iba con la fecha de HOY, asi que al re-procesar
+			// un mes pasado caia en el mes en curso aunque hubiera meses abiertos entre medio. Ahora
+			// sigue la misma regla que el periodo cerrado (C17): el primer periodo posterior que no
+			// este cerrado ni mayorizado (su dia 1, u hoy si es el mes en curso). En la operacion
+			// normal (mes anterior mayorizado, mes en curso abierto) sigue siendo hoy.
+			LocalDate fecha = estadoCierreService.fechaReversoEnPeriodoAbierto(asiento.getEmpresa().getCodigo(),
+					asiento.getFechaAsiento());
 			marcaAuditoriaAnulacion(asiento, usuario, motivo);
 			asientoDaoService.save(asiento, asiento.getCodigo());
-			return reversionAsiento(idAsiento);
+			return reversionAsiento(idAsiento, fecha);
 		}else{
 			permiteProceso = verificaAnulacionReversion(asiento, ProcesosAsiento.ANULAR);
 			if(permiteProceso == true){

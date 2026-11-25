@@ -596,11 +596,13 @@ public class PrestamoServiceImpl implements PrestamoService {
         boolean reestructuracion = sustitucion != null && !sustitucion.isNovacion();
         Long idAsientoEntrega = null;
         if (reestructuracion) {
+            // C45 (auditoría §2.1, DS-14): el asiento de la reestructuración se fecha con la fecha contable de la
+            // aprobación (C6, ya validada arriba: no futura y mes abierto), no con la de hoy.
             idAsientoEntrega = contabilidadPrestamoService.contabilizarSustitucion(prestamo, cuotas,
                 sustitucion.getOriginal(), sustitucion.getDesglose(), sustitucion.isNovacion(),
-                sustitucion.getNeto(), sustitucion.isConLineas(), idEmpresa, usuario);
+                sustitucion.getNeto(), sustitucion.isConLineas(), idEmpresa, usuario, fechaOrdenPago);
             // RN11/RN12: cancela el original DESPUÉS del asiento (que necesita sus saldos vivos).
-            sustitucionPrestamoService.cancelarOriginal(prestamo, sustitucion, idAsientoEntrega, usuario);
+            sustitucionPrestamoService.cancelarOriginal(prestamo, sustitucion, idAsientoEntrega, usuario, fechaOrdenPago);
         } else if (sustitucion != null) {
             // Novación: el VS se FIJA al aprobar (es el que se descontó del neto de la orden de pago); el desembolso lo
             // compara con el VS real a esa fecha.
@@ -706,7 +708,7 @@ public class PrestamoServiceImpl implements PrestamoService {
                 idAsiento = contabilidadPrestamoService.contabilizarSustitucion(prestamo, cuotas,
                     sustitucion.getOriginal(), sustitucion.getDesglose(), sustitucion.isNovacion(),
                     sustitucion.getNeto(), sustitucion.isConLineas(), idEmpresa, usuario, fecha);
-                sustitucionPrestamoService.cancelarOriginal(prestamo, sustitucion, idAsiento, usuario);
+                sustitucionPrestamoService.cancelarOriginal(prestamo, sustitucion, idAsiento, usuario, fecha);
                 if (Math.abs(vsReal - vsFijado) > 0.005) {
                     double dif = redondear(vsReal - vsFijado);
                     advertencia.append("Novación del préstamo ").append(prestamo.getCodigo())

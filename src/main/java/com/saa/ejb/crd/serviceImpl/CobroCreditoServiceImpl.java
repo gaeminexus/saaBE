@@ -1806,8 +1806,8 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
      * sin cierre contable: {@code PeriodoService.verificaPeriodoAbierto}), los asientos del cobro
      * se anulan en su sitio ({@code AsientoService.anulaAsiento}) y la re-provisión va en esa misma
      * fecha: el mes queda como si el cobro no se hubiera procesado. Si el período ya está mayorizado
-     * o cerrado, los asientos del cobro se reversan en el período abierto y la re-provisión va con la
-     * fecha de hoy, como antes. Antes iba siempre con la fecha de hoy: al reversar en re-proceso un
+     * o cerrado, los asientos del cobro se reversan en el período abierto y la re-provisión va a ese
+     * mismo período (C45; antes, hoy). Antes iba siempre con la fecha de hoy: al reversar en re-proceso un
      * cobro de un mes pasado dejaba un asiento de re-provisión en el mes en curso.</p>
      */
     private LocalDate fechaReProvision(CobroCredito cobro) throws Throwable {
@@ -1815,15 +1815,27 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
         if (fechaAfectacion == null || fechaAfectacion.isAfter(LocalDate.now())) {
             return LocalDate.now();
         }
-        try {
-            if (periodoService.verificaPeriodoAbierto(derivarEmpresaCobro(cobro), fechaAfectacion) != null) {
-                return fechaAfectacion;
-            }
-        } catch (IncomeException e) {
-            System.out.println("  Re-provisión del cobro " + cobro.getCodigo() + " con fecha de hoy: el período de "
-                    + fechaAfectacion + " no está abierto (" + e.getMessage() + ")");
+        Long idEmpresa = derivarEmpresaCobro(cobro);
+        // C45: el estado del período se lee SIN verificaPeriodoAbierto, que lanza IncomeException (rollback = true): al
+        // cruzar el límite del EJB marcaba la transacción para rollback aunque aquí se capturara, así que la anulación o
+        // el reverso de un cobro de un período mayorizado terminaba en un rollback opaco al confirmar.
+        com.saa.model.cnt.Periodo periodo = periodoService.recuperaByMesAnioEmpresa(idEmpresa,
+                Long.valueOf(fechaAfectacion.getMonthValue()), Long.valueOf(fechaAfectacion.getYear()));
+        if (periodo == null) {
+            return LocalDate.now(); // sin período para esa fecha: como antes
         }
-        return LocalDate.now();
+        boolean abierto = !com.saa.model.cnt.CierrePeriodoListener.contableCerrado(periodo) && periodo.getEstado() != null
+                && (periodo.getEstado().longValue() == com.saa.rubros.EstadoPeriodos.ACTIVO
+                        || periodo.getEstado().longValue() == com.saa.rubros.EstadoPeriodos.DESMAYORIZADO);
+        if (abierto) {
+            return fechaAfectacion;
+        }
+        // C45 (auditoría §2.6): con el período de afectación mayorizado o cerrado, la misma regla que el reverso de
+        // sus asientos (AsientoServiceImpl.anulaAsiento): el primer período posterior abierto (su día 1, u hoy si es el
+        // mes en curso), y no hoy a secas. Si no hay ninguno lanza PERIODO_CERRADO, el mismo que daría el reverso.
+        System.out.println("  Re-provisión del cobro " + cobro.getCodigo() + ": el período de " + fechaAfectacion
+                + " no está abierto; va al primer período abierto posterior.");
+        return estadoCierreService.fechaReversoEnPeriodoAbierto(idEmpresa, fechaAfectacion);
     }
 
     /**

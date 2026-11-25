@@ -77,4 +77,12 @@ public interface SustitucionPrestamoService {
      */
     void cancelarOriginal(Prestamo nuevo, ContextoSustitucion contexto, Long idAsiento, String usuario)
             throws Throwable;
+
+    /**
+     * C45 — igual que {@link #cancelarOriginal(Prestamo, ContextoSustitucion, Long, String)}, con la fecha de negocio
+     * del evento (la del asiento: desembolso en la novación, fecha contable de la aprobación en la reestructuración).
+     * Con {@code fechaEvento} nula o de hoy, el evento lleva la hora actual, como antes.
+     */
+    void cancelarOriginal(Prestamo nuevo, ContextoSustitucion contexto, Long idAsiento, String usuario,
+            java.time.LocalDate fechaEvento) throws Throwable;
 }

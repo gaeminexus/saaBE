@@ -3883,7 +3883,8 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
             System.out.println("  ✅ Pago " + idPago + " PAGADO - Fecha: " + pago.getFechaPago());
 
         } else if (estadoPago == EstadoPagoProgramado.RECHAZADO || estadoPago == EstadoPagoProgramado.ANULADO) {
-            dejarPendientePorPagoNoRecibido(pago, "RECHAZADO");
+            // C45: el contra-movimiento se fecha con la respuesta del banco (el hecho), no con hoy.
+            dejarPendientePorPagoNoRecibido(pago, "RECHAZADO", pagoProgramado.getFechaRespuesta());
             pagoPensionDaoService.save(pago, pago.getCodigo());
             parcial.setMarcadasRechazadas(1);
 
@@ -4202,8 +4203,9 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
      * detectado por {@link #sincronizarPago} y el reverso de un pago confirmado ({@link #volverAPendienteSiReversada}).
      * No guarda la fila: lo hace el llamador.
      */
-    private void dejarPendientePorPagoNoRecibido(PagoPensionComplementaria pago, String causa) throws Throwable {
-        double devuelto = generarContraMovimiento(pago);
+    private void dejarPendientePorPagoNoRecibido(PagoPensionComplementaria pago, String causa,
+            LocalDate fechaNegocio) throws Throwable {
+        double devuelto = generarContraMovimiento(pago, fechaNegocio);
         if (devuelto > TOLERANCIA) {
             pago.setValorRetenido(devuelto);
             pago.setDevengadoRetenido(1L);
@@ -4222,6 +4224,12 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
     @Override
     @TransactionAttribute(TransactionAttributeType.REQUIRED)
     public boolean volverAPendienteSiReversada(Long idPgpc, Long idOrden) throws Throwable {
+        return volverAPendienteSiReversada(idPgpc, idOrden, null);
+    }
+
+    @Override
+    @TransactionAttribute(TransactionAttributeType.REQUIRED)
+    public boolean volverAPendienteSiReversada(Long idPgpc, Long idOrden, LocalDate fechaReverso) throws Throwable {
         if (idPgpc == null || idOrden == null) {
             return false;
         }
@@ -4234,7 +4242,13 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
                     && pago.getEstado() != EstadoPagoPensionComplementaria.PAGADA)) {
             return false;
         }
-        dejarPendientePorPagoNoRecibido(pago, "REVERSADO en CXP");
+        // C45: fecha de negocio del contra-movimiento = la del reverso; si no llega, la respuesta del banco de la orden.
+        LocalDate fechaNegocio = fechaReverso;
+        if (fechaNegocio == null) {
+            PagoProgramado orden = pagoProgramadoDaoService.find(new PagoProgramado(), idOrden);
+            fechaNegocio = orden != null ? orden.getFechaRespuesta() : null;
+        }
+        dejarPendientePorPagoNoRecibido(pago, "REVERSADO en CXP", fechaNegocio);
         pagoPensionDaoService.save(pago, pago.getCodigo());
         return true;
     }
@@ -4471,10 +4485,15 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
      * fila negativa (CRD.APRT es append-only). Mismo patrón que
      * {@code DevolucionAporteServiceImpl#generarContraMovimientos}.
      */
-    private double generarContraMovimiento(PagoPensionComplementaria pago) throws Throwable {
+    private double generarContraMovimiento(PagoPensionComplementaria pago, LocalDate fechaNegocio) throws Throwable {
         if (pago.getIdAporte() == null) {
             return 0.0;
         }
+        // C45 (auditoría §2.6): el APRT de reverso y PagoAporte.fechaContable iban con la fecha de HOY; al re-procesar un
+        // mes pasado el contra-movimiento caía en el mes en curso. Van con la fecha del hecho (respuesta del banco o
+        // reverso de la orden); hoy solo si no llega ninguna o llega futura. FECHA DE REGISTRO sigue siendo hoy.
+        LocalDateTime fechaHecho = (fechaNegocio == null || !fechaNegocio.isBefore(LocalDate.now()))
+                ? LocalDateTime.now() : fechaNegocio.atStartOfDay();
         Aporte original = aporteDaoService.find(new Aporte(), pago.getIdAporte());
         if (original == null) {
             System.err.println("  ⚠ Pago " + pago.getCodigo() + " rechazado, pero su Aporte "
@@ -4493,7 +4512,7 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         reverso.setSaldo(0.0);
         reverso.setEstado((long) EstadoCuotaPrestamo.PAGADA);
         reverso.setIdAsoprep(null);
-        reverso.setFechaTransaccion(ahora);
+        reverso.setFechaTransaccion(fechaHecho);
         reverso.setPeriodoDevengo(null);
         reverso.setTipoMovimiento((long) CrdTipoMovimientoAporte.REVERSO);
         reverso.setGlosa("REVERSO PAGO PENSION COMPLEMENTARIA " + pago.getMes() + "/" + pago.getAnio()
@@ -4506,7 +4525,7 @@ public class PagoPensionComplementariaServiceImpl implements PagoPensionCompleme
         pagoReverso.setAporte(reverso);
         pagoReverso.setFilial(original.getFilial());
         pagoReverso.setValor(redondear(valor));
-        pagoReverso.setFechaContable(ahora);
+        pagoReverso.setFechaContable(fechaHecho);
         pagoReverso.setNumeroAsiento(null);
         pagoReverso.setConcepto(reverso.getGlosa());
         pagoReverso.setUsuarioRegistro(pago.getUsuarioRegistro());

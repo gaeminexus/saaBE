@@ -466,11 +466,22 @@ public class AporteServiceImpl implements AporteService {
             throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": el aporte " + idAporte
                 + " ya es una fila de reverso (valor negativo); no se puede reversar de nuevo");
         }
-        // C17: el reverso se registra hoy (mes abierto para cartera) y, si el aporte original es de un mes
-        // cerrado para cartera, su contabilidad también tiene que estar cerrada.
-        estadoCierreService.validarCarteraAbierta(null, LocalDate.now(), "la reversa del aporte " + idAporte);
-        estadoCierreService.validarAnulacionCartera(null,
+        // C17: si el aporte original es de un mes cerrado para cartera, su contabilidad también tiene que estar
+        // cerrada, y el reverso va al primer período abierto (la fecha que devuelve validarAnulacionCartera).
+        // C45 (auditoría §2.6): antes el reverso se fechaba SIEMPRE hoy; al re-procesar un mes pasado caía en el mes
+        // en curso aunque el mes del aporte siguiera abierto. Ahora: mes del aporte abierto -> la fecha del aporte
+        // original (se deshace en su mes, como el asiento que se anula en su período); mes cerrado -> la fecha de
+        // reverso de C17. Nunca futura. La fecha de REGISTRO sigue siendo hoy.
+        LocalDateTime ahoraValidacion = LocalDateTime.now();
+        LocalDate fechaReversoCartera = estadoCierreService.validarAnulacionCartera(null,
                 original.getFechaTransaccion() != null ? original.getFechaTransaccion().toLocalDate() : null,
+                "la reversa del aporte " + idAporte);
+        LocalDateTime fechaNegocioReverso = fechaReversoCartera != null ? fechaReversoCartera.atStartOfDay()
+                : (original.getFechaTransaccion() != null ? original.getFechaTransaccion() : ahoraValidacion);
+        if (fechaNegocioReverso.isAfter(ahoraValidacion)) {
+            fechaNegocioReverso = ahoraValidacion;
+        }
+        estadoCierreService.validarCarteraAbierta(null, fechaNegocioReverso.toLocalDate(),
                 "la reversa del aporte " + idAporte);
 
         // H61 (INVARIANTE-SALDO-APORTES.md §3.1/§3.2): bloqueo por partícipe, ANTES de leer el
@@ -504,7 +515,7 @@ public class AporteServiceImpl implements AporteService {
         reverso.setSaldo(0.0);
         reverso.setEstado((long) EstadoCuotaPrestamo.PAGADA);
         reverso.setIdAsoprep(null);
-        reverso.setFechaTransaccion(ahora);
+        reverso.setFechaTransaccion(fechaNegocioReverso);
         reverso.setPeriodoDevengo(original.getPeriodoDevengo());
         reverso.setTipoMovimiento((long) CrdTipoMovimientoAporte.REVERSO);
         reverso.setGlosa(glosa);
@@ -518,7 +529,7 @@ public class AporteServiceImpl implements AporteService {
         pagoReverso.setAporte(reverso);
         pagoReverso.setFilial(original.getFilial());
         pagoReverso.setValor(valorOriginal);
-        pagoReverso.setFechaContable(ahora);
+        pagoReverso.setFechaContable(fechaNegocioReverso);
         pagoReverso.setNumeroAsiento(null);
         pagoReverso.setConcepto(glosa);
         pagoReverso.setUsuarioRegistro(usuario.trim());

@@ -2152,9 +2152,17 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
 
         // C17: anular una operación de un mes cerrado para cartera solo si su contabilidad también está
         // cerrada (el asiento se reversa en el primer período abierto); si no, reabrir la cartera del mes.
-        estadoCierreService.validarAnulacionCartera(solicitud.getIdEmpresa(),
+        LocalDate fechaReversoCartera = estadoCierreService.validarAnulacionCartera(solicitud.getIdEmpresa(),
                 evento.getFecha() != null ? evento.getFecha().toLocalDate() : null,
                 "la anulación del evento " + evento.getCodigo());
+        // C45 (auditoría §2.6): fecha de NEGOCIO del reverso para los contra-movimientos de aportes y la anulación de la
+        // baja de garantía, que iban con la de hoy. Mes de cartera cerrado: la fecha de reverso que acaba de dar C17
+        // (primer período abierto). Mes abierto: la fecha de la operación que se anula. Nunca futura.
+        LocalDateTime fechaNegocioReverso = fechaReversoCartera != null ? fechaReversoCartera.atStartOfDay()
+                : (evento.getFecha() != null ? evento.getFecha() : ahora);
+        if (fechaNegocioReverso.isAfter(ahora)) {
+            fechaNegocioReverso = ahora;
+        }
 
         ResultadoAnulacion resultado = new ResultadoAnulacion();
         resultado.setIdEvento(evento.getCodigo());
@@ -2418,7 +2426,8 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
         }
 
         // 4. Contra-movimientos de aportes (si el evento consumió aportes)
-        int movimientosRevertidos = revertirAportes(pagos, evento, solicitud.getUsuario(), ahora);
+        int movimientosRevertidos = revertirAportes(pagos, evento, solicitud.getUsuario(), ahora,
+            fechaNegocioReverso);
         resultado.setMovimientosAporteRevertidos(movimientosRevertidos);
 
         // 5. Estado del préstamo
@@ -2449,8 +2458,8 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
         contabilidadPrestamoService.contabilizarReverso(evento);
         // C31: si el reverso reabrió el préstamo, se anula la baja de su garantía en cuentas de orden.
         // C31c: estadoPrevio es el de antes del reverso; el reverso solo puede reabrir (anular la baja), nunca darla.
-        garantiaOrdenPrestamoService.sincronizar(prestamo, estadoPrevio, solicitud.getIdEmpresa(), LocalDate.now(),
-            null, solicitud.getUsuario(), "reverso " + tipo);
+        garantiaOrdenPrestamoService.sincronizar(prestamo, estadoPrevio, solicitud.getIdEmpresa(),
+            fechaNegocioReverso.toLocalDate(), null, solicitud.getUsuario(), "reverso " + tipo);
 
         resultado.setCuotasRecalculadas(cuotasRecalculadas);
         resultado.setCuotasRestauradas(cuotasRestauradas);
@@ -2471,7 +2480,7 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
      * es append-only para los reportes de aportes.
      */
     private int revertirAportes(List<PagoPrestamo> pagos, EventoPrestamo evento, String usuario,
-            LocalDateTime ahora) throws Throwable {
+            LocalDateTime ahora, LocalDateTime fechaNegocio) throws Throwable {
 
         int revertidos = 0;
         String glosa = "REVERSO EVENTO " + evento.getCodigo();
@@ -2499,7 +2508,7 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
                 contra.setSaldo(0.0);
                 contra.setEstado(ESTADO_APORTE_CONSUMIDO);
                 contra.setIdAsoprep(null);
-                contra.setFechaTransaccion(ahora);
+                contra.setFechaTransaccion(fechaNegocio); // C45: fecha del reverso, no la de hoy
                 contra.setPeriodoDevengo(original.getPeriodoDevengo()); // mismo devengo de la fila que reversa
                 contra.setTipoMovimiento((long) CrdTipoMovimientoAporte.REVERSO);
                 contra.setGlosa(glosa);
