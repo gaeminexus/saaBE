@@ -21,6 +21,28 @@ Ejemplo (jboss-cli):
 
 (Los valores del ejemplo son de forma; los reales los fija el cuadre.)
 
+## Cuarta propiedad (lote 7, D-186): tope de la provisión de mora del ⑦
+
+| Propiedad | Formato | Qué hace |
+|---|---|---|
+| `saa.cartera.topeProvisionMoraDesde` | `AAAA-MM-DD` | Primer corte cuyo ⑦ topa la provisión de MORA a la mora contabilizada pendiente de cada cuota (devengo 5 − 6, menos lo cobrado, menos la mora condonada de los acuerdos aplicados). El interés no se topa. **Sin la propiedad, o con un corte anterior, el ⑦ es el de siempre byte a byte.** La semilla de la corrida de arranque nunca lleva el tope. Contrato: `API-AJUSTE-TOPE-PROVISION-MORA.md`. |
+
+Valores (a incluir en el runbook de despliegue y del reproceso):
+
+| Ambiente | Valor |
+|---|---|
+| **Producción** | el **mismo valor que `saa.cartera.devengoCompletoDesde`** (el próximo cierre) |
+| **Reproceso** | `2025-10-31` |
+
+```
+/system-property=saa.cartera.topeProvisionMoraDesde:add(value=2025-10-31)   # reproceso
+/system-property=saa.cartera.topeProvisionMoraDesde:add(value=2026-10-31)   # producción: igual que devengoCompletoDesde
+```
+
+Orden del pase del lote 7: `sql/392` (CHECK del tipo 10) antes del EAR → fijar la propiedad → cerrar el mes con el ⑦ nuevo (sin ajuste, el ⑦ nuevo ya no
+provisiona de más, pero el exceso ya provisionado sigue en MVIC hasta que se grabe el ajuste) → `POST /rest/prov/ajusteTopeMora` (previsualizar, luego grabar)
+contra el asiento del cuadre. Medición: `sql/391`.
+
 ## Qué cambia con el devengo completo activo
 
 - **④** (`SubProcesoCierreCartera` 5, plantilla 17): el interés ordinario sale del método DAO nuevo

@@ -412,6 +412,25 @@ public final class ModoCorteCartera {
     }
 
     /**
+     * Lote 7 (D-186): primer corte (AAAA-MM-DD) cuyo paso ⑦ topa la provisión de MORA a la mora contabilizada pendiente de cada
+     * cuota (devengo 5 − 6 al corte, menos la mora cobrada, menos la mora condonada de los acuerdos aplicados). Sin la propiedad,
+     * o con un corte anterior, el ⑦ es el de siempre byte a byte. La semilla de la corrida de arranque nunca lleva el tope.
+     * En producción va el mismo valor que {@link #PROPIEDAD_DEVENGO_COMPLETO_DESDE}; en el reproceso, 2025-10-31.
+     */
+    public static final String PROPIEDAD_TOPE_PROVISION_MORA_DESDE = "saa.cartera.topeProvisionMoraDesde";
+
+    /** Lote 7: valor de {@link #PROPIEDAD_TOPE_PROVISION_MORA_DESDE}, o null si no está definida. */
+    public static LocalDate topeProvisionMoraDesde() throws IncomeException {
+        return fechaPropiedad(PROPIEDAD_TOPE_PROVISION_MORA_DESDE);
+    }
+
+    /** Lote 7: ¿el ⑦ con este corte topa la provisión de mora? */
+    public static boolean topeProvisionMoraActivo(LocalDate corte) throws IncomeException {
+        LocalDate desde = topeProvisionMoraDesde();
+        return desde != null && corte != null && !corte.isBefore(desde);
+    }
+
+    /**
      * Lote 3 (4.1, DS-06): {@code saa.cartera.timerMoraSuspendido=true} suspende la corrida automática de las 02:00 del
      * timer de mora mientras se re-procesa. Se lee en cada disparo. Sin la propiedad (o con otro valor), el timer corre como
      * siempre. El cálculo manual ({@code POST /rest/prst/calcularMora}) no se afecta.
