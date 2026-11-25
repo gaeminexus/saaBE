@@ -1184,7 +1184,7 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
                 "Prestamos por aplicar");
 
         cierra(sub, "No hay aportes ni cuotas por cobrar en el mes que se abre.");
-        cuadra(sub, CrdLineaAsiento.PRESTAMOS_POR_APLICAR);
+        cuadra(sub, idPlantilla);
         return sub;
     }
 
@@ -1243,7 +1243,7 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
         }
 
         cierra(sub, "No hay interes ni mora pendientes de devengar al corte.");
-        cuadra(sub, CrdLineaAsiento.INGRESO_INTERES_ORDINARIO);
+        cuadra(sub, idPlantilla);
         return sub;
     }
 
@@ -1286,7 +1286,7 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
         }
 
         cierra(sub, "No hay interes ni mora pendiente de provisionar al corte.");
-        cuadra(sub, CrdLineaAsiento.PROVISION_INTERESES);
+        cuadra(sub, idPlantilla);
         return sub;
     }
 
@@ -1706,7 +1706,7 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
                     "Ingreso por INTERES POR MORA al corte " + periodo(solicitud));
         }
         cierra(sub, "No hay mora pendiente de devengar al corte.");
-        cuadra(sub, CrdLineaAsiento.INGRESO_INTERES_MORA);
+        cuadra(sub, idPlantilla);
         return sub;
     }
 
@@ -1981,7 +1981,7 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
                 "Cuotas de prestamos no cobradas " + periodo(solicitud));
 
         cierra(sub, "No quedo nada por cobrar del mes cerrado.");
-        cuadra(sub, CrdLineaAsiento.PRESTAMOS_POR_COBRAR);
+        cuadra(sub, idPlantilla);
         return sub;
     }
 
@@ -2430,14 +2430,21 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
     }
 
     /**
-     * Comprueba el cuadre y ajusta la diferencia de centavos contra la línea indicada, como
-     * hace RHH. Una diferencia mayor a la tolerancia NO se ajusta: se rechaza con el importe
-     * exacto, porque a esa altura ya no es redondeo.
+     * Comprueba el cuadre y lleva la diferencia de centavos por redondeo a la línea de redondeo
+     * de la plantilla ({@link CrdLineaAsiento#REDONDEO_AJUSTES}, cuenta 4.8.99.08 GND POR
+     * AJUSTES), en una línea propia del asiento. Una diferencia mayor a la tolerancia NO se
+     * ajusta: se rechaza con el importe exacto, porque a esa altura ya no es redondeo.
      *
-     * @param sub               : Sub-proceso, ya cerrado
-     * @param codigoLineaCuadre : Papel de la línea contra la que se ajusta
+     * <p>C45 / D-053 (líder, 9-nov-2026): antes la diferencia se absorbía en una línea de negocio
+     * (préstamos por aplicar, ingreso ordinario, provisión, ingreso de mora o préstamos por
+     * cobrar) y había que compensarla cada mes con un asiento manual (lotes
+     * {@code ajuste-cartera-d053-*}). La línea sale de la plantilla del mismo asiento; si falta,
+     * el cierre se detiene con mensaje en lugar de absorber en silencio.</p>
+     *
+     * @param sub         : Sub-proceso, ya cerrado
+     * @param idPlantilla : Plantilla del asiento, donde se busca la línea de redondeo
      */
-    private void cuadra(SubProcesoCierre sub, int codigoLineaCuadre) throws Throwable {
+    private void cuadra(SubProcesoCierre sub, Long idPlantilla) throws Throwable {
         if (Boolean.TRUE.equals(sub.getOmitido())) {
             return;
         }
@@ -2451,25 +2458,21 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
                     + redondea(Double.valueOf(diferencia)) + ". Supera la tolerancia de cuadre ("
                     + TOLERANCIA_CUADRE + ") y no se emite.");
         }
-        for (LineaAsientoCierre linea : sub.getLineas()) {
-            if (linea.getCodigoLinea() != null
-                    && linea.getCodigoLinea().longValue() == codigoLineaCuadre) {
-                if (linea.getHaber() != null && linea.getHaber().doubleValue() > 0D) {
-                    linea.setHaber(redondea(Double.valueOf(
-                            linea.getHaber().doubleValue() + diferencia)));
-                } else {
-                    linea.setDebe(redondea(Double.valueOf(
-                            linea.getDebe().doubleValue() - diferencia)));
-                }
-                System.out.println("Cuadre por redondeo de " + diferencia + " ajustado contra la"
-                        + " linea " + codigoLineaCuadre + " de " + sub.getNombre() + ".");
-                cierra(sub, null);
-                return;
-            }
+        DetallePlantilla redondeo = detallePlantillaDaoService.selectByPlantillaYAuxiliar(idPlantilla,
+                CrdLineaAsiento.REDONDEO_AJUSTES);
+        if (redondeo == null || redondeo.getPlanCuenta() == null) {
+            throw new IncomeException("El asiento de " + sub.getNombre() + " difiere en "
+                    + redondea(Double.valueOf(diferencia)) + " por redondeo y su plantilla no define la"
+                    + " linea de redondeo " + CrdLineaAsiento.REDONDEO_AJUSTES + " (D-053: 4.8.99.08 GND POR"
+                    + " AJUSTES). Corra crd/sql/C45-03 antes de cerrar.");
         }
-        throw new IncomeException("El asiento de " + sub.getNombre() + " difiere en "
-                + redondea(Double.valueOf(diferencia)) + " por redondeo, pero la linea de cuadre "
-                + codigoLineaCuadre + " no esta entre sus lineas.");
+        // DEBE > HABER: falta haber, la línea de redondeo va al HABER; y al revés.
+        boolean alDebe = diferencia < 0D;
+        sub.getLineas().add(lineaForzada(redondeo, Math.abs(diferencia), alDebe,
+                "Diferencia por redondeo (D-053) " + sub.getNombre(), CrdLineaAsiento.REDONDEO_AJUSTES));
+        System.out.println("Cuadre por redondeo de " + redondea(Double.valueOf(diferencia)) + " llevado a "
+                + redondeo.getPlanCuenta().getCuentaContable() + " en " + sub.getNombre() + " (D-053).");
+        cierra(sub, null);
     }
 
     /**

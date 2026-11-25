@@ -274,6 +274,17 @@ public interface CrdLineaAsiento {
 	public static final int CUADRE = 90;
 
 	/**
+	 * C45 / D-053 (líder, 9-nov-2026) — diferencia de centavos por redondeo de un asiento del cierre de cartera:
+	 * va a {@code 4.8.99.08 GND POR AJUSTES}, nunca absorbida en otra línea del asiento. Se declara en cada
+	 * plantilla cuyo asiento pasa por el cuadre de {@code CierreCarteraServiceImpl.cuadra}: alterno 1 (apertura),
+	 * 17 (devengo de intereses y mora al corte), 33 (neteo) y 36 (provisión de intereses), con
+	 * {@code DTPLAXL2 = 0}. El lado (DEBE o HABER) lo decide el código según el signo de la diferencia; el
+	 * movimiento de la línea es indiferente. Semilla: {@code crd/sql/C45-03}. Sin la línea, un asiento con
+	 * diferencia de redondeo se detiene con mensaje (nunca una cuenta escrita en el código).
+	 */
+	public static final int REDONDEO_AJUSTES = 91;
+
+	/**
 	 * Devolución al partícipe del sobrante de un descuento Petro/ARCH (B8, DSSB destino 3), plantilla 21. Pasivo
 	 * «socios por pagar», hoy {@code 2.3.90.90.10}. La puente contraria es el aux1 3 (dinero entrado por aportes) o el
 	 * aux1 4 (por préstamos). Semilla en {@code crd/sql/357}.

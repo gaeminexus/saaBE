@@ -57,5 +57,11 @@ public interface RhhLineaAsiento {
 	public static final int GASTO_JUBILACION_PATRONAL = 62;
 	public static final int GASTO_SUELDOS_LIQUIDACION = 63;
 	public static final int LIQUIDACIONES_POR_PAGAR = 70;
+	/**
+	 * C45 / D-053 — diferencia de centavos por redondeo del asiento (rol, provisiones, pago y liquidacion):
+	 * 4.8.99.08 GND POR AJUSTES, en una linea propia. El lado lo decide el codigo segun el signo. Semilla de la
+	 * linea en las plantillas 163, 164, 165 y 166 y del detalle 90 del rubro 214: crd/sql/C45-03.
+	 */
+	public static final int REDONDEO_AJUSTES = 90;
 
 }
