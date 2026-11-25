@@ -155,11 +155,18 @@ public interface MovimientoInteresCuotaDaoService extends EntityDao<MovimientoIn
      * <pre>max(0, Σ cuotas devengo(5 − 6, MORA, fecha contable ≤ corte) − Σ mora cobrada vigente (≤ corte) − mora condonada)</pre>
      * La mora condonada es la de los acuerdos APLICADOS con fecha ≤ corte (DACC, concepto mora, {@code DACCVLCN}) del préstamo. Con
      * {@code corte == null} no hay límite de fecha (modo normal). El reparto del tope entre las cuotas lo hace
-     * {@code TopeProvisionMora#repartir}.
+     * {@code TopeProvisionMora#repartir}: de la más vieja a la más nueva sin pasar de la mora calculada de cada una, y el
+     * sobrante a la cuota candidata más reciente (lote 23): el tope se coloca entero.
      *
      * @param corte fecha de corte, o null
      */
     java.util.Map<Long, Double> selectMoraContabilizadaPendientePorPrestamo(java.time.LocalDate corte) throws Throwable;
+
+    /**
+     * Lote 23: por préstamo, la cuota de respaldo del reparto del tope (la que recibe el tope de un préstamo sin cuotas candidatas): la de saldo de provisión de
+     * mora mayor que cero con el vencimiento más reciente. Mapa {@code idPrestamo → idCuota}; {@code corte == null} = sin límite de fecha.
+     */
+    java.util.Map<Long, Long> selectCuotaRespaldoMoraPorPrestamo(java.time.LocalDate corte) throws Throwable;
 
     /**
      * Lote 18: los movimientos vigentes (no anulados y no compensados por una re-provisión) de un origen e {@code idOrigen}, de los

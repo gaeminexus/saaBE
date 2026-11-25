@@ -393,6 +393,28 @@ public class MovimientoInteresCuotaDaoServiceImpl extends EntityDaoImpl<Movimien
     }
 
     @Override
+    public java.util.Map<Long, Long> selectCuotaRespaldoMoraPorPrestamo(java.time.LocalDate corte) throws Throwable {
+        System.out.println("MovimientoInteresCuotaDaoServiceImpl.selectCuotaRespaldoMoraPorPrestamo - corte: " + corte);
+        java.sql.Date limite = corte != null ? java.sql.Date.valueOf(corte) : java.sql.Date.valueOf("9999-12-31");
+        Query query = em.createNativeQuery(
+            " SELECT PRSTCDGO, DTPRCDGO FROM ( "
+            + "   SELECT s.PRSTCDGO, s.DTPRCDGO, ROW_NUMBER() OVER (PARTITION BY s.PRSTCDGO ORDER BY d.DTPRFCVN DESC, s.DTPRCDGO DESC) rn "
+            + "     FROM ( SELECT m.PRSTCDGO, m.DTPRCDGO, "
+            + "                   SUM(CASE WHEN m.MVICTPMV IN (1, 4, 14) THEN m.MVICVLOR WHEN m.MVICTPMV IN (2, 3, 9, 10, 13) THEN -m.MVICVLOR ELSE 0 END) sal "
+            + "              FROM CRD.MVIC m WHERE m.MVICANUL = 0 AND m.MVICCMPN = 2 AND m.MVICFCCT <= :limite "
+            + "             GROUP BY m.PRSTCDGO, m.DTPRCDGO "
+            + "            HAVING SUM(CASE WHEN m.MVICTPMV IN (1, 4, 14) THEN m.MVICVLOR WHEN m.MVICTPMV IN (2, 3, 9, 10, 13) THEN -m.MVICVLOR ELSE 0 END) > 0.009 ) s "
+            + "     JOIN CRD.DTPR d ON d.DTPRCDGO = s.DTPRCDGO ) "
+            + " WHERE rn = 1");
+        query.setParameter("limite", limite);
+        java.util.Map<Long, Long> resultado = new java.util.HashMap<>();
+        for (Object[] f : (List<Object[]>) query.getResultList()) {
+            resultado.put(((Number) f[0]).longValue(), ((Number) f[1]).longValue());
+        }
+        return resultado;
+    }
+
+    @Override
     public List<Object[]> selectSaldosProvisionNoCeroAlCorte(java.time.LocalDate corte) throws Throwable {
         System.out.println("MovimientoInteresCuotaDaoServiceImpl.selectSaldosProvisionNoCeroAlCorte - corte: " + corte);
         String expresion = "sum(case when m.tipoMovimiento in (1, 4, 14) then m.valor"
