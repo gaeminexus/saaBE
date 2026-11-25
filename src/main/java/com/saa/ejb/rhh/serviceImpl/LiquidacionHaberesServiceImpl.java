@@ -31,6 +31,7 @@ import com.saa.model.rhh.DetalleLiquidacion;
 import com.saa.model.rhh.Empleado;
 import com.saa.model.rhh.Liquidacion;
 import com.saa.model.rhh.NombreEntidadesRhh;
+import com.saa.model.rhh.Nomina;
 import com.saa.model.rhh.ParametroNomina;
 import com.saa.model.rhh.LiquidacionBeneficioSocial;
 import com.saa.model.rhh.PeriodoNomina;
@@ -134,6 +135,10 @@ public class LiquidacionHaberesServiceImpl implements LiquidacionHaberesService 
 
     @PersistenceContext
     private EntityManager em;
+
+    /** VCN #4: para excluir al colaborador de los periodos posteriores a su salida. */
+    @EJB
+    private com.saa.ejb.rhh.service.ProcesoNominaService procesoNominaService;
 
     @EJB
     private LiquidacionDaoService liquidacionDaoService;
@@ -329,10 +334,62 @@ public class LiquidacionHaberesServiceImpl implements LiquidacionHaberesService 
             }
         }
 
+        // 8. VCN #4: el colaborador sale de los periodos abiertos que empiezan despues de su fecha de salida (si ya tenia nomina ahi).
+        int excluidos = excluyeDePeriodosPosteriores(empleado.getCodigo(), liquidacion.getFechaSalida(), usuario);
+
         System.out.println("Salida ejecutada para " + empleado.getIdentificacion() + ": contrato"
                 + " cerrado, empleado CESANTE, " + cancelados + " descuento(s) cancelado(s), "
                 + caducados + " saldo(s) de vacaciones caducado(s), " + acumulados
-                + " acumulado(s) escrito(s).");
+                + " acumulado(s) escrito(s), " + excluidos + " periodo(s) posterior(es) excluido(s).");
+    }
+
+    /** Fin del ultimo periodo (que empiece hasta la fecha de salida) con una nomina del colaborador que no este excluida ni anulada. */
+    private LocalDate ultimoFinConNomina(Long idEmpleado, LocalDate fechaSalida) {
+        List<LocalDate> l = em.createQuery("select max(p.fechaFin) from Nomina n join n.periodoNomina p where n.empleado.codigo = :e "
+                + "and n.estado not in (:ex, :an) and p.fechaInicio <= :s", LocalDate.class)
+                .setParameter("e", idEmpleado).setParameter("s", fechaSalida)
+                .setParameter("ex", Long.valueOf(com.saa.rubros.RhhEstadoNomina.EXCLUIDA))
+                .setParameter("an", Long.valueOf(com.saa.rubros.RhhEstadoNomina.ANULADA)).getResultList();
+        return l.isEmpty() ? null : l.get(0);
+    }
+
+    /** La nomina del colaborador en el mes de la fecha (sin contar excluidas ni anuladas), o null. */
+    private Nomina nominaDelMes(Long idEmpleado, LocalDate fecha) {
+        List<Nomina> l = em.createQuery("select n from Nomina n where n.empleado.codigo = :e and n.periodoNomina.anio = :a "
+                + "and n.periodoNomina.mes = :m and n.estado not in (:ex, :an) order by n.codigo", Nomina.class)
+                .setParameter("e", idEmpleado).setParameter("a", Integer.valueOf(fecha.getYear()))
+                .setParameter("m", Integer.valueOf(fecha.getMonthValue()))
+                .setParameter("ex", Long.valueOf(com.saa.rubros.RhhEstadoNomina.EXCLUIDA))
+                .setParameter("an", Long.valueOf(com.saa.rubros.RhhEstadoNomina.ANULADA)).getResultList();
+        return l.isEmpty() ? null : l.get(0);
+    }
+
+    /**
+     * Excluye al colaborador de los periodos no cerrados que empiezan despues de su fecha de salida y donde ya tiene nomina. Solo los que admiten
+     * calculo (abierto, en calculo, calculado) se pueden excluir; en uno aprobado o posterior se deja constancia en el log para que se reabra.
+     */
+    private int excluyeDePeriodosPosteriores(Long idEmpleado, LocalDate fechaSalida, String usuario) throws Throwable {
+        List<PeriodoNomina> periodos = em.createQuery("select distinct p from Nomina n join n.periodoNomina p where n.empleado.codigo = :e "
+                + "and n.estado not in (:ex, :an) and p.fechaInicio > :s and p.estado < :cerrado order by p.fechaInicio", PeriodoNomina.class)
+                .setParameter("e", idEmpleado).setParameter("s", fechaSalida)
+                .setParameter("ex", Long.valueOf(com.saa.rubros.RhhEstadoNomina.EXCLUIDA))
+                .setParameter("an", Long.valueOf(com.saa.rubros.RhhEstadoNomina.ANULADA))
+                .setParameter("cerrado", Long.valueOf(RhhEstadoPeriodoNomina.CERRADO)).getResultList();
+        int n = 0;
+        for (PeriodoNomina p : periodos) {
+            Long estado = p.getEstado();
+            boolean calculable = estado == null || Long.valueOf(RhhEstadoPeriodoNomina.ABIERTO).equals(estado)
+                    || Long.valueOf(RhhEstadoPeriodoNomina.EN_CALCULO).equals(estado)
+                    || Long.valueOf(RhhEstadoPeriodoNomina.CALCULADO).equals(estado);
+            if (calculable) {
+                procesoNominaService.excluirEmpleado(p.getCodigo(), idEmpleado, "Salida de la empresa el " + fechaSalida, usuario);
+                n++;
+            } else {
+                System.out.println("Aviso: el periodo " + p.getCodigo() + " (estado " + estado + ") empieza despues de la salida del colaborador "
+                        + idEmpleado + " y ya no admite exclusion: reabralo para excluirlo.");
+            }
+        }
+        return n;
     }
 
     // =====================================================================
@@ -396,7 +453,23 @@ public class LiquidacionHaberesServiceImpl implements LiquidacionHaberesService 
 
         // --- Remuneracion pendiente del mes en curso -------------------------------
         double diasBase = prnm.getDiasMes() != null ? prnm.getDiasMes().doubleValue() : 30D;
-        double diasTrabajados = Math.min(fechaSalida.getDayOfMonth(), diasBase);
+        // VCN #4: solo se pagan los dias POSTERIORES al fin del ultimo periodo en que el colaborador ya tiene nomina (calculada, aprobada,
+        // contabilizada, pagada o cerrada; las excluidas y anuladas no cuentan). Si noviembre ya tiene rol y sale el 30 de noviembre, no queda nada
+        // pendiente: pagarlo otra vez seria un pago doble. Sin nomina en el mes, cuenta desde el dia 1 (como siempre).
+        LocalDate inicioMesSalida = fechaSalida.withDayOfMonth(1);
+        LocalDate cubiertoHasta = ultimoFinConNomina(empleado.getCodigo(), fechaSalida);
+        LocalDate desdePendiente = (cubiertoHasta != null && !cubiertoHasta.isBefore(inicioMesSalida))
+                ? cubiertoHasta.plusDays(1L) : inicioMesSalida;
+        double diasTrabajados = desdePendiente.isAfter(fechaSalida) ? 0D
+                : Math.max(0D, Math.min(fechaSalida.getDayOfMonth(), diasBase)
+                        - Math.min(desdePendiente.getDayOfMonth(), diasBase) + 1D);
+        // La nomina del mes de salida (si la hay) ya trae su base del decimo tercero y sus dias: entran a los proporcionales porque el rango de
+        // acumulados llega solo al mes anterior (el rol no escribe ACMN hasta cerrarse) y esos dias ya no van en la remuneracion pendiente.
+        Nomina nominaMesSalida = nominaDelMes(empleado.getCodigo(), fechaSalida);
+        double baseDecimoNomina = nominaMesSalida != null && nominaMesSalida.getBaseDecimoTercero() != null
+                ? nominaMesSalida.getBaseDecimoTercero().doubleValue() : 0D;
+        double diasNomina = nominaMesSalida != null && nominaMesSalida.getDiasTrabajados() != null
+                ? nominaMesSalida.getDiasTrabajados().doubleValue() : 0D;
         Double remuneracion = RedondeoNomina.redondea(Double.valueOf(
                 ultimaRemuneracion.doubleValue() * diasTrabajados / diasBase));
 
@@ -491,7 +564,7 @@ public class LiquidacionHaberesServiceImpl implements LiquidacionHaberesService 
                     Integer.valueOf(anioPeriodo13), Integer.valueOf(MES_INICIO_DECIMO_TERCERO),
                     Integer.valueOf(mesAnterior.getYear()),
                     Integer.valueOf(mesAnterior.getMonthValue()));
-            Double base13 = RedondeoNomina.suma(baseAcumulada, remuneracion);
+            Double base13 = RedondeoNomina.suma(RedondeoNomina.suma(baseAcumulada, remuneracion), Double.valueOf(baseDecimoNomina));
             Double decimoTercero = RedondeoNomina.divide(base13, Double.valueOf(MESES_ANIO));
             agrega(rubros, conceptos, RhhRolConceptoMotor.FINIQUITO_DECIMO_TERCERO, base13,
                     null, decimoTercero);
@@ -518,7 +591,7 @@ public class LiquidacionHaberesServiceImpl implements LiquidacionHaberesService 
                     Integer.valueOf(mesAnterior.getMonthValue()));
             double dias14 = (diasCerrados != null ? diasCerrados.doubleValue() : 0D)
                     + (diasApertura != null ? diasApertura.doubleValue() : 0D)
-                    + diasTrabajados;
+                    + diasTrabajados + diasNomina;
 
             Double sbu = prnm.getSbu() != null ? prnm.getSbu() : Double.valueOf(0D);
             double diasAnio = prnm.getDiasAnio() != null ? prnm.getDiasAnio().doubleValue() : 0D;

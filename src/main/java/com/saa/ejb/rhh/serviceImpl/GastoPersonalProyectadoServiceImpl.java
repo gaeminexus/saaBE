@@ -23,11 +23,26 @@ public class GastoPersonalProyectadoServiceImpl implements GastoPersonalProyecta
 	@EJB
 	private GastoPersonalProyectadoDaoService gastoPersonalProyectadoDaoService;
 
+	@EJB
+	private com.saa.ejb.rhh.service.RetencionRentaService retencionRentaService;
+
+	/** VCN #3 (b): los gastos cambian la rebaja: las proyecciones vigentes del empleado se rehacen. Nunca hace fallar el grabado. */
+	private void reproyecta(GastoPersonalProyectado g) {
+		try {
+			if (g != null && g.getEmpleado() != null) {
+				retencionRentaService.reproyectar(g.getEmpleado().getCodigo(), g.getAnio(), g.getUsuarioRegistro());
+			}
+		} catch (Throwable e) {
+			System.out.println("No se pudo reproyectar la renta tras grabar gastos: " + e.getMessage());
+		}
+	}
+
 	@Override
 	public void save(List<GastoPersonalProyectado> lista) throws Throwable {
 		System.out.println("Ingresa al metodo save de gastoPersonalProyectado service");
 		for (GastoPersonalProyectado registro : lista) {
 			gastoPersonalProyectadoDaoService.save(registro, registro.getCodigo());
+			reproyecta(registro);
 		}
 	}
 
@@ -38,7 +53,9 @@ public class GastoPersonalProyectadoServiceImpl implements GastoPersonalProyecta
 		GastoPersonalProyectado gastoPersonalProyectado = new GastoPersonalProyectado();
 		//ELIMINA UNO A UNO LOS REGISTROS DEL ARREGLO
 		for (Long registro : id) {
+			GastoPersonalProyectado previo = gastoPersonalProyectadoDaoService.selectById(registro, NombreEntidadesRhh.GASTO_PERSONAL_PROYECTADO);
 			gastoPersonalProyectadoDaoService.remove(gastoPersonalProyectado, registro);
+			reproyecta(previo);
 		}
 	}
 
@@ -76,6 +93,7 @@ public class GastoPersonalProyectadoServiceImpl implements GastoPersonalProyecta
 	public GastoPersonalProyectado saveSingle(GastoPersonalProyectado gastoPersonalProyectado) throws Throwable {
 		System.out.println("Ingresa al metodo (saveSingle) GastoPersonalProyectado");
 		gastoPersonalProyectado = gastoPersonalProyectadoDaoService.save(gastoPersonalProyectado, gastoPersonalProyectado.getCodigo());
+		reproyecta(gastoPersonalProyectado);
 		return gastoPersonalProyectado;
 	}
 }

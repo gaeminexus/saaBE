@@ -1,6 +1,8 @@
 package com.saa.model.rhh;
 
 import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Resultado de generar el decimo tercero o el decimo cuarto (POST lqbs/generarDecimoTercero y
@@ -17,6 +19,15 @@ public class ResultadoGeneracionBeneficio implements Serializable {
 
     /** Liquidaciones que no se recalcularon por estar PAGADAS o en una orden. */
     private int omitidosPagados;
+
+    /**
+     * C13 (VCN #13): filas calculadas, sin pagar y sin orden de personas que ya no corresponden (sin contrato activo en el anio). El generador
+     * NO las borra: las cuenta y las informa; el retiro va como SQL autorizado con respaldo (rhh/sql/omen1-07).
+     */
+    private int retirables;
+
+    /** Codigos LQBS de las filas retirables. */
+    private List<Long> idsRetirables = new ArrayList<Long>();
 
     public ResultadoGeneracionBeneficio() {
     }
@@ -40,5 +51,20 @@ public class ResultadoGeneracionBeneficio implements Serializable {
 
     public void setOmitidosPagados(int omitidosPagados) {
         this.omitidosPagados = omitidosPagados;
+    }
+    public int getRetirables() {
+        return retirables;
+    }
+
+    public void setRetirables(int retirables) {
+        this.retirables = retirables;
+    }
+
+    public List<Long> getIdsRetirables() {
+        return idsRetirables;
+    }
+
+    public void setIdsRetirables(List<Long> idsRetirables) {
+        this.idsRetirables = idsRetirables;
     }
 }

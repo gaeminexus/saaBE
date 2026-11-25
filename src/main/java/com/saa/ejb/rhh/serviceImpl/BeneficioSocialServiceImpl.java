@@ -170,7 +170,8 @@ public class BeneficioSocialServiceImpl implements BeneficioSocialService {
 		}
 		System.out.println("generarDecimoTercero termino: " + generados + " beneficio(s), "
 				+ omitidosPagados + " omitido(s) por estar pagados o en orden.");
-		return new ResultadoGeneracionBeneficio(generados, omitidosPagados);
+		return conRetirables(new ResultadoGeneracionBeneficio(generados, omitidosPagados), idEmpresa,
+				RhhTipoBeneficioSocial.DECIMO_TERCERO, anio, null);
 	}
 
 	/* (non-Javadoc)
@@ -222,7 +223,8 @@ public class BeneficioSocialServiceImpl implements BeneficioSocialService {
 		}
 		System.out.println("generarDecimoCuarto termino: " + generados + " beneficio(s), "
 				+ omitidosPagados + " omitido(s) por estar pagados o en orden.");
-		return new ResultadoGeneracionBeneficio(generados, omitidosPagados);
+		return conRetirables(new ResultadoGeneracionBeneficio(generados, omitidosPagados), idEmpresa,
+				RhhTipoBeneficioSocial.DECIMO_CUARTO, anio, Long.valueOf(region.longValue()));
 	}
 
 	/* (non-Javadoc)
@@ -230,7 +232,8 @@ public class BeneficioSocialServiceImpl implements BeneficioSocialService {
 	 */
 	@Override
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
-	public int generarFondosReserva(Long idEmpresa, Integer anio, String usuario) throws Throwable {
+	public ResultadoGeneracionBeneficio generarFondosReserva(Long idEmpresa, Integer anio, String usuario)
+			throws Throwable {
 		// U-4: lo primero, el usuario existe; sin usuario válido no se hace nada.
 		usuario = usuarioValidacionService.validar(usuario);
 		System.out.println("Ingresa al metodo generarFondosReserva de beneficioSocial service, empresa: "
@@ -238,6 +241,7 @@ public class BeneficioSocialServiceImpl implements BeneficioSocialService {
 
 		ParametroNomina prnm = recuperaParametros(idEmpresa, anio);
 		int generados = 0;
+		int omitidosPagados = 0;
 
 		for (ContratoEmpleado contrato : contratosDelAnio(idEmpresa, anio)) {
 			// Los mensualizados ya cobraron el fondo en cada rol: aqui solo van los
@@ -248,6 +252,12 @@ public class BeneficioSocialServiceImpl implements BeneficioSocialService {
 			}
 			Empleado empleado = contrato.getEmpleado();
 			Long idEmpleado = empleado.getCodigo();
+			// R5-25 (VCN #5), como el D13 y el D14 (A0): una fila pagada o dentro de una orden NO se recalcula.
+			if (yaPagadaOEnOrden(liquidacionBeneficioSocialDaoService.selectByEmpleadoTipoAnio(idEmpleado,
+					Long.valueOf(RhhTipoBeneficioSocial.FONDOS_DE_RESERVA), anio))) {
+				omitidosPagados++;
+				continue;
+			}
 
 			// Solo los meses posteriores al primer anio de servicio.
 			int mesDesde = primerMesConDerecho(empleado, contrato, anio);
@@ -268,8 +278,10 @@ public class BeneficioSocialServiceImpl implements BeneficioSocialService {
 			persiste(beneficio, usuario);
 			generados++;
 		}
-		System.out.println("generarFondosReserva termino: " + generados + " beneficio(s).");
-		return generados;
+		System.out.println("generarFondosReserva termino: " + generados + " beneficio(s), " + omitidosPagados
+				+ " omitido(s) por estar pagados o en orden.");
+		return conRetirables(new ResultadoGeneracionBeneficio(generados, omitidosPagados), idEmpresa,
+				RhhTipoBeneficioSocial.FONDOS_DE_RESERVA, anio, null);
 	}
 
 	/* (non-Javadoc)
@@ -428,6 +440,43 @@ public class BeneficioSocialServiceImpl implements BeneficioSocialService {
 		private final List<Long> idsSinCerrar = new java.util.ArrayList<Long>();
 		/** Claves anio*100+mes de esos mismos meses, para excluirlos de la suma por ACMN. */
 		private final List<Integer> clavesSinCerrar = new java.util.ArrayList<Integer>();
+	}
+
+	/**
+	 * C13 (VCN #13): cuenta, SIN borrar nada, las filas de un beneficio que ya no corresponden: calculadas (no pagadas), sin orden, sin valor pagado, no
+	 * anticipadas, de colaboradores SIN contrato activo en el anio (cesantes o sin contrato). LQBS no tiene un estado de anulacion ni columnas de
+	 * usuario, fecha y motivo de retiro, asi que el generador solo las informa ({@code retirables}, {@code idsRetirables}); el retiro va como SQL
+	 * autorizado con respaldo (rhh/sql/omen1-07-retira-beneficios-obsoletos-vcn13.sql). Quien paso a MENSUALIZADO sigue con contrato activo y no se
+	 * cuenta; las anticipadas pendientes las gestiona el finiquito. {@code region} acota el decimo cuarto.
+	 */
+	private ResultadoGeneracionBeneficio conRetirables(ResultadoGeneracionBeneficio resultado, Long idEmpresa, int tipo,
+			Integer anio, Long region) throws Throwable {
+		java.util.Set<Long> activos = new java.util.HashSet<Long>();
+		for (ContratoEmpleado contrato : contratosDelAnio(idEmpresa, anio)) {
+			activos.add(contrato.getEmpleado().getCodigo());
+		}
+		String jpql = "select l from LiquidacionBeneficioSocial l where l.empleado.empresa.codigo = :e and l.tipoBeneficio = :t"
+				+ " and l.anio = :a and (l.estado is null or l.estado <> :pagada) and l.ordenBeneficioSocial is null"
+				+ " and (l.valorPagado is null or l.valorPagado = 0) and (l.anticipado is null or l.anticipado <> :si)"
+				+ (region != null ? " and l.empleado.region = :r" : "");
+		jakarta.persistence.TypedQuery<LiquidacionBeneficioSocial> consulta = em
+				.createQuery(jpql, LiquidacionBeneficioSocial.class)
+				.setParameter("e", idEmpresa).setParameter("t", Long.valueOf(tipo)).setParameter("a", anio)
+				.setParameter("pagada", Long.valueOf(LQBS_PAGADA)).setParameter("si", SI_ANTICIPADO);
+		if (region != null) {
+			consulta.setParameter("r", region);
+		}
+		for (LiquidacionBeneficioSocial fila : consulta.getResultList()) {
+			if (!activos.contains(fila.getEmpleado().getCodigo())) {
+				resultado.getIdsRetirables().add(fila.getCodigo());
+			}
+		}
+		resultado.setRetirables(resultado.getIdsRetirables().size());
+		if (resultado.getRetirables() > 0) {
+			System.out.println("C13: " + resultado.getRetirables() + " fila(s) de beneficio tipo " + tipo + " del anio " + anio
+					+ " ya no corresponden (sin contrato activo): NO se borran, ver rhh/sql/omen1-07.");
+		}
+		return resultado;
 	}
 
 	/**

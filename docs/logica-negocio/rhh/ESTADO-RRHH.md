@@ -3342,3 +3342,14 @@ filas mensuales de ese año. No se está dando —se genera 2026— pero convien
 miran lugares distintos.** Se encontró midiendo la base, no leyendo código: el número `210` dijo
 «siete meses de treinta días» y de ahí salió todo. Y la confirmación de que el arreglo era correcto
 vino de otro punto del propio sistema que ya lo hacía bien.
+
+---
+
+## 2026-11-25 — Lote 11 (VCN #3, #4, #5, #13), programado, sin probar
+
+Cuatro defectos que VCN corrigió en su copia y SAA también tenía; detalle, decisiones y casos de contraste en `PROPUESTA-LOTE-11-VCN-RRHH.md`.
+- **#3 renta** (`RetencionRentaServiceImpl`, `GastoPersonalProyectadoServiceImpl`, `CargaFamiliarServiceImpl`): la retención se proyecta en el mes del rol (si la vigente es de otro mes), gastos y cargas reproyectan (`RetencionRentaService.reproyectar`), y los meses futuros se limitan al contrato (`factorMes`, prorrateo por días base 30). Sin efecto en nóminas ya calculadas.
+- **#4 finiquito** (`LiquidacionHaberesServiceImpl`): la remuneración pendiente cuenta desde el fin del último período con nómina vigente; los décimos proporcionales suman la base y los días de la nómina del mes de salida; `ejecutarSalida` excluye al colaborador de los períodos ABIERTO/EN_CALCULO/CALCULADO que empiezan después de la salida.
+- **#5 fondo de reserva** (`BeneficioSocialServiceImpl`): `generarFondosReserva` respeta `yaPagadaOEnOrden` y devuelve `ResultadoGeneracionBeneficio` (como D13/D14).
+- **#13 filas obsoletas:** los tres generadores devuelven `retirables`/`idsRetirables`; NO borran. Retiro por `sql/omen1-07-retira-beneficios-obsoletos-vcn13.sql`.
+Medición de lo ya afectado: `sql/omen1-06-medicion-lote11-vcn-rrhh.sql`.

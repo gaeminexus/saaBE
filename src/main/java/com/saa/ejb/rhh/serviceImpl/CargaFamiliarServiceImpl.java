@@ -23,11 +23,26 @@ public class CargaFamiliarServiceImpl implements CargaFamiliarService {
 	@EJB
 	private CargaFamiliarDaoService cargaFamiliarDaoService;
 
+	@EJB
+	private com.saa.ejb.rhh.service.RetencionRentaService retencionRentaService;
+
+	/** VCN #3 (b): las cargas cambian el tope y la rebaja: las proyecciones vigentes del empleado se rehacen. Nunca hace fallar el grabado. */
+	private void reproyecta(CargaFamiliar c) {
+		try {
+			if (c != null && c.getEmpleado() != null) {
+				retencionRentaService.reproyectar(c.getEmpleado().getCodigo(), null, c.getUsuarioRegistro());
+			}
+		} catch (Throwable e) {
+			System.out.println("No se pudo reproyectar la renta tras grabar cargas: " + e.getMessage());
+		}
+	}
+
 	@Override
 	public void save(List<CargaFamiliar> lista) throws Throwable {
 		System.out.println("Ingresa al metodo save de cargaFamiliar service");
 		for (CargaFamiliar registro : lista) {
 			cargaFamiliarDaoService.save(registro, registro.getCodigo());
+			reproyecta(registro);
 		}
 	}
 
@@ -38,7 +53,9 @@ public class CargaFamiliarServiceImpl implements CargaFamiliarService {
 		CargaFamiliar cargaFamiliar = new CargaFamiliar();
 		//ELIMINA UNO A UNO LOS REGISTROS DEL ARREGLO
 		for (Long registro : id) {
+			CargaFamiliar previo = cargaFamiliarDaoService.selectById(registro, NombreEntidadesRhh.CARGA_FAMILIAR);
 			cargaFamiliarDaoService.remove(cargaFamiliar, registro);
+			reproyecta(previo);
 		}
 	}
 
@@ -76,6 +93,7 @@ public class CargaFamiliarServiceImpl implements CargaFamiliarService {
 	public CargaFamiliar saveSingle(CargaFamiliar cargaFamiliar) throws Throwable {
 		System.out.println("Ingresa al metodo (saveSingle) CargaFamiliar");
 		cargaFamiliar = cargaFamiliarDaoService.save(cargaFamiliar, cargaFamiliar.getCodigo());
+		reproyecta(cargaFamiliar);
 		return cargaFamiliar;
 	}
 }

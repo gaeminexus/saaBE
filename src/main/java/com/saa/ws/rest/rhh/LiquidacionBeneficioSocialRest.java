@@ -210,7 +210,8 @@ public class LiquidacionBeneficioSocialRest {
             @QueryParam("usuarioRegistro") String usuario) {
         System.out.println("LLEGA AL SERVICIO GENERAR FONDOS DE RESERVA - LIQUIDACIONBENEFICIOSOCIAL, anio: " + anio);
         try {
-            int generados = beneficioSocialService.generarFondosReserva(idEmpresa, anio, usuario);
+            // Respuesta: {"generados": n, "omitidosPagados": m, "retirables": r, ...}, igual que los otros dos generadores.
+            com.saa.model.rhh.ResultadoGeneracionBeneficio generados = beneficioSocialService.generarFondosReserva(idEmpresa, anio, usuario);
             return Response.status(Response.Status.OK).entity(generados).type(MediaType.APPLICATION_JSON).build();
         } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
         	// U-4: usuario faltante o inexistente -> 400; no se procesó nada.

@@ -157,15 +157,45 @@ public class RetencionRentaServiceImpl implements RetencionRentaService {
 		System.out.println("Ingresa al metodo obtenerRetencionMensual de retencionRenta service, empleado: "
 				+ idEmpleado + ", " + mes + "/" + anio);
 		ProyeccionImpuestoRenta vigente = proyeccionImpuestoRentaDaoService.selectVigente(idEmpleado, anio);
-		if (vigente == null) {
-			// Sin proyeccion no se puede retener: se genera en linea, que es lo que
-			// pide el paso 11 del algoritmo de calcularPeriodo.
+		if (vigente == null || !Integer.valueOf(mes == null ? 0 : mes.intValue()).equals(vigente.getMesDesde())) {
+			// Sin proyeccion, o con una hecha desde OTRO mes (VCN #3 a: lo retenido y los meses que faltan cambian cada mes), no se puede
+			// retener: se genera en linea, que es lo que pide el paso 11 del algoritmo de calcularPeriodo.
 			System.out.println("No hay proyeccion vigente para el empleado " + idEmpleado
 					+ " en " + anio + ": se genera en linea.");
 			ResultadoProyeccionIr resultado = proyectar(idEmpleado, anio, mes, usuario); // U-4: el usuario real del cálculo (antes «SISTEMA»)
 			return RedondeoNomina.redondea(resultado.getRetencionMensual());
 		}
 		return RedondeoNomina.redondea(vigente.getRetencionMensual());
+	}
+
+	/* (non-Javadoc)
+	 * @see com.saa.ejb.rhh.service.RetencionRentaService#reproyectar(java.lang.Long, java.lang.Integer, java.lang.String)
+	 */
+	@Override
+	@TransactionAttribute(TransactionAttributeType.REQUIRED)
+	public void reproyectar(Long idEmpleado, Integer anio, String usuario) throws Throwable {
+		if (idEmpleado == null) {
+			return;
+		}
+		System.out.println("Ingresa al metodo reproyectar de retencionRenta service, empleado: " + idEmpleado + ", anio: " + anio);
+		jakarta.persistence.TypedQuery<ProyeccionImpuestoRenta> consulta = em.createQuery(
+				"select p from ProyeccionImpuestoRenta p where p.empleado.codigo = :e and p.vigente = :si"
+						+ (anio == null ? "" : " and p.anio = :a"), ProyeccionImpuestoRenta.class)
+				.setParameter("e", idEmpleado).setParameter("si", SI);
+		if (anio != null) {
+			consulta.setParameter("a", anio);
+		}
+		for (ProyeccionImpuestoRenta p : consulta.getResultList()) {
+			boolean liquidacion = p.getMotivo() != null && p.getMotivo().startsWith("Liquidacion");
+			String quien = usuario != null && !usuario.trim().isEmpty() ? usuario : p.getUsuarioRegistro();
+			try {
+				proyecta(idEmpleado, p.getAnio(), p.getMesDesde(), quien, liquidacion);
+			} catch (IncomeException e) {
+				// No se puede rehacer (p. ej. sin tabla del anio): se desmarca y el rol la genera de nuevo.
+				System.out.println("reproyectar: no se pudo rehacer la proyeccion de " + idEmpleado + " (" + e.getMessage() + "); se desmarca.");
+				proyeccionImpuestoRentaDaoService.desmarcaVigentes(idEmpleado, p.getAnio());
+			}
+		}
 	}
 
 	/* (non-Javadoc)
@@ -253,7 +283,20 @@ public class RetencionRentaServiceImpl implements RetencionRentaService {
 		ParametroNomina prnm = recuperaParametros(idEmpresa, anio);
 
 		int mesInicio = mesDesde == null ? 1 : mesDesde.intValue();
-		int mesesRestantes = liquidacion ? 0 : (ULTIMO_MES - mesInicio + 1);
+		// VCN #3 (c): solo cuentan los meses del contrato (ni antes de su fecha de inicio ni despues de la de fin) y el primero y el ultimo se
+		// prorratean por dias. Sin contrato del anio, o con el anio completo, el factor es 1 y nada cambia.
+		ContratoEmpleado contratoAnio = liquidacion ? null : contratoDelAnio(idEmpleado, anio);
+		double sumaFactoresFuturos = 0D;
+		int mesesRestantes = 0;
+		if (!liquidacion) {
+			for (int m = mesInicio; m <= ULTIMO_MES; m++) {
+				double f = contratoAnio == null ? 1D : factorMes(contratoAnio, anio.intValue(), m);
+				if (f > 0D) {
+					sumaFactoresFuturos += f;
+					mesesRestantes++;
+				}
+			}
+		}
 
 		// 1. Ingresos gravados ya percibidos en el anio.
 		Double ingresosRealizados = acumuladoNominaDaoService.sumaValor(idEmpleado, anio,
@@ -263,7 +306,7 @@ public class RetencionRentaServiceImpl implements RetencionRentaService {
 		// 2. Ingresos gravados futuros: remuneracion mensual por los meses que faltan.
 		Double gravadoMensual = estimaGravadoMensual(idEmpleado, anio, mesInicio);
 		Double ingresosFuturos = RedondeoNomina.redondea(Double.valueOf(
-				gravadoMensual.doubleValue() * mesesRestantes));
+				gravadoMensual.doubleValue() * sumaFactoresFuturos));
 
 		// 3. Total proyectado.
 		Double ingresosProyectados = RedondeoNomina.suma(ingresosRealizados, ingresosFuturos);
@@ -275,7 +318,7 @@ public class RetencionRentaServiceImpl implements RetencionRentaService {
 		Double imponibleMensual = estimaImponibleIessMensual(idEmpleado, anio, mesInicio);
 		Double aporteFuturo = RedondeoNomina.redondea(Double.valueOf(
 				RedondeoNomina.porcentaje(imponibleMensual, prnm.getAportePersonal()).doubleValue()
-						* mesesRestantes));
+						* sumaFactoresFuturos));
 		Double aportePersonalProyectado = RedondeoNomina.suma(aporteRealizado, aporteFuturo);
 
 		// 5. Base imponible.
@@ -396,6 +439,40 @@ public class RetencionRentaServiceImpl implements RetencionRentaService {
 			return RedondeoNomina.divide(acumulado, Double.valueOf((double) (mes - 1)));
 		}
 		return sueldoDelContrato(idEmpleado, anio);
+	}
+
+	/**
+	 * Contrato del empleado que cruza el anio (el mismo criterio de sueldoDelContrato), o null.
+	 */
+	private ContratoEmpleado contratoDelAnio(Long idEmpleado, Integer anio) throws Throwable {
+		Empleado empleado = em.find(Empleado.class, idEmpleado);
+		Long idEmpresa = empleado != null && empleado.getEmpresa() != null
+				? empleado.getEmpresa().getCodigo() : null;
+		for (ContratoEmpleado contrato : contratoEmpleadoDaoService.selectActivosEnPeriodo(idEmpresa,
+				LocalDate.of(anio.intValue(), 1, 1), LocalDate.of(anio.intValue(), ULTIMO_MES, 31))) {
+			if (contrato.getEmpleado() != null && idEmpleado.equals(contrato.getEmpleado().getCodigo())) {
+				return contrato;
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Fraccion del mes que cubre el contrato (0 a 1), por dias en base de 30: antes de la fecha de inicio o despues de la de fin es 0; en el
+	 * mes de ingreso o de salida se prorratea (ingreso el 11 de un mes de 30 dias = 20/30); el ultimo dia del mes cuenta como 30.
+	 */
+	static double factorMes(ContratoEmpleado c, int anio, int mes) {
+		LocalDate primero = LocalDate.of(anio, mes, 1);
+		LocalDate ultimo = primero.with(java.time.temporal.TemporalAdjusters.lastDayOfMonth());
+		LocalDate ini = c.getFechaInicio();
+		LocalDate fin = c.getFechaFin();
+		if ((ini != null && ini.isAfter(ultimo)) || (fin != null && fin.isBefore(primero))) {
+			return 0D;
+		}
+		int desde = (ini != null && !ini.isBefore(primero)) ? Math.min(ini.getDayOfMonth(), 30) : 1;
+		int hasta = (fin != null && !fin.isAfter(ultimo) && !fin.equals(ultimo)) ? Math.min(fin.getDayOfMonth(), 30) : 30;
+		int dias = hasta - desde + 1;
+		return dias <= 0 ? 0D : dias / 30D;
 	}
 
 	/**

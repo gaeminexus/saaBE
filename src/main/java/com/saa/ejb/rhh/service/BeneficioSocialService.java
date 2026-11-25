@@ -108,11 +108,11 @@ public interface BeneficioSocialService {
 	 * @param idEmpresa		: Id de la empresa
 	 * @param anio			: Anio del beneficio
 	 * @param usuario		: Usuario que ejecuta
-	 * @return				: Numero de beneficios generados o actualizados
+	 * @return				: Generados (o actualizados), omitidos por estar pagados o en orden, y filas retirables (C13)
 	 * @throws Throwable	: Excepcion
 	 */
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
-	int generarFondosReserva(Long idEmpresa, Integer anio, String usuario) throws Throwable;
+	com.saa.model.rhh.ResultadoGeneracionBeneficio generarFondosReserva(Long idEmpresa, Integer anio, String usuario) throws Throwable;
 
 	/**
 	 * Calcula el decimo tercero de un solo empleado sin persistirlo. Sirve para la

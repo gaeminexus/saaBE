@@ -66,6 +66,14 @@ public interface RetencionRentaService {
 	Double obtenerRetencionMensual(Long idEmpleado, Integer anio, Integer mes, String usuario) throws Throwable;
 
 	/**
+	 * VCN #3 (b): vuelve a proyectar, con el mismo mes de arranque, las proyecciones vigentes del empleado (las del anio indicado, o todas si
+	 * anio es null). Se llama al grabar o borrar gastos personales o cargas familiares, que cambian el tope y la rebaja. Si la proyeccion no se
+	 * puede rehacer (p. ej. sin tabla del anio) se desmarca y el rol la genera de nuevo. No toca nominas ya calculadas.
+	 */
+	@TransactionAttribute(TransactionAttributeType.REQUIRED)
+	void reproyectar(Long idEmpleado, Integer anio, String usuario) throws Throwable;
+
+	/**
 	 * Aplica la tabla progresiva del anio a una base imponible.
 	 *
 	 * @param idEmpresa		: Id de la empresa
