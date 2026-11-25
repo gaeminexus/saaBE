@@ -128,4 +128,24 @@ public interface FileService {
      * @throws Throwable   : Excepción
      */
     String generarNombreUnico(String originalName) throws Throwable;
+
+    /**
+     * Lote 9 (#10): resuelve una ruta que viene de un CLIENTE (FileRest) y comprueba que, normalizada, quede dentro de las
+     * raíces permitidas: {@code saa.upload.dir} más las de la propiedad {@code saa.files.raicesAdicionales} (lista separada por «;»).
+     * Una ruta relativa se resuelve contra la raíz de subidas. Si el archivo existe se resuelven los enlaces simbólicos
+     * ({@code toRealPath}) antes de comparar. Los llamadores internos del servidor NO la usan.
+     *
+     * @param ruta : Ruta enviada por el cliente
+     * @return     : Ruta absoluta normalizada y permitida
+     * @throws SecurityException si la ruta es vacía, trae caracteres nulos o queda fuera de las raíces
+     */
+    String resolverPermitida(String ruta);
+
+    /**
+     * Lote 9 (#10): el nombre de un archivo subido por un cliente no puede traer separadores de ruta ni «..».
+     *
+     * @param fileName : Nombre enviado por el cliente
+     * @throws SecurityException si el nombre es inválido
+     */
+    void validarNombreArchivo(String fileName);
 }

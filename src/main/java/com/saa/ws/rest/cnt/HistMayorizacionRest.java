@@ -109,32 +109,6 @@ public class HistMayorizacionRest {
         }
     }
 
-    @PUT
-    @Consumes(MediaType.APPLICATION_JSON)
-    @Produces(MediaType.APPLICATION_JSON)
-    public Response put(HistMayorizacion registro) {
-        System.out.println("LLEGA AL SERVICIO PUT - HIST_MAYORIZACION");
-        try {
-            HistMayorizacion resultado = histMayorizacionService.saveSingle(registro);
-            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
-        } catch (Throwable e) {
-            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar historial de mayorización: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
-        }
-    }
-
-    @POST
-    @Consumes(MediaType.APPLICATION_JSON)
-    @Produces(MediaType.APPLICATION_JSON)
-    public Response post(HistMayorizacion registro) {
-        System.out.println("LLEGA AL SERVICIO POST - HIST_MAYORIZACION");
-        try {
-            HistMayorizacion resultado = histMayorizacionService.saveSingle(registro);
-            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
-        } catch (Throwable e) {
-            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear historial de mayorización: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
-        }
-    }
-
     @POST
     @Path("selectByCriteria")
     @Consumes(MediaType.APPLICATION_JSON)
@@ -149,20 +123,6 @@ public class HistMayorizacionRest {
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(e.getMessage())
                     .type(MediaType.APPLICATION_JSON).build();
-        }
-    }
-
-    @DELETE
-    @Path("/{id}")
-    @Produces(MediaType.APPLICATION_JSON)
-    public Response delete(@PathParam("id") Long id) {
-        System.out.println("LLEGA AL SERVICIO DELETE - HIST_MAYORIZACION");
-        try {
-            HistMayorizacion elimina = new HistMayorizacion();
-            histMayorizacionDaoService.remove(elimina, id);
-            return Response.status(Response.Status.NO_CONTENT).build();
-        } catch (Throwable e) {
-            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar historial de mayorización: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
     }
 

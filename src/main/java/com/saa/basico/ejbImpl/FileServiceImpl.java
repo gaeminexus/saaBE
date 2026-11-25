@@ -239,4 +239,68 @@ public class FileServiceImpl implements FileService {
         }
         return fileName.substring(lastDot);
     }
+
+    /** Propiedad con raíces permitidas adicionales, separadas por «;». */
+    private static final String PROPIEDAD_RAICES_ADICIONALES = "saa.files.raicesAdicionales";
+
+    @Override
+    public String resolverPermitida(String ruta) {
+        if (ruta == null || ruta.trim().isEmpty()) {
+            throw new SecurityException("La ruta del archivo es requerida");
+        }
+        if (ruta.indexOf('\0') >= 0) {
+            throw new SecurityException("Ruta no permitida");
+        }
+        try {
+            Path candidata = Paths.get(ruta.trim());
+            if (!candidata.isAbsolute()) {
+                candidata = Paths.get(getBaseUploadDirectory()).resolve(candidata);
+            }
+            candidata = candidata.toAbsolutePath().normalize();
+            if (Files.exists(candidata)) {
+                candidata = candidata.toRealPath();
+            }
+            for (Path raiz : raicesPermitidas()) {
+                if (candidata.startsWith(raiz)) {
+                    return candidata.toString();
+                }
+            }
+        } catch (java.nio.file.InvalidPathException | IOException e) {
+            throw new SecurityException("Ruta no permitida");
+        }
+        throw new SecurityException("La ruta queda fuera de las carpetas permitidas");
+    }
+
+    @Override
+    public void validarNombreArchivo(String fileName) {
+        if (fileName == null || fileName.trim().isEmpty()
+                || fileName.indexOf('/') >= 0 || fileName.indexOf((char) 92) >= 0
+                || fileName.indexOf('\0') >= 0 || fileName.contains("..")) {
+            throw new SecurityException("Nombre de archivo no permitido");
+        }
+    }
+
+    /** Raíces permitidas ya normalizadas (y resueltas si existen): saa.upload.dir más saa.files.raicesAdicionales. */
+    private List<Path> raicesPermitidas() {
+        List<String> crudas = new ArrayList<>();
+        crudas.add(getBaseUploadDirectory());
+        String adicionales = System.getProperty(PROPIEDAD_RAICES_ADICIONALES);
+        if (adicionales != null) {
+            for (String parte : adicionales.split(";")) {
+                if (!parte.trim().isEmpty()) {
+                    crudas.add(parte.trim());
+                }
+            }
+        }
+        List<Path> raices = new ArrayList<>();
+        for (String cruda : crudas) {
+            try {
+                Path raiz = Paths.get(cruda).toAbsolutePath().normalize();
+                raices.add(Files.exists(raiz) ? raiz.toRealPath() : raiz);
+            } catch (java.nio.file.InvalidPathException | IOException e) {
+                System.out.println("FileServiceImpl.raicesPermitidas - raíz ignorada: " + cruda);
+            }
+        }
+        return raices;
+    }
 }

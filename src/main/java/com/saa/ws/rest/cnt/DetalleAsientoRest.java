@@ -123,8 +123,7 @@ public class DetalleAsientoRest {
     public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE - DETALLE_ASIENTO");
         try {
-            DetalleAsiento elimina = new DetalleAsiento();
-            detalleAsientoDaoService.remove(elimina, id);
+            detalleAsientoService.remove(java.util.Collections.singletonList(id)); // C17: período abierto
             return Response.status(Response.Status.NO_CONTENT).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar detalle de asiento: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();

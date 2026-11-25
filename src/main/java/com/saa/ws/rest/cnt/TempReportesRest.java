@@ -114,38 +114,6 @@ public class TempReportesRest {
     }
 
     /**
-     * PUT method for updating or creating an instance of TempReportesRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
-    @PUT
-    @Consumes(MediaType.APPLICATION_JSON)
-    @Produces(MediaType.APPLICATION_JSON)
-    public Response put(TempReportes registro) {
-        System.out.println("LLEGA AL SERVICIO PUT - TEMP_REPORTES");
-        try {
-            TempReportes resultado = tempReportesService.saveSingle(registro);
-            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
-        } catch (Throwable e) {
-            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar reporte temporal: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
-        }
-    }
-
-    @POST
-    @Consumes(MediaType.APPLICATION_JSON)
-    @Produces(MediaType.APPLICATION_JSON)
-    public Response post(TempReportes registro) {
-        System.out.println("LLEGA AL SERVICIO POST - TEMP_REPORTES");
-        try {
-            TempReportes resultado = tempReportesService.saveSingle(registro);
-            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
-        } catch (Throwable e) {
-            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear reporte temporal: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
-        }
-    }
-
-    /**
      * POST method for updating or creating an instance of TempReportesRest
      *
      * @param content representation for the resource
@@ -419,20 +387,6 @@ public class TempReportesRest {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                 .entity("Error al eliminar resultado: " + e.getMessage())
                 .type(MediaType.APPLICATION_JSON).build();
-        }
-    }
-
-    @DELETE
-    @Path("/{id}")
-    @Produces(MediaType.APPLICATION_JSON)
-    public Response delete(@PathParam("id") Long id) {
-        System.out.println("LLEGA AL SERVICIO DELETE - TEMP_REPORTES");
-        try {
-            TempReportes elimina = new TempReportes();
-            tempReportesDaoService.remove(elimina, id);
-            return Response.status(Response.Status.NO_CONTENT).build();
-        } catch (Throwable e) {
-            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar reporte temporal: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
     }
 

@@ -63,32 +63,6 @@ public class DesgloseMayorizacionCCRest {
         }
     }
 
-    @PUT
-    @Consumes(MediaType.APPLICATION_JSON)
-    @Produces(MediaType.APPLICATION_JSON)
-    public Response put(DesgloseMayorizacionCC registro) {
-        System.out.println("LLEGA AL SERVICIO PUT - DESGLOSE_MAYORIZACION_CC");
-        try {
-            DesgloseMayorizacionCC resultado = desgloseMayorizacionCCService.saveSingle(registro);
-            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
-        } catch (Throwable e) {
-            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar desglose de mayorización CC: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
-        }
-    }
-
-    @POST
-    @Consumes(MediaType.APPLICATION_JSON)
-    @Produces(MediaType.APPLICATION_JSON)
-    public Response post(DesgloseMayorizacionCC registro) {
-        System.out.println("LLEGA AL SERVICIO POST - DESGLOSE_MAYORIZACION_CC");
-        try {
-            DesgloseMayorizacionCC resultado = desgloseMayorizacionCCService.saveSingle(registro);
-            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
-        } catch (Throwable e) {
-            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear desglose de mayorización CC: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
-        }
-    }
-
     @POST
     @Path("criteria")
     @Consumes(MediaType.APPLICATION_JSON)
@@ -100,20 +74,6 @@ public class DesgloseMayorizacionCCRest {
             return Response.status(Response.Status.OK).entity(lista).type(MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error en criteria: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
-        }
-    }
-
-    @DELETE
-    @Path("/{id}")
-    @Produces(MediaType.APPLICATION_JSON)
-    public Response delete(@PathParam("id") Long id) {
-        System.out.println("LLEGA AL SERVICIO DELETE - DESGLOSE_MAYORIZACION_CC");
-        try {
-            DesgloseMayorizacionCC elimina = new DesgloseMayorizacionCC();
-            desgloseMayorizacionCCDaoService.remove(elimina, id);
-            return Response.status(Response.Status.NO_CONTENT).build();
-        } catch (Throwable e) {
-            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar desglose de mayorización CC: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
     }
 

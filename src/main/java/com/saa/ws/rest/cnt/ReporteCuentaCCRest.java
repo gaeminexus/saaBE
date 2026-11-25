@@ -103,38 +103,6 @@ public class ReporteCuentaCCRest {
     }
 
     /**
-     * PUT method for updating or creating an instance of ReporteCuentaCCRest
-     * 
-     * @param content representation for the resource
-     * @return an HTTP response with content of the updated or created resource.
-     */
-    @PUT
-    @Consumes(MediaType.APPLICATION_JSON)
-    @Produces(MediaType.APPLICATION_JSON)
-    public Response put(ReporteCuentaCC registro) {
-        System.out.println("LLEGA AL SERVICIO PUT - REPORTE_CUENTA_CC");
-        try {
-            ReporteCuentaCC resultado = reporteCuentaCCService.saveSingle(registro);
-            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
-        } catch (Throwable e) {
-            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar reporte de cuenta CC: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
-        }
-    }
-
-    @POST
-    @Consumes(MediaType.APPLICATION_JSON)
-    @Produces(MediaType.APPLICATION_JSON)
-    public Response post(ReporteCuentaCC registro) {
-        System.out.println("LLEGA AL SERVICIO POST - REPORTE_CUENTA_CC");
-        try {
-            ReporteCuentaCC resultado = reporteCuentaCCService.saveSingle(registro);
-            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
-        } catch (Throwable e) {
-            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear reporte de cuenta CC: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
-        }
-    }
-
-    /**
      * POST method for updating or creating an instance of ReporteCuentaCCRest
      *
      * @param content representation for the resource
@@ -154,20 +122,6 @@ public class ReporteCuentaCCRest {
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(e.getMessage())
                     .type(MediaType.APPLICATION_JSON).build();
-        }
-    }
-
-    @DELETE
-    @Path("/{id}")
-    @Produces(MediaType.APPLICATION_JSON)
-    public Response delete(@PathParam("id") Long id) {
-        System.out.println("LLEGA AL SERVICIO DELETE - REPORTE_CUENTA_CC");
-        try {
-            ReporteCuentaCC elimina = new ReporteCuentaCC();
-            reporteCuentaCCDaoService.remove(elimina, id);
-            return Response.status(Response.Status.NO_CONTENT).build();
-        } catch (Throwable e) {
-            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar reporte de cuenta CC: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
     }
 

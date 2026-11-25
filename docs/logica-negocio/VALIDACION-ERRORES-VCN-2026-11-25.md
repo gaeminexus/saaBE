@@ -81,3 +81,14 @@ contrastar con las entidades antes de correrlos); ningún `mvn`. Dos veredictos 
 - **#19 (solo cnt)** corregido: `NaturalezaCuentaDaoServiceImpl.deleteByEmpresa` y `PlanCuentaDaoServiceImpl.deleteByEmpresa` (`delete from X b …`) y alias en `DetallePlantillaDaoServiceImpl.recuperaCuentaContable`. Las de tsr no se tocaron.
 - **#19 `trunc(b.fechaIngreso)` de `AsientoDaoServiceImpl`: NO CONFIRMADO, se deja tal cual.** `fechaIngreso` es `LocalDateTime` y Hibernate 6.6 podría aceptar `trunc` sobre un timestamp; la única forma de saberlo es correr `GET`/`POST asnt/selectByCriteria` con filtro de fecha de ingreso (o la consulta en una copia). Pendiente.
 - **#25(e)** corregido en `AsientoContableServiceImpl`: las 197 líneas con `Ã³ Ã­ Ã© Ã¡ Ãº` (UTF-8 leído como Latin-1) pasaron a `ó í é á ú`. Quedan **46 líneas con otra doble codificación**, la flecha `â†’` (debería ser `→`) en comentarios: no se tocaron porque el encargo era solo la `Ã`.
+
+### Lote 9, segunda parte (2026-11-25)
+
+- **#25(e) flechas:** `â†’` → `→` en `AsientoContableServiceImpl` (46 líneas), verificado byte a byte (el resto del archivo es idéntico). **Siguen sin corregir** otras dobles codificaciones del mismo archivo, fuera del encargo: `â”€` (`─`) ×1222, `âœ—` ×3, `âœ“` ×2, `âš ` ×12, `â‰ ` ×1, `â€”` ×6.
+- **#10:** control SOLO en `FileRest` (`FileService.resolverPermitida` / `validarNombreArchivo`); el FE usa `DELETE /file/delete` (`comprobante-cobro.service.ts` → `file.service.ts`), por eso se conserva con el control de raíz. Ver `crd/sql/393_RAICES_PERMITIDAS_FILES.md`.
+- **#2 — métodos retirados de `ws/rest/cnt` (JAX-RS responde 405 solos).** Por si aparece un consumidor externo:
+  - `AsientoRest`: `DELETE /{id}`.
+  - `SaldosRest`: `DELETE /{id}`.
+  - `TempReportesRest`: `PUT`, `POST` (sin path) y `DELETE /{id}` (se conservan `selectByCriteria`, `generarBalance`, `generarArchivo`, `estadoOficial/*` y `DELETE /resultado/{idEjecucion}`).
+  - Para cada uno de estos 17 REST se retiraron `PUT`, `POST` (sin path) y `DELETE /{id}`; se conservan sus consultas y `selectByCriteria`: `DesgloseMayorizacionCCRest`, `DetalleMayorAnaliticoRest`, `DetalleMayorizacionCCRest`, `DetalleMayorizacionRest`, `DetalleReporteContableRest`, `DetalleReporteCuentaCCRest`, `HistAsientoRest`, `HistDetalleAsientoRest`, `HistDetalleMayorizacionRest`, `HistMayorizacionRest`, `MatchCuentaRest`, `MayorizacionCCRest`, `MayorizacionRest`, `ReporteContableRest`, `ReporteCuentaCCRest`, `RenglonReporteContableRest`, `AnioMortorRest`.
+- **C17 (período abierto) en el asiento manual:** `DetalleAsientoRest.delete` y `SubdetalleAsientoRest.delete` ahora pasan por el servicio (`remove(List)`), que valida período abierto; `SubdetalleAsientoServiceImpl` valida período abierto en `saveSingle`, `save` y `remove` (el detalle y el asiento se leen de la base). No se valida el estado del asiento.

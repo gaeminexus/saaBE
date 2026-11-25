@@ -64,32 +64,6 @@ public class DetalleReporteContableRest {
         }
     }
 
-    @PUT
-    @Consumes(MediaType.APPLICATION_JSON)
-    @Produces(MediaType.APPLICATION_JSON)
-    public Response put(DetalleReporteContable registro) {
-        System.out.println("LLEGA AL SERVICIO PUT - DETALLE_REPORTE_CONTABLE");
-        try {
-            DetalleReporteContable resultado = detalleReporteContableService.saveSingle(registro);
-            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
-        } catch (Throwable e) {
-            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar detalle de reporte contable: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
-        }
-    }
-
-    @POST
-    @Consumes(MediaType.APPLICATION_JSON)
-    @Produces(MediaType.APPLICATION_JSON)
-    public Response post(DetalleReporteContable registro) {
-        System.out.println("LLEGA AL SERVICIO POST - DETALLE_REPORTE_CONTABLE");
-        try {
-            DetalleReporteContable resultado = detalleReporteContableService.saveSingle(registro);
-            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
-        } catch (Throwable e) {
-            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear detalle de reporte contable: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
-        }
-    }
-
     @POST
     @Path("selectByCriteria")
     @Consumes(MediaType.APPLICATION_JSON)
@@ -104,20 +78,6 @@ public class DetalleReporteContableRest {
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(e.getMessage())
                     .type(MediaType.APPLICATION_JSON).build();
-        }
-    }
-
-    @DELETE
-    @Path("/{id}")
-    @Produces(MediaType.APPLICATION_JSON)
-    public Response delete(@PathParam("id") Long id) {
-        System.out.println("LLEGA AL SERVICIO DELETE - DETALLE_REPORTE_CONTABLE");
-        try {
-            DetalleReporteContable elimina = new DetalleReporteContable();
-            detalleReporteContableDaoService.remove(elimina, id);
-            return Response.status(Response.Status.NO_CONTENT).build();
-        } catch (Throwable e) {
-            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar detalle de reporte contable: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
     }
 

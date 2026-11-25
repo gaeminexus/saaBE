@@ -171,8 +171,7 @@ public class SubdetalleAsientoRest {
     public Response delete(@PathParam("id") Long id) {
         System.out.println("LLEGA AL SERVICIO DELETE - SUBDETALLE_ASIENTO");
         try {
-            SubdetalleAsiento elimina = new SubdetalleAsiento();
-            subdetalleAsientoDaoService.remove(elimina, id);
+            subdetalleAsientoService.remove(java.util.Collections.singletonList(id)); // C17: período abierto
             return Response.status(Response.Status.NO_CONTENT).build();
         } catch (Throwable e) {
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar subdetalle de asiento: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();

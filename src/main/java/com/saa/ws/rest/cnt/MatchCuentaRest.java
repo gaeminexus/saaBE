@@ -64,32 +64,6 @@ public class MatchCuentaRest {
         }
     }
 
-    @PUT
-    @Consumes(MediaType.APPLICATION_JSON)
-    @Produces(MediaType.APPLICATION_JSON)
-    public Response put(MatchCuenta registro) {
-        System.out.println("LLEGA AL SERVICIO PUT - MATCH_CUENTA");
-        try {
-            MatchCuenta resultado = matchCuentaService.saveSingle(registro);
-            return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
-        } catch (Throwable e) {
-            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al actualizar match de cuenta: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
-        }
-    }
-
-    @POST
-    @Consumes(MediaType.APPLICATION_JSON)
-    @Produces(MediaType.APPLICATION_JSON)
-    public Response post(MatchCuenta registro) {
-        System.out.println("LLEGA AL SERVICIO POST - MATCH_CUENTA");
-        try {
-            MatchCuenta resultado = matchCuentaService.saveSingle(registro);
-            return Response.status(Response.Status.CREATED).entity(resultado).type(MediaType.APPLICATION_JSON).build();
-        } catch (Throwable e) {
-            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al crear match de cuenta: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
-        }
-    }
-
     @POST
     @Path("selectByCriteria")
     @Consumes(MediaType.APPLICATION_JSON)
@@ -104,20 +78,6 @@ public class MatchCuentaRest {
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(e.getMessage())
                     .type(MediaType.APPLICATION_JSON).build();
-        }
-    }
-
-    @DELETE
-    @Path("/{id}")
-    @Produces(MediaType.APPLICATION_JSON)
-    public Response delete(@PathParam("id") Long id) {
-        System.out.println("LLEGA AL SERVICIO DELETE - MATCH_CUENTA");
-        try {
-            MatchCuenta elimina = new MatchCuenta();
-            matchCuentaDaoService.remove(elimina, id);
-            return Response.status(Response.Status.NO_CONTENT).build();
-        } catch (Throwable e) {
-            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar match de cuenta: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
         }
     }
 

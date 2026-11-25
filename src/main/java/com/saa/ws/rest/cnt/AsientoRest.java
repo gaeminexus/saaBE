@@ -308,20 +308,6 @@ public class AsientoRest {
         }
     }
 
-    @DELETE
-    @Path("/{id}")
-    @Produces(MediaType.APPLICATION_JSON)
-    public Response delete(@PathParam("id") Long id) {
-        System.out.println("LLEGA AL SERVICIO DELETE - ASIENTO");
-        try {
-            Asiento elimina = new Asiento();
-            asientoDaoService.remove(elimina, id);
-            return Response.status(Response.Status.NO_CONTENT).build();
-        } catch (Throwable e) {
-            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error al eliminar asiento: " + e.getMessage()).type(MediaType.APPLICATION_JSON).build();
-        }
-    }
-
 
     /**
      * Excel de asientos por tipo y rango de fechas (DISENO-EXCEL-ASIENTOS-POR-TIPO.md, E1).

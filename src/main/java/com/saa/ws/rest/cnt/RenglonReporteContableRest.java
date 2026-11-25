@@ -70,41 +70,6 @@ public class RenglonReporteContableRest {
 		}
 	}
 
-	@PUT
-	@Consumes(MediaType.APPLICATION_JSON)
-	@Produces(MediaType.APPLICATION_JSON)
-	public Response put(RenglonReporteContable registro) {
-		try {
-			return Response.ok(renglonDaoService.save(registro, registro.getCodigo())).type(MediaType.APPLICATION_JSON).build();
-		} catch (Throwable e) {
-			return error(e);
-		}
-	}
-
-	@POST
-	@Consumes(MediaType.APPLICATION_JSON)
-	@Produces(MediaType.APPLICATION_JSON)
-	public Response post(RenglonReporteContable registro) {
-		try {
-			return Response.status(Response.Status.CREATED).entity(renglonDaoService.save(registro, registro.getCodigo()))
-					.type(MediaType.APPLICATION_JSON).build();
-		} catch (Throwable e) {
-			return error(e);
-		}
-	}
-
-	@DELETE
-	@Path("/{id}")
-	@Produces(MediaType.APPLICATION_JSON)
-	public Response delete(@PathParam("id") Long id) {
-		try {
-			renglonDaoService.remove(new RenglonReporteContable(), id);
-			return Response.status(Response.Status.NO_CONTENT).build();
-		} catch (Throwable e) {
-			return error(e);
-		}
-	}
-
 	private Response error(Throwable e) {
 		return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Error en renglones de reporte: " + e.getMessage())
 				.type(MediaType.APPLICATION_JSON).build();

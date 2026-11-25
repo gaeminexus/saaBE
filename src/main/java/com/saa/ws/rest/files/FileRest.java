@@ -57,10 +57,13 @@ public class FileRest {
             }
 
             // Subir archivo usando InputStream directamente (EJB @Local)
+            fileService.validarNombreArchivo(fileName);
             String filePath = fileService.uploadFile(inputStream, fileName);
 
             return Response.ok(new FileResponse(true, "Archivo subido exitosamente", filePath)).build();
 
+        } catch (SecurityException e) {
+            return Response.status(Status.BAD_REQUEST).entity(new FileResponse(false, e.getMessage(), null)).build();
         } catch (Throwable e) {
             return Response.status(Status.INTERNAL_SERVER_ERROR)
                     .entity(new FileResponse(false, "Error al subir archivo: " + e.getMessage(), null))
@@ -105,12 +108,16 @@ public class FileRest {
                         .build();
             }
            
+            fileService.validarNombreArchivo(fileName);
+            uploadPath = fileService.resolverPermitida(uploadPath);
             String filePath = fileService.uploadFileToPath(inputStream, fileName, uploadPath);
             
             System.out.println("Resultado del upload: " + filePath);
 
             return Response.ok(new FileResponse(true, "Archivo subido exitosamente", filePath)).build();
 
+        } catch (SecurityException e) {
+            return Response.status(Status.BAD_REQUEST).entity(new FileResponse(false, e.getMessage(), null)).build();
         } catch (Throwable e) {
             return Response.status(Status.INTERNAL_SERVER_ERROR)
                     .entity(new FileResponse(false, "Error al subir archivo: " + e.getMessage(), null))
@@ -137,6 +144,7 @@ public class FileRest {
             }
 
             // Verificar que el archivo existe
+            filePath = fileService.resolverPermitida(filePath);
             if (!fileService.fileExists(filePath)) {
                 return Response.status(Status.NOT_FOUND)
                         .entity("El archivo no existe")
@@ -147,12 +155,14 @@ public class FileRest {
             InputStream fileStream = fileService.downloadFile(filePath);
             
             // Extraer nombre del archivo de la ruta
-            String fileName = filePath.substring(filePath.lastIndexOf("/") + 1);
+            String fileName = new java.io.File(filePath).getName();
             
             return Response.ok(fileStream)
                     .header("Content-Disposition", "attachment; filename=\"" + fileName + "\"")
                     .build();
 
+        } catch (SecurityException e) {
+            return Response.status(Status.BAD_REQUEST).entity(e.getMessage()).build();
         } catch (Throwable e) {
             return Response.status(Status.INTERNAL_SERVER_ERROR)
                     .entity("Error al descargar archivo: " + e.getMessage())
@@ -180,6 +190,7 @@ public class FileRest {
                         .entity("La ruta del archivo es requerida")
                         .build();
             }
+            filePath = fileService.resolverPermitida(filePath);
             if (!fileService.fileExists(filePath)) {
                 return Response.status(Status.NOT_FOUND)
                         .entity("El archivo no existe")
@@ -187,13 +198,15 @@ public class FileRest {
             }
 
             InputStream fileStream = fileService.downloadFile(filePath);
-            String fileName = filePath.substring(filePath.lastIndexOf("/") + 1);
+            String fileName = new java.io.File(filePath).getName();
 
             return Response.ok(fileStream)
                     .type(contentTypePorExtension(fileName))
                     .header("Content-Disposition", "inline; filename=\"" + fileName + "\"")
                     .build();
 
+        } catch (SecurityException e) {
+            return Response.status(Status.BAD_REQUEST).entity(e.getMessage()).build();
         } catch (Throwable e) {
             return Response.status(Status.INTERNAL_SERVER_ERROR)
                     .entity("Error al mostrar archivo: " + e.getMessage())
@@ -244,6 +257,7 @@ public class FileRest {
             }
 
             // Eliminar archivo
+            filePath = fileService.resolverPermitida(filePath);
             boolean deleted = fileService.deleteFile(filePath);
 
             if (deleted) {
@@ -254,6 +268,8 @@ public class FileRest {
                         .build();
             }
 
+        } catch (SecurityException e) {
+            return Response.status(Status.BAD_REQUEST).entity(new FileResponse(false, e.getMessage(), null)).build();
         } catch (Throwable e) {
             return Response.status(Status.INTERNAL_SERVER_ERROR)
                     .entity(new FileResponse(false, "Error al eliminar archivo: " + e.getMessage(), null))
@@ -277,10 +293,13 @@ public class FileRest {
                 directoryPath = "uploads/"; // Directorio por defecto
             }
 
+            directoryPath = fileService.resolverPermitida(directoryPath);
             List<String> files = fileService.listFiles(directoryPath);
 
             return Response.ok(new FileListResponse(true, "Archivos listados exitosamente", files)).build();
 
+        } catch (SecurityException e) {
+            return Response.status(Status.BAD_REQUEST).entity(new FileListResponse(false, e.getMessage(), null)).build();
         } catch (Throwable e) {
             return Response.status(Status.INTERNAL_SERVER_ERROR)
                     .entity(new FileListResponse(false, "Error al listar archivos: " + e.getMessage(), null))
@@ -307,6 +326,7 @@ public class FileRest {
             }
 
             // Verificar que el archivo existe
+            filePath = fileService.resolverPermitida(filePath);
             if (!fileService.fileExists(filePath)) {
                 return Response.status(Status.NOT_FOUND)
                         .entity(new FileInfoResponse(false, "El archivo no existe", null))
@@ -315,12 +335,14 @@ public class FileRest {
 
             // Obtener información del archivo
             long fileSize = fileService.getFileSize(filePath);
-            String fileName = filePath.substring(filePath.lastIndexOf("/") + 1);
+            String fileName = new java.io.File(filePath).getName();
 
             FileInfo fileInfo = new FileInfo(fileName, filePath, fileSize);
 
             return Response.ok(new FileInfoResponse(true, "Información obtenida exitosamente", fileInfo)).build();
 
+        } catch (SecurityException e) {
+            return Response.status(Status.BAD_REQUEST).entity(new FileInfoResponse(false, e.getMessage(), null)).build();
         } catch (Throwable e) {
             return Response.status(Status.INTERNAL_SERVER_ERROR)
                     .entity(new FileInfoResponse(false, "Error al obtener información: " + e.getMessage(), null))
