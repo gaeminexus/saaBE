@@ -109,6 +109,15 @@ dueño, con la autorización del usuario.
      - `generarAsientoCondonacion` (l. 728-940) no guarda el asiento en el evento.
      - `reversarProceso` del CBCR anula solo sus tres asientos.
      - Se propone como lote aparte, junto con 3.3.
+15. **D-187 (líder, 25-11): el EAR de producción para el cierre de noviembre es el código del 8080 del cuadre.**
+    - Es `5a40b3ac` + lote 7 + lote 7b, **sin la C19b**. Se arma fuera del repo, sin rama, aplicando los commits de
+      los lotes 7 y 7b sobre un `git archive` de `5a40b3ac`.
+    - **La C19b va en el EAR siguiente,** con sus scripts y después de probarla en el reproceso: el B17 de mayo y el de
+      septiembre 2025 tienen que salir idénticos byte a byte.
+    - **Única excepción a «una sola versión»**, autorizada por el usuario y el líder.
+    - **Lote 7b:** el tope de la provisión de mora va por PRÉSTAMO, compensando entre cuotas. El control 3 de la
+      conciliación da 42.566,11 al 30-sep-2025, y el negativo por cuota (96 cuotas, −1.114,51) sale casi todo de la mora
+      condonada en los acuerdos 25 y 26, el defecto 3.3(c). Rige hasta que se corrija 3.3(c).
 14. **Verificado en producción (25-11):**
     - El alterno 39 está libre en todas las empresas.
     - El 38 es CXP COMPRAS (PLNSCDGO 1202, empresa 1236) y solo tiene las líneas aux1 1 y 2, sin 86/87. El 383 viejo
