@@ -130,3 +130,13 @@ Son las 8 del encargo. Las que corren sobre la base van **sobre una copia de pro
 | D4 | C42: entregar la rama o el commit. Sin ella, la prueba 1 no se puede cerrar al centavo | cuadre |
 | D5 | Aceptar el SQL de medición como prueba 8, o exigir JUnit (habría que montar el framework, que hoy no hay) | usuario |
 | D6 | Entregar `plantilla-conciliacion-1402.sql` y `C27b-INTERES-ANTICIPADO.md` | cuadre |
+
+## 7. Lote 16: el límite del devengo se mide al día de la operación
+- **Defecto.** `DevengoCompletoServiceImpl.limiteDevengado` tomaba el corte máximo de todas las corridas EJECUTADAS de la empresa. En una base con cierres posteriores a la operación (la copia de trabajo con los cierres de jul a sep de 2026, o producción tras el reemplazo), el límite quedaba en el fin del mes siguiente a ese último corte, y los reversos de abono, precancelación y acuerdo reversaban interés de cuotas futuras que nunca se devengaron.
+- **Regla nueva.** `limiteDevengado(idEmpresa, fechaOperacion)` solo considera corridas EJECUTADAS con `fechaCorte` estrictamente anterior a `fechaOperacion`. El resto no cambia: el corte tiene que ser `>= devengoCompletoDesde` y el límite es el último día del mes siguiente a ese corte. Con `devengoCompletoDesde = 2025-10-31`, una operación de octubre de 2025 no tiene límite (no reversa nada), y una de noviembre o diciembre solo alcanza las cuotas del mes de la operación.
+- **Llamadores y fecha que usan.** `lineasReversoAbono` recibe ahora la fecha de la operación; `lineasReversoCuotasCanceladas` ya traía `fechaEvento`.
+  - Abono a capital (`ContabilidadPrestamoServiceImpl.lineasReBandeoAbono`, usada por `contabilizarAbonoCapital` y `contabilizarAbonoCapitalConAportes`): fecha del evento (`evento.getFecha()`).
+  - Precancelación por evento directo (`ContabilidadPrestamoServiceImpl`, dos métodos): fecha de pago del contexto (`ctx.getFechaPago()`).
+  - Precancelación por cobro (`CobroCreditoServiceImpl`): fecha del cobro (`cobro.getFecha()`).
+  - Acuerdo (`AcuerdoCondonacionServiceImpl`): fecha del acuerdo (`fecha`).
+- **Otras lecturas del «último cierre ejecutado».** No hay otra que decida qué se devengó sin acotar por fecha: `selectUltimaEjecutadaAntesDe` (bandas, reclasificación) ya acota por período anterior; `validaAnclaArranque` compara con el corte exacto del ancla; la guarda de anulación de préstamos en `PrestamoServiceImpl` usa el período de la aprobación; los reportes consultan por período.

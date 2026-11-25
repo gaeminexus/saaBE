@@ -609,7 +609,7 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
         // C27b: el abono baja el interés de cuotas cuyo mes ya devengó el cierre: D ingreso / H interés por cobrar, en
         // el mismo asiento del evento (anular el abono lo reversa). Vacío si el devengo completo no está activo.
         List<DetalleAsiento> conReverso = new ArrayList<>(lineas);
-        conReverso.addAll(devengoCompletoService.lineasReversoAbono(idEmpresa, prestamo, historizadas, nuevas, prefijo));
+        conReverso.addAll(devengoCompletoService.lineasReversoAbono(idEmpresa, prestamo, historizadas, nuevas, fechaCorte, prefijo));
         return conReverso;
     }
 

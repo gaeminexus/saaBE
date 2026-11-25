@@ -20,7 +20,8 @@ import jakarta.ejb.Local;
  * asiento, de modo que anularla las reverse.</p>
  *
  * <p>«Mes ya devengado» = vencimiento hasta el último día del mes siguiente al corte de la última corrida de cierre
- * EJECUTADA de la empresa, y solo si esa corrida tiene corte {@code >= devengoCompletoDesde}.</p>
+ * EJECUTADA de la empresa CON CORTE ANTERIOR a la fecha de la operación (lote 16: el cierre que ya existía ese día, no el
+ * último de la base), y solo si esa corrida tiene corte {@code >= devengoCompletoDesde}.</p>
  */
 @Local
 public interface DevengoCompletoService {
@@ -28,20 +29,24 @@ public interface DevengoCompletoService {
     /**
      * Último día cuyo interés ya devengó el cierre.
      *
-     * @param idEmpresa empresa contable
-     * @return el último día del mes siguiente al corte de la última corrida EJECUTADA, o null si el devengo completo no
-     *         está activo (propiedad ausente, sin corridas o con la última corrida anterior a la propiedad)
+     * @param idEmpresa      empresa contable
+     * @param fechaOperacion fecha de la operación (abono, precancelación, acuerdo): solo cuentan las corridas con corte
+     *                       estrictamente anterior
+     * @return el último día del mes siguiente al corte de la última corrida EJECUTADA con corte anterior a la operación, o
+     *         null si el devengo completo no está activo (propiedad ausente, sin corridas anteriores o con la última
+     *         anterior a la propiedad)
      */
-    LocalDate limiteDevengado(Long idEmpresa) throws Throwable;
+    LocalDate limiteDevengado(Long idEmpresa, LocalDate fechaOperacion) throws Throwable;
 
     /**
      * Abono a capital: Σ interés de las cuotas historizadas menos Σ interés de las cuotas nuevas, de las que vencen hasta
-     * {@link #limiteDevengado}, como líneas D ingreso / H interés por cobrar.
+     * {@link #limiteDevengado} (al día de la operación), como líneas D ingreso / H interés por cobrar.
      *
+     * @param fechaOperacion fecha de la operación: fija qué cierre ya existía (lote 16)
      * @return las líneas, o una lista vacía si no hay nada que reversar
      */
     List<DetalleAsiento> lineasReversoAbono(Long idEmpresa, Prestamo prestamo, List<HistDetallePrestamo> historizadas,
-            List<DetallePrestamo> nuevas, String prefijo) throws Throwable;
+            List<DetallePrestamo> nuevas, LocalDate fechaOperacion, String prefijo) throws Throwable;
 
     /**
      * Precancelación: Σ interés no cobrado de las cuotas del préstamo que ESTA operación pasó a CANCELADA_ANTICIPADA (7)

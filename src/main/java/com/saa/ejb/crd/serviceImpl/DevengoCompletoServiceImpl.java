@@ -52,9 +52,10 @@ public class DevengoCompletoServiceImpl implements DevengoCompletoService {
     private DetallePlantillaDaoService detallePlantillaDaoService;
 
     @Override
-    public LocalDate limiteDevengado(Long idEmpresa) throws Throwable {
-        System.out.println("Ingresa al metodo (limiteDevengado) DevengoCompletoService - empresa: " + idEmpresa);
-        if (idEmpresa == null || ModoCorteCartera.devengoCompletoDesde() == null) {
+    public LocalDate limiteDevengado(Long idEmpresa, LocalDate fechaOperacion) throws Throwable {
+        System.out.println("Ingresa al metodo (limiteDevengado) DevengoCompletoService - empresa: " + idEmpresa
+                + " - fecha de la operacion: " + fechaOperacion);
+        if (idEmpresa == null || fechaOperacion == null || ModoCorteCartera.devengoCompletoDesde() == null) {
             return null;
         }
         LocalDate ultimoCorte = null;
@@ -63,6 +64,8 @@ public class DevengoCompletoServiceImpl implements DevengoCompletoService {
             for (CorridaCierreCartera corrida : corridas) {
                 if (corrida.getIdEstado() != null && corrida.getIdEstado().longValue() == EstadoCorridaCierreCartera.EJECUTADA
                         && corrida.getFechaCorte() != null
+                        // Lote 16: solo el cierre que ya existia al momento de la operacion (corte estrictamente anterior).
+                        && corrida.getFechaCorte().isBefore(fechaOperacion)
                         && (ultimoCorte == null || corrida.getFechaCorte().isAfter(ultimoCorte))) {
                     ultimoCorte = corrida.getFechaCorte();
                 }
@@ -77,9 +80,10 @@ public class DevengoCompletoServiceImpl implements DevengoCompletoService {
 
     @Override
     public List<DetalleAsiento> lineasReversoAbono(Long idEmpresa, Prestamo prestamo,
-            List<HistDetallePrestamo> historizadas, List<DetallePrestamo> nuevas, String prefijo) throws Throwable {
+            List<HistDetallePrestamo> historizadas, List<DetallePrestamo> nuevas, LocalDate fechaOperacion, String prefijo)
+            throws Throwable {
         System.out.println("Ingresa al metodo (lineasReversoAbono) DevengoCompletoService - empresa: " + idEmpresa);
-        LocalDate limite = limiteDevengado(idEmpresa);
+        LocalDate limite = limiteDevengado(idEmpresa, fechaOperacion);
         if (limite == null) {
             return new ArrayList<DetalleAsiento>();
         }
@@ -112,7 +116,7 @@ public class DevengoCompletoServiceImpl implements DevengoCompletoService {
             String prefijo) throws Throwable {
         System.out.println("Ingresa al metodo (lineasReversoCuotasCanceladas) DevengoCompletoService - empresa: "
                 + idEmpresa);
-        LocalDate limite = limiteDevengado(idEmpresa);
+        LocalDate limite = limiteDevengado(idEmpresa, fechaEvento);
         if (limite == null || prestamo == null || fechaEvento == null) {
             return new ArrayList<DetalleAsiento>();
         }
