@@ -20,6 +20,7 @@ import com.saa.ejb.crd.dao.MovimientoInteresCuotaDaoService;
 import com.saa.ejb.crd.dao.PagoPrestamoDaoService;
 import com.saa.ejb.crd.service.ModoCorteCartera;
 import com.saa.ejb.crd.service.TopeProvisionMora;
+import com.saa.ejb.crd.service.dto.ProvisionCuotaCalculada;
 import com.saa.ejb.crd.service.ProcesoMoraPrestamoService;
 import com.saa.ejb.crd.service.ProvisionInteresService;
 import com.saa.ejb.crd.service.dto.BandaProductoDetalle;
@@ -336,6 +337,43 @@ public class ProvisionInteresServiceImpl implements ProvisionInteresService {
         System.out.println("  Semilla MVIC de apertura: calculado al corte " + total + ", sembrado "
             + redondear(sembrado) + " (factor " + factor + ")");
         return new double[]{total, redondear(sembrado)};
+    }
+
+    @Override
+    public List<ProvisionCuotaCalculada> calcularProvisionPorCuota(LocalDate fechaCorte, boolean alCorte,
+            Map<Long, Double> devengoMoraDelCierre) throws Throwable {
+        System.out.println("ProvisionInteresServiceImpl.calcularProvisionPorCuota - corte: " + fechaCorte + " - alCorte: " + alCorte);
+        List<ProvisionCuotaCalculada> lista = new ArrayList<>();
+        for (ItemProvisionCuota item : calcularItems(fechaCorte, alCorte, false, devengoMoraDelCierre)) {
+            lista.add(new ProvisionCuotaCalculada(item.cuota.getCodigo(), item.prestamo.getCodigo(), item.idTipoPrestamo,
+                item.aProvisionarInteres, item.aProvisionarMora));
+        }
+        return lista;
+    }
+
+    @Override
+    public void registrarProvisionCierre(Long idCorrida, Long idAsiento, LocalDate fechaCorte, String usuario,
+            List<ProvisionCuotaCalculada> provision) throws Throwable {
+        System.out.println("ProvisionInteresServiceImpl.registrarProvisionCierre (lista) - corrida: " + idCorrida
+            + " - asiento: " + idAsiento + " - cuotas: " + (provision != null ? provision.size() : 0));
+        if (idCorrida == null) {
+            throw new IncomeException("idCorrida es obligatorio para registrar la provisión del cierre");
+        }
+        LocalDateTime ahora = LocalDateTime.now();
+        for (ProvisionCuotaCalculada p : provision) {
+            Prestamo prestamo = new Prestamo();
+            prestamo.setCodigo(p.getIdPrestamo());
+            if (p.getInteres() > TOLERANCIA) {
+                guardarMovimiento(p.getIdCuota(), prestamo, TipoMovimientoInteresCuota.PROVISION,
+                    ComponenteMovimientoInteresCuota.INTERES, p.getInteres(), fechaCorte,
+                    idCorrida, null, "CIERRE", idCorrida, idAsiento, usuario, ahora);
+            }
+            if (p.getMora() > TOLERANCIA) {
+                guardarMovimiento(p.getIdCuota(), prestamo, TipoMovimientoInteresCuota.PROVISION,
+                    ComponenteMovimientoInteresCuota.MORA, p.getMora(), fechaCorte,
+                    idCorrida, null, "CIERRE", idCorrida, idAsiento, usuario, ahora);
+            }
+        }
     }
 
     @Override
@@ -690,6 +728,51 @@ public class ProvisionInteresServiceImpl implements ProvisionInteresService {
 
         resultado.setIdAsiento(asiento.getCodigo());
         resultado.setTotalReversado(totalRedondeado);
+        return resultado;
+    }
+
+    @Override
+    public ResultadoReversoProvision reProvisionarCondonacion(Long idAcuerdo, Long idEmpresa, LocalDate fecha, String usuario)
+            throws Throwable {
+        System.out.println("ProvisionInteresServiceImpl.reProvisionarCondonacion - acuerdo: " + idAcuerdo);
+        ResultadoReversoProvision resultado = new ResultadoReversoProvision();
+        List<MovimientoInteresCuota> condonados = movimientoInteresCuotaDaoService.selectVigentesPorOrigen("CONDONACION", idAcuerdo,
+            java.util.Collections.singletonList(TipoMovimientoInteresCuota.REVERSO_POR_CONDONACION));
+        if (condonados.isEmpty()) {
+            return resultado;
+        }
+        Map<Long, Double> totalPorTipo = new LinkedHashMap<>();
+        double totalGeneral = 0.0;
+        for (MovimientoInteresCuota mov : condonados) {
+            Prestamo prestamo = mov.getPrestamo();
+            Long idTipoPrestamo = prestamo != null && prestamo.getProducto() != null
+                    && prestamo.getProducto().getTipoPrestamo() != null
+                    ? prestamo.getProducto().getTipoPrestamo().getCodigo() : null;
+            if (idTipoPrestamo == null) {
+                throw new IncomeException("La condonación del acuerdo " + idAcuerdo + " bajó provisión del movimiento " + mov.getCodigo()
+                    + " y su préstamo no tiene tipo de préstamo asignado; no se puede restituir.");
+            }
+            totalPorTipo.merge(idTipoPrestamo, mov.getValor(), Double::sum);
+            totalGeneral += mov.getValor();
+        }
+        Long idPlantilla = resuelvePlantilla36(idEmpresa);
+        List<DetalleAsiento> lineas = new ArrayList<>();
+        for (Map.Entry<Long, Double> entrada : totalPorTipo.entrySet()) {
+            // Espejo de la condonación: 80 (gasto) al DEBE y 81 (provisión) al HABER.
+            lineas.add(lineaProvision(idPlantilla, CrdLineaAsiento.PROVISION_INTERESES_GASTO, entrada.getKey(),
+                entrada.getValue(), true, "Re-provisión por anulación de la condonación - acuerdo " + idAcuerdo));
+            lineas.add(lineaProvision(idPlantilla, CrdLineaAsiento.PROVISION_INTERESES, entrada.getKey(),
+                entrada.getValue(), false, "Re-provisión por anulación de la condonación - acuerdo " + idAcuerdo));
+        }
+        Asiento asiento = asientoContableService.generarAsiento(idEmpresa, TipoAsientos.CREDITOS, fecha,
+            "Re-provisión de intereses por anulación de la condonación - acuerdo " + idAcuerdo, usuario, lineas,
+            Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR));
+        LocalDateTime ahora = LocalDateTime.now();
+        for (MovimientoInteresCuota mov : condonados) {
+            guardarReProvision(mov, asiento.getCodigo(), "REVERSO_CONDONACION", idAcuerdo, usuario, ahora, fecha);
+        }
+        resultado.setIdAsiento(asiento.getCodigo());
+        resultado.setTotalReversado(redondear(totalGeneral));
         return resultado;
     }
 
@@ -1185,6 +1268,12 @@ public class ProvisionInteresServiceImpl implements ProvisionInteresService {
      */
     private List<ItemProvisionCuota> calcularItems(LocalDate fechaCorte, boolean alCorte, boolean sinLibro)
             throws Throwable {
+        return calcularItems(fechaCorte, alCorte, sinLibro, null);
+    }
+
+    /** Lote 18: {@code devengoMoraDelCierre} = el ⑩ del mismo cierre (idPréstamo → mora), aún sin grabar, que el tope debe ver como ya devengado. */
+    private List<ItemProvisionCuota> calcularItems(LocalDate fechaCorte, boolean alCorte, boolean sinLibro,
+            Map<Long, Double> devengoMoraDelCierre) throws Throwable {
         if (fechaCorte == null) {
             throw new IncomeException("fechaCorte es obligatoria para el paso 7 (provisión de intereses)");
         }
@@ -1229,7 +1318,7 @@ public class ProvisionInteresServiceImpl implements ProvisionInteresService {
         Map<Long, Double> topeRepartido = null;
         if (conTope) {
             Map<Long, Double> topePorPrestamo = movimientoInteresCuotaDaoService
-                .selectMoraContabilizadaPendientePorPrestamo(alCorte ? fechaCorte : null);
+                .selectMoraContabilizadaPendientePorPrestamo(alCorte ? fechaCorte : null, devengoMoraDelCierre);
             List<TopeProvisionMora.CuotaTope> candidatas = new ArrayList<>();
             for (DetallePrestamo cuota : cuotas) {
                 double[] pagosCuota = pagosPorCuota.get(cuota.getCodigo());

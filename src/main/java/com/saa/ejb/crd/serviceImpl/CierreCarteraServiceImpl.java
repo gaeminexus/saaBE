@@ -1475,10 +1475,26 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
         Long idPlantilla = resuelvePlantilla(PlantillasCredito.PROVISION_INTERESES,
                 "provisión de intereses", solicitud.getIdEmpresa());
 
-        for (java.util.Map.Entry<Long, double[]> entrada
-                : provisionInteresService.calcularProvisionPorTipoPrestamo(corte, alCorte).entrySet()) {
+        // Lote 18 (nivel 2.1): UN solo cálculo por cuota. El ⑩ del mismo cierre se graba ANTES que el libro del ⑦ y sube la mora contabilizada
+        // de la que depende el tope de la mora; aquí se lo suma al tope (ya devengado) para que el asiento, la previsualización y el libro
+        // (que se graba de esta misma lista, ver generaAsiento) salgan del mismo estado, al centavo.
+        Map<Long, Double> devengoMoraDelCierre = new java.util.HashMap<Long, Double>();
+        if (alCorte || Boolean.getBoolean(PROPIEDAD_DEVENGO_MORA_CIERRE)) {
+            for (Object[] fila : cierreCarteraDaoService.selectMoraPorDevengarAlCorte(corte, inicioDevengoMora())) {
+                devengoMoraDelCierre.merge((Long) fila[1], redondea((Double) fila[3]), Double::sum);
+            }
+        }
+        List<com.saa.ejb.crd.service.dto.ProvisionCuotaCalculada> provisionPorCuota =
+                provisionInteresService.calcularProvisionPorCuota(corte, alCorte, devengoMoraDelCierre);
+        sub.provisionPorCuota(provisionPorCuota);
+        Map<Long, Double> totalPorTipo = new java.util.TreeMap<Long, Double>();
+        for (com.saa.ejb.crd.service.dto.ProvisionCuotaCalculada p : provisionPorCuota) {
+            totalPorTipo.merge(p.getIdTipoPrestamo(), p.getInteres() + p.getMora(),
+                    (a, b) -> Math.round((a + b) * 100.0) / 100.0);
+        }
+        for (Map.Entry<Long, Double> entrada : totalPorTipo.entrySet()) {
             Long idTipoPrestamo = entrada.getKey();
-            double total = redondeaDouble(Double.valueOf(entrada.getValue()[0] + entrada.getValue()[1]));
+            double total = redondeaDouble(Double.valueOf(entrada.getValue()));
             agregaPorTipo(sub, idPlantilla, CrdLineaAsiento.PROVISION_INTERESES_GASTO, idTipoPrestamo, total,
                     "Provisión intereses inversiones privativas " + periodo(solicitud));
             agregaPorTipo(sub, idPlantilla, CrdLineaAsiento.PROVISION_INTERESES, idTipoPrestamo, total,
@@ -2796,8 +2812,14 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
         // del asiento ya grabados. Recalcula entero — no confía en las líneas ya armadas arriba.
         if (sub.getSubProceso() != null
                 && sub.getSubProceso().intValue() == SubProcesoCierreCartera.PROVISION_INTERESES) {
-            provisionInteresService.registrarProvisionCierre(corrida.getCodigo(), asiento.getCodigo(),
-                    sub.getFecha(), solicitud.getUsuario(), Boolean.TRUE.equals(solicitud.getEstadoAlCorte()));
+            // Lote 18: el libro sale de la MISMA lista por cuota de la que salió el asiento (sin recalcular).
+            if (sub.provisionPorCuota() != null) {
+                provisionInteresService.registrarProvisionCierre(corrida.getCodigo(), asiento.getCodigo(), sub.getFecha(),
+                        solicitud.getUsuario(), sub.provisionPorCuota());
+            } else {
+                provisionInteresService.registrarProvisionCierre(corrida.getCodigo(), asiento.getCodigo(),
+                        sub.getFecha(), solicitud.getUsuario(), Boolean.TRUE.equals(solicitud.getEstadoAlCorte()));
+            }
         }
 
         // C15 / D-017: ⑩ — detalle por cuota (MVIC tipo 5, origen CIERRE) con la misma consulta.

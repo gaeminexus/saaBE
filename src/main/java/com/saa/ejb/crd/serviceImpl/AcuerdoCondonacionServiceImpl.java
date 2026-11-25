@@ -447,6 +447,12 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
             throw new IncomeException("El acuerdo " + idAcuerdo + " está en estado "
                     + textoEstado(acuerdo.getEstado()) + "; solo se puede reabrir un acuerdo APLICADO");
         }
+        // Lote 18: lo que la condonación bajó de la provisión vuelve a la provisión (la anulación del evento ya compensa el reverso
+        // de lo cobrado, tipo 2, por su pago; el tipo 9 no tiene pago y se busca por origen e idOrigen).
+        if (acuerdo.getEmpresa() != null) {
+            provisionInteresService.reProvisionarCondonacion(idAcuerdo, acuerdo.getEmpresa().getCodigo(),
+                    fecha != null ? fecha.toLocalDate() : LocalDate.now(), usuario);
+        }
         acuerdo.setEstado(Long.valueOf(CrdEstadoAcuerdoCondonacion.VIGENTE));
         // Desenganchar el evento aplicado (aplicarAcuerdo:588 lo enlaza) — ese evento queda
         // ANULADO por el reverso, y si el acuerdo siguiera apuntándolo, una aplicación

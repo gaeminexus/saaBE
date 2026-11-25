@@ -64,6 +64,20 @@ public interface ProvisionInteresService {
      */
     Map<Long, double[]> calcularProvisionPorTipoPrestamo(LocalDate fechaCorte, boolean alCorte) throws Throwable;
 
+    /**
+     * Lote 18 — el ÚNICO cálculo del paso ⑦: la provisión de cada cuota (interés y mora). El asiento sale de la suma de esta lista por tipo de
+     * préstamo y el libro se graba de ella con {@link #registrarProvisionCierre(Long, Long, LocalDate, String, List)}, sin recalcular.
+     *
+     * @param devengoMoraDelCierre el ⑩ del mismo cierre (idPréstamo → mora), aún sin grabar, que el tope de mora ve como ya devengado;
+     *                            null si no hay ⑩ en este cierre
+     */
+    List<com.saa.ejb.crd.service.dto.ProvisionCuotaCalculada> calcularProvisionPorCuota(LocalDate fechaCorte, boolean alCorte,
+            Map<Long, Double> devengoMoraDelCierre) throws Throwable;
+
+    /** Lote 18 — graba el libro (MVIC tipo 1) desde la lista de {@link #calcularProvisionPorCuota}, sin recalcular. */
+    void registrarProvisionCierre(Long idCorrida, Long idAsiento, LocalDate fechaCorte, String usuario,
+            List<com.saa.ejb.crd.service.dto.ProvisionCuotaCalculada> provision) throws Throwable;
+
     /** C15 — {@link #registrarProvisionCierre(Long, Long, LocalDate, String)} con el modo al corte. */
     void registrarProvisionCierre(Long idCorrida, Long idAsiento, LocalDate fechaCorte, String usuario,
             boolean alCorte) throws Throwable;
@@ -251,6 +265,17 @@ public interface ProvisionInteresService {
      */
     ResultadoReversoProvision condonarProvision(List<DetallePrestamo> cuotas, double interesCondonado,
             double moraCondonada, Long idEmpresa, LocalDate fecha, String origen, Long idOrigen, String usuario)
+            throws Throwable;
+
+    /**
+     * Lote 18 — anular un acuerdo: restituye lo que su condonación bajó de la provisión (los {@code MVIC} tipo 9 de origen
+     * {@code CONDONACION} e {@code idOrigen} = el acuerdo), cuota por cuota y por el mismo valor, con un asiento
+     * {@code D 4.7.05.10 / H 1.4.99.05} por tipo de préstamo (plantilla 36) y un {@code MVIC} tipo 4 que compensa cada uno.
+     * Idempotente: un tipo 9 ya compensado no se repite.
+     *
+     * @return {@code idAsiento} y el total restituido; {@code idAsiento == null} si el acuerdo no condonó provisión
+     */
+    ResultadoReversoProvision reProvisionarCondonacion(Long idAcuerdo, Long idEmpresa, LocalDate fecha, String usuario)
             throws Throwable;
 
     /**

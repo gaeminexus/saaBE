@@ -51,7 +51,21 @@ public class SubProcesoCierre {
     /** Número del asiento generado. Nulo en la previsualización. */
     private String numeroAsiento;
 
+    /**
+     * Lote 18 (solo ⑦): el cálculo por cuota del que salen las líneas del asiento; {@code generaAsiento} graba el libro MVIC
+     * desde esta misma lista. No es una propiedad del DTO (sin getter/setter de bean): no viaja en el JSON.
+     */
+    private transient java.util.List<ProvisionCuotaCalculada> provisionPorCuotaCalculada;
+
     public SubProcesoCierre() {
+    }
+
+    public java.util.List<ProvisionCuotaCalculada> provisionPorCuota() {
+        return provisionPorCuotaCalculada;
+    }
+
+    public void provisionPorCuota(java.util.List<ProvisionCuotaCalculada> lista) {
+        this.provisionPorCuotaCalculada = lista;
     }
 
     public Long getSubProceso() {

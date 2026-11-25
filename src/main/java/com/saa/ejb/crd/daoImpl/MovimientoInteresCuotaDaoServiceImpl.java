@@ -336,6 +336,91 @@ public class MovimientoInteresCuotaDaoServiceImpl extends EntityDaoImpl<Movimien
     }
 
     @Override
+    public List<MovimientoInteresCuota> selectVigentesPorOrigen(String origen, Long idOrigen, List<Long> tipos)
+            throws Throwable {
+        System.out.println("MovimientoInteresCuotaDaoServiceImpl.selectVigentesPorOrigen - origen: " + origen + " - idOrigen: " + idOrigen);
+        if (origen == null || idOrigen == null || tipos == null || tipos.isEmpty()) {
+            return new ArrayList<>();
+        }
+        Query query = em.createQuery(
+            "select m from MovimientoInteresCuota m"
+            + " where m.origen = :origen and m.idOrigen = :idOrigen and m.tipoMovimiento in :tipos and m.anulado = 0"
+            + " and not exists (select 1 from MovimientoInteresCuota r"
+            + "     where r.movimientoReversado = m and r.anulado = 0)");
+        query.setParameter("origen", origen);
+        query.setParameter("idOrigen", idOrigen);
+        query.setParameter("tipos", tipos);
+        return query.getResultList();
+    }
+
+    @Override
+    public java.util.Map<Long, Double> selectMoraContabilizadaPendientePorPrestamo(java.time.LocalDate corte,
+            java.util.Map<Long, Double> devengoAdicional) throws Throwable {
+        System.out.println("MovimientoInteresCuotaDaoServiceImpl.selectMoraContabilizadaPendientePorPrestamo - corte: " + corte
+            + " - préstamos con devengo adicional: " + (devengoAdicional != null ? devengoAdicional.size() : 0));
+        if (devengoAdicional == null || devengoAdicional.isEmpty()) {
+            return selectMoraContabilizadaPendientePorPrestamo(corte);
+        }
+        java.sql.Date limite = corte != null ? java.sql.Date.valueOf(corte) : java.sql.Date.valueOf("9999-12-31");
+        java.sql.Date limiteSig = corte != null ? java.sql.Date.valueOf(corte.plusDays(1))
+            : java.sql.Date.valueOf("9999-12-31");
+        // Lote 18: la misma cuenta de la consulta de arriba (devengo 5 − 6, − mora cobrada, − condonada), pero con el devengo adicional
+        // sumado antes del piso en cero y con la mora cobrada y la condonada leídas también de los préstamos que solo traen devengo adicional.
+        Query qDev = em.createNativeQuery(
+            " SELECT m.PRSTCDGO, SUM(CASE WHEN m.MVICTPMV = 5 THEN m.MVICVLOR WHEN m.MVICTPMV = 6 THEN -m.MVICVLOR ELSE 0 END) "
+            + "   FROM CRD.MVIC m "
+            + "  WHERE m.MVICANUL = 0 AND m.MVICCMPN = 2 AND m.MVICTPMV IN (5, 6) AND m.MVICFCCT <= :limite "
+            + "  GROUP BY m.PRSTCDGO");
+        qDev.setParameter("limite", limite);
+        java.util.Map<Long, java.math.BigDecimal> neto = new java.util.HashMap<>();
+        for (Object[] fila : (List<Object[]>) qDev.getResultList()) {
+            neto.put(((Number) fila[0]).longValue(), fila[1] != null
+                ? java.math.BigDecimal.valueOf(((Number) fila[1]).doubleValue()) : java.math.BigDecimal.ZERO);
+        }
+        for (java.util.Map.Entry<Long, Double> e : devengoAdicional.entrySet()) {
+            neto.merge(e.getKey(), java.math.BigDecimal.valueOf(e.getValue()), java.math.BigDecimal::add);
+        }
+        List<Long> ids = new ArrayList<>(neto.keySet());
+        for (int inicio = 0; inicio < ids.size(); inicio += TAMANIO_BLOQUE) {
+            List<Long> bloque = ids.subList(inicio, Math.min(inicio + TAMANIO_BLOQUE, ids.size()));
+            Query qPag = em.createNativeQuery(
+                " SELECT d.PRSTCDGO, SUM(NVL(g.PGPRMRPG, 0)) "
+                + "   FROM CRD.PGPR g JOIN CRD.DTPR d ON d.DTPRCDGO = g.DTPRCDGO "
+                + "  WHERE NVL(g.PGPRANUL, 0) = 0 AND (g.PGPRFCHA < :limiteSig OR g.PGPRFCRG < :limiteSig) AND d.PRSTCDGO IN (:ids) "
+                + "  GROUP BY d.PRSTCDGO");
+            qPag.setParameter("limiteSig", limiteSig);
+            qPag.setParameter("ids", bloque);
+            for (Object[] fila : (List<Object[]>) qPag.getResultList()) {
+                if (fila[1] != null) {
+                    neto.merge(((Number) fila[0]).longValue(), java.math.BigDecimal.valueOf(-((Number) fila[1]).doubleValue()),
+                        java.math.BigDecimal::add);
+                }
+            }
+            Query qCon = em.createNativeQuery(
+                " SELECT a.PRSTCDGO, SUM(NVL(c.DACCVLCN, 0)) "
+                + "   FROM CRD.DACC c JOIN CRD.ACCN a ON a.ACCNCDGO = c.ACCNCDGO "
+                + "  WHERE a.ACCNESTD = 2 AND c.DACCCPTO = 3 AND a.ACCNFCHA < :limiteSig AND a.PRSTCDGO IN (:ids) "
+                + "  GROUP BY a.PRSTCDGO");
+            qCon.setParameter("limiteSig", limiteSig);
+            qCon.setParameter("ids", bloque);
+            for (Object[] fila : (List<Object[]>) qCon.getResultList()) {
+                if (fila[1] != null) {
+                    neto.merge(((Number) fila[0]).longValue(), java.math.BigDecimal.valueOf(-((Number) fila[1]).doubleValue()),
+                        java.math.BigDecimal::add);
+                }
+            }
+        }
+        java.util.Map<Long, Double> resultado = new java.util.HashMap<>();
+        for (java.util.Map.Entry<Long, java.math.BigDecimal> e : neto.entrySet()) {
+            double valor = e.getValue().setScale(2, java.math.RoundingMode.HALF_UP).doubleValue();
+            if (valor > 0.0) {
+                resultado.put(e.getKey(), valor);
+            }
+        }
+        return resultado;
+    }
+
+    @Override
     public List<Object[]> selectCuotasConProvisionMora(java.time.LocalDate corte) throws Throwable {
         System.out.println("MovimientoInteresCuotaDaoServiceImpl.selectCuotasConProvisionMora - corte: " + corte);
         String expresion = "sum(case when m.tipoMovimiento in (1, 4) then m.valor"
