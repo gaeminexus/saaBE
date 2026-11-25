@@ -28,6 +28,12 @@ public interface DetalleReporteContableDaoService extends EntityDao<DetalleRepor
 	 * @throws Throwable	: Excepcions
 	 */
 	List<DetalleReporteContable> selectByDetalleReporteContable (Long empresa, Long codigoAlterno)throws Throwable;
+
+	/**
+	 * C19b/C38: filas de DTRP de un reporte por su codigo (RPRTCDGO). En un reporte de renglones propios cada fila es
+	 * una regla cuenta -> renglon; las vigencias se filtran en el servicio.
+	 */
+	List<DetalleReporteContable> selectByReporte(Long codigoReporte) throws Throwable;
 	
 	
 }

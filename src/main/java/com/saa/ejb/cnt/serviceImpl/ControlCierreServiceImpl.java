@@ -45,8 +45,8 @@ public class ControlCierreServiceImpl implements ControlCierreService {
     @PersistenceContext
     private EntityManager em;
 
-    /** C39: B17 preliminar para el control de saldos negativos. */
-    @EJB private com.saa.ejb.cnt.service.EstructuraReporteService estructuraReporteService;
+    /** C39: B17 preliminar para el control de saldos negativos (motor de balances, C19b / D-031). */
+    @EJB private com.saa.ejb.cnt.service.TempReportesService tempReportesService;
 
     @EJB
     private EstadoCierreService estadoCierreService;
@@ -494,20 +494,22 @@ public class ControlCierreServiceImpl implements ControlCierreService {
 
     /**
      * C39 (23-nov-2026, D-150): la Superintendencia rechaza el B17 si alguna cuenta tiene saldo negativo (salvo las
-     * correctoras). Se arma el B17 preliminar del mes y se cuentan sus avisos «SALDO NEGATIVO» (EstructuraReporteServiceImpl).
+     * correctoras). Se arma el B17 preliminar del mes en el motor de balances (C19b) y se cuentan sus avisos
+     * «SALDO NEGATIVO» (TempReportesServiceImpl.agregaAvisosSaldoNegativo). Solo calcula: no escribe en CNT.DTMT.
      */
     private ControlCierre controlSaldosNegativosB17(Long idEmpresa, LocalDate corte) {
         ControlCierre c = new ControlCierre("B17_G", "B17_SALDOS_NEGATIVOS",
                 "B17: ninguna cuenta con saldo negativo (salvo provisiones y depreciaciones)");
         try {
-            com.saa.ejb.cnt.estructura.SolicitudEstructura s = new com.saa.ejb.cnt.estructura.SolicitudEstructura();
+            com.saa.model.cnt.ParametrosBalance s = new com.saa.model.cnt.ParametrosBalance();
             s.setEmpresa(idEmpresa);
             s.setCodigoEstructura("B17");
-            s.setFechaCorte(corte);
+            s.setFechaFin(corte);
             s.setPreliminar(Boolean.TRUE);
             List<String> negativos = new java.util.ArrayList<>();
-            for (String a : estructuraReporteService.generar(s).getAdvertencias()) {
-                if (a != null && a.startsWith("SALDO NEGATIVO")) negativos.add(a.replace("SALDO NEGATIVO (la Superintendencia lo rechaza): ", ""));
+            String aviso = TempReportesServiceImpl.AVISO_SALDO_NEGATIVO;
+            for (String a : tempReportesService.calculaRenglones(s).getAdvertencias()) {
+                if (a != null && a.startsWith("SALDO NEGATIVO")) negativos.add(a.replace(aviso, ""));
             }
             c.setValor((double) negativos.size());
             c.setEsperado(0.0);
@@ -528,12 +530,13 @@ public class ControlCierreServiceImpl implements ControlCierreService {
         // El plan de cuentas del SAA sigue el catálogo de la Superintendencia: la cuenta 21 del B17 es la 2.1,
         // la 13 es la raíz de la cartera y la 1399 son las cuentas de provisión de la plantilla 37 (verificado contra
         // el B17 de mayo 2025; hoy 1.3 y 1.3.99.xx, leídas del rubro 250 y de la plantilla, no escritas en el código).
-        // Hasta que el B17 se genere en el motor de balances (C19b), se compara con la contabilidad directa.
+        // El B17 ya se genera en el motor de balances (C19b) y de él sale el control de saldos negativos (C39); los
+        // controles de integridad del archivo y B17 ↔ G todavía no lo leen: se comparan con la contabilidad directa.
         ControlCierre oficial = new ControlCierre("B17_G", "B17_OFICIAL",
                 "B17 oficial: suma de control, padres = hijas, cuentas excluidas");
         oficial.setEstado(ControlCierre.ADVERTENCIA);
-        oficial.setDetalle("Pendiente C19b: la integridad del archivo B17 (líneas, suma de control, padres = suma de"
-                + " hijas, cuentas sin renglón) se valida cuando el B17 se genere en el motor de balances. Mientras"
+        oficial.setDetalle("Pendiente: la integridad del archivo B17 (líneas, suma de control, padres = suma de"
+                + " hijas, cuentas sin renglón) todavía no se valida sobre el B17 del motor de balances. Mientras"
                 + " tanto, los controles B17 ↔ G de abajo usan la contabilidad del SAA con las cuentas del catálogo"
                 + " (21 = " + textoParametro(CntParametroEstadoFinanciero.CUENTA_APORTES_PARTICIPES) + ", 13 = "
                 + textoParametro(CntParametroEstadoFinanciero.CUENTA_CARTERA_CREDITOS) + ", leídas del rubro "

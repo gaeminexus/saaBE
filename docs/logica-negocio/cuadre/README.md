@@ -42,6 +42,11 @@ Además, del §4 del pase:
 
 Los scripts están en `cuadreSuper`. Si los quieres en saaBE, se agregan a esta carpeta.
 
+> **Con C19b** (rama `cuadre/c19b-sobre-main`) `CNT.CRRP` se retira y las reglas pasan a `CNT.DTRP`. U6, 4.15
+> (`03-semilla-b17-4.8.99.01-07-al-489090.sql`, D-097 (7)) y 4.22 escriben en `CNT.CRRP`: donde exista, corren **antes**
+> de `rpr/sql/C19-05`, que las migra junto con las de C38-01; en un ambiente sin `CNT.CRRP` no corren y sus reglas las
+> carga `rpr/sql/C19-07`.
+
 ## 4. C27b: ancla y base de transición
 
 **`saa.cartera.anclaArranque = 2025-05-31`.** Es la corrida de arranque de cartera `CRD.CRCT` 26 (año 2025, mes 5,

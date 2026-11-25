@@ -6,7 +6,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Respuesta de POST /esrp/generar: lineas calculadas, controles y, si aplica, el archivo. */
+/** Calculo de un reporte de renglones propios (TempReportesService.calculaRenglones; JSON de /esrp/generar): lineas calculadas, controles y, si aplica, el archivo. */
 public class ResultadoEstructura implements Serializable {
 
 	private static final long serialVersionUID = 1L;

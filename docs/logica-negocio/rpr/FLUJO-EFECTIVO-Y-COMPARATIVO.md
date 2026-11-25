@@ -24,7 +24,7 @@ con `_PRELIMINAR` si corresponde). Errores: 400 `{mensaje}`.
   columna E del comparativo). Si la contabilidad de la empresa empieza después de la base (primer asiento; en ASOPREP el
   asiento de apertura del 31-may-2025), la base es esa fecha: el acumulado de 2025 es **1-jun a 31-dic** desde el balance de
   arranque, y lo dice una nota.
-- **Mes cerrado:** el B17 de los dos cortes se pide a `/esrp` (`EstructuraReporteService.generar` con `fechaComparacion` =
+- **Mes cerrado:** el B17 de los dos cortes se pide al motor de balances (C19b: `TempReportesService.calculaRenglones` con `fechaComparacion` =
   base), que exige el mes de corte cerrado salvo `preliminar: true` (`REPORTE_MES_NO_CERRADO`, igual que el B17). Con
   `preliminar` la respuesta trae `preliminar: true`, `leyenda: "PRELIMINAR"`, el Excel lo rotula y el archivo lleva `_PRELIMINAR`.
 - **Cierre del ejercicio** (asiento del 1-ene, D-068): si la base es de un año anterior al corte, la utilidad (FE10) es el
@@ -34,6 +34,13 @@ con `_PRELIMINAR` si corresponde). Errores: 400 `{mensaje}`.
 
 Tres reportes nuevos de la 1236 en `CNT.RPRT` (tipo 2, `RPRTFRAR = 2` «derivado del B17»; `/esrp` los rechaza):
 **FLE** (alterno 8), **FCD** (alterno 9) y **CMP** (alterno 10). No hay códigos de cuenta en Java.
+
+> **Desde C19b (D-031)** las reglas cuenta → renglón viven en el detalle del motor de balances, `CNT.DTRP`
+> (`NUMCTADS` = `CRRPCNTA`, `DTRPALCN`, `DTRPCDRN`, `DTRPMDSG`, `DTRPRPRT`, `DTRPFCDS`/`DTRPFCHS`, `DTRPOBSR`), y
+> `CNT.CRRP` se retira. La semilla C38-01 se conserva tal cual (escribe en `CNT.CRRP`, es la que lee el arnés): en una
+> base donde ya corrió, `C19-05` migra sus 110 reglas de FCD junto con las del B17; en un ambiente limpio (C19-01 de
+> C19b, sin `CNT.CRRP`) se corre C38-01 **sin su BLOQUE 5** (reglas en `CNT.CRRP`) ni su BLOQUE 7 (controles sobre `CNT.CRRP`) y después `C19-07` (las mismas reglas en `CNT.DTRP`).
+> Abajo se mantienen los nombres de columna `CRRP*` del diseño original.
 
 - **FLE** — `RNRPORDN` = fila del formato de enero 2026; `RNRPNVLL` 0 título/nota, 1 columna F, 2 columna D;
   `RNRPTPCL` 1 = fórmula sobre **códigos del B17** con efecto en caja (activo «−», pasivo y patrimonio «+»), con base
@@ -53,10 +60,10 @@ Tres reportes nuevos de la 1236 en `CNT.RPRT` (tipo 2, `RPRTFRAR = 2` «derivado
 `CalculadorFlujoDirecto` (port de la sección 5 de `flujo-efectivo.js`: contrapartidas de la caja, neteo por pareja de
 filas dentro del asiento, reparto por puentes en proporción a lo que liquidaron en asientos sin caja, resto mayor al
 centavo), `CalculadorComparativo`, `ExcelFormatosAsoprep` (POI), `FuenteDatosFlujo` (la interfaz de datos) y
-`ConsultasFlujo` (SQL). `FlujoEfectivoServiceImpl` implementa la fuente con `EstructuraReporteService` y consultas nativas
+`ConsultasFlujo` (SQL). `FlujoEfectivoServiceImpl` implementa la fuente con el motor de balances (`TempReportesService`, C19b) y consultas nativas
 de solo lectura, y pone razón social, RUC y firmas del rubro 250. `FlujoEfectivoRest` (`/flef`).
-Cambios en clases existentes: `EstructuraReporteService` expone `definicionEstructura`, `renglonesVigentes` y
-`reglasVigentes`; `/esrp/generar` rechaza `RPRTFRAR = 2`; `CalculadorEstructura.renglonDeCuenta` (renglón del B17 de una
+Cambios en clases existentes: el motor de balances (`TempReportesService`, desde C19b; antes `EstructuraReporteService`) expone `definicionRenglones`, `renglonesVigentes` y
+`reglasVigentes` (reglas en `CNT.DTRP`); `calculaRenglones` (y con él `/dtmt/generarBalance`, `/dtmt/generarArchivo` y el alias `/esrp`) rechaza `RPRTFRAR = 2`; `CalculadorEstructura.renglonDeCuenta` (renglón del B17 de una
 cuenta: regla más específica o mapeo automático).
 
 ## 5. Controles (en el JSON y en la hoja «Controles» de cada Excel)
@@ -76,6 +83,6 @@ filas del directo de cada mes (jun–dic 2025, ene 2026) y en el detalle por fil
 
 ## 7. Pendiente
 
-Correr la semilla C38-01 (PASE-A-PRODUCCION §4), desplegar y repetir la prueba por REST; historia laboral del BIESS
+Correr la semilla C38-01 (PASE-A-PRODUCCION §4; con C19b, ver la nota de §3: C19-05 o C19-07), desplegar y repetir la prueba por REST; historia laboral del BIESS
 (filas 37–39) y tipo de fondo (C3) no salen de la contabilidad; mora (fila 16) y novaciones (17) en 0 como el script;
 retirar el FLC provisional (C19-03) cuando el directo de `/flef` quede aceptado.

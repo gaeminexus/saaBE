@@ -12,7 +12,7 @@ import com.saa.ejb.cnt.estructura.ReglaCuentaRenglon;
 import com.saa.ejb.cnt.estructura.RenglonEstructura;
 import com.saa.ejb.cnt.estructura.ResultadoEstructura;
 import com.saa.ejb.cnt.estructura.SaldoCuenta;
-import com.saa.ejb.cnt.estructura.SolicitudEstructura;
+import com.saa.ejb.cnt.dao.TempReportesDaoService;
 import com.saa.ejb.cnt.flujo.CalculadorFlujoIndirecto;
 import com.saa.ejb.cnt.flujo.ConsultasFlujo;
 import com.saa.ejb.cnt.flujo.FuenteDatosFlujo;
@@ -22,8 +22,9 @@ import com.saa.ejb.cnt.flujo.ResultadoComparativo;
 import com.saa.ejb.cnt.flujo.ResultadoFlujoEfectivo;
 import com.saa.ejb.cnt.flujo.SolicitudFlujoEfectivo;
 import com.saa.ejb.cnt.service.EstadoPeriodoConsulta;
-import com.saa.ejb.cnt.service.EstructuraReporteService;
 import com.saa.ejb.cnt.service.FlujoEfectivoService;
+import com.saa.ejb.cnt.service.TempReportesService;
+import com.saa.model.cnt.ParametrosBalance;
 import com.saa.rubros.CntParametroEstadoFinanciero;
 import com.saa.rubros.EstadoAsiento;
 import com.saa.rubros.Rubros;
@@ -38,8 +39,9 @@ import jakarta.persistence.Query;
  * C38: estado de flujos de efectivo (indirecto), flujo de caja (directo, BIESS) y comparativo con los formatos de
  * ASOPREP. Solo lectura. El calculo esta en {@link GeneradorFlujoEfectivo} (clases puras de com.saa.ejb.cnt.flujo,
  * validadas fuera del servidor contra cuadreSuper 03-trabajo/flujo-efectivo/scripts/flujo-efectivo.js); este servicio
- * solo les da los datos: el B17 por /esrp (EstructuraReporteService, que valida el cierre del mes), las definiciones
- * FLE/FCD/CMP de CNT.RPRT/RNRP/CRRP (semilla C38-01), los saldos y las lineas de asiento.
+ * solo les da los datos, todos del motor de balances (C19b, D-031): el B17 (TempReportesService.calculaRenglones, que
+ * valida el cierre del mes), las definiciones FLE/FCD/CMP de CNT.RPRT/RNRP/DTRP (semilla C38-01, reglas migradas de
+ * CNT.CRRP por C19-05), los saldos y las lineas de asiento.
  */
 @Stateless
 public class FlujoEfectivoServiceImpl implements FlujoEfectivoService {
@@ -48,7 +50,10 @@ public class FlujoEfectivoServiceImpl implements FlujoEfectivoService {
 	private EntityManager em;
 
 	@EJB
-	private EstructuraReporteService estructuraReporteService;
+	private TempReportesService tempReportesService;
+
+	@EJB
+	private TempReportesDaoService tempReportesDaoService;
 
 	@EJB
 	private EstadoPeriodoConsulta estadoPeriodoConsulta;
@@ -84,33 +89,33 @@ public class FlujoEfectivoServiceImpl implements FlujoEfectivoService {
 		return new FuenteDatosFlujo() {
 			@Override
 			public DefinicionEstructura definicion(String codigoEstructura) throws Throwable {
-				return estructuraReporteService.definicionEstructura(empresa, codigoEstructura);
+				return tempReportesService.definicionRenglones(empresa, codigoEstructura);
 			}
 
 			@Override
-			public List<RenglonEstructura> renglones(DefinicionEstructura def, LocalDate corte) {
-				return estructuraReporteService.renglonesVigentes(def.getCodigoReporte(), corte);
+			public List<RenglonEstructura> renglones(DefinicionEstructura def, LocalDate corte) throws Throwable {
+				return tempReportesService.renglonesVigentes(def.getCodigoReporte(), corte);
 			}
 
 			@Override
-			public List<ReglaCuentaRenglon> reglas(DefinicionEstructura def, LocalDate corte) {
-				return estructuraReporteService.reglasVigentes(def.getCodigoReporte(), corte);
+			public List<ReglaCuentaRenglon> reglas(DefinicionEstructura def, LocalDate corte) throws Throwable {
+				return tempReportesService.reglasVigentes(def.getCodigoReporte(), corte);
 			}
 
 			@Override
 			public ResultadoEstructura b17(LocalDate corte, LocalDate fechaComparacion, boolean preliminar) throws Throwable {
-				SolicitudEstructura se = new SolicitudEstructura();
-				se.setEmpresa(empresa);
-				se.setCodigoEstructura(GeneradorFlujoEfectivo.ESTRUCTURA_B17);
-				se.setFechaCorte(corte);
-				se.setFechaComparacion(fechaComparacion);
-				se.setPreliminar(preliminar);
-				return estructuraReporteService.generar(se);
+				ParametrosBalance p = new ParametrosBalance();
+				p.setEmpresa(empresa);
+				p.setCodigoEstructura(GeneradorFlujoEfectivo.ESTRUCTURA_B17);
+				p.setFechaFin(corte);
+				p.setFechaComparacion(fechaComparacion);
+				p.setPreliminar(preliminar);
+				return tempReportesService.calculaRenglones(p);
 			}
 
 			@Override
 			public List<SaldoCuenta> saldosPorCuenta(LocalDate desde, LocalDate hasta) throws Throwable {
-				return estructuraReporteService.saldosPorCuenta(empresa, desde, hasta);
+				return tempReportesDaoService.selectSaldosPorCuenta(empresa, desde, hasta);
 			}
 
 			@Override

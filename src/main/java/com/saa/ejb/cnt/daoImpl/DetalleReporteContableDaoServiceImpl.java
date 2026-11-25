@@ -32,7 +32,14 @@ public class DetalleReporteContableDaoServiceImpl extends EntityDaoImpl<DetalleR
 							"cuentaHasta",
 							"numeroHasta",
 							"nombreHasta",
-							"signo"};
+							"signo",
+							"renglonDestino",
+							"alcance",
+							"modoSigno",
+							"seReporta",
+							"vigenciaDesde",
+							"vigenciaHasta",
+							"observacion"};
 	}
 
 	/* (non-Javadoc)
@@ -49,6 +56,14 @@ public class DetalleReporteContableDaoServiceImpl extends EntityDaoImpl<DetalleR
 		query.setParameter("empresa", empresa);
 		query.setParameter("codigoAlterno", codigoAlterno);		
 		query.setParameter("estado", Long.valueOf(Estado.ACTIVO));
+		return query.getResultList();
+	}
+
+	@SuppressWarnings("unchecked")
+	public List<DetalleReporteContable> selectByReporte(Long codigoReporte) throws Throwable {
+		Query query = em.createQuery("select b from DetalleReporteContable b where b.reporteContable.codigo = :reporte"
+				+ " order by b.codigo");
+		query.setParameter("reporte", codigoReporte);
 		return query.getResultList();
 	}
 }

@@ -282,4 +282,37 @@ public class TempReportesDaoServiceImpl extends EntityDaoImpl<TempReportes>  imp
 	}
 
 	
+
+	@SuppressWarnings("unchecked")
+	public java.util.List<com.saa.ejb.cnt.estructura.SaldoCuenta> selectSaldosPorCuenta(Long empresa,
+			java.time.LocalDate desde, java.time.LocalDate hasta) throws Throwable {
+		Query q = em.createNativeQuery(
+				"SELECT p.PLNNCNTA, n.NTRLTPOO, NVL(SUM(d.DTASDBEE), 0), NVL(SUM(d.DTASHBRR), 0)"
+						+ "  FROM CNT.DTAS d"
+						+ "  JOIN CNT.ASNT a ON a.ASNTCDGO = d.ASNTCDGO"
+						+ "  JOIN CNT.PLNN p ON p.PLNNCDGO = d.PLNNCDGO"
+						+ "  JOIN CNT.NTRL n ON n.NTRLCDGO = p.NTRLCDGO"
+						+ " WHERE a.PJRQCDGO = ?1 AND a.ASNTESTD IN (?2, ?3)"
+						+ "   AND a.ASNTFCHA >= ?4 AND a.ASNTFCHA < ?5"
+						+ " GROUP BY p.PLNNCNTA, n.NTRLTPOO ORDER BY p.PLNNCNTA");
+		q.setParameter(1, empresa);
+		q.setParameter(2, com.saa.rubros.EstadoAsiento.ACTIVO);
+		q.setParameter(3, com.saa.rubros.EstadoAsiento.REVERSADO);
+		q.setParameter(4, java.sql.Date.valueOf(desde == null ? java.time.LocalDate.of(1900, 1, 1) : desde));
+		q.setParameter(5, java.sql.Date.valueOf(hasta.plusDays(1)));
+		java.util.List<com.saa.ejb.cnt.estructura.SaldoCuenta> out = new java.util.ArrayList<>();
+		for (Object[] f : (List<Object[]>) q.getResultList()) {
+			out.add(new com.saa.ejb.cnt.estructura.SaldoCuenta(f[0] == null ? null : f[0].toString(),
+					((Number) f[1]).intValue(), decimal(f[2]), decimal(f[3])));
+		}
+		return out;
+	}
+
+	private static java.math.BigDecimal decimal(Object o) {
+		if (o == null) {
+			return java.math.BigDecimal.ZERO;
+		}
+		return o instanceof java.math.BigDecimal ? (java.math.BigDecimal) o : new java.math.BigDecimal(o.toString());
+	}
+
 }
