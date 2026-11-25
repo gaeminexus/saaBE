@@ -1,20 +1,26 @@
-# Despliegue del EAR «c27b-1125b»: todo `main` para el próximo cierre de producción (2026-11-24)
+# Despliegue del EAR «c27b-1125c»: todo `main` para el próximo cierre de producción (2026-11-24)
 
-> **Historial.** El primer EAR, `c27b-1125` (main `5fc3d9d2`), **NO se despliega**: usaba el alterno 38 para la
-> plantilla del ⑪, y el 38 es `PlantillasCxp.COMPRAS`. Este documento es el del EAR corregido, `c27b-1125b`, que usa
-> el alterno 39 (REGISTRO-RESERVAS §2c).
+> **Historial.**
+> - El primer EAR, `c27b-1125` (main `5fc3d9d2`), **NO se despliega**: usaba el alterno 38 para la plantilla del ⑪,
+>   y el 38 es `PlantillasCxp.COMPRAS`.
+> - `c27b-1125b` (main `e25adb79`) ya usa el alterno 39, pero lo reemplaza este. Le faltaba el lote 6: sin él, el
+>   control de cobro duplicado de c45 bloquea los cobros legítimos sin dar salida.
+> - **El que se despliega es `c27b-1125c`.**
 
 **omen-saa-1-arb.** Reemplaza a `c42-1124` y a `cancelados-1124`; ninguno de los dos llegó a desplegarse. Es el EAR con
 el que producción hace el próximo cierre mensual con C27b activo, según la decisión D3 del líder.
 
 ## 1. El EAR
-- `F:\ears\asoprep\c27b-1125b\SaaEAR.ear`, SHA-256 `FFAA9304B57E04E14A6481702162B3CA76A86FCD574E3F2B9CA44F147D747A6A`
-  (62.471.048 bytes).
+- `F:\ears\asoprep\c27b-1125c\SaaEAR.ear`, SHA-256 `C63750EB35834FA1C4568837312706CB64B0FE5D3B6D62A793AC32F6753123B2`
+  (62.472.610 bytes).
   - 3 partes en `partes\`. Se unen con `copy /b SaaEAR.ear.part00+SaaEAR.ear.part01+SaaEAR.ear.part02 SaaEAR.ear`.
   - `testzip` sin errores.
-- `saaBE.war` `FB25BA2D6ED465C5046F766B7C91C83D44A049B81A91E557F90FFB16E935F56E`.
-  - Es saaBE `main` `e25adb79`, empaquetado con `mvn -o package` sobre un `git archive` limpio.
-  - **Lleva el lote 5** (baja del bien por lo entregado, `POST /prdo/desmayorizar`). No lleva el USAP de app1.
+- `saaBE.war` `AB815D6E4C73A821AF3CBB649FE9421C49D96813F553D8123336E70C63244A91`.
+  - Es saaBE `main` `5a40b3ac`, empaquetado con `mvn -o package` sobre un `git archive` limpio.
+  - **Lleva el lote 5** (baja del bien por lo entregado, `POST /prdo/desmayorizar`).
+  - **Lleva el lote 6:** omisión explícita del control de cobro duplicado, con `omitirControlDuplicado` y
+    `motivoOmision` en `POST /cbcr/{id}/procesar`.
+  - No lleva el USAP de app1.
 - `SaaFE.war` `69B9403C…84276410`: saaFE `63a225d`. Desde ahí el FE solo cambió documentos.
 - **Base y vuelta atrás:** `precancelar-vencido-1118`.
 
