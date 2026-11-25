@@ -137,3 +137,11 @@ echo var u=new java.net.URL("https://celcer.sri.gob.ec/comprobantes-electronicos
 :: 5) Si algo falla y hay que emitir YA: añadir -Dsaa.sri.tlsPermisivo=true a JAVA_OPTS y reiniciar (válvula), y avisar para retirarla.
 ```
 **Prueba en copia:** emisión contra celcer con TLS normal (debe autorizar); con la raíz fuera del almacén de prueba debe fallar con error de certificado; con la válvula encendida debe emitir y dejar el aviso en el log.
+
+---
+
+## CORRECCIÓN #7 (2026-11-25): el enlace TSRI–LSRI en CBR es por CÓDIGO DE TABLA, no por id
+Control 13 del usuario: `CBR.TSRI.LSRI` guarda el **código de tabla** del SRI (la 608 de renta tiene 130 filas con `LSRI = 608`; la 20, retención de IVA, tiene 15; `LSRI = 17` son las tarifas de IVA). El mapeo de `cxc/Tsri` (`referencedColumnName = "TABLA"`) es correcto para CBR; el caso de `PGS.TSRI`/`TsriCompra` (cxp, que guarda el id) es otra tabla y no se generaliza. Las secciones anteriores de este documento que dicen «608 = 9 tarifas / la 20 en cero» salieron de un enlace por id equivocado y no valen.
+- `TarifaRetencionServiceImpl` valida con SQL nativo `WHERE TO_CHAR(t.LSRI) = '608'` (sin JOIN), con comentario que lo explica.
+- `omen1-01` 7a/7b/7c corregidos al mismo enlace (`TO_CHAR(t.LSRI) = l.TABLA`); hay que **repetirlos** (el 7b en particular: dos tarifas activas con el mismo código en la 608).
+- IVA (tabla 20): ahora sí hay 15 tarifas. Para validarlo en el #7 falta el control 14 (activas por código en 608 y 20, y que los `codRetencion` que llegan en las líneas de IVA —códigos de retención de IVA del anexo— existan en la 20 con el mismo porcentaje). Hasta entonces el IVA sigue como hoy.

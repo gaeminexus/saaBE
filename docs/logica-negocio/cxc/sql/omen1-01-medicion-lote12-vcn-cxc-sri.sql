@@ -65,20 +65,22 @@ UNION ALL SELECT 'RTV2', ID, CLAVE, FECHA, FECHAAUTORIZACION FROM CBR.RTV2 WHERE
 ORDER BY 4 DESC, 1;
 
 -- ============================ #7 RETENCIÓN CON TARIFA DEL SERVIDOR ===================
+-- CORRECCION 2026-11-25: la version anterior de 7a/7b/7c enlazaba TSRI con LSRI por ID (t.LSRI = l.ID) y estaba MAL: CBR.TSRI.LSRI guarda el CODIGO de TABLA, no el id de LSRI
+-- (medido con el control 13: LSRI=17 son las tarifas de IVA, la 608 tiene 130 filas y la 20 tiene 15). Los resultados de 6/2026-11-25 de 7a/7b/7c no valen; repetir.
 -- 7a. Qué tablas hay en LSRI y cuántas tarifas activas tiene cada una. Se buscan las de retención en la fuente de renta (608) y de IVA (20).
 SELECT l.ID AS lsri, l.TABLA, SUBSTR(l.DETALLE, 1, 60) AS detalle, l.ESTADO AS estado_lsri, COUNT(t.ID) AS tarifas, SUM(CASE WHEN t.ESTADO = 1 THEN 1 ELSE 0 END) AS tarifas_activas
-  FROM CBR.LSRI l LEFT JOIN CBR.TSRI t ON t.LSRI = l.ID WHERE l.TABLA IN ('608', '20') GROUP BY l.ID, l.TABLA, SUBSTR(l.DETALLE, 1, 60), l.ESTADO ORDER BY l.TABLA;
+  FROM CBR.LSRI l LEFT JOIN CBR.TSRI t ON TO_CHAR(t.LSRI) = l.TABLA WHERE l.TABLA IN ('608', '20') GROUP BY l.ID, l.TABLA, SUBSTR(l.DETALLE, 1, 60), l.ESTADO ORDER BY l.TABLA;
 -- 7b. Códigos con MÁS DE UNA tarifa activa en las tablas 608 y 20: el servidor no podría elegir sin una vigencia. TSRI no tiene columnas de vigencia (solo ESTADO).
 SELECT l.TABLA, t.CODIGO, COUNT(*) AS filas_activas, MIN(t.PORCENTAJE) AS porcentaje_min, MAX(t.PORCENTAJE) AS porcentaje_max
-  FROM CBR.TSRI t JOIN CBR.LSRI l ON l.ID = t.LSRI WHERE l.TABLA IN ('608', '20') AND t.ESTADO = 1 GROUP BY l.TABLA, t.CODIGO HAVING COUNT(*) > 1 ORDER BY 1, 2;
+  FROM CBR.TSRI t JOIN CBR.LSRI l ON TO_CHAR(t.LSRI) = l.TABLA WHERE l.TABLA IN ('608', '20') AND t.ESTADO = 1 GROUP BY l.TABLA, t.CODIGO HAVING COUNT(*) > 1 ORDER BY 1, 2;
 -- 7c. Retenciones V2 ya emitidas cuyo valor NO es base × porcentaje (diferencia > 1 centavo) o cuyo porcentaje difiere de la tarifa activa de ese código: lo que el navegador mandó
 -- y el servidor no comprobó. Solo informativo: no se corrige lo ya emitido.
 SELECT d.ID, d.CODIMPUESTO, d.CODRETENCION, d.BASEIMPONIBLE, d.PORCENTAJERETEN, d.VALORRETEN,
        ROUND(d.BASEIMPONIBLE * d.PORCENTAJERETEN / 100, 2) AS valor_recalculado, ROUND(d.VALORRETEN - d.BASEIMPONIBLE * d.PORCENTAJERETEN / 100, 2) AS diferencia,
-       (SELECT MIN(t.PORCENTAJE) FROM CBR.TSRI t JOIN CBR.LSRI l ON l.ID = t.LSRI WHERE l.TABLA IN ('608', '20') AND t.ESTADO = 1 AND t.CODIGO = d.CODRETENCION) AS porcentaje_tarifa_activa
+       (SELECT MIN(t.PORCENTAJE) FROM CBR.TSRI t JOIN CBR.LSRI l ON TO_CHAR(t.LSRI) = l.TABLA WHERE l.TABLA IN ('608', '20') AND t.ESTADO = 1 AND t.CODIGO = d.CODRETENCION) AS porcentaje_tarifa_activa
   FROM CBR.DRV2 d
  WHERE ABS(d.VALORRETEN - ROUND(d.BASEIMPONIBLE * d.PORCENTAJERETEN / 100, 2)) > 0.01
-    OR d.PORCENTAJERETEN <> NVL((SELECT MIN(t.PORCENTAJE) FROM CBR.TSRI t JOIN CBR.LSRI l ON l.ID = t.LSRI WHERE l.TABLA IN ('608', '20') AND t.ESTADO = 1 AND t.CODIGO = d.CODRETENCION), d.PORCENTAJERETEN)
+    OR d.PORCENTAJERETEN <> NVL((SELECT MIN(t.PORCENTAJE) FROM CBR.TSRI t JOIN CBR.LSRI l ON TO_CHAR(t.LSRI) = l.TABLA WHERE l.TABLA IN ('608', '20') AND t.ESTADO = 1 AND t.CODIGO = d.CODRETENCION), d.PORCENTAJERETEN)
  ORDER BY ABS(d.VALORRETEN - d.BASEIMPONIBLE * d.PORCENTAJERETEN / 100) DESC;
 
 -- ============================ #18 RAZÓN SOCIAL =======================================

@@ -49,11 +49,11 @@ public class TarifaRetencionServiceImpl implements TarifaRetencionService {
                 valores.add(l.valor);
                 continue;
             }
-            // SQL nativo con el join real TSRI.LSRI = LSRI.ID: la entidad Tsri mapea LSRI contra LSRI.TABLA pero los datos guardan el id (ver SustentoTributarioServiceImpl), y navegar t.lsri.tabla en JPQL no encontraria filas.
+            // SQL nativo explicito: en CBR.TSRI la columna LSRI guarda el CODIGO de TABLA del SRI (608 = renta), no el id de CBR.LSRI (medido con el control 13; el mapeo de la entidad cxc/Tsri es correcto). OJO: PGS.TSRI (cxp) es otra tabla y guarda el id.
             @SuppressWarnings("unchecked")
             List<Number> filasTarifa = em.createNativeQuery(
-                    "SELECT t.PORCENTAJE FROM CBR.TSRI t JOIN CBR.LSRI l ON TO_CHAR(l.ID) = TO_CHAR(t.LSRI) "
-                    + "WHERE l.TABLA = :tabla AND t.ESTADO = 1 AND TRIM(t.CODIGO) = :codigo")
+                    "SELECT t.PORCENTAJE FROM CBR.TSRI t "
+                    + "WHERE TO_CHAR(t.LSRI) = :tabla AND t.ESTADO = 1 AND TRIM(t.CODIGO) = :codigo")
                 .setParameter("tabla", TABLA_RENTA).setParameter("codigo", cod).getResultList();
             List<Double> tarifas = new ArrayList<Double>();
             for (Number n : filasTarifa) {
