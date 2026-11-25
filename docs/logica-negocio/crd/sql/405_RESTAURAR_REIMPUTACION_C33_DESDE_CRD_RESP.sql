@@ -18,11 +18,13 @@
 -- Lo que hizo crédito hoy (2 solicitudes nuevas, datos actualizados) no se toca: el alcance son solo los 97 préstamos
 -- y solo las tablas de arriba. CRD.PRST no se toca (la corrida no lo escribe); el bloque 0 solo informa diferencias.
 --
--- Ejecutar con: Get-Content 405_...sql -Raw | docker exec -i saa-oracle-23ai sqlplus -s SCP/SCP@FREEPDB1
+-- Ejecutar en sesion INTERACTIVA (no por tuberia: sqlplus hace COMMIT al salir): docker cp al contenedor, luego
+--   docker exec -it saa-oracle-23ai sqlplus SCP/SCP@FREEPDB1   y dentro   @/opt/oracle/scripts/405.sql
 -- NO tiene COMMIT. Al final, si los controles dan lo esperado: COMMIT; si no: ROLLBACK.
 -- Los respaldos CRD.C33R_BK_* se crean ANTES de cualquier cambio (son DDL: confirman solo su propia creación).
 -- =====================================================================================================================
 SET LINESIZE 250 PAGESIZE 200 FEEDBACK ON TRIMSPOOL ON
+SET EXITCOMMIT OFF
 WHENEVER SQLERROR EXIT FAILURE ROLLBACK
 
 -- ---------------------------------------------------------------------------------------------------------------------
