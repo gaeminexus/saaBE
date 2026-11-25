@@ -963,6 +963,9 @@ mayo todavía no está vencida.
 Decisión del líder (2026-10-28): el paso 0 al **31-may** fija el ancla, y **justo antes del
 reproceso** la mora se calcula a la fecha del cobro, **30-jun-2025** (paso 1b). Las cuotas que el
 reproceso reabre (pagos anulados, D-019) calculan su mora al 30-jun dentro del propio reproceso.
+Desde el lote 4 (2.5 del cuadre) el estado de la cuota reconstruida (`recalcularCuotaDesdePagos(cuota, fechaContable)`:
+EN_MORA o PENDIENTE cuando queda sin pagos) también se juzga contra la fecha contable de la carga y no contra hoy: una
+cuota que a esa fecha todavía no vencía no queda EN_MORA.
 
 ```http
 POST /SaaBE/rest/prst/calcularMora?fecha=2025-05-31&usuario=USUARIO%201

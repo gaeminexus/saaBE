@@ -151,7 +151,7 @@ public class ReaperturaVigenteAlCorteServiceImpl implements ReaperturaVigenteAlC
             if (pagosVigentes != null && !pagosVigentes.isEmpty()) {
                 continue;
             }
-            motorPagoPrestamoService.recalcularCuotaDesdePagos(cuota);
+            motorPagoPrestamoService.recalcularCuotaDesdePagos(cuota, fechaCorte);
             procesoMoraPrestamoService.recalcularMoraCuotaALaFecha(cuota, fechaCorte);
             if (cuota.getEstado() == null || cuota.getEstado().longValue() != estado.longValue()) {
                 reabiertas++;
@@ -211,7 +211,7 @@ public class ReaperturaVigenteAlCorteServiceImpl implements ReaperturaVigenteAlC
                 if (!saldada || (cuota.getFechaPagado() != null && !cuota.getFechaPagado().isAfter(corte))) {
                     continue;
                 }
-                motorPagoPrestamoService.recalcularCuotaDesdePagos(cuota);
+                motorPagoPrestamoService.recalcularCuotaDesdePagos(cuota, fechaCorte);
                 procesoMoraPrestamoService.recalcularMoraCuotaALaFecha(cuota, fechaCorte);
                 if (cuota.getEstado() == null || cuota.getEstado().longValue() != estado.longValue()) {
                     cuotasReabiertas++;

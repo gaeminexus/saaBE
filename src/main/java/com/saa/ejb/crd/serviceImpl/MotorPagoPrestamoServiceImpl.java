@@ -942,8 +942,13 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
 
     @Override
     public void recalcularCuotaDesdePagos(DetallePrestamo cuota) throws Throwable {
+        recalcularCuotaDesdePagos(cuota, null);
+    }
+
+    @Override
+    public void recalcularCuotaDesdePagos(DetallePrestamo cuota, java.time.LocalDate fecha) throws Throwable {
         System.out.println("MotorPagoPrestamoService.recalcularCuotaDesdePagos - Cuota: "
-            + (cuota != null ? cuota.getCodigo() : null));
+            + (cuota != null ? cuota.getCodigo() : null) + " - fecha: " + fecha);
 
         if (cuota == null) {
             return;
@@ -1024,7 +1029,7 @@ public class MotorPagoPrestamoServiceImpl implements MotorPagoPrestamoService {
             System.out.println("  → Cuota #" + cuota.getNumeroCuota() + " queda PARCIAL");
         } else {
             boolean vencida = cuota.getFechaVencimiento() != null
-                && cuota.getFechaVencimiento().toLocalDate().isBefore(java.time.LocalDate.now());
+                && cuota.getFechaVencimiento().toLocalDate().isBefore(fecha != null ? fecha : java.time.LocalDate.now());
             long estadoBase = vencida ? EstadoCuotaPrestamo.EN_MORA : EstadoCuotaPrestamo.PENDIENTE;
             aplicarEstadoCuota(cuota, estadoBase);
             cuota.setFechaPagado(null);

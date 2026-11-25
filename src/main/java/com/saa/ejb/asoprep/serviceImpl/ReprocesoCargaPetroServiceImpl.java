@@ -554,7 +554,7 @@ public class ReprocesoCargaPetroServiceImpl implements ReprocesoCargaPetroServic
         // cobro (último día del mes de la carga), en esta misma transacción: el proceso de mora
         // corrido antes del reproceso no la vio porque entonces figuraba pagada.
         for (DetallePrestamo cuota : cuotas.values()) {
-            motorPagoPrestamoService.recalcularCuotaDesdePagos(cuota);
+            motorPagoPrestamoService.recalcularCuotaDesdePagos(cuota, fechaContable);
             procesoMoraPrestamoService.recalcularMoraCuotaALaFecha(cuota, fechaContable);
         }
         resultado.setCuotasRecalculadas(cuotas.size());

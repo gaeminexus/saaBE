@@ -283,6 +283,12 @@ public class SustitucionPrestamoServiceImpl implements SustitucionPrestamoServic
     @Override
     public void cancelarOriginal(Prestamo nuevo, ContextoSustitucion contexto, Long idAsiento, String usuario)
             throws Throwable {
+        cancelarOriginal(nuevo, contexto, idAsiento, usuario, null);
+    }
+
+    @Override
+    public void cancelarOriginal(Prestamo nuevo, ContextoSustitucion contexto, Long idAsiento, String usuario,
+            LocalDate fecha) throws Throwable {
         Prestamo original = contexto.getOriginal();
         String tipo = contexto.isNovacion() ? TIPO_NOVACION : TIPO_REESTRUCTURACION;
         System.out.println("SustitucionPrestamoService.cancelarOriginal - original: " + original.getCodigo()
@@ -305,7 +311,8 @@ public class SustitucionPrestamoServiceImpl implements SustitucionPrestamoServic
         evento.setPrestamo(original);
         evento.setTipoOperacion(tipo);
         evento.setValor(redondear(contexto.getValorSustitucion()));
-        evento.setFecha(LocalDateTime.now());
+        // 3.8: la fecha del evento es la de la operación (desembolso o fecha contable), no la de hoy.
+        evento.setFecha(fecha != null ? fecha.atStartOfDay() : LocalDateTime.now());
         evento.setObservacion("Sustituido por el préstamo nuevo " + nuevo.getCodigo()
             + (nuevo.getIdAsoprep() != null ? " (N° " + nuevo.getIdAsoprep() + ")" : ""));
         evento.setUsuario(usuario);

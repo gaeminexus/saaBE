@@ -115,15 +115,16 @@ public class ParametroContableServiceImpl implements ParametroContableService {
 
 	@Override
 	@SuppressWarnings("unchecked")
-	public Map<String, String> cuentaBandaMayorPorMadre(Long idEmpresa, String prefijoRaiz) {
+	public Map<String, String> cuentaBandaMayorPorMadre(Long idEmpresa, String prefijoRaiz, java.time.LocalDate corte) {
 		Query q = em.createNativeQuery(
 				" SELECT c.CBPRCDGO, b.BNDPNMRO, n.PLNNCNTA "
 				+ " FROM CRD.BNDP b "
 				+ " JOIN CRD.CBPR c ON c.CBPRCDGO = b.CBPRCDGO "
 				+ " JOIN CNT.PLNN n ON n.PLNNCDGO = b.PLNNCDGO "
 				+ " WHERE b.BNDPESTD = 1 AND c.CBPRESTD = 1 "
-				+ " AND (c.CBPRFCFN IS NULL OR c.CBPRFCFN >= TRUNC(SYSDATE)) "
+				+ " AND c.CBPRFCIN <= :corte AND (c.CBPRFCFN IS NULL OR c.CBPRFCFN >= :corte) "
 				+ " AND n.PJRQCDGO = :empresa AND n.PLNNCNTA LIKE :raiz");
+		q.setParameter("corte", java.sql.Date.valueOf(corte));
 		q.setParameter("empresa", idEmpresa);
 		q.setParameter("raiz", prefijoRaiz + "%");
 		// por configuración: la banda de mayor número (y su cuenta)

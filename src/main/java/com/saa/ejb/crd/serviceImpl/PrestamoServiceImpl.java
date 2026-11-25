@@ -598,9 +598,10 @@ public class PrestamoServiceImpl implements PrestamoService {
         if (reestructuracion) {
             idAsientoEntrega = contabilidadPrestamoService.contabilizarSustitucion(prestamo, cuotas,
                 sustitucion.getOriginal(), sustitucion.getDesglose(), sustitucion.isNovacion(),
-                sustitucion.getNeto(), sustitucion.isConLineas(), idEmpresa, usuario);
+                sustitucion.getNeto(), sustitucion.isConLineas(), idEmpresa, usuario, fechaOrdenPago);
             // RN11/RN12: cancela el original DESPUÉS del asiento (que necesita sus saldos vivos).
-            sustitucionPrestamoService.cancelarOriginal(prestamo, sustitucion, idAsientoEntrega, usuario);
+            // 3.7a / 3.8: el asiento y el evento llevan la fecha contable de la aprobación, no la de hoy.
+            sustitucionPrestamoService.cancelarOriginal(prestamo, sustitucion, idAsientoEntrega, usuario, fechaOrdenPago);
         } else if (sustitucion != null) {
             // Novación: el VS se FIJA al aprobar (es el que se descontó del neto de la orden de pago); el desembolso lo
             // compara con el VS real a esa fecha.
@@ -706,7 +707,7 @@ public class PrestamoServiceImpl implements PrestamoService {
                 idAsiento = contabilidadPrestamoService.contabilizarSustitucion(prestamo, cuotas,
                     sustitucion.getOriginal(), sustitucion.getDesglose(), sustitucion.isNovacion(),
                     sustitucion.getNeto(), sustitucion.isConLineas(), idEmpresa, usuario, fecha);
-                sustitucionPrestamoService.cancelarOriginal(prestamo, sustitucion, idAsiento, usuario);
+                sustitucionPrestamoService.cancelarOriginal(prestamo, sustitucion, idAsiento, usuario, fecha);
                 if (Math.abs(vsReal - vsFijado) > 0.005) {
                     double dif = redondear(vsReal - vsFijado);
                     advertencia.append("Novación del préstamo ").append(prestamo.getCodigo())

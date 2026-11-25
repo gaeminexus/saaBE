@@ -1715,7 +1715,7 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
                 : parametroContableService.gruposBandaCartera(solicitud.getIdEmpresa(), prefijoRaiz);
         // P3-ARRANQUE: en el arranque la cuenta que absorbe es la banda de mayor numero de cada madre (BNDP/CBPR).
         final Map<String, String> absorbePorMadre = porMadre
-                ? parametroContableService.cuentaBandaMayorPorMadre(solicitud.getIdEmpresa(), prefijoRaiz) : null;
+                ? parametroContableService.cuentaBandaMayorPorMadre(solicitud.getIdEmpresa(), prefijoRaiz, corte) : null;
         for (Object[] fila : cierreCarteraDaoService.selectSaldoContablePorCuentaExcluyendo(solicitud.getIdEmpresa(),
                 prefijoRaiz, cuentasProvision, corte)) {
             String cuenta = (String) fila[0];

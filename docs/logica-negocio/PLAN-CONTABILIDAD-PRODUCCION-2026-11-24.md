@@ -83,6 +83,17 @@ dueño, con la autorización del usuario.
      - `generarAsientoCondonacion` (l. 728-940) no guarda el asiento en el evento.
      - `reversarProceso` del CBCR anula solo sus tres asientos.
      - Se propone como lote aparte, junto con 3.3.
+9. **Lote 4 commiteado (2.5, 3.7a, 3.8, 6.6 parcial).**
+   - **2.5:** EN_MORA se decide con la fecha del proceso en la reapertura, la prelación, la precancelación con préstamo
+     y el reproceso Petro. El reverso sigue con hoy.
+     - Queda fuera la rama PARCIAL de `recalcularCuotaDesdePagos`: allí la fecha no aplica.
+   - **3.7a:** el asiento de la reestructuración va con `fechaOrdenPago`.
+   - **3.8:** el evento de la novación o reestructuración va con la fecha de la operación (a las 00:00). El LIFO ordena
+     por código, no por fecha.
+   - **6.6:** `cuentaBandaMayorPorMadre` toma la configuración vigente al corte.
+     - `gruposBandaCartera` no cambia hasta que el SQL 386 diga si difiere.
+   - **6.3:** queda en dos pasos (control visible y luego bloqueante). Los PDTR del rubro 250 los reserva el árbitro.
+   - **3.7b y 3.7c:** esperan las líneas 7.x y el merge de c45.
 8. **Lote 1c (abierto por el usuario el 24-11): el asiento de la condonación queda vivo al reversar el cobro.**
    - **Objetivo:** reversar un cobro ACUERDO_CONDONACION anula también el asiento de `generarAsientoCondonacion`, con la
      misma fecha de reverso que usan los otros asientos del cobro.

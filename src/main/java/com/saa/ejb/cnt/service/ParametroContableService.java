@@ -46,8 +46,13 @@ public interface ParametroContableService {
 	 * ({@code CRD.BNDP/CBPR}) de la empresa. Solo incluye las madres en que TODAS las configuraciones coinciden en
 	 * una única cuenta; una madre sin bandas o con varias cuentas en la banda máxima no aparece (el llamador avisa,
 	 * no adivina). Es la cuenta que absorbe la diferencia neta del ⑨ en el modo arranque.
+	 *
+	 * <p>6.6 del cuadre: solo las configuraciones VIGENTES AL CORTE ({@code CBPRFCIN <= corte} y {@code CBPRFCFN} nula o
+	 * {@code >= corte}), no las de hoy.</p>
+	 *
+	 * @param corte fecha de corte del cierre
 	 */
-	Map<String, String> cuentaBandaMayorPorMadre(Long idEmpresa, String prefijoRaiz);
+	Map<String, String> cuentaBandaMayorPorMadre(Long idEmpresa, String prefijoRaiz, java.time.LocalDate corte);
 
 	/** La cuenta como prefijo de sus subcuentas: la misma con un punto al final si no lo trae ({@code 1.3} → {@code 1.3.}). */
 	static String comoPrefijo(String cuenta) {

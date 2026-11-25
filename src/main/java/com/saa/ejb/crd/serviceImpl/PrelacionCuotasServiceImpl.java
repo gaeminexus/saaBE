@@ -229,7 +229,7 @@ public class PrelacionCuotasServiceImpl implements PrelacionCuotasService {
         List<DetallePrestamo> aRecalcular = new ArrayList<>(tocadas.values());
         aRecalcular.sort(Comparator.comparing(DetallePrestamo::getNumeroCuota, Comparator.nullsLast(Comparator.naturalOrder())));
         for (DetallePrestamo c : aRecalcular) {
-            motorPagoPrestamoService.recalcularCuotaDesdePagos(c);
+            motorPagoPrestamoService.recalcularCuotaDesdePagos(c, dia);
             // Como la reapertura D-019: la cuota que quedó abierta lleva la mora a la fecha del corte (y EN_MORA solo
             // si a esa fecha ya vencía; recalcularCuotaDesdePagos la juzga con la fecha de hoy).
             if (c.getEstado() == null || (c.getEstado() != com.saa.rubros.EstadoCuotaPrestamo.PAGADA

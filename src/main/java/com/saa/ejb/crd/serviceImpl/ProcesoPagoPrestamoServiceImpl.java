@@ -1929,7 +1929,7 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
         //    pagos (regla D-019 ampliada); mora a la fecha; se paga COMPLETA con el motor.
         DetallePrestamo cuotaMes = detallePrestamoDaoService.find(new DetallePrestamo(), componentes.getIdCuotaDelMes());
         if (esCuotaSaldada(cuotaMes)) {
-            motorPagoPrestamoService.recalcularCuotaDesdePagos(cuotaMes);
+            motorPagoPrestamoService.recalcularCuotaDesdePagos(cuotaMes, fecha);
         }
         procesoMoraPrestamoService.recalcularMoraCuotaALaFecha(cuotaMes, fecha);
         double exceso = componentes.getExcesoTotalCuotaDelMes() != null ? componentes.getExcesoTotalCuotaDelMes() : 0.0;

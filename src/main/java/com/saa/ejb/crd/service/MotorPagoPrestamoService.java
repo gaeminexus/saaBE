@@ -190,6 +190,17 @@ public interface MotorPagoPrestamoService {
      */
     void recalcularCuotaDesdePagos(DetallePrestamo cuota) throws Throwable;
 
+    /**
+     * Igual que {@link #recalcularCuotaDesdePagos(DetallePrestamo)} pero juzga si la cuota sin pagos está VENCIDA
+     * (EN_MORA) contra {@code fecha} y no contra hoy (2.5 del cuadre): un re-proceso a fecha pasada no deja EN_MORA una
+     * cuota que a esa fecha todavía no vencía. La versión sin fecha es esta con {@code LocalDate.now()} (el reverso de
+     * una operación, que se deshace ahora).
+     *
+     * @param cuota Cuota a reconstruir
+     * @param fecha Fecha de negocio contra la que se evalúa el vencimiento; null = hoy
+     */
+    void recalcularCuotaDesdePagos(DetallePrestamo cuota, java.time.LocalDate fecha) throws Throwable;
+
     // ========================================================================
     // C35 — DTPRSLOT = lo que respaldan los pagos (ver SaldoOtrosRespaldo)
     // ========================================================================

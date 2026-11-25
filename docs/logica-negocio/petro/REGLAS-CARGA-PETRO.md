@@ -713,6 +713,8 @@ en ESTA clase:
   reabren (DS-15)**. `selectByEntidadYProductoVigentesAlCorte` ya no los lista y `esPrestamoTerminal` vive solo en
   `ReaperturaVigenteAlCorteService` (3, 4 y 9). La fila de un préstamo novado/reestructurado queda como «Filas sin pago» del
   resumen, sin asiento ni aplicación, hasta que el cuadre decida el destino del dinero.
+- Las cuotas que el reproceso reconstruye desde sus pagos (`ReprocesoCargaPetroServiceImpl`, `recalcularCuotaDesdePagos(cuota,
+  fechaContable)`) juzgan EN_MORA o PENDIENTE contra la fecha contable de la carga, no contra hoy (2.5 del cuadre).
 - Fuera del modo reproceso el comportamiento es idéntico al descrito en §1–§6.
 
 ## 4. Vía alterna: `ProcesoCargaPetroServiceImpl` (crd) — parcialmente implementada
