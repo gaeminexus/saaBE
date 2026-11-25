@@ -83,6 +83,21 @@ dueño, con la autorización del usuario.
      - `generarAsientoCondonacion` (l. 728-940) no guarda el asiento en el evento.
      - `reversarProceso` del CBCR anula solo sus tres asientos.
      - Se propone como lote aparte, junto con 3.3.
+8. **Lote 1c (abierto por el usuario el 24-11): el asiento de la condonación queda vivo al reversar el cobro.**
+   - **Objetivo:** reversar un cobro ACUERDO_CONDONACION anula también el asiento de `generarAsientoCondonacion`, con la
+     misma fecha de reverso que usan los otros asientos del cobro.
+   - **Camino preferido:** grabar el asiento en el evento del acuerdo (`EVPR.numeroAsiento`), para que
+     `contabilizarReverso` lo anule por la vía de siempre, sin tocar los archivos de c45.
+     - Antes hay que medir que el reverso del CBCR llegue de verdad a `contabilizarReverso` con ese evento.
+     - Y que ningún otro flujo lea `numeroAsiento` de ese evento y cambie de comportamiento (por ejemplo, el rechazo
+       U2 en `PrestamoRest.anularOperacion`).
+   - **Si la vía obliga a tocar un archivo de c45,** el lote se hace después del merge de c45.
+   - **Entregables:**
+     - el cambio;
+     - un SQL de medición de solo lectura con los acuerdos ya reversados cuyo asiento de condonación sigue activo, que
+       es lo que hay que regularizar en producción;
+     - el procedimiento de regularización, que va sin UPDATE y se aprueba antes.
+   - Las líneas de reverso de devengo C27b de la condonación (lote 1b) van después, dentro de ese mismo asiento.
 7. **Lote 3 commiteado (3.6 y 4.1).**
    - **3.6:** la reapertura excluye los estados 5 y 13 (en el servicio y en el predicado del DAO). Petro usa la misma
      regla. El dinero sigue la ruta de rechazo de cada proceso hasta que el cuadre decida su destino.
