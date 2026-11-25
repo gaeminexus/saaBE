@@ -178,7 +178,13 @@ public class AjusteTopeProvisionServiceImpl implements AjusteTopeProvisionServic
                 cuota.getFechaVencimiento() != null ? cuota.getFechaVencimiento().toLocalDate() : null,
                 calculadaPendiente));
         }
-        Map<Long, Double> topeRepartido = TopeProvisionMora.repartir(topePorPrestamo, candidatas);
+        Map<Long, Double> sinRepartir = new HashMap<>();
+        Map<Long, Double> topeRepartido = TopeProvisionMora.repartir(topePorPrestamo, candidatas,
+            movimientoInteresCuotaDaoService.selectCuotaRespaldoMoraPorPrestamo(corte), sinRepartir);
+        for (Map.Entry<Long, Double> e : sinRepartir.entrySet()) {
+            resultado.getAdvertencias().add("El préstamo " + e.getKey() + " tiene $" + e.getValue()
+                + " de mora contabilizada sin cuota donde repartirla (no tiene cuotas candidatas ni provisión de mora).");
+        }
 
         Map<Long, Prestamo> prestamos = new HashMap<>();
         List<ResultadoAjusteTopeMora.Cuota> ajustes = new ArrayList<>();

@@ -1331,7 +1331,14 @@ public class ProvisionInteresServiceImpl implements ProvisionInteresService {
                     cuota.getFechaVencimiento() != null ? cuota.getFechaVencimiento().toLocalDate() : null,
                     calculadaPendiente));
             }
-            topeRepartido = TopeProvisionMora.repartir(topePorPrestamo, candidatas);
+            Map<Long, Double> sinRepartir = new HashMap<>();
+            topeRepartido = TopeProvisionMora.repartir(topePorPrestamo, candidatas,
+                movimientoInteresCuotaDaoService.selectCuotaRespaldoMoraPorPrestamo(alCorte ? fechaCorte : null), sinRepartir);
+            // Lote 23: el sobrante que cae en una cuota de respaldo que el ⑦ no recorre (ya tiene su provisión) no se provisiona acá; el que no tiene cuota se avisa.
+            for (Map.Entry<Long, Double> e : sinRepartir.entrySet()) {
+                System.out.println("  ⚠ ProvisionInteresService.calcularItems - el préstamo " + e.getKey() + " tiene $" + e.getValue()
+                    + " de mora contabilizada sin cuota donde provisionarla.");
+            }
         }
 
         // D25/D27 (2026-10-05): un préstamo DE_PLAZO_VENCIDO (8) ya tiene condonado el interés
@@ -1376,7 +1383,8 @@ public class ProvisionInteresServiceImpl implements ProvisionInteresService {
             if (conTope) {
                 // provisión de mora a constituir = max(0, tope repartido de la cuota − saldo provisionado de mora)
                 Double tope = topeRepartido.get(cuota.getCodigo());
-                pendienteMora = Math.min(pendienteMora, tope != null ? tope.doubleValue() : 0.0);
+                // Lote 23: el tope repartido ya es lo que se provisiona (la cuota más reciente puede pasar de su mora calculada).
+                pendienteMora = tope != null ? tope.doubleValue() : 0.0;
             }
 
             double[] provisionado = saldoProvisionado.get(cuota.getCodigo());

@@ -287,7 +287,8 @@ public class LibroInteresArranqueServiceImpl implements LibroInteresArranqueServ
     private CalculoAjuste calcularAjusteProvision(LocalDate corte) throws Throwable {
         CalculoAjuste calculo = new CalculoAjuste();
         // Universo: las cuotas del ⑦ al corte (con su interés y su mora pendientes) más las que tienen saldo de provisión y ya no lo son.
-        List<FilaCuota> universo = universoAlCorte(corte, true);
+        Map<Long, Double> moraFuera = new HashMap<>();
+        List<FilaCuota> universo = universoAlCorte(corte, true, moraFuera);
         Map<Long, FilaCuota> porCuota = new LinkedHashMap<>();
         for (FilaCuota f : universo) {
             porCuota.put(f.cuota.getCodigo(), f);
@@ -322,7 +323,7 @@ public class LibroInteresArranqueServiceImpl implements LibroInteresArranqueServ
             double[] saldo = saldoPorCuota.getOrDefault(idCuota, new double[2]);
             boolean enUniverso = f != null;
             double objetivoInteres = enUniverso ? f.interesPendiente : 0.0;
-            double objetivoMora = enUniverso ? f.moraPendiente : 0.0;
+            double objetivoMora = enUniverso ? f.moraPendiente : moraFuera.getOrDefault(idCuota, 0.0);
             Long idPrestamo = enUniverso ? f.prestamo.getCodigo() : prestamoPorCuota.get(idCuota);
             Prestamo prestamo = enUniverso ? f.prestamo : prestamos.computeIfAbsent(idPrestamo, k -> {
                 try {
@@ -437,6 +438,14 @@ public class LibroInteresArranqueServiceImpl implements LibroInteresArranqueServ
      * mora está activo al corte, y la mora calculada pendiente si no.
      */
     private List<FilaCuota> universoAlCorte(LocalDate corte, boolean conMora) throws Throwable {
+        return universoAlCorte(corte, conMora, new HashMap<Long, Double>());
+    }
+
+    /**
+     * @param moraFuera salida (solo con {@code conMora}): objetivo de mora de las cuotas que NO están en el universo pero reciben tope como cuota de respaldo de su
+     *                  préstamo (lote 23), {@code idCuota → mora}
+     */
+    private List<FilaCuota> universoAlCorte(LocalDate corte, boolean conMora, Map<Long, Double> moraFuera) throws Throwable {
         List<DetallePrestamo> cuotas = new ArrayList<>();
         for (DetallePrestamo cuota : detallePrestamoDaoService.selectCuotasProvisionablesAlCorte(corte)) {
             long estado = cuota.getEstado() != null ? cuota.getEstado().longValue() : 0L;
@@ -480,8 +489,19 @@ public class LibroInteresArranqueServiceImpl implements LibroInteresArranqueServ
                     cuota.getFechaVencimiento() != null ? cuota.getFechaVencimiento().toLocalDate() : null, pendiente));
             }
             if (conTope) {
+                Map<Long, Double> sinRepartir = new HashMap<>();
                 moraObjetivo.putAll(TopeProvisionMora.repartir(
-                    movimientoInteresCuotaDaoService.selectMoraContabilizadaPendientePorPrestamo(corte), candidatas));
+                    movimientoInteresCuotaDaoService.selectMoraContabilizadaPendientePorPrestamo(corte), candidatas,
+                    movimientoInteresCuotaDaoService.selectCuotaRespaldoMoraPorPrestamo(corte), sinRepartir));
+                for (Map.Entry<Long, Double> e : sinRepartir.entrySet()) {
+                    System.out.println("  ⚠ LibroInteresArranqueService - el préstamo " + e.getKey() + " tiene $" + e.getValue()
+                        + " de mora contabilizada sin cuota donde provisionarla.");
+                }
+                for (Map.Entry<Long, Double> e : moraObjetivo.entrySet()) {
+                    if (!calculada.containsKey(e.getKey())) {
+                        moraFuera.put(e.getKey(), e.getValue());
+                    }
+                }
             } else {
                 moraObjetivo.putAll(calculada);
             }
