@@ -177,6 +177,19 @@ porque escribe en `CNT.RNRP`.
 - La herramienta corregida rechaza los préstamos con pagos de `PRSTCDGO` nulo (por eso el 397 va antes). Además
   valida contra el control del cierre antes y después de aplicar, con rollback por préstamo.
 
+## 5f. EAR entregado para producción (25-11, 05:01): `cierre-1125-d187-l10-l15`
+
+- **EAR:** `F:\ears\asoprep\cierre-1125-d187-l10-l15\SaaEAR.ear`, SHA-256
+  `C43A4E1A485CFD9888E2DBCFE3802DFF6DF6D0C13A1D6A6C04546659180B08E0`.
+  - Código: `5a40b3ac` + lote 7 + lote 7b + lote 10 + lote 15 (solo `src`, con `git apply`).
+  - Los parches están junto al EAR.
+  - **NO lleva** la C19b, ni el lote 12 (cxc/SRI), ni los lotes 3 a 9 y 11 de VCN.
+- **Lo pidió el usuario sin la prueba en copia.** No se ejecuta nada al desplegar. Lo que corre después:
+  - la re-imputación se simula primero;
+  - el cierre se previsualiza primero.
+- **Lotes 10 y 15:** el lote 10 cambia cómo se leen los pagos. El lote 15 aplica con `devengoCompletoDesde` y
+  `topeProvisionMoraDesde` (2026-11-30): toca las operaciones fechadas desde el 30-11 y el cierre de noviembre.
+
 ## 6. Riesgos
 - **Lo nuevo nunca corrió contra Oracle en producción:** C27b, el lote 7 y su reparto por préstamo, y el ⑧, ⑨ y ⑩ con
   `siempre`. La previsualización es su primera ejecución, y no graba nada.
