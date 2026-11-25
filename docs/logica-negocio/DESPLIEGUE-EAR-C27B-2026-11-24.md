@@ -1,8 +1,8 @@
-# Despliegue del EAR «c27b-1125»: todo `main` para el próximo cierre de producción (2026-11-24)
+# Despliegue del EAR «c27b-1125b»: todo `main` para el próximo cierre de producción (2026-11-24)
 
-> ⛔ **NO DESPLEGAR ESTE EAR (24-11, noche).** Lleva el alterno 38 para la plantilla del ⑪, pero el 38 es la
-> plantilla de compras de CxP (`PlantillasCxp.COMPRAS`). Se corrige al 39 (REGISTRO-RESERVAS §2c) y se arma un EAR
-> nuevo, que reemplaza a este documento.
+> **Historial.** El primer EAR, `c27b-1125` (main `5fc3d9d2`), **NO se despliega**: usaba el alterno 38 para la
+> plantilla del ⑪, y el 38 es `PlantillasCxp.COMPRAS`. Este documento es el del EAR corregido, `c27b-1125b`, que usa
+> el alterno 39 (REGISTRO-RESERVAS §2c).
 
 **omen-saa-1-arb.** Reemplaza a `c42-1124` y a `cancelados-1124`; ninguno de los dos llegó a desplegarse. Es el EAR con
 el que producción hace el próximo cierre mensual con C27b activo, según la decisión D3 del líder.
@@ -12,9 +12,9 @@ el que producción hace el próximo cierre mensual con C27b activo, según la de
   (62.469.172 bytes).
   - 3 partes en `partes\`. Se unen con `copy /b SaaEAR.ear.part00+SaaEAR.ear.part01+SaaEAR.ear.part02 SaaEAR.ear`.
   - `testzip` sin errores.
-- `saaBE.war` `02B5B53E8AADCA80E6F5DBED6744712D09C16B19A40EF92573D5172898E5EF6B`.
-  - Es saaBE `main` `5fc3d9d2`, empaquetado con `mvn -o package` sobre un `git archive` limpio.
-  - No lleva el lote 5, que está sin commitear, ni el USAP de app1.
+- `saaBE.war` `FB25BA2D6ED465C5046F766B7C91C83D44A049B81A91E557F90FFB16E935F56E`.
+  - Es saaBE `main` `e25adb79`, empaquetado con `mvn -o package` sobre un `git archive` limpio.
+  - **Lleva el lote 5** (baja del bien por lo entregado, `POST /prdo/desmayorizar`). No lleva el USAP de app1.
 - `SaaFE.war` `69B9403C…84276410`: saaFE `63a225d`. Desde ahí el FE solo cambió documentos.
 - **Base y vuelta atrás:** `precancelar-vencido-1118`.
 
@@ -27,8 +27,12 @@ el que producción hace el próximo cierre mensual con C27b activo, según la de
 4. `crd/sql/C45-02-D151-linea-61-devolucion-cobro-exceso.sql`.
 5. `cuadre/def9-07-cuenta-4.8.90.90.45-perdidas-condonaciones.sql` (D-176) y
    `cuadre/def9-09-cuenta-4.8.99.9-gnd-multas.sql` (D-180).
-6. **`crd/sql/383_C27B_…` con la cuenta del ⑪ ya decidida (D2).** Mientras siga el marcador «[DECIDE EL CONTADOR]» no
-   corre.
+6. **`crd/sql/383_C27B_INTERES_ANTICIPADO_PLANTILLA_39_Y_SUBPROCESOS_11_12.sql`.** Crea la plantilla alterno 39
+   con la cuenta 2.9.01.05 (D2) y amplía `CK_ANCC_TPOO` a 1..12.
+   - Su guarda lo detiene antes de escribir si el alterno 39 ya existe, o si 2.9.01.05 no existe o no es única.
+   - No es re-ejecutable.
+7. `cnt/sql/omen1-02-hcpr-accion-desmayorizar.sql` (lote 5). Sin él, `POST /prdo/desmayorizar` falla con ORA-02290 y
+   se revierte.
 
 ## 3. Propiedades del servidor (C27b, ver `crd/C27b-PROPIEDADES.md`)
 
