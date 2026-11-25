@@ -1251,15 +1251,26 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
             for (double[] valores : porTipo.values()) {
                 valores[0] = 0D;
             }
-            for (Object[] fila : cierreCarteraDaoService.selectInteresDevengoPorTipoEnRango(desdeRango, hastaRango,
+            // Lote 20: el interés sale de la consulta POR CUOTA (la misma expresión que la agregada); el asiento por tipo es la suma redondeada por
+            // cuota y el libro (MVIC 11) se graba de esta misma lista en generaAsiento.
+            List<com.saa.ejb.crd.service.dto.DevengoInteresCuota> devengadoPorCuota =
+                    new ArrayList<com.saa.ejb.crd.service.dto.DevengoInteresCuota>();
+            for (Object[] fila : cierreCarteraDaoService.selectInteresDevengoPorCuotaEnRango(desdeRango, hastaRango,
                     corteCompleto, ancla)) {
-                double[] valores = porTipo.get((Long) fila[0]);
+                double valorCuota = redondeaDouble((Double) fila[3]);
+                if (valorCuota <= 0D) {
+                    continue;
+                }
+                devengadoPorCuota.add(new com.saa.ejb.crd.service.dto.DevengoInteresCuota((Long) fila[0], (Long) fila[1],
+                        (Long) fila[2], valorCuota));
+                double[] valores = porTipo.get((Long) fila[2]);
                 if (valores == null) {
                     valores = new double[]{ 0D, 0D };
-                    porTipo.put((Long) fila[0], valores);
+                    porTipo.put((Long) fila[2], valores);
                 }
-                valores[0] = ((Double) fila[1]).doubleValue();
+                valores[0] = Math.round((valores[0] + valorCuota) * 100.0) / 100.0;
             }
+            sub.devengoInteresPorCuota(devengadoPorCuota);
         }
 
         for (java.util.Map.Entry<Long, double[]> entrada : porTipo.entrySet()) {
@@ -1324,9 +1335,23 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
                 "CRD devengado de la primera cuota de prestamos nuevos " + periodo(solicitud));
         Long idPlantilla = resuelvePlantilla(PlantillasCredito.DEVENGO_INTERESES,
                 "devengo de intereses", solicitud.getIdEmpresa());
-        for (Object[] fila : cierreCarteraDaoService.selectInteresPrimeraCuotaPorTipo(corte.withDayOfMonth(1), corte)) {
-            Long idTipoPrestamo = (Long) fila[0];
-            double interes = redondeaDouble((Double) fila[1]);
+        // Lote 20: por cuota (misma expresión que la agregada); el asiento por tipo es la suma redondeada y el libro (MVIC 11) sale de esta lista.
+        List<com.saa.ejb.crd.service.dto.DevengoInteresCuota> primeraPorCuota =
+                new ArrayList<com.saa.ejb.crd.service.dto.DevengoInteresCuota>();
+        java.util.Map<Long, Double> primeraPorTipo = new java.util.TreeMap<Long, Double>();
+        for (Object[] fila : cierreCarteraDaoService.selectInteresPrimeraCuotaPorCuota(corte.withDayOfMonth(1), corte)) {
+            double valorCuota = redondeaDouble((Double) fila[3]);
+            if (valorCuota <= 0D) {
+                continue;
+            }
+            primeraPorCuota.add(new com.saa.ejb.crd.service.dto.DevengoInteresCuota((Long) fila[0], (Long) fila[1],
+                    (Long) fila[2], valorCuota));
+            primeraPorTipo.merge((Long) fila[2], valorCuota, (a, b) -> Math.round((a + b) * 100.0) / 100.0);
+        }
+        sub.devengoInteresPorCuota(primeraPorCuota);
+        for (java.util.Map.Entry<Long, Double> filaTipo : primeraPorTipo.entrySet()) {
+            Long idTipoPrestamo = filaTipo.getKey();
+            double interes = filaTipo.getValue().doubleValue();
             agregaPorTipo(sub, idPlantilla, CrdLineaAsiento.INTERES_ORDINARIO_POR_COBRAR, idTipoPrestamo, interes,
                     "INTERES ORDINARIO por cobrar primera cuota " + periodo(solicitud));
             agregaPorTipo(sub, idPlantilla, CrdLineaAsiento.INGRESO_INTERES_ORDINARIO, idTipoPrestamo, interes,
@@ -2819,6 +2844,31 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
             } else {
                 provisionInteresService.registrarProvisionCierre(corrida.getCodigo(), asiento.getCodigo(),
                         sub.getFecha(), solicitud.getUsuario(), Boolean.TRUE.equals(solicitud.getEstadoAlCorte()));
+            }
+        }
+
+        // Lote 20: ④ y ④b — el devengo de INTERÉS por cuota (MVIC tipo 11) con el mismo asiento y la corrida, de la MISMA lista de la que salió
+        // la línea del asiento. Solo con el devengo completo activo (la lista solo se arma entonces). Requiere sql/406 (CK_MVIC_TIPO hasta 12).
+        if (sub.devengoInteresPorCuota() != null && !sub.devengoInteresPorCuota().isEmpty()) {
+            LocalDateTime selloInteres = LocalDateTime.now();
+            for (com.saa.ejb.crd.service.dto.DevengoInteresCuota devengo : sub.devengoInteresPorCuota()) {
+                com.saa.model.crd.MovimientoInteresCuota mov = new com.saa.model.crd.MovimientoInteresCuota();
+                com.saa.model.crd.Prestamo prestamoDevengo = new com.saa.model.crd.Prestamo();
+                prestamoDevengo.setCodigo(devengo.getIdPrestamo());
+                mov.setPrestamo(prestamoDevengo);
+                mov.setIdCuota(devengo.getIdCuota());
+                mov.setTipoMovimiento(com.saa.rubros.TipoMovimientoInteresCuota.DEVENGO_INTERES);
+                mov.setComponente(com.saa.rubros.ComponenteMovimientoInteresCuota.INTERES);
+                mov.setValor(devengo.getValor());
+                mov.setFechaContable(sub.getFecha());
+                mov.setCorrida(corrida);
+                mov.setOrigen("CIERRE");
+                mov.setIdOrigen(corrida.getCodigo());
+                mov.setAsiento(asiento.getCodigo());
+                mov.setAnulado(0L);
+                mov.setUsuarioRegistro(solicitud.getUsuario());
+                mov.setFechaRegistro(selloInteres);
+                movimientoInteresCuotaDaoService.save(mov, null);
             }
         }
 

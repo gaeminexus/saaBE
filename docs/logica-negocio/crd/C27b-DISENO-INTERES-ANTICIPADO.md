@@ -161,3 +161,26 @@ Son las 8 del encargo. Las que corren sobre la base van **sobre una copia de pro
 ### 8.3 Entregado en este lote y lo que falta
 - Entregado: las constantes 11 y 12, `sql/406` (CK_MVIC_TIPO hasta 12; no ejecutado), `sql/407` (control, solo SELECT; no ejecutado) y este diseño.
 - **No** se tocaron el ④, el ④b ni los reversos, y A2 no está: el ④ diario es el paso más delicado del cierre (SQL agregado con cuatro ramas de interés, que hay que reescribir por cuota y reconciliar al centavo con el asiento). Se entrega primero la medición y el diseño para decidirlo antes de escribir.
+
+## 9. Lote 20 — el ④, el ④b y los reversos de la 1.4.02 graban el libro de interés (MVIC 11 y 12)
+
+> ### ⚠ El `sql/406` va ANTES del EAR
+> Con el devengo completo activo, el cierre (④ y ④b) y cada reverso (abono, precancelación, acuerdo) graban filas con `MVICTPMV` 11 o 12. Sin el `406`
+> (que amplía `CK_MVIC_TIPO` a 1..12) el INSERT revienta con ORA-02290 y, en el cierre, aborta la ejecución. Sin devengo completo activo no se graba nada
+> de esto y el cierre es el de siempre.
+
+### 9.1 ④ y ④b (devengo)
+- Consulta por cuota por variante, copia de la agregada sin `SUM` ni `GROUP BY` (mismas ramas: condonado, cancelado al corte, cuota cerrada, pagos antes y después del ancla): `CierreCarteraDao.selectInteresDevengoPorCuotaEnRango` (④ con el devengo completo) y `selectInteresPrimeraCuotaPorCuota` (④b). La variante «de siempre» (`selectInteresPorTipoPrestamoEnRango`) solo rige sin devengo completo, donde no se graba el libro de interés y no se toca; la mora del ④ sigue saliendo de ella.
+- El asiento por tipo es la suma de los valores por cuota redondeados a 2 decimales (se aceptan centavos de diferencia contra el agregado histórico). De esa misma lista, `generaAsiento` graba un MVIC tipo 11 por cuota (componente interés, fecha contable del asiento, corrida, origen CIERRE, mismo asiento).
+- Anular el cierre: `anularByCorrida` ahora incluye el tipo 11 (antes 1, 5 y 7).
+- Comprobación de equivalencia: `sql/408` (solo SELECT, en una copia) compara por tipo el agregado contra la suma por cuota redondeada, con las constantes expandidas, y después de un cierre compara el libro grabado contra el DEBE de la 1.4.02 del asiento.
+
+### 9.2 Reversos (MVIC 12, componente interés)
+- `DevengoCompletoService.calcularReversoCuotasCanceladas` (precancelación en sus tres llamadores y acuerdo) y `calcularReversoAbono` devuelven `ResultadoReversoDevengo`: las líneas del asiento y el detalle por cuota. Después de generar el asiento, cada llamador llama a `registrarReverso(resultado, idAsiento, ...)`, con el patrón de `ReversoMoraCancelacion.registrar`.
+- Cuotas canceladas: valor por cuota = `max(interés − cobrado, 0)` redondeado por cuota; el asiento es la suma de esos valores. Origen `CANCELACION_DEVENGO_INTERES`, idOrigen = el evento (el cobro de la precancelación pasa el evento de cada préstamo).
+- Abono: por número de cuota, interés historizado − interés nuevo cuando da positivo (sobre cuotas de meses ya devengados); el residuo de las cuotas que desaparecen va a la cuota nueva de número mayor que queda dentro del límite; el total del libro se ajusta a esa cuota para ser igual, al centavo, al reverso del asiento. Origen `ABONO_DEVENGO_INTERES`, idOrigen = el evento del abono.
+- Anular: `DevengoCompletoService.anularPorEvento(idEvento)` (por origen e idOrigen) se llama donde ya se anulaba el reverso de mora: la anulación del cobro (dos sitios) y `contabilizarReverso`.
+- Todo sigue condicionado a `devengoCompletoActivo` (a través del límite del lote 16): sin él, ninguna lista tiene cuotas y no se graba nada.
+
+### 9.3 Pendiente
+A2 (semilla al 30-nov) y A1 van juntos en el lote 21. Sin probar contra la base; `sql/407` y `sql/408` sin ejecutar.

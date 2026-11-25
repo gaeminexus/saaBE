@@ -419,6 +419,18 @@ public interface CierreCarteraDaoService {
     List<Object[]> selectInteresPrimeraCuotaPorTipo(LocalDate inicioMes, LocalDate corte) throws Throwable;
 
     /**
+     * Lote 20: la misma consulta que {@link #selectInteresDevengoPorTipoEnRango} sin el SUM ni el GROUP BY, una fila por cuota con interés a
+     * devengar (mismas ramas: condonado, cancelado al corte, cuota cerrada, pagos antes y después del ancla).
+     *
+     * @return filas {@code [idCuota (Long), idPrestamo (Long), idTipoPrestamo (Long), valor (Double)]}, solo con valor > 0
+     */
+    List<Object[]> selectInteresDevengoPorCuotaEnRango(LocalDate desde, LocalDate hasta, LocalDate corte, LocalDate ancla)
+            throws Throwable;
+
+    /** Lote 20: como {@link #selectInteresPrimeraCuotaPorTipo} por cuota; mismo formato que {@link #selectInteresDevengoPorCuotaEnRango}. */
+    List<Object[]> selectInteresPrimeraCuotaPorCuota(LocalDate inicioMes, LocalDate corte) throws Throwable;
+
+    /**
      * ⑪ objetivo: Σ {@code PGPRINPG} vigente con {@code ancla <= PGPRFCHA < corte + 1} de cuotas con vencimiento desde el
      * día 1 del mes siguiente al corte, por tipo. Universo por fecha, sin anulados; entran cancelados y novados.
      *

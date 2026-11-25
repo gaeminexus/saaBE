@@ -1116,6 +1116,79 @@ public class CierreCarteraDaoServiceImpl implements CierreCarteraDaoService {
     }
 
     @Override
+    public List<Object[]> selectInteresDevengoPorCuotaEnRango(LocalDate desde, LocalDate hasta, LocalDate corte,
+            LocalDate ancla) throws Throwable {
+        System.out.println("Ingresa al metodo selectInteresDevengoPorCuotaEnRango - desde: " + desde + " - hasta: "
+                + hasta + " - corte: " + corte + " - ancla: " + ancla);
+        // Lote 20: copia de selectInteresDevengoPorTipoEnRango sin SUM/GROUP BY: la misma expresión por cuota.
+        Query query = em.createNativeQuery(
+                " SELECT d.DTPRCDGO, p.PRSTCDGO, pr.TPPRCDGO, "
+                + "        GREATEST(CASE WHEN " + ModoCorteCartera.CANCELADO_TERMINADO_AL_CORTE_SQL
+                + "                 OR NVL(d.DTPRESTD,0) = " + EstadoCuotaPrestamo.CANCELADA_ANTICIPADA
+                + "                 THEN NVL(g.post,0) "
+                + "                 WHEN " + condonado(corte) + " THEN 0 "
+                + "                 ELSE GREATEST(NVL(d.DTPRINTR,0) - NVL(g.pre,0), 0) END, NVL(g.post,0)) "
+                + " FROM   CRD.DTPR d "
+                + " JOIN   CRD.PRST p  ON p.PRSTCDGO = d.PRSTCDGO "
+                + " JOIN   CRD.PRDC pr ON pr.PRDCCDGO = p.PRDCCDGO "
+                + " LEFT JOIN (SELECT DTPRCDGO, "
+                + "        SUM(CASE WHEN LEAST(PGPRFCHA, NVL(PGPRFCRG, PGPRFCHA)) < :ancla THEN NVL(PGPRINPG,0) ELSE 0 END) pre, "
+                + "        SUM(CASE WHEN LEAST(PGPRFCHA, NVL(PGPRFCRG, PGPRFCHA)) >= :ancla AND LEAST(PGPRFCHA, NVL(PGPRFCRG, PGPRFCHA)) < :corteSig THEN NVL(PGPRINPG,0) ELSE 0 END) post "
+                + "   FROM CRD.PGPR WHERE " + PAGO_VIGENTE + " GROUP BY DTPRCDGO) g ON g.DTPRCDGO = d.DTPRCDGO "
+                + " WHERE  " + CONCEDIDO_EN_CARTERA
+                + " AND    " + CUOTA_NO_ANULADA
+                + " AND    TRUNC(d.DTPRFCVN) BETWEEN :desde AND :hasta "
+                + " AND    pr.TPPRCDGO IS NOT NULL "
+                + " ORDER BY pr.TPPRCDGO, d.DTPRCDGO");
+        query.setParameter("desde", Date.valueOf(desde));
+        query.setParameter("hasta", Date.valueOf(hasta));
+        query.setParameter("ancla", Date.valueOf(ancla));
+        parametroCorteSig(query, corte);
+        return cuotaPrestamoTipoValor(query.getResultList());
+    }
+
+    @Override
+    public List<Object[]> selectInteresPrimeraCuotaPorCuota(LocalDate inicioMes, LocalDate corte) throws Throwable {
+        System.out.println("Ingresa al metodo selectInteresPrimeraCuotaPorCuota - mes: " + inicioMes + " - corte: " + corte);
+        // Lote 20: copia de selectInteresPrimeraCuotaPorTipo sin SUM/GROUP BY.
+        Query query = em.createNativeQuery(
+                " SELECT d.DTPRCDGO, p.PRSTCDGO, pr.TPPRCDGO, "
+                + "        GREATEST(CASE WHEN " + ModoCorteCartera.CANCELADO_TERMINADO_AL_CORTE_SQL
+                + "                 OR NVL(d.DTPRESTD,0) = " + EstadoCuotaPrestamo.CANCELADA_ANTICIPADA
+                + "                 THEN NVL(g.post,0) "
+                + "                 WHEN " + condonado(corte) + " THEN 0 "
+                + "                 ELSE NVL(d.DTPRINTR,0) END, NVL(g.post,0)) "
+                + " FROM   CRD.DTPR d "
+                + " JOIN   CRD.PRST p  ON p.PRSTCDGO = d.PRSTCDGO "
+                + " JOIN   CRD.PRDC pr ON pr.PRDCCDGO = p.PRDCCDGO "
+                + " LEFT JOIN (SELECT DTPRCDGO, SUM(NVL(PGPRINPG,0)) post "
+                + "   FROM CRD.PGPR WHERE " + PAGO_VIGENTE + " AND LEAST(PGPRFCHA, NVL(PGPRFCRG, PGPRFCHA)) < :corteSig GROUP BY DTPRCDGO) g "
+                + "        ON g.DTPRCDGO = d.DTPRCDGO "
+                + " WHERE  " + CONCEDIDO_EN_CARTERA
+                + " AND    p.PRSTFCHA >= :inicio "
+                + " AND    " + CUOTA_NO_ANULADA
+                + " AND    TRUNC(d.DTPRFCVN) BETWEEN :inicio AND :corte "
+                + " AND    pr.TPPRCDGO IS NOT NULL "
+                + " ORDER BY pr.TPPRCDGO, d.DTPRCDGO");
+        query.setParameter("inicio", Date.valueOf(inicioMes));
+        query.setParameter("corte", Date.valueOf(corte));
+        parametroCorteSig(query, corte);
+        return cuotaPrestamoTipoValor(query.getResultList());
+    }
+
+    /** Lote 20: filas {@code [idCuota, idPrestamo, idTipoPrestamo, valor]} con valor positivo. */
+    private List<Object[]> cuotaPrestamoTipoValor(List<Object[]> filas) {
+        List<Object[]> resultado = new ArrayList<Object[]>();
+        for (Object[] f : filas) {
+            double valor = aDouble(f[3]).doubleValue();
+            if (valor > 0.0) {
+                resultado.add(new Object[]{ aLong(f[0]), aLong(f[1]), aLong(f[2]), Double.valueOf(valor) });
+            }
+        }
+        return resultado;
+    }
+
+    @Override
     public List<Object[]> selectInteresPrimeraCuotaPorTipo(LocalDate inicioMes, LocalDate corte) throws Throwable {
         System.out.println("Ingresa al metodo selectInteresPrimeraCuotaPorTipo - mes: " + inicioMes + " - corte: " + corte);
         Query query = em.createNativeQuery(
