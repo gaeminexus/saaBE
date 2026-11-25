@@ -241,3 +241,72 @@ SELECT p.PRSTIDAS AS operacion, p.PRSTIDST AS estado, d.DTPRNMCT AS cuota, TRUNC
                   AND e.EVPRTPOO IN ('PRECANCELACION', 'ACUERDO_CONDONACION') AND e.EVPRFCHA >= pa.corte + 1)
    AND ROWNUM <= 20
  ORDER BY 1, 3;
+
+
+-- CASO 9 — Precancelación por VENTANILLA (CBCR) con cuotas futuras de un mes ya devengado (lote 1b).
+-- Esperado: por cada préstamo, el reverso esperado = Σ DTPRINTR de las cuotas en estado 7 que esa precancelación cerró
+-- (vencimiento posterior a la fecha de pago, entre el 1.º del mes siguiente al corte de saa.cartera.devengoCompletoDesde y
+-- el límite = último día del mes siguiente a la última corrida EJECUTADA) menos lo cobrado. Ese valor tiene que estar como
+-- D 5.1.02 / H 1.4.02 dentro del asiento definitivo (CBCRASN2) del cobro: columna reverso_en_asiento. Si el cobro se reversa,
+-- el asiento y el reverso se anulan juntos. PARAMS: DESDE = devengoCompletoDesde; LIMITE = último día del mes siguiente al
+-- corte de la última corrida EJECUTADA.
+WITH params AS (SELECT DATE '2026-10-31' AS desde, DATE '2026-12-31' AS limite FROM DUAL),
+cuotas AS (
+    SELECT e.EVPRCDGO, e.PRSTCDGO, TRUNC(e.EVPRFCHA) AS fecha_evento, SUM(NVL(d.DTPRINTR, 0)) AS interes_no_cobrado,
+           COUNT(*) AS cuotas
+      FROM params pa
+      JOIN CRD.EVPR e ON e.EVPRTPOO = 'PRECANCELACION' AND e.EVPRESTD = 1
+      JOIN CRD.DTPR d ON d.PRSTCDGO = e.PRSTCDGO AND d.DTPRESTD = 7 AND TRUNC(d.DTPRFCVN) > TRUNC(e.EVPRFCHA)
+                     AND TRUNC(d.DTPRFCVN) >= ADD_MONTHS(TRUNC(pa.desde, 'MM'), 1) AND TRUNC(d.DTPRFCVN) <= pa.limite
+     WHERE EXISTS (SELECT 1 FROM CRD.DCBC x WHERE x.EVPRCDGO = e.EVPRCDGO)
+     GROUP BY e.EVPRCDGO, e.PRSTCDGO, TRUNC(e.EVPRFCHA)
+)
+SELECT NVL(p.PRSTIDAS, p.PRSTCDGO) AS operacion, c.EVPRCDGO AS evento, c.fecha_evento, c.cuotas,
+       ROUND(c.interes_no_cobrado, 2) AS reverso_esperado,
+       (SELECT ROUND(NVL(SUM(NVL(l.DTASDBEE, 0)), 0), 2)
+          FROM CRD.DCBC x JOIN CRD.CBCR b ON b.CBCRCDGO = x.CBCRCDGO
+          JOIN CNT.DTAS l ON l.ASNTCDGO = b.CBCRASN2
+         WHERE x.EVPRCDGO = c.EVPRCDGO AND l.DTASDSCR LIKE '%reverso del devengo del inter_s de cuotas canceladas%') AS reverso_en_asiento
+  FROM cuotas c JOIN CRD.PRST p ON p.PRSTCDGO = c.PRSTCDGO
+ ORDER BY c.fecha_evento, c.EVPRCDGO;
+
+-- CASO 10 — Acuerdo de condonación con cuotas futuras de un mes ya devengado (lote 1b).
+-- Esperado: igual que el caso 9, pero el reverso va dentro del asiento de la condonación (EVPR.EVPRNMAS), junto con el
+-- cruce de aportes si es 100 % aportes. Las cuotas exigibles (vencimiento <= fecha del acuerdo) NO entran: su interés va en el
+-- desglose y se paga o se condona.
+WITH params AS (SELECT DATE '2026-10-31' AS desde, DATE '2026-12-31' AS limite FROM DUAL),
+cuotas AS (
+    SELECT e.EVPRCDGO, e.PRSTCDGO, e.EVPRNMAS, TRUNC(e.EVPRFCHA) AS fecha_acuerdo, SUM(NVL(d.DTPRINTR, 0)) AS interes_no_cobrado,
+           COUNT(*) AS cuotas
+      FROM params pa
+      JOIN CRD.EVPR e ON e.EVPRTPOO = 'ACUERDO_CONDONACION' AND e.EVPRESTD = 1
+      JOIN CRD.DTPR d ON d.PRSTCDGO = e.PRSTCDGO AND d.DTPRESTD = 7 AND TRUNC(d.DTPRFCVN) > TRUNC(e.EVPRFCHA)
+                     AND TRUNC(d.DTPRFCVN) >= ADD_MONTHS(TRUNC(pa.desde, 'MM'), 1) AND TRUNC(d.DTPRFCVN) <= pa.limite
+     GROUP BY e.EVPRCDGO, e.PRSTCDGO, e.EVPRNMAS, TRUNC(e.EVPRFCHA)
+)
+SELECT NVL(p.PRSTIDAS, p.PRSTCDGO) AS operacion, c.EVPRCDGO AS evento, c.fecha_acuerdo, c.cuotas, c.EVPRNMAS AS asiento_evento,
+       ROUND(c.interes_no_cobrado, 2) AS reverso_esperado,
+       (SELECT ROUND(NVL(SUM(NVL(l.DTASDBEE, 0)), 0), 2) FROM CNT.DTAS l
+         WHERE l.ASNTCDGO = c.EVPRNMAS AND l.DTASDSCR LIKE '%reverso del devengo del inter_s de cuotas canceladas%') AS reverso_en_asiento
+  FROM cuotas c JOIN CRD.PRST p ON p.PRSTCDGO = c.PRSTCDGO
+ ORDER BY c.fecha_acuerdo, c.EVPRCDGO;
+
+-- BLOQUE 4 de detección — DOBLE REVERSO por re-ejecución del cierre (restricción operativa, ver C27b-PROPIEDADES.md).
+-- Se reversa una corrida (REVERSADA) y se vuelve a ejecutar DESPUÉS de una cancelación que ya había reversado su devengo:
+-- el ④ nuevo ve la cuota en 7 y devenga solo lo cobrado, y el reverso de la cancelación (hecho contra el ④ viejo) queda vivo.
+-- Esta consulta lista los asientos ACTIVOS de reverso de devengo (cancelaciones y abonos, por la descripción que arma
+-- DevengoCompletoServiceImpl) con una corrida REVERSADA anterior a su fecha en el mes anterior y una corrida EJECUTADA vigente
+-- del mismo período registrada DESPUÉS del asiento. Cada fila es un posible doble reverso a revisar a mano antes de
+-- re-ejecutar o de cerrar el mes.
+SELECT a.ASNTCDGO AS asiento, a.ASNTNMRO AS numero_asiento, TRUNC(a.ASNTFCHA) AS fecha_asiento,
+       r.CRCTCDGO AS corrida_reversada, r.CRCTANOO AS anio, r.CRCTMESS AS mes, TRUNC(r.CRCTFCCR) AS corte_reversada,
+       n.CRCTCDGO AS corrida_nueva, n.CRCTFCRG AS registro_corrida_nueva,
+       (SELECT ROUND(SUM(NVL(d.DTASDBEE, 0)), 2) FROM CNT.DTAS d WHERE d.ASNTCDGO = a.ASNTCDGO
+           AND d.DTASDSCR LIKE '%reverso del devengo del inter_s%') AS reverso
+  FROM CNT.ASNT a
+  JOIN CRD.CRCT r ON r.CRCTIDST = 3 AND r.CRCTFCCR < a.ASNTFCHA AND r.CRCTFCCR >= ADD_MONTHS(TRUNC(a.ASNTFCHA, 'MM'), -1) - 1
+  JOIN CRD.CRCT n ON n.CRCTANOO = r.CRCTANOO AND n.CRCTMESS = r.CRCTMESS AND n.CRCTIDST = 2
+                 AND n.CRCTFCRG > a.ASNTFCHA
+ WHERE a.ASNTESTD = 1
+   AND EXISTS (SELECT 1 FROM CNT.DTAS d WHERE d.ASNTCDGO = a.ASNTCDGO AND d.DTASDSCR LIKE '%reverso del devengo del inter_s%')
+ ORDER BY a.ASNTFCHA, a.ASNTCDGO;

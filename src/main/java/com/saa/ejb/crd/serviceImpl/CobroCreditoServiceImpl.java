@@ -217,6 +217,10 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
     @EJB
     private ContabilidadPrestamoService contabilidadPrestamoService;
 
+    /** Lote 1b (C27b): reverso del devengo de las cuotas que la precancelación pasa a 7, dentro de CBCRASN2. */
+    @EJB
+    private com.saa.ejb.crd.service.DevengoCompletoService devengoCompletoService;
+
     @EJB
     private AporteService aporteService;
 
@@ -2902,10 +2906,24 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
                             tramoAbiertoPagadoConAportes), 0.0, null).getLineas());
         }
 
+        // Lote 1b (C27b): las cuotas que la precancelación pasó a 7 (precancelar() las cierra con la fecha del cobro:
+        // solicitud.setFecha(cobro.getFecha())) y cuyo mes ya devengó el cierre reversan su devengo, D ingreso /
+        // H interés por cobrar, dentro de ESTE asiento, para que reversar el cobro lo anule. Autobalanceadas: no
+        // tocan el cuadre de arriba. Vacío si el devengo completo no está activo.
+        List<DetalleAsiento> lineasReversoDevengo = new ArrayList<>();
+        for (DetalleCobroCredito detalle : detalles) {
+            if (detalle.getPrestamo() != null && detalle.getEventoPrestamo() != null
+                    && ProcesoPagoPrestamoService.TIPO_PRECANCELACION.equals(detalle.getEventoPrestamo().getTipoOperacion())) {
+                lineasReversoDevengo.addAll(devengoCompletoService.lineasReversoCuotasCanceladas(idEmpresa,
+                        detalle.getPrestamo(), cobro.getFecha(), "Cobro " + cobro.getCodigo()));
+            }
+        }
+
         List<DetalleAsiento> lineas = new ArrayList<>();
         lineas.addAll(debe);
         lineas.addAll(haber);
         lineas.addAll(lineasCierreTramoAportes);
+        lineas.addAll(lineasReversoDevengo);
 
         // Cuadre por construcción: D = suma de "por aplicar" (totales[0]+totalPrestamosCerrado,
         // lo mismo que acreditó el asiento de reparto) MÁS la línea de transitoria por

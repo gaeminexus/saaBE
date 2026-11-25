@@ -43,23 +43,32 @@ Ejemplo (jboss-cli):
 3. Desplegar el EAR.
 4. Cerrar el mes `devengoCompletoDesde`: previsualizar primero y revisar las advertencias del ⑪ (objetivo, asentado, base).
 
-## Pendiente (reportado al árbitro)
+## Reversos del devengo — cobertura (lotes 1, 1b y 1c)
 
-- Reverso en la precancelación con cobro de caja (CASO B, el asiento es CBCRASN2 y `EVPR.numeroAsiento` queda nulo) y en el acuerdo de
-  condonación (`generarAsientoCondonacion` no guarda su asiento en el evento): no se tocaron, porque anular la operación no
-  reversaría esas líneas sin tocar el motor de reverso.
+Con el devengo completo activo, las operaciones que dejan interés devengado y no cobrado lo reversan (D 5.1.02.xx / H 1.4.02.xx, plantilla 17,
+cuentas por plantilla), **dentro del asiento de la operación**, para que anularla lo anule:
 
-## Condición para activar `saa.cartera.devengoCompletoDesde` (hueco conocido, lote 1b)
+| Operación | Dónde va el reverso | Cuotas |
+|---|---|---|
+| Abono a capital (con o sin aportes) | asiento del evento (re-bandeo) | historizadas menos nuevas |
+| Precancelación con aportes / con préstamo nuevo | asiento del evento | cuotas en 7 que cerró |
+| Precancelación por ventanilla (CBCR) | asiento definitivo del cobro (CBCRASN2), `CobroCreditoServiceImpl.generarAsientoDefinitivo` | cuotas en 7 con vencimiento posterior a la fecha de pago (`cobro.getFecha()`, la misma de `precancelar`) |
+| Acuerdo de condonación (con o sin depósito) | asiento de la condonación, grabado en `EVPR.numeroAsiento` (lote 1c) | futuras en 7 (el desglose solo cuenta su capital); las exigibles se pagan o se condonan |
 
-El reverso del devengo cubre hoy: el abono a capital (los dos caminos) y la precancelación con aportes o con préstamo nuevo. **NO cubre**
-la precancelación con cobro de caja (CBCRASN2, `EVPR.numeroAsiento` nulo) ni la precancelación 100 % efectivo sin cobro, que están en la rama
-c45 del cuadre (`CobroCreditoServiceImpl`, `contabilizarPrecancelacion`); quedan para el lote 1b, después del merge de c45.
+La precancelación directa en efectivo sin CBCR ya no existe (c45-2 la rechaza).
 
-Efecto: una precancelación por ventanilla hecha **después** de cerrar el mes en que se devengó su cuota deja ese ingreso devengado y no cobrado
-sin reverso. Si la precancelación se hace **antes** del cierre, el ④ ya la ve (las cuotas en estado 7 devengan solo lo cobrado) y no hay hueco.
-El código es inerte mientras `devengoCompletoDesde` no esté definida; definirla sabiendo este hueco.
+Cotas de las cuotas que se reversan: (a) las que ESTA operación pasó a 7 (vencimiento posterior a su fecha), (b) vencimiento hasta el
+límite (último día del mes siguiente al corte de la última corrida EJECUTADA) y (c) desde el 1.º del mes siguiente al corte de
+`devengoCompletoDesde`.
 
-## Acuerdo de condonación (medición, sin cambios)
+## Restricción operativa: reversar un cierre ya ejecutado
 
-`generarAsientoCondonacion` no guarda su asiento en el evento y ningún otro código lo anula al reversar el cobro (ver el reporte del lote).
-Las cuotas del acuerdo en estado 7 hechas antes del cierre quedan bien por la regla del ④ (estado 7 = solo lo cobrado).
+Lo que decide si un mes está devengado no es la fecha de negocio de la operación sino si la corrida ya corrió cuando la cuota pasó a 7. Por
+eso, **con la propiedad activa, reversar un cierre ya ejecutado después de cancelaciones del mes siguiente exige revisarlo con el SQL 384
+(bloque de detección de doble reverso) antes de re-ejecutar**: el ④ nuevo ve la cuota en 7 y devenga solo lo cobrado, mientras que el reverso
+de la cancelación (hecho contra el ④ viejo) queda vivo, y el resultado es un doble reverso. No se resuelve en código.
+
+## Acuerdo de condonación
+
+Medición histórica (lote 1c): el asiento de la condonación no se grababa en el evento y quedaba vivo al reversar el cobro; ver
+`REGULARIZACION-ASIENTOS-CONDONACION-1C.md` y `sql/387`.

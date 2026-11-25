@@ -137,6 +137,10 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
     @EJB
     private PlantillaService plantillaService;
 
+    /** Lote 1b (C27b): reverso del devengo de las cuotas que el acuerdo pasa a 7. */
+    @EJB
+    private com.saa.ejb.crd.service.DevengoCompletoService devengoCompletoService;
+
     @EJB
     private DetallePlantillaDaoService detallePlantillaDaoService;
 
@@ -682,11 +686,25 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
                 }
                 lineasCruce = armarLineasCruceAportesAcuerdo(acuerdo, aportes, pago, fecha);
             }
+            // Lote 1b (C27b): las cuotas que este acuerdo pasó a 7 y que no se pagan ni se condonan (las futuras: el
+            // desglose solo cuenta su capital), de meses ya devengados por el cierre, reversan su devengo
+            // (D ingreso / H interés por cobrar) dentro del mismo asiento del evento. Vacío si el devengo completo no
+            // está activo.
+            List<DetalleAsiento> lineasAdicionales = new ArrayList<>();
+            if (lineasCruce != null) {
+                lineasAdicionales.addAll(lineasCruce);
+            }
+            List<DetalleAsiento> lineasReversoDevengo = acuerdo.getEmpresa() != null
+                    ? devengoCompletoService.lineasReversoCuotasCanceladas(acuerdo.getEmpresa().getCodigo(), prestamo,
+                            fecha, "Acuerdo " + idAcuerdo)
+                    : new ArrayList<DetalleAsiento>();
+            lineasAdicionales.addAll(lineasReversoDevengo);
             Long idAsientoOperacion = generarAsientoCondonacion(acuerdo, prestamo, pendientes, capitalCondonado,
-                    interesCondonado, fecha, fechaAsiento, lineasCruce);
-            if (idAsientoOperacion == null && lineasCruce != null) {
-                // Nada condonado: el cruce va en su propio asiento.
-                idAsientoOperacion = generarAsientoCruceAportesAcuerdo(acuerdo, lineasCruce, pago, fechaAsiento);
+                    interesCondonado, fecha, fechaAsiento, lineasAdicionales);
+            if (idAsientoOperacion == null && !lineasAdicionales.isEmpty()) {
+                // Nada condonado: el cruce y/o el reverso del devengo van en su propio asiento, ligado al evento.
+                idAsientoOperacion = generarAsientoCruceAportesAcuerdo(acuerdo, lineasAdicionales, prestamo,
+                        fechaAsiento, lineasCruce != null ? "Cruce de aportes" : "Reverso de devengo");
             }
             if (idAsientoOperacion != null) {
                 // Lote 1c: el asiento queda en el evento (EVPR.numeroAsiento) para que anularOperacion →
@@ -934,7 +952,7 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
         // cierre de cartera — acá sí corresponden. Sumado al final, sin tocar el resto del
         // método.
         String observacionCondonacion = "Condonación del acuerdo " + acuerdo.getCodigo()
-                + " - préstamo " + prestamo.getCodigo() + (conCruce ? " (con cruce de aportes)" : "");
+                + " - préstamo " + prestamo.getCodigo() + (conCruce ? " (con cruce de aportes y/o reverso de devengo)" : "");
         if (acuerdo.getEntidad() != null) {
             observacionCondonacion += " | Cédula: " + (acuerdo.getEntidad().getNumeroIdentificacion() != null
                     ? acuerdo.getEntidad().getNumeroIdentificacion() : "-")
@@ -1025,9 +1043,8 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
      * sin nada condonado). Devuelve su código para que {@code aplicarAcuerdo} lo grabe en el evento.
      */
     private Long generarAsientoCruceAportesAcuerdo(AcuerdoCondonacion acuerdo, List<DetalleAsiento> lineas,
-            PagoPrestamo pago, LocalDate fechaAsiento) throws Throwable {
+            Prestamo prestamo, LocalDate fechaAsiento, String titulo) throws Throwable {
         Long idEmpresa = acuerdo.getEmpresa().getCodigo();
-        Prestamo prestamo = pago.getPrestamo();
         double totalDebe = 0.0;
         for (DetalleAsiento linea : lineas) {
             totalDebe += nvl(linea.getValorDebe());
@@ -1035,7 +1052,7 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
 
         // Cédula/nombre/idAsoprep, sumado al final (2026-08-31) — mismo criterio que el asiento
         // de condonación de este archivo.
-        String observacionCruce = "Cruce de aportes - acuerdo " + acuerdo.getCodigo() + " - préstamo "
+        String observacionCruce = titulo + " - acuerdo " + acuerdo.getCodigo() + " - préstamo "
                 + (prestamo != null ? prestamo.getCodigo() : null);
         if (acuerdo.getEntidad() != null) {
             observacionCruce += " | Cédula: " + (acuerdo.getEntidad().getNumeroIdentificacion() != null
