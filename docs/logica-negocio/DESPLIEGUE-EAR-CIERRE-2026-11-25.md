@@ -28,7 +28,8 @@
 | 7 | Corridas EJECUTADAS 1 (2026-07-31), 2 (08-31), 4 (09-30) y 24 (10-31) | `anclaArranque = 2026-07-31`, **si la corrida 1 fue la de arranque** (confirmar). El próximo cierre es **noviembre 2026** |
 | 8 | Tipos 1 Q (823 vivos), 2 H (393), 3 P (2), 4 y 5 (0) | Base `1:0;2:0;3:0;4:0;5:0` |
 | 9 | Plantilla 17 con papeles 10 y 30 para los tipos 1, 2 y 3 | OK: los tipos 4 y 5 no tienen préstamos |
-| props | **Falta leerlas** (el jboss-cli no estaba en el PATH) | Ver §4 |
+| props | Leídas en la consola de WildFly (25-11). `saa.cartera.alCorte = nunca`, `saa.cartera.neteoPorPrestamo = nunca`, `saa.cartera.inicioDevengoMora = 2025-05-31`. **No están** `devengoMoraCierre`, `corteInclusivo`, `corteExclusivoDesde` ni `moraNoCobradaHasta` | ⚠️ Con `alCorte = nunca`, producción **nunca** corrió ⑧, ⑨ ni ⑩: la 1399 nunca se ajustó a la G48 por el cierre. Pasar a `siempre` (bloque 7 del encargo) cambia el cierre de noviembre. Ver §4 |
+| firma | `saa.firma.securitydata.pruebas = true` y la URL apunta a `portal-bpmdesarrollo…` | ⚠️ **Hallazgo:** la firma electrónica de producción usa el ambiente de PRUEBAS de Security Data |
 
 ## 3. ⛔ Scripts ANTES del WAR, en este orden (bloque por bloque, cada uno con sus controles)
 
@@ -82,7 +83,9 @@ Select-String -Path $env:TEMP\props.txt -Pattern "saa\.cartera"
 | `saa.cartera.topeProvisionMoraDesde` | `2026-11-30` |
 | `saa.cartera.anclaArranque` | `2026-07-31` (corrida 1), si fue la de arranque |
 | `saa.cartera.anticipadoBaseTransicion` | `1:0;2:0;3:0;4:0;5:0` |
-| `saa.cartera.alCorte` | `siempre` (verificar; sin ella no corren ⑧, ⑨ ni ⑩) |
+| `saa.cartera.alCorte` | **Hoy `nunca`.** El encargo pide `siempre`, para que corran ⑧ (provisión de cartera contra la G48), ⑨ (ajuste de bandas a saldo) y ⑩ (devengo de mora al corte). ⚠️ Sería la **primera vez** que esos tres pasos corren en producción: el primer ⑧/⑨ ajusta a saldo todo lo acumulado y puede dar asientos grandes. **Decisión del líder, con una previsualización antes.** C27b y el lote 7 no dependen de esta propiedad |
+| `saa.cartera.neteoPorPrestamo` | Hoy `nunca`. Confirmar con el cuadre si D-032 (neteo por préstamo) debe activarse en producción |
+| Cómo se agregan | En la consola de WildFly, System Properties → Add (la misma pantalla de la captura). El código las lee en cada cierre, sin reiniciar |
 | `saa.cartera.corteInclusivo`, `saa.cartera.moraNoCobradaHasta`, `saa.cartera.timerMoraSuspendido` | **NO** se definen |
 
 ## 5. Humo (solo lectura) y cierre
