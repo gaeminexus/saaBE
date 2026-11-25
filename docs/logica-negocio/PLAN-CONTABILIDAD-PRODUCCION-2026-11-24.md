@@ -109,6 +109,14 @@ dueño, con la autorización del usuario.
      - `generarAsientoCondonacion` (l. 728-940) no guarda el asiento en el evento.
      - `reversarProceso` del CBCR anula solo sus tres asientos.
      - Se propone como lote aparte, junto con 3.3.
+14. **Verificado en producción (25-11):**
+    - El alterno 39 está libre en todas las empresas.
+    - El 38 es CXP COMPRAS (PLNSCDGO 1202, empresa 1236) y solo tiene las líneas aux1 1 y 2, sin 86/87. El 383 viejo
+      nunca corrió en producción.
+    - **El equipo `omen-saa-3` está apagado,** así que nadie más revisa la parte `rhh`/`cxp` de c45. La revisión que
+      cuenta es la del árbitro omen1 del 24-11, sin hallazgos en esos dos archivos.
+    - **EAR elegido por el usuario: opción (b),** con todo main más el lote 7 (lleva la c19b: `C19-01`…`C19-07` y el 392
+      antes del WAR).
 13. **«Merge de todo» (pedido del usuario, 24-11): merge `42050351` de `cuadre-c19b-sobre-main`.** Es el C19b del
     cuadre rebasado sobre main.
     - Borra `EstructuraReporteService` y porta C38/C39 al motor de balances. `/esrp` y `/esfo` quedan como alias.
