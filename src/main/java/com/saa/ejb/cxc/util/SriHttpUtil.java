@@ -13,30 +13,29 @@ import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509ExtendedTrustManager;
 
 /**
- * Utilidad para crear conexiones HTTP/HTTPS al SRI tolerando el certificado SSL.
+ * Utilidad para crear conexiones HTTP/HTTPS al SRI.
  *
- * Problema: el servidor de producción del SRI (cel.sri.gob.ec) responde desde la
- * IP 181.113.227.222. Java rechaza la conexión HTTPS porque el certificado del
- * servidor tiene como CN/SAN el nombre de dominio, no la IP.
+ * Lote 12 (VCN #9): por defecto la conexion usa TLS NORMAL: se valida la cadena del certificado contra el almacen de confianza de la JVM y el nombre
+ * del servidor (cel.sri.gob.ec / celcer.sri.gob.ec). Medido el 2026-11-25: los dos presentan una hoja emitida por DigiCert Global G2 TLS RSA SHA256 2020
+ * CA1 (raiz DigiCert Global Root G2, presente en el cacerts de JDK 21 y 8u261). Antes la clase aceptaba CUALQUIER certificado y CUALQUIER nombre (un
+ * intermediario podia leer y alterar los comprobantes y la clave de la firma no viaja, pero si el XML firmado).
  *
- * Solución: X509ExtendedTrustManager + HostnameVerifier permisivo.
- *
- * IMPORTANTE — por qué X509ExtendedTrustManager y NO SSLSocketFactory/SSLParameters:
- *   HttpsURLConnection.connect() llama internamente a
- *   sun.security.ssl.SSLSocketImpl.startHandshake() que invoca
- *   SSLParameters.setEndpointIdentificationAlgorithm("HTTPS") DESPUÉS de que
- *   creamos el socket, sobreescribiendo cualquier valor que hubiéramos puesto.
- *   Eso causa "Connection reset" porque el peer aborta el handshake al detectar
- *   el alert TLS "unrecognized_name".
- *
- *   X509ExtendedTrustManager es llamado DENTRO del handshake TLS, en el momento
- *   exacto en que se valida el certificado del servidor. Al implementar
- *   checkServerTrusted(chain, authType, engine) como no-op, la validación
- *   de IP/hostname nunca ocurre, independientemente de lo que haga HttpsURLConnection
- *   con los SSLParameters.
+ * VALVULA TRANSITORIA: con la propiedad de sistema {@code -Dsaa.sri.tlsPermisivo=true} se vuelve al comportamiento anterior (acepta todo) y se escribe un
+ * AVISO FUERTE en el log en cada conexion. Solo para no quedarse sin emitir si la lista de control de la raiz falla en produccion; se retira en el ciclo
+ * siguiente. Ver docs/logica-negocio/cxc/PROPUESTA-LOTE-12-VCN-CXC-SRI.md (lista de control).
  */
 public class SriHttpUtil {
 
+    /** Propiedad de sistema de la valvula transitoria (apagada por defecto). */
+    public static final String PROP_TLS_PERMISIVO = "saa.sri.tlsPermisivo";
+
+    private static boolean tlsPermisivo() {
+        return Boolean.parseBoolean(System.getProperty(PROP_TLS_PERMISIVO, "false"));
+    }
+
+
+    /** Solo se construye si la valvula esta encendida: ver {@link #tlsPermisivo()}. */
+    private static final class Permisivo {
     private static final SSLContext SSL_CONTEXT_SRI;
 
     static {
@@ -93,6 +92,7 @@ public class SriHttpUtil {
                     "No se pudo inicializar SSLContext para SRI: " + e.getMessage(), e);
         }
     }
+    }
 
     /** HostnameVerifier permisivo como segunda línea de defensa */
     private static final HostnameVerifier HOSTNAME_VERIFIER_SRI = new HostnameVerifier() {
@@ -112,9 +112,11 @@ public class SriHttpUtil {
         URL url = new URL(endpointUrl);
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
 
-        if (conn instanceof HttpsURLConnection) {
+        if (conn instanceof HttpsURLConnection && tlsPermisivo()) {
+            System.err.println("[SriHttpUtil] *** AVISO: TLS PERMISIVO ENCENDIDO (-D" + PROP_TLS_PERMISIVO + "=true): se acepta CUALQUIER certificado y nombre "
+                    + "para " + url.getHost() + ". Es una valvula transitoria: apague la propiedad cuando la raiz DigiCert Global Root G2 este en el almacen de la JVM. ***");
             HttpsURLConnection httpsConn = (HttpsURLConnection) conn;
-            httpsConn.setSSLSocketFactory(SSL_CONTEXT_SRI.getSocketFactory());
+            httpsConn.setSSLSocketFactory(Permisivo.SSL_CONTEXT_SRI.getSocketFactory());
             httpsConn.setHostnameVerifier(HOSTNAME_VERIFIER_SRI);
         }
 

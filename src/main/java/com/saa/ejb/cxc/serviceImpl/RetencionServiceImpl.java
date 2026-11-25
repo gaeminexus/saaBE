@@ -81,6 +81,10 @@ public class RetencionServiceImpl implements RetencionService {
 	@EJB
 	private com.saa.basico.ejb.DetalleRubroService detalleRubroService;
 
+	/** Lote 12 (VCN #7): valida las lineas de renta contra la tarifa activa de TSRI. */
+	@jakarta.ejb.EJB
+	private com.saa.ejb.cxc.service.TarifaRetencionService tarifaRetencionService;
+
 	@PersistenceContext
 	private EntityManager em;
 
@@ -632,8 +636,7 @@ public class RetencionServiceImpl implements RetencionService {
 							e.printStackTrace(logWriter2E);
 							logWriter2E.close();
 							Files.copy(pathFirmado, Paths.get(resourcesPath + "/rtnc/n/" + clave + ".xml"));
-							retencion.setEstado(6L);
-							retencion.setEstadoEmision(2L);
+							// Lote 12 (VCN #8): un error de red no es un rechazo del SRI; el comprobante queda como esta (pendiente) y se completa con la consulta de estado.
 							retencionDaoService.save(retencion, retencion.getId());
 							respuesta = "Error al llamar SRI_2: " + e.getMessage();
 						}
@@ -729,6 +732,27 @@ public class RetencionServiceImpl implements RetencionService {
 		System.out.println("=== emitirRetencionAnteSRI (BD tras RECIBIDA) ===");
 		java.util.Map<String, Object> resultado = new java.util.HashMap<>();
 		resultado.put("exito", false);
+
+		// Lote 12 (VCN #7): las lineas de renta se validan contra la tarifa activa; el valor lo fija el servidor si difiere hasta un centavo.
+		if (detalles != null) {
+			java.util.List<com.saa.ejb.cxc.service.TarifaRetencionService.Linea> lineasTarifa = new java.util.ArrayList<>();
+			int nLinea = 0;
+			for (com.saa.model.cxc.DetalleRetencion d : detalles) {
+				lineasTarifa.add(new com.saa.ejb.cxc.service.TarifaRetencionService.Linea(d.getCodImpuesto(), d.getCodRetencion(),
+						d.getBaseImponible(), d.getPorcentajeReten(), d.getValorReten(), "Linea " + (++nLinea)));
+			}
+			try {
+				java.util.List<Double> valoresTarifa = tarifaRetencionService.validarRenta(lineasTarifa);
+				int iv = 0;
+				for (com.saa.model.cxc.DetalleRetencion d : detalles) {
+					d.setValorReten(valoresTarifa.get(iv++));
+				}
+			} catch (IncomeException ex) {
+				resultado.put("etapa", "VALIDACION_RETENCION");
+				resultado.put("mensaje", ex.getMessage());
+				return resultado;
+			}
+		}
 
 		// ── PASO 0: Validar configuración contable ANTES de grabar ─────────────
 		if (retencion.getFacturador() != null

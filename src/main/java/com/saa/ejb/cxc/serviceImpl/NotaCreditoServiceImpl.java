@@ -805,8 +805,7 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 							
 							Files.copy(pathFirmado, Paths.get(resourcesPath + "/ntcr/n/" + clave + ".xml"));
 							
-							notaCredito.setEstado(6L);
-							notaCredito.setEstadoEmision(2L);
+							// Lote 12 (VCN #8): un error de red no es un rechazo del SRI; el comprobante queda como esta (pendiente) y se completa con la consulta de estado.
 							notaCreditoDaoService.save(notaCredito, notaCredito.getId());
 							
 							respuesta = "Error al llamar SRI_2: " + e.getMessage();

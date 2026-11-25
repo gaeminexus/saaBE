@@ -792,8 +792,7 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 							
 							Files.copy(pathFirmado, Paths.get(resourcesPath + "/ntdb/n/" + clave + ".xml"));
 							
-							notaDebito.setEstado(6L);
-							notaDebito.setEstadoEmision(2L);
+							// Lote 12 (VCN #8): un error de red no es un rechazo del SRI; el comprobante queda como esta (pendiente) y se completa con la consulta de estado.
 							notaDebitoDaoService.save(notaDebito, notaDebito.getId());
 							
 							respuesta = "Error al llamar SRI_2: " + e.getMessage();

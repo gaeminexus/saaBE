@@ -219,7 +219,7 @@ public class RetencionV2Rest {
 				return Response.status(Response.Status.OK)
 						.entity(resultado).type(MediaType.APPLICATION_JSON).build();
 			} else if ("VALIDACION_CONTABLE".equals(etapa) || "VALIDACION_FACTURA".equals(etapa)
-					|| "PARAMETROS".equals(etapa)) {
+					|| "PARAMETROS".equals(etapa) || "VALIDACION_RETENCION".equals(etapa)) {
 				// Error de datos del usuario, nada se grabó todavía → 422
 				return Response.status(422)
 						.entity(resultado).type(MediaType.APPLICATION_JSON).build();

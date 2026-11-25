@@ -1672,8 +1672,7 @@ public class FacturaServiceImpl implements FacturaService {
 							Files.copy(pathFirmado, Paths.get(resourcesPath + "/docs/n/" + clave + ".xml"));
 							
 							// Actualizar estado a NO AUTORIZADA (estado=6, estadoEmision=2)
-							factura.setEstado(6L);
-							factura.setEstadoEmision(2L);
+							// Lote 12 (VCN #8): un error de red no es un rechazo del SRI; el comprobante queda como esta (pendiente) y se completa con la consulta de estado.
 							facturaDaoService.save(factura, factura.getId());
 							
 							respuesta = "Error al llamar SRI_2: " + e.getMessage();

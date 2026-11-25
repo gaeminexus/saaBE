@@ -107,3 +107,33 @@ En ambiente de pruebas del SRI (`celcer`): una emisión de cada tipo; dos emisio
 5. Repetir 1–4 en factura, NC, ND, liquidación, retención v1 y V2 (los seis tienen su copia).
 
 **#18** cliente solo con razón social: el XML y el RIDE salen con ella; titular sin nombre ni razón social: falla con mensaje claro antes de firmar.
+
+---
+
+## ESTADO (parte 2, 2026-11-25): #8 (red), #7 (solo renta) y #9 PROGRAMADOS
+
+### #8 — errores de red
+Los `catch` que ante una excepción de red al llamar al WS2 dejaban ESTADO 6 (reenvío de los seis servicios) ya no tocan el estado: el comprobante queda como estaba (pendiente) y se completa con la consulta de estado. Solo un «NO AUTORIZADO» expreso del SRI pasa a 6.
+
+### #7 — retención de renta con la tarifa del servidor (solo renta)
+`TarifaRetencionService.validarRenta` (nuevo), llamado al inicio de `procesarRetencionV2Completa` (V2) y de `emitirRetencionAnteSRI` (v1), antes de grabar nada. Solo líneas con código de impuesto 1 (renta): tarifa ACTIVA de `CBR.TSRI` con `LSRI.TABLA = '608'` y `CODIGO = codRetencion`. Reglas aprobadas: sin tarifa activa o con varias → se rechaza; porcentaje distinto de la tarifa → se rechaza; valor que difiere de `round(base × % / 100, 2)` hasta 1 centavo → manda el servidor (se reemplaza y se anota en el log); más de 1 centavo → se rechaza; base ≤ 0 → se rechaza; la base nunca se corrige. Se listan TODAS las líneas rechazadas; etapa `VALIDACION_RETENCION` (422 en `RetencionV2Rest`). **IVA (código 2) e ISD quedan como hoy** hasta que el contador valide la semilla de la tabla 20. Sin historia de vigencia: un documento con fecha pasada usa la tarifa de hoy. Precondición ya medida: 7b = 0 códigos con dos tarifas activas.
+**Pruebas en copia:** (1) código de renta con tarifa conocida y valores exactos: emite igual que antes; (2) porcentaje alterado: 422 con la línea; (3) valor con 1 centavo de diferencia: emite con el valor del servidor; (4) valor con más de 1 centavo: 422; (5) código sin tarifa activa: 422; (6) línea de IVA con cualquier porcentaje: pasa como hoy; (7) lo mismo en la retención v1.
+
+### #9 — TLS normal hacia el SRI
+`SriHttpUtil` ya no acepta cualquier certificado ni cualquier nombre: usa la validación normal de la JVM. **Válvula transitoria** `-Dsaa.sri.tlsPermisivo=true` (apagada por defecto) vuelve al comportamiento anterior y escribe un AVISO fuerte en cada conexión; se retira en el ciclo siguiente.
+
+**Lista de control en producción (la corre el usuario ANTES de desplegar), con el JDK del WildFly:**
+```
+:: 1) ¿Qué JDK usa WildFly? (mirar JAVA_HOME en standalone.conf.bat / el servicio) y si tiene truststore propio:
+::    buscar -Djavax.net.ssl.trustStore en standalone.conf.bat / standalone.xml  (si aparece, ese es el almacén a revisar)
+:: 2) ¿Está la raíz en el almacén por defecto?
+"%JAVA_HOME%\bin\keytool" -list -cacerts -storepass changeit | findstr /i digicertglobalrootg2
+:: 3) Prueba real del handshake a las dos URLs con ese mismo JDK (debe imprimir 200/405/500 y NO una excepción de certificado):
+echo var u=new java.net.URL("https://cel.sri.gob.ec/comprobantes-electronicos-ws/AutorizacionComprobantesOffline?wsdl"); var c=(java.net.HttpURLConnection)u.openConnection(); System.out.println(c.getResponseCode()); /exit | "%JAVA_HOME%\bin\jshell" -
+echo var u=new java.net.URL("https://celcer.sri.gob.ec/comprobantes-electronicos-ws/AutorizacionComprobantesOffline?wsdl"); var c=(java.net.HttpURLConnection)u.openConnection(); System.out.println(c.getResponseCode()); /exit | "%JAVA_HOME%\bin\jshell" -
+:: 4) Si el paso 2 no encuentra la raíz: importarla (descargar «DigiCert Global Root G2» de digicert.com/kb/digicert-root-certificates.htm como .pem) y:
+"%JAVA_HOME%\bin\keytool" -importcert -trustcacerts -cacerts -storepass changeit -alias digicertglobalrootg2 -file DigiCertGlobalRootG2.pem
+::    (si WildFly usa un truststore propio, importar en ese archivo con -keystore <ruta>). Reiniciar WildFly y repetir el paso 3.
+:: 5) Si algo falla y hay que emitir YA: añadir -Dsaa.sri.tlsPermisivo=true a JAVA_OPTS y reiniciar (válvula), y avisar para retirarla.
+```
+**Prueba en copia:** emisión contra celcer con TLS normal (debe autorizar); con la raíz fuera del almacén de prueba debe fallar con error de certificado; con la válvula encendida debe emitir y dejar el aviso en el log.

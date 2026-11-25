@@ -1524,8 +1524,7 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 							Files.copy(pathFirmado, Paths.get(resourcesPath + "/lqcs/n/" + clave + ".xml"));
 							
 							// Actualizar estado a NO AUTORIZADA (estado=6, estadoEmision=2)
-							liquidacion.setEstado(6L);
-							liquidacion.setEstadoEmision(2L);
+							// Lote 12 (VCN #8): un error de red no es un rechazo del SRI; el comprobante queda como esta (pendiente) y se completa con la consulta de estado.
 							liquidacionCompraDaoService.save(liquidacion, liquidacion.getId());
 							
 							respuesta = "Error al llamar SRI_2: " + e.getMessage();
