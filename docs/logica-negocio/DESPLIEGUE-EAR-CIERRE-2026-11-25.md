@@ -34,7 +34,7 @@
 | Plantilla 17 | Papeles 10 y 30 para los tipos 1, 2 y 3 | OK |
 | Alterno 39 | Libre | El 383 puede correr |
 | Propiedades | `alCorte = nunca`, `neteoPorPrestamo = nunca`, `inicioDevengoMora = 2025-05-31` | Ver §4 |
-| Firma electrónica | `saa.firma.securitydata.pruebas = true`, URL de desarrollo | ⚠️ Hallazgo: producción firma contra el ambiente de PRUEBAS |
+| Firma electrónica | `saa.firma.securitydata.pruebas = true`, URL de desarrollo | Intencional: Security Data sigue en pruebas (lo confirmó el usuario el 25-11). No es hallazgo |
 
 ## 3. ⛔ Scripts ANTES del WAR, en este orden (bloque por bloque, cada uno con sus controles)
 1. **Los 9 del cuadre:** `cnt/sql/C34-01-novedades-v2.sql`, `C34-01b`, `C34-07`, `C34-07b`, `C34-07c`, `C34-07d`,
@@ -68,6 +68,8 @@ porque escribe en `CNT.RNRP`.
 | `saa.cartera.neteoPorPrestamo` | **quitar** el `nunca` (queda `auto`) | Junto con `alCorte = siempre` |
 | `saa.cartera.inicioDevengoMora` | `2025-05-31` (ya está) | — |
 | `saa.cartera.corteInclusivo`, `saa.cierres.permitirFueraDeOrden`, `saa.cartera.moraNoCobradaHasta`, `saa.cartera.timerMoraSuspendido` | **NO** se definen | — |
+
+**Estado al 25-11:** propiedades del §4 ya puestas en producción (verificado en la consola: alCorte=siempre, neteoPorPrestamo retirada, las cuatro de C27b y el tope de mora).
 
 ## 5. Cierre de noviembre 2026 (condición del líder sobre `alCorte`)
 1. Desplegar y revisar que el log no tenga `ERROR` ni `ORA-`. Ojo con las inyecciones circulares (acuerdo ↔ pagos;
