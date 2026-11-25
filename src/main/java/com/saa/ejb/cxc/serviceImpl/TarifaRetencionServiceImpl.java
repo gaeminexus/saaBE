@@ -49,9 +49,16 @@ public class TarifaRetencionServiceImpl implements TarifaRetencionService {
                 valores.add(l.valor);
                 continue;
             }
-            List<Double> tarifas = em.createQuery(
-                    "select t.porcentaje from Tsri t where t.lsri.tabla = :tabla and trim(t.codigo) = :codigo and t.estado = 1", Double.class)
+            // SQL nativo con el join real TSRI.LSRI = LSRI.ID: la entidad Tsri mapea LSRI contra LSRI.TABLA pero los datos guardan el id (ver SustentoTributarioServiceImpl), y navegar t.lsri.tabla en JPQL no encontraria filas.
+            @SuppressWarnings("unchecked")
+            List<Number> filasTarifa = em.createNativeQuery(
+                    "SELECT t.PORCENTAJE FROM CBR.TSRI t JOIN CBR.LSRI l ON TO_CHAR(l.ID) = TO_CHAR(t.LSRI) "
+                    + "WHERE l.TABLA = :tabla AND t.ESTADO = 1 AND TRIM(t.CODIGO) = :codigo")
                 .setParameter("tabla", TABLA_RENTA).setParameter("codigo", cod).getResultList();
+            List<Double> tarifas = new ArrayList<Double>();
+            for (Number n : filasTarifa) {
+                tarifas.add(n != null ? n.doubleValue() : null);
+            }
             if (tarifas.isEmpty() || tarifas.get(0) == null) {
                 rechazos.add(l.etiqueta + ": el código de retención " + cod + " no tiene una tarifa de renta activa.");
                 valores.add(l.valor);
