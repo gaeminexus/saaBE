@@ -11,6 +11,19 @@
 `docs/equipos/saa-1.md` (traspaso del 01-11) y en los commits `crd(omen1)` del 05-11 al 16-11, que **no quedaron
 registrados en ningún tablero**. Desde aquí se registra cada frente.
 
+**Último (24-11, noche):**
+- **Merge `897d6eb4`:** entró la rama del cuadre C39–C44. Revisé crd y cnt.
+  - C42 cambia producción: desde ago-2025, la cuota que vence el día del corte cuenta como por vencer, más la regla 30/60.
+  - C43 es inerte sin su propiedad.
+- **EAR `c42-1124`:** reemplaza a cancelados-1124, que no se desplegó. Runbook `DESPLIEGUE-EAR-C42-2026-11-24.md`.
+- **Encargo «contabilidad de producción»:** triado por bloque en `PLAN-CONTABILIDAD-PRODUCCION-2026-11-24.md`.
+- **C27b:** despachado a omen-saa-1-be (lote 1) con la activación `saa.cartera.devengoCompletoDesde`, y el ⑪ contra lo
+  ya asentado, no contra el saldo de la cuenta.
+- **Hallazgos:**
+  - las ramas `c19-balances-oficiales` y `c45-bloqueantes-produccion` no existen en `origin`;
+  - los U1–U7 del pase del cuadre no están en el repo;
+  - 6.1 y 6.2 del encargo tocan `rhh`, `cxp` y `tsr` (otros equipos).
+
 **Comparten crd/cnt con nosotros:** el cuadre (merges C30–C35, C33, C34 Novedades v2, c27-b2) y `omen-saa-3` (alcance
 total autorizado por el usuario el 27-10). `git log -3` sobre cada archivo antes de tocarlo.
 
