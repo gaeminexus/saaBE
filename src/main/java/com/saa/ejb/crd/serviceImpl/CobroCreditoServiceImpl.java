@@ -914,8 +914,11 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
      * cuentan. En la copia del 15-nov la regla encuentra 3 casos, los tres duplicados ya
      * documentados o por documentar (eventos 1, 42 y 1151).
      */
-    private void rechazarSiYaAplicadoSinCobro(CobroCredito cobro, List<DetalleCobroCredito> detalles)
-            throws Throwable {
+    /** Marcador fijo (lote 6) al inicio de cada constancia de omisión, para buscarlas por SQL (sql/390). */
+    private static final String MARCA_OMISION_COBRO_DUPLICADO = "[OMISION-COBRO-DUPLICADO]";
+
+    private void rechazarSiYaAplicadoSinCobro(CobroCredito cobro, List<DetalleCobroCredito> detalles,
+            boolean omitir, String motivoOmision, String usuario) throws Throwable {
         if (cobro.getFecha() == null) {
             return;
         }
@@ -928,6 +931,10 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
         if (!conPrestamo) {
             return;
         }
+        // Todas las coincidencias (una por línea con préstamo): sin omisión se rechaza por la primera, como siempre; con
+        // omisión se registran todas.
+        List<DetalleCobroCredito> lineasConCoincidencia = new ArrayList<>();
+        List<Object[]> eventosCoincidentes = new ArrayList<>();
         for (DetalleCobroCredito linea : detalles) {
             if (linea.getPrestamo() == null || linea.getTipoAporte() != null || linea.getValor() == null
                     || linea.getValor() <= 0.0) {
@@ -936,15 +943,59 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
             List<Object[]> sueltos = cobroCreditoDaoService.selectEventosSinCobroCoincidentes(
                     linea.getPrestamo().getCodigo(), cobro.getFecha(), linea.getValor());
             if (sueltos != null && !sueltos.isEmpty()) {
-                Object[] ev = sueltos.get(0);
-                throw new IncomeException("POSIBLE_COBRO_DUPLICADO: el préstamo " + linea.getPrestamo().getCodigo()
-                        + " ya tiene el evento " + ev[0] + " (" + ev[1] + ") del " + cobro.getFecha() + " por "
-                        + linea.getValor() + " que no pertenece a ningún cobro: procesar el cobro "
-                        + cobro.getCodigo() + " aplicaría el mismo pago dos veces. Si es el mismo dinero,"
-                        + " anule ese evento antes de procesar; si son dos pagos distintos, consúltelo con"
-                        + " Contabilidad: este control no tiene excepción.");
+                lineasConCoincidencia.add(linea);
+                eventosCoincidentes.add(sueltos.get(0));
+                if (!omitir) {
+                    break;
+                }
             }
         }
+        if (lineasConCoincidencia.isEmpty()) {
+            return;
+        }
+        if (!omitir) {
+            DetalleCobroCredito linea = lineasConCoincidencia.get(0);
+            Object[] ev = eventosCoincidentes.get(0);
+            throw new IncomeException("POSIBLE_COBRO_DUPLICADO: el préstamo " + linea.getPrestamo().getCodigo()
+                    + " ya tiene el evento " + ev[0] + " (" + ev[1] + ") del " + cobro.getFecha() + " por "
+                    + linea.getValor() + " que no pertenece a ningún cobro: procesar el cobro "
+                    + cobro.getCodigo() + " aplicaría el mismo pago dos veces. Si es el mismo dinero,"
+                    + " anule ese evento antes de procesar; si son dos pagos distintos, procese con la omisión"
+                    + " explícita (omitirControlDuplicado = true) y su motivo.");
+        }
+        String motivo = motivoOmision != null ? motivoOmision.trim() : "";
+        if (motivo.isEmpty()) {
+            throw new IncomeException("OMISION_SIN_MOTIVO: para procesar el cobro " + cobro.getCodigo()
+                    + " omitiendo el control de cobro duplicado hay que indicar el motivo de la omisión.");
+        }
+        // Constancia, sin tabla nueva: observación del cobro y huella de cada préstamo, con el marcador fijo al inicio.
+        String observacionCobro = cobro.getObservacion() != null ? cobro.getObservacion() : "";
+        for (int i = 0; i < lineasConCoincidencia.size(); i++) {
+            DetalleCobroCredito linea = lineasConCoincidencia.get(i);
+            Object[] ev = eventosCoincidentes.get(i);
+            String texto = MARCA_OMISION_COBRO_DUPLICADO + " cobro " + cobro.getCodigo() + ", préstamo "
+                    + linea.getPrestamo().getCodigo() + ", evento coincidente " + ev[0] + " (" + ev[1]
+                    + "), omitido por " + usuario + ": " + motivo;
+            observacionCobro = observacionCobro + (observacionCobro.isEmpty() ? "" : "\n") + texto;
+            procesoPagoPrestamoService.registrarHuellaPrestamo(linea.getPrestamo(),
+                    "OMISION CONTROL COBRO DUPLICADO", nvl(linea.getValor()), texto, LocalDateTime.now(), usuario);
+            System.out.println("CobroCreditoService - " + texto);
+        }
+        cobro.setObservacion(truncarPorLaIzquierda(observacionCobro, 2000));
+    }
+
+    /** Recorta por la izquierda hasta que el texto quepa en {@code maxBytes} UTF-8 (CBCROBSR es VARCHAR2(2000) en bytes). */
+    private static String truncarPorLaIzquierda(String texto, int maxBytes) {
+        String actual = texto;
+        while (actual != null) {
+            int exceso = actual.getBytes(java.nio.charset.StandardCharsets.UTF_8).length - maxBytes;
+            if (exceso <= 0) {
+                break;
+            }
+            // Cada carácter ocupa a lo sumo 4 bytes: quitar exceso/4 (mínimo 1) caracteres avanza siempre.
+            actual = actual.substring(Math.max(1, exceso / 4));
+        }
+        return actual;
     }
 
     /** D-019 en CBCR: la misma regla del re-proceso Petro, compartida. */
@@ -1018,8 +1069,15 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
 
     @Override
     public ResultadoProcesoCobro procesarCobro(Long idCobro, String usuario, boolean reproceso) throws Throwable {
+        return procesarCobro(idCobro, usuario, reproceso, false, null);
+    }
+
+    @Override
+    public ResultadoProcesoCobro procesarCobro(Long idCobro, String usuario, boolean reproceso,
+            boolean omitirControlDuplicado, String motivoOmision) throws Throwable {
         System.out.println("CobroCreditoService.procesarCobro - cobro: " + idCobro
-                + (reproceso ? " - MODO REPROCESO (D-019)" : ""));
+                + (reproceso ? " - MODO REPROCESO (D-019)" : "")
+                + (omitirControlDuplicado ? " - OMITE CONTROL DE COBRO DUPLICADO" : ""));
         // U-2: lo primero, el usuario existe (helper único); sin usuario válido no se hace nada.
         usuario = usuarioValidacionService.validar(usuario);
 
@@ -1068,7 +1126,8 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
         // (producción, agosto 2026: evento 42 del préstamo 8085 frente al cobro 69). Se rechaza
         // antes de cualquier escritura; si de verdad son dos pagos, el evento suelto se anula o
         // se documenta antes de procesar.
-        rechazarSiYaAplicadoSinCobro(cobro, detalles);
+        // Lote 6 (c45-1): con omisión explícita y motivo, se procesa igual y queda constancia.
+        rechazarSiYaAplicadoSinCobro(cobro, detalles, omitirControlDuplicado, motivoOmision, usuario);
 
         // D-019 en CBCR (modo re-proceso, solo con la bandera): préstamos evaluados vigentes al
         // corte del mes del cobro ANTES de la mora H42 y de cualquier motor.

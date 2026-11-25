@@ -276,6 +276,17 @@ public interface CobroCreditoService {
     ResultadoProcesoCobro procesarCobro(Long idCobro, String usuario, boolean reproceso) throws Throwable;
 
     /**
+     * Igual que {@link #procesarCobro(Long, String, boolean)} con la omisión explícita del control de cobro duplicado
+     * (c45-1, lote 6): si algún préstamo del cobro ya tiene un evento vigente suelto de la misma fecha y valor, con
+     * {@code omitirControlDuplicado = true} y un {@code motivoOmision} no vacío el cobro se procesa igual y la omisión queda
+     * en la observación del cobro y en la huella de cada préstamo, con el marcador {@code [OMISION-COBRO-DUPLICADO]}. Sin la
+     * omisión (false/null) es exactamente la versión de tres argumentos. Contrato:
+     * docs/logica-negocio/crd/API-OMISION-COBRO-DUPLICADO.md.
+     */
+    ResultadoProcesoCobro procesarCobro(Long idCobro, String usuario, boolean reproceso, boolean omitirControlDuplicado,
+            String motivoOmision) throws Throwable;
+
+    /**
      * Seguimiento mensual de cobros personales — una fila por cada {@code CRD.CBCR} cuya fecha
      * de DEPÓSITO ({@code fecha}, no la de registro) cae en el rango, con la huella completa
      * del circuito (registro, aprobación, rechazo, proceso, anulación, reverso) y los tres

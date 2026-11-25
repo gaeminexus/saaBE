@@ -35,6 +35,32 @@ public class SolicitudAprobacionCobro {
      */
     private Boolean reproceso;
 
+    /**
+     * Solo {@code /cbcr/{id}/procesar} (lote 6, c45-1): procesar aunque el control de cobro duplicado encuentre un evento
+     * suelto de la misma fecha y valor. Exige {@link #motivoOmision} (no vacío). Sin el campo, o en {@code false}, el control
+     * rechaza como siempre. Ver docs/logica-negocio/crd/API-OMISION-COBRO-DUPLICADO.md.
+     */
+    private Boolean omitirControlDuplicado;
+
+    /** Motivo de la omisión del control de cobro duplicado (obligatorio, no vacío, cuando se omite). */
+    private String motivoOmision;
+
+    public Boolean getOmitirControlDuplicado() {
+        return omitirControlDuplicado;
+    }
+
+    public void setOmitirControlDuplicado(Boolean omitirControlDuplicado) {
+        this.omitirControlDuplicado = omitirControlDuplicado;
+    }
+
+    public String getMotivoOmision() {
+        return motivoOmision;
+    }
+
+    public void setMotivoOmision(String motivoOmision) {
+        this.motivoOmision = motivoOmision;
+    }
+
     public Boolean getReproceso() {
         return reproceso;
     }

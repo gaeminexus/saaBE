@@ -325,6 +325,8 @@ public class CobroCreditoRest {
      * POST /rest/cbcr/{id}/procesar — paso 3 (PROCESO), lado crédito. Solo desde APROBADO.
      * Cuerpo {@code {"usuario": "...", "reproceso": true}}: {@code reproceso} (opcional) activa el
      * modo re-proceso de un mes pasado (D-019, docs/logica-negocio/crd/API-REPROCESO-COBRO-FECHA-PASADA.md).
+     * También {@code omitirControlDuplicado} (opcional) y {@code motivoOmision} (obligatorio con la omisión): procesa aunque
+     * el control de cobro duplicado encuentre un evento suelto coincidente (docs/logica-negocio/crd/API-OMISION-COBRO-DUPLICADO.md).
      */
     @POST
     @Path("/{id}/procesar")
@@ -335,7 +337,9 @@ public class CobroCreditoRest {
         try {
             ResultadoProcesoCobro resultado = cobroCreditoService.procesarCobro(id,
                     solicitud != null ? solicitud.getUsuario() : null,
-                    solicitud != null && Boolean.TRUE.equals(solicitud.getReproceso()));
+                    solicitud != null && Boolean.TRUE.equals(solicitud.getReproceso()),
+                    solicitud != null && Boolean.TRUE.equals(solicitud.getOmitirControlDuplicado()),
+                    solicitud != null ? solicitud.getMotivoOmision() : null);
             return Response.status(Response.Status.OK).entity(resultado).type(MediaType.APPLICATION_JSON).build();
         } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
             // U-2: usuario faltante o inexistente -> 400; no se procesó nada.
