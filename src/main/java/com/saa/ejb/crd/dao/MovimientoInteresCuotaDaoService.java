@@ -99,6 +99,39 @@ public interface MovimientoInteresCuotaDaoService extends EntityDao<MovimientoIn
     java.util.Map<Long, Double> selectSaldoDevengadoPorCuotas(List<Long> idsCuota) throws Throwable;
 
     /**
+     * Lote 15 (D-196 b): el devengo de mora (MVIC 5 / 6 vigentes) de cada cuota CON SU FECHA CONTABLE, para saber cuánto estaba devengado a la fecha
+     * de un pago y no cuánto lo está hoy.
+     *
+     * @param idsCuota códigos de cuota
+     * @return mapa {@code idCuota -> lista de {fechaContable (LocalDate), valor con signo (Double: + devengo, - reverso)}}
+     */
+    java.util.Map<Long, List<Object[]>> selectDevengoMoraDatadoPorCuotas(List<Long> idsCuota) throws Throwable;
+
+    /**
+     * Lote 15 (D-196 a): la mora contabilizada pendiente de UN préstamo a una fecha, la misma regla por préstamo del lote 7b (sin piso por cuota):
+     * {@code devengo MVIC 5 - 6 (fecha contable <= fecha) - mora cobrada vigente (<= fecha) - mora condonada de los acuerdos APLICADOS con fecha <= fecha
+     * (menos el acuerdo excluido)}. Puede ser negativa; el llamador aplica el piso.
+     *
+     * @param excluirAcuerdo acuerdo cuya condonación no se resta (el que se está contabilizando), o null
+     */
+    double selectMoraContabilizadaPendienteDelPrestamo(Long idPrestamo, java.time.LocalDate fecha, Long excluirAcuerdo) throws Throwable;
+
+    /**
+     * Lote 15 (D-195): la mora de CADA cuota de un préstamo a una fecha: {@code Object[]{idCuota (Long), vencimiento (LocalDate), devengo MVIC 5-6 (Double),
+     * mora cobrada vigente (Double), saldo provisionado de mora (Double)}}, todo hasta la fecha, ordenado por vencimiento.
+     */
+    List<Object[]> selectMoraDelPrestamoPorCuota(Long idPrestamo, java.time.LocalDate fecha) throws Throwable;
+
+    /** Lote 15 (D-195): Σ mora condonada (DACC concepto mora) de los acuerdos APLICADOS del préstamo con fecha <= la dada. */
+    double selectMoraCondonadaDelPrestamo(Long idPrestamo, java.time.LocalDate fecha) throws Throwable;
+
+    /** Lote 15 (D-195): ¿hay movimientos vigentes con ese origen e id de origen? */
+    boolean existeVigentePorOrigen(String origen, Long idOrigen) throws Throwable;
+
+    /** Lote 15 (D-195): anula (MVICANUL = 1) los movimientos vigentes con ese origen e id de origen; devuelve cuántos. */
+    int anularByOrigenYIdOrigen(String origen, Long idOrigen) throws Throwable;
+
+    /**
      * ¿Existe AL MENOS UN {@code MovimientoInteresCuota} (de cualquier tipo, vigente o anulado)
      * enlazado a esta corrida? ÍTEM T (transición del tipo 6): si la respuesta es que NO, la
      * corrida es anterior a que existiera el libro — condición necesaria para reconstruir el

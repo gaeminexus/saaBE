@@ -75,3 +75,29 @@ El líder dijo que no sale de devengo y condonación en el mismo mes sino de mor
 1. **Correr los SQL** (el usuario o el cuadre): el 399 (BLOQUES 1–3) en el reproceso, el 400 y el 401. Con eso se escoge entre las ramas del D-194 y se confirma el origen del cobro sin separar.
 2. D-194 (chica) y D-196 condonación (media) pueden ir en paralelo; D-195 (grande) después del 400.
 3. **OK del árbitro** a: la garantía `GREATEST(regla, post)` del ④; el servicio de reverso de mora y su enganche en los cuatro flujos; la separación devengada/no devengada del asiento de condonación; y el límite de fecha en `separarMoraNoDevengada`.
+
+---
+
+## ESTADO: PROGRAMADO (2026-11-25, tras el OK del árbitro) — compila; sin probar en WildFly ni Oracle
+
+**D-194.** `selectInteresDevengoPorTipoEnRango` y `selectInteresPrimeraCuotaPorTipo`: el valor de cada cuota es `GREATEST(regla actual, post)`. Solo se usan con el devengo completo activo (`saa.cartera.devengoCompletoDesde`): sin él, ni se llaman.
+
+**D-196 (b).** `separarMoraNoDevengada`: con `saa.cartera.topeProvisionMoraDesde` activo para la fecha del pago, el devengo reconocido de la cuota es el de la fecha del pago (MVIC 5 y 6 con fecha contable <= fecha del pago, método nuevo `selectDevengoMoraDatadoPorCuotas`), no el de hoy. Sin la propiedad, como siempre.
+
+**D-196 (a).** `generarAsientoCondonacion`: con la misma propiedad activa para la fecha del acuerdo, de la mora condonada solo se acredita a 1.4.02 la parte devengada: `min(mora condonada, max(0, pendiente contabilizada del préstamo a la fecha del acuerdo, sin este acuerdo))` (método nuevo `selectMoraContabilizadaPendienteDelPrestamo`: devengo MVIC 5−6 − mora cobrada − mora condonada de OTROS acuerdos APLICADOS). H 1.4.02 = interés ordinario + mora devengada; D línea 70 = ese total. La no devengada no genera línea. `condonarProvision` no cambia.
+
+**D-195.** Servicio nuevo `ReversoMoraCancelacionService` (`calcular` / `registrar` / `anularPorEvento`), activo con `saa.cartera.topeProvisionMoraDesde`. Las líneas (D 5.1.02 / H 1.4.02 por la mora devengada no cobrada; D 1.4.99.05 / H 4.7.05.10 por su provisión) van en el asiento del evento; el libro (MVIC tipo 6 y tipo 3, origen `CANCELACION_MORA`, idOrigen = el evento; `CANCELACION_MORA_SUST` con el préstamo original para la sustitución) se escribe con el asiento ya generado y se anula con el evento.
+- **Cálculo (por préstamo, regla del 7b):** pendiente = max(0, Σ cuotas(devengo MVIC 5−6 − lo que el cobro lleva a 1.4.02) − mora condonada de acuerdos APLICADOS − mora cobrada fuera de PGPR), repartido del vencimiento más viejo al más nuevo sin pasar del neto positivo de cada cuota. De la mora que cobra el propio evento solo cuenta hasta el devengo de su cuota (el resto lo separa `separarMoraNoDevengada` a ingreso y no toca 1.4.02). La provisión se reversa COMPLETA (saldo MVIC 1,4 − 2,3,9,10 de cada cuota): los reversos posteriores del mismo evento (`reversarPorPagos`, `condonarProvision`) están acotados al saldo y ya no encuentran nada, así que no duplican.
+- **Punto exacto donde se calcula «pendiente después de cobrar y condonar», por flujo:**
+  | Flujo | Dónde | Qué ya está grabado en ese punto |
+  |---|---|---|
+  | Precancelación con aportes | `ContabilidadPrestamoServiceImpl.contabilizarPrecancelacion`, justo después de `lineasReversoCuotasCanceladas` y antes de `generarAsiento` | Los PGPR del evento (`selectByEvento`), y los MVIC tipo 5 de origen COBRO que escribió `haberDesdePagos`/`separarMoraNoDevengada` en la misma llamada |
+  | Precancelación pagada con préstamo nuevo | `contabilizarPrecancelacionConPrestamo`, mismo punto | Igual |
+  | Precancelación por cobro CBCR | `CobroCreditoServiceImpl.generarAsientoDefinitivo`, bucle de detalles con evento PRECANCELACION, junto a `lineasReversoCuotasCanceladas` | Los PGPR del evento (el cobro ya se procesó); se registra tras `generarAsiento` |
+  | Acuerdo de condonación | `AcuerdoCondonacionServiceImpl.aplicarAcuerdo`, junto al reverso de devengo de C27b, antes de `generarAsientoCondonacion` | El PGPR del acuerdo, y el acuerdo ya APLICADO (su DACC de mora cuenta como condonado) |
+  | Novación y reestructuración | `ContabilidadPrestamoServiceImpl.contabilizarSustitucion`, después de las líneas no-banda y antes de `generarAsiento` (el original se cancela DESPUÉS) | No hay PGPR; la mora que cobra el valor de sustitución (`desglose.moraPendiente`) se resta como «cobrada fuera de pagos» |
+- **Anulación:** `contabilizarReverso` (precancelación con aportes, acuerdo) y `anularCobro`/`reversarProceso` de CBCR llaman `anularPorEvento`. La sustitución no tiene anulación de evento: sus filas (origen `CANCELACION_MORA_SUST`) quedan hasta que se decida cómo se deshace una novación.
+- **Idempotencia:** si ya hay movimientos vigentes del mismo origen e id, no se vuelve a reversar.
+
+### Archivos de este lote
+Ver el reporte al árbitro (lista exacta).

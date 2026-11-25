@@ -159,6 +159,14 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
     @EJB
     private com.saa.ejb.crd.service.ProvisionInteresService provisionInteresService;
 
+    /** Lote 15 (D-196 a): mora contabilizada pendiente del préstamo, para no acreditar a 1.4.02 mora que nunca se devengó. */
+    @EJB
+    private com.saa.ejb.crd.dao.MovimientoInteresCuotaDaoService movimientoInteresCuotaDaoService;
+
+    /** Lote 15 (D-195): reverso de la mora devengada y no cobrada del préstamo que el acuerdo cancela. */
+    @EJB
+    private com.saa.ejb.crd.service.ReversoMoraCancelacionService reversoMoraCancelacionService;
+
     /**
      * Confirma el acuerdo Y registra su cobro en CBCR en el MISMO acto (§5 del plan,
      * rediseñado el 2026-08-30: ya no hay aprobación de condonación previa). El préstamo NO
@@ -699,12 +707,27 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
                             fecha, "Acuerdo " + idAcuerdo)
                     : new ArrayList<DetalleAsiento>();
             lineasAdicionales.addAll(lineasReversoDevengo);
+            // Lote 15 (D-195): la mora devengada y no cobrada, DESPUÉS de lo que el acuerdo cobró (su PagoPrestamo ya está grabado) y condonó (el acuerdo ya
+            // está APLICADO: su DACC cuenta como condonado). Va en el asiento del evento.
+            com.saa.ejb.crd.service.dto.ResultadoReversoMora reversoMora = acuerdo.getEmpresa() != null
+                    ? reversoMoraCancelacionService.calcular(acuerdo.getEmpresa().getCodigo(), prestamo, fecha,
+                            java.util.Collections.singletonList(pago), 0.0,
+                            com.saa.ejb.crd.service.ReversoMoraCancelacionService.ORIGEN_EVENTO, evento.getCodigo(),
+                            "Acuerdo " + idAcuerdo)
+                    : null;
+            if (reversoMora != null) {
+                lineasAdicionales.addAll(reversoMora.getLineas());
+            }
             Long idAsientoOperacion = generarAsientoCondonacion(acuerdo, prestamo, pendientes, capitalCondonado,
-                    interesCondonado, fecha, fechaAsiento, lineasAdicionales);
+                    interesCondonado,
+                    valorConceptoCondonado(detalles, CrdConceptoPrestamo.MORA), fecha, fechaAsiento, lineasAdicionales);
             if (idAsientoOperacion == null && !lineasAdicionales.isEmpty()) {
                 // Nada condonado: el cruce y/o el reverso del devengo van en su propio asiento, ligado al evento.
                 idAsientoOperacion = generarAsientoCruceAportesAcuerdo(acuerdo, lineasAdicionales, prestamo,
                         fechaAsiento, lineasCruce != null ? "Cruce de aportes" : "Reverso de devengo");
+            }
+            if (idAsientoOperacion != null && reversoMora != null) {
+                reversoMoraCancelacionService.registrar(reversoMora, idAsientoOperacion, fechaAsiento, acuerdo.getUsuarioRegistro());
             }
             if (idAsientoOperacion != null) {
                 // Lote 1c: el asiento queda en el evento (EVPR.numeroAsiento) para que anularOperacion →
@@ -753,6 +776,7 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
      */
     private Long generarAsientoCondonacion(AcuerdoCondonacion acuerdo, Prestamo prestamo,
             List<DetallePrestamo> pendientes, double capitalCondonado, double interesCondonado,
+            double moraCondonada,
             LocalDate fecha, LocalDate fechaAsiento, List<DetalleAsiento> lineasCruceAportes) throws Throwable {
         if (capitalCondonado <= 0.0 && interesCondonado <= 0.0) {
             System.out.println("  AcuerdoCondonacionService.generarAsientoCondonacion - acuerdo "
@@ -908,16 +932,29 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
         // usa CobroPetroContableService con éxito — se unifica acá para que esta cuenta y la
         // que resuelve CBCRASN2 para "lo pagado" del mismo tipo de préstamo NUNCA puedan
         // divergir. La 25 conserva su único uso real: la línea de gasto (aux1=70) de arriba.
-        if (interesCondonado > 0.0) {
+        // Lote 15 (D-196 a): de la mora condonada solo se acredita a 1.4.02 la parte DEVENGADA (pendiente contabilizada del préstamo a la fecha del
+        // acuerdo, excluyendo este acuerdo, ya con lo que el acuerdo cobró); la no devengada nunca estuvo en el activo: ni 1.4.02 ni gasto. Activo
+        // con saa.cartera.topeProvisionMoraDesde; sin la propiedad el asiento es el de siempre.
+        double interesAcreditar = interesCondonado;
+        if (moraCondonada > TOLERANCIA && com.saa.ejb.crd.service.ModoCorteCartera.topeProvisionMoraActivo(fecha)) {
+            double pendiente = movimientoInteresCuotaDaoService.selectMoraContabilizadaPendienteDelPrestamo(
+                    prestamo.getCodigo(), fecha, acuerdo.getCodigo());
+            double moraDevengada = Math.min(moraCondonada, Math.max(0.0, redondear(pendiente)));
+            interesAcreditar = redondear(interesCondonado - moraCondonada + moraDevengada);
+            System.out.println("  Acuerdo " + acuerdo.getCodigo() + ": mora condonada " + redondear(moraCondonada)
+                    + ", devengada (se acredita a 1.4.02) " + redondear(moraDevengada) + ", no devengada (sin línea) "
+                    + redondear(moraCondonada - moraDevengada));
+        }
+        if (interesAcreditar > TOLERANCIA) {
             Long idTipoPrestamo = prestamo.getProducto() != null && prestamo.getProducto().getTipoPrestamo() != null
                     ? prestamo.getProducto().getTipoPrestamo().getCodigo() : null;
             Long idPlantillaAplicacion = contabilizacionIndividualCreditoService.resolverPlantillaAplicacion(idEmpresa);
             DetalleAsiento linea = contabilizacionIndividualCreditoService.lineaInteres(idPlantillaAplicacion,
-                    idTipoPrestamo, interesCondonado, false,
+                    idTipoPrestamo, interesAcreditar, false,
                     "Condonación acuerdo " + acuerdo.getCodigo());
             linea.setDescripcion("Condonación acuerdo " + acuerdo.getCodigo() + " - interés (ordinario y mora)");
             lineas.add(linea);
-            totalHaber += redondear(interesCondonado);
+            totalHaber += redondear(interesAcreditar);
         }
 
         if (lineas.isEmpty()) {

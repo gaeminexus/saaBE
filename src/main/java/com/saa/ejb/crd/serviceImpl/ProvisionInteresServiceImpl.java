@@ -171,6 +171,16 @@ public class ProvisionInteresServiceImpl implements ProvisionInteresService {
 
         // Reconocido (MVIC 5 − 6) y mora ya pagada por OTROS pagos vigentes de la cuota.
         Map<Long, Double> reconocido = movimientoInteresCuotaDaoService.selectSaldoDevengadoPorCuotas(idsCuota);
+        // Lote 15 (D-196 b): con el tope activo, el reconocido de la cuota es el de LA FECHA DEL PAGO (MVIC 5 / 6 con fecha contable <= fecha del pago), no el
+        // de hoy: en un reproceso o con un cobro tardío el devengo posterior al pago no cuenta. Sin la propiedad, como siempre.
+        Map<Long, List<Object[]>> devengoDatado = null;
+        for (PagoPrestamo pago : conMora) {
+            LocalDate fechaDelPago = pago.getFecha() != null ? pago.getFecha().toLocalDate() : LocalDate.now();
+            if (ModoCorteCartera.topeProvisionMoraActivo(fechaDelPago)) {
+                devengoDatado = movimientoInteresCuotaDaoService.selectDevengoMoraDatadoPorCuotas(idsCuota);
+                break;
+            }
+        }
         Map<Long, double[]> pagosVigentes = cargarPagosPorCuota(idsCuota);
         Map<Long, Double> pagadoPrevio = new HashMap<>();
         for (Long idCuota : idsCuota) {
@@ -183,7 +193,20 @@ public class ProvisionInteresServiceImpl implements ProvisionInteresService {
         for (PagoPrestamo pago : conMora) {
             Long idCuota = pago.getDetallePrestamo().getCodigo();
             double mora = redondear(nvl(pago.getMoraPagada()));
+            LocalDate fechaPago = pago.getFecha() != null ? pago.getFecha().toLocalDate() : LocalDate.now();
             double r = nvl(reconocido.get(idCuota));
+            if (devengoDatado != null && ModoCorteCartera.topeProvisionMoraActivo(fechaPago)) {
+                r = 0.0;
+                List<Object[]> eventos = devengoDatado.get(idCuota);
+                if (eventos != null) {
+                    for (Object[] evento : eventos) {
+                        if (evento[0] != null && !((LocalDate) evento[0]).isAfter(fechaPago)) {
+                            r += ((Double) evento[1]).doubleValue();
+                        }
+                    }
+                }
+                r = Math.max(0.0, redondear(r));
+            }
             double pPrevio = nvl(pagadoPrevio.get(idCuota));
             double devengadoPendiente = Math.max(0.0, redondear(r - pPrevio));
             double contraCuentaPorCobrar = Math.min(mora, devengadoPendiente);
@@ -191,14 +214,70 @@ public class ProvisionInteresServiceImpl implements ProvisionInteresService {
             pagadoPrevio.put(idCuota, pPrevio + mora);
             if (excedente > TOLERANCIA) {
                 reconocido.put(idCuota, r + excedente);
+                if (devengoDatado != null) {
+                    devengoDatado.computeIfAbsent(idCuota, k -> new ArrayList<Object[]>())
+                        .add(new Object[]{ fechaPago, Double.valueOf(excedente) });
+                }
                 excedentePorPago.put(pago, excedente);
-                LocalDate fecha = pago.getFecha() != null ? pago.getFecha().toLocalDate() : LocalDate.now();
+                LocalDate fecha = fechaPago;
                 guardarMovimiento(idCuota, pago.getPrestamo(), TipoMovimientoInteresCuota.DEVENGO_MORA,
                     ComponenteMovimientoInteresCuota.MORA, excedente, fecha, null, pago.getCodigo(), "COBRO",
                     pago.getCodigo(), null, usuario, ahora);
             }
         }
         return excedentePorPago;
+    }
+
+    @Override
+    public List<DetalleAsiento> lineasReversoMoraCancelacion(Long idEmpresa, Map<Long, Double> devengoPorTipo,
+            Map<Long, Double> provisionPorTipo, String descripcion) throws Throwable {
+        List<DetalleAsiento> lineas = new ArrayList<>();
+        if (devengoPorTipo != null) {
+            Long idPlantilla17 = null;
+            for (Map.Entry<Long, Double> e : devengoPorTipo.entrySet()) {
+                double valor = redondear(nvl(e.getValue()));
+                if (valor <= TOLERANCIA) {
+                    continue;
+                }
+                if (idPlantilla17 == null) {
+                    idPlantilla17 = plantillaService.codigoByAlterno(PlantillasCredito.DEVENGO_INTERESES, idEmpresa);
+                    if (idPlantilla17 == null || idPlantilla17.longValue() == 0L) {
+                        throw new IncomeException("No existe la plantilla contable alterno " + PlantillasCredito.DEVENGO_INTERESES
+                            + " (devengo de intereses) para la empresa " + idEmpresa + ".");
+                    }
+                }
+                // Espejo del devengo de mora (④): allá mora por cobrar es Debe e ingreso es Haber; acá invertido.
+                lineas.add(lineaDesdePlantillaPorTipo(idPlantilla17, CrdLineaAsiento.INGRESO_INTERES_MORA, e.getKey(), valor, true,
+                    descripcion + " (devengo)", PlantillasCredito.DEVENGO_INTERESES));
+                lineas.add(lineaDesdePlantillaPorTipo(idPlantilla17, CrdLineaAsiento.INTERES_MORA_POR_COBRAR, e.getKey(), valor, false,
+                    descripcion + " (devengo)", PlantillasCredito.DEVENGO_INTERESES));
+            }
+        }
+        if (provisionPorTipo != null) {
+            Long idPlantilla36 = null;
+            for (Map.Entry<Long, Double> e : provisionPorTipo.entrySet()) {
+                double valor = redondear(nvl(e.getValue()));
+                if (valor <= TOLERANCIA) {
+                    continue;
+                }
+                if (idPlantilla36 == null) {
+                    idPlantilla36 = resuelvePlantilla36(idEmpresa);
+                }
+                // Como el reverso por cobro: D 1.4.99.05 (papel 81) / H 4.7.05.10 (papel 80).
+                lineas.add(lineaProvision(idPlantilla36, CrdLineaAsiento.PROVISION_INTERESES, e.getKey(), valor, true,
+                    descripcion + " (provisión)"));
+                lineas.add(lineaProvision(idPlantilla36, CrdLineaAsiento.PROVISION_INTERESES_GASTO, e.getKey(), valor, false,
+                    descripcion + " (provisión)"));
+            }
+        }
+        return lineas;
+    }
+
+    @Override
+    public void registrarMovimientoMora(Long idCuota, Prestamo prestamo, long tipoMovimiento, double valor, LocalDate fechaContable,
+            String origen, Long idOrigen, Long idAsiento, String usuario) throws Throwable {
+        guardarMovimiento(idCuota, prestamo, tipoMovimiento, ComponenteMovimientoInteresCuota.MORA, valor, fechaContable, null, null,
+            origen, idOrigen, idAsiento, usuario, LocalDateTime.now());
     }
 
     @Override

@@ -94,3 +94,5 @@ de la cancelación (hecho contra el ④ viejo) queda vivo, y el resultado es un 
 
 Medición histórica (lote 1c): el asiento de la condonación no se grababa en el evento y quedaba vivo al reversar el cobro; ver
 `REGULARIZACION-ASIENTOS-CONDONACION-1C.md` y `sql/387`.
+
+**Lote 15 (D-195 y D-196):** la misma propiedad `saa.cartera.topeProvisionMoraDesde` activa además (a) el reverso de la mora devengada y no cobrada al cancelar un préstamo (`ReversoMoraCancelacionService`), (b) la separación devengada/no devengada de la mora condonada en el asiento de condonación y (c) el límite de fecha del devengo reconocido en `separarMoraNoDevengada`. El D-194 (`GREATEST(regla, cobrado)` en el ④ y el ④b) se activa con el devengo completo (`saa.cartera.devengoCompletoDesde`), como esos pasos. Sin las propiedades, el comportamiento es el de hoy.
