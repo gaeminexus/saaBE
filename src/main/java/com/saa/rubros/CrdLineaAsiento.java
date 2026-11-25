@@ -263,7 +263,7 @@ public interface CrdLineaAsiento {
 	 */
 	public static final int AJUSTE_BANDA_ABSORBE = 85;
 
-	// ── Intereses recibidos por anticipado, paso ⑪ del cierre (plantilla alterno 38, C27b) ──
+	// ── Intereses recibidos por anticipado, paso ⑪ del cierre (plantilla alterno 39, C27b) ──
 	// Las dos llevan DTPLAXL2 = TPPRCDGO (tipo de prestamo).
 
 	/** Interés por cobrar {@code 1.4.02.xx}, la misma cuenta del papel 10 de la plantilla 17. Dimensión: tipo de préstamo. */

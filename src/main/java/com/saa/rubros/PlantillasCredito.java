@@ -240,7 +240,7 @@ public interface PlantillasCredito {
 	 * (1.4.02.xx) / H {@code CrdLineaAsiento.INTERES_RECIBIDO_ANTICIPADO}, por tipo de préstamo (DTPLAXL2). Sube o baja
 	 * según el objetivo; las cuentas salen de las líneas, nunca del código. sql/383.
 	 */
-	public static final int INTERES_ANTICIPADO = 38;
+	public static final int INTERES_ANTICIPADO = 39;
 
 	// NOTA (2026-08-31): "RECLASIFICACION APORTE O COBRO EN EXCESO" (alterno 27) se evaluó
 	// para el asiento de reclasificación de la devolución de aportes y se descartó — el

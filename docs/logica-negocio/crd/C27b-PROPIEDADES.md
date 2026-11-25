@@ -1,6 +1,6 @@
 # C27b — propiedades del servidor y orden del pase (D-172)
 
-Acompaña a `sql/383_C27B_INTERES_ANTICIPADO_PLANTILLA_38_Y_SUBPROCESOS_11_12.sql` y `sql/384_MEDICION_C27B_INTERES_ANTICIPADO.sql`.
+Acompaña a `sql/383_C27B_INTERES_ANTICIPADO_PLANTILLA_39_Y_SUBPROCESOS_11_12.sql` y `sql/384_MEDICION_C27B_INTERES_ANTICIPADO.sql`.
 Diseño: `C27b-DISENO-INTERES-ANTICIPADO.md`. Javadoc de las propiedades: `ModoCorteCartera`.
 
 ## Las tres propiedades (propiedades de sistema de WildFly, jboss-cli)
@@ -28,7 +28,7 @@ Ejemplo (jboss-cli):
   préstamo salió de cartera, solo lo cobrado con `ancla <= PGPRFCHA < corte + 1`. Universo por fecha (estados 9 y 10
   entran) también en modo normal. La mora sigue saliendo del método de siempre.
 - **④b** (subproceso 11, plantilla 17, fechado al corte): primera cuota de los préstamos concedidos en el mes que se cierra.
-- **⑪** (subproceso 12, plantilla **38**, fechado al corte): por tipo, `objetivo − (lo que los ⑪ vigentes ya asentaron + base)`.
+- **⑪** (subproceso 12, plantilla **39**, fechado al corte): por tipo, `objetivo − (lo que los ⑪ vigentes ya asentaron + base)`.
   Lo asentado se lee de `CNT.DTAS` (debe − haber de la cuenta 1.4.02.xx de cada tipo) de los asientos `CRD.ANCC` subproceso 12 con
   ANCC activo, corrida EJECUTADA, asiento no anulado y fecha anterior al corte. No se ajusta contra el saldo de la cuenta.
 - **Reversos** (`DevengoCompletoService`): abono a capital (cuotas historizadas menos nuevas, de meses ya devengados) y
@@ -38,7 +38,7 @@ Ejemplo (jboss-cli):
 
 ## Orden del pase
 
-1. SQL 383 (CK_ANCC_TPOO 1..12 y plantilla 38). La cuenta del pasivo la decide el contador: el script se detiene mientras tenga el marcador.
+1. SQL 383 (CK_ANCC_TPOO 1..12 y plantilla 39). La cuenta del pasivo es 2.9.01.05 (D2 decidido), buscada por su número; el script se detiene si el alterno 39 ya existe en la empresa o si la cuenta no existe.
 2. Fijar las tres propiedades en el servidor (la de la base de transición la entrega el cuadre).
 3. Desplegar el EAR.
 4. Cerrar el mes `devengoCompletoDesde`: previsualizar primero y revisar las advertencias del ⑪ (objetivo, asentado, base).

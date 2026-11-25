@@ -1342,7 +1342,7 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
      * hasta entonces. Por tipo de préstamo, el asiento es {@code objetivo - (lo que el ⑪ ya asentó + base de
      * transición)}: si sube, D 1.4.02.xx / H pasivo; si baja, al revés. NO se ajusta contra el saldo de la cuenta (puede
      * ser compartida con inversiones). Lo ya asentado sale de los asientos ⑪ de las corridas EJECUTADAS vigentes
-     * (debe - haber de la cuenta 1.4.02.xx de cada tipo); las cuentas salen de las líneas de la plantilla 38.
+     * (debe - haber de la cuenta 1.4.02.xx de cada tipo); las cuentas salen de las líneas de la plantilla 39.
      */
     private SubProcesoCierre armaInteresAnticipado(SolicitudCierreCartera solicitud, LocalDate corte, LocalDate ancla,
             List<String> advertencias) throws Throwable {

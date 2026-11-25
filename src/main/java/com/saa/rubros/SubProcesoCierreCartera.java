@@ -102,7 +102,7 @@ public interface SubProcesoCierreCartera {
 	/**
 	 * ⑪ Intereses recibidos por anticipado (C27b, D-172): el interés cobrado antes de que su cuota abra en el ④ queda en
 	 * el pasivo hasta entonces. Ajuste contra lo que el propio ⑪ ya asentó más la base de transición. Plantilla alterno
-	 * 38, fechado al corte. Solo con {@code saa.cartera.devengoCompletoDesde} activa.
+	 * 39, fechado al corte. Solo con {@code saa.cartera.devengoCompletoDesde} activa.
 	 */
 	public static final int INTERES_ANTICIPADO = 12;
 
