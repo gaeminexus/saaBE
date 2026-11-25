@@ -156,6 +156,7 @@ public class PrelacionCuotasServiceImpl implements PrelacionCuotasService {
         List<PrelacionCuotas.CuotaPlan> cuotasPlan = new ArrayList<>();
         List<PrelacionCuotas.PagoPlan> pagosPlan = new ArrayList<>();
         Map<Long, PagoPrestamo> movibles = new LinkedHashMap<>();
+        java.util.Set<Long> noMovibles = new java.util.HashSet<>();
         Map<Long, DetallePrestamo> cuotaPorId = new LinkedHashMap<>();
         for (int i = 0; i < cuotas.size(); i++) {
             DetallePrestamo c = cuotas.get(i);
@@ -176,6 +177,11 @@ public class PrelacionCuotasServiceImpl implements PrelacionCuotasService {
                         pagosPlan.add(new PrelacionCuotas.PagoPlan(p.getCodigo(), c.getCodigo(), p.getFecha(),
                             PrelacionCuotas.componentes(p)));
                     } else {
+                        // Lote 15: pago exento o fijo con capital/interés = la cuota no cede ni recibe; el plan no puede pasar por encima.
+                        if (PrelacionCuotas.esPagoExento(p) || (i >= inicio
+                            && PrelacionCuotas.nvl(p.getCapitalPagado()) + PrelacionCuotas.nvl(p.getInteresPagado()) > PrelacionCuotas.TOLERANCIA)) {
+                            noMovibles.add(c.getCodigo());
+                        }
                         double[] comp = PrelacionCuotas.componentes(p);
                         for (int k = 0; k < PrelacionCuotas.COMPONENTES; k++) {
                             pendiente[k] = Math.max(0.0, PrelacionCuotas.redondear(pendiente[k] - comp[k]));
@@ -184,8 +190,26 @@ public class PrelacionCuotasServiceImpl implements PrelacionCuotasService {
                 }
             }
             boolean cerrada = i < inicio || PrelacionCuotas.estaCerradaPorRegla(c, desde);
+            if (i >= inicio && cerrada) {
+                noMovibles.add(c.getCodigo());
+            }
             cuotasPlan.add(new PrelacionCuotas.CuotaPlan(c.getCodigo(),
                 c.getNumeroCuota() != null ? c.getNumeroCuota() : Double.MAX_VALUE, cerrada, pendiente));
+        }
+
+        // Lote 15 (ajuste): una cuota PAGADA o CANCELADA_ANTICIPADA que no cede ningún pago movible (sin pagos que la respalden,
+        // "marca") es una isla aunque no esté cerrada por regla: planificar() la ve pendiente, pero si la plata se acaba antes
+        // de llegar a ella, el dinero de las posteriores pasa por encima y la cuota sigue pagada entre cuotas en mora.
+        java.util.Set<Long> conOrigen = new java.util.HashSet<>();
+        for (PrelacionCuotas.PagoPlan pp : pagosPlan) {
+            conOrigen.add(pp.idCuota);
+        }
+        for (int i = inicio; i < cuotas.size(); i++) {
+            DetallePrestamo c = cuotas.get(i);
+            long e = c.getEstado() != null ? c.getEstado().longValue() : -1L;
+            if ((e == com.saa.rubros.EstadoCuotaPrestamo.PAGADA || e == com.saa.rubros.EstadoCuotaPrestamo.CANCELADA_ANTICIPADA) && !conOrigen.contains(c.getCodigo())) {
+                noMovibles.add(c.getCodigo());
+            }
         }
 
         PrelacionCuotas.Plan plan = PrelacionCuotas.planificar(cuotasPlan, pagosPlan);
@@ -218,6 +242,18 @@ public class PrelacionCuotasServiceImpl implements PrelacionCuotasService {
         if (plan.sinDestino > PrelacionCuotas.TOLERANCIA) {
             resultado.setMensaje("No se re-imputa: $" + PrelacionCuotas.formato(plan.sinDestino) + " no encuentran cuota"
                 + " con saldo al re-aplicar en orden (dinero sin destino). Revisar con crédito.");
+            return resultado;
+        }
+        // Lote 15 (incidente 2026-11-25, restaurado con el sql 405): si el plan lleva plata a una cuota anterior a una cuota
+        // NO movible sacándola de un pago posterior a ella, la dejaría pagada entre cuotas en mora. Se rechaza, sin escribir.
+        java.util.SortedSet<Double> saltadas = PrelacionCuotas.cuotasSaltadas(cuotasPlan, pagosPlan, plan, noMovibles);
+        if (!saltadas.isEmpty()) {
+            StringBuilder nums = new StringBuilder();
+            for (Double n : saltadas) {
+                nums.append(nums.length() > 0 ? ", " : "").append('#').append(n.longValue());
+            }
+            resultado.setMensaje("No se re-imputa: re-aplicar en orden saltaría la(s) cuota(s) " + nums + " (cerradas o con pagos exentos)"
+                + " y las dejaría pagadas entre cuotas en mora. Revisar con crédito.");
             return resultado;
         }
         // Lote 10: validar ANTES de grabar, en memoria y con las mismas reglas: el estado que dejaría el plan no puede tener rotura.
