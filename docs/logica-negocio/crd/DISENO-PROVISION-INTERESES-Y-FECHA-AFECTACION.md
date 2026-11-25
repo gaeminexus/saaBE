@@ -280,3 +280,37 @@ Hoy el tope del préstamo se reparte entre sus cuotas «sin pasar de la mora cal
 
 ### Lo ya acumulado en oct y nov 2025
 Recomendación: un asiento manual por la diferencia, ligado al ajuste A1, y no tocar el libro. El libro (mayor) es el que refleja la mora contabilizada (la 1.4.02), y el asiento del ⑦ de esos meses quedó por debajo; el asiento manual lleva la 1.4.99.05 al libro, por tipo de préstamo y por componente (D 4.7.05.10 / H 1.4.99.05), y A1 deja el saldo por cuota igual a su devengado no cobrado. Ajustar el libro hacia abajo borraría provisión de mora que sí tiene su devengo en 1.4.02.
+
+## Lote 21 — arranque de los libros por cuota a un corte cualquiera: A2 (semilla del devengo de interés) y A1 (ajuste del libro de provisión)
+
+Dos herramientas, sin asiento contable propio, ligadas al asiento manual del cuadre que ya lleva la contabilidad a esos valores. **Nada fijo:** el corte y el asiento de referencia son parámetros, para usarlas en el arranque que toque (el cuadre resuelve octubre y noviembre de 2025 en el reproceso). Requieren `sql/406` (tipos 11 y 12) y `sql/409` (tipos 13 y 14) corridos ANTES del EAR.
+
+### Definición común: «devengado y no cobrado al corte»
+Por cuota, de las que ve el ⑦ al corte (vencidas impagas y la que vence el día del corte y no se pagó, con la regla de préstamos cancelados del ⑦), **sin** las cuotas cerradas (estado 7) ni las anuladas:
+- **Interés** = interés + interés vencido de la cuota − interés pagado − interés vencido pagado, con los pagos de fecha efectiva ≤ corte, piso 0 y 0 si el interés está condonado por plazo vencido. Es la misma cuenta del ⑦ (`pendienteInteres`), a propósito: así el ⑦ siguiente ve lo mismo.
+- **Mora** (solo A1) = lo que el ⑦ quiere provisionar: la mora contabilizada pendiente del préstamo repartida entre sus cuotas (`TopeProvisionMora`) si el tope (D-186) está activo al corte, y la mora calculada pendiente si no.
+- Se usa el estado ACTUAL de la cuota (7 o anulada excluye aunque se haya cerrado después del corte).
+
+### A2 — `POST /rest/prov/semillaDevengoInteres`
+Cuerpo `{idEmpresa, corte, idAsientoReferencia, grabar, usuario}`. Graba un MVIC tipo 11 por cuota con el interés devengado y no cobrado, fecha contable = corte, origen `SEMILLA_DEVENGO_INTERES`, `idOrigen` = `MVICASNT` = la referencia. Sin asiento propio.
+- Idempotente por referencia: si hay filas vigentes con ese origen e `idOrigen`, no graba y devuelve lo ya grabado (`yaGrabado = true`).
+- No siembra cuotas que ya tienen un MVIC 11 o 12 vigente con fecha ≤ corte (las alimentó el ④ nuevo): las cuenta aparte (`cuotasYaAlimentadas`).
+- `grabar = false` devuelve la suma por tipo de préstamo y el número de cuotas. El asiento de referencia debe existir y estar ACTIVO (no se exige que su fecha sea el corte: el del cuadre puede ir fechado el día siguiente).
+- `POST /rest/prov/semillaDevengoInteres/anular` anula (MVICANUL = 1) la semilla de una referencia.
+
+### A1 — `POST /rest/prov/ajusteLibroProvision`
+Cuerpo `{idEmpresa, corte, idAsientoReferencia, grabar, usuario}`. Deja el saldo provisionado de cada cuota (Σ tipos 1, 4, 14 − Σ tipos 2, 3, 9, 10, 13, vigentes, fecha ≤ corte) igual a su interés y su mora devengados y no cobrados:
+- diferencia = objetivo − saldo, por cuota y componente. Si es negativa graba un MVIC **13** (baja, resta); si es positiva, un **14** (alta, suma). Son dos tipos porque `CK_MVIC_VALOR` obliga a valor ≥ 0 y el signo lo da el tipo (el pedido hablaba de un 13; hizo falta un 14). Origen `AJUSTE_LIBRO_PROVISION`, `idOrigen` = `MVICASNT` = la referencia, fecha contable = corte.
+- Cuotas cerradas (estado 7, pagadas o fuera del universo del ⑦): su objetivo es 0, así que su provisión baja a 0. Provisiones negativas: suben hasta 0 (o hasta su objetivo).
+- Respeta el tipo 10 (D-186): el saldo ya lo descuenta, así que si el corte coincide con uno ya ajustado por D-186, A1 solo mueve lo que falta.
+- `grabar = false` devuelve, por tipo de préstamo, baja, alta y neto (alta − baja) de interés y de mora, y aparte `deCuotasCerradas` (lo que baja por cuotas cerradas) y `deNegativas` (lo que sube por provisiones negativas), más `totalBaja` y `totalAlta`: el cuadre los cruza al centavo con su asiento manual (neto positivo = sube la 1.4.99.05).
+- Idempotente por referencia; `POST /rest/prov/ajusteLibroProvision/anular` anula los ajustes de una referencia. Al devolver lo ya grabado, `deCuotasCerradas` y `deNegativas` no se reconstruyen.
+
+### Por qué el ⑦ siguiente no genera otra diferencia
+El ⑦ provisiona por cuota `max(0, pendiente − saldo provisionado)`, y ese saldo (`saldoProvisionadoPorCuotas`, también al corte) ya suma los tipos 14 y resta los 13. Después de A1 el saldo de cada cuota es su objetivo, que es el mismo `pendiente` que usa el ⑦ (misma cuenta de interés, y la mora con el mismo tope): la diferencia es 0 salvo lo que se devengue o se cobre de verdad después del corte. Sin A1, el ⑦ vería la provisión vieja (cuotas cerradas, negativas, mora de más) frente a su objetivo y generaría otro asiento por lo mismo que el cuadre ya contabilizó. A2 hace lo propio con el libro de devengo: sin la semilla, el libro de interés empezaría en cero y la regla de oro (Σ(11 − 12) = 1.4.02) no cerraría.
+
+### Orden de uso
+1. El cuadre carga su asiento manual (D 1.4.99.05 / H 4.7.05.10 y D 1.4.02 / H 5.1.02 por tipo y componente) y da su código: es el `idAsientoReferencia`.
+2. A1 y A2 con `grabar = false`, con el mismo `corte`.
+3. Cruce: el neto por tipo y componente de A1 contra las líneas de 1.4.99.05 del asiento, y la suma por tipo de A2 contra la 1.4.02 (`deCuotasCerradas` y `deNegativas` explican la parte «cuotas cerradas» y «negativas» del asiento). Si no cruza, no se graba.
+4. A1 y A2 con `grabar = true`. Repetir la llamada no duplica. Para deshacer: los `/anular` correspondientes.

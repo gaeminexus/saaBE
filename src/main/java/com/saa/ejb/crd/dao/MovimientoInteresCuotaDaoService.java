@@ -168,6 +168,17 @@ public interface MovimientoInteresCuotaDaoService extends EntityDao<MovimientoIn
     List<MovimientoInteresCuota> selectVigentesPorOrigen(String origen, Long idOrigen, List<Long> tipos) throws Throwable;
 
     /**
+     * Lote 21: cuotas con saldo de provisión distinto de cero al corte, por componente (interés o mora): Σ tipos 1, 4, 14 − Σ tipos 2, 3, 9, 10, 13,
+     * vigentes, con fecha contable ≤ corte, y |saldo| > 0,004.
+     *
+     * @return filas {@code [idCuota (Long), idPrestamo (Long), componente (Long), saldo (Double)]}
+     */
+    List<Object[]> selectSaldosProvisionNoCeroAlCorte(java.time.LocalDate corte) throws Throwable;
+
+    /** Lote 21: de {@code idsCuota}, las que tienen un movimiento vigente de alguno de los {@code tipos} con fecha contable ≤ {@code corte}. */
+    java.util.Set<Long> selectCuotasConMovimientoHasta(List<Long> idsCuota, List<Long> tipos, java.time.LocalDate corte) throws Throwable;
+
+    /**
      * Lote 18: como {@link #selectMoraContabilizadaPendientePorPrestamo(java.time.LocalDate)} pero sumando al devengo de cada
      * préstamo {@code devengoAdicional} (el ⑩ del mismo cierre, aún sin grabar), ANTES del piso en cero. Es lo que
      * daría la consulta de arriba si ese devengo ya estuviera en el libro. Con el mapa nulo o vacío es la misma consulta.
