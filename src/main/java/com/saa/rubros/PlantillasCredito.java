@@ -235,6 +235,13 @@ public interface PlantillasCredito {
 	 */
 	public static final int PROVISION_CARTERA = 37;
 
+	/**
+	 * Intereses recibidos por anticipado (paso ⑪ del cierre, C27b): D {@code CrdLineaAsiento.INTERES_ANTICIPADO_POR_COBRAR}
+	 * (1.4.02.xx) / H {@code CrdLineaAsiento.INTERES_RECIBIDO_ANTICIPADO}, por tipo de préstamo (DTPLAXL2). Sube o baja
+	 * según el objetivo; las cuentas salen de las líneas, nunca del código. sql/383.
+	 */
+	public static final int INTERES_ANTICIPADO = 38;
+
 	// NOTA (2026-08-31): "RECLASIFICACION APORTE O COBRO EN EXCESO" (alterno 27) se evaluó
 	// para el asiento de reclasificación de la devolución de aportes y se descartó — el
 	// usuario confirmó que se devuelve CUALQUIER tipo de aporte, no solo los tres con cuenta

@@ -87,6 +87,10 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
     @EJB
     private ContabilizacionIndividualCreditoService contabilizacionIndividualCreditoService;
 
+    /** C27b: reverso del devengo completo (líneas D ingreso / H interés por cobrar) dentro del asiento del evento. */
+    @EJB
+    private com.saa.ejb.crd.service.DevengoCompletoService devengoCompletoService;
+
     @EJB
     private CorridaCierreCarteraDaoService corridaCierreCarteraDaoService;
 
@@ -598,7 +602,11 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
 
         List<DetalleAsiento> lineas = contabilizacionIndividualCreditoService.lineasReclasificacionAbonoCapital(
                 idProducto, idEmpresa, historizadas, nvl(evento.getValor()), nuevas, fechaCorte, prefijo);
-        return lineas;
+        // C27b: el abono baja el interés de cuotas cuyo mes ya devengó el cierre: D ingreso / H interés por cobrar, en
+        // el mismo asiento del evento (anular el abono lo reversa). Vacío si el devengo completo no está activo.
+        List<DetalleAsiento> conReverso = new ArrayList<>(lineas);
+        conReverso.addAll(devengoCompletoService.lineasReversoAbono(idEmpresa, prestamo, historizadas, nuevas, prefijo));
+        return conReverso;
     }
 
     @Override
@@ -862,6 +870,11 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
         agregaCierreAperturaCaminoDirecto(lineas, idEmpresa, totalHaber, pagos, fechaCorte,
                 "precancelación evento " + ctx.getIdEvento());
 
+        // C27b: las cuotas que la precancelación pasó a 7 sin cobrar y cuyo mes ya devengó el cierre: D ingreso /
+        // H interés por cobrar, en este mismo asiento (el del evento: anular la precancelación lo reversa).
+        lineas.addAll(devengoCompletoService.lineasReversoCuotasCanceladas(idEmpresa, evento.getPrestamo(), fechaCorte,
+                prefijo));
+
         String observacionBase = prefijo + (ctx.getObservacion() != null ? ": " + ctx.getObservacion() : "");
         String observacion = observacionConParticipeYPrestamos(evento.getPrestamo(), pagos, observacionBase,
                 ctx.getIdEntidadAportes());
@@ -950,6 +963,10 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
         // Cierre de apertura del camino directo: misma regla que contabilizarPrecancelacion.
         agregaCierreAperturaCaminoDirecto(lineas, idEmpresa, totalHaber, pagos, fechaCorte,
                 "precancelación evento " + ctx.getIdEvento());
+
+        // C27b: reverso del devengo de las cuotas canceladas sin cobrar (ver contabilizarPrecancelacion).
+        lineas.addAll(devengoCompletoService.lineasReversoCuotasCanceladas(idEmpresa, evento != null
+                ? evento.getPrestamo() : null, fechaCorte, prefijo));
 
         double sumaDebe = 0.0;
         double sumaHaber = 0.0;

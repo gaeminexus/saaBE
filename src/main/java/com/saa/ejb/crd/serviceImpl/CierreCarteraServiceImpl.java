@@ -516,6 +516,10 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
         solicitud.setCorteInclusivo(Boolean.valueOf(inclusivo));
         this.convencionInclusiva = inclusivo;
         LocalDate corteDatos = alCorte ? fechaCorte : null;
+        // C27b: devengo completo (④ nuevo, ④b y ⑪) solo con saa.cartera.devengoCompletoDesde y un corte que la alcanza.
+        // Si está activo, la ancla (corrida de arranque EJECUTADA) tiene que validar: sin ella no se cierra.
+        boolean devengoCompleto = !arranque && com.saa.ejb.crd.service.ModoCorteCartera.devengoCompletoActivo(fechaCorte);
+        LocalDate anclaDevengo = devengoCompleto ? validaAnclaArranque(solicitud.getIdEmpresa()) : null;
         if (alCorte) {
             resultado.getAdvertencias().add("Cierre A FECHA DE CORTE (" + fechaCorte + "): cartera, pagos y"
                     + " libro MVIC leidos como estaban al corte; vencidos y cambios de banda fechados al"
@@ -636,7 +640,11 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
         // ④ Devengo: fecha del asiento = fechaProceso (sin cambios); rango de cuotas = SOLO el
         // mes que se abre (fechaProceso -> fechaCorteApertura), no acumulado desde siempre.
         resultado.getSubProcesos().add(armaDevengoIntereses(solicitud, fechaProceso,
-                fechaProceso, fechaCorteApertura, corteDatos));
+                fechaProceso, fechaCorteApertura, corteDatos, devengoCompleto ? fechaCorte : null, anclaDevengo));
+        // C27b ④b: la primera cuota de los préstamos concedidos en este mismo mes (el ④ del mes anterior no los vio).
+        if (devengoCompleto) {
+            resultado.getSubProcesos().add(armaPrimeraCuota(solicitud, fechaCorte));
+        }
 
         // El desglose de aportes se calcula ANTES del neteo, porque el neteo consume su
         // noCobrado. Y el control del archivo Petro se evalua con el desglose ya hecho, para
@@ -656,6 +664,11 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
             resultado.getSubProcesos().add(armaDevengoMoraCorte(solicitud, fechaCorte));
         }
         resultado.getSubProcesos().add(armaProvisionIntereses(solicitud, fechaCorte, alCorte));
+        // C27b ⑪: intereses recibidos por anticipado (el cobrado antes de que su cuota abra en el ④).
+        if (devengoCompleto) {
+            resultado.getSubProcesos().add(armaInteresAnticipado(solicitud, fechaCorte, anclaDevengo,
+                    resultado.getAdvertencias()));
+        }
 
         // C15: ⑧ provisión de cartera (D-015) y ⑨ ajuste de bandas a saldo (D-011), solo al corte.
         if (alCorte && !Boolean.TRUE.equals(solicitud.getOmitirProvisionCartera())) {
@@ -1217,7 +1230,8 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
      * @return           : El sub-proceso con sus líneas
      */
     private SubProcesoCierre armaDevengoIntereses(SolicitudCierreCartera solicitud,
-            LocalDate fecha, LocalDate desdeRango, LocalDate hastaRango, LocalDate corteDatos) throws Throwable {
+            LocalDate fecha, LocalDate desdeRango, LocalDate hastaRango, LocalDate corteDatos,
+            LocalDate corteCompleto, LocalDate ancla) throws Throwable {
 
         SubProcesoCierre sub = nuevoSubProceso(SubProcesoCierreCartera.DEVENGO_INTERESES,
                 "Devengo de intereses a ingresos", "④", fecha,
@@ -1226,11 +1240,32 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
         Long idPlantilla = resuelvePlantilla(PlantillasCredito.DEVENGO_INTERESES,
                 "devengo de intereses", solicitud.getIdEmpresa());
 
+        // Por tipo: {interés, mora}. La mora es SIEMPRE la del método de siempre. El interés, con el devengo completo
+        // activo (C27b), sale del método nuevo; sin él, es byte a byte el de hoy.
+        java.util.Map<Long, double[]> porTipo = new java.util.TreeMap<Long, double[]>();
         for (Object[] fila : cierreCarteraDaoService
                 .selectInteresPorTipoPrestamoEnRango(desdeRango, hastaRango, corteDatos)) {
-            Long idTipoPrestamo = (Long) fila[0];
-            double interes = redondeaDouble((Double) fila[1]);
-            double mora = redondeaDouble((Double) fila[2]);
+            porTipo.put((Long) fila[0], new double[]{ ((Double) fila[1]).doubleValue(), ((Double) fila[2]).doubleValue() });
+        }
+        if (ancla != null) {
+            for (double[] valores : porTipo.values()) {
+                valores[0] = 0D;
+            }
+            for (Object[] fila : cierreCarteraDaoService.selectInteresDevengoPorTipoEnRango(desdeRango, hastaRango,
+                    corteCompleto, ancla)) {
+                double[] valores = porTipo.get((Long) fila[0]);
+                if (valores == null) {
+                    valores = new double[]{ 0D, 0D };
+                    porTipo.put((Long) fila[0], valores);
+                }
+                valores[0] = ((Double) fila[1]).doubleValue();
+            }
+        }
+
+        for (java.util.Map.Entry<Long, double[]> entrada : porTipo.entrySet()) {
+            Long idTipoPrestamo = entrada.getKey();
+            double interes = redondeaDouble(Double.valueOf(entrada.getValue()[0]));
+            double mora = redondeaDouble(Double.valueOf(entrada.getValue()[1]));
 
             agregaPorTipo(sub, idPlantilla, CrdLineaAsiento.INTERES_ORDINARIO_POR_COBRAR,
                     idTipoPrestamo, interes, "INTERES ORDINARIO por cobrar " + periodo(solicitud));
@@ -1244,6 +1279,171 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
 
         cierra(sub, "No hay interes ni mora pendientes de devengar al corte.");
         cuadra(sub, CrdLineaAsiento.INGRESO_INTERES_ORDINARIO);
+        return sub;
+    }
+
+    // =====================================================================
+    // C27b (D-172) — ④b primera cuota, ⑪ intereses recibidos por anticipado
+    // =====================================================================
+
+    /**
+     * Valida la ancla del devengo completo: la propiedad {@code saa.cartera.anclaArranque} tiene que existir y ser el
+     * fechaCorte de una corrida EJECUTADA de la empresa. Sin eso, previsualizar y ejecutar no avanzan.
+     */
+    private LocalDate validaAnclaArranque(Long idEmpresa) throws Throwable {
+        LocalDate ancla = com.saa.ejb.crd.service.ModoCorteCartera.anclaArranque();
+        if (ancla == null) {
+            throw new IncomeException("El devengo completo esta activo (" + com.saa.ejb.crd.service.ModoCorteCartera
+                    .PROPIEDAD_DEVENGO_COMPLETO_DESDE + ") pero falta la propiedad del servidor "
+                    + com.saa.ejb.crd.service.ModoCorteCartera.PROPIEDAD_ANCLA_ARRANQUE
+                    + " (AAAA-MM-DD, el corte de la corrida de arranque).");
+        }
+        List<CorridaCierreCartera> corridas = corridaCierreCarteraDaoService.selectByEmpresa(idEmpresa);
+        if (corridas != null) {
+            for (CorridaCierreCartera corrida : corridas) {
+                if (corrida.getIdEstado() != null
+                        && corrida.getIdEstado().longValue() == EstadoCorridaCierreCartera.EJECUTADA
+                        && ancla.equals(corrida.getFechaCorte())) {
+                    return ancla;
+                }
+            }
+        }
+        throw new IncomeException("La propiedad " + com.saa.ejb.crd.service.ModoCorteCartera.PROPIEDAD_ANCLA_ARRANQUE
+                + " vale " + ancla + " pero la empresa " + idEmpresa + " no tiene una corrida de cierre EJECUTADA con"
+                + " ese corte: no se puede cerrar con el devengo completo.");
+    }
+
+    /**
+     * ④b Devengo de la PRIMERA cuota de los préstamos concedidos en el mismo mes que se cierra: el ④ del mes anterior
+     * no los vio (no existían). D {@code INTERES_ORDINARIO_POR_COBRAR} / H {@code INGRESO_INTERES_ORDINARIO} de la
+     * plantilla 17, por tipo de préstamo, fechado al CORTE. Si el préstamo ya salió de cartera, solo lo cobrado.
+     */
+    private SubProcesoCierre armaPrimeraCuota(SolicitudCierreCartera solicitud, LocalDate corte) throws Throwable {
+        SubProcesoCierre sub = nuevoSubProceso(SubProcesoCierreCartera.DEVENGO_PRIMERA_CUOTA,
+                "Devengo de la primera cuota de prestamos nuevos", "④b", corte,
+                "CRD devengado de la primera cuota de prestamos nuevos " + periodo(solicitud));
+        Long idPlantilla = resuelvePlantilla(PlantillasCredito.DEVENGO_INTERESES,
+                "devengo de intereses", solicitud.getIdEmpresa());
+        for (Object[] fila : cierreCarteraDaoService.selectInteresPrimeraCuotaPorTipo(corte.withDayOfMonth(1), corte)) {
+            Long idTipoPrestamo = (Long) fila[0];
+            double interes = redondeaDouble((Double) fila[1]);
+            agregaPorTipo(sub, idPlantilla, CrdLineaAsiento.INTERES_ORDINARIO_POR_COBRAR, idTipoPrestamo, interes,
+                    "INTERES ORDINARIO por cobrar primera cuota " + periodo(solicitud));
+            agregaPorTipo(sub, idPlantilla, CrdLineaAsiento.INGRESO_INTERES_ORDINARIO, idTipoPrestamo, interes,
+                    "Ingreso por INTERES ORDINARIO primera cuota " + periodo(solicitud));
+        }
+        cierra(sub, "No hay prestamos concedidos en el mes con cuotas que venzan en el mes.");
+        cuadra(sub, CrdLineaAsiento.INGRESO_INTERES_ORDINARIO);
+        return sub;
+    }
+
+    /**
+     * ⑪ Intereses recibidos por anticipado: el interés cobrado antes de que su cuota abra en el ④ queda en el pasivo
+     * hasta entonces. Por tipo de préstamo, el asiento es {@code objetivo - (lo que el ⑪ ya asentó + base de
+     * transición)}: si sube, D 1.4.02.xx / H pasivo; si baja, al revés. NO se ajusta contra el saldo de la cuenta (puede
+     * ser compartida con inversiones). Lo ya asentado sale de los asientos ⑪ de las corridas EJECUTADAS vigentes
+     * (debe - haber de la cuenta 1.4.02.xx de cada tipo); las cuentas salen de las líneas de la plantilla 38.
+     */
+    private SubProcesoCierre armaInteresAnticipado(SolicitudCierreCartera solicitud, LocalDate corte, LocalDate ancla,
+            List<String> advertencias) throws Throwable {
+        SubProcesoCierre sub = nuevoSubProceso(SubProcesoCierreCartera.INTERES_ANTICIPADO,
+                "Intereses recibidos por anticipado", "⑪", corte,
+                "CRD intereses recibidos por anticipado " + periodo(solicitud));
+
+        java.util.Map<Long, Double> base = com.saa.ejb.crd.service.ModoCorteCartera.anticipadoBaseTransicion();
+        if (base == null) {
+            throw new IncomeException("El devengo completo esta activo pero falta la propiedad del servidor "
+                    + com.saa.ejb.crd.service.ModoCorteCartera.PROPIEDAD_ANTICIPADO_BASE_TRANSICION
+                    + " (TPPRCDGO:valor;TPPRCDGO:valor, la base que dejo el asiento manual C27b): el paso ⑪ no tiene"
+                    + " cero por defecto.");
+        }
+        Long idPlantilla = plantillaService.codigoByAlterno(PlantillasCredito.INTERES_ANTICIPADO, solicitud.getIdEmpresa());
+        if (idPlantilla == null || idPlantilla.longValue() == 0L) {
+            throw new IncomeException("No existe la plantilla contable con codigo alterno "
+                    + PlantillasCredito.INTERES_ANTICIPADO + " (intereses recibidos por anticipado) para la empresa "
+                    + solicitud.getIdEmpresa() + ". Correr docs/logica-negocio/crd/sql/383.");
+        }
+
+        java.util.Map<Long, Double> objetivoPorTipo = new java.util.TreeMap<Long, Double>();
+        for (Object[] fila : cierreCarteraDaoService.selectInteresAnticipadoPorTipo(ancla, corte)) {
+            objetivoPorTipo.put((Long) fila[0], redondeaDouble((Double) fila[1]));
+        }
+        // Tipos con línea en la plantilla aunque hoy no tengan objetivo (como el ⑧): su saldo viejo se reversa.
+        java.util.Set<Long> tipos = new java.util.TreeSet<Long>(objetivoPorTipo.keySet());
+        tipos.addAll(base.keySet());
+        for (long tipo = 1L; tipo <= 3L; tipo++) {
+            tipos.add(Long.valueOf(tipo));
+        }
+
+        // Agrupa por cuenta 1.4.02 (dos tipos pueden compartir cuenta).
+        java.util.Map<String, DetallePlantilla> porCobrarPorCuenta = new LinkedHashMap<String, DetallePlantilla>();
+        java.util.Map<String, DetallePlantilla> pasivoPorCuenta = new LinkedHashMap<String, DetallePlantilla>();
+        java.util.Map<String, Double> objetivoPorCuenta = new LinkedHashMap<String, Double>();
+        java.util.Map<String, Double> basePorCuenta = new LinkedHashMap<String, Double>();
+        for (Long tipo : tipos) {
+            double objetivo = objetivoPorTipo.containsKey(tipo) ? objetivoPorTipo.get(tipo).doubleValue() : 0D;
+            double baseTipo = base.containsKey(tipo) ? base.get(tipo).doubleValue() : 0D;
+            DetallePlantilla porCobrar = detallePlantillaDaoService.selectByPlantillaYAuxiliares(idPlantilla,
+                    CrdLineaAsiento.INTERES_ANTICIPADO_POR_COBRAR, tipo.intValue());
+            DetallePlantilla pasivo = detallePlantillaDaoService.selectByPlantillaYAuxiliares(idPlantilla,
+                    CrdLineaAsiento.INTERES_RECIBIDO_ANTICIPADO, tipo.intValue());
+            boolean sinLinea = porCobrar == null || porCobrar.getPlanCuenta() == null || pasivo == null
+                    || pasivo.getPlanCuenta() == null;
+            if (sinLinea) {
+                if (Math.abs(objetivo) >= MINIMO_LINEA || Math.abs(baseTipo) >= MINIMO_LINEA) {
+                    throw new IncomeException("La plantilla " + PlantillasCredito.INTERES_ANTICIPADO
+                            + " no define las lineas " + CrdLineaAsiento.INTERES_ANTICIPADO_POR_COBRAR + " y "
+                            + CrdLineaAsiento.INTERES_RECIBIDO_ANTICIPADO + " para el tipo de prestamo " + tipo
+                            + " y ese tipo tiene objetivo " + redondea(Double.valueOf(objetivo)) + " o base "
+                            + redondea(Double.valueOf(baseTipo)) + " (sql/383).");
+                }
+                continue;
+            }
+            String cuenta = porCobrar.getPlanCuenta().getCuentaContable();
+            porCobrarPorCuenta.putIfAbsent(cuenta, porCobrar);
+            pasivoPorCuenta.putIfAbsent(cuenta, pasivo);
+            objetivoPorCuenta.merge(cuenta, Double.valueOf(objetivo), Double::sum);
+            basePorCuenta.merge(cuenta, Double.valueOf(baseTipo), Double::sum);
+        }
+
+        java.util.Map<String, Double> asentadoPorCuenta = new java.util.HashMap<String, Double>();
+        for (Object[] fila : cierreCarteraDaoService.selectAnticipadoAsentadoPorCuenta(solicitud.getIdEmpresa(),
+                new ArrayList<String>(porCobrarPorCuenta.keySet()), corte)) {
+            asentadoPorCuenta.put((String) fila[0], (Double) fila[1]);
+        }
+
+        double objetivoTotal = 0D;
+        double asentadoTotal = 0D;
+        double baseTotal = 0D;
+        for (java.util.Map.Entry<String, DetallePlantilla> entrada : porCobrarPorCuenta.entrySet()) {
+            String cuenta = entrada.getKey();
+            double objetivo = redondeaDouble(objetivoPorCuenta.get(cuenta));
+            double baseCuenta = redondeaDouble(basePorCuenta.get(cuenta));
+            double asentado = redondeaDouble(asentadoPorCuenta.containsKey(cuenta) ? asentadoPorCuenta.get(cuenta)
+                    : Double.valueOf(0D));
+            objetivoTotal += objetivo;
+            baseTotal += baseCuenta;
+            asentadoTotal += asentado;
+            double diferencia = redondeaDouble(Double.valueOf(objetivo - asentado - baseCuenta));
+            if (Math.abs(diferencia) < MINIMO_LINEA) {
+                continue;
+            }
+            String detalle = cuenta + " objetivo " + redondea(Double.valueOf(objetivo)) + " asentado "
+                    + redondea(Double.valueOf(asentado)) + " base " + redondea(Double.valueOf(baseCuenta));
+            DetallePlantilla pasivo = pasivoPorCuenta.get(cuenta);
+            boolean sube = diferencia > 0;
+            double valor = Math.abs(diferencia);
+            String texto = (sube ? "Intereses recibidos por anticipado " : "Reverso de intereses recibidos por anticipado ")
+                    + periodo(solicitud) + " - " + detalle;
+            sub.getLineas().add(lineaForzada(entrada.getValue(), valor, sube, texto,
+                    CrdLineaAsiento.INTERES_ANTICIPADO_POR_COBRAR));
+            sub.getLineas().add(lineaForzada(pasivo, valor, !sube, texto, CrdLineaAsiento.INTERES_RECIBIDO_ANTICIPADO));
+        }
+        advertencias.add("⑪ Intereses recibidos por anticipado al " + corte + ": objetivo "
+                + redondea(Double.valueOf(objetivoTotal)) + " (cobrado desde " + ancla + " de cuotas que vencen desde "
+                + corte.withDayOfMonth(1).plusMonths(1) + "), ya asentado por el ⑪ "
+                + redondea(Double.valueOf(asentadoTotal)) + ", base de transicion " + redondea(Double.valueOf(baseTotal)) + ".");
+        cierra(sub, "El interes recibido por anticipado ya esta asentado: nada que ajustar.");
         return sub;
     }
 
@@ -1316,8 +1516,9 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
         resultado.getSubProcesos().add(armaAjusteBandas(solicitud, fechaCorte, distNueva,
                 new ArrayList<SubProcesoCierre>(), true, resultado.getAdvertencias()));
         resultado.getSubProcesos().add(armaApertura(solicitud, fechaProceso, fechaCorteApertura, fechaCorte));
+        // C27b: la corrida de arranque nunca usa el devengo completo (corte y ancla null = el ④ de siempre).
         resultado.getSubProcesos().add(armaDevengoIntereses(solicitud, fechaProceso, fechaProceso,
-                fechaCorteApertura, fechaCorte));
+                fechaCorteApertura, fechaCorte, null, null));
         for (SubProcesoCierre sub : resultado.getSubProcesos()) {
             if (Boolean.TRUE.equals(sub.getOmitido())) {
                 continue;
@@ -3047,6 +3248,8 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
             case SubProcesoCierreCartera.PROVISION_CARTERA:        return "Provisión de cartera";
             case SubProcesoCierreCartera.AJUSTE_BANDAS:            return "Ajuste de bandas a saldo";
             case SubProcesoCierreCartera.DEVENGO_MORA_CORTE:       return "Devengo de mora al corte";
+            case SubProcesoCierreCartera.DEVENGO_PRIMERA_CUOTA:    return "Devengo de la primera cuota de prestamos nuevos";
+            case SubProcesoCierreCartera.INTERES_ANTICIPADO:       return "Intereses recibidos por anticipado";
             default:                                               return String.valueOf(subProceso);
         }
     }
@@ -3067,6 +3270,8 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
             case SubProcesoCierreCartera.PROVISION_CARTERA:        return "⑧";
             case SubProcesoCierreCartera.AJUSTE_BANDAS:            return "⑨";
             case SubProcesoCierreCartera.DEVENGO_MORA_CORTE:       return "⑩";
+            case SubProcesoCierreCartera.DEVENGO_PRIMERA_CUOTA:    return "④b";
+            case SubProcesoCierreCartera.INTERES_ANTICIPADO:       return "⑪";
             default:                                               return null;
         }
     }

@@ -92,4 +92,18 @@ public interface SubProcesoCierreCartera {
 	 */
 	public static final int DEVENGO_MORA_CORTE = 10;
 
+	/**
+	 * ④b Devengo de la PRIMERA cuota de los préstamos concedidos en el mismo mes que se cierra (C27b, D-172): el ④ del
+	 * mes anterior no los vio. D 1.4.02.xx / H 5.1.02.xx (plantilla 17), fechado al corte. Solo con
+	 * {@code saa.cartera.devengoCompletoDesde} activa.
+	 */
+	public static final int DEVENGO_PRIMERA_CUOTA = 11;
+
+	/**
+	 * ⑪ Intereses recibidos por anticipado (C27b, D-172): el interés cobrado antes de que su cuota abra en el ④ queda en
+	 * el pasivo hasta entonces. Ajuste contra lo que el propio ⑪ ya asentó más la base de transición. Plantilla alterno
+	 * 38, fechado al corte. Solo con {@code saa.cartera.devengoCompletoDesde} activa.
+	 */
+	public static final int INTERES_ANTICIPADO = 12;
+
 }

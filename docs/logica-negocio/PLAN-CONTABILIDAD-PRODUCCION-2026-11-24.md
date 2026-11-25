@@ -67,6 +67,22 @@ dueño, con la autorización del usuario.
    - **Reversos en abono y precancelación:** solo para meses ya devengados por una corrida con
      corte ≥ `devengoCompletoDesde`, y dentro del asiento del evento.
    - **Condonación:** lo condonado ya va D gasto / H 1.4.02. Lo que se haga con ello es el punto 3.3(c).
+6. **Lote 1 commiteado.** Lleva las correcciones del árbitro:
+   - el reverso de la precancelación cuenta solo las cuotas que canceló ese evento y que están en meses devengados por
+     el ④ nuevo;
+   - el ④ y el ④b devengan solo lo cobrado de una cuota que ya está en estado 7, lo que cierra el hueco de una
+     cancelación hecha entre el corte y el cierre;
+   - lo ya asentado por ⑪ cuenta solo asientos ACTIVOS.
+   - **Lote 1b, pendiente hasta el merge de c45:**
+     - la precancelación por ventanilla (CBCRASN2) y la de 100 % efectivo no reversan el devengo. Con la propiedad
+       activa, el hueco es la precancelación por ventanilla hecha después del cierre del mes. Es condición de
+       activación (`C27b-PROPIEDADES.md`).
+     - el acuerdo de condonación, por el hallazgo de abajo.
+   - **Hallazgo, defecto previo:** reversar un cobro ACUERDO_CONDONACION (e4a69c65) deja vivo el asiento de la
+     condonación.
+     - `generarAsientoCondonacion` (l. 728-940) no guarda el asiento en el evento.
+     - `reversarProceso` del CBCR anula solo sus tres asientos.
+     - Se propone como lote aparte, junto con 3.3.
 
 ## Lotes del BE (uno a la vez; no se despacha el siguiente sin commitear el anterior)
 

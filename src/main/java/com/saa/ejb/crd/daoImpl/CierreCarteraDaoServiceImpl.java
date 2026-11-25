@@ -1066,4 +1066,144 @@ public class CierreCarteraDaoServiceImpl implements CierreCarteraDaoService {
         query.setParameter("desde", Date.valueOf(desde));
         return aLong(query.getSingleResult()).longValue();
     }
+
+    // =====================================================================
+    // C27b (D-172) — interés cobrado antes de su devengo
+    // =====================================================================
+
+    /** Universo por fecha: concedido antes del corte y dentro de cartera (el mismo de {@link #universo} al corte). */
+    private static final String CONCEDIDO_EN_CARTERA =
+            " p.PRSTFCHA < :corteSig AND NVL(p.PRSTIDST,0) NOT IN (" + ModoCorteCartera.ESTADOS_FUERA_DE_CARTERA + ") ";
+
+    /** Cuota viva: la anulada no devenga ni cobra. */
+    private static final String CUOTA_NO_ANULADA = " NVL(d.DTPRESTD,0) <> " + EstadoCuotaPrestamo.ANULADA + " ";
+
+    /** Pago vigente (nunca PGPRESTD: el reverso lo deja en 1). */
+    private static final String PAGO_VIGENTE = " (PGPRANUL IS NULL OR PGPRANUL = 0) ";
+
+    @Override
+    public List<Object[]> selectInteresDevengoPorTipoEnRango(LocalDate desde, LocalDate hasta, LocalDate corte,
+            LocalDate ancla) throws Throwable {
+        System.out.println("Ingresa al metodo selectInteresDevengoPorTipoEnRango - desde: " + desde + " - hasta: "
+                + hasta + " - corte: " + corte + " - ancla: " + ancla);
+        Query query = em.createNativeQuery(
+                " SELECT pr.TPPRCDGO, "
+                + "        SUM(CASE WHEN " + ModoCorteCartera.CANCELADO_TERMINADO_AL_CORTE_SQL
+                + "                 OR NVL(d.DTPRESTD,0) = " + EstadoCuotaPrestamo.CANCELADA_ANTICIPADA
+                + "                 THEN NVL(g.post,0) "
+                + "                 WHEN " + condonado(corte) + " THEN 0 "
+                + "                 ELSE GREATEST(NVL(d.DTPRINTR,0) - NVL(g.pre,0), 0) END) "
+                + " FROM   CRD.DTPR d "
+                + " JOIN   CRD.PRST p  ON p.PRSTCDGO = d.PRSTCDGO "
+                + " JOIN   CRD.PRDC pr ON pr.PRDCCDGO = p.PRDCCDGO "
+                + " LEFT JOIN (SELECT DTPRCDGO, "
+                + "        SUM(CASE WHEN PGPRFCHA < :ancla THEN NVL(PGPRINPG,0) ELSE 0 END) pre, "
+                + "        SUM(CASE WHEN PGPRFCHA >= :ancla AND PGPRFCHA < :corteSig THEN NVL(PGPRINPG,0) ELSE 0 END) post "
+                + "   FROM CRD.PGPR WHERE " + PAGO_VIGENTE + " GROUP BY DTPRCDGO) g ON g.DTPRCDGO = d.DTPRCDGO "
+                + " WHERE  " + CONCEDIDO_EN_CARTERA
+                + " AND    " + CUOTA_NO_ANULADA
+                + " AND    TRUNC(d.DTPRFCVN) BETWEEN :desde AND :hasta "
+                + " AND    pr.TPPRCDGO IS NOT NULL "
+                + " GROUP BY pr.TPPRCDGO "
+                + " ORDER BY pr.TPPRCDGO");
+        query.setParameter("desde", Date.valueOf(desde));
+        query.setParameter("hasta", Date.valueOf(hasta));
+        query.setParameter("ancla", Date.valueOf(ancla));
+        parametroCorteSig(query, corte);
+        return tipoYValor(query.getResultList());
+    }
+
+    @Override
+    public List<Object[]> selectInteresPrimeraCuotaPorTipo(LocalDate inicioMes, LocalDate corte) throws Throwable {
+        System.out.println("Ingresa al metodo selectInteresPrimeraCuotaPorTipo - mes: " + inicioMes + " - corte: " + corte);
+        Query query = em.createNativeQuery(
+                " SELECT pr.TPPRCDGO, "
+                + "        SUM(CASE WHEN " + ModoCorteCartera.CANCELADO_TERMINADO_AL_CORTE_SQL
+                + "                 OR NVL(d.DTPRESTD,0) = " + EstadoCuotaPrestamo.CANCELADA_ANTICIPADA
+                + "                 THEN NVL(g.post,0) "
+                + "                 WHEN " + condonado(corte) + " THEN 0 "
+                + "                 ELSE NVL(d.DTPRINTR,0) END) "
+                + " FROM   CRD.DTPR d "
+                + " JOIN   CRD.PRST p  ON p.PRSTCDGO = d.PRSTCDGO "
+                + " JOIN   CRD.PRDC pr ON pr.PRDCCDGO = p.PRDCCDGO "
+                + " LEFT JOIN (SELECT DTPRCDGO, SUM(NVL(PGPRINPG,0)) post "
+                + "   FROM CRD.PGPR WHERE " + PAGO_VIGENTE + " AND PGPRFCHA < :corteSig GROUP BY DTPRCDGO) g "
+                + "        ON g.DTPRCDGO = d.DTPRCDGO "
+                + " WHERE  " + CONCEDIDO_EN_CARTERA
+                + " AND    p.PRSTFCHA >= :inicio "
+                + " AND    " + CUOTA_NO_ANULADA
+                + " AND    TRUNC(d.DTPRFCVN) BETWEEN :inicio AND :corte "
+                + " AND    pr.TPPRCDGO IS NOT NULL "
+                + " GROUP BY pr.TPPRCDGO "
+                + " ORDER BY pr.TPPRCDGO");
+        query.setParameter("inicio", Date.valueOf(inicioMes));
+        query.setParameter("corte", Date.valueOf(corte));
+        parametroCorteSig(query, corte);
+        return tipoYValor(query.getResultList());
+    }
+
+    @Override
+    public List<Object[]> selectInteresAnticipadoPorTipo(LocalDate ancla, LocalDate corte) throws Throwable {
+        System.out.println("Ingresa al metodo selectInteresAnticipadoPorTipo - ancla: " + ancla + " - corte: " + corte);
+        LocalDate mesSiguiente = corte.withDayOfMonth(1).plusMonths(1);
+        Query query = em.createNativeQuery(
+                " SELECT pr.TPPRCDGO, SUM(NVL(g.PGPRINPG,0)) "
+                + " FROM   CRD.PGPR g "
+                + " JOIN   CRD.DTPR d  ON d.DTPRCDGO = g.DTPRCDGO "
+                + " JOIN   CRD.PRST p  ON p.PRSTCDGO = d.PRSTCDGO "
+                + " JOIN   CRD.PRDC pr ON pr.PRDCCDGO = p.PRDCCDGO "
+                + " WHERE  (g.PGPRANUL IS NULL OR g.PGPRANUL = 0) "
+                + " AND    g.PGPRFCHA >= :ancla AND g.PGPRFCHA < :corteSig "
+                + " AND    TRUNC(d.DTPRFCVN) >= :mesSiguiente "
+                + " AND    " + CONCEDIDO_EN_CARTERA
+                + " AND    " + CUOTA_NO_ANULADA
+                + " AND    pr.TPPRCDGO IS NOT NULL "
+                + " GROUP BY pr.TPPRCDGO "
+                + " ORDER BY pr.TPPRCDGO");
+        query.setParameter("ancla", Date.valueOf(ancla));
+        query.setParameter("mesSiguiente", Date.valueOf(mesSiguiente));
+        parametroCorteSig(query, corte);
+        return tipoYValor(query.getResultList());
+    }
+
+    @Override
+    public List<Object[]> selectAnticipadoAsentadoPorCuenta(Long idEmpresa, List<String> cuentas, LocalDate corte)
+            throws Throwable {
+        System.out.println("Ingresa al metodo selectAnticipadoAsentadoPorCuenta - empresa: " + idEmpresa
+                + " - cuentas: " + cuentas + " - corte: " + corte);
+        if (cuentas == null || cuentas.isEmpty()) {
+            return new ArrayList<Object[]>();
+        }
+        Query query = em.createNativeQuery(
+                " SELECT d.DTASCNTA, SUM(NVL(d.DTASDBEE,0)) - SUM(NVL(d.DTASHBRR,0)) "
+                + " FROM   CRD.ANCC a "
+                + " JOIN   CRD.CRCT c ON c.CRCTCDGO = a.CRCTCDGO "
+                + " JOIN   CNT.ASNT s ON s.ASNTCDGO = a.ANCCASNT "
+                + " JOIN   CNT.DTAS d ON d.ASNTCDGO = s.ASNTCDGO "
+                + " WHERE  a.ANCCTPOO = " + com.saa.rubros.SubProcesoCierreCartera.INTERES_ANTICIPADO
+                + " AND    a.ANCCIDST = " + com.saa.rubros.EstadoAsiento.ACTIVO
+                + " AND    c.CRCTIDST = " + com.saa.rubros.EstadoCorridaCierreCartera.EJECUTADA
+                + " AND    s.ASNTESTD = " + com.saa.rubros.EstadoAsiento.ACTIVO + " AND s.PJRQCDGO = :empresa "
+                + " AND    a.ANCCFCHA < :corte "
+                + " AND    d.DTASCNTA IN (:cuentas) "
+                + " GROUP BY d.DTASCNTA ORDER BY d.DTASCNTA");
+        query.setParameter("empresa", idEmpresa);
+        query.setParameter("corte", Date.valueOf(corte));
+        query.setParameter("cuentas", cuentas);
+        List<Object[]> filas = query.getResultList();
+        List<Object[]> resultado = new ArrayList<Object[]>();
+        for (Object[] f : filas) {
+            resultado.add(new Object[]{ f[0] != null ? f[0].toString() : null, aDouble(f[1]) });
+        }
+        return resultado;
+    }
+
+    /** {@code [tipo, valor]} normalizado. */
+    private List<Object[]> tipoYValor(List<Object[]> filas) {
+        List<Object[]> resultado = new ArrayList<Object[]>();
+        for (Object[] f : filas) {
+            resultado.add(new Object[]{ aLong(f[0]), aDouble(f[1]) });
+        }
+        return resultado;
+    }
 }

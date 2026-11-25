@@ -385,4 +385,54 @@ public interface CierreCarteraDaoService {
      * producción (más de 20.000 filas en la copia del 15-nov-2026).
      */
     long contarPagosVigentesDesde(Long idPrestamo, LocalDate desde) throws Throwable;
+
+    // =====================================================================
+    // C27b (D-172) — interés cobrado antes de su devengo. Solo con saa.cartera.devengoCompletoDesde activa.
+    // Las cuatro consultas son SIEMPRE "al corte" (mismo código en modo normal y al corte): universo por fecha
+    // (PRSTFCHA < corte + 1, sin 0/1/6/7/12/14), nunca PRESTAMOS_VIVOS, y pagos por rango de fecha explícito.
+    // =====================================================================
+
+    /**
+     * ④ corregido: interés ORDINARIO de las cuotas con vencimiento en el rango, por tipo de préstamo.
+     * <ul>
+     * <li>Préstamo en el universo al corte: {@code DTPRINTR} completo (también de la cuota ya pagada) menos el interés
+     * condonado de plazo vencido y menos lo cobrado con {@code PGPRFCHA < ancla} (ya está en el saldo de apertura).</li>
+     * <li>Préstamo que salió del universo (cancelado, precancelado o novado, no anulado): solo el interés cobrado
+     * vigente de la cuota con {@code ancla <= PGPRFCHA < corte + 1}.</li>
+     * </ul>
+     *
+     * @param desde  primer día del mes que abre
+     * @param hasta  último día del mes que abre
+     * @param corte  fecha de corte del cierre
+     * @param ancla  fechaCorte de la corrida de arranque
+     * @return filas {@code [idTipoPrestamo (Long), interes (Double)]}
+     */
+    List<Object[]> selectInteresDevengoPorTipoEnRango(LocalDate desde, LocalDate hasta, LocalDate corte, LocalDate ancla)
+            throws Throwable;
+
+    /**
+     * ④b: interés de las cuotas con vencimiento entre {@code inicioMes} y el corte, de los préstamos concedidos en
+     * ese mismo mes ({@code PRSTFCHA} dentro del mes), por tipo. Si el préstamo ya salió del universo, solo lo cobrado.
+     *
+     * @return filas {@code [idTipoPrestamo (Long), interes (Double)]}
+     */
+    List<Object[]> selectInteresPrimeraCuotaPorTipo(LocalDate inicioMes, LocalDate corte) throws Throwable;
+
+    /**
+     * ⑪ objetivo: Σ {@code PGPRINPG} vigente con {@code ancla <= PGPRFCHA < corte + 1} de cuotas con vencimiento desde el
+     * día 1 del mes siguiente al corte, por tipo. Universo por fecha, sin anulados; entran cancelados y novados.
+     *
+     * @return filas {@code [idTipoPrestamo (Long), valor (Double)]}
+     */
+    List<Object[]> selectInteresAnticipadoPorTipo(LocalDate ancla, LocalDate corte) throws Throwable;
+
+    /**
+     * ⑪ lo ya asentado: por cuenta, debe − haber de los asientos de los pasos ⑪ (ANCC subproceso 12) con ANCC activo,
+     * corrida EJECUTADA, asiento no anulado y fecha anterior al corte.
+     *
+     * @param cuentas cuentas {@code 1.4.02.xx} de las líneas de la plantilla del ⑪
+     * @return filas {@code [cuenta (String), debe - haber (Double)]}
+     */
+    List<Object[]> selectAnticipadoAsentadoPorCuenta(Long idEmpresa, List<String> cuentas, LocalDate corte)
+            throws Throwable;
 }

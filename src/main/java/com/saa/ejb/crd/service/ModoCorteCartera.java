@@ -3,6 +3,7 @@ package com.saa.ejb.crd.service;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 
+import com.saa.basico.util.IncomeException;
 import com.saa.rubros.EstadoCuotaPrestamo;
 import com.saa.rubros.TipoCarteraBanda;
 
@@ -468,5 +469,93 @@ public final class ModoCorteCartera {
     /** Día siguiente al corte, para filtros {@code fecha < corte + 1} sobre columnas con hora. */
     public static LocalDate diaSiguiente(LocalDate corte) {
         return corte.plusDays(1);
+    }
+
+    // =====================================================================
+    // C27b (D-172) — interés cobrado antes de su devengo. Tres propiedades del servidor.
+    // =====================================================================
+
+    /**
+     * C27b: primer corte (AAAA-MM-DD) que se cierra con el devengo completo. Sin la propiedad, o con un corte
+     * anterior, el paso ④ es exactamente el de siempre y los pasos ④b (11) y ⑪ (12) no corren. Es la fecha que el
+     * cuadre fija por escrito: el reproceso carga un asiento manual C27b, y sin esta propiedad el código nuevo lo
+     * contabilizaría dos veces.
+     */
+    public static final String PROPIEDAD_DEVENGO_COMPLETO_DESDE = "saa.cartera.devengoCompletoDesde";
+
+    /**
+     * C27b: fecha de corte (AAAA-MM-DD) de la corrida de ARRANQUE EJECUTADA de la empresa. Es la ancla: lo cobrado antes
+     * de ella ya está en el saldo de apertura. Obligatoria si {@link #PROPIEDAD_DEVENGO_COMPLETO_DESDE} está definida y
+     * el corte la alcanza; se valida contra una corrida EJECUTADA con ese fechaCorte.
+     */
+    public static final String PROPIEDAD_ANCLA_ARRANQUE = "saa.cartera.anclaArranque";
+
+    /**
+     * C27b: base de transición del ⑪, por tipo de préstamo, con el formato {@code TPPRCDGO:valor;TPPRCDGO:valor}
+     * (ejemplo {@code 1:123.45;2:0;3:67.80}, punto decimal). Es lo que el asiento manual C27b del reproceso dejó en la
+     * cuenta al corte anterior a {@link #PROPIEDAD_DEVENGO_COMPLETO_DESDE}; la entrega el cuadre. Obligatoria para el
+     * ⑪ cuando el devengo completo está activo: no hay cero por defecto.
+     */
+    public static final String PROPIEDAD_ANTICIPADO_BASE_TRANSICION = "saa.cartera.anticipadoBaseTransicion";
+
+    /** Lee una propiedad de fecha; null si no está definida; {@link IncomeException} si no es AAAA-MM-DD. */
+    private static LocalDate fechaPropiedad(String nombre) throws IncomeException {
+        String valor = System.getProperty(nombre);
+        if (valor == null || valor.trim().isEmpty()) {
+            return null;
+        }
+        try {
+            return LocalDate.parse(valor.trim());
+        } catch (RuntimeException e) {
+            throw new IncomeException("La propiedad del servidor " + nombre + " vale '" + valor
+                    + "' y no es una fecha AAAA-MM-DD.");
+        }
+    }
+
+    /** C27b: valor de {@link #PROPIEDAD_DEVENGO_COMPLETO_DESDE}, o null si no está definida. */
+    public static LocalDate devengoCompletoDesde() throws IncomeException {
+        return fechaPropiedad(PROPIEDAD_DEVENGO_COMPLETO_DESDE);
+    }
+
+    /** C27b: ¿el cierre con este corte usa el devengo completo (④ nuevo, ④b y ⑪)? */
+    public static boolean devengoCompletoActivo(LocalDate corte) throws IncomeException {
+        LocalDate desde = devengoCompletoDesde();
+        return desde != null && corte != null && !corte.isBefore(desde);
+    }
+
+    /** C27b: valor de {@link #PROPIEDAD_ANCLA_ARRANQUE}, o null si no está definida. */
+    public static LocalDate anclaArranque() throws IncomeException {
+        return fechaPropiedad(PROPIEDAD_ANCLA_ARRANQUE);
+    }
+
+    /**
+     * C27b: base de transición del ⑪ por tipo de préstamo ({@link #PROPIEDAD_ANTICIPADO_BASE_TRANSICION}), o null si la
+     * propiedad no está definida.
+     *
+     * @throws IncomeException si el formato no es {@code TPPRCDGO:valor;...}
+     */
+    public static java.util.Map<Long, Double> anticipadoBaseTransicion() throws IncomeException {
+        String valor = System.getProperty(PROPIEDAD_ANTICIPADO_BASE_TRANSICION);
+        if (valor == null || valor.trim().isEmpty()) {
+            return null;
+        }
+        java.util.Map<Long, Double> base = new java.util.TreeMap<Long, Double>();
+        for (String par : valor.split(";")) {
+            if (par.trim().isEmpty()) {
+                continue;
+            }
+            String[] partes = par.split(":");
+            try {
+                if (partes.length != 2) {
+                    throw new NumberFormatException();
+                }
+                base.put(Long.valueOf(partes[0].trim()), Double.valueOf(partes[1].trim()));
+            } catch (NumberFormatException e) {
+                throw new IncomeException("La propiedad del servidor " + PROPIEDAD_ANTICIPADO_BASE_TRANSICION
+                        + " tiene el par '" + par.trim() + "': el formato es TPPRCDGO:valor;TPPRCDGO:valor"
+                        + " (ejemplo 1:123.45;2:0;3:67.80).");
+            }
+        }
+        return base;
     }
 }
