@@ -160,6 +160,23 @@ porque escribe en `CNT.RNRP`.
 - **`reimputarAlCorte` NO se vuelve a correr en producción** hasta corregirlo (lote aparte: leer por cuota, el mismo
   criterio que el control y la mora a la fecha real).
 
+## 5e. EAR con la herramienta corregida: `cierre-1125-d187-l10` (lote 10, `ee647164`)
+
+- **EAR:** `F:\ears\asoprep\cierre-1125-d187-l10\SaaEAR.ear`, SHA-256
+  `01C614D2E3DD250555A7B54B3A6B077E92A67A2C08AD7D1E8AC6D56B0A2D930F`.
+  - Código: `5a40b3ac` + lote 7 + lote 7b + lote 10 (solo `src`, con `git apply`).
+  - Los parches y el `397` están junto al EAR.
+- **Orden, PRIMERO sobre una copia de producción y después en producción:**
+  1. `396` (solo lectura);
+  2. `397`: respaldo de PGPR y UPDATE de `PRSTCDGO` nulo desde la cuota; COMMIT manual;
+  3. desplegar el EAR;
+  4. `reimputarAlCorte` con `simular=true`;
+  5. ejecutar con `simular=false`;
+  6. previsualizar.
+  - Aceptación: prelación en 0, sin «pagada de más». Revisar a mano el 2904 y el 3492.
+- La herramienta corregida rechaza los préstamos con pagos de `PRSTCDGO` nulo (por eso el 397 va antes). Además
+  valida contra el control del cierre antes y después de aplicar, con rollback por préstamo.
+
 ## 6. Riesgos
 - **Lo nuevo nunca corrió contra Oracle en producción:** C27b, el lote 7 y su reparto por préstamo, y el ⑧, ⑨ y ⑩ con
   `siempre`. La previsualización es su primera ejecución, y no graba nada.
