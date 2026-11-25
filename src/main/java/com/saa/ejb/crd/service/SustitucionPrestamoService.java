@@ -79,10 +79,10 @@ public interface SustitucionPrestamoService {
             throws Throwable;
 
     /**
-     * Igual que {@link #cancelarOriginal(Prestamo, ContextoSustitucion, Long, String)} con la fecha del evento
-     * (3.8 del cuadre): la del desembolso (novación) o la fecha contable de la aprobación (reestructuración), y no la de
-     * hoy. {@code fechaRegistro} del evento sigue siendo el instante real. Con {@code fecha} nula se usa hoy.
+     * C45 — igual que {@link #cancelarOriginal(Prestamo, ContextoSustitucion, Long, String)}, con la fecha de negocio
+     * del evento (la del asiento: desembolso en la novación, fecha contable de la aprobación en la reestructuración).
+     * Con {@code fechaEvento} nula o de hoy, el evento lleva la hora actual, como antes.
      */
     void cancelarOriginal(Prestamo nuevo, ContextoSustitucion contexto, Long idAsiento, String usuario,
-            java.time.LocalDate fecha) throws Throwable;
+            java.time.LocalDate fechaEvento) throws Throwable;
 }

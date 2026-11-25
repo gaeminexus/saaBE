@@ -288,7 +288,7 @@ public class SustitucionPrestamoServiceImpl implements SustitucionPrestamoServic
 
     @Override
     public void cancelarOriginal(Prestamo nuevo, ContextoSustitucion contexto, Long idAsiento, String usuario,
-            LocalDate fecha) throws Throwable {
+            java.time.LocalDate fechaEvento) throws Throwable {
         Prestamo original = contexto.getOriginal();
         String tipo = contexto.isNovacion() ? TIPO_NOVACION : TIPO_REESTRUCTURACION;
         System.out.println("SustitucionPrestamoService.cancelarOriginal - original: " + original.getCodigo()
@@ -311,8 +311,10 @@ public class SustitucionPrestamoServiceImpl implements SustitucionPrestamoServic
         evento.setPrestamo(original);
         evento.setTipoOperacion(tipo);
         evento.setValor(redondear(contexto.getValorSustitucion()));
-        // 3.8: la fecha del evento es la de la operación (desembolso o fecha contable), no la de hoy.
-        evento.setFecha(fecha != null ? fecha.atStartOfDay() : LocalDateTime.now());
+        // C45 (auditoría §2.1): el evento llevaba la fecha de HOY aunque el asiento fuera de otra fecha (re-proceso de
+        // un mes pasado): ahora la fecha de negocio del asiento; hoy solo si no llega o es la de hoy.
+        evento.setFecha(fechaEvento == null || !fechaEvento.isBefore(java.time.LocalDate.now())
+            ? LocalDateTime.now() : fechaEvento.atStartOfDay());
         evento.setObservacion("Sustituido por el préstamo nuevo " + nuevo.getCodigo()
             + (nuevo.getIdAsoprep() != null ? " (N° " + nuevo.getIdAsoprep() + ")" : ""));
         evento.setUsuario(usuario);
