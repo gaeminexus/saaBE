@@ -237,6 +237,55 @@ public class LibroInteresArranqueServiceImpl implements LibroInteresArranqueServ
         }
         validaAsientoReferencia(referencia);
 
+        CalculoAjuste calculo = calcularAjusteProvision(corte);
+        Map<Long, ResultadoAjusteLibroProvision.Tipo> porTipo = calculo.porTipo;
+        List<Object[]> filas = calculo.filas;
+        double deCerradas = calculo.deCerradas;
+        double deNegativas = calculo.deNegativas;
+        cierraResultado(resultado, porTipo);
+        resultado.setCuotasAjustadas(filas.size());
+        resultado.setDeCuotasCerradas(redondear(deCerradas));
+        resultado.setDeNegativas(redondear(deNegativas));
+        if (filas.isEmpty()) {
+            resultado.getAdvertencias().add("El libro de provisión ya está al día al " + corte + ": nada que ajustar.");
+        }
+
+        if (grabar && !filas.isEmpty()) {
+            LocalDateTime ahora = LocalDateTime.now();
+            for (Object[] fila : filas) {
+                MovimientoInteresCuota mov = new MovimientoInteresCuota();
+                Prestamo p = new Prestamo();
+                p.setCodigo((Long) fila[1]);
+                mov.setPrestamo(p);
+                mov.setIdCuota((Long) fila[0]);
+                mov.setTipoMovimiento(Boolean.TRUE.equals(fila[3]) ? TipoMovimientoInteresCuota.AJUSTE_LIBRO_PROVISION_BAJA
+                    : TipoMovimientoInteresCuota.AJUSTE_LIBRO_PROVISION_ALTA);
+                mov.setComponente((Long) fila[2]);
+                mov.setValor(redondear((Double) fila[4]));
+                mov.setFechaContable(corte);
+                mov.setOrigen(ORIGEN_AJUSTE_LIBRO);
+                mov.setIdOrigen(referencia);
+                mov.setAsiento(referencia);
+                mov.setAnulado(0L);
+                mov.setUsuarioRegistro(usuario);
+                mov.setFechaRegistro(ahora);
+                movimientoInteresCuotaDaoService.save(mov, null);
+            }
+            resultado.setGrabado(true);
+        }
+        return resultado;
+    }
+
+    /** Resultado del cálculo del ajuste del libro de provisión al corte (lo comparten A1 y el ajuste de último recurso del cierre). */
+    private static final class CalculoAjuste {
+        List<Object[]> filas = new ArrayList<>(); // {idCuota, idPrestamo, componente, baja(Boolean), valor, idTipo}
+        Map<Long, ResultadoAjusteLibroProvision.Tipo> porTipo = new TreeMap<>();
+        double deCerradas;
+        double deNegativas;
+    }
+
+    private CalculoAjuste calcularAjusteProvision(LocalDate corte) throws Throwable {
+        CalculoAjuste calculo = new CalculoAjuste();
         // Universo: las cuotas del ⑦ al corte (con su interés y su mora pendientes) más las que tienen saldo de provisión y ya no lo son.
         List<FilaCuota> universo = universoAlCorte(corte, true);
         Map<Long, FilaCuota> porCuota = new LinkedHashMap<>();
@@ -303,42 +352,66 @@ public class LibroInteresArranqueServiceImpl implements LibroInteresArranqueServ
                     deNegativas += Math.min(valor, -actual);
                 }
                 filas.add(new Object[]{ idCuota, idPrestamo, Long.valueOf(componente == 0
-                    ? ComponenteMovimientoInteresCuota.INTERES : ComponenteMovimientoInteresCuota.MORA), Boolean.valueOf(baja), valor });
+                    ? ComponenteMovimientoInteresCuota.INTERES : ComponenteMovimientoInteresCuota.MORA), Boolean.valueOf(baja), valor, idTipo });
                 acumula(porTipo, idTipo, componente == 0, baja, valor);
             }
         }
-        cierraResultado(resultado, porTipo);
-        resultado.setCuotasAjustadas(filas.size());
-        resultado.setDeCuotasCerradas(redondear(deCerradas));
-        resultado.setDeNegativas(redondear(deNegativas));
-        if (filas.isEmpty()) {
-            resultado.getAdvertencias().add("El libro de provisión ya está al día al " + corte + ": nada que ajustar.");
-        }
+        calculo.filas = filas;
+        calculo.porTipo = porTipo;
+        calculo.deCerradas = deCerradas;
+        calculo.deNegativas = deNegativas;
+        return calculo;
+    }
 
-        if (grabar && !filas.isEmpty()) {
-            LocalDateTime ahora = LocalDateTime.now();
-            for (Object[] fila : filas) {
-                MovimientoInteresCuota mov = new MovimientoInteresCuota();
-                Prestamo p = new Prestamo();
-                p.setCodigo((Long) fila[1]);
-                mov.setPrestamo(p);
-                mov.setIdCuota((Long) fila[0]);
-                mov.setTipoMovimiento(Boolean.TRUE.equals(fila[3]) ? TipoMovimientoInteresCuota.AJUSTE_LIBRO_PROVISION_BAJA
-                    : TipoMovimientoInteresCuota.AJUSTE_LIBRO_PROVISION_ALTA);
-                mov.setComponente((Long) fila[2]);
-                mov.setValor(redondear((Double) fila[4]));
-                mov.setFechaContable(corte);
-                mov.setOrigen(ORIGEN_AJUSTE_LIBRO);
-                mov.setIdOrigen(referencia);
-                mov.setAsiento(referencia);
-                mov.setAnulado(0L);
-                mov.setUsuarioRegistro(usuario);
-                mov.setFechaRegistro(ahora);
-                movimientoInteresCuotaDaoService.save(mov, null);
-            }
-            resultado.setGrabado(true);
+    @Override
+    public List<Object[]> deltasLibroProvisionAlCorte(LocalDate corte) throws Throwable {
+        return calcularAjusteProvision(corte).filas;
+    }
+
+    @Override
+    public List<Object[]> deltasLibroDevengoInteresAlCorte(LocalDate corte) throws Throwable {
+        // Objetivo por cuota = interés devengado y no cobrado (cuotas del ⑦; las cerradas, 0); actual = Σ(MVIC 11 − 12) con fecha <= corte.
+        Map<Long, Double> actual = new HashMap<>();
+        Map<Long, Long> prestamoDe = new HashMap<>();
+        for (Object[] fila : movimientoInteresCuotaDaoService.selectSaldoDevengoInteresPorCuotaAlCorte(corte)) {
+            actual.put(((Number) fila[0]).longValue(), ((Number) fila[2]).doubleValue());
+            prestamoDe.put(((Number) fila[0]).longValue(), ((Number) fila[1]).longValue());
         }
-        return resultado;
+        Map<Long, FilaCuota> universo = new LinkedHashMap<>();
+        for (FilaCuota f : universoAlCorte(corte, false)) {
+            universo.put(f.cuota.getCodigo(), f);
+        }
+        List<Long> ids = new ArrayList<>(universo.keySet());
+        for (Long idCuota : actual.keySet()) {
+            if (!universo.containsKey(idCuota)) {
+                ids.add(idCuota);
+            }
+        }
+        Map<Long, Prestamo> prestamos = new HashMap<>();
+        List<Object[]> filas = new ArrayList<>(); // {idCuota, idPrestamo, componente, baja(Boolean), valor, idTipo}
+        for (Long idCuota : ids) {
+            FilaCuota f = universo.get(idCuota);
+            double objetivo = f != null ? f.interesPendiente : 0.0;
+            double delta = redondear(objetivo - actual.getOrDefault(idCuota, 0.0));
+            if (Math.abs(delta) < TOLERANCIA) {
+                continue;
+            }
+            Long idPrestamo = f != null ? f.prestamo.getCodigo() : prestamoDe.get(idCuota);
+            Long idTipo = f != null ? f.idTipoPrestamo : null;
+            if (idTipo == null) {
+                Prestamo prestamo = prestamos.get(idPrestamo);
+                if (prestamo == null) {
+                    prestamo = prestamoDaoService.find(new Prestamo(), idPrestamo);
+                    prestamos.put(idPrestamo, prestamo);
+                }
+                idTipo = idTipoDe(prestamo);
+            }
+            if (idTipo == null) {
+                throw new IncomeException("La cuota " + idCuota + " (préstamo " + idPrestamo + ") tiene devengo de interés al corte pero su producto no tiene tipo de préstamo.");
+            }
+            filas.add(new Object[]{ idCuota, idPrestamo, Long.valueOf(ComponenteMovimientoInteresCuota.INTERES), Boolean.valueOf(delta < 0), Math.abs(delta), idTipo });
+        }
+        return filas;
     }
 
     @Override

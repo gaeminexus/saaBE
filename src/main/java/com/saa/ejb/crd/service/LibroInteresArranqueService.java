@@ -29,4 +29,16 @@ public interface LibroInteresArranqueService {
 
     /** Anula (nunca borra) el ajuste del libro de una referencia. @return cuántos movimientos anuló */
     int anularAjusteLibro(Long idAsientoReferencia, String usuario) throws Throwable;
+
+    /**
+     * Lote 22: lo que hay que mover en el libro de provisión por cuota para que quede igual a lo devengado y no cobrado al corte (el mismo cálculo de A1,
+     * sin grabar). Filas {@code [idCuota, idPrestamo, componente (Long), baja (Boolean), valor (Double), idTipoPrestamo (Long)]}.
+     */
+    java.util.List<Object[]> deltasLibroProvisionAlCorte(java.time.LocalDate corte) throws Throwable;
+
+    /**
+     * Lote 22: lo que hay que mover en el libro de devengo de interés (MVIC 11 y 12) para que cada cuota quede en su interés devengado y no cobrado
+     * al corte. Mismo formato de filas; {@code baja} = true es un reverso (tipo 12).
+     */
+    java.util.List<Object[]> deltasLibroDevengoInteresAlCorte(java.time.LocalDate corte) throws Throwable;
 }

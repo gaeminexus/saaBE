@@ -73,6 +73,12 @@ public class CierreCartera {
     private ControlArchivoPetro controlArchivoPetro;
 
     /**
+     * Lote 22 (2.3, 2.4, 3.1): control 1.4.02 = 1.4.99.05 por tipo de préstamo, contra la contabilidad y contra el libro por cuota. En la previsualización es una
+     * proyección de lo que el cierre va a asentar; en la ejecución, lo asentado, con el ajuste de último recurso y el control del día 1. Nulo sin devengo completo.
+     */
+    private com.saa.ejb.crd.service.dto.ResultadoControlProvision controlProvision;
+
+    /**
      * De dónde sale el importe de aportes del neteo. Igual que el control: se calcula, no
      * se guarda, así que en {@code consultar} viene NULO.
      */
@@ -199,6 +205,14 @@ public class CierreCartera {
 
     public void setAdvertencias(List<String> advertencias) {
         this.advertencias = advertencias;
+    }
+
+    public com.saa.ejb.crd.service.dto.ResultadoControlProvision getControlProvision() {
+        return controlProvision;
+    }
+
+    public void setControlProvision(com.saa.ejb.crd.service.dto.ResultadoControlProvision controlProvision) {
+        this.controlProvision = controlProvision;
     }
 
     public ControlArchivoPetro getControlArchivoPetro() {
