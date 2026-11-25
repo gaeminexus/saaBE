@@ -165,6 +165,31 @@ public class PeriodoRest {
     }
 
     /**
+     * POST /prdo/desmayorizar?idEmpresa=&anio=&mes=&usuario=&ip=&motivo= — desmayoriza un período MAYORIZADO sin cierre
+     * contable (6.5 del cuadre, DS-21), incluso con una referencia PRDOMYRZ colgante. Motivo obligatorio. Auditado en
+     * CNT.HCPR (acción DESMAYORIZAR). Contrato: docs/logica-negocio/cnt/API-DESMAYORIZAR-PERIODO.md.
+     */
+    @POST
+    @Path("/desmayorizar")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response desmayorizar(@jakarta.ws.rs.QueryParam("idEmpresa") Long idEmpresa,
+            @jakarta.ws.rs.QueryParam("anio") Long anio, @jakarta.ws.rs.QueryParam("mes") Long mes,
+            @jakarta.ws.rs.QueryParam("usuario") String usuario, @jakarta.ws.rs.QueryParam("ip") String ip,
+            @jakarta.ws.rs.QueryParam("motivo") String motivo) {
+        System.out.println("LLEGA AL SERVICIO DESMAYORIZAR - PERIODO " + anio + "-" + mes + " empresa " + idEmpresa);
+        try {
+            return Response.ok(cierrePeriodoContableService.desmayorizar(idEmpresa, anio, mes, usuario, ip, motivo),
+                    MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("No se puede procesar sin un usuario válido: " + eUsuario.getMotivo())
+                    .type(jakarta.ws.rs.core.MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return respuestaCierre(e, "Error al desmayorizar el período contable: ");
+        }
+    }
+
+    /**
      * GET /prdo/bitacora/{idEmpresa}?tipo=CONTABLE|CARTERA — bitácora de cierres y reaperturas (CNT.HCPR) de la
      * empresa, de la más reciente a la más antigua. Solo lectura (la muestra la pantalla de cierre de períodos
      * del frontend). {@code tipo} es opcional; sin él devuelve contable y cartera.

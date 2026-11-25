@@ -109,6 +109,15 @@ dueño, con la autorización del usuario.
      - `generarAsientoCondonacion` (l. 728-940) no guarda el asiento en el evento.
      - `reversarProceso` del CBCR anula solo sus tres asientos.
      - Se propone como lote aparte, junto con 3.3.
+12. **Lote 5 commiteado (3.9 propuesta 1, 6.5 y medición de 6.4).** NO está en el EAR `c27b-1125`.
+    - **3.9:** la baja del bien en cuentas de orden sale por lo que asentó la entrega.
+    - **6.5:** `POST /prdo/desmayorizar`, con la bitácora HCPR DESMAYORIZAR. Requiere `cnt/sql/omen1-02` antes del WAR
+      que lo lleve.
+    - **Contratos para el FE:** `API-AVALUO-GARANTIA.md` (con lo [DECIDE EL CUADRE]) y `API-DESMAYORIZAR-PERIODO.md`.
+    - **Medición:** 388 (residuo del bien) y 389 (alterno 1 duplicado, para 6.4).
+    - **Pendiente:** la referencia colgante en `PRDOMYRZCIERRE` no se trata.
+11. **Lote 1b commiteado y EAR `c27b-1125` (main `5fc3d9d2`).** C27b queda completo en código. Runbook
+    `DESPLIEGUE-EAR-C27B-2026-11-24.md`.
 10. **Lote 1c commiteado.**
     - El asiento de la condonación queda en el evento del acuerdo, así que reversar el cobro (o anular la operación) lo
       anula.

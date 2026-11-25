@@ -33,6 +33,8 @@ public class HistorialCierrePeriodo implements Serializable {
 	public static final String ACCION_CIERRE = "CIERRE";
 	/** Acción: reapertura. */
 	public static final String ACCION_REAPERTURA = "REAPERTURA";
+	/** Acción: desmayorización de un período mayorizado sin cierre contable (6.5 del cuadre; sql/389 amplía CK_HCPR_ACCION). */
+	public static final String ACCION_DESMAYORIZAR = "DESMAYORIZAR";
 
 	/** PK (IDENTITY). */
 	@Id

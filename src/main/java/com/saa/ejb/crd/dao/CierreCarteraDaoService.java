@@ -435,4 +435,13 @@ public interface CierreCarteraDaoService {
      */
     List<Object[]> selectAnticipadoAsentadoPorCuenta(Long idEmpresa, List<String> cuentas, LocalDate corte)
             throws Throwable;
+
+    /**
+     * 3.9 del cuadre (DS-08): el valor con que el bien del préstamo ENTRÓ en cuentas de orden, leído de las líneas
+     * «Entrega préstamo N - bien en garantía (orden)» de los asientos ACTIVOS de la empresa (haber − debe). La baja de
+     * garantía saca el bien por este mismo valor.
+     *
+     * @return el valor asentado, o 0 si no hay asiento de entrega con bien (cartera migrada, contabilidad apagada)
+     */
+    double selectBienEntregadoEnOrden(Long idEmpresa, Long idPrestamo) throws Throwable;
 }

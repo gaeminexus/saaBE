@@ -298,8 +298,12 @@ public class GarantiaOrdenPrestamoServiceImpl implements GarantiaOrdenPrestamoSe
         String familia = familia(prestamo);
         // C31b / D-083: el bien sale por el valor de la garantía (avalúo, PRSTVLGR) si está cargado;
         // si no, por la suma asegurada (PRSTVLAS), como en C31.
+        // 3.9 (DS-08): el bien sale por el MISMO valor con que entró. Primero el de las líneas del asiento de entrega
+        // (PRSTVLAS puede haber cambiado después por póliza o captura manual, y entonces quedaba un residuo en 7.3/7.4);
+        // si el préstamo no tiene asiento de entrega con bien (cartera migrada), la regla de siempre.
+        double entregado = redondear(cierreCarteraDaoService.selectBienEntregadoEnOrden(empresa, prestamo.getCodigo()));
         double avaluo = prestamo.getValorGarantia() != null ? prestamo.getValorGarantia() : 0.0;
-        double bien = redondear(avaluo > TOLERANCIA ? avaluo
+        double bien = entregado > TOLERANCIA ? entregado : redondear(avaluo > TOLERANCIA ? avaluo
             : (prestamo.getValorAsegurado() != null ? prestamo.getValorAsegurado() : 0.0));
         Integer auxBien = null;
         if (bien > TOLERANCIA) {

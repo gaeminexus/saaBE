@@ -199,6 +199,74 @@ public class CierrePeriodoContableServiceImpl implements CierrePeriodoContableSe
 	}
 
 	// =====================================================================
+	// 6.5 — Desmayorizar un período mayorizado sin cierre contable
+	// =====================================================================
+
+	@EJB
+	private com.saa.ejb.cnt.service.MayorizacionService mayorizacionService;
+
+	@EJB
+	private com.saa.ejb.cnt.service.AsientoService asientoService;
+
+	@Override
+	@TransactionAttribute(TransactionAttributeType.REQUIRED)
+	public com.saa.ejb.cnt.service.dto.ResultadoDesmayorizacion desmayorizar(Long idEmpresa, Long anio, Long mes,
+			String usuario, String ip, String motivo) throws Throwable {
+		System.out.println("6.5 desmayorizar periodo contable " + mesTexto(anio, mes) + " empresa " + idEmpresa
+				+ " usuario " + usuario);
+		validaParametros(idEmpresa, anio, mes, usuario);
+		if (motivo == null || motivo.trim().isEmpty()) {
+			throw new IncomeException("El motivo de la desmayorización es obligatorio (queda en la bitácora CNT.HCPR).");
+		}
+		Periodo periodo = periodo(idEmpresa, anio, mes);
+		if (CierrePeriodoListener.contableCerrado(periodo)) {
+			throw new IncomeException("El período contable " + mesTexto(anio, mes) + " está CERRADO: reábralo primero"
+					+ " (POST /prdo/reabrir); la desmayorización es para un período mayorizado sin cierre contable.");
+		}
+		if (periodo.getEstado() == null || periodo.getEstado().longValue() != EstadoPeriodos.MAYORIZADO) {
+			throw new IncomeException("El período contable " + mesTexto(anio, mes) + " no está MAYORIZADO (estado "
+					+ periodo.getEstado() + "): no hay nada que desmayorizar.");
+		}
+
+		Long idMayorizacion = periodo.getIdMayorizacion();
+		boolean colgante = idMayorizacion == null || em.find(com.saa.model.cnt.Mayorizacion.class, idMayorizacion) == null;
+		Long estadoAnterior = periodo.getEstado();
+		if (!colgante) {
+			// Vía de siempre: respaldo de saldos (MYRH/DTMH), asientos desvinculados, mayorización eliminada.
+			mayorizacionService.desmayorizacion(idEmpresa, periodo.getCodigo(), periodo.getCodigo(),
+					com.saa.rubros.ProcesosMayorizacion.DESMAYORIZACION);
+			em.flush();
+			em.refresh(periodo);
+		} else {
+			// PRDOMYRZ colgante (o nulo con el período MAYORIZADO): no hay qué respaldar. Se desvinculan los asientos
+			// que apunten a esa mayorización inexistente y se deja el período DESMAYORIZADO.
+			if (idMayorizacion != null) {
+				asientoService.eliminaIdMayorizacion(idMayorizacion);
+			}
+			periodo.setIdMayorizacion(null);
+			periodo.setEstado(Long.valueOf(EstadoPeriodos.DESMAYORIZADO));
+			em.merge(periodo);
+			em.flush();
+		}
+		registrarBitacora(HistorialCierrePeriodo.TIPO_CONTABLE, HistorialCierrePeriodo.ACCION_DESMAYORIZAR, idEmpresa,
+				anio, mes, usuario, ip, motivo + (colgante ? " [referencia PRDOMYRZ colgante: " + idMayorizacion + "]" : ""),
+				periodo.getCodigo(), null, false);
+
+		com.saa.ejb.cnt.service.dto.ResultadoDesmayorizacion r = new com.saa.ejb.cnt.service.dto.ResultadoDesmayorizacion();
+		r.setIdEmpresa(idEmpresa);
+		r.setAnio(anio);
+		r.setMes(mes);
+		r.setEstadoAnterior(estadoAnterior);
+		r.setEstadoNuevo(periodo.getEstado());
+		r.setReferenciaColgante(colgante);
+		r.setMensaje(colgante
+				? "Período " + mesTexto(anio, mes) + " desmayorizado: la mayorización " + idMayorizacion
+						+ " ya no existía; solo se limpió la referencia."
+				: "Período " + mesTexto(anio, mes) + " desmayorizado.");
+		return r;
+	}
+
+	// =====================================================================
 	// Bitácora
 	// =====================================================================
 

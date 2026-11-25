@@ -25,6 +25,16 @@ public interface CierrePeriodoContableService {
 	EstadoPeriodo reabrir(Long idEmpresa, Long anio, Long mes, String usuario, String ip, String motivo) throws Throwable;
 
 	/**
+	 * 6.5 del cuadre (DS-21): desmayoriza un período MAYORIZADO que NO tiene cierre contable (para el cerrado está
+	 * {@link #reabrir}). Si {@code PRDOMYRZ} apunta a una mayorización inexistente (referencia colgante), limpia la
+	 * referencia y deja el período DESMAYORIZADO sin respaldar nada; si apunta a una existente, desmayoriza por la vía de
+	 * siempre. Motivo obligatorio; queda en la bitácora CNT.HCPR con la acción DESMAYORIZAR. Mismo permiso que reabrir.
+	 * Contrato: docs/logica-negocio/cnt/API-DESMAYORIZAR-PERIODO.md.
+	 */
+	com.saa.ejb.cnt.service.dto.ResultadoDesmayorizacion desmayorizar(Long idEmpresa, Long anio, Long mes,
+			String usuario, String ip, String motivo) throws Throwable;
+
+	/**
 	 * Reglas de orden de un CIERRE (tipo CONTABLE o CARTERA). Lanza {@code CIERRE_FUERA_DE_ORDEN} si no se
 	 * cumplen y el parámetro está apagado. Devuelve true si se aceptó fuera de orden por el parámetro.
 	 * {@code esArranque}: el primer cierre (arranque de cartera) no exige mes anterior cerrado.

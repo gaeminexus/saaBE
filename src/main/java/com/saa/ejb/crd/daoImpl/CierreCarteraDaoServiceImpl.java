@@ -1198,6 +1198,24 @@ public class CierreCarteraDaoServiceImpl implements CierreCarteraDaoService {
         return resultado;
     }
 
+    @Override
+    public double selectBienEntregadoEnOrden(Long idEmpresa, Long idPrestamo) throws Throwable {
+        System.out.println("Ingresa al metodo selectBienEntregadoEnOrden - empresa: " + idEmpresa + " - prestamo: "
+                + idPrestamo);
+        // La descripción la arma ContabilidadPrestamoServiceImpl.contabilizarEntrega: «Entrega préstamo N - bien en
+        // garantía (orden)». El LIKE usa _ para la tilde (no depende del juego de caracteres); « - bien» después del
+        // número evita que el préstamo 1 coincida con el 12.
+        Query query = em.createNativeQuery(
+                " SELECT NVL(SUM(NVL(d.DTASHBRR,0)) - SUM(NVL(d.DTASDBEE,0)), 0) "
+                + " FROM   CNT.DTAS d JOIN CNT.ASNT a ON a.ASNTCDGO = d.ASNTCDGO "
+                + " WHERE  a.PJRQCDGO = :empresa AND a.ASNTESTD = " + com.saa.rubros.EstadoAsiento.ACTIVO
+                + " AND    d.DTASDSCR LIKE :patron");
+        query.setParameter("empresa", idEmpresa);
+        query.setParameter("patron", "Entrega pr_stamo " + idPrestamo + " - bien en garant_a (orden)%");
+        Object resultado = query.getSingleResult();
+        return resultado != null ? aDouble(resultado).doubleValue() : 0D;
+    }
+
     /** {@code [tipo, valor]} normalizado. */
     private List<Object[]> tipoYValor(List<Object[]> filas) {
         List<Object[]> resultado = new ArrayList<Object[]>();
