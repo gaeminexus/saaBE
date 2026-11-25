@@ -92,6 +92,32 @@ porque escribe en `CNT.RNRP`.
 5. Después de ejecutar, correr el `384` y el `391` al 2026-11-30.
 6. Sin cobros ni asientos de prueba.
 
+## 5b. Previsualización de prueba, 25-11, con el EAR `cierre-1125-d187` y `alCorte=siempre`
+
+**Corrió sin errores contra Oracle:** ①, ②, ①.1, ③, ④, ④b, ⑥, ⑩, ⑦, ⑪, ⑧ y ⑨. Todos los asientos cuadran.
+
+**C27b, primera vez en producción:**
+- ④ = 89.751,14 (Q 28.245,94 · H 61.505,20);
+- ④b = 639,92;
+- ⑪ = 823,89 (Q 224,73 · H 599,16), contra 2.9.01.05.
+
+**Tres bloqueos de la ejecución:**
+
+| Bloqueo | Detalle | Salida |
+|---|---|---|
+| DTPRSLOT sin respaldo | 7 cuotas, 38.401,75 | Script C35-02 del cuadre (no está en saaBE) |
+| Prelación C33 rota | 97 préstamos | `POST /prelacioncuotas/reimputarAlCorte`, simulando primero, o la omisión del control con motivo. Lo decide el líder |
+| Sin archivo Petro de 11/2026 | — | Esperado: el mes no terminó |
+
+**Montos para la condición del líder:**
+- **⑥ neteo:** 5.902.951,30. Está inflado porque todavía no se carga Petro. Pero hay **−1.405.742,53 «sin explicar»** entre la apertura recalculada por préstamo y el saldo de 1.4.05.10. Eso es independiente de Petro: es el primer neteo por préstamo en producción.
+- **⑧ provisión de cartera:** +725.075,85 (Q 90.197,72 · H 634.878,13). Es el primer ⑧ en producción: requerida 3.999.904,65 contra constituida 3.274.828,80.
+- **⑨ bandas:** 781.079,94 de reclasificación dentro de cada grupo. Diferencia contabilidad − módulo: H −53.163,03 y Q −78.846,25, a la banda .25.
+- **⑩ devengo de mora:** 510.377,09 (Q 139.640,61 · H 363.580,94 · P 7.155,54). Es el primer ⑩ en producción: pone en 1.4.02 la mora acumulada desde `inicioDevengoMora`.
+- **⑦:** 146.806,18, ya con el tope D-186.
+
+**Se mandó al cuadre** por la condición del líder (⑥ con un millón sin explicar; ⑧, ⑨ y ⑩ grandes por ser la primera vez).
+
 ## 6. Riesgos
 - **Lo nuevo nunca corrió contra Oracle en producción:** C27b, el lote 7 y su reparto por préstamo, y el ⑧, ⑨ y ⑩ con
   `siempre`. La previsualización es su primera ejecución, y no graba nada.
