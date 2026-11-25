@@ -62,6 +62,9 @@ import jakarta.persistence.Query;
 public class AsientoContableServiceImpl implements AsientoContableService {
 
     @EJB
+    private com.saa.ejb.cnt.service.TarifaIvaService tarifaIvaService;
+
+    @EJB
     private com.saa.basico.ejb.UsuarioValidacionService usuarioValidacionService;
 
     @PersistenceContext
@@ -2057,17 +2060,17 @@ public class AsientoContableServiceImpl implements AsientoContableService {
                 observaciones, usuario, lineas, Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR), ModuloOrigenAsiento.CXC);
     }
 
-    /** Mapea porcentaje de IVA (Long: 0,5,8,15) al código SRI de TSRI (tabla='17'). */
+    /**
+     * Código SRI de TSRI (tabla 17) del porcentaje de IVA. VCN #11: sale del catálogo activo (TarifaIvaService), no de un switch con porcentajes fijos; un porcentaje
+     * que no está en el catálogo (p. ej. el 13 %) falla con un mensaje claro en vez de pasar como si fuera el código.
+     */
     private String mapPorcentajeIVAaCodigo(Long porcentaje) {
-        if (porcentaje == null) return "0";
-        switch (porcentaje.intValue()) {
-            case 0:  return "0";   // IVA 0%
-            case 5:  return "5";   // IVA 5%
-            case 8:  return "8";   // IVA tarifa especial 8%
-            case 12: return "2";   // IVA 12% (histórico, código SRI = 2)
-            case 14: return "3";   // IVA 14% (histórico, código SRI = 3)
-            case 15: return "4";   // IVA 15% (código SRI = 4)
-            default: return String.valueOf(porcentaje);
+        try {
+            return tarifaIvaService.codigoPorPorcentaje(porcentaje);
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IncomeException(e.getMessage());
         }
     }
 

@@ -103,6 +103,10 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 	@EJB
 	private com.saa.basico.ejb.DetalleRubroService detalleRubroService;
 
+	/** Lote 13 (VCN #11): tarifa de IVA del catalogo. */
+	@jakarta.ejb.EJB
+	private com.saa.ejb.cnt.service.TarifaIvaService tarifaIvaService;
+
 	@PersistenceContext
 	private EntityManager em;
 
@@ -1182,17 +1186,9 @@ public class LiquidacionCompraServiceImpl implements LiquidacionCompraService {
 	 * contabilización si tuviera que resolverlo desde este código en vez del
 	 * porcentaje crudo.
 	 */
-	private String codigoPorcentajeIVA(Long porcentajeIVA) {
-		if (porcentajeIVA == null) return "0";
-		switch (porcentajeIVA.intValue()) {
-			case 0:  return "0";
-			case 5:  return "5";
-			case 8:  return "8";
-			case 12: return "2";
-			case 14: return "3";
-			case 15: return "4";
-			default: return String.valueOf(porcentajeIVA);
-		}
+	private String codigoPorcentajeIVA(Long porcentajeIVA) throws Exception {
+		// VCN #11: el codigo sale del catalogo de tarifas (CBR.TSRI tabla 17), no de un switch con porcentajes fijos.
+		return tarifaIvaService.codigoPorPorcentaje(porcentajeIVA);
 	}
 
 	private void writeDetalles(XMLStreamWriter writer, List<com.saa.model.cxc.DetalleLiquidacionCompra> detalles) throws Exception {

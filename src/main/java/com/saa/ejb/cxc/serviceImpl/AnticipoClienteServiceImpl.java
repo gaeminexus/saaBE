@@ -451,6 +451,16 @@ public class AnticipoClienteServiceImpl implements AnticipoClienteService {
         anticipo.setAsiento(asiento);
         anticipo = anticipoDaoService.save(anticipo, anticipo.getId());
 
+        // ── Movimiento bancario de ingreso (VCN #12) ───────────────────────────
+        // El anticipo entra por transferencia a la cuenta bancaria y el asiento ya debita el banco, pero sin este movimiento la conciliación no lo
+        // veía (la anulación ya lo busca por asiento para marcarlo ANULADO). Mismo tipo y origen que el cobro de factura por transferencia.
+        movimientoBancoService.creaMovimientoPorTransferencia(idEmpresa,
+                "Anticipo cliente: " + com.saa.ejb.cxc.util.NombreTitular.de(titular)
+                + " | Doc: " + (numeroDoc != null ? numeroDoc : anticipo.getId()),
+                asiento, cuentaBancaria, valor,
+                com.saa.rubros.TipoMovimientoConciliacion.TRANSFERENCIAS_CREDITOS_EN_TRANSITO,
+                com.saa.rubros.OrigenMovimientoConciliacion.COBROS);
+
         // ── Sumar valor al saldoInicial de PersonaCuentaContable (tipoCuenta=2, Cliente=1) ──
         actualizarSaldoInicialPrcc(idTitular, idEmpresa, RolPersona.CLIENTE, valor);
 

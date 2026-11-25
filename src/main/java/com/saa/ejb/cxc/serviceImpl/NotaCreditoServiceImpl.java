@@ -87,6 +87,10 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 	@EJB
 	private com.saa.basico.ejb.DetalleRubroService detalleRubroService;
 
+	/** Lote 13 (VCN #11): tarifa de IVA del catalogo. */
+	@jakarta.ejb.EJB
+	private com.saa.ejb.cnt.service.TarifaIvaService tarifaIvaService;
+
 	@PersistenceContext
 	private EntityManager em;
 
@@ -452,15 +456,8 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 			writer.writeStartElement("impuesto");
 			writer.writeCharacters("\n");
 			writeElement(writer, "codigo", "2", 10); // IVA
-			String codPorcIva = "0";
-			if (d.getPorcentajeIVA() != null) {
-				switch (d.getPorcentajeIVA().intValue()) {
-					case 15: codPorcIva = "4"; break;
-					case 5:  codPorcIva = "5"; break;
-					case 8:  codPorcIva = "8"; break;
-					default: codPorcIva = "0"; break;
-				}
-			}
+			// VCN #11: el codigo sale del catalogo de tarifas (antes un porcentaje fuera del switch, p. ej. 12, 13 o 14, salia con codigo 0 y tarifa distinta).
+			String codPorcIva = tarifaIvaService.codigoPorPorcentaje(d.getPorcentajeIVA());
 			writeElement(writer, "codigoPorcentaje", codPorcIva, 10);
 			writeElement(writer, "tarifa", d.getPorcentajeIVA() != null ? String.valueOf(d.getPorcentajeIVA()) : "0", 10);
 			writeElement(writer, "baseImponible", formatDecimal(d.getBaseImponible()), 10);
@@ -1839,14 +1836,13 @@ public class NotaCreditoServiceImpl implements NotaCreditoService {
 				obsEstablecimiento = str(est[4]);
 			} catch (Exception ignored) {}
 
-			// ── BLOQUE 3: IVA general vigente ────────────────────────────────
-			int valorIvaGeneral = 15;
+			// ── BLOQUE 3: IVA general (VCN #11): el del propio documento; sin el, la tarifa general activa del catalogo ──
+			Long porcDocumento = null;
 			try {
-				jakarta.persistence.Query q3 = em.createNativeQuery(
-					"SELECT PORCENTAJE FROM CBR.TSRI WHERE LSRI = 614 FETCH FIRST 1 ROWS ONLY");
-				Object porcObj = q3.getSingleResult();
-				if (porcObj != null) valorIvaGeneral = ((Number) porcObj).intValue();
+				porcDocumento = em.createQuery("select max(d.porcentajeIVA) from DetalleNotaCredito d where d.notaCredito.id = :id", Long.class)
+					.setParameter("id", ncObj.getId()).getSingleResult();
 			} catch (Exception ignored) {}
+			int valorIvaGeneral = tarifaIvaService.porcentajeGeneral(porcDocumento);
 
 			// ── BLOQUE 4: Logo ───────────────────────────────────────────────
 			String logoPath = "";

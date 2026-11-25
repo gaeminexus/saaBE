@@ -91,6 +91,10 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 	@EJB
 	private NotaDebitoService self;
 
+	/** Lote 13 (VCN #11): tarifa de IVA del catalogo. */
+	@jakarta.ejb.EJB
+	private com.saa.ejb.cnt.service.TarifaIvaService tarifaIvaService;
+
 	@PersistenceContext
 	private EntityManager em;
 
@@ -1963,12 +1967,8 @@ public class NotaDebitoServiceImpl implements NotaDebitoService {
 			// ── BLOQUE 3: IVA general vigente ─────────────────────────────────
 			int valorIvaGeneral = (int) pIVA;
 			if (valorIvaGeneral == 0) {
-				try {
-					jakarta.persistence.Query q3 = em.createNativeQuery(
-						"SELECT PORCENTAJE FROM CBR.TSRI WHERE LSRI = 614 FETCH FIRST 1 ROWS ONLY");
-					Object p = q3.getSingleResult();
-					if (p != null) valorIvaGeneral = ((Number) p).intValue();
-				} catch (Exception ignored) {}
+				// VCN #11: sin porcentaje en el documento, la tarifa general activa del catalogo (antes: la primera fila de CBR.TSRI LSRI=614 sin orden)
+				valorIvaGeneral = tarifaIvaService.porcentajeGeneral(null);
 			}
 
 			// ── BLOQUE 4: Logo ────────────────────────────────────────────────

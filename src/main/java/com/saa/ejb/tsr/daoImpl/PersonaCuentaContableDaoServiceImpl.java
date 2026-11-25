@@ -87,16 +87,19 @@ public class PersonaCuentaContableDaoServiceImpl extends EntityDaoImpl<PersonaCu
 		List<PersonaCuentaContable> personaCuentaContables = query.getResultList();
 
 		if (personaCuentaContables.isEmpty()) {
-			// Compatibilidad con datos antiguos sin rubroRolPersonaH poblado.
-			// Sólo se llega aquí si el titular NO tiene ninguna cuenta bajo el rol
-			// pedido, así que no puede devolver la cuenta del otro rol cuando ambos
-			// existen.
+			// VCN #1: compatibilidad SOLO con datos antiguos cuyo rol (rubroRolPersonaH) está NULO.
+			// Antes este respaldo no filtraba por rol y devolvía la cuenta del OTRO rol (un titular
+			// cliente y proveedor con la cuenta solo bajo uno de los dos): un anticipo o un cruce se
+			// asentaba contra la cuenta equivocada. Ahora una cuenta con un rol distinto del pedido NO
+			// se devuelve: los llamadores reciben la lista vacía y fallan con el mensaje claro de
+			// «configure la cuenta del rol» (todos lo manejan).
 			Query querySinRol = em.createQuery(" select pcc " +
 											   " from   PersonaCuentaContable pcc " +
 											   " join   pcc.personaRol pr " +
 											   " where  pr.titular.codigo = :titular " +
 											   "        and pcc.tipoCuenta = :tipoCuenta " +
-											   "        and pcc.empresa.codigo = :idEmpresa");
+											   "        and pcc.empresa.codigo = :idEmpresa " +
+											   "        and pr.rubroRolPersonaH is null");
 			querySinRol.setParameter("titular", codigoTitular);
 			querySinRol.setParameter("tipoCuenta", tipoCuenta);
 			querySinRol.setParameter("idEmpresa", idEmpresa);
@@ -104,7 +107,7 @@ public class PersonaCuentaContableDaoServiceImpl extends EntityDaoImpl<PersonaCu
 			if (!personaCuentaContables.isEmpty()) {
 				System.err.println("⚠ El titular " + codigoTitular + " no tiene cuenta contable "
 						+ "(tipoCuenta=" + tipoCuenta + ") bajo el rol " + rolPersona
-						+ "; se usa la cuenta sin filtro de rol. Revise "
+						+ "; se usa la cuenta de la persona sin rol cargado (PRRLRZZA nulo). Revise "
 						+ "PersonaRol.rubroRolPersonaH (PRRLRZZA): debe valer 1=Cliente o 2=Proveedor.");
 			}
 		}

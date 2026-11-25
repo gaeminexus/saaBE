@@ -102,6 +102,10 @@ public class FacturaServiceImpl implements FacturaService {
 	@EJB
 	private com.saa.ejb.cxc.service.AplicacionPagoCxcService aplicacionPagoCxcService;
 	
+	/** Lote 13 (VCN #11): tarifa de IVA del catalogo. */
+	@jakarta.ejb.EJB
+	private com.saa.ejb.cnt.service.TarifaIvaService tarifaIvaService;
+
 	@PersistenceContext
 	private EntityManager em;
 
@@ -2083,16 +2087,14 @@ public class FacturaServiceImpl implements FacturaService {
 			}
 
 			// ─────────────────────────────────────────────────────────────────────
-			// BLOQUE 4: IVA general vigente (PHP: select from tsri where lSRI=614)
-			// Tabla: CBR.TSRI
+			// BLOQUE 4: IVA general (VCN #11): el del propio documento (mayor porcentaje de sus lineas); sin el, la tarifa general activa del catalogo.
 			// ─────────────────────────────────────────────────────────────────────
-			int valorIvaGeneral = 15;
+			Long porcDocumento = null;
 			try {
-				jakarta.persistence.Query q4 = em.createNativeQuery(
-					"SELECT PORCENTAJE FROM CBR.TSRI WHERE LSRI = 614 FETCH FIRST 1 ROWS ONLY");
-				Object porcObj = q4.getSingleResult();
-				if (porcObj != null) valorIvaGeneral = ((Number) porcObj).intValue();
+				porcDocumento = em.createQuery("select max(d.porcentajeIVA) from DetalleFactura d where d.factura.id = :id", Long.class)
+					.setParameter("id", facturaObj.getId()).getSingleResult();
 			} catch (Exception ignored) {}
+			int valorIvaGeneral = tarifaIvaService.porcentajeGeneral(porcDocumento);
 
 			// ─────────────────────────────────────────────────────────────────────
 			// BLOQUE 5: Logo — ruta absoluta
