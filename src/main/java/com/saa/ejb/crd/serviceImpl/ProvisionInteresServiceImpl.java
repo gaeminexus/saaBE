@@ -19,6 +19,7 @@ import com.saa.ejb.crd.dao.DetallePrestamoDaoService;
 import com.saa.ejb.crd.dao.MovimientoInteresCuotaDaoService;
 import com.saa.ejb.crd.dao.PagoPrestamoDaoService;
 import com.saa.ejb.crd.service.ModoCorteCartera;
+import com.saa.ejb.crd.service.TopeProvisionMora;
 import com.saa.ejb.crd.service.ProcesoMoraPrestamoService;
 import com.saa.ejb.crd.service.ProvisionInteresService;
 import com.saa.ejb.crd.service.dto.BandaProductoDetalle;
@@ -1060,9 +1061,27 @@ public class ProvisionInteresServiceImpl implements ProvisionInteresService {
         // y nunca en la semilla del arranque (sinLibro): ahí el libro de devengo está vacío y el tope daría 0.
         // El interés NO se topa. Sin la propiedad el cálculo es el de siempre, byte a byte.
         boolean conTope = !sinLibro && ModoCorteCartera.topeProvisionMoraActivo(fechaCorte);
-        Map<Long, Double> moraContabilizadaPendiente = conTope
-            ? movimientoInteresCuotaDaoService.selectMoraContabilizadaPendientePorCuota(alCorte ? fechaCorte : null)
-            : null;
+        // Lote 7b: el tope es POR PRÉSTAMO (mora contabilizada pendiente del préstamo, sin piso por cuota) y se reparte entre sus cuotas
+        // de la más vieja a la más nueva, sin pasar de la mora calculada pendiente de cada una (TopeProvisionMora, la misma función
+        // que usa la herramienta del ajuste).
+        Map<Long, Double> topeRepartido = null;
+        if (conTope) {
+            Map<Long, Double> topePorPrestamo = movimientoInteresCuotaDaoService
+                .selectMoraContabilizadaPendientePorPrestamo(alCorte ? fechaCorte : null);
+            List<TopeProvisionMora.CuotaTope> candidatas = new ArrayList<>();
+            for (DetallePrestamo cuota : cuotas) {
+                double[] pagosCuota = pagosPorCuota.get(cuota.getCodigo());
+                double moraPagadaCuota = pagosCuota != null ? pagosCuota[1] : 0.0;
+                double tasa = procesoMoraPrestamoService.tasaDiariaDelPrestamo(cuota.getPrestamo(), false);
+                double calculadaPendiente = Math.max(0.0, redondear(
+                    procesoMoraPrestamoService.calcularMoraCuota(cuota, tasa, fechaCorte) - moraPagadaCuota));
+                candidatas.add(new TopeProvisionMora.CuotaTope(cuota.getCodigo(),
+                    cuota.getPrestamo() != null ? cuota.getPrestamo().getCodigo() : null,
+                    cuota.getFechaVencimiento() != null ? cuota.getFechaVencimiento().toLocalDate() : null,
+                    calculadaPendiente));
+            }
+            topeRepartido = TopeProvisionMora.repartir(topePorPrestamo, candidatas);
+        }
 
         // D25/D27 (2026-10-05): un préstamo DE_PLAZO_VENCIDO (8) ya tiene condonado el interés
         // de sus cuotas con vencimiento posterior al corte de su declaración PLVN — la MISMA
@@ -1104,9 +1123,9 @@ public class ProvisionInteresServiceImpl implements ProvisionInteresService {
             double moraCalculada = procesoMoraPrestamoService.calcularMoraCuota(cuota, tasaDiaria, fechaCorte);
             double pendienteMora = Math.max(0.0, redondear(moraCalculada - moraPagada));
             if (conTope) {
-                // provisión de mora a constituir = max(0, min(mora calculada pendiente, mora contabilizada pendiente) − saldo)
-                Double contabilizada = moraContabilizadaPendiente.get(cuota.getCodigo());
-                pendienteMora = Math.min(pendienteMora, contabilizada != null ? contabilizada.doubleValue() : 0.0);
+                // provisión de mora a constituir = max(0, tope repartido de la cuota − saldo provisionado de mora)
+                Double tope = topeRepartido.get(cuota.getCodigo());
+                pendienteMora = Math.min(pendienteMora, tope != null ? tope.doubleValue() : 0.0);
             }
 
             double[] provisionado = saldoProvisionado.get(cuota.getCodigo());

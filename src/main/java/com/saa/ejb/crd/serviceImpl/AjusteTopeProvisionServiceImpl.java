@@ -22,6 +22,7 @@ import com.saa.ejb.crd.dao.PagoPrestamoDaoService;
 import com.saa.ejb.crd.dao.PrestamoDaoService;
 import com.saa.ejb.crd.service.AjusteTopeProvisionService;
 import com.saa.ejb.crd.service.ProcesoMoraPrestamoService;
+import com.saa.ejb.crd.service.TopeProvisionMora;
 import com.saa.ejb.crd.service.dto.ResultadoAjusteTopeMora;
 import com.saa.ejb.crd.service.dto.SolicitudAjusteTopeMora;
 import com.saa.model.cnt.Asiento;
@@ -138,23 +139,46 @@ public class AjusteTopeProvisionServiceImpl implements AjusteTopeProvisionServic
                 + " y el corte es " + corte + ": tienen que coincidir.");
         }
 
-        // Cuotas con saldo de provisión de mora al corte y su tope (la misma regla del paso ⑦).
+        // Cuotas con saldo de provisión de mora al corte y su tope: la MISMA regla del paso ⑦ (lote 7b): tope POR PRÉSTAMO repartido entre
+        // las cuotas del préstamo de la más vieja a la más nueva, sin pasar de la mora calculada pendiente de cada una.
         List<Object[]> filas = movimientoInteresCuotaDaoService.selectCuotasConProvisionMora(corte);
-        List<Long> idsCuota = new ArrayList<>();
-        for (Object[] fila : filas) {
-            idsCuota.add(((Number) fila[0]).longValue());
-        }
+        // Universo del reparto: las cuotas provisionables al corte (las que ve el ⑦) más las que tienen saldo y ya no lo son.
         Map<Long, DetallePrestamo> cuotas = new HashMap<>();
-        for (DetallePrestamo cuota : detallePrestamoDaoService.selectByCodigos(idsCuota)) {
+        for (DetallePrestamo cuota : detallePrestamoDaoService.selectCuotasProvisionablesAlCorte(corte)) {
+            cuotas.put(cuota.getCodigo(), cuota);
+        }
+        List<Long> faltantes = new ArrayList<>();
+        for (Object[] fila : filas) {
+            Long idCuota = ((Number) fila[0]).longValue();
+            if (!cuotas.containsKey(idCuota)) {
+                faltantes.add(idCuota);
+            }
+        }
+        for (DetallePrestamo cuota : detallePrestamoDaoService.selectByCodigos(faltantes)) {
             cuotas.put(cuota.getCodigo(), cuota);
         }
         Map<Long, Double> moraPagada = new HashMap<>();
-        for (Object[] fila : pagoPrestamoDaoService.selectDatosPagosVigentesAlCorte(idsCuota, corte)) {
+        for (Object[] fila : pagoPrestamoDaoService.selectDatosPagosVigentesAlCorte(new ArrayList<>(cuotas.keySet()), corte)) {
             // [idCuota, desgravamen, moraPagada, ...]
             moraPagada.merge(((Number) fila[0]).longValue(), fila[2] != null ? ((Number) fila[2]).doubleValue() : 0.0,
                 Double::sum);
         }
-        Map<Long, Double> contabilizada = movimientoInteresCuotaDaoService.selectMoraContabilizadaPendientePorCuota(corte);
+        Map<Long, Double> topePorPrestamo = movimientoInteresCuotaDaoService.selectMoraContabilizadaPendientePorPrestamo(corte);
+        Map<Long, Double> calculadaPorCuota = new HashMap<>();
+        List<TopeProvisionMora.CuotaTope> candidatas = new ArrayList<>();
+        for (DetallePrestamo cuota : cuotas.values()) {
+            Prestamo prestamo = cuota.getPrestamo();
+            double tasaDiaria = procesoMoraPrestamoService.tasaDiariaDelPrestamo(prestamo, false);
+            double calculadaPendiente = Math.max(0.0, redondear(
+                procesoMoraPrestamoService.calcularMoraCuota(cuota, tasaDiaria, corte)
+                    - moraPagada.getOrDefault(cuota.getCodigo(), 0.0)));
+            calculadaPorCuota.put(cuota.getCodigo(), calculadaPendiente);
+            candidatas.add(new TopeProvisionMora.CuotaTope(cuota.getCodigo(),
+                prestamo != null ? prestamo.getCodigo() : null,
+                cuota.getFechaVencimiento() != null ? cuota.getFechaVencimiento().toLocalDate() : null,
+                calculadaPendiente));
+        }
+        Map<Long, Double> topeRepartido = TopeProvisionMora.repartir(topePorPrestamo, candidatas);
 
         Map<Long, Prestamo> prestamos = new HashMap<>();
         List<ResultadoAjusteTopeMora.Cuota> ajustes = new ArrayList<>();
@@ -169,15 +193,9 @@ public class AjusteTopeProvisionServiceImpl implements AjusteTopeProvisionServic
                 prestamos.put(idPrestamo, prestamo);
             }
             DetallePrestamo cuota = cuotas.get(idCuota);
-            double pagada = moraPagada.getOrDefault(idCuota, 0.0);
-            double calculadaPendiente = 0.0;
-            if (cuota != null && prestamo != null) {
-                double tasaDiaria = procesoMoraPrestamoService.tasaDiariaDelPrestamo(prestamo, false);
-                calculadaPendiente = Math.max(0.0,
-                    redondear(procesoMoraPrestamoService.calcularMoraCuota(cuota, tasaDiaria, corte) - pagada));
-            }
-            double contab = contabilizada.getOrDefault(idCuota, 0.0);
-            double tope = Math.min(calculadaPendiente, contab);
+            double calculadaPendiente = calculadaPorCuota.getOrDefault(idCuota, 0.0);
+            // Una cuota que ya no existe (la borró un abono) no entra al reparto: su tope es 0 y todo su saldo es exceso.
+            double tope = topeRepartido.getOrDefault(idCuota, 0.0);
             double ajuste = Math.max(0.0, redondear(saldo - tope));
             if (ajuste <= 0.004) {
                 continue;
@@ -197,7 +215,8 @@ public class AjusteTopeProvisionServiceImpl implements AjusteTopeProvisionServic
             c.setIdTipoPrestamo(idTipo);
             c.setSaldoProvisionadoMora(saldo);
             c.setMoraCalculadaPendiente(calculadaPendiente);
-            c.setMoraContabilizadaPendiente(contab);
+            // La mora contabilizada pendiente es del PRÉSTAMO (lote 7b), no de la cuota.
+            c.setMoraContabilizadaPendiente(topePorPrestamo.getOrDefault(idPrestamo, 0.0));
             c.setTope(redondear(tope));
             c.setAjuste(ajuste);
             ajustes.add(c);

@@ -115,16 +115,18 @@ public interface MovimientoInteresCuotaDaoService extends EntityDao<MovimientoIn
     // =====================================================================
 
     /**
-     * Mora contabilizada pendiente por cuota (lo que hay en 1.4.02 por mora de esa cuota), como mapa {@code idCuota → valor}
-     * (las cuotas sin devengo no aparecen: valen 0):
-     * <pre>max(0, devengo(5 − 6, MORA, fecha contable ≤ corte) − mora cobrada vigente (≤ corte) − mora condonada asignada)</pre>
-     * La mora condonada es la de los acuerdos APLICADOS con fecha ≤ corte (DACC, concepto mora, {@code DACCVLCN}) por préstamo,
-     * asignada a las cuotas del préstamo de la más vieja a la más nueva (vencimiento y código) contra su mora contabilizada, como
-     * hace {@code condonarProvision} al repartir. Con {@code corte == null} no hay límite de fecha (modo normal).
+     * Mora contabilizada pendiente POR PRÉSTAMO (lo que hay en 1.4.02 por mora de ese préstamo), como mapa
+     * {@code idPrestamo → valor} (los préstamos sin saldo no aparecen: valen 0). Lote 7b: sin piso por cuota, porque en 1.4.02 el
+     * negativo de una cuota (mora cobrada o condonada por encima del devengo) rebaja la cuenta y compensa la mora pendiente de las
+     * otras cuotas del mismo préstamo:
+     * <pre>max(0, Σ cuotas devengo(5 − 6, MORA, fecha contable ≤ corte) − Σ mora cobrada vigente (≤ corte) − mora condonada)</pre>
+     * La mora condonada es la de los acuerdos APLICADOS con fecha ≤ corte (DACC, concepto mora, {@code DACCVLCN}) del préstamo. Con
+     * {@code corte == null} no hay límite de fecha (modo normal). El reparto del tope entre las cuotas lo hace
+     * {@code TopeProvisionMora#repartir}.
      *
      * @param corte fecha de corte, o null
      */
-    java.util.Map<Long, Double> selectMoraContabilizadaPendientePorCuota(java.time.LocalDate corte) throws Throwable;
+    java.util.Map<Long, Double> selectMoraContabilizadaPendientePorPrestamo(java.time.LocalDate corte) throws Throwable;
 
     /**
      * Cuotas con saldo de provisión de MORA mayor a un centavo al corte (Σ tipo 1, 4 − Σ tipo 2, 3, 9, 10, vigentes, fecha
