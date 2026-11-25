@@ -128,12 +128,12 @@ porque escribe en `CNT.RNRP`.
    - Se ejecuta solo si la simulación reparte de nuevo entre las cuotas de cada préstamo sin cambiar el total cobrado
      por préstamo, el dinero ni los asientos de cobro (D-130/D-142).
    - Si mueve algo más, se para y se manda la simulación.
-   - **Sin omisión con motivo.**
+   - **Sin omisión con motivo** (confirmado por el usuario en la D-188 corregida).
 3. **Petro de noviembre:** se carga antes de ejecutar el cierre, y después se vuelve a previsualizar.
-4. **`saa.cartera.inicioDevengoMora = 2026-05-01`** en producción, en lugar de 2025-05-31.
-   - Así el ⑩ devenga solo desde que ASOPREP cobra mora (D-156 (3)).
-   - Se previsualiza de nuevo y el ⑩ y el ⑦ se mandan al cuadre.
-   - La propiedad solo la usa el ⑩: la consulta y su detalle MVIC.
+4. **⑩ (510.377,09): ACEPTADO como ajuste de la primera vez (D-188 corregida, 25-11).** `saa.cartera.inicioDevengoMora`
+   **se queda en 2025-05-31**. Desde mayo/junio de 2026 el sistema calcula y cobra la mora de todas las cuotas vencidas: es
+   una cuenta por cobrar real que producción nunca había devengado. El ⑦ con tope la provisiona (149905 de mora = mora de
+   1.4.02). La versión anterior de D-188 (bajar la propiedad a 2026-05-01) queda **anulada**.
 5. **⑧ (+725.075,85) y ⑨ (781.079,94): ACEPTADOS** como ajuste de la primera vez.
 6. **⑥:** con Petro cargado, si el «sin explicar» baja a menos de unos 1.000, `neteoPorPrestamo` sigue en `auto`. Si
    sigue en cientos de miles, `neteoPorPrestamo = nunca` para noviembre y se manda el detalle por préstamo del ⑥.
