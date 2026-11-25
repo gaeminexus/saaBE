@@ -791,12 +791,14 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
             return null;
         }
         if (movimientos == null || movimientos.isEmpty()) {
-            // Precancelación 100% efectivo: no hay aportes consumidos, nada que cruzar. La
-            // parte de efectivo de una llamada directa no genera asiento en este hook — no
-            // hay ninguna cuenta transitoria que cerrar fuera de CBCR (una precancelación
-            // directa 100% efectivo no es un caso contemplado hoy: el endpoint directo existe
-            // para el caso de aportes).
-            return null;
+            // C45: precancelación directa sin aportes consumidos = 100 % efectivo sin CBCR. Antes
+            // devolvía null en silencio y el préstamo quedaba cancelado sin el asiento del dinero
+            // (no hay banco ni transitoria que debitar fuera de CBCR).
+            // ProcesoPagoPrestamoServiceImpl.precancelar ya la rechaza antes de grabar; esto es la
+            // segunda barrera para cualquier otro llamador: nunca una cancelación sin asiento.
+            throw new IncomeException("La precancelación del evento " + ctx.getIdEvento() + " no tiene aportes"
+                    + " consumidos ni cobro (CBCR): su dinero no tendría asiento. Regístrela como cobro tipo"
+                    + " PRECANCELACION con su depósito.");
         }
         Long idEmpresa = ctx.getIdEmpresa();
         if (idEmpresa == null) {

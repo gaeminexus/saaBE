@@ -100,6 +100,10 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
     @jakarta.ejb.EJB
     private com.saa.ejb.crd.service.PrelacionCuotasService prelacionCuotasService;
 
+    /** C45: para saber si la precancelación directa con efectivo tendría asiento. */
+    @jakarta.ejb.EJB
+    private com.saa.ejb.crd.service.ConfiguracionContabilidadService configuracionContabilidadService;
+
     /** Tolerancia de UN CENTAVO (§6.1) */
     private static final double TOLERANCIA = 0.01;
 
@@ -1392,6 +1396,23 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
             throw new IncomeException(ERR_MONTO_NO_COINCIDE + ": El valor enviado $"
                 + formatoMonto(valorEnviado) + " no coincide con el valor de precancelación $"
                 + formatoMonto(valorTotal));
+        }
+
+        // C45 (auditoría §2.3, precancelación (b)): la parte en EFECTIVO de una precancelación
+        // directa (sin cobro CBCR) no tiene asiento: el hook contable solo cruza aportes y no hay
+        // banco ni cuenta transitoria que debitar fuera de CBCR. Hasta hoy, con 100 % efectivo el
+        // motor cancelaba el préstamo y devolvía asiento nulo sin avisar (la cartera bajaba sin
+        // el asiento del dinero); con efectivo + aportes reventaba después por D ≠ H. Se rechaza
+        // aquí, antes de grabar nada. El dinero en efectivo entra por CBCR (tipo PRECANCELACION),
+        // que genera los asientos 19 → 20 → 21. El re-proceso usa este endpoint siempre con
+        // valorEfectivo 0 (100 % aportes), que no cambia.
+        if (solicitud.getIdCobroCredito() == null && valorEfectivo > TOLERANCIA
+                && configuracionContabilidadService.contabilidadActiva()) {
+            throw new IncomeException(ERR_PARAMETRO_INVALIDO + ": la precancelación directa del préstamo "
+                + prestamo.getCodigo() + " trae $" + formatoMonto(valorEfectivo) + " en efectivo y ese dinero"
+                + " no tiene asiento por este camino. Registre la precancelación como cobro (CBCR, tipo"
+                + " PRECANCELACION) con su depósito; por la precancelación directa solo se admite el pago"
+                + " 100 % con aportes.");
         }
 
         // C35: DTPRSLOT sin respaldo en el préstamo (p. ej. el script de producción del 12-ago-2026 en un préstamo que
