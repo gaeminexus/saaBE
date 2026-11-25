@@ -670,6 +670,59 @@ public final class PrelacionCuotas {
     }
 
     /**
+     * C33 / lote 15 (incidente del 2026-11-25): números de las cuotas NO movibles que el plan SALTARÍA. Una cuota no
+     * movible (cerrada por regla, o con pagos exentos o fijos que el plan no mueve) no recibe ni cede dinero; si el plan
+     * lleva plata a una cuota de número MENOR que ella, sacándola de un pago de una cuota de número MAYOR, el dinero
+     * pasa "por encima" y deja cuotas pagadas entre cuotas en mora. Vacío = el plan no salta ninguna.
+     * También es no movible la cuota PAGADA o CANCELADA_ANTICIPADA sin pagos movibles que la respalden ("marca"): el plan
+     * la ve pendiente, pero si la plata se acaba antes de llegar a ella queda pagada entre cuotas en mora. Una cuota que
+     * el plan SÍ llega a llenar (destino de alguna asignación) no cuenta como saltada.
+     * Pura: no toca el plan ni la detección de rotura (las usa el cierre de cartera).
+     *
+     * @param cuotas       las cuotas del plan (con su número)
+     * @param pagos        los pagos movibles (con su cuota de origen)
+     * @param plan         el resultado de {@link #planificar}
+     * @param noMovibles   ids de las cuotas no movibles
+     */
+    public static java.util.SortedSet<Double> cuotasSaltadas(List<CuotaPlan> cuotas, List<PagoPlan> pagos, Plan plan,
+            java.util.Set<Long> noMovibles) {
+        java.util.SortedSet<Double> saltadas = new java.util.TreeSet<>();
+        Map<Long, Double> numeroPorCuota = new LinkedHashMap<>();
+        for (CuotaPlan c : cuotas) {
+            numeroPorCuota.put(c.id, c.numero);
+        }
+        // Una cuota a la que el plan sí le da plata no es isla, aunque estuviera marcada como pagada.
+        java.util.Set<Long> reciben = new java.util.HashSet<>();
+        for (List<Asignacion> l : plan.asignaciones.values()) {
+            for (Asignacion a : l) {
+                reciben.add(a.idCuota);
+            }
+        }
+        Map<Long, Long> origenPorPago = new LinkedHashMap<>();
+        for (PagoPlan p : pagos) {
+            origenPorPago.put(p.id, p.idCuota);
+        }
+        for (Map.Entry<Long, List<Asignacion>> e : plan.asignaciones.entrySet()) {
+            Double numOrigen = numeroPorCuota.get(origenPorPago.get(e.getKey()));
+            if (numOrigen == null) {
+                continue;
+            }
+            for (Asignacion a : e.getValue()) {
+                Double numDestino = numeroPorCuota.get(a.idCuota);
+                if (numDestino == null) {
+                    continue;
+                }
+                for (CuotaPlan c : cuotas) {
+                    if (noMovibles.contains(c.id) && !reciben.contains(c.id) && c.numero > numDestino && c.numero < numOrigen) {
+                        saltadas.add(c.numero);
+                    }
+                }
+            }
+        }
+        return saltadas;
+    }
+
+    /**
      * Re-aplica los {@code pagos} en orden cronológico (fecha, código) sobre las {@code cuotas} (en orden de número),
      * con la prelación del motor dentro de cada cuota, como si cada pago se cobrara de nuevo con la cascada: cada uno
      * va a la cuota más antigua con saldo. Las cuotas cerradas por regla no reciben nada. Devuelve el reparto nuevo de
