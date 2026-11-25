@@ -118,6 +118,26 @@ porque escribe en `CNT.RNRP`.
 
 **Se mandó al cuadre** por la condición del líder (⑥ con un millón sin explicar; ⑧, ⑨ y ⑩ grandes por ser la primera vez).
 
+## 5c. D-188 (usuario, que es el líder del cuadre, 25-11): cómo se destraba la ejecución de noviembre
+
+1. **DTPRSLOT:** se corre `cuadre/C35-02-PRODUCCION-NOV-2026.sql` (merge `31f8ac5a`; en la carpeta de scripts es el
+   `20_…`).
+   - Primero respalda; se detiene si no encuentra exactamente 7 cuotas y 38.401,75.
+   - COMMIT después del bloque 03.
+2. **Prelación C33 (97 préstamos):** `POST /rest/prelacioncuotas/reimputarAlCorte`, **SIMULANDO PRIMERO**.
+   - Se ejecuta solo si la simulación reparte de nuevo entre las cuotas de cada préstamo sin cambiar el total cobrado
+     por préstamo, el dinero ni los asientos de cobro (D-130/D-142).
+   - Si mueve algo más, se para y se manda la simulación.
+   - **Sin omisión con motivo.**
+3. **Petro de noviembre:** se carga antes de ejecutar el cierre, y después se vuelve a previsualizar.
+4. **`saa.cartera.inicioDevengoMora = 2026-05-01`** en producción, en lugar de 2025-05-31.
+   - Así el ⑩ devenga solo desde que ASOPREP cobra mora (D-156 (3)).
+   - Se previsualiza de nuevo y el ⑩ y el ⑦ se mandan al cuadre.
+   - La propiedad solo la usa el ⑩: la consulta y su detalle MVIC.
+5. **⑧ (+725.075,85) y ⑨ (781.079,94): ACEPTADOS** como ajuste de la primera vez.
+6. **⑥:** con Petro cargado, si el «sin explicar» baja a menos de unos 1.000, `neteoPorPrestamo` sigue en `auto`. Si
+   sigue en cientos de miles, `neteoPorPrestamo = nunca` para noviembre y se manda el detalle por préstamo del ⑥.
+
 ## 6. Riesgos
 - **Lo nuevo nunca corrió contra Oracle en producción:** C27b, el lote 7 y su reparto por préstamo, y el ⑧, ⑨ y ⑩ con
   `siempre`. La previsualización es su primera ejecución, y no graba nada.
