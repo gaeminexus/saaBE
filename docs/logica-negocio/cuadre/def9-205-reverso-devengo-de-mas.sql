@@ -1,0 +1,54 @@
+-- D-205 (A): interés reversado de más de la 1.4.02 al cancelar o recalcular cuotas futuras (acuerdos, precancelaciones, abonos),
+-- oct–dic 2025. Fuente del lote asientos-manuales-2025-12-d205-reverso-devengo.csv. Solo SELECT. Sin datos personales.
+--
+-- Lo que hizo el SAA (DevengoCompletoServiceImpl): reversó el interés de las cuotas con vencimiento hasta el mes siguiente al ÚLTIMO
+-- cierre de cartera EJECUTADO de la base (CRD.CRCT 4, de producción, corte 30-sep-2026: hasta el 31-oct-2026).
+-- Lo correcto: el último cierre ejecutado ANTES de la operación es el del mes anterior de esta corrida. Con
+-- saa.cartera.devengoCompletoDesde = 2025-10-31:
+--   · operaciones de octubre 2025: el último cierre (30-sep) es anterior al devengo completo → no se reversa nada;
+--   · operaciones de nov y dic 2025: se reversan solo las cuotas con vencimiento entre el 1-nov-2025 y el fin del mes de la operación.
+-- Cuotas canceladas: interés − cobrado de las cuotas en estado 7 con vencimiento posterior a la fecha del evento.
+-- Abonos: interés antes (CRD.HDTP del evento) − interés después (la HDTP del abono siguiente del mismo préstamo; si no hay, CRD.DTPR).
+-- Control: con el límite 31-oct-2026, la columna EMULADO tiene que dar igual a REVERSADO (diferencia 0 en cada asiento).
+
+-- 01 por asiento: reversado, emulado con el límite del SAA y correcto
+WITH r AS (
+ SELECT A.ASNTCDGO, TRUNC(A.ASNTFCHA) FA, CASE WHEN D.DTASDSCR LIKE '%abono elimin%' THEN 'ABONO' ELSE 'CANCELADAS' END TIPO,
+        SUBSTR(N.PLNNCNTA,1,9) CUENTA, ROUND(SUM(NVL(D.DTASHBRR,0)),2) REV
+ FROM CNT.DTAS D JOIN CNT.ASNT A ON A.ASNTCDGO=D.ASNTCDGO JOIN CNT.PLNN N ON N.PLNNCDGO=D.PLNNCDGO
+ WHERE A.ASNTESTD<>2 AND N.PJRQCDGO=1236 AND A.ASNTFCHA >= DATE '2025-10-01' AND A.ASNTFCHA < DATE '2026-01-01'
+  AND D.DTASDSCR LIKE '%reverso del devengo del inter%' AND N.PLNNCNTA LIKE '1.4.02%'
+ GROUP BY A.ASNTCDGO, TRUNC(A.ASNTFCHA), CASE WHEN D.DTASDSCR LIKE '%abono elimin%' THEN 'ABONO' ELSE 'CANCELADAS' END, SUBSTR(N.PLNNCNTA,1,9)),
+ev AS (SELECT v.EVPRNMAS ASNTCDGO, v.PRSTCDGO, v.EVPRCDGO, TRUNC(v.EVPRFCHA) FE, v.EVPRFCHA FEH FROM CRD.EVPR v WHERE v.EVPRNMAS IS NOT NULL
+  UNION
+  SELECT NVL(b.CBCRASN2, b.CBCRASN1), dc.PRSTCDGO, dc.EVPRCDGO, TRUNC(v.EVPRFCHA), v.EVPRFCHA FROM CRD.CBCR b JOIN CRD.DCBC dc ON dc.CBCRCDGO=b.CBCRCDGO
+   JOIN CRD.EVPR v ON v.EVPRCDGO=dc.EVPRCDGO
+   WHERE NOT EXISTS (SELECT 1 FROM CRD.EVPR w WHERE w.EVPRNMAS=NVL(b.CBCRASN2, b.CBCRASN1))),
+e AS (SELECT r.*, ev.PRSTCDGO, ev.EVPRCDGO, ev.FEH, NVL(ev.FE, r.FA) FE FROM r
+  LEFT JOIN ev ON ev.ASNTCDGO=r.ASNTCDGO AND ev.PRSTCDGO = (SELECT MIN(e2.PRSTCDGO) FROM ev e2 WHERE e2.ASNTCDGO=r.ASNTCDGO
+    AND (r.TIPO = 'ABONO' AND EXISTS (SELECT 1 FROM CRD.HDTP h2 WHERE h2.EVPRCDGO=e2.EVPRCDGO)
+      OR r.TIPO = 'CANCELADAS' AND EXISTS (SELECT 1 FROM CRD.DTPR d2 WHERE d2.PRSTCDGO=e2.PRSTCDGO AND d2.DTPRESTD=7 AND d2.DTPRFCVN > e2.FE)))),
+lim AS (SELECT e.ASNTCDGO, CASE WHEN e.FE >= DATE '2025-11-01' THEN LAST_DAY(e.FE) ELSE DATE '2025-10-31' END LIM_OK FROM e),
+pg AS (SELECT g.DTPRCDGO, SUM(NVL(g.PGPRINPG,0)) IP FROM CRD.PGPR g WHERE NVL(g.PGPRANUL,0)=0 GROUP BY g.DTPRCDGO),
+cn AS (SELECT e.ASNTCDGO,
+  SUM(CASE WHEN d.DTPRFCVN > e.FE AND d.DTPRFCVN >= DATE '2025-11-01' AND d.DTPRFCVN <= l.LIM_OK THEN GREATEST(NVL(d.DTPRINTR,0)-NVL(pg.IP,0),0) ELSE 0 END) CORRECTO,
+  SUM(CASE WHEN d.DTPRFCVN > e.FE AND d.DTPRFCVN >= DATE '2025-11-01' AND d.DTPRFCVN <= DATE '2026-10-31' THEN GREATEST(NVL(d.DTPRINTR,0)-NVL(pg.IP,0),0) ELSE 0 END) EMULADO
+  FROM e JOIN lim l ON l.ASNTCDGO=e.ASNTCDGO JOIN CRD.DTPR d ON d.PRSTCDGO=e.PRSTCDGO AND d.DTPRESTD=7 LEFT JOIN pg ON pg.DTPRCDGO=d.DTPRCDGO
+  WHERE e.TIPO='CANCELADAS' GROUP BY e.ASNTCDGO),
+-- abono: estado de las cuotas después del abono = el historial del abono siguiente del mismo préstamo, o la tabla actual
+sig AS (SELECT e.ASNTCDGO, (SELECT MIN(v2.EVPRCDGO) KEEP (DENSE_RANK FIRST ORDER BY v2.EVPRFCHA, v2.EVPRCDGO) FROM CRD.EVPR v2
+   WHERE v2.PRSTCDGO=e.PRSTCDGO AND (v2.EVPRFCHA > e.FEH OR (v2.EVPRFCHA = e.FEH AND v2.EVPRCDGO > e.EVPRCDGO))
+     AND EXISTS (SELECT 1 FROM CRD.HDTP h3 WHERE h3.EVPRCDGO=v2.EVPRCDGO)) EV_SIG FROM e WHERE e.TIPO='ABONO'),
+hx AS (SELECT e.ASNTCDGO, h.DTPRFCVN VTO, h.DTPRINTR ANTES,
+   CASE WHEN s.EV_SIG IS NOT NULL THEN (SELECT MAX(h4.DTPRINTR) FROM CRD.HDTP h4 WHERE h4.EVPRCDGO=s.EV_SIG AND TRUNC(h4.DTPRFCVN)=TRUNC(h.DTPRFCVN))
+        ELSE (SELECT MAX(d.DTPRINTR) FROM CRD.DTPR d WHERE d.PRSTCDGO=e.PRSTCDGO AND TRUNC(d.DTPRFCVN)=TRUNC(h.DTPRFCVN)) END DESPUES
+  FROM e JOIN sig s ON s.ASNTCDGO=e.ASNTCDGO JOIN CRD.HDTP h ON h.EVPRCDGO=e.EVPRCDGO
+  WHERE h.DTPRFCVN >= DATE '2025-11-01' AND h.DTPRFCVN < DATE '2026-11-01'),
+ab AS (SELECT hx.ASNTCDGO, SUM(hx.ANTES - NVL(hx.DESPUES,0)) EMULADO,
+   SUM(CASE WHEN hx.VTO <= l.LIM_OK THEN hx.ANTES - NVL(hx.DESPUES,0) ELSE 0 END) CORRECTO
+  FROM hx JOIN lim l ON l.ASNTCDGO=hx.ASNTCDGO GROUP BY hx.ASNTCDGO)
+SELECT e.ASNTCDGO, TO_CHAR(e.FA,'YYYY-MM-DD') FECHA_ASIENTO, TO_CHAR(e.FE,'YYYY-MM-DD') FECHA_EVENTO, e.TIPO, e.CUENTA,
+  p.PRSTIDAS PRESTAMO, e.REV REVERSADO, ROUND(NVL(cn.EMULADO, ab.EMULADO),2) EMULADO, ROUND(e.REV - NVL(cn.EMULADO, ab.EMULADO),2) DIF_EMULADO,
+  ROUND(NVL(NVL(cn.CORRECTO, ab.CORRECTO),0),2) CORRECTO, ROUND(e.REV - NVL(NVL(cn.CORRECTO, ab.CORRECTO),0),2) DE_MAS
+FROM e LEFT JOIN CRD.PRST p ON p.PRSTCDGO=e.PRSTCDGO LEFT JOIN cn ON cn.ASNTCDGO=e.ASNTCDGO LEFT JOIN ab ON ab.ASNTCDGO=e.ASNTCDGO
+ORDER BY e.FA, e.ASNTCDGO;
