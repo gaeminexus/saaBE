@@ -157,12 +157,23 @@ public final class PrelacionCuotas {
         List<PagoPrestamo> r = new ArrayList<>();
         if (pagos != null) {
             for (PagoPrestamo p : pagos) {
-                if (p != null && cuentaAlCorte(p.getFecha(), corte)) {
+                if (p != null && (cuentaAlCorte(p.getFecha(), corte)
+                        || (corte != null && p.getFechaRegistro() != null && !p.getFechaRegistro().isAfter(corte)))) {
                     r.add(p);
                 }
             }
         }
         return r;
+    }
+
+    /**
+     * Pagos que EXISTEN al corte para la prelación (C33): los de fecha {@code <= corte} (o sin fecha) y TAMBIÉN los registrados (PGPRFCRG) hasta el corte
+     * aunque su fecha sea posterior. Un pago de migración fechado en el vencimiento futuro de la cuota ya estaba en la base al corte y la cubre; sin
+     * esto el control y la re-imputación lo ignoraban y movían los pagos de otras cuotas encima de ella (préstamo 3492, 2026-11-25). Para el motor de
+     * pagos (que aplica en la fecha del pago) sigue valiendo {@link #alCorte}.
+     */
+    public static List<PagoPrestamo> alCorteORegistrado(List<PagoPrestamo> pagos, LocalDateTime corte) {
+        return alCorte(pagos, corte);
     }
 
     /** Abono a capital y precancelación: su propia regla (ni invariante ni re-imputación). */

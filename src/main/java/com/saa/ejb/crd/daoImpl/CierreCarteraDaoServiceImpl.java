@@ -164,7 +164,7 @@ public class CierreCarteraDaoServiceImpl implements CierreCarteraDaoService {
                 + "   SELECT DTPRCDGO, " + ModoCorteCartera.CAPITAL_PAGADO_CUOTA_SQL + " cap, "
                 + "          NVL(PGPRINPG,0) intr, NVL(PGPRINVP,0) intv, NVL(PGPRMRPG,0) mora, "
                 + "          NVL(PGPRDSGR,0) dsgr, NVL(PGPRVLSI,0) segi "
-                + "   FROM CRD.PGPR WHERE (PGPRANUL IS NULL OR PGPRANUL = 0) AND PGPRFCHA < :corteSig "
+                + "   FROM CRD.PGPR WHERE (PGPRANUL IS NULL OR PGPRANUL = 0) AND (PGPRFCHA < :corteSig OR PGPRFCRG < :corteSig) "
                 + "   UNION ALL "
                 + "   SELECT ap.DTPRCDGO, ap.cap, 0, 0, 0, 0, 0 FROM ("
                 + ModoCorteCartera.abonosPosterioresSql(eliminadasALaCola) + ") ap "
@@ -1099,8 +1099,8 @@ public class CierreCarteraDaoServiceImpl implements CierreCarteraDaoService {
                 + " JOIN   CRD.PRST p  ON p.PRSTCDGO = d.PRSTCDGO "
                 + " JOIN   CRD.PRDC pr ON pr.PRDCCDGO = p.PRDCCDGO "
                 + " LEFT JOIN (SELECT DTPRCDGO, "
-                + "        SUM(CASE WHEN PGPRFCHA < :ancla THEN NVL(PGPRINPG,0) ELSE 0 END) pre, "
-                + "        SUM(CASE WHEN PGPRFCHA >= :ancla AND PGPRFCHA < :corteSig THEN NVL(PGPRINPG,0) ELSE 0 END) post "
+                + "        SUM(CASE WHEN LEAST(PGPRFCHA, NVL(PGPRFCRG, PGPRFCHA)) < :ancla THEN NVL(PGPRINPG,0) ELSE 0 END) pre, "
+                + "        SUM(CASE WHEN LEAST(PGPRFCHA, NVL(PGPRFCRG, PGPRFCHA)) >= :ancla AND LEAST(PGPRFCHA, NVL(PGPRFCRG, PGPRFCHA)) < :corteSig THEN NVL(PGPRINPG,0) ELSE 0 END) post "
                 + "   FROM CRD.PGPR WHERE " + PAGO_VIGENTE + " GROUP BY DTPRCDGO) g ON g.DTPRCDGO = d.DTPRCDGO "
                 + " WHERE  " + CONCEDIDO_EN_CARTERA
                 + " AND    " + CUOTA_NO_ANULADA
@@ -1129,7 +1129,7 @@ public class CierreCarteraDaoServiceImpl implements CierreCarteraDaoService {
                 + " JOIN   CRD.PRST p  ON p.PRSTCDGO = d.PRSTCDGO "
                 + " JOIN   CRD.PRDC pr ON pr.PRDCCDGO = p.PRDCCDGO "
                 + " LEFT JOIN (SELECT DTPRCDGO, SUM(NVL(PGPRINPG,0)) post "
-                + "   FROM CRD.PGPR WHERE " + PAGO_VIGENTE + " AND PGPRFCHA < :corteSig GROUP BY DTPRCDGO) g "
+                + "   FROM CRD.PGPR WHERE " + PAGO_VIGENTE + " AND LEAST(PGPRFCHA, NVL(PGPRFCRG, PGPRFCHA)) < :corteSig GROUP BY DTPRCDGO) g "
                 + "        ON g.DTPRCDGO = d.DTPRCDGO "
                 + " WHERE  " + CONCEDIDO_EN_CARTERA
                 + " AND    p.PRSTFCHA >= :inicio "
@@ -1155,7 +1155,7 @@ public class CierreCarteraDaoServiceImpl implements CierreCarteraDaoService {
                 + " JOIN   CRD.PRST p  ON p.PRSTCDGO = d.PRSTCDGO "
                 + " JOIN   CRD.PRDC pr ON pr.PRDCCDGO = p.PRDCCDGO "
                 + " WHERE  (g.PGPRANUL IS NULL OR g.PGPRANUL = 0) "
-                + " AND    g.PGPRFCHA >= :ancla AND g.PGPRFCHA < :corteSig "
+                + " AND    LEAST(g.PGPRFCHA, NVL(g.PGPRFCRG, g.PGPRFCHA)) >= :ancla AND LEAST(g.PGPRFCHA, NVL(g.PGPRFCRG, g.PGPRFCHA)) < :corteSig "
                 + " AND    TRUNC(d.DTPRFCVN) >= :mesSiguiente "
                 + " AND    " + CONCEDIDO_EN_CARTERA
                 + " AND    " + CUOTA_NO_ANULADA

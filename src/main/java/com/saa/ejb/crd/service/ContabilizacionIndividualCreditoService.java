@@ -173,6 +173,14 @@ public interface ContabilizacionIndividualCreditoService {
             LocalDate fechaCorte, String prefijoDescripcion, String usuario) throws Throwable;
 
     /**
+     * C33 (reclasificacion de la re-imputacion): las MISMAS lineas de Haber que {@link #haberDesdePagos} (banda de capital, interes, mora, seguros, por plantilla
+     * y tipo de prestamo) pero SIN efectos: no separa la mora no devengada ni escribe movimientos de provision. Sirve para comparar el reparto de dos conjuntos de pagos.
+     * Pagos de UN solo tipo de prestamo por llamada (el interes y la mora se resuelven por el primer pago).
+     */
+    List<DetalleAsiento> haberReclasificacion(List<PagoPrestamo> pagos, Long idEmpresa, Long idPlantillaAplicacion,
+            LocalDate fechaCorte, String prefijoDescripcion) throws Throwable;
+
+    /**
      * Suma el capital de un conjunto de {@code PagoPrestamo} (típicamente los de UN
      * {@code EventoPrestamo}) que vence DESPUÉS de {@code fechaCorteApertura} — el tramo de un
      * abono a capital o de una precancelación que la apertura mensual NUNCA abrió, y que por

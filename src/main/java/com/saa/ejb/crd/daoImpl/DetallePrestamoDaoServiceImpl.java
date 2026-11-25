@@ -727,7 +727,7 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 			+ " AND d.DTPRFCVN >= :desde"
 			+ " AND NVL(d.DTPRCPTL,0) + NVL(d.DTPRINTR,0) - NVL((SELECT SUM(NVL(g.PGPRCPPG,0) + NVL(g.PGPRINPG,0))"
 			+ "     FROM CRD.PGPR g WHERE g.DTPRCDGO = d.DTPRCDGO AND NVL(g.PGPRANUL,0) = 0"
-			+ (conCorte ? " AND (g.PGPRFCHA IS NULL OR g.PGPRFCHA <= :corte)" : "")
+			+ (conCorte ? " AND (g.PGPRFCHA IS NULL OR g.PGPRFCHA <= :corte OR g.PGPRFCRG <= :corte)" : "")
 			+ "), 0) > " + com.saa.ejb.crd.service.PrelacionCuotas.TOLERANCIA + "))";
 	}
 
@@ -790,7 +790,7 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 			+ "          SUM(NVL(g.PGPRCPPG,0)) cap, SUM(NVL(g.PGPRINPG,0)) intr,"
 			+ "          SUM(CASE WHEN " + exento + " THEN 0 ELSE NVL(g.PGPRCPPG,0) + NVL(g.PGPRINPG,0) END) nne,"
 			+ "          SUM(CASE WHEN " + exento + " THEN 1 ELSE 0 END) nex"
-			+ "   FROM CRD.PGPR g WHERE NVL(g.PGPRANUL,0) = 0 AND (g.PGPRFCHA IS NULL OR g.PGPRFCHA < :corteSig)"
+			+ "   FROM CRD.PGPR g WHERE NVL(g.PGPRANUL,0) = 0 AND (g.PGPRFCHA IS NULL OR g.PGPRFCHA < :corteSig OR g.PGPRFCRG < :corteSig)"
 			+ (idPrestamo != null ? " AND g.DTPRCDGO IN (SELECT x.DTPRCDGO FROM CRD.DTPR x WHERE x.PRSTCDGO = :idPrestamo)" : "")
 			+ "   GROUP BY g.DTPRCDGO),"
 			+ " c AS ("
@@ -1306,7 +1306,7 @@ public class DetallePrestamoDaoServiceImpl extends EntityDaoImpl<DetallePrestamo
 			"                            and cy.fechaPagado >= :corte) " +
 			// C27-C: ni si tiene un pago vigente posterior al corte (acuerdo de condonación, …).
 			"            and not exists (select cz from PagoPrestamo cz where cz.prestamo = d.prestamo " +
-			"                            and coalesce(cz.anulado, 0) = 0 and cz.fecha >= :corteSig)) "
+			"                            and coalesce(cz.anulado, 0) = 0 and least(cz.fecha, coalesce(cz.fechaRegistro, cz.fecha)) >= :corteSig)) "
 		);
 		query.setParameter("corteSig", corteSig);
 		query.setParameter("corte", corte.atStartOfDay());

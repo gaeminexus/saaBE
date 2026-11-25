@@ -102,7 +102,7 @@ public final class ModoCorteCartera {
             // C27-C: un pago vigente posterior al corte (acuerdo de condonación, precancelación, …)
             // prueba que el préstamo seguía vivo al corte, aunque su última cuota PAGADA sea anterior.
             + " AND NOT EXISTS (SELECT 1 FROM CRD.PGPR cz WHERE cz.PRSTCDGO = p.PRSTCDGO"
-            + "      AND NVL(cz.PGPRANUL,0) = 0 AND cz.PGPRFCHA >= :corteSig)) ";
+            + "      AND NVL(cz.PGPRANUL,0) = 0 AND LEAST(cz.PGPRFCHA, NVL(cz.PGPRFCRG, cz.PGPRFCHA)) >= :corteSig)) ";
 
     /**
      * C23: préstamo cancelado que sigue en el universo al corte porque le quedan cuotas en mora,

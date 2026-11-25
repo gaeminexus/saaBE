@@ -313,7 +313,7 @@ public class MovimientoInteresCuotaDaoServiceImpl extends EntityDaoImpl<Movimien
             + " pag AS ( "
             + "   SELECT d.PRSTCDGO, SUM(NVL(g.PGPRMRPG, 0)) AS mora_pagada "
             + "     FROM CRD.PGPR g JOIN CRD.DTPR d ON d.DTPRCDGO = g.DTPRCDGO "
-            + "    WHERE NVL(g.PGPRANUL, 0) = 0 AND g.PGPRFCHA < :limiteSig AND d.PRSTCDGO IN (SELECT PRSTCDGO FROM dev) "
+            + "    WHERE NVL(g.PGPRANUL, 0) = 0 AND (g.PGPRFCHA < :limiteSig OR g.PGPRFCRG < :limiteSig) AND d.PRSTCDGO IN (SELECT PRSTCDGO FROM dev) "
             + "    GROUP BY d.PRSTCDGO ), "
             + " cond AS ( "
             + "   SELECT a.PRSTCDGO, SUM(NVL(c.DACCVLCN, 0)) AS condonada "

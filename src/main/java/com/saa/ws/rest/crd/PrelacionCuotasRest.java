@@ -105,6 +105,29 @@ public class PrelacionCuotasRest {
         }
     }
 
+    /**
+     * POST /rest/prelacioncuotas/reclasificar {fecha (día de la corrida), usuario, idEmpresa, simular}: asiento de reclasificación por componente de una corrida
+     * de re-imputación (uno por corrida). Simular primero. Pendiente de la decisión del contador antes de asentar; NO es idempotente: no repetir.
+     */
+    @POST
+    @Path("/reclasificar")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response reclasificar(SolicitudReimputacion solicitud) {
+        System.out.println("LLEGA AL SERVICIO RECLASIFICAR - PRELACION_CUOTAS - corrida: " + (solicitud != null ? solicitud.getFecha() : null));
+        try {
+            if (solicitud == null || solicitud.getFecha() == null) {
+                throw new com.saa.basico.util.IncomeException("PARAMETRO_INVALIDO: fecha (día de la corrida) es obligatoria");
+            }
+            String usuario = solicitud.esSimulacion() ? solicitud.getUsuario()
+                : usuarioValidacionService.validar(solicitud.getUsuario());
+            return Response.ok(prelacionCuotasService.reclasificarCorrida(fecha(solicitud), fecha(solicitud), usuario,
+                solicitud.getIdEmpresa(), solicitud.esSimulacion()), MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return error("Error al reclasificar: ", e);
+        }
+    }
+
     private static LocalDate fecha(SolicitudReimputacion s) {
         return s.getFecha() == null || s.getFecha().trim().isEmpty() ? null : LocalDate.parse(s.getFecha().trim());
     }

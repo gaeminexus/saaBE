@@ -30,6 +30,12 @@ public interface PagoPrestamoDaoService extends EntityDao<PagoPrestamo> {
 	 */
 	List<PagoPrestamo> selectVigentesByPrestamo(Long idPrestamo) throws Throwable;
 
+	/** C33: pagos ANULADOS cuyo motivo contiene la marca, anulados desde {@code desde} (los que una corrida de re-imputacion dejo sin efecto). */
+	List<PagoPrestamo> selectAnuladosPorMotivoDesde(String marca, java.time.LocalDateTime desde) throws Throwable;
+
+	/** C33: pagos VIGENTES cuya observacion contiene la marca (las copias que creo la re-imputacion). */
+	List<PagoPrestamo> selectVigentesPorObservacion(String marca) throws Throwable;
+
 	// ========================================================================
 	// SERVICIOS DE PAGO DE PRÉSTAMOS (§5.2 ESPECIFICACION-SERVICIOS-PAGO-PRESTAMOS.md)
 	// ========================================================================

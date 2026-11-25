@@ -49,6 +49,12 @@ public class PrelacionCuotasServiceImpl implements PrelacionCuotasService {
     private PagoPrestamoDaoService pagoPrestamoDaoService;
 
     @EJB
+    private com.saa.ejb.crd.service.ContabilizacionIndividualCreditoService contabilizacionIndividualCreditoService;
+
+    @EJB
+    private com.saa.ejb.cnt.service.AsientoContableService asientoContableService;
+
+    @EJB
     private MotorPagoPrestamoService motorPagoPrestamoService;
 
     @EJB
@@ -160,6 +166,8 @@ public class PrelacionCuotasServiceImpl implements PrelacionCuotasService {
                 for (PagoPrestamo p : pagos) {
                     // Nunca se vacía una cuota cerrada por regla (7, o 4 anterior al arranque): quedaría reabierta.
                     boolean mueve = i >= inicio && !PrelacionCuotas.estaCerradaPorRegla(c, desde)
+                        // Un pago de fecha posterior al corte (registrado antes) cubre su cuota y no se mueve: no se lo lleva a otra.
+                        && PrelacionCuotas.cuentaAlCorte(p.getFecha(), corte)
                         && !PrelacionCuotas.esPagoExento(p)
                         && PrelacionCuotas.nvl(p.getCapitalPagado()) + PrelacionCuotas.nvl(p.getInteresPagado())
                             > PrelacionCuotas.TOLERANCIA;
@@ -478,6 +486,128 @@ public class PrelacionCuotasServiceImpl implements PrelacionCuotasService {
         return resultados;
     }
 
+    @Override
+    @TransactionAttribute(TransactionAttributeType.REQUIRED)
+    public Map<String, Object> reclasificarCorrida(LocalDate diaCorrida, LocalDate fechaAsiento, String usuario, Long idEmpresa,
+            boolean simular) throws Throwable {
+        System.out.println("PrelacionCuotasService.reclasificarCorrida - corrida del " + diaCorrida + " - asiento " + fechaAsiento
+            + (simular ? " (simulación)" : ""));
+        Map<String, Object> r = new LinkedHashMap<>();
+        r.put("simulacion", simular);
+        if (diaCorrida == null || idEmpresa == null) {
+            throw new IncomeException("PARAMETRO_INVALIDO: fecha (día de la corrida) e idEmpresa son obligatorios");
+        }
+        if (!simular && (usuario == null || usuario.trim().isEmpty())) {
+            throw new IncomeException("PARAMETRO_INVALIDO: usuario es obligatorio para asentar");
+        }
+        LocalDate fechaCont = fechaAsiento != null ? fechaAsiento : diaCorrida;
+        List<PagoPrestamo> anulados = pagoPrestamoDaoService.selectAnuladosPorMotivoDesde(PrelacionCuotas.MARCA_REIMPUTACION,
+            diaCorrida.atStartOfDay());
+        java.util.Set<Long> idsAnulados = new java.util.HashSet<>();
+        for (PagoPrestamo p : anulados) {
+            idsAnulados.add(p.getCodigo());
+        }
+        // Las copias: «[C33-REIMPUTADO de PGPR <id>, cuota #n]» con <id> uno de los anulados de la corrida.
+        List<PagoPrestamo> nuevos = new ArrayList<>();
+        java.util.regex.Pattern marca = java.util.regex.Pattern.compile("C33-REIMPUTADO de PGPR (\\d+)");
+        for (PagoPrestamo p : pagoPrestamoDaoService.selectVigentesPorObservacion(PrelacionCuotas.MARCA_REIMPUTACION + " de PGPR")) {
+            java.util.regex.Matcher m = marca.matcher(p.getObservacion() != null ? p.getObservacion() : "");
+            if (m.find() && idsAnulados.contains(Long.valueOf(m.group(1)))) {
+                nuevos.add(p);
+            }
+        }
+        r.put("anulados", anulados.size());
+        r.put("nuevos", nuevos.size());
+        if (anulados.isEmpty() && nuevos.isEmpty()) {
+            r.put("mensaje", "No hay pagos re-imputados el " + diaCorrida + ": nada que reclasificar.");
+            return r;
+        }
+        Long idPlantilla = contabilizacionIndividualCreditoService.resolverPlantillaAplicacion(idEmpresa);
+        // Por tipo de préstamo: la cuenta de interés y de mora depende del tipo.
+        Map<Long, List<PagoPrestamo>> nuevosPorTipo = agruparPorTipoPrestamo(nuevos);
+        Map<Long, List<PagoPrestamo>> anuladosPorTipo = agruparPorTipoPrestamo(anulados);
+        java.util.Set<Long> tipos = new java.util.LinkedHashSet<>(nuevosPorTipo.keySet());
+        tipos.addAll(anuladosPorTipo.keySet());
+        Map<Long, double[]> netoPorCuenta = new LinkedHashMap<>();
+        Map<Long, com.saa.model.cnt.DetalleAsiento> modeloPorCuenta = new LinkedHashMap<>();
+        String prefijo = "Reclasificación C33 " + diaCorrida;
+        for (Long tipo : tipos) {
+            for (int signo = 0; signo < 2; signo++) {
+                List<PagoPrestamo> pagos = (signo == 0 ? nuevosPorTipo : anuladosPorTipo).get(tipo);
+                if (pagos == null || pagos.isEmpty()) {
+                    continue;
+                }
+                for (com.saa.model.cnt.DetalleAsiento l : contabilizacionIndividualCreditoService.haberReclasificacion(pagos, idEmpresa,
+                        idPlantilla, fechaCont, prefijo)) {
+                    if (l.getPlanCuenta() == null || l.getPlanCuenta().getCodigo() == null) {
+                        throw new IncomeException("La plantilla devolvió una línea sin cuenta (tipo de préstamo " + tipo + "): no se reclasifica.");
+                    }
+                    double neto = (l.getValorHaber() != null ? l.getValorHaber() : 0.0) - (l.getValorDebe() != null ? l.getValorDebe() : 0.0);
+                    netoPorCuenta.computeIfAbsent(l.getPlanCuenta().getCodigo(), k -> new double[1])[0] += (signo == 0 ? neto : -neto);
+                    modeloPorCuenta.putIfAbsent(l.getPlanCuenta().getCodigo(), l);
+                }
+            }
+        }
+        List<com.saa.model.cnt.DetalleAsiento> lineas = new ArrayList<>();
+        double totalDebe = 0.0;
+        double totalHaber = 0.0;
+        StringBuilder detalle = new StringBuilder();
+        for (Map.Entry<Long, double[]> e : netoPorCuenta.entrySet()) {
+            double neto = PrelacionCuotas.redondear(e.getValue()[0]);
+            if (Math.abs(neto) < 0.005) {
+                continue;
+            }
+            com.saa.model.cnt.DetalleAsiento modelo = modeloPorCuenta.get(e.getKey());
+            com.saa.model.cnt.DetalleAsiento l = new com.saa.model.cnt.DetalleAsiento();
+            l.setPlanCuenta(modelo.getPlanCuenta());
+            l.setNombreCuenta(modelo.getNombreCuenta());
+            l.setNumeroCuenta(modelo.getNumeroCuenta());
+            l.setCentroCosto(modelo.getCentroCosto());
+            l.setDescripcion(prefijo + " - " + (neto > 0 ? "más" : "menos") + " en esta cuenta por el nuevo reparto");
+            l.setValorDebe(neto < 0 ? -neto : 0.0);
+            l.setValorHaber(neto > 0 ? neto : 0.0);
+            totalDebe += l.getValorDebe();
+            totalHaber += l.getValorHaber();
+            lineas.add(l);
+            detalle.append(detalle.length() == 0 ? "" : "; ").append(modelo.getNumeroCuenta()).append(neto > 0 ? " H " : " D ")
+                .append(PrelacionCuotas.formato(Math.abs(neto)));
+        }
+        totalDebe = PrelacionCuotas.redondear(totalDebe);
+        totalHaber = PrelacionCuotas.redondear(totalHaber);
+        r.put("lineas", lineas.size());
+        r.put("totalDebe", totalDebe);
+        r.put("totalHaber", totalHaber);
+        r.put("detalle", detalle.toString());
+        if (lineas.isEmpty()) {
+            r.put("mensaje", "El reparto por cuenta no cambió: no hay asiento de reclasificación.");
+            return r;
+        }
+        if (Math.abs(totalDebe - totalHaber) > 0.01) {
+            throw new IncomeException("La reclasificación no cuadra (Debe " + totalDebe + " / Haber " + totalHaber + "): el total de los pagos nuevos"
+                + " difiere del de los anulados (¿mora no devengada o pagos fuera del universo?). No se asienta. Detalle: " + detalle);
+        }
+        if (simular) {
+            r.put("mensaje", "Simulación: asiento de reclasificación de " + lineas.size() + " línea(s), " + totalDebe + " al Debe y al Haber.");
+            return r;
+        }
+        com.saa.model.cnt.Asiento asiento = asientoContableService.generarAsiento(idEmpresa, com.saa.rubros.TipoAsientos.CREDITOS, fechaCont,
+            prefijo + ": reclasificación por componente de " + nuevos.size() + " pago(s) re-imputados", usuario, lineas,
+            Long.valueOf(com.saa.rubros.ModuloSistema.CUENTAS_POR_COBRAR));
+        r.put("asiento", asiento != null ? asiento.getCodigo() : null);
+        r.put("mensaje", "Asiento de reclasificación " + (asiento != null ? asiento.getCodigo() : "") + " generado.");
+        return r;
+    }
+
+    private static Map<Long, List<PagoPrestamo>> agruparPorTipoPrestamo(List<PagoPrestamo> pagos) {
+        Map<Long, List<PagoPrestamo>> r = new LinkedHashMap<>();
+        for (PagoPrestamo p : pagos) {
+            Long tipo = p.getPrestamo() != null && p.getPrestamo().getProducto() != null && p.getPrestamo().getProducto().getTipoPrestamo() != null
+                ? p.getPrestamo().getProducto().getTipoPrestamo().getCodigo() : Long.valueOf(0L);
+            r.computeIfAbsent(tipo, k -> new ArrayList<>()).add(p);
+        }
+        return r;
+    }
+
     // ========================================================================
     // Helpers
     // ========================================================================
@@ -497,7 +627,7 @@ public class PrelacionCuotasServiceImpl implements PrelacionCuotasService {
         for (DetallePrestamo c : cuotas) {
             ids.add(c.getCodigo());
         }
-        for (PagoPrestamo p : PrelacionCuotas.alCorte(vigentes, corte)) {
+        for (PagoPrestamo p : PrelacionCuotas.alCorteORegistrado(vigentes, corte)) {
             if (p.getDetallePrestamo() == null || !ids.contains(p.getDetallePrestamo().getCodigo())) {
                 continue;
             }

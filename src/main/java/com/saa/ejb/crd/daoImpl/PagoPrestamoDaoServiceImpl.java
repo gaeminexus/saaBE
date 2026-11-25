@@ -75,6 +75,22 @@ public class PagoPrestamoDaoServiceImpl extends EntityDaoImpl<PagoPrestamo> impl
 
 	@Override
 	@SuppressWarnings("unchecked")
+	public List<PagoPrestamo> selectAnuladosPorMotivoDesde(String marca, java.time.LocalDateTime desde) throws Throwable {
+		System.out.println("PagoPrestamoDaoServiceImpl.selectAnuladosPorMotivoDesde - marca: " + marca + " - desde: " + desde);
+		return em.createQuery("SELECT p FROM PagoPrestamo p WHERE p.anulado = 1 AND p.motivoAnulacion LIKE :marca AND p.fechaAnulacion >= :desde")
+			.setParameter("marca", "%" + marca + "%").setParameter("desde", desde).getResultList();
+	}
+
+	@Override
+	@SuppressWarnings("unchecked")
+	public List<PagoPrestamo> selectVigentesPorObservacion(String marca) throws Throwable {
+		System.out.println("PagoPrestamoDaoServiceImpl.selectVigentesPorObservacion - marca: " + marca);
+		return em.createQuery("SELECT p FROM PagoPrestamo p WHERE (p.anulado IS NULL OR p.anulado = 0) AND p.observacion LIKE :marca")
+			.setParameter("marca", "%" + marca + "%").getResultList();
+	}
+
+	@Override
+	@SuppressWarnings("unchecked")
 	public List<PagoPrestamo> selectVigentesByPrestamo(Long idPrestamo) throws Throwable {
 		System.out.println("PagoPrestamoDaoService.selectVigentesByPrestamo - Prestamo: " + idPrestamo);
 		// anulado IS NULL cubre los pagos históricos anteriores al ALTER de CRD.PGPR. Sin
@@ -187,7 +203,7 @@ public class PagoPrestamoDaoServiceImpl extends EntityDaoImpl<PagoPrestamo> impl
 			"FROM PagoPrestamo p " +
 			"WHERE p.detallePrestamo.codigo IN :codigos " +
 			"AND (p.anulado IS NULL OR p.anulado = 0) " +
-			"AND p.fecha < :corteSig " +
+			"AND (p.fecha < :corteSig or p.fechaRegistro < :corteSig) " +
 			"ORDER BY p.detallePrestamo.codigo";
 		final int TAMANIO_BLOQUE = 900;
 		List<Object[]> resultados = new ArrayList<>();

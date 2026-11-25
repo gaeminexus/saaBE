@@ -73,4 +73,12 @@ public interface PrelacionCuotasService {
      */
     List<ResultadoReimputacion> reimputarAlCorte(LocalDate corte, String usuario, Long idEmpresa, boolean simular)
             throws Throwable;
+    /**
+     * Asiento de RECLASIFICACION de una corrida de re-imputacion C33 (uno por corrida, por plantilla): la re-imputacion cambia el reparto por componente (capital,
+     * interes, mora, seguros) sin cambiar el total y la contabilidad conserva el reparto viejo. Toma los pagos anulados por la corrida (motivo C33-REIMPUTADO, anulados
+     * desde {@code diaCorrida}) y sus copias vigentes, arma las lineas de Haber de cada conjunto con la plantilla de aplicacion de cobro (por tipo de prestamo y banda
+     * de capital: nunca una cuenta en el codigo) y asienta la DIFERENCIA por cuenta (neto > 0 al Haber, neto < 0 al Debe). Con {@code simular} no graba.
+     * Devuelve {simulacion, anulados, nuevos, lineas, totalDebe, totalHaber, asiento, mensaje, detalle}. NO es idempotente: no repetir.
+     */
+    java.util.Map<String, Object> reclasificarCorrida(LocalDate diaCorrida, LocalDate fechaAsiento, String usuario, Long idEmpresa, boolean simular) throws Throwable;
 }
