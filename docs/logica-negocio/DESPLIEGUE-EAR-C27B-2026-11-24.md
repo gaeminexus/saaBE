@@ -1,5 +1,9 @@
 # Despliegue del EAR «c27b-1125»: todo `main` para el próximo cierre de producción (2026-11-24)
 
+> ⛔ **NO DESPLEGAR ESTE EAR (24-11, noche).** Lleva el alterno 38 para la plantilla del ⑪, pero el 38 es la
+> plantilla de compras de CxP (`PlantillasCxp.COMPRAS`). Se corrige al 39 (REGISTRO-RESERVAS §2c) y se arma un EAR
+> nuevo, que reemplaza a este documento.
+
 **omen-saa-1-arb.** Reemplaza a `c42-1124` y a `cancelados-1124`; ninguno de los dos llegó a desplegarse. Es el EAR con
 el que producción hace el próximo cierre mensual con C27b activo, según la decisión D3 del líder.
 
