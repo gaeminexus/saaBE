@@ -100,6 +100,17 @@ public interface ProvisionInteresService {
     Map<PagoPrestamo, Double> separarMoraNoDevengada(List<PagoPrestamo> pagos, String usuario) throws Throwable;
 
     /**
+     * Lote 15 (D-195): las líneas del reverso de la mora de un préstamo que se cancela, por tipo de préstamo: devengo (D ingreso de mora / H mora por
+     * cobrar, plantilla 17) y provisión (D provisión de intereses / H gasto de provisión, plantilla 36). Cada grupo cuadra solo.
+     */
+    List<com.saa.model.cnt.DetalleAsiento> lineasReversoMoraCancelacion(Long idEmpresa, Map<Long, Double> devengoPorTipo,
+            Map<Long, Double> provisionPorTipo, String descripcion) throws Throwable;
+
+    /** Lote 15 (D-195): graba un movimiento de mora (componente mora) del libro CRD.MVIC con el origen y el asiento dados. */
+    void registrarMovimientoMora(Long idCuota, com.saa.model.crd.Prestamo prestamo, long tipoMovimiento, double valor, LocalDate fechaContable, String origen,
+            Long idOrigen, Long idAsiento, String usuario) throws Throwable;
+
+    /**
      * Recalcula el paso ⑦ (misma fórmula que {@link #calcularProvisionPorTipoPrestamo}, nunca
      * confía en un cálculo previo) y REGISTRA un {@code MVIC} tipo 1 (PROVISION) por cada cuota
      * y componente con "a provisionar" {@code > 0}, enlazado a la corrida y al asiento. Se llama

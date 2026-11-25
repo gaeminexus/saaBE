@@ -236,6 +236,10 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
     @EJB
     private com.saa.ejb.crd.dao.PagoPrestamoDaoService pagoPrestamoDaoService;
 
+    /** Lote 15 (D-195): reverso de la mora devengada y no cobrada de un préstamo que se cancela. */
+    @EJB
+    private com.saa.ejb.crd.service.ReversoMoraCancelacionService reversoMoraCancelacionService;
+
     @EJB
     private com.saa.ejb.cnt.dao.PlanCuentaDaoService planCuentaDaoService;
 
@@ -613,6 +617,11 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
             }
             provisionInteresService.reProvisionarPorAnulacion(pagosAnuladosDelCobro, derivarEmpresaCobro(cobro),
                 fechaReProvision(cobro), "REVERSO_CBCR", idCobro, usuario);
+            for (DetalleCobroCredito detalle : detalleCobroCreditoDaoService.selectByCobro(idCobro)) {
+                if (detalle.getEventoPrestamo() != null) {
+                    reversoMoraCancelacionService.anularPorEvento(detalle.getEventoPrestamo().getCodigo());
+                }
+            }
         }
 
         cobro.setEstado(Long.valueOf(CrdEstadoCobro.ANULADO));
@@ -746,6 +755,11 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
         }
         provisionInteresService.reProvisionarPorAnulacion(pagosAnuladosDelReverso, derivarEmpresaCobro(cobro),
             fechaReProvision(cobro), "REVERSO_CBCR", idCobro, usuario);
+        for (DetalleCobroCredito detalle : detalleCobroCreditoDaoService.selectByCobro(idCobro)) {
+            if (detalle.getEventoPrestamo() != null) {
+                reversoMoraCancelacionService.anularPorEvento(detalle.getEventoPrestamo().getCodigo());
+            }
+        }
 
         // ACUERDO_CONDONACION (2026-09-07, CORRECCION-REVERSO-ACUERDO-CONDONACION.md): además
         // del reverso de línea de arriba, el acuerdo mismo tiene que volver a VIGENTE, y
@@ -2970,11 +2984,20 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
         // H interés por cobrar, dentro de ESTE asiento, para que reversar el cobro lo anule. Autobalanceadas: no
         // tocan el cuadre de arriba. Vacío si el devengo completo no está activo.
         List<DetalleAsiento> lineasReversoDevengo = new ArrayList<>();
+        List<com.saa.ejb.crd.service.dto.ResultadoReversoMora> reversosMora = new ArrayList<>();
         for (DetalleCobroCredito detalle : detalles) {
             if (detalle.getPrestamo() != null && detalle.getEventoPrestamo() != null
                     && ProcesoPagoPrestamoService.TIPO_PRECANCELACION.equals(detalle.getEventoPrestamo().getTipoOperacion())) {
                 lineasReversoDevengo.addAll(devengoCompletoService.lineasReversoCuotasCanceladas(idEmpresa,
                         detalle.getPrestamo(), cobro.getFecha(), "Cobro " + cobro.getCodigo()));
+                // Lote 15 (D-195): reverso de la mora devengada y no cobrada del préstamo cancelado (sus pagos ya están grabados).
+                com.saa.ejb.crd.service.dto.ResultadoReversoMora reversoMoraDelPrestamo = reversoMoraCancelacionService.calcular(
+                        idEmpresa, detalle.getPrestamo(), cobro.getFecha(), pagoPrestamoDaoService.selectByEvento(
+                                detalle.getEventoPrestamo().getCodigo()), 0.0,
+                        com.saa.ejb.crd.service.ReversoMoraCancelacionService.ORIGEN_EVENTO,
+                        detalle.getEventoPrestamo().getCodigo(), "Cobro " + cobro.getCodigo());
+                lineasReversoDevengo.addAll(reversoMoraDelPrestamo.getLineas());
+                reversosMora.add(reversoMoraDelPrestamo);
             }
         }
 
@@ -3007,11 +3030,16 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
         // El asiento se fecha con la de AFECTACIÓN; fechaCorte (cobro.getFecha(), la de pago
         // real) sigue siendo la que clasifica la banda del capital arriba (haberDesdeEvento,
         // C5 — eso NO cambia) y la que usa calcularCapitalFuturoDelCobro.
-        return asientoContableService.generarAsiento(idEmpresa, TipoAsientos.CREDITOS, cobro.getFechaAfectacion(),
+        Asiento asientoDefinitivo = asientoContableService.generarAsiento(idEmpresa, TipoAsientos.CREDITOS, cobro.getFechaAfectacion(),
                 observacionEnriquecida(cobro, detalles, "Cobro crédito " + cobro.getCodigo()
                         + " - asiento definitivo"
                         + (cobro.getObservacion() != null ? ": " + cobro.getObservacion() : "")),
                 cobro.getUsuarioProceso(), lineas, Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR));
+        for (com.saa.ejb.crd.service.dto.ResultadoReversoMora reversoMora : reversosMora) {
+            reversoMoraCancelacionService.registrar(reversoMora, asientoDefinitivo.getCodigo(), cobro.getFechaAfectacion(),
+                    cobro.getUsuarioProceso());
+        }
+        return asientoDefinitivo;
     }
 
     /**

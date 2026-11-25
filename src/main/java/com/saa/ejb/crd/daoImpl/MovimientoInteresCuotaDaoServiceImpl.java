@@ -178,6 +178,109 @@ public class MovimientoInteresCuotaDaoServiceImpl extends EntityDaoImpl<Movimien
     }
 
     @Override
+    public double selectMoraContabilizadaPendienteDelPrestamo(Long idPrestamo, java.time.LocalDate fecha, Long excluirAcuerdo)
+            throws Throwable {
+        System.out.println("MovimientoInteresCuotaDaoServiceImpl.selectMoraContabilizadaPendienteDelPrestamo - préstamo: "
+            + idPrestamo + " - fecha: " + fecha + " - excluye acuerdo: " + excluirAcuerdo);
+        java.sql.Date limiteSig = java.sql.Date.valueOf(fecha.plusDays(1));
+        Query query = em.createNativeQuery(
+            " SELECT NVL((SELECT SUM(CASE WHEN m.MVICTPMV = 5 THEN m.MVICVLOR WHEN m.MVICTPMV = 6 THEN -m.MVICVLOR ELSE 0 END) "
+            + "            FROM CRD.MVIC m WHERE m.PRSTCDGO = :prestamo AND m.MVICCMPN = 2 AND m.MVICTPMV IN (5, 6) "
+            + "             AND NVL(m.MVICANUL, 0) = 0 AND m.MVICFCCT < :limiteSig), 0) "
+            + "      - NVL((SELECT SUM(NVL(g.PGPRMRPG, 0)) FROM CRD.PGPR g JOIN CRD.DTPR d ON d.DTPRCDGO = g.DTPRCDGO "
+            + "              WHERE d.PRSTCDGO = :prestamo AND NVL(g.PGPRANUL, 0) = 0 AND g.PGPRFCHA < :limiteSig), 0) "
+            + "      - NVL((SELECT SUM(NVL(c.DACCVLCN, 0)) FROM CRD.DACC c JOIN CRD.ACCN a ON a.ACCNCDGO = c.ACCNCDGO "
+            + "              WHERE a.PRSTCDGO = :prestamo AND a.ACCNESTD = 2 AND c.DACCCPTO = 3 AND a.ACCNFCHA < :limiteSig "
+            + "                AND (:excluir IS NULL OR a.ACCNCDGO <> :excluir)), 0) "
+            + " FROM DUAL");
+        query.setParameter("prestamo", idPrestamo);
+        query.setParameter("limiteSig", limiteSig);
+        query.setParameter("excluir", excluirAcuerdo);
+        Object valor = query.getSingleResult();
+        return valor != null ? ((Number) valor).doubleValue() : 0.0;
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public List<Object[]> selectMoraDelPrestamoPorCuota(Long idPrestamo, java.time.LocalDate fecha) throws Throwable {
+        System.out.println("MovimientoInteresCuotaDaoServiceImpl.selectMoraDelPrestamoPorCuota - préstamo: " + idPrestamo + " - fecha: " + fecha);
+        java.sql.Date limiteSig = java.sql.Date.valueOf(fecha.plusDays(1));
+        Query query = em.createNativeQuery(
+            " SELECT d.DTPRCDGO, d.DTPRFCVN, "
+            + "  NVL((SELECT SUM(CASE WHEN m.MVICTPMV = 5 THEN m.MVICVLOR WHEN m.MVICTPMV = 6 THEN -m.MVICVLOR ELSE 0 END) FROM CRD.MVIC m "
+            + "        WHERE m.DTPRCDGO = d.DTPRCDGO AND m.MVICCMPN = 2 AND m.MVICTPMV IN (5, 6) AND NVL(m.MVICANUL, 0) = 0 AND m.MVICFCCT < :limiteSig), 0), "
+            + "  NVL((SELECT SUM(NVL(g.PGPRMRPG, 0)) FROM CRD.PGPR g WHERE g.DTPRCDGO = d.DTPRCDGO AND NVL(g.PGPRANUL, 0) = 0 AND g.PGPRFCHA < :limiteSig), 0), "
+            + "  NVL((SELECT SUM(CASE WHEN m.MVICTPMV IN (1, 4) THEN m.MVICVLOR WHEN m.MVICTPMV IN (2, 3, 9, 10) THEN -m.MVICVLOR ELSE 0 END) FROM CRD.MVIC m "
+            + "        WHERE m.DTPRCDGO = d.DTPRCDGO AND m.MVICCMPN = 2 AND NVL(m.MVICANUL, 0) = 0 AND m.MVICFCCT < :limiteSig), 0) "
+            + " FROM CRD.DTPR d WHERE d.PRSTCDGO = :prestamo ORDER BY d.DTPRFCVN, d.DTPRCDGO");
+        query.setParameter("prestamo", idPrestamo);
+        query.setParameter("limiteSig", limiteSig);
+        List<Object[]> resultado = new java.util.ArrayList<Object[]>();
+        for (Object[] f : (List<Object[]>) query.getResultList()) {
+            java.time.LocalDate vence = null;
+            if (f[1] instanceof java.sql.Timestamp) {
+                vence = ((java.sql.Timestamp) f[1]).toLocalDateTime().toLocalDate();
+            } else if (f[1] instanceof java.sql.Date) {
+                vence = ((java.sql.Date) f[1]).toLocalDate();
+            }
+            resultado.add(new Object[]{ ((Number) f[0]).longValue(), vence, ((Number) f[2]).doubleValue(),
+                ((Number) f[3]).doubleValue(), ((Number) f[4]).doubleValue() });
+        }
+        return resultado;
+    }
+
+    @Override
+    public double selectMoraCondonadaDelPrestamo(Long idPrestamo, java.time.LocalDate fecha) throws Throwable {
+        Query query = em.createNativeQuery(
+            " SELECT NVL(SUM(NVL(c.DACCVLCN, 0)), 0) FROM CRD.DACC c JOIN CRD.ACCN a ON a.ACCNCDGO = c.ACCNCDGO "
+            + " WHERE a.PRSTCDGO = :prestamo AND a.ACCNESTD = 2 AND c.DACCCPTO = 3 AND a.ACCNFCHA < :limiteSig");
+        query.setParameter("prestamo", idPrestamo);
+        query.setParameter("limiteSig", java.sql.Date.valueOf(fecha.plusDays(1)));
+        Object valor = query.getSingleResult();
+        return valor != null ? ((Number) valor).doubleValue() : 0.0;
+    }
+
+    @Override
+    public boolean existeVigentePorOrigen(String origen, Long idOrigen) throws Throwable {
+        Long n = (Long) em.createQuery("select count(m) from MovimientoInteresCuota m where m.origen = :o and m.idOrigen = :i and m.anulado = 0")
+            .setParameter("o", origen).setParameter("i", idOrigen).getSingleResult();
+        return n != null && n.longValue() > 0L;
+    }
+
+    @Override
+    public int anularByOrigenYIdOrigen(String origen, Long idOrigen) throws Throwable {
+        return em.createQuery("update MovimientoInteresCuota m set m.anulado = 1 where m.origen = :o and m.idOrigen = :i and m.anulado = 0")
+            .setParameter("o", origen).setParameter("i", idOrigen).executeUpdate();
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public java.util.Map<Long, List<Object[]>> selectDevengoMoraDatadoPorCuotas(List<Long> idsCuota) throws Throwable {
+        System.out.println("MovimientoInteresCuotaDaoServiceImpl.selectDevengoMoraDatadoPorCuotas - cuotas: "
+            + (idsCuota != null ? idsCuota.size() : 0));
+        java.util.Map<Long, List<Object[]>> resultado = new java.util.HashMap<>();
+        if (idsCuota == null || idsCuota.isEmpty()) {
+            return resultado;
+        }
+        String jpql = "select m.idCuota, m.fechaContable,"
+            + " case when m.tipoMovimiento = 5 then m.valor else -m.valor end"
+            + " from MovimientoInteresCuota m"
+            + " where m.idCuota in :idsCuota and m.anulado = 0 and m.tipoMovimiento in (5, 6)"
+            + " order by m.idCuota, m.fechaContable";
+        for (int inicio = 0; inicio < idsCuota.size(); inicio += TAMANIO_BLOQUE) {
+            List<Long> bloque = idsCuota.subList(inicio, Math.min(inicio + TAMANIO_BLOQUE, idsCuota.size()));
+            Query query = em.createQuery(jpql);
+            query.setParameter("idsCuota", bloque);
+            for (Object[] fila : (List<Object[]>) query.getResultList()) {
+                Long idCuota = (Long) fila[0];
+                resultado.computeIfAbsent(idCuota, k -> new java.util.ArrayList<Object[]>())
+                    .add(new Object[]{ fila[1], Double.valueOf(((Number) fila[2]).doubleValue()) });
+            }
+        }
+        return resultado;
+    }
+
+    @Override
     public boolean existeAlgunoByCorrida(Long idCorrida) throws Throwable {
         System.out.println("MovimientoInteresCuotaDaoServiceImpl.existeAlgunoByCorrida - corrida: " + idCorrida);
         if (idCorrida == null) {

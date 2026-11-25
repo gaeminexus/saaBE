@@ -1090,11 +1090,11 @@ public class CierreCarteraDaoServiceImpl implements CierreCarteraDaoService {
                 + hasta + " - corte: " + corte + " - ancla: " + ancla);
         Query query = em.createNativeQuery(
                 " SELECT pr.TPPRCDGO, "
-                + "        SUM(CASE WHEN " + ModoCorteCartera.CANCELADO_TERMINADO_AL_CORTE_SQL
+                + "        SUM(GREATEST(CASE WHEN " + ModoCorteCartera.CANCELADO_TERMINADO_AL_CORTE_SQL
                 + "                 OR NVL(d.DTPRESTD,0) = " + EstadoCuotaPrestamo.CANCELADA_ANTICIPADA
                 + "                 THEN NVL(g.post,0) "
                 + "                 WHEN " + condonado(corte) + " THEN 0 "
-                + "                 ELSE GREATEST(NVL(d.DTPRINTR,0) - NVL(g.pre,0), 0) END) "
+                + "                 ELSE GREATEST(NVL(d.DTPRINTR,0) - NVL(g.pre,0), 0) END, NVL(g.post,0))) "
                 + " FROM   CRD.DTPR d "
                 + " JOIN   CRD.PRST p  ON p.PRSTCDGO = d.PRSTCDGO "
                 + " JOIN   CRD.PRDC pr ON pr.PRDCCDGO = p.PRDCCDGO "
@@ -1120,11 +1120,11 @@ public class CierreCarteraDaoServiceImpl implements CierreCarteraDaoService {
         System.out.println("Ingresa al metodo selectInteresPrimeraCuotaPorTipo - mes: " + inicioMes + " - corte: " + corte);
         Query query = em.createNativeQuery(
                 " SELECT pr.TPPRCDGO, "
-                + "        SUM(CASE WHEN " + ModoCorteCartera.CANCELADO_TERMINADO_AL_CORTE_SQL
+                + "        SUM(GREATEST(CASE WHEN " + ModoCorteCartera.CANCELADO_TERMINADO_AL_CORTE_SQL
                 + "                 OR NVL(d.DTPRESTD,0) = " + EstadoCuotaPrestamo.CANCELADA_ANTICIPADA
                 + "                 THEN NVL(g.post,0) "
                 + "                 WHEN " + condonado(corte) + " THEN 0 "
-                + "                 ELSE NVL(d.DTPRINTR,0) END) "
+                + "                 ELSE NVL(d.DTPRINTR,0) END, NVL(g.post,0))) "
                 + " FROM   CRD.DTPR d "
                 + " JOIN   CRD.PRST p  ON p.PRSTCDGO = d.PRSTCDGO "
                 + " JOIN   CRD.PRDC pr ON pr.PRDCCDGO = p.PRDCCDGO "

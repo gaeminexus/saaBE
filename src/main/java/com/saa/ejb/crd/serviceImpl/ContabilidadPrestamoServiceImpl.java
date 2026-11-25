@@ -103,6 +103,10 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
     @EJB
     private PagoPrestamoDaoService pagoPrestamoDaoService;
 
+    /** Lote 15 (D-195): reverso de la mora devengada y no cobrada de un préstamo que se cancela. */
+    @EJB
+    private com.saa.ejb.crd.service.ReversoMoraCancelacionService reversoMoraCancelacionService;
+
     @EJB
     private PrestamoDaoService prestamoDaoService;
 
@@ -877,6 +881,12 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
         lineas.addAll(devengoCompletoService.lineasReversoCuotasCanceladas(idEmpresa, evento.getPrestamo(), fechaCorte,
                 prefijo));
 
+        // Lote 15 (D-195): la mora devengada y no cobrada del préstamo que esta precancelación cancela (después de lo que el evento cobró: sus pagos ya están grabados).
+        com.saa.ejb.crd.service.dto.ResultadoReversoMora reversoMora = reversoMoraCancelacionService.calcular(idEmpresa,
+                evento.getPrestamo(), fechaCorte, pagos, 0.0, com.saa.ejb.crd.service.ReversoMoraCancelacionService.ORIGEN_EVENTO,
+                ctx.getIdEvento(), prefijo);
+        lineas.addAll(reversoMora.getLineas());
+
         String observacionBase = prefijo + (ctx.getObservacion() != null ? ": " + ctx.getObservacion() : "");
         String observacion = observacionConParticipeYPrestamos(evento.getPrestamo(), pagos, observacionBase,
                 ctx.getIdEntidadAportes());
@@ -893,6 +903,7 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
 
         System.out.println("  ✅ contabilizarPrecancelacion OK - Asiento: " + asiento.getCodigo()
                 + " - Evento: " + ctx.getIdEvento() + " - Monto: $" + totalDebe);
+        reversoMoraCancelacionService.registrar(reversoMora, asiento.getCodigo(), fechaAsiento, ctx.getUsuario());
 
         // ÍTEM 4 (gap cerrado 2026-10-05): reverso de la provisión de intereses por lo que esta
         // precancelación liquidó — CASO A únicamente (verificado en el guard de arriba): en
@@ -970,6 +981,12 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
         lineas.addAll(devengoCompletoService.lineasReversoCuotasCanceladas(idEmpresa, evento != null
                 ? evento.getPrestamo() : null, fechaCorte, prefijo));
 
+        // Lote 15 (D-195): reverso de la mora devengada y no cobrada del préstamo cancelado.
+        com.saa.ejb.crd.service.dto.ResultadoReversoMora reversoMora = reversoMoraCancelacionService.calcular(idEmpresa,
+                evento != null ? evento.getPrestamo() : null, fechaCorte, pagos, 0.0,
+                com.saa.ejb.crd.service.ReversoMoraCancelacionService.ORIGEN_EVENTO, ctx.getIdEvento(), prefijo);
+        lineas.addAll(reversoMora.getLineas());
+
         double sumaDebe = 0.0;
         double sumaHaber = 0.0;
         for (DetalleAsiento linea : lineas) {
@@ -989,6 +1006,7 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
                 observacion, ctx.getUsuario(), lineas, Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR));
         System.out.println("  ✅ contabilizarPrecancelacionConPrestamo OK - Asiento: " + asiento.getCodigo()
                 + " - Evento: " + ctx.getIdEvento() + " - Monto: $" + totalHaber);
+        reversoMoraCancelacionService.registrar(reversoMora, asiento.getCodigo(), fechaAsiento, ctx.getUsuario());
 
         // Reverso de la provisión de intereses (MVIC) por lo liquidado: mismo que CASO A.
         provisionInteresService.reversarPorPagos(pagos, idEmpresa, fechaAsiento, "PRECANCELACION",
@@ -1182,6 +1200,8 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
                         + eventoAnulado.getTipoOperacion() + ")"
                         + (eventoAnulado.getMotivoAnulacion() != null
                                 ? ": " + eventoAnulado.getMotivoAnulacion() : ""));
+        // Lote 15 (D-195): el reverso de mora que este evento registró en el libro se anula con él.
+        reversoMoraCancelacionService.anularPorEvento(eventoAnulado.getCodigo());
         System.out.println("  ↩️ Asiento " + eventoAnulado.getNumeroAsiento() + " reversado"
                 + " (evento " + eventoAnulado.getCodigo() + ")");
 
@@ -1787,6 +1807,12 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
         lineas.addAll(haberOriginal.values());
         lineas.addAll(lineasNoBanda);
 
+        // Lote 15 (D-195): la mora devengada y no cobrada del original que se cancela. La mora que el valor de sustitución SÍ cobra (desglose) no se reversa.
+        com.saa.ejb.crd.service.dto.ResultadoReversoMora reversoMora = reversoMoraCancelacionService.calcular(idEmpresa, original,
+                hoy, null, nvl(desglose.getMoraPendiente()), com.saa.ejb.crd.service.ReversoMoraCancelacionService.ORIGEN_SUSTITUCION,
+                original.getCodigo(), prefijo);
+        lineas.addAll(reversoMora.getLineas());
+
         double totalDebe = 0.0;
         double totalHaber = 0.0;
         for (DetalleAsiento linea : lineas) {
@@ -1802,6 +1828,7 @@ public class ContabilidadPrestamoServiceImpl implements ContabilidadPrestamoServ
 
         Asiento asiento = asientoContableService.generarAsiento(idEmpresa, TipoAsientos.CREDITOS, hoy, prefijo,
             usuario, lineas, Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR));
+        reversoMoraCancelacionService.registrar(reversoMora, asiento.getCodigo(), hoy, usuario);
         System.out.println("  ✅ contabilizarSustitucion OK - Asiento: " + asiento.getCodigo());
         return asiento.getCodigo();
     }
