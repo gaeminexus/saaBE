@@ -169,11 +169,11 @@ public class CierrePeriodoContableServiceImpl implements CierrePeriodoContableSe
 					controlProvisionInteresService.controlParaCierreContable(idEmpresa, corteMes);
 			if (control.isAplica() && !control.isCuadra() && !control.isAjusteRegistrado()) {
 				StringBuilder detalle = new StringBuilder();
-				for (com.saa.ejb.crd.service.dto.ResultadoControlProvision.Tipo t : control.getPorTipo()) {
-					if (!t.isCuadra()) {
-						detalle.append(detalle.length() > 0 ? "; " : "").append("tipo ").append(t.getIdTipoPrestamo()).append(": 1.4.02 ")
-								.append(t.getContable1402()).append(" vs 1.4.99.05 ").append(t.getContable149905());
-					}
+				for (String excepcion : control.getExcepciones()) {
+					detalle.append(detalle.length() > 0 ? "; " : "").append(excepcion);
+				}
+				if (detalle.length() == 0) {
+					detalle.append("1.4.02 ").append(control.getTotalContable1402()).append(" vs 1.4.99.05 ").append(control.getTotalContable149905());
 				}
 				throw new IncomeException("CIERRE_PROVISION_DESCUADRADA: no se puede cerrar el período contable " + mesTexto(anio, mes)
 						+ ": la 1.4.02 y la 1.4.99.05 de la cartera no cuadran (" + detalle + ") y no hay un ajuste de último recurso registrado."

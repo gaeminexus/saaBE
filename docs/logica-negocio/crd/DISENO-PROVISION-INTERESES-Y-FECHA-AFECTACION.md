@@ -354,3 +354,32 @@ Después del ④, `controlDia1` agrega a `controlProvision.dia1`, por tipo de pr
 **Idempotencia de `/prov/ajusteTopeMora` con un corte ya ajustado.** El ajuste solo BAJA: por cuota graba `max(0, saldo provisionado − tope de la cuota)`, y el saldo ya descuenta los tipo 10 grabados. Con el reparto nuevo, los topes de todas las cuotas que no son la última candidata del préstamo no cambian, y el de la última sube (recibe el sobrante): una segunda corrida del ajuste con el mismo corte da 0 en las cuotas que ya habían quedado en su tope viejo, así que **no mueve el sobrante ni repite lo ya grabado**; mueve solo la diferencia nueva (cuotas cuyo saldo siga por encima del tope nuevo). Los tipo 10 ya grabados siguen válidos: no hay que anularlos ni regrabarlos. El sobrante no lo sube el ajuste del tope; lo sube el ⑦ siguiente (que ahora provisiona hasta el tope repartido de la última cuota) o A1 con un MVIC 14 hasta el objetivo.
 
 **Prueba pedida por el cuadre (no ejecutada).** Con este código desplegado en la copia de trabajo: (1) correr el `391` v2 al 30-nov-2025, donde para cada préstamo la mora del libro (tope repartido, Σ por préstamo) debe ser igual a la mora contabilizada pendiente del préstamo, al centavo; (2) `POST /prov/ajusteLibroProvision` con `grabar=false` al 30-nov-2025: la mora del libro (la provisión de mora objetivo) debe igualar la mora de la 1.4.02 (66.064,49) y los 174,59 deben desaparecer; (3) comprobar que `sinRepartir` no trae préstamos (si trae, es mora contabilizada de un préstamo sin ninguna cuota donde colocarla) y que `/prov/ajusteTopeMora` con `grabar=false` sobre un corte ya ajustado devuelve 0 de ajuste.
+
+## Lote 24 — el control por CUENTA contable y A2 en modo DIFERENCIA
+
+Los dos salen de probar los lotes 16 a 22 en el reproceso (cierre de diciembre de 2025, corrida 165); la semilla A2 y el ajuste A1 al 30-nov salieron correctos.
+
+### 1. El control compara por cuenta, no por tipo (`ControlProvisionInteresService`)
+**Defecto.** El control del lote 22 comparaba la 1.4.99.05 de CADA tipo contra el saldo de su cuenta; en ASOPREP la provisión es UNA sola cuenta para Q, P y H, así que cada tipo recibía el saldo total y salían diferencias de un millón por tipo (bloqueaba encender `saa.cartera.ajusteUltimoRecurso`). Lo mismo pasaría con la 1.4.02 si dos tipos comparten cuenta.
+
+**Ahora** (`ResultadoControlProvision`):
+- **Por cuenta (`porCuenta`)**: cada cuenta contable de la 1.4.02 (línea `INTERES_ORDINARIO_POR_COBRAR` de la plantilla 17) y de la 1.4.99.05 (línea `PROVISION_INTERESES` de la 36) se lee UNA vez, y su saldo se compara contra Σ del libro de los tipos que la usan (1.4.02: Σ(11−12) + Σ(5−6); 1.4.99.05: saldo provisionado). Lleva los tipos que la usan.
+- **Por grupo de cuentas (`porGrupo`)** y **al total** (`totalContable1402`, `totalContable149905`, `difTotal`): la regla del contador, Σ 1.4.02 = Σ 1.4.99.05. Un grupo es el conjunto de tipos que comparten alguna cuenta (una cuenta para los tres tipos es un grupo; tres cuentas distintas son tres grupos).
+- **Por tipo (`porTipo`)**: solo el libro (devengo − provisión por interés y por mora), que sí es por tipo.
+- La previsualización proyecta lo que el cierre aún va a asentar con la misma agrupación (el Δ de cada tipo se suma a la cuenta que usa).
+- El bloqueo de `/prdo/cerrar` y el control del día 1 usan lo mismo: el bloqueo reporta las excepciones por cuenta, grupo y total; el día 1 compara, por grupo de cuentas, (1.4.02 − 1.4.99.05 al día 1) contra el devengo del ④ de los tipos del grupo.
+
+**El ajuste de último recurso asienta por cuenta.** Primero se corrige el libro por cuota (igual que antes). Después, para cada cuenta, el movimiento contable que falta es `Σ libro de sus tipos (ya corregido) − saldo contable`:
+- cuenta de un solo tipo: se asienta todo lo que falta (como en el lote 22);
+- cuenta COMPARTIDA: se asienta por tipo SOLO lo que el libro de cada tipo explica (lo que corrige el ajuste del libro, repartido según la corrección de cada tipo con las líneas de la plantilla de ese tipo). Lo demás es una diferencia solo contable, sin libro que la explique: NO se asienta y queda registrada como excepción por cuenta (cuenta, rol, tipos y valor), en la observación de la corrida y en las advertencias.
+
+### 2. A2 en modo DIFERENCIA — `POST /rest/prov/semillaDevengoInteres` con `"modo": "DIFERENCIA"`
+El default sigue siendo `"SEMILLA"` (sin cambios). En DIFERENCIA graba, con referencia a un asiento y sin asiento propio, **solo la diferencia por cuota** entre el interés devengado y no cobrado al corte (el objetivo) y el libro de devengo (Σ MVIC 11 − 12): un MVIC **11** si falta y un **12** si sobra. Origen `AJUSTE_LIBRO_DEVENGO_INTERES`, `idOrigen` = `MVICASNT` = la referencia, fecha contable = corte.
+- Usa el MISMO cálculo que el ajuste de último recurso (`deltasLibroDevengoInteresAlCorte`): una sola función para las dos.
+- Idempotente por referencia (si hay filas vigentes con ese origen, no graba y devuelve lo grabado con `yaGrabado = true`), previsualizable con `grabar = false` y anulable con `POST /rest/prov/semillaDevengoInteres/anular` (que ahora anula también este origen).
+- La respuesta trae, por tipo de préstamo, `valorAlta` (lo que falta, MVIC 11), `valorBaja` (lo que sobra, MVIC 12), `valor` (neto) y `cuotas`; y `totalAlta`, `totalBaja` y `total` (neto). El asiento de referencia debe existir y estar ACTIVO. No filtra las cuotas «ya alimentadas»: la diferencia es contra el libro entero.
+
+### Prueba (no ejecutada)
+1. Con el código desplegado en la copia, sobre la corrida 165 (cierre de diciembre de 2025) con `saa.cartera.ajusteUltimoRecurso` apagada: el control debe traer **una sola cuenta** de la 1.4.99.05 con sus tres tipos, sin diferencias de un millón por tipo.
+2. A2 en modo DIFERENCIA al 31-dic-2025 con referencia al asiento D207-2025-12-001 y `grabar = false`: el libro de devengo de interés es 1.131.164,59 y el objetivo 1.155.056,00 (lo que provisionó el ⑦), así que `total` debe ser **+23.891,41** (cuando hay cuotas que sobran, `totalAlta − totalBaja` da ese neto). Con `grabar = true`, repetir la llamada no duplica.
+3. Después de grabar: el control de diciembre (corrida 165) **por cuenta en 0** (cuenta 1.4.02, cuenta 1.4.99.05, el grupo y el total), y el libro de interés al 31-dic = **1.155.056,00**.

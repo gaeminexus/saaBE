@@ -15,6 +15,9 @@ public class ResultadoSemillaDevengoInteres implements Serializable {
         private Long idTipoPrestamo;
         private int cuotas;
         private double valor;
+        /** Solo modo DIFERENCIA: lo que falta (MVIC 11) y lo que sobra (MVIC 12) del tipo; {@code valor} es el neto (falta - sobra). */
+        private double valorAlta;
+        private double valorBaja;
 
         public Long getIdTipoPrestamo() { return idTipoPrestamo; }
         public void setIdTipoPrestamo(Long idTipoPrestamo) { this.idTipoPrestamo = idTipoPrestamo; }
@@ -22,8 +25,17 @@ public class ResultadoSemillaDevengoInteres implements Serializable {
         public void setCuotas(int cuotas) { this.cuotas = cuotas; }
         public double getValor() { return valor; }
         public void setValor(double valor) { this.valor = valor; }
+        public double getValorAlta() { return valorAlta; }
+        public void setValorAlta(double valorAlta) { this.valorAlta = valorAlta; }
+        public double getValorBaja() { return valorBaja; }
+        public void setValorBaja(double valorBaja) { this.valorBaja = valorBaja; }
     }
 
+    /** {@code SEMILLA} o {@code DIFERENCIA}. */
+    private String modo = "SEMILLA";
+    /** Solo DIFERENCIA: suma de lo que falta y de lo que sobra; el neto va en {@code total}. */
+    private double totalAlta;
+    private double totalBaja;
     private String corte;
     private Long idAsientoReferencia;
     private boolean grabado;
@@ -36,6 +48,12 @@ public class ResultadoSemillaDevengoInteres implements Serializable {
     private int cuotasYaAlimentadas;
     private List<String> advertencias = new ArrayList<String>();
 
+    public String getModo() { return modo; }
+    public void setModo(String modo) { this.modo = modo; }
+    public double getTotalAlta() { return totalAlta; }
+    public void setTotalAlta(double totalAlta) { this.totalAlta = totalAlta; }
+    public double getTotalBaja() { return totalBaja; }
+    public void setTotalBaja(double totalBaja) { this.totalBaja = totalBaja; }
     public String getCorte() { return corte; }
     public void setCorte(String corte) { this.corte = corte; }
     public Long getIdAsientoReferencia() { return idAsientoReferencia; }
