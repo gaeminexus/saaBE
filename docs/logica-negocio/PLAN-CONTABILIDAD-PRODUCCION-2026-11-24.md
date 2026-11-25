@@ -56,6 +56,17 @@ dueño, con la autorización del usuario.
      «objetivo(t) − objetivo(t−1)» recalculado hoy no hace.
 3. **`CK_ANCC_TPOO` pasa a 1..12** (④b = 11, ⑪ = 12), con script del pase.
 4. **Prueba 8:** SQL de medición por caso borde, reproducible a fecha pasada, con su resultado esperado (D5).
+5. **Medición del BE (24-11), decidida por el árbitro:**
+   - **Ancla:** CRCT no marca la corrida de arranque. Se usa la propiedad `saa.cartera.anclaArranque`, validada contra
+     una corrida EJECUTADA.
+   - **Lo asentado por ⑪:** se lee de `CNT.DTAS`, lado 1.4.02.xx, de los asientos ANCC subproceso 12 activos. El tipo
+     de préstamo sale de mapear cuenta → tipo con la plantilla.
+   - **Universo por fecha:** entran los estados 9 y 10, el mismo universo que la G48. El ⑦ no cambia.
+   - **Base de transición:** por propiedad, `saa.cartera.anticipadoBaseTransicion` = `TPPRCDGO:valor;…`, que da el
+     cuadre igual a su asiento manual. Si falta, el cierre falla; no hay cero por defecto.
+   - **Reversos en abono y precancelación:** solo para meses ya devengados por una corrida con
+     corte ≥ `devengoCompletoDesde`, y dentro del asiento del evento.
+   - **Condonación:** lo condonado ya va D gasto / H 1.4.02. Lo que se haga con ello es el punto 3.3(c).
 
 ## Lotes del BE (uno a la vez; no se despacha el siguiente sin commitear el anterior)
 
