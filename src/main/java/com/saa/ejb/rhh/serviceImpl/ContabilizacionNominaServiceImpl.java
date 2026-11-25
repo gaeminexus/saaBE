@@ -1603,37 +1603,28 @@ public class ContabilizacionNominaServiceImpl implements ContabilizacionNominaSe
                     + " plantilla defina todas las lineas que el periodo usa.");
         }
 
-        // Diferencia de centavos por redondeo: se ajusta contra la linea de cuadre.
-        DetallePlantilla plantillaCuadre = detallePlantillaDaoService.selectByPlantillaYAuxiliar(
+        // C45 / D-053 (lider, 9-nov-2026): la diferencia de centavos por redondeo va a su propia
+        // linea, la de redondeo de la plantilla (RhhLineaAsiento.REDONDEO_AJUSTES, cuenta 4.8.99.08
+        // GND POR AJUSTES). Antes se absorbia en la linea de cuadre (codigoLineaCuadre: sueldos por
+        // pagar, vacaciones por pagar, banco o liquidaciones por pagar), que entonces dejaba de ser
+        // lo que el rol o el banco dicen. codigoLineaCuadre queda solo para el mensaje.
+        DetallePlantilla lineaRedondeo = detallePlantillaDaoService.selectByPlantillaYAuxiliar(
                 resuelvePlantilla(codigoAlternoPlantilla, "cuadre",
                         configuracion.getEmpresa() != null ? configuracion.getEmpresa().getCodigo() : null),
-                codigoLineaCuadre);
-        if (plantillaCuadre == null) {
+                RhhLineaAsiento.REDONDEO_AJUSTES);
+        if (lineaRedondeo == null || lineaRedondeo.getPlanCuenta() == null) {
             throw new IncomeException("El asiento difiere en "
                     + RedondeoNomina.redondea(Double.valueOf(diferencia))
-                    + " por redondeo, pero la plantilla no define la linea de cuadre "
-                    + codigoLineaCuadre + " contra la que ajustarlo.");
+                    + " por redondeo (linea de cuadre " + codigoLineaCuadre + "), pero la plantilla "
+                    + codigoAlternoPlantilla + " no define la linea de redondeo "
+                    + RhhLineaAsiento.REDONDEO_AJUSTES + " (D-053: 4.8.99.08 GND POR AJUSTES). Corra"
+                    + " crd/sql/C45-03 antes de contabilizar.");
         }
-        String cuentaCuadre = plantillaCuadre.getPlanCuenta() != null
-                ? plantillaCuadre.getPlanCuenta().getCuentaContable() : null;
-        for (DetalleAsiento linea : lineas) {
-            if (cuentaCuadre != null && cuentaCuadre.equals(linea.getNumeroCuenta())) {
-                if (esDebe(plantillaCuadre)) {
-                    linea.setValorDebe(RedondeoNomina.redondea(Double.valueOf(
-                            linea.getValorDebe().doubleValue() - diferencia)));
-                } else {
-                    linea.setValorHaber(RedondeoNomina.redondea(Double.valueOf(
-                            linea.getValorHaber().doubleValue() + diferencia)));
-                }
-                System.out.println("Cuadre por redondeo de " + diferencia
-                        + " ajustado contra la linea " + codigoLineaCuadre + ".");
-                return;
-            }
-        }
-        throw new IncomeException("El asiento difiere en "
-                + RedondeoNomina.redondea(Double.valueOf(diferencia))
-                + " por redondeo, pero la linea de cuadre " + codigoLineaCuadre
-                + " no esta entre las lineas del asiento.");
+        // DEBE > HABER: falta haber, la linea de redondeo va al HABER; y al reves.
+        lineas.add(construyeLinea(lineaRedondeo,
+                RedondeoNomina.redondea(Double.valueOf(Math.abs(diferencia))), diferencia < 0D));
+        System.out.println("Cuadre por redondeo de " + RedondeoNomina.redondea(Double.valueOf(diferencia))
+                + " llevado a " + lineaRedondeo.getPlanCuenta().getCuentaContable() + " (D-053).");
     }
 
     // =====================================================================

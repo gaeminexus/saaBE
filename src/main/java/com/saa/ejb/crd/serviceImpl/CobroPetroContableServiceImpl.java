@@ -1256,8 +1256,10 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
         }
         totalOtrosAportes = redondear(totalOtrosAportes);
 
-        // H: devolución al partícipe del sobrante de su descuento (B8, DSSB destino 3) -> socios por pagar.
+        // H: devolución al partícipe del sobrante de su descuento (B8, DSSB destino 3) -> cuenta por pagar.
         // Línea 61 de la plantilla 21; si falta, se detiene con mensaje claro (nunca una cuenta escrita en el código).
+        // D-151: la línea 61 apunta a 2.3.01.15.04 DEVOLUCION POR COBRO EN EXCESO PARTICIPES (semilla
+        // crd/sql/C45-02, que también pasa el producto de pago del parámetro 4 a un grupo con esa cuenta).
         DetallePlantilla lineaDevolucion = null;
         if (devolucionTotal > 0.0) {
             lineaDevolucion = detallePlantillaDaoService.selectByPlantillaYAuxiliar(
@@ -1269,7 +1271,7 @@ public class CobroPetroContableServiceImpl implements CobroPetroContableService 
                         + devolucionTotal + " por devolver. Corra crd/sql/357 (semilla de la línea 61).");
             }
             lineas.add(lineaDesdePlantilla(lineaDevolucion, devolucionTotal,
-                    "Aplicación Petro/ARCH carga " + idCarga + " - devolución al partícipe (socios por pagar)"));
+                    "Aplicación Petro/ARCH carga " + idCarga + " - devolución al partícipe del descuento de más"));
             totalHaber += devolucionTotal;
         }
 

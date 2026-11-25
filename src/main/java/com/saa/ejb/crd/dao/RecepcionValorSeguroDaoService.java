@@ -61,4 +61,12 @@ public interface RecepcionValorSeguroDaoService extends EntityDao<RecepcionValor
      * @throws Throwable  : Excepcion
      */
     RecepcionValorSeguro selectParaActualizar(Long idRecepcion) throws Throwable;
+
+    /**
+     * C45 (DS-01) — recepciones VIGENTES (ni rechazadas ni anuladas) con referencia '9'/'09' de
+     * la misma entidad, tipo de aporte, cuenta bancaria, fecha y valor (± medio centavo): la
+     * clave compuesta que sustituye a la unicidad de la referencia cuando no hay número real.
+     */
+    List<RecepcionValorSeguro> selectSinReferenciaCoincidentes(Long idEntidad, Long idTipoAporte,
+            Long idCuentaBancaria, java.time.LocalDate fecha, Double valor) throws Throwable;
 }

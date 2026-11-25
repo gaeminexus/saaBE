@@ -97,4 +97,31 @@ public class RecepcionValorSeguroDaoServiceImpl extends EntityDaoImpl<RecepcionV
                 + " - recepcion: " + idRecepcion);
         return em.find(RecepcionValorSeguro.class, idRecepcion, LockModeType.PESSIMISTIC_WRITE);
     }
+
+    @Override
+    public List<RecepcionValorSeguro> selectSinReferenciaCoincidentes(Long idEntidad, Long idTipoAporte,
+            Long idCuentaBancaria, java.time.LocalDate fecha, Double valor) throws Throwable {
+        System.out.println("Ingresa al metodo selectSinReferenciaCoincidentes de RecepcionValorSeguro"
+                + " - entidad: " + idEntidad + " - tipo: " + idTipoAporte + " - fecha: " + fecha
+                + " - valor: " + valor);
+        Query query = em.createQuery(
+                " select r from RecepcionValorSeguro r " +
+                " where  r.entidad.codigo = :idEntidad " +
+                " and    r.tipoAporte.codigo = :idTipo " +
+                " and    r.cuentaBancaria.codigo = :idCuenta " +
+                " and    r.fecha = :fecha " +
+                " and    r.valor between :valorMin and :valorMax " +
+                " and    TRIM(r.referencia) in ('9', '09') " +
+                " and    (r.estado is null or r.estado not in (:rechazado, :anulado)) " +
+                " order by r.codigo");
+        query.setParameter("idEntidad", idEntidad);
+        query.setParameter("idTipo", idTipoAporte);
+        query.setParameter("idCuenta", idCuentaBancaria);
+        query.setParameter("fecha", fecha);
+        query.setParameter("valorMin", valor - 0.005);
+        query.setParameter("valorMax", valor + 0.005);
+        query.setParameter("rechazado", Long.valueOf(CrdEstadoRecepcionSeguro.RECHAZADO));
+        query.setParameter("anulado", Long.valueOf(CrdEstadoRecepcionSeguro.ANULADO));
+        return query.getResultList();
+    }
 }

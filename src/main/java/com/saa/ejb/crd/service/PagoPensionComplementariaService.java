@@ -241,6 +241,13 @@ public interface PagoPensionComplementariaService extends EntityService<PagoPens
     boolean volverAPendienteSiReversada(Long idPgpc, Long idOrden) throws Throwable;
 
     /**
+     * C45 — igual que {@link #volverAPendienteSiReversada(Long, Long)}, con la fecha de negocio del reverso: el
+     * contra-movimiento del aporte (APRT y PagoAporte.fechaContable) se fecha con ella y no con la de hoy. Con
+     * {@code fechaReverso} nula se usa la fecha de respuesta del banco de la orden y, si tampoco hay, hoy.
+     */
+    boolean volverAPendienteSiReversada(Long idPgpc, Long idOrden, java.time.LocalDate fechaReverso) throws Throwable;
+
+    /**
      * Historial de pagos de un jubilado, del más reciente al más antiguo.
      *
      * @throws Throwable {@code IncomeException} {@link #ERR_ENTIDAD_NO_ENCONTRADA} si no existe

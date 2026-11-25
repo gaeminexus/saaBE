@@ -173,6 +173,21 @@ public class RecepcionValorSeguroServiceImpl implements RecepcionValorSeguroServ
                         + " recepción " + enConflicto.get(0).getCodigo() + "; cada referencia debe ser"
                         + " única. Use '9' o '09' si la recepción no tiene un número de referencia real.");
             }
+        } else {
+            // C45 (DS-01): el '9'/'09' puede repetirse, pero no para el MISMO depósito (misma
+            // entidad, tipo de aporte, cuenta, fecha y valor en una recepción vigente): eso es el
+            // mismo dinero registrado dos veces. Un segundo depósito real idéntico se registra con
+            // el número de su comprobante.
+            List<RecepcionValorSeguro> mismoDeposito = recepcionValorSeguroDaoService
+                    .selectSinReferenciaCoincidentes(solicitud.getIdEntidad(), solicitud.getIdTipoAporte(),
+                            solicitud.getIdCuentaBancaria(), solicitud.getFecha(), valor);
+            if (mismoDeposito != null && !mismoDeposito.isEmpty()) {
+                throw new IncomeException("POSIBLE_COBRO_DUPLICADO: la recepción " + mismoDeposito.get(0).getCodigo()
+                        + " ya registra un depósito sin referencia del mismo partícipe, tipo de aporte, cuenta,"
+                        + " fecha " + solicitud.getFecha() + " y valor " + valor + ". Si es el mismo dinero, no lo"
+                        + " registre otra vez; si es un segundo depósito real, use el número de su comprobante"
+                        + " en lugar de '9'/'09'.");
+            }
         }
 
         Entidad entidad = entidadDaoService.find(new Entidad(), solicitud.getIdEntidad());
