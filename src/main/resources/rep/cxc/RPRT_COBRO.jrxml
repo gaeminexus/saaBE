@@ -19,13 +19,13 @@
 <jasperReport name="RPRT_COBRO" language="java" pageWidth="595" pageHeight="842" columnWidth="535" leftMargin="30" rightMargin="30" topMargin="20" bottomMargin="20" uuid="b3b64a6e-0760-debf-af46-d9a717648d14">
 
 	<style name="Reversado" mode="Opaque" backcolor="#FFC7CE"/>
-	<style name="EncabezadoSeccion" mode="Opaque" backcolor="#D1D1D1" fontName="Tahoma" fontSize="8.5" bold="true" hTextAlign="Left" vTextAlign="Middle"/>
-	<style name="Etiqueta" fontName="Tahoma" fontSize="8.5" bold="true" vTextAlign="Middle"/>
-	<style name="Valor" fontName="Tahoma" fontSize="8.5" vTextAlign="Middle"/>
+	<style name="EncabezadoSeccion" mode="Opaque" backcolor="#D1D1D1" fontSize="8.5" bold="true" hTextAlign="Left" vTextAlign="Middle"/>
+	<style name="Etiqueta" fontSize="8.5" bold="true" vTextAlign="Middle"/>
+	<style name="Valor" fontSize="8.5" vTextAlign="Middle"/>
 	<!-- Color condicional del estado: JasperReports no admite una expresión dinámica en el
 	     atributo forecolor de <element>, solo en un <conditionalStyle> con nombre a nivel de
 	     reporte (misma regla del comentario de cabecera — nada de estilos anónimos). -->
-	<style name="EstadoTexto" fontName="Tahoma" fontSize="8.5" bold="true" forecolor="#000000" vTextAlign="Middle">
+	<style name="EstadoTexto" fontSize="8.5" bold="true" forecolor="#000000" vTextAlign="Middle">
 		<conditionalStyle>
 			<conditionExpression><![CDATA["REVERSADO".equals($P{P_ESTADO})]]></conditionExpression>
 			<style forecolor="#C00000"/>
@@ -78,20 +78,20 @@
 	<title height="312" splitType="Stretch">
 
 		<element kind="textField" uuid="4f9c91ec-3f3a-2a42-0223-4d6074df40bf"
-				x="0" y="0" width="535" height="18" fontName="Tahoma" fontSize="12.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+				x="0" y="0" width="535" height="18" fontSize="12.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
 			<expression><![CDATA[$P{P_EMPRESA}]]></expression>
 		</element>
 		<element kind="staticText" uuid="36c8883a-a69f-6edb-e9b6-15dcd72f507e"
-				x="0" y="18" width="535" height="20" fontName="Tahoma" fontSize="14.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+				x="0" y="18" width="535" height="20" fontSize="14.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
 			<text><![CDATA[COMPROBANTE DE COBRO]]></text>
 		</element>
 
 		<element kind="textField" uuid="b243788a-6373-e23a-41de-a69ba4d95101"
-				x="0" y="40" width="267" height="13" fontName="Tahoma" fontSize="9.0" bold="true" vTextAlign="Middle">
+				x="0" y="40" width="267" height="13" fontSize="9.0" bold="true" vTextAlign="Middle">
 			<expression><![CDATA["Nº: " + $P{P_NUMERO_COBRO}]]></expression>
 		</element>
 		<element kind="textField" uuid="c800d926-9f3a-a365-1a92-eb2d9a28b038"
-				x="267" y="40" width="268" height="13" fontName="Tahoma" fontSize="9.0" hTextAlign="Right" vTextAlign="Middle">
+				x="267" y="40" width="268" height="13" fontSize="9.0" hTextAlign="Right" vTextAlign="Middle">
 			<expression><![CDATA["Fecha: " + $P{P_FECHA}]]></expression>
 		</element>
 
@@ -99,7 +99,7 @@
 
 		<!-- Aviso de reversado (criterio §2.2.1: tiene que decirlo de forma visible) -->
 		<element kind="staticText" uuid="a6a26d31-5704-4ab6-219a-3c65a95816c2" style="Reversado"
-				x="0" y="62" width="535" height="16" forecolor="#C00000" fontName="Tahoma" fontSize="10.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+				x="0" y="62" width="535" height="16" forecolor="#C00000" fontSize="10.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
 			<printWhenExpression><![CDATA["REVERSADO".equals($P{P_ESTADO})]]></printWhenExpression>
 			<text><![CDATA[*** ESTE COBRO FUE REVERSADO / ANULADO ***]]></text>
 		</element>
@@ -211,7 +211,7 @@
 
 	<pageFooter height="16" splitType="Stretch">
 		<element kind="textField" uuid="41147abb-85cc-9ea8-f0ac-271595fc2f50"
-				x="0" y="0" width="535" height="13" fontName="Tahoma" fontSize="7.0" italic="true" pattern="'Generado el' dd/MM/yyyy HH:mm">
+				x="0" y="0" width="535" height="13" fontSize="7.0" italic="true" pattern="'Generado el' dd/MM/yyyy HH:mm">
 			<expression><![CDATA[new java.util.Date()]]></expression>
 		</element>
 	</pageFooter>

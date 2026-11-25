@@ -60,9 +60,9 @@ public class CierreCajaDaoServiceImpl extends EntityDaoImpl<CierreCaja> implemen
 	public List<CierreCaja> selectByUsuarioCaja(Long idCierre, Long idUsuarioCaja) throws Throwable {
 		System.out.println("Ingresa al metodo selectByUsuarioCaja con id de cierre: " + idCierre + ", id de usuario por caja: " + idUsuarioCaja);
 		Query query = em.createQuery(" select b " +
-									 " from   CierreCaja " +
-									 " where  usuarioPorCaja.codigo = :usuarioCaja " +
-									 "        and codigo > :codigo");
+									 " from   CierreCaja b " +
+									 " where  b.usuarioPorCaja.codigo = :usuarioCaja " +
+									 "        and b.codigo > :codigo");
 		query.setParameter("usuarioCaja", idUsuarioCaja);
 		query.setParameter("codigo", idCierre);
 		return query.getResultList();

@@ -1508,6 +1508,12 @@ public class GeneracionOrdenPagoServiceImpl implements GeneracionOrdenPagoServic
 
         // Reclasifica el estado de la orden con el DRPG ya actualizado por sincronizaUnDetalle.
         detalles = detalleOrdenPagoNominaDaoService.selectByOrdenPago(idOrdenPago);
+        // VCN #14: sincronizaUnDetalle corrio en otra transaccion (REQUIRES_NEW); las entidades ya cargadas en este contexto pueden traer el estado viejo.
+        for (DetalleOrdenPagoNomina d : detalles) {
+            if (em.contains(d)) {
+                em.refresh(d);
+            }
+        }
         boolean algunoPendiente = false;
         boolean algunoRechazado = false;
         for (DetalleOrdenPagoNomina detalle : detalles) {

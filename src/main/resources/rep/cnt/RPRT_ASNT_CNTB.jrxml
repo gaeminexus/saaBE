@@ -194,7 +194,7 @@ ORDER BY DT.DTASHBRR, DT.DTASCNTA]]></query>
 		<expression><![CDATA[$F{ASNTNMRO}]]></expression>
 		<groupHeader>
 			<band height="126" splitType="Stretch">
-				<element kind="staticText" uuid="6bfc8c13-d848-4a4b-8bd9-1746ca187654" mode="Opaque" x="0" y="113" width="58" height="13" backcolor="#D1D1D1" fontName="Tahoma" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+				<element kind="staticText" uuid="6bfc8c13-d848-4a4b-8bd9-1746ca187654" mode="Opaque" x="0" y="113" width="58" height="13" backcolor="#D1D1D1" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
 					<text><![CDATA[CUENTA]]></text>
 					<property name="com.jaspersoft.studio.unit.width" value="px"/>
 					<box>
@@ -205,7 +205,7 @@ ORDER BY DT.DTASHBRR, DT.DTASCNTA]]></query>
 						<rightPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
 					</box>
 				</element>
-				<element kind="staticText" uuid="4987aa1b-dd8c-4b1d-b3ca-81cb054dc23f" mode="Opaque" x="58" y="113" width="186" height="13" backcolor="#D1D1D1" fontName="Tahoma" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+				<element kind="staticText" uuid="4987aa1b-dd8c-4b1d-b3ca-81cb054dc23f" mode="Opaque" x="58" y="113" width="186" height="13" backcolor="#D1D1D1" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
 					<text><![CDATA[NOMBRE]]></text>
 					<property name="com.jaspersoft.studio.unit.width" value="px"/>
 					<property name="com.jaspersoft.studio.unit.x" value="px"/>
@@ -217,7 +217,7 @@ ORDER BY DT.DTASHBRR, DT.DTASCNTA]]></query>
 						<rightPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
 					</box>
 				</element>
-				<element kind="staticText" uuid="8b6b2d42-79f4-46b0-9af7-049056ac41fe" mode="Opaque" x="244" y="113" width="52" height="13" backcolor="#D1D1D1" fontName="Tahoma" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+				<element kind="staticText" uuid="8b6b2d42-79f4-46b0-9af7-049056ac41fe" mode="Opaque" x="244" y="113" width="52" height="13" backcolor="#D1D1D1" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
 					<text><![CDATA[DEBE]]></text>
 					<property name="com.jaspersoft.studio.unit.x" value="px"/>
 					<property name="com.jaspersoft.studio.unit.width" value="px"/>
@@ -229,7 +229,7 @@ ORDER BY DT.DTASHBRR, DT.DTASCNTA]]></query>
 						<rightPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
 					</box>
 				</element>
-				<element kind="staticText" uuid="d3440b81-bf84-4fc2-94cc-32f0f8f2e58b" mode="Opaque" x="296" y="113" width="52" height="13" backcolor="#D1D1D1" fontName="Tahoma" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+				<element kind="staticText" uuid="d3440b81-bf84-4fc2-94cc-32f0f8f2e58b" mode="Opaque" x="296" y="113" width="52" height="13" backcolor="#D1D1D1" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
 					<text><![CDATA[HABER]]></text>
 					<property name="com.jaspersoft.studio.unit.x" value="px"/>
 					<property name="com.jaspersoft.studio.unit.width" value="px"/>
@@ -241,52 +241,52 @@ ORDER BY DT.DTASHBRR, DT.DTASCNTA]]></query>
 						<rightPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
 					</box>
 				</element>
-				<element kind="staticText" uuid="e434315e-e2ae-4abd-b968-dd19f8b83373" x="0" y="11" width="57" height="15" fontName="Tahoma" fontSize="8.0" bold="true">
+				<element kind="staticText" uuid="e434315e-e2ae-4abd-b968-dd19f8b83373" x="0" y="11" width="57" height="15" fontSize="8.0" bold="true">
 					<text><![CDATA[NUMERO:]]></text>
 				</element>
-				<element kind="staticText" uuid="ba6630d3-1812-46a4-a249-fc2922156111" x="378" y="13" width="76" height="15" fontName="Tahoma" fontSize="8.0" bold="true">
+				<element kind="staticText" uuid="ba6630d3-1812-46a4-a249-fc2922156111" x="378" y="13" width="76" height="15" fontSize="8.0" bold="true">
 					<text><![CDATA[FECHA INGRESO:]]></text>
 				</element>
-				<element kind="textField" uuid="4b42616a-5849-4883-a6bc-a56033193749" x="58" y="42" width="70" height="15" fontName="Tahoma" fontSize="8.0" blankWhenNull="true">
+				<element kind="textField" uuid="4b42616a-5849-4883-a6bc-a56033193749" x="58" y="42" width="70" height="15" fontSize="8.0" blankWhenNull="true">
 					<expression><![CDATA[$F{ESTADO}]]></expression>
 				</element>
-				<element kind="staticText" uuid="e3ee11b1-c2f3-4b79-9358-0ef835d8afbd" x="0" y="42" width="43" height="15" fontName="Tahoma" fontSize="8.0" bold="true">
+				<element kind="staticText" uuid="e3ee11b1-c2f3-4b79-9358-0ef835d8afbd" x="0" y="42" width="43" height="15" fontSize="8.0" bold="true">
 					<text><![CDATA[ESTADO:]]></text>
 				</element>
-				<element kind="textField" uuid="456795c0-ed09-4e65-82e0-54e907f508fc" x="58" y="11" width="99" height="15" fontName="Tahoma" fontSize="8.0">
+				<element kind="textField" uuid="456795c0-ed09-4e65-82e0-54e907f508fc" x="58" y="11" width="99" height="15" fontSize="8.0">
 					<expression><![CDATA[$F{ASNTNMAL}]]></expression>
 				</element>
-				<element kind="textField" uuid="c8530445-11b2-4899-b3f1-ee5a76d53bdf" x="453" y="27" width="79" height="15" fontName="Tahoma" fontSize="8.0" pattern="dd/MM/yyyy" blankWhenNull="true">
+				<element kind="textField" uuid="c8530445-11b2-4899-b3f1-ee5a76d53bdf" x="453" y="27" width="79" height="15" fontSize="8.0" pattern="dd/MM/yyyy" blankWhenNull="true">
 					<expression><![CDATA[$F{ASNTFCHA}]]></expression>
 				</element>
-				<element kind="staticText" uuid="158b4150-d3c5-4a7c-b982-6a427afb4470" x="378" y="43" width="43" height="13" fontName="Tahoma" fontSize="8.0" bold="true">
+				<element kind="staticText" uuid="158b4150-d3c5-4a7c-b982-6a427afb4470" x="378" y="43" width="43" height="13" fontSize="8.0" bold="true">
 					<text><![CDATA[USUARIO:]]></text>
 					<property name="com.jaspersoft.studio.unit.y" value="pixel"/>
 					<property name="com.jaspersoft.studio.unit.height" value="px"/>
 				</element>
-				<element kind="textField" uuid="6720d562-cbbe-4e61-8b52-8a27d9782e83" x="453" y="43" width="79" height="13" fontName="Tahoma" fontSize="8.0" blankWhenNull="true">
+				<element kind="textField" uuid="6720d562-cbbe-4e61-8b52-8a27d9782e83" x="453" y="43" width="79" height="13" fontSize="8.0" blankWhenNull="true">
 					<expression><![CDATA[$F{ASNTUSRO}]]></expression>
 					<property name="com.jaspersoft.studio.unit.height" value="px"/>
 				</element>
-				<element kind="staticText" uuid="b0d36ca5-71c7-4f84-929d-f4a6801eb328" x="0" y="58" width="76" height="15" fontName="Tahoma" fontSize="8.0" bold="true">
+				<element kind="staticText" uuid="b0d36ca5-71c7-4f84-929d-f4a6801eb328" x="0" y="58" width="76" height="15" fontSize="8.0" bold="true">
 					<text><![CDATA[OBSERVACIONES:]]></text>
 				</element>
-				<element kind="textField" uuid="576c88a7-35b7-4257-8fd5-8e4e1cc9c52b" x="98" y="56" width="437" height="44" fontName="Tahoma" fontSize="7.0" blankWhenNull="true">
+				<element kind="textField" uuid="576c88a7-35b7-4257-8fd5-8e4e1cc9c52b" x="98" y="56" width="437" height="44" fontSize="7.0" blankWhenNull="true">
 					<expression><![CDATA[$F{OBSERVACION}]]></expression>
 				</element>
-				<element kind="textField" uuid="a8669c04-8a0f-459f-836e-3fe8fff3d9b0" x="57" y="27" width="100" height="15" fontName="Tahoma" fontSize="8.0" blankWhenNull="true" vTextAlign="Top">
+				<element kind="textField" uuid="a8669c04-8a0f-459f-836e-3fe8fff3d9b0" x="57" y="27" width="100" height="15" fontSize="8.0" blankWhenNull="true" vTextAlign="Top">
 					<expression><![CDATA[$F{NR}]]></expression>
 				</element>
-				<element kind="staticText" uuid="36557eac-6cec-49a2-868a-5178ea68b7b4" x="0" y="27" width="59" height="15" fontName="Tahoma" fontSize="8.0" bold="true">
+				<element kind="staticText" uuid="36557eac-6cec-49a2-868a-5178ea68b7b4" x="0" y="27" width="59" height="15" fontSize="8.0" bold="true">
 					<text><![CDATA[REVERSADO:]]></text>
 				</element>
-				<element kind="staticText" uuid="c7219ba6-0aa9-4a94-8fb4-b5d035e2a98e" x="378" y="28" width="76" height="15" fontName="Tahoma" fontSize="8.0" bold="true">
+				<element kind="staticText" uuid="c7219ba6-0aa9-4a94-8fb4-b5d035e2a98e" x="378" y="28" width="76" height="15" fontSize="8.0" bold="true">
 					<text><![CDATA[FECHA ASIENTO:]]></text>
 				</element>
-				<element kind="textField" uuid="aac5d8e8-1004-41be-bb0f-ed37cfa3feea" x="453" y="13" width="79" height="15" fontName="Tahoma" fontSize="8.0" pattern="dd/MM/yyyy" blankWhenNull="true">
+				<element kind="textField" uuid="aac5d8e8-1004-41be-bb0f-ed37cfa3feea" x="453" y="13" width="79" height="15" fontSize="8.0" pattern="dd/MM/yyyy" blankWhenNull="true">
 					<expression><![CDATA[$F{ASNTFCPR}]]></expression>
 				</element>
-				<element kind="staticText" uuid="6d656206-e5ee-441e-9db6-9018a7a3d27b" mode="Opaque" x="0" y="100" width="535" height="13" backcolor="#D1D1D1" fontName="Tahoma" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+				<element kind="staticText" uuid="6d656206-e5ee-441e-9db6-9018a7a3d27b" mode="Opaque" x="0" y="100" width="535" height="13" backcolor="#D1D1D1" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
 					<text><![CDATA[DETALLE DEL ASIENTO]]></text>
 					<box>
 						<pen lineWidth="0.25"/>
@@ -296,7 +296,7 @@ ORDER BY DT.DTASHBRR, DT.DTASCNTA]]></query>
 						<rightPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
 					</box>
 				</element>
-				<element kind="staticText" uuid="6b6f9411-c8dc-418b-ab46-90d729778885" mode="Opaque" x="348" y="113" width="187" height="13" backcolor="#D1D1D1" fontName="Tahoma" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+				<element kind="staticText" uuid="6b6f9411-c8dc-418b-ab46-90d729778885" mode="Opaque" x="348" y="113" width="187" height="13" backcolor="#D1D1D1" fontSize="8.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
 					<text><![CDATA[DESCRIPCION]]></text>
 					<property name="com.jaspersoft.studio.unit.width" value="px"/>
 					<property name="com.jaspersoft.studio.unit.x" value="px"/>
@@ -312,7 +312,7 @@ ORDER BY DT.DTASHBRR, DT.DTASCNTA]]></query>
 		</groupHeader>
 		<groupFooter>
 			<band height="180" splitType="Stretch">
-				<element kind="staticText" uuid="8810504a-092d-402d-97d0-9e07348da1a3" x="73" y="160" width="100" height="20" fontName="Tahoma" fontSize="8.0" hTextAlign="Center">
+				<element kind="staticText" uuid="8810504a-092d-402d-97d0-9e07348da1a3" x="73" y="160" width="100" height="20" fontSize="8.0" hTextAlign="Center">
 					<text><![CDATA[Elaborado Por:]]></text>
 				</element>
 				<element kind="line" uuid="e8c4ff1f-80ec-4b47-ae6e-c3b8232c38eb" x="73" y="158" width="100" height="1"/>
@@ -330,12 +330,12 @@ ORDER BY DT.DTASHBRR, DT.DTASCNTA]]></query>
 					<property name="com.jaspersoft.studio.unit.x" value="px"/>
 					<box rightPadding="5"/>
 				</element>
-				<element kind="staticText" uuid="5a1026eb-c1a3-4e6a-8299-9eec3b69e58d" x="375" y="160" width="100" height="20" fontName="Tahoma" fontSize="8.0" hTextAlign="Center">
+				<element kind="staticText" uuid="5a1026eb-c1a3-4e6a-8299-9eec3b69e58d" x="375" y="160" width="100" height="20" fontSize="8.0" hTextAlign="Center">
 					<text><![CDATA[Autorizado Por:]]></text>
 				</element>
 				<element kind="line" uuid="5be81a7f-1c35-4bac-b5f4-d53b1977887f" x="0" y="10" width="535" height="1"/>
 				<element kind="line" uuid="65607863-7a3a-414c-823c-207c6a00bda1" x="0" y="25" width="535" height="1"/>
-				<element kind="staticText" uuid="ea8e9910-6911-4d4a-b442-00157b56fe2f" x="227" y="160" width="100" height="20" fontName="Tahoma" fontSize="8.0" hTextAlign="Center">
+				<element kind="staticText" uuid="ea8e9910-6911-4d4a-b442-00157b56fe2f" x="227" y="160" width="100" height="20" fontSize="8.0" hTextAlign="Center">
 					<text><![CDATA[Revisado Por:]]></text>
 				</element>
 				<element kind="line" uuid="8d9fc10f-b22f-46b0-afb1-b3970725fad2" x="227" y="158" width="100" height="1"/>
@@ -365,17 +365,17 @@ ORDER BY DT.DTASHBRR, DT.DTASCNTA]]></query>
 		<element kind="textField" uuid="9c4f36aa-c093-4c1e-be22-5db9ea3a745d" x="460" y="5" width="51" height="15" fontSize="8.0" hTextAlign="Right">
 			<expression><![CDATA["Página "+$V{PAGE_NUMBER}+" de"]]></expression>
 		</element>
-		<element kind="textField" uuid="1bef441c-9276-4705-88cb-f73fdeb52380" x="268" y="20" width="122" height="20" fontName="Tahoma" fontSize="14.0">
+		<element kind="textField" uuid="1bef441c-9276-4705-88cb-f73fdeb52380" x="268" y="20" width="122" height="20" fontSize="14.0">
 			<expression><![CDATA[$F{PLNTNMBR}]]></expression>
 			<box leftPadding="5"/>
 		</element>
-		<element kind="staticText" uuid="d7f3080e-993d-46e2-b589-f38e5487601f" x="130" y="20" width="138" height="20" fontName="Tahoma" fontSize="14.0" bold="true" hTextAlign="Center">
+		<element kind="staticText" uuid="d7f3080e-993d-46e2-b589-f38e5487601f" x="130" y="20" width="138" height="20" fontSize="14.0" bold="true" hTextAlign="Center">
 			<text><![CDATA[TIPO DE ASIENTO]]></text>
 		</element>
 	</pageHeader>
 	<detail>
 		<band height="12" splitType="Stretch">
-			<element kind="textField" uuid="82d793c6-052f-43b0-b781-ca10b2e68b53" x="0" y="0" width="58" height="12" fontName="Tahoma" fontSize="6.0" hTextAlign="Left" vTextAlign="Middle">
+			<element kind="textField" uuid="82d793c6-052f-43b0-b781-ca10b2e68b53" x="0" y="0" width="58" height="12" fontSize="6.0" hTextAlign="Left" vTextAlign="Middle">
 				<expression><![CDATA[$F{DTASCNTA}]]></expression>
 				<box leftPadding="5">
 					<pen lineWidth="0.25"/>
@@ -385,7 +385,7 @@ ORDER BY DT.DTASHBRR, DT.DTASCNTA]]></query>
 					<rightPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
 				</box>
 			</element>
-			<element kind="textField" uuid="63575668-d6b6-4db9-86de-7ab3e769cadb" x="58" y="0" width="186" height="12" fontName="Tahoma" fontSize="6.0" hTextAlign="Left" vTextAlign="Middle">
+			<element kind="textField" uuid="63575668-d6b6-4db9-86de-7ab3e769cadb" x="58" y="0" width="186" height="12" fontSize="6.0" hTextAlign="Left" vTextAlign="Middle">
 				<expression><![CDATA[(
   ($F{DTASDBEE} != null && $F{DTASDBEE}.compareTo(java.math.BigDecimal.ZERO) > 0)
     ? String.format("%2s%s", "", $F{DTASNMCT})
@@ -406,7 +406,7 @@ ORDER BY DT.DTASHBRR, DT.DTASCNTA]]></query>
 					<rightPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
 				</box>
 			</element>
-			<element kind="textField" uuid="7b616551-02fe-4c50-b768-767363ff346f" x="244" y="0" width="52" height="12" fontName="Tahoma" fontSize="6.0" pattern="#,##0.00;(-#,##0.00)" hTextAlign="Right" vTextAlign="Middle">
+			<element kind="textField" uuid="7b616551-02fe-4c50-b768-767363ff346f" x="244" y="0" width="52" height="12" fontSize="6.0" pattern="#,##0.00;(-#,##0.00)" hTextAlign="Right" vTextAlign="Middle">
 				<expression><![CDATA[$F{DTASDBEE}]]></expression>
 				<property name="com.jaspersoft.studio.unit.x" value="px"/>
 				<box rightPadding="5">
@@ -417,7 +417,7 @@ ORDER BY DT.DTASHBRR, DT.DTASCNTA]]></query>
 					<rightPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
 				</box>
 			</element>
-			<element kind="textField" uuid="a4ec943f-92d3-4e86-8e3f-9e403db73897" x="296" y="0" width="52" height="12" fontName="Tahoma" fontSize="6.0" pattern="#,##0.00;(-#,##0.00)" hTextAlign="Right" vTextAlign="Middle">
+			<element kind="textField" uuid="a4ec943f-92d3-4e86-8e3f-9e403db73897" x="296" y="0" width="52" height="12" fontSize="6.0" pattern="#,##0.00;(-#,##0.00)" hTextAlign="Right" vTextAlign="Middle">
 				<expression><![CDATA[$F{DTASHBRR}]]></expression>
 				<property name="com.jaspersoft.studio.unit.x" value="px"/>
 				<box rightPadding="5">
@@ -428,7 +428,7 @@ ORDER BY DT.DTASHBRR, DT.DTASCNTA]]></query>
 					<rightPen lineWidth="0.25" lineStyle="Solid" lineColor="#000000"/>
 				</box>
 			</element>
-			<element kind="textField" uuid="acf51b0b-a8f8-454f-8225-fedb93b82637" x="348" y="0" width="187" height="12" fontName="Tahoma" fontSize="6.0" hTextAlign="Left" vTextAlign="Middle">
+			<element kind="textField" uuid="acf51b0b-a8f8-454f-8225-fedb93b82637" x="348" y="0" width="187" height="12" fontSize="6.0" hTextAlign="Left" vTextAlign="Middle">
 				<expression><![CDATA[$F{DTASDSCR}.toUpperCase()]]></expression>
 				<property name="com.jaspersoft.studio.unit.width" value="px"/>
 				<property name="com.jaspersoft.studio.unit.x" value="px"/>

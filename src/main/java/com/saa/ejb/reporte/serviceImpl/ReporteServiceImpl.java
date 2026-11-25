@@ -195,12 +195,8 @@ public class ReporteServiceImpl implements ReporteService {
                 ClassLoader originalCL = Thread.currentThread().getContextClassLoader();
                 Thread.currentThread().setContextClassLoader(getClass().getClassLoader());
                 try {
-                    // Forzar Janino como compilador: JRJdtCompiler falla en WildFly
-                    // por aislamiento de classloaders. JRJaninoCompiler no tiene esa dependencia.
-                    System.setProperty(
-                        net.sf.jasperreports.engine.design.JRCompiler.COMPILER_PREFIX + "java",
-                        "net.sf.jasperreports.engine.design.JRJaninoCompiler"
-                    );
+                    // VCN #25(a): ya no se fuerza JRJaninoCompiler: en JasperReports 7.0.3 no existe y, de todos modos, dentro de WildFly no hay compilacion
+                    // que funcione (el .jasper se produce fuera, con compilar-jasper.bat; ver CLAUDE.md, seccion Reportes). Este camino es solo un respaldo.
                     jasperReport = net.sf.jasperreports.engine.JasperCompileManager.compileReport(jrxmlStream);
                 } finally {
                     Thread.currentThread().setContextClassLoader(originalCL);

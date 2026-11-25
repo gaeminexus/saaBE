@@ -155,6 +155,18 @@ public class ContratoEmpleadoServiceImpl implements ContratoEmpleadoService {
 			if (contratoEmpleado.getFechaRegistro() == null) {
 				contratoEmpleado.setFechaRegistro(LocalDate.now());
 			}
+			// VCN #23: las banderas que decide la nomina (aporte IESS, derecho a decimo cuarto, retencion en la fuente) nacen NULAS desde la ficha
+			// y la nomina trata el nulo como «N» (no aporta, no paga decimo, no retiene) sin avisar. Una alta sin ellas toma el valor de un empleado en
+			// relacion de dependencia («S»); un contrato de servicios profesionales se manda con «N» desde la pantalla.
+			if (esBlanco(contratoEmpleado.getAportaIess())) {
+				contratoEmpleado.setAportaIess("S");
+			}
+			if (esBlanco(contratoEmpleado.getDerechoDecimoCuarto())) {
+				contratoEmpleado.setDerechoDecimoCuarto("S");
+			}
+			if (esBlanco(contratoEmpleado.getRetieneFuente())) {
+				contratoEmpleado.setRetieneFuente("S");
+			}
 		}
 
 		contratoEmpleado = contratoEmpleadoDaoService.save(contratoEmpleado, contratoEmpleado.getCodigo());
@@ -162,6 +174,15 @@ public class ContratoEmpleadoServiceImpl implements ContratoEmpleadoService {
 		if (esActualizacion) {
 			generaNovedadesDelCambio(contratoEmpleado, vigenciaCambio, anteriorRelacion, anteriorSectorial,
 					anteriorJornada, anteriorDias, anteriorSalario);
+		} else {
+			// VCN #16: el aviso de entrada al IESS nunca se generaba (generarAvisoEntrada no tenia llamador). Falla sin ruido: guardar el contrato no
+			// puede romperse por el catalogo de plazos; el aviso que no se creo lo reclama despues cerrarPeriodo.
+			try {
+				novedadIessService.generarAvisoEntrada(contratoEmpleado.getCodigo(), contratoEmpleado.getUsuarioRegistro());
+			} catch (Throwable e) {
+				System.out.println("Aviso: no se pudo generar el aviso de entrada del contrato "
+						+ contratoEmpleado.getCodigo() + ": " + e.getMessage());
+			}
 		}
 		return contratoEmpleado;
 	}

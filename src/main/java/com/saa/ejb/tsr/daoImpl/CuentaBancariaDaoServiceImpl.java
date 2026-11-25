@@ -69,8 +69,8 @@ public class CuentaBancariaDaoServiceImpl extends EntityDaoImpl<CuentaBancaria> 
 		System.out.println("Ingresa al recuperaCuentaContable con id: " + idCuenta);
 		PlanCuenta planCuenta = new PlanCuenta();
 		Query query = em.createQuery(" select b " +
-									 " from    CuentaBancaria " +
-									 " where   codigo = :codigo");
+									 " from    CuentaBancaria b " +
+									 " where   b.codigo = :codigo");
 		query.setParameter("codigo", idCuenta);
 		CuentaBancaria cuentaBancaria = (CuentaBancaria)query.getSingleResult();
 		planCuenta = cuentaBancaria.getPlanCuenta();
@@ -118,19 +118,6 @@ public class CuentaBancariaDaoServiceImpl extends EntityDaoImpl<CuentaBancaria> 
 		query.setParameter("numeroCuenta", numeroCuenta);
 		query.setParameter("estado", estado);
 		return query.getResultList();		
-	}
-
-	/* (non-Javadoc)
-	 * @see com.compuseg.income.tesoreria.ejb.dao.CuentaBancariaDaoService#selectBancoNumeroByIdCuenta(java.lang.Long)
-	 */
-	@SuppressWarnings("unchecked")
-	public List<CuentaBancaria> selectBancoNumeroByIdCuenta(Long idCuenta) throws Throwable {
-		System.out.println("Ingresa al Metodo selectBancoNumerobyIdCuenta con idCuenta: " + idCuenta);
-		Query query = em.createQuery(" select b " +
-				          			 " from   Cuentabancaria" +
-									 " where  b.numeroCuenta = :idCuenta");
-		query.setParameter("idCuenta", idCuenta);
-		return query.getResultList();
 	}
 
 	/* (non-Javadoc)

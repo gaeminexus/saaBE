@@ -81,8 +81,7 @@ public class AuxDepositoCierreDaoServiceImpl extends EntityDaoImpl<AuxDepositoCi
 
 	public void eliminaPorUsuarioCaja(Long idUsuarioCaja) throws Throwable {
 		System.out.println("Ingresa al Metodo eliminaPorUsuarioCaja con idUsuarioCaja: " + idUsuarioCaja);
-		Query query = em.createQuery (" delete b " +
-				  					  " from   AuxDepositoCierre b " +
+		Query query = em.createQuery (" delete from AuxDepositoCierre b " +
 				  					  " where  b.usuarioPorCaja.codigo = :idUsuarioCaja");
 		query.setParameter ("idUsuarioCaja", idUsuarioCaja);
 		

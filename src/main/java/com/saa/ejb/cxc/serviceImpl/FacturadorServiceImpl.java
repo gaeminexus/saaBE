@@ -17,6 +17,9 @@ import jakarta.ejb.Stateless;
  */
 @Stateless
 public class FacturadorServiceImpl implements FacturadorService {
+
+	@jakarta.persistence.PersistenceContext
+	private jakarta.persistence.EntityManager em;
 	
 	@EJB
 	private FacturadorDaoService facturadorDaoService;
@@ -67,6 +70,18 @@ public class FacturadorServiceImpl implements FacturadorService {
 	@Override
 	public Facturador saveSingle(Facturador facturador) throws Throwable {
 		System.out.println("FacturadorServiceImpl.saveSingle");
+		// VCN #24: el PUT genérico hace merge con los nulos: una pantalla que no manda la firma, su clave, el logo o el contador de emitidos los borraba.
+		// En una actualización esos campos se conservan si no llegan (para borrarlos hay que mandarlos vacíos, no ausentes).
+		if (facturador.getId() != null) {
+			Facturador previo = em.find(Facturador.class, facturador.getId());
+			if (previo != null) {
+				if (facturador.getFirma() == null) facturador.setFirma(previo.getFirma());
+				if (facturador.getClaveFirma() == null) facturador.setClaveFirma(previo.getClaveFirma());
+				if (facturador.getLogo() == null) facturador.setLogo(previo.getLogo());
+				if (facturador.getDocEmitidos() == null) facturador.setDocEmitidos(previo.getDocEmitidos());
+				if (facturador.getCreado() == null) facturador.setCreado(previo.getCreado());
+			}
+		}
 		facturador = facturadorDaoService.save(facturador, facturador.getId());
 		return facturador;
 	}

@@ -50,8 +50,7 @@ public class TempMotivoPagoDaoServiceImpl extends EntityDaoImpl<TempMotivoPago> 
 	 */
 	public void eliminaMotivoPagoByIdPago(Long idTempPago) throws Throwable {
 		System.out.println("Ingresa al Metodo eliminaMotivoPagoByIdPago con id de pago : " + idTempPago);
-		Query query = em.createQuery (" delete b" +
-									  " from   TempMotivoPago b " +
+		Query query = em.createQuery (" delete from TempMotivoPago b " +
 									  " where  b.tempPago.codigo = :idTempPago");
 		query.setParameter("idTempPago", idTempPago);
 		try {

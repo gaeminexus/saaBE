@@ -62,7 +62,7 @@ ORDER BY NVL(v.PVNMTPPR, 0), e.MPLDAPLL, e.MPLDNMBR, v.PVNMCDGO]]></query>
 		<expression><![CDATA[$F{TIPO_PROVISION}]]></expression>
 		<groupHeader>
 			<band height="18">
-				<element kind="textField" uuid="c3000000-0000-0000-0000-000000000701" mode="Opaque" x="0" y="2" width="792" height="14" backcolor="#EDF2F7" forecolor="#1A202C" fontName="Tahoma" fontSize="7.5" bold="true" vTextAlign="Middle">
+				<element kind="textField" uuid="c3000000-0000-0000-0000-000000000701" mode="Opaque" x="0" y="2" width="792" height="14" backcolor="#EDF2F7" forecolor="#1A202C" fontSize="7.5" bold="true" vTextAlign="Middle">
 					<expression><![CDATA[$F{TIPO_PROVISION_TXT}.toUpperCase()]]></expression>
 					<box leftPadding="6"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
 				</element>
@@ -70,11 +70,11 @@ ORDER BY NVL(v.PVNMTPPR, 0), e.MPLDAPLL, e.MPLDNMBR, v.PVNMCDGO]]></query>
 		</groupHeader>
 		<groupFooter>
 			<band height="20">
-				<element kind="textField" uuid="c3000000-0000-0000-0000-000000000711" x="0" y="0" width="618" height="14" forecolor="#4A5568" fontName="Tahoma" fontSize="7.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
+				<element kind="textField" uuid="c3000000-0000-0000-0000-000000000711" x="0" y="0" width="618" height="14" forecolor="#4A5568" fontSize="7.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
 					<expression><![CDATA["Subtotal " + $F{TIPO_PROVISION_TXT} + " (" + $V{V_EMPLEADOS_TIPO} + ($V{V_EMPLEADOS_TIPO}.intValue() == 1 ? " empleado" : " empleados") + ")"]]></expression>
 					<box rightPadding="8"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
 				</element>
-				<element kind="textField" uuid="c3000000-0000-0000-0000-000000000712" x="618" y="0" width="174" height="14" pattern="$#,##0.00" fontName="Tahoma" fontSize="7.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
+				<element kind="textField" uuid="c3000000-0000-0000-0000-000000000712" x="618" y="0" width="174" height="14" pattern="$#,##0.00" fontSize="7.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
 					<expression><![CDATA[$V{V_TOTAL_TIPO}]]></expression>
 					<box rightPadding="8"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
 				</element>
@@ -89,10 +89,10 @@ ORDER BY NVL(v.PVNMTPPR, 0), e.MPLDAPLL, e.MPLDNMBR, v.PVNMCDGO]]></query>
 		<element kind="rectangle" uuid="c3000000-0000-0000-0000-000000000102" x="118" y="4" width="674" height="52">
 			<pen lineWidth="0.75" lineColor="#CBD5E0"/>
 		</element>
-		<element kind="staticText" uuid="c3000000-0000-0000-0000-000000000103" x="128" y="10" width="654" height="24" forecolor="#1A202C" fontName="Tahoma" fontSize="15.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="staticText" uuid="c3000000-0000-0000-0000-000000000103" x="128" y="10" width="654" height="24" forecolor="#1A202C" fontSize="15.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
 			<text><![CDATA[PROVISIONES DEL PERIODO]]></text>
 		</element>
-		<element kind="textField" uuid="c3000000-0000-0000-0000-000000000104" x="128" y="34" width="654" height="16" forecolor="#718096" fontName="Tahoma" fontSize="9.0" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="textField" uuid="c3000000-0000-0000-0000-000000000104" x="128" y="34" width="654" height="16" forecolor="#718096" fontSize="9.0" hTextAlign="Center" vTextAlign="Middle">
 			<expression><![CDATA["Periodo " + ($F{PERIODO_MES} != null ? $F{PERIODO_MES}.toBigInteger().toString() : "?") + "/" + ($F{PERIODO_ANIO} != null ? $F{PERIODO_ANIO}.toBigInteger().toString() : "?")
 + "   ·   " + new java.text.SimpleDateFormat("d/M/yyyy").format($F{PERIODO_DESDE}) + " al " + new java.text.SimpleDateFormat("d/M/yyyy").format($F{PERIODO_HASTA})]]></expression>
 		</element>
@@ -102,46 +102,46 @@ ORDER BY NVL(v.PVNMTPPR, 0), e.MPLDAPLL, e.MPLDNMBR, v.PVNMCDGO]]></query>
 	</title>
 	<pageHeader height="4" splitType="Stretch"/>
 	<columnHeader height="26" splitType="Stretch">
-		<element kind="staticText" uuid="c3000000-0000-0000-0000-000000000201" mode="Opaque" x="0" y="4" width="90" height="20" backcolor="#F7FAFC" forecolor="#4A5568" fontName="Tahoma" fontSize="6.5" bold="true" vTextAlign="Middle">
+		<element kind="staticText" uuid="c3000000-0000-0000-0000-000000000201" mode="Opaque" x="0" y="4" width="90" height="20" backcolor="#F7FAFC" forecolor="#4A5568" fontSize="6.5" bold="true" vTextAlign="Middle">
 			<text><![CDATA[Cedula]]></text>
 			<box leftPadding="4"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
 		</element>
-		<element kind="staticText" uuid="c3000000-0000-0000-0000-000000000202" mode="Opaque" x="90" y="4" width="280" height="20" backcolor="#F7FAFC" forecolor="#4A5568" fontName="Tahoma" fontSize="6.5" bold="true" vTextAlign="Middle">
+		<element kind="staticText" uuid="c3000000-0000-0000-0000-000000000202" mode="Opaque" x="90" y="4" width="280" height="20" backcolor="#F7FAFC" forecolor="#4A5568" fontSize="6.5" bold="true" vTextAlign="Middle">
 			<text><![CDATA[Empleado]]></text>
 			<box leftPadding="4"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
 		</element>
-		<element kind="staticText" uuid="c3000000-0000-0000-0000-000000000203" mode="Opaque" x="370" y="4" width="248" height="20" backcolor="#F7FAFC" forecolor="#4A5568" fontName="Tahoma" fontSize="6.5" bold="true" vTextAlign="Middle">
+		<element kind="staticText" uuid="c3000000-0000-0000-0000-000000000203" mode="Opaque" x="370" y="4" width="248" height="20" backcolor="#F7FAFC" forecolor="#4A5568" fontSize="6.5" bold="true" vTextAlign="Middle">
 			<text><![CDATA[Concepto]]></text>
 			<box leftPadding="4"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
 		</element>
-		<element kind="staticText" uuid="c3000000-0000-0000-0000-000000000204" mode="Opaque" x="618" y="4" width="90" height="20" backcolor="#F7FAFC" forecolor="#4A5568" fontName="Tahoma" fontSize="6.5" bold="true" hTextAlign="Right" vTextAlign="Middle">
+		<element kind="staticText" uuid="c3000000-0000-0000-0000-000000000204" mode="Opaque" x="618" y="4" width="90" height="20" backcolor="#F7FAFC" forecolor="#4A5568" fontSize="6.5" bold="true" hTextAlign="Right" vTextAlign="Middle">
 			<text><![CDATA[Base]]></text>
 			<box rightPadding="4"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
 		</element>
-		<element kind="staticText" uuid="c3000000-0000-0000-0000-000000000205" mode="Opaque" x="708" y="4" width="84" height="20" backcolor="#F7FAFC" forecolor="#4A5568" fontName="Tahoma" fontSize="6.5" bold="true" hTextAlign="Right" vTextAlign="Middle">
+		<element kind="staticText" uuid="c3000000-0000-0000-0000-000000000205" mode="Opaque" x="708" y="4" width="84" height="20" backcolor="#F7FAFC" forecolor="#4A5568" fontSize="6.5" bold="true" hTextAlign="Right" vTextAlign="Middle">
 			<text><![CDATA[Provision]]></text>
 			<box rightPadding="4"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
 		</element>
 	</columnHeader>
 	<detail>
 		<band height="14" splitType="Prevent">
-			<element kind="textField" uuid="c3000000-0000-0000-0000-000000000301" x="0" y="0" width="90" height="14" fontName="Tahoma" fontSize="6.5" blankWhenNull="true" vTextAlign="Middle">
+			<element kind="textField" uuid="c3000000-0000-0000-0000-000000000301" x="0" y="0" width="90" height="14" fontSize="6.5" blankWhenNull="true" vTextAlign="Middle">
 				<expression><![CDATA[$F{IDENTIFICACION}]]></expression>
 				<box leftPadding="4"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
 			</element>
-			<element kind="textField" uuid="c3000000-0000-0000-0000-000000000302" x="90" y="0" width="280" height="14" fontName="Tahoma" fontSize="6.5" blankWhenNull="true" vTextAlign="Middle">
+			<element kind="textField" uuid="c3000000-0000-0000-0000-000000000302" x="90" y="0" width="280" height="14" fontSize="6.5" blankWhenNull="true" vTextAlign="Middle">
 				<expression><![CDATA[$F{EMPLEADO}]]></expression>
 				<box leftPadding="4"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
 			</element>
-			<element kind="textField" uuid="c3000000-0000-0000-0000-000000000303" x="370" y="0" width="248" height="14" fontName="Tahoma" fontSize="6.5" blankWhenNull="true" vTextAlign="Middle">
+			<element kind="textField" uuid="c3000000-0000-0000-0000-000000000303" x="370" y="0" width="248" height="14" fontSize="6.5" blankWhenNull="true" vTextAlign="Middle">
 				<expression><![CDATA[$F{CONCEPTO}]]></expression>
 				<box leftPadding="4"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
 			</element>
-			<element kind="textField" uuid="c3000000-0000-0000-0000-000000000304" x="618" y="0" width="90" height="14" pattern="$#,##0.00" fontName="Tahoma" fontSize="6.5" hTextAlign="Right" vTextAlign="Middle">
+			<element kind="textField" uuid="c3000000-0000-0000-0000-000000000304" x="618" y="0" width="90" height="14" pattern="$#,##0.00" fontSize="6.5" hTextAlign="Right" vTextAlign="Middle">
 				<expression><![CDATA[$F{BASE_CALCULO}]]></expression>
 				<box rightPadding="4"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
 			</element>
-			<element kind="textField" uuid="c3000000-0000-0000-0000-000000000305" x="708" y="0" width="84" height="14" pattern="$#,##0.00" fontName="Tahoma" fontSize="6.5" bold="true" hTextAlign="Right" vTextAlign="Middle">
+			<element kind="textField" uuid="c3000000-0000-0000-0000-000000000305" x="708" y="0" width="84" height="14" pattern="$#,##0.00" fontSize="6.5" bold="true" hTextAlign="Right" vTextAlign="Middle">
 				<expression><![CDATA[$F{VALOR}]]></expression>
 				<box rightPadding="4"><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
 			</element>
@@ -151,7 +151,7 @@ ORDER BY NVL(v.PVNMTPPR, 0), e.MPLDAPLL, e.MPLDNMBR, v.PVNMCDGO]]></query>
 		<element kind="line" uuid="c3000000-0000-0000-0000-000000000401" x="0" y="4" width="792" height="1">
 			<pen lineWidth="0.25" lineColor="#E2E8F0"/>
 		</element>
-		<element kind="staticText" uuid="c3000000-0000-0000-0000-000000000402" x="0" y="8" width="600" height="12" forecolor="#A0AEC0" fontName="Tahoma" fontSize="6.5" vTextAlign="Middle">
+		<element kind="staticText" uuid="c3000000-0000-0000-0000-000000000402" x="0" y="8" width="600" height="12" forecolor="#A0AEC0" fontSize="6.5" vTextAlign="Middle">
 			<text><![CDATA[ASOPREP-FCPC · Sistema de Administracion de Aportes (SAA) · Documento generado desde el sistema.]]></text>
 		</element>
 		<element kind="textField" uuid="c3000000-0000-0000-0000-000000000403" x="620" y="8" width="130" height="12" forecolor="#A0AEC0" fontSize="7.0" hTextAlign="Right" vTextAlign="Middle">
@@ -162,15 +162,15 @@ ORDER BY NVL(v.PVNMTPPR, 0), e.MPLDAPLL, e.MPLDNMBR, v.PVNMCDGO]]></query>
 		</element>
 	</pageFooter>
 	<summary height="60" splitType="Stretch">
-		<element kind="staticText" uuid="c3000000-0000-0000-0000-000000000501" mode="Opaque" x="0" y="0" width="618" height="16" backcolor="#EDF2F7" forecolor="#1A202C" fontName="Tahoma" fontSize="7.5" bold="true" hTextAlign="Right" vTextAlign="Middle">
+		<element kind="staticText" uuid="c3000000-0000-0000-0000-000000000501" mode="Opaque" x="0" y="0" width="618" height="16" backcolor="#EDF2F7" forecolor="#1A202C" fontSize="7.5" bold="true" hTextAlign="Right" vTextAlign="Middle">
 			<text><![CDATA[TOTAL PROVISIONADO EN EL PERIODO]]></text>
 			<box rightPadding="8"><pen lineWidth="0.5" lineColor="#4A5568"/></box>
 		</element>
-		<element kind="textField" uuid="c3000000-0000-0000-0000-000000000502" mode="Opaque" x="618" y="0" width="174" height="16" backcolor="#EDF2F7" pattern="$#,##0.00" fontName="Tahoma" fontSize="7.5" bold="true" hTextAlign="Right" vTextAlign="Middle">
+		<element kind="textField" uuid="c3000000-0000-0000-0000-000000000502" mode="Opaque" x="618" y="0" width="174" height="16" backcolor="#EDF2F7" pattern="$#,##0.00" fontSize="7.5" bold="true" hTextAlign="Right" vTextAlign="Middle">
 			<expression><![CDATA[$V{V_TOTAL}]]></expression>
 			<box rightPadding="8"><pen lineWidth="0.5" lineColor="#4A5568"/></box>
 		</element>
-		<element kind="staticText" uuid="c3000000-0000-0000-0000-000000000510" x="0" y="22" width="792" height="30" forecolor="#4A5568" fontName="Tahoma" fontSize="7.5" vTextAlign="Top">
+		<element kind="staticText" uuid="c3000000-0000-0000-0000-000000000510" x="0" y="22" width="792" height="30" forecolor="#4A5568" fontSize="7.5" vTextAlign="Top">
 			<text><![CDATA[Las provisiones no forman parte del neto del empleado: son costo del empleador reconocido en el mes. Los decimos y los fondos de reserva solo se provisionan cuando el contrato los tiene en modalidad ACUMULADO; en modalidad MENSUALIZADO se pagan como renglon del rol y no aparecen aqui. Las vacaciones se provisionan siempre. El aporte patronal NO se provisiona: el asiento de rol ya lo registra completo.]]></text>
 		</element>
 	</summary>
@@ -178,11 +178,11 @@ ORDER BY NVL(v.PVNMTPPR, 0), e.MPLDAPLL, e.MPLDNMBR, v.PVNMCDGO]]></query>
 		<element kind="image" uuid="c3000000-0000-0000-0000-000000000601" x="0" y="4" width="110" height="52" scaleImage="RetainShape" onErrorType="Blank" hImageAlign="Center" vImageAlign="Middle">
 			<expression><![CDATA[$P{P_IMAGEN}]]></expression>
 		</element>
-		<element kind="staticText" uuid="c3000000-0000-0000-0000-000000000602" mode="Opaque" x="0" y="80" width="792" height="16" backcolor="#EDF2F7" forecolor="#4A5568" fontName="Tahoma" fontSize="9.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="staticText" uuid="c3000000-0000-0000-0000-000000000602" mode="Opaque" x="0" y="80" width="792" height="16" backcolor="#EDF2F7" forecolor="#4A5568" fontSize="9.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
 			<text><![CDATA[SIN INFORMACION PARA PRESENTAR]]></text>
 			<box><pen lineWidth="0.25" lineColor="#CBD5E0"/></box>
 		</element>
-		<element kind="textField" uuid="c3000000-0000-0000-0000-000000000603" x="0" y="100" width="792" height="16" fontName="Tahoma" fontSize="8.0" hTextAlign="Center" vTextAlign="Middle">
+		<element kind="textField" uuid="c3000000-0000-0000-0000-000000000603" x="0" y="100" width="792" height="16" fontSize="8.0" hTextAlign="Center" vTextAlign="Middle">
 			<expression><![CDATA["El periodo " + ($P{P_PRDN_CODIGO} != null ? String.valueOf($P{P_PRDN_CODIGO}) : "(nulo)") + " no genero ninguna provision."]]></expression>
 		</element>
 	</noData>

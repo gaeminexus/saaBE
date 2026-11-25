@@ -49,8 +49,7 @@ public class TempCobroTarjetaDaoServiceImpl extends EntityDaoImpl<TempCobroTarje
 	
 	public void eliminaCobroTarjetaByIdCobro(Long idTempCobro) throws Throwable {
 		System.out.println("ingresa al Metodo eliminaTarjetaByIdUsuarioCaja con idUsuarioCaja : " + idTempCobro );
-		Query query = em.createQuery (" delete b " +
-									  " from   TempCobroTarjeta b " +
+		Query query = em.createQuery (" delete from TempCobroTarjeta b " +
 									  " where  b.tempCobro.codigo = :idTempCobro");
 		query.setParameter ("idTempCobro", idTempCobro);
 		try {

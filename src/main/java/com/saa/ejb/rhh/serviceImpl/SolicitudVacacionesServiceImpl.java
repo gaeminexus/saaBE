@@ -230,9 +230,10 @@ public class SolicitudVacacionesServiceImpl implements SolicitudVacacionesServic
 			throw new IncomeException("No existe la solicitud de vacaciones " + idSolicitud + ".");
 		}
 		if (ESTADO_APROBADA.equalsIgnoreCase(solicitud.getEstado())
-				|| ESTADO_ANULADA.equalsIgnoreCase(solicitud.getEstado())) {
+				|| ESTADO_RECHAZADA.equalsIgnoreCase(solicitud.getEstado())
+				|| ESTADO_ANULADA.equalsIgnoreCase(solicitud.getEstado())) { // VCN #15: una RECHAZADA tampoco se aprueba ni se rechaza de nuevo
 			throw new IncomeException("La solicitud " + idSolicitud + " esta en estado "
-					+ solicitud.getEstado() + "; solo se puede aprobar una solicitud que no este"
+					+ solicitud.getEstado() + "; solo se puede aprobar una solicitud que no este rechazada,"
 					+ " aprobada ni anulada.");
 		}
 		if (solicitud.getFechaHasta().isBefore(solicitud.getFechaDesde())) {
@@ -324,9 +325,10 @@ public class SolicitudVacacionesServiceImpl implements SolicitudVacacionesServic
 			throw new IncomeException("No existe la solicitud de vacaciones " + idSolicitud + ".");
 		}
 		if (ESTADO_APROBADA.equalsIgnoreCase(solicitud.getEstado())
-				|| ESTADO_ANULADA.equalsIgnoreCase(solicitud.getEstado())) {
+				|| ESTADO_RECHAZADA.equalsIgnoreCase(solicitud.getEstado())
+				|| ESTADO_ANULADA.equalsIgnoreCase(solicitud.getEstado())) { // VCN #15: una RECHAZADA tampoco se aprueba ni se rechaza de nuevo
 			throw new IncomeException("La solicitud " + idSolicitud + " esta en estado "
-					+ solicitud.getEstado() + "; solo se puede rechazar una solicitud que no este"
+					+ solicitud.getEstado() + "; solo se puede rechazar una solicitud que no este rechazada,"
 					+ " aprobada ni anulada. Una solicitud aprobada se anula con anularAprobacion.");
 		}
 

@@ -45,8 +45,7 @@ public class TempCobroEfectivoDaoServiceImpl extends EntityDaoImpl<TempCobroEfec
 
 	public void eliminaCobroEfectivoByIdCobro(Long idTempCobro) throws Throwable {
 		System.out.println("ingresa al Metodo eliminaEfectivoByIdUsuarioCaja con idUsuarioCaja : " + idTempCobro );
-		Query query = em.createQuery (" delete b " +
-									  " from   TempCobroEfectivo b " +
+		Query query = em.createQuery (" delete from TempCobroEfectivo b " +
 									  " where  b.tempCobro.codigo = :idTempCobro");
 		query.setParameter ("idTempCobro", idTempCobro);
 		try {

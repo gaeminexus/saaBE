@@ -90,7 +90,7 @@ public class ConciliacionDaoServiceImpl extends EntityDaoImpl<Conciliacion> impl
 									 " from   Conciliacion b" +
 									 " where  b.idPeriodo = :idPeriodo" +
 									 "        and b.cuentaBancaria = :idCuenta" +
-									 "		  and b.rubroEstadoH = estado");
+									 "		  and b.rubroEstadoH = :estado");
 		query.setParameter("idPeriodo", idPeriodo);
 		query.setParameter("idCuenta", idCuenta);
 		query.setParameter("estado", Long.valueOf(EstadosConciliacion.CONCILIADO));

@@ -108,8 +108,7 @@ public class AuxDepositoBancoDaoServiceImpl extends EntityDaoImpl<AuxDepositoBan
 	 */
 	public void eliminaPorUsuarioCaja(Long idUsuarioCaja) throws Throwable {
 		System.out.println("Ingresa al Metodo eliminaPorUsuarioCaja con idUsuarioCaja: " + idUsuarioCaja);
-		Query query = em.createQuery (" delete b" +
-				  					  " from   AuxDepositoBanco b " +
+		Query query = em.createQuery (" delete from AuxDepositoBanco b " +
 				  					  " where  b.usuarioPorCaja.codigo = :idUsuarioCaja");
 		query.setParameter ("idUsuarioCaja", idUsuarioCaja);
 		try {
@@ -124,8 +123,7 @@ public class AuxDepositoBancoDaoServiceImpl extends EntityDaoImpl<AuxDepositoBan
 	 */
 	public void eliminaPorUsuarioCajaCuenta(Long idUsuarioCaja, Long idCuenta) throws Throwable {
 		System.out.println("Ingresa al Metodo eliminaPorUsuarioCaja con idUsuarioCaja: " + idUsuarioCaja);
-		Query query = em.createQuery (" delete b" +
-				  					  " from   AuxDepositoBanco b " +
+		Query query = em.createQuery (" delete from AuxDepositoBanco b " +
 				  					  " where  b.usuarioPorCaja.codigo = :idUsuarioCaja"+
 				  					  "        and b.cuentaBancaria.codigo = :cuenta");
 		query.setParameter ("idUsuarioCaja", idUsuarioCaja);

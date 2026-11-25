@@ -68,10 +68,10 @@ public class DesgloseDetalleDepositoDaoServiceImpl extends EntityDaoImpl<Desglos
 			Long idDeposito) throws Throwable {
 		System.out.println("Ingresa al metodo selectDetallesRatificadosByDeposito con id deposito: " + idDeposito);
 		Query query = em.createQuery(" select b " +
-									 " from   DesgloseDetalleDeposito" +
-									 " where  detalleDeposito.deposito.codigo = :deposito " +
-									 " 		  and   detalleDeposito.estado = :estado " +
-									 "		  and   cobroCheque is not null");
+									 " from   DesgloseDetalleDeposito b " +
+									 " where  b.detalleDeposito.deposito.codigo = :deposito " +
+									 " 		  and   b.detalleDeposito.estado = :estado " +
+									 "		  and   b.cobroCheque is not null");
 		query.setParameter("deposito", idDeposito);
 		query.setParameter("estado", Long.valueOf(EstadoDeposito.RATIFICADO));
 		return query.getResultList();

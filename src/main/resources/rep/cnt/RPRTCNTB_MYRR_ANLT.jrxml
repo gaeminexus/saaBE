@@ -89,58 +89,58 @@ ORDER BY M.MYANCNTA, DM.DTMAFCHA]]></query>
 		<expression><![CDATA[$F{MYANCNTA}]]></expression>
 		<groupHeader>
 			<band height="49" splitType="Stretch">
-				<element kind="textField" uuid="69bb6d12-6c89-409e-a1f0-1d6173e90fef" x="51" y="9" width="70" height="13" fontName="Tahoma" fontSize="8.0" vTextAlign="Middle">
+				<element kind="textField" uuid="69bb6d12-6c89-409e-a1f0-1d6173e90fef" x="51" y="9" width="70" height="13" fontSize="8.0" vTextAlign="Middle">
 					<expression><![CDATA[$F{MYANCNTA}]]></expression>
 				</element>
-				<element kind="textField" uuid="ba58d678-7d7f-4f7f-b60d-11f2ed64bdad" x="122" y="9" width="168" height="13" fontName="Tahoma" fontSize="8.0" vTextAlign="Middle">
+				<element kind="textField" uuid="ba58d678-7d7f-4f7f-b60d-11f2ed64bdad" x="122" y="9" width="168" height="13" fontSize="8.0" vTextAlign="Middle">
 					<expression><![CDATA[$F{MYANNMBR}]]></expression>
 				</element>
-				<element kind="textField" uuid="30ec4899-ce1e-4c31-851e-c42a919405ac" x="343" y="9" width="65" height="13" fontName="Tahoma" fontSize="8.0" pattern="#,##0.00;-#,##0.00" bold="true" hTextAlign="Right" vTextAlign="Middle">
+				<element kind="textField" uuid="30ec4899-ce1e-4c31-851e-c42a919405ac" x="343" y="9" width="65" height="13" fontSize="8.0" pattern="#,##0.00;-#,##0.00" bold="true" hTextAlign="Right" vTextAlign="Middle">
 					<expression><![CDATA[$F{MYANSLAN}]]></expression>
 				</element>
-				<element kind="staticText" uuid="6e32cae4-b116-4395-a732-9ca4c79bd7cb" x="10" y="9" width="39" height="13" fontName="Tahoma" fontSize="8.0" bold="true" underline="false" vTextAlign="Middle">
+				<element kind="staticText" uuid="6e32cae4-b116-4395-a732-9ca4c79bd7cb" x="10" y="9" width="39" height="13" fontSize="8.0" bold="true" underline="false" vTextAlign="Middle">
 					<text><![CDATA[CUENTA]]></text>
 				</element>
-				<element kind="staticText" uuid="bd08cba9-8232-4af1-a1c3-eb2ebf65729d" x="292" y="9" width="50" height="13" fontName="Tahoma" fontSize="8.0" bold="true" underline="false" hTextAlign="Right" vTextAlign="Middle">
+				<element kind="staticText" uuid="bd08cba9-8232-4af1-a1c3-eb2ebf65729d" x="292" y="9" width="50" height="13" fontSize="8.0" bold="true" underline="false" hTextAlign="Right" vTextAlign="Middle">
 					<text><![CDATA[SALDO ANT]]></text>
 				</element>
-				<element kind="staticText" uuid="c231d7c7-f463-447f-ab6c-890837f39c69" x="10" y="30" width="60" height="13" fontName="Tahoma" fontSize="8.0" bold="true">
+				<element kind="staticText" uuid="c231d7c7-f463-447f-ab6c-890837f39c69" x="10" y="30" width="60" height="13" fontSize="8.0" bold="true">
 					<text><![CDATA[FECHA]]></text>
 				</element>
-				<element kind="staticText" uuid="5294b7b7-973a-4569-a1cf-a8abf64c9075" x="72" y="30" width="35" height="13" fontName="Tahoma" fontSize="8.0" bold="true">
+				<element kind="staticText" uuid="5294b7b7-973a-4569-a1cf-a8abf64c9075" x="72" y="30" width="35" height="13" fontSize="8.0" bold="true">
 					<text><![CDATA[NRO]]></text>
 				</element>
-				<element kind="staticText" uuid="95ddb4fe-de94-48a5-b071-5552531d5eee" x="109" y="30" width="225" height="13" fontName="Tahoma" fontSize="8.0" bold="true">
+				<element kind="staticText" uuid="95ddb4fe-de94-48a5-b071-5552531d5eee" x="109" y="30" width="225" height="13" fontSize="8.0" bold="true">
 					<text><![CDATA[DESCRIPCION]]></text>
 				</element>
-				<element kind="staticText" uuid="87b9e543-7dd0-4e6b-a235-3ba3f8289c99" x="343" y="30" width="65" height="13" fontName="Tahoma" fontSize="8.0" bold="true" hTextAlign="Right">
+				<element kind="staticText" uuid="87b9e543-7dd0-4e6b-a235-3ba3f8289c99" x="343" y="30" width="65" height="13" fontSize="8.0" bold="true" hTextAlign="Right">
 					<text><![CDATA[DEBE]]></text>
 				</element>
-				<element kind="staticText" uuid="f652ba70-871a-4ded-89ab-e48f12bdba07" x="409" y="30" width="65" height="13" fontName="Tahoma" fontSize="8.0" bold="true" hTextAlign="Right">
+				<element kind="staticText" uuid="f652ba70-871a-4ded-89ab-e48f12bdba07" x="409" y="30" width="65" height="13" fontSize="8.0" bold="true" hTextAlign="Right">
 					<text><![CDATA[HABER]]></text>
 				</element>
-				<element kind="staticText" uuid="720e98fa-62c6-4b5b-b55e-1cbabd8b0f37" x="475" y="30" width="65" height="13" fontName="Tahoma" fontSize="8.0" bold="true" hTextAlign="Right">
+				<element kind="staticText" uuid="720e98fa-62c6-4b5b-b55e-1cbabd8b0f37" x="475" y="30" width="65" height="13" fontSize="8.0" bold="true" hTextAlign="Right">
 					<text><![CDATA[SALDO ACT.]]></text>
 				</element>
 				<element kind="line" uuid="4f1b0514-89df-4a6b-86ec-761952ac8cf8" x="10" y="22" width="530" height="1"/>
 				<element kind="line" uuid="31cb7789-b075-4fb9-b529-7291414eeafe" x="10" y="8" width="530" height="1"/>
-				<element kind="textField" uuid="6eeeda76-a459-4cbb-9a31-6d845f7cc580" x="475" y="9" width="65" height="13" fontName="Tahoma" fontSize="8.0" evaluationTime="Group" pattern="#,##0.00;-#,##0.00" evaluationGroup="MYANCNTA" bold="true" hTextAlign="Right" vTextAlign="Middle">
+				<element kind="textField" uuid="6eeeda76-a459-4cbb-9a31-6d845f7cc580" x="475" y="9" width="65" height="13" fontSize="8.0" evaluationTime="Group" pattern="#,##0.00;-#,##0.00" evaluationGroup="MYANCNTA" bold="true" hTextAlign="Right" vTextAlign="Middle">
 					<expression><![CDATA[$V{SUMA_SALDO_G}]]></expression>
 				</element>
-				<element kind="staticText" uuid="34748d13-5b17-4b6b-9c23-ac3d3258540e" x="410" y="9" width="64" height="13" fontName="Tahoma" fontSize="8.0" bold="true" underline="false" hTextAlign="Right" vTextAlign="Middle">
+				<element kind="staticText" uuid="34748d13-5b17-4b6b-9c23-ac3d3258540e" x="410" y="9" width="64" height="13" fontSize="8.0" bold="true" underline="false" hTextAlign="Right" vTextAlign="Middle">
 					<text><![CDATA[SALDO ACT]]></text>
 				</element>
 			</band>
 		</groupHeader>
 		<groupFooter>
 			<band height="33" splitType="Stretch">
-				<element kind="staticText" uuid="4b45032c-9d63-4a74-ac0b-e77d92a17340" x="276" y="8" width="65" height="15" fontName="Tahoma" fontSize="8.0" bold="true" hTextAlign="Right">
+				<element kind="staticText" uuid="4b45032c-9d63-4a74-ac0b-e77d92a17340" x="276" y="8" width="65" height="15" fontSize="8.0" bold="true" hTextAlign="Right">
 					<text><![CDATA[TOTAL CUENTA:]]></text>
 				</element>
-				<element kind="textField" uuid="ccadb68b-8335-4c45-a5c5-3ba4217a3f00" x="343" y="8" width="65" height="15" fontName="Tahoma" fontSize="8.0" evaluationTime="Group" pattern="#,##0.00;(-#,##0.00)" evaluationGroup="MYANCNTA" bold="true" hTextAlign="Right">
+				<element kind="textField" uuid="ccadb68b-8335-4c45-a5c5-3ba4217a3f00" x="343" y="8" width="65" height="15" fontSize="8.0" evaluationTime="Group" pattern="#,##0.00;(-#,##0.00)" evaluationGroup="MYANCNTA" bold="true" hTextAlign="Right">
 					<expression><![CDATA[$V{SUMA_DEBE_G}]]></expression>
 				</element>
-				<element kind="textField" uuid="3e047b13-67f6-496c-bc86-4c14f87ac4a2" x="409" y="8" width="65" height="15" fontName="Tahoma" fontSize="8.0" evaluationTime="Group" pattern="#,##0.00;(-#,##0.00)" evaluationGroup="MYANCNTA" bold="true" hTextAlign="Right">
+				<element kind="textField" uuid="3e047b13-67f6-496c-bc86-4c14f87ac4a2" x="409" y="8" width="65" height="15" fontSize="8.0" evaluationTime="Group" pattern="#,##0.00;(-#,##0.00)" evaluationGroup="MYANCNTA" bold="true" hTextAlign="Right">
 					<expression><![CDATA[$V{SUMA_HABER_G}]]></expression>
 				</element>
 				<element kind="line" uuid="b541ff1b-edbf-4db1-b688-a5f8930acc73" x="276" y="5" width="198" height="1"/>
@@ -179,61 +179,61 @@ ORDER BY M.MYANCNTA, DM.DTMAFCHA]]></query>
 	</pageHeader>
 	<columnHeader height="44" splitType="Stretch">
 		<element kind="rectangle" uuid="4b02104d-3759-4438-9ab1-3321b50b8b64" x="90" y="3" width="355" height="38"/>
-		<element kind="staticText" uuid="4c36fbbc-5447-4bae-b153-15702e15355a" x="277" y="7" width="81" height="15" fontName="Tahoma" fontSize="8.0" bold="true">
+		<element kind="staticText" uuid="4c36fbbc-5447-4bae-b153-15702e15355a" x="277" y="7" width="81" height="15" fontSize="8.0" bold="true">
 			<text><![CDATA[CUENTA DESDE]]></text>
 		</element>
-		<element kind="textField" uuid="b7abf146-07f0-45ac-bcfb-082c9bde4ae7" x="360" y="7" width="81" height="15" fontName="Tahoma" fontSize="8.0" blankWhenNull="true">
+		<element kind="textField" uuid="b7abf146-07f0-45ac-bcfb-082c9bde4ae7" x="360" y="7" width="81" height="15" fontSize="8.0" blankWhenNull="true">
 			<expression><![CDATA[$P{P_CTAINI}]]></expression>
 		</element>
-		<element kind="textField" uuid="503a6cb6-7e20-4eab-9d98-24b9abcc4c20" x="181" y="7" width="81" height="15" fontName="Tahoma" fontSize="8.0" pattern="dd-MMM-yyyy" blankWhenNull="true">
+		<element kind="textField" uuid="503a6cb6-7e20-4eab-9d98-24b9abcc4c20" x="181" y="7" width="81" height="15" fontSize="8.0" pattern="dd-MMM-yyyy" blankWhenNull="true">
 			<expression><![CDATA[$P{P_FECINI}]]></expression>
 		</element>
-		<element kind="staticText" uuid="6bc1433f-905d-465e-a355-4626ae6e1c62" x="97" y="23" width="81" height="15" fontName="Tahoma" fontSize="8.0" bold="true">
+		<element kind="staticText" uuid="6bc1433f-905d-465e-a355-4626ae6e1c62" x="97" y="23" width="81" height="15" fontSize="8.0" bold="true">
 			<text><![CDATA[FECHA HASTA]]></text>
 		</element>
-		<element kind="staticText" uuid="3ccde9f3-5c68-447d-85c3-a1e1a4a2390f" x="277" y="23" width="81" height="15" fontName="Tahoma" fontSize="8.0" bold="true">
+		<element kind="staticText" uuid="3ccde9f3-5c68-447d-85c3-a1e1a4a2390f" x="277" y="23" width="81" height="15" fontSize="8.0" bold="true">
 			<text><![CDATA[CUENTA HASTA]]></text>
 		</element>
-		<element kind="textField" uuid="dd0b33d1-9306-4d61-a9ea-8bdfd82fbcbb" x="181" y="22" width="81" height="15" fontName="Tahoma" fontSize="8.0" pattern="dd-MMM-yyyy" blankWhenNull="true">
+		<element kind="textField" uuid="dd0b33d1-9306-4d61-a9ea-8bdfd82fbcbb" x="181" y="22" width="81" height="15" fontSize="8.0" pattern="dd-MMM-yyyy" blankWhenNull="true">
 			<expression><![CDATA[$P{P_FECFIN}]]></expression>
 		</element>
-		<element kind="textField" uuid="561764b5-bbd5-4c99-a7c8-e34f935ea25a" x="360" y="23" width="81" height="15" fontName="Tahoma" fontSize="8.0" blankWhenNull="true">
+		<element kind="textField" uuid="561764b5-bbd5-4c99-a7c8-e34f935ea25a" x="360" y="23" width="81" height="15" fontSize="8.0" blankWhenNull="true">
 			<expression><![CDATA[$P{P_CTAFIN}]]></expression>
 		</element>
-		<element kind="staticText" uuid="5106bf97-65c8-4721-847f-00ade498fd2c" x="97" y="7" width="81" height="15" fontName="Tahoma" fontSize="8.0" bold="true">
+		<element kind="staticText" uuid="5106bf97-65c8-4721-847f-00ade498fd2c" x="97" y="7" width="81" height="15" fontSize="8.0" bold="true">
 			<text><![CDATA[FECHA DESDE]]></text>
 		</element>
 	</columnHeader>
 	<detail>
 		<band height="11" splitType="Stretch">
-			<element kind="textField" uuid="5f1cb686-c302-434d-b289-4dab11165eb4" x="10" y="0" width="60" height="11" fontName="Tahoma" fontSize="7.0" pattern="dd-MMM-yyyy">
+			<element kind="textField" uuid="5f1cb686-c302-434d-b289-4dab11165eb4" x="10" y="0" width="60" height="11" fontSize="7.0" pattern="dd-MMM-yyyy">
 				<expression><![CDATA[$F{DTMAFCHA}]]></expression>
 			</element>
-			<element kind="textField" uuid="22bc824c-f091-43dc-bb52-478287183953" x="72" y="0" width="35" height="11" fontName="Tahoma" fontSize="7.0">
+			<element kind="textField" uuid="22bc824c-f091-43dc-bb52-478287183953" x="72" y="0" width="35" height="11" fontSize="7.0">
 				<expression><![CDATA[$F{DTMANMRO}]]></expression>
 			</element>
-			<element kind="textField" uuid="a3cb5eb8-1d65-438a-969b-d04632ae35b0" x="109" y="0" width="225" height="11" fontName="Tahoma" fontSize="7.0">
+			<element kind="textField" uuid="a3cb5eb8-1d65-438a-969b-d04632ae35b0" x="109" y="0" width="225" height="11" fontSize="7.0">
 				<expression><![CDATA[$F{DTMADSCR}]]></expression>
 			</element>
-			<element kind="textField" uuid="f0c06f59-bd86-4f7f-8bb7-061c8549b3b2" x="343" y="0" width="65" height="11" fontName="Tahoma" fontSize="7.0" pattern="#,##0.00;(-#,##0.00)" hTextAlign="Right">
+			<element kind="textField" uuid="f0c06f59-bd86-4f7f-8bb7-061c8549b3b2" x="343" y="0" width="65" height="11" fontSize="7.0" pattern="#,##0.00;(-#,##0.00)" hTextAlign="Right">
 				<expression><![CDATA[$F{DTMADBEE}]]></expression>
 			</element>
-			<element kind="textField" uuid="204bf038-df67-4dfd-a0d0-8fa9e7f0052c" x="409" y="0" width="65" height="11" fontName="Tahoma" fontSize="7.0" pattern="#,##0.00;(-#,##0.00)" hTextAlign="Right">
+			<element kind="textField" uuid="204bf038-df67-4dfd-a0d0-8fa9e7f0052c" x="409" y="0" width="65" height="11" fontSize="7.0" pattern="#,##0.00;(-#,##0.00)" hTextAlign="Right">
 				<expression><![CDATA[$F{DTMAHBRR}]]></expression>
 			</element>
-			<element kind="textField" uuid="d341f093-4723-44eb-b8d5-97d1c5e86905" x="475" y="0" width="65" height="11" fontName="Tahoma" fontSize="7.0" pattern="#,##0.00;(-#,##0.00)" hTextAlign="Right">
+			<element kind="textField" uuid="d341f093-4723-44eb-b8d5-97d1c5e86905" x="475" y="0" width="65" height="11" fontSize="7.0" pattern="#,##0.00;(-#,##0.00)" hTextAlign="Right">
 				<expression><![CDATA[$F{DTMASLAC}]]></expression>
 			</element>
 		</band>
 	</detail>
 	<summary height="42" splitType="Stretch">
-		<element kind="staticText" uuid="b78392eb-608c-4f10-8620-4edf8e20a6ed" x="295" y="16" width="46" height="15" fontName="Tahoma" fontSize="8.0" bold="true" hTextAlign="Right">
+		<element kind="staticText" uuid="b78392eb-608c-4f10-8620-4edf8e20a6ed" x="295" y="16" width="46" height="15" fontSize="8.0" bold="true" hTextAlign="Right">
 			<text><![CDATA[TOTAL:]]></text>
 		</element>
-		<element kind="textField" uuid="b937abdf-cafd-476f-bb2f-0d833ce354e3" x="343" y="16" width="65" height="15" fontName="Tahoma" fontSize="8.0" evaluationTime="Report" pattern="#,##0.00;(-#,##0.00)" bold="true" hTextAlign="Right">
+		<element kind="textField" uuid="b937abdf-cafd-476f-bb2f-0d833ce354e3" x="343" y="16" width="65" height="15" fontSize="8.0" evaluationTime="Report" pattern="#,##0.00;(-#,##0.00)" bold="true" hTextAlign="Right">
 			<expression><![CDATA[$V{SUMA_DEBE_T}]]></expression>
 		</element>
-		<element kind="textField" uuid="2628f561-3113-40f6-af3e-1b1fd9caeab2" x="409" y="16" width="65" height="15" fontName="Tahoma" fontSize="8.0" evaluationTime="Report" pattern="#,##0.00;(-#,##0.00)" bold="true" hTextAlign="Right">
+		<element kind="textField" uuid="2628f561-3113-40f6-af3e-1b1fd9caeab2" x="409" y="16" width="65" height="15" fontSize="8.0" evaluationTime="Report" pattern="#,##0.00;(-#,##0.00)" bold="true" hTextAlign="Right">
 			<expression><![CDATA[$V{SUMA_HABER_T}]]></expression>
 		</element>
 		<element kind="line" uuid="3a764e5a-4422-4cb3-9856-c49f33863aca" x="276" y="13" width="198" height="1"/>

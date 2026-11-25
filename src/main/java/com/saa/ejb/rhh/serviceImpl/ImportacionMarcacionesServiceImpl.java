@@ -358,6 +358,14 @@ public class ImportacionMarcacionesServiceImpl implements ImportacionMarcaciones
         resultado.setFechaDesde(menor);
         resultado.setFechaHasta(mayor);
 
+        if (persistir && ok == 0) {
+            // VCN #22: un archivo sin ninguna línea válida no deja una carga vacía (y su hash) que luego impida volver a subirlo corregido.
+            // El IncomeException deshace la cabecera que se grabó arriba.
+            String primerErrores = resultado.getErrores().isEmpty() ? ""
+                    : " Primeros errores: " + String.join(" | ", resultado.getErrores().subList(0, Math.min(3, resultado.getErrores().size())));
+            throw new IncomeException("El archivo '" + nombreArchivo + "' no tiene ninguna línea válida para importar (" + totales
+                    + " línea(s): " + error + " con error, " + duplicadas + " duplicada(s)). No se registró la carga." + primerErrores);
+        }
         if (persistir) {
             carga.setLineasTotales(Integer.valueOf(totales));
             carga.setLineasOk(Integer.valueOf(ok));

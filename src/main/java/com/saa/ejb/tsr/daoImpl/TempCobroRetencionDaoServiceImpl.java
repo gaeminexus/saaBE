@@ -48,8 +48,7 @@ public class TempCobroRetencionDaoServiceImpl extends EntityDaoImpl<TempCobroRet
 	
 	public void eliminaCobroRetencionByIdCobro(Long idTempCobro) throws Throwable {
 		System.out.println("Ingresa al Metodo eliminaRetencionCobroByusuarioCaja con idUsuarioCaja : " + idTempCobro);
-		Query query = em.createQuery (" delete b" +
-									  " from   TempCobroRetencion b " +
+		Query query = em.createQuery (" delete from TempCobroRetencion b " +
 									  " where  b.tempCobro.codigo = :idTempCobro");
 		query.setParameter("idTempCobro", idTempCobro);
 		try {

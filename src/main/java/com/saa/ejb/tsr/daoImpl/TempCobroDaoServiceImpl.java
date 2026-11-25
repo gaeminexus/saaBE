@@ -86,8 +86,7 @@ public class TempCobroDaoServiceImpl extends EntityDaoImpl<TempCobro> implements
 	 */
 	public void eliminaCobroByIdUsuarioCaja(Long idUsuarioCaja) throws Throwable {
 		System.out.println("ingresa al Metodo eliminaCobroByIdUsuarioCaja con idUsuarioCaja : " + idUsuarioCaja );
-		Query query = em.createQuery (" delete b " +
-									  " from   TempCobro b " +
+		Query query = em.createQuery (" delete from TempCobro b " +
 									  " where  b.usuarioPorCaja.codigo = :idUsuarioCaja");
 		query.setParameter ("idUsuarioCaja", idUsuarioCaja);
 		try {

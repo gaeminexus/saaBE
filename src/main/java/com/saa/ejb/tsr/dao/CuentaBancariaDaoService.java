@@ -58,13 +58,6 @@ public interface CuentaBancariaDaoService extends EntityDao<CuentaBancaria> {
 	 */
 	List<CuentaBancaria> selectByEmpresaSinCuenta(Long empresa, String numeroCuenta, Long estado) throws Throwable;
 
-	/**
-	 * Recupera el banco y el numero de cuenta en base al id de la cuenta bancaria
-	 * @param idCuenta	: Id de la Cuenta Bancaria
-	 * @return			: Id Cuenta
-	 * @throws Throwable: Excepcions
-	 */
-	List<CuentaBancaria> selectBancoNumeroByIdCuenta(Long idCuenta)throws Throwable;
 	
 	/**
 	 * Identifica si el banco puede o no conciliar con valores descuadrados

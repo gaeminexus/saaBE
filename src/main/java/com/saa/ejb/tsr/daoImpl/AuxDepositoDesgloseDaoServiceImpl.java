@@ -88,8 +88,7 @@ public class AuxDepositoDesgloseDaoServiceImpl extends EntityDaoImpl<AuxDeposito
 	 */
 	public void eliminaEfectivoRestante(Long idUsuarioCaja) throws Throwable {
 		System.out.println("ingresa al Metodo eliminaEfectivoRestante con idUsuarioCaja : " + idUsuarioCaja );
-		Query query = em.createQuery (" delete b " +
-									  " from   AuxDepositoDesglose b " +
+		Query query = em.createQuery (" delete from AuxDepositoDesglose b " +
 									  " where  b.usuarioPorCaja.codigo = :idUsuarioCaja"+
 									  "        and b.tipo = :tipo " +
 									  "		   and b.banco.codigo is null " +
@@ -190,8 +189,7 @@ public class AuxDepositoDesgloseDaoServiceImpl extends EntityDaoImpl<AuxDeposito
 
 	public void eliminaPorUsuarioCaja(Long idUsuarioCaja) throws Throwable {
 		System.out.println("Ingresa al Metodo eliminaPorUsuarioCaja con idUsuarioCaja: " + idUsuarioCaja);
-		Query query = em.createQuery (" delete b " +
-				  					  " from   AuxDepositoDesglose b " +
+		Query query = em.createQuery (" delete from AuxDepositoDesglose b " +
 				  					  " where  b.usuarioPorCaja.codigo = :idUsuarioCaja");
 		query.setParameter ("idUsuarioCaja", idUsuarioCaja);
 		try {
@@ -222,8 +220,7 @@ public class AuxDepositoDesgloseDaoServiceImpl extends EntityDaoImpl<AuxDeposito
 
 	public void eliminaEfectivoDepositado(Long idUsuarioCaja, Long idCuenta) throws Throwable {
 		System.out.println("Ingresa al metodo eliminaEfectivoDepositado con id de usuario por caja: " + idUsuarioCaja + " id de cuenta: " + idCuenta);
-		Query query = em.createQuery (" delete b  " +
-				  					  " from   AuxDepositoDesglose b " +
+		Query query = em.createQuery (" delete from AuxDepositoDesglose b " +
 				  					  " where  b.usuarioPorCaja.codigo = :idUsuarioCaja"+
 				  					  "        and b.tipo = :tipo " +
 				  					  "        and b.cuentaBancaria.codigo = :cuenta");
