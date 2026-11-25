@@ -29,6 +29,27 @@ public class SujetoReportadoG45 implements Serializable {
     public static final String ORIGEN_SEMILLA   = "SEMILLA";
     public static final String ORIGEN_HM45      = "HM45";
     public static final String ORIGEN_EJECUCION = "EJECUCION";
+    /**
+     * C39 (23-nov-2026): sujeto que la Superintendencia ya tiene en su base, con evidencia (un acuse que lo validó, p. ej.
+     * la G46 de junio 2025 rechazada solo por otro sujeto). Cuenta como reportado.
+     */
+    public static final String ORIGEN_CONFIRMADO = "CONFIRMADO";
+    /**
+     * C39: sujeto que hay que reportar en la G45 del período {@link #periodo} (o en la primera que se genere después),
+     * porque faltó en una G45 ya presentada y la Super no deja reenviarla. La fila se queda como PENDIENTE (regenerar
+     * ese mes lo vuelve a incluir) y para los meses posteriores cuenta como reportado.
+     */
+    public static final String ORIGEN_PENDIENTE = "PENDIENTE";
+
+    /**
+     * C39 (23-nov-2026, regla aprobada por el líder): un sujeto cuenta como ya reportado a la Super solo si está en una G45
+     * presentada de verdad (HM45, CONFIRMADO, o EJECUCION de un período anterior). La SEMILLA (sql 336) era un supuesto
+     * sin confirmar y la Super rechazó la G46 de junio 2025 por un sujeto de la semilla: ya no cuenta.
+     */
+    public boolean cuentaComoReportadoAntesDe(long periodoActual) {
+        if (ORIGEN_HM45.equals(origen) || ORIGEN_CONFIRMADO.equals(origen)) return true;
+        return (ORIGEN_EJECUCION.equals(origen) || ORIGEN_PENDIENTE.equals(origen)) && periodo != null && periodo < periodoActual;
+    }
 
     @Id
     @Basic
@@ -65,6 +86,18 @@ public class SujetoReportadoG45 implements Serializable {
     @Basic
     @Column(name = "SG45FCRG")
     private LocalDate fechaRegistro;
+
+    /**
+     * C41 (24-nov-2026): tipo de partícipe con que la Super tiene al sujeto en su base G45 (C cesante, J jubilado,
+     * P partícipe; manual §3.1 campo 3). Con «J» la G48 lleva la cuenta individual en cero (manual §5.4); la Super
+     * rechazó así la G48 de junio y julio 2025 para tres sujetos que el SAA tiene como partícipes. Vacío = no se sabe.
+     */
+    @Basic
+    @Column(name = "SG45TPPR", length = 1)
+    private String tipoParticipe;
+
+    public String getTipoParticipe() { return tipoParticipe; }
+    public void setTipoParticipe(String tipoParticipe) { this.tipoParticipe = tipoParticipe; }
 
     public Long getCodigo() { return codigo; }
     public void setCodigo(Long codigo) { this.codigo = codigo; }

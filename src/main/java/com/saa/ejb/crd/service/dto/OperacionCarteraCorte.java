@@ -44,6 +44,10 @@ public class OperacionCarteraCorte {
     public void setVencido(double vencido) { this.vencido = vencido; }
     public long getDiasMora() { return diasMora; }
     public void setDiasMora(long diasMora) { this.diasMora = diasMora; }
+    /** C42 (D-156): interés pendiente de las cuotas con vencimiento <= corte, sin importar la convención. */
+    private double interesExigible;
+    public double getInteresExigible() { return interesExigible; }
+    public void setInteresExigible(double interesExigible) { this.interesExigible = interesExigible; }
     public double getInteresVencido() { return interesVencido; }
     public void setInteresVencido(double interesVencido) { this.interesVencido = interesVencido; }
     public double getMora() { return mora; }

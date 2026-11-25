@@ -38,7 +38,7 @@ public class CatalogoGeograficoDaoServiceImpl implements CatalogoGeograficoDaoSe
         if (n.matches("\\d{1,2}")) return dosDigitos(n);
         List<Object> r = em.createNativeQuery(
                 " select p.PRVNCDAL from CRD.PRVN p "
-              + " where upper(translate(trim(p.PRVNNMBR), 'áéíóúÁÉÍÓÚ', 'aeiouAEIOU')) = :n "
+              + " where upper(translate(trim(p.PRVNNMBR), 'áéíóúÁÉÍÓÚÑñÜü', 'aeiouAEIOUNnUu')) = :n "
               + "   and p.PRVNCDAL is not null and p.PRVNCDAL <> '00' order by p.PRVNCDGO")
                 .setParameter("n", n).getResultList();
         return r.isEmpty() ? null : dosDigitos(r.get(0));
@@ -55,7 +55,7 @@ public class CatalogoGeograficoDaoServiceImpl implements CatalogoGeograficoDaoSe
         List<Object> r = em.createNativeQuery(
                 " select c.CDDDCDAL from CRD.CDDD c join CRD.PRVN p on p.PRVNCDGO = c.PRVNCDGO "
               + " where lpad(trim(p.PRVNCDAL), 2, '0') = :prov "
-              + "   and upper(translate(trim(c.CDDDNMBR), 'áéíóúÁÉÍÓÚ', 'aeiouAEIOU')) = :n "
+              + "   and upper(translate(trim(c.CDDDNMBR), 'áéíóúÁÉÍÓÚÑñÜü', 'aeiouAEIOUNnUu')) = :n "
               + "   and c.CDDDCDAL is not null order by c.CDDDCDGO")
                 .setParameter("prov", prov).setParameter("n", n).getResultList();
         return r.isEmpty() ? null : dosDigitos(r.get(0));

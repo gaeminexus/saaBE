@@ -46,6 +46,30 @@ public class GeneracionG48ServiceImpl implements GeneracionG48Service {
     @EJB private DetalleEjecucionReporteService ejrdService;
     @EJB private SaldoOperacionG48DaoService    cg48DaoService;
     @EJB private SaldoOperacionG48Service       saldoG48Service;
+    @EJB private com.saa.ejb.rpr.dao.SujetoReportadoG45DaoService sujetoReportadoDao;
+
+    /**
+     * C41 (24-nov-2026): días de mora hasta los que la Super exige «valor por vencer» mayor a cero (error 12093). Los vio
+     * en los acuses: hipotecario «mayor a 60 días» (G48 de junio 2025) y quirografario «mayor a 30 días» (julio 2025).
+     * Prendario: el de quirografario, hasta ver un acuse. C42 (D-156): la regla vive en ModoCorteCartera, que la comparte
+     * con el cierre de cartera, para que la contabilidad (B17) y la G48 clasifiquen igual.
+     */
+    static int umbralMoraSinPorVencer(String tipoCredito) {
+        return com.saa.ejb.crd.service.ModoCorteCartera.umbralMoraSinPorVencer(tipoCredito);
+    }
+
+    /** C41: sujetos que la Super tiene con tipo de partícipe «J» en su base G45 (RPR.SG45.SG45TPPR). */
+    private Set<String> sujetosJubiladosSuper() {
+        Set<String> j = new HashSet<>();
+        try {
+            for (com.saa.model.rpr.SujetoReportadoG45 s : sujetoReportadoDao.selectAll()) {
+                if ("J".equals(s.getTipoParticipe()) && s.getIdentificacion() != null) j.add(s.getIdentificacion().trim());
+            }
+        } catch (Throwable e) {
+            System.out.println("G48 WARN - no se pudo leer RPR.SG45 (tipo de partícipe): " + e.getMessage());
+        }
+        return j;
+    }
     @EJB private EjecucionReporteService        ejrcService;
     @EJB private HistoricoG48Service            historicoG48Service;
     @EJB private CancelacionG49DaoService       cg49DaoService;
@@ -254,6 +278,7 @@ public class GeneracionG48ServiceImpl implements GeneracionG48Service {
         
         // Set para controlar que solo la primera cuota de cada entidad tenga valorTotalCuentaIndividual
         Set<String> entidadesConValorAsignado = new HashSet<>();
+        Set<String> jubiladosSuper = sujetosJubiladosSuper();   // C41
 
         for (DetallePrestamo cuota : cuotasAProcesar) {
             try {
@@ -319,6 +344,16 @@ public class GeneracionG48ServiceImpl implements GeneracionG48Service {
                     }
                 }
 
+                // C41: regla 12093 de la Super (ver generarAlCorte).
+                String tipoCreditoCuota = prestamo.getProducto() != null && prestamo.getProducto().getNombre() != null
+                        && !prestamo.getProducto().getNombre().isEmpty()
+                        ? (Character.toUpperCase(prestamo.getProducto().getNombre().charAt(0)) == 'E' ? "Q"
+                            : String.valueOf(Character.toUpperCase(prestamo.getProducto().getNombre().charAt(0)))) : null;
+                if (valorPorVencer == 0.0 && valorVencido > 0.0 && diasMorosidad <= umbralMoraSinPorVencer(tipoCreditoCuota)) {
+                    valorPorVencer = valorVencido;
+                    valorVencido = 0.0;
+                }
+
                 // ----- VALOR TOTAL CUENTA INDIVIDUAL -----
                 // Si el estado de la entidad es 30 (jubilado voluntario) → siempre 0
                 // Solo se asigna en la primera cuota de cada entidad, el resto debe ser 0
@@ -327,9 +362,11 @@ public class GeneracionG48ServiceImpl implements GeneracionG48Service {
                 if (prestamo.getEntidad() != null) {
                     Long estadoEntidad = prestamo.getEntidad().getIdEstado();
                     
-                    // Si es jubilado complementario, el valor es siempre 0
-                    if (estadoEntidad != null
-                            && estadoEntidad == EstadoParticipeEntidad.JUBILADO_COMPLEMENTARIO) {
+                    // Si es jubilado complementario, o la Super lo tiene con «J» en su base G45 (C41), el valor es siempre 0
+                    String idSujeto = prestamo.getEntidad().getNumeroIdentificacion();
+                    if ((estadoEntidad != null
+                            && estadoEntidad == EstadoParticipeEntidad.JUBILADO_COMPLEMENTARIO)
+                            || (idSujeto != null && jubiladosSuper.contains(idSujeto.trim()))) {
                         valorCuentaIndividual = 0.0;
                     } else {
                         // Para otros estados, aplicar la lógica de primera cuota
@@ -480,7 +517,7 @@ public class GeneracionG48ServiceImpl implements GeneracionG48Service {
      * de la cuota del mes si la operación está al día (la convención grupo 2 / grupo 1 de siempre).
      */
     private long generarAlCorte(DetalleEjecucionReporte detalle, LocalDate corte) throws Throwable {
-        boolean inclusivo = com.saa.ejb.crd.service.ModoCorteCartera.corteInclusivo(null);
+        boolean inclusivo = com.saa.ejb.crd.service.ModoCorteCartera.corteInclusivo(null, corte);
         System.out.println("G48 - modo AL CORTE " + corte + " (convencion inclusiva: " + inclusivo + ")");
         List<com.saa.ejb.crd.service.dto.OperacionCarteraCorte> operaciones =
             carteraAlCorteService.calcular(corte, inclusivo);
@@ -495,6 +532,8 @@ public class GeneracionG48ServiceImpl implements GeneracionG48Service {
             cuotaPorId.put(cuota.getCodigo(), cuota);
         }
         long contador = 0L;
+        Set<String> jubiladosSuper = sujetosJubiladosSuper();
+        System.out.println("G48 AL CORTE - sujetos con «J» en la base G45 de la Super: " + jubiladosSuper.size());
         for (com.saa.ejb.crd.service.dto.OperacionCarteraCorte op : operaciones) {
             DetallePrestamo cuota = cuotaPorId.get(op.getIdCuotaAncla());
             if (cuota == null || cuota.getPrestamo() == null) {
@@ -517,15 +556,33 @@ public class GeneracionG48ServiceImpl implements GeneracionG48Service {
             g48.setCalificacionPropia(op.getCalificacion());
             g48.setTasaInteres((prestamo.getInteresNominal() != null && prestamo.getInteresNominal() > 0.0)
                 ? prestamo.getInteresNominal() : 9.0);
-            g48.setValorPorVencer(op.getPorVencer());
-            g48.setValorVencido(op.getVencido());
+            // C41 (24-nov-2026): con saldo pero nada por vencer y mora hasta el umbral de la Super (error 12093), el saldo
+            // es de cuotas que vencen el mismo día del corte (0 días): la Super lo quiere «por vencer». El B17 lo tiene en
+            // vencido: la validación previa avisa la diferencia (ValidacionEstructurasGServiceImpl, G48 por vencer).
+            double porVencer = op.getPorVencer();
+            double vencido = op.getVencido();
+            if (porVencer == 0.0 && vencido > 0.0 && op.getDiasMora() <= umbralMoraSinPorVencer(g48.getTipoCredito())) {
+                System.out.println("G48 AL CORTE - op " + g48.getNumeroOperacion() + ": " + vencido
+                    + " de vencido a por vencer (mora " + op.getDiasMora() + " días, regla 12093 de la Super)");
+                porVencer = vencido;
+                vencido = 0.0;
+            }
+            g48.setValorPorVencer(porVencer);
+            g48.setValorVencido(vencido);
             g48.setCostosOperativos(0.0);
             g48.setInteresOrdinario(op.getInteresOrdinarioReporte());
             g48.setInteresMora(op.getMora());
             g48.setValorDemandaJudicial(0.0);
             g48.setCarteraCastigada(0.0);
-            g48.setValorTotalCuentaIndividual(op.getCuentaIndividual());
-            g48.setValorSujetoProvision(op.getValorSujetoProvision());
+            // C41: jubilado «J» en la base G45 de la Super → cuenta individual en cero (manual §5.4) y el valor sujeto a
+            // provisión es el saldo. La provisión no cambia: es la contabilizada.
+            if (g48.getIdentificacion() != null && jubiladosSuper.contains(g48.getIdentificacion().trim())) {
+                g48.setValorTotalCuentaIndividual(0.0);
+                g48.setValorSujetoProvision(Math.round((porVencer + vencido) * 100.0) / 100.0);
+            } else {
+                g48.setValorTotalCuentaIndividual(op.getCuentaIndividual());
+                g48.setValorSujetoProvision(op.getValorSujetoProvision());
+            }
             g48.setProvisionRequeridaOriginal(op.getProvisionRequerida());
             g48.setProvisionConstituida(op.getProvisionConstituida());
             g48.setTipoSistemaAmortizacion("FR");

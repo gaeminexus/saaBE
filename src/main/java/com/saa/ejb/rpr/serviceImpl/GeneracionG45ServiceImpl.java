@@ -118,6 +118,12 @@ public class GeneracionG45ServiceImpl implements GeneracionG45Service {
                 candidatos.putIfAbsent(String.valueOf(g[1]).trim(), g[0] != null ? String.valueOf(g[0]) : "C");
             }
         }
+        // C39: sujetos PENDIENTES (faltaron en una G45 ya presentada) programados para este período.
+        for (SujetoReportadoG45 s : registro.values()) {
+            if (SujetoReportadoG45.ORIGEN_PENDIENTE.equals(s.getOrigen()) && s.getPeriodo() != null && s.getPeriodo() == periodo) {
+                candidatos.putIfAbsent(s.getIdentificacion().trim(), s.getTipoIdentificacion() != null ? s.getTipoIdentificacion() : "C");
+            }
+        }
         if (candidatos.isEmpty()) {
             System.out.println("G45 - G46/G50 sin sujetos. G45 vacio, OK.");
             return 0L;
@@ -137,9 +143,14 @@ public class GeneracionG45ServiceImpl implements GeneracionG45Service {
         for (Map.Entry<String, String> candidato : candidatos.entrySet()) {
             String identificacion = candidato.getKey();
             SujetoReportadoG45 previo = registro.get(identificacion);
-            if (previo != null && previo.getPeriodo() != null && previo.getPeriodo() < periodo) {
+            if (previo != null && previo.cuentaComoReportadoAntesDe(periodo)) {
                 yaReportados++;
-                continue; // ya consta en la base de sujetos de la Superintendencia
+                continue; // ya consta en la base de sujetos de la Superintendencia (C39: la SEMILLA no cuenta)
+            }
+            if (previo != null && SujetoReportadoG45.ORIGEN_PENDIENTE.equals(previo.getOrigen())
+                    && previo.getPeriodo() != null && previo.getPeriodo() > periodo) {
+                yaReportados++;
+                continue; // C39: programado para una G45 posterior (la de este mes ya se presentó sin él)
             }
 
             // --- Entidad: necesaria para patrimonio y tipo de participe ---
@@ -246,7 +257,7 @@ public class GeneracionG45ServiceImpl implements GeneracionG45Service {
             g45.setDetalleEjecucion(detalle);
 
             cg45DaoService.save(g45, null);
-            registrar(previo, g45.getTipoIdentificacion(), identificacion, periodo, detalle.getCodigo());
+            registrar(previo, g45.getTipoIdentificacion(), identificacion, periodo, detalle.getCodigo(), g45.getTipoParticipe());
             System.out.println("G45 INSERT participe: " + identificacion + " patrimonio=" + patrimonio);
             contador++;
         }
@@ -261,10 +272,20 @@ public class GeneracionG45ServiceImpl implements GeneracionG45Service {
      * (se generó antes un mes siguiente), el registro pasa a este período: ese mes siguiente lo traía como nuevo
      * y hay que regenerarlo.
      */
-    private void registrar(SujetoReportadoG45 previo, String tipo, String identificacion, long periodo, Long idEjrd)
-            throws Throwable {
+    private void registrar(SujetoReportadoG45 previo, String tipo, String identificacion, long periodo, Long idEjrd,
+            String tipoParticipe) throws Throwable {
+        // C41: el tipo de partícipe reportado (la G48 pone la cuenta individual en cero a los «J»).
+        String tipoReportado = tipoParticipe != null && !tipoParticipe.trim().isEmpty() ? tipoParticipe.trim().substring(0, 1) : null;
         if (previo != null) {
-            if (previo.getPeriodo() != null && previo.getPeriodo() == periodo) {
+            if (tipoReportado != null && !tipoReportado.equals(previo.getTipoParticipe())) {
+                previo.setTipoParticipe(tipoReportado);
+                sujetoReportadoDao.actualizar(previo);
+            }
+            if (SujetoReportadoG45.ORIGEN_PENDIENTE.equals(previo.getOrigen())) {
+                return; // C39: el pendiente se queda como tal (su período es este); regenerar lo vuelve a incluir
+            }
+            if (previo.getPeriodo() != null && previo.getPeriodo() == periodo
+                    && !SujetoReportadoG45.ORIGEN_SEMILLA.equals(previo.getOrigen())) {
                 return; // mismo período (p. ej. HM45 de mayo 2025): ya registrado
             }
             System.out.println("G45 WARN - sujeto registrado en el periodo posterior " + previo.getPeriodo()
@@ -283,6 +304,7 @@ public class GeneracionG45ServiceImpl implements GeneracionG45Service {
         nuevo.setOrigen(SujetoReportadoG45.ORIGEN_EJECUCION);
         nuevo.setDetalleEjecucion(idEjrd);
         nuevo.setFechaRegistro(LocalDate.now());
+        nuevo.setTipoParticipe(tipoReportado);
         sujetoReportadoDao.insertar(nuevo);
     }
 }

@@ -78,6 +78,18 @@ public class GeneracionG46ServiceImpl implements GeneracionG46Service {
                 continue;
             }
 
+            NuevoPrestamoG46 g46 = mapear(prestamo, detalle);
+            cg46DaoService.save(g46, null);
+            System.out.println("G46 INSERT prestamo idAsoprep: " + prestamo.getIdAsoprep());
+            contador++;
+        }
+
+        System.out.println("G46 generado con " + contador + " registros");
+        return contador;
+    }
+
+    @Override
+    public NuevoPrestamoG46 mapear(Prestamo prestamo, DetalleEjecucionReporte detalle) throws Throwable {
             NuevoPrestamoG46 g46 = new NuevoPrestamoG46();
 
             // Identificación del partícipe
@@ -99,7 +111,11 @@ public class GeneracionG46ServiceImpl implements GeneracionG46Service {
             }
 
             // Valores fijos
-            g46.setEstadoOperacion("N");
+            // C41 (24-nov-2026): reestructurada («E») si el producto es reestructurado. La Super reparte con este estado el
+            // por vencer entre la 1301/1305/1309 y la 1303/1307/1311; con «N» fijo descuadraría el B17 (caso 70632, D-155).
+            boolean reestructurado = prestamo.getProducto() != null && prestamo.getProducto().getNombre() != null
+                    && prestamo.getProducto().getNombre().toUpperCase().contains("RESTRUCTURADO");
+            g46.setEstadoOperacion(reestructurado ? "E" : "N");
             g46.setSituacionOperacion("N");
             g46.setPeriodicidadPago("ME");
             g46.setFrecuenciaRevision("365");
@@ -153,13 +169,6 @@ public class GeneracionG46ServiceImpl implements GeneracionG46Service {
             g46.setTasaInteresNominal(prestamo.getInteresNominal() != null ? prestamo.getInteresNominal() : 0.0);
 
             g46.setDetalleEjecucion(detalle);
-
-            cg46DaoService.save(g46, null);
-            System.out.println("G46 INSERT prestamo idAsoprep: " + prestamo.getIdAsoprep());
-            contador++;
-        }
-
-        System.out.println("G46 generado con " + contador + " registros");
-        return contador;
+            return g46;
     }
 }

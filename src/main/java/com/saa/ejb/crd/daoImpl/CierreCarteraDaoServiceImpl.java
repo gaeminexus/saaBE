@@ -637,10 +637,13 @@ public class CierreCarteraDaoServiceImpl implements CierreCarteraDaoService {
                 + "          MAX(CASE WHEN " + vencida + " THEN :corte - cu.FCVN ELSE 0 END) DIAS, "
                 + "          SUM(CASE WHEN " + vencida + " THEN cu.INTP ELSE 0 END) INTV, "
                 + "          SUM(CASE WHEN " + vencida + " THEN cu.MORAP ELSE 0 END) MORA, "
+                // C42 (D-156): interés pendiente de las cuotas exigibles al corte (vto <= corte), sin importar la convención.
+                // Es lo que la 1.4.02 tiene por cobrar; el CCPM (Resumen Financiero) lo compara con ella.
+                + "          SUM(CASE WHEN cu.FCVN <= :corte THEN cu.INTP ELSE 0 END) INTE, "
                 + "          MIN(cu.DTPRCDGO) KEEP (DENSE_RANK FIRST ORDER BY cu.FCVN, cu.DTPRCDGO) ANCLA "
                 + "   FROM cu GROUP BY cu.PRSTCDGO ) "
                 + " SELECT op.PRSTCDGO, op.PRDCCDGO, op.TPPRCDGO, op.ENTDCDGO, op.PV, op.VV, op.DIAS, op.INTV, op.MORA, "
-                + "        op.ANCLA, "
+                + "        op.ANCLA, op.INTE, "
                 + "        (SELECT NVL(SUM(NVL(x.DTPRINTR,0)),0) FROM CRD.DTPR x WHERE x.PRSTCDGO = op.PRSTCDGO "
                 + "          AND TRUNC(x.DTPRFCVN) BETWEEN TRUNC(:corte, 'MM') AND :corte AND NVL(x.DTPRESTD,0) <> "
                 + EstadoCuotaPrestamo.CANCELADA_ANTICIPADA + ") INTMES, "
@@ -661,7 +664,7 @@ public class CierreCarteraDaoServiceImpl implements CierreCarteraDaoService {
         for (Object[] f : filas) {
             resultado.add(new Object[]{ aLong(f[0]), aLong(f[1]), aLong(f[2]), aLong(f[3]),
                     aDouble(f[4]), aDouble(f[5]), aLong(f[6]), aDouble(f[7]), aDouble(f[8]),
-                    aLong(f[9]), aDouble(f[10]), aDouble(f[12]), aDouble(f[11]) }); // [11] CI, [12] CAPMES
+                    aLong(f[9]), aDouble(f[11]), aDouble(f[13]), aDouble(f[12]), aDouble(f[10]) }); // [10] INTE, [13] CI, [12] CAPMES (C42: INTE al final)
         }
         return resultado;
     }

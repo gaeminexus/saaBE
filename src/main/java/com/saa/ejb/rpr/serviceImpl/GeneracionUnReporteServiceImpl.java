@@ -79,6 +79,7 @@ public class GeneracionUnReporteServiceImpl implements GeneracionUnReporteServic
     @EJB private GeneracionG49Service           g49Service;
     @EJB private GeneracionG50Service           g50Service;
     @EJB private GeneracionG51Service           g51Service;
+    @EJB private com.saa.ejb.rpr.service.SustitucionReporteGService sustitucionService;
 
     @Override
     @TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
@@ -88,22 +89,26 @@ public class GeneracionUnReporteServiceImpl implements GeneracionUnReporteServic
         // Mismo switch de los doce casos que antes vivía en
         // GeneracionReportesServiceImpl#ejecutarG — sin cambios de lógica, solo de ubicación
         // (para que corra en su propia transacción vía @TransactionAttribute REQUIRES_NEW).
+        long registros;
         switch (ejrd.getTipoReporte()) {
-            case "G40": return g40Service.generar(ejrd);
-            case "G41": return g41Service.generar(ejrd);
-            case "G42": return g42Service.generar(ejrd);
-            case "G43": return g43Service.generar(ejrd);
-            case "G44": return g44Service.generar(ejrd);
-            case "G45": return g45Service.generar(ejrd);
-            case "G46": return g46Service.generar(ejrd);
-            case "G47": return g47Service.generar(ejrd);
-            case "G48": return g48Service.generar(ejrd);
-            case "G49": return g49Service.generar(ejrd);
-            case "G50": return g50Service.generar(ejrd);
-            case "G51": return g51Service.generar(ejrd);
+            case "G40": registros = g40Service.generar(ejrd); break;
+            case "G41": registros = g41Service.generar(ejrd); break;
+            case "G42": registros = g42Service.generar(ejrd); break;
+            case "G43": registros = g43Service.generar(ejrd); break;
+            case "G44": registros = g44Service.generar(ejrd); break;
+            case "G45": registros = g45Service.generar(ejrd); break;
+            case "G46": registros = g46Service.generar(ejrd); break;
+            case "G47": registros = g47Service.generar(ejrd); break;
+            case "G48": registros = g48Service.generar(ejrd); break;
+            case "G49": registros = g49Service.generar(ejrd); break;
+            case "G50": registros = g50Service.generar(ejrd); break;
+            case "G51": registros = g51Service.generar(ejrd); break;
             default:
                 throw new Exception("Logica de generacion no implementada para: " + ejrd.getTipoReporte());
         }
+        // C40 (23-nov-2026): lo presentado a la Super que difiere del SAA (RPR.SSTG), en la misma transacción. La G46 va
+        // antes que la G45 y la G51, que se arman desde ella; la G48 antes que la G49.
+        return registros + sustitucionService.aplicar(ejrd);
     }
 
     @Override

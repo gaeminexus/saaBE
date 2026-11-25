@@ -45,6 +45,9 @@ public class ControlCierreServiceImpl implements ControlCierreService {
     @PersistenceContext
     private EntityManager em;
 
+    /** C39: B17 preliminar para el control de saldos negativos. */
+    @EJB private com.saa.ejb.cnt.service.EstructuraReporteService estructuraReporteService;
+
     @EJB
     private EstadoCierreService estadoCierreService;
 
@@ -489,6 +492,37 @@ public class ControlCierreServiceImpl implements ControlCierreService {
     // (f) Cuadratura B17 ↔ G (lógica de 10-cuadratura-b17-g.js)
     // =====================================================================
 
+    /**
+     * C39 (23-nov-2026, D-150): la Superintendencia rechaza el B17 si alguna cuenta tiene saldo negativo (salvo las
+     * correctoras). Se arma el B17 preliminar del mes y se cuentan sus avisos «SALDO NEGATIVO» (EstructuraReporteServiceImpl).
+     */
+    private ControlCierre controlSaldosNegativosB17(Long idEmpresa, LocalDate corte) {
+        ControlCierre c = new ControlCierre("B17_G", "B17_SALDOS_NEGATIVOS",
+                "B17: ninguna cuenta con saldo negativo (salvo provisiones y depreciaciones)");
+        try {
+            com.saa.ejb.cnt.estructura.SolicitudEstructura s = new com.saa.ejb.cnt.estructura.SolicitudEstructura();
+            s.setEmpresa(idEmpresa);
+            s.setCodigoEstructura("B17");
+            s.setFechaCorte(corte);
+            s.setPreliminar(Boolean.TRUE);
+            List<String> negativos = new java.util.ArrayList<>();
+            for (String a : estructuraReporteService.generar(s).getAdvertencias()) {
+                if (a != null && a.startsWith("SALDO NEGATIVO")) negativos.add(a.replace("SALDO NEGATIVO (la Superintendencia lo rechaza): ", ""));
+            }
+            c.setValor((double) negativos.size());
+            c.setEsperado(0.0);
+            c.setDiferencia((double) negativos.size());
+            c.setEstado(negativos.isEmpty() ? ControlCierre.OK : ControlCierre.ERROR);
+            c.setDetalle(negativos.isEmpty() ? "Sin cuentas negativas en el B17 al " + corte + "."
+                    : "La Superintendencia rechaza el B17 con estas cuentas: " + String.join("; ", negativos)
+                            + ". Reclasificar antes de cerrar (ver D-150).");
+        } catch (Throwable e) {
+            c.setEstado(ControlCierre.ADVERTENCIA);
+            c.setDetalle("No se pudo armar el B17 para revisar saldos negativos: " + (e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName()));
+        }
+        return c;
+    }
+
     private void controlesB17G(List<ControlCierre> controles, Long idEmpresa, Long anio, Long mes, LocalDate corte,
             LocalDate corteSig) {
         // El plan de cuentas del SAA sigue el catálogo de la Superintendencia: la cuenta 21 del B17 es la 2.1,
@@ -505,6 +539,7 @@ public class ControlCierreServiceImpl implements ControlCierreService {
                 + textoParametro(CntParametroEstadoFinanciero.CUENTA_CARTERA_CREDITOS) + ", leídas del rubro "
                 + Rubros.CNT_PARAMETROS_ESTADOS_FINANCIEROS + ").");
         controles.add(oficial);
+        controles.add(controlSaldosNegativosB17(idEmpresa, corte));
 
         Long ejrdG42 = ultimaEstructura(anio, mes, "G42");
         Long ejrdG48 = ultimaEstructura(anio, mes, "G48");

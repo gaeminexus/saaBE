@@ -292,7 +292,7 @@ public class GeneracionG49ServiceImpl implements GeneracionG49Service {
         if (!ModoCorteCartera.esAlCorte(corte, null)) {
             return new HashSet<>();
         }
-        boolean inclusivo = ModoCorteCartera.corteInclusivo(null);
+        boolean inclusivo = ModoCorteCartera.corteInclusivo(null, corte);
         Set<Long> ids = new HashSet<>(carteraAlCorteService.calcularPorPrestamo(corte, inclusivo).keySet());
         System.out.println("G49 - modo AL CORTE " + corte + ": " + ids.size()
             + " prestamos con saldo al corte (no se marcan cancelados ni se borran de la G48)");

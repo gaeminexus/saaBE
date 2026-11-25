@@ -1124,7 +1124,9 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
     @Override
     public void recalcularMoraALaFecha(SaldosCuota saldos, DetallePrestamo cuota, double tasaDiaria,
             LocalDate fecha) {
-        double moraALaFecha = procesoMoraPrestamoService.calcularMoraCuota(cuota, tasaDiaria, fecha);
+        // C43 (D-156): antes de que ASOPREP cobrara la mora, la cuota se cobra sin ella (queda la ya pagada).
+        double moraALaFecha = com.saa.ejb.crd.service.ModoCorteCartera.moraNoCobrable(fecha.atStartOfDay())
+            ? nvl(cuota.getMoraPagado()) : procesoMoraPrestamoService.calcularMoraCuota(cuota, tasaDiaria, fecha);
         PrelacionCuotas.ajustarMoraALaFecha(saldos, moraALaFecha, nvl(cuota.getMoraPagado()), false);
     }
 
@@ -1140,9 +1142,11 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
             recalcularMoraALaFecha(saldos, cuota, tasaDiaria, fecha);
             return;
         }
-        double moraALaFecha = procesoMoraPrestamoService.calcularMoraCuota(cuota, tasaDiaria, fecha);
         double moraPagada = PrelacionCuotas.moraPagadaReal(cuota,
             pagoPrestamoDaoService.selectVigentesByIdDetallePrestamo(cuota.getCodigo()));
+        // C43 (D-156): sin mora antes de que ASOPREP la cobrara.
+        double moraALaFecha = com.saa.ejb.crd.service.ModoCorteCartera.moraNoCobrable(fecha.atStartOfDay())
+            ? moraPagada : procesoMoraPrestamoService.calcularMoraCuota(cuota, tasaDiaria, fecha);
         PrelacionCuotas.ajustarMoraALaFecha(saldos, moraALaFecha, moraPagada, true);
     }
 
@@ -1153,11 +1157,13 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
      */
     private DetallePrestamo fijarMoraMarcaExigible(DetallePrestamo cuota, double tasaDiaria, LocalDate fecha)
             throws Throwable {
-        double moraALaFecha = procesoMoraPrestamoService.calcularMoraCuota(cuota, tasaDiaria, fecha);
         long dias = cuota.getFechaVencimiento() != null
             ? java.time.temporal.ChronoUnit.DAYS.between(cuota.getFechaVencimiento().toLocalDate(), fecha) : 0L;
         double moraPagada = PrelacionCuotas.moraPagadaReal(cuota,
             pagoPrestamoDaoService.selectVigentesByIdDetallePrestamo(cuota.getCodigo()));
+        // C43 (D-156): sin mora antes de que ASOPREP la cobrara.
+        double moraALaFecha = com.saa.ejb.crd.service.ModoCorteCartera.moraNoCobrable(fecha.atStartOfDay())
+            ? moraPagada : procesoMoraPrestamoService.calcularMoraCuota(cuota, tasaDiaria, fecha);
         PrelacionCuotas.fijarMoraALaFecha(cuota, moraALaFecha, dias, moraPagada);
         System.out.println("  C33c: marca #" + cuota.getNumeroCuota() + " (" + cuota.getCodigo()
             + ") exigible: mora al " + fecha + " $" + cuota.getMora() + ", total $" + cuota.getTotal());
