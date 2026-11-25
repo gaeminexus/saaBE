@@ -95,6 +95,9 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
     private static final double MINIMO_LINEA = 0.005D;
 
     @EJB
+    private com.saa.ejb.crd.service.ControlProvisionInteresService controlProvisionInteresService;
+
+    @EJB
     private CierreCarteraDaoService cierreCarteraDaoService;
 
     /** C33: control de prelación de cuotas al corte. */
@@ -313,6 +316,24 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
         // C15 / H5: semilla del libro MVIC con la provision de intereses de la apertura.
         if (Boolean.TRUE.equals(solicitud.getArranque())) {
             siembraProvisionApertura(corrida, solicitud, calculo);
+        }
+
+        // Lote 22 (2.3 y 3.1): después del ⑦, el control 1.4.02 = 1.4.99.05 con el ajuste de último recurso, y el control informativo del día 1.
+        if (!Boolean.TRUE.equals(solicitud.getArranque())) {
+            com.saa.ejb.crd.service.dto.ResultadoControlProvision control = controlProvisionInteresService.controlarYAjustar(
+                    solicitud.getIdEmpresa(), corrida.getFechaCorte(), corrida, solicitud.getUsuario(), solicitud.getIp());
+            for (SubProcesoCierre sp : calculo.getSubProcesos()) {
+                if (sp.getSubProceso() != null && sp.getSubProceso().intValue() == SubProcesoCierreCartera.DEVENGO_INTERESES
+                        && sp.getIdAsiento() != null) {
+                    controlProvisionInteresService.controlDia1(control, solicitud.getIdEmpresa(), sp.getFecha(), sp.getIdAsiento());
+                }
+            }
+            calculo.setControlProvision(control);
+            if (!control.getExcepciones().isEmpty()) {
+                String texto = "CONTROL 1.4.02/1.4.99.05: " + String.join(" ", control.getExcepciones());
+                corrida.setObservacion(concatena(corrida.getObservacion(), texto.length() > 1500 ? texto.substring(0, 1500) + "…" : texto));
+                calculo.getAdvertencias().addAll(control.getExcepciones());
+            }
         }
 
         // 4. La corrida queda EJECUTADA
@@ -699,6 +720,47 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
                         + sub.getTotalHaber() + ", diferencia "
                         + redondea(Double.valueOf(diferencia))
                         + ". La ejecucion lo va a rechazar.");
+            }
+        }
+
+        // Lote 22 (2.3/2.4): el control 1.4.02 = 1.4.99.05 al corte, proyectado con lo que este cierre todavía va a asentar (⑦, ⑩ y ④b), solo con el devengo completo.
+        if (devengoCompleto) {
+            Map<Long, double[]> proyeccion = new java.util.HashMap<Long, double[]>();
+            for (SubProcesoCierre sp : resultado.getSubProcesos()) {
+                if (sp.getSubProceso() == null) {
+                    continue;
+                }
+                int codigo = sp.getSubProceso().intValue();
+                if (codigo == SubProcesoCierreCartera.PROVISION_INTERESES && sp.provisionPorCuota() != null) {
+                    for (com.saa.ejb.crd.service.dto.ProvisionCuotaCalculada p : sp.provisionPorCuota()) {
+                        double[] a = proyeccion.computeIfAbsent(p.getIdTipoPrestamo(), k -> new double[6]);
+                        a[3] += p.getInteres() + p.getMora();
+                        a[4] += p.getInteres();
+                        a[5] += p.getMora();
+                    }
+                } else if (codigo == SubProcesoCierreCartera.DEVENGO_PRIMERA_CUOTA && sp.devengoInteresPorCuota() != null) {
+                    for (com.saa.ejb.crd.service.dto.DevengoInteresCuota d : sp.devengoInteresPorCuota()) {
+                        double[] a = proyeccion.computeIfAbsent(d.getIdTipoPrestamo(), k -> new double[6]);
+                        a[0] += d.getValor();
+                        a[1] += d.getValor();
+                    }
+                } else if (codigo == SubProcesoCierreCartera.DEVENGO_MORA_CORTE) {
+                    for (Object[] fila : cierreCarteraDaoService.selectMoraPorDevengarAlCorte(fechaCorte, inicioDevengoMora())) {
+                        double[] a = proyeccion.computeIfAbsent((Long) fila[2], k -> new double[6]);
+                        a[0] += redondea((Double) fila[3]);
+                        a[2] += redondea((Double) fila[3]);
+                    }
+                }
+            }
+            com.saa.ejb.crd.service.dto.ResultadoControlProvision control =
+                    controlProvisionInteresService.calcular(solicitud.getIdEmpresa(), fechaCorte, proyeccion);
+            resultado.setControlProvision(control);
+            if (control.isAplica() && !control.isCuadra()) {
+                resultado.getAdvertencias().add("Control 1.4.02 = 1.4.99.05 al " + fechaCorte + ": hay diferencia por tipo de préstamo (ver controlProvision)."
+                        + (com.saa.ejb.crd.service.ModoCorteCartera.ajusteUltimoRecursoActivo()
+                            ? " Al ejecutar, el cierre genera el ajuste de último recurso."
+                            : " La propiedad " + com.saa.ejb.crd.service.ModoCorteCartera.PROPIEDAD_AJUSTE_ULTIMO_RECURSO
+                                + " está apagada: al ejecutar solo se registra la excepción."));
             }
         }
 

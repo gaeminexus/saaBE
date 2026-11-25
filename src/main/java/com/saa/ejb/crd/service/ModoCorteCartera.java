@@ -424,6 +424,28 @@ public final class ModoCorteCartera {
         return fechaPropiedad(PROPIEDAD_TOPE_PROVISION_MORA_DESDE);
     }
 
+    /**
+     * Lote 22 (2.4): propiedad de sistema que enciende el bloqueo de {@code /prdo/cerrar}: con el devengo completo activo al corte, no deja cerrar el período
+     * contable si el control 1.4.02 = 1.4.99.05 tiene diferencia y no hay un ajuste de último recurso registrado. Apagada por defecto.
+     */
+    public static final String PROPIEDAD_BLOQUEO_CIERRE_PROVISION = "saa.cartera.bloqueoCierreProvision";
+
+    /**
+     * Lote 22 (2.3): propiedad de sistema que enciende el asiento automático del ajuste de último recurso en el cierre. Apagada por defecto: con ella apagada el
+     * cierre calcula el control y registra la excepción, pero no asienta ni toca el libro.
+     */
+    public static final String PROPIEDAD_AJUSTE_ULTIMO_RECURSO = "saa.cartera.ajusteUltimoRecurso";
+
+    /** Lote 22: ¿está encendido el bloqueo de /prdo/cerrar por el control de la provisión? */
+    public static boolean bloqueoCierreProvisionActivo() {
+        return Boolean.parseBoolean(System.getProperty(PROPIEDAD_BLOQUEO_CIERRE_PROVISION, "false").trim());
+    }
+
+    /** Lote 22: ¿está encendido el asiento automático del ajuste de último recurso? */
+    public static boolean ajusteUltimoRecursoActivo() {
+        return Boolean.parseBoolean(System.getProperty(PROPIEDAD_AJUSTE_ULTIMO_RECURSO, "false").trim());
+    }
+
     /** Lote 7: ¿el ⑦ con este corte topa la provisión de mora? */
     public static boolean topeProvisionMoraActivo(LocalDate corte) throws IncomeException {
         LocalDate desde = topeProvisionMoraDesde();

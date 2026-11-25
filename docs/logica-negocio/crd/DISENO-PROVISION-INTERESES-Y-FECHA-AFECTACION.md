@@ -314,3 +314,31 @@ El ⑦ provisiona por cuota `max(0, pendiente − saldo provisionado)`, y ese sa
 2. A1 y A2 con `grabar = false`, con el mismo `corte`.
 3. Cruce: el neto por tipo y componente de A1 contra las líneas de 1.4.99.05 del asiento, y la suma por tipo de A2 contra la 1.4.02 (`deCuotasCerradas` y `deNegativas` explican la parte «cuotas cerradas» y «negativas» del asiento). Si no cruza, no se graba.
 4. A1 y A2 con `grabar = true`. Repetir la llamada no duplica. Para deshacer: los `/anular` correspondientes.
+
+## Lote 22 — control 1.4.02 = 1.4.99.05 en el cierre, ajuste de último recurso, bloqueo de /prdo/cerrar y control del día 1
+
+Todo rige solo con el devengo completo activo al corte (`saa.cartera.devengoCompletoDesde`). Las cuentas salen de las plantillas, nunca del código: la 1.4.02 de la línea `INTERES_ORDINARIO_POR_COBRAR` de la plantilla 17 y la 1.4.99.05 de la línea `PROVISION_INTERESES` de la 36, por tipo de préstamo; los saldos con `selectSaldoContablePorCuenta` (cuadratura C14: asientos activos o mayorizados con fecha ≤ corte). Tolerancia 0,01 por tipo de préstamo y por diferencia.
+
+### 2.3 — el control (`ControlProvisionInteresService.calcular`)
+Por tipo de préstamo se calculan, al corte:
+- (a) **contable contra contable**: 1.4.02 − 1.4.99.05 (la regla; debe dar 0).
+- (b) **cada cuenta contra su libro por cuota**: 1.4.02 − (Σ(11−12) + Σ(5−6)) y 1.4.99.05 − saldo provisionado del libro (Σ 1, 4, 14 − Σ 2, 3, 9, 10, 13).
+- por **componente** (solo libro): devengo de interés − provisión de interés, y devengo de mora − provisión de mora. Las dos cuentas comparten cuenta contable entre interés y mora (se distinguen por la descripción), así que el componente solo se puede comparar en el libro.
+En la **previsualización** es una proyección: suma a lo asentado hoy lo que este cierre todavía va a asentar con libro (el ⑦, el ⑩ y el ④b); sale en `controlProvision` y, si no cuadra, como advertencia. No incluye el ⑪ (interés anticipado), que mueve una cuenta 1.4.02 sin libro por cuota: si la 1.4.02 de la plantilla 17 es la misma cuenta, aparecerá como diferencia hasta decidir su tratamiento.
+
+### 2.3 — el ajuste de último recurso (`controlarYAjustar`, después de los pasos y antes de marcar la corrida EJECUTADA)
+Si queda diferencia, siempre se **registra la excepción** (por tipo: saldos contables y de libro, las diferencias y la **causa probable**) en `CRCTOBSR` de la corrida (hasta 1.500 caracteres) y en las advertencias de la respuesta. El **asiento** solo se genera con la propiedad `saa.cartera.ajusteUltimoRecurso = true` (apagada por defecto, para no tocar la contabilidad de producción hasta que el líder lo pida). Con ella encendida:
+1. **El libro primero.** Se calcula por cuota lo que debería decir (el mismo cálculo de A2 y A1: interés devengado y no cobrado de las cuotas del ⑦ y, para la provisión, también la mora con la regla del ⑦; las cuotas cerradas valen 0). Lo que falta se graba con origen `AJUSTE_ULTIMO_RECURSO`, `idOrigen` = la corrida: MVIC 11 o 12 para el devengo de interés de la 1.4.02 y 13 o 14 para la provisión. Con eso el mes siguiente no repite la diferencia.
+2. **La contabilidad al libro.** Un asiento (subproceso 13, `sql/410`) por tipo de préstamo lleva la 1.4.02 contra el ingreso (líneas `INTERES_ORDINARIO_POR_COBRAR` e `INGRESO_INTERES_ORDINARIO` de la plantilla 17, 5.1.02) y la 1.4.99.05 contra el gasto (`PROVISION_INTERESES` y `PROVISION_INTERESES_GASTO` de la 36, 4.7.05.10) por lo que falte para igualar el libro ya corregido.
+**Cómo se distinguen los casos:** si el libro por cuota ya dice lo que debe (no hay deltas de A1/A2), el ajuste es **solo contable** (un asiento, ningún MVIC): la contabilidad se movió sin libro (asiento manual, ⑪, un reverso sin MVIC 12). Si el libro está mal (provisión de cuotas cerradas o negativas, devengo sin semilla), se corrige **el libro por cuota** y la contabilidad sigue al libro corregido (MVIC y asiento). Si el libro y la contabilidad coinciden y solo la regla 1.4.02 ≠ 1.4.99.05 no cierra (por ejemplo la mora provisionada bajo la devengada por el tope del 2.2), no hay nada que asentar automáticamente: queda como excepción. La anulación del cierre anula estos MVIC y el asiento (`anularByCorrida` incluye ahora los tipos 11 a 14 con corrida).
+
+### 2.4 — bloqueo de `/prdo/cerrar`
+`CierrePeriodoContableService.cerrar` consulta el control del mes (lo asentado, `controlParaCierreContable`) y rechaza con `CIERRE_PROVISION_DESCUADRADA` si hay diferencia y **no hay un ajuste de último recurso registrado** (MVIC vigentes con origen `AJUSTE_ULTIMO_RECURSO` y fecha contable = corte). Solo rige con el devengo completo activo al corte **y** con la propiedad de sistema **`saa.cartera.bloqueoCierreProvision = true`**, apagada por defecto.
+
+### 3.1 — control del día 1 (informativo)
+Después del ④, `controlDia1` agrega a `controlProvision.dia1`, por tipo de préstamo: (1.4.02 − 1.4.99.05 al primer día del mes que abre), el devengo del asiento del ④ (MVIC 5 y 11 de ese asiento) y la diferencia entre los dos (debe ser 0). No bloquea ni asienta nada.
+
+### Propiedades y scripts
+- `saa.cartera.ajusteUltimoRecurso` (asienta el ajuste; apagada) y `saa.cartera.bloqueoCierreProvision` (bloquea `/prdo/cerrar`; apagada).
+- `sql/410` (CK_ANCC_TPOO hasta 13): antes del EAR si se enciende el ajuste. Con `sql/406` y `sql/409` para los tipos 11 a 14. Sin ejecutar.
+- Antes de encender el ajuste en un ambiente, correr A2 y A1 al corte de arranque: sin ellos el primer cierre vería todo el libro vacío como diferencia.

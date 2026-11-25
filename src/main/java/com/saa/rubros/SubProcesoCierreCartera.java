@@ -106,4 +106,10 @@ public interface SubProcesoCierreCartera {
 	 */
 	public static final int INTERES_ANTICIPADO = 12;
 
+	/**
+	 * Ajuste de último recurso (lote 22, nivel 2.3): lo que el cierre asienta cuando, después del ⑦, la contabilidad de la 1.4.02 o de la 1.4.99.05
+	 * se aparta del libro por cuota. D/H contra 5.1.02 y 4.7.05.10 con las cuentas de las plantillas 17 y 36. Requiere {@code sql/410}.
+	 */
+	public static final int AJUSTE_ULTIMO_RECURSO = 13;
+
 }

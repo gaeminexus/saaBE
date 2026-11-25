@@ -179,6 +179,21 @@ public interface MovimientoInteresCuotaDaoService extends EntityDao<MovimientoIn
     java.util.Set<Long> selectCuotasConMovimientoHasta(List<Long> idsCuota, List<Long> tipos, java.time.LocalDate corte) throws Throwable;
 
     /**
+     * Lote 22: el libro por tipo de préstamo al corte, para el control 1.4.02 = 1.4.99.05. Filas {@code [idTipoPrestamo, tipoMovimiento, componente, suma]} de
+     * los movimientos vigentes con fecha contable <= corte (tipos 1 a 6, 9 a 14; componentes interés y mora).
+     */
+    List<Object[]> selectLibroPorTipoAlCorte(java.time.LocalDate corte) throws Throwable;
+
+    /** Lote 22: saldo del devengo de interés por cuota al corte, Σ(11 − 12) vigentes. Filas {@code [idCuota, idPrestamo, saldo]} con saldo distinto de cero. */
+    List<Object[]> selectSaldoDevengoInteresPorCuotaAlCorte(java.time.LocalDate corte) throws Throwable;
+
+    /** Lote 22: {@code true} si hay un ajuste de último recurso vigente (origen AJUSTE_ULTIMO_RECURSO) con fecha contable = corte. */
+    boolean existeAjusteUltimoRecurso(java.time.LocalDate corte) throws Throwable;
+
+    /** Lote 22: el devengo (MVIC 5 y 11) grabado con un asiento, por tipo de préstamo. Filas {@code [idTipoPrestamo, suma]}. */
+    List<Object[]> selectDevengoPorAsientoYTipo(Long idAsiento) throws Throwable;
+
+    /**
      * Lote 18: como {@link #selectMoraContabilizadaPendientePorPrestamo(java.time.LocalDate)} pero sumando al devengo de cada
      * préstamo {@code devengoAdicional} (el ⑩ del mismo cierre, aún sin grabar), ANTES del piso en cero. Es lo que
      * daría la consulta de arriba si ese devengo ya estuviera en el libro. Con el mapa nulo o vacío es la misma consulta.

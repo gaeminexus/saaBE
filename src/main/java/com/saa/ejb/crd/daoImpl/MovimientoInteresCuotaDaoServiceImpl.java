@@ -122,7 +122,7 @@ public class MovimientoInteresCuotaDaoServiceImpl extends EntityDaoImpl<Movimien
         Query query = em.createQuery(
             "update MovimientoInteresCuota m set m.anulado = 1"
             + " where m.corrida.codigo = :idCorrida and m.anulado = 0"
-            + " and m.tipoMovimiento in (1, 5, 7, 11)");
+            + " and m.tipoMovimiento in (1, 5, 7, 11, 12, 13, 14)");
         query.setParameter("idCorrida", idCorrida);
         return query.executeUpdate();
     }
@@ -333,6 +333,63 @@ public class MovimientoInteresCuotaDaoServiceImpl extends EntityDaoImpl<Movimien
             }
         }
         return resultado;
+    }
+
+    @Override
+    public List<Object[]> selectLibroPorTipoAlCorte(java.time.LocalDate corte) throws Throwable {
+        System.out.println("MovimientoInteresCuotaDaoServiceImpl.selectLibroPorTipoAlCorte - corte: " + corte);
+        Query query = em.createNativeQuery(
+            " SELECT pr.TPPRCDGO, m.MVICTPMV, m.MVICCMPN, SUM(m.MVICVLOR) "
+            + "   FROM CRD.MVIC m JOIN CRD.PRST p ON p.PRSTCDGO = m.PRSTCDGO JOIN CRD.PRDC pr ON pr.PRDCCDGO = p.PRDCCDGO "
+            + "  WHERE m.MVICANUL = 0 AND m.MVICFCCT <= :corte AND m.MVICCMPN IN (1, 2) "
+            + "    AND m.MVICTPMV IN (1, 2, 3, 4, 5, 6, 9, 10, 11, 12, 13, 14) AND pr.TPPRCDGO IS NOT NULL "
+            + "  GROUP BY pr.TPPRCDGO, m.MVICTPMV, m.MVICCMPN");
+        query.setParameter("corte", java.sql.Date.valueOf(corte));
+        List<Object[]> resultado = new ArrayList<>();
+        for (Object[] f : (List<Object[]>) query.getResultList()) {
+            resultado.add(new Object[]{ ((Number) f[0]).longValue(), ((Number) f[1]).longValue(), ((Number) f[2]).longValue(),
+                f[3] != null ? ((Number) f[3]).doubleValue() : 0.0 });
+        }
+        return resultado;
+    }
+
+    @Override
+    public List<Object[]> selectSaldoDevengoInteresPorCuotaAlCorte(java.time.LocalDate corte) throws Throwable {
+        System.out.println("MovimientoInteresCuotaDaoServiceImpl.selectSaldoDevengoInteresPorCuotaAlCorte - corte: " + corte);
+        String expresion = "sum(case when m.tipoMovimiento = 11 then m.valor when m.tipoMovimiento = 12 then -m.valor else 0.0 end)";
+        Query query = em.createQuery(
+            "select m.idCuota, m.prestamo.codigo, " + expresion
+            + " from MovimientoInteresCuota m where m.anulado = 0 and m.tipoMovimiento in (11, 12) and m.fechaContable <= :corte"
+            + " group by m.idCuota, m.prestamo.codigo having abs(" + expresion + ") > 0.004");
+        query.setParameter("corte", corte);
+        List<Object[]> resultado = new ArrayList<>();
+        for (Object[] f : (List<Object[]>) query.getResultList()) {
+            resultado.add(new Object[]{ f[0], f[1], f[2] != null ? ((Number) f[2]).doubleValue() : 0.0 });
+        }
+        return resultado;
+    }
+
+    @Override
+    public List<Object[]> selectDevengoPorAsientoYTipo(Long idAsiento) throws Throwable {
+        Query query = em.createNativeQuery(
+            " SELECT pr.TPPRCDGO, SUM(m.MVICVLOR) FROM CRD.MVIC m JOIN CRD.PRST p ON p.PRSTCDGO = m.PRSTCDGO"
+            + " JOIN CRD.PRDC pr ON pr.PRDCCDGO = p.PRDCCDGO"
+            + " WHERE m.ASNTCDGO = :asiento AND m.MVICANUL = 0 AND m.MVICTPMV IN (5, 11) AND pr.TPPRCDGO IS NOT NULL GROUP BY pr.TPPRCDGO");
+        query.setParameter("asiento", idAsiento);
+        List<Object[]> resultado = new ArrayList<>();
+        for (Object[] f : (List<Object[]>) query.getResultList()) {
+            resultado.add(new Object[]{ ((Number) f[0]).longValue(), f[1] != null ? ((Number) f[1]).doubleValue() : 0.0 });
+        }
+        return resultado;
+    }
+
+    @Override
+    public boolean existeAjusteUltimoRecurso(java.time.LocalDate corte) throws Throwable {
+        Query query = em.createQuery("select count(m) from MovimientoInteresCuota m where m.origen = 'AJUSTE_ULTIMO_RECURSO'"
+            + " and m.anulado = 0 and m.fechaContable = :corte");
+        query.setParameter("corte", corte);
+        Long n = (Long) query.getSingleResult();
+        return n != null && n > 0L;
     }
 
     @Override

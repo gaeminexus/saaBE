@@ -35,6 +35,10 @@ public class CierrePeriodoContableServiceImpl implements CierrePeriodoContableSe
 	@EJB
 	private EstadoCierreService estadoCierreService;
 
+	/** Lote 22 (2.4): control 1.4.02 = 1.4.99.05 del cierre de cartera, para el bloqueo de /prdo/cerrar. */
+	@EJB
+	private com.saa.ejb.crd.service.ControlProvisionInteresService controlProvisionInteresService;
+
 	private static String mesTexto(Long anio, Long mes) {
 		return anio + "-" + (mes != null && mes < 10 ? "0" + mes : String.valueOf(mes));
 	}
@@ -155,6 +159,26 @@ public class CierrePeriodoContableServiceImpl implements CierrePeriodoContableSe
 		if (!estadoCierreService.carteraCerrada(idEmpresa, anio, mes)) {
 			throw new IncomeException("El cierre contable de " + mesTexto(anio, mes) + " exige la cartera del mes cerrada:"
 					+ " ejecute antes el cierre–apertura de cartera (POST /cierrecartera/ejecutar).");
+		}
+		// Lote 22 (2.4): con el devengo completo activo al corte y la propiedad encendida (apagada por defecto), no se cierra el período contable si el
+		// control 1.4.02 = 1.4.99.05 de la cartera del mes tiene diferencia y no hay un ajuste de último recurso registrado.
+		java.time.LocalDate corteMes = java.time.YearMonth.of(anio.intValue(), mes.intValue()).atEndOfMonth();
+		if (com.saa.ejb.crd.service.ModoCorteCartera.bloqueoCierreProvisionActivo()
+				&& com.saa.ejb.crd.service.ModoCorteCartera.devengoCompletoActivo(corteMes)) {
+			com.saa.ejb.crd.service.dto.ResultadoControlProvision control =
+					controlProvisionInteresService.controlParaCierreContable(idEmpresa, corteMes);
+			if (control.isAplica() && !control.isCuadra() && !control.isAjusteRegistrado()) {
+				StringBuilder detalle = new StringBuilder();
+				for (com.saa.ejb.crd.service.dto.ResultadoControlProvision.Tipo t : control.getPorTipo()) {
+					if (!t.isCuadra()) {
+						detalle.append(detalle.length() > 0 ? "; " : "").append("tipo ").append(t.getIdTipoPrestamo()).append(": 1.4.02 ")
+								.append(t.getContable1402()).append(" vs 1.4.99.05 ").append(t.getContable149905());
+					}
+				}
+				throw new IncomeException("CIERRE_PROVISION_DESCUADRADA: no se puede cerrar el período contable " + mesTexto(anio, mes)
+						+ ": la 1.4.02 y la 1.4.99.05 de la cartera no cuadran (" + detalle + ") y no hay un ajuste de último recurso registrado."
+						+ " Revise el control del cierre de cartera (controlProvision).");
+			}
 		}
 		boolean fueraDeOrden = validarOrdenCierre(HistorialCierrePeriodo.TIPO_CONTABLE, idEmpresa, anio, mes, false);
 
