@@ -92,3 +92,18 @@ contrastar con las entidades antes de correrlos); ningún `mvn`. Dos veredictos 
   - `TempReportesRest`: `PUT`, `POST` (sin path) y `DELETE /{id}` (se conservan `selectByCriteria`, `generarBalance`, `generarArchivo`, `estadoOficial/*` y `DELETE /resultado/{idEjecucion}`).
   - Para cada uno de estos 17 REST se retiraron `PUT`, `POST` (sin path) y `DELETE /{id}`; se conservan sus consultas y `selectByCriteria`: `DesgloseMayorizacionCCRest`, `DetalleMayorAnaliticoRest`, `DetalleMayorizacionCCRest`, `DetalleMayorizacionRest`, `DetalleReporteContableRest`, `DetalleReporteCuentaCCRest`, `HistAsientoRest`, `HistDetalleAsientoRest`, `HistDetalleMayorizacionRest`, `HistMayorizacionRest`, `MatchCuentaRest`, `MayorizacionCCRest`, `MayorizacionRest`, `ReporteContableRest`, `ReporteCuentaCCRest`, `RenglonReporteContableRest`, `AnioMortorRest`.
 - **C17 (período abierto) en el asiento manual:** `DetalleAsientoRest.delete` y `SubdetalleAsientoRest.delete` ahora pasan por el servicio (`remove(List)`), que valida período abierto; `SubdetalleAsientoServiceImpl` valida período abierto en `saveSingle`, `save` y `remove` (el detalle y el asiento se leen de la base). No se valida el estado del asiento.
+
+## Plan de corrección (usuario, 25-11: «corrige todos los errores reportados por VCN»)
+
+El usuario autoriza corregir también los de rhh, cxc, cxp y tsr (el equipo 3 está apagado). Lo hace `omen-saa-1-be`,
+un lote a la vez, **después del lote 10** (re-imputación C33 y PGPR.PRSTCDGO), que bloquea el cierre de noviembre.
+Cada lote: medición → propuesta → programación → `mvn -q compile` → commit del árbitro. No van al EAR del cierre
+(`cierre-1125-d187`): van al EAR siguiente.
+
+| Lote | Ítems | Por qué en este orden |
+|---|---|---|
+| 11 · RRHH dinero | #3 renta, #4 finiquito, #5 fondo de reserva, #13 décimos y FR obsoletos | Plata de los empleados |
+| 12 · CXC/SRI | #6 secuencial, #7 retención calculada en servidor, #8 estados del SRI, #9 TLS, #18 razón social | Comprobantes legales |
+| 13 · Cuentas e impuestos | #1 cuenta sin rol (DAO tsr y sus 12 llamadores), #11 IVA por tarifa vigente, #12 movimiento bancario del anticipo | Contabilidad de cxc/cxp/tsr |
+| 14 · Resto | #14, #15, #16, #22, #23 (rhh); #21 (cxp); #19 parte tsr; #24 PUT parcial (casos puntuales); #25 a–d (reportes); #20 (motor rhh, documentado) | Medias y bajas |
+| Dudosos | SQL de solo lectura para que el usuario los confirme (plantilla 166, desmayorizar con FK, DTMA, permisos de SCP, filtro de sesión, generaConta, retención 3440, DELETE con FK) | Dependen de la base |
