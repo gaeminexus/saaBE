@@ -8,8 +8,8 @@
 el que producción hace el próximo cierre mensual con C27b activo, según la decisión D3 del líder.
 
 ## 1. El EAR
-- `F:\ears\asoprep\c27b-1125\SaaEAR.ear`, SHA-256 `5FA3573628419C5A01FB492D78F3A4C40952D9BF632CE87D5459FF1925CBD452`
-  (62.469.172 bytes).
+- `F:\ears\asoprep\c27b-1125b\SaaEAR.ear`, SHA-256 `FFAA9304B57E04E14A6481702162B3CA76A86FCD574E3F2B9CA44F147D747A6A`
+  (62.471.048 bytes).
   - 3 partes en `partes\`. Se unen con `copy /b SaaEAR.ear.part00+SaaEAR.ear.part01+SaaEAR.ear.part02 SaaEAR.ear`.
   - `testzip` sin errores.
 - `saaBE.war` `FB25BA2D6ED465C5046F766B7C91C83D44A049B81A91E557F90FFB16E935F56E`.
