@@ -52,7 +52,7 @@ public class PrestamoCanceladoDaoServiceImpl implements PrestamoCanceladoDaoServ
             + "   AND e.EVPRTPOO IN ('" + NOVACION + "', '" + REESTRUCTURACION + "')) AS f_sust,"
             + " (SELECT MAX(e.EVPRFCHA) FROM CRD.EVPR e WHERE e.PRSTCDGO = p.PRSTCDGO AND e.EVPRESTD = 1"
             + "   AND e.EVPRTPOO NOT IN ('" + NOVACION + "', '" + REESTRUCTURACION + "')) AS f_evento,"
-            + " (SELECT MAX(g.PGPRFCHA) FROM CRD.PGPR g WHERE g.PRSTCDGO = p.PRSTCDGO"
+            + " (SELECT MAX(g.PGPRFCHA) FROM CRD.PGPR g WHERE g.DTPRCDGO IN (SELECT d2.DTPRCDGO FROM CRD.DTPR d2 WHERE d2.PRSTCDGO = p.PRSTCDGO)"
             + "   AND g.EVPRCDGO IS NULL AND NVL(g.PGPRANUL, 0) = 0) AS f_pago,"
             + " (SELECT MAX(d.DTPRFCPG) FROM CRD.DTPR d WHERE d.PRSTCDGO = p.PRSTCDGO"
             + "   AND d.DTPRESTD IN (4, 7)) AS f_cuota"
@@ -171,13 +171,13 @@ public class PrestamoCanceladoDaoServiceImpl implements PrestamoCanceladoDaoServ
     @Override
     public List<Object[]> agregadosPagos(List<Long> ids) {
         System.out.println("PrestamoCanceladoDaoService.agregadosPagos - " + tam(ids));
-        return porLotes("SELECT g.PRSTCDGO, COUNT(*), MIN(g.PGPRFCHA), MAX(g.PGPRFCHA),"
+        return porLotes("SELECT dq.PRSTCDGO, COUNT(*), MIN(g.PGPRFCHA), MAX(g.PGPRFCHA),"
             + " NVL(SUM(g.PGPRCPPG), 0), NVL(SUM(g.PGPRINPG), 0), NVL(SUM(g.PGPRMRPG), 0),"
             + " NVL(SUM(g.PGPRINVP), 0), NVL(SUM(g.PGPRDSGR), 0), NVL(SUM(g.PGPRVLSI), 0),"
             + " NVL(SUM(g.PGPRSLOT), 0), NVL(SUM(g.PGPRVLRR), 0),"
             + " SUM(CASE WHEN g.PGPRTPOO IN ('MIGRACION', 'DEP') THEN 1 ELSE 0 END)"
-            + " FROM CRD.PGPR g WHERE g.PRSTCDGO IN (:ids) AND NVL(g.PGPRANUL, 0) = 0"
-            + " GROUP BY g.PRSTCDGO", ids);
+            + " FROM CRD.PGPR g JOIN CRD.DTPR dq ON dq.DTPRCDGO = g.DTPRCDGO WHERE dq.PRSTCDGO IN (:ids) AND NVL(g.PGPRANUL, 0) = 0"
+            + " GROUP BY dq.PRSTCDGO", ids);
     }
 
     @Override
@@ -213,8 +213,8 @@ public class PrestamoCanceladoDaoServiceImpl implements PrestamoCanceladoDaoServ
             + "    WHERE e.PRSTCDGO IN (:ids) AND e.EVPRESTD = 1"
             + "      AND e.EVPRTPOO NOT IN ('" + NOVACION + "', '" + REESTRUCTURACION + "')"
             + "   UNION ALL"
-            + "   SELECT g.PRSTCDGO, 'P', g.PGPRCDGO, g.PGPRFCHA FROM CRD.PGPR g"
-            + "    WHERE g.PRSTCDGO IN (:ids) AND g.EVPRCDGO IS NULL AND NVL(g.PGPRANUL, 0) = 0"
+            + "   SELECT dq.PRSTCDGO, 'P', g.PGPRCDGO, g.PGPRFCHA FROM CRD.PGPR g JOIN CRD.DTPR dq ON dq.DTPRCDGO = g.DTPRCDGO"
+            + "    WHERE dq.PRSTCDGO IN (:ids) AND g.EVPRCDGO IS NULL AND NVL(g.PGPRANUL, 0) = 0"
             + " ) o) x WHERE x.rn = 1", ids);
     }
 
@@ -239,7 +239,7 @@ public class PrestamoCanceladoDaoServiceImpl implements PrestamoCanceladoDaoServ
     public List<Object[]> detallePagosSinEvento(List<Long> idsPago) {
         System.out.println("PrestamoCanceladoDaoService.detallePagosSinEvento - " + tam(idsPago));
         return porLotes("SELECT g.PGPRCDGO, g.PGPRTPOO, g.PGPRFCHA,"
-            + " (SELECT NVL(SUM(h.PGPRVLRR), 0) FROM CRD.PGPR h WHERE h.PRSTCDGO = g.PRSTCDGO"
+            + " (SELECT NVL(SUM(h.PGPRVLRR), 0) FROM CRD.PGPR h WHERE h.DTPRCDGO IN (SELECT d3.DTPRCDGO FROM CRD.DTPR d3 WHERE d3.PRSTCDGO = (SELECT d4.PRSTCDGO FROM CRD.DTPR d4 WHERE d4.DTPRCDGO = g.DTPRCDGO))"
             + "   AND h.PGPRFCHA = g.PGPRFCHA AND h.EVPRCDGO IS NULL AND NVL(h.PGPRANUL, 0) = 0),"
             + " g.PGPRUSRG, g.PGPROBSR, g.CRARCDGO, c.FLLLCDGO, g.PGPRASNT"
             + " FROM CRD.PGPR g LEFT JOIN CRD.CRAR c ON c.CRARCDGO = g.CRARCDGO"

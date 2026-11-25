@@ -6,6 +6,7 @@ import java.util.List;
 
 import com.saa.basico.util.DatosBusqueda;
 import com.saa.basico.util.IncomeException;
+import com.saa.ejb.crd.dao.DetallePrestamoDaoService;
 import com.saa.ejb.crd.dao.PagoPrestamoDaoService;
 import com.saa.ejb.crd.service.PagoPrestamoService;
 import com.saa.model.crd.DetallePrestamo;
@@ -21,6 +22,23 @@ public class PagoPrestamoServiceImpl implements PagoPrestamoService {
 
     @EJB
     private PagoPrestamoDaoService pagoPrestamoDaoService;
+
+    @EJB
+    private DetallePrestamoDaoService detallePrestamoDaoService;
+
+    /**
+     * Lote 10 (B): un PGPR sin PRSTCDGO esconde el pago a toda consulta que lea por préstamo. Si llega con cuota pero sin préstamo
+     * (REST genérico), el préstamo es el de su cuota.
+     */
+    private void completaPrestamoDeLaCuota(PagoPrestamo pago) throws Throwable {
+        if (pago != null && pago.getPrestamo() == null && pago.getDetallePrestamo() != null
+                && pago.getDetallePrestamo().getCodigo() != null) {
+            DetallePrestamo cuota = detallePrestamoDaoService.find(new DetallePrestamo(), pago.getDetallePrestamo().getCodigo());
+            if (cuota != null) {
+                pago.setPrestamo(cuota.getPrestamo());
+            }
+        }
+    }
 
     /**
      * Recupera un registro de PagoPrestamo por su ID.
@@ -50,6 +68,7 @@ public class PagoPrestamoServiceImpl implements PagoPrestamoService {
     public void save(List<PagoPrestamo> lista) throws Throwable {
         System.out.println("Ingresa al metodo save de PagoPrestamoService");
         for (PagoPrestamo registro : lista) {
+            completaPrestamoDeLaCuota(registro);
             pagoPrestamoDaoService.save(registro, registro.getCodigo());
         }
     }
@@ -73,6 +92,7 @@ public class PagoPrestamoServiceImpl implements PagoPrestamoService {
     @Override
     public PagoPrestamo saveSingle(PagoPrestamo pago) throws Throwable {
         System.out.println("saveSingle - PagoPrestamo");
+        completaPrestamoDeLaCuota(pago);
         if(pago.getCodigo() == null){
         	pago.setEstado(Long.valueOf(Estado.ACTIVO)); //Activo
 		}

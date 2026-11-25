@@ -279,6 +279,13 @@ public interface DetallePrestamoDaoService extends EntityDao<DetallePrestamo> {
 	List<Object[]> selectControlPrelacionAlCorte(java.time.LocalDate desde, java.time.LocalDate corte) throws Throwable;
 
 	/**
+	 * Lote 10: el mismo control, acotado a UN préstamo (fuente única de los criterios de C33: lo usa la re-imputación para decidir si
+	 * actúa y para comprobar que el préstamo quedó sin rotura). {@code idPrestamo = null} = todos, igual que el de dos parámetros.
+	 * Hace flush antes de leer, para ver los cambios pendientes de la transacción.
+	 */
+	List<Object[]> selectControlPrelacionAlCorte(java.time.LocalDate desde, java.time.LocalDate corte, Long idPrestamo) throws Throwable;
+
+	/**
 	 * Datos escalares (SIN instanciar entidades) de las cuotas pendientes de VARIOS préstamos,
 	 * mismo criterio EXACTO que {@link #selectCuotasPendientesByPrestamoOrdenadas(Long)}:
 	 * estado IS NULL OR estado NOT IN (4 PAGADA, 7 CANCELADA_ANTICIPADA). Para calcular saldos

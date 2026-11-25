@@ -20,7 +20,9 @@ import com.saa.ejb.crd.service.dto.ResultadoReversoProvision;
 import com.saa.model.crd.DetallePrestamo;
 import com.saa.model.crd.PagoPrestamo;
 
+import jakarta.annotation.Resource;
 import jakarta.ejb.EJB;
+import jakarta.ejb.SessionContext;
 import jakarta.ejb.Stateless;
 import jakarta.ejb.TransactionAttribute;
 import jakarta.ejb.TransactionAttributeType;
@@ -55,6 +57,10 @@ public class PrelacionCuotasServiceImpl implements PrelacionCuotasService {
     @EJB
     private com.saa.ejb.crd.service.ProcesoMoraPrestamoService procesoMoraPrestamoService;
 
+    /** Lote 10: para deshacer la transacción de un préstamo que quedaría roto (rollback por préstamo). */
+    @Resource
+    private SessionContext ctx;
+
     /** Auto-inyección: el lote llama a cada préstamo a través del proxy (REQUIRES_NEW). */
     @EJB
     private PrelacionCuotasService self;
@@ -72,12 +78,22 @@ public class PrelacionCuotasServiceImpl implements PrelacionCuotasService {
     @TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
     public ResultadoReimputacion reimputarPagosEnOrdenNuevaTransaccion(Long idPrestamo, LocalDate fecha, String usuario,
             Long idEmpresa, boolean simular) throws Throwable {
-        return reimputarPagosEnOrden(idPrestamo, fecha, usuario, idEmpresa, simular);
+        return reimputar(idPrestamo, fecha, usuario, idEmpresa, simular, true);
     }
 
     @Override
     public ResultadoReimputacion reimputarPagosEnOrden(Long idPrestamo, LocalDate fecha, String usuario, Long idEmpresa,
             boolean simular) throws Throwable {
+        return reimputar(idPrestamo, fecha, usuario, idEmpresa, simular, false);
+    }
+
+    /**
+     * Lote 10 (incidente C33 del 2026-11-25). Lee los pagos POR CUOTA (no por PGPR.PRSTCDGO), decide con el MISMO control del cierre
+     * (selectControlPrelacionAlCorte, acotado al préstamo), valida en memoria antes de grabar y, con {@code rollbackSiQuedaRoto}
+     * (REQUIRES_NEW por préstamo), deshace el préstamo si después de aplicar el control lo sigue viendo roto.
+     */
+    private ResultadoReimputacion reimputar(Long idPrestamo, LocalDate fecha, String usuario, Long idEmpresa,
+            boolean simular, boolean rollbackSiQuedaRoto) throws Throwable {
         System.out.println("PrelacionCuotasService.reimputarPagosEnOrden - Préstamo: " + idPrestamo + " - al " + fecha
             + (simular ? " (simulación)" : ""));
         if (idPrestamo == null) {
@@ -96,14 +112,36 @@ public class PrelacionCuotasServiceImpl implements PrelacionCuotasService {
         resultado.setSimulacion(simular);
 
         List<DetallePrestamo> cuotas = cuotasOrdenadas(idPrestamo);
-        Map<Long, List<PagoPrestamo>> pagosAlCorte = pagosAlCortePorCuota(idPrestamo, cuotas, corte);
+        // Lote 10: los pagos se leen POR CUOTA (selectVigentesByPrestamo navega por la cuota), no por PGPR.PRSTCDGO.
+        List<PagoPrestamo> vigentes = pagoPrestamoDaoService.selectVigentesByPrestamo(idPrestamo);
+        Map<Long, List<PagoPrestamo>> pagosAlCorte = pagosAlCortePorCuota(cuotas, vigentes, corte);
         PrelacionCuotas.Rotura rotura = PrelacionCuotas.detectarRotura(cuotas, pagosAlCorte, desde);
-        if (rotura == null) {
+        // Fuente única de los criterios: el control del cierre, acotado a este préstamo.
+        List<Object[]> filasControl = detallePrestamoDaoService.selectControlPrelacionAlCorte(desde, dia, idPrestamo);
+        if (rotura == null && filasControl.isEmpty()) {
             resultado.setMensaje("El préstamo " + idPrestamo + " cumple la prelación al " + dia + ": nada que re-imputar.");
             return resultado;
         }
-        resultado.setRotura(rotura.tipo);
-        resultado.setDetalleRotura(rotura.texto());
+        if (rotura != null) {
+            resultado.setRotura(rotura.tipo);
+            resultado.setDetalleRotura(rotura.texto());
+        }
+        int sinPrestamo = contarPagosSinPrestamo(idPrestamo, vigentes);
+        if (sinPrestamo > 0) {
+            resultado.setMensaje("RECHAZADO: el préstamo " + idPrestamo + " tiene " + sinPrestamo + " PGPR vigente(s) con PRSTCDGO nulo o"
+                + " distinto del de su cuota. Corregir el dato (sql 397) antes de re-imputar: no se toca nada.");
+            return resultado;
+        }
+        if (filasControl.isEmpty()) {
+            resultado.setMensaje("No se re-imputa: la herramienta ve una rotura (" + rotura.texto() + ") pero el control del cierre no la"
+                + " reporta para el préstamo " + idPrestamo + " al " + dia + " (fuera de su universo o criterio distinto). Revisar con crédito.");
+            return resultado;
+        }
+        if (rotura == null) {
+            resultado.setMensaje("No se re-imputa: el control del cierre reporta " + textoFilaControl(filasControl.get(0))
+                + " en el préstamo " + idPrestamo + " pero la herramienta no la reproduce. Revisar con crédito.");
+            return resultado;
+        }
 
         // Pagos que se mueven: no exentos, con capital o interés, desde la cuota donde empieza la rotura. El resto (los
         // exentos, los de solo seguro/desgravamen —el HS de la carga Petro va por cuota— y los de cuotas anteriores)
@@ -174,6 +212,29 @@ public class PrelacionCuotasServiceImpl implements PrelacionCuotasService {
                 + " con saldo al re-aplicar en orden (dinero sin destino). Revisar con crédito.");
             return resultado;
         }
+        // Lote 10: validar ANTES de grabar, en memoria y con las mismas reglas: el estado que dejaría el plan no puede tener rotura.
+        Map<Long, List<PagoPrestamo>> hipotetico = new LinkedHashMap<>();
+        for (Map.Entry<Long, List<PagoPrestamo>> e : pagosAlCorte.entrySet()) {
+            for (PagoPrestamo p : e.getValue()) {
+                if (!plan.asignaciones.containsKey(p.getCodigo())) {
+                    hipotetico.computeIfAbsent(e.getKey(), k -> new ArrayList<>()).add(p);
+                }
+            }
+        }
+        for (Map.Entry<Long, List<PrelacionCuotas.Asignacion>> e : plan.asignaciones.entrySet()) {
+            PagoPrestamo original = movibles.get(e.getKey());
+            for (PrelacionCuotas.Asignacion a : e.getValue()) {
+                DetallePrestamo destino = cuotaPorId.get(a.idCuota);
+                hipotetico.computeIfAbsent(destino.getCodigo(), k -> new ArrayList<>()).add(copiaReimputada(original, destino, a.componentes));
+            }
+        }
+        PrelacionCuotas.Rotura quedaria = PrelacionCuotas.detectarRotura(cuotas, hipotetico, desde);
+        if (quedaria != null) {
+            resultado.setRoturaResidual(quedaria.tipo + ": " + quedaria.texto());
+            resultado.setMensaje("No se re-imputa" + (simular ? " (simulación)" : "") + ": re-aplicar en orden dejaría el préstamo roto ("
+                + quedaria.texto() + "). Revisar con crédito.");
+            return resultado;
+        }
         if (simular) {
             resultado.setMensaje("Simulación: " + plan.asignaciones.size() + " pago(s) cambiarían de cuota ("
                 + rotura.texto() + "). Diferencia por componente: " + PrelacionCuotas.texto(plan.deltaComponentes) + ".");
@@ -225,16 +286,18 @@ public class PrelacionCuotasServiceImpl implements PrelacionCuotasService {
             }
         }
 
+        // Lote 10: el recálculo y la mora se hacen a la fecha real de la ejecución, nunca a un corte futuro.
+        LocalDate fechaRecalculo = dia.isAfter(LocalDate.now()) ? LocalDate.now() : dia;
         // Cada cuota tocada se reconstruye desde sus pagos vigentes (todos, no solo al corte), en orden de número.
         List<DetallePrestamo> aRecalcular = new ArrayList<>(tocadas.values());
         aRecalcular.sort(Comparator.comparing(DetallePrestamo::getNumeroCuota, Comparator.nullsLast(Comparator.naturalOrder())));
         for (DetallePrestamo c : aRecalcular) {
-            motorPagoPrestamoService.recalcularCuotaDesdePagos(c, dia);
+            motorPagoPrestamoService.recalcularCuotaDesdePagos(c, fechaRecalculo);
             // Como la reapertura D-019: la cuota que quedó abierta lleva la mora a la fecha del corte (y EN_MORA solo
             // si a esa fecha ya vencía; recalcularCuotaDesdePagos la juzga con la fecha de hoy).
             if (c.getEstado() == null || (c.getEstado() != com.saa.rubros.EstadoCuotaPrestamo.PAGADA
                     && c.getEstado() != com.saa.rubros.EstadoCuotaPrestamo.CANCELADA_ANTICIPADA)) {
-                procesoMoraPrestamoService.recalcularMoraCuotaALaFecha(c, dia);
+                procesoMoraPrestamoService.recalcularMoraCuotaALaFecha(c, fechaRecalculo);
             }
         }
 
@@ -244,18 +307,30 @@ public class PrelacionCuotasServiceImpl implements PrelacionCuotasService {
             resultado.setAsientoReversoProvision(rv != null ? rv.getIdAsiento() : null);
         }
 
-        // Control: lo que queda después.
-        List<DetallePrestamo> despues = cuotasOrdenadas(idPrestamo);
-        PrelacionCuotas.Rotura residual = PrelacionCuotas.detectarRotura(despues,
-            pagosAlCortePorCuota(idPrestamo, despues, corte), desde);
-        resultado.setRoturaResidual(residual != null ? residual.tipo + ": " + residual.texto() : null);
+        // Control: lo que queda después, con el MISMO control del cierre (Lote 10). Si el préstamo sigue roto, en la ejecución por
+        // préstamo (REQUIRES_NEW) se deshace todo: no se deja un préstamo peor ni igual de roto.
+        List<Object[]> filasDespues = detallePrestamoDaoService.selectControlPrelacionAlCorte(desde, dia, idPrestamo);
+        String residual = filasDespues.isEmpty() ? null : textoFilaControl(filasDespues.get(0));
+        resultado.setRoturaResidual(residual);
+        if (residual != null && rollbackSiQuedaRoto) {
+            ctx.setRollbackOnly();
+            resultado.setAplicado(false);
+            resultado.getPagosAnulados().clear();
+            resultado.getPagosCreados().clear();
+            resultado.setAsientoReProvision(null);
+            resultado.setAsientoReversoProvision(null);
+            resultado.setMensaje("NO APLICADO (se deshizo el préstamo): después de re-imputar el control del cierre lo sigue viendo roto ("
+                + residual + "). Revisar con crédito.");
+            System.out.println("  C33: " + resultado.getMensaje());
+            return resultado;
+        }
         resultado.setAplicado(true);
         if (!resultado.getDeltaComponentes().isEmpty()) {
             avisos.append(" El reparto por componente cambió (").append(PrelacionCuotas.texto(plan.deltaComponentes))
                 .append("): falta el asiento de reclasificación de la aplicación.");
         }
         resultado.setMensaje("Re-imputados " + anulados.size() + " pago(s) en " + nuevos.size() + " registro(s) al " + dia
-            + " (" + rotura.texto() + ")." + (residual != null ? " Queda: " + residual.texto() + "." : "") + avisos);
+            + " (" + rotura.texto() + ")." + (residual != null ? " Queda: " + residual + "." : "") + avisos);
         System.out.println("  C33: " + resultado.getMensaje());
         return resultado;
     }
@@ -308,7 +383,7 @@ public class PrelacionCuotasServiceImpl implements PrelacionCuotasService {
             LocalDate dia = corte != null ? corte : LocalDate.now();
             List<DetallePrestamo> cuotas = cuotasOrdenadas(idPrestamo);
             PrelacionCuotas.Rotura rotura = PrelacionCuotas.detectarRotura(cuotas,
-                pagosAlCortePorCuota(idPrestamo, cuotas, dia.atTime(java.time.LocalTime.MAX)), PrelacionCuotas.desde());
+                pagosAlCortePorCuota(cuotas, pagoPrestamoDaoService.selectVigentesByPrestamo(idPrestamo), dia.atTime(java.time.LocalTime.MAX)), PrelacionCuotas.desde());
             if (rotura == null) {
                 return null;
             }
@@ -414,22 +489,40 @@ public class PrelacionCuotasServiceImpl implements PrelacionCuotasService {
         return r;
     }
 
-    /** Pagos vigentes del préstamo con fecha {@code <= corte} (o sin fecha), por código de cuota. */
-    private Map<Long, List<PagoPrestamo>> pagosAlCortePorCuota(Long idPrestamo, List<DetallePrestamo> cuotas,
-            LocalDateTime corte) throws Throwable {
+    /** Pagos vigentes del préstamo (leídos por cuota) con fecha {@code <= corte} (o sin fecha), por código de cuota. */
+    private Map<Long, List<PagoPrestamo>> pagosAlCortePorCuota(List<DetallePrestamo> cuotas, List<PagoPrestamo> vigentes,
+            LocalDateTime corte) {
         Map<Long, List<PagoPrestamo>> r = new LinkedHashMap<>();
         java.util.Set<Long> ids = new java.util.HashSet<>();
         for (DetallePrestamo c : cuotas) {
             ids.add(c.getCodigo());
         }
-        List<PagoPrestamo> pagos = pagoPrestamoDaoService.selectVigentesByPrestamo(idPrestamo);
-        for (PagoPrestamo p : PrelacionCuotas.alCorte(pagos, corte)) {
+        for (PagoPrestamo p : PrelacionCuotas.alCorte(vigentes, corte)) {
             if (p.getDetallePrestamo() == null || !ids.contains(p.getDetallePrestamo().getCodigo())) {
                 continue;
             }
             r.computeIfAbsent(p.getDetallePrestamo().getCodigo(), k -> new ArrayList<>()).add(p);
         }
         return r;
+    }
+
+    /** Lote 10: PGPR vigentes cuyo PRSTCDGO es nulo o distinto del préstamo (el dato mal grabado que esconde pagos a otras consultas). */
+    private static int contarPagosSinPrestamo(Long idPrestamo, List<PagoPrestamo> vigentes) {
+        int n = 0;
+        for (PagoPrestamo p : vigentes) {
+            if (p.getPrestamo() == null || p.getPrestamo().getCodigo() == null || !p.getPrestamo().getCodigo().equals(idPrestamo)) {
+                n++;
+            }
+        }
+        return n;
+    }
+
+    /** Texto de una fila del control del cierre: {tipo en [8], cuota en [3], monto en [4], posterior en [5]}. */
+    private static String textoFilaControl(Object[] f) {
+        boolean sobre = PrelacionCuotas.Rotura.SOBREIMPUTADA.equals(f[8]);
+        return "cuota " + f[3] + (sobre ? " pagada de más " : " con saldo ")
+            + PrelacionCuotas.formato(f[4] != null ? ((Number) f[4]).doubleValue() : 0.0)
+            + (sobre ? "" : ", posterior " + f[5] + " con pagos") + " (" + f[8] + ")";
     }
 
     private static String truncar(String texto, int max) {

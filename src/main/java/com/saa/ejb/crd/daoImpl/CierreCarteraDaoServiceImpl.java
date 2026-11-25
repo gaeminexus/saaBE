@@ -509,9 +509,10 @@ public class CierreCarteraDaoServiceImpl implements CierreCarteraDaoService {
             + " cargas AS (SELECT DISTINCT c.CRARCDGO, c.ANCPASNT FROM CRD.ANCP c JOIN av ON av.ASNTCDGO = c.ANCPASNT "
             + "        WHERE c.ANCPTPOO = " + com.saa.rubros.SubProcesoCobroPetro.REPARTO + " AND c.ANCPIDST = 1 "
             + "        AND c.CRARCDGO <> :excluirCarga), "
-            + " kp AS (SELECT g.PRSTCDGO, SUM(NVL(g.PGPRCPPG,0) + NVL(g.PGPRINPG,0) + NVL(g.PGPRMRPG,0) + NVL(g.PGPRDSGR,0) "
+            + " kp AS (SELECT dq.PRSTCDGO, SUM(NVL(g.PGPRCPPG,0) + NVL(g.PGPRINPG,0) + NVL(g.PGPRMRPG,0) + NVL(g.PGPRDSGR,0) "
             + "        + NVL(g.PGPRVLSI,0) + NVL(g.PGPRINVP,0)) K FROM CRD.PGPR g "
-            + "        WHERE NVL(g.PGPRANUL,0) = 0 AND g.CRARCDGO IN (SELECT CRARCDGO FROM cargas) GROUP BY g.PRSTCDGO) ";
+            + " JOIN CRD.DTPR dq ON dq.DTPRCDGO = g.DTPRCDGO "
+            + "        WHERE NVL(g.PGPRANUL,0) = 0 AND g.CRARCDGO IN (SELECT CRARCDGO FROM cargas) GROUP BY dq.PRSTCDGO) ";
 
     private void parametrosPuente(Query query, Long idEmpresa, String cuenta, LocalDate desde, LocalDate hasta,
             Long excluirCarga) {
@@ -542,10 +543,11 @@ public class CierreCarteraDaoServiceImpl implements CierreCarteraDaoService {
                 + " kc AS (SELECT w.PRSTCDGO, SUM(ha.H * CASE WHEN t.TW <> 0 THEN w.W / t.TW ELSE 1 / t.N END) K "
                 + "        FROM cba JOIN ha ON ha.ASNTCDGO = cba.ASNT JOIN cbw w ON w.CBCRCDGO = cba.CBCRCDGO "
                 + "        JOIN cbt t ON t.CBCRCDGO = cba.CBCRCDGO GROUP BY w.PRSTCDGO), "
-                + " dw AS (SELECT g.PGPRASNT ASNT, g.PRSTCDGO, SUM(NVL(g.PGPRCPPG,0) + NVL(g.PGPRINPG,0) + NVL(g.PGPRMRPG,0) "
+                + " dw AS (SELECT g.PGPRASNT ASNT, dq.PRSTCDGO, SUM(NVL(g.PGPRCPPG,0) + NVL(g.PGPRINPG,0) + NVL(g.PGPRMRPG,0) "
                 + "        + NVL(g.PGPRDSGR,0) + NVL(g.PGPRVLSI,0) + NVL(g.PGPRINVP,0)) W FROM CRD.PGPR g "
+                + " JOIN CRD.DTPR dq ON dq.DTPRCDGO = g.DTPRCDGO "
                 + "        WHERE g.PGPRASNT IN (SELECT ASNTCDGO FROM ha) AND g.CRARCDGO IS NULL AND NVL(g.PGPRANUL,0) = 0 "
-                + "        AND g.PGPRASNT NOT IN (SELECT ASNT FROM cba) GROUP BY g.PGPRASNT, g.PRSTCDGO), "
+                + "        AND g.PGPRASNT NOT IN (SELECT ASNT FROM cba) GROUP BY g.PGPRASNT, dq.PRSTCDGO), "
                 + " dt AS (SELECT ASNT, SUM(W) TW, COUNT(*) N FROM dw GROUP BY ASNT), "
                 + " kd AS (SELECT w.PRSTCDGO, SUM(ha.H * CASE WHEN t.TW <> 0 THEN w.W / t.TW ELSE 1 / t.N END) K "
                 + "        FROM ha JOIN dw w ON w.ASNT = ha.ASNTCDGO JOIN dt t ON t.ASNT = ha.ASNTCDGO GROUP BY w.PRSTCDGO) "
