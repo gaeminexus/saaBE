@@ -173,6 +173,13 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
     @EJB
     private DetalleCobroCreditoDaoService detalleCobroCreditoDaoService;
 
+    /** Lote 1c: reabrir el acuerdo de condonación sin cobro al anular su operación. */
+    @EJB
+    private com.saa.ejb.crd.service.AcuerdoCondonacionService acuerdoCondonacionService;
+
+    @EJB
+    private com.saa.ejb.crd.dao.AcuerdoCondonacionDaoService acuerdoCondonacionDaoService;
+
     @EJB
     private DetalleAportePrecancelacionDaoService detalleAportePrecancelacionDaoService;
 
@@ -2426,6 +2433,10 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
             solicitud.getMotivo(), ahora, solicitud.getUsuario());
 
         contabilidadPrestamoService.contabilizarReverso(evento);
+        // Lote 1c: un acuerdo de condonación SIN cobro (100% aportes) también vuelve a VIGENTE al anular su operación.
+        if (CrdTipoOperacionCobro.ACUERDO_CONDONACION.equals(tipo)) {
+            reabrirAcuerdoSinCobro(evento, prestamo, solicitud, ahora);
+        }
         // C31: si el reverso reabrió el préstamo, se anula la baja de su garantía en cuentas de orden.
         // C31c: estadoPrevio es el de antes del reverso; el reverso solo puede reabrir (anular la baja), nunca darla.
         garantiaOrdenPrestamoService.sincronizar(prestamo, estadoPrevio, solicitud.getIdEmpresa(), LocalDate.now(),
@@ -2753,6 +2764,33 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
     /** Monto con 2 decimales y punto decimal, independiente del locale del servidor. */
     private String formatoMonto(double valor) {
         return String.format(Locale.US, "%.2f", valor);
+    }
+
+    /**
+     * Lote 1c: anular la operación de un acuerdo de condonación SIN línea de cobro (el acuerdo 100% aportes) devuelve el
+     * acuerdo a VIGENTE y lo desengancha del evento, con la misma lógica de {@code reabrirAcuerdoPorReverso}. Con línea
+     * DCBC (el acuerdo con depósito) no hace nada: ese camino lo reabre el reverso del CBCR. Idempotente: solo reabre un
+     * acuerdo que sigue APLICADO y enlazado a ESTE evento; si ya se reabrió, no hace nada ni falla.
+     */
+    private void reabrirAcuerdoSinCobro(EventoPrestamo evento, Prestamo prestamo, SolicitudAnulacion solicitud,
+            LocalDateTime ahora) throws Throwable {
+        List<com.saa.model.crd.DetalleCobroCredito> lineas =
+            detalleCobroCreditoDaoService.selectByEvento(evento.getCodigo());
+        if (lineas != null && !lineas.isEmpty()) {
+            return;
+        }
+        List<com.saa.model.crd.AcuerdoCondonacion> acuerdos = acuerdoCondonacionDaoService.selectByPrestamo(prestamo.getCodigo());
+        if (acuerdos == null) {
+            return;
+        }
+        for (com.saa.model.crd.AcuerdoCondonacion acuerdo : acuerdos) {
+            if (acuerdo.getEventoPrestamo() != null && evento.getCodigo().equals(acuerdo.getEventoPrestamo().getCodigo())
+                    && acuerdo.getEstado() != null
+                    && acuerdo.getEstado().longValue() == com.saa.rubros.CrdEstadoAcuerdoCondonacion.APLICADO) {
+                acuerdoCondonacionService.reabrirAcuerdoPorReverso(acuerdo.getCodigo(), solicitud.getUsuario(), ahora,
+                    "Reverso de la operación " + evento.getCodigo() + ": " + solicitud.getMotivo());
+            }
+        }
     }
 
     private double nvl(Double valor) {

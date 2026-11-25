@@ -667,8 +667,33 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
         // (hoy) esto ni se intenta. Con el flag encendido y la línea de gasto todavía sin
         // definir (§6.2), falla FUERTE con un mensaje claro — no genera un asiento a medias.
         if (configuracionContabilidadService.contabilidadActiva()) {
-            generarAsientoCondonacion(acuerdo, prestamo, pendientes, capitalCondonado, interesCondonado, fecha,
-                    fechaAsiento);
+            // Lote 1c: el cruce de aportes del acuerdo 100% aportes (sin CBCR) se arma primero y va en el MISMO asiento de
+            // la condonación (AA6: un evento guarda un solo numeroAsiento). Con depósito, el cruce lo genera CBCRASN2.
+            List<DetalleAsiento> lineasCruce = null;
+            if (acuerdo.getCobroCredito() == null && nvl(acuerdo.getValorPagarAportes()) > TOLERANCIA) {
+                List<DetalleAporteAcuerdoCondonacion> desgloseAportes =
+                        detalleAporteAcuerdoCondonacionDaoService.selectByAcuerdo(idAcuerdo);
+                List<DesgloseAporte> aportes = new ArrayList<>();
+                for (DetalleAporteAcuerdoCondonacion linea : desgloseAportes) {
+                    DesgloseAporte renglon = new DesgloseAporte();
+                    renglon.setIdTipoAporte(linea.getTipoAporte().getCodigo());
+                    renglon.setValor(linea.getValor());
+                    aportes.add(renglon);
+                }
+                lineasCruce = armarLineasCruceAportesAcuerdo(acuerdo, aportes, pago, fecha);
+            }
+            Long idAsientoOperacion = generarAsientoCondonacion(acuerdo, prestamo, pendientes, capitalCondonado,
+                    interesCondonado, fecha, fechaAsiento, lineasCruce);
+            if (idAsientoOperacion == null && lineasCruce != null) {
+                // Nada condonado: el cruce va en su propio asiento.
+                idAsientoOperacion = generarAsientoCruceAportesAcuerdo(acuerdo, lineasCruce, pago, fechaAsiento);
+            }
+            if (idAsientoOperacion != null) {
+                // Lote 1c: el asiento queda en el evento (EVPR.numeroAsiento) para que anularOperacion →
+                // contabilizarReverso lo anule por la vía de siempre, con la misma regla de fecha de los demás asientos.
+                evento.setNumeroAsiento(idAsientoOperacion);
+                evento = eventoPrestamoService.saveSingle(evento);
+            }
 
             // ÍTEM 4, diseño §5/7bis/R2: la parte CONDONADA (nunca pasó por el PagoPrestamo K9)
             // también reduce lo provisionado. `pendientes` (donde cae esta condonación) y
@@ -686,25 +711,8 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
                     + " INACTIVA: acuerdo " + idAcuerdo + " aplicado sin generar asiento de condonación.");
         }
 
-        // 6b. Cruce de aportes CONSUMIDOS — SOLO para el acuerdo 100% aportes (sin CBCR).
-        // ⚠️ Cuando hay parte de depósito (acuerdo.getCobroCredito() != null), este cruce lo
-        // genera CobroCreditoServiceImpl#generarAsientoDefinitivo (CBCRASN2) más tarde, al
-        // procesar el cobro — generarlo también acá lo duplicaría. Es la MISMA regla del
-        // acuerdo (K11): con depósito, todo espera al proceso del cobro; sin depósito, no hay
-        // nada que esperar y se aplica ya, en este mismo acto.
-        if (acuerdo.getCobroCredito() == null && nvl(acuerdo.getValorPagarAportes()) > TOLERANCIA
-                && configuracionContabilidadService.contabilidadActiva()) {
-            List<DetalleAporteAcuerdoCondonacion> desgloseAportes =
-                    detalleAporteAcuerdoCondonacionDaoService.selectByAcuerdo(idAcuerdo);
-            List<DesgloseAporte> aportes = new ArrayList<>();
-            for (DetalleAporteAcuerdoCondonacion linea : desgloseAportes) {
-                DesgloseAporte renglon = new DesgloseAporte();
-                renglon.setIdTipoAporte(linea.getTipoAporte().getCodigo());
-                renglon.setValor(linea.getValor());
-                aportes.add(renglon);
-            }
-            generarAsientoCruceAportesAcuerdo(acuerdo, aportes, pago, fecha, fechaAsiento);
-        }
+        // 6b. (Lote 1c) El cruce de aportes del acuerdo 100% aportes ya se armó arriba y va dentro del asiento de la
+        // condonación (o en el suyo propio si nada se condonó). Con depósito lo genera CBCRASN2 al procesar el cobro.
 
         ResultadoAplicacionAcuerdo resultado = new ResultadoAplicacionAcuerdo();
         resultado.setIdAcuerdo(idAcuerdo);
@@ -725,13 +733,13 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
      * criterio que CrdLineaAsiento.INTERES_MORA_POR_COBRAR: "la misma cuenta que el
      * ordinario", la descripción es lo que distingue).
      */
-    private void generarAsientoCondonacion(AcuerdoCondonacion acuerdo, Prestamo prestamo,
+    private Long generarAsientoCondonacion(AcuerdoCondonacion acuerdo, Prestamo prestamo,
             List<DetallePrestamo> pendientes, double capitalCondonado, double interesCondonado,
-            LocalDate fecha, LocalDate fechaAsiento) throws Throwable {
+            LocalDate fecha, LocalDate fechaAsiento, List<DetalleAsiento> lineasCruceAportes) throws Throwable {
         if (capitalCondonado <= 0.0 && interesCondonado <= 0.0) {
             System.out.println("  AcuerdoCondonacionService.generarAsientoCondonacion - acuerdo "
                     + acuerdo.getCodigo() + " no condonó nada; no se genera asiento.");
-            return;
+            return null;
         }
         // ⚠️ CORREGIDO 2026-08-30 (sql/86_ACUERDO_EMPRESA.sql): antes se resolvía navegando
         // acuerdo -> cobroCredito -> cuentaBancaria -> planCuenta -> empresa, y un acuerdo
@@ -897,7 +905,7 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
         if (lineas.isEmpty()) {
             System.out.println("  AcuerdoCondonacionService.generarAsientoCondonacion - acuerdo "
                     + acuerdo.getCodigo() + " sin líneas de haber armables; no se genera asiento.");
-            return;
+            return null;
         }
 
         // D: la línea de gasto, por el total exacto del haber — el asiento cuadra por
@@ -913,13 +921,20 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
         List<DetalleAsiento> lineasFinal = new ArrayList<>();
         lineasFinal.add(debe);
         lineasFinal.addAll(lineas);
+        // Lote 1c (AA6): en el acuerdo 100% aportes (sin CBCR) el cruce de aportes va en ESTE mismo asiento — un evento
+        // guarda un solo numeroAsiento y anular la operación tiene que reversar los dos. La condonación y el cruce
+        // cuadran cada uno por separado, así que la suma cuadra.
+        boolean conCruce = lineasCruceAportes != null && !lineasCruceAportes.isEmpty();
+        if (conCruce) {
+            lineasFinal.addAll(lineasCruceAportes);
+        }
 
         // Cédula/nombre/idAsoprep en la observación (2026-08-31, pedido del usuario, "en los
         // asientos contables en general"): un partícipe/préstamo concretos, a diferencia del
         // cierre de cartera — acá sí corresponden. Sumado al final, sin tocar el resto del
         // método.
         String observacionCondonacion = "Condonación del acuerdo " + acuerdo.getCodigo()
-                + " - préstamo " + prestamo.getCodigo();
+                + " - préstamo " + prestamo.getCodigo() + (conCruce ? " (con cruce de aportes)" : "");
         if (acuerdo.getEntidad() != null) {
             observacionCondonacion += " | Cédula: " + (acuerdo.getEntidad().getNumeroIdentificacion() != null
                     ? acuerdo.getEntidad().getNumeroIdentificacion() : "-")
@@ -935,7 +950,9 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
                 acuerdo.getUsuarioRegistro(), lineasFinal, Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR));
 
         System.out.println("  💰 Asiento de condonación generado: " + asiento.getCodigo()
-                + " - Acuerdo: " + acuerdo.getCodigo() + " - Total: $" + redondear(totalHaber));
+                + " - Acuerdo: " + acuerdo.getCodigo() + " - Total: $" + redondear(totalHaber)
+                + (conCruce ? " (incluye el cruce de aportes)" : ""));
+        return asiento.getCodigo();
     }
 
     /**
@@ -957,8 +974,8 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
      * característica que ya tiene ese modelo de datos para K9, no una simplificación nueva de
      * este método.
      */
-    private void generarAsientoCruceAportesAcuerdo(AcuerdoCondonacion acuerdo, List<DesgloseAporte> aportes,
-            PagoPrestamo pago, LocalDate fechaPago, LocalDate fechaAsiento) throws Throwable {
+    private List<DetalleAsiento> armarLineasCruceAportesAcuerdo(AcuerdoCondonacion acuerdo, List<DesgloseAporte> aportes,
+            PagoPrestamo pago, LocalDate fechaPago) throws Throwable {
         if (acuerdo.getEmpresa() == null) {
             throw new IncomeException("El acuerdo " + acuerdo.getCodigo()
                     + " no tiene empresa asignada; no se puede generar el asiento del cruce de aportes.");
@@ -984,7 +1001,7 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
         if (lineas.isEmpty()) {
             System.out.println("  AcuerdoCondonacionService.generarAsientoCruceAportesAcuerdo - acuerdo "
                     + acuerdo.getCodigo() + " sin líneas armables; no se genera asiento.");
-            return;
+            return null;
         }
 
         double totalDebe = 0.0;
@@ -999,6 +1016,21 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
                     + " no cuadra: aportes consumidos $" + redondear(totalDebe) + " vs. cuentas liquidadas $"
                     + redondear(totalHaber) + " (diferencia $" + diferencia + "). No se genera un asiento"
                     + " desbalanceado.");
+        }
+        return lineas;
+    }
+
+    /**
+     * Genera el asiento del cruce de aportes cuando NO hay asiento de condonación al que sumarlo (el acuerdo 100% aportes
+     * sin nada condonado). Devuelve su código para que {@code aplicarAcuerdo} lo grabe en el evento.
+     */
+    private Long generarAsientoCruceAportesAcuerdo(AcuerdoCondonacion acuerdo, List<DetalleAsiento> lineas,
+            PagoPrestamo pago, LocalDate fechaAsiento) throws Throwable {
+        Long idEmpresa = acuerdo.getEmpresa().getCodigo();
+        Prestamo prestamo = pago.getPrestamo();
+        double totalDebe = 0.0;
+        for (DetalleAsiento linea : lineas) {
+            totalDebe += nvl(linea.getValorDebe());
         }
 
         // Cédula/nombre/idAsoprep, sumado al final (2026-08-31) — mismo criterio que el asiento
@@ -1021,6 +1053,7 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
 
         System.out.println("  💰 Asiento del cruce de aportes generado: " + asiento.getCodigo()
                 + " - Acuerdo: " + acuerdo.getCodigo() + " - Total: $" + redondear(totalDebe));
+        return asiento.getCodigo();
     }
 
     /** Acumulador de capital condonado por banda, hasta armar la línea del asiento. */

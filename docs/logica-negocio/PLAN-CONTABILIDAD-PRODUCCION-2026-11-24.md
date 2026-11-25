@@ -83,6 +83,17 @@ dueño, con la autorización del usuario.
      - `generarAsientoCondonacion` (l. 728-940) no guarda el asiento en el evento.
      - `reversarProceso` del CBCR anula solo sus tres asientos.
      - Se propone como lote aparte, junto con 3.3.
+10. **Lote 1c commiteado.**
+    - El asiento de la condonación queda en el evento del acuerdo, así que reversar el cobro (o anular la operación) lo
+      anula.
+    - El acuerdo 100 % aportes va con un asiento único (condonación más cruce) y se reabre al anular su operación.
+      - El reabrir es idempotente.
+      - Con línea DCBC no hace nada: ese camino lo reabre el reverso del CBCR.
+    - **Riesgo:** quedó una inyección circular entre `AcuerdoCondonacionServiceImpl` y `ProcesoPagoPrestamoServiceImpl`.
+      Los dos son @Stateless con proxy, pero no se probó desplegado. Hay que mirarlo en el log del arranque.
+    - **Producción:** el SQL 387 lista los asientos vivos y los acuerdos que siguen APLICADOS con el evento anulado.
+      - La regularización (`REGULARIZACION-ASIENTOS-CONDONACION-1C.md`) espera la fecha de reverso del contador.
+      - Reabrir los acuerdos del bloque 5 queda como lote aparte si se aprueba la lista.
 9. **Lote 4 commiteado (2.5, 3.7a, 3.8, 6.6 parcial).**
    - **2.5:** EN_MORA se decide con la fecha del proceso en la reapertura, la prelación, la precancelación con préstamo
      y el reproceso Petro. El reverso sigue con hoy.
