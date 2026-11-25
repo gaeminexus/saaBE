@@ -41,7 +41,7 @@ public class NaturalezaCuentaDaoServiceImpl extends EntityDaoImpl<NaturalezaCuen
 	 */
 	public void deleteByEmpresa(Long empresa) throws Throwable {
 		System.out.println("Ingresa al metodo deleteByEmpresa de empresa: " + empresa);
-		Query query = em.createQuery(" Delete b " +
+		Query query = em.createQuery(" Delete " +
 									 " from   NaturalezaCuenta b " +
 									 " where   b.empresa.codigo = :empresa");
 		query.setParameter("empresa", empresa);		

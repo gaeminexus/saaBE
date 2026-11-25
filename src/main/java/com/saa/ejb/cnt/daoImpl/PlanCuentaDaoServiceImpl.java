@@ -57,7 +57,7 @@ public class PlanCuentaDaoServiceImpl extends EntityDaoImpl<PlanCuenta>  impleme
 	 */
 	public void deleteByEmpresa(Long empresa) throws Throwable {
 		System.out.println("Dao deleteByEmpresa de empresa: " + empresa);
-		Query query = em.createQuery(" Delete b " +
+		Query query = em.createQuery(" Delete " +
 									 " from   PlanCuenta b " +
 									 " where  b.empresa.codigo = :empresa");
 		query.setParameter("empresa", empresa);	

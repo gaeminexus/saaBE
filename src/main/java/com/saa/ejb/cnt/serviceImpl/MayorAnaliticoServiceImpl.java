@@ -378,11 +378,12 @@ public class MayorAnaliticoServiceImpl implements MayorAnaliticoService {
 				List<DetalleMayorAnalitico> detalles = detalleMayorAnaliticoDaoService.selectByIdMayorAnalitico(registro.getCodigo());
 				if(!detalles.isEmpty()){
 					for(DetalleMayorAnalitico detalle : detalles){
-						detalleMayorAnaliticoService.remove(detalle.getCodigo());	
-					}							
+						detalleMayorAnaliticoService.remove(detalle.getCodigo());
+					}
 				}
+				// #17: cada fila del secuencial se borra por SU propia clave (antes se pasaba el secuencial como si fuera la clave).
+				mayorAnaliticoDaoService.remove(mayorAnalitico, registro.getCodigo());
 			}
-			mayorAnaliticoDaoService.remove(mayorAnalitico, idMayorAnalitico);
 		}		
 	}
 

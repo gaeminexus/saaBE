@@ -61,8 +61,8 @@ public class DetallePlantillaDaoServiceImpl extends EntityDaoImpl<DetallePlantil
 		System.out.println("Ingresa al recuperaCuentaContable con id: " + idDetallePlantilla);
 		PlanCuenta planCuenta = new PlanCuenta();
 		Query query = em.createQuery(" select b " +
-									 " from   DetallePlantilla " +
-									 " where   codigo = :codigo");
+									 " from   DetallePlantilla b " +
+									 " where   b.codigo = :codigo");
 		query.setParameter("codigo", idDetallePlantilla);
 		DetallePlantilla detallePlantilla = (DetallePlantilla)query.getSingleResult();
 		planCuenta = detallePlantilla.getPlanCuenta();

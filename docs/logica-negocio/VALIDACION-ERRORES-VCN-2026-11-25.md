@@ -74,3 +74,10 @@ Hallazgos que cambian el diagnóstico del informe:
 
 Ningún cambio de código; ninguna consulta contra la base (los SELECT de arriba son propuestas de solo lectura, con nombres de columna que hay que
 contrastar con las entidades antes de correrlos); ningún `mvn`. Dos veredictos dependen de correr el código (#19 `trunc`, dudosos 2 y 8).
+
+## Seguimiento — lote 9 (2026-11-25)
+
+- **#17** corregido: `MayorAnaliticoServiceImpl.eliminaConsultasAnteriores` borra cada fila del secuencial por su propia clave.
+- **#19 (solo cnt)** corregido: `NaturalezaCuentaDaoServiceImpl.deleteByEmpresa` y `PlanCuentaDaoServiceImpl.deleteByEmpresa` (`delete from X b …`) y alias en `DetallePlantillaDaoServiceImpl.recuperaCuentaContable`. Las de tsr no se tocaron.
+- **#19 `trunc(b.fechaIngreso)` de `AsientoDaoServiceImpl`: NO CONFIRMADO, se deja tal cual.** `fechaIngreso` es `LocalDateTime` y Hibernate 6.6 podría aceptar `trunc` sobre un timestamp; la única forma de saberlo es correr `GET`/`POST asnt/selectByCriteria` con filtro de fecha de ingreso (o la consulta en una copia). Pendiente.
+- **#25(e)** corregido en `AsientoContableServiceImpl`: las 197 líneas con `Ã³ Ã­ Ã© Ã¡ Ãº` (UTF-8 leído como Latin-1) pasaron a `ó í é á ú`. Quedan **46 líneas con otra doble codificación**, la flecha `â†’` (debería ser `→`) en comentarios: no se tocaron porque el encargo era solo la `Ã`.
