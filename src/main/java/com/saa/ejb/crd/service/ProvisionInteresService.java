@@ -254,6 +254,26 @@ public interface ProvisionInteresService {
             throws Throwable;
 
     /**
+     * Lote 17 (nivel 1.2) — cobro cuyo {@code PagoPrestamo} NO está en las cuotas que cobra: el acuerdo de condonación
+     * graba UN solo pago anclado en la última cuota pagada con el interés y la mora de TODAS las cuotas vencidas que
+     * cierra, así que {@link #reversarPorPagos} (por la cuota del pago) no toca la provisión de esas cuotas. Este método
+     * reparte lo cobrado entre {@code cuotas} (en el orden del llamador, la más antigua primero), consume el saldo
+     * provisionado de cada una —nunca más de lo provisionado— y graba un {@code MVIC} tipo 2 (REVERSO_POR_COBRO) por cuota
+     * y componente, con el {@code idPago} del cobro (así {@link #reProvisionarPorAnulacion} lo encuentra al anular) y un
+     * asiento {@code D 1.4.99.05 / H 4.7.05.10} por tipo de préstamo, con las cuentas de la plantilla 36.
+     *
+     * @param cuotas         cuotas que el cobro cierra, en el orden de consumo
+     * @param interesCobrado interés ordinario (y vencido) efectivamente cobrado
+     * @param moraCobrada    mora efectivamente cobrada
+     * @param idPago         código del {@code PagoPrestamo} que registra el cobro
+     * @param fecha          fecha contable del asiento (la de afectación)
+     * @return {@code idAsiento} y el total reversado; {@code idAsiento == null} si no había provisión que reversar
+     */
+    ResultadoReversoProvision reversarCobradoEnCuotas(List<DetallePrestamo> cuotas, double interesCobrado,
+            double moraCobrada, Long idPago, Long idEmpresa, LocalDate fecha, String origen, Long idOrigen,
+            String usuario) throws Throwable;
+
+    /**
      * ÍTEM 5, §6.2/§7bis — cobro tardío: exceso de mora PROVISIONADA. El saldo provisionado de
      * cada cuota tiene que quedar en lo que de verdad se debe a la fecha efectiva de pago, ni un
      * centavo menos — no en el "exceso" bruto de la recalculación.
