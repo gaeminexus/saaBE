@@ -8,7 +8,7 @@ del cuadre (`cuadreSuper`, privado), sin datos de partícipes: las operaciones v
 | Rama | Estado |
 |---|---|
 | `origin/cuadre-c19-balances-oficiales` (`6e85db88`, C19b) | **Subida.** El remoto no admite `cuadre/…` porque existe la rama `cuadre`, así que se publican con guion. Base `a4d6842c`, que ya está en main. Ojo con el choque con C38 (`CNT.CRRP`, `/esrp`), anotado en el §1.2 del plan |
-| `cuadre-c45-bloqueantes-produccion` | **Todavía en programación.** Lleva 2.1, 3.2, 2.4, 6.1 y 6.2. Se sube cuando el cuadre la revise; aviso aparte |
+| `origin/cuadre-c45-bloqueantes-produccion` (5 commits sobre `90fa777f`) | **Subida.** Cada commit compila (`mvn -q -o package -DskipTests`). No se desplegó ni se probó por REST. Los commits:<br>• 2.1 cobro duplicado (`109b3707`): bloqueo `FOR UPDATE NOWAIT`, evento suelto y clave compuesta para «9»/«09».<br>• 3.2 precancelación en efectivo (`cd067268`).<br>• 2.4 D-151 (`1ddcc63e`, semilla C45-02).<br>• 6.1 D-053 en el cierre de cartera y la nómina (`083e7994`, semilla C45-03, obligatoria antes del EAR).<br>• 6.2 fechas de reversos y contra-movimientos (`2f616981`).<br>La nómina (`rhh`) y CxP tocan otro equipo. El crédito por última cuota no se cambió: son repartos que suman exacto. En `reversarAporte` cambia el criterio de C17: si el mes del aporte sigue abierto, el reverso va con la fecha del aporte (lo valida el líder). Quedan abiertos:<br>• el contra-APRT de `DevolucionAporteServiceImpl`;<br>• las reversiones de CxP sin fecha;<br>• el bloqueo en `anularCobro` y en `reversarProceso`;<br>• el redondeo ⑧ contra la G48. |
 
 ## 2. Archivos
 
