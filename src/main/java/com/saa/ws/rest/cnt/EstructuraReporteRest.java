@@ -6,7 +6,7 @@ import java.util.Map;
 import com.saa.ejb.cnt.estructura.ArchivoEstructura;
 import com.saa.ejb.cnt.estructura.ResultadoEstructura;
 import com.saa.ejb.cnt.estructura.SolicitudEstructura;
-import com.saa.ejb.cnt.service.EstructuraReporteService;
+import com.saa.ejb.cnt.service.TempReportesService;
 
 import jakarta.ejb.EJB;
 import jakarta.ws.rs.Consumes;
@@ -17,7 +17,10 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 
 /**
- * Estructuras de renglones (C19): B17 y demas reportes parametrizados en CNT.RNRP / CNT.CRRP.
+ * Reportes de renglones propios (B17...) con el contrato de C19. Desde C19b (D-031) es un ALIAS del motor de balances:
+ * calcula con TempReportesService.calculaRenglones (CNT.RPRT + CNT.RNRP + CNT.DTRP), el mismo calculo que
+ * POST /dtmt/generarBalance y /dtmt/generarArchivo. Se conserva porque el frontend de main lo llama (reportes del mes,
+ * C36); se retira cuando el frontend pase a /dtmt.
  * <ul>
  * <li>POST /esrp/generar: lineas, suma de control, advertencias y el contenido del archivo (JSON).</li>
  * <li>POST /esrp/archivo: el archivo de la estructura tal como se presenta (B17M3968ddMMaaaa.txt, latin1, CRLF).</li>
@@ -29,7 +32,7 @@ import jakarta.ws.rs.core.Response;
 public class EstructuraReporteRest {
 
 	@EJB
-	private EstructuraReporteService estructuraReporteService;
+	private TempReportesService tempReportesService;
 
 	@POST
 	@Path("generar")
@@ -37,7 +40,7 @@ public class EstructuraReporteRest {
 	@Produces(MediaType.APPLICATION_JSON)
 	public Response generar(SolicitudEstructura solicitud) {
 		try {
-			ResultadoEstructura r = estructuraReporteService.generar(solicitud);
+			ResultadoEstructura r = tempReportesService.calculaRenglones(solicitud == null ? null : solicitud.aParametrosBalance());
 			return Response.ok(r).type(MediaType.APPLICATION_JSON).build();
 		} catch (Throwable e) {
 			return error(e);
@@ -50,7 +53,7 @@ public class EstructuraReporteRest {
 	@Produces({ MediaType.APPLICATION_OCTET_STREAM, MediaType.APPLICATION_JSON })
 	public Response archivo(SolicitudEstructura solicitud) {
 		try {
-			ResultadoEstructura r = estructuraReporteService.generar(solicitud);
+			ResultadoEstructura r = tempReportesService.calculaRenglones(solicitud == null ? null : solicitud.aParametrosBalance());
 			if (r.getContenidoArchivo() == null) {
 				Map<String, Object> m = new HashMap<>();
 				m.put("mensaje", "La estructura " + r.getNombre() + " no tiene formato de archivo (RPRTFRAR)");

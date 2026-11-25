@@ -9,7 +9,7 @@ Convención de nombres: estructura + periodicidad + código de entidad **3968** 
 
 | Reporte | Periodicidad | ¿Lo genera el SAA? | ¿Coincide con el formato? | Qué falta |
 |---|---|---|---|---|
-| B17 | Mensual, `.txt` + `.ACU` | Sí desde C19: `/esrp/generar` y `/esrp/archivo` (estructura B17, alterno 6) | Idéntico byte a byte a mayo 2025 | Correr C19-01/02; decidir las 31 asignaciones y las cuentas 3.3.90.01 y 4.8.02.1; vigencia del catálogo de ene-2026; pantalla en el FE |
+| B17 | Mensual, `.txt` + `.ACU` | Sí desde C19: el motor de balances: `/dtmt/generarBalance` y `/dtmt/generarArchivo` con el reporte B17 (alterno 6, renglones propios; C19b, D-031); `/esrp/generar` y `/esrp/archivo` quedan como alias para el FE de main; avisa los saldos negativos (C39) | Idéntico byte a byte a mayo 2025 | Correr C19-01/02; decidir las 31 asignaciones y las cuentas 3.3.90.01 y 4.8.02.1; vigencia del catálogo de ene-2026; pantalla en el FE |
 | G40 | Semestral (G40S) | Sí: `/ejrc/ejecutar` → `RPR.CG40`; el `.txt` lo arma el FE (`rpr/reportes-super-bancos`) | Según lo presentado | Verificar contra el manual de tablas |
 | G41 | Mensual | Sí (`CG41`) | Sí | No reproduce meses pasados (bandera de `CRD.ENTD`) |
 | G42 | Mensual | Sí | Sí | Usa la fecha de caja (`APRTFCTR`), no el devengo; cuadre cuenta 21 del B17 = Σ G42 |
@@ -24,8 +24,8 @@ Convención de nombres: estructura + periodicidad + código de entidad **3968** 
 | G51 | Mensual | Sí, con `A21` fijo | Sí | — |
 | Q01 Quejas | Mensual | No | Presentado vacío | Definir si se incorpora |
 | Flujo de caja (formato BIESS) | Mensual | Sí desde C38: `/flef/excel` `reporte: DIRECTO` (estructura FCD, método directo por la caja con cuentas puente); el FLC de C19 queda provisional | Filas, textos y fórmulas del formato, una columna por mes | Historia laboral (filas 37–39) y tipo de fondo no son contables; ver [FLUJO-EFECTIVO-Y-COMPARATIVO.md](FLUJO-EFECTIVO-Y-COMPARATIVO.md) |
-| Flujo de efectivo NIIF (indirecto) | Mensual y acumulado | Sí desde C38: `/flef/generar` y `/flef/excel` (estructura FLE sobre el B17) | Formatos de ene-2026 (mes) y dic-2025 (acumulado) | Correr la semilla C38-01 |
-| Comparativo dic vs mes | Mensual | Sí: `/flef/comparativoExcel` con el formato de ASOPREP (estructura CMP, códigos del B17, C38); `/esfo` con `comparativo=CIERRE_ANIO_ANTERIOR` por plan de cuentas | Sí (C38) | Correr la semilla C38-01 |
+| Flujo de efectivo NIIF (indirecto) | Mensual y acumulado | Sí desde C38: `/flef/generar` y `/flef/excel` (estructura FLE sobre el B17) | Formatos de ene-2026 (mes) y dic-2025 (acumulado) | Correr la semilla C38-01 (con C19b: C19-05 o C19-07) |
+| Comparativo dic vs mes | Mensual | Sí: `/flef/comparativoExcel` con el formato de ASOPREP (estructura CMP, códigos del B17, C38); `/dtmt/estadoOficial/imprimir` (o el alias `/esfo`) con `comparativo=CIERRE_ANIO_ANTERIOR` por plan de cuentas | Sí (C38) | Correr la semilla C38-01 (con C19b: C19-05 o C19-07) |
 | Estado de situación financiera / Estado de resultados | Mensual | Sí, y oficiales desde C19 | Encabezado, logo, nombre propio, resultado del ejercicio, PRELIMINAR/DEFINITIVO | — |
 | Cambios en el patrimonio y notas | Juego completo | No (las notas son texto libre) | — | Pendiente |
 | Ecuación contable y cuadres B17↔G | Control | El estado oficial imprime la línea de descuadre; los cuadres B17↔G están en `10-cuadratura-b17-g.js` del expediente | — | Llevar C9 al SAA |

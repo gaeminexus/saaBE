@@ -2,7 +2,7 @@ package com.saa.ejb.cnt.flujo;
 
 /**
  * Consultas nativas del flujo de caja (C38), solo lectura. Parametros posicionales ?1.. como en el resto del SAA; el
- * arnes de prueba fuera del servidor usa este mismo texto. Criterio de asientos: el del B17 (EstructuraReporteServiceImpl:
+ * arnes de prueba fuera del servidor usa este mismo texto. Criterio de asientos: el del B17 (TempReportesDaoServiceImpl.selectSaldosPorCuenta:
  * empresa, estados ACTIVO y REVERSADO, por ASNTFCHA).
  */
 public final class ConsultasFlujo {

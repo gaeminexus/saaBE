@@ -1,6 +1,7 @@
 package com.saa.model.cnt;
 
 import java.io.Serializable;
+import java.time.LocalDate;
 
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
@@ -227,5 +228,65 @@ public class DetalleReporteContable implements Serializable {
 	public void setSigno(Long signo) {
 		this.signo = signo;
 	}
-   
+
+	// ===================================================================================================
+	// C19b (D-031): en un reporte de renglones propios (ReporteContable.tipoReporte = 2) cada fila de DTRP es
+	// una REGLA cuenta del plan -> renglon: numeroDesde = cuenta (con sus puntos), cuentaDesde su FK. En los
+	// balances sobre el plan (tipo NULL/1) estas columnas quedan NULL y no se usan. ⛔ DDL C19-01/C19-05.
+	// ===================================================================================================
+
+	/** Renglon destino (CNT.RNRP.RNRPCDRN); NULL = el del mapeo automatico del reporte. */
+	@Basic
+	@Column(name = "DTRPCDRN", length = 30)
+	private String renglonDestino;
+
+	/** Alcance: 1 la cuenta y sus subcuentas · 2 solo la cuenta exacta. */
+	@Basic
+	@Column(name = "DTRPALCN")
+	private Long alcance;
+
+	/** Signo: 1 segun naturaleza · 2 deudor (D-H) · 3 acreedor (H-D) · 4 valor absoluto por cuenta. */
+	@Basic
+	@Column(name = "DTRPMDSG")
+	private Long modoSigno;
+
+	/** 1 se reporta · 0 excluida a proposito (sale en las advertencias si tiene saldo). */
+	@Basic
+	@Column(name = "DTRPRPRT")
+	private Long seReporta;
+
+	/** Vigencia desde (fecha de corte); NULL = siempre. */
+	@Basic
+	@Column(name = "DTRPFCDS")
+	private LocalDate vigenciaDesde;
+
+	/** Vigencia hasta (fecha de corte); NULL = abierta. */
+	@Basic
+	@Column(name = "DTRPFCHS")
+	private LocalDate vigenciaHasta;
+
+	/** Sustento de la regla (decision, criterio). */
+	@Basic
+	@Column(name = "DTRPOBSR", length = 500)
+	private String observacion;
+
+	public String getRenglonDestino() { return renglonDestino; }
+	public void setRenglonDestino(String renglonDestino) { this.renglonDestino = renglonDestino; }
+	public Long getAlcance() { return alcance; }
+	public void setAlcance(Long alcance) { this.alcance = alcance; }
+	public Long getModoSigno() { return modoSigno; }
+	public void setModoSigno(Long modoSigno) { this.modoSigno = modoSigno; }
+	public Long getSeReporta() { return seReporta; }
+	public void setSeReporta(Long seReporta) { this.seReporta = seReporta; }
+	public LocalDate getVigenciaDesde() { return vigenciaDesde; }
+	public void setVigenciaDesde(LocalDate vigenciaDesde) { this.vigenciaDesde = vigenciaDesde; }
+	public LocalDate getVigenciaHasta() { return vigenciaHasta; }
+	public void setVigenciaHasta(LocalDate vigenciaHasta) { this.vigenciaHasta = vigenciaHasta; }
+	public String getObservacion() { return observacion; }
+	public void setObservacion(String observacion) { this.observacion = observacion; }
+
+	/** true si la regla esta vigente a la fecha de corte. */
+	public boolean vigenteAl(LocalDate corte) {
+		return (vigenciaDesde == null || !vigenciaDesde.isAfter(corte)) && (vigenciaHasta == null || !vigenciaHasta.isBefore(corte));
+	}
 }

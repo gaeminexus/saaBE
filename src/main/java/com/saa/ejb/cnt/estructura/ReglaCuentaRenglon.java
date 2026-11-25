@@ -2,7 +2,7 @@ package com.saa.ejb.cnt.estructura;
 
 import java.io.Serializable;
 
-/** Regla cuenta del plan -> renglon (CNT.CRRP). */
+/** Regla cuenta del plan -> renglon (CNT.DTRP desde C19b; antes CNT.CRRP). */
 public class ReglaCuentaRenglon implements Serializable {
 
 	private static final long serialVersionUID = 1L;

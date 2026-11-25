@@ -4,8 +4,8 @@ import java.io.Serializable;
 import java.time.LocalDate;
 
 /**
- * Cuerpo de POST /esrp/generar y /esrp/archivo. El reporte se elige por {@code codigoEstructura} (B17) o por
- * {@code codigoAlterno} (RPRTALTR, el mismo combo de tipos de reporte del balance).
+ * Cuerpo de POST /esrp/generar y /esrp/archivo (alias del motor de balances desde C19b). El reporte se elige por
+ * {@code codigoEstructura} (B17) o por {@code codigoAlterno} (RPRTALTR, el mismo combo de tipos de reporte del balance).
  */
 public class SolicitudEstructura implements Serializable {
 
@@ -46,4 +46,21 @@ public class SolicitudEstructura implements Serializable {
 	public void setFechaInicio(LocalDate fechaInicio) { this.fechaInicio = fechaInicio; }
 	public LocalDate getFechaComparacion() { return fechaComparacion; }
 	public void setFechaComparacion(LocalDate fechaComparacion) { this.fechaComparacion = fechaComparacion; }
+
+	/**
+	 * C19b (D-031): /esrp se conserva como alias del motor de balances (el frontend de main lo usa: reportes del mes,
+	 * C36). El pedido se traduce a los parametros de /dtmt/generarArchivo: fechaCorte = fechaFin.
+	 */
+	public com.saa.model.cnt.ParametrosBalance aParametrosBalance() {
+		com.saa.model.cnt.ParametrosBalance p = new com.saa.model.cnt.ParametrosBalance();
+		p.setEmpresa(empresa);
+		p.setCodigoAlterno(codigoAlterno);
+		p.setCodigoEstructura(codigoEstructura);
+		p.setFechaFin(fechaCorte);
+		p.setFechaInicio(fechaInicio);
+		p.setFechaComparacion(fechaComparacion);
+		p.setFechaInicioComparacion(fechaInicioComparacion);
+		p.setPreliminar(preliminar);
+		return p;
+	}
 }

@@ -27,7 +27,6 @@ import com.saa.ejb.cnt.estadofinanciero.SolicitudEstadoFinanciero;
 import com.saa.ejb.cnt.estructura.SaldoCuenta;
 import com.saa.ejb.cnt.service.EstadoFinancieroOficialService;
 import com.saa.ejb.cnt.service.EstadoPeriodoConsulta;
-import com.saa.ejb.cnt.service.EstructuraReporteService;
 import com.saa.ejb.cnt.service.TempReportesService;
 import com.saa.ejb.reporte.service.ReporteService;
 import com.saa.model.cnt.TempReportes;
@@ -68,7 +67,7 @@ public class EstadoFinancieroOficialServiceImpl implements EstadoFinancieroOfici
 	private TempReportesDaoService tempReportesDaoService;
 
 	@EJB
-	private EstructuraReporteService estructuraReporteService;
+	private com.saa.ejb.cnt.dao.ReporteContableDaoService reporteContableDaoService;
 
 	@EJB
 	private EstadoPeriodoConsulta estadoPeriodoConsulta;
@@ -273,7 +272,7 @@ public class EstadoFinancieroOficialServiceImpl implements EstadoFinancieroOfici
 		}
 		BigDecimal r = BigDecimal.ZERO;
 		LocalDate desde = acumulacion == ReporteTipoAcumulacion.ACUMULADO ? null : inicio;
-		for (SaldoCuenta sc : estructuraReporteService.saldosPorCuenta(empresa, desde, fin)) {
+		for (SaldoCuenta sc : tempReportesDaoService.selectSaldosPorCuenta(empresa, desde, fin)) {
 			if (esDelGrupo(sc.getCuenta(), ingresos) || esDelGrupo(sc.getCuenta(), gastos)) {
 				r = r.add(sc.getHaber().subtract(sc.getDebe()));
 			}
@@ -348,7 +347,7 @@ public class EstadoFinancieroOficialServiceImpl implements EstadoFinancieroOfici
 
 	// ======================================================================================== apoyo
 
-	private void validar(SolicitudEstadoFinanciero s) throws IncomeException {
+	private void validar(SolicitudEstadoFinanciero s) throws Throwable {
 		if (s == null || s.getEmpresa() == null || s.getCodigoAlterno() == null || s.getFechaFin() == null) {
 			throw new IncomeException("Empresa, tipo de reporte (codigoAlterno) y fecha de corte son obligatorios");
 		}
@@ -358,8 +357,8 @@ public class EstadoFinancieroOficialServiceImpl implements EstadoFinancieroOfici
 		if (s.getFechaInicio().isAfter(s.getFechaFin())) {
 			throw new IncomeException("La fecha de inicio no puede ser mayor a la fecha de corte");
 		}
-		if (estructuraReporteService.esEstructura(s.getEmpresa(), s.getCodigoAlterno())) {
-			throw new IncomeException("El tipo de reporte es una estructura de la Superintendencia: use /esrp");
+		if (tempReportesService.esReporteDeRenglones(s.getEmpresa(), s.getCodigoAlterno())) {
+			throw new IncomeException("El tipo de reporte es de renglones propios (B17, flujo): se genera con /dtmt/generarBalance o /dtmt/generarArchivo");
 		}
 	}
 
@@ -403,22 +402,11 @@ public class EstadoFinancieroOficialServiceImpl implements EstadoFinancieroOfici
 	 * nombre ("BALANCE GENERAL" -> ESTADO DE SITUACION FINANCIERA, "ESTADO DE RESULTADOS" se queda); nunca un
 	 * titulo fijo para todos.
 	 */
-	@SuppressWarnings("unchecked")
-	String titulo(Long empresa, Long alterno) {
-		String nombre = null, titulo = null;
-		// Se pregunta primero si la columna existe (C19-01): una consulta que falla dentro de la transaccion la
-		// dejaria marcada para rollback y se perderia todo el estado.
-		Query hay = em.createNativeQuery("SELECT COUNT(*) FROM ALL_TAB_COLUMNS WHERE OWNER = 'CNT' AND TABLE_NAME = 'RPRT' AND COLUMN_NAME = 'RPRTTTLO'");
-		boolean conTitulo = ((Number) hay.getSingleResult()).intValue() > 0;
-		Query q = em.createNativeQuery("SELECT RPRTNMBR, " + (conTitulo ? "RPRTTTLO" : "CAST(NULL AS VARCHAR2(200))")
-				+ " FROM CNT.RPRT WHERE PJRQCDGO = ?1 AND RPRTALTR = ?2");
-		q.setParameter(1, empresa);
-		q.setParameter(2, alterno);
-		List<Object[]> f = q.getResultList();
-		if (!f.isEmpty()) {
-			nombre = (String) f.get(0)[0];
-			titulo = (String) f.get(0)[1];
-		}
+	String titulo(Long empresa, Long alterno) throws Throwable {
+		// C19b: el titulo oficial es un atributo del reporte del motor (ReporteContable.titulo, RPRTTTLO)
+		com.saa.model.cnt.ReporteContable r = reporteContableDaoService.selectByEmpresaAlterno(empresa, alterno);
+		String nombre = r == null ? null : r.getNombreReporte();
+		String titulo = r == null ? null : r.getTitulo();
 		if (titulo != null && !titulo.trim().isEmpty()) {
 			return titulo.trim();
 		}

@@ -16,7 +16,9 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 
 /**
- * Estados financieros oficiales (C19). Ver docs/logica-negocio/rpr/ESTADOS-FINANCIEROS-OFICIALES.md.
+ * Estados financieros oficiales (C19). Ver docs/logica-negocio/rpr/ESTADOS-FINANCIEROS-OFICIALES.md. Desde C19b los
+ * mismos servicios se publican tambien en /dtmt/estadoOficial/*; /esfo se conserva porque el frontend de main lo llama
+ * (balance general y reportes del mes) y se retira cuando el frontend pase a /dtmt.
  * <ul>
  * <li>POST /esfo/encabezado: razon social, RUC, nombre del estado, periodo, PRELIMINAR/DEFINITIVO, firmas y
  * nombre de archivo sugerido (para el CSV del frontend).</li>
