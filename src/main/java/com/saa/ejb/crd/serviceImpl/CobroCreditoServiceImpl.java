@@ -902,6 +902,47 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
         return procesarCobro(idCobro, usuario, false);
     }
 
+    /**
+     * C45 (DS-01) — rechaza el proceso si alguna línea con préstamo (sin tipo de aporte) ya
+     * tiene, en ese préstamo, un evento vigente de la misma fecha del depósito y el mismo valor
+     * que no está enlazado a ningún cobro. Solo mira eventos huérfanos: los eventos de otros
+     * cobros (incluidos dos cobros legítimos del mismo valor) quedan enlazados en CRD.DCBC y no
+     * cuentan. En la copia del 15-nov la regla encuentra 3 casos, los tres duplicados ya
+     * documentados o por documentar (eventos 1, 42 y 1151).
+     */
+    private void rechazarSiYaAplicadoSinCobro(CobroCredito cobro, List<DetalleCobroCredito> detalles)
+            throws Throwable {
+        if (cobro.getFecha() == null) {
+            return;
+        }
+        String tipo = cobro.getTipoOperacion();
+        boolean conPrestamo = CrdTipoOperacionCobro.PAGO_CUOTA.equals(tipo)
+                || CrdTipoOperacionCobro.PAGO_MULTIPLE.equals(tipo)
+                || CrdTipoOperacionCobro.ABONO_CAPITAL.equals(tipo)
+                || CrdTipoOperacionCobro.PRECANCELACION.equals(tipo)
+                || CrdTipoOperacionCobro.COBRO_MIXTO.equals(tipo);
+        if (!conPrestamo) {
+            return;
+        }
+        for (DetalleCobroCredito linea : detalles) {
+            if (linea.getPrestamo() == null || linea.getTipoAporte() != null || linea.getValor() == null
+                    || linea.getValor() <= 0.0) {
+                continue;
+            }
+            List<Object[]> sueltos = cobroCreditoDaoService.selectEventosSinCobroCoincidentes(
+                    linea.getPrestamo().getCodigo(), cobro.getFecha(), linea.getValor());
+            if (sueltos != null && !sueltos.isEmpty()) {
+                Object[] ev = sueltos.get(0);
+                throw new IncomeException("POSIBLE_COBRO_DUPLICADO: el préstamo " + linea.getPrestamo().getCodigo()
+                        + " ya tiene el evento " + ev[0] + " (" + ev[1] + ") del " + cobro.getFecha() + " por "
+                        + linea.getValor() + " que no pertenece a ningún cobro: procesar el cobro "
+                        + cobro.getCodigo() + " aplicaría el mismo pago dos veces. Si es el mismo dinero,"
+                        + " anule ese evento antes de procesar; si son dos pagos distintos, consúltelo con"
+                        + " Contabilidad: este control no tiene excepción.");
+            }
+        }
+    }
+
     /** D-019 en CBCR: la misma regla del re-proceso Petro, compartida. */
     @EJB
     private com.saa.ejb.crd.service.ReaperturaVigenteAlCorteService reaperturaVigenteAlCorteService;
@@ -978,6 +1019,16 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
         // U-2: lo primero, el usuario existe (helper único); sin usuario válido no se hace nada.
         usuario = usuarioValidacionService.validar(usuario);
 
+        // C45 (DS-01): bloqueo de la fila del cobro ANTES de leer su estado. Sin él, dos
+        // llamadas casi simultáneas leían las dos APROBADO y lo aplicaban dos veces (producción,
+        // 10-nov-2026: cobro 244, eventos 1151 y 1152; la 1.ª quedó huérfana con sus pagos, MVIC
+        // y asientos). Con el bloqueo, la 2.ª responde COBRO_EN_PROCESO o, si llega después del
+        // commit de la 1.ª, ve PROCESADO y la regla de abajo la rechaza.
+        if (idCobro == null) {
+            throw new IncomeException("idCobro es obligatorio");
+        }
+        cobroCreditoDaoService.bloquearParaProcesar(idCobro);
+
         // Comprobación de estado DENTRO de la misma transacción que el cambio — mismo
         // razonamiento que aprobarCobro/rechazarCobro.
         CobroCredito cobro = buscarCobro(idCobro);
@@ -1006,6 +1057,14 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
         String tipoOperacion = cobro.getTipoOperacion();
         LocalDateTime fechaNegocio = cobro.getFecha() != null
                 ? cobro.getFecha().atStartOfDay() : LocalDateTime.now();
+
+        // C45 (DS-01): el mismo pago ya aplicado por otro camino. Si el préstamo de una línea
+        // tiene un evento VIGENTE de la misma fecha y el mismo valor que NO pertenece a ningún
+        // cobro (pago manual directo), procesar este cobro lo aplicaría por segunda vez
+        // (producción, agosto 2026: evento 42 del préstamo 8085 frente al cobro 69). Se rechaza
+        // antes de cualquier escritura; si de verdad son dos pagos, el evento suelto se anula o
+        // se documenta antes de procesar.
+        rechazarSiYaAplicadoSinCobro(cobro, detalles);
 
         // D-019 en CBCR (modo re-proceso, solo con la bandera): préstamos evaluados vigentes al
         // corte del mes del cobro ANTES de la mora H42 y de cualquier motor.
@@ -1861,6 +1920,28 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
 
         if (solicitud.getFecha() == null) {
             throw new IncomeException("La fecha del cobro es obligatoria");
+        }
+
+        // C45 (DS-01): el '9'/'09' sigue pudiendo repetirse (decisión del usuario del
+        // 2026-09-01, sql/106: son los valores de «no tengo referencia»), pero no para el MISMO
+        // depósito: misma entidad + cuenta bancaria + fecha del depósito + valor en un cobro no
+        // anulado es el mismo dinero registrado dos veces. Un segundo depósito real e idéntico
+        // tiene su propio comprobante (papeleta, número de transferencia): se registra con ese
+        // número, que pasa por la unicidad normal. En la copia del 15-nov no hay ningún par así
+        // (40 cobros con '9'/'09'), así que la regla no bloquea nada de lo ya registrado.
+        if (exento) {
+            List<CobroCredito> mismoDeposito = cobroCreditoDaoService.selectSinReferenciaCoincidentes(
+                    solicitud.getIdEntidad(), solicitud.getIdCuentaBancaria(), solicitud.getFecha(),
+                    solicitud.getValor(), idCobroExcluido);
+            if (mismoDeposito != null && !mismoDeposito.isEmpty()) {
+                CobroCredito existente = mismoDeposito.get(0);
+                throw new IncomeException("POSIBLE_COBRO_DUPLICADO: el cobro " + existente.getCodigo()
+                        + " (estado " + textoEstado(existente.getEstado()) + ") ya registra un depósito sin"
+                        + " referencia de la misma entidad, en la misma cuenta, del " + solicitud.getFecha()
+                        + " y por " + solicitud.getValor() + ". Si es el mismo dinero, no lo registre otra vez;"
+                        + " si es un segundo depósito real, regístrelo con el número de su comprobante en"
+                        + " lugar de '9'/'09'.");
+            }
         }
 
         validarFechaAfectacion(solicitud.getFechaAfectacion(), solicitud.getFecha(), cuentaBancariaValidacion);

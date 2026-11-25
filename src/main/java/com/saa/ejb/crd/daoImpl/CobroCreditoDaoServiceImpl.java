@@ -3,6 +3,7 @@ package com.saa.ejb.crd.daoImpl;
 import java.time.LocalDate;
 import java.util.List;
 
+import com.saa.basico.util.IncomeException;
 import com.saa.basico.utilImpl.EntityDaoImpl;
 import com.saa.ejb.crd.dao.CobroCreditoDaoService;
 import com.saa.model.crd.CobroCredito;
@@ -124,6 +125,89 @@ public class CobroCreditoDaoServiceImpl extends EntityDaoImpl<CobroCredito>
                 " order by c.fecha desc, c.codigo desc");
         query.setParameter("desde", desde);
         query.setParameter("hasta", hasta);
+        return query.getResultList();
+    }
+
+    @Override
+    public void bloquearParaProcesar(Long idCobro) throws Throwable {
+        System.out.println("CobroCreditoDaoServiceImpl.bloquearParaProcesar - cobro: " + idCobro);
+        // Sin catch general: un bloqueo que traga su excepción es un bloqueo que no existe
+        // (mismo criterio que AporteDaoServiceImpl.bloquearAportesEntidad). NOWAIT y no WAIT:
+        // procesar un cobro puede tardar minutos, así que la segunda llamada no debe quedar
+        // colgada: se le responde de inmediato que el cobro está en proceso.
+        Query query = em.createNativeQuery(
+                " SELECT CBCRCDGO FROM CRD.CBCR WHERE CBCRCDGO = :id FOR UPDATE NOWAIT");
+        query.setParameter("id", idCobro);
+        List<Object> filas;
+        try {
+            filas = query.getResultList();
+        } catch (Exception e) {
+            if (contieneCodigoOra(e, "ORA-00054")) {
+                throw new IncomeException("COBRO_EN_PROCESO: el cobro " + idCobro + " ya se está procesando"
+                        + " en otra sesión; espere a que termine y revise su estado antes de reintentar");
+            }
+            throw e;
+        }
+        if (filas == null || filas.isEmpty()) {
+            throw new IncomeException("No existe el cobro " + idCobro);
+        }
+    }
+
+    /** Busca un código ORA- en la cadena de causas (Hibernate envuelve la SQLException). */
+    private static boolean contieneCodigoOra(Throwable e, String codigo) {
+        Throwable actual = e;
+        while (actual != null) {
+            if (actual.getMessage() != null && actual.getMessage().contains(codigo)) {
+                return true;
+            }
+            actual = actual.getCause();
+        }
+        return false;
+    }
+
+    @Override
+    public List<CobroCredito> selectSinReferenciaCoincidentes(Long idEntidad, Long idCuentaBancaria,
+            LocalDate fecha, Double valor, Long idCobroExcluido) throws Throwable {
+        System.out.println("Ingresa al metodo selectSinReferenciaCoincidentes de CobroCredito - entidad: "
+                + idEntidad + " - cuenta: " + idCuentaBancaria + " - fecha: " + fecha + " - valor: " + valor);
+        Query query = em.createQuery(
+                " select c from CobroCredito c " +
+                " where  c.entidad.codigo = :idEntidad " +
+                " and    c.cuentaBancaria.codigo = :idCuenta " +
+                " and    c.fecha = :fecha " +
+                " and    c.valor between :valorMin and :valorMax " +
+                " and    TRIM(c.referencia) in ('9', '09') " +
+                " and    (:idCobroExcluido is null or c.codigo <> :idCobroExcluido)" +
+                " and    c.estado <> :estadoAnulado" +
+                " order by c.codigo");
+        query.setParameter("idEntidad", idEntidad);
+        query.setParameter("idCuenta", idCuentaBancaria);
+        query.setParameter("fecha", fecha);
+        query.setParameter("valorMin", valor - 0.005);
+        query.setParameter("valorMax", valor + 0.005);
+        query.setParameter("idCobroExcluido", idCobroExcluido);
+        query.setParameter("estadoAnulado", Long.valueOf(CrdEstadoCobro.ANULADO));
+        return query.getResultList();
+    }
+
+    @Override
+    public List<Object[]> selectEventosSinCobroCoincidentes(Long idPrestamo, LocalDate fecha, Double valor)
+            throws Throwable {
+        System.out.println("Ingresa al metodo selectEventosSinCobroCoincidentes - prestamo: " + idPrestamo
+                + " - fecha: " + fecha + " - valor: " + valor);
+        // EVPRESTD = 1 vigente; 0 = anulado (ProcesoPagoPrestamoServiceImpl.anularOperacion).
+        Query query = em.createNativeQuery(
+                " SELECT e.EVPRCDGO, e.EVPRTPOO FROM CRD.EVPR e " +
+                " WHERE  e.PRSTCDGO = :prestamo " +
+                " AND    e.EVPRESTD = 1 " +
+                " AND    e.EVPRFCHA >= :desde AND e.EVPRFCHA < :hasta " +
+                " AND    ABS(e.EVPRVLRR - :valor) < 0.005 " +
+                " AND    NOT EXISTS (SELECT 1 FROM CRD.DCBC d WHERE d.EVPRCDGO = e.EVPRCDGO) " +
+                " ORDER BY e.EVPRCDGO");
+        query.setParameter("prestamo", idPrestamo);
+        query.setParameter("desde", java.sql.Timestamp.valueOf(fecha.atStartOfDay()));
+        query.setParameter("hasta", java.sql.Timestamp.valueOf(fecha.plusDays(1).atStartOfDay()));
+        query.setParameter("valor", valor);
         return query.getResultList();
     }
 }
