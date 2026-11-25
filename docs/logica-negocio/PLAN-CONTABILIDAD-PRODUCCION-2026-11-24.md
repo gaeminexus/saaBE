@@ -83,6 +83,16 @@ dueño, con la autorización del usuario.
      - `generarAsientoCondonacion` (l. 728-940) no guarda el asiento en el evento.
      - `reversarProceso` del CBCR anula solo sus tres asientos.
      - Se propone como lote aparte, junto con 3.3.
+7. **Lote 3 commiteado (3.6 y 4.1).**
+   - **3.6:** la reapertura excluye los estados 5 y 13 (en el servicio y en el predicado del DAO). Petro usa la misma
+     regla. El dinero sigue la ruta de rechazo de cada proceso hasta que el cuadre decida su destino.
+   - **4.1:** con mora pagada, mora = pagada + mora de los días desde max(vencimiento, `desde`, último cobro de mora).
+     - Sin capital pendiente, la mora queda en lo pagado.
+     - `desde` es opcional en `/calcularMora`.
+     - `saa.cartera.timerMoraSuspendido=true` apaga el timer.
+     - El SQL 385 mide la mora recargada por el timer viejo, que **no** se repara sola.
+     - Hallazgo: la base de los días nuevos es el capital de la cuota (DTPRCPTL), salvo con
+       `moraSobreCapitalPendiente`. Es la convención existente y no se cambió.
 
 ## Lotes del BE (uno a la vez; no se despacha el siguiente sin commitear el anterior)
 

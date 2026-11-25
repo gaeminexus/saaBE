@@ -79,6 +79,22 @@ public interface ProcesoMoraPrestamoService {
     ResultadoCalculoMora calcularMoraDiaria(LocalDate fechaCorte, String usuario) throws Throwable;
 
     /**
+     * Igual que {@link #calcularMoraDiaria(LocalDate, String)} con fecha de partida opcional: los días de mora se cuentan
+     * desde {@code max(vencimiento, desde)} (y, en las cuotas con mora pagada, desde el último cobro de mora). Sin
+     * {@code desde} (null) es el cálculo de siempre.
+     *
+     * @param desde fecha de partida de la mora, o null
+     */
+    ResultadoCalculoMora calcularMoraDiaria(LocalDate fechaCorte, LocalDate desde, String usuario) throws Throwable;
+
+    /**
+     * Igual que {@link #calcularMoraPrestamo(Long, LocalDate, String)} con fecha de partida opcional (ver
+     * {@link #calcularMoraDiaria(LocalDate, LocalDate, String)}).
+     */
+    ResultadoCalculoMora calcularMoraPrestamo(Long idPrestamo, LocalDate fechaCorte, LocalDate desde, String usuario)
+            throws Throwable;
+
+    /**
      * Calcula y persiste el interés de mora de las cuotas vencidas de UN préstamo, en su propia
      * transacción. Es la unidad de trabajo del lote y también sirve para recalcular un préstamo
      * puntual desde el frontend.

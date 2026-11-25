@@ -118,11 +118,16 @@ public class PrestamoDaoServiceImpl extends EntityDaoImpl<Prestamo> implements P
         System.out.println("PrestamoDaoServiceImpl.selectByEntidadYProductoVigentesAlCorte - entidad " + codigoEntidad
             + ", producto " + codigoProducto + ", corte " + fechaCorte);
         try {
+            // DS-15: los terminales que pueden estar «vigentes al corte» son 3, 4 y 9. El 5 (novado) y el 13
+            // (reestructurado) NO: su cuota 7 con fecha de pago nula pasaba por «no saldada al corte» y la reapertura los
+            // revivía con el asiento de sustitución vivo. Si no aparecen aquí, estabaVigenteAlCorte da false y el dinero
+            // sigue la ruta de rechazo de cada proceso (CBCR: el cobro queda APROBADO sin aplicar; pensión: excedente al
+            // aporte 23; Petro: fila sin pago del resumen). El destino definitivo lo decide el cuadre.
             String jpql = "SELECT p FROM Prestamo p " +
                          "WHERE p.entidad.codigo = :codigoEntidad " +
                          "AND p.producto.codigo = :codigoProducto " +
                          "AND (p.idEstado IN (2, 8, 10, 11) " +
-                         "  OR (p.idEstado IN (3, 4, 5, 9, 13) " +
+                         "  OR (p.idEstado IN (3, 4, 9) " +
                          "      AND (p.fechaInicio IS NULL OR p.fechaInicio <= :fechaCorte) " +
                          "      AND EXISTS (SELECT 1 FROM DetallePrestamo d0 WHERE d0.prestamo.codigo = p.codigo " +
                          "          AND d0.fechaVencimiento <= :fechaCorte) " +

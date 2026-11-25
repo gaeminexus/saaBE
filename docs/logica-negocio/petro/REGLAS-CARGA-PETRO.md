@@ -709,6 +709,10 @@ en ESTA clase:
   no se llama a `evaluarMoraPorFaltaDeAporte` ni `restaurarActivoPorPago`.
 - Fecha de efecto: la misma de siempre (último día del mes de la carga) en pagos, aportes,
   `PagoAporte` y los tres asientos — verificado el 2026-10-28, no hizo falta agregar nada.
+- Reapertura D-019 (operación vigente al corte que hoy está cancelada): **novado (5) y reestructurado (13) no se
+  reabren (DS-15)**. `selectByEntidadYProductoVigentesAlCorte` ya no los lista y `esPrestamoTerminal` vive solo en
+  `ReaperturaVigenteAlCorteService` (3, 4 y 9). La fila de un préstamo novado/reestructurado queda como «Filas sin pago» del
+  resumen, sin asiento ni aplicación, hasta que el cuadre decida el destino del dinero.
 - Fuera del modo reproceso el comportamiento es idéntico al descrito en §1–§6.
 
 ## 4. Vía alterna: `ProcesoCargaPetroServiceImpl` (crd) — parcialmente implementada

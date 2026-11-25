@@ -62,6 +62,19 @@ public class ReaperturaVigenteAlCorteServiceImpl implements ReaperturaVigenteAlC
         return fechaCorte.atTime(23, 59, 59);
     }
 
+    /**
+     * DS-15: los estados 5 (novado) y 13 (reestructurado) NO se reabren. Su saldo ya pasó al préstamo nuevo y su asiento
+     * de sustitución sigue vivo: reabrirlos para aplicarles un pago de un mes pasado lo reviviría con la sustitución
+     * vigente (doble cuenta). Qué pasa HOY con el dinero cuando la reapertura rechaza el préstamo, por ruta (el destino
+     * contable definitivo lo decide el cuadre):
+     * <ul>
+     * <li>CBCR en re-proceso: {@code prepararPrestamoAlCorte} lanza PRESTAMO_NO_VIGENTE_AL_CORTE, el proceso se revierte
+     * entero y el cobro queda APROBADO; la plata sigue en el asiento transitorio, sin aplicar.</li>
+     * <li>Pensión complementaria: el valor va al excedente y queda en el aporte 23 del jubilado, con la novedad
+     * PRESTAMO_NO_VIGENTE_AL_CORTE.</li>
+     * <li>Carga Petro en re-proceso: la fila sale en «Filas sin pago» del resumen, sin asiento ni aplicación.</li>
+     * </ul>
+     */
     @Override
     public boolean esPrestamoTerminal(Long idEstado) {
         if (idEstado == null) {
@@ -69,8 +82,7 @@ public class ReaperturaVigenteAlCorteServiceImpl implements ReaperturaVigenteAlC
         }
         int e = idEstado.intValue();
         return e == EstadoPrestamo.CANCELADO || e == EstadoPrestamo.CANCELADO_ANTICIPADO
-            || e == EstadoPrestamo.CANCELADO_POR_NOVACION || e == EstadoPrestamo.CANCELADO_POR_REVISAR
-            || e == EstadoPrestamo.CANCELADO_POR_REESTRUCTURACION;
+            || e == EstadoPrestamo.CANCELADO_POR_REVISAR;
     }
 
     @Override

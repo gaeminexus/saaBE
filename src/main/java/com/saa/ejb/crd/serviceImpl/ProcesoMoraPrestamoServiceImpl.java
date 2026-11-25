@@ -75,6 +75,13 @@ public class ProcesoMoraPrestamoServiceImpl implements ProcesoMoraPrestamoServic
     @Override
     @TransactionAttribute(TransactionAttributeType.NOT_SUPPORTED)
     public ResultadoCalculoMora calcularMoraDiaria(LocalDate fechaCorte, String usuario) throws Throwable {
+        return calcularMoraDiaria(fechaCorte, null, usuario);
+    }
+
+    @Override
+    @TransactionAttribute(TransactionAttributeType.NOT_SUPPORTED)
+    public ResultadoCalculoMora calcularMoraDiaria(LocalDate fechaCorte, LocalDate desde, String usuario)
+            throws Throwable {
         LocalDateTime inicio = LocalDateTime.now();
         LocalDate fecha = fechaCorte != null ? fechaCorte : LocalDate.now();
 
@@ -111,7 +118,7 @@ public class ProcesoMoraPrestamoServiceImpl implements ProcesoMoraPrestamoServic
             for (Long idPrestamo : prestamos) {
                 try {
                     // A través del proxy: cada préstamo commitea por separado
-                    ResultadoCalculoMora parcial = self.calcularMoraPrestamo(idPrestamo, fecha, usuario);
+                    ResultadoCalculoMora parcial = self.calcularMoraPrestamo(idPrestamo, fecha, desde, usuario);
                     acumular(resumen, parcial);
                     resumen.setPrestamosProcesados(resumen.getPrestamosProcesados() + 1);
 
@@ -134,7 +141,7 @@ public class ProcesoMoraPrestamoServiceImpl implements ProcesoMoraPrestamoServic
             if (regularizados != null) {
                 for (Long idPrestamo : regularizados) {
                     try {
-                        if (self.calcularMoraPrestamo(idPrestamo, fecha, usuario) != null) {
+                        if (self.calcularMoraPrestamo(idPrestamo, fecha, desde, usuario) != null) {
                             resumen.setPrestamosRegularizados(resumen.getPrestamosRegularizados() + 1);
                         }
                     } catch (Throwable e) {
@@ -175,7 +182,7 @@ public class ProcesoMoraPrestamoServiceImpl implements ProcesoMoraPrestamoServic
                             continue;
                         }
                         try {
-                            ResultadoCalculoMora parcial = self.calcularMoraPrestamo(idPrestamo, fecha, usuario);
+                            ResultadoCalculoMora parcial = self.calcularMoraPrestamo(idPrestamo, fecha, desde, usuario);
                             acumular(resumen, parcial);
                         } catch (Throwable e) {
                             resumen.setPrestamosConError(resumen.getPrestamosConError() + 1);
@@ -220,6 +227,13 @@ public class ProcesoMoraPrestamoServiceImpl implements ProcesoMoraPrestamoServic
     @TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
     public ResultadoCalculoMora calcularMoraPrestamo(Long idPrestamo, LocalDate fechaCorte, String usuario)
             throws Throwable {
+        return calcularMoraPrestamo(idPrestamo, fechaCorte, null, usuario);
+    }
+
+    @Override
+    @TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
+    public ResultadoCalculoMora calcularMoraPrestamo(Long idPrestamo, LocalDate fechaCorte, LocalDate desde,
+            String usuario) throws Throwable {
 
         LocalDate fecha = fechaCorte != null ? fechaCorte : LocalDate.now();
         if (fecha.isAfter(LocalDate.now())) {
@@ -276,7 +290,9 @@ public class ProcesoMoraPrestamoServiceImpl implements ProcesoMoraPrestamoServic
                 // (pura, sin persistir) para que la precancelación pueda reusarla con la fecha
                 // que elija el usuario. Acá diasMora se recalcula arriba (sin cambios) porque
                 // DTPRDSMR se persiste con ese valor más abajo, aparte de moraNueva.
-                double moraNueva = calcularMoraCuota(cuota, tasaDiaria, fecha);
+                // C27b-lote 3 (4.1, DS-06): la mora ya pagada no se vuelve a cobrar y la nueva corre solo desde el
+                // último cobro de mora (y desde `desde`, si viene). Sin mora pagada ni `desde`, es la fórmula de siempre.
+                double moraNueva = moraDeCuota(cuota, tasaDiaria, fecha, desde);
 
                 // IDEMPOTENCIA: el total se recompone quitando la mora anterior y sumando la
                 // nueva. Así el proceso puede correrse N veces el mismo día sin acumular, y se
@@ -425,6 +441,62 @@ public class ProcesoMoraPrestamoServiceImpl implements ProcesoMoraPrestamoServic
             }
         }
         return tasaNominal / 100.0 / BASE_DIAS_ANIO;
+    }
+
+    /**
+     * Mora de una cuota vencida a la fecha del proceso (C27b lote 3, 4.1, DS-06).
+     *
+     * <p>Regla C: {@code mora = moraBase + (f(fecha) − f(inicio))}, con {@code f} = {@link #calcularMoraCuota} (la misma
+     * base de capital y la misma tasa de siempre; con {@code saa.cartera.moraSobreCapitalPendiente} también la misma
+     * función por tramos).</p>
+     * <ul>
+     * <li>Sin mora pagada ({@code DTPRMRPG = 0}) y sin {@code desde}: {@code moraBase = 0}, {@code inicio} = vencimiento;
+     * el resultado es exactamente {@code f(fecha)}, como antes.</li>
+     * <li>{@code desde} (opcional): los días se cuentan desde {@code max(vencimiento, desde)}.</li>
+     * <li>Con mora pagada: {@code moraBase = DTPRMRPG} (lo pagado nunca se vuelve a cobrar) y los días nuevos corren desde
+     * {@code max(vencimiento, desde, fecha del último PGPR vigente con PGPRMRPG > 0)}, solo mientras quede capital
+     * pendiente en la cuota ({@code DTPRCPTL − DTPRCPPG}); sin capital pendiente la mora queda en lo pagado. Si la mora
+     * pagada no tiene ningún PGPR con fecha (dato migrado), se conserva la fórmula de siempre.</li>
+     * </ul>
+     */
+    private double moraDeCuota(DetallePrestamo cuota, double tasaDiaria, LocalDate fecha, LocalDate desde) {
+        LocalDate vencimiento = cuota.getFechaVencimiento().toLocalDate();
+        LocalDate inicio = vencimiento;
+        if (desde != null && desde.isAfter(inicio)) {
+            inicio = desde;
+        }
+        double moraBase = 0.0;
+        double moraPagado = nvl(cuota.getMoraPagado());
+        if (moraPagado > 0.0) {
+            LocalDate ultimoCobro = null;
+            List<PagoPrestamo> pagos = pagoPrestamoDaoService.selectVigentesByIdDetallePrestamo(cuota.getCodigo());
+            if (pagos != null) {
+                for (PagoPrestamo pago : pagos) {
+                    if (nvl(pago.getMoraPagada()) > 0.0 && pago.getFecha() != null
+                            && (ultimoCobro == null || pago.getFecha().toLocalDate().isAfter(ultimoCobro))) {
+                        ultimoCobro = pago.getFecha().toLocalDate();
+                    }
+                }
+            }
+            if (ultimoCobro == null) {
+                System.out.println("      Cuota #" + cuota.getNumeroCuota() + ": mora pagada $" + moraPagado
+                    + " sin PGPR con fecha; se conserva la fórmula de siempre");
+                return calcularMoraCuota(cuota, tasaDiaria, fecha);
+            }
+            moraBase = moraPagado;
+            if (ultimoCobro.isAfter(inicio)) {
+                inicio = ultimoCobro;
+            }
+            if (nvl(cuota.getCapital()) - nvl(cuota.getCapitalPagado()) <= 0.004) {
+                return redondear(moraBase);
+            }
+        }
+        if (!inicio.isBefore(fecha)) {
+            return redondear(moraBase);
+        }
+        double hasta = calcularMoraCuota(cuota, tasaDiaria, fecha);
+        double previa = inicio.isAfter(vencimiento) ? calcularMoraCuota(cuota, tasaDiaria, inicio) : 0.0;
+        return redondear(moraBase + Math.max(0.0, hasta - previa));
     }
 
     @Override

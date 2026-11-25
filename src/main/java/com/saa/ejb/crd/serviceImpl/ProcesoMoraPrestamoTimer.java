@@ -73,6 +73,13 @@ public class ProcesoMoraPrestamoTimer {
     public void ejecutarCalculoDiario(Timer timer) {
         System.out.println("TIMER MORA - Disparo automático: " + (timer != null ? timer.getInfo() : ""));
 
+        // Lote 3 (4.1, DS-06): con saa.cartera.timerMoraSuspendido=true no corre (se re-procesa). Sin la propiedad, como siempre.
+        if (com.saa.ejb.crd.service.ModoCorteCartera.timerMoraSuspendido()) {
+            System.out.println("TIMER MORA - SUSPENDIDO por la propiedad "
+                + com.saa.ejb.crd.service.ModoCorteCartera.PROPIEDAD_TIMER_MORA_SUSPENDIDO + "=true: no se calcula mora.");
+            return;
+        }
+
         try {
             ResultadoCalculoMora resultado = procesoMoraPrestamoService.calcularMoraDiaria(
                 LocalDate.now(), ProcesoMoraPrestamoService.USUARIO_PROCESO);

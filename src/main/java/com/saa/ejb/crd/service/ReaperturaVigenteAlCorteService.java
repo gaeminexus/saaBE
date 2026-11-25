@@ -30,7 +30,10 @@ public interface ReaperturaVigenteAlCorteService {
     /** Texto de la marca que deja D-019 en la operación reabierta y en sus eventos posteriores. */
     String MARCA_CANCELACION_POSTERIOR = "cancelación posterior pendiente de re-aplicar";
 
-    /** 3, 4, 5, 9 y 13: los estados de préstamo cancelado que D-019 puede reabrir. */
+    /**
+     * 3, 4 y 9: los estados de préstamo cancelado que D-019 puede reabrir. El 5 (novado) y el 13 (reestructurado) NO se
+     * reabren (DS-15): ver el detalle en la implementación.
+     */
     boolean esPrestamoTerminal(Long idEstado);
 
     /**

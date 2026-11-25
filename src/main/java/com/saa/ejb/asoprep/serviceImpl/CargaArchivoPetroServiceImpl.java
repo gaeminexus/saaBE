@@ -2793,16 +2793,6 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 			.atTime(23, 59, 59);
 	}
 
-	private static boolean esPrestamoTerminal(Long idEstado) {
-		if (idEstado == null) {
-			return false;
-		}
-		int e = idEstado.intValue();
-		return e == com.saa.rubros.EstadoPrestamo.CANCELADO || e == com.saa.rubros.EstadoPrestamo.CANCELADO_ANTICIPADO
-			|| e == com.saa.rubros.EstadoPrestamo.CANCELADO_POR_NOVACION || e == com.saa.rubros.EstadoPrestamo.CANCELADO_POR_REVISAR
-			|| e == com.saa.rubros.EstadoPrestamo.CANCELADO_POR_REESTRUCTURACION;
-	}
-
 	/**
 	 * D-019: ¿la fila tiene una operación de su producto vigente al corte? Para que
 	 * {@link #buscarValoresSinDestino} no bloquee por un PRESTAMO_NO_ENCONTRADO heredado. Solo
@@ -2851,7 +2841,8 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 			if (!prestamosPreparadosReproceso.add(prestamo.getCodigo())) {
 				continue;
 			}
-			if (esPrestamoTerminal(prestamo.getIdEstado())) {
+			// DS-15: la regla vive en un solo lugar (ReaperturaVigenteAlCorteService); no reabre 5 ni 13.
+			if (reaperturaVigenteAlCorteService.esPrestamoTerminal(prestamo.getIdEstado())) {
 				reabrirPrestamoVigenteAlCorte(prestamo, cargaArchivo);
 			} else {
 				reabrirCuotasSaldadasSinPagoAlCorte(prestamo, cargaArchivo);

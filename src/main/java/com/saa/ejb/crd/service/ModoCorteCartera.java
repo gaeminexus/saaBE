@@ -411,6 +411,18 @@ public final class ModoCorteCartera {
         return hasta != null && fechaPago != null && fechaPago.toLocalDate().isBefore(hasta);
     }
 
+    /**
+     * Lote 3 (4.1, DS-06): {@code saa.cartera.timerMoraSuspendido=true} suspende la corrida automática de las 02:00 del
+     * timer de mora mientras se re-procesa. Se lee en cada disparo. Sin la propiedad (o con otro valor), el timer corre como
+     * siempre. El cálculo manual ({@code POST /rest/prst/calcularMora}) no se afecta.
+     */
+    public static final String PROPIEDAD_TIMER_MORA_SUSPENDIDO = "saa.cartera.timerMoraSuspendido";
+
+    /** Lote 3: ¿el timer de mora está suspendido por la propiedad? */
+    public static boolean timerMoraSuspendido() {
+        return "true".equalsIgnoreCase(String.valueOf(System.getProperty(PROPIEDAD_TIMER_MORA_SUSPENDIDO)).trim());
+    }
+
     /** C42: primer corte con la convención del SAA (vence el día del corte = por vencer). */
     public static LocalDate corteExclusivoDesde() {
         String valor = System.getProperty(PROPIEDAD_CORTE_EXCLUSIVO_DESDE);

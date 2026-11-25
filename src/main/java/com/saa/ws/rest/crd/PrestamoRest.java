@@ -1914,22 +1914,28 @@ public class PrestamoRest {
     @Path("/calcularMora")
     @Produces(MediaType.APPLICATION_JSON)
     public Response calcularMora(@QueryParam("fecha") String fecha,
+                                 @QueryParam("desde") String desde,
                                  @QueryParam("usuario") String usuario) {
-        System.out.println("LLEGA AL SERVICIO CALCULAR MORA - Fecha: " + fecha + " - Usuario: " + usuario);
+        System.out.println("LLEGA AL SERVICIO CALCULAR MORA - Fecha: " + fecha + " - Desde: " + desde
+            + " - Usuario: " + usuario);
 
         java.time.LocalDate fechaCorte;
+        java.time.LocalDate fechaDesde;
         try {
             fechaCorte = (fecha != null && !fecha.trim().isEmpty())
                 ? java.time.LocalDate.parse(fecha.trim())
                 : java.time.LocalDate.now();
+            // Fecha de partida opcional: los días de mora se cuentan desde max(vencimiento, desde).
+            fechaDesde = (desde != null && !desde.trim().isEmpty()) ? java.time.LocalDate.parse(desde.trim()) : null;
         } catch (Exception e) {
             return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
-                "La fecha debe tener el formato yyyy-MM-dd", null);
+                "La fecha y la fecha de partida (desde) deben tener el formato yyyy-MM-dd", null);
         }
 
         try {
             ResultadoCalculoMora resultado = procesoMoraPrestamoService.calcularMoraDiaria(
                 fechaCorte,
+                fechaDesde,
                 usuarioValidacionService.validar(usuario)); // U-2: el cálculo manual lo hace una persona (el timer usa SAA_MORA)
 
             Map<String, Object> cuerpo = new LinkedHashMap<>();
@@ -1970,9 +1976,10 @@ public class PrestamoRest {
     @Produces(MediaType.APPLICATION_JSON)
     public Response calcularMoraPrestamo(@PathParam("idPrestamo") Long idPrestamo,
                                          @QueryParam("fecha") String fecha,
+                                         @QueryParam("desde") String desde,
                                          @QueryParam("usuario") String usuario) {
         System.out.println("LLEGA AL SERVICIO CALCULAR MORA PRESTAMO - Préstamo: " + idPrestamo
-            + " - Fecha: " + fecha);
+            + " - Fecha: " + fecha + " - Desde: " + desde);
 
         if (idPrestamo == null || idPrestamo <= 0) {
             return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
@@ -1980,18 +1987,21 @@ public class PrestamoRest {
         }
 
         java.time.LocalDate fechaCorte;
+        java.time.LocalDate fechaDesde;
         try {
             fechaCorte = (fecha != null && !fecha.trim().isEmpty())
                 ? java.time.LocalDate.parse(fecha.trim())
                 : java.time.LocalDate.now();
+            // Fecha de partida opcional: los días de mora se cuentan desde max(vencimiento, desde).
+            fechaDesde = (desde != null && !desde.trim().isEmpty()) ? java.time.LocalDate.parse(desde.trim()) : null;
         } catch (Exception e) {
             return respuestaFallo(Response.Status.BAD_REQUEST.getStatusCode(), ETAPA_VALIDACION,
-                "La fecha debe tener el formato yyyy-MM-dd", null);
+                "La fecha y la fecha de partida (desde) deben tener el formato yyyy-MM-dd", null);
         }
 
         try {
             ResultadoCalculoMora resultado = procesoMoraPrestamoService.calcularMoraPrestamo(
-                idPrestamo, fechaCorte,
+                idPrestamo, fechaCorte, fechaDesde,
                 usuarioValidacionService.validar(usuario)); // U-2: el cálculo manual lo hace una persona (el timer usa SAA_MORA)
 
             Map<String, Object> cuerpo = new LinkedHashMap<>();
