@@ -109,6 +109,14 @@ dueño, con la autorización del usuario.
      - `generarAsientoCondonacion` (l. 728-940) no guarda el asiento en el evento.
      - `reversarProceso` del CBCR anula solo sus tres asientos.
      - Se propone como lote aparte, junto con 3.3.
+13. **«Merge de todo» (pedido del usuario, 24-11): merge `42050351` de `cuadre-c19b-sobre-main`.** Es el C19b del
+    cuadre rebasado sobre main.
+    - Borra `EstructuraReporteService` y porta C38/C39 al motor de balances. `/esrp` y `/esfo` quedan como alias.
+    - **Requiere los SQL `rpr/sql/C19-01`…`C19-07` antes del WAR que lo lleve,** en el orden de `cuadre/README`.
+    - **El EAR `c27b-1125c` NO lo lleva.**
+    - **Las demás ramas no mergeadas ya están en main con otro hash** (`git cherry` sin commits pendientes): c11,
+      c23 y las dos de lap1. La `c19-balances-oficiales` vieja queda reemplazada por la c19b.
+    - saaFE no tiene ramas pendientes.
 12. **Lote 5 commiteado (3.9 propuesta 1, 6.5 y medición de 6.4).** NO está en el EAR `c27b-1125`.
     - **3.9:** la baja del bien en cuentas de orden sale por lo que asentó la entrega.
     - **6.5:** `POST /prdo/desmayorizar`, con la bitácora HCPR DESMAYORIZAR. Requiere `cnt/sql/omen1-02` antes del WAR
