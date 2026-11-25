@@ -145,3 +145,10 @@ Control 13 del usuario: `CBR.TSRI.LSRI` guarda el **código de tabla** del SRI (
 - `TarifaRetencionServiceImpl` valida con SQL nativo `WHERE TO_CHAR(t.LSRI) = '608'` (sin JOIN), con comentario que lo explica.
 - `omen1-01` 7a/7b/7c corregidos al mismo enlace (`TO_CHAR(t.LSRI) = l.TABLA`); hay que **repetirlos** (el 7b en particular: dos tarifas activas con el mismo código en la 608).
 - IVA (tabla 20): ahora sí hay 15 tarifas. Para validarlo en el #7 falta el control 14 (activas por código en 608 y 20, y que los `codRetencion` que llegan en las líneas de IVA —códigos de retención de IVA del anexo— existan en la 20 con el mismo porcentaje). Hasta entonces el IVA sigue como hoy.
+
+### #7 extendido al IVA (2026-11-25) — medición del control 14 en producción
+- Tabla 608: 130 tarifas, las 130 activas, **0 códigos con dos activas** (precondición del #7 de renta cumplida).
+- Tabla 20 (retención de IVA): 15 filas, 11 activas (1=30, 2=70, 3=100, 4580=4, 5=100, 6=100, 7=0, 8=0, 9=10, 10=20, 11=50); sin duplicados activos (el 4580 tiene cuatro inactivas y una activa).
+- Las líneas de IVA ya emitidas usan los códigos 2 (70), 10 (20), 3 (100) y 5 (100): todos existen en la 20 con el mismo porcentaje.
+- `TarifaRetencionService` ahora valida también `codImpuesto = 2` contra la tabla 20 (`TO_CHAR(t.LSRI) = '20'`), con las mismas reglas que renta. La base de IVA es el IVA del documento: no se contrasta con nada, solo se exige base > 0 y valor = base × % ± 1 centavo. ISD (6) y otros códigos siguen como hoy.
+- Pruebas en copia añadidas: línea de IVA con código 2/10/3/5 y valores exactos (emite igual); porcentaje alterado (422); código 4580 con el 4 % (valida contra la activa); código inexistente en la 20 (422).

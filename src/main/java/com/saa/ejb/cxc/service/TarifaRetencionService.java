@@ -7,8 +7,8 @@ import jakarta.ejb.TransactionAttribute;
 import jakarta.ejb.TransactionAttributeType;
 
 /**
- * Lote 12 (VCN #7): el servidor valida las líneas de RETENCIÓN EN LA FUENTE DEL IMPUESTO A LA RENTA (código de impuesto 1) contra la tarifa activa de
- * CBR.TSRI (tabla 608 del SRI, vía CBR.LSRI), en vez de escribir en el XML lo que llega del navegador. El IVA (tabla 20) NO se valida todavía: no hay
+ * Lote 12 (VCN #7): el servidor valida las líneas de RETENCIÓN EN LA FUENTE DEL IMPUESTO A LA RENTA (código de impuesto 1, tabla 608) y de IVA (código 2, tabla 20; la base es el IVA del documento: solo se exige base > 0 y valor = base × % ± 1 centavo) contra la tarifa activa de
+ * CBR.TSRI (tabla 608 del SRI, vía CBR.LSRI), en vez de escribir en el XML lo que llega del navegador. El ISD (código 6) no se valida.
  * tarifas sembradas; sigue como hoy hasta que el contador valide la semilla. TSRI no tiene vigencia: se usa la tarifa ACTIVA (ESTADO = 1) de hoy.
  */
 @Local

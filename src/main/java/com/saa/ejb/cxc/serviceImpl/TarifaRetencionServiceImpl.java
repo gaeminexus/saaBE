@@ -19,6 +19,7 @@ import jakarta.persistence.PersistenceContext;
 public class TarifaRetencionServiceImpl implements TarifaRetencionService {
 
     private static final String TABLA_RENTA = "608";
+    private static final String TABLA_IVA = "20";
     private static final double TOLERANCIA_PORCENTAJE = 0.005;
     private static final double TOLERANCIA_VALOR = 0.01 + 1e-9;
 
@@ -34,8 +35,9 @@ public class TarifaRetencionServiceImpl implements TarifaRetencionService {
             return valores;
         }
         for (Linea l : lineas) {
-            if (l.codImpuesto == null || !"1".equals(l.codImpuesto.trim())) {
-                valores.add(l.valor); // IVA e ISD: como hoy
+            String imp = l.codImpuesto != null ? l.codImpuesto.trim() : "";
+            if (!"1".equals(imp) && !"2".equals(imp)) {
+                valores.add(l.valor); // ISD y otros: como hoy
                 continue;
             }
             String cod = l.codRetencion != null ? l.codRetencion.trim() : "";
@@ -54,18 +56,18 @@ public class TarifaRetencionServiceImpl implements TarifaRetencionService {
             List<Number> filasTarifa = em.createNativeQuery(
                     "SELECT t.PORCENTAJE FROM CBR.TSRI t "
                     + "WHERE TO_CHAR(t.LSRI) = :tabla AND t.ESTADO = 1 AND TRIM(t.CODIGO) = :codigo")
-                .setParameter("tabla", TABLA_RENTA).setParameter("codigo", cod).getResultList();
+                .setParameter("tabla", "2".equals(imp) ? TABLA_IVA : TABLA_RENTA).setParameter("codigo", cod).getResultList();
             List<Double> tarifas = new ArrayList<Double>();
             for (Number n : filasTarifa) {
                 tarifas.add(n != null ? n.doubleValue() : null);
             }
             if (tarifas.isEmpty() || tarifas.get(0) == null) {
-                rechazos.add(l.etiqueta + ": el código de retención " + cod + " no tiene una tarifa de renta activa.");
+                rechazos.add(l.etiqueta + ": el código de retención " + cod + " no tiene una tarifa activa en la tabla " + ("2".equals(imp) ? TABLA_IVA : TABLA_RENTA) + ".");
                 valores.add(l.valor);
                 continue;
             }
             if (tarifas.size() > 1) {
-                rechazos.add(l.etiqueta + ": el código " + cod + " tiene " + tarifas.size() + " tarifas de renta activas; corrija el catálogo.");
+                rechazos.add(l.etiqueta + ": el código " + cod + " tiene " + tarifas.size() + " tarifas activas; corrija el catálogo.");
                 valores.add(l.valor);
                 continue;
             }
