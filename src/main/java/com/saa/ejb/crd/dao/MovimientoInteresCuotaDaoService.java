@@ -162,6 +162,20 @@ public interface MovimientoInteresCuotaDaoService extends EntityDao<MovimientoIn
     java.util.Map<Long, Double> selectMoraContabilizadaPendientePorPrestamo(java.time.LocalDate corte) throws Throwable;
 
     /**
+     * Lote 18: los movimientos vigentes (no anulados y no compensados por una re-provisión) de un origen e {@code idOrigen}, de los
+     * tipos dados. Sirve para restituir lo que una operación sin pago (la condonación de un acuerdo) bajó de la provisión.
+     */
+    List<MovimientoInteresCuota> selectVigentesPorOrigen(String origen, Long idOrigen, List<Long> tipos) throws Throwable;
+
+    /**
+     * Lote 18: como {@link #selectMoraContabilizadaPendientePorPrestamo(java.time.LocalDate)} pero sumando al devengo de cada
+     * préstamo {@code devengoAdicional} (el ⑩ del mismo cierre, aún sin grabar), ANTES del piso en cero. Es lo que
+     * daría la consulta de arriba si ese devengo ya estuviera en el libro. Con el mapa nulo o vacío es la misma consulta.
+     */
+    java.util.Map<Long, Double> selectMoraContabilizadaPendientePorPrestamo(java.time.LocalDate corte,
+            java.util.Map<Long, Double> devengoAdicional) throws Throwable;
+
+    /**
      * Cuotas con saldo de provisión de MORA mayor a un centavo al corte (Σ tipo 1, 4 − Σ tipo 2, 3, 9, 10, vigentes, fecha
      * contable ≤ corte).
      *

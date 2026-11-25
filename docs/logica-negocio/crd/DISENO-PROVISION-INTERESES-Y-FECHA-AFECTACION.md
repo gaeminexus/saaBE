@@ -260,3 +260,23 @@ tipo (`DTPLAXL2 = TPPRCDGO`), así que si mañana contabilidad abre subcuentas p
 - **Anulación del acuerdo**: `reProvisionarPorAnulacion` solo compensa MVIC tipo 2 y 3 ligados a un pago. El tipo 9 de la condonación no lleva `idPago` (origen CONDONACION, `idOrigen` = acuerdo), así que **al anular un acuerdo la provisión condonada no se restituye**. Pide un diseño: ligar el tipo 9 al evento o buscarlo por origen e `idOrigen`.
 - **Castigo**: no hay un camino de castigo en `crd` que toque la provisión por cuota; no se corrige.
 - Pendiente de verificar en una copia: acuerdo con depósito y sin depósito (provisión de las cuotas 49 y 50 del caso del cuadre a cero), anulación del cobro y re-provisión del reverso.
+
+## Lote 18 — el ⑦ arma el asiento y el libro desde el MISMO cálculo
+
+### Causa (confirmada en el orden real de los pasos)
+`CierreCarteraServiceImpl.calcula` arma las líneas del ⑦ con `calcularProvisionPorTipoPrestamo` ANTES de grabar nada. Después `ejecutar` recorre los sub-procesos en orden y, en `generaAsiento`, el ⑩ (devengo de mora, MVIC tipo 5 con fecha contable al corte) va ANTES que el ⑦. Cuando llega el ⑦, `registrarProvisionCierre` recalcula todo, y el tope de la mora (D-186: mora contabilizada pendiente por préstamo, tipo 5 − 6 con fecha ≤ corte) ya incluye lo que acaba de grabar el ⑩. El libro sale mayor que el asiento y la diferencia está toda en la mora. Es la sospecha del cuadre, confirmada.
+
+### Cambio
+- Un solo cálculo por cuota: `ProvisionInteresService.calcularProvisionPorCuota(corte, alCorte, devengoMoraDelCierre)` devuelve la lista (`ProvisionCuotaCalculada`: cuota, préstamo, tipo, interés, mora). El asiento por tipo de préstamo es la suma de esa lista, al centavo. `registrarProvisionCierre(..., lista)` graba el libro (MVIC tipo 1) de ESA lista, sin recalcular. La lista viaja en el sub-proceso (campo transitorio, fuera del JSON).
+- El tope ve el ⑩ del mismo cierre: antes de calcular, `armaProvisionIntereses` obtiene el devengo del ⑩ por préstamo (la misma consulta que graba el ⑩) y `selectMoraContabilizadaPendientePorPrestamo(corte, devengoAdicional)` lo suma al devengo ANTES del piso en cero, como si ya estuviera en el libro. Así la mora provisionada incluye la que devenga el mismo cierre (que es lo que tiene la 1.4.02) y no depende del orden.
+- Previsualización: usa el mismo cálculo y el mismo devengo adicional, así que muestra los valores del asiento ejecutado (mientras la base no cambie entre las dos llamadas).
+- Los callers viejos (`calcularProvisionPorTipoPrestamo`, `registrarProvisionCierre` con recálculo) siguen, sin uso en el cierre.
+
+### Nivel 2.2 (mora = mora contabilizada pendiente del préstamo) — descrito, NO cambiado
+Hoy el tope del préstamo se reparte entre sus cuotas «sin pasar de la mora calculada pendiente de cada una» (`TopeProvisionMora.repartir`), y la herramienta `/prov/ajusteTopeMora` usa la MISMA función para llevar cada cuota a su tope (tipo 10 = max(0, saldo − tope de la cuota)). Quitar el límite por cuota en el ⑦ choca con el ajuste: el ⑦ subiría la provisión de una cuota por encima de su tope de la función y la siguiente corrida del ajuste la volvería a bajar, o el tope sin límite cargaría todo el préstamo en la cuota más vieja y el ajuste vaciaría las demás, que es justo lo que dejó cuadrado. Cambiarlo exige cambiar `repartir` y el ajuste a la vez (y rehacer lo ya ajustado), así que queda para decidirlo con el cuadre. Los 1.843,89 por debajo al 30-nov son préstamos con mora contabilizada mayor que la calculada por cuota.
+
+### Anular un acuerdo restituye la provisión condonada
+`AcuerdoCondonacionServiceImpl.reabrirAcuerdoPorReverso` (lo usan la anulación del cobro y la del evento) llama a `ProvisionInteresService.reProvisionarCondonacion(idAcuerdo, ...)`: busca por origen CONDONACION e `idOrigen` los MVIC tipo 9 vigentes, los compensa con un MVIC tipo 4 por cuota y por el mismo valor, y genera D 4.7.05.10 / H 1.4.99.05 por tipo de préstamo con la plantilla 36. Idempotente. Va con la fecha del reverso; si su período está cerrado, la anulación del acuerdo falla con el mensaje del asiento.
+
+### Lo ya acumulado en oct y nov 2025
+Recomendación: un asiento manual por la diferencia, ligado al ajuste A1, y no tocar el libro. El libro (mayor) es el que refleja la mora contabilizada (la 1.4.02), y el asiento del ⑦ de esos meses quedó por debajo; el asiento manual lleva la 1.4.99.05 al libro, por tipo de préstamo y por componente (D 4.7.05.10 / H 1.4.99.05), y A1 deja el saldo por cuota igual a su devengado no cobrado. Ajustar el libro hacia abajo borraría provisión de mora que sí tiene su devengo en 1.4.02.
