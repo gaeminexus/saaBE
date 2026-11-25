@@ -742,7 +742,13 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
             // conjuntos DISJUNTOS — ancla ya está PAGADA, pendientes la excluye por construcción
             // — así que el orden entre los dos no cambia el resultado final de ninguna cuota.
             if (acuerdo.getEmpresa() != null) {
-                double interesCondonadoSolo = valorConceptoCondonado(detalles, CrdConceptoPrestamo.INTERES);
+                // Lote 17 (nivel 1.2): lo COBRADO (interés y mora que el deudor paga) reversa la provisión de las cuotas
+                // vencidas que cierra, cuota por cuota y sin pasar de lo provisionado. El PGPR del acuerdo está anclado en
+                // la última cuota pagada, así que reversarPorPagos (por la cuota del pago) no las alcanzaba. Antes de la
+                // condonación, para que esta consuma lo que de verdad queda provisionado.
+                provisionInteresService.reversarCobradoEnCuotas(pendientes, interesPagado, moraPagada, pago.getCodigo(),
+                        acuerdo.getEmpresa().getCodigo(), fechaAsiento, "ACUERDO", idAcuerdo, usuario);
+                double interesCondonadoSolo =valorConceptoCondonado(detalles, CrdConceptoPrestamo.INTERES);
                 double moraCondonadaSolo = valorConceptoCondonado(detalles, CrdConceptoPrestamo.MORA);
                 provisionInteresService.condonarProvision(pendientes, interesCondonadoSolo, moraCondonadaSolo,
                         acuerdo.getEmpresa().getCodigo(), fechaAsiento, "CONDONACION", idAcuerdo, usuario);

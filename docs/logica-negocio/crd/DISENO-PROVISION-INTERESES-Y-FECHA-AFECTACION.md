@@ -233,3 +233,30 @@ tipo (`DTPLAXL2 = TPPRCDGO`), así que si mañana contabilidad abre subcuentas p
 - **MVIC tipo 5** se graba por cuota en el ④, con la misma consulta y la misma fuente (`DTPRMRAA` persistida) que el
   total del asiento. Si la suma por tipo de préstamo no coincide con el asiento, el asiento manda y la diferencia
   queda en el log.
+
+## Lote 17 — todo cobro de interés o mora provisionados reversa su provisión, cuota por cuota
+
+### Matriz por camino (verificada en el código, 2026-11-25)
+| Camino | ¿Reversa la provisión por cuota? | Método |
+|---|---|---|
+| Ventanilla (cobro de crédito) | Sí | `CobroCreditoServiceImpl.procesarCobro` → `reversarPorPagos` con los PGPR de los eventos del cobro (origen CBCR) |
+| Petro | Sí | `CobroPetroContableServiceImpl` → `reversarPorPagos` (origen PETRO) |
+| Cruce de pensión | Sí | `ContabilidadPrestamoServiceImpl.contabilizarPagoConAportes` → `reversarPorPagos` (origen CRUCE) |
+| Débito | Sí | No tiene camino propio: entra por el cobro de crédito o por Petro |
+| Acuerdo con depósito | **No (corregido)** | El acuerdo graba UN PGPR anclado en la última cuota pagada con el interés y la mora de todas las cuotas que cierra; `reversarPorPagos` (por la cuota del pago) acotaba contra la provisión de esa cuota, no de las vencidas. Ahora `aplicarAcuerdo` llama a `reversarCobradoEnCuotas` |
+| Acuerdo sin depósito (100% aportes) | **No (corregido)** | No llamaba a ningún reverso de lo cobrado. Mismo arreglo |
+| Precancelación | Sí | `contabilizarPrecancelacion` / `...ConPrestamo` → `reversarPorPagos` (CASO A) o el cobro (CASO B): un PGPR por cuota vencida que cierra |
+| Abono a capital | Sí, en lo que cobra | El interés de las cuotas vencidas que paga va por el cobro. El abono no toca la provisión de las cuotas que reamortiza (futuras, aún sin provisionar) |
+
+### Corrección
+- `ProvisionInteresService.reversarCobradoEnCuotas(cuotas, interesCobrado, moraCobrada, idPago, ...)`: reparte lo cobrado entre las cuotas que el acuerdo cierra, la más antigua primero, consume el saldo provisionado de cada una **sin pasar de él** ni de lo cobrado, y graba MVIC tipo 2 por cuota y componente con el `idPago` del acuerdo, más el asiento D 1.4.99.05 / H 4.7.05.10 por tipo de préstamo (cuentas de la plantilla 36; no hay línea nueva ni semilla).
+- `AcuerdoCondonacionServiceImpl.aplicarAcuerdo`: lo llama antes de `condonarProvision` (la condonación consume lo que queda).
+- `CobroCreditoServiceImpl.procesarCobro`: los pagos de tipo ACUERDO_CONDONACION se excluyen de `reversarPorPagos` para no contarlos otra vez contra la cuota ancla.
+- Anulación: el MVIC lleva el `idPago`, así que `reProvisionarPorAnulacion` lo encuentra al anular el cobro o el evento; ahora toma el tipo de préstamo del propio MVIC cuando su cuota no es la del pago.
+- Tope: `reversarPorPagos`, `condonarProvision` y `reversarCobradoEnCuotas` acotan contra el saldo provisionado de cada cuota. Las provisiones negativas históricas (−1.787,26 al 30-nov) no salen de este camino: se regularizan con el ajuste por cuota del cuadre (A1).
+
+### Nivel 1.3 — condonación, castigo y anulación (solo descrito)
+- **Condonación** (solo el acuerdo): mueve la 1.4.02 por el interés y la mora condonados y la provisión de las mismas cuotas por el mismo valor, con un tope por cuota (MVIC tipo 9). Si la provisión de una cuota es menor que lo condonado, la diferencia queda sin provisión que bajar: es lo aprobado en 7bis.
+- **Anulación del acuerdo**: `reProvisionarPorAnulacion` solo compensa MVIC tipo 2 y 3 ligados a un pago. El tipo 9 de la condonación no lleva `idPago` (origen CONDONACION, `idOrigen` = acuerdo), así que **al anular un acuerdo la provisión condonada no se restituye**. Pide un diseño: ligar el tipo 9 al evento o buscarlo por origen e `idOrigen`.
+- **Castigo**: no hay un camino de castigo en `crd` que toque la provisión por cuota; no se corrige.
+- Pendiente de verificar en una copia: acuerdo con depósito y sin depósito (provisión de las cuotas 49 y 50 del caso del cuadre a cero), anulación del cobro y re-provisión del reverso.

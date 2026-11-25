@@ -1658,7 +1658,15 @@ public class CobroCreditoServiceImpl implements CobroCreditoService {
                 }
             }
             Long idEmpresaCobro = derivarEmpresaCobro(cobro);
-            ResultadoReversoProvision reverso = provisionInteresService.reversarPorPagos(pagosDelCobro,
+            // Lote 17: el PGPR del acuerdo ya reversó su provisión cuota por cuota en aplicarAcuerdo (reversarCobradoEnCuotas);
+            // reversarPorPagos lo contaría otra vez contra la cuota ancla del pago.
+            List<PagoPrestamo> pagosParaReverso = new ArrayList<>();
+            for (PagoPrestamo pago : pagosDelCobro) {
+                if (!CrdTipoOperacionCobro.ACUERDO_CONDONACION.equals(pago.getTipo())) {
+                    pagosParaReverso.add(pago);
+                }
+            }
+            ResultadoReversoProvision reverso = provisionInteresService.reversarPorPagos(pagosParaReverso,
                 idEmpresaCobro, cobro.getFechaAfectacion(), "CBCR", cobro.getCodigo(), usuario);
             provisionReversadaTotal = reverso.getTotalReversado();
             idAsientoReversoProvisionTotal = reverso.getIdAsiento();

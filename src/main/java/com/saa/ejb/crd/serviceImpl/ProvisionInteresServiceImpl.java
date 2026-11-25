@@ -571,6 +571,11 @@ public class ProvisionInteresServiceImpl implements ProvisionInteresService {
         double totalGeneral = 0.0;
         for (MovimientoInteresCuota reverso : reversosVigentes) {
             Long idTipoPrestamo = tipoPrestamoPorCuota.get(reverso.getIdCuota());
+            // Lote 17: el reverso de un cobro que cae en cuotas distintas de la del pago (acuerdo) toma el tipo del préstamo del propio MVIC.
+            if (idTipoPrestamo == null && reverso.getPrestamo() != null && reverso.getPrestamo().getProducto() != null
+                    && reverso.getPrestamo().getProducto().getTipoPrestamo() != null) {
+                idTipoPrestamo = reverso.getPrestamo().getProducto().getTipoPrestamo().getCodigo();
+            }
             if (idTipoPrestamo == null) {
                 throw new IncomeException("La cuota " + reverso.getIdCuota() + " tiene un reverso de provisión"
                     + " (MVIC " + reverso.getCodigo() + ") que compensar, pero no se encontró el tipo de"
@@ -683,6 +688,84 @@ public class ProvisionInteresServiceImpl implements ProvisionInteresService {
             }
         }
 
+        resultado.setIdAsiento(asiento.getCodigo());
+        resultado.setTotalReversado(totalRedondeado);
+        return resultado;
+    }
+
+    @Override
+    public ResultadoReversoProvision reversarCobradoEnCuotas(List<DetallePrestamo> cuotas, double interesCobrado,
+            double moraCobrada, Long idPago, Long idEmpresa, LocalDate fecha, String origen, Long idOrigen,
+            String usuario) throws Throwable {
+        System.out.println("ProvisionInteresServiceImpl.reversarCobradoEnCuotas - origen: " + origen
+            + " - idOrigen: " + idOrigen + " - interés: " + interesCobrado + " - mora: " + moraCobrada);
+        ResultadoReversoProvision resultado = new ResultadoReversoProvision();
+        double interesRestante = Math.max(0.0, redondear(interesCobrado));
+        double moraRestante = Math.max(0.0, redondear(moraCobrada));
+        if (cuotas == null || cuotas.isEmpty() || (interesRestante <= TOLERANCIA && moraRestante <= TOLERANCIA)) {
+            return resultado;
+        }
+        List<Long> idsCuota = new ArrayList<>();
+        for (DetallePrestamo cuota : cuotas) {
+            idsCuota.add(cuota.getCodigo());
+        }
+        Map<Long, double[]> saldoProvisionado = saldoProvisionadoPorCuotas(idsCuota);
+        Prestamo prestamo = cuotas.get(0).getPrestamo();
+        Long idTipoPrestamo = prestamo != null && prestamo.getProducto() != null
+                && prestamo.getProducto().getTipoPrestamo() != null
+                ? prestamo.getProducto().getTipoPrestamo().getCodigo() : null;
+
+        // Cuota por cuota, la más antigua primero, acotado al saldo provisionado de cada una (nunca más) y a lo cobrado.
+        Map<Long, double[]> aReversarPorCuota = new LinkedHashMap<>();
+        double total = 0.0;
+        for (DetallePrestamo cuota : cuotas) {
+            if (interesRestante <= TOLERANCIA && moraRestante <= TOLERANCIA) {
+                break;
+            }
+            double[] provisionado = saldoProvisionado.getOrDefault(cuota.getCodigo(), new double[2]);
+            double interesCuota = Math.max(0.0, redondear(Math.min(interesRestante, provisionado[0])));
+            double moraCuota = Math.max(0.0, redondear(Math.min(moraRestante, provisionado[1])));
+            if (interesCuota <= TOLERANCIA && moraCuota <= TOLERANCIA) {
+                continue;
+            }
+            aReversarPorCuota.put(cuota.getCodigo(), new double[]{interesCuota, moraCuota});
+            interesRestante = redondear(interesRestante - interesCuota);
+            moraRestante = redondear(moraRestante - moraCuota);
+            total += interesCuota + moraCuota;
+        }
+        if (aReversarPorCuota.isEmpty()) {
+            return resultado;
+        }
+        if (idTipoPrestamo == null) {
+            throw new IncomeException("El préstamo " + (prestamo != null ? prestamo.getCodigo() : null)
+                + " tiene provisión que reversar por cobro pero su producto no tiene tipo de préstamo asignado; no se"
+                + " puede resolver la cuenta contable del reverso.");
+        }
+        Long idPlantilla = resuelvePlantilla36(idEmpresa);
+        double totalRedondeado = redondear(total);
+        List<DetalleAsiento> lineas = new ArrayList<>();
+        lineas.add(lineaProvision(idPlantilla, CrdLineaAsiento.PROVISION_INTERESES, idTipoPrestamo,
+            totalRedondeado, true, "Reverso de provisión de intereses por cobro - " + origen));
+        lineas.add(lineaProvision(idPlantilla, CrdLineaAsiento.PROVISION_INTERESES_GASTO, idTipoPrestamo,
+            totalRedondeado, false, "Reverso de provisión de intereses por cobro - " + origen));
+        Asiento asiento = asientoContableService.generarAsiento(idEmpresa, TipoAsientos.CREDITOS, fecha,
+            "Reverso de provisión de intereses por cobro - " + origen, usuario, lineas,
+            Long.valueOf(ModuloSistema.CUENTAS_POR_COBRAR));
+
+        LocalDateTime ahora = LocalDateTime.now();
+        for (Map.Entry<Long, double[]> entrada : aReversarPorCuota.entrySet()) {
+            double[] valores = entrada.getValue();
+            if (valores[0] > TOLERANCIA) {
+                guardarMovimiento(entrada.getKey(), prestamo, TipoMovimientoInteresCuota.REVERSO_POR_COBRO,
+                    ComponenteMovimientoInteresCuota.INTERES, valores[0], fecha, null, idPago, origen, idOrigen,
+                    asiento.getCodigo(), usuario, ahora);
+            }
+            if (valores[1] > TOLERANCIA) {
+                guardarMovimiento(entrada.getKey(), prestamo, TipoMovimientoInteresCuota.REVERSO_POR_COBRO,
+                    ComponenteMovimientoInteresCuota.MORA, valores[1], fecha, null, idPago, origen, idOrigen,
+                    asiento.getCodigo(), usuario, ahora);
+            }
+        }
         resultado.setIdAsiento(asiento.getCodigo());
         resultado.setTotalReversado(totalRedondeado);
         return resultado;
