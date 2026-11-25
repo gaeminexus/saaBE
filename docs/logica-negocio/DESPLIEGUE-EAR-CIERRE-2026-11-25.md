@@ -46,7 +46,15 @@
 6. `crd/sql/392_MVIC_TIPO_10_AJUSTE_TOPE_PROVISION.sql`.
 7. `cnt/sql/omen1-02-hcpr-accion-desmayorizar.sql`.
 
-**No van:** los `rpr/sql/C19-*` (la C19b no está en este EAR).
+**No van** los `rpr/sql/C19-*` de `main`, que son de la C19b.
+
+⚠️ **Corrección (25-11): el `C38-01` necesita antes el `C19-01` y el `C19-02` de la C19 vieja,** la de `5a40b3ac`,
+porque escribe en `CNT.RNRP`.
+- En producción probablemente ya están: el U6 del 12-nov escribió en `CNT.CRRP`.
+- El script `00` de la carpeta lo verifica. Si faltan, se corren las versiones de `5a40b3ac`, nunca las de `main`.
+
+**Carpeta lista para correr:** `F:\ears\asoprep\cierre-1125-d187\scripts\`. Lleva los scripts numerados en orden
+(`00` solo lectura; `01`…`19`, con `09a` y `09b` condicionales) y un `LEEME.txt` con el COMMIT de cada uno.
 
 ## 4. Propiedades (consola de WildFly → System Properties → Add; el código las lee en cada cierre)
 
