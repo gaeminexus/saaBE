@@ -161,6 +161,11 @@ public class CargaArchivo implements Serializable {
     @Column(name = "CRARFCAN")
     private LocalDateTime fechaAnulacion;
 
+    /** C46: alerta persistente de cuadre contra los TOTAL del reporte de Petro (null si cuadra). Ver docs/logica-negocio/petro/C46-LINEA-SIN-ROL-RETORNO-PETRO.md. */
+    @Basic
+    @Column(name = "CRARALCD", length = 2000)
+    private String alertaCuadre;
+
     // ============================================================
     // GETTERS Y SETTERS
     // ============================================================
@@ -363,6 +368,14 @@ public class CargaArchivo implements Serializable {
 
     public void setMotivoAnulacion(String motivoAnulacion) {
         this.motivoAnulacion = motivoAnulacion;
+    }
+
+    public String getAlertaCuadre() {
+        return alertaCuadre;
+    }
+
+    public void setAlertaCuadre(String alertaCuadre) {
+        this.alertaCuadre = alertaCuadre;
     }
 
     public LocalDateTime getFechaAnulacion() {
