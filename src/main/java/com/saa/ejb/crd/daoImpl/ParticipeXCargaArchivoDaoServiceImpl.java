@@ -25,8 +25,10 @@ public class ParticipeXCargaArchivoDaoServiceImpl extends EntityDaoImpl<Particip
 			String jpql = "SELECT p FROM ParticipeXCargaArchivo p " +
 						 "WHERE p.codigoPetro = :codigoPetro " +
 						 "AND TRIM(p.detalleCargaArchivo.codigoPetroProducto) = :codigoProducto " +
-						 "AND p.detalleCargaArchivo.cargaArchivo.codigo = :codigoCargaArchivo";
-			
+						 "AND p.detalleCargaArchivo.cargaArchivo.codigo = :codigoCargaArchivo " +
+						 // C46: con dos filas del mismo rol y producto, la «primera» es la de menor código (la primera línea leída), no una al azar.
+						 "ORDER BY p.codigo";
+
 			Query query = em.createQuery(jpql);
 			query.setParameter("codigoPetro", codigoPetro);
 			query.setParameter("codigoProducto", codigoProductoTrim);
