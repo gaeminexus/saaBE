@@ -658,7 +658,10 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
                 streamArchivo = new java.io.ByteArrayInputStream(bytesArch);
             } else {
                 String contenido = leerContenidoArchivo(archivoInputStream);
-                registrosProcesados = procesarContenido(contenido);
+                ResultadoLecturaRetornoPetro lecturaRetorno = leerRetornoPetro(contenido);
+                registrosProcesados = lecturaRetorno.getRegistros();
+                // C46: la alerta de cuadre contra los TOTAL del reporte queda en la carga (CRD.CRAR.CRARALCD); no bloquea.
+                cargaArchivo.setAlertaCuadre(lecturaRetorno.getAlertaCuadre());
             }
 
             // Agrupar por aporte (DetalleCargaArchivo)
@@ -1010,142 +1013,22 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
     }
     
     /**
-     * Procesa el contenido del archivo y extrae los registros
+     * Procesa el contenido del archivo y extrae los registros. C46: el parseo vive en {@link LectorRetornoPetro} (clase pura); aquí solo se loguea y se
+     * deja la alerta de cuadre en la carga. Una línea sin rol con montos es la segunda línea de un partícipe con dos descuentos en el mismo producto
+     * (se carga como un registro más); el cuadre contra los TOTAL del reporte NO falla la carga: queda en CRD.CRAR.CRARALCD.
      */
-    private List<ParticipeXCargaArchivo> procesarContenido(String contenido) throws Exception {
-        String[] lineas = contenido.split("\n");
-        List<ParticipeXCargaArchivo> registrosProcesados = new ArrayList<>();
-        int i = 0;
-        int numeroLinea = 1; // Para rastrear la línea en caso de error
-        boolean encontroEP = false;
-
-        // 2026-08-31: cuenta las líneas que el reporte de Petro imprime al cierre de cada
-        // sección de producto ("TOTAL <producto>", "TOTAL ZONA...", "TOTAL ==>") y que NO
-        // son un partícipe — se detectan porque no traen código en columnas [0,7). Antes se
-        // descartaban en silencio DESPUÉS de intentar parsear sus columnas numéricas (lo que
-        // podía reventar si el texto de la línea invadía una columna numérica — ver
-        // REGLAS-CARGA-PETRO.md §"líneas TOTAL"); ahora se detectan ANTES y ni siquiera se
-        // tocan esas columnas. Se cuenta para que un cambio de formato de Petro (de 8 líneas
-        // TOTAL a, digamos, 500) se note por un número en el log, no porque falten partícipes.
-        int lineasResumenOmitidas = 0;
-        
-        while (i < lineas.length) {
-            String lineaActual = lineas[i];
-            
-            if (lineaActual != null && lineaActual.trim().startsWith("EP")) {
-                encontroEP = true;
-                i += 8;
-                if (i >= lineas.length) break;
-                
-                String lineaAporte = lineas[i];
-                
-                // Validar que la línea de aporte tenga contenido
-                if (lineaAporte == null || lineaAporte.trim().isEmpty()) {
-                    throw new IllegalArgumentException("Error en línea " + (numeroLinea + 8) + ": Se esperaba línea de producto/aporte después del encabezado EP");
-                }
-                
-                String codigoAporte = lineaAporte.substring(0, Math.min(4, lineaAporte.length())).trim();
-                String descripcionAporte = lineaAporte.length() > 4 ? lineaAporte.substring(4).trim() : "";
-                
-                // Validar que exista código de aporte
-                if (codigoAporte.isEmpty()) {
-                    // throw new IllegalArgumentException("Error en línea " + (numeroLinea + 8) + ": Código de producto/aporte vacío");
-                }
-                
-                i++;
-                i++;
-                if (i >= lineas.length) break;
-                
-                while (i < lineas.length) {
-                    String lineaRegistro = lineas[i];
-                    
-                    if (lineaRegistro != null && lineaRegistro.trim().startsWith("EP")) {
-                        break;
-                    }
-                    
-                    if (lineaRegistro != null && lineaRegistro.trim().length() > 0) {
-                        // Línea de resumen del reporte (TOTAL de la sección, TOTAL ==>, etc.):
-                        // no trae código de partícipe en columnas [0,7). Se detecta y se salta
-                        // ANTES de tocar ninguna columna numérica — no es un dato de partícipe
-                        // mal formado, es una línea que nunca debió leerse como partícipe.
-                        // extraerCampo rellena con espacios si la línea es corta, así que es
-                        // segura incluso si lineaRegistro tiene menos de 7 caracteres.
-                        String codigo = extraerCampo(lineaRegistro, 0, 7).trim();
-                        if (codigo.isEmpty()) {
-                            lineasResumenOmitidas++;
-                            i++;
-                            continue;
-                        }
-
-                        try {
-                            ParticipeXCargaArchivo registro = new ParticipeXCargaArchivo();
-
-                            // Crear un DetalleCargaArchivo temporal para identificación
-                            DetalleCargaArchivo detalleTemp = new DetalleCargaArchivo();
-                            detalleTemp.setCodigoPetroProducto(codigoAporte);
-                            detalleTemp.setNombreProductoPetro(descripcionAporte);
-                            registro.setDetalleCargaArchivo(detalleTemp);
-
-                            // Validar que la línea tenga la longitud mínima esperada
-                            if (lineaRegistro.length() < 50) {
-                                throw new IllegalArgumentException("Línea muy corta, longitud mínima esperada: 50 caracteres");
-                            }
-
-                            // Extraer campos del registro (codigo ya extraído arriba)
-                            registro.setNombre(extraerCampo(lineaRegistro, 7, 44).trim());
-                            registro.setPlazoInicial(parseDouble(extraerCampo(lineaRegistro, 44, 50).trim()).longValue());
-                            registro.setSaldoActual(parseDouble(extraerCampo(lineaRegistro, 50, 61).trim()));
-                            registro.setMesesPlazo(parseDouble(extraerCampo(lineaRegistro, 61, 65).trim()).longValue());
-                            registro.setInteresAnual(parseDouble(extraerCampo(lineaRegistro, 65, 70).trim()));
-                            registro.setValorSeguro(parseDouble(extraerCampo(lineaRegistro, 70, 80).trim()));
-                            registro.setMontoDescontar(parseDouble(extraerCampo(lineaRegistro, 80, 95).trim()));
-                            registro.setCapitalDescontado(parseDouble(extraerCampo(lineaRegistro, 95, 110).trim()));
-                            registro.setInteresDescontado(parseDouble(extraerCampo(lineaRegistro, 110, 125).trim()));
-                            registro.setSeguroDescontado(parseDouble(extraerCampo(lineaRegistro, 125, 140).trim()));
-                            registro.setTotalDescontado(parseDouble(extraerCampo(lineaRegistro, 140, 155).trim()));
-                            registro.setCapitalNoDescontado(parseDouble(extraerCampo(lineaRegistro, 155, 170).trim()));
-                            registro.setInteresNoDescontado(parseDouble(extraerCampo(lineaRegistro, 170, 184).trim()));
-                            registro.setDesgravamenNoDescontado(parseDouble(extraerCampo(lineaRegistro, 184, 198).trim()));
-
-                            registro.setCodigoPetro(parseLongSimple(codigo));
-                            registrosProcesados.add(registro);
-                        } catch (Exception e) {
-                            // Texto crudo alrededor de donde probablemente cayó el corte, para
-                            // que el operador vea el problema sin abrir el archivo. No sabemos
-                            // con certeza qué columna exacta falló (son 12 parseDouble en la
-                            // misma línea); mostramos la línea completa recortada — el valor
-                            // mal formado ya viene entre comillas en el mensaje de parseDouble.
-                            String lineaCruda = lineaRegistro.length() > 120
-                                    ? lineaRegistro.substring(0, 120) + "..." : lineaRegistro;
-                            throw new IllegalArgumentException("Error al procesar línea " + (numeroLinea + i)
-                                    + " del producto '" + descripcionAporte + "' (columnas de dato: 0-198): "
-                                    + e.getMessage() + " | Línea cruda: \"" + lineaCruda + "\"", e);
-                        }
-                    }
-                    
-                    i++;
-                }
-                
-                numeroLinea = i;
-                continue;
-            }
-            
-            i++;
-            numeroLinea++;
-        }
-        
-        // Validar que se haya encontrado al menos un encabezado EP
-        if (!encontroEP) {
-            throw new IllegalArgumentException("El archivo no contiene ningún encabezado 'EP' válido. Formato de archivo incorrecto.");
-        }
-
-        // Reportado por número, no por "faltan partícipes": si el formato de Petro cambia y
-        // de golpe hay 500 de estas en vez de las ~8-15 de siempre (una por sección de
-        // producto), es la señal de que hay que revisar el archivo, no un partícipe perdido.
+    private ResultadoLecturaRetornoPetro leerRetornoPetro(String contenido) {
+        ResultadoLecturaRetornoPetro lectura = LectorRetornoPetro.leer(contenido);
+        // Reportado por número, no por "faltan partícipes": si el formato de Petro cambia y de golpe hay 500 de estas en vez de las ~8-15 de siempre
+        // (una por sección de producto), es la señal de que hay que revisar el archivo, no un partícipe perdido.
         System.out.println("ℹ️ Líneas de resumen del reporte omitidas (sin código de partícipe,"
-                + " p.ej. \"TOTAL <producto>\"): " + lineasResumenOmitidas);
-
-        return registrosProcesados;
+                + " p.ej. \"TOTAL <producto>\"): " + lectura.getLineasResumen());
+        System.out.println("ℹ️ Líneas de continuación (segunda línea sin rol de un partícipe, cargadas como registro propio): "
+                + lectura.getContinuaciones());
+        if (lectura.getAlertaCuadre() != null) {
+            System.out.println("⚠️ " + lectura.getAlertaCuadre());
+        }
+        return lectura;
     }
     
     // ==========================================================================================
@@ -1833,7 +1716,10 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 			throw new IllegalArgumentException("El formato del archivo es incorrecto. El archivo debe comenzar con 'EP' según el formato PETROCOMERCIAL");
 		}
 
-        registrosProcesados = procesarContenido(contenido);
+        ResultadoLecturaRetornoPetro lecturaRetorno = leerRetornoPetro(contenido);
+                registrosProcesados = lecturaRetorno.getRegistros();
+                // C46: la alerta de cuadre contra los TOTAL del reporte queda en la carga (CRD.CRAR.CRARALCD); no bloquea.
+                cargaArchivo.setAlertaCuadre(lecturaRetorno.getAlertaCuadre());
 		}
 
         // VALIDACIÓN 4: Verificar que se hayan procesado registros
@@ -2430,6 +2316,12 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 					"Partícipes sin ningún contrato: contrato y vigencia creados (D-022 ampliada, $"
 						+ String.format("%,.2f", montoContratosCreadosReproceso) + ")",
 					contratosCreadosReproceso));
+			}
+			// C46: si la carga quedo con alerta de cuadre contra los TOTAL del reporte de Petro, el resumen empieza con ella. No bloquea la fase 3.
+			String alertaCuadreCarga = cargaArchivo.getAlertaCuadre();
+			if (alertaCuadreCarga != null && !alertaCuadreCarga.trim().isEmpty()) {
+				System.out.println("⚠️ ALERTA DE CUADRE: " + alertaCuadreCarga);
+				resumenBuilder.insert(0, "ALERTA DE CUADRE: " + alertaCuadreCarga + "\n");
 			}
 			String resumen = resumenBuilder.toString();
 			
@@ -4658,6 +4550,16 @@ public class CargaArchivoPetroServiceImpl implements CargaArchivoPetroService {
 		boolean esPP = CODIGO_PRODUCTO_PP.equalsIgnoreCase(codigoProducto);
 		if (!esPH && !esPP) {
 			return false;
+		}
+		// C46: un partícipe puede tener DOS filas del mismo producto en la carga (la segunda línea sin rol del reporte). El HS es un solo importe
+		// y viaja SOLO con la primera fila de ese producto (la de menor código, que es la primera que se leyó): la otra se aplica sin HS.
+		if (participe.getCodigo() != null) {
+			ParticipeXCargaArchivo primeraDelProducto = participeXCargaArchivoDaoService
+				.selectByCodigoPetroYProductoEnCarga(participe.getCodigoPetro(), codigoProducto, cargaArchivo.getCodigo());
+			if (primeraDelProducto != null && primeraDelProducto.getCodigo() != null
+					&& !primeraDelProducto.getCodigo().equals(participe.getCodigo())) {
+				return false;
+			}
 		}
 		ParticipeXCargaArchivo filaPH = esPH ? participe : participeXCargaArchivoDaoService
 			.selectByCodigoPetroYProductoEnCarga(participe.getCodigoPetro(), CODIGO_PRODUCTO_PH, cargaArchivo.getCodigo());

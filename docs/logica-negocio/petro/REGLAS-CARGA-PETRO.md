@@ -32,7 +32,7 @@ FASE 3  aplicarPagosArchivoPetro/{idCarga}           aplicación de pagos a pré
 
 | Posición (0-based) | Campo → `ParticipeXCargaArchivo` |
 |---|---|
-| 0–7 | `codigoPetro` (ROL; si viene vacío la línea se descarta) |
+| 0–7 | `codigoPetro` (ROL; si viene vacío es línea de resumen o, con montos y sin `TOTAL`, la continuación de un partícipe, C46 abajo) |
 | 7–44 | `nombre` (35 útiles) |
 | 44–50 | `plazoInicial` |
 | 50–61 | `saldoActual` |
@@ -79,6 +79,18 @@ sección de producto), es la señal de que el formato cambió, y tiene que notar
 en el log, no porque falten partícipes. El mensaje de error que sí queda (para un dato de
 partícipe genuinamente mal formado) ahora incluye la línea cruda completa, no solo el valor
 extraído.
+
+**Línea de continuación y control de cuadre (C46, 2026-11-26).** El descarte de «rol vacío» perdía una línea real: cuando un partícipe tiene dos descuentos en el
+mismo producto, Petro imprime la segunda con rol y nombre en blanco **y con todas las columnas numéricas**, y debajo `TOTAL EMPLEADO`. El parser vive ahora en
+`LectorRetornoPetro` (clase pura; `procesarContenido` delega en él):
+- Rol vacío + nombre [7,44) vacío + sin la palabra `TOTAL` + plazo, monto y total descontado numéricos → **registro nuevo** con el rol y el nombre del último partícipe
+  de la MISMA sección (sobrevive a un salto de página `EP`; se reinicia al cambiar de producto) y sus propios montos. Sin partícipe previo → error con número de línea.
+  `TOTAL EMPLEADO` se valida contra la suma del partícipe; si no cuadra es alerta, no excepción.
+- Control al cargar (columna total descontado, tolerancia 0,005): Σ de cada sección = su `TOTAL <producto>` y Σ de todo = `TOTAL ==>`. Una diferencia **no falla** la
+  carga: queda en `CRD.CRAR.CRARALCD` (`CargaArchivo.alertaCuadre`, sql/411) y la fase 3 la pone al inicio de su resumen (no la bloquea; decisión pendiente del usuario).
+- La última página del reporte es un resumen por producto con encabezado corto: no abre sección de cuadre.
+- Detalle, revisión de crd (el HS solo viaja con la primera fila PH/PP del rol), prueba y verificación contra los retornos reales:
+  `C46-LINEA-SIN-ROL-RETORNO-PETRO.md`.
 
 ### 1.3 Persistencia (transaccional; el archivo físico va al final)
 1. `CargaArchivo` (exige `filial` y `usuarioCarga` del frontend; `fechaCarga = now`).
