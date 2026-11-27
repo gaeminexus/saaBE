@@ -653,7 +653,9 @@ public class AcuerdoCondonacionServiceImpl implements AcuerdoCondonacionService 
         for (DetallePrestamo cuota : pendientes) {
             cuota.setEstado((long) EstadoCuotaPrestamo.CANCELADA_ANTICIPADA);
             cuota.setIdEstado((long) EstadoCuotaPrestamo.CANCELADA_ANTICIPADA);
-            cuota.setFechaPagado(null);
+            // C48: la cuota cerrada por el acuerdo queda con la fecha de la operación (la del evento y el pago), no nula: las lecturas al corte
+            // (DTPRFCPG < corte+1) tratan una cuota 7 sin fecha como NO liquidada, para siempre.
+            cuota.setFechaPagado(fechaHora);
             detallePrestamoService.saveSingle(cuota);
             canceladas++;
         }
