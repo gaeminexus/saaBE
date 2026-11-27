@@ -83,12 +83,18 @@ public class ControlCierreServiceImpl implements ControlCierreService {
         controles.addAll(seguimientoNovedadService.controlesCierre(idEmpresa, anio, mes));
         // C48: cuotas en CANCELADA_ANTICIPADA (7) sin fecha de pago (ERROR; no bloquea el cierre salvo saa.cartera.bloqueoCuotas7SinFecha).
         controles.addAll(controlCuotasSinFechaService.controlesCierre(idEmpresa, anio, mes));
+        // C52: saldo contrario a la naturaleza por cuenta (D-150 / D-222), sin el motor de balances; ERROR con la lista y el asiento sugerido.
+        controles.addAll(saldoContrarioCuentaService.controlesCierre(idEmpresa, anio, mes));
         return controles;
     }
 
     /** C48 — cuotas 7 sin fecha de pago (grupo CARTERA del semáforo). */
     @EJB
     private com.saa.ejb.crd.service.ControlCuotasSinFechaService controlCuotasSinFechaService;
+
+    /** C52 - saldo contrario por cuenta (control SALDO_CONTRARIO_CUENTA). */
+    @EJB
+    private com.saa.ejb.cnt.service.SaldoContrarioCuentaService saldoContrarioCuentaService;
 
     /** C50 - las G40-G51 atadas a la corrida de cartera vigente (control G_DESACTUALIZADAS). */
     @EJB

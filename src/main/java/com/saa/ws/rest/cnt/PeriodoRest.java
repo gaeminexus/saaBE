@@ -262,6 +262,45 @@ public class PeriodoRest {
         }
     }
 
+    /**
+     * C52: GET /prdo/saldosContrarios/{idEmpresa}/{anio}/{mes} — cuentas de movimiento con saldo contrario a su naturaleza al corte del mes, con el asiento
+     * sugerido (no se graba). Solo lectura.
+     */
+    @GET
+    @Path("/saldosContrarios/{idEmpresa}/{anio}/{mes}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response saldosContrarios(@PathParam("idEmpresa") Long idEmpresa, @PathParam("anio") Long anio, @PathParam("mes") Long mes) {
+        try {
+            return Response.ok(saldoContrarioCuentaService.saldosContrarios(idEmpresa, anio, mes), MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return respuestaCierre(e, "Error al consultar los saldos contrarios: ");
+        }
+    }
+
+    /**
+     * C52: POST /prdo/regularizarRedondeos/{idEmpresa}/{anio}/{mes}?usuario=&simular=true|false — unica correccion automatica: las cuentas de redondeo de la
+     * plantilla con saldo acreedor van a otros ingresos (asiento del mes, fecha del ultimo dia, idempotente). Con el periodo cerrado no. Por defecto simula.
+     */
+    @POST
+    @Path("/regularizarRedondeos/{idEmpresa}/{anio}/{mes}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response regularizarRedondeos(@PathParam("idEmpresa") Long idEmpresa, @PathParam("anio") Long anio, @PathParam("mes") Long mes,
+            @jakarta.ws.rs.QueryParam("usuario") String usuario, @jakarta.ws.rs.QueryParam("simular") Boolean simular) {
+        System.out.println("LLEGA AL SERVICIO REGULARIZAR REDONDEOS - PERIODO " + anio + "-" + mes + " empresa " + idEmpresa);
+        try {
+            return Response.ok(saldoContrarioCuentaService.regularizarRedondeos(idEmpresa, anio, mes, usuario, simular == null || simular.booleanValue()),
+                    MediaType.APPLICATION_JSON).build();
+        } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("No se puede procesar sin un usuario valido: " + eUsuario.getMotivo()).type(MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return respuestaCierre(e, "Error al regularizar los redondeos: ");
+        }
+    }
+
+    @EJB
+    private com.saa.ejb.cnt.service.SaldoContrarioCuentaService saldoContrarioCuentaService;
+
     /** Errores de negocio de cierre (IncomeException) son 400 con el mensaje; lo inesperado, 500. */
     private Response respuestaCierre(Throwable e, String prefijo) {
         boolean negocio = e instanceof com.saa.basico.util.IncomeException;
