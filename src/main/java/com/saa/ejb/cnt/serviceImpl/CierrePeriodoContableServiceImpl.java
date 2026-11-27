@@ -144,6 +144,13 @@ public class CierrePeriodoContableServiceImpl implements CierrePeriodoContableSe
 	@TransactionAttribute(TransactionAttributeType.REQUIRED)
 	public EstadoPeriodo cerrar(Long idEmpresa, Long anio, Long mes, String usuario, String ip, String motivo)
 			throws Throwable {
+		return cerrar(idEmpresa, anio, mes, usuario, ip, motivo, null);
+	}
+
+	@Override
+	@TransactionAttribute(TransactionAttributeType.REQUIRED)
+	public EstadoPeriodo cerrar(Long idEmpresa, Long anio, Long mes, String usuario, String ip, String motivo,
+			List<com.saa.ejb.cnt.service.dto.ExcepcionCandado> excepciones) throws Throwable {
 		System.out.println("C17 cerrar periodo contable " + mesTexto(anio, mes) + " empresa " + idEmpresa + " usuario " + usuario);
 		validaParametros(idEmpresa, anio, mes, usuario);
 		Periodo periodo = periodo(idEmpresa, anio, mes);
@@ -180,6 +187,28 @@ public class CierrePeriodoContableServiceImpl implements CierrePeriodoContableSe
 						+ " Revise el control del cierre de cartera (controlProvision).");
 			}
 		}
+		// C51: candado del cierre contable (propiedad saa.cierres.candadoCierre, apagada por defecto). Encendido: se rechaza con controles en ERROR sin excepcion o con las G
+		// incompletas, con errores o no vigentes. Apagado: el cierre sigue como siempre y la bitacora deja lo que habria bloqueado (nunca corta).
+		String notaCandado = null;
+		boolean candadoActivo = com.saa.ejb.cnt.service.CandadoCierreContableService.activo();
+		if (candadoActivo) {
+			com.saa.ejb.cnt.service.dto.ResultadoCandado candado = candadoCierreContableService.consultar(idEmpresa, anio, mes, excepciones);
+			if (candado.isBloquearia()) {
+				throw new IncomeException("CIERRE_CANDADO: no se puede cerrar el período contable " + mesTexto(anio, mes) + ": "
+						+ com.saa.ejb.cnt.service.ReglaCandadoCierre.texto(candado.getFallas(), false)
+						+ ". Corrija lo que falla; solo los controles del semaforo admiten una excepcion con motivo (cuerpo de POST /prdo/cerrar:"
+						+ " [{codigoControl, motivo}]); las G incompletas, con errores o desactualizadas no. Consulta: GET /prdo/candado/{idEmpresa}/{anio}/{mes}.");
+			}
+			notaCandado = notaCandado(candado, true);
+		} else {
+			try {
+				notaCandado = notaCandado(candadoCierreContableService.consultar(idEmpresa, anio, mes, excepciones), false);
+			} catch (Throwable e) {
+				System.out.println("C51: candado apagado; no se pudo evaluar lo que habria bloqueado: " + e.getMessage());
+				notaCandado = "CANDADO APAGADO: no se pudo evaluar (" + (e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName()) + ").";
+			}
+		}
+
 		boolean fueraDeOrden = validarOrdenCierre(HistorialCierrePeriodo.TIPO_CONTABLE, idEmpresa, anio, mes, false);
 
 		LocalDateTime ahora = LocalDateTime.now();
@@ -188,9 +217,35 @@ public class CierrePeriodoContableServiceImpl implements CierrePeriodoContableSe
 		periodo.setUsuarioCierreContable(usuario.trim());
 		em.merge(periodo);
 		registrarBitacora(HistorialCierrePeriodo.TIPO_CONTABLE, HistorialCierrePeriodo.ACCION_CIERRE, idEmpresa, anio, mes,
-				usuario, ip, motivo, periodo.getCodigo(), null, fueraDeOrden);
+				usuario, ip, motivoConCandado(motivo, notaCandado), periodo.getCodigo(), null, fueraDeOrden);
 		em.flush();
 		return estadoCierreService.estadoPeriodo(idEmpresa, anio, mes);
+	}
+
+	/** C51: texto para la bitacora (CNT.HCPR): excepciones aplicadas (candado encendido) o lo que habria bloqueado (apagado); nulo si no hay nada que decir. */
+	private String notaCandado(com.saa.ejb.cnt.service.dto.ResultadoCandado candado, boolean activo) {
+		String cubiertas = com.saa.ejb.cnt.service.ReglaCandadoCierre.texto(candado.getFallas(), true);
+		String sinCubrir = com.saa.ejb.cnt.service.ReglaCandadoCierre.texto(candado.getFallas(), false);
+		StringBuilder sb = new StringBuilder();
+		if (!cubiertas.isEmpty()) {
+			sb.append("CANDADO EXCEPCIONES: ").append(cubiertas).append(". ");
+		}
+		if (!activo && !sinCubrir.isEmpty()) {
+			sb.append("CANDADO APAGADO, habria bloqueado: ").append(sinCubrir).append(".");
+		}
+		return sb.length() == 0 ? null : sb.toString().trim();
+	}
+
+	/** C51: motivo del usuario (hasta 200 caracteres) mas la nota del candado; HCPRMTVO tiene 1000 y registrarBitacora trunca el sobrante. */
+	private String motivoConCandado(String motivo, String nota) {
+		if (nota == null) {
+			return motivo;
+		}
+		String base = motivo != null && !motivo.trim().isEmpty() ? motivo.trim() : "";
+		if (base.length() > 200) {
+			base = base.substring(0, 200);
+		}
+		return (base.isEmpty() ? "" : base + " | ") + nota;
 	}
 
 	@Override
@@ -225,6 +280,10 @@ public class CierrePeriodoContableServiceImpl implements CierrePeriodoContableSe
 	// =====================================================================
 	// 6.5 — Desmayorizar un período mayorizado sin cierre contable
 	// =====================================================================
+
+		/** C51: candado del cierre contable. */
+	@EJB
+	private com.saa.ejb.cnt.service.CandadoCierreContableService candadoCierreContableService;
 
 	@EJB
 	private com.saa.ejb.cnt.service.MayorizacionService mayorizacionService;

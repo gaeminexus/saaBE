@@ -117,6 +117,7 @@ public class PeriodoRest {
     /**
      * POST /prdo/cerrar?idEmpresa=&anio=&mes=&usuario=&ip=&motivo= — cierre contable del mes. Exige período
      * mayorizado, cartera del mes cerrada y orden (ver el diseño). Auditado en CNT.HCPR.
+     * C51: cuerpo OPCIONAL (JSON): lista {codigoControl, motivo} de excepciones al candado (saa.cierres.candadoCierre); sin cuerpo, como siempre.
      */
     @POST
     @Path("/cerrar")
@@ -124,10 +125,14 @@ public class PeriodoRest {
     public Response cerrar(@jakarta.ws.rs.QueryParam("idEmpresa") Long idEmpresa,
             @jakarta.ws.rs.QueryParam("anio") Long anio, @jakarta.ws.rs.QueryParam("mes") Long mes,
             @jakarta.ws.rs.QueryParam("usuario") String usuario, @jakarta.ws.rs.QueryParam("ip") String ip,
-            @jakarta.ws.rs.QueryParam("motivo") String motivo) {
+            @jakarta.ws.rs.QueryParam("motivo") String motivo,
+            String cuerpo) {
         System.out.println("LLEGA AL SERVICIO CERRAR - PERIODO " + anio + "-" + mes + " empresa " + idEmpresa);
         try {
-            return Response.ok(cierrePeriodoContableService.cerrar(idEmpresa, anio, mes, usuario, ip, motivo),
+            // C51: el cuerpo es opcional. Se recibe como texto (sin @Consumes y sin depender del Content-Type: el FE hace post(url, null) sin cabecera) y se lee
+            // como lista JSON solo si trae algo; vacio = sin excepciones.
+            java.util.List<com.saa.ejb.cnt.service.dto.ExcepcionCandado> excepciones = excepcionesDelCuerpo(cuerpo);
+            return Response.ok(cierrePeriodoContableService.cerrar(idEmpresa, anio, mes, usuario, ip, motivo, excepciones),
                     MediaType.APPLICATION_JSON).build();
         } catch (com.saa.basico.util.UsuarioInvalidoException eUsuario) {
             // U-2: usuario faltante o inexistente -> 400; no se procesó nada.
@@ -224,6 +229,36 @@ public class PeriodoRest {
             return Response.ok(controlCierreService.controlar(idEmpresa, anio, mes), MediaType.APPLICATION_JSON).build();
         } catch (Throwable e) {
             return respuestaCierre(e, "Error al consultar los controles de cierre: ");
+        }
+    }
+
+    /**
+     * C51: GET /prdo/candado/{idEmpresa}/{anio}/{mes} — que bloquearia hoy el cierre contable del mes (controles del semaforo en ERROR y las G40-G51:
+     * completa, validacion sin errores, vigente segun el C50). Solo lectura; no depende de que el candado este encendido.
+     */
+    @GET
+    @Path("/candado/{idEmpresa}/{anio}/{mes}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response candado(@PathParam("idEmpresa") Long idEmpresa, @PathParam("anio") Long anio, @PathParam("mes") Long mes) {
+        try {
+            return Response.ok(candadoCierreContableService.consultar(idEmpresa, anio, mes, null), MediaType.APPLICATION_JSON).build();
+        } catch (Throwable e) {
+            return respuestaCierre(e, "Error al consultar el candado del cierre: ");
+        }
+    }
+
+    @EJB
+    private com.saa.ejb.cnt.service.CandadoCierreContableService candadoCierreContableService;
+
+    private static java.util.List<com.saa.ejb.cnt.service.dto.ExcepcionCandado> excepcionesDelCuerpo(String cuerpo) throws Throwable {
+        if (cuerpo == null || cuerpo.trim().isEmpty()) {
+            return null;
+        }
+        try {
+            return new com.fasterxml.jackson.databind.ObjectMapper().readValue(cuerpo.trim(),
+                    new com.fasterxml.jackson.core.type.TypeReference<java.util.List<com.saa.ejb.cnt.service.dto.ExcepcionCandado>>() { });
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            throw new com.saa.basico.util.IncomeException("CIERRE_CANDADO_EXCEPCION: el cuerpo no es una lista JSON de {codigoControl, motivo}: " + e.getOriginalMessage());
         }
     }
 
