@@ -40,6 +40,9 @@ public class GeneracionReportesServiceImpl implements GeneracionReportesService 
     /** C39: validación previa de las G (lo que la Super rechazaría) al terminar la generación. */
     @EJB private com.saa.ejb.rpr.service.ValidacionEstructurasGService validacionService;
 
+    /** C50: dice si la ultima ejecucion del mes sigue valiendo (corrida de cartera vigente, asientos posteriores). */
+    @EJB private com.saa.ejb.rpr.service.ActualizacionEjecucionGService actualizacionService;
+
     @Override
     public EjecucionReporte ejecutarGeneracion(Long mes, Long anio, String usuario) throws Throwable {
         return ejecutarGeneracion(mes, anio, usuario, false);
@@ -68,6 +71,19 @@ public class GeneracionReportesServiceImpl implements GeneracionReportesService 
         } catch (Throwable e) {
             // No existe ejecución previa → se crea nueva
             ejecucionesExistentes = new ArrayList<>();
+        }
+
+        // C50: si la ultima ejecucion del mes esta DESACTUALIZADA (su corrida de cartera ya no es la vigente, o hay asientos posteriores), se regenera sin
+        // pedir regenerar:true y la observacion de la ejecucion nueva lo dice. Una ejecucion sin corrida grabada (anterior al C50) no se toca.
+        String avisoRegeneracionAutomatica = null;
+        if (!ejecucionesExistentes.isEmpty() && !regenerar) {
+            com.saa.ejb.rpr.service.ReglaActualizacionG.Resultado estadoUltima = actualizacionService.evaluar(ejecucionesExistentes.get(0));
+            if (estadoUltima.estaDesactualizada()) {
+                avisoRegeneracionAutomatica = "REGENERADA SIN PEDIRLO: la ejecucion " + ejecucionesExistentes.get(0).getCodigo()
+                        + " estaba DESACTUALIZADA. " + estadoUltima.getMotivo() + " ";
+                System.out.println("C50: " + avisoRegeneracionAutomatica);
+                regenerar = true;
+            }
         }
 
         if (!ejecucionesExistentes.isEmpty() && !regenerar) {
@@ -177,7 +193,7 @@ public class GeneracionReportesServiceImpl implements GeneracionReportesService 
             } catch (Throwable e) {
                 validacion = "no se pudo correr la validación previa: " + (e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
             }
-            ejrc.setObservaciones(truncar("Todos los reportes G40-G51 generados correctamente; " + validacion, LIMITE_OBSERVACIONES_EJRC));
+            ejrc.setObservaciones(truncar((avisoRegeneracionAutomatica != null ? avisoRegeneracionAutomatica : "") + "Todos los reportes G40-G51 generados correctamente; " + validacion, LIMITE_OBSERVACIONES_EJRC));
         } else {
             ejrc.setEstado(EJRC_CON_NOVEDADES);
             // Con nombre y mensaje — antes decía "N reporte(s) con novedades: ver detalle en
@@ -187,7 +203,7 @@ public class GeneracionReportesServiceImpl implements GeneracionReportesService 
             // ORA-12899 — el mismo problema que este cambio vino a arreglar, un escalón más
             // allá. El prefijo con la cantidad va PRIMERO a propósito: es el dato que no se
             // puede perder, y al truncar desde el final siempre sobrevive.
-            String observaciones = reportesConNovedades.size() + " reporte(s) con novedades: "
+            String observaciones = (avisoRegeneracionAutomatica != null ? avisoRegeneracionAutomatica : "") + reportesConNovedades.size() + " reporte(s) con novedades: "
                     + String.join("; ", reportesConNovedades);
             ejrc.setObservaciones(truncar(observaciones, LIMITE_OBSERVACIONES_EJRC));
         }

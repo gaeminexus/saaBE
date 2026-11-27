@@ -90,6 +90,10 @@ public class ControlCierreServiceImpl implements ControlCierreService {
     @EJB
     private com.saa.ejb.crd.service.ControlCuotasSinFechaService controlCuotasSinFechaService;
 
+    /** C50 - las G40-G51 atadas a la corrida de cartera vigente (control G_DESACTUALIZADAS). */
+    @EJB
+    private com.saa.ejb.rpr.service.ActualizacionEjecucionGService actualizacionEjecucionGService;
+
     /** C25 — seguimiento de novedades (grupo NOVEDADES del semáforo). */
     @EJB
     private com.saa.ejb.cnt.service.SeguimientoNovedadService seguimientoNovedadService;
@@ -547,6 +551,21 @@ public class ControlCierreServiceImpl implements ControlCierreService {
         controles.add(oficial);
         controles.add(controlSaldosNegativosB17(idEmpresa, corte));
 
+        // C50: si la ultima ejecucion de las G esta desactualizada (corrida de cartera reversada o reemplazada, o asiento posterior),
+        // no se compara contra ella: un solo control en ERROR con el motivo.
+        com.saa.ejb.rpr.service.ReglaActualizacionG.Resultado estadoG;
+        try {
+            estadoG = actualizacionEjecucionGService.evaluarUltima(anio, mes);
+        } catch (Throwable e) {
+            estadoG = null;
+        }
+        if (estadoG != null && estadoG.estaDesactualizada()) {
+            ControlCierre c = new ControlCierre("B17_G", "G_DESACTUALIZADAS", "Estructuras G40-G51 del mes ya no corresponden a la cartera");
+            c.setEstado(ControlCierre.ERROR);
+            c.setDetalle(estadoG.getMotivo() + " Regenere las G (POST /ejrc/ejecutar las regenera sola) antes de cerrar o presentar.");
+            controles.add(c);
+            return;
+        }
         Long ejrdG42 = ultimaEstructura(anio, mes, "G42");
         Long ejrdG48 = ultimaEstructura(anio, mes, "G48");
         if (ejrdG42 == null && ejrdG48 == null) {
