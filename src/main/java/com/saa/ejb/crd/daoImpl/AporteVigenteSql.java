@@ -35,21 +35,21 @@ package com.saa.ejb.crd.daoImpl;
  *
  * @since 2026-10-28
  */
-final class AporteVigenteSql {
+public final class AporteVigenteSql {
 
     /** Marca de la glosa del contra-movimiento de una anulación (ReprocesoCargaPetroServiceImpl). */
-    static final String MARCA_GLOSA_CONTRA = "reverso APRT ";
+    public static final String MARCA_GLOSA_CONTRA = "reverso APRT ";
 
     /**
      * Condición SQL nativa (alias {@code a} sobre {@code CRD.APRT}): el aporte cuenta. Va
      * entre paréntesis, lista para {@code AND}.
      */
-    static final String VIGENTE_SQL =
+    public static final String VIGENTE_SQL =
         " (NVL(a.APRTIDST, 4) <> 0 AND NOT (NVL(a.APRTTPMV, 0) = 5 "
         + " AND NVL(a.APRTGLSA, ' ') LIKE '%" + MARCA_GLOSA_CONTRA + "%')) ";
 
     /** La misma condición en JPQL (alias {@code a} sobre {@code Aporte}). */
-    static final String VIGENTE_JPQL =
+    public static final String VIGENTE_JPQL =
         " ((a.estado is null or a.estado <> 0) and not (coalesce(a.tipoMovimiento, 0) = 5 "
         + " and coalesce(a.glosa, ' ') like '%" + MARCA_GLOSA_CONTRA + "%')) ";
 
