@@ -297,10 +297,14 @@ public class SustitucionPrestamoServiceImpl implements SustitucionPrestamoServic
         // RN11: cuotas pendientes a CANCELADA_ANTICIPADA (7). Sin PagoPrestamo: no entra dinero.
         List<DetallePrestamo> pendientes =
             detallePrestamoDaoService.selectCuotasPendientesByPrestamoOrdenadas(original.getCodigo());
+        // C48: la fecha de negocio de la cancelación (la misma del evento), para que la cuota 7 no quede sin DTPRFCPG.
+        LocalDateTime fechaCierreCuotas = fechaEvento == null || !fechaEvento.isBefore(java.time.LocalDate.now())
+            ? LocalDateTime.now() : fechaEvento.atStartOfDay();
         if (pendientes != null) {
             for (DetallePrestamo cuota : pendientes) {
                 cuota.setEstado(Long.valueOf(EstadoCuotaPrestamo.CANCELADA_ANTICIPADA));
                 cuota.setIdEstado(Long.valueOf(EstadoCuotaPrestamo.CANCELADA_ANTICIPADA));
+                cuota.setFechaPagado(fechaCierreCuotas);
                 detallePrestamoDaoService.save(cuota, cuota.getCodigo());
             }
         }

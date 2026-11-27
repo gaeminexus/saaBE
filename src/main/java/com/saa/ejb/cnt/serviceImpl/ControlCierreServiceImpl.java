@@ -81,8 +81,14 @@ public class ControlCierreServiceImpl implements ControlCierreService {
         controlesB17G(controles, idEmpresa, anio, mes, corte, corteSig);
         // C25: novedades en BORRADOR y asientos a cuentas por regularizar sin novedad (solo advertencias).
         controles.addAll(seguimientoNovedadService.controlesCierre(idEmpresa, anio, mes));
+        // C48: cuotas en CANCELADA_ANTICIPADA (7) sin fecha de pago (ERROR; no bloquea el cierre salvo saa.cartera.bloqueoCuotas7SinFecha).
+        controles.addAll(controlCuotasSinFechaService.controlesCierre(idEmpresa, anio, mes));
         return controles;
     }
+
+    /** C48 — cuotas 7 sin fecha de pago (grupo CARTERA del semáforo). */
+    @EJB
+    private com.saa.ejb.crd.service.ControlCuotasSinFechaService controlCuotasSinFechaService;
 
     /** C25 — seguimiento de novedades (grupo NOVEDADES del semáforo). */
     @EJB

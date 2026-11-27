@@ -1548,7 +1548,8 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
                 }
                 cuota.setEstado((long) EstadoCuotaPrestamo.CANCELADA_ANTICIPADA);
                 cuota.setIdEstado((long) EstadoCuotaPrestamo.CANCELADA_ANTICIPADA);
-                cuota.setFechaPagado(null);
+                // C48: con la fecha de la operación (la del evento y el pago), no nula; ver AcuerdoCondonacionServiceImpl.
+                cuota.setFechaPagado(fechaHora);
                 detallePrestamoService.saveSingle(cuota);
                 canceladas++;
             }
@@ -2415,6 +2416,9 @@ public class ProcesoPagoPrestamoServiceImpl implements ProcesoPagoPrestamoServic
                 for (DetallePrestamo cuota : todas) {
                     if (cuota.getEstado() != null
                             && cuota.getEstado() == EstadoCuotaPrestamo.CANCELADA_ANTICIPADA) {
+                        // C48: la 7 llevaba la fecha de la operación que se reversa; la cuota vuelve a vigente SIN fecha (o con la de su último pago,
+                        // si el motor la reconstruye como pagada). No se inventa una fecha.
+                        cuota.setFechaPagado(null);
                         motorPagoPrestamoService.recalcularCuotaDesdePagos(cuota);
                         cuotasRecalculadas++;
                     }
