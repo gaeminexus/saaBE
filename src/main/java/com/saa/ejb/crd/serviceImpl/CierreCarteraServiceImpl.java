@@ -155,6 +155,10 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
     @EJB
     private com.saa.ejb.crd.service.ControlCuotasSinFechaService controlCuotasSinFechaService;
 
+    /** C53: aportes sin asiento y 2.1 contra el modulo. Solo lectura. */
+    @EJB
+    private com.saa.ejb.crd.service.ControlAportesService controlAportesService;
+
     /** Control de archivo Petro del mes (D13). Solo lectura. */
     @EJB
     private CargaArchivoDaoService cargaArchivoDaoService;
@@ -271,6 +275,8 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
             exigePrelacionCuotas(solicitud, corteC17);
             // C48: ni con cuotas 7 sin fecha de pago, solo si la propiedad saa.cartera.bloqueoCuotas7SinFecha esta encendida (apagada por defecto).
             exigeCuotas7ConFecha(solicitud);
+            // C53: ni con aportes sin asiento o la 2.1 distinta del modulo, solo con saa.cartera.bloqueoAportesSinAsiento encendida (apagada por defecto).
+            exigeAportes(solicitud);
         }
 
         LocalDateTime ahora = LocalDateTime.now();
@@ -562,6 +568,8 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
             avisaPrelacionCuotas(solicitud, fechaCorte, resultado.getAdvertencias());
             // C48: cuotas 7 sin fecha de pago. Aqui solo avisa; ejecutar rechaza unicamente con saa.cartera.bloqueoCuotas7SinFecha encendida.
             avisaCuotas7SinFecha(resultado.getAdvertencias());
+            // C53: aportes del mes sin asiento y 2.1 contra el modulo. Aqui solo avisa; ejecutar rechaza unicamente con saa.cartera.bloqueoAportesSinAsiento encendida.
+            avisaAportes(solicitud, resultado.getAdvertencias());
         }
 
         Map<Long, Producto> productos = indexaProductos();
@@ -2142,6 +2150,25 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
             throw new IncomeException(com.saa.ejb.crd.service.PrelacionCuotas.ERR_PRELACION_CUOTAS + ": no se puede"
                     + " cerrar " + periodo(solicitud) + ". " + texto + " Si se decide cerrar igual, repita con"
                     + " omitirControlPrelacion = true y motivoOmisionPrelacion.");
+        }
+    }
+
+    /** C53: advertencia de previsualizar (y de ejecutar) con los aportes del mes sin asiento y la diferencia de la 2.1. Nunca corta. */
+    private void avisaAportes(SolicitudCierreCartera solicitud, List<String> advertencias) throws Throwable {
+        String texto = controlAportesService.textoControl(solicitud.getIdEmpresa(), solicitud.getAnio(), solicitud.getMes());
+        if (texto != null) {
+            advertencias.add(texto + (com.saa.ejb.crd.service.ControlAportesService.bloqueoActivo() ? " La ejecucion va a rechazar el cierre." : ""));
+        }
+    }
+
+    /** C53: bloqueo de ejecutar por aportes sin asiento o 2.1 distinta del modulo, solo con la propiedad encendida. */
+    private void exigeAportes(SolicitudCierreCartera solicitud) throws Throwable {
+        if (!com.saa.ejb.crd.service.ControlAportesService.bloqueoActivo()) {
+            return;
+        }
+        String texto = controlAportesService.textoControl(solicitud.getIdEmpresa(), solicitud.getAnio(), solicitud.getMes());
+        if (texto != null) {
+            throw new IncomeException("APORTES_SIN_ASIENTO: no se puede cerrar " + periodo(solicitud) + ". " + texto);
         }
     }
 

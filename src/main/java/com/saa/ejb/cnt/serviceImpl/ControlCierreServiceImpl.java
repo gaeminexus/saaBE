@@ -85,6 +85,8 @@ public class ControlCierreServiceImpl implements ControlCierreService {
         controles.addAll(controlCuotasSinFechaService.controlesCierre(idEmpresa, anio, mes));
         // C52: saldo contrario a la naturaleza por cuenta (D-150 / D-222), sin el motor de balances; ERROR con la lista y el asiento sugerido.
         controles.addAll(saldoContrarioCuentaService.controlesCierre(idEmpresa, anio, mes));
+        // C53: aportes del mes sin asiento ni cobro, y 2.1 contable contra los aportes vigentes del modulo (ERROR).
+        controles.addAll(controlAportesService.controlesCierre(idEmpresa, anio, mes));
         return controles;
     }
 
@@ -95,6 +97,10 @@ public class ControlCierreServiceImpl implements ControlCierreService {
     /** C52 - saldo contrario por cuenta (control SALDO_CONTRARIO_CUENTA). */
     @EJB
     private com.saa.ejb.cnt.service.SaldoContrarioCuentaService saldoContrarioCuentaService;
+
+    /** C53 - aportes sin asiento y 2.1 contra el modulo (controles APORTES_SIN_ASIENTO y APORTES_21_VS_MODULO). */
+    @EJB
+    private com.saa.ejb.crd.service.ControlAportesService controlAportesService;
 
     /** C50 - las G40-G51 atadas a la corrida de cartera vigente (control G_DESACTUALIZADAS). */
     @EJB
