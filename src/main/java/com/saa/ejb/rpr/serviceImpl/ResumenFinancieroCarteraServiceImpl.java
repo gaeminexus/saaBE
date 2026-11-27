@@ -44,10 +44,14 @@ import jakarta.persistence.Query;
  *     misma del cierre de cartera); cada cuenta 1.3 con saldo y sin línea en el informe sale como
  *     "sin línea en el informe".</li>
  * <li>Provisión, interés vencido, desgravamen y seguro de incendio: RPR.CCPB por tipo de préstamo,
- *     con la cuenta de {@link #CUENTAS_POR_TIPO}. La mora calculada al corte va aparte, informativa:
- *     no se contabiliza en ninguna cuenta.</li>
- * <li>Aportes: RPR.CPRM por tipo de aporte; la pensión complementaria en su propia línea (el filtro
- *     viejo buscaba un nombre que no existe y no excluía nada) y el total contra la cuenta 2.1.</li>
+ *     con la cuenta de {@link #CUENTAS_POR_TIPO}. Desde D-206 la cuenta 1.4.02 = interés vencido y no
+ *     cobrado por cuota al corte + mora contabilizada pendiente (la misma base de la provisión
+ *     1.4.99.05): la línea comparable del grupo 6 suma las dos por la cuenta de interés del tipo, con
+ *     su desglose informativo; el grupo 8 conserva la mora calculada al corte como referencia.</li>
+ * <li>Aportes: RPR.CPRM por tipo de aporte (TPAPCDGO); la pensión complementaria en su propia línea
+ *     (el filtro viejo buscaba un nombre que no existe y no excluía nada). Los tipos cuya cuenta de
+ *     pasivo en CRD.CTAP no es de la 2.1 (p. ej. el seguro por entregar a beneficiarios, 2.3.90.90.11)
+ *     salen del total y van en su propia línea contra su cuenta; el total 2.1 va contra la cuenta 2.1.</li>
  * <li>Cada línea se redondea a 2 decimales antes de sumar subtotales.</li>
  * <li>Aviso de ejecución desactualizada: generada antes del último cierre contable del período o de
  *     la última corrida del cierre de cartera del mes, o período reabierto.</li>
@@ -138,6 +142,9 @@ public class ResumenFinancieroCarteraServiceImpl implements ResumenFinancieroCar
         Map<String, Acum> interes = new TreeMap<>();
         Map<String, Acum> seguros = new TreeMap<>();
         Map<String, Acum> mora = new TreeMap<>();
+        // D-206: interés vencido + mora pendiente por la cuenta de interés del tipo (1.4.02.xx) y sus desgloses por cuenta.
+        Map<String, Acum> interesMasMora = new TreeMap<>();
+        Map<String, Acum> moraPorCuenta = new TreeMap<>();
         for (Object[] f : totales) {
             String rubro = (String) f[0];
             Long idTipo = f[1] != null ? ((Number) f[1]).longValue() : null;
@@ -158,6 +165,7 @@ public class ResumenFinancieroCarteraServiceImpl implements ResumenFinancieroCar
                     break;
                 case CreditoCuotasPrestamosBanda.RUBRO_INTERES_VENCIDO:
                     acumular(interes, cuentasTipo != null ? cuentasTipo[0] : null, valor, ops, tipoNombre.get(idTipo));
+                    acumular(interesMasMora, cuentasTipo != null ? cuentasTipo[0] : null, valor, ops, tipoNombre.get(idTipo));
                     break;
                 case CreditoCuotasPrestamosBanda.RUBRO_DESGRAVAMEN:
                     acumular(seguros, cuentasTipo != null ? cuentasTipo[2] : null, valor, ops, "desgravamen");
@@ -167,6 +175,9 @@ public class ResumenFinancieroCarteraServiceImpl implements ResumenFinancieroCar
                     break;
                 case CreditoCuotasPrestamosBanda.RUBRO_MORA:
                     acumular(mora, tipoNombre.get(idTipo), valor, ops, null);
+                    // Sin tipo o sin cuenta configurada cae en la línea "(sin cuenta configurada)": no se pierde en silencio.
+                    acumular(interesMasMora, cuentasTipo != null ? cuentasTipo[0] : null, valor, ops, tipoNombre.get(idTipo));
+                    acumular(moraPorCuenta, cuentasTipo != null ? cuentasTipo[0] : null, valor, ops, tipoNombre.get(idTipo));
                     break;
                 default:
                     break;
@@ -177,6 +188,8 @@ public class ResumenFinancieroCarteraServiceImpl implements ResumenFinancieroCar
         cuentasUsadas.addAll(capitalVV.keySet());
         cuentasUsadas.addAll(provision.keySet());
         cuentasUsadas.addAll(interes.keySet());
+        cuentasUsadas.addAll(interesMasMora.keySet());
+        cuentasUsadas.addAll(moraPorCuenta.keySet());
         cuentasUsadas.addAll(seguros.keySet());
         nombres.putAll(nombresCuentas(saldos.keySet(), cuentasUsadas));
 
@@ -210,18 +223,23 @@ public class ResumenFinancieroCarteraServiceImpl implements ResumenFinancieroCar
         lineas.add(total(G_PROV, "Total provisiones", RAIZ_PROVISION, totProv,
                 redondear(-saldoRaiz(saldos, RAIZ_PROVISION, null)), true));
 
-        lineasPorCuenta(lineas, G_INT, interes, saldos, nombres, 1, true,
-                "Interes pendiente de las cuotas vencidas al corte (el de la G48); la mora va aparte.");
+        lineasPorCuenta(lineas, G_INT, interesMasMora, saldos, nombres, 1, true,
+                "Interes vencido y no cobrado por cuota al corte + mora contabilizada pendiente (regla D-206: la 1.4.02 tiene la misma base"
+                + " que la provision 1.4.99.05).", " - interes + mora");
+        lineasDesglose(lineas, G_INT, interes, nombres, "Interes vencido (desglose, no comparable)",
+                "Parte de interes vencido de la linea de la cuenta; informativa, el saldo se compara en la linea de interes + mora.");
+        lineasDesglose(lineas, G_INT, moraPorCuenta, nombres, "Mora pendiente (desglose, no comparable)",
+                "Parte de mora de la linea de la cuenta; informativa, el saldo se compara en la linea de interes + mora.");
         lineasPorCuenta(lineas, G_SEG, seguros, saldos, nombres, 1, false,
                 "Pendiente de las cuotas vencidas al corte. Referencia: la cuenta se mueve con el cobro y la"
                 + " facturacion del seguro, no con la tabla; la diferencia es informativa.");
         for (Map.Entry<String, Acum> m : mora.entrySet()) {
             lineas.add(linea(G_MORA, "Mora al corte " + (m.getKey() != null ? m.getKey() : "(sin tipo)"), null,
                     m.getValue().valor, null, false, m.getValue().registros,
-                    "Mora calculada al corte (formula del proceso diario); no se contabiliza en ninguna cuenta."));
+                    "Mora calculada al corte (formula del proceso diario); desde D-206 forma parte de la 1.4.02 (ver grupo 6)."));
         }
 
-        aportes(lineas, codigoEjecucion, saldos, nombres);
+        aportes(lineas, codigoEjecucion, idEmpresa, corte, saldos, nombres);
         return r;
     }
 
@@ -252,12 +270,30 @@ public class ResumenFinancieroCarteraServiceImpl implements ResumenFinancieroCar
      */
     private BigDecimal lineasPorCuenta(List<LineaResumenFinanciero> lineas, String grupo, Map<String, Acum> mapa,
             Map<String, Double> saldos, Map<String, String> nombres, int signo, boolean comparable, String nota) {
+        return lineasPorCuenta(lineas, grupo, mapa, saldos, nombres, signo, comparable, nota, "");
+    }
+
+    /** Una línea informativa (no comparable) por cuenta, para ver de dónde sale cada parte de una línea comparable. */
+    private void lineasDesglose(List<LineaResumenFinanciero> lineas, String grupo, Map<String, Acum> mapa,
+            Map<String, String> nombres, String rotulo, String nota) {
+        for (Map.Entry<String, Acum> e : mapa.entrySet()) {
+            String cta = e.getKey().isEmpty() ? null : e.getKey();
+            Acum a = e.getValue();
+            String concepto = rotulo + " " + (cta != null ? nombres.getOrDefault(cta, cta) : "(sin cuenta configurada)")
+                    + (a.etiquetas.isEmpty() ? "" : " [" + String.join(", ", a.etiquetas) + "]");
+            lineas.add(linea(grupo, concepto, cta, a.valor, null, false, a.registros, nota));
+        }
+    }
+
+    private BigDecimal lineasPorCuenta(List<LineaResumenFinanciero> lineas, String grupo, Map<String, Acum> mapa,
+            Map<String, Double> saldos, Map<String, String> nombres, int signo, boolean comparable, String nota,
+            String detalleConcepto) {
         BigDecimal suma = BigDecimal.ZERO;
         for (Map.Entry<String, Acum> e : mapa.entrySet()) {
             String cta = e.getKey().isEmpty() ? null : e.getKey();
             Acum a = e.getValue();
             String concepto = (cta != null ? nombres.getOrDefault(cta, cta) : "(sin cuenta configurada)")
-                    + (a.etiquetas.isEmpty() ? "" : " [" + String.join(", ", a.etiquetas) + "]");
+                    + (a.etiquetas.isEmpty() ? "" : " [" + String.join(", ", a.etiquetas) + "]") + detalleConcepto;
             BigDecimal saldo = cta != null ? redondear(signo * saldoCuenta(saldos, cta)) : null;
             lineas.add(linea(grupo, concepto, cta, a.valor, saldo, comparable && cta != null, a.registros, nota));
             suma = suma.add(a.valor);
@@ -265,20 +301,44 @@ public class ResumenFinancieroCarteraServiceImpl implements ResumenFinancieroCar
         return suma;
     }
 
-    private void aportes(List<LineaResumenFinanciero> lineas, Long codigoEjecucion, Map<String, Double> saldos,
-            Map<String, String> nombres) {
+    private void aportes(List<LineaResumenFinanciero> lineas, Long codigoEjecucion, Long idEmpresa, LocalDate corte,
+            Map<String, Double> saldos, Map<String, String> nombres) {
+        // Cuenta de pasivo de cada tipo de aporte (CRD.CTAP vigente de la empresa -> CNT.PLNN.PLNNCNTA), igual que
+        // CuentaTipoAporteDao.selectByTipoAporteYEmpresa. Un tipo sin fila vigente queda sin cuenta y se queda en el total 2.1.
+        Map<Long, String> cuentaPorTipo = new HashMap<>();
+        Query qc = em.createNativeQuery(
+                " SELECT ct.TPAPCDGO, MIN(pl.PLNNCNTA) FROM CRD.CTAP ct JOIN CNT.PLNN pl ON pl.PLNNCDGO = ct.CTAPPLNP"
+                + " WHERE ct.CTAPESTD = " + com.saa.rubros.Estado.ACTIVO
+                + (idEmpresa != null ? " AND ct.PJRQCDGO = :empresa" : "") + " GROUP BY ct.TPAPCDGO");
+        if (idEmpresa != null) {
+            qc.setParameter("empresa", idEmpresa);
+        }
+        for (Object[] f : (List<Object[]>) qc.getResultList()) {
+            if (f[0] != null && f[1] != null) {
+                cuentaPorTipo.put(((Number) f[0]).longValue(), f[1].toString().trim());
+            }
+        }
+
         Query q = em.createNativeQuery(
-                " SELECT tp.TPAPNMBR, SUM(NVL(c.CPRMTTAL,0)), COUNT(*) FROM RPR.CPRM c"
+                " SELECT c.TPAPCDGO, MAX(tp.TPAPNMBR), SUM(NVL(c.CPRMTTAL,0)), COUNT(*) FROM RPR.CPRM c"
                 + " LEFT JOIN CRD.TPAP tp ON tp.TPAPCDGO = c.TPAPCDGO"
-                + " WHERE c.CPRMEJCC = :ejcc GROUP BY tp.TPAPNMBR ORDER BY 1");
+                + " WHERE c.CPRMEJCC = :ejcc GROUP BY c.TPAPCDGO ORDER BY 2");
         q.setParameter("ejcc", codigoEjecucion);
         BigDecimal total = BigDecimal.ZERO;
         BigDecimal pension = null;
         long regPension = 0L;
+        // Tipos cuya cuenta de pasivo no es de la 2.1: fuera del total, una línea por cuenta.
+        Map<String, Acum> fuera21 = new TreeMap<>();
         for (Object[] f : (List<Object[]>) q.getResultList()) {
-            String nombre = f[0] != null ? f[0].toString().trim() : "(sin tipo)";
-            BigDecimal valor = redondear(f[1]);
-            long reg = f[2] != null ? ((Number) f[2]).longValue() : 0L;
+            Long idTipo = f[0] != null ? ((Number) f[0]).longValue() : null;
+            String nombre = f[1] != null ? f[1].toString().trim() : "(sin tipo)";
+            BigDecimal valor = redondear(f[2]);
+            long reg = f[3] != null ? ((Number) f[3]).longValue() : 0L;
+            String cuentaTipo = idTipo != null ? cuentaPorTipo.get(idTipo) : null;
+            if (cuentaTipo != null && !cuentaTipo.equals(RAIZ_APORTES) && !cuentaTipo.startsWith(RAIZ_APORTES + ".")) {
+                acumular(fuera21, cuentaTipo, valor, reg, nombre);
+                continue;
+            }
             total = total.add(valor);
             if (nombre.toUpperCase().contains("PENSION COMPLEMENTARIA")) {
                 pension = (pension != null ? pension : BigDecimal.ZERO).add(valor);
@@ -286,7 +346,8 @@ public class ResumenFinancieroCarteraServiceImpl implements ResumenFinancieroCar
                 continue;
             }
             lineas.add(linea(G_APO, nombre, null, valor, null, false, reg,
-                    "Aporte por tipo; el total del grupo se compara con la cuenta 2.1."));
+                    "Aporte por tipo; el total del grupo se compara con la cuenta 2.1."
+                    + (cuentaTipo == null ? " Sin cuenta en CTAP: se queda en el total 2.1." : "")));
         }
         if (pension != null) {
             lineas.add(linea(G_APO, "Pensiones complementarias por pagar", CUENTA_PENSION_COMPLEMENTARIA, pension,
@@ -295,6 +356,36 @@ public class ResumenFinancieroCarteraServiceImpl implements ResumenFinancieroCar
         }
         lineas.add(total(G_APO, "Total aportes (CPRM)", RAIZ_APORTES, total,
                 redondear(-saldoRaiz(saldos, RAIZ_APORTES, null)), true));
+        if (!fuera21.isEmpty()) {
+            Map<String, String> nombresFuera = nombresCuentas(new LinkedHashSet<String>(), fuera21.keySet());
+            for (Map.Entry<String, Acum> e : fuera21.entrySet()) {
+                Acum a = e.getValue();
+                String cta = e.getKey();
+                // Saldo acreedor de la cuenta (haber - debe) al corte; no está en el mapa de saldos (solo 1.3, 1.4 y 2.1).
+                BigDecimal saldo = redondear(-saldoDeCuentaAlCorte(idEmpresa, corte, cta));
+                lineas.add(linea(G_APO, nombresFuera.getOrDefault(cta, cta) + " [" + String.join(", ", a.etiquetas) + "]", cta,
+                        a.valor, saldo, true, a.registros,
+                        "Tipo de aporte cuya cuenta de pasivo en CTAP no es de la 2.1: fuera del total 2.1, contra su propia cuenta."));
+            }
+        }
+    }
+
+    /** Saldo deudor (debe - haber) de una cuenta y sus hijas al corte, con el mismo filtro de asientos de {@link #saldosContables}. */
+    private double saldoDeCuentaAlCorte(Long idEmpresa, LocalDate corte, String cuenta) {
+        Query q = em.createNativeQuery(
+                " SELECT NVL(SUM(NVL(d.DTASDBEE,0)) - SUM(NVL(d.DTASHBRR,0)), 0)"
+                + " FROM CNT.DTAS d JOIN CNT.ASNT a ON a.ASNTCDGO = d.ASNTCDGO"
+                + " WHERE a.ASNTESTD IN (1, 3) AND a.ASNTFCHA < :corteSig"
+                + (idEmpresa != null ? " AND a.PJRQCDGO = :empresa" : "")
+                + " AND (d.DTASCNTA = :cuenta OR d.DTASCNTA LIKE :hijas)");
+        q.setParameter("corteSig", java.sql.Date.valueOf(corte.plusDays(1)));
+        if (idEmpresa != null) {
+            q.setParameter("empresa", idEmpresa);
+        }
+        q.setParameter("cuenta", cuenta);
+        q.setParameter("hijas", cuenta + ".%");
+        Object r = q.getSingleResult();
+        return r != null ? ((Number) r).doubleValue() : 0.0;
     }
 
     private static LineaResumenFinanciero linea(String grupo, String concepto, String cuenta, BigDecimal informe,
