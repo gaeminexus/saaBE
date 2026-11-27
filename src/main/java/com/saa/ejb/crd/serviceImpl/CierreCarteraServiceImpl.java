@@ -151,6 +151,10 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
     @EJB
     private ProductoDaoService productoDaoService;
 
+    /** C48: cuotas 7 sin fecha de pago. Solo lectura. */
+    @EJB
+    private com.saa.ejb.crd.service.ControlCuotasSinFechaService controlCuotasSinFechaService;
+
     /** Control de archivo Petro del mes (D13). Solo lectura. */
     @EJB
     private CargaArchivoDaoService cargaArchivoDaoService;
@@ -265,6 +269,8 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
             exigeSaldoOtrosRespaldado(solicitud, corteC17);
             // C33 (punto 6): ni con la prelación de cuotas rota al corte (salvo omisión explícita con motivo).
             exigePrelacionCuotas(solicitud, corteC17);
+            // C48: ni con cuotas 7 sin fecha de pago, solo si la propiedad saa.cartera.bloqueoCuotas7SinFecha esta encendida (apagada por defecto).
+            exigeCuotas7ConFecha(solicitud);
         }
 
         LocalDateTime ahora = LocalDateTime.now();
@@ -554,6 +560,8 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
             avisaSaldoOtrosSinRespaldo(solicitud, fechaCorte, resultado.getAdvertencias());
             // C33: prelación de cuotas al corte. Aquí solo avisa; ejecutar rechaza (exigePrelacionCuotas).
             avisaPrelacionCuotas(solicitud, fechaCorte, resultado.getAdvertencias());
+            // C48: cuotas 7 sin fecha de pago. Aqui solo avisa; ejecutar rechaza unicamente con saa.cartera.bloqueoCuotas7SinFecha encendida.
+            avisaCuotas7SinFecha(resultado.getAdvertencias());
         }
 
         Map<Long, Producto> productos = indexaProductos();
@@ -2134,6 +2142,26 @@ public class CierreCarteraServiceImpl implements CierreCarteraService {
             throw new IncomeException(com.saa.ejb.crd.service.PrelacionCuotas.ERR_PRELACION_CUOTAS + ": no se puede"
                     + " cerrar " + periodo(solicitud) + ". " + texto + " Si se decide cerrar igual, repita con"
                     + " omitirControlPrelacion = true y motivoOmisionPrelacion.");
+        }
+    }
+
+    /** C48: advertencia de previsualizar (y de ejecutar) con las cuotas 7 sin fecha de pago. Nunca corta. */
+    private void avisaCuotas7SinFecha(List<String> advertencias) throws Throwable {
+        String texto = controlCuotasSinFechaService.textoControl();
+        if (texto != null) {
+            advertencias.add("C48 " + texto + (com.saa.ejb.crd.service.ControlCuotasSinFechaService.bloqueoActivo()
+                    ? " La ejecucion va a rechazar el cierre." : ""));
+        }
+    }
+
+    /** C48: bloqueo de ejecutar por cuotas 7 sin fecha, solo con la propiedad encendida. */
+    private void exigeCuotas7ConFecha(SolicitudCierreCartera solicitud) throws Throwable {
+        if (!com.saa.ejb.crd.service.ControlCuotasSinFechaService.bloqueoActivo()) {
+            return;
+        }
+        String texto = controlCuotasSinFechaService.textoControl();
+        if (texto != null) {
+            throw new IncomeException("CUOTAS_7_SIN_FECHA: no se puede cerrar " + periodo(solicitud) + ". " + texto);
         }
     }
 
