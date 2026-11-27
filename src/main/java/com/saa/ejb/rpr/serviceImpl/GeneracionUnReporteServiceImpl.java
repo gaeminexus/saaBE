@@ -67,6 +67,8 @@ public class GeneracionUnReporteServiceImpl implements GeneracionUnReporteServic
 
     @EJB private DetalleEjecucionReporteService ejrdService;
     @EJB private EjecucionReporteService        ejrcService;
+    /** C50: ata la ejecucion a la corrida de cartera vigente y al ultimo asiento de cartera y aportes. */
+    @EJB private com.saa.ejb.rpr.service.ActualizacionEjecucionGService actualizacionService;
     @EJB private GeneracionG40Service           g40Service;
     @EJB private GeneracionG41Service           g41Service;
     @EJB private GeneracionG42Service           g42Service;
@@ -124,6 +126,7 @@ public class GeneracionUnReporteServiceImpl implements GeneracionUnReporteServic
         ejrc.setTipoEjecucion(TIPO_INICIAL);
         ejrc.setEstado(EJRC_EN_PROCESO);
         ejrc.setObservaciones("Ejecucion inicial generada automaticamente");
+        actualizacionService.atar(ejrc);
         ejrc = ejrcService.saveSingle(ejrc);
         System.out.println("  EJRC creado con id: " + ejrc.getCodigo());
 
