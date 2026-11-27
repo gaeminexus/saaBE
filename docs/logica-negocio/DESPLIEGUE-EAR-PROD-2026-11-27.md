@@ -80,3 +80,11 @@ Los cuatro son DDL, con commit implícito. No van los `rpr/sql/C19-*` ni los scr
   - La C47 solo cambia un informe.
 - Los lotes 16 a 24 corren por primera vez contra la base de producción. Con `devengoCompletoDesde = 2026-11-30` tocan
   las operaciones desde el 30-11 y el cierre de noviembre.
+
+## 7. Desplegado (27-11-2026)
+- El usuario subió el EAR `prod-1127` a producción.
+- Humo de solo lectura, que hizo el usuario: ingreso, dashboard de partícipes y consulta de préstamos. Todo bien.
+- Queda pendiente:
+  - el humo de la carga Petro y del Resumen Financiero;
+  - la previsualización del cierre de noviembre;
+  - la siembra del libro de devengo (§5.3).
