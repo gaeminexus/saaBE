@@ -2,6 +2,7 @@ package com.saa.model.rpr;
 
 import java.io.Serializable;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
@@ -74,6 +75,21 @@ public class EjecucionReporte implements Serializable {
     @Column(name = "EJRCOBSR", length = 500)
     private String observaciones;
 
+    /** C50: corrida de cartera (CRD.CRCT) vigente del mes cuando se genero la ejecucion; nula = generada antes del C50 (sin dato). */
+    @Basic
+    @Column(name = "EJRCCRCT")
+    private Long corridaCartera;
+
+    /** C50: fecha de ingreso (ASNTFCPR) del ultimo asiento vigente del mes en 1.3, 1.4 y 2.1 al generar. */
+    @Basic
+    @Column(name = "EJRCFCUA")
+    private LocalDateTime ultimoAsientoRegistro;
+
+    /** C50: instante en que se genero la ejecucion (EJRCFCGN solo trae la fecha). */
+    @Basic
+    @Column(name = "EJRCFCHG")
+    private LocalDateTime generadaEn;
+
     // ============================================================
     // Getters y Setters
     // ============================================================
@@ -100,5 +116,11 @@ public class EjecucionReporte implements Serializable {
     public void setEstado(Long estado) { this.estado = estado; }
 
     public String getObservaciones() { return observaciones; }
+    public Long getCorridaCartera() { return corridaCartera; }
+    public void setCorridaCartera(Long corridaCartera) { this.corridaCartera = corridaCartera; }
+    public LocalDateTime getUltimoAsientoRegistro() { return ultimoAsientoRegistro; }
+    public void setUltimoAsientoRegistro(LocalDateTime ultimoAsientoRegistro) { this.ultimoAsientoRegistro = ultimoAsientoRegistro; }
+    public LocalDateTime getGeneradaEn() { return generadaEn; }
+    public void setGeneradaEn(LocalDateTime generadaEn) { this.generadaEn = generadaEn; }
     public void setObservaciones(String observaciones) { this.observaciones = observaciones; }
 }

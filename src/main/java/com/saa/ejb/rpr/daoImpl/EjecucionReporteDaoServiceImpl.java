@@ -34,7 +34,7 @@ public class EjecucionReporteDaoServiceImpl extends EntityDaoImpl<EjecucionRepor
             " select e from EjecucionReporte e " +
             " where  e.mes  = :mes " +
             "        and e.anio = :anio " +
-            " order by e.fechaGeneracion desc");
+            " order by e.fechaGeneracion desc, e.codigo desc");
         query.setParameter("mes", mes);
         query.setParameter("anio", anio);
         return query.getResultList();
