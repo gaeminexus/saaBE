@@ -19,6 +19,13 @@ public interface CierrePeriodoContableService {
 	EstadoPeriodo cerrar(Long idEmpresa, Long anio, Long mes, String usuario, String ip, String motivo) throws Throwable;
 
 	/**
+	 * C51: igual que {@link #cerrar(Long, Long, Long, String, String, String)} con las excepciones al candado ({@code saa.cierres.candadoCierre}):
+	 * lista {@code {codigoControl, motivo}}, nula o vacia = ninguna. Quedan registradas en la bitacora (CNT.HCPR).
+	 */
+	EstadoPeriodo cerrar(Long idEmpresa, Long anio, Long mes, String usuario, String ip, String motivo,
+			java.util.List<com.saa.ejb.cnt.service.dto.ExcepcionCandado> excepciones) throws Throwable;
+
+	/**
 	 * Reabre el período contable. Solo el último cerrado (reapertura en cascada desde el más reciente), salvo
 	 * el parámetro de re-proceso. Motivo obligatorio. Deja el período MAYORIZADO y abierto.
 	 */
